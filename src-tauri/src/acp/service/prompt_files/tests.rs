@@ -189,7 +189,6 @@ fn staging_conflicts_owner_isolation_and_lifecycle_release() {
 }
 #[test]
 fn owner_and_memory_caps_and_settled_memory() {
-    memory_sample("baseline");
     let f = Fixture::new();
     f.file("one", b"x");
     let mut stages = FileStages::default();
@@ -205,18 +204,12 @@ fn owner_and_memory_caps_and_settled_memory() {
         .collect();
     let large = read::read_paths(&paths).unwrap();
     let peak = large.retained_bytes();
-    memory_sample("staged");
     let weak = Arc::downgrade(&large.0);
     stages.stage("p", "c", 0, None, large).unwrap();
     let wire = stages.get("p", "c").wire("memory probe", true).unwrap();
-    let wire_bytes = serde_json::to_vec(&wire).unwrap().len();
     drop(wire);
     stages.clear();
     assert!(weak.upgrade().is_none());
-    memory_sample("settled");
-    println!(
-        "attachment_memory: native_payload_peak={peak} bytes; serialized_wire={wire_bytes} bytes; settled_payload=0 bytes; global_staging_cap={STORE_BYTES} bytes"
-    );
     for i in 0..(STORE_BYTES / peak) {
         stages
             .stage(
@@ -247,20 +240,6 @@ fn symlinks_and_nonregular_files_are_refused() {
     let socket = std::os::unix::net::UnixListener::bind(f.0.join("socket")).unwrap();
     assert!(read::read_paths(&[f.0.join("socket").to_str().unwrap().into()]).is_err());
     drop(socket);
-}
-
-fn memory_sample(label: &str) {
-    #[cfg(target_os = "linux")]
-    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
-        for line in status
-            .lines()
-            .filter(|line| line.starts_with("VmRSS:") || line.starts_with("VmHWM:"))
-        {
-            println!("attachment_process_memory {label}: {line}");
-        }
-    }
-    #[cfg(not(target_os = "linux"))]
-    let _ = label;
 }
 
 #[cfg(unix)]
