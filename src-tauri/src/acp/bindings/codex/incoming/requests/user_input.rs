@@ -76,7 +76,14 @@ fn parse(params: &Map<String, Value>) -> Option<UserInputRequest> {
         .iter()
         .map(question)
         .collect::<Option<Vec<_>>>()?;
-    if questions.is_empty() {
+    // Answers are keyed by question id, so a request that repeats one could
+    // never be answered.
+    let repeats_an_id = questions.iter().enumerate().any(|(index, question)| {
+        questions[..index]
+            .iter()
+            .any(|earlier| earlier.id.as_str() == question.id.as_str())
+    });
+    if questions.is_empty() || repeats_an_id {
         return None;
     }
     let auto_resolution_ms = match params.get("autoResolutionMs") {
@@ -91,8 +98,11 @@ fn parse(params: &Map<String, Value>) -> Option<UserInputRequest> {
 
 fn question(value: &Value) -> Option<UserInputQuestion> {
     let value = value.as_object()?;
+    // An empty option list offers nothing to pick, so the question takes
+    // free text, as one without options does.
     let options = match value.get("options") {
         None | Some(Value::Null) => None,
+        Some(Value::Array(options)) if options.is_empty() => None,
         Some(options) => Some(
             BoundedVec::new(
                 "userInputOptions",

@@ -17,10 +17,11 @@ use super::{IncomingEvent, IngressDisposition, ResourceMapper, parse_packet_meta
 const PACKET_FIXTURE: &[u8] =
     include_bytes!("../../../../testdata/acp/codex/candidate-windows.json");
 
-const UNIMPLEMENTED_SERVER_REQUESTS: [&str; 5] = [
+const UNIMPLEMENTED_SERVER_REQUESTS: [&str; 6] = [
     "mcpServer/elicitation/request",
     "account/chatgptAuthTokens/refresh",
     "attestation/generate",
+    "currentTime/read",
     "applyPatchApproval",
     "execCommandApproval",
 ];

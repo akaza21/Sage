@@ -109,7 +109,7 @@ impl fmt::Debug for UserInputAnswers {
 pub enum UserInputError {
     #[error("an answer names a question that was not asked, or names it twice")]
     UnknownQuestion,
-    #[error("an answer is empty")]
+    #[error("an answer is empty or only whitespace")]
     EmptyAnswer,
     #[error("an answer selects an option the question does not offer")]
     UnknownOption,
@@ -164,7 +164,11 @@ impl UserInputRequest {
             {
                 return Err(UserInputError::UnknownQuestion);
             }
-            if answer.selected_option.is_none() && answer.text.is_none() {
+            let blank_text = answer
+                .text
+                .as_ref()
+                .is_some_and(|text| text.as_str().trim().is_empty());
+            if blank_text || (answer.selected_option.is_none() && answer.text.is_none()) {
                 return Err(UserInputError::EmptyAnswer);
             }
             if let Some(label) = &answer.selected_option

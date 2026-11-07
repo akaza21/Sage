@@ -46,6 +46,10 @@ fn answers_must_match_the_questions_that_were_asked() {
         ),
         (json!([{"questionId": "free"}]), UserInputError::EmptyAnswer),
         (
+            json!([{"questionId": "free", "text": " \t "}]),
+            UserInputError::EmptyAnswer,
+        ),
+        (
             json!([{"questionId": "scope", "selectedOption": "Some"}]),
             UserInputError::UnknownOption,
         ),

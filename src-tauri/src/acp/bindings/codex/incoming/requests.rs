@@ -28,9 +28,6 @@ pub(super) fn server_request(
         return dynamic_tool_call(adapter, object, params);
     }
     let id = object.get("id").ok_or(IngressError::Malformed)?;
-    if method == "currentTime/read" {
-        return current_time(id);
-    }
     if method == USER_INPUT_METHOD {
         return user_input::request(adapter, object, params);
     }
@@ -144,16 +141,6 @@ fn project_server_request(
         }),
     };
     Ok(event.into())
-}
-
-/// `currentTime/read`: Sage's clock as whole Unix seconds.
-fn current_time(id: &Value) -> Result<IngressDisposition, IngressError> {
-    let seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|_| IngressError::Malformed)?
-        .as_secs();
-    let bytes = reply(id, "result", json!({"currentTimeAt": seconds}))?;
-    Ok(IncomingEvent::HostToolReply { bytes }.into())
 }
 
 mod user_input;

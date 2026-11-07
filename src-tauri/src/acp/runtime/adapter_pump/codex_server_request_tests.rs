@@ -290,3 +290,60 @@ fn codex_questions_on_two_turns_are_each_shown_and_answered() {
 fn codex_approvals_on_two_turns_are_each_shown_and_answered() {
     asks_on_two_turns(command_approval());
 }
+
+#[test]
+fn a_late_codex_request_for_a_finished_turn_is_declined_not_left_waiting() {
+    runtime().block_on(async {
+        let (pump, shared) = running_codex_turn().await;
+        let parts = ask_answer_and_complete(pump, &shared, &command_approval(), 41, "turn-1").await;
+        let client = RequiredText::new("client", "client-2").unwrap();
+        let mut pump = parts
+            .bind_turn(ActiveTurnIntent {
+                turn_id: turn("two"),
+                external_turn_id: None,
+                client_message_id: client.clone(),
+            })
+            .ok()
+            .expect("the session binds its second turn");
+        pump.queue_prompt(
+            Prompt::new("prompt", "Again.").unwrap(),
+            &client,
+            crate::settings_store::SessionAccessMode::ReadOnly,
+        )
+        .unwrap();
+        let mut transport = CaptureTransport(Vec::new());
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Written
+        );
+        let prompt_id = serde_json::from_slice::<serde_json::Value>(&transport.0).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+        start_turn(&mut pump, prompt_id, "turn-2", "client-2").await;
+        assert!(
+            pump.push_stdout_chunk(
+                &codex_line(serde_json::json!({
+                    "id":43,"method":"item/commandExecution/requestApproval","params":{
+                        "threadId":"thread-1","turnId":"turn-1","itemId":"late-1","command":"ls"}
+                })),
+                6
+            )
+            .await
+            .unwrap()
+        );
+        assert!(
+            !permission_requests(&shared)
+                .iter()
+                .any(|(id, _)| id == "number:43")
+        );
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Written
+        );
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&transport.0).unwrap(),
+            serde_json::json!({"id":43,"result":{"decision":"decline"}})
+        );
+        assert!(!pump.teardown_required());
+    });
+}

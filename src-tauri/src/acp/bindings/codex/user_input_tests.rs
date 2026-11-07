@@ -1,6 +1,6 @@
 //! Codex `item/tool/requestUserInput` journeys against the harness-neutral
 //! question contract: single choice, free-text "other", secret, cancel,
-//! interrupt and harness withdrawal, plus `currentTime/read`.
+//! interrupt and harness withdrawal.
 
 use serde_json::{Value, json};
 
@@ -148,26 +148,6 @@ fn cancel_and_turn_interrupt_send_the_empty_answer_decline() {
 }
 
 #[test]
-fn an_expired_auto_resolution_declines_like_a_cancel() {
-    // The pump fires the expiry (see the adapter pump tests); the adapter's
-    // part is that the decline it receives is the protocol's empty answers.
-    let mut adapter = live();
-    let NormalizedPayload::PermissionRequest {
-        user_input: Some(request),
-        ..
-    } = ask(&mut adapter, 75, Some(u64::MAX))
-    else {
-        panic!("the request must carry its questions");
-    };
-    assert_eq!(
-        request.auto_resolution_window_ms(),
-        Some(crate::acp::intent::user_input::USER_INPUT_MAX_AUTO_RESOLUTION_MS)
-    );
-    let expired = reply(&mut adapter, 75, &PermissionDecision::Deny);
-    assert_eq!(expired, json!({"id": 75, "result": {"answers": {}}}));
-}
-
-#[test]
 fn server_request_resolved_withdraws_a_question_card() {
     let mut adapter = live();
     ask(&mut adapter, 76, None);
@@ -187,41 +167,60 @@ fn server_request_resolved_withdraws_a_question_card() {
 }
 
 #[test]
-fn questions_beyond_the_contract_caps_are_declined_at_once() {
-    let mut adapter = live();
-    let question = json!({"id": "q", "header": "", "question": "?", "options": null});
-    let frame = json!({"id": 77, "method": "item/tool/requestUserInput", "params": {
-        "threadId": "thread-1", "turnId": "turn-1", "itemId": "call-77",
-        "questions": vec![question; 5]
-    }});
-    let IngressDisposition::Events(events) = ingest(&mut adapter, &frame) else {
-        panic!("an over-cap request must still be answered");
-    };
-    let [IncomingEvent::HostToolReply { bytes }] = events.as_slice() else {
-        panic!("expected one immediate decline, got {events:?}");
-    };
-    assert_eq!(
-        serde_json::from_slice::<Value>(bytes).unwrap(),
-        json!({"id": 77, "result": {"answers": {}}})
-    );
+fn unanswerable_questions_are_declined_at_once() {
+    let question = |id: &str| json!({"id": id, "header": "", "question": "?", "options": null});
+    let over_cap = (0..5)
+        .map(|index| question(&format!("q{index}")))
+        .collect::<Vec<_>>();
+    let repeated_id = vec![question("q"), question("q")];
+    for (id, questions) in [(77_u64, over_cap), (78, repeated_id)] {
+        let mut adapter = live();
+        let frame = json!({"id": id, "method": "item/tool/requestUserInput", "params": {
+            "threadId": "thread-1", "turnId": "turn-1", "itemId": format!("call-{id}"),
+            "questions": questions
+        }});
+        let IngressDisposition::Events(events) = ingest(&mut adapter, &frame) else {
+            panic!("request {id} must still be answered");
+        };
+        let [IncomingEvent::HostToolReply { bytes }] = events.as_slice() else {
+            panic!("expected one immediate decline for {id}, got {events:?}");
+        };
+        assert_eq!(
+            serde_json::from_slice::<Value>(bytes).unwrap(),
+            json!({"id": id, "result": {"answers": {}}})
+        );
+    }
 }
 
 #[test]
-fn current_time_read_answers_with_unix_seconds() {
+fn a_question_with_an_empty_option_list_takes_free_text() {
     let mut adapter = live();
-    let before = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let frame = json!({"id": 78, "method": "currentTime/read", "params": {"threadId": "thread-1"}});
+    let frame = json!({"id": 79, "method": "item/tool/requestUserInput", "params": {
+        "threadId": "thread-1", "turnId": "turn-1", "itemId": "call-79",
+        "questions": [{"id": "why", "header": "Why", "question": "Why?",
+            "isOther": false, "isSecret": false, "options": []}]
+    }});
     let IngressDisposition::Events(events) = ingest(&mut adapter, &frame) else {
-        panic!("currentTime/read must be answered");
+        panic!("the question must wait for the user");
     };
-    let [IncomingEvent::HostToolReply { bytes }] = events.as_slice() else {
-        panic!("expected one reply, got {events:?}");
+    let [IncomingEvent::Permission { payload, .. }] = events.as_slice() else {
+        panic!("expected one pending question, got {events:?}");
     };
-    let reply: Value = serde_json::from_slice(bytes).unwrap();
-    assert_eq!(reply["id"], json!(78));
-    let now = reply["result"]["currentTimeAt"].as_u64().unwrap();
-    assert!((before..before + 5).contains(&now));
+    let NormalizedPayload::PermissionRequest {
+        user_input: Some(request),
+        ..
+    } = payload
+    else {
+        panic!("the request must carry its question");
+    };
+    assert!(request.questions.as_slice()[0].options.is_none());
+    let answered = reply(
+        &mut adapter,
+        79,
+        &answers(json!([{"questionId": "why", "text": "Because"}])),
+    );
+    assert_eq!(
+        answered["result"]["answers"],
+        json!({"why": {"answers": ["user_note: Because"]}})
+    );
 }
