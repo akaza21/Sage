@@ -7,6 +7,8 @@
 #[cfg(windows)]
 mod annotate;
 #[cfg(windows)]
+mod background;
+#[cfg(windows)]
 mod device;
 #[cfg(windows)]
 mod report;
@@ -53,8 +55,8 @@ mod lane {
     use sage_lib::native_lane::{self, Lane};
 
     use crate::{
-        annotate, device, report::Report, s1_popups, s3_ipc, s8_devtools, s10_tls, s11_downloads,
-        site::Site,
+        annotate, background, device, report::Report, s1_popups, s3_ipc, s8_devtools, s10_tls,
+        s11_downloads, site::Site,
     };
 
     /// The whole lane, Tauri start to exit; a hang past it fails the run.
@@ -71,6 +73,7 @@ mod lane {
         ("s11", s11_downloads::run),
         ("annotate", annotate::run),
         ("device", device::run),
+        ("m2", background::run),
     ];
 
     pub fn run() -> i32 {

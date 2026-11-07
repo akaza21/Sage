@@ -161,7 +161,9 @@ pub(super) fn show_deferred(app: &AppHandle, label: &str) {
             .annotate
             .take_deferred_show(&label)
         {
-            let _ = visibility.reveal(|| webview.show().map_err(|error| error.to_string()));
+            let _ = visibility.reveal_page(&webview, || {
+                webview.show().map_err(|error| error.to_string())
+            });
         }
     });
 }
