@@ -53,7 +53,10 @@ impl PiTranslator {
                 code: "command_failed",
             }];
             if kind == PendingKind::Prompt {
-                output.extend(self.finish_turn(TerminalOutcome::Failed)?);
+                let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
+                if active.lifecycle.acknowledged(false, false)? {
+                    output.extend(self.finish_turn(TerminalOutcome::Failed)?);
+                }
             } else if kind == PendingKind::Abort {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
                 active.lifecycle.resolve_abort(false);
@@ -114,7 +117,7 @@ impl PiTranslator {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
                 let handled =
                     response.data.get("disposition").and_then(Value::as_str) == Some("handled");
-                if active.lifecycle.acknowledged(handled)? {
+                if active.lifecycle.acknowledged(true, handled)? {
                     return self.finish_turn(TerminalOutcome::Completed);
                 }
                 Ok(vec![AdapterOutput::CommandAccepted { command: "prompt" }])

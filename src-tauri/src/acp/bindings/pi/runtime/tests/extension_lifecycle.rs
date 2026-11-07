@@ -321,6 +321,129 @@ fn extension_failure_settles_once_and_honors_cancellation_at_delivery() {
 }
 
 #[test]
+fn failed_extension_acknowledgment_waits_for_model_settlement_before_reuse() {
+    for ack_after_end in [false, true] {
+        for cancel in [false, true] {
+            let mut runtime = extension_runtime();
+            let first = extension(&mut runtime, "extension-a");
+            let first = deliver(&mut runtime, first);
+            event(&mut runtime, "agent_start");
+            if ack_after_end {
+                event(&mut runtime, "agent_end");
+            }
+            if cancel {
+                let abort = runtime.command(AdapterCommand::Cancel).unwrap();
+                let abort = deliver(&mut runtime, abort);
+                reply(&mut runtime, &abort, true);
+            }
+            let failed = reply(&mut runtime, &first, false);
+            assert!(
+                failed
+                    .events()
+                    .iter()
+                    .any(|event| matches!(event, AdapterEvent::Error(_)))
+            );
+            assert_no_terminal(&failed);
+            let next = extension_command(&runtime, "extension-b");
+            assert!(
+                runtime.command(next).is_err(),
+                "unsettled work must block reuse"
+            );
+            assert_no_terminal(&reply(&mut runtime, &first, false));
+            if ack_after_end {
+                // A continuation must not erase the failed RPC outcome.
+                event(&mut runtime, "agent_start");
+            }
+            assert_text(&mut runtime, "old output", "extension-a");
+            event(&mut runtime, "agent_end");
+            assert_terminal(
+                &event(&mut runtime, "agent_settled"),
+                if cancel {
+                    TurnState::Interrupted
+                } else {
+                    TurnState::Failed
+                },
+            );
+            let second = extension(&mut runtime, "extension-b");
+            let second = deliver(&mut runtime, second);
+            event(&mut runtime, "agent_start");
+            assert_no_terminal(&reply(&mut runtime, &first, false));
+            assert_no_terminal(&reply(&mut runtime, &second, true));
+            assert_text(&mut runtime, "new output", "extension-b");
+            event(&mut runtime, "agent_end");
+            assert_terminal(&event(&mut runtime, "agent_settled"), TurnState::Completed);
+        }
+    }
+}
+
+fn assert_text(runtime: &mut PiRuntime, expected: &str, client: &str) {
+    runtime
+        .ingest(
+            &frame(json!({"type":"message_start","message":{"role":"assistant"}})),
+            &Mapper,
+        )
+        .unwrap();
+    let batch = runtime
+        .ingest(
+            &frame(json!({"type":"message_update",
+        "assistantMessageEvent":{"type":"text_delta","delta":expected}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::Item {
+        id, payload: NormalizedPayload::Text { text }, ..
+    }] if text.as_str() == expected && id.turn_client_message_id.as_ref().unwrap().as_str() == client));
+    runtime
+        .ingest(
+            &frame(
+                json!({"type":"message_end","message":{"role":"assistant","stopReason":"stop"}}),
+            ),
+            &Mapper,
+        )
+        .unwrap();
+}
+
+#[test]
+fn pending_session_reset_blocks_prompts_until_response_or_delivery_rollback() {
+    for (resolution, success) in [
+        (EgressResolution::Written, true),
+        (EgressResolution::Written, false),
+        (EgressResolution::QueueRejected, false),
+        (EgressResolution::WriteZeroBytes, false),
+    ] {
+        let mut runtime = extension_runtime();
+        let reset = runtime
+            .command(AdapterCommand::NewSession {
+                native_root: ".".into(),
+                model: None,
+            })
+            .unwrap();
+        let prompt = || AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Inspect after reset").unwrap(),
+            client_message_id: RequiredText::new("client", "after-reset").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        };
+        assert!(
+            runtime.command(prompt()).is_err(),
+            "a session response must not clear a new turn"
+        );
+        if resolution == EgressResolution::Written {
+            let reset = deliver(&mut runtime, reset);
+            reply(&mut runtime, &reset, success);
+        } else {
+            reject_delivery(&mut runtime, reset, resolution);
+        }
+        let send = runtime.command(prompt()).unwrap();
+        let send = deliver(&mut runtime, send);
+        assert_no_terminal(&reply(&mut runtime, &send, true));
+        event(&mut runtime, "agent_start");
+        assert_text(&mut runtime, "after reset", "after-reset");
+        event(&mut runtime, "agent_end");
+        assert_terminal(&event(&mut runtime, "agent_settled"), TurnState::Completed);
+    }
+}
+
+#[test]
 fn extension_unknown_delivery_fails_closed() {
     let mut runtime = extension_runtime();
     let send = extension(&mut runtime, "extension-a");

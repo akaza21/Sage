@@ -19,6 +19,7 @@ pub(super) struct TurnLifecycle {
     pub(super) owner: u64,
     pub(super) phase: TurnPhase,
     extension: bool,
+    prompt_failed: bool,
     pending_aborts: u8,
     abort_accepted: bool,
 }
@@ -29,6 +30,7 @@ impl TurnLifecycle {
             owner,
             phase: TurnPhase::Reserved,
             extension: false,
+            prompt_failed: false,
             pending_aborts: 0,
             abort_accepted: false,
         }
@@ -54,17 +56,24 @@ impl TurnLifecycle {
         Ok(())
     }
 
-    /// True means the RPC handled the prompt without starting model work.
-    pub(super) fn acknowledged(&mut self, handled: bool) -> Result<bool, AdapterError> {
-        match self.phase {
+    /// True means the RPC resolved without starting model work. A failed RPC
+    /// still owns any model work it started, until agent_settled arrives.
+    pub(super) fn acknowledged(
+        &mut self,
+        success: bool,
+        handled: bool,
+    ) -> Result<bool, AdapterError> {
+        let resolved_without_model = match self.phase {
             TurnPhase::Reserved | TurnPhase::AwaitingAcknowledgment if !self.extension => {
                 self.phase = TurnPhase::AwaitingModel;
-                Ok(handled)
+                handled || !success
             }
-            TurnPhase::AwaitingModel if self.extension => Ok(true),
-            TurnPhase::ModelRunning | TurnPhase::ModelEnded if self.extension => Ok(false),
-            _ => Err(AdapterError::EventSequence),
-        }
+            TurnPhase::AwaitingModel if self.extension => true,
+            TurnPhase::ModelRunning | TurnPhase::ModelEnded if self.extension => false,
+            _ => return Err(AdapterError::EventSequence),
+        };
+        self.prompt_failed |= !success;
+        Ok(resolved_without_model)
     }
 
     pub(super) fn start_model(&mut self) -> Result<(), AdapterError> {
@@ -123,6 +132,8 @@ impl TurnLifecycle {
     fn outcome(&self, incoming: TerminalOutcome) -> TerminalOutcome {
         if self.abort_accepted || self.pending_aborts > 0 {
             TerminalOutcome::Interrupted
+        } else if self.prompt_failed {
+            TerminalOutcome::Failed
         } else {
             incoming
         }

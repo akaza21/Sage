@@ -90,6 +90,13 @@ impl PiTranslator {
             return Err(AdapterError::Limit("prompt bytes"));
         }
         if self
+            .pending
+            .values()
+            .any(|request| request.kind == PendingKind::NewSession)
+        {
+            return Err(AdapterError::SessionTransitionBusy);
+        }
+        if self
             .active
             .as_ref()
             .is_some_and(|turn| turn.lifecycle.terminal().is_none())
