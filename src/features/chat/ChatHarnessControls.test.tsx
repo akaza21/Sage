@@ -1013,6 +1013,51 @@ describe("last confirmed model label", () => {
     );
     expect(onSelectModel).toHaveBeenCalledExactlyOnceWith("actual");
   });
+
+  it("only closes the menu when a substituted sole model is chosen without a catalog", async () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "access-test",
+      models: [],
+    });
+    const onSelectModel = vi.fn();
+    const onSetSessionConfigOption = vi.fn();
+    renderControls({
+      selectedModelId: "requested",
+      sessionModelId: "requested",
+      onSelectModel,
+      onSetSessionConfigOption,
+      sessionConfig: decodeSessionConfig({
+        sageAgentSessionId: "session-1",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        modes: null,
+        confirmedModel: { id: "actual", name: "Actual model" },
+        configOptions: [
+          {
+            id: "effort",
+            name: "Effort",
+            category: "effort",
+            type: "select",
+            currentValue: "high",
+            options: [{ value: "high", name: "High" }],
+          },
+        ],
+      }),
+    });
+    const trigger = screen.getByLabelText("Model", { exact: true });
+    fireEvent.click(trigger);
+    const option = await screen.findByRole("option", { name: "Actual model" });
+    expect(option).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(option);
+    expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
+    expect(onSelectModel).not.toHaveBeenCalled();
+    expect(onSetSessionConfigOption).not.toHaveBeenCalled();
+    expect(trigger).toBeEnabled();
+    expect(trigger).toHaveTextContent(/^Actual model$/);
+    expect(
+      screen.getByRole("button", { name: "Thinking level: High" }),
+    ).toBeEnabled();
+  });
   it.each(["before a first turn", "after choosing another catalog model"])(
     "shows effort as unavailable until the selected model's session advertises levels, %s",
     (order) => {

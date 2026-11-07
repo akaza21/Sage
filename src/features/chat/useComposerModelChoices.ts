@@ -6,22 +6,32 @@ import type {
 import type { ComposerModelChoice } from "./ChatModelPicker";
 
 /**
- * The models the picker lists when the session has no model select. While no
- * catalog is available (none advertised, still loading, or a cache miss), a
- * session's confirmed model is the one known choice, so the picker lists it
- * as selected instead of disabling.
+ * The models the picker lists when the session has no model select, and the
+ * one it marks current. While no catalog is available (none advertised, still
+ * loading, or a cache miss), a session's confirmed model is the one known
+ * choice, so the picker lists it as current instead of disabling. With a
+ * catalog the current choice is the chat's own request (the confirmed model
+ * only when it requested none), so a harness substitution stays choosable.
  */
 export function useComposerModelCatalog(
   models: readonly ComposerModelChoice[],
   sessionModel: AcpSessionConfig["confirmedModel"],
   label: string | null,
-): readonly ComposerModelChoice[] {
+  requestedId: string | null,
+): {
+  choices: readonly ComposerModelChoice[];
+  currentId: string | null;
+} {
   const soleId = models.length === 0 ? sessionModel?.id : undefined;
   const soleName = label ?? sessionModel?.name ?? soleId;
-  return useMemo(
+  const choices = useMemo(
     () => (soleId ? [{ id: soleId, name: soleName ?? soleId }] : models),
     [models, soleId, soleName],
   );
+  return {
+    choices,
+    currentId: soleId ?? requestedId ?? sessionModel?.id ?? null,
+  };
 }
 
 export function useComposerModelChoices(

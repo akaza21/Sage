@@ -185,22 +185,22 @@ export function ChatHarnessControls({
     models,
     sessionModel,
     confirmedModelLabel,
+    selectedModelId,
   );
-  const modelChoices = hasSessionModel ? modelOption : catalog;
+  const modelChoices = hasSessionModel ? modelOption : catalog.choices;
+  // The picker marks this choice current, and re-choosing it only closes the
+  // menu.
   const currentModelId = hasSessionModel
     ? modelOption.currentValue
-    : (selectedSessionConfig?.confirmedModel?.id ?? selectedModelId);
+    : catalog.currentId;
+  const runningModelId = hasSessionModel
+    ? modelOption.currentValue
+    : (sessionModel?.id ?? selectedModelId);
   const contextWindow = formatContextWindow(
-    models.find((model) => model.id === currentModelId)?.contextWindow,
+    models.find((model) => model.id === runningModelId)?.contextWindow,
   );
   const chooseModel = (modelId: string) => {
-    // Re-choosing the current value only closes the menu. Without a session
-    // select that value is the chat's own request (the confirmed model only
-    // when it requested none), so a harness substitution stays choosable.
-    const current = hasSessionModel
-      ? modelOption.currentValue
-      : (selectedModelId ?? sessionModel?.id);
-    const changed = modelId !== current;
+    const changed = modelId !== currentModelId;
     if (changed && hasSessionModel)
       void onSetSessionConfigOption(modelOption.id, { value: modelId });
     else if (changed) onSelectModel(modelId);
