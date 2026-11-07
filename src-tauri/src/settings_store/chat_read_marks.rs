@@ -11,8 +11,13 @@ use serde::{Deserialize, Serialize};
 use super::SettingsStore;
 use crate::{chat_lifecycle::validate_chat_identifier, error::AppResult};
 
-/// The rail renders at most this many chats, so older marks are never read.
-pub const MAX_CHAT_READ_MARKS: usize = 512;
+/// One mark for every chat the rail previews across all projects, which is
+/// also every chat the cross-project attention query considers
+/// (chat_read_state.rs), so a mark is evicted only by reads of chats that
+/// have since left the rail.
+pub const MAX_CHAT_READ_MARKS: usize = (crate::project_registry::MAX_PROJECTS
+    * crate::project_registry::MAX_AGENT_RAIL_CHATS_PER_PROJECT)
+    as usize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

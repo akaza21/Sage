@@ -23,6 +23,8 @@ pub use browser_download_folder::DownloadFolderRecord;
 pub use browser_preferences::BrowserPreferences;
 pub use browser_site_permissions::{MAX_SITE_ORIGIN_BYTES, MAX_SITE_PERMISSIONS};
 pub use chat_read_marks::ChatReadMark;
+#[cfg(test)]
+pub(crate) use chat_read_marks::MAX_CHAT_READ_MARKS;
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

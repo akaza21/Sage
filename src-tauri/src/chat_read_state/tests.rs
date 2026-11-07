@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{cell::Cell, fs, path::PathBuf};
 
 use rusqlite::params;
 use uuid::Uuid;
@@ -6,14 +6,21 @@ use uuid::Uuid;
 use super::*;
 use crate::{
     domain::{ChatLifecycleRequest, ProjectLayoutRequest},
-    settings_store::ChatReadMark,
+    settings_store::{ChatReadMark, MAX_CHAT_READ_MARKS},
 };
 
 struct Fixture {
     base: PathBuf,
     database: Database,
     settings: SettingsStore,
+    /// Seeding a chat's Turns makes it the most recently updated chat, so
+    /// the rail's recency order follows seeding order.
+    updates: Cell<i64>,
 }
+
+/// Later than any real creation time, so seeded chats outrank the
+/// Turn-less first chat each project starts with.
+const SEEDED_UPDATE_BASE: i64 = 4_000_000_000_000;
 
 impl Fixture {
     fn new() -> Self {
@@ -23,6 +30,7 @@ impl Fixture {
             base,
             database: Database::open(std::path::Path::new(":memory:")).unwrap(),
             settings: SettingsStore::in_memory().unwrap(),
+            updates: Cell::new(SEEDED_UPDATE_BASE),
         }
     }
 
@@ -75,6 +83,13 @@ impl Fixture {
                  item_bytes,fact_count,fact_bytes,payload_bytes,revision)
                  VALUES(?1,?2,?3,?4,0,0,0,0,0,0)",
                 params![project, chat, session, turns.len() as i64],
+            )
+            .unwrap();
+        self.updates.set(self.updates.get() + 1);
+        connection
+            .execute(
+                "UPDATE chats SET updated_at=?3 WHERE project_id=?1 AND id=?2",
+                params![project, chat, self.updates.get()],
             )
             .unwrap();
         for (ordinal, (state, terminal_at)) in turns.iter().enumerate() {
@@ -228,39 +243,94 @@ fn an_approval_shows_even_when_the_chat_was_read() {
     assert_eq!(fixture.attention().chats, vec![awaiting(&project, &chat)]);
 }
 
+/// Background projects, then an active one, so every background project
+/// takes chats without a layout.
+fn background_projects(fixture: &Fixture, count: usize) -> Vec<String> {
+    let projects = (0..count)
+        .map(|index| fixture.project(&format!("project-{index}")).0)
+        .collect();
+    fixture.project("active");
+    projects
+}
+
+#[test]
+fn only_the_chats_the_rail_previews_are_considered() {
+    let fixture = Fixture::new();
+    let project = background_projects(&fixture, 1).remove(0);
+    let rail = MAX_AGENT_RAIL_CHATS_PER_PROJECT;
+    let chats = (0..=rail)
+        .map(|finished| {
+            let chat = fixture.background_chat(&project);
+            fixture.turns(&project, &chat, &[("completed", Some(finished))]);
+            chat
+        })
+        .collect::<Vec<_>>();
+    let listed = fixture.attention().chats;
+    assert_eq!(listed.len(), rail as usize);
+    // The least recently updated chat is past the rail's cut.
+    assert!(!listed.iter().any(|chat| chat.chat_id == chats[0]));
+}
+
 #[test]
 fn the_list_is_capped_and_keeps_approvals_ahead_of_the_cut() {
     let fixture = Fixture::new();
-    let (first, _) = fixture.project("first");
-    let (second, _) = fixture.project("second");
-    fixture.project("newest");
+    let rail = MAX_AGENT_RAIL_CHATS_PER_PROJECT as usize;
+    // Enough projects that their rail chats outnumber the answer's cap.
+    let projects = background_projects(&fixture, MAX_CHAT_ATTENTION / rail + 1);
     let mut finished = 0_i64;
-    for project in [&first, &second] {
-        for _ in 0..MAX_CHAT_ATTENTION / 2 {
+    for project in &projects {
+        for _ in 0..rail {
             let chat = fixture.background_chat(project);
             finished += 1;
             fixture.turns(project, &chat, &[("completed", Some(finished))]);
         }
     }
-    // One more unseen chat than the cap, and the approval comes last of all.
-    let extra = fixture.background_chat(&first);
-    fixture.turns(&first, &extra, &[("completed", Some(0))]);
-    let approval = fixture.background_chat(&second);
-    fixture.turns(&second, &approval, &[("waitingApproval", None)]);
+    let approval = fixture.background_chat(&projects[1]);
+    fixture.turns(&projects[1], &approval, &[("waitingApproval", None)]);
 
     let list = fixture.attention();
     assert!(list.truncated);
     assert_eq!(list.chats.len(), MAX_CHAT_ATTENTION);
-    assert_eq!(list.chats[0], awaiting(&second, &approval));
-    assert_eq!(
-        list.chats
-            .iter()
-            .filter(|chat| matches!(chat.reason, AttentionReason::Unread { .. }))
-            .count(),
-        MAX_CHAT_ATTENTION - 1
-    );
-    // The oldest finishes are the ones cut.
-    assert!(!list.chats.iter().any(|chat| chat.chat_id == extra));
+    assert_eq!(list.chats[0], awaiting(&projects[1], &approval));
+    let finishes = list
+        .chats
+        .iter()
+        .filter_map(|chat| match chat.reason {
+            AttentionReason::Unread { finished_at } => Some(finished_at),
+            AttentionReason::AwaitingApproval => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(finishes.len(), MAX_CHAT_ATTENTION - 1);
+    // Newest finishes first, and the cut takes the oldest.
+    assert!(finishes.windows(2).all(|pair| pair[0] > pair[1]));
+    assert_eq!(finishes[0], finished);
+}
+
+#[test]
+fn evicting_read_marks_never_brings_back_a_chat_already_read() {
+    let fixture = Fixture::new();
+    // More chats than the read mark bound, each read once its Turn
+    // finished, oldest first: the earliest marks are evicted.
+    let per_project = 60;
+    let projects = background_projects(&fixture, MAX_CHAT_READ_MARKS / per_project + 1);
+    let mut finished = 0_i64;
+    let mut read = Vec::new();
+    for project in &projects {
+        for _ in 0..per_project {
+            let chat = fixture.background_chat(project);
+            finished += 1;
+            fixture.turns(project, &chat, &[("completed", Some(finished))]);
+            fixture.read(&chat, finished);
+            read.push(chat);
+        }
+    }
+    assert!(read.len() > MAX_CHAT_READ_MARKS);
+    let marks = fixture.settings.chat_read_marks().unwrap();
+    assert_eq!(marks.len(), MAX_CHAT_READ_MARKS);
+    assert!(!marks.iter().any(|mark| mark.chat_id == read[0]));
+
+    // Every chat the rail previews still has its mark.
+    assert!(fixture.attention().chats.is_empty());
 }
 
 #[test]

@@ -2,7 +2,9 @@ mod create;
 mod launch_root;
 mod local;
 mod rail;
-pub(crate) use rail::{CHAT_FINISHED_AT, CHAT_LATEST_TURN_ID};
+pub(crate) use rail::{
+    CHAT_FINISHED_AT, CHAT_LATEST_TURN_ID, MAX_AGENT_RAIL_CHATS_PER_PROJECT, RAIL_RECENCY_ORDER,
+};
 mod seed;
 
 use std::path::{Path, PathBuf};

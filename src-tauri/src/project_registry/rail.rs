@@ -5,7 +5,13 @@ use crate::error::AppResult;
 
 use super::MAX_PROJECTS;
 
-pub(super) const MAX_AGENT_RAIL_CHATS_PER_PROJECT: i64 = 8;
+/// The chats the rail previews per project in each order it offers.
+pub(crate) const MAX_AGENT_RAIL_CHATS_PER_PROJECT: i64 = 8;
+
+/// The rail's default "last updated" order over tabs aliased `w` and their
+/// chats aliased `c`: pinned chats first, then the most recently updated.
+pub(crate) const RAIL_RECENCY_ORDER: &str =
+    "w.pinned DESC, COALESCE(c.updated_at, w.updated_at, 0) DESC, w.position, w.id";
 
 /// Projects newest first by when they were added. Opening a project or one of
 /// its chats never reorders the list, so rows stay put under the pointer.
@@ -91,7 +97,7 @@ pub(super) fn attach_rail_chats(
 ) -> AppResult<()> {
     let mut by_recency = connection.prepare(&format!(
         "{}
-         ORDER BY w.pinned DESC, COALESCE(c.updated_at, w.updated_at, 0) DESC, w.position, w.id
+         ORDER BY {RAIL_RECENCY_ORDER}
          LIMIT ?2",
         rail_chat_columns()
     ))?;
