@@ -6,7 +6,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import type {
   AcpChatPage,
   ProjectionRevision,
@@ -41,6 +41,12 @@ vi.mock("../services/acpChildTranscript", async (importOriginal) => ({
     return () => childNotices.delete(projectId + "/" + chatId);
   },
 }));
+// In the app the chat's Markdown renderer has loaded long before a subagent
+// view can open. Load it once here, so no test spends its findBy budget on a
+// cold module transform.
+beforeAll(async () => {
+  await import("../features/chat/acp/ChatMarkdown");
+});
 afterEach(() => {
   cleanup();
   readChild.mockReset();
