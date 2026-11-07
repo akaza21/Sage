@@ -5,6 +5,8 @@ import {
   type RefObject,
 } from "react";
 
+import { isEditableTextTarget } from "../ui/editableTextTarget";
+
 export function useAgentArtifactPaneFocus({
   expanded,
   overlay,
@@ -71,11 +73,7 @@ export function useAgentArtifactPaneFocus({
     const pane = paneRef.current;
     if (!expanded || !pane || event.defaultPrevented) return;
     if (event.key === "Escape") {
-      if (
-        event.target instanceof HTMLElement &&
-        event.target.closest("input, textarea, select, [contenteditable=true]")
-      )
-        return;
+      if (isEditableTextTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       onExpandedChange?.(false);
