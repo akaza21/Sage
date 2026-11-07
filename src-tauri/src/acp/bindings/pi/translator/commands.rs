@@ -2,7 +2,10 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
 
-use super::{ActiveTurn, EventPhase, PENDING_COMMANDS, PendingKind, PiTranslator, validate_id};
+use super::{
+    ActiveTurn, EventPhase, PENDING_COMMANDS, PendingKind, PiTranslator, PromptDelivery,
+    validate_id,
+};
 use crate::acp::bindings::pi::{
     decode::PROMPT_BYTES,
     protocol::{AdapterError, Outbound},
@@ -12,9 +15,24 @@ impl PiTranslator {
     pub(crate) fn mark_extension_command(&mut self) -> Result<(), AdapterError> {
         let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
         active.extension_command = true;
-        active.event_phase = EventPhase::PromptAccepted;
         Ok(())
     }
+
+    pub(crate) fn mark_prompt_written(&mut self, command_id: &str) -> Result<(), AdapterError> {
+        let active = self.active.as_mut().ok_or(AdapterError::Correlation)?;
+        if active.prompt_command_id != command_id
+            || active.prompt_delivery != PromptDelivery::Pending
+        {
+            return Err(AdapterError::Correlation);
+        }
+        active.prompt_delivery = PromptDelivery::Written;
+        // Extensions may emit model events before their prompt acknowledgment.
+        if active.extension_command {
+            active.event_phase = EventPhase::PromptAccepted;
+        }
+        Ok(())
+    }
+
     pub(crate) fn reject_before_write(&mut self, command_id: &str) -> Result<(), AdapterError> {
         let kind = *self
             .pending
@@ -37,7 +55,7 @@ impl PiTranslator {
             PendingKind::Prompt => {
                 let active = self.active.as_ref().ok_or(AdapterError::Correlation)?;
                 if active.prompt_command_id != command_id
-                    || active.event_phase != EventPhase::PromptIssued
+                    || active.prompt_delivery != PromptDelivery::Pending
                 {
                     return Err(AdapterError::Correlation);
                 }
@@ -87,6 +105,7 @@ impl PiTranslator {
         self.active = Some(ActiveTurn {
             turn_key,
             prompt_command_id: outbound.command_id.clone(),
+            prompt_delivery: PromptDelivery::Pending,
             extension_command: false,
             event_phase: EventPhase::PromptIssued,
             abort_requested: false,

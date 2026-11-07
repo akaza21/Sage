@@ -1,5 +1,72 @@
 use super::*;
 
+fn extension_delivery_failure_allows_retry(resolution: EgressResolution) {
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    let query = runtime.discover_commands().unwrap().unwrap();
+    let query = deliver(&mut runtime, query);
+    runtime
+        .ingest(
+            &response(
+                &query,
+                json!({"commands":[{"name":"review","source":"extension"}]}),
+            ),
+            &Mapper,
+        )
+        .unwrap();
+    let session = runtime.external_session.clone();
+    let revision = runtime.available_commands().snapshot().revision;
+    let command = || {
+        let mut prompt = Prompt::new("prompt", "/review src").unwrap();
+        prompt.command_revision = Some(revision);
+        AdapterCommand::Prompt {
+            prompt,
+            client_message_id: RequiredText::new("client", "retry-review").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        }
+    };
+    let send = runtime.command(command()).unwrap();
+    let rejected_id = request(&send)["id"].clone();
+    let token = send.into_token();
+    if resolution == EgressResolution::WriteZeroBytes {
+        runtime
+            .resolve_egress(token.clone(), EgressResolution::Queued)
+            .unwrap();
+    }
+    runtime
+        .resolve_egress(token, resolution)
+        .expect("undelivered extension must roll back without session teardown");
+
+    let retry = runtime
+        .command(command())
+        .expect("same session and client message must accept a retry");
+    let retry = deliver(&mut runtime, retry);
+    assert_ne!(retry["id"], rejected_id);
+    assert_eq!(retry["message"], "/review src");
+    let done = runtime
+        .ingest(&response(&retry, Value::Null), &Mapper)
+        .unwrap();
+    assert!(matches!(
+        done.events(),
+        [AdapterEvent::Turn {
+            state: crate::acp::lifecycle::TurnState::Completed,
+            ..
+        }]
+    ));
+    assert_eq!(runtime.external_session, session);
+    running(&mut runtime);
+}
+
+#[test]
+fn extension_queue_rejection_rolls_back_and_retry_completes_in_same_session() {
+    extension_delivery_failure_allows_retry(EgressResolution::QueueRejected);
+}
+
+#[test]
+fn extension_zero_byte_write_rolls_back_and_retry_completes_in_same_session() {
+    extension_delivery_failure_allows_retry(EgressResolution::WriteZeroBytes);
+}
+
 #[test]
 fn idle_idless_command_discovery_rejection_keeps_the_next_prompt_usable() {
     let mut runtime = fixture_runtime(1);

@@ -382,6 +382,11 @@ impl HarnessAdapter for PiRuntime {
                 {
                     return Err(AdapterRuntimeError::EgressIntent);
                 }
+                if reservation.kind == RequestKind::Prompt {
+                    self.translator
+                        .mark_prompt_written(&reservation.command_id)
+                        .map_err(support::map_pi)?;
+                }
                 self.reservations.remove(&id);
                 Ok(())
             }

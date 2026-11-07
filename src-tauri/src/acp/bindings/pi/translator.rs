@@ -32,6 +32,12 @@ enum EventPhase {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PromptDelivery {
+    Pending,
+    Written,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PendingKind {
     State,
     Models,
@@ -75,6 +81,7 @@ impl PendingKind {
 struct ActiveTurn {
     turn_key: String,
     prompt_command_id: String,
+    prompt_delivery: PromptDelivery,
     extension_command: bool,
     event_phase: EventPhase,
     abort_requested: bool,
