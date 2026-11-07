@@ -1,4 +1,4 @@
-use super::super::{EventPhase, PendingUiRequest, PiTranslator};
+use super::super::{PendingUiRequest, PiTranslator, TurnPhase};
 use crate::acp::bindings::pi::{
     AdapterError, AdapterOutput, decode::external_id, protocol::is_allow_option,
 };
@@ -12,7 +12,7 @@ impl PiTranslator {
         if self
             .active
             .as_ref()
-            .is_some_and(|turn| turn.authority_denied && turn.terminal.is_none())
+            .is_some_and(|turn| turn.authority_denied && turn.lifecycle.terminal().is_none())
         {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
@@ -27,7 +27,7 @@ impl PiTranslator {
             let live = self
                 .active
                 .as_ref()
-                .is_some_and(|turn| turn.terminal.is_none() && !turn.authority_denied);
+                .is_some_and(|turn| turn.lifecycle.terminal().is_none() && !turn.authority_denied);
             return Ok(vec![if live {
                 AdapterOutput::Absorbed
             } else {
@@ -38,7 +38,7 @@ impl PiTranslator {
             if self
                 .active
                 .as_ref()
-                .is_none_or(|turn| turn.terminal.is_some() || turn.authority_denied)
+                .is_none_or(|turn| turn.lifecycle.terminal().is_some() || turn.authority_denied)
             {
                 return Ok(vec![AdapterOutput::LateIgnored]);
             }
@@ -47,8 +47,8 @@ impl PiTranslator {
         }
         let id = external_id(value.get("id"))?.ok_or(AdapterError::Malformed)?;
         let running = self.active.as_ref().is_some_and(|turn| {
-            turn.event_phase == EventPhase::AgentRunning
-                && turn.terminal.is_none()
+            turn.lifecycle.phase == TurnPhase::ModelRunning
+                && turn.lifecycle.terminal().is_none()
                 && !turn.authority_denied
         });
         if !running || matches!(method, "input" | "editor") {

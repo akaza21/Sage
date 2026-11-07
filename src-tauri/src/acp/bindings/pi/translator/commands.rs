@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value};
 
 use super::{
-    ActiveTurn, EventPhase, PENDING_COMMANDS, PendingKind, PiTranslator, PromptDelivery,
-    validate_id,
+    ActiveTurn, PENDING_COMMANDS, PendingKind, PendingRequest, PiTranslator, TurnLifecycle,
+    TurnPhase, validate_id,
 };
 use crate::acp::bindings::pi::{
     decode::PROMPT_BYTES,
@@ -14,30 +14,31 @@ use crate::acp::bindings::pi::{
 impl PiTranslator {
     pub(crate) fn mark_extension_command(&mut self) -> Result<(), AdapterError> {
         let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-        active.extension_command = true;
-        Ok(())
+        active.lifecycle.mark_extension()
     }
 
     pub(crate) fn mark_prompt_written(&mut self, command_id: &str) -> Result<(), AdapterError> {
         let active = self.active.as_mut().ok_or(AdapterError::Correlation)?;
-        if active.prompt_command_id != command_id
-            || active.prompt_delivery != PromptDelivery::Pending
-        {
+        if active.prompt_command_id != command_id {
             return Err(AdapterError::Correlation);
         }
-        active.prompt_delivery = PromptDelivery::Written;
-        // Extensions may emit model events before their prompt acknowledgment.
-        if active.extension_command {
-            active.event_phase = EventPhase::PromptAccepted;
-        }
-        Ok(())
+        active.lifecycle.written()
     }
 
     pub(crate) fn reject_before_write(&mut self, command_id: &str) -> Result<(), AdapterError> {
-        let kind = *self
+        let request = *self
             .pending
             .get(command_id)
             .ok_or(AdapterError::Correlation)?;
+        let kind = request.kind;
+        if kind == PendingKind::Prompt {
+            let active = self.active.as_ref().ok_or(AdapterError::Correlation)?;
+            if active.prompt_command_id != command_id
+                || active.lifecycle.phase != TurnPhase::Reserved
+            {
+                return Err(AdapterError::Correlation);
+            }
+        }
         if self
             .initialization
             .as_ref()
@@ -53,19 +54,15 @@ impl PiTranslator {
         }
         match kind {
             PendingKind::Prompt => {
-                let active = self.active.as_ref().ok_or(AdapterError::Correlation)?;
-                if active.prompt_command_id != command_id
-                    || active.prompt_delivery != PromptDelivery::Pending
-                {
-                    return Err(AdapterError::Correlation);
-                }
                 self.active = None;
             }
             PendingKind::Abort => {
-                self.active
-                    .as_mut()
-                    .ok_or(AdapterError::Correlation)?
-                    .abort_requested = false;
+                if let Some(active) = self.active.as_mut()
+                    && request.owner == Some(active.lifecycle.owner)
+                    && active.lifecycle.terminal().is_none()
+                {
+                    active.lifecycle.resolve_abort(false);
+                }
             }
             PendingKind::State
             | PendingKind::Models
@@ -95,7 +92,7 @@ impl PiTranslator {
         if self
             .active
             .as_ref()
-            .is_some_and(|turn| turn.terminal.is_none())
+            .is_some_and(|turn| turn.lifecycle.terminal().is_none())
         {
             return Err(AdapterError::PromptAlreadyActive);
         }
@@ -105,12 +102,8 @@ impl PiTranslator {
         self.active = Some(ActiveTurn {
             turn_key,
             prompt_command_id: outbound.command_id.clone(),
-            prompt_delivery: PromptDelivery::Pending,
-            extension_command: false,
-            event_phase: EventPhase::PromptIssued,
-            abort_requested: false,
+            lifecycle: TurnLifecycle::new(self.next_command),
             authority_denied: false,
-            terminal: None,
             tools: BTreeMap::new(),
             compaction_active: false,
             thought_active: false,
@@ -158,7 +151,13 @@ impl PiTranslator {
         {
             return Err(AdapterError::Limit("outbound frame bytes"));
         }
-        self.pending.insert(id.clone(), kind);
+        let owner = match kind {
+            PendingKind::Prompt => Some(self.next_command),
+            PendingKind::Abort => self.active.as_ref().map(|turn| turn.lifecycle.owner),
+            _ => None,
+        };
+        self.pending
+            .insert(id.clone(), PendingRequest { kind, owner });
         Ok(Outbound {
             command_id: id,
             line,

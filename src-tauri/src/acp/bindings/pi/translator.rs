@@ -2,6 +2,7 @@ mod commands;
 mod events;
 mod fingerprint;
 mod initialization;
+mod lifecycle;
 mod payload;
 mod responses;
 
@@ -11,6 +12,7 @@ use serde_json::{Map, Value};
 
 use self::fingerprint::response_fingerprint;
 use self::initialization::InitializationIntent;
+use self::lifecycle::{TurnLifecycle, TurnPhase};
 use self::payload::{parse_entries, parse_messages, parse_models, parse_state};
 use super::{
     decode::{EXTERNAL_ID_BYTES, Record, Response, decode_record, validate_opaque_text},
@@ -22,20 +24,6 @@ const PENDING_COMMANDS: usize = 16;
 const COMPLETED_COMMANDS: usize = 32;
 const TOOLS_PER_TURN: usize = 512;
 const UNKNOWN_KINDS_PER_TURN: usize = 32;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EventPhase {
-    PromptIssued,
-    PromptAccepted,
-    AgentRunning,
-    AgentEnded,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PromptDelivery {
-    Pending,
-    Written,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PendingKind {
@@ -81,12 +69,8 @@ impl PendingKind {
 struct ActiveTurn {
     turn_key: String,
     prompt_command_id: String,
-    prompt_delivery: PromptDelivery,
-    extension_command: bool,
-    event_phase: EventPhase,
-    abort_requested: bool,
+    lifecycle: TurnLifecycle,
     authority_denied: bool,
-    terminal: Option<TerminalOutcome>,
     tools: BTreeMap<String, Option<ToolOutcome>>,
     compaction_active: bool,
     thought_active: bool,
@@ -98,6 +82,14 @@ struct ActiveTurn {
     retry_final_error: Option<String>,
     unknown_kinds: BTreeSet<String>,
     unknown_suppression_emitted: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PendingRequest {
+    kind: PendingKind,
+    // Ownership survives settlement and replacement of the active turn, within
+    // the same 16-entry pending bound as every other command.
+    owner: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,7 +104,7 @@ pub struct PiTranslator {
     epoch: u64,
     next_command: u64,
     launch_admission: Option<LaunchAdmission>,
-    pending: BTreeMap<String, PendingKind>,
+    pending: BTreeMap<String, PendingRequest>,
     completed: BTreeMap<String, CompletedResponse>,
     completed_order: VecDeque<String>,
     active: Option<ActiveTurn>,
@@ -209,7 +201,7 @@ impl PiTranslator {
                     || self
                         .active
                         .as_ref()
-                        .is_some_and(|turn| turn.terminal.is_none())
+                        .is_some_and(|turn| turn.lifecycle.terminal().is_none())
                 {
                     return Err(AdapterError::SessionTransitionBusy);
                 }
@@ -221,7 +213,8 @@ impl PiTranslator {
                     .active
                     .as_ref()
                     .ok_or(AdapterError::StaleIntent)?
-                    .terminal
+                    .lifecycle
+                    .terminal()
                     .is_some()
                 {
                     return Err(AdapterError::StaleIntent);
@@ -232,7 +225,8 @@ impl PiTranslator {
                 self.active
                     .as_mut()
                     .ok_or(AdapterError::StaleIntent)?
-                    .abort_requested = true;
+                    .lifecycle
+                    .request_abort();
                 Ok(outbound)
             }
             Operation::GetState => self.one(PendingKind::State, Map::new()),
@@ -272,15 +266,16 @@ impl PiTranslator {
     }
 
     pub(crate) fn model_config_pending(&self) -> bool {
-        self.pending
-            .iter()
-            .any(|(id, kind)| kind.is_config() && !self.is_closed_config_read(id, *kind))
+        self.pending.iter().any(|(id, request)| {
+            request.kind.is_config() && !self.is_closed_config_read(id, request.kind)
+        })
     }
 
     pub(crate) fn thinking_levels_request_id(&self) -> Option<&str> {
-        self.pending.iter().find_map(|(id, kind)| {
-            (*kind == PendingKind::ThinkingLevels && !self.is_closed_config_read(id, *kind))
-                .then_some(id.as_str())
+        self.pending.iter().find_map(|(id, request)| {
+            (request.kind == PendingKind::ThinkingLevels
+                && !self.is_closed_config_read(id, request.kind))
+            .then_some(id.as_str())
         })
     }
 
@@ -293,7 +288,7 @@ impl PiTranslator {
         let mut requests = self
             .pending
             .iter()
-            .filter(|(_, pending_kind)| **pending_kind == kind);
+            .filter(|(_, request)| request.kind == kind);
         let (id, _) = requests.next()?;
         requests.next().is_none().then_some(id.as_str())
     }
