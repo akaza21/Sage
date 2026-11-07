@@ -99,6 +99,37 @@ fn pi_bridge_denies_symlink_escape_at_prepare_and_commit() {
         "safe"
     );
 }
+#[cfg(unix)]
+#[test]
+fn pi_bridge_created_files_follow_umask_and_replacements_keep_mode() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new();
+    let f_path = |name: &str| f.path.join(name);
+    let mode = |name: &str| {
+        std::fs::metadata(f_path(name))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o7777
+    };
+    // std creates files with 0o666 masked by the process umask, which reads
+    // the umask without changing it under parallel tests.
+    std::fs::write(f_path("reference"), "").unwrap();
+    let create = f
+        .edit("write", json!({"path":"index.html","content":"<p>hi</p>"}))
+        .unwrap();
+    write::commit(&f.workspace, &create).unwrap();
+    assert_eq!(mode("index.html"), mode("reference"));
+    std::fs::set_permissions(f_path("index.html"), std::fs::Permissions::from_mode(0o640)).unwrap();
+    let edit = f
+        .edit(
+            "edit",
+            json!({"path":"index.html","oldText":"hi","newText":"bye"}),
+        )
+        .unwrap();
+    write::commit(&f.workspace, &edit).unwrap();
+    assert_eq!(mode("index.html"), 0o640);
+}
 #[test]
 fn pi_bridge_install_requires_exact_owned_bytes() {
     let f = Fixture::new();

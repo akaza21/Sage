@@ -58,13 +58,16 @@ fn platform_write(workspace: &Workspace, edit: &Edit) -> std::io::Result<()> {
     let temporary =
         CString::new(format!(".sage-pi-{}.tmp", uuid::Uuid::new_v4())).map_err(|_| refused())?;
     let fd = held.as_raw_fd();
+    // A new file takes the umask-derived mode like any other editor's file. A
+    // replacement starts owner-only and then copies the original's mode.
+    let mode: libc::c_uint = if edit.created { 0o666 } else { 0o600 };
     // SAFETY: the held directory and terminated basename outlive openat.
     let descriptor = unsafe {
         libc::openat(
             fd,
             temporary.as_ptr(),
             libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-            0o600,
+            mode,
         )
     };
     if descriptor < 0 {

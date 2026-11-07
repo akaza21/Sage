@@ -1,7 +1,10 @@
 //! Write admission for one workspace-relative path. A name is refused when it
 //! could alias a protected directory on any supported file system, or when the
 //! approval prompt could not show it to the user exactly as it will be written.
-use crate::workspace::{Workspace, directory_skip::protected_workspace_name};
+use crate::workspace::{
+    Workspace,
+    directory_skip::{protected_workspace_name, windows_reserved_device_name},
+};
 use std::path::{Component, Path};
 
 /// The approval prompt names the path in full, so it must fit the summary.
@@ -65,6 +68,7 @@ pub(crate) fn admit_resolved(workspace: &Workspace, relative: &str) -> Result<()
 fn admitted_name(name: &str) -> bool {
     !name.is_empty()
         && !protected_workspace_name(name)
+        && !windows_reserved_device_name(name)
         && !name.ends_with(['.', ' '])
         && !name.contains(':')
         && !short_name(name)
@@ -115,10 +119,36 @@ mod tests {
             "line\nbreak",
             "safe\u{202e}txt.exe",
             "zero\u{200b}width",
+            "nul",
+            "CON",
+            "Prn",
+            "aux.json",
+            "con.txt",
+            "con.tar.gz",
+            "nul .txt",
+            "COM1",
+            "com9.log",
+            "lpt1",
+            "LPT9.txt",
+            "com\u{b9}",
+            "lpt\u{b2}.txt",
+            "COM\u{b3}",
         ] {
             assert!(!admitted_name(name), "{name:?}");
         }
-        for name in ["src", "notes~", "a~b.txt", "v1.2~draft", "README.md"] {
+        for name in [
+            "src",
+            "notes~",
+            "a~b.txt",
+            "v1.2~draft",
+            "README.md",
+            "console.txt",
+            "nul_device",
+            "com10",
+            "lpt",
+            "aux-tools",
+            "my.con",
+        ] {
             assert!(admitted_name(name), "{name:?}");
         }
     }
