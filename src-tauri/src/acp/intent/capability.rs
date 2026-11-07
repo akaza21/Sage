@@ -12,6 +12,8 @@ pub struct CapabilitySnapshotV1 {
     pub load_session: bool,
     pub close_session: bool,
     pub prompt: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    pub prompt_resources: bool,
     pub cancel: bool,
     pub native_session_fork: bool,
     pub active_turn_steer: bool,
@@ -33,6 +35,8 @@ struct CapabilitySnapshotWire {
     load_session: bool,
     close_session: bool,
     prompt: bool,
+    #[serde(default)]
+    prompt_resources: bool,
     cancel: bool,
     native_session_fork: bool,
     active_turn_steer: bool,
@@ -63,6 +67,7 @@ impl<'de> Deserialize<'de> for CapabilitySnapshotV1 {
             load_session: wire.load_session,
             close_session: wire.close_session,
             prompt: wire.prompt,
+            prompt_resources: wire.prompt_resources,
             cancel: wire.cancel,
             native_session_fork: wire.native_session_fork,
             active_turn_steer: wire.active_turn_steer,
@@ -74,4 +79,8 @@ impl<'de> Deserialize<'de> for CapabilitySnapshotV1 {
             config_count: wire.config_count,
         })
     }
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }

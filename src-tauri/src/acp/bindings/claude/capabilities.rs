@@ -23,6 +23,7 @@ pub(crate) struct ClaudeCapabilityOffer {
     /// Unstable ACP `session/fork`, advertised as `sessionCapabilities.fork`.
     pub fork_session: bool,
     pub prompt: bool,
+    pub prompt_resources: bool,
     pub cancel: bool,
     pub models: Vec<ClaudeModel>,
 }
@@ -108,6 +109,10 @@ impl ClaudeCapabilityOffer {
             // new_session, prompt, and cancel are the admitted ACP core surface.
             // Separate booleans make a future schema downgrade fail closed.
             prompt: true,
+            prompt_resources: value
+                .pointer("/result/agentCapabilities/promptCapabilities/embeddedContext")
+                .and_then(Value::as_bool)
+                == Some(true),
             cancel: true,
             models,
         })
@@ -139,6 +144,7 @@ pub(crate) fn negotiate_capabilities(
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count,
+        prompt_resources: offer.prompt_resources,
         config_count: 0,
     })
 }
@@ -157,4 +163,25 @@ pub(crate) enum CapabilityError {
     Contract(#[from] ContractError),
     #[error(transparent)]
     Wire(#[from] WireError),
+}
+
+#[cfg(test)]
+mod prompt_resource_tests {
+    use super::*;
+    #[test]
+    fn embedded_resources_require_an_explicit_boolean_offer() {
+        for (value, expected) in [
+            (Value::Null, false),
+            (Value::Bool(false), false),
+            (Value::String("true".into()), false),
+            (Value::Bool(true), true),
+        ] {
+            let wire = serde_json::json!({"result":{"protocolVersion":1,"agentCapabilities":{"promptCapabilities":{"embeddedContext":value}}}});
+            let offer = ClaudeCapabilityOffer::from_initialize_value(&wire).unwrap();
+            assert_eq!(
+                negotiate_capabilities(&offer).unwrap().prompt_resources,
+                expected
+            );
+        }
+    }
 }

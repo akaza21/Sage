@@ -148,7 +148,7 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
     expect(model).toHaveAttribute("data-readonly-label", "true");
   });
 
-  it.each(["pending", "no choices", "transition", "locked"])(
+  it.each(["pending", "transition", "locked"])(
     "dims a known model for %s unless it is an inherited or locked label",
     (state) => {
       useWorkbenchStore.setState({
@@ -161,18 +161,6 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
         sessionConfig: parentConfig("Synthetic replay", "medium", true),
         modePending: state === "pending",
         turnBusy: state === "locked",
-        ...(state === "no choices"
-          ? {
-              sessionConfig: {
-                ...parentConfig(),
-                configOptions: [],
-                confirmedModel: {
-                  id: "fixture-model",
-                  name: "Synthetic replay",
-                },
-              },
-            }
-          : {}),
       });
       const model = screen.getByLabelText("Model", { exact: true });
       expect(model).toBeDisabled();
@@ -182,6 +170,23 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
       else expect(model).not.toHaveAttribute("data-readonly-label", "true");
     },
   );
+
+  it("keeps a known model openable as the sole choice when the session advertises no choices", () => {
+    renderControls({
+      inheritScope: "no-inheritance",
+      sessionHarnessId: "fixture",
+      sessionModelId: "fixture-model",
+      sessionConfig: {
+        ...parentConfig(),
+        configOptions: [],
+        confirmedModel: { id: "fixture-model", name: "Synthetic replay" },
+      },
+    });
+    const model = screen.getByLabelText("Model", { exact: true });
+    expect(model).toBeEnabled();
+    expect(model.getAttribute("title")).toMatch(/^Synthetic replay/);
+    expect(model).not.toHaveAttribute("data-readonly-label", "true");
+  });
 
   it.each(["pending", "transition"])(
     "dims even an inherited label during %s",

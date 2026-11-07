@@ -146,7 +146,11 @@ pub(crate) async fn persist_project_layout_inner(
     let database = state.database.clone();
     tauri::async_runtime::spawn_blocking(move || database.persist_project_layout(&request))
         .await
-        .map_err(|error| crate::error::AppError::InvalidRequest(error.to_string()))?
+        .map_err(|error| crate::error::AppError::InvalidRequest(error.to_string()))??;
+    // A layout without a chat tab ends that tab's staged attachments now,
+    // rather than at the next attachment command.
+    crate::acp::attached_context::files::release_detached(&state.acp.file_stages, &state.database);
+    Ok(())
 }
 
 #[tauri::command]

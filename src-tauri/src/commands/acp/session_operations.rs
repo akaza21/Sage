@@ -35,6 +35,24 @@ pub(crate) async fn send_acp_turn_inner(
             .await
             .map_err(prompt_not_dispatched)?;
     validate_send(state, &request, &snapshot).map_err(prompt_not_dispatched)?;
+    // A batch staged in a tab that has since closed must never be sent.
+    crate::acp::attached_context::files::release_detached(&state.acp.file_stages, &state.database);
+    if matches!(request, SendAcpTurnRequest::NewSession { .. })
+        && !state
+            .acp
+            .file_stages
+            .lock()
+            .map_err(|_| prompt_not_dispatched(internal_error()))?
+            .get(project_id.as_str(), chat_id.as_str())
+            .0
+            .is_empty()
+    {
+        return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
+            message: safe_message(
+                "Start a harness session before sending staged file attachments.",
+            ),
+        }));
+    }
     match &request {
         SendAcpTurnRequest::Session {
             attached_context, ..
@@ -51,6 +69,19 @@ pub(crate) async fn send_acp_turn_inner(
             .map_err(store_error)
             .map_err(prompt_not_dispatched)?;
         if state.acp.accepts_characterization(&binding_id) {
+            if !state
+                .acp
+                .file_stages
+                .lock()
+                .map_err(|_| prompt_not_dispatched(internal_error()))?
+                .get(project_id.as_str(), chat_id.as_str())
+                .0
+                .is_empty()
+            {
+                return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
+                    message: safe_message("This harness cannot accept staged file attachments."),
+                }));
+            }
             return characterization::send(state, request);
         }
     }
@@ -134,11 +165,36 @@ pub(crate) async fn send_acp_turn_inner(
     let binding_id = session_routes::durable_binding_id(state, &session_id)
         .map_err(store_error)
         .map_err(prompt_not_dispatched)?;
-    let prompt = effective_prompt(&prompt, &attached_context)
+    let mut prompt = effective_prompt(&prompt, &attached_context)
         .map_err(|_| AcpIpcError::InvalidRequest {
             message: safe_message("The prompt and attached context exceed the native byte limit."),
         })
         .map_err(prompt_not_dispatched)?;
+    let files = state
+        .acp
+        .file_stages
+        .lock()
+        .map_err(|_| prompt_not_dispatched(internal_error()))?
+        .get(project_id.as_str(), chat_id.as_str());
+    if !files.0.is_empty() {
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .map_err(store_error)
+            .map_err(prompt_not_dispatched)?;
+        if !page
+            .sessions
+            .as_slice()
+            .iter()
+            .any(|s| s.id == session_id && s.capabilities.prompt_resources)
+        {
+            return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
+                message: safe_message(
+                    "This harness does not advertise embedded-resource prompt support. Remove the file attachments or choose another harness.",
+                ),
+            }));
+        }
+    }
     let requested_access = state.settings.session_access_modes().map_err(|_| {
         prompt_not_dispatched(AcpIpcError::RecoveryRequired {
             message: safe_message("Session access mode could not be loaded; reload Sage."),
@@ -164,6 +220,30 @@ pub(crate) async fn send_acp_turn_inner(
             return Err(prompt_not_dispatched(error));
         }
     };
+    let current_files = state
+        .acp
+        .file_stages
+        .lock()
+        .map_err(|_| prompt_not_dispatched(internal_error()))?
+        .get(project_id.as_str(), chat_id.as_str());
+    if !files.same_selection(&current_files) {
+        super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
+        return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
+            message: safe_message("Attachments changed while preparing the prompt; send again."),
+        }));
+    }
+    if !files.0.is_empty()
+        && prompt.retained_bytes() + files.retained_bytes()
+            > crate::acp::attached_context::files::DISPATCH_BYTES
+    {
+        super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
+        return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
+            message: safe_message(
+                "Prompt text and file attachments exceed the 120 KiB native dispatch budget. Shorten the prompt or remove attachments.",
+            ),
+        }));
+    }
+    prompt.resources = files.clone();
     let tracked_session = session_id.clone();
     let tracked_intent = client_intent_id.clone();
     let dispatch = state
@@ -189,6 +269,17 @@ pub(crate) async fn send_acp_turn_inner(
             failure: dispatch_error(failure.error),
             prompt_dispatch: failure.prompt_dispatch,
         });
+    if match &dispatch {
+        Ok(_) => true,
+        Err(failure) => failure.prompt_dispatch != PromptDispatch::NotStarted,
+    } {
+        state
+            .acp
+            .file_stages
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .consume(project_id.as_str(), chat_id.as_str(), &files);
+    }
     if dispatch.is_err() {
         super::turn_workspace::forget_unprepared(state, &tracked_session, &tracked_intent);
     }

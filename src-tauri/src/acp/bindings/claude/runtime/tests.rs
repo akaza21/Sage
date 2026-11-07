@@ -1098,3 +1098,35 @@ mod browser_permission_regression_tests;
 
 #[path = "resume_regression_tests.rs"]
 mod resume_regression_tests;
+
+#[test]
+fn prompt_files_are_refused_without_capability_and_encoded_when_advertised() {
+    use crate::acp::attached_context::files::{Resource, Resources};
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    let mut prompt = Prompt::new("prompt", "inspect").unwrap();
+    prompt.resources = Resources(std::sync::Arc::new(vec![Resource {
+        id: "resource-1".into(),
+        name: "one.txt".into(),
+        bytes: b"snapshot content".to_vec(),
+    }]));
+    let command = || AdapterCommand::Prompt {
+        prompt: prompt.clone(),
+        client_message_id: RequiredText::new("client", "file-prompt").unwrap(),
+        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+    };
+    assert!(matches!(
+        runtime.command(command()),
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    ));
+    assert!(runtime.active.as_ref().unwrap().turn.is_none());
+    runtime.capabilities.as_mut().unwrap().prompt_resources = true;
+    let egress = runtime.command(command()).unwrap();
+    let value: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    assert_eq!(value["method"], "session/prompt");
+    assert_eq!(value["params"]["prompt"][1]["type"], "resource");
+    assert_eq!(
+        value["params"]["prompt"][1]["resource"]["text"],
+        "snapshot content"
+    );
+}

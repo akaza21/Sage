@@ -256,7 +256,9 @@
       "modelCount",
       "configCount"
     ],
-    "missingKeyRule": "reject before persistence; capability absence is represented by an explicit false or null value, never a tolerant default",
+    "optionalKeys": ["promptResources"],
+    "missingKeyRule": "Reject missing requiredKeys before persistence; their capability absence is represented by an explicit false or null value. The additive optional promptResources boolean defaults to false when absent, preserving existing stored snapshots and canonical deny-all representations.",
+    "promptResourcesRule": "True only when the harness explicitly advertises embedded-resource prompt support and curated policy permits it. False or absent refuses resource-bearing prompts before dispatch; false is omitted on serialization. Staged file content is ephemeral and is never persisted in the capability snapshot or transcript.",
     "canonicalPendingDenyAll": {
       "schemaVersion": 1,
       "protocolVersion": "pending",
