@@ -28,34 +28,62 @@ impl ResourceMapper for FileMapper {
 }
 impl Journey {
     fn new(mode: SessionAccessMode) -> Self {
+        Self::with_bridge(mode, true)
+    }
+    fn with_bridge(mode: SessionAccessMode, bridge: bool) -> Self {
         let root = std::env::temp_dir().join(format!("sage-pi-journey-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&root).unwrap();
         let mut runtime = fixture_runtime(99);
-        runtime
-            .enable_bridge(crate::workspace::Workspace::open("project", "root-pi", &root).unwrap());
+        if bridge {
+            runtime.enable_bridge(
+                crate::workspace::Workspace::open("project", "root-pi", &root).unwrap(),
+            );
+        }
         ready(&mut runtime);
-        let egress = runtime
+        let mut journey = Self { runtime, root };
+        journey.turn("bridge-turn", mode);
+        journey
+    }
+    fn turn(&mut self, client: &str, mode: SessionAccessMode) {
+        let egress = self
+            .runtime
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "write").unwrap(),
-                client_message_id: RequiredText::new("client", "bridge-turn").unwrap(),
+                client_message_id: RequiredText::new("client", client).unwrap(),
                 access_mode: mode,
             })
             .unwrap();
-        let sent = deliver(&mut runtime, egress);
-        runtime
+        let sent = deliver(&mut self.runtime, egress);
+        self.runtime
             .ingest(&response(&sent, Value::Null), &Mapper)
             .unwrap();
-        runtime
+        self.runtime
             .ingest(&frame(json!({"type":"agent_start"})), &Mapper)
             .unwrap();
-        Self { runtime, root }
+    }
+    fn settle(&mut self) {
+        self.runtime
+            .ingest(&frame(json!({"type":"agent_end","messages":[{"role":"assistant","content":[],"stopReason":"stop","usage":{"input":2,"output":1}}],"willRetry":false})), &Mapper)
+            .unwrap();
+        let batch = self
+            .runtime
+            .ingest(&frame(json!({"type":"agent_settled"})), &Mapper)
+            .unwrap();
+        assert!(
+            batch.events().iter().any(
+                |event| matches!(event, AdapterEvent::Turn { state, .. } if state.is_terminal())
+            )
+        );
     }
     fn prepare(&mut self, tool: &str, args: Value) -> AdapterBatch {
-        self.runtime.ingest(&frame(json!({"type":"tool_execution_start","toolCallId":"tool-1","toolName":tool,"args":args})), &Mapper).unwrap();
+        self.prepare_as("tool-1", "prepare-1", tool, args)
+    }
+    fn prepare_as(&mut self, tool_id: &str, id: &str, tool: &str, args: Value) -> AdapterBatch {
+        self.runtime.ingest(&frame(json!({"type":"tool_execution_start","toolCallId":tool_id,"toolName":tool,"args":args})), &Mapper).unwrap();
         self.dialog(
-            "prepare-1",
+            id,
             "sage.pi.prepare.v1",
-            &json!({"version":1,"toolCallId":"tool-1","tool":tool,"args":args}).to_string(),
+            &json!({"version":1,"toolCallId":tool_id,"tool":tool,"args":args}).to_string(),
         )
     }
     fn dialog(&mut self, id: &str, title: &str, placeholder: &str) -> AdapterBatch {
@@ -154,6 +182,40 @@ fn pi_bridge_journey_denied_permission_and_cancel_clear_pending_bytes() {
     j.prepare("write", json!({"path":"a.txt","content":"agent"}));
     j.runtime.command(AdapterCommand::Cancel).unwrap();
     assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
+}
+
+#[test]
+fn pi_bridge_write_authority_ends_with_the_turn_that_granted_it() {
+    let mut j = Journey::new(SessionAccessMode::WorkspaceWrite);
+    j.prepare("write", json!({"path":"a.txt","content":"agent"}));
+    j.allow();
+    j.settle();
+    assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
+    let stale = j.dialog("commit-stale", "sage.pi.commit.v1", "tool-1");
+    assert_eq!(request(&stale.egress()[0])["value"], "denied");
+
+    j.turn("read-only-turn", SessionAccessMode::ReadOnly);
+    let batch = j.prepare_as(
+        "tool-2",
+        "prepare-2",
+        "write",
+        json!({"path":"a.txt","content":"later"}),
+    );
+    assert!(batch.events().is_empty());
+    assert_eq!(request(&batch.egress()[0])["value"], "denied");
+    assert!(!j.root.join("a.txt").exists());
+}
+
+#[test]
+fn pi_without_admitted_bridge_refuses_write_dialogs_even_in_write_mode() {
+    let mut j = Journey::with_bridge(SessionAccessMode::WorkspaceWrite, false);
+    let body = json!({"version":1,"toolCallId":"tool-1","tool":"write","args":{"path":"a.txt","content":"agent"}});
+    let batch = j.dialog("prepare-1", "sage.pi.prepare.v1", &body.to_string());
+    assert!(batch.events().is_empty());
+    assert_eq!(request(&batch.egress()[0])["value"], "denied");
+    let commit = j.dialog("commit-1", "sage.pi.commit.v1", "tool-1");
+    assert_eq!(request(&commit.egress()[0])["value"], "denied");
+    assert!(!j.root.join("a.txt").exists());
 }
 
 #[test]

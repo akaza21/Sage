@@ -13,6 +13,7 @@ import {
 } from "./css-highlight-policy.mjs";
 import { workbenchTransportParityErrors } from "./workbench-transport-parity.mjs";
 import { q02SharedHelperPolicyErrors } from "./q02-shared-helpers-policy.mjs";
+import { packageResourcePolicyErrors } from "./package-resource-policy.mjs";
 
 const reviewedSpawnModules = new Map([
   ["git_process.rs", "Git CLI execution boundary"],
@@ -466,14 +467,12 @@ if (
   );
 }
 
-const declaredPackageMembers = [
-  ...(tauriConfig.bundle?.resources ?? []),
-  ...(tauriConfig.bundle?.externalBin ?? []),
-  ...(windowsBundle?.resources ?? []),
-  ...(windowsBundle?.externalBin ?? []),
-];
-if (declaredPackageMembers.length !== 0) {
-  fail("Production package resources and external binaries must remain empty.");
+for (const error of await packageResourcePolicyErrors({
+  tauriRoot: path.join(root, "src-tauri"),
+  bundle: tauriConfig.bundle,
+  windowsBundle,
+})) {
+  fail(error);
 }
 
 const cargoBinBlocks =
