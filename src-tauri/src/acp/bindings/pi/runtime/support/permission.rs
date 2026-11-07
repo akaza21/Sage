@@ -23,7 +23,7 @@ impl PiRuntime {
         let reply = match decision {
             PermissionDecision::Ask => {
                 let _ = crate::acp::runtime::later_permission::resolve_later_permission(
-                    request_id, decision, None,
+                    request_id, &decision, None,
                 )
                 .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
                 return Err(AdapterRuntimeError::Operation);
@@ -64,7 +64,7 @@ impl PiRuntime {
                     .map_err(|_| AdapterRuntimeError::Frame)?;
                 AdapterEgress::new(frame, EgressToken::protocol_notification())
             }
-            PermissionDecision::AllowAlways => {
+            PermissionDecision::AllowAlways | PermissionDecision::Answer(_) => {
                 return Err(AdapterRuntimeError::UnsupportedCommand);
             }
             PermissionDecision::Deny => self
@@ -73,7 +73,7 @@ impl PiRuntime {
         };
         crate::acp::runtime::later_permission::resolve_later_permission(
             request_id,
-            decision,
+            &decision,
             Some(reply),
         )
         .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?

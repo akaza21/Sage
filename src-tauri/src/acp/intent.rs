@@ -10,6 +10,7 @@ mod error_kind;
 mod file_change;
 mod tool_category;
 mod tool_execution;
+pub mod user_input;
 
 pub use capability::CapabilitySnapshotV1;
 pub use error_kind::ErrorKind;
@@ -291,6 +292,10 @@ pub enum NormalizedPayload {
         /// carries one. Absent means the harness gave none.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<SafeText<2048>>,
+        /// Present when the harness asks the user questions rather than for
+        /// approval; the request is then answered, not allowed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        user_input: Option<Box<user_input::UserInputRequest>>,
     },
     Error {
         #[serde(

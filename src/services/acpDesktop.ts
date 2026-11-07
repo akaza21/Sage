@@ -9,6 +9,7 @@ import type {
   CloseAcpSessionRequest,
   EndAcpSessionRequest,
   GetAcpChatPageRequest,
+  AnswerUserInputRequest,
   ResolvePermissionDecisionRequest,
   SendAcpTurnRequest,
   StartAcpSessionRequest,
@@ -24,6 +25,7 @@ import type { ResourceRef } from "../domain/workbench";
 import { isTauriRuntime } from "../ports/desktopRuntime";
 import { invokeNative } from "../ports/nativeInvoke";
 import { resolvePermissionDecision } from "./acpDesktopPermission";
+import { answerUserInput } from "./acpDesktopUserInput";
 import { subscribePreviewProjectionChanges } from "./acpDesktopPreview";
 import { getChatStatus, safeProjectionChanged } from "./acpDesktopProjection";
 import { isRecord, safeIdentifier } from "./acpDesktopGuards";
@@ -167,6 +169,17 @@ export const acpDesktop = {
         new AcpDesktopError({
           kind: "internal",
           message: "Permission decision returned an invalid bounded response.",
+        }),
+    ),
+
+  answerUserInput: (request: AnswerUserInputRequest) =>
+    answerUserInput(
+      request,
+      invokeAcp,
+      () =>
+        new AcpDesktopError({
+          kind: "internal",
+          message: "Question answer returned an invalid bounded response.",
         }),
     ),
 

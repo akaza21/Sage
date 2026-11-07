@@ -243,7 +243,25 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 external_request_id,
                 payload,
                 request_payload_digest,
-            } if self.exact_turn(&turn_id) && self.exact_turn(&item_id) && terminal.is_none() => {
+            } => {
+                let unadmitted = if !self.exact_turn(&turn_id) {
+                    Some(UnadmittedRequest::ForeignTurn)
+                } else if !self.exact_turn(&item_id) {
+                    Some(UnadmittedRequest::ForeignItem)
+                } else if terminal.is_some() {
+                    Some(UnadmittedRequest::TerminalTurn)
+                } else {
+                    None
+                };
+                if let Some(reason) = unadmitted {
+                    tracing::warn!(
+                        acp_unadmitted_request = reason.as_str(),
+                        external_request_id = external_request_id.as_str(),
+                        "adapter pump did not admit a harness request"
+                    );
+                    self.decline_unadmitted(&external_request_id)?;
+                    return Ok(None);
+                }
                 let request_id = self.scoped_permission_id(&external_request_id)?;
                 let (normalized_payload_json, measured) = payload_json(&payload)?;
                 Ok(Some(NormalizedFact::new(
@@ -297,7 +315,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             | AdapterEvent::FilePair { .. }
             | AdapterEvent::ActivityItem(_)
             | AdapterEvent::Usage { .. }
-            | AdapterEvent::PermissionRequest { .. }
             | AdapterEvent::PermissionResolved { .. }
             | AdapterEvent::Error(_)
             | AdapterEvent::Unsupported(_) => Ok(None),
@@ -310,6 +327,40 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             | AdapterEvent::Acknowledged
             | AdapterEvent::SteerResponse { .. } => Ok(None),
         }
+    }
+
+    /// Answers a request the chat will never show with the harness's own
+    /// decline, so the harness does not wait on it forever.
+    fn decline_unadmitted(
+        &mut self,
+        external_request_id: &ExternalId,
+    ) -> Result<(), AdapterPumpError> {
+        let request_id = SageServerRequestId::parse(external_request_id.as_str())
+            .map_err(|_| AdapterPumpError::Intent)?;
+        let egress = match self.adapter.command(AdapterCommand::ResolvePermission {
+            request_id,
+            decision: crate::acp::runtime::permissions::PermissionDecision::Deny,
+        }) {
+            Ok(egress) => egress,
+            Err(error) => {
+                tracing::warn!(
+                    ?error,
+                    external_request_id = external_request_id.as_str(),
+                    "adapter pump could not decline an unadmitted harness request"
+                );
+                return Ok(());
+            }
+        };
+        if egress.token().is_mandatory()
+            && self
+                .adapter
+                .commit_mandatory_egress(egress.token())
+                .is_err()
+        {
+            self.teardown = true;
+            return Err(AdapterPumpError::TeardownRequired);
+        }
+        self.enqueue(egress).map(drop)
     }
 
     fn runtime_payload(
@@ -380,6 +431,28 @@ pub(super) fn validate_batch(
         return Err(AdapterPumpError::BatchCapacity);
     }
     Ok(())
+}
+
+/// Why the pump refused to journal a harness request that waits for the
+/// user. Each refusal is reported and the request is declined.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnadmittedRequest {
+    /// The request's turn identity is not the pump's active turn.
+    ForeignTurn,
+    /// The request's item identity is not scoped to the pump's active turn.
+    ForeignItem,
+    /// The active turn already reached a terminal state in this batch.
+    TerminalTurn,
+}
+
+impl UnadmittedRequest {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::ForeignTurn => "foreignTurn",
+            Self::ForeignItem => "foreignItem",
+            Self::TerminalTurn => "terminalTurn",
+        }
+    }
 }
 
 pub(super) fn validate_deny_pairs(

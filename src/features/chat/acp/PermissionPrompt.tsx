@@ -3,12 +3,14 @@ import { ChevronDown } from "../../../ui/leanIcons";
 
 import type { AcpItem, PermissionDecision } from "../../../domain/acp";
 import { MenuPopover } from "../../../ui/MenuPopover";
+import { approvalHold, resolveApproval } from "../useApprovalSlot";
 import {
-  approvalFocusInReach,
-  approvalHold,
-  resolveApproval,
-} from "../useApprovalSlot";
+  arrivalFocusAllowed,
+  parkFocus,
+  useCardKeyGuard,
+} from "./approvalCard";
 import { ToolKindIcon } from "./ToolItem";
+import { UserInputPrompt } from "./UserInputPrompt";
 import "./permission-prompt.css";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
@@ -20,8 +22,34 @@ const nouns: Record<string, string> = {
   mcp: "MCP",
 };
 
-/** A follow-up request this soon after a decision never takes focus. */
-const QUEUED_FOCUS_HOLD_MS = 300;
+export interface ApprovalPromptProps {
+  items: readonly PermissionProjectionItem[];
+  /** Only the focused pane may take focus. */
+  focused?: boolean;
+  /** False while the composer is active or the person typed in the last 500 ms. */
+  canTakeFocus?: () => boolean;
+  /** Stop the Turn; always offered so the pane can never be stranded. */
+  onCancelTurn?: () => void;
+}
+
+/**
+ * The composer-slot card for the oldest pending request: a harness asking
+ * the user questions gets the question card, everything else the approval.
+ */
+export function PermissionPrompt(props: ApprovalPromptProps) {
+  const item = props.items[0];
+  if (!item) return null;
+  return item.payload.userInput ? (
+    <UserInputPrompt
+      key={item.id}
+      {...props}
+      item={item}
+      userInput={item.payload.userInput}
+    />
+  ) : (
+    <ApprovalPrompt {...props} />
+  );
+}
 
 /**
  * The pending approval, shown in the composer slot. The oldest request comes
@@ -30,26 +58,18 @@ const QUEUED_FOCUS_HOLD_MS = 300;
  * Enter from the composer, a stray keyup) are swallowed. Focus moves here
  * only for the focused pane when the person is not typing elsewhere.
  */
-export function PermissionPrompt({
+function ApprovalPrompt({
   items,
   focused = true,
   canTakeFocus = () => true,
   onCancelTurn,
-}: {
-  items: readonly PermissionProjectionItem[];
-  /** Only the focused pane may take focus. */
-  focused?: boolean;
-  /** False while the composer is active or the person typed in the last 500 ms. */
-  canTakeFocus?: () => boolean;
-  /** Stop the Turn; always offered so the pane can never be stranded. */
-  onCancelTurn?: () => void;
-}) {
+}: ApprovalPromptProps) {
   const item = items[0];
   const primaryRef = useRef<HTMLButtonElement>(null);
   const firstRef = useRef<HTMLButtonElement>(null);
   const chevronRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
-  const pressed = useRef(new Set<string>());
+  const keyGuard = useCardKeyGuard();
   const sectionRef = useRef<HTMLElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [focusState, setFocusState] = useState<[string, boolean] | null>(null);
@@ -68,22 +88,12 @@ export function PermissionPrompt({
     // A Deny pressed on the loading fallback carries into the card.
     const denied = approvalHold.denies.get(item.id);
     denied?.catch(() => setSent([item.id, false]));
-    const held = denied || Date.now() - approvalHold.at < QUEUED_FOCUS_HOLD_MS;
     const card = sectionRef.current;
-    const pane = card?.closest(".chat-surface") ?? null;
-    const inCard = card?.contains(document.activeElement);
-    if (
-      focused &&
-      !held &&
-      canTakeFocus() &&
-      (inCard || approvalFocusInReach(pane))
-    ) {
+    if (arrivalFocusAllowed(item.id, card, focused, canTakeFocus)) {
       (primaryRef.current ?? firstRef.current)?.focus();
       setFocusState([item.id, document.activeElement === primaryRef.current]);
     } else {
-      // A focused button of the previous request must not answer this one:
-      // park focus on the card itself, where Enter does nothing.
-      if (inCard) card?.focus();
+      parkFocus(card);
       setFocusState([item.id, false]);
     }
     // Focus is decided once per request; later renders never steal it.
@@ -135,22 +145,7 @@ export function PermissionPrompt({
       role="group"
       aria-label={browser ? "Browser permission" : "Permission request"}
       data-acp-item-id={item.id}
-      onKeyDownCapture={(event) => {
-        // Auto-repeat belongs to a key that went down before this card.
-        if (event.repeat) {
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-        pressed.current.add(event.key);
-      }}
-      onKeyUpCapture={(event) => {
-        // A keyup without its keydown here (Space from the composer) is inert.
-        if (!pressed.current.delete(event.key)) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      }}
+      {...keyGuard}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || menuOpen || !canDeny) return;
         event.preventDefault();

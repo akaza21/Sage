@@ -136,6 +136,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         commands::acp::goal::pause_existing_goal,
         commands::acp::goal::clear_existing_goal,
         commands::acp::permission::resolve_permission_decision,
+        commands::acp::user_input::answer_user_input,
         commands::acp::read_text_file::acknowledge_acp_read_text_file,
         commands::acp::edit_disposition::record_agent_edit_disposition,
         workspace::search::command::search_workspace,

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+mod auto_resolution;
 mod exit;
 mod ingress;
 mod teardown;

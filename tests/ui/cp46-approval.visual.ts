@@ -379,3 +379,109 @@ for (const width of [720, 480]) {
     }
   });
 }
+
+/** A pending harness question (Codex requestUserInput) in the composer slot. */
+async function applyQuestion(page: Page) {
+  await page.evaluate(async () => {
+    const [{ useWorkbenchStore }, { acpProjectionStoreFor }] =
+      await Promise.all([
+        import("/src/app/store.ts"),
+        import("/src/app/acpProjectionRegistry.ts"),
+      ]);
+    const store = acpProjectionStoreFor(
+      useWorkbenchStore.getState().activeTabId,
+    );
+    const { page: current, scope } = store.getState();
+    if (!current || !scope) throw new Error("Expected a loaded chat");
+    const chatPage = structuredClone(current);
+    const turn = chatPage.turns.at(-1)!;
+    const prompt = turn.items[0];
+    turn.state = "running";
+    turn.terminalAt = null;
+    turn.items.push({
+      ...prompt,
+      id: "question-request" as typeof prompt.id,
+      ordinal: 5,
+      kind: "permissionRequest",
+      lifecycle: "streaming",
+      toolState: "waitingForApproval",
+      terminalAt: null,
+      payload: {
+        requestId: "question-1",
+        state: "received",
+        label: "Question",
+        summary: "Answer the agent's questions",
+        source: "harness",
+        offeredOptionKinds: ["allow_once", "reject_once"],
+        reason: null,
+        userInput: {
+          questions: [
+            {
+              id: "scope",
+              header: "Scope",
+              question: "Which files should I change?",
+              options: [
+                {
+                  label: "Only tests",
+                  description: "Leave production code alone.",
+                },
+                {
+                  label: "Tests and code",
+                  description: "Fix the bug the tests expose.",
+                },
+              ],
+              allowsOther: true,
+              secret: false,
+            },
+            {
+              id: "token",
+              header: "Token",
+              question: "Paste the staging deploy token.",
+              allowsOther: false,
+              secret: true,
+            },
+          ],
+        },
+      },
+    } as never);
+    store.getState().applyAuthoritativePage(scope, chatPage);
+  });
+}
+
+test("a harness question replaces the composer with its questions, gated until answered", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openScenario(page, "waiting", "agent");
+  await settleChatProjections(page);
+  const composer = page.locator("form.composer");
+  const before = (await composer.boundingBox())!;
+  await applyQuestion(page);
+  const card = page.getByRole("group", { name: "Agent question" });
+  await expect(card).toBeVisible();
+  await expect(composer).toBeHidden();
+  await expect(card).not.toContainText("Allow");
+  const first = card.getByRole("radio", { name: /Only tests/ });
+  await expect(first).toBeFocused();
+  const submit = card.getByRole("button", { name: /Submit/ });
+  await expect(submit).toBeDisabled();
+  // Pick an option with the keyboard, then Tab through the Other field: the
+  // option stays chosen (focus alone never switches the answer to Other).
+  await page.keyboard.press("ArrowDown");
+  const chosen = card.getByRole("radio", { name: /Tests and code/ });
+  await expect(chosen).toBeChecked();
+  await page.keyboard.press("Tab");
+  await expect(card.getByLabel("Other answer: Scope")).toBeFocused();
+  await page.keyboard.press("Tab");
+  const token = card.getByLabel("Answer: Token");
+  await expect(token).toBeFocused();
+  await expect(chosen).toBeChecked();
+  await expect(token).toHaveAttribute("type", "password");
+  await token.fill("staging-secret");
+  await expect(submit).toBeEnabled();
+  await expect(card).not.toContainText("staging-secret");
+  const box = (await card.boundingBox())!;
+  expect(Math.abs(box.width - before.width)).toBeLessThanOrEqual(2);
+  await token.blur();
+  await expect(card).toHaveScreenshot("cp46-user-input-question-1280.png");
+});
