@@ -39,6 +39,20 @@ impl PiRuntime {
         self.translator.bridge_tools = true;
     }
 
+    /// Grants the bridge write authority over the session's project root.
+    /// Callers enable it only when the bundled extension is present in Pi.
+    pub(crate) fn enable_bridge_for_root(
+        &mut self,
+        root: &crate::project_registry::ProjectRootAuthority,
+    ) -> Result<(), AdapterRuntimeError> {
+        let (project, _, root_id) = root.scope();
+        let workspace =
+            crate::workspace::Workspace::open(project.as_str(), root_id.as_str(), root.as_path())
+                .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        self.enable_bridge(workspace);
+        Ok(())
+    }
+
     pub(in crate::acp::bindings::pi::runtime) fn begin_bridge_turn(
         &mut self,
         mode: SessionAccessMode,

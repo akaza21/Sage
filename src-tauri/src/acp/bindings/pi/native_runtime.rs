@@ -41,14 +41,7 @@ impl RuntimeFactory for PiNativeRuntimeFactory {
             session_id,
         );
         if super::bridge::install::installed(self.binding.harness_version()).is_some() {
-            let (project, _, root_id) = self.root.scope();
-            let workspace = crate::workspace::Workspace::open(
-                project.as_str(),
-                root_id.as_str(),
-                self.root.as_path(),
-            )
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-            adapter.enable_bridge(workspace);
+            adapter.enable_bridge_for_root(&self.root)?;
         }
         Ok(NativeRuntime::new(PiNativeRuntime {
             adapter,

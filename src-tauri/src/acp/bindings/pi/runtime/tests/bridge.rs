@@ -1,6 +1,9 @@
 use super::*;
 use crate::{acp::runtime::permissions::PermissionDecision, settings_store::SessionAccessMode};
 use std::path::PathBuf;
+#[cfg(feature = "acp-fixture")]
+#[path = "bridge_fixture.rs"]
+mod fixture_cases;
 struct Journey {
     runtime: PiRuntime,
     root: PathBuf,
