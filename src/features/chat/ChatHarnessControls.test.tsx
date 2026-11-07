@@ -760,7 +760,8 @@ describe("last confirmed model label", () => {
     const trigger = screen.getByLabelText("Model", { exact: true });
     expect(trigger).toHaveTextContent(/^actual High$/);
     expect(trigger).toHaveAccessibleDescription("actual High");
-    expect(trigger).toBeDisabled();
+    // The confirmed model is the sole choice, so the picker stays openable.
+    expect(trigger).toBeEnabled();
     expect(
       screen.queryByRole("button", { description: "Select effort" }),
     ).toBeNull();
@@ -829,7 +830,12 @@ describe("last confirmed model label", () => {
     expect(trigger).toHaveTextContent(/^Actual model$/);
     act(() => useWorkbenchStore.setState({ models: [] }));
     expect(trigger).toHaveTextContent(/^Actual model$/);
-    expect(trigger).toBeDisabled();
+    expect(trigger).toBeEnabled();
+    fireEvent.click(trigger);
+    expect(
+      await screen.findByRole("option", { name: "Actual model" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("option")).toHaveLength(1);
   });
 
   it("uses the confirmed model identifier when its advertised display name is empty", async () => {
@@ -923,35 +929,115 @@ describe("last confirmed model label", () => {
     );
   });
 
-  it("shows confirmed non-selectable session identity and effort without a catalog", async () => {
-    useWorkbenchStore.setState({ selectedHarnessId: "codex", models: [] });
-    const sessionConfig = decodeSessionConfig({
-      sageAgentSessionId: "session-1",
-      runtimeEpoch: "1",
-      configRevision: "1",
-      modes: null,
-      confirmedModel: { id: "gpt-6-astra", name: "GPT-6 Astra" },
-      configOptions: [
-        {
-          id: "effort",
-          name: "Effort",
-          type: "select",
-          currentValue: "high",
-          options: [{ value: "high", name: "High" }],
-        },
-      ],
-    });
-    renderControls({
-      selectedHarnessId: "codex",
-      sessionHarnessId: "codex",
-      sessionConfig,
-    });
-    const trigger = screen.getByLabelText("Model", { exact: true });
-    expect(trigger).toHaveTextContent(/^GPT-6 Astra$/);
-    expect(trigger).toBeDisabled();
-    fireEvent.click(trigger);
-    expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
-  });
+  it.each(["Codex", "Claude Code", "Pi"])(
+    "lists %s's sole confirmed model as selected without a catalog and keeps effort and its model link",
+    async (name) => {
+      useWorkbenchStore.setState({
+        selectedHarnessId: "access-test",
+        models: [],
+        harnesses: [
+          {
+            ...useWorkbenchStore.getState().harnesses[0]!,
+            name,
+          },
+        ],
+      });
+      const sessionConfig = decodeSessionConfig({
+        sageAgentSessionId: "session-1",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        modes: null,
+        confirmedModel: { id: "gpt-6-astra", name: "GPT-6 Astra" },
+        configOptions: [
+          {
+            id: "effort",
+            name: "Effort",
+            category: "effort",
+            type: "select",
+            currentValue: "high",
+            options: [
+              { value: "low", name: "Low" },
+              { value: "high", name: "High" },
+            ],
+          },
+        ],
+      });
+      const onSelectModel = vi.fn();
+      const onSetSessionConfigOption = vi.fn();
+      renderControls({
+        sessionConfig,
+        onSelectModel,
+        onSetSessionConfigOption,
+      });
+      const trigger = screen.getByLabelText("Model", { exact: true });
+      expect(trigger).toHaveTextContent(/^GPT-6 Astra$/);
+      expect(trigger).toBeEnabled();
+      fireEvent.click(trigger);
+      const listbox = await screen.findByRole("listbox", {
+        name: "Select model",
+      });
+      const option = within(listbox).getByRole("option");
+      expect(option).toHaveAccessibleName("GPT-6 Astra");
+      expect(option).toHaveAttribute("aria-selected", "true");
+      // Choosing the model that is already current only closes the menu.
+      fireEvent.click(option);
+      expect(
+        screen.queryByRole("listbox", { name: "Select model" }),
+      ).toBeNull();
+      expect(trigger).toHaveFocus();
+      expect(trigger).toHaveTextContent(/^GPT-6 Astra$/);
+      const effort = screen.getByRole("button", {
+        name: "Thinking level: High",
+      });
+      expect(effort).toBeEnabled();
+      fireEvent.click(effort);
+      expect(await screen.findByRole("slider")).toBeEnabled();
+      expect(
+        screen.getByRole("button", { name: "Select model: GPT-6 Astra" }),
+      ).toBeVisible();
+      expect(onSelectModel).not.toHaveBeenCalled();
+      expect(onSetSessionConfigOption).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["before a first turn", "after choosing another catalog model"])(
+    "shows effort as unavailable until the selected model's session advertises levels, %s",
+    (order) => {
+      useWorkbenchStore.setState({
+        selectedHarnessId: "access-test",
+        models: [
+          { id: "old", name: "Old model" },
+          { id: "new", name: "New model" },
+        ],
+      });
+      const firstTurn = order === "before a first turn";
+      const view = renderControls({
+        selectedModelId: "new",
+        sessionHarnessId: firstTurn ? null : "access-test",
+        sessionModelId: firstTurn ? null : "old",
+        sessionConfig: firstTurn ? null : confirmedModelConfig(),
+      });
+      const unavailable = screen.getByRole("button", {
+        name: "Thinking level",
+      });
+      expect(unavailable).toBeDisabled();
+      expect(unavailable).toHaveAccessibleDescription(
+        "Available when the harness advertises effort controls for this session.",
+      );
+      view.rerenderControls({
+        selectedModelId: "new",
+        sessionHarnessId: "access-test",
+        sessionModelId: "new",
+        sessionConfig: confirmedModelConfig(),
+      });
+      expect(
+        screen.getByRole("button", { name: "Thinking level: High" }),
+      ).toBeEnabled();
+      expect(
+        screen.queryByRole("button", { name: "Thinking level" }),
+      ).toBeNull();
+    },
+  );
 
   const selection = {
     selectedHarnessId: "harness-a",
