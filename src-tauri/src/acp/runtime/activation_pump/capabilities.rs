@@ -39,6 +39,9 @@ pub(super) fn intersect(
         load_session: curated.load_session && advertised.load_session && policy.load_session,
         close_session: curated.close_session && advertised.close_session && policy.close_session,
         prompt: curated.prompt && advertised.prompt && policy.prompt,
+        prompt_resources: curated.prompt_resources
+            && advertised.prompt_resources
+            && policy.prompt_resources,
         cancel: curated.cancel && advertised.cancel && policy.cancel,
         native_session_fork: curated.native_session_fork
             && advertised.native_session_fork
@@ -99,6 +102,7 @@ mod tests {
             collaboration_event_projection: false,
             multi_root_extension_schema_id: None,
             model_count: 0,
+            prompt_resources: false,
             config_count: 0,
         }
     }

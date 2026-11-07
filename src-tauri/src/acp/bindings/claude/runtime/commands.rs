@@ -54,6 +54,7 @@ impl ClaudeRuntime {
                 ..
             } => {
                 self.require_capability(|value| value.prompt)?;
+                let blocks = prompt.resources.wire(prompt.as_str(), self.capabilities.as_ref().is_some_and(|c| c.prompt_resources)).map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
                 if !self.auth.permits_prompt() {
                     return Err(AdapterRuntimeError::SignInRequired);
                 }
@@ -71,7 +72,7 @@ impl ClaudeRuntime {
                     cancel_written: false,
                 });
                 let external_session_id = active.external_id.clone();
-                match self.reserve(PendingRequest::Prompt, "session/prompt", json!({"sessionId":external_session_id.as_str(),"prompt":[{"type":"text","text":prompt.as_str()}]})) {
+                match self.reserve(PendingRequest::Prompt, "session/prompt", json!({"sessionId":external_session_id.as_str(),"prompt":blocks})) {
                     Ok(egress) => Ok(egress),
                     Err(error) => {
                         let active = self

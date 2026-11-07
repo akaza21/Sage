@@ -9,6 +9,8 @@ use super::{
 
 use crate::{browser::annotate::element::BrowserElement, image_attachment::ImageAttachedContext};
 
+pub(crate) use super::service::prompt_files as files;
+
 pub type AttachedContexts = BoundedVec<AttachedContext, ATTACHED_CONTEXT_LIMIT>;
 
 pub(crate) fn has_unsafe_display_character(character: char) -> bool {

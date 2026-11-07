@@ -215,6 +215,15 @@ impl OpenCodeRuntime {
         {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }
+        let blocks = prompt
+            .resources
+            .wire(
+                prompt.as_str(),
+                self.capabilities
+                    .as_ref()
+                    .is_some_and(|c| c.prompt_resources),
+            )
+            .map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
         if self.close_pending {
             return Err(AdapterRuntimeError::Operation);
         }
@@ -243,7 +252,7 @@ impl OpenCodeRuntime {
                 "method": "session/prompt",
                 "params": {
                     "sessionId": session_id.as_str(),
-                    "prompt": [{"type": "text", "text": prompt.as_str()}]
+                    "prompt": blocks
                 }
             }),
         ) {

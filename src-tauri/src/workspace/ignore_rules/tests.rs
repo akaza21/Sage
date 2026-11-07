@@ -294,3 +294,14 @@ fn notes_rule_names_from_a_listing() {
         }
     );
 }
+
+#[test]
+fn only_a_missing_dot_git_means_no_repository() {
+    let dot_git = Path::new("project").join(".git");
+    let missing = std::io::Error::from(ErrorKind::NotFound);
+    assert!(matches!(present(&dot_git, Err(missing)), Ok(None)));
+    // An unreadable `.git` leaves the repository's exclude rules unknown, so
+    // it is a skipped source that fail-closed callers refuse.
+    let denied = std::io::Error::from(ErrorKind::PermissionDenied);
+    assert!(matches!(present(&dot_git, Err(denied)), Err(Skipped)));
+}

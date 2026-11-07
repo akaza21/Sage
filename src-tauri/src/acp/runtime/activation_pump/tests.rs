@@ -959,6 +959,7 @@ fn capabilities(prompt: bool, cancel: bool) -> CapabilitySnapshotV1 {
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 128,
+        prompt_resources: false,
         config_count: 0,
     }
 }

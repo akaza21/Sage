@@ -78,6 +78,11 @@ impl WriteFence {
         self.phase == Phase::Bound
     }
 
+    /// No further write of this Turn's prompt can be admitted.
+    pub(crate) fn delivery_settled(&self) -> bool {
+        matches!(self.phase, Phase::StdoutOpen | Phase::Terminal)
+    }
+
     fn exact(&self, turn_id: &SageTurnId) -> Result<(), WriteFenceError> {
         if &self.turn_id == turn_id {
             Ok(())

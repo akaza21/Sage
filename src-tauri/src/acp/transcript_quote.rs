@@ -168,6 +168,8 @@ pub struct Prompt {
     pub(crate) command_revision: Option<u64>,
     #[serde(skip)]
     context: Option<Box<(String, AttachedContexts)>>,
+    #[serde(skip)]
+    pub(crate) resources: super::attached_context::files::Resources,
 }
 
 impl Prompt {
@@ -176,13 +178,15 @@ impl Prompt {
             text: RequiredText::new(field, text)?,
             context: None,
             command_revision: None,
+            resources: Default::default(),
         })
     }
     pub fn as_str(&self) -> &str {
         self.text.as_str()
     }
     pub(crate) fn retained_bytes(&self) -> usize {
-        self.as_str().len()
+        self.resources.retained_bytes()
+            + self.as_str().len()
             + self.context.as_ref().map_or(0, |context| {
                 std::mem::size_of::<(String, AttachedContexts)>()
                     + context.0.len()
