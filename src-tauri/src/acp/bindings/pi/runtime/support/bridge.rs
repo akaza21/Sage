@@ -39,6 +39,22 @@ impl PiRuntime {
         self.translator.bridge_tools = true;
     }
 
+    pub(in crate::acp::bindings::pi::runtime) fn begin_bridge_turn(
+        &mut self,
+        mode: SessionAccessMode,
+    ) {
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.begin_turn(mode);
+        }
+    }
+
+    /// Drops the retained old/new pair; a later commit then finds nothing to write.
+    pub(in crate::acp::bindings::pi::runtime) fn discard_bridge_edit(&mut self) {
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.pending = None;
+        }
+    }
+
     pub(in crate::acp::bindings::pi::runtime) fn ingest_bridge(
         &mut self,
         value: &Value,

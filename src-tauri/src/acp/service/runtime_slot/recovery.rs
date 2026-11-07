@@ -17,6 +17,7 @@ impl RuntimeSlot {
                 State::StartingRecovery { owner: current } if current == owner => {
                     self.config.clear(owner);
                     self.goal.clear(owner);
+                    self.commands.clear(owner);
                     *state = State::Empty;
                     return Ok(());
                 }
@@ -40,6 +41,7 @@ impl RuntimeSlot {
             } if current == owner && Arc::ptr_eq(current_host, &host) => {
                 self.config.clear(owner);
                 self.goal.clear(owner);
+                self.commands.clear(owner);
                 *state = State::Empty;
                 Ok(())
             }

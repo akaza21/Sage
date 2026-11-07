@@ -1,5 +1,5 @@
 use crate::{
-    error::{AppError, AppResult},
+    error::{AppError, AppResult, RepositoryLayout},
     git_budget,
     repository::{self, GitOutput, GitProcessPolicy},
     workspace::Workspace,
@@ -8,7 +8,15 @@ use crate::{
 pub(crate) async fn repository_boundary(
     workspace: &Workspace,
 ) -> AppResult<repository::RepositoryBoundary> {
-    let output = run_git(workspace, &["rev-parse", "--show-toplevel"], 32 * 1024).await?;
+    // Admission refuses a root below the top level before Git runs; that is
+    // the nested boundary, not a failure.
+    let output = match run_git(workspace, &["rev-parse", "--show-toplevel"], 32 * 1024).await {
+        Err(AppError::RepositoryOutsideRoot(RepositoryLayout::NestedRoot)) => {
+            workspace.ensure_root_identity()?;
+            return Ok(repository::RepositoryBoundary::Nested);
+        }
+        output => output?,
+    };
     let boundary = repository::repository_boundary_from_output(workspace.root(), &output)?;
     workspace.ensure_root_identity()?;
     Ok(boundary)

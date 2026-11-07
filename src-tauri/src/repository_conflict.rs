@@ -557,15 +557,10 @@ mod tests {
 
     #[test]
     fn continue_rebase_preserves_the_commit_message_without_opening_an_editor() {
+        // Repository editor keys are refused before Git runs, so no editor is
+        // configured here: without Sage's no-op override Git would fall back
+        // to its default editor.
         let (root, workspace, resource) = rebase_conflict_fixture();
-        git(
-            &root,
-            &["config", "core.editor", "sage-editor-must-not-run"],
-        );
-        git(
-            &root,
-            &["config", "sequence.editor", "sage-editor-must-not-run"],
-        );
         let runtime = tokio::runtime::Runtime::new().unwrap();
         runtime
             .block_on(resolve_conflicted_file(

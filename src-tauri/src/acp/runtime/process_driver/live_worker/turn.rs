@@ -50,6 +50,13 @@ where
                 responder.respond(Err(HostError::Intent));
                 return FirstTurnWorkerState::Reusable(parts);
             }
+            if let Err(error) = parts
+                .completed
+                .validate_command_prompt(&intent.command.prompt)
+            {
+                responder.respond(Err(error));
+                return FirstTurnWorkerState::Reusable(parts);
+            }
             if !parts.completed.idle_frame_aligned() {
                 responder.respond(Err(HostError::Capacity));
                 return FirstTurnWorkerState::Reusable(parts);
@@ -119,6 +126,10 @@ where
         WorkerCommand::PreparePrompt(intent) => {
             if intent.owner() != context.owner {
                 responder.respond(Err(HostError::Intent));
+                return FirstTurnWorkerState::Idle(parts);
+            }
+            if let Err(error) = parts.parts.validate_command_prompt(&intent.command.prompt) {
+                responder.respond(Err(error));
                 return FirstTurnWorkerState::Idle(parts);
             }
             if !parts.idle_decoder.is_frame_aligned() {

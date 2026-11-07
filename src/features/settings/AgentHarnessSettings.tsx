@@ -57,6 +57,9 @@ export function AgentHarnessSettings() {
         {harnesses.slice(0, 32).map((harness) => {
           const availability = harnessAvailability(harness);
           const selected = harness.id === selectedId;
+          const status = sentenceCase(
+            `${availability.label}${harness.version ? ` · ${harness.version}` : ""}`,
+          );
           const signIn = !harness.accountModelDiscovery
             ? "Sign-in status is not exposed by this harness."
             : !selected
@@ -70,11 +73,16 @@ export function AgentHarnessSettings() {
                     : phase === "checking"
                       ? "Checking sign-in..."
                       : "Sign-in status unknown.";
+          // This page has the refresh button the chat picker points to.
+          const reason =
+            harness.installState === "notInstalled"
+              ? "Install it, then choose Refresh discovery."
+              : availability.disabledReason;
           return (
             <div key={harness.id}>
               <SettingsRow
                 title={harness.name}
-                description={`${availability.label}${harness.version ? ` · ${harness.version}` : ""}. ${availability.disabledReason ?? ""} ${signIn}`}
+                description={`${status}. ${reason ?? signIn}`}
               >
                 <button
                   className="button button--compact"
@@ -89,9 +97,10 @@ export function AgentHarnessSettings() {
                   {selected ? "Check models and sign-in" : "Select and check"}
                 </button>
               </SettingsRow>
-              {harness.signIn ? (
+              {harness.signIn && !availability.disabledReason ? (
                 <p>
-                  {harness.signIn.hint} <code>{harness.signIn.command}</code>
+                  Run <code>{harness.signIn.command}</code> in a terminal.{" "}
+                  {harness.signIn.hint}
                 </p>
               ) : null}
             </div>
@@ -102,4 +111,8 @@ export function AgentHarnessSettings() {
       <LazyHarnessNotice />
     </>
   );
+}
+
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

@@ -114,7 +114,12 @@ export async function settleChatProjections(page: Page) {
               state.activeLoad === null &&
               state.page !== null &&
               state.scope !== null &&
-              !projection.querySelector(':scope > p[role="status"]')
+              !projection.querySelector(':scope > p[role="status"]') &&
+              // Message text renders through the lazily loaded Markdown
+              // renderer; until it arrives the transcript is still growing.
+              [...projection.querySelectorAll("article.acp-message")].every(
+                (message) => message.querySelector(".acp-markdown") !== null,
+              )
             );
           })
         );

@@ -141,6 +141,7 @@ impl Database {
                 dirty: false,
                 status: Some("idle".into()),
                 updated_at: None,
+                finished_at: None,
                 resource: None,
                 repository: None,
                 diff_ref: None,

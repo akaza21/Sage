@@ -9,7 +9,10 @@ export function harnessAvailability(harness: HarnessDefinition): {
 } {
   switch (harness.installState) {
     case "detecting":
-      return { label: "detecting", disabledReason: "Detecting harnesses…" };
+      return {
+        label: "detecting",
+        disabledReason: "Sage is still checking which harnesses are installed.",
+      };
     case "available":
       return {
         label:
@@ -20,12 +23,13 @@ export function harnessAvailability(harness: HarnessDefinition): {
     case "notInstalled":
       return {
         label: "not installed",
-        disabledReason: "Harness is not installed.",
+        disabledReason:
+          "Install it, then refresh harness discovery in Settings.",
       };
     case "installing":
       return {
         label: "installing",
-        disabledReason: "Harness installation is still in progress.",
+        disabledReason: "Wait for the installation to finish.",
       };
     case "unavailable":
       return {

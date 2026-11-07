@@ -73,3 +73,35 @@ impl PiRuntime {
         Ok((Some(AdapterEvent::IgnoredDuplicate), None))
     }
 }
+
+impl PiRuntime {
+    pub(super) fn command_session_reset(&mut self) -> Result<ConfigReply, AdapterRuntimeError> {
+        self.commands = std::sync::Arc::default();
+        self.commands_pending = false;
+        self.commands_discovered = false;
+        self.next_session = self
+            .next_session
+            .checked_add(1)
+            .filter(|value| *value <= i64::MAX as u64)
+            .ok_or(AdapterRuntimeError::Operation)?;
+        let external = crate::acp::intent::ExternalId::new(
+            "piSessionId",
+            format!(
+                "pi-session-{}-{}",
+                self.runtime_epoch.get(),
+                self.next_session
+            ),
+        )
+        .map_err(|_| AdapterRuntimeError::Operation)?;
+        self.external_session = Some(external.clone());
+        self.recent_cancelled_dialogs.clear();
+        self.available_thinking.clear();
+        Ok((
+            Some(AdapterEvent::SessionReady {
+                id: self.identity(external, None, None),
+                loaded: false,
+            }),
+            None,
+        ))
+    }
+}

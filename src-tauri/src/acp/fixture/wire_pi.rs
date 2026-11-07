@@ -36,6 +36,7 @@ pub(super) fn await_request(
         "piNew" => "new_session",
         "piPrompt" => "prompt",
         "piThinkingLevels" | "piThinkingLevelsUnsupported" => "get_available_thinking_levels",
+        "piCommandsUnsupported" => "get_commands",
         "piAbort" => "abort",
         "piDialogCancelled" => "extension_ui_response",
         "piIdle" => "idle",
@@ -67,16 +68,17 @@ pub(super) fn await_request(
                 Err(FixtureError::InvalidArguments)
             };
         }
-        let config = matches!(
+        let session_request = matches!(
             command,
             "get_state"
                 | "get_available_models"
                 | "get_available_thinking_levels"
+                | "get_commands"
                 | "set_model"
                 | "set_thinking_level"
         );
         if command != expected
-            && !(config
+            && !(session_request
                 && matches!(
                     expected,
                     "prompt" | "abort" | "idle" | "get_available_thinking_levels"
@@ -87,12 +89,17 @@ pub(super) fn await_request(
         if state.pi.ids.len() >= 32 || !state.pi.ids.insert(id.clone()) {
             return Err(FixtureError::ExpandedLimit);
         }
-        if command == "get_available_thinking_levels" && kind == "piThinkingLevelsUnsupported" {
-            // Pi 0.74.2's unknown-command branch omits the request ID.
+        if command == expected
+            && matches!(
+                kind,
+                "piThinkingLevelsUnsupported" | "piCommandsUnsupported"
+            )
+        {
+            // Older Pi builds omit the request ID for unknown commands.
             codex::emit_json(
                 output,
                 state,
-                &json!({"type":"response","command":command,"success":false,"error":"Unknown command: get_available_thinking_levels"}),
+                &json!({"type":"response","command":command,"success":false,"error":format!("Unknown command: {command}")}),
             )?;
             return Ok(());
         }
@@ -128,6 +135,7 @@ fn response_data(
             json!({"models":[model("fixture-model"),model("fixture-model-two")]})
         }
         "get_available_thinking_levels" => json!({"levels":["off","low","medium","high"]}),
+        "get_commands" => json!({"commands":[]}),
         "set_model" => {
             if request["provider"] != "openai" {
                 return Err(FixtureError::InvalidArguments);

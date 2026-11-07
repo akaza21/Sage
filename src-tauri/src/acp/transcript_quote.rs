@@ -165,6 +165,8 @@ impl<'de> Deserialize<'de> for TranscriptQuoteContext {
 pub struct Prompt {
     text: RequiredText<100000>,
     #[serde(skip)]
+    pub(crate) command_revision: Option<u64>,
+    #[serde(skip)]
     context: Option<Box<(String, AttachedContexts)>>,
 }
 
@@ -173,6 +175,7 @@ impl Prompt {
         Ok(Self {
             text: RequiredText::new(field, text)?,
             context: None,
+            command_revision: None,
         })
     }
     pub fn as_str(&self) -> &str {

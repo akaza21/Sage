@@ -10,7 +10,6 @@ import {
 } from "react";
 
 import { useWorkbenchStore } from "../app/store";
-import { pinSessionRailIds } from "../features/chat/acp/sessionRail";
 import { ChatSearchPart, lazyParts } from "../features/chat/lazyParts";
 import {
   hasChatSearchFolderRequest,
@@ -20,7 +19,6 @@ import {
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { usesMetaModifier } from "../ui/shortcutLabel";
 import {
-  collectAgentRailPinIds,
   deriveAgentRailSections,
   groupAgentRailProjects,
 } from "./agentChatRail";
@@ -121,7 +119,6 @@ export function LeftSidebar({
     [project?.id, projects, tabs],
   );
   const prefs = useAgentRailViewPrefs();
-  pinSessionRailIds(collectAgentRailPinIds(groups, project?.id ?? null));
   useEffect(() => {
     if (projectTransitioning) return;
     const scroll = () =>

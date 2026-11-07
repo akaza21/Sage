@@ -6,7 +6,7 @@ mod tool_result;
 mod turn;
 use tool_result::{tool_images, tool_text};
 
-use super::{ActiveTurn, EventPhase, PiTranslator, TOOLS_PER_TURN};
+use super::{ActiveTurn, PiTranslator, TOOLS_PER_TURN, TurnPhase};
 use crate::acp::bindings::pi::{
     decode::{bounded_string, external_id, redact_structured_text},
     protocol::{AdapterError, AdapterOutput, TerminalOutcome, ToolOutcome},
@@ -34,7 +34,7 @@ impl PiTranslator {
             && self
                 .active
                 .as_ref()
-                .is_some_and(|turn| turn.terminal.is_some())
+                .is_some_and(|turn| turn.lifecycle.terminal().is_some())
         {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
@@ -52,13 +52,7 @@ impl PiTranslator {
         match kind {
             "agent_start" => {
                 let turn = self.live_turn_any_phase()?;
-                if !matches!(
-                    turn.event_phase,
-                    EventPhase::PromptAccepted | EventPhase::AgentEnded
-                ) {
-                    return Err(AdapterError::EventSequence);
-                }
-                turn.event_phase = EventPhase::AgentRunning;
+                turn.lifecycle.start_model()?;
                 turn.settlement_message = None;
                 Ok(vec![AdapterOutput::TurnRunning {
                     turn_key: turn.turn_key.clone(),
@@ -138,7 +132,7 @@ impl PiTranslator {
 
     fn live_turn(&mut self) -> Result<&mut ActiveTurn, AdapterError> {
         let turn = self.live_turn_any_phase()?;
-        if turn.event_phase != EventPhase::AgentRunning {
+        if turn.lifecycle.phase != TurnPhase::ModelRunning {
             return Err(AdapterError::EventSequence);
         }
         Ok(turn)
@@ -146,7 +140,7 @@ impl PiTranslator {
 
     fn live_turn_any_phase(&mut self) -> Result<&mut ActiveTurn, AdapterError> {
         let turn = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-        if turn.terminal.is_some() {
+        if turn.lifecycle.terminal().is_some() {
             return Err(AdapterError::StaleIntent);
         }
         Ok(turn)
@@ -159,19 +153,22 @@ impl PiTranslator {
         if self
             .active
             .as_ref()
-            .is_some_and(|turn| turn.terminal.is_none())
+            .is_some_and(|turn| turn.lifecycle.terminal().is_none())
         {
             self.close_config_requests();
         }
         let turn = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-        match turn.terminal {
-            Some(current) if current == incoming => Ok(vec![AdapterOutput::DuplicateIgnored]),
-            Some(_) => Err(AdapterError::TerminalConflict),
-            None => {
-                turn.terminal = Some(incoming);
+        let incoming = if turn.authority_denied {
+            TerminalOutcome::Interrupted
+        } else {
+            incoming
+        };
+        let ended = turn.lifecycle.phase == TurnPhase::ModelEnded;
+        match turn.lifecycle.settle(incoming)? {
+            None => Ok(vec![AdapterOutput::DuplicateIgnored]),
+            Some(incoming) => {
                 let mut events = Vec::new();
-                if incoming == TerminalOutcome::Failed && turn.event_phase == EventPhase::AgentEnded
-                {
+                if incoming == TerminalOutcome::Failed && ended {
                     let message = turn
                         .retry_final_error
                         .take()
@@ -204,7 +201,7 @@ impl PiTranslator {
         self.closed_config_requests.extend(
             self.pending
                 .iter()
-                .filter(|(_, kind)| kind.is_config())
+                .filter(|(_, request)| request.kind.is_config())
                 .map(|(id, _)| id.clone()),
         );
     }

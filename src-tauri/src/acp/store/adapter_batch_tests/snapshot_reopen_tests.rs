@@ -324,6 +324,7 @@ fn populated_pair_and_durable_diff_ref_reopen_without_git_or_disk_fallback() {
                     dirty: false,
                     status: None,
                     updated_at: None,
+                    finished_at: None,
                     resource: Some(ResourceRef {
                         root_id: root_id.as_str().into(),
                         relative_path: "src/lib.rs".into(),
