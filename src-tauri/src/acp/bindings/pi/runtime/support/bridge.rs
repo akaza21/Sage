@@ -1,4 +1,4 @@
-use super::super::PiRuntime;
+use super::super::{DenyStage, PiRuntime};
 use crate::acp::bindings::pi::{
     AdapterOutput,
     bridge::{Bridge, Pending, files, write},
@@ -16,7 +16,7 @@ use crate::{
             ExternalId, FileChangeFacts, FileChangeOperation, NormalizedPayload,
             SafeResourceLocation,
         },
-        lifecycle::ItemLifecycle,
+        lifecycle::{ItemLifecycle, ServerRequestState},
         runtime::permissions::PermissionDecision,
         transport::{Frame, OutboundFrame, request_payload_digest},
     },
@@ -135,6 +135,9 @@ impl PiRuntime {
                 resources,
             );
         }
+        if title == "sage.pi.withdraw.v1" {
+            return self.withdraw_bridge_edit(id, body);
+        }
         if title != "sage.pi.commit.v1" {
             return refused();
         }
@@ -203,6 +206,58 @@ impl PiRuntime {
         AdapterBatch::new(
             vec![item, pair],
             vec![reply(id, "written", EgressToken::protocol_notification())?],
+        )
+    }
+
+    /// Pi expires or aborts an extension dialog without telling Sage, so the
+    /// bridge asks Sage to settle a prepare that got no answer. Sage alone
+    /// decides: a recorded approval stands, an undecided request is cancelled
+    /// durably and frees the turn's single pending slot, anything else is denied.
+    fn withdraw_bridge_edit(
+        &mut self,
+        id: &str,
+        tool_id: &str,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        let answer = |value| {
+            AdapterBatch::new(
+                Vec::new(),
+                vec![reply(id, value, EgressToken::protocol_notification())?],
+            )
+        };
+        let Some(pending) = self
+            .bridge
+            .as_ref()
+            .and_then(|bridge| bridge.pending.as_ref())
+            .filter(|pending| pending.edit.tool_id == tool_id)
+        else {
+            return answer("denied");
+        };
+        if pending.approved {
+            return answer("approved");
+        }
+        let request_id = pending.request_id.clone();
+        if !self.translator.permission_waiting_for(&request_id) {
+            return answer("denied"); // A denial is already on its way.
+        }
+        self.discard_bridge_edit();
+        self.translator.take_pending_ui();
+        if self.deny.as_ref().is_some_and(|deny| {
+            deny.request_id.as_str() == request_id && deny.stage == DenyStage::Prepared
+        }) {
+            self.deny = None;
+        }
+        let resolved = AdapterEvent::PermissionResolved {
+            turn_id: self.turn_identity()?,
+            external_request_id: super::identity::external("piPermissionId", request_id)?,
+            state: ServerRequestState::Cancelled,
+        };
+        AdapterBatch::new(
+            vec![resolved],
+            vec![reply(
+                id,
+                "withdrawn",
+                EgressToken::protocol_notification(),
+            )?],
         )
     }
 

@@ -1,6 +1,7 @@
 //! Curated bridge authority. Retains at most one 512 KiB old/new pair.
 pub(crate) mod files;
 pub(crate) mod install;
+pub(crate) mod path;
 pub(crate) mod write;
 use crate::{settings_store::SessionAccessMode, workspace::Workspace};
 

@@ -123,10 +123,7 @@ impl PiRuntime {
                     self.bridge
                         .as_ref()
                         .and_then(|b| b.pending.as_ref())
-                        .filter(|p| {
-                            p.edit.relative.len() <= 480
-                                && !p.edit.relative.chars().any(char::is_control)
-                        })
+                        // Prepare admits only paths that fit and show exactly.
                         .map(|p| format!("Allow Pi to update {}?", p.edit.relative))
                         .unwrap_or_else(|| "Pi extension gate is awaiting your decision".into()),
                 )

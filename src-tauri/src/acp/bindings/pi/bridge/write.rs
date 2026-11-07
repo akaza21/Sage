@@ -1,25 +1,40 @@
 use super::files::{Edit, read};
 use crate::workspace::Workspace;
 
-#[cfg(windows)]
-#[path = "write_windows.rs"]
-mod windows;
-
 pub(crate) fn commit(workspace: &Workspace, edit: &Edit) -> Result<(), ()> {
-    let current = read(workspace, &edit.relative)?;
-    if current.as_deref() != (!edit.created).then_some(edit.old.as_str()) {
+    super::path::admit_resolved(workspace, &edit.relative)?;
+    if !unchanged(workspace, edit) {
         return Err(());
     }
     platform_write(workspace, edit).map_err(|_| ())
 }
 
+/// The target still holds exactly what the user approved replacing (or is
+/// still absent for a create). Every platform re-checks this after the new
+/// bytes are durable and immediately before they become visible.
+fn unchanged(workspace: &Workspace, edit: &Edit) -> bool {
+    read(workspace, &edit.relative)
+        .is_ok_and(|current| current.as_deref() == (!edit.created).then_some(edit.old.as_str()))
+}
+
 #[cfg(windows)]
 fn platform_write(workspace: &Workspace, edit: &Edit) -> std::io::Result<()> {
-    windows::atomic_write(
+    use crate::workspace::atomic_write_windows::{Existing, atomic_write_checked};
+    atomic_write_checked(
         workspace.root(),
         workspace.root_identity().stable_bytes(),
         &workspace.root().join(&edit.relative),
         edit.new.as_bytes(),
+        if edit.created {
+            Existing::Refuse
+        } else {
+            Existing::Replace
+        },
+        || {
+            unchanged(workspace, edit)
+                .then_some(())
+                .ok_or_else(|| std::io::ErrorKind::PermissionDenied.into())
+        },
     )
 }
 
@@ -70,8 +85,7 @@ fn platform_write(workspace: &Workspace, edit: &Edit) -> std::io::Result<()> {
         }
         file.write_all(edit.new.as_bytes())?;
         file.sync_all()?;
-        let current = read(workspace, &edit.relative).map_err(|_| refused())?;
-        if current.as_deref() != (!edit.created).then_some(edit.old.as_str()) {
+        if !unchanged(workspace, edit) {
             return Err(refused());
         }
         let named =

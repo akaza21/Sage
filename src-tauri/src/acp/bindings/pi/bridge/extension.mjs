@@ -30,10 +30,16 @@ export default function sageBridge(pi) {
         });
         if (Buffer.byteLength(request) > MAX_BYTES)
           throw new Error("Sage operation exceeds the byte limit");
-        const approved = await ctx.ui.input("sage.pi.prepare.v1", request, {
+        let approved = await ctx.ui.input("sage.pi.prepare.v1", request, {
           signal,
           timeout: 60000,
         });
+        // Pi expires or aborts a dialog without telling Sage, so Sage settles
+        // it: an undecided request is withdrawn, a recorded approval stands.
+        if (approved === undefined)
+          approved = await ctx.ui.input("sage.pi.withdraw.v1", toolCallId, {
+            timeout: 10000,
+          });
         if (approved !== "approved" || signal?.aborted)
           throw new Error("Sage denied the operation");
         const result = await ctx.ui.input("sage.pi.commit.v1", toolCallId, {

@@ -231,3 +231,89 @@ fn pi_bridge_rejects_sensitive_and_oversized_dialog_ids() {
     }
     assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
 }
+
+#[test]
+fn pi_bridge_refuses_protected_aliases_and_paths_the_prompt_cannot_show() {
+    let mut j = Journey::new(SessionAccessMode::WorkspaceWrite);
+    std::fs::create_dir(j.root.join(".git")).unwrap();
+    std::fs::write(j.root.join(".git").join("config"), "[core]\n").unwrap();
+    let long = format!("{}.txt", "d".repeat(480));
+    for (index, path) in [
+        ".GIT/config",
+        ".Git/hooks/pre-commit",
+        "GIT~1/config",
+        ".git./config",
+        "NODE_M~1/pkg.js",
+        "notes. ",
+        "line\nbreak.txt",
+        "right\u{202e}txt.exe",
+        long.as_str(),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let batch = j.prepare_as(
+            &format!("tool-{index}"),
+            &format!("prepare-{index}"),
+            "write",
+            json!({"path":path,"content":"[core]\n\tfsmonitor = calc\n"}),
+        );
+        assert!(batch.events().is_empty(), "{path:?}");
+        assert_eq!(request(&batch.egress()[0])["value"], "denied", "{path:?}");
+    }
+    assert_eq!(
+        std::fs::read_to_string(j.root.join(".git").join("config")).unwrap(),
+        "[core]\n"
+    );
+    assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
+}
+
+#[test]
+fn pi_bridge_expired_prompt_is_withdrawn_durably_and_frees_the_turn() {
+    let mut j = Journey::new(SessionAccessMode::WorkspaceWrite);
+    j.prepare("write", json!({"path":"a.txt","content":"first"}));
+    let withdrawn = j.dialog("withdraw-1", "sage.pi.withdraw.v1", "tool-1");
+    assert!(matches!(
+        withdrawn.events(),
+        [AdapterEvent::PermissionResolved { external_request_id, state, .. }]
+            if external_request_id.as_str() == "prepare-1"
+                && *state == crate::acp::lifecycle::ServerRequestState::Cancelled
+    ));
+    assert_eq!(request(&withdrawn.egress()[0])["value"], "withdrawn");
+    assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
+    assert!(
+        j.runtime
+            .command(AdapterCommand::ResolvePermission {
+                request_id: SageServerRequestId::parse("prepare-1").unwrap(),
+                decision: PermissionDecision::AllowOnce,
+            })
+            .is_err()
+    );
+    let next = j.prepare_as(
+        "tool-2",
+        "prepare-2",
+        "write",
+        json!({"path":"a.txt","content":"second"}),
+    );
+    assert!(matches!(
+        next.events(),
+        [AdapterEvent::PermissionRequest { .. }]
+    ));
+    assert!(!j.root.join("a.txt").exists());
+}
+
+#[test]
+fn pi_bridge_approval_recorded_before_expiry_still_commits() {
+    let mut j = Journey::new(SessionAccessMode::WorkspaceWrite);
+    j.prepare("write", json!({"path":"a.txt","content":"agent"}));
+    j.allow();
+    let settled = j.dialog("withdraw-1", "sage.pi.withdraw.v1", "tool-1");
+    assert!(settled.events().is_empty());
+    assert_eq!(request(&settled.egress()[0])["value"], "approved");
+    let commit = j.dialog("commit-1", "sage.pi.commit.v1", "tool-1");
+    assert_eq!(request(&commit.egress()[0])["value"], "written");
+    assert_eq!(
+        std::fs::read_to_string(j.root.join("a.txt")).unwrap(),
+        "agent"
+    );
+}

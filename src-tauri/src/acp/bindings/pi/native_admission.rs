@@ -46,6 +46,30 @@ pub(crate) const PI_READ_ONLY_ARGS: [&str; 9] = [
     "--no-themes",
     "--no-session",
 ];
+/// Launch arguments with the pinned bridge. Pi's `--tools` allowlist also
+/// filters extension tools, so the bridge's managed write, edit and bash would
+/// never register under `--tools read`. Built-in tools instead start disabled;
+/// the bridge then activates only built-in `read` beside its own tools, and a
+/// bridge that fails to load leaves Pi with no tools at all.
+const PI_BRIDGE_ARGS: [&str; 8] = [
+    "--mode",
+    "rpc",
+    "--no-builtin-tools",
+    "--no-extensions",
+    "--no-skills",
+    "--no-prompt-templates",
+    "--no-themes",
+    "--no-session",
+];
+
+pub(crate) fn pi_launch_args(bridge: Option<PathBuf>) -> Vec<OsString> {
+    let Some(bridge) = bridge else {
+        return PI_READ_ONLY_ARGS.map(OsString::from).into();
+    };
+    let mut args: Vec<OsString> = PI_BRIDGE_ARGS.map(OsString::from).into();
+    args.extend([OsString::from("--extension"), bridge.into_os_string()]);
+    args
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum PiAdmissionUnavailable {
@@ -181,11 +205,9 @@ impl AdmittedPiBinding {
         identity.copy_from_slice(&self.binding_digest[..16]);
         let identity = uuid::Uuid::from_bytes(identity);
         let mut fixed_args = vec![self.launch.entrypoint_path.clone().into_os_string()];
-        fixed_args.extend(PI_READ_ONLY_ARGS.map(OsString::from));
-        if let Some(bridge) = super::bridge::install::installed(self.harness_version()) {
-            fixed_args.push(OsString::from("--extension"));
-            fixed_args.push(bridge.into_os_string());
-        }
+        fixed_args.extend(pi_launch_args(super::bridge::install::installed(
+            self.harness_version(),
+        )));
         Ok(LaunchSpec {
             binding_id: identity,
             runtime_epoch: epoch,

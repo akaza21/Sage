@@ -1,10 +1,7 @@
 //! One pending bounded edit; all path reads use the existing held-root walker.
 use crate::workspace::{Workspace, open_workspace_text_file};
 use serde::Deserialize;
-use std::{
-    io::Read,
-    path::{Component, Path},
-};
+use std::{io::Read, path::Path};
 
 pub(crate) const MAX_BYTES: usize = 262_144;
 #[derive(Deserialize)]
@@ -30,29 +27,10 @@ pub(crate) fn prepare(workspace: &Workspace, request: Request) -> Result<Edit, (
     }
     let args = request.args.as_object().ok_or(())?;
     let text = |key| args.get(key).and_then(serde_json::Value::as_str).ok_or(());
-    let path = Path::new(text("path")?);
-    let relative = if path.is_absolute() {
-        path.strip_prefix(workspace.root()).map_err(|_| ())?
-    } else {
-        path
-    };
-    if relative.as_os_str().is_empty()
-        || relative
-            .components()
-            .any(|part| !matches!(part, Component::Normal(_)))
-    {
-        return Err(());
-    }
-    let relative = relative.to_str().ok_or(())?.replace('\\', "/");
-    if relative.len() > 16384
-        || relative
-            .split('/')
-            .any(|p| matches!(p, ".git" | "node_modules") || p.contains(':'))
-    {
-        return Err(());
-    }
+    let relative = super::path::admit_requested(workspace, text("path")?)?;
     // Reject symlinks/reparse points rather than giving an alias write authority.
     let old = read(workspace, &relative)?;
+    super::path::admit_resolved(workspace, &relative)?;
     let created = old.is_none();
     let old = old.unwrap_or_default();
     let new = match request.tool.as_str() {
