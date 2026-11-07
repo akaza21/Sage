@@ -2,22 +2,29 @@ use std::{future::Future, pin::Pin};
 
 use super::*;
 use crate::acp::{
-    bindings::{adapter::ResourceMapper, pi::PiRuntime},
+    bindings::{
+        adapter::{
+            AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, EgressResolution,
+            HarnessAdapter, ResourceMapper,
+        },
+        pi::PiRuntime,
+    },
     contract::{
         ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
         SageProjectId, SchemaVersionV1,
     },
-    intent::{CapabilitySnapshotV1, SafeResourceRef, UnavailableResourceReason},
+    intent::{CapabilitySnapshotV1, Prompt, SafeResourceRef, UnavailableResourceReason},
+    lifecycle::TurnState,
     runtime::{
         ActivationFlush, ActivationIntent, ActivationJournal, ActivationJournalError,
         ActivationMode, ActivationPump, ActivationReceipt, ActivationTransport,
     },
     store::CompleteActivationCommand,
-    transport::{FrameWriteOutcome, OutboundFrame},
+    transport::{FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame},
 };
 
 #[test]
-fn pi_fixture_wire_initialization_reaches_ready_through_shared_activation_pump() {
+fn pi_fixture_wire_activation_and_idless_idle_discovery_preserve_the_next_prompt() {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -109,7 +116,72 @@ fn pi_fixture_wire_initialization_reaches_ready_through_shared_activation_pump()
                 committed.external_session_id,
                 parts.session().external_session_id
             );
+
+            let (mut adapter, _, _, _) = parts.into_parts();
+            let query = adapter.discover_commands().unwrap().unwrap();
+            wire_reply(&mut adapter, &mut wire, query, "piCommandsUnsupported");
+            let catalog = adapter.available_commands().snapshot();
+            assert_eq!(catalog.revision, 1);
+            assert!(catalog.commands.is_empty());
+
+            let prompt = adapter
+                .command(AdapterCommand::Prompt {
+                    prompt: Prompt::new("prompt", "Inspect the synthetic example").unwrap(),
+                    client_message_id: RequiredText::new("client", "after-discovery").unwrap(),
+                    access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                })
+                .unwrap();
+            wire_reply(&mut adapter, &mut wire, prompt, "piPrompt");
+            let mut events = Vec::new();
+            for event in [
+                json!({"type":"agent_start"}),
+                json!({"type":"agent_end","messages":[]}),
+                json!({"type":"agent_settled"}),
+            ] {
+                events.extend(
+                    ingest_wire(&mut adapter, format!("{event}\n").as_bytes())
+                        .into_parts()
+                        .0,
+                );
+            }
+            assert!(events.iter().any(|event| matches!(
+                event,
+                AdapterEvent::Turn {
+                    state: TurnState::Completed,
+                    ..
+                }
+            )));
         });
+}
+
+fn wire_reply(adapter: &mut PiRuntime, wire: &mut WireState, request: AdapterEgress, kind: &str) {
+    let mut bytes = request.frame().payload().to_vec();
+    bytes.push(b'\n');
+    let token = request.into_token();
+    adapter
+        .resolve_egress(token.clone(), EgressResolution::Queued)
+        .unwrap();
+    adapter
+        .resolve_egress(token, EgressResolution::Written)
+        .unwrap();
+    let mut response = Vec::new();
+    execute_with_io(
+        &json!({"op":"awaitClient","kind":kind}),
+        wire,
+        &mut Cursor::new(bytes),
+        &mut response,
+        &mut Vec::new(),
+    )
+    .unwrap();
+    ingest_wire(adapter, &response);
+}
+
+fn ingest_wire(adapter: &mut PiRuntime, bytes: &[u8]) -> AdapterBatch {
+    let frame = IncrementalFrameDecoder::new()
+        .push_chunk(bytes)
+        .unwrap()
+        .unwrap();
+    adapter.ingest(&frame, &NoResources).unwrap()
 }
 
 struct NoResources;

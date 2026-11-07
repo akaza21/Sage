@@ -3700,3 +3700,15 @@ mod cancel_contract_tests;
 
 #[path = "tests/model_page_rejection.rs"]
 mod model_page_rejection;
+
+#[test]
+fn slash_commands_are_empty_when_codex_has_not_advertised_any() {
+    let runtime = CodexRuntime::fixture(Platform::WindowsX86_64);
+    assert!(runtime.available_commands().snapshot().commands.is_empty());
+    assert!(
+        runtime
+            .available_commands()
+            .validate(0, "/invented")
+            .is_err()
+    );
+}

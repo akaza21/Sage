@@ -1899,11 +1899,13 @@ describe("composer permission mode picker", () => {
       .querySelector(".searchable-picker__option-copy")!;
     expect(missingCopy.firstElementChild).toHaveTextContent(/^Missing$/);
     expect(missingCopy.lastElementChild).toHaveTextContent(
-      /^Harness is not installed\.$/,
+      /^Install it, then refresh harness discovery in Settings\.$/,
     );
     expect(
       screen.getByRole("option", { name: /Missing/ }),
-    ).toHaveAccessibleDescription("Harness is not installed.");
+    ).toHaveAccessibleDescription(
+      "Install it, then refresh harness discovery in Settings.",
+    );
     expect(screen.getAllByRole("option").at(-1)).toHaveTextContent("Missing");
     expect(screen.queryByRole("combobox", { name: "Harness" })).toBeNull();
     expect(claudeRow).toHaveFocus();

@@ -166,6 +166,7 @@ fn merge_recovered_file_tabs(snapshot: &mut BootstrapSnapshot) {
             dirty: true,
             status: Some("recovering".into()),
             updated_at: None,
+            finished_at: None,
             resource: Some(recovered.resource.clone()),
             repository: None,
             diff_ref: None,
@@ -442,6 +443,7 @@ mod tests {
                 dirty: false,
                 status: None,
                 updated_at: None,
+                finished_at: None,
                 resource: Some(ResourceRef {
                     root_id: root_id.clone(),
                     relative_path: format!("{index}.txt"),
@@ -489,6 +491,7 @@ mod tests {
                 dirty: false,
                 status: None,
                 updated_at: None,
+                finished_at: None,
                 resource: None,
                 repository: None,
                 diff_ref: None,
@@ -526,6 +529,7 @@ mod tests {
                 dirty: false,
                 status: None,
                 updated_at: None,
+                finished_at: None,
                 resource: Some(ResourceRef {
                     root_id: root_id.clone(),
                     relative_path: format!("{index}.txt"),

@@ -48,6 +48,7 @@ pub(super) struct OpenCodeRuntime {
 }
 
 struct ActiveSession {
+    commands: std::sync::Arc<crate::acp::slash_commands::CommandState>,
     external_id: ExternalId,
     translator: StandardAcpTranslator,
     turn: Option<TurnIntent>,
@@ -199,6 +200,13 @@ impl OpenCodeRuntime {
         client_message_id: RequiredText<512>,
         access_mode: crate::settings_store::SessionAccessMode,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if let Some(revision) = prompt.command_revision {
+            self.active
+                .as_ref()
+                .ok_or(AdapterRuntimeError::Operation)?
+                .commands
+                .validate(revision, prompt.as_str())?;
+        }
         if !self
             .capabilities
             .as_ref()

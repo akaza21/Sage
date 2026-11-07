@@ -50,8 +50,10 @@ fn pi_idless_optional_error_rejects_ambiguous_requests_for_the_method() {
 fn pi_idless_errors_outside_pending_optional_discovery_remain_fatal() {
     for (command, success) in [
         ("get_available_thinking_levels", false),
+        ("get_commands", false),
         ("get_state", false),
         ("get_available_thinking_levels", true),
+        ("get_commands", true),
     ] {
         let mut runtime = fixture_runtime(75);
         ready(&mut runtime);

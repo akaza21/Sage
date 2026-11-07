@@ -154,6 +154,7 @@ mod tests {
             dirty: false,
             status: None,
             updated_at: None,
+            finished_at: None,
             resource: Some(ResourceRef {
                 root_id: root_id.into(),
                 relative_path: "src/a.ts".into(),

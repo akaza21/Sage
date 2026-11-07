@@ -97,6 +97,7 @@ impl OpenCodeRuntime {
         let translator =
             StandardAcpTranslator::new(profile, external_id.as_str()).map_err(map_translation)?;
         self.active = Some(ActiveSession {
+            commands: std::sync::Arc::default(),
             external_id: external_id.clone(),
             translator,
             turn: None,

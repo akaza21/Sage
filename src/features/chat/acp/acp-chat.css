@@ -32,6 +32,20 @@
   color: var(--color-danger);
 }
 
+.acp-system-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+}
+
+.acp-system-notice > svg {
+  flex: none;
+}
+
 .acp-turn {
   display: grid;
   min-width: 0;

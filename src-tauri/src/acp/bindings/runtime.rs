@@ -41,13 +41,24 @@ pub(crate) struct NativeRuntime(
         crate::acp::scheduler::RuntimeOwner,
         std::sync::Arc<crate::acp::goal::GoalChannel>,
     )>,
+    Option<(
+        crate::acp::scheduler::RuntimeOwner,
+        std::sync::Arc<crate::acp::slash_commands::CommandChannel>,
+    )>,
 );
 
 impl NativeRuntime {
     pub(crate) fn new(runtime: impl LaunchableRuntime + 'static) -> Self {
-        Self(Box::new(runtime), None, None)
+        Self(Box::new(runtime), None, None, None)
     }
 
+    pub(crate) fn attach_commands(
+        &mut self,
+        owner: crate::acp::scheduler::RuntimeOwner,
+        channel: std::sync::Arc<crate::acp::slash_commands::CommandChannel>,
+    ) {
+        self.3 = Some((owner, channel));
+    }
     pub(crate) fn attach_config(
         &mut self,
         owner: crate::acp::scheduler::RuntimeOwner,
@@ -70,6 +81,19 @@ impl NativeRuntime {
 }
 
 impl HarnessAdapter for NativeRuntime {
+    fn receive_command_update(&mut self, frame: &Frame) -> Result<(), AdapterRuntimeError> {
+        let result = self.0.receive_command_update(frame);
+        if let Some((owner, channel)) = &self.3 {
+            channel.update(owner, self.0.available_commands());
+        }
+        result
+    }
+    fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
+        self.0.available_commands()
+    }
+    fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        self.0.discover_commands()
+    }
     fn frames_repeat_terminal(&self, frames: &[Frame], resources: &dyn ResourceMapper) -> bool {
         self.0.frames_repeat_terminal(frames, resources)
     }
@@ -179,6 +203,13 @@ impl HarnessAdapter for NativeRuntime {
         {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }
+        if let AdapterCommand::Prompt { prompt, .. } = &command
+            && let Some(revision) = prompt.command_revision
+        {
+            self.0
+                .available_commands()
+                .validate(revision, prompt.as_str())?;
+        }
         self.0.command(command)
     }
 
@@ -194,7 +225,11 @@ impl HarnessAdapter for NativeRuntime {
         frame: &Frame,
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        let batch = self.0.ingest(frame, resources)?;
+        let result = self.0.ingest(frame, resources);
+        if let Some((owner, channel)) = &self.3 {
+            channel.update(owner, self.0.available_commands());
+        }
+        let batch = result?;
         self.publish_config()?;
         if let Some((owner, channel)) = &self.2
             && let Some(goal) = self.0.goal_state()
@@ -236,6 +271,14 @@ impl NativeRuntime {
             && let Some(goal) = self.0.goal_state()
         {
             channel.update(owner, goal);
+        }
+    }
+}
+
+impl Drop for NativeRuntime {
+    fn drop(&mut self) {
+        if let Some((owner, channel)) = &self.3 {
+            channel.clear(owner);
         }
     }
 }

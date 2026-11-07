@@ -127,6 +127,12 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             })?
         } else {
             if self.is_ready_handoff_available_commands_update(&frame) {
+                self.adapter
+                    .receive_command_update(&frame)
+                    .map_err(|error| {
+                        self.fail_closed();
+                        ActivationPumpError::Adapter(error)
+                    })?;
                 return Ok(true);
             }
             self.adapter

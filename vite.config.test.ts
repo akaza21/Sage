@@ -173,6 +173,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/quickOpen/QuickOpenHost.tsx",
   "src/features/search/SearchSurface.tsx",
   "src/features/settings/AgentBrowserSettings.tsx",
+  // The Harnesses page loads on its first open.
+  "src/features/settings/AgentHarnessSettings.tsx",
   "src/features/settings/AgentKeyboardSettings.tsx",
   "src/features/settings/AgentSettingsExecution.tsx",
   "src/features/settings/AgentSettingsSurface.tsx",

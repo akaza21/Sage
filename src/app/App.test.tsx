@@ -129,7 +129,7 @@ describe("App harness discovery event", () => {
     expect(
       harnessAvailability(useWorkbenchStore.getState().harnesses[0])
         .disabledReason,
-    ).toBe("Detecting harnesses…");
+    ).toBe("Sage is still checking which harnesses are installed.");
     act(() =>
       listeners.get("harness-discovery-changed-v1")?.({
         payload: [discovered],

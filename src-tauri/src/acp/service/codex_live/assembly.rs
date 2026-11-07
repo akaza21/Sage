@@ -132,6 +132,9 @@ impl Lane<'_> {
         };
         prepared
             .runtime
+            .attach_commands(abort.owner.clone(), Arc::clone(&self.runtime.commands));
+        prepared
+            .runtime
             .attach_config(abort.owner.clone(), Arc::clone(&self.runtime.config));
         prepared
             .runtime

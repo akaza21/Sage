@@ -33,6 +33,8 @@ export interface WorkbenchTab {
   openerTabId?: string;
   status?: SessionStatus;
   updatedAt?: number;
+  /** When the latest Turn finished; read marks compare against it. */
+  finishedAt?: number;
   resource?: ResourceRef;
   repository?: RepositoryRef;
   diffRef?: AgentDiffRef;

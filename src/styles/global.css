@@ -31,6 +31,9 @@
   --radius-annotation-checkbox: 3px;
   color-scheme: dark;
 
+  /* Brand */
+  --color-sage: #7fa877;
+
   /* Color roles */
   --color-canvas: #141414;
   --color-panel: #141414;
@@ -136,7 +139,13 @@
   --agent-shell-center: #181818;
   --agent-shell-title-divider: #262626;
   --agent-shell-tab-border: #4c4c4c;
-  --agent-shell-user-bubble: #2f2f2f;
+  /* The future light palette should use the same chat-background token with
+     color-mix(in srgb, var(--color-sage) 26%, var(--agent-shell-center)). */
+  --agent-shell-user-bubble: color-mix(
+    in srgb,
+    var(--color-sage) 22%,
+    var(--agent-shell-center)
+  );
   --agent-shell-resource-border: #363636;
   --agent-shell-resource-shadow: 0 12px 24px rgb(0 0 0 / 0.24);
   --agent-shell-spinner-track: #666;
