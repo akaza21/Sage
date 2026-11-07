@@ -4,12 +4,15 @@ use std::{collections::BTreeMap, sync::Arc};
 
 pub(crate) mod commands;
 mod read;
+mod secrets;
 #[cfg(test)]
 mod tests;
 
 pub(crate) const FILE_BYTES: usize = 64 * 1024;
 pub(crate) const TOTAL_BYTES: usize = 96 * 1024;
 pub(crate) const FILE_COUNT: usize = 16;
+/// Prompt text, attached context and staged files together, per dispatch.
+pub(crate) const DISPATCH_BYTES: usize = 120 * 1024;
 const OWNER_COUNT: usize = 16;
 const STORE_BYTES: usize = 1024 * 1024;
 
@@ -89,6 +92,10 @@ pub(crate) struct FileSummary {
 }
 struct Batch {
     revision: String,
+    /// The `chat_tabs.attached_at` of the tab the batch was staged in. A batch
+    /// belongs to that one attachment: closing the tab ends it, and reopening
+    /// the chat later starts a new attachment that never inherits it.
+    attached_at: i64,
     resources: Resources,
 }
 #[derive(Default)]
@@ -100,10 +107,18 @@ impl FileStages {
         &mut self,
         project: &str,
         chat: &str,
+        attached_at: i64,
         expected: Option<&str>,
         resources: Resources,
     ) -> Result<StagedFiles, &'static str> {
         let key = (project.to_owned(), chat.to_owned());
+        if self
+            .batches
+            .get(&key)
+            .is_some_and(|b| b.attached_at != attached_at)
+        {
+            self.batches.remove(&key);
+        }
         let current = self.batches.get(&key);
         if current.map(|b| b.revision.as_str()) != expected {
             return Err("Attachments changed; reload the staged attachments before retrying.");
@@ -122,6 +137,7 @@ impl FileStages {
         }
         let batch = Batch {
             revision: uuid::Uuid::new_v4().to_string(),
+            attached_at,
             resources,
         };
         let summary = summary(&batch);
@@ -181,6 +197,68 @@ impl FileStages {
     pub(crate) fn clear(&mut self) {
         self.batches.clear();
     }
+    fn owners(&self) -> Vec<(String, String, i64)> {
+        self.batches
+            .iter()
+            .map(|((project, chat), batch)| (project.clone(), chat.clone(), batch.attached_at))
+            .collect()
+    }
+}
+
+/// The one ownership rule for staged batches: a batch lives only while the
+/// chat tab attachment it was staged in still exists. Any path that closes a
+/// tab, deletes, moves or archives a chat, or saves a layout without the tab
+/// ends that attachment; this drops the batch so it no longer counts against
+/// the owner and memory caps and is never sent from a reopened tab. Attachment
+/// commands and sends run it before they read stages, and layout persistence
+/// runs it after a commit so closed tabs release their memory promptly.
+pub(crate) fn release_detached(
+    stages: &std::sync::Mutex<FileStages>,
+    database: &crate::persistence::Database,
+) {
+    let owners = stages
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .owners();
+    if owners.is_empty() {
+        return;
+    }
+    let ended: Vec<_> = owners
+        .into_iter()
+        .filter(|(project, chat, attached_at)| {
+            attachment(database, project, chat).is_ok_and(|live| live != Some(*attached_at))
+        })
+        .collect();
+    let mut stages = stages
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    for (project, chat, attached_at) in ended {
+        let key = (project, chat);
+        if stages
+            .batches
+            .get(&key)
+            .is_some_and(|b| b.attached_at == attached_at)
+        {
+            stages.batches.remove(&key);
+        }
+    }
+}
+
+/// The `attached_at` of the chat's current tab, or `None` when it has none.
+pub(crate) fn attachment(
+    database: &crate::persistence::Database,
+    project: &str,
+    chat: &str,
+) -> rusqlite::Result<Option<i64>> {
+    use rusqlite::OptionalExtension;
+    database
+        .connection()
+        .query_row(
+            "SELECT attached_at FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
+            rusqlite::params![project, chat],
+            |row| row.get(0),
+        )
+        .optional()
 }
 fn summary(batch: &Batch) -> StagedFiles {
     StagedFiles {

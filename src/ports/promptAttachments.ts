@@ -10,11 +10,12 @@ export interface StagedPromptFiles {
 }
 /** 16 files, 64 KiB/file, 96 KiB/batch; replacement is revision checked. */
 export interface PromptAttachmentsPort {
+  /** Opens the native picker; the WebView never supplies paths. Null when cancelled. */
   stagePromptFiles(request: {
     owner: PromptFileOwner;
-    paths: string[];
+    pick: "files" | "folder";
     expectedRevision: string | null;
-  }): Promise<StagedPromptFiles>;
+  }): Promise<StagedPromptFiles | null>;
   listPromptFiles(owner: PromptFileOwner): Promise<StagedPromptFiles | null>;
   removePromptFile(request: {
     owner: PromptFileOwner;

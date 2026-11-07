@@ -143,6 +143,13 @@ mod tests {
                 .stage(
                     &project.id,
                     &first_chat_id,
+                    crate::acp::attached_context::files::attachment(
+                        &state.database,
+                        &project.id,
+                        &first_chat_id,
+                    )
+                    .unwrap()
+                    .unwrap(),
                     None,
                     crate::acp::attached_context::files::Resources(std::sync::Arc::new(vec![
                         crate::acp::attached_context::files::Resource {

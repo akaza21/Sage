@@ -35,6 +35,8 @@ pub(crate) async fn send_acp_turn_inner(
             .await
             .map_err(prompt_not_dispatched)?;
     validate_send(state, &request, &snapshot).map_err(prompt_not_dispatched)?;
+    // A batch staged in a tab that has since closed must never be sent.
+    crate::acp::attached_context::files::release_detached(&state.acp.file_stages, &state.database);
     if matches!(request, SendAcpTurnRequest::NewSession { .. })
         && !state
             .acp
@@ -230,7 +232,10 @@ pub(crate) async fn send_acp_turn_inner(
             message: safe_message("Attachments changed while preparing the prompt; send again."),
         }));
     }
-    if !files.0.is_empty() && prompt.retained_bytes() + files.retained_bytes() > 120 * 1024 {
+    if !files.0.is_empty()
+        && prompt.retained_bytes() + files.retained_bytes()
+            > crate::acp::attached_context::files::DISPATCH_BYTES
+    {
         super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
         return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
             message: safe_message(

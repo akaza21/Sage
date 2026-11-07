@@ -336,6 +336,16 @@ impl Fixture {
     fn counts(&self) -> (i64, i64) {
         self.state.database.connection().query_row("SELECT (SELECT COUNT(*) FROM turns),(SELECT COUNT(*) FROM items WHERE kind='text' AND external_item_id IS NULL AND ordinal=0)", [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap()
     }
+
+    fn attached_at(&self) -> i64 {
+        crate::acp::attached_context::files::attachment(
+            &self.state.database,
+            self.owner.project_id.as_str(),
+            self.owner.chat_id.as_str(),
+        )
+        .unwrap()
+        .unwrap()
+    }
 }
 
 #[test]
@@ -582,6 +592,7 @@ fn staged_files_are_refused_without_dispatch_and_retained_for_retry() {
                 .stage(
                     fixture.owner.project_id.as_str(),
                     fixture.owner.chat_id.as_str(),
+                    fixture.attached_at(),
                     None,
                     Resources(Arc::new(vec![Resource {
                         id: "file-1".into(),
@@ -639,6 +650,7 @@ fn staged_files_are_consumed_after_admitted_dispatch() {
             .stage(
                 fixture.owner.project_id.as_str(),
                 fixture.owner.chat_id.as_str(),
+                fixture.attached_at(),
                 None,
                 resources,
             )

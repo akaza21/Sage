@@ -108,6 +108,28 @@ fn worktree_exclude_rules_resolved_through_commondir_fail_closed() {
     assert_eq!(names, ["keep.txt"]);
 }
 #[test]
+fn credential_files_are_refused_even_without_ignore_rules() {
+    let f = Fixture::new();
+    f.file("home/.aws/credentials", b"aws_secret_access_key=x");
+    f.file("home/.ssh/config", b"Host *");
+    f.file("home/.env.local", b"TOKEN=x");
+    f.file("home/deploy.pem", b"-----BEGIN PRIVATE KEY-----");
+    f.file("home/notes.txt", b"notes");
+    let refused = "Credential files and folders cannot be attached.";
+    for picked in [
+        "home/.aws/credentials",
+        "home/.aws",
+        "home/.ssh/config",
+        "home/.env.local",
+        "home/deploy.pem",
+    ] {
+        let path = f.0.join(picked).to_str().unwrap().to_owned();
+        assert_eq!(read::read_paths(&[path]), Err(refused), "{picked}");
+    }
+    let names: Vec<_> = f.read("home").0.iter().map(|r| r.name.clone()).collect();
+    assert_eq!(names, ["notes.txt"]);
+}
+#[test]
 fn failure_and_boundaries_do_not_admit_partial_content() {
     let f = Fixture::new();
     let max = f.file("max", &vec![0; FILE_BYTES]);
@@ -133,15 +155,15 @@ fn staging_conflicts_owner_isolation_and_lifecycle_release() {
     f.file("one", b"one");
     f.file("two", b"two");
     let mut stages = FileStages::default();
-    let old = stages.stage("p", "c", None, f.read("one")).unwrap();
+    let old = stages.stage("p", "c", 0, None, f.read("one")).unwrap();
     let snapshot = stages.get("p", "c");
     let weak = Arc::downgrade(&snapshot.0);
-    assert!(stages.stage("p", "c", None, f.read("two")).is_err());
+    assert!(stages.stage("p", "c", 0, None, f.read("two")).is_err());
     assert!(stages.get("p", "foreign").0.is_empty());
     assert!(stages.remove("p", "c", "stale", &old.files[0].id).is_err());
     assert!(stages.remove("p", "c", &old.revision, "foreign").is_err());
     let next = stages
-        .stage("p", "c", Some(&old.revision), f.read("two"))
+        .stage("p", "c", 0, Some(&old.revision), f.read("two"))
         .unwrap();
     stages.consume("p", "c", &snapshot); // Late acknowledgement cannot consume a newer selection.
     assert_eq!(stages.list("p", "c").unwrap().revision, next.revision);
@@ -153,15 +175,15 @@ fn staging_conflicts_owner_isolation_and_lifecycle_release() {
             .unwrap()
             .is_none()
     );
-    stages.stage("p", "c", None, f.read("one")).unwrap();
+    stages.stage("p", "c", 0, None, f.read("one")).unwrap();
     let sent = stages.get("p", "c");
     stages.consume("p", "c", &sent);
     assert!(stages.list("p", "c").is_none());
     drop(sent);
-    stages.stage("p", "c", None, f.read("one")).unwrap();
+    stages.stage("p", "c", 0, None, f.read("one")).unwrap();
     stages.clear_chat("p", "c");
     assert!(stages.batches.is_empty());
-    stages.stage("p", "c", None, f.read("one")).unwrap();
+    stages.stage("p", "c", 0, None, f.read("one")).unwrap();
     stages.clear();
     assert!(stages.batches.is_empty());
 }
@@ -173,10 +195,10 @@ fn owner_and_memory_caps_and_settled_memory() {
     let mut stages = FileStages::default();
     for i in 0..OWNER_COUNT {
         stages
-            .stage("p", &i.to_string(), None, f.read("one"))
+            .stage("p", &i.to_string(), 0, None, f.read("one"))
             .unwrap();
     }
-    assert!(stages.stage("p", "over", None, f.read("one")).is_err());
+    assert!(stages.stage("p", "over", 0, None, f.read("one")).is_err());
     stages.clear();
     let paths: Vec<_> = (0..4)
         .map(|i| f.file(&format!("large{i}"), &vec![1; TOTAL_BYTES / 4]))
@@ -185,7 +207,7 @@ fn owner_and_memory_caps_and_settled_memory() {
     let peak = large.retained_bytes();
     memory_sample("staged");
     let weak = Arc::downgrade(&large.0);
-    stages.stage("p", "c", None, large).unwrap();
+    stages.stage("p", "c", 0, None, large).unwrap();
     let wire = stages.get("p", "c").wire("memory probe", true).unwrap();
     let wire_bytes = serde_json::to_vec(&wire).unwrap().len();
     drop(wire);
@@ -197,12 +219,18 @@ fn owner_and_memory_caps_and_settled_memory() {
     );
     for i in 0..(STORE_BYTES / peak) {
         stages
-            .stage("p", &i.to_string(), None, read::read_paths(&paths).unwrap())
+            .stage(
+                "p",
+                &i.to_string(),
+                0,
+                None,
+                read::read_paths(&paths).unwrap(),
+            )
             .unwrap();
     }
     assert!(
         stages
-            .stage("p", "full", None, read::read_paths(&paths).unwrap())
+            .stage("p", "full", 0, None, read::read_paths(&paths).unwrap())
             .is_err()
     );
 }

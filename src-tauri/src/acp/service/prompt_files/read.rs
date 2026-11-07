@@ -1,4 +1,4 @@
-use super::{FILE_BYTES, FILE_COUNT, Resource, Resources, TOTAL_BYTES};
+use super::{FILE_BYTES, FILE_COUNT, Resource, Resources, TOTAL_BYTES, secrets};
 use crate::workspace::ignore_rules::{FolderChain, IgnoreRules, RuleFiles, global_excludes_path};
 use std::{
     collections::BTreeSet,
@@ -40,6 +40,9 @@ pub(super) fn read_paths(paths: &[String]) -> Result<Resources, &'static str> {
         let selected = Path::new(path);
         if !selected.is_absolute() || selected.components().count() > DEPTH {
             return Err("Attachment paths must be absolute and at most 64 components deep.");
+        }
+        if secrets::path_is_secret(selected, selected.is_dir()) {
+            return Err("Credential files and folders cannot be attached.");
         }
         // Reject symbolic-link ancestors too, so a selection cannot escape via
         // a linked directory. The final file is also opened no-follow on Unix.
@@ -107,6 +110,10 @@ impl Reader {
             .components()
             .any(|c| matches!(c.as_os_str().to_str(), Some(".git" | "node_modules")))
             || meta.file_type().is_symlink()
+            || path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| secrets::is_secret(name, meta.is_dir()))
             || rules.is_ignored(chain, &rel, meta.is_dir())
         {
             return Ok(false);
