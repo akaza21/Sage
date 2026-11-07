@@ -1008,9 +1008,9 @@ describe("last confirmed model label", () => {
       }),
     });
     fireEvent.click(screen.getByLabelText("Model", { exact: true }));
-    fireEvent.click(
-      await screen.findByRole("option", { name: "Actual model" }),
-    );
+    const actual = await screen.findByRole("option", { name: "Actual model" });
+    expect(actual).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(actual);
     expect(onSelectModel).toHaveBeenCalledExactlyOnceWith("actual");
   });
 

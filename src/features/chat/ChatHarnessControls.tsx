@@ -38,7 +38,7 @@ import {
   harnessPickerCandidates,
   useComposerPopovers,
 } from "./useChatHarnessSelection";
-import { useComposerModelCatalog } from "./useComposerModelChoices";
+import { useComposerModelSelection } from "./useComposerModelChoices";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 
 interface Props {
@@ -178,30 +178,23 @@ export function ChatHarnessControls({
   const effortName =
     composerOptionLabel(effortOption) ?? confirmedEffort ?? inheriting?.effort;
   const effortLabel = effortName ? capitalizeLabel(effortName) : null;
-  const sessionModel = selectedSessionConfig?.removed
-    ? undefined
-    : selectedSessionConfig?.confirmedModel;
-  const catalog = useComposerModelCatalog(
+  const {
+    choices: modelChoices,
+    currentId: currentModelId,
+    unchangedId: unchangedModelId,
+  } = useComposerModelSelection(
+    modelOption,
     models,
-    sessionModel,
+    selectedSessionConfig,
     confirmedModelLabel,
     selectedModelId,
   );
-  const modelChoices = hasSessionModel ? modelOption : catalog.choices;
-  // The picker marks this choice current, and re-choosing it only closes the
-  // menu.
-  const currentModelId = hasSessionModel
-    ? modelOption.currentValue
-    : catalog.currentId;
-  const runningModelId = hasSessionModel
-    ? modelOption.currentValue
-    : (sessionModel?.id ?? selectedModelId);
   const contextWindow = formatContextWindow(
-    models.find((model) => model.id === runningModelId)?.contextWindow,
+    models.find((model) => model.id === currentModelId)?.contextWindow,
   );
   const chooseModel = (modelId: string) => {
-    const changed = modelId !== currentModelId;
-    if (changed && hasSessionModel)
+    const changed = modelId !== unchangedModelId;
+    if (changed && modelOption?.type === "select")
       void onSetSessionConfigOption(modelOption.id, { value: modelId });
     else if (changed) onSelectModel(modelId);
     dismiss();
