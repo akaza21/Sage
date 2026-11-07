@@ -10,7 +10,7 @@ fn fixture() -> Connection {
         INSERT INTO chats VALUES ('chat','project');").unwrap();
     connection
         .execute_batch(include_str!(
-            "../../../migrations/021_turn_notifications.sql"
+            "../../../migrations/022_turn_notifications.sql"
         ))
         .unwrap();
     connection

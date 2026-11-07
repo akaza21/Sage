@@ -1434,6 +1434,7 @@ fn test_capabilities() -> crate::acp::intent::CapabilitySnapshotV1 {
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 0,
+        prompt_resources: false,
         config_count: 0,
     }
 }

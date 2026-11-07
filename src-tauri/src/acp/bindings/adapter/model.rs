@@ -10,6 +10,25 @@ pub(crate) struct AdapterIdentity {
     pub(crate) turn_client_message_id: Option<RequiredText<512>>,
 }
 
+impl AdapterIdentity {
+    /// True only for the exact session identity: same binding, epoch, Sage
+    /// session and harness session, and no Turn correlation at all.
+    pub(crate) fn is_exact_session(
+        &self,
+        binding_digest: &[u8; 32],
+        runtime_epoch: RuntimeEpoch,
+        session_id: &SageAgentSessionId,
+        external_session_id: &ExternalId,
+    ) -> bool {
+        &self.binding_digest == binding_digest
+            && self.runtime_epoch == runtime_epoch
+            && &self.session_id == session_id
+            && &self.external_id == external_session_id
+            && self.turn_id.is_none()
+            && self.turn_client_message_id.is_none()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct AdapterModel {
     pub(crate) id: ModelId,

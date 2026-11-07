@@ -59,6 +59,7 @@ fn queued_steer_overtaken_by_cancel_never_writes() {
             project_generation: ProjectGeneration::ZERO,
             chat_id: chat_id.clone(),
             projection_revision: ready_projection_revision,
+            intent_revision: ready_projection_revision,
             session_id: Some(started.session_id.clone()),
             runtime_epoch: Some(epoch),
             turn_id: None,

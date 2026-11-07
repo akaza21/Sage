@@ -8,13 +8,14 @@ use crate::acp::{
 
 use super::{
     CancelIntent, CompletedDriverParts, CoordinatorZeroToken, DriverError, DriverMailbox,
-    PreparedDriverTurn, ProcessTreeControl, RebindFailure, StdinTransport, WriteFence,
-    WriteFenceError,
+    PreparedDriverTurn, ProcessTreeControl, RebindFailure, StdinTransport, WriteFenceError,
 };
 
 mod cancel;
+mod delivery;
 mod steer;
 
+use delivery::PromptDelivery;
 use steer::PendingSteer;
 
 #[derive(Debug, thiserror::Error)]
@@ -50,9 +51,8 @@ where
     C: ProcessTreeControl,
 {
     pub(crate) turn: PreparedDriverTurn<A, J, R, T, C>,
-    prompt: Prompt,
+    delivery: PromptDelivery,
     access_mode: crate::settings_store::SessionAccessMode,
-    fence: WriteFence,
     cancel_intent: Option<HostCancelIntent>,
     cancel_wire: CancelWireState,
     cancel_attempts: u8,
@@ -79,9 +79,8 @@ where
             crate::acp::contract::RuntimeEpoch::ZERO
         );
         Self {
-            fence: WriteFence::bound(turn_id.clone()),
+            delivery: PromptDelivery::new(turn_id.clone(), prompt),
             turn,
-            prompt,
             access_mode,
             cancel_intent: None,
             cancel_wire: CancelWireState::NotAttempted,
@@ -156,12 +155,15 @@ where
 
     fn write_prompt(mut self) -> Result<(Self, LiveWrite), Box<PreparedWriteFailure<Self>>> {
         let turn_id = self.turn.dispatch.turn_id().clone();
-        if let Err(error) = self.fence.begin_write(&turn_id) {
-            return Err(Box::new(PreparedWriteFailure {
-                state: self,
-                error: error.into(),
-            }));
-        }
+        let prompt = match self.delivery.begin_write(&turn_id) {
+            Ok(prompt) => prompt,
+            Err(error) => {
+                return Err(Box::new(PreparedWriteFailure {
+                    state: self,
+                    error: error.into(),
+                }));
+            }
+        };
         let client_message_id =
             match RequiredText::new("clientMessageId", turn_id.as_str().to_owned()) {
                 Ok(value) => value,
@@ -173,7 +175,7 @@ where
                 }
             };
         let result = self.turn.driver.dispatch_prompt_with_access_mode(
-            self.prompt.clone(),
+            prompt,
             client_message_id,
             self.access_mode,
         );
@@ -229,7 +231,7 @@ where
                 error: error.into(),
             }));
         }
-        if let Err(error) = self.fence.accept_observation(&turn_id, observation) {
+        if let Err(error) = self.delivery.accept_observation(&turn_id, observation) {
             return Err(Box::new(PreparedWriteFailure {
                 state: self,
                 error: error.into(),
@@ -253,7 +255,7 @@ where
                 error: error.into(),
             }));
         }
-        if let Err(error) = self.fence.accept_observation(&turn_id, observation) {
+        if let Err(error) = self.delivery.accept_observation(&turn_id, observation) {
             return Err(Box::new(PreparedWriteFailure {
                 state: self,
                 error: error.into(),
@@ -309,9 +311,8 @@ where
     > {
         let Self {
             turn,
-            prompt,
+            delivery,
             access_mode,
-            fence,
             cancel_intent,
             cancel_wire,
             cancel_attempts,
@@ -326,9 +327,8 @@ where
                 Err(Box::new(PreparedWriteFailure {
                     state: Self {
                         turn: PreparedDriverTurn { driver, dispatch },
-                        prompt,
+                        delivery,
                         access_mode,
-                        fence,
                         cancel_intent,
                         cancel_wire,
                         cancel_attempts,
@@ -342,15 +342,15 @@ where
     }
 
     pub(crate) fn stdout_allowed(&self) -> bool {
-        self.fence.stdout_allowed()
+        self.delivery.fence().stdout_allowed()
     }
 
     pub(crate) fn awaiting_write_observation(&self) -> bool {
-        self.fence.awaiting_observation()
+        self.delivery.fence().awaiting_observation()
     }
 
     pub(crate) fn ready_for_write(&self) -> bool {
-        !self.durable_mutation_unknown && self.fence.ready_for_write()
+        !self.durable_mutation_unknown && self.delivery.fence().ready_for_write()
     }
 
     pub(crate) fn has_durable_terminal(&self) -> bool {

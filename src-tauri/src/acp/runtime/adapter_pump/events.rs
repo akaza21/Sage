@@ -10,6 +10,17 @@ pub(crate) struct TurnScope {
     pub binding_digest: String,
 }
 
+/// Owner of a session-scoped fact: the exact session and runtime epoch,
+/// with no Turn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SessionScope {
+    pub project_id: SageProjectId,
+    pub chat_id: SageChatId,
+    pub session_id: SageAgentSessionId,
+    pub runtime_epoch: RuntimeEpoch,
+    pub binding_digest: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum DurableAdapterEvent {
     Turn {
@@ -105,6 +116,11 @@ pub(crate) enum DurableAdapterEvent {
         reason: TurnTerminalReason,
         message: Option<String>,
         remediation: Option<String>,
+        now_millis: i64,
+    },
+    Session {
+        scope: SessionScope,
+        event: crate::acp::intent::session_event::SessionScopedEvent,
         now_millis: i64,
     },
 }

@@ -241,6 +241,18 @@ macro_rules! counter {
 counter!(ProjectGeneration);
 counter!(RuntimeEpoch);
 counter!(ProjectionRevision);
+
+/// Whether an intent built on the `expected` view of a chat is still
+/// current. `intent` is the revision of the chat's latest send-relevant
+/// change and `current` its projection revision: the view may trail only
+/// session-neutral changes, and may never be ahead of the chat.
+pub fn admits_projection(
+    intent: ProjectionRevision,
+    current: ProjectionRevision,
+    expected: ProjectionRevision,
+) -> bool {
+    (intent..=current).contains(&expected)
+}
 counter!(EntityRevision);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

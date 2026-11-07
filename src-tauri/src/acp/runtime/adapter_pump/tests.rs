@@ -2417,3 +2417,6 @@ mod sign_in_tests;
 
 #[path = "terminal_error_tests.rs"]
 mod terminal_error_tests;
+
+#[path = "session_event_tests.rs"]
+mod session_event_tests;

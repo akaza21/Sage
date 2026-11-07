@@ -82,6 +82,8 @@ impl AcpService {
             Arc::clone(&codex_gate),
         );
         Ok(Self {
+            file_stages: Arc::new(std::sync::Mutex::new(Default::default())),
+            file_stage_reader: Arc::new(tokio::sync::Mutex::new(())),
             read_text_files: super::ReadTextFileService::new(database.clone()),
             browser_permissions: std::sync::Mutex::new(std::collections::HashMap::new()),
             browser_attachments: crate::acp::browser::attachment::BrowserAttachments::default(),

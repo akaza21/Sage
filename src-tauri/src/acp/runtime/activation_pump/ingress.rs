@@ -210,6 +210,13 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                     }
                     ready = Some(self.validate_session_ready(id, loaded)?);
                 }
+                // Admitted in every phase, buffered and bounded. The harness
+                // session identity is checked once SessionReady names it.
+                AdapterEvent::Session { id, event } => {
+                    self.pending_session.push_with((id, event), |old, new| {
+                        old.0 == new.0 && old.1.superseded_by(&new.1)
+                    });
+                }
                 AdapterEvent::IgnoredLate
                 | AdapterEvent::IgnoredDuplicate
                 | AdapterEvent::Absorbed => {}

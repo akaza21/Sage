@@ -5,6 +5,7 @@ pub(crate) mod browser_developer;
 pub(crate) mod browser_download_folder;
 pub(crate) mod browser_preferences;
 pub(crate) mod chat_read_marks;
+pub(crate) mod new_chat_defaults;
 
 use crate::{
     settings_store::{EditorSettings, SessionAccessModes, UiAppearance},

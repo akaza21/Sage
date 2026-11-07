@@ -1,23 +1,23 @@
 use super::*;
 
-pub(super) const V21: &str = include_str!("../../../migrations/021_turn_notifications.sql");
+pub(super) const V22: &str = include_str!("../../../migrations/022_turn_notifications.sql");
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentV21 => return Ok(()),
-        SchemaClass::CurrentV20 => {}
-        _ => return invalid("turn notifications require exact schema v20"),
+        SchemaClass::CurrentV22 => return Ok(()),
+        SchemaClass::CurrentV21 => {}
+        _ => return invalid("turn notifications require exact schema v22"),
     }
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V21)?;
+    transaction.execute_batch(V22)?;
     transaction.execute(
-        "INSERT INTO schema_migrations(version,applied_at) VALUES (21,?1)",
+        "INSERT INTO schema_migrations(version,applied_at) VALUES (22,?1)",
         [now_millis()],
     )?;
-    transaction.pragma_update(None, "user_version", 21)?;
+    transaction.pragma_update(None, "user_version", 22)?;
     transaction.commit()?;
-    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV21 {
-        return invalid("database did not reach exact schema v21");
+    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV22 {
+        return invalid("database did not reach exact schema v22");
     }
     Ok(())
 }
@@ -32,11 +32,12 @@ mod tests {
         schema_upgrade::build_fresh_v18(&mut connection).unwrap();
         workspace_changes::apply(&mut connection).unwrap();
         title_provenance::apply(&mut connection).unwrap();
+        session_scope::apply(&mut connection).unwrap();
         apply(&mut connection).unwrap();
         apply(&mut connection).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&connection).unwrap(),
-            SchemaClass::CurrentV21
+            SchemaClass::CurrentV22
         );
         assert_eq!(
             connection
@@ -52,6 +53,7 @@ mod tests {
         schema_upgrade::build_fresh_v18(&mut conflict).unwrap();
         workspace_changes::apply(&mut conflict).unwrap();
         title_provenance::apply(&mut conflict).unwrap();
+        session_scope::apply(&mut conflict).unwrap();
         conflict
             .execute_batch("CREATE TABLE turn_notification_receipts(unrelated TEXT);")
             .unwrap();
@@ -60,7 +62,7 @@ mod tests {
             conflict
                 .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
                 .unwrap(),
-            20
+            21
         );
     }
 }
