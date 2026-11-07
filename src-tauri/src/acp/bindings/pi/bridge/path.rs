@@ -1,6 +1,7 @@
 //! Write admission for one workspace-relative path. A name is refused when it
 //! could alias a protected directory on any supported file system, or when the
 //! approval prompt could not show it to the user exactly as it will be written.
+use super::Refusal;
 use crate::workspace::{
     Workspace,
     directory_skip::{protected_workspace_name, windows_reserved_device_name},
@@ -11,13 +12,15 @@ use std::path::{Component, Path};
 pub(crate) const MAX_DISPLAY_PATH_BYTES: usize = 480;
 
 /// Normalises a requested path to `/`-separated relative form and admits it.
-pub(crate) fn admit_requested(workspace: &Workspace, requested: &str) -> Result<String, ()> {
+pub(crate) fn admit_requested(workspace: &Workspace, requested: &str) -> Result<String, Refusal> {
     if !cfg!(windows) && requested.contains('\\') {
-        return Err(()); // A literal backslash would name a different file on Unix.
+        // A literal backslash would name a different file on Unix.
+        return Err(Refusal::ProtectedPath);
     }
     let path = Path::new(requested);
     let relative = if path.is_absolute() {
-        path.strip_prefix(workspace.root()).map_err(|_| ())?
+        path.strip_prefix(workspace.root())
+            .map_err(|_| Refusal::OutsideWorkspace)?
     } else {
         path
     };
@@ -26,34 +29,47 @@ pub(crate) fn admit_requested(workspace: &Workspace, requested: &str) -> Result<
             .components()
             .any(|part| !matches!(part, Component::Normal(_)))
     {
-        return Err(());
+        return Err(Refusal::OutsideWorkspace);
     }
-    let relative = relative.to_str().ok_or(())?.replace('\\', "/");
+    let relative = relative
+        .to_str()
+        .ok_or(Refusal::ProtectedPath)?
+        .replace('\\', "/");
     if relative.len() > MAX_DISPLAY_PATH_BYTES || !relative.split('/').all(admitted_name) {
-        return Err(());
+        return Err(Refusal::ProtectedPath);
     }
     Ok(relative)
 }
 
 /// Re-decides against the real location: the existing parent, and the target
 /// when it exists, resolved through links, case and Windows short names.
-pub(crate) fn admit_resolved(workspace: &Workspace, relative: &str) -> Result<(), ()> {
-    let root = workspace.root().canonicalize().map_err(|_| ())?;
+pub(crate) fn admit_resolved(workspace: &Workspace, relative: &str) -> Result<(), Refusal> {
+    let root = workspace
+        .root()
+        .canonicalize()
+        .map_err(|_| Refusal::MissingParent)?;
     let target = workspace.root().join(relative);
-    let parent = target.parent().ok_or(())?.canonicalize().map_err(|_| ())?;
+    let parent = target
+        .parent()
+        .ok_or(Refusal::OutsideWorkspace)?
+        .canonicalize()
+        .map_err(|_| Refusal::MissingParent)?;
     let resolved = match target.canonicalize() {
         Ok(existing) => existing,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            parent.join(target.file_name().ok_or(())?)
+            parent.join(target.file_name().ok_or(Refusal::OutsideWorkspace)?)
         }
-        Err(_) => return Err(()),
+        Err(_) => return Err(Refusal::Unreadable),
     };
+    // A link anywhere on the way would give the alias write authority.
     if resolved.parent() != Some(parent.as_path()) {
-        return Err(());
+        return Err(Refusal::OutsideWorkspace);
     }
-    let inside = resolved.strip_prefix(&root).map_err(|_| ())?;
+    let inside = resolved
+        .strip_prefix(&root)
+        .map_err(|_| Refusal::OutsideWorkspace)?;
     if inside.as_os_str().is_empty() {
-        return Err(());
+        return Err(Refusal::OutsideWorkspace);
     }
     inside
         .components()
@@ -62,7 +78,7 @@ pub(crate) fn admit_resolved(workspace: &Workspace, relative: &str) -> Result<()
             _ => false,
         })
         .then_some(())
-        .ok_or(())
+        .ok_or(Refusal::ProtectedPath)
 }
 
 fn admitted_name(name: &str) -> bool {

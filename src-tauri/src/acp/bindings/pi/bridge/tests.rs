@@ -12,7 +12,7 @@ impl Fixture {
         let workspace = crate::workspace::Workspace::open("project", "root", &path).unwrap();
         Self { path, workspace }
     }
-    fn edit(&self, tool: &str, args: serde_json::Value) -> Result<files::Edit, ()> {
+    fn edit(&self, tool: &str, args: serde_json::Value) -> Result<files::Edit, Refusal> {
         files::prepare(
             &self.workspace,
             files::Request {
@@ -51,30 +51,45 @@ fn pi_bridge_write_edit_and_conflict() {
     assert_eq!(edit.old, "hello world");
     assert_eq!(edit.new, "hello Sage");
     std::fs::write(f.path.join("a.txt"), "concurrent edit").unwrap();
-    assert!(write::commit(&f.workspace, &edit).is_err());
+    assert_eq!(write::commit(&f.workspace, &edit), Err(Refusal::Changed));
     assert_eq!(
         std::fs::read_to_string(f.path.join("a.txt")).unwrap(),
         "concurrent edit"
     );
 }
 #[test]
-fn pi_bridge_denies_shell_escapes_ambiguous_and_oversized_edits() {
+fn pi_bridge_refuses_shell_escapes_ambiguous_and_oversized_edits_with_reasons() {
     let f = Fixture::new();
-    for path in ["../escape", ".git/config", "node_modules/file", "a/../file"] {
-        assert!(f.edit("write", json!({"path":path,"content":"x"})).is_err());
+    let refusal = |tool, args| f.edit(tool, args).err();
+    for (path, reason) in [
+        ("../escape", Refusal::OutsideWorkspace),
+        ("a/../file", Refusal::OutsideWorkspace),
+        (".git/config", Refusal::ProtectedPath),
+        ("node_modules/file", Refusal::ProtectedPath),
+        ("nul.txt", Refusal::ProtectedPath),
+        ("missing/file.txt", Refusal::MissingParent),
+    ] {
+        assert_eq!(
+            refusal("write", json!({"path":path,"content":"x"})),
+            Some(reason),
+            "{path}"
+        );
     }
-    assert!(f.edit("bash", json!({"command":"echo unsafe"})).is_err());
-    assert!(
-        f.edit(
+    assert_eq!(
+        refusal("bash", json!({"command":"echo unsafe"})),
+        Some(Refusal::Shell)
+    );
+    assert_eq!(
+        refusal(
             "write",
             json!({"path":"a.txt","content":"x".repeat(files::MAX_BYTES + 1)})
-        )
-        .is_err()
+        ),
+        Some(Refusal::TooLarge)
     );
     std::fs::write(f.path.join("a.txt"), "xx").unwrap();
-    assert!(
-        f.edit("edit", json!({"path":"a.txt","oldText":"x","newText":"y"}))
-            .is_err()
+    assert_eq!(
+        refusal("edit", json!({"path":"a.txt","oldText":"x","newText":"y"})),
+        Some(Refusal::NoUniqueMatch)
     );
     assert!(!f.path.join("escape").exists());
 }
@@ -132,24 +147,47 @@ fn pi_bridge_created_files_follow_umask_and_replacements_keep_mode() {
 }
 #[test]
 fn pi_bridge_install_requires_exact_owned_bytes() {
+    use install::Unavailable::{Missing, Modified, UnsupportedVersion};
     let f = Fixture::new();
     let path = f.path.join("sage-pi-bridge.mjs");
-    assert!(!install::matches_install(&f.path, &path));
+    assert_eq!(install::matches_install(&f.path, &path), Err(Missing));
     std::fs::write(&path, include_bytes!("extension.mjs")).unwrap();
-    assert!(install::matches_install(&f.path, &path));
+    assert_eq!(install::matches_install(&f.path, &path), Ok(()));
     std::fs::write(&path, "outdated").unwrap();
-    assert!(!install::matches_install(&f.path, &path));
-    assert!(install::installed("0.82.0").is_none());
+    assert_eq!(install::matches_install(&f.path, &path), Err(Modified));
+    assert_eq!(install::installed("0.82.0"), Err(UnsupportedVersion));
     let outside = Fixture::new();
     std::fs::write(
         outside.path.join("bridge.mjs"),
         include_bytes!("extension.mjs"),
     )
     .unwrap();
-    assert!(!install::matches_install(
-        &f.path,
-        &outside.path.join("bridge.mjs")
-    ));
+    assert_eq!(
+        install::matches_install(&f.path, &outside.path.join("bridge.mjs")),
+        Err(Modified)
+    );
+}
+
+/// Packaged builds find the bridge only where `bundle.resources` ships it, and
+/// development builds read it from this checkout: both must hold the pinned bytes.
+#[test]
+fn pi_bridge_resource_ships_at_the_path_sage_resolves() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let config: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(manifest.join("tauri.conf.json")).unwrap())
+            .unwrap();
+    assert!(
+        config["bundle"]["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|resource| resource == install::RESOURCE)
+    );
+    let shipped = manifest.join(install::RESOURCE);
+    assert_eq!(
+        install::matches_install(shipped.parent().unwrap(), &shipped),
+        Ok(())
+    );
 }
 
 #[cfg(target_os = "linux")]

@@ -1,6 +1,14 @@
 // Sage Pi bridge v1; admitted only with Pi 0.83.0 and exact installed bytes.
 // No filesystem or shell authority lives in this extension.
 const MAX_BYTES = 262144;
+// Every answer other than "approved" or "written" is Sage's reason, shown to
+// the model and the user as the tool's error.
+const refusal = (answer) =>
+  new Error(
+    typeof answer === "string" && answer
+      ? answer.slice(0, 64)
+      : "Sage did not answer the approval request",
+  );
 const fields = (names) =>
   Object.fromEntries(names.map((name) => [name, { type: "string" }]));
 export default function sageBridge(pi) {
@@ -40,14 +48,13 @@ export default function sageBridge(pi) {
           approved = await ctx.ui.input("sage.pi.withdraw.v1", toolCallId, {
             timeout: 10000,
           });
-        if (approved !== "approved" || signal?.aborted)
-          throw new Error("Sage denied the operation");
+        if (signal?.aborted) throw new Error("Cancelled");
+        if (approved !== "approved") throw refusal(approved);
         const result = await ctx.ui.input("sage.pi.commit.v1", toolCallId, {
           signal,
           timeout: 60000,
         });
-        if (result !== "written")
-          throw new Error("Sage refused the write or detected a conflict");
+        if (result !== "written") throw refusal(result);
         return {
           content: [{ type: "text", text: "Workspace file updated by Sage." }],
           details: {},

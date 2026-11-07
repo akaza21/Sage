@@ -2,8 +2,10 @@
 pub(crate) mod files;
 pub(crate) mod install;
 pub(crate) mod path;
+mod refusal;
 pub(crate) mod write;
 use crate::{settings_store::SessionAccessMode, workspace::Workspace};
+pub(crate) use refusal::{MAX_REPLY_BYTES, Refusal};
 
 pub(crate) struct Bridge {
     pub workspace: Workspace,

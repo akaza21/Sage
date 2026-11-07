@@ -184,6 +184,7 @@ pub(crate) fn service_with_pending_requests_and_deny_id(
             ],
         )
         .unwrap();
+    drop(connection);
     for (request_id, external_request_id) in [
         (deny_id, "request-deny"),
         ("request-allow", "request-allow"),
@@ -194,36 +195,22 @@ pub(crate) fn service_with_pending_requests_and_deny_id(
         } else {
             vec![crate::acp::intent::PermissionOptionKind::RejectOnce]
         };
-        let payload =
-            serde_json::to_string(&crate::acp::intent::NormalizedPayload::PermissionRequest {
+        insert_permission_request(
+            &database,
+            &owner,
+            request_id,
+            external_request_id,
+            &crate::acp::intent::NormalizedPayload::PermissionRequest {
                 category: crate::acp::intent::ToolCategory::Other,
                 summary: crate::acp::contract::SafeText::new("summary", "Permission").unwrap(),
                 offered_option_kinds: Some(
                     crate::acp::contract::BoundedVec::new("offered", offered).unwrap(),
                 ),
                 reason: None,
-            })
-            .unwrap();
-        connection
-            .execute(
-                "INSERT INTO server_requests(
-                   id,project_id,chat_id,session_id,turn_id,runtime_epoch,binding_digest,
-                   external_request_id,kind,payload_digest_version,payload_digest,state,
-                   normalized_payload_json,revision,created_at,updated_at,resolved_at
-                 ) VALUES(?1,?2,?3,?4,'turn-permission',1,?5,?7,'permission',1,?5,
-                          'received',?6,0,1,1,NULL)",
-                rusqlite::params![
-                    request_id,
-                    owner.project_id.as_str(),
-                    owner.chat_id.as_str(),
-                    owner.session_id.as_str(),
-                    &digest,
-                    payload,
-                    external_request_id,
-                ],
-            )
-            .unwrap();
+            },
+        );
     }
+    let connection = database.connection();
     connection
         .execute(
             "INSERT INTO acp_session_usage(
@@ -267,6 +254,47 @@ pub(crate) fn service_with_pending_requests_and_deny_id(
     host.activate(owner.clone()).unwrap();
     service.install_runtime_for_test(owner.clone(), host);
     (service, owner)
+}
+
+/// Records a permission request exactly as the store admits a runtime's
+/// `PermissionRequest` event, in the seeded `turn-permission` Turn.
+pub(crate) fn admit_permission_request(
+    service: &AcpService,
+    owner: &RuntimeOwner,
+    request_id: &str,
+    payload: &crate::acp::intent::NormalizedPayload,
+) {
+    insert_permission_request(&service.database, owner, request_id, request_id, payload);
+}
+
+fn insert_permission_request(
+    database: &crate::persistence::Database,
+    owner: &RuntimeOwner,
+    request_id: &str,
+    external_request_id: &str,
+    payload: &crate::acp::intent::NormalizedPayload,
+) {
+    let digest = "a".repeat(64);
+    database
+        .connection()
+        .execute(
+            "INSERT INTO server_requests(
+               id,project_id,chat_id,session_id,turn_id,runtime_epoch,binding_digest,
+               external_request_id,kind,payload_digest_version,payload_digest,state,
+               normalized_payload_json,revision,created_at,updated_at,resolved_at
+             ) VALUES(?1,?2,?3,?4,'turn-permission',1,?5,?7,'permission',1,?5,
+                      'received',?6,0,1,1,NULL)",
+            rusqlite::params![
+                request_id,
+                owner.project_id.as_str(),
+                owner.chat_id.as_str(),
+                owner.session_id.as_str(),
+                &digest,
+                serde_json::to_string(payload).unwrap(),
+                external_request_id,
+            ],
+        )
+        .unwrap();
 }
 
 pub(super) fn permission_snapshot(service: &AcpService) -> (String, i64, i64, i64) {

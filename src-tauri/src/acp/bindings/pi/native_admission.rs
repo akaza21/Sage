@@ -205,9 +205,9 @@ impl AdmittedPiBinding {
         identity.copy_from_slice(&self.binding_digest[..16]);
         let identity = uuid::Uuid::from_bytes(identity);
         let mut fixed_args = vec![self.launch.entrypoint_path.clone().into_os_string()];
-        fixed_args.extend(pi_launch_args(super::bridge::install::installed(
-            self.harness_version(),
-        )));
+        fixed_args.extend(pi_launch_args(
+            super::bridge::install::installed(self.harness_version()).ok(),
+        ));
         Ok(LaunchSpec {
             binding_id: identity,
             runtime_epoch: epoch,

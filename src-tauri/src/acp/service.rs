@@ -51,6 +51,10 @@ mod live_lanes;
 mod live_routes;
 pub(crate) use live_lanes::LIVE_RUNTIME_LANES;
 mod permission;
+#[cfg(test)]
+pub(crate) use permission::tests::support::{
+    admit_permission_request, service_with_pending_requests,
+};
 mod session;
 mod session_close;
 pub(crate) use permission::PermissionDecisionIntent;

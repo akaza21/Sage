@@ -40,7 +40,7 @@ impl RuntimeFactory for PiNativeRuntimeFactory {
             runtime_epoch,
             session_id,
         );
-        if super::bridge::install::installed(self.binding.harness_version()).is_some() {
+        if super::bridge::install::installed(self.binding.harness_version()).is_ok() {
             adapter.enable_bridge_for_root(&self.root)?;
         }
         Ok(NativeRuntime::new(PiNativeRuntime {

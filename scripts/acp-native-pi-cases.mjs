@@ -377,7 +377,9 @@ export function piIdleConfigJourney() {
  * sage.pi.prepare.v1 / sage.pi.commit.v1 dialogs and blocks on Sage's replies,
  * so Approve and Deny run through the real approval card and write path. The
  * Turn must run with workspace-write access; read-only Turns refuse every
- * prepare. Paths target the seeded disposable project (src/example.ts).
+ * prepare. Paths target the seeded disposable project (src/example.ts). A
+ * replay step fails the case if Sage approves it, and a step with
+ * expectRefusal fails it unless Sage answers with exactly that refusal.
  */
 export function piBridgeJourneys() {
   const call = (index, tool, args, extra = {}) => ({
@@ -389,6 +391,7 @@ export function piBridgeJourneys() {
     prepareId: `fixture-prepare-${index}`,
     commitId: `fixture-commit-${index}`,
     ...(extra.replay ? { replay: true } : {}),
+    ...(extra.expectRefusal ? { expectRefusal: extra.expectRefusal } : {}),
   });
   const journeys = {
     "write-new": [
@@ -422,7 +425,11 @@ export function piBridgeJourneys() {
         2,
         "write",
         { path: "src/bridge-replay.txt", content: "Replayed write.\n" },
-        { toolIndex: 1, replay: true },
+        {
+          toolIndex: 1,
+          replay: true,
+          expectRefusal: "Sage refused: this tool call was already handled",
+        },
       ),
     ],
   };

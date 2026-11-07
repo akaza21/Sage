@@ -1,6 +1,13 @@
+use super::pi::bridge::install::Unavailable;
 use crate::settings_store::SessionAccessMode;
 
 pub(crate) const CODEX_ASK_NATIVE_APPROVAL_PROVEN: bool = false;
+
+const PI_READ_ONLY: &[(SessionAccessMode, &str, &str)] = &[(
+    SessionAccessMode::ReadOnly,
+    "Read-only",
+    "Read-only tools only; workspace editing is not admitted.",
+)];
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,6 +22,21 @@ pub(crate) fn access_modes(
     binding: &str,
     version: &str,
     characterised: bool,
+) -> Vec<AccessModeCapability> {
+    let pi_bridge = match binding {
+        "pi-rpc" => super::pi::bridge::install::installed(version).map(drop),
+        _ => Err(Unavailable::UnsupportedVersion),
+    };
+    admitted_modes(binding, version, characterised, pi_bridge)
+}
+
+/// The modes Sage enforces for a binding, given whether the Pi bridge that
+/// carries Pi's workspace edits is available.
+fn admitted_modes(
+    binding: &str,
+    version: &str,
+    characterised: bool,
+    pi_bridge: Result<(), Unavailable>,
 ) -> Vec<AccessModeCapability> {
     use SessionAccessMode::{Ask, ReadOnly, WorkspaceWrite};
     let rows: &[(SessionAccessMode, &str, &str)] = match binding {
@@ -45,23 +67,28 @@ pub(crate) fn access_modes(
             "Ask each time",
             "Review each permission request; no filesystem sandbox.",
         )],
-        "pi-rpc" if characterised && super::pi::bridge::install::installed(version).is_some() => &[
-            (
+        "pi-rpc" if characterised => match pi_bridge {
+            Ok(_) => &[
+                (
+                    ReadOnly,
+                    "Read-only",
+                    "Sage declines every Pi write and shell command.",
+                ),
+                (
+                    WorkspaceWrite,
+                    "Workspace edits",
+                    "Ask before each verified workspace edit; shell commands are denied.",
+                ),
+            ],
+            // Say why edits are off instead of quietly offering less.
+            Err(Unavailable::Missing | Unavailable::Modified) => &[(
                 ReadOnly,
                 "Read-only",
-                "Sage declines every Pi write and shell command.",
-            ),
-            (
-                WorkspaceWrite,
-                "Workspace edits",
-                "Ask before each verified workspace edit; shell commands are denied.",
-            ),
-        ],
-        "pi-rpc" => &[(
-            ReadOnly,
-            "Read-only",
-            "Read-only tools only; workspace editing is not admitted.",
-        )],
+                "Workspace edits are unavailable: this Sage build's Pi bridge is missing or altered.",
+            )],
+            Err(Unavailable::UnsupportedVersion) => PI_READ_ONLY,
+        },
+        "pi-rpc" => PI_READ_ONLY,
         "opencode-acp" => &[
             (
                 ReadOnly,
@@ -166,10 +193,6 @@ mod tests {
             Some(ReadOnly)
         );
         assert_eq!(
-            effective_mode("pi-rpc", "0.83.0", Some(WorkspaceWrite), true),
-            Some(ReadOnly)
-        );
-        assert_eq!(
             effective_mode("claude-agent-acp", "1", Some(ReadOnly), true),
             None
         );
@@ -197,7 +220,6 @@ mod tests {
             ),
             ("codex-app-server", "0.145.0", vec!["readOnly"]),
             ("claude-agent-acp", "1", vec!["ask"]),
-            ("pi-rpc", "0.83.0", vec!["readOnly"]),
             (
                 "opencode-acp",
                 "1",
@@ -229,6 +251,46 @@ mod tests {
         assert_eq!(
             codex[1]["description"],
             "Edits and commands run without asking inside the workspace and temp folders; no network access."
+        );
+    }
+
+    #[test]
+    fn pi_offers_workspace_edits_only_with_its_bridge_and_says_why_not() {
+        use SessionAccessMode::{ReadOnly, WorkspaceWrite};
+        let modes = |bridge| {
+            admitted_modes("pi-rpc", "0.83.0", true, bridge)
+                .into_iter()
+                .map(|mode| (mode.id, mode.description))
+                .collect::<Vec<_>>()
+        };
+        let available = modes(Ok(()));
+        assert_eq!(
+            available.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+            vec![ReadOnly, WorkspaceWrite]
+        );
+        for missing in [Unavailable::Missing, Unavailable::Modified] {
+            assert_eq!(
+                modes(Err(missing)),
+                vec![(
+                    ReadOnly,
+                    "Workspace edits are unavailable: this Sage build's Pi bridge is missing or altered."
+                        .to_owned()
+                )]
+            );
+        }
+        assert_eq!(
+            modes(Err(Unavailable::UnsupportedVersion)),
+            vec![(
+                ReadOnly,
+                "Read-only tools only; workspace editing is not admitted.".to_owned()
+            )]
+        );
+        assert_eq!(
+            admitted_modes("pi-rpc", "0.83.0", false, Ok(()))
+                .into_iter()
+                .map(|mode| mode.id)
+                .collect::<Vec<_>>(),
+            vec![ReadOnly]
         );
     }
 }

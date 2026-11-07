@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::bindings::pi::bridge::Refusal;
 use crate::{acp::runtime::permissions::PermissionDecision, settings_store::SessionAccessMode};
 use std::path::PathBuf;
 #[cfg(feature = "acp-fixture")]
@@ -124,27 +125,32 @@ fn pi_bridge_journey_asked_allowed_and_single_use_write_emits_saved_pair() {
         "new content"
     );
     let replay = j.dialog("commit-2", "sage.pi.commit.v1", "tool-1");
-    assert_eq!(request(&replay.egress()[0])["value"], "denied");
+    assert_eq!(
+        request(&replay.egress()[0])["value"],
+        Refusal::NotApproved.message()
+    );
     assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
 }
 #[test]
 fn pi_bridge_journey_read_only_and_shell_are_denied_without_side_effects() {
-    for (mode, tool, args) in [
+    for (mode, tool, args, refusal) in [
         (
             SessionAccessMode::ReadOnly,
             "write",
             json!({"path":"a.txt","content":"bad"}),
+            Refusal::ReadOnly,
         ),
         (
             SessionAccessMode::WorkspaceWrite,
             "bash",
             json!({"command":"touch a.txt"}),
+            Refusal::Shell,
         ),
     ] {
         let mut j = Journey::new(mode);
         let batch = j.prepare(tool, args);
         assert!(batch.events().is_empty());
-        assert_eq!(request(&batch.egress()[0])["value"], "denied");
+        assert_eq!(request(&batch.egress()[0])["value"], refusal.message());
         assert!(!j.root.join("a.txt").exists());
     }
 }
@@ -153,14 +159,20 @@ fn pi_bridge_journey_conflict_and_unwritten_approval_deny_commit() {
     let mut j = Journey::new(SessionAccessMode::WorkspaceWrite);
     j.prepare("write", json!({"path":"a.txt","content":"agent"}));
     let early = j.dialog("commit-early", "sage.pi.commit.v1", "tool-1");
-    assert_eq!(request(&early.egress()[0])["value"], "denied");
+    assert_eq!(
+        request(&early.egress()[0])["value"],
+        Refusal::NotApproved.message()
+    );
     assert!(!j.root.join("a.txt").exists());
     let mut j = Journey::new(SessionAccessMode::WorkspaceWrite);
     j.prepare("write", json!({"path":"a.txt","content":"agent"}));
     j.allow();
     std::fs::write(j.root.join("a.txt"), "user").unwrap();
     let conflict = j.dialog("commit-conflict", "sage.pi.commit.v1", "tool-1");
-    assert_eq!(request(&conflict.egress()[0])["value"], "denied");
+    assert_eq!(
+        request(&conflict.egress()[0])["value"],
+        Refusal::Changed.message()
+    );
     assert_eq!(
         std::fs::read_to_string(j.root.join("a.txt")).unwrap(),
         "user"
@@ -178,7 +190,10 @@ fn pi_bridge_journey_denied_permission_and_cancel_clear_pending_bytes() {
         })
         .unwrap();
     j.runtime.commit_mandatory_egress(deny.token()).unwrap();
-    assert_eq!(deliver(&mut j.runtime, deny)["value"], "denied");
+    assert_eq!(
+        deliver(&mut j.runtime, deny)["value"],
+        Refusal::Denied.message()
+    );
     assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
     assert!(!j.root.join("a.txt").exists());
     let mut j = Journey::new(SessionAccessMode::WorkspaceWrite);
@@ -195,7 +210,10 @@ fn pi_bridge_write_authority_ends_with_the_turn_that_granted_it() {
     j.settle();
     assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
     let stale = j.dialog("commit-stale", "sage.pi.commit.v1", "tool-1");
-    assert_eq!(request(&stale.egress()[0])["value"], "denied");
+    assert_eq!(
+        request(&stale.egress()[0])["value"],
+        Refusal::Inactive.message()
+    );
 
     j.turn("read-only-turn", SessionAccessMode::ReadOnly);
     let batch = j.prepare_as(
@@ -205,7 +223,10 @@ fn pi_bridge_write_authority_ends_with_the_turn_that_granted_it() {
         json!({"path":"a.txt","content":"later"}),
     );
     assert!(batch.events().is_empty());
-    assert_eq!(request(&batch.egress()[0])["value"], "denied");
+    assert_eq!(
+        request(&batch.egress()[0])["value"],
+        Refusal::ReadOnly.message()
+    );
     assert!(!j.root.join("a.txt").exists());
 }
 
@@ -215,9 +236,15 @@ fn pi_without_admitted_bridge_refuses_write_dialogs_even_in_write_mode() {
     let body = json!({"version":1,"toolCallId":"tool-1","tool":"write","args":{"path":"a.txt","content":"agent"}});
     let batch = j.dialog("prepare-1", "sage.pi.prepare.v1", &body.to_string());
     assert!(batch.events().is_empty());
-    assert_eq!(request(&batch.egress()[0])["value"], "denied");
+    assert_eq!(
+        request(&batch.egress()[0])["value"],
+        Refusal::Unsupported.message()
+    );
     let commit = j.dialog("commit-1", "sage.pi.commit.v1", "tool-1");
-    assert_eq!(request(&commit.egress()[0])["value"], "denied");
+    assert_eq!(
+        request(&commit.egress()[0])["value"],
+        Refusal::Unsupported.message()
+    );
     assert!(!j.root.join("a.txt").exists());
 }
 
@@ -262,7 +289,11 @@ fn pi_bridge_refuses_protected_aliases_and_paths_the_prompt_cannot_show() {
             json!({"path":path,"content":"[core]\n\tfsmonitor = calc\n"}),
         );
         assert!(batch.events().is_empty(), "{path:?}");
-        assert_eq!(request(&batch.egress()[0])["value"], "denied", "{path:?}");
+        assert_eq!(
+            request(&batch.egress()[0])["value"],
+            Refusal::ProtectedPath.message(),
+            "{path:?}"
+        );
     }
     assert_eq!(
         std::fs::read_to_string(j.root.join(".git").join("config")).unwrap(),
@@ -282,7 +313,10 @@ fn pi_bridge_expired_prompt_is_withdrawn_durably_and_frees_the_turn() {
             if external_request_id.as_str() == "prepare-1"
                 && *state == crate::acp::lifecycle::ServerRequestState::Cancelled
     ));
-    assert_eq!(request(&withdrawn.egress()[0])["value"], "withdrawn");
+    assert_eq!(
+        request(&withdrawn.egress()[0])["value"],
+        Refusal::Withdrawn.message()
+    );
     assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
     assert!(
         j.runtime

@@ -6,10 +6,10 @@ use crate::acp::{
 
 use super::super::{DenyIntent, DenyStage, PiRuntime};
 use super::identity::external;
-use crate::acp::bindings::pi::protocol::is_allow_option;
+use crate::acp::bindings::pi::{protocol::is_allow_option, translator::PendingUiRequest};
 use crate::acp::{
     bindings::adapter::AdapterEvent,
-    contract::SafeText,
+    contract::{BoundedVec, SafeText},
     intent::{NormalizedPayload, ToolCategory},
 };
 
@@ -97,6 +97,12 @@ impl PiRuntime {
         request_digest: [u8; 32],
     ) -> Result<AdapterEvent, AdapterRuntimeError> {
         let id = external("piPermissionId", external_id)?;
+        let offered = self
+            .translator
+            .pending_ui()
+            .filter(|pending| pending.id == id.as_str())
+            .map(PendingUiRequest::offered_option_kinds)
+            .ok_or(AdapterRuntimeError::Operation)?;
         let turn_id = self.turn_identity()?;
         let item_id = self.identity(
             id.clone(),
@@ -128,7 +134,10 @@ impl PiRuntime {
                         .unwrap_or_else(|| "Pi extension gate is awaiting your decision".into()),
                 )
                 .map_err(|_| AdapterRuntimeError::Frame)?,
-                offered_option_kinds: None,
+                offered_option_kinds: Some(
+                    BoundedVec::new("permissionOptionKinds", offered)
+                        .map_err(|_| AdapterRuntimeError::Frame)?,
+                ),
                 reason: None,
             },
             request_payload_digest: request_digest,

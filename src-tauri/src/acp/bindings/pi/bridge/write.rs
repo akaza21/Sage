@@ -1,12 +1,23 @@
-use super::files::{Edit, read};
+use super::{
+    Refusal,
+    files::{Edit, read},
+};
 use crate::workspace::Workspace;
 
-pub(crate) fn commit(workspace: &Workspace, edit: &Edit) -> Result<(), ()> {
+pub(crate) fn commit(workspace: &Workspace, edit: &Edit) -> Result<(), Refusal> {
     super::path::admit_resolved(workspace, &edit.relative)?;
     if !unchanged(workspace, edit) {
-        return Err(());
+        return Err(Refusal::Changed);
     }
-    platform_write(workspace, edit).map_err(|_| ())
+    // A failed write leaves the target as it was, so reading it again tells a
+    // concurrent change apart from an I/O failure.
+    platform_write(workspace, edit).map_err(|_| {
+        if unchanged(workspace, edit) {
+            Refusal::WriteFailed
+        } else {
+            Refusal::Changed
+        }
+    })
 }
 
 /// The target still holds exactly what the user approved replacing (or is

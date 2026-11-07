@@ -1,8 +1,8 @@
 use super::super::{DenyStage, PiRuntime};
 use crate::acp::bindings::pi::{
     AdapterOutput,
-    bridge::{Bridge, Pending, files, write},
-    translator::PendingUiRequest,
+    bridge::{Bridge, Pending, Refusal, files, write},
+    translator::{BRIDGE_WRITE_METHOD, PendingUiRequest},
 };
 use crate::{
     acp::{
@@ -82,10 +82,14 @@ impl PiRuntime {
             .ok_or(AdapterRuntimeError::Frame)?;
         crate::acp::bindings::pi::decode::validate_opaque_text(id, 512)
             .map_err(|_| AdapterRuntimeError::Frame)?;
-        let refused = || {
+        let refused = |refusal: Refusal| {
             AdapterBatch::new(
                 Vec::new(),
-                vec![reply(id, "denied", EgressToken::protocol_notification())?],
+                vec![reply(
+                    id,
+                    refusal.message(),
+                    EgressToken::protocol_notification(),
+                )?],
             )
         };
         let title = value.get("title").and_then(Value::as_str).unwrap_or("");
@@ -93,40 +97,49 @@ impl PiRuntime {
             .get("placeholder")
             .and_then(Value::as_str)
             .unwrap_or("");
-        if value.get("method").and_then(Value::as_str) != Some("input")
-            || self.active_turn.is_none()
-            || self.poisoned
-        {
-            return refused();
+        if value.get("method").and_then(Value::as_str) != Some("input") {
+            return refused(Refusal::Unsupported);
+        }
+        if self.active_turn.is_none() || self.poisoned {
+            return refused(Refusal::Inactive);
         }
         let Some(bridge) = self.bridge.as_mut() else {
-            return refused();
+            return refused(Refusal::Unsupported);
         };
-        if bridge.mode == SessionAccessMode::ReadOnly || bridge.writes >= 32 {
-            return refused();
+        if bridge.mode == SessionAccessMode::ReadOnly {
+            return refused(Refusal::ReadOnly);
+        }
+        if bridge.writes >= 32 {
+            return refused(Refusal::WriteLimit);
         }
         if title == "sage.pi.prepare.v1" {
-            if bridge.pending.is_some() || self.deny.is_some() || body.len() > files::MAX_BYTES {
-                return refused();
+            if body.len() > files::MAX_BYTES {
+                return refused(Refusal::TooLarge);
             }
-            let request = match serde_json::from_str::<files::Request>(body) {
-                Ok(request) => request,
-                Err(_) => return refused(),
+            let Ok(request) = serde_json::from_str::<files::Request>(body) else {
+                return refused(Refusal::Unsupported);
             };
+            // Each tool call gets one approval request, whatever its answer was.
+            if bridge.used.contains(&request.tool_call_id) {
+                return refused(Refusal::Replayed);
+            }
+            if bridge.pending.is_some() || self.deny.is_some() {
+                return refused(Refusal::Busy);
+            }
             // Bind the request to an observed, current tool, never a free-standing filesystem RPC.
             if !self
                 .active_turn
                 .as_ref()
                 .is_some_and(|turn| turn.tools.contains_key(&request.tool_call_id))
             {
-                return refused();
+                return refused(Refusal::Unsupported);
             }
-            if bridge.used.len() >= 32 || bridge.used.contains(&request.tool_call_id) {
-                return refused();
+            if bridge.used.len() >= 32 {
+                return refused(Refusal::WriteLimit);
             }
             let edit = match files::prepare(&bridge.workspace, request) {
                 Ok(edit) => edit,
-                Err(_) => return refused(),
+                Err(refusal) => return refused(refusal),
             };
             bridge.used.insert(edit.tool_id.clone());
             bridge.pending = Some(Pending {
@@ -137,7 +150,7 @@ impl PiRuntime {
             });
             self.translator.remember_pending_ui(PendingUiRequest {
                 id: id.into(),
-                method: "sage-write".into(),
+                method: BRIDGE_WRITE_METHOD.into(),
                 options: Vec::new(),
             });
             return self.translate_outputs(
@@ -153,28 +166,29 @@ impl PiRuntime {
             return self.withdraw_bridge_edit(id, body);
         }
         if title != "sage.pi.commit.v1" {
-            return refused();
+            return refused(Refusal::Unsupported);
         }
+        // A commit names the one approved edit; anything else was never approved.
         let Some(pending) = bridge.pending.take() else {
-            return refused();
+            return refused(Refusal::NotApproved);
         };
         if !pending.approved || !pending.written || pending.edit.tool_id != body {
-            return refused();
+            return refused(Refusal::NotApproved);
         }
         if !self
             .active_turn
             .as_ref()
             .is_some_and(|turn| turn.tools.contains_key(&pending.edit.tool_id))
         {
-            return refused();
+            return refused(Refusal::Inactive);
         }
         let edit = pending.edit;
         let root_id = crate::acp::contract::SageRootId::parse(bridge.workspace.root_id())
             .map_err(|_| AdapterRuntimeError::Frame)?;
         let resource = crate::acp::intent::SafeResourceRef::new(root_id, edit.relative.clone())
             .map_err(|_| AdapterRuntimeError::Frame)?;
-        if write::commit(&bridge.workspace, &edit).is_err() {
-            return refused();
+        if let Err(refusal) = write::commit(&bridge.workspace, &edit) {
+            return refused(refusal);
         }
         bridge.writes += 1;
         let PairAdmission::Admitted {
@@ -232,7 +246,7 @@ impl PiRuntime {
         id: &str,
         tool_id: &str,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        let answer = |value| {
+        let answer = |value: &str| {
             AdapterBatch::new(
                 Vec::new(),
                 vec![reply(id, value, EgressToken::protocol_notification())?],
@@ -244,14 +258,14 @@ impl PiRuntime {
             .and_then(|bridge| bridge.pending.as_ref())
             .filter(|pending| pending.edit.tool_id == tool_id)
         else {
-            return answer("denied");
+            return answer(Refusal::Unsupported.message());
         };
         if pending.approved {
             return answer("approved");
         }
         let request_id = pending.request_id.clone();
         if !self.translator.permission_waiting_for(&request_id) {
-            return answer("denied"); // A denial is already on its way.
+            return answer(Refusal::Denied.message()); // A denial is already on its way.
         }
         self.discard_bridge_edit();
         self.translator.take_pending_ui();
@@ -269,7 +283,7 @@ impl PiRuntime {
             vec![resolved],
             vec![reply(
                 id,
-                "withdrawn",
+                Refusal::Withdrawn.message(),
                 EgressToken::protocol_notification(),
             )?],
         )
@@ -302,7 +316,11 @@ impl PiRuntime {
         self.translator.take_pending_ui();
         let response = reply(
             request_id.as_str(),
-            if allowed { "approved" } else { "denied" },
+            if allowed {
+                "approved"
+            } else {
+                Refusal::Denied.message()
+            },
             EgressToken::protocol_notification(),
         )?;
         crate::acp::runtime::later_permission::resolve_later_permission(

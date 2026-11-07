@@ -1,20 +1,84 @@
 //! The generated `pi-bridge-*` fixture cases replayed against the real bridge
 //! runtime: the child's dialogs reach Sage's permission request and write path,
-//! and the child observes Sage's answers exactly as the extension would.
+//! each decision passes the host permission service exactly as the approval
+//! card's does, and the child observes Sage's answers as the extension would.
 use super::*;
-use std::{cell::RefCell, collections::VecDeque, io, rc::Rc};
+use crate::acp::service::{
+    AcpService, PermissionDecisionIntent, admit_permission_request, service_with_pending_requests,
+};
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    io,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
 
 type Replies = Rc<RefCell<VecDeque<u8>>>;
+
+/// The host side of the approval card: the permission service admits the
+/// card's decision against the request Sage recorded, then forwards it.
+struct Card {
+    service: AcpService,
+    owner: crate::acp::scheduler::RuntimeOwner,
+    forwarded: Arc<Mutex<Vec<AdapterCommand>>>,
+}
+
+impl Card {
+    fn new() -> Self {
+        let forwarded = Arc::new(Mutex::new(Vec::new()));
+        let (service, owner) = service_with_pending_requests(Arc::clone(&forwarded));
+        Self {
+            service,
+            owner,
+            forwarded,
+        }
+    }
+
+    /// Records the request as the store would and answers it through the
+    /// service; returns the command the service forwards to the runtime.
+    fn decide(
+        &self,
+        request_id: &str,
+        payload: &NormalizedPayload,
+        decision: PermissionDecision,
+    ) -> AdapterCommand {
+        admit_permission_request(&self.service, &self.owner, request_id, payload);
+        self.service
+            .resolve_permission_decision(PermissionDecisionIntent {
+                project_id: self.owner.project_id.clone(),
+                chat_id: self.owner.chat_id.clone(),
+                session_id: self.owner.session_id.clone(),
+                turn_id: crate::acp::contract::SageTurnId::parse("turn-permission").unwrap(),
+                runtime_epoch: self.owner.runtime_epoch,
+                request_id: SageServerRequestId::parse(request_id).unwrap(),
+                decision,
+            })
+            .unwrap_or_else(|error| panic!("the card cannot answer {decision:?}: {error:?}"));
+        self.forwarded
+            .lock()
+            .unwrap()
+            .pop()
+            .expect("forwarded decision")
+    }
+}
+
+impl Drop for Card {
+    fn drop(&mut self) {
+        let _ = self.service.shutdown_blocking();
+    }
+}
 
 /// Sage's side of the child's stdio: ingests each frame, answers the approval
 /// card with a fixed decision and queues every reply for the child to read.
 struct Sage<'a> {
     journey: &'a mut Journey,
+    card: Card,
     replies: Replies,
     decision: PermissionDecision,
     line: Vec<u8>,
     cards: usize,
-    tool_errors: Vec<bool>,
+    tool_errors: Vec<(bool, String)>,
 }
 
 fn queue(replies: &Replies, runtime: &mut PiRuntime, egress: AdapterEgress) {
@@ -26,7 +90,13 @@ fn queue(replies: &Replies, runtime: &mut PiRuntime, egress: AdapterEgress) {
 impl Sage<'_> {
     fn ingest(&mut self, value: Value) {
         if value["type"] == "tool_execution_end" {
-            self.tool_errors.push(value["isError"] == true);
+            self.tool_errors.push((
+                value["isError"] == true,
+                value["result"]["content"][0]["text"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned(),
+            ));
         }
         let mapper = FileMapper(self.journey.root.clone());
         let runtime = &mut self.journey.runtime;
@@ -37,17 +107,16 @@ impl Sage<'_> {
         for reply in egress {
             queue(&self.replies, runtime, reply);
         }
-        if events
-            .iter()
-            .any(|event| matches!(event, AdapterEvent::PermissionRequest { .. }))
-        {
+        let requested = events.iter().find_map(|event| match event {
+            AdapterEvent::PermissionRequest { payload, .. } => Some(payload),
+            _ => None,
+        });
+        if let Some(payload) = requested {
             self.cards += 1;
-            let answer = runtime
-                .command(AdapterCommand::ResolvePermission {
-                    request_id: SageServerRequestId::parse(value["id"].as_str().unwrap()).unwrap(),
-                    decision: self.decision,
-                })
-                .unwrap();
+            let command = self
+                .card
+                .decide(value["id"].as_str().unwrap(), payload, self.decision);
+            let answer = runtime.command(command).unwrap();
             if self.decision == PermissionDecision::Deny {
                 runtime.commit_mandatory_egress(answer.token()).unwrap();
             }
@@ -89,7 +158,8 @@ impl io::Read for Child {
 struct Outcome {
     journey: Journey,
     cards: usize,
-    tool_errors: Vec<bool>,
+    /// Each finished tool call's error flag and result text, as Pi reports it.
+    tool_errors: Vec<(bool, String)>,
 }
 
 fn replay(case: &str, decision: PermissionDecision) -> Outcome {
@@ -103,6 +173,7 @@ fn replay(case: &str, decision: PermissionDecision) -> Outcome {
     let replies = Replies::default();
     let mut sage = Sage {
         journey: &mut journey,
+        card: Card::new(),
         replies: Rc::clone(&replies),
         decision,
         line: Vec::new(),
@@ -116,7 +187,8 @@ fn replay(case: &str, decision: PermissionDecision) -> Outcome {
             &mut sage,
         );
     }
-    let (cards, tool_errors) = (sage.cards, sage.tool_errors);
+    let (cards, tool_errors) = (sage.cards, std::mem::take(&mut sage.tool_errors));
+    drop(sage);
     assert!(replies.borrow().is_empty(), "{case}: unread Sage reply");
     Outcome {
         journey,
@@ -129,67 +201,70 @@ fn text(outcome: &Outcome, path: &str) -> Option<String> {
     std::fs::read_to_string(outcome.journey.root.join(path)).ok()
 }
 
+fn ended(outcome: &Outcome) -> Vec<(bool, &str)> {
+    outcome
+        .tool_errors
+        .iter()
+        .map(|(error, text)| (*error, text.as_str()))
+        .collect()
+}
+
+const WRITTEN: (bool, &str) = (false, "Workspace file updated by Sage.");
+
 #[test]
 fn pi_bridge_fixture_cases_drive_the_real_approval_and_write_path() {
     use PermissionDecision::{AllowOnce, Deny};
+    let denied_text = (true, Refusal::Denied.message());
     let created = "src/bridge-note.txt";
     let approved = replay("pi-bridge-write-new", AllowOnce);
-    assert_eq!(
-        (approved.cards, approved.tool_errors.as_slice()),
-        (1, &[false][..])
-    );
+    assert_eq!((approved.cards, ended(&approved)), (1, vec![WRITTEN]));
     assert_eq!(
         text(&approved, created).as_deref(),
         Some("Created through the Sage bridge.\n")
     );
     let denied = replay("pi-bridge-write-new", Deny);
-    assert_eq!(
-        (denied.cards, denied.tool_errors.as_slice()),
-        (1, &[true][..])
-    );
+    assert_eq!((denied.cards, ended(&denied)), (1, vec![denied_text]));
     assert_eq!(text(&denied, created), None);
 
     let edited = replay("pi-bridge-edit-existing", AllowOnce);
-    assert_eq!(
-        (edited.cards, edited.tool_errors.as_slice()),
-        (1, &[false][..])
-    );
+    assert_eq!((edited.cards, ended(&edited)), (1, vec![WRITTEN]));
     assert_eq!(
         text(&edited, "src/example.ts").as_deref(),
         Some("export const example = 2;\n")
     );
     let kept = replay("pi-bridge-edit-existing", Deny);
-    assert_eq!((kept.cards, kept.tool_errors.as_slice()), (1, &[true][..]));
+    assert_eq!((kept.cards, ended(&kept)), (1, vec![denied_text]));
     assert_eq!(
         text(&kept, "src/example.ts").as_deref(),
         Some("export const example = 1;\n")
     );
 
-    // Refused before any card: nothing for the user to approve.
+    // Refused before any card, with Sage's reason as the tool's error.
     for case in [
         "pi-bridge-git-config-refused",
         "pi-bridge-device-name-refused",
     ] {
         let refused = replay(case, AllowOnce);
         assert_eq!(
-            (refused.cards, refused.tool_errors.as_slice()),
-            (0, &[true][..]),
+            (refused.cards, ended(&refused)),
+            (0, vec![(true, Refusal::ProtectedPath.message())]),
             "{case}"
         );
         assert!(!refused.journey.root.join(".git").exists(), "{case}");
         assert_eq!(refused.journey.runtime.bridge.as_ref().unwrap().writes, 0);
     }
 
-    // The replayed prepare for an already approved call gets no second card.
+    // The replayed prepare gets no second card whatever the first decision was;
+    // the fixture itself fails unless Sage refuses the replay.
     let replayed = replay("pi-bridge-replay-refused", AllowOnce);
-    assert_eq!(
-        (replayed.cards, replayed.tool_errors.as_slice()),
-        (1, &[false][..])
-    );
+    assert_eq!((replayed.cards, ended(&replayed)), (1, vec![WRITTEN]));
     assert_eq!(
         text(&replayed, "src/bridge-replay.txt").as_deref(),
         Some("First approved write.\n")
     );
+    let replayed = replay("pi-bridge-replay-refused", Deny);
+    assert_eq!((replayed.cards, ended(&replayed)), (1, vec![denied_text]));
+    assert_eq!(text(&replayed, "src/bridge-replay.txt"), None);
 }
 
 #[cfg(all(windows, debug_assertions))]

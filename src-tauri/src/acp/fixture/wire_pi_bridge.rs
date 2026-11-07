@@ -14,6 +14,8 @@ use super::{WireState, acp, codex};
 
 /// The extension's request-size ceiling (`MAX_BYTES` in extension.mjs).
 const MAX_PREPARE_BYTES: usize = 262_144;
+/// The longest answer the extension reads back (`refusal` in extension.mjs).
+const MAX_REPLY_BYTES: usize = 64;
 
 pub(super) fn tool(
     step: &Value,
@@ -33,8 +35,9 @@ pub(super) fn tool(
     let prepare_id = bounded_id(field_str(step, "prepareId")?)?;
     let commit_id = bounded_id(field_str(step, "commitId")?)?;
     // A replay re-sends the extension request for a call Pi already ran; Pi
-    // reports no new tool lifecycle for it.
+    // reports no new tool lifecycle for it, and Sage must refuse it.
     let replay = step.get("replay").and_then(Value::as_bool).unwrap_or(false);
+    let expected_refusal = step.get("expectRefusal").and_then(Value::as_str);
     if !replay {
         codex::emit_json(
             output,
@@ -49,30 +52,49 @@ pub(super) fn tool(
     if request.len() > MAX_PREPARE_BYTES {
         return Err(FixtureError::ExpandedLimit);
     }
-    let approved = dialog(
+    let prepared = dialog(
         input,
         output,
         state,
         prepare_id,
         "sage.pi.prepare.v1",
         &request,
-    )? == "approved";
-    let written = approved
-        && dialog(
+    )?;
+    // The extension raises every answer but "approved" / "written" as the
+    // tool's error, carrying Sage's reason.
+    let approved = prepared == "approved";
+    let answer = if approved {
+        dialog(
             input,
             output,
             state,
             commit_id,
             "sage.pi.commit.v1",
             tool_call_id,
-        )? == "written";
-    if replay {
-        return Ok(());
+        )?
+    } else {
+        prepared
+    };
+    if let Some(expected) = expected_refusal
+        && answer != expected
+    {
+        return Err(FixtureError::InvalidArguments);
     }
-    let text = match (approved, written) {
-        (true, true) => "Workspace file updated by Sage.",
-        (true, false) => "Sage refused the write or detected a conflict",
-        _ => "Sage denied the operation",
+    let written = answer == "written";
+    if replay {
+        // Sage accepting a replayed request is the failure this step exists to catch.
+        return if approved {
+            Err(FixtureError::InvalidArguments)
+        } else {
+            Ok(())
+        };
+    }
+    let text = if written {
+        "Workspace file updated by Sage."
+    } else if answer.is_empty() {
+        "Sage did not answer the approval request"
+    } else {
+        answer.as_str()
     };
     codex::emit_json(
         output,
@@ -105,7 +127,7 @@ fn dialog(
     }
     reply["value"]
         .as_str()
-        .filter(|value| value.len() <= 64)
+        .filter(|value| value.len() <= MAX_REPLY_BYTES)
         .map(str::to_owned)
         .ok_or(FixtureError::InvalidArguments)
 }
