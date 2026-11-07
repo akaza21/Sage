@@ -3,6 +3,7 @@ use std::sync::Arc;
 mod catalog_definition;
 mod claude_auth;
 mod discovery_state;
+mod install_state;
 mod persisted_binding;
 use catalog_definition::{CuratedProtocol, definition};
 use discovery_state::DiscoveryState;
@@ -139,36 +140,6 @@ impl HarnessCatalog {
             return presence;
         }
         observe_codex_host_presence()
-    }
-
-    fn codex_install_state(&self) -> HarnessInstallState {
-        if self.discovered.is_pending() {
-            return HarnessInstallState::Detecting;
-        }
-        if self.registry.codex_admission().is_available() {
-            HarnessInstallState::Available
-        } else if self.discovered("codex").is_some() || self.observed_presence().is_present() {
-            HarnessInstallState::Unavailable
-        } else {
-            HarnessInstallState::NotInstalled
-        }
-    }
-
-    fn install_state(&self, harness_id: &str) -> HarnessInstallState {
-        if self.discovered.is_pending() {
-            return HarnessInstallState::Detecting;
-        }
-        if self
-            .registry
-            .for_harness(harness_id)
-            .is_some_and(|record| record.admission_available())
-        {
-            HarnessInstallState::Available
-        } else if self.discovered(harness_id).is_some() {
-            HarnessInstallState::Unavailable
-        } else {
-            HarnessInstallState::NotInstalled
-        }
     }
 
     fn discovered(&self, harness_id: &str) -> Option<InstalledHarness> {
@@ -443,6 +414,54 @@ mod tests {
             .find(|definition| definition.id == id)
             .unwrap()
             .clone()
+    }
+
+    #[test]
+    fn the_typed_install_state_agrees_with_every_catalog_entry() {
+        for catalog in [
+            HarnessCatalog::default(),
+            HarnessCatalog::default().settled_for_test(),
+        ] {
+            for simulator_in_catalog in [true, false] {
+                let definitions = catalog.definitions_for(simulator_in_catalog);
+                for definition in &definitions {
+                    assert_eq!(
+                        catalog
+                            .install_state_for(&definition.id, simulator_in_catalog)
+                            .map(HarnessInstallState::as_str),
+                        Some(definition.install_state.as_str()),
+                        "{}",
+                        definition.id
+                    );
+                }
+                assert_eq!(
+                    catalog
+                        .install_state_for(SIMULATOR_ID, simulator_in_catalog)
+                        .is_some(),
+                    definitions.iter().any(|entry| entry.id == SIMULATOR_ID)
+                );
+            }
+            // Every harness with a state is listed, so neither side can grow alone.
+            for id in crate::harness_discovery::KNOWN_HARNESS_SPECS
+                .iter()
+                .map(|spec| spec.id)
+                .chain([SIMULATOR_ID])
+            {
+                for simulator_in_catalog in [true, false] {
+                    assert_eq!(
+                        catalog
+                            .install_state_for(id, simulator_in_catalog)
+                            .is_some(),
+                        catalog
+                            .definitions_for(simulator_in_catalog)
+                            .iter()
+                            .any(|entry| entry.id == id),
+                        "{id}"
+                    );
+                }
+            }
+            assert_eq!(catalog.install_state_of("not-a-harness"), None);
+        }
     }
 
     #[test]

@@ -3,14 +3,17 @@ use std::{future::Future, pin::Pin};
 use crate::acp::scheduler::RuntimeOwner;
 use crate::acp::{
     bindings::adapter::{
-        AdapterCommand, AdapterEgress, AdapterEvent, AdapterModel, AdapterRuntimeError,
-        EgressResolution, HarnessAdapter, ResourceMapper,
+        AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity, AdapterModel,
+        AdapterRuntimeError, EgressResolution, HarnessAdapter, ResourceMapper,
     },
     contract::{
         ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
         SageProjectId,
     },
-    intent::{CapabilitySnapshotV1, ExternalId, ModelId, PageCursor},
+    intent::{
+        CapabilitySnapshotV1, ExternalId, ModelId, PageCursor,
+        session_event::{PendingSessionEvents, SessionScopedEvent},
+    },
     limits::LIMITS,
     store::CompleteActivationCommand,
     transport::{FrameWriteOutcome, IncrementalFrameDecoder, ReservedQueue, validate_structure},
@@ -179,6 +182,8 @@ pub(crate) struct ActivationPump<A, J, R> {
     models: Vec<AdapterModel>,
     next_model_cursor: Option<PageCursor>,
     ready: Option<ActivatedSession>,
+    /// Session events seen before the harness session identity is known.
+    pending_session: PendingSessionEvents<(AdapterIdentity, SessionScopedEvent)>,
 }
 
 type ActivationHandoff<T, A, J, R> = Result<T, Box<(ActivationPump<A, J, R>, ActivationPumpError)>>;
@@ -237,6 +242,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             models: Vec::new(),
             next_model_cursor: None,
             ready: None,
+            pending_session: PendingSessionEvents::default(),
         })
     }
 
@@ -299,12 +305,21 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             return Err(Box::new((self, ActivationPumpError::NotQuiescent)));
         }
         let session = self.ready.take().expect("completion readiness checked");
-        Ok(IdleActivationParts::new(
-            self.adapter,
-            self.journal,
-            self.resources,
-            session,
-        ))
+        let mut pending = PendingSessionEvents::default();
+        for (id, event) in self.pending_session.take() {
+            if id.is_exact_session(
+                &session.binding_digest,
+                session.runtime_epoch,
+                &session.session_id,
+                &session.external_session_id,
+            ) {
+                pending.push(event);
+            }
+        }
+        Ok(
+            IdleActivationParts::new(self.adapter, self.journal, self.resources, session)
+                .with_pending_session_events(pending),
+        )
     }
 
     pub(crate) fn try_into_recovery_parts(

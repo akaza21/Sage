@@ -18,5 +18,6 @@ pub(in crate::acp::runtime::adapter_pump) fn control_critical(fact: &NormalizedF
         DurableAdapterEvent::ChildTurnStatus { .. } => false,
         DurableAdapterEvent::FilePair { .. } => false,
         DurableAdapterEvent::ActivityItem(_) => false,
+        DurableAdapterEvent::Session { .. } => false,
     }
 }

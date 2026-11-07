@@ -112,6 +112,7 @@ async fn accept_terminal_behind_late_starts(
                     project_generation: ProjectGeneration::ZERO,
                     chat_id: fixture.chat_id.clone(),
                     projection_revision: fixture.ready_projection_revision,
+                    intent_revision: fixture.ready_projection_revision,
                     session_id: Some(fixture.started.session_id.clone()),
                     runtime_epoch: Some(fixture.epoch),
                     turn_id: None,
