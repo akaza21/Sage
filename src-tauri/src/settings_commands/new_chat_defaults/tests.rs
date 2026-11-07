@@ -10,7 +10,8 @@ fn defaults(harness: &str, model: Option<&str>, effort: Option<&str>) -> NewChat
 }
 
 /// Discovery has settled and found nothing installed; only the development
-/// simulator, which the debug catalog always admits, can run.
+/// simulator, which the catalog admits in debug builds (where `cargo test`
+/// runs), can run.
 fn settled_catalog() -> HarnessCatalog {
     HarnessCatalog::default().settled_for_test()
 }
@@ -73,13 +74,8 @@ fn a_harness_saved_during_discovery_is_kept_and_reported_once_discovery_settles(
     let settings = SettingsStore::in_memory().unwrap();
     let detecting = HarnessCatalog::default();
     let value = defaults("pi", Some("sonnet"), None);
-    assert_eq!(
-        save_new_chat_defaults(&settings, &detecting, value.clone())
-            .unwrap()
-            .harness_status,
-        Some(DefaultHarnessStatus::Detecting)
-    );
     let saved = save_new_chat_defaults(&settings, &detecting, value.clone()).unwrap();
+    assert_eq!(saved.harness_status, Some(DefaultHarnessStatus::Detecting));
     // Nothing can judge the model before discovery settles.
     assert_eq!(saved.model_status, Some(DefaultOptionStatus::Unknown));
     // Discovery finds no Pi: the default is reported, never rewritten.

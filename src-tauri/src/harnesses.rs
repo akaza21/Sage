@@ -441,6 +441,25 @@ mod tests {
                     definitions.iter().any(|entry| entry.id == SIMULATOR_ID)
                 );
             }
+            // Every harness with a state is listed, so neither side can grow alone.
+            for id in crate::harness_discovery::KNOWN_HARNESS_SPECS
+                .iter()
+                .map(|spec| spec.id)
+                .chain([SIMULATOR_ID])
+            {
+                for simulator_in_catalog in [true, false] {
+                    assert_eq!(
+                        catalog
+                            .install_state_for(id, simulator_in_catalog)
+                            .is_some(),
+                        catalog
+                            .definitions_for(simulator_in_catalog)
+                            .iter()
+                            .any(|entry| entry.id == id),
+                        "{id}"
+                    );
+                }
+            }
             assert_eq!(catalog.install_state_of("not-a-harness"), None);
         }
     }

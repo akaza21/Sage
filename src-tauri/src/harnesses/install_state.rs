@@ -3,7 +3,7 @@
 //! that branch on a state use the typed value from `install_state_of`.
 
 use super::{HarnessCatalog, SIMULATOR_ID, SIMULATOR_IN_CATALOG, simulator_admission};
-use crate::domain::HarnessInstallState;
+use crate::{domain::HarnessInstallState, harness_discovery::known_harness_spec};
 
 impl HarnessCatalog {
     pub(super) fn codex_install_state(&self) -> HarnessInstallState {
@@ -48,15 +48,13 @@ impl HarnessCatalog {
         simulator_in_catalog: bool,
     ) -> Option<HarnessInstallState> {
         match harness_id {
-            "codex" => Some(self.codex_install_state()),
-            "pi" | "gemini-cli" | "opencode" | "cursor-agent" | "claude-code" | "oh-my-pi" => {
-                Some(self.install_state(harness_id))
-            }
             SIMULATOR_ID => simulator_admission(simulator_in_catalog),
             #[cfg(all(windows, feature = "acp-fixture"))]
             "sage-characterization" if self.characterization_available && simulator_in_catalog => {
                 Some(HarnessInstallState::Available)
             }
+            "codex" => Some(self.codex_install_state()),
+            curated if known_harness_spec(curated).is_some() => Some(self.install_state(curated)),
             _ => None,
         }
     }

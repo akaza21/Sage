@@ -2,9 +2,10 @@
 //! discovered catalog; reading reports what discovery says about each stored
 //! value now, so a value that stops working later is reported and kept rather
 //! than rewritten. A model is judged against the models discovery lists for
-//! the harness. Most harnesses only offer models, and every harness only
-//! offers efforts, through a live session's configuration, so those values
-//! report `unknown` here and are checked when a new chat starts.
+//! the harness. Today only the development simulator lists any: real
+//! harnesses offer models, and every harness offers efforts, only through a
+//! live session's configuration, so those values report `unknown` here and a
+//! new chat checks them against its session.
 
 use serde::Serialize;
 use tauri::State;
@@ -71,27 +72,31 @@ fn harness_status(catalog: &HarnessCatalog, harness_id: &str) -> DefaultHarnessS
 }
 
 fn model_status(catalog: &HarnessCatalog, harness_id: &str, model_id: &str) -> DefaultOptionStatus {
-    if harness_status(catalog, harness_id) != DefaultHarnessStatus::Available {
-        return DefaultOptionStatus::Unknown;
-    }
     match catalog.models(harness_id) {
-        Ok(models) if !models.is_empty() => {
-            if models.iter().any(|model| model.id == model_id) {
-                DefaultOptionStatus::Available
-            } else {
-                DefaultOptionStatus::Unavailable
-            }
+        Ok(models) if models.is_empty() => DefaultOptionStatus::Unknown,
+        Ok(models) if models.iter().any(|model| model.id == model_id) => {
+            DefaultOptionStatus::Available
         }
-        _ => DefaultOptionStatus::Unknown,
+        Ok(_) => DefaultOptionStatus::Unavailable,
+        // A harness that lists no models outside a live session.
+        Err(_) => DefaultOptionStatus::Unknown,
     }
 }
 
 fn state_of(catalog: &HarnessCatalog, defaults: NewChatDefaults) -> NewChatDefaultsState {
     let harness_id = defaults.harness_id.as_deref();
     let harness_status = harness_id.map(|harness_id| harness_status(catalog, harness_id));
-    let model_status = harness_id
-        .zip(defaults.model_id.as_deref())
-        .map(|(harness_id, model_id)| model_status(catalog, harness_id, model_id));
+    let model_status =
+        harness_id
+            .zip(defaults.model_id.as_deref())
+            .map(|(harness_id, model_id)| {
+                // Only an available harness's model list can judge its model.
+                if harness_status == Some(DefaultHarnessStatus::Available) {
+                    model_status(catalog, harness_id, model_id)
+                } else {
+                    DefaultOptionStatus::Unknown
+                }
+            });
     // No discovery source lists efforts; the live session is the only judge.
     let effort_status = defaults
         .effort
