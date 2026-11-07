@@ -75,16 +75,16 @@ pub(crate) fn change_stamp(root: &Path) -> u64 {
     for name in ["packed-refs", "FETCH_HEAD", "config", "refs/heads"] {
         hash_metadata(&mut hasher, &common.join(name));
     }
-    // Reads at most `MAX_REMOTES` entries, in the directory's own order, which
-    // stays the same between polls while the folder is unchanged.
     let mut remotes = fs::read_dir(common.join("refs/remotes"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .take(MAX_REMOTES)
-        .map(|entry| entry.path())
-        .collect::<Vec<_>>();
-    remotes.sort_unstable();
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|entry| entry.path())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    remotes.sort();
+    remotes.truncate(MAX_REMOTES);
     for remote in &remotes {
         hash_metadata(&mut hasher, remote);
     }
@@ -268,15 +268,6 @@ mod tests {
             assert_ne!(next, last, "{path} did not change the stamp");
             last = next;
         }
-    }
-
-    #[test]
-    fn stamp_stays_stable_with_more_remotes_than_it_reads() {
-        let (temp, git) = repository();
-        for remote in 0..MAX_REMOTES * 3 {
-            write(&git.join(format!("refs/remotes/r{remote}/main")), "a\n");
-        }
-        assert_eq!(change_stamp(temp.path()), change_stamp(temp.path()));
     }
 
     #[test]

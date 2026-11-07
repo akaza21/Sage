@@ -17,6 +17,8 @@ struct FixtureRecord {
     fail_terminate: bool,
     fail_spawn_retained: bool,
     outputs: Vec<TerminalOutputSink>,
+    /// Spawn meets the test here twice: once on arrival, once to finish.
+    spawn_gate: Option<Arc<std::sync::Barrier>>,
 }
 
 struct FixtureProcess(Arc<Mutex<FixtureRecord>>);
@@ -53,6 +55,11 @@ impl TerminalFactory for FixtureFactory {
         _rows: u16,
         output: TerminalOutputSink,
     ) -> Result<Box<dyn TerminalProcess>, TerminalSpawnFailure> {
+        let gate = self.0.lock().unwrap().spawn_gate.clone();
+        if let Some(gate) = gate {
+            gate.wait();
+            gate.wait();
+        }
         let mut record = self.0.lock().unwrap();
         record.roots.push(root.as_path().to_owned());
         record.outputs.push(output);
@@ -481,4 +488,29 @@ fn explicit_close_and_project_change_kill_and_reject_late_effects() {
         assert_eq!(fixture.record.lock().unwrap().terminated, 2);
         assert_eq!(fixture.port.shutdown(), Ok(()));
     });
+}
+
+#[test]
+fn a_shutdown_during_a_spawn_ends_the_new_shell_instead_of_orphaning_it() {
+    let fixture = Fixture::new();
+    let gate = Arc::new(std::sync::Barrier::new(2));
+    fixture.record.lock().unwrap().spawn_gate = Some(gate.clone());
+    let created = std::thread::scope(|scope| {
+        let create = scope.spawn(|| {
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(
+                    fixture
+                        .port
+                        .create(&fixture.authority(), &fixture.scope, 80, 24),
+                )
+        });
+        gate.wait();
+        assert_eq!(fixture.port.shutdown(), Ok(()));
+        gate.wait();
+        create.join().unwrap()
+    });
+    assert_eq!(created, Err(TerminalError::Ended));
+    assert_eq!(fixture.record.lock().unwrap().terminated, 1);
+    assert!(fixture.port.sessions.lock().unwrap().is_empty());
 }
