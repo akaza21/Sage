@@ -1,7 +1,7 @@
 use crate::acp::{
     contract::{
         EntityRevision, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageAgentSessionId,
-        SageChatId, SageProjectId, SageTurnId,
+        SageChatId, SageProjectId, SageTurnId, admits_projection,
     },
     lifecycle::TurnState,
 };
@@ -22,14 +22,6 @@ pub struct IntentSnapshot {
     pub turn_id: Option<SageTurnId>,
     pub turn_state: Option<TurnState>,
     pub turn_revision: Option<EntityRevision>,
-}
-
-impl IntentSnapshot {
-    /// Whether an intent built on the `expected` view is still current: no
-    /// send-relevant change landed after it, and it is not ahead of the chat.
-    pub fn admits_projection(&self, expected: ProjectionRevision) -> bool {
-        (self.intent_revision..=self.projection_revision).contains(&expected)
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -72,7 +64,11 @@ pub fn validate_base_intent(
     if chat_id != &snapshot.chat_id {
         return Err(IntentError::ForeignChat);
     }
-    if !snapshot.admits_projection(expected_projection_revision) {
+    if !admits_projection(
+        snapshot.intent_revision,
+        snapshot.projection_revision,
+        expected_projection_revision,
+    ) {
         return Err(IntentError::StaleProjectionRevision);
     }
     Ok(())

@@ -6,9 +6,8 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::acp::{
-    contract::{EntityRevision, SageAgentSessionId, SageChatId, SageProjectId},
+    contract::EntityRevision,
     intent::session_event::{SessionScopedEvent, SessionSurface},
-    projection::{SessionProjection, SessionSurfaceProjection},
 };
 
 use super::{AdapterStoreOwner, StoreError, facts};
@@ -82,34 +81,8 @@ pub(super) fn apply_in(
     Ok(true)
 }
 
-/// Reads the current session's projection, showing live fields only for
-/// the epoch that is running now.
-pub(super) fn load_current(
-    connection: &rusqlite::Connection,
-    project: &SageProjectId,
-    chat: &SageChatId,
-    current: Option<&SageAgentSessionId>,
-    sessions: &[SessionProjection],
-) -> Result<Option<SessionSurfaceProjection>, StoreError> {
-    let Some(session) = current else {
-        return Ok(None);
-    };
-    let running_epoch = sessions
-        .iter()
-        .find(|candidate| &candidate.id == session)
-        .and_then(|candidate| candidate.runtime_epoch);
-    Ok(read(
-        connection,
-        project.as_str(),
-        chat.as_str(),
-        session.as_str(),
-    )?
-    .map(|(surface, revision)| {
-        SessionSurfaceProjection::project(session.clone(), surface, running_epoch, revision)
-    }))
-}
-
-fn read(
+/// Reads one session's stored surface and its row revision.
+pub(super) fn read(
     connection: &rusqlite::Connection,
     project: &str,
     chat: &str,

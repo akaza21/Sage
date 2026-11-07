@@ -181,7 +181,6 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
         forked_from: None,
         forked_from_turn_id: None,
         child_projection_epoch: 0,
-        session_surface: None,
     };
     service.compose_session_config(&mut page).unwrap();
     assert!(page.session_config.is_some());

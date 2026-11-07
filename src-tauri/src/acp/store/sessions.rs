@@ -3,7 +3,7 @@ use rusqlite::{OptionalExtension, Transaction, params};
 use crate::acp::{
     contract::{
         ClientIntentId, EntityRevision, ProjectionRevision, RuntimeEpoch, SafeText,
-        SageAgentSessionId, SageChatId, SageProjectId,
+        SageAgentSessionId, SageChatId, SageProjectId, admits_projection,
     },
     intent::{BindingId, ModelId},
     lifecycle::SessionState,
@@ -261,7 +261,11 @@ pub(super) fn validate_chat_revision(
         )
         .optional()?
         .ok_or(StoreError::Conflict { resource: "chat" })?;
-    if !(projection_from_i64(intent)?..=projection_from_i64(current)?).contains(&expected) {
+    if !admits_projection(
+        projection_from_i64(intent)?,
+        projection_from_i64(current)?,
+        expected,
+    ) {
         return Err(StoreError::Conflict {
             resource: "projectionRevision",
         });

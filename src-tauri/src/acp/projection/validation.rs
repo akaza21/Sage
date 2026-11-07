@@ -15,15 +15,6 @@ impl AcpChatPage {
                 field: "currentSessionId",
             });
         }
-        if self
-            .session_surface
-            .as_ref()
-            .is_some_and(|surface| self.current_session_id.as_ref() != Some(&surface.session_id))
-        {
-            return Err(ContractError::ForbiddenContent {
-                field: "sessionSurface.sessionId",
-            });
-        }
         for turn in self.turns.as_slice() {
             if !self
                 .sessions

@@ -1,6 +1,6 @@
 use super::*;
 use crate::acp::intent::session_event::{
-    SessionActivityState, SessionNoticeLevel, SessionScopedEvent,
+    SessionActivityState, SessionNoticeLevel, SessionScopedEvent, SessionSurface,
     fixtures::{activity as activity_fixture, notice as notice_fixture, title},
 };
 
@@ -16,16 +16,16 @@ fn turn(state: TurnState, now_millis: i64) -> AdapterInboundEvent {
     AdapterInboundEvent::Turn { state, now_millis }
 }
 
-fn surface(fixture: &Fixture) -> crate::acp::projection::SessionSurfaceProjection {
-    load_chat_page(
+fn surface(fixture: &Fixture) -> SessionSurface {
+    super::super::session_surface::read(
         &fixture.connection,
-        fixture.owner.project_id.clone(),
-        fixture.owner.chat_id.clone(),
-        None,
+        fixture.owner.project_id.as_str(),
+        fixture.owner.chat_id.as_str(),
+        fixture.owner.session_id.as_str(),
     )
     .unwrap()
-    .session_surface
-    .expect("current session surface")
+    .expect("stored session surface")
+    .0
 }
 
 #[test]
@@ -56,11 +56,13 @@ fn session_facts_persist_after_the_turn_terminal_and_reload_with_the_chat() {
     assert_eq!(after_terminal.turn_cursor().state(), TurnState::Completed);
     assert!(after_terminal.projection_revision > before);
 
-    let projected = surface(&fixture);
-    assert_eq!(projected.session_id, fixture.owner.session_id);
-    assert_eq!(projected.title.as_deref(), Some("Fix the sidebar"));
-    assert_eq!(projected.notices.len(), 1);
-    assert_eq!(projected.notices[0].text, "config deprecated");
+    let stored = surface(&fixture);
+    assert_eq!(
+        stored.title.as_ref().map(|title| title.as_str()),
+        Some("Fix the sidebar")
+    );
+    assert_eq!(stored.notices.len(), 1);
+    assert_eq!(stored.notices[0].text.as_str(), "config deprecated");
 
     let repeated = apply_adapter_inbound_batch(
         &mut fixture.connection,
@@ -92,15 +94,15 @@ fn storage_is_one_bounded_row_per_session() {
             row.get(0)
         })
         .unwrap();
-    let projected = surface(&fixture);
+    let stored = surface(&fixture);
     assert_eq!(rows, 1);
-    assert_eq!(projected.notices.len(), 16);
-    assert_eq!(projected.notices[0].text, "notice 24");
-    assert_eq!(projected.notices[15].text, "notice 39");
+    assert_eq!(stored.notices.len(), 16);
+    assert_eq!(stored.notices[0].text.as_str(), "notice 24");
+    assert_eq!(stored.notices[15].text.as_str(), "notice 39");
 }
 
 #[test]
-fn live_activity_and_model_show_only_for_the_running_epoch() {
+fn live_activity_and_model_are_stored_for_the_reporting_epoch() {
     let mut fixture = fixture();
     let activity = activity_fixture("native-task-7", SessionActivityState::Running, "12 of 40");
     apply_adapter_inbound_batch(
@@ -119,26 +121,17 @@ fn live_activity_and_model_show_only_for_the_running_epoch() {
         ),
     )
     .unwrap();
-    let live = surface(&fixture);
+    let stored = surface(&fixture);
+    assert_eq!(stored.live_epoch, fixture.owner.runtime_epoch.get());
     assert_eq!(
-        live.model_id.as_ref().map(|id| id.as_str()),
+        stored.model_id.as_ref().map(|id| id.as_str()),
         Some("rerouted")
     );
-    assert_eq!(live.activities.len(), 1);
-    assert_eq!(live.activities[0].progress.as_deref(), Some("12 of 40"));
-    assert_eq!(live.activities[0].key.len(), 64);
-    assert!(!live.activities[0].key.contains("native-task-7"));
-
-    fixture
-        .connection
-        .execute(
-            "UPDATE session_runtime_epochs SET state='exited' WHERE session_id=?1",
-            [fixture.owner.session_id.as_str()],
-        )
-        .unwrap();
-    let cold = surface(&fixture);
-    assert!(cold.model_id.is_none());
-    assert!(cold.activities.is_empty());
+    assert_eq!(stored.activities.len(), 1);
+    assert_eq!(
+        stored.activities[0].progress.as_ref().map(|p| p.as_str()),
+        Some("12 of 40")
+    );
 }
 
 #[test]
