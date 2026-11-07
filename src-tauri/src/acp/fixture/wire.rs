@@ -26,6 +26,8 @@ mod child_opened_tests;
 mod parity_tests;
 #[cfg(test)]
 pub(crate) use child_opened_tests::child_opened_wire_for_test;
+#[cfg(test)]
+pub(crate) use user_input::codex_user_input_wire_for_test;
 
 #[path = "wire_acp.rs"]
 mod acp;
@@ -44,6 +46,11 @@ pub(super) struct WireState {
     prompt_request_id: Option<u64>,
     current_turn_id: Option<String>,
     turn_count: u64,
+    /// Server requests the fixture has sent. Codex numbers its own requests
+    /// from one counter per connection, so an id is never reused.
+    server_requests_sent: u64,
+    /// The question request still waiting for the client's answer.
+    pending_user_input: Option<u64>,
     user_input_echo: Option<String>,
     pi: pi::PiWireState,
 }
@@ -58,6 +65,8 @@ impl WireState {
             prompt_request_id: None,
             current_turn_id: None,
             turn_count: 0,
+            server_requests_sent: 0,
+            pending_user_input: None,
             user_input_echo: None,
             pi: pi::PiWireState::new(),
         }

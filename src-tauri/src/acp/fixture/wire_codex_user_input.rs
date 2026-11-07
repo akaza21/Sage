@@ -11,7 +11,8 @@ use serde_json::{Value, json};
 use super::super::FixtureError;
 use super::{WireState, acp, codex};
 
-const REQUEST_ID: u64 = 900;
+/// The id of the fixture's first server request; later ones count up.
+const FIRST_REQUEST_ID: u64 = 900;
 const USER_NOTE: &str = "user_note:";
 
 pub(super) fn emit_request(
@@ -28,10 +29,18 @@ pub(super) fn emit_request(
         .filter(|questions| questions.is_array())
         .ok_or(FixtureError::InvalidArguments)?;
     let auto_resolution = step.get("autoResolutionMs").cloned().unwrap_or(Value::Null);
+    if state.pending_user_input.is_some() {
+        return Err(FixtureError::InvalidArguments);
+    }
+    let request_id = FIRST_REQUEST_ID
+        .checked_add(state.server_requests_sent)
+        .ok_or(FixtureError::ExpandedLimit)?;
+    state.server_requests_sent += 1;
+    state.pending_user_input = Some(request_id);
     codex::emit_json(
         output,
         state,
-        &json!({"jsonrpc":"2.0","id":REQUEST_ID,"method":"item/tool/requestUserInput","params":{
+        &json!({"jsonrpc":"2.0","id":request_id,"method":"item/tool/requestUserInput","params":{
             "threadId":acp::SESSION,"turnId":turn,"itemId":format!("fixture-user-input-{turn}"),
             "questions":questions,"autoResolutionMs":auto_resolution
         }}),
@@ -47,7 +56,11 @@ pub(super) fn await_answer(
         if frame.get("id").is_none() {
             continue;
         }
-        if frame.get("id") != Some(&json!(REQUEST_ID)) || frame.get("method").is_some() {
+        let pending = state
+            .pending_user_input
+            .take()
+            .ok_or(FixtureError::InvalidArguments)?;
+        if frame.get("id") != Some(&json!(pending)) || frame.get("method").is_some() {
             return Err(FixtureError::InvalidArguments);
         }
         let answers = frame
@@ -112,6 +125,42 @@ fn echo(answers: &serde_json::Map<String, Value>) -> Result<String, FixtureError
     ))
 }
 
+/// Every frame the `codex-user-input` journey sends, in order, when a
+/// client answers each question with `answer`.
+#[cfg(test)]
+pub(crate) fn codex_user_input_wire_for_test(answer: &Value) -> Vec<Value> {
+    let case = super::super::generated_cases::JOURNEY_CASES
+        .iter()
+        .find(|case| case.id == "codex-user-input")
+        .expect("the codex-user-input journey exists");
+    let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
+    let requests = [
+        json!({"id":1,"method":"initialize"}),
+        json!({"id":2,"method":"thread/start"}),
+        json!({"id":3,"method":"thread/goal/get"}),
+        json!({"id":4,"method":"turn/start"}),
+        json!({"id":FIRST_REQUEST_ID,"result":answer}),
+        json!({"id":5,"method":"turn/start"}),
+        json!({"id":FIRST_REQUEST_ID + 1,"result":answer}),
+        json!({"id":6,"method":"thread/unsubscribe"}),
+    ]
+    .iter()
+    .map(|request| format!("{request}\n"))
+    .collect::<String>();
+    let mut input = std::io::Cursor::new(requests);
+    let mut state = WireState::new();
+    let mut output = Vec::new();
+    for step in steps {
+        super::execute_with_io(&step, &mut state, &mut input, &mut output, &mut Vec::new())
+            .unwrap();
+    }
+    output
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::execute_with_io;
@@ -170,10 +219,38 @@ mod tests {
     #[test]
     fn a_reply_to_another_request_is_rejected() {
         let mut state = WireState::new();
+        state.pending_user_input = Some(900);
         let mut input = Cursor::new("{\"id\":901,\"result\":{\"answers\":{}}}\n");
         assert_eq!(
             await_answer(&mut input, &mut state),
             Err(FixtureError::InvalidArguments)
         );
+    }
+    #[test]
+    fn each_question_gets_its_own_request_id_like_codex() {
+        let mut state = WireState::new();
+        let mut input = Cursor::new(
+            "{\"id\":900,\"result\":{\"answers\":{}}}\n{\"id\":901,\"result\":{\"answers\":{}}}\n",
+        );
+        let mut output = Vec::new();
+        for turn in ["turn-1", "turn-2"] {
+            state.current_turn_id = Some(turn.to_owned());
+            for step in [
+                json!({"op":"emitKnownFrame","shape":"codexUserInputRequest","questions":[]}),
+                json!({"op":"awaitClient","kind":"codexUserInputAnswer"}),
+                json!({"op":"emitKnownFrame","shape":"codexUserInputEcho"}),
+            ] {
+                execute_with_io(&step, &mut state, &mut input, &mut output, &mut Vec::new())
+                    .unwrap();
+            }
+        }
+        let ids = output
+            .split(|byte| *byte == b'\n')
+            .filter(|line| !line.is_empty())
+            .map(|line| serde_json::from_slice::<Value>(line).unwrap())
+            .filter(|frame| frame["method"] == "item/tool/requestUserInput")
+            .map(|frame| frame["id"].as_u64().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, [900, 901]);
     }
 }
