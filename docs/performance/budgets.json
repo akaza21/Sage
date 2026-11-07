@@ -138,6 +138,11 @@
         "reason": "Global, Agent and browser shortcut display; loaded only on Settings > Keybindings."
       },
       {
+        "entry": "src/features/settings/AgentNotificationSettings.tsx",
+        "maxGzipBytes": 750,
+        "reason": "native turn-notice preference control; loaded only on Settings > Chats. Measured 698 B; no dependencies."
+      },
+      {
         "entry": "src/features/settings/AgentSettingsExecution.tsx",
         "maxGzipBytes": 843,
         "reason": "headless continuity for at most two pinned chats while Settings sleeps heavy workspace views; loaded only on Settings entry."
