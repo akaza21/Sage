@@ -71,6 +71,43 @@ fn bounded_expansion_respects_ignores_for_direct_and_directory_picks() {
     assert!(read::read_paths(&[f.0.join("ignored/nested").to_str().unwrap().into()]).is_err());
 }
 #[test]
+fn worktree_exclude_rules_resolved_through_commondir_fail_closed() {
+    let f = Fixture::new();
+    let mut oversized = String::from("secret.txt\n");
+    oversized.push_str(&"#".repeat(256 * 1024));
+    f.file("main/.git/info/exclude", oversized.as_bytes());
+    f.file("main/.git/worktrees/wt/commondir", b"../..\n");
+    let git_dir = f.0.join("main/.git/worktrees/wt");
+    f.file(
+        "wt/.git",
+        format!("gitdir: {}\n", git_dir.to_str().unwrap()).as_bytes(),
+    );
+    f.file("wt/secret.txt", b"credential");
+    f.file("wt/keep.txt", b"keep");
+    let secret = f.0.join("wt/secret.txt").to_str().unwrap().to_owned();
+    let folder = f.0.join("wt").to_str().unwrap().to_owned();
+    // The matcher cannot apply the oversized shared exclude file, so neither
+    // a direct pick nor a folder pick may admit what it could exclude.
+    let refused = "Attachment ignore rules could not be applied in full.";
+    assert_eq!(
+        read::read_paths(std::slice::from_ref(&secret)),
+        Err(refused)
+    );
+    assert_eq!(
+        read::read_paths(std::slice::from_ref(&folder)),
+        Err(refused)
+    );
+    f.file("main/.git/info/exclude", b"secret.txt\n");
+    assert!(read::read_paths(&[secret]).is_err());
+    let names: Vec<_> = read::read_paths(&[folder])
+        .unwrap()
+        .0
+        .iter()
+        .map(|r| r.name.clone())
+        .collect();
+    assert_eq!(names, ["keep.txt"]);
+}
+#[test]
 fn failure_and_boundaries_do_not_admit_partial_content() {
     let f = Fixture::new();
     let max = f.file("max", &vec![0; FILE_BYTES]);

@@ -9,17 +9,16 @@ use std::{
 
 const DEPTH: usize = 64;
 const ENTRIES: usize = 200_000;
-// The existing bounded ignore matcher reads at most 256 KiB per rule file.
-// Reject oversized rules here rather than silently ignoring them.
-fn check_rules(dir: &Path) -> Result<(), &'static str> {
-    for name in [".ignore", ".gitignore", ".git/info/exclude"] {
-        if let Ok(meta) = dir.join(name).symlink_metadata()
-            && (meta.len() > 256 * 1024 || meta.file_type().is_symlink())
-        {
-            return Err("Attachment ignore rules exceed their bound or use a symbolic link.");
-        }
+/// Fails closed when the shared matcher skipped any rule source it resolved
+/// (the global excludes file, `.ignore`, `.gitignore`, or the `info/exclude`
+/// a `.git` file and `commondir` lead to): an entry that source would have
+/// excluded must never be attached.
+fn honoured(rules: &IgnoreRules) -> Result<(), &'static str> {
+    if rules.every_source_honoured() {
+        Ok(())
+    } else {
+        Err("Attachment ignore rules could not be applied in full.")
     }
-    Ok(())
 }
 struct Reader {
     files: Vec<Resource>,
@@ -59,19 +58,10 @@ pub(super) fn read_paths(paths: &[String]) -> Result<Resources, &'static str> {
             .ancestors()
             .find(|p| p.join(".git").exists())
             .unwrap_or(parent);
-        let global = global_excludes_path();
-        if global
-            .as_ref()
-            .is_some_and(|p| p.metadata().is_ok_and(|m| m.len() > 256 * 1024))
-        {
-            return Err("Global ignore rules exceed their bound.");
-        }
-        let rules = IgnoreRules::load(root, true, global.as_deref());
+        let rules = IgnoreRules::load(root, true, global_excludes_path().as_deref());
         let relative_parent = relative(root, parent)?;
-        for p in parent.ancestors().take_while(|p| p.starts_with(root)) {
-            check_rules(p)?;
-        }
         let (chain, ignored) = rules.chain_for(&relative_parent, RuleFiles::probe(parent));
+        honoured(&rules)?;
         if ignored || !reader.visit(selected, root, &rules, &chain, 0)? {
             return Err("The selected path is excluded by ignore rules.");
         }
@@ -122,8 +112,8 @@ impl Reader {
             return Ok(false);
         }
         if meta.is_dir() {
-            check_rules(path)?;
             let chain = rules.enter(chain, &rel, RuleFiles::probe(path));
+            honoured(rules)?;
             // Depth-first streaming holds at most 65 directory iterators, never
             // collects a directory listing or an unbounded work queue.
             for entry in path

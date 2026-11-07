@@ -16,14 +16,19 @@
 //! as a home-folder dotfiles repository ignoring `*`, cannot hide a Project.
 //! Rule files are opened without following links, as Git 2.32 and later do,
 //! and each is read up to a size cap. Only patterns are read from them; nothing
-//! is listed.
+//! is listed. A rule source that exists but cannot be honoured is skipped and
+//! logged, which listings tolerate; [`IgnoreRules::every_source_honoured`]
+//! lets callers that must fail closed refuse the walk instead.
 
 use std::{
     ffi::OsStr,
     fs::{File, OpenOptions},
     io::{ErrorKind, Read},
     path::{Component, Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use ignore::{
@@ -102,7 +107,14 @@ pub(crate) struct IgnoreRules {
     root: PathBuf,
     enabled: bool,
     global: Option<Gitignore>,
+    /// Set once any resolved rule source was skipped.
+    skipped: AtomicBool,
 }
+
+/// A rule source that exists but was skipped (already logged): over the cap,
+/// a link where links are refused, not a regular file, unreadable, or a Git
+/// directory reference that does not resolve to an admitted location.
+struct Skipped;
 
 impl IgnoreRules {
     /// Rules for walks of `root`. When `enabled` is false nothing is read and
@@ -110,15 +122,33 @@ impl IgnoreRules {
     /// resolved by the caller (see [`global_excludes_path`]); its patterns
     /// match paths relative to the root.
     pub(crate) fn load(root: &Path, enabled: bool, global_excludes: Option<&Path>) -> Self {
-        Self {
+        let mut rules = Self {
             root: root.to_path_buf(),
             enabled,
-            global: global_excludes
-                .filter(|_| enabled)
-                .filter(|path| path.is_absolute())
-                .and_then(|path| read_rules(path, true))
-                .and_then(|bytes| matcher(&bytes)),
-        }
+            global: None,
+            skipped: AtomicBool::new(false),
+        };
+        rules.global = global_excludes
+            .filter(|_| enabled)
+            .filter(|path| path.is_absolute())
+            .and_then(|path| rules.honour(read_rules(path, true)))
+            .and_then(|bytes| matcher(&bytes));
+        rules
+    }
+
+    /// Whether every rule source resolved so far (the global excludes file
+    /// and the sources of every folder entered) was applied in full. Walkers
+    /// that must not admit an entry a skipped source might have ignored, such
+    /// as prompt attachments, check this after building each chain.
+    pub(crate) fn every_source_honoured(&self) -> bool {
+        !self.skipped.load(Ordering::Relaxed)
+    }
+
+    fn honour<T>(&self, source: Result<Option<T>, Skipped>) -> Option<T> {
+        source.unwrap_or_else(|Skipped| {
+            self.skipped.store(true, Ordering::Relaxed);
+            None
+        })
     }
 
     /// The chain for the folder at `relative` (empty for the root), whose
@@ -135,15 +165,19 @@ impl IgnoreRules {
         let directory = self.root.join(relative);
         let read = |present: bool, name: &str| {
             present
-                .then(|| read_rules(&directory.join(name), false))
+                .then(|| self.honour(read_rules(&directory.join(name), false)))
                 .flatten()
                 .and_then(|bytes| matcher(&bytes))
         };
         let ignore = read(files.ignore, ".ignore");
         let gitignore = read(files.gitignore, ".gitignore");
-        let repository = files
-            .repository
-            .then(|| repository_exclude(&self.root, &directory, relative.is_empty()));
+        let repository = files.repository.then(|| {
+            self.honour(repository_exclude(
+                &self.root,
+                &directory,
+                relative.is_empty(),
+            ))
+        });
         if ignore.is_none() && gitignore.is_none() && repository.is_none() {
             return parent.clone();
         }
@@ -251,28 +285,42 @@ pub(crate) fn global_excludes_path() -> Option<PathBuf> {
 /// `commondir` names the shared one that holds `info/exclude`. Only the
 /// root's own `.git` file (a worktree opened as the Project) may lead outside
 /// the root.
-fn repository_exclude(root: &Path, directory: &Path, is_root: bool) -> Option<Gitignore> {
+fn repository_exclude(
+    root: &Path,
+    directory: &Path,
+    is_root: bool,
+) -> Result<Option<Gitignore>, Skipped> {
     let dot_git = directory.join(".git");
-    let mut git_directory = if dot_git.symlink_metadata().ok()?.is_dir() {
+    let Ok(metadata) = dot_git.symlink_metadata() else {
+        return Ok(None);
+    };
+    let mut git_directory = if metadata.is_dir() {
         dot_git
     } else {
-        let link = String::from_utf8(read_rules(&dot_git, false)?).ok()?;
-        git_target(
-            directory,
-            link.trim().strip_prefix("gitdir:")?,
-            root,
-            is_root,
-        )?
+        let Some(link) = read_rules(&dot_git, false)? else {
+            return Ok(None);
+        };
+        String::from_utf8(link)
+            .ok()
+            .and_then(|link| {
+                let target = link.trim().strip_prefix("gitdir:")?;
+                git_target(directory, target, root, is_root)
+            })
+            .ok_or_else(|| unresolved(&dot_git))?
     };
-    if let Some(common) = read_rules(&git_directory.join("commondir"), true)
-        .and_then(|bytes| String::from_utf8(bytes).ok())
-    {
-        git_directory = git_target(&git_directory, &common, root, is_root)?;
+    let commondir = git_directory.join("commondir");
+    if let Some(common) = read_rules(&commondir, true)? {
+        git_directory = String::from_utf8(common)
+            .ok()
+            .and_then(|common| git_target(&git_directory, &common, root, is_root))
+            .ok_or_else(|| unresolved(&commondir))?;
     }
-    matcher(&read_rules(
-        &git_directory.join("info").join("exclude"),
-        true,
-    )?)
+    Ok(read_rules(&git_directory.join("info").join("exclude"), true)?.and_then(|b| matcher(&b)))
+}
+
+fn unresolved(path: &Path) -> Skipped {
+    skipped(path, "Git directory reference not followed");
+    Skipped
 }
 
 /// Where a `gitdir:` or `commondir` value written in `base` leads, resolved
@@ -317,10 +365,10 @@ fn git_target(base: &Path, text: &str, root: &Path, outside_allowed: bool) -> Op
     (outside_allowed || target.starts_with(root)).then_some(target)
 }
 
-/// Reads a rule file up to the cap. A missing file is `None`; so is a link
-/// when `follow` is false, a non-file, an unreadable file or one over the cap,
-/// which are also logged.
-fn read_rules(path: &Path, follow: bool) -> Option<Vec<u8>> {
+/// Reads a rule file up to the cap. A missing file is `Ok(None)`; a link when
+/// `follow` is false, a non-file, an unreadable file or one over the cap is
+/// logged and [`Skipped`].
+fn read_rules(path: &Path, follow: bool) -> Result<Option<Vec<u8>>, Skipped> {
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -339,35 +387,32 @@ fn read_rules(path: &Path, follow: bool) -> Option<Vec<u8>> {
     }
     let file = match options.open(path) {
         Ok(file) => file,
-        Err(error) if error.kind() == ErrorKind::NotFound => return None,
-        Err(error) => {
-            skipped(path, &error.to_string());
-            return None;
-        }
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(skipped(path, &error.to_string())),
     };
-    read_regular(file, path)
+    read_regular(file, path).map(Some)
 }
 
-fn read_regular(file: File, path: &Path) -> Option<Vec<u8>> {
-    let metadata = file.metadata().ok()?;
+fn read_regular(file: File, path: &Path) -> Result<Vec<u8>, Skipped> {
+    let metadata = file
+        .metadata()
+        .map_err(|error| skipped(path, &error.to_string()))?;
     if !metadata.is_file() || metadata.file_type().is_symlink() {
-        skipped(path, "not a regular file");
-        return None;
+        return Err(skipped(path, "not a regular file"));
     }
     let mut bytes = Vec::new();
     if let Err(error) = file.take(MAX_RULES_FILE_BYTES + 1).read_to_end(&mut bytes) {
-        skipped(path, &error.to_string());
-        return None;
+        return Err(skipped(path, &error.to_string()));
     }
     if bytes.len() as u64 > MAX_RULES_FILE_BYTES {
-        skipped(path, "larger than 256 KiB");
-        return None;
+        return Err(skipped(path, "larger than 256 KiB"));
     }
-    Some(bytes)
+    Ok(bytes)
 }
 
-fn skipped(path: &Path, reason: &str) {
+fn skipped(path: &Path, reason: &str) -> Skipped {
     tracing::warn!(path = %path.display(), reason, "ignore rule file skipped");
+    Skipped
 }
 
 /// A matcher for one rule file's lines. Patterns that do not parse are
