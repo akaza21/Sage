@@ -1,12 +1,15 @@
 use std::{
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, mpsc},
+    time::Duration,
 };
 
 use super::*;
 use crate::{persistence::Database, state::AppState};
 
 mod lifecycle;
+
+const HOLD_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Default)]
 struct FixtureRecord {
@@ -17,6 +20,8 @@ struct FixtureRecord {
     fail_terminate: bool,
     fail_spawn_retained: bool,
     outputs: Vec<TerminalOutputSink>,
+    /// Spawn reports its arrival on the sender, then waits on the receiver.
+    spawn_hold: Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>,
 }
 
 struct FixtureProcess(Arc<Mutex<FixtureRecord>>);
@@ -53,6 +58,12 @@ impl TerminalFactory for FixtureFactory {
         _rows: u16,
         output: TerminalOutputSink,
     ) -> Result<Box<dyn TerminalProcess>, TerminalSpawnFailure> {
+        let hold = self.0.lock().unwrap().spawn_hold.take();
+        if let Some((arrived, release)) = hold {
+            arrived.send(()).unwrap();
+            // Bounded, so a broken fix fails the test instead of hanging it.
+            let _ = release.recv_timeout(HOLD_TIMEOUT);
+        }
         let mut record = self.0.lock().unwrap();
         record.roots.push(root.as_path().to_owned());
         record.outputs.push(output);
@@ -481,4 +492,32 @@ fn explicit_close_and_project_change_kill_and_reject_late_effects() {
         assert_eq!(fixture.record.lock().unwrap().terminated, 2);
         assert_eq!(fixture.port.shutdown(), Ok(()));
     });
+}
+
+#[test]
+fn a_shutdown_during_a_spawn_ends_the_new_shell_instead_of_orphaning_it() {
+    let fixture = Fixture::new();
+    let (arrived_tx, arrived) = mpsc::channel();
+    let (release, release_rx) = mpsc::channel();
+    fixture.record.lock().unwrap().spawn_hold = Some((arrived_tx, release_rx));
+    let created = std::thread::scope(|scope| {
+        let create = scope.spawn(|| {
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(
+                    fixture
+                        .port
+                        .create(&fixture.authority(), &fixture.scope, 80, 24),
+                )
+        });
+        arrived
+            .recv_timeout(HOLD_TIMEOUT)
+            .expect("create reaches the spawn");
+        assert_eq!(fixture.port.shutdown(), Ok(()));
+        release.send(()).unwrap();
+        create.join().unwrap()
+    });
+    assert_eq!(created, Err(TerminalError::Ended));
+    assert_eq!(fixture.record.lock().unwrap().terminated, 1);
+    assert!(fixture.port.sessions.lock().unwrap().is_empty());
 }
