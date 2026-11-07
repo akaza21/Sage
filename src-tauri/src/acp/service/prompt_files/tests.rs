@@ -5,7 +5,9 @@ impl Fixture {
     fn new() -> Self {
         let p = std::env::temp_dir().join(format!("sage-files-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&p).unwrap();
-        Self(p)
+        // Attachments refuse linked ancestors, and macOS reaches its temporary
+        // directory through the /var link.
+        Self(p.canonicalize().unwrap())
     }
     fn file(&self, name: &str, bytes: &[u8]) -> String {
         let p = self.0.join(name);
