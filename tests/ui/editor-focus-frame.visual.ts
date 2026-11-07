@@ -5,7 +5,8 @@ import { openScenario } from "./shared/visualBrowserPrimitives";
 // ED-9: the editor's focus frame is an overlay drawn above CodeMirror's
 // sticky gutter. Measured in Chromium on an editable File: the frame shows,
 // spans the gutter, and lets the pointer reach the gutter and the text
-// beneath it.
+// beneath it. A read-only File (the Agent artifact pane) takes keyboard
+// focus and draws the same frame, but refuses every edit.
 
 const EDITOR_NAME = "Edit src/workbench/AgentChatPanes.tsx";
 
@@ -104,5 +105,78 @@ test.describe("Editor focus frame", () => {
       await expect.poll(() => caretLine(page)).toBe(index);
       await expect(frame).toHaveClass(/cm-focused/);
     }
+  });
+
+  test("lets the keyboard into a read-only File without letting it edit", async ({
+    page,
+  }) => {
+    await openScenario(page, "file", "agent");
+    const pane = page.locator(".agent-artifact-pane");
+    const content = pane.locator(".cm-content");
+    const frame = pane.locator(".cm-editor");
+    await expect(content).toHaveAttribute("aria-readonly", "true");
+    const text = await content.evaluate((node) => node.textContent);
+
+    // Tab from the artifact tab reaches the text.
+    await pane.locator(".tab--active").first().focus();
+    for (let step = 0; step < 12; step += 1) {
+      if (await content.evaluate((node) => node === document.activeElement))
+        break;
+      await page.keyboard.press("Tab");
+    }
+    await expect(content).toBeFocused();
+    await expect(frame).toHaveClass(/cm-focused/);
+    expect(
+      await frame.evaluate(
+        (node) => getComputedStyle(node, "::after").boxShadow,
+      ),
+    ).not.toBe("none");
+
+    // Arrow keys move the caret; Shift+ArrowDown selects and copy takes the text.
+    const caretLine = () =>
+      page.evaluate(() => {
+        const node = window.getSelection()?.focusNode ?? null;
+        const element = node instanceof Element ? node : node?.parentElement;
+        const line = element?.closest(".agent-artifact-pane .cm-line");
+        return line
+          ? [
+              ...document.querySelectorAll(".agent-artifact-pane .cm-line"),
+            ].indexOf(line)
+          : null;
+      });
+    await page.keyboard.press("Control+Home");
+    await expect.poll(caretLine).toBe(0);
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(caretLine).toBe(1);
+    await page.keyboard.press("Shift+ArrowDown");
+    const selected = await page.evaluate(() =>
+      window.getSelection()!.toString(),
+    );
+    expect(selected.length).toBeGreaterThan(0);
+    await page.evaluate(() => {
+      document.addEventListener("copy", (event) => {
+        (window as unknown as { copied: string }).copied =
+          event.clipboardData!.getData("text/plain");
+      });
+    });
+    await page.keyboard.press("Control+c");
+    await expect
+      .poll(() =>
+        page.evaluate(() => (window as unknown as { copied?: string }).copied),
+      )
+      .toBe(selected);
+
+    // Typing, deleting, cut, paste and undo leave the document alone.
+    await page.keyboard.type("zz");
+    for (const key of [
+      "Backspace",
+      "Enter",
+      "Control+x",
+      "Control+v",
+      "Control+z",
+    ])
+      await page.keyboard.press(key);
+    await expect(content).toBeFocused();
+    expect(await content.evaluate((node) => node.textContent)).toBe(text);
   });
 });
