@@ -1,4 +1,4 @@
-use super::{StagedFiles, read::read_paths};
+use super::{Resources, StagedFiles, read::read_paths};
 use crate::state::AppState;
 use serde::Deserialize;
 use tauri::State;
@@ -60,26 +60,46 @@ pub(crate) async fn stage_prompt_files(
     state: State<'_, AppState>,
     request: StageFilesRequest,
 ) -> Result<StagedFiles, String> {
+    stage_with(&state, request, read_paths).await
+}
+
+/// Reads the picked paths without holding the project transition guard, so a
+/// slow folder or a large bounded walk never blocks project switching, chat
+/// selection or shutdown persistence. Ownership is checked before the read and
+/// again under the guard before staging: a switch, archive or chat close during
+/// the read rejects the snapshot instead of admitting it to the new state.
+async fn stage_with<R>(
+    state: &AppState,
+    request: StageFilesRequest,
+    read: R,
+) -> Result<StagedFiles, String>
+where
+    R: FnOnce(&[String]) -> Result<Resources, &'static str> + Send + 'static,
+{
     let admission = std::sync::Arc::clone(&state.acp.file_stage_reader)
         .try_lock_owned()
         .map_err(|_| "Another attachment selection is being read.")?;
-    let transition = state.project_transitions.lock().await;
-    validate(&state, &request.owner, *transition)?;
+    validate(
+        state,
+        &request.owner,
+        *state.project_transitions.lock().await,
+    )?;
+    let paths = request
+        .paths
+        .as_slice()
+        .iter()
+        .map(|p| p.as_str().to_owned())
+        .collect::<Vec<_>>();
     // One native reader at a time. No queued file buffers and no filesystem I/O
-    // on the async runtime thread. The project guard prevents archive/switch races.
+    // on the async runtime thread.
     let resources = tauri::async_runtime::spawn_blocking(move || {
         let _admission = admission;
-        read_paths(
-            &request
-                .paths
-                .as_slice()
-                .iter()
-                .map(|p| p.as_str().to_owned())
-                .collect::<Vec<_>>(),
-        )
+        read(&paths)
     })
     .await
     .map_err(|_| "Attachment reader failed.")??;
+    let transition = state.project_transitions.lock().await;
+    validate(state, &request.owner, *transition)?;
     state
         .acp
         .file_stages
@@ -139,5 +159,77 @@ mod tests {
         assert!(
             serde_json::from_value::<StageFilesRequest>(request(vec![&"x".repeat(4097)])).is_err()
         );
+    }
+
+    #[test]
+    fn slow_reads_release_the_project_guard_and_stale_snapshots_are_not_staged() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let root = std::env::temp_dir().join(format!("sage-stage-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&root).unwrap();
+            let database =
+                crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let chat = database
+                .bootstrap_snapshot()
+                .unwrap()
+                .active_tab_id
+                .unwrap();
+            let state = AppState::new(database);
+            let request = || {
+                serde_json::from_value::<StageFilesRequest>(serde_json::json!({
+                    "owner": {"projectId": project.id, "chatId": chat, "projectGeneration": 0},
+                    "paths": ["/picked"],
+                    "expectedRevision": null,
+                }))
+                .unwrap()
+            };
+            let snapshot = || {
+                Resources(std::sync::Arc::new(vec![super::super::Resource {
+                    id: "file-1".into(),
+                    name: "picked.txt".into(),
+                    bytes: b"context".to_vec(),
+                }]))
+            };
+            for switch_during_read in [false, true] {
+                *state.project_transitions.lock().await = 0;
+                let (started, read_started) = tokio::sync::oneshot::channel();
+                let (release, released) = std::sync::mpsc::channel::<()>();
+                let reader = move |_: &[String]| {
+                    started.send(()).unwrap();
+                    released.recv().unwrap();
+                    Ok(snapshot())
+                };
+                let transition = async {
+                    read_started.await.unwrap();
+                    // The guard is free while the reader is blocked in I/O.
+                    let mut epoch = state.project_transitions.try_lock().unwrap();
+                    if switch_during_read {
+                        *epoch += 1;
+                    }
+                    drop(epoch);
+                    release.send(()).unwrap();
+                };
+                let (staged, ()) = tokio::join!(stage_with(&state, request(), reader), transition);
+                let listed = state
+                    .acp
+                    .file_stages
+                    .lock()
+                    .unwrap()
+                    .list(&project.id, &chat);
+                if switch_during_read {
+                    assert_eq!(
+                        staged.err().as_deref(),
+                        Some("Attachment owner is stale or invalid.")
+                    );
+                    assert!(listed.is_none());
+                } else {
+                    assert_eq!(staged.err(), None);
+                    assert!(listed.is_some());
+                    state.acp.file_stages.lock().unwrap().clear();
+                }
+            }
+            let _ = state.acp.shutdown_blocking();
+            let _ = std::fs::remove_dir_all(root);
+        });
     }
 }
