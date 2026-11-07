@@ -136,6 +136,7 @@ impl ClaudeRuntime {
             config: crate::acp::session_config::SessionConfig::from_wire(&value["result"], true)
                 .map_err(|_| AdapterRuntimeError::Frame)?,
             cancelled_prompt_errors: Default::default(),
+            commands: Arc::default(),
         });
         AdapterBatch::new(
             vec![SharedEvent::SessionReady {
@@ -225,6 +226,9 @@ impl ClaudeRuntime {
             );
         }
         if self.absorbs_fork_update(&value) {
+            return AdapterBatch::new(vec![SharedEvent::Absorbed], Vec::new());
+        }
+        if self.commands_notification(&value)? {
             return AdapterBatch::new(vec![SharedEvent::Absorbed], Vec::new());
         }
         if self.config_notification(&value)? {

@@ -120,32 +120,13 @@ impl PiRuntime {
                 };
                 (Some(AdapterEvent::Acknowledged), refresh)
             }
-            AdapterOutput::SessionReset => {
-                self.next_session = self
-                    .next_session
-                    .checked_add(1)
-                    .filter(|value| *value <= i64::MAX as u64)
-                    .ok_or(AdapterRuntimeError::Operation)?;
-                let external = ExternalId::new(
-                    "piSessionId",
-                    format!(
-                        "pi-session-{}-{}",
-                        self.runtime_epoch.get(),
-                        self.next_session
-                    ),
-                )
-                .map_err(|_| AdapterRuntimeError::Operation)?;
-                self.external_session = Some(external.clone());
-                self.recent_cancelled_dialogs.clear();
-                self.available_thinking.clear();
-                (
-                    Some(AdapterEvent::SessionReady {
-                        id: self.identity(external, None, None),
-                        loaded: false,
-                    }),
-                    None,
-                )
+            AdapterOutput::Commands(value) => {
+                self.commands_pending = false;
+                self.commands.replace(&value, true)?;
+                (Some(AdapterEvent::Absorbed), None)
             }
+            AdapterOutput::SessionReset => self.command_session_reset()?,
+
             AdapterOutput::State(state) => self.state_reply(state)?,
             AdapterOutput::Models(models) => {
                 let event = model_event(models.clone(), self.current_model.as_deref())?;

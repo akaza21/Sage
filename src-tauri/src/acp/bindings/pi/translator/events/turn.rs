@@ -1,11 +1,14 @@
-use super::super::{ActiveTurn, EventPhase, PiTranslator};
+use super::super::{ActiveTurn, PiTranslator, TurnPhase};
 use crate::acp::bindings::pi::{AdapterError, AdapterOutput, TerminalOutcome};
 use serde_json::Value;
 
 impl PiTranslator {
     pub(super) fn session_turn(&mut self) -> Result<&mut ActiveTurn, AdapterError> {
         let turn = self.live_turn_any_phase()?;
-        if turn.event_phase == EventPhase::PromptIssued {
+        if matches!(
+            turn.lifecycle.phase,
+            TurnPhase::Reserved | TurnPhase::AwaitingAcknowledgment
+        ) {
             return Err(AdapterError::EventSequence);
         }
         Ok(turn)
@@ -13,13 +16,9 @@ impl PiTranslator {
 
     pub(super) fn agent_end(&mut self, value: &Value) -> Result<Vec<AdapterOutput>, AdapterError> {
         let turn = self.session_turn()?;
-        if turn.event_phase == EventPhase::AgentEnded {
+        if !turn.lifecycle.end_model()? {
             return Ok(vec![AdapterOutput::DuplicateIgnored]);
         }
-        if turn.event_phase != EventPhase::AgentRunning {
-            return Err(AdapterError::EventSequence);
-        }
-        turn.event_phase = EventPhase::AgentEnded;
         let message = value
             .get("messages")
             .and_then(Value::as_array)
@@ -54,12 +53,13 @@ impl PiTranslator {
 
     pub(super) fn agent_settled(&mut self) -> Result<Vec<AdapterOutput>, AdapterError> {
         let turn = self.active.as_ref().ok_or(AdapterError::StaleIntent)?;
-        if turn.terminal.is_none() && turn.event_phase != EventPhase::AgentEnded {
+        if turn.lifecycle.terminal().is_some() {
+            return Ok(vec![AdapterOutput::DuplicateIgnored]);
+        }
+        if turn.lifecycle.phase != TurnPhase::ModelEnded {
             return Err(AdapterError::EventSequence);
         }
-        let outcome = if turn.abort_requested || turn.authority_denied {
-            TerminalOutcome::Interrupted
-        } else if turn.retry_failed {
+        let outcome = if turn.retry_failed {
             TerminalOutcome::Failed
         } else {
             turn.settlement_outcome

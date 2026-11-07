@@ -8,7 +8,6 @@ use crate::acp::{
         JournalHandle, PrepareDispatch, PrepareRecovery, ProjectIntentAuthority,
         ProjectionPublisher, RecoveryActivationParts, SendCoordinator, SessionPumpIntent,
         SessionTreeLease, SqliteAdapterBatchJournal, TeardownActivationParts,
-        is_available_commands_update,
     },
     scheduler::RuntimeOwner,
     store::PrepareTurnCommand,
@@ -73,10 +72,14 @@ where
                         AdapterPumpError::Frame
                     })?;
                     self.parts.accept_idle_batch(batch, &mut self.transport)?;
-                } else if !is_available_commands_update(
+                } else if crate::acp::runtime::activation_pump::is_available_commands_update(
                     &frame,
                     self.parts.session().external_session_id.as_str(),
                 ) {
+                    self.parts
+                        .receive_command_update(&frame)
+                        .map_err(|_| AdapterPumpError::Frame)?;
+                } else {
                     match self.parts.ingest_idle_frame(&frame) {
                         Ok(batch) => {
                             if let Err(error) = self.parts.accept_idle_batch(batch, &mut self.transport) {

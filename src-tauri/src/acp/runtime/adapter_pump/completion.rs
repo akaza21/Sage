@@ -14,6 +14,19 @@ pub(crate) struct CompletedPumpParts<A, J, R> {
 type PumpHandoff<T, P> = Result<T, Box<(P, AdapterPumpError)>>;
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPumpParts<A, J, R> {
+    pub(crate) fn validate_command_prompt(
+        &self,
+        prompt: &crate::acp::intent::Prompt,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        if let Some(revision) = prompt.command_revision {
+            self.adapter
+                .available_commands()
+                .validate(revision, prompt.as_str())
+                .map_err(|_| crate::acp::runtime::HostError::Intent)?;
+        }
+        Ok(())
+    }
+
     pub(crate) async fn accept_idle_stdout_chunk(
         &mut self,
         chunk: &[u8],

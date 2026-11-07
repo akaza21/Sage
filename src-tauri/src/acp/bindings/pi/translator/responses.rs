@@ -6,9 +6,10 @@ impl PiTranslator {
         response: Response,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
         let fingerprint = response_fingerprint(&response);
-        let Some(kind) = self.pending.remove(&response.id) else {
+        let Some(request) = self.pending.remove(&response.id) else {
             return self.classify_repeated_response(&response, fingerprint);
         };
+        let kind = request.kind;
         let closed = self.closed_config_requests.remove(&response.id)
             || (kind.is_config()
                 && self
@@ -25,11 +26,21 @@ impl PiTranslator {
             return Err(AdapterError::Correlation);
         }
         self.remember_response(&response, fingerprint);
+        if request.owner.is_some()
+            && self.active.as_ref().is_none_or(|turn| {
+                request.owner != Some(turn.lifecycle.owner) || turn.lifecycle.terminal().is_some()
+            })
+        {
+            return Ok(vec![AdapterOutput::LateIgnored]);
+        }
         if closed {
             if kind == PendingKind::SetThinkingLevel {
                 self.pending_thinking = None;
             }
             return Ok(vec![AdapterOutput::LateIgnored]);
+        }
+        if !response.success && kind == PendingKind::Commands {
+            return Ok(vec![AdapterOutput::Commands(serde_json::json!([]))]);
         }
         if !response.success {
             if kind == PendingKind::SetThinkingLevel {
@@ -42,10 +53,13 @@ impl PiTranslator {
                 code: "command_failed",
             }];
             if kind == PendingKind::Prompt {
-                output.extend(self.finish_turn(TerminalOutcome::Failed)?);
+                let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
+                if active.lifecycle.acknowledged(false, false)? {
+                    output.extend(self.finish_turn(TerminalOutcome::Failed)?);
+                }
             } else if kind == PendingKind::Abort {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-                active.abort_requested = false;
+                active.lifecycle.resolve_abort(false);
             } else if matches!(kind, PendingKind::State | PendingKind::Models) {
                 self.reset_initialization();
             }
@@ -79,6 +93,9 @@ impl PiTranslator {
             PendingKind::SetModel => Ok(vec![AdapterOutput::ModelSelected(
                 self::payload::parse_model(&response.data)?,
             )]),
+            PendingKind::Commands => Ok(vec![AdapterOutput::Commands(
+                response.data["commands"].clone(),
+            )]),
             PendingKind::ThinkingLevels => Ok(vec![AdapterOutput::ThinkingLevels(
                 self::payload::parse_thinking_levels(&response.data)?,
             )]),
@@ -98,19 +115,21 @@ impl PiTranslator {
             }
             PendingKind::Prompt => {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-                if active.prompt_command_id != response.id {
-                    return Err(AdapterError::Correlation);
+                let handled =
+                    response.data.get("disposition").and_then(Value::as_str) == Some("handled");
+                if active.lifecycle.acknowledged(true, handled)? {
+                    return self.finish_turn(TerminalOutcome::Completed);
                 }
-                if active.terminal.is_some() {
-                    return Ok(vec![AdapterOutput::LateIgnored]);
-                }
-                if active.event_phase != EventPhase::PromptIssued {
-                    return Err(AdapterError::EventSequence);
-                }
-                active.event_phase = EventPhase::PromptAccepted;
                 Ok(vec![AdapterOutput::CommandAccepted { command: "prompt" }])
             }
-            PendingKind::Abort => Ok(vec![AdapterOutput::CommandAccepted { command: "abort" }]),
+            PendingKind::Abort => {
+                self.active
+                    .as_mut()
+                    .ok_or(AdapterError::StaleIntent)?
+                    .lifecycle
+                    .resolve_abort(true);
+                Ok(vec![AdapterOutput::CommandAccepted { command: "abort" }])
+            }
             PendingKind::Messages => Ok(vec![AdapterOutput::Messages(parse_messages(
                 &response.data,
             )?)]),
@@ -131,17 +150,15 @@ impl PiTranslator {
                     && completed.success == response.success
                     && completed.payload_fingerprint == fingerprint =>
             {
-                let closed = self
-                    .active
-                    .as_ref()
-                    .is_some_and(|turn| turn.terminal.is_some() || turn.authority_denied)
-                    && matches!(
-                        response.command.as_str(),
-                        "set_model"
-                            | "set_thinking_level"
-                            | "get_available_thinking_levels"
-                            | "get_state"
-                    );
+                let closed = self.active.as_ref().is_some_and(|turn| {
+                    turn.lifecycle.terminal().is_some() || turn.authority_denied
+                }) && matches!(
+                    response.command.as_str(),
+                    "set_model"
+                        | "set_thinking_level"
+                        | "get_available_thinking_levels"
+                        | "get_state"
+                );
                 Ok(vec![if closed {
                     AdapterOutput::LateIgnored
                 } else {

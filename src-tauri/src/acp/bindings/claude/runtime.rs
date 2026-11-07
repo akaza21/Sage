@@ -40,6 +40,7 @@ mod egress;
 mod fork;
 mod ingress;
 mod session_config;
+mod slash_commands;
 mod support;
 use support::*;
 
@@ -75,6 +76,7 @@ struct ActiveSession {
     translator: ClaudeTranslator,
     turn: Option<TurnIntent>,
     config: crate::acp::session_config::SessionConfig,
+    commands: Arc<crate::acp::slash_commands::CommandState>,
     /// Request-scoped cancellation interpretation for bounded late-response replay.
     cancelled_prompt_errors: BTreeSet<u64>,
 }
@@ -326,6 +328,16 @@ impl LaunchableRuntime for ClaudeRuntime {
 }
 
 impl HarnessAdapter for ClaudeRuntime {
+    fn receive_command_update(&mut self, frame: &Frame) -> Result<(), AdapterRuntimeError> {
+        let value =
+            serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
+        self.commands_notification(&value).map(|_| ())
+    }
+    fn available_commands(&self) -> Arc<crate::acp::slash_commands::CommandState> {
+        self.active
+            .as_ref()
+            .map_or_else(Arc::default, |a| Arc::clone(&a.commands))
+    }
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
         self.active.as_ref().map(|a| a.config.clone())
     }

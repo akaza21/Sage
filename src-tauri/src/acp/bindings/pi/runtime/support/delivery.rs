@@ -23,6 +23,7 @@ impl PiRuntime {
                 self.staged_initialize = None;
                 self.initialized = false;
             }
+            RequestKind::Commands => self.commands_pending = false,
             RequestKind::Prompt => self.active_turn = None,
             RequestKind::ThinkingLevels => {
                 self.clear_thinking_request();
