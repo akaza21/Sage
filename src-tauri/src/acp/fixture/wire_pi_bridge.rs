@@ -11,11 +11,10 @@ use serde_json::{Value, json};
 use super::super::FixtureError;
 use super::field_str;
 use super::{WireState, acp, codex};
+use crate::acp::bindings::pi::bridge::MAX_REPLY_BYTES;
 
 /// The extension's request-size ceiling (`MAX_BYTES` in extension.mjs).
 const MAX_PREPARE_BYTES: usize = 262_144;
-/// The longest answer the extension reads back (`refusal` in extension.mjs).
-const MAX_REPLY_BYTES: usize = 64;
 
 pub(super) fn tool(
     step: &Value,

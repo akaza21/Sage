@@ -45,7 +45,7 @@ impl Refusal {
         match self {
             Self::Denied => "Sage denied the operation",
             Self::Withdrawn => "Sage withdrew the unanswered approval request",
-            Self::Inactive => "Sage refused: no Turn is running",
+            Self::Inactive => "Sage refused: this session is not taking edits",
             Self::ReadOnly => "Sage refused: this chat has read-only access",
             Self::WriteLimit => "Sage refused: this Turn reached its write limit",
             Self::Busy => "Sage refused: another edit is awaiting approval",
@@ -55,7 +55,7 @@ impl Refusal {
             Self::NotApproved => "Sage refused: the edit was not approved",
             Self::OutsideWorkspace => "Sage refused: the path is outside the workspace",
             Self::ProtectedPath => "Sage refused: the path is protected or reserved",
-            Self::MissingParent => "Sage refused: the parent folder does not exist",
+            Self::MissingParent => "Sage refused: the parent is not an existing folder",
             Self::Unreadable => "Sage refused: the file is not a regular text file",
             Self::NoUniqueMatch => "Sage refused: oldText must match exactly once",
             Self::TooLarge => "Sage refused: the file exceeds the size limit",
@@ -67,6 +67,7 @@ impl Refusal {
 
 /// The longest reply the bridge sends; the extension and the fixture child
 /// read at most this many bytes.
+#[cfg(any(test, feature = "acp-fixture"))]
 pub(crate) const MAX_REPLY_BYTES: usize = 64;
 
 #[cfg(test)]

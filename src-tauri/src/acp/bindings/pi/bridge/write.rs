@@ -9,15 +9,18 @@ pub(crate) fn commit(workspace: &Workspace, edit: &Edit) -> Result<(), Refusal> 
     if !unchanged(workspace, edit) {
         return Err(Refusal::Changed);
     }
-    // A failed write leaves the target as it was, so reading it again tells a
-    // concurrent change apart from an I/O failure.
-    platform_write(workspace, edit).map_err(|_| {
-        if unchanged(workspace, edit) {
-            Refusal::WriteFailed
-        } else {
-            Refusal::Changed
-        }
-    })
+    platform_write(workspace, edit).or_else(|_| settle_failed(workspace, edit))
+}
+
+/// Decides a failed write by what the target holds now. The approved bytes may
+/// already be published when only the final directory sync failed; then the
+/// edit did land and is reported as written.
+fn settle_failed(workspace: &Workspace, edit: &Edit) -> Result<(), Refusal> {
+    match read(workspace, &edit.relative) {
+        Ok(Some(current)) if current == edit.new => Ok(()),
+        _ if unchanged(workspace, edit) => Err(Refusal::WriteFailed),
+        _ => Err(Refusal::Changed),
+    }
 }
 
 /// The target still holds exactly what the user approved replacing (or is

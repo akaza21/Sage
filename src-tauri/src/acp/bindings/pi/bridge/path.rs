@@ -6,7 +6,7 @@ use crate::workspace::{
     Workspace,
     directory_skip::{protected_workspace_name, windows_reserved_device_name},
 };
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 /// The approval prompt names the path in full, so it must fit the summary.
 pub(crate) const MAX_DISPLAY_PATH_BYTES: usize = 480;
@@ -24,6 +24,11 @@ pub(crate) fn admit_requested(workspace: &Workspace, requested: &str) -> Result<
     } else {
         path
     };
+    // A leading `./` names the same workspace path; every other component must be a name.
+    let relative: PathBuf = relative
+        .components()
+        .filter(|part| *part != Component::CurDir)
+        .collect();
     if relative.as_os_str().is_empty()
         || relative
             .components()

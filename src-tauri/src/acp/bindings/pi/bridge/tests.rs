@@ -92,6 +92,13 @@ fn pi_bridge_refuses_shell_escapes_ambiguous_and_oversized_edits_with_reasons() 
         Some(Refusal::NoUniqueMatch)
     );
     assert!(!f.path.join("escape").exists());
+    // A leading `./` names the same workspace file.
+    assert_eq!(
+        f.edit("write", json!({"path":"./b.txt","content":"x"}))
+            .unwrap()
+            .relative,
+        "b.txt"
+    );
 }
 #[cfg(unix)]
 #[test]
