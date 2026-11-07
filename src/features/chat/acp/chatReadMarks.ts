@@ -54,7 +54,7 @@ let restored = false;
 const RETRY_BASE_MS = 1_000;
 const RETRY_MAX_MS = 30_000;
 let loadFailures = 0;
-// A read the store applies prunes its oldest mark, which a snapshot taken
+// A read the store applies may evict a mark, which a snapshot taken
 // meanwhile still lists. Snapshots are only trusted when no read was in
 // flight while they were taken; otherwise they are taken again once the
 // reads land.
@@ -68,26 +68,26 @@ function emit() {
   for (const listener of listeners) listener();
 }
 
-/** Records an acknowledged state; returns chats whose mark was evicted. */
-function record(chatId: string, state: ReadState): string[] {
+/**
+ * Records an acknowledged state. The store alone decides which marks it
+ * evicts and reports them with each read (see `drain`), so `known` mirrors
+ * it and stays within the bound; the trim below only guards memory against
+ * an answer that breaks that contract.
+ */
+function record(chatId: string, state: ReadState) {
   if (state === null) {
     known.delete(chatId);
     absent.delete(chatId);
     absent.add(chatId);
     if (absent.size > MAX_CHAT_READ_MARKS)
       absent.delete(absent.values().next().value!);
-    return [];
+    return;
   }
   absent.delete(chatId);
   known.delete(chatId);
   known.set(chatId, state);
-  const evicted: string[] = [];
-  while (known.size > MAX_CHAT_READ_MARKS) {
-    const oldest = known.keys().next().value!;
-    known.delete(oldest);
-    evicted.push(oldest);
-  }
-  return evicted;
+  if (known.size > MAX_CHAT_READ_MARKS)
+    known.delete(known.keys().next().value!);
 }
 
 function acknowledged(chatId: string): ReadState | undefined {
@@ -97,8 +97,7 @@ function acknowledged(chatId: string): ReadState | undefined {
 }
 
 function acknowledge(chatId: string, state: ReadState) {
-  // The store prunes its oldest marks the same way.
-  for (const evicted of record(chatId, state)) project(evicted);
+  record(chatId, state);
   project(chatId);
 }
 
@@ -125,6 +124,19 @@ function reproject() {
     else marks.set(chatId, pending.state);
   }
   emit();
+}
+
+/** The chats a read's answer says the store evicted, bounded like the marks. */
+function admitEvicted(answer: unknown): string[] {
+  if (typeof answer !== "object" || answer === null) return [];
+  const { evicted } = answer as Record<string, unknown>;
+  if (!Array.isArray(evicted)) return [];
+  return evicted
+    .slice(0, MAX_CHAT_READ_MARKS)
+    .filter(
+      (chatId): chatId is string =>
+        typeof chatId === "string" && chatId.length > 0,
+    );
 }
 
 function admitMark(mark: unknown): [string, number] | null {
@@ -243,7 +255,7 @@ async function drain(chatId: string, lane: Lane, started: number) {
       if (current.state === null) {
         await invokeNative("chat_mark_unread", { chatId });
         if (started !== epoch) return;
-        evicted = record(chatId, null);
+        record(chatId, null);
       } else {
         readsInFlight += 1;
         readsSent += 1;
@@ -256,8 +268,11 @@ async function drain(chatId: string, lane: Lane, started: number) {
           if (started === epoch) readsInFlight -= 1;
         }
         if (started !== epoch) return;
-        // The store keeps the later mark; take the one it reports.
-        evicted = record(chatId, admitMark(answer)?.[1] ?? current.state);
+        // The store keeps the later mark; take the one it reports, and drop
+        // the marks it evicted to make room.
+        evicted = admitEvicted(answer).filter((pruned) => pruned !== chatId);
+        for (const pruned of evicted) record(pruned, null);
+        record(chatId, admitMark(answer)?.[1] ?? current.state);
       }
     } catch {
       if (started !== epoch) return;
@@ -265,7 +280,6 @@ async function drain(chatId: string, lane: Lane, started: number) {
     }
     lane.inFlight = null;
     if (!lane.next) lanes.delete(chatId);
-    // The store prunes its oldest marks the same way.
     for (const pruned of evicted) project(pruned);
     project(chatId);
     if (reloadWanted && readsInFlight === 0 && !restoring) {

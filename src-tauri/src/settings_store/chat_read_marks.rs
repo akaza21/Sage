@@ -25,6 +25,17 @@ pub struct ChatReadMark {
     pub read_through: i64,
 }
 
+/// What a read wrote: the mark the store now holds, and the chats whose
+/// marks it evicted to stay within the bound. The store alone decides
+/// eviction, so the rail applies `evicted` rather than guessing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatReadMarkWrite {
+    #[serde(flatten)]
+    pub mark: ChatReadMark,
+    pub evicted: Vec<String>,
+}
+
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS chat_read_marks (
@@ -69,7 +80,7 @@ impl SettingsStore {
         &self,
         mark: &ChatReadMark,
         retained: &[String],
-    ) -> AppResult<ChatReadMark> {
+    ) -> AppResult<ChatReadMarkWrite> {
         validate_chat_identifier("Chat ID", &mark.chat_id)?;
         if mark.read_through < 0 {
             return Err(crate::error::AppError::InvalidRequest(
@@ -89,28 +100,37 @@ impl SettingsStore {
                sequence = excluded.sequence",
             params![mark.chat_id, mark.read_through],
         )?;
-        transaction.execute(
-            "DELETE FROM chat_read_marks WHERE chat_id IN (
-               SELECT chat_id FROM chat_read_marks
-               WHERE chat_id <> ?2
-               ORDER BY chat_id IN (SELECT value FROM json_each(?3)), sequence
-               LIMIT MAX(0, (SELECT COUNT(*) FROM chat_read_marks) - ?1)
-             )",
-            params![
-                MAX_CHAT_READ_MARKS as i64,
-                mark.chat_id,
-                serde_json::Value::from(retained).to_string()
-            ],
-        )?;
+        let evicted = transaction
+            .prepare(
+                "DELETE FROM chat_read_marks WHERE chat_id IN (
+                   SELECT chat_id FROM chat_read_marks
+                   WHERE chat_id <> ?2
+                   ORDER BY chat_id IN (SELECT value FROM json_each(?3)), sequence
+                   LIMIT MAX(0, (SELECT COUNT(*) FROM chat_read_marks) - ?1)
+                 )
+                 RETURNING chat_id",
+            )?
+            .query_map(
+                params![
+                    MAX_CHAT_READ_MARKS as i64,
+                    mark.chat_id,
+                    serde_json::Value::from(retained).to_string()
+                ],
+                |row| row.get(0),
+            )?
+            .collect::<Result<Vec<String>, _>>()?;
         let read_through = transaction.query_row(
             "SELECT read_through FROM chat_read_marks WHERE chat_id = ?1",
             [&mark.chat_id],
             |row| row.get(0),
         )?;
         transaction.commit()?;
-        Ok(ChatReadMark {
-            chat_id: mark.chat_id.clone(),
-            read_through,
+        Ok(ChatReadMarkWrite {
+            mark: ChatReadMark {
+                chat_id: mark.chat_id.clone(),
+                read_through,
+            },
+            evicted,
         })
     }
 
@@ -161,7 +181,10 @@ mod tests {
         let store = SettingsStore::in_memory().unwrap();
         store.mark_chat_read(&mark("chat-a", 2_000), &[]).unwrap();
         assert_eq!(
-            store.mark_chat_read(&mark("chat-a", 1_000), &[]).unwrap(),
+            store
+                .mark_chat_read(&mark("chat-a", 1_000), &[])
+                .unwrap()
+                .mark,
             mark("chat-a", 2_000)
         );
     }
@@ -177,15 +200,37 @@ mod tests {
     #[test]
     fn only_the_most_recently_read_chats_keep_a_mark() {
         let store = SettingsStore::in_memory().unwrap();
-        for index in 0..=MAX_CHAT_READ_MARKS {
-            store
+        for index in 0..MAX_CHAT_READ_MARKS {
+            let write = store
                 .mark_chat_read(&mark(&format!("chat-{index}"), 1), &[])
                 .unwrap();
+            assert!(write.evicted.is_empty());
         }
+        let write = store
+            .mark_chat_read(&mark(&format!("chat-{MAX_CHAT_READ_MARKS}"), 1), &[])
+            .unwrap();
+        assert_eq!(write.evicted, vec!["chat-0".to_owned()]);
         let marks = store.chat_read_marks().unwrap();
         assert_eq!(marks.len(), MAX_CHAT_READ_MARKS);
         assert!(!marks.iter().any(|mark| mark.chat_id == "chat-0"));
         assert_eq!(marks[0].chat_id, format!("chat-{MAX_CHAT_READ_MARKS}"));
+    }
+
+    #[test]
+    fn eviction_spares_retained_chats_and_the_chat_just_read() {
+        let store = SettingsStore::in_memory().unwrap();
+        let retained = vec!["chat-0".to_owned()];
+        for index in 0..MAX_CHAT_READ_MARKS {
+            store
+                .mark_chat_read(&mark(&format!("chat-{index}"), 1), &retained)
+                .unwrap();
+        }
+        // chat-0 is the oldest read, but the rail still shows it.
+        let write = store.mark_chat_read(&mark("newest", 1), &retained).unwrap();
+        assert_eq!(write.evicted, vec!["chat-1".to_owned()]);
+        let marks = store.chat_read_marks().unwrap();
+        assert!(marks.iter().any(|mark| mark.chat_id == "chat-0"));
+        assert!(marks.iter().any(|mark| mark.chat_id == "newest"));
     }
 
     #[test]

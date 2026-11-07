@@ -14,7 +14,7 @@ use crate::{
     error::AppResult,
     persistence::Database,
     project_registry::{CHAT_LATEST_TURN_ID, rail_chat_ids, rail_chat_set},
-    settings_store::{ChatReadMark, SettingsStore},
+    settings_store::{ChatReadMark, ChatReadMarkWrite, SettingsStore},
 };
 
 /// The most chats one answer lists. Chats awaiting an approval come first,
@@ -130,7 +130,7 @@ pub(crate) fn mark_read(
     database: &Database,
     settings: &SettingsStore,
     mark: &ChatReadMark,
-) -> AppResult<ChatReadMark> {
+) -> AppResult<ChatReadMarkWrite> {
     let retained = rail_chat_ids(&database.connection())?;
     settings.mark_chat_read(mark, &retained)
 }

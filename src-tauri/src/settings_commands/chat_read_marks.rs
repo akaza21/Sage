@@ -4,7 +4,11 @@
 
 use tauri::State;
 
-use crate::{chat_read_state::ChatAttentionList, settings_store::ChatReadMark, state::AppState};
+use crate::{
+    chat_read_state::ChatAttentionList,
+    settings_store::{ChatReadMark, ChatReadMarkWrite},
+    state::AppState,
+};
 
 #[tauri::command]
 pub(crate) fn chat_read_marks(state: State<'_, AppState>) -> Result<Vec<ChatReadMark>, String> {
@@ -21,7 +25,7 @@ pub(crate) fn chat_read_marks(state: State<'_, AppState>) -> Result<Vec<ChatRead
 pub(crate) async fn chat_mark_read(
     state: State<'_, AppState>,
     mark: ChatReadMark,
-) -> Result<ChatReadMark, String> {
+) -> Result<ChatReadMarkWrite, String> {
     let database = state.database.clone();
     let settings = state.settings.clone();
     tauri::async_runtime::spawn_blocking(move || {

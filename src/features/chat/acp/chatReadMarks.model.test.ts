@@ -11,13 +11,14 @@ import {
 
 /**
  * A model of the settings store. Like settings_store/chat_read_marks.rs it
- * keeps the later mark and only the most recently read chats. Every call
- * waits until the test answers it, so the test decides the order in which
- * the store runs the snapshot query, applies writes, and delivers answers.
+ * keeps the later mark and only the most recently read chats, and reports
+ * the marks a read evicted. Every call waits until the test answers it, so
+ * the test decides the order in which the store runs the snapshot query,
+ * applies writes, and delivers answers. `stored` is kept in read order,
+ * oldest first.
  */
 const fake = vi.hoisted(() => ({
-  stored: new Map<string, { readThrough: number; sequence: number }>(),
-  sequence: 0,
+  stored: new Map<string, { readThrough: number }>(),
   writes: [] as Array<{
     command: string;
     chatId: string;
@@ -34,7 +35,7 @@ const fake = vi.hoisted(() => ({
 
 function snapshot() {
   return [...fake.stored]
-    .sort((left, right) => right[1].sequence - left[1].sequence)
+    .reverse()
     .slice(0, MAX_CHAT_READ_MARKS)
     .map(([chatId, { readThrough }]) => ({ chatId, readThrough }));
 }
@@ -60,18 +61,19 @@ vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
     }),
 }));
 
+/** Applies a read; returns the mark kept and the chats evicted for it. */
 function storeRead(chatId: string, readThrough: number) {
   const current = fake.stored.get(chatId)?.readThrough ?? 0;
-  fake.stored.set(chatId, {
-    readThrough: Math.max(current, readThrough),
-    sequence: (fake.sequence += 1),
-  });
-  const ordered = [...fake.stored].sort(
-    (left, right) => right[1].sequence - left[1].sequence,
-  );
-  for (const [pruned] of ordered.slice(MAX_CHAT_READ_MARKS))
-    fake.stored.delete(pruned);
-  return fake.stored.get(chatId)!.readThrough;
+  // Re-inserting moves the chat to the most recently read end.
+  fake.stored.delete(chatId);
+  fake.stored.set(chatId, { readThrough: Math.max(current, readThrough) });
+  const evicted: string[] = [];
+  while (fake.stored.size > MAX_CHAT_READ_MARKS) {
+    const oldest = fake.stored.keys().next().value!;
+    fake.stored.delete(oldest);
+    evicted.push(oldest);
+  }
+  return { readThrough: fake.stored.get(chatId)!.readThrough, evicted };
 }
 
 function answerWrite(ok: boolean) {
@@ -82,8 +84,8 @@ function answerWrite(ok: boolean) {
     fake.stored.delete(write.chatId);
     return write.resolve(null);
   }
-  const readThrough = storeRead(write.chatId, write.readThrough!);
-  write.resolve({ chatId: write.chatId, readThrough });
+  const { readThrough, evicted } = storeRead(write.chatId, write.readThrough!);
+  write.resolve({ chatId: write.chatId, readThrough, evicted });
 }
 
 function answerLoad(ok: boolean) {
@@ -184,7 +186,6 @@ async function checkAll(input: {
     for (const sequence of sequences(alphabet, depth)) {
       resetChatReadMarks();
       fake.stored = new Map();
-      fake.sequence = 0;
       for (const [chatId, readThrough] of input.initial)
         storeRead(chatId, readThrough);
       fake.writes = [];
