@@ -33,6 +33,8 @@ mod acp;
 mod codex;
 #[path = "wire_pi.rs"]
 mod pi;
+#[path = "wire_codex_user_input.rs"]
+mod user_input;
 
 pub(super) struct WireState {
     stdin_open: bool,
@@ -42,6 +44,7 @@ pub(super) struct WireState {
     prompt_request_id: Option<u64>,
     current_turn_id: Option<String>,
     turn_count: u64,
+    user_input_echo: Option<String>,
     pi: pi::PiWireState,
 }
 
@@ -55,6 +58,7 @@ impl WireState {
             prompt_request_id: None,
             current_turn_id: None,
             turn_count: 0,
+            user_input_echo: None,
             pi: pi::PiWireState::new(),
         }
     }
@@ -130,6 +134,9 @@ fn await_client_kind(
     }
     if kind.starts_with("acp") {
         return acp::await_request(input, output, state, kind);
+    }
+    if kind == "codexUserInputAnswer" {
+        return user_input::await_answer(input, state);
     }
     if kind == "codexGoalGetWithOptionalModelList" {
         return codex::await_goal_with_optional_models(input, output, state);
@@ -230,6 +237,8 @@ fn emit_known(
         "codexItemCompleted" => return codex::emit_notification("itemCompleted", state, output),
         "codexCompleted" => return codex::emit_notification("completed", state, output),
         "codexInterrupted" => return codex::emit_notification("interrupted", state, output),
+        "codexUserInputRequest" => return user_input::emit_request(step, state, output),
+        "codexUserInputEcho" => return user_input::emit_echo(state, output),
         _ => {}
     }
     match shape {
