@@ -1,7 +1,8 @@
 //! Held, no-follow directory handles for fingerprinting a workspace's dirty
-//! files. Each child is opened relative to its parent's handle, so replacing a
-//! directory with a link after the walk cannot redirect a later read outside
-//! the directory that was opened.
+//! files. Replacing a directory with a link after the walk cannot redirect a
+//! later read outside the directory that was opened: on Linux and macOS each
+//! child is opened relative to its parent's handle, and on Windows the held
+//! handles deny the rename or delete that a substitution needs.
 
 use std::{
     fs::File,
@@ -217,6 +218,26 @@ mod platform {
     }
 }
 
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+mod platform {
+    //! No held-handle walk: the root never opens, so captures fail closed.
+    use std::{ffi::OsStr, fs::File, path::Path};
+
+    use super::EntryStatus;
+
+    pub(super) fn open_root(_path: &Path) -> std::io::Result<File> {
+        Err(std::io::ErrorKind::Unsupported.into())
+    }
+
+    pub(super) fn open_child(_parent: &File, _name: &OsStr) -> std::io::Result<File> {
+        Err(std::io::ErrorKind::Unsupported.into())
+    }
+
+    pub(super) fn status_at(_parent: &File, _name: &OsStr) -> std::io::Result<EntryStatus> {
+        Err(std::io::ErrorKind::Unsupported.into())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,7 +282,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn fingerprinting_after_enumeration_cannot_read_a_substituted_parent() {
+    fn fingerprinting_cannot_read_through_a_substituted_parent() {
         let root =
             std::env::temp_dir().join(format!("sage-fingerprint-link-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join("child")).unwrap();
