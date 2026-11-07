@@ -131,29 +131,20 @@ impl CodexAdapter {
             let provisional = self.provisional_turn.take().expect("provisional turn");
             self.active_turn_client_message_id = Some(provisional.client_message_id);
             self.active_turn_id = Some(id);
-            return Ok((
-                self.scoped_in_turn(ExternalKind::Turn, value, value)?,
-                TurnBinding::NewlyActive,
-            ));
+            return Ok((self.scoped_turn(value)?, TurnBinding::NewlyActive));
         }
         if let Some(current) = self.active_turn_id.as_ref() {
             if current != &id {
                 return Err(AdapterError::IdentityConflict);
             }
-            return Ok((
-                self.scoped_in_turn(ExternalKind::Turn, value, value)?,
-                TurnBinding::Active,
-            ));
+            return Ok((self.scoped_turn(value)?, TurnBinding::Active));
         }
         if self
             .previous_turn
             .as_ref()
             .is_some_and(|previous| previous.id == id)
         {
-            return Ok((
-                self.scoped_in_turn(ExternalKind::Turn, value, value)?,
-                TurnBinding::PreviousTerminal,
-            ));
+            return Ok((self.scoped_turn(value)?, TurnBinding::PreviousTerminal));
         }
         match self.turn_start_correlations.observe(&id)? {
             CorrelationMatch::Pending(client_message_id) => {
@@ -162,10 +153,7 @@ impl CodexAdapter {
                 self.active_unretried_error_fingerprints.clear();
                 self.active_terminal_id_bytes = 0;
                 self.active_turn_id = Some(id.clone());
-                Ok((
-                    self.scoped_in_turn(ExternalKind::Turn, value, value)?,
-                    TurnBinding::NewlyActive,
-                ))
+                Ok((self.scoped_turn(value)?, TurnBinding::NewlyActive))
             }
             CorrelationMatch::Terminal {
                 turn_id,
@@ -205,10 +193,7 @@ impl CodexAdapter {
                 self.active_unretried_error_fingerprints.clear();
                 self.active_terminal_id_bytes = 0;
                 self.active_turn_id = Some(turn_id);
-                (
-                    self.scoped_in_turn(ExternalKind::Turn, value, value)?,
-                    TurnBinding::NewlyActive,
-                )
+                (self.scoped_turn(value)?, TurnBinding::NewlyActive)
             }
             CorrelationMatch::Active {
                 turn_id,
@@ -264,12 +249,10 @@ impl CodexAdapter {
             .is_some_and(|terminals| terminals.iter().any(|entry| entry.id == id))
     }
 
-    pub(crate) fn scoped_id(
-        &self,
-        kind: ExternalKind,
-        value: &str,
-    ) -> Result<ScopedExternalId, AdapterError> {
-        Ok(self.scoped(kind, ExternalId::new("externalId", value.to_owned())?))
+    /// The identity of a turn this adapter knows, carrying its own turn id
+    /// and client message id, which the pump needs to match the turn.
+    pub(crate) fn scoped_turn(&self, turn: &str) -> Result<ScopedExternalId, AdapterError> {
+        self.scoped_in_turn(ExternalKind::Turn, turn, turn)
     }
 
     pub(crate) fn scoped_in_turn(

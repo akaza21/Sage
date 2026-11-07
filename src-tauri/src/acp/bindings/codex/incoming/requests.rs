@@ -133,9 +133,7 @@ fn project_server_request(
         }
     };
     let event = IncomingEvent::Permission {
-        turn_id: adapter
-            .scoped_id(ExternalKind::Turn, turn)
-            .map_err(identity)?,
+        turn_id: adapter.scoped_turn(turn).map_err(identity)?,
         item_id: adapter
             .scoped_in_turn(ExternalKind::Item, turn, item)
             .map_err(identity)?,

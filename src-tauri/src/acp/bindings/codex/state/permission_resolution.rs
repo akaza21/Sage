@@ -23,7 +23,7 @@ impl CodexAdapter {
         entry.state = ServerRequestState::Cancelled;
         let turn_id = entry.turn_id.clone();
         Ok(Some((
-            self.scoped_id(ExternalKind::Turn, &turn_id)?,
+            self.scoped_turn(&turn_id)?,
             self.scoped_in_turn(ExternalKind::Request, &turn_id, request_id)?,
         )))
     }
