@@ -5,7 +5,7 @@
   "selfIncluded": false,
   "ordering": "relativePath ascending by UTF-8 byte order",
   "fileCount": 16,
-  "logicalBytes": 238569,
+  "logicalBytes": 239108,
   "files": [
     {
       "relativePath": "README.md",
@@ -69,8 +69,8 @@
     },
     {
       "relativePath": "protocol-contract-v1.json",
-      "bytes": 11125,
-      "sha256": "5f3e591f8add910c8deb263ffc705945bc0d4ee9e5c99cfbd7fa830491681789"
+      "bytes": 11664,
+      "sha256": "4b427d6a5fb8593845b1d0796cc056672d354ca9b75861255cc77d1606e192a4"
     },
     {
       "relativePath": "request-digest-vectors-v1.json",

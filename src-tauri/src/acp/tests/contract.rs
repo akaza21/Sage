@@ -818,6 +818,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
             collaboration_event_projection: false,
             multi_root_extension_schema_id: None,
             model_count: 1,
+            prompt_resources: false,
             config_count: 0,
         },
         revision: EntityRevision::new(3).unwrap(),

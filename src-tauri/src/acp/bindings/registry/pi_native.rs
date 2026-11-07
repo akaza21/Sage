@@ -78,6 +78,7 @@ fn capabilities(
         multi_root_extension_schema_id: None,
         // Counts arrive from the native session handshake, not installation metadata.
         model_count: 0,
+        prompt_resources: false,
         config_count: 0,
     })
 }

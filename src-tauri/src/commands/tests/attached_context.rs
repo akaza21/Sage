@@ -34,6 +34,12 @@ impl Drop for Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::with_capabilities(|_| {}).await
+    }
+
+    async fn with_capabilities(
+        adjust: impl FnOnce(&mut crate::acp::intent::CapabilitySnapshotV1),
+    ) -> Self {
         let (state, project, chat, root) = state_with_admitted_codex_project();
         let project_id = SageProjectId::parse(project).unwrap();
         let chat_id = SageChatId::parse(chat).unwrap();
@@ -77,10 +83,11 @@ impl Fixture {
                     artifact_digest: binding.artifact_digest().to_owned(),
                     external_session_id: ExternalId::new("external", "thread-command-route")
                         .unwrap(),
-                    capabilities_json: serde_json::to_string(
-                        &binding.capability_ceiling().unwrap(),
-                    )
-                    .unwrap(),
+                    capabilities_json: {
+                        let mut capabilities = binding.capability_ceiling().unwrap();
+                        adjust(&mut capabilities);
+                        serde_json::to_string(&capabilities).unwrap()
+                    },
                     now_millis: 3,
                 },
             )
@@ -329,6 +336,16 @@ impl Fixture {
     fn counts(&self) -> (i64, i64) {
         self.state.database.connection().query_row("SELECT (SELECT COUNT(*) FROM turns),(SELECT COUNT(*) FROM items WHERE kind='text' AND external_item_id IS NULL AND ordinal=0)", [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap()
     }
+
+    fn attached_at(&self) -> i64 {
+        crate::acp::attached_context::files::attachment(
+            &self.state.database,
+            self.owner.project_id.as_str(),
+            self.owner.chat_id.as_str(),
+        )
+        .unwrap()
+        .unwrap()
+    }
 }
 
 #[test]
@@ -555,5 +572,106 @@ fn an_annotation_on_a_durable_native_answer_is_admitted_and_a_stale_range_is_ref
                 assert!(calls.lock().unwrap().is_empty());
             }
         }
+    });
+}
+
+#[test]
+fn staged_files_are_refused_without_dispatch_and_retained_for_retry() {
+    use crate::acp::attached_context::files::{Resource, Resources};
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        for new_session in [false, true] {
+            let fixture = Fixture::new().await;
+            let (calls, _) = fixture.install_host();
+            let before = fixture.counts();
+            fixture
+                .state
+                .acp
+                .file_stages
+                .lock()
+                .unwrap()
+                .stage(
+                    fixture.owner.project_id.as_str(),
+                    fixture.owner.chat_id.as_str(),
+                    fixture.attached_at(),
+                    None,
+                    Resources(Arc::new(vec![Resource {
+                        id: "file-1".into(),
+                        name: "test.txt".into(),
+                        bytes: b"context".to_vec(),
+                    }])),
+                )
+                .unwrap();
+            let error = acp::send_acp_turn_inner(&fixture.state, fixture.request(new_session))
+                .await
+                .unwrap_err();
+            assert_eq!(error.prompt_dispatch, PromptDispatch::NotStarted);
+            assert!(matches!(error.failure, AcpIpcError::InvalidRequest { .. }));
+            assert!(calls.lock().unwrap().is_empty());
+            assert_eq!(fixture.counts(), before);
+            assert_eq!(
+                fixture
+                    .state
+                    .acp
+                    .file_stages
+                    .lock()
+                    .unwrap()
+                    .get(
+                        fixture.owner.project_id.as_str(),
+                        fixture.owner.chat_id.as_str()
+                    )
+                    .0
+                    .len(),
+                1
+            );
+        }
+    });
+}
+
+#[test]
+fn staged_files_are_consumed_after_admitted_dispatch() {
+    use crate::acp::attached_context::files::{Resource, Resources};
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        // Durable session capabilities are immutable after activation, so the
+        // session is activated with embedded-resource support from the start.
+        let fixture =
+            Fixture::with_capabilities(|capabilities| capabilities.prompt_resources = true).await;
+        let (calls, _) = fixture.install_host();
+        let resources = Resources(Arc::new(vec![Resource {
+            id: "file-1".into(),
+            name: "test.txt".into(),
+            bytes: b"context".to_vec(),
+        }]));
+        fixture
+            .state
+            .acp
+            .file_stages
+            .lock()
+            .unwrap()
+            .stage(
+                fixture.owner.project_id.as_str(),
+                fixture.owner.chat_id.as_str(),
+                fixture.attached_at(),
+                None,
+                resources,
+            )
+            .unwrap();
+        acp::send_acp_turn_inner(&fixture.state, fixture.request(false))
+            .await
+            .unwrap();
+        assert!(!calls.lock().unwrap().is_empty());
+        assert!(
+            fixture
+                .state
+                .acp
+                .file_stages
+                .lock()
+                .unwrap()
+                .get(
+                    fixture.owner.project_id.as_str(),
+                    fixture.owner.chat_id.as_str()
+                )
+                .0
+                .is_empty()
+        );
     });
 }

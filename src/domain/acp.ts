@@ -145,6 +145,8 @@ export interface AcpCapabilitySet {
   loadSession: boolean;
   closeSession: boolean;
   prompt: boolean;
+  /** Absent in older sessions; native admission treats absence as unsupported. */
+  promptResources?: boolean;
   cancel: boolean;
   nativeSessionFork: boolean;
   activeTurnSteer: boolean;
