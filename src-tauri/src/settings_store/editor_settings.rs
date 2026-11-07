@@ -1,7 +1,8 @@
 //! The editor settings catalogue. One closed registry lists each key with its
-//! type, default and range, and the values live as versioned key/value rows. `src/domain/editorSettingsCatalogue.ts`
-//! mirrors the registry, and a parity test keeps the two equal, so adding a
-//! setting is one entry on each side and never a schema change.
+//! type, default and range, and the values live as versioned key/value rows.
+//! `src/domain/editorSettingsCatalogue.ts` mirrors the registry, and a parity
+//! test keeps the two equal, so adding a setting is one entry on each side and
+//! never a schema change.
 
 use std::{
     collections::{BTreeMap, HashSet},

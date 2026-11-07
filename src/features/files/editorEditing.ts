@@ -336,8 +336,8 @@ const occurrences: Extension = [
 
 /**
  * CodeMirror's drawn cursors cost about 3 ms a keystroke in a 1 MiB File, so
- * a single cursor stays the browser's own caret, as it was before these features, and
- * the drawn layer joins only while there are several cursors to show.
+ * a single cursor stays the browser's own caret and the drawn layer joins
+ * only while there are several cursors to show.
  */
 const cursorDrawing = new Compartment();
 const DRAWN_CURSORS = drawSelection();

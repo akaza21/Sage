@@ -75,7 +75,7 @@ export interface DiffHunk {
 }
 
 /**
- * The staged (index) text of a File, which the gutter marks changes against
+ * The staged (index) text of a File, which the gutter marks changes against.
  * `unchanged` answers a request that named the current blob.
  */
 export type FileGitBase =
