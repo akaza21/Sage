@@ -1,6 +1,72 @@
 use super::*;
 
 #[test]
+fn idle_idless_command_discovery_rejection_keeps_the_next_prompt_usable() {
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    let query = runtime.discover_commands().unwrap().unwrap();
+    runtime
+        .resolve_egress(query.into_token(), EgressResolution::Written)
+        .unwrap();
+    let batch = runtime
+        .ingest(
+            &frame(json!({
+                "type":"response", "command":"get_commands", "success":false,
+                "error":"Unknown command: get_commands"
+            })),
+            &Mapper,
+        )
+        .expect("unsupported idle discovery must degrade to an empty catalog");
+    assert!(batch.egress().is_empty());
+    let catalog = runtime.available_commands().snapshot();
+    assert_eq!(catalog.revision, 1);
+    assert!(catalog.commands.is_empty());
+    assert!(runtime.discover_commands().unwrap().is_none());
+
+    running(&mut runtime);
+    runtime
+        .ingest(&frame(json!({"type":"agent_end","messages":[]})), &Mapper)
+        .unwrap();
+    let batch = runtime
+        .ingest(&frame(json!({"type":"agent_settled"})), &Mapper)
+        .unwrap();
+    assert!(batch.events().iter().any(|event| matches!(
+        event,
+        AdapterEvent::Turn {
+            state: crate::acp::lifecycle::TurnState::Completed,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn idless_command_discovery_replies_require_one_pending_request_and_a_rejection() {
+    for (pending_count, success) in [(1, true), (2, false)] {
+        let mut runtime = fixture_runtime(1);
+        ready(&mut runtime);
+        let query = runtime.discover_commands().unwrap().unwrap();
+        runtime
+            .resolve_egress(query.into_token(), EgressResolution::Written)
+            .unwrap();
+        for _ in 1..pending_count {
+            runtime.translator.begin(Operation::GetCommands).unwrap();
+        }
+        assert!(
+            runtime
+                .ingest(
+                    &frame(json!({
+                        "type":"response", "command":"get_commands", "success":success,
+                        "data":{"commands":[{"name":"invented","source":"extension"}]}
+                    })),
+                    &Mapper,
+                )
+                .is_err()
+        );
+        assert_eq!(runtime.available_commands().snapshot().revision, 0);
+    }
+}
+
+#[test]
 fn idle_command_discovery_preserves_rpc_capacity_across_turns() {
     use crate::acp::limits::LIMITS;
 

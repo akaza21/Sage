@@ -51,21 +51,30 @@ fn pi_replay_answers_command_discovery_around_idle_configuration_and_prompts() {
 
 #[test]
 fn pi_0742_unknown_discovery_command_fixture_omits_the_id() {
-    let mut state = WireState::new();
-    let mut output = Vec::new();
-    execute_with_io(
-        &json!({"op":"awaitClient","kind":"piThinkingLevelsUnsupported"}),
-        &mut state,
-        &mut Cursor::new(b"{\"type\":\"get_available_thinking_levels\",\"id\":\"pi-7-6\"}\n"),
-        &mut output,
-        &mut Vec::new(),
-    )
-    .unwrap();
-    let reply: Value = serde_json::from_slice(&output).unwrap();
-    assert_eq!(
-        reply,
-        json!({"type":"response","command":"get_available_thinking_levels","success":false,"error":"Unknown command: get_available_thinking_levels"})
-    );
+    for (kind, command) in [
+        (
+            "piThinkingLevelsUnsupported",
+            "get_available_thinking_levels",
+        ),
+        ("piCommandsUnsupported", "get_commands"),
+    ] {
+        let mut state = WireState::new();
+        let mut output = Vec::new();
+        let request = format!("{}\n", json!({"type":command,"id":"pi-7-6"}));
+        execute_with_io(
+            &json!({"op":"awaitClient","kind":kind}),
+            &mut state,
+            &mut Cursor::new(request.into_bytes()),
+            &mut output,
+            &mut Vec::new(),
+        )
+        .unwrap();
+        let reply: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(
+            reply,
+            json!({"type":"response","command":command,"success":false,"error":format!("Unknown command: {command}")})
+        );
+    }
 }
 
 #[test]

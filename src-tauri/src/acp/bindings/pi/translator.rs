@@ -277,11 +277,16 @@ impl PiTranslator {
         })
     }
 
-    pub(crate) fn sole_thinking_levels_request_id(&self) -> Option<&str> {
+    pub(crate) fn sole_optional_discovery_request_id(&self, command: &str) -> Option<&str> {
+        let kind = match command {
+            "get_available_thinking_levels" => PendingKind::ThinkingLevels,
+            "get_commands" => PendingKind::Commands,
+            _ => return None,
+        };
         let mut requests = self
             .pending
             .iter()
-            .filter(|(_, kind)| **kind == PendingKind::ThinkingLevels);
+            .filter(|(_, pending_kind)| **pending_kind == kind);
         let (id, _) = requests.next()?;
         requests.next().is_none().then_some(id.as_str())
     }

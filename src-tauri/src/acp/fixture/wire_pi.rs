@@ -36,6 +36,7 @@ pub(super) fn await_request(
         "piNew" => "new_session",
         "piPrompt" => "prompt",
         "piThinkingLevels" | "piThinkingLevelsUnsupported" => "get_available_thinking_levels",
+        "piCommandsUnsupported" => "get_commands",
         "piAbort" => "abort",
         "piDialogCancelled" => "extension_ui_response",
         "piIdle" => "idle",
@@ -88,12 +89,17 @@ pub(super) fn await_request(
         if state.pi.ids.len() >= 32 || !state.pi.ids.insert(id.clone()) {
             return Err(FixtureError::ExpandedLimit);
         }
-        if command == "get_available_thinking_levels" && kind == "piThinkingLevelsUnsupported" {
-            // Pi 0.74.2's unknown-command branch omits the request ID.
+        if command == expected
+            && matches!(
+                kind,
+                "piThinkingLevelsUnsupported" | "piCommandsUnsupported"
+            )
+        {
+            // Older Pi builds omit the request ID for unknown commands.
             codex::emit_json(
                 output,
                 state,
-                &json!({"type":"response","command":command,"success":false,"error":"Unknown command: get_available_thinking_levels"}),
+                &json!({"type":"response","command":command,"success":false,"error":format!("Unknown command: {command}")}),
             )?;
             return Ok(());
         }
