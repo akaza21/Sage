@@ -38,6 +38,17 @@ pub struct ChatReadMarkWrite {
     /// arrive in any order; this tells the rail which one the store applied
     /// last.
     pub sequence: i64,
+    /// The most marks the store keeps (`MAX_CHAT_READ_MARKS`); the rail
+    /// bounds its copy by it.
+    pub capacity: usize,
+}
+
+/// The stored marks, most recently read first, with the store's bound.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatReadMarks {
+    pub marks: Vec<ChatReadMark>,
+    pub capacity: usize,
 }
 
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
@@ -53,7 +64,7 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
 }
 
 impl SettingsStore {
-    pub fn chat_read_marks(&self) -> AppResult<Vec<ChatReadMark>> {
+    pub fn chat_read_marks(&self) -> AppResult<ChatReadMarks> {
         let connection = self
             .0
             .lock()
@@ -70,7 +81,10 @@ impl SettingsStore {
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(marks)
+        Ok(ChatReadMarks {
+            marks,
+            capacity: MAX_CHAT_READ_MARKS,
+        })
     }
 
     /// Records that the chat was seen through `read_through`. A mark never
@@ -136,6 +150,7 @@ impl SettingsStore {
             },
             evicted,
             sequence,
+            capacity: MAX_CHAT_READ_MARKS,
         })
     }
 
@@ -175,7 +190,8 @@ mod tests {
             SettingsStore::open(&path)
                 .unwrap()
                 .chat_read_marks()
-                .unwrap(),
+                .unwrap()
+                .marks,
             vec![mark("chat-a", 1_700)]
         );
         std::fs::remove_dir_all(directory).unwrap();
@@ -199,7 +215,7 @@ mod tests {
         let store = SettingsStore::in_memory().unwrap();
         store.mark_chat_read(&mark("chat-a", 2_000), &[]).unwrap();
         store.mark_chat_unread("chat-a").unwrap();
-        assert!(store.chat_read_marks().unwrap().is_empty());
+        assert!(store.chat_read_marks().unwrap().marks.is_empty());
     }
 
     #[test]
@@ -215,7 +231,7 @@ mod tests {
             .mark_chat_read(&mark(&format!("chat-{MAX_CHAT_READ_MARKS}"), 1), &[])
             .unwrap();
         assert_eq!(write.evicted, vec!["chat-0".to_owned()]);
-        let marks = store.chat_read_marks().unwrap();
+        let marks = store.chat_read_marks().unwrap().marks;
         assert_eq!(marks.len(), MAX_CHAT_READ_MARKS);
         assert!(!marks.iter().any(|mark| mark.chat_id == "chat-0"));
         assert_eq!(marks[0].chat_id, format!("chat-{MAX_CHAT_READ_MARKS}"));
@@ -233,19 +249,9 @@ mod tests {
         // chat-0 is the oldest read, but the rail still shows it.
         let write = store.mark_chat_read(&mark("newest", 1), &retained).unwrap();
         assert_eq!(write.evicted, vec!["chat-1".to_owned()]);
-        let marks = store.chat_read_marks().unwrap();
+        let marks = store.chat_read_marks().unwrap().marks;
         assert!(marks.iter().any(|mark| mark.chat_id == "chat-0"));
         assert!(marks.iter().any(|mark| mark.chat_id == "newest"));
-    }
-
-    #[test]
-    fn the_rail_holds_as_many_marks_as_the_store() {
-        // chatReadMarks.ts mirrors the store; a smaller bound there would
-        // drop marks the store keeps.
-        let rail = include_str!("../../../src/features/chat/acp/chatReadMarks.ts");
-        assert!(rail.contains(&format!(
-            "export const MAX_CHAT_READ_MARKS = {MAX_CHAT_READ_MARKS};"
-        )));
     }
 
     #[test]

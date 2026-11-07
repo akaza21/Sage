@@ -117,6 +117,7 @@ pub(crate) fn chat_attention(
 ) -> AppResult<ChatAttentionList> {
     let marks = settings
         .chat_read_marks()?
+        .marks
         .into_iter()
         .map(|mark| (mark.chat_id, mark.read_through))
         .collect::<HashMap<_, _>>();

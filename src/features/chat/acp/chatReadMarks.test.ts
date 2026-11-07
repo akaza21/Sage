@@ -2,7 +2,7 @@ import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import {
-  MAX_CHAT_READ_MARKS,
+  MAX_HELD_READ_STATES,
   chatReadThrough,
   markChatRead,
   markChatUnread,
@@ -15,6 +15,8 @@ import { sessionRailUnreadVisible } from "./sessionRail";
 // A stand-in for the Rust settings store: it keeps the marks across a reload
 // of this module's projection, so the tests observe what survives.
 const store = vi.hoisted(() => ({
+  // The store's bound, which it reports with its answers.
+  capacity: 64,
   marks: new Map<string, number>(),
   failWrites: false,
   writes: 0,
@@ -43,9 +45,12 @@ vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
       if (store.failLoad) throw new Error("settings store is locked");
       const snapshot = [...store.marks];
       if (store.holdLoad) await store.holdLoad;
-      return snapshot
-        .reverse()
-        .map(([chatId, readThrough]) => ({ chatId, readThrough }));
+      return {
+        marks: snapshot
+          .reverse()
+          .map(([chatId, readThrough]) => ({ chatId, readThrough })),
+        capacity: store.capacity,
+      };
     }
     if (command === "chat_mark_read" && args?.mark) {
       store.writes += 1;
@@ -63,6 +68,7 @@ vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
         readThrough: store.marks.get(chatId),
         evicted,
         sequence: (store.sequence += 1),
+        capacity: store.capacity,
       };
       const hold = store.holdAnswer.get(chatId);
       if (hold) await hold;
@@ -163,7 +169,7 @@ it("does not write a mark the store already holds", async () => {
 });
 
 it("keeps a mark made while a full stored snapshot loads", async () => {
-  for (let index = 0; index < MAX_CHAT_READ_MARKS; index += 1)
+  for (let index = 0; index < store.capacity; index += 1)
     store.marks.set(`stored-${index}`, 1);
   let release!: () => void;
   store.holdLoad = new Promise((resolve) => (release = resolve));
@@ -174,7 +180,7 @@ it("keeps a mark made while a full stored snapshot loads", async () => {
   expect(chatReadThrough("chat-new")).toBe(2_000);
   // The oldest stored mark gave way; the most recent stored one stayed.
   expect(chatReadThrough("stored-0")).toBeUndefined();
-  expect(chatReadThrough(`stored-${MAX_CHAT_READ_MARKS - 1}`)).toBe(1);
+  expect(chatReadThrough(`stored-${store.capacity - 1}`)).toBe(1);
 });
 
 it("shows the stored mark again when Mark unread is refused", async () => {
@@ -198,7 +204,7 @@ it("bounds the Mark unread requests held while the stored marks fail to load", a
   store.holdUnread = new Promise((resolve) => (release = resolve));
   // The store has not answered any of these yet.
   const first = markChatUnread("chat-0");
-  for (let index = 0; index < MAX_CHAT_READ_MARKS - 1; index += 1)
+  for (let index = 0; index < MAX_HELD_READ_STATES - 1; index += 1)
     void markChatUnread(`other-${index}`);
   // One request beyond the bound is refused rather than held.
   await expect(markChatUnread("chat-1")).resolves.toBe(false);

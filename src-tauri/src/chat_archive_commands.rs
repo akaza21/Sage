@@ -148,7 +148,7 @@ mod tests {
 
             let archived = archive_chat_inner(&state, request.clone(), 0).await;
             assert!(archived.committed);
-            assert!(state.settings.chat_read_marks().unwrap().is_empty());
+            assert!(state.settings.chat_read_marks().unwrap().marks.is_empty());
             assert!(!browser_lease.is_live());
             assert!(
                 state

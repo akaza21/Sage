@@ -6,12 +6,12 @@ use tauri::State;
 
 use crate::{
     chat_read_state::ChatAttentionList,
-    settings_store::{ChatReadMark, ChatReadMarkWrite},
+    settings_store::{ChatReadMark, ChatReadMarkWrite, ChatReadMarks},
     state::AppState,
 };
 
 #[tauri::command]
-pub(crate) fn chat_read_marks(state: State<'_, AppState>) -> Result<Vec<ChatReadMark>, String> {
+pub(crate) fn chat_read_marks(state: State<'_, AppState>) -> Result<ChatReadMarks, String> {
     state
         .settings
         .chat_read_marks()

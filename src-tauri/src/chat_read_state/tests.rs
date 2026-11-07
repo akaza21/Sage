@@ -378,7 +378,7 @@ fn reading_many_other_chats_never_evicts_a_chat_the_rail_shows() {
             fixture.read(&chat, finished);
         }
     }
-    let marks = fixture.settings.chat_read_marks().unwrap();
+    let marks = fixture.settings.chat_read_marks().unwrap().marks;
     assert_eq!(marks.len(), MAX_CHAT_READ_MARKS);
     assert!(marks.iter().any(|mark| mark.chat_id == first));
     // Every chat the rail shows still has its mark.

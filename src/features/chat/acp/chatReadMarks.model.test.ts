@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 
 import {
-  MAX_CHAT_READ_MARKS,
   chatReadThrough,
   markChatRead,
   markChatUnread,
@@ -18,6 +17,8 @@ import {
  * oldest first.
  */
 const fake = vi.hoisted(() => ({
+  // The store's bound, which it reports with every answer.
+  capacity: 1072,
   stored: new Map<string, { readThrough: number }>(),
   writes: [] as Array<{
     command: string;
@@ -36,7 +37,7 @@ const fake = vi.hoisted(() => ({
 function snapshot() {
   return [...fake.stored]
     .reverse()
-    .slice(0, MAX_CHAT_READ_MARKS)
+    .slice(0, fake.capacity)
     .map(([chatId, { readThrough }]) => ({ chatId, readThrough }));
 }
 
@@ -68,7 +69,7 @@ function storeRead(chatId: string, readThrough: number) {
   fake.stored.delete(chatId);
   fake.stored.set(chatId, { readThrough: Math.max(current, readThrough) });
   const evicted: string[] = [];
-  while (fake.stored.size > MAX_CHAT_READ_MARKS) {
+  while (fake.stored.size > fake.capacity) {
     const oldest = fake.stored.keys().next().value!;
     fake.stored.delete(oldest);
     evicted.push(oldest);
@@ -85,13 +86,18 @@ function answerWrite(ok: boolean) {
     return write.resolve(null);
   }
   const { readThrough, evicted } = storeRead(write.chatId, write.readThrough!);
-  write.resolve({ chatId: write.chatId, readThrough, evicted });
+  write.resolve({
+    chatId: write.chatId,
+    readThrough,
+    evicted,
+    capacity: fake.capacity,
+  });
 }
 
 function answerLoad(ok: boolean) {
   const load = fake.loads.shift();
   if (!load) return;
-  if (ok) load.resolve(load.snapshot);
+  if (ok) load.resolve({ marks: load.snapshot, capacity: fake.capacity });
   else load.reject(new Error("settings store is locked"));
 }
 
@@ -231,7 +237,7 @@ it("shows what the store holds for one chat once every interleaving settles, and
 it("keeps every stored mark at the capacity boundary across two chats", async () => {
   // The store is one mark short of full, and chat-b starts unmarked.
   const fillers = Array.from(
-    { length: MAX_CHAT_READ_MARKS - 1 },
+    { length: fake.capacity - 1 },
     (_, index) => [`filler-${index}`, 1] as const,
   );
   const checked = await checkAll({
@@ -239,7 +245,7 @@ it("keeps every stored mark at the capacity boundary across two chats", async ()
     initial: [...fillers, ["chat-a", 50]],
     depth: 4,
     // The oldest stored marks are the ones a new mark pushes out.
-    watched: ["filler-0", "filler-1", `filler-${MAX_CHAT_READ_MARKS - 2}`],
+    watched: ["filler-0", "filler-1", `filler-${fake.capacity - 2}`],
   });
   expect(checked).toBe(total(9, 4));
 }, 300_000);

@@ -869,6 +869,7 @@ describe("workbench resource and project navigation", () => {
                   position: 0,
                 },
               ],
+              railArchived: [{ id: "chat:cross", title: "Research" }],
             },
           ],
         },
