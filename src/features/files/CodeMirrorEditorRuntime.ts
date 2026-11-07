@@ -75,7 +75,6 @@ export interface CodeMirrorEditorRuntime {
 import type { EditorContent, EditorContentBase } from "./editorContent";
 import type * as EditingFeatures from "./editorEditing";
 import { utf8LengthField, withinUtf8Limit } from "./utf8Tracking";
-import { editorSaveRefocus } from "./editorSaveRefocus";
 import {
   documentSelectionTheme,
   documentSyntaxHighlightStyle,
@@ -167,8 +166,11 @@ function appearanceExtensions(appearance: EditorAppearance): Extension {
 
 function editableExtensions(props: RuntimeProps): Extension {
   return [
+    // Read-only, not uneditable: the content stays focusable so keyboard users
+    // can reach it, move the caret, select and copy, and focus stays put when a
+    // save briefly locks the editor. CodeMirror refuses typing, paste, cut,
+    // drop and history commands in a read-only state.
     EditorState.readOnly.of(props.disabled),
-    EditorView.editable.of(!props.disabled),
     EditorView.contentAttributes.of({
       "aria-label": props.ariaLabel,
       "aria-multiline": "true",
@@ -290,7 +292,6 @@ export function createCodeMirrorEditorRuntime(
       ],
     }),
   });
-  const saveRefocus = editorSaveRefocus(view);
 
   function selectLanguage(path: string) {
     const generation = ++languageGeneration;
@@ -339,7 +340,6 @@ export function createCodeMirrorEditorRuntime(
   return {
     destroy: () => {
       destroyed = true;
-      saveRefocus.cancel();
       languageGeneration += 1;
       view.destroy();
     },
@@ -365,7 +365,6 @@ export function createCodeMirrorEditorRuntime(
       };
       current = next;
       const effects = [];
-      if (next.disabled && !previous.disabled) saveRefocus.disabled();
       if (!sameEditableConfiguration(previous, next)) {
         effects.push(editableCompartment.reconfigure(editableExtensions(next)));
       }
@@ -384,7 +383,6 @@ export function createCodeMirrorEditorRuntime(
       if (effects.length > 0) {
         view.dispatch({ effects });
       }
-      if (previous.disabled && !next.disabled) saveRefocus.enabled();
       if (!sameValues(previous.editing, next.editing)) {
         applyEditing();
       }

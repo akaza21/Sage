@@ -1,9 +1,11 @@
 use serde_json::{Value, json};
 
 mod config_delivery;
+mod extension_lifecycle;
 mod followups;
 mod pump_contract;
 mod regressions;
+mod slash_commands;
 mod store_ingress;
 
 use super::*;

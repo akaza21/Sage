@@ -1,6 +1,7 @@
 import {
   Activity,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentType,
@@ -140,7 +141,9 @@ export function AgentSettingsSurface({
       active = false;
     };
   }, [page]);
-  useEffect(() => {
+  // A layout effect, so focus moves in the same commit that shows the page
+  // and nothing can see the page on screen before it holds focus.
+  useLayoutEffect(() => {
     if (shownPage !== "Harnesses" || !deferredFrom.current) return;
     const from = deferredFrom.current;
     deferredFrom.current = null;

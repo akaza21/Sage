@@ -68,6 +68,12 @@ impl LaunchableRuntime for PiNativeRuntime {
 }
 
 impl HarnessAdapter for PiNativeRuntime {
+    fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
+        self.adapter.available_commands()
+    }
+    fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        self.adapter.discover_commands()
+    }
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
         self.adapter.session_config()
     }

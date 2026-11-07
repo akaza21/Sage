@@ -14,6 +14,7 @@ mod egress_resolution;
 mod invalid_response;
 pub(crate) use invalid_response::response_id_for_discard;
 mod model;
+pub(crate) use super::standard_acp::surface::command_list as slash_commands;
 pub(crate) use model::{
     AdapterIdentity, AdapterModel, AdapterOptionalEgress, AdapterRuntimeError, HarnessAdapter,
 };

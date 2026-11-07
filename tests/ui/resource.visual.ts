@@ -1360,6 +1360,7 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
       geometry.canvas.bottom - 1,
     );
     await expectNoViewportOverflow(page);
+    await settleTranscriptAtEnd(page);
     await expect(workbench).toHaveScreenshot(
       "agent-preview-narrow-720x560.png",
     );

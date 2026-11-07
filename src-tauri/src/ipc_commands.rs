@@ -124,6 +124,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         commands::acp::start_acp_session,
         commands::acp::activate_acp_session,
         commands::acp::send_acp_turn,
+        commands::acp::slash_commands::list_acp_commands,
+        commands::acp::slash_commands::run_acp_command,
         image_artifacts::commands::upload_chat_image,
         image_artifacts::commands::remove_chat_image,
         commands::acp::cancel_acp_turn,
