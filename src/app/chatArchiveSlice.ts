@@ -1,7 +1,6 @@
 import type { StateCreator } from "zustand";
 
 import { archiveChatLayout, restoreChatLayout } from "../domain/chatArchive";
-import { forgetChatReadMark } from "../features/chat/acp/chatReadMarks";
 import type {
   BootstrapSnapshot,
   ProjectLayoutRequest,
@@ -140,8 +139,12 @@ export const createChatArchiveSlice: StateCreator<
   return {
     archiveChat: async (chatId, projectId) => {
       const committed = await archive(chatId, projectId);
-      // The store dropped the chat's read mark with the archive.
-      if (committed) forgetChatReadMark(chatId);
+      // The store dropped the chat's read mark with the archive. The rail's
+      // read marks load with the rail, outside the initial bundle.
+      if (committed)
+        await import("../features/chat/acp/chatReadMarks").then((marks) =>
+          marks.forgetChatReadMark(chatId),
+        );
       return committed;
     },
 
