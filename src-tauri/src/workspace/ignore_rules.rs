@@ -68,8 +68,16 @@ impl RuleFiles {
     }
 
     /// The rule-bearing names in `directory`, found without listing it.
+    /// Only a missing name is absent: a name that cannot be inspected (access
+    /// denied, say) counts as present, so reading it fails as a skipped source
+    /// instead of being treated as no rules at all.
     pub(crate) fn probe(directory: &Path) -> Self {
-        let exists = |name: &str| directory.join(name).symlink_metadata().is_ok();
+        let exists = |name: &str| {
+            !matches!(
+                directory.join(name).symlink_metadata(),
+                Err(error) if error.kind() == ErrorKind::NotFound
+            )
+        };
         Self {
             ignore: exists(".ignore"),
             gitignore: exists(".gitignore"),
@@ -291,7 +299,7 @@ fn repository_exclude(
     is_root: bool,
 ) -> Result<Option<Gitignore>, Skipped> {
     let dot_git = directory.join(".git");
-    let Ok(metadata) = dot_git.symlink_metadata() else {
+    let Some(metadata) = present(&dot_git, dot_git.symlink_metadata())? else {
         return Ok(None);
     };
     let mut git_directory = if metadata.is_dir() {
@@ -316,6 +324,19 @@ fn repository_exclude(
             .ok_or_else(|| unresolved(&commondir))?;
     }
     Ok(read_rules(&git_directory.join("info").join("exclude"), true)?.and_then(|b| matcher(&b)))
+}
+
+/// Only `NotFound` means there is no repository. Any other inspection error
+/// leaves its exclude rules unknown, which is a skipped source.
+fn present(
+    path: &Path,
+    metadata: std::io::Result<std::fs::Metadata>,
+) -> Result<Option<std::fs::Metadata>, Skipped> {
+    match metadata {
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(skipped(path, &error.to_string())),
+    }
 }
 
 fn unresolved(path: &Path) -> Skipped {
