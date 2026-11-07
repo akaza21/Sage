@@ -120,10 +120,13 @@ mod tests {
             let state = AppState::new(database);
             state
                 .settings
-                .mark_chat_read(&crate::settings_store::ChatReadMark {
-                    chat_id: first_chat_id.clone(),
-                    read_through: 5_000,
-                })
+                .mark_chat_read(
+                    &crate::settings_store::ChatReadMark {
+                        chat_id: first_chat_id.clone(),
+                        read_through: 5_000,
+                    },
+                    &[],
+                )
                 .unwrap();
 
             let browser_project = SageProjectId::parse(project.id.clone()).unwrap();

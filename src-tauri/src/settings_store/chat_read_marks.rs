@@ -11,13 +11,11 @@ use serde::{Deserialize, Serialize};
 use super::SettingsStore;
 use crate::{chat_lifecycle::validate_chat_identifier, error::AppResult};
 
-/// One mark for every chat the rail previews across all projects, which is
-/// also every chat the cross-project attention query considers
-/// (chat_read_state.rs), so a mark is evicted only by reads of chats that
-/// have since left the rail.
-pub const MAX_CHAT_READ_MARKS: usize = (crate::project_registry::MAX_PROJECTS
-    * crate::project_registry::MAX_AGENT_RAIL_CHATS_PER_PROJECT)
-    as usize;
+/// One mark for every chat the rail can show (`MAX_RAIL_CHATS`), which are
+/// also the chats the cross-project attention query considers
+/// (chat_read_state.rs). Eviction drops marks of chats the rail no longer
+/// shows first, so a chat it shows keeps its mark.
+pub const MAX_CHAT_READ_MARKS: usize = crate::project_registry::MAX_RAIL_CHATS;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -62,7 +60,16 @@ impl SettingsStore {
 
     /// Records that the chat was seen through `read_through`. A mark never
     /// moves back, so a stale write cannot make a seen update Unread again.
-    pub fn mark_chat_read(&self, mark: &ChatReadMark) -> AppResult<ChatReadMark> {
+    ///
+    /// Past the bound, the least recently read marks of chats outside
+    /// `retained` (the chats the rail can show) go first; the mark just
+    /// written is kept. Since `retained` never exceeds the bound, a retained
+    /// mark is only dropped when every other mark is retained too.
+    pub fn mark_chat_read(
+        &self,
+        mark: &ChatReadMark,
+        retained: &[String],
+    ) -> AppResult<ChatReadMark> {
         validate_chat_identifier("Chat ID", &mark.chat_id)?;
         if mark.read_through < 0 {
             return Err(crate::error::AppError::InvalidRequest(
@@ -83,11 +90,17 @@ impl SettingsStore {
             params![mark.chat_id, mark.read_through],
         )?;
         transaction.execute(
-            "DELETE FROM chat_read_marks WHERE chat_id NOT IN (
+            "DELETE FROM chat_read_marks WHERE chat_id IN (
                SELECT chat_id FROM chat_read_marks
-               ORDER BY sequence DESC LIMIT ?1
+               WHERE chat_id <> ?2
+               ORDER BY chat_id IN (SELECT value FROM json_each(?3)), sequence
+               LIMIT MAX(0, (SELECT COUNT(*) FROM chat_read_marks) - ?1)
              )",
-            [MAX_CHAT_READ_MARKS as i64],
+            params![
+                MAX_CHAT_READ_MARKS as i64,
+                mark.chat_id,
+                serde_json::Value::from(retained).to_string()
+            ],
         )?;
         let read_through = transaction.query_row(
             "SELECT read_through FROM chat_read_marks WHERE chat_id = ?1",
@@ -131,7 +144,7 @@ mod tests {
         let path = directory.join("settings.db");
         SettingsStore::open(&path)
             .unwrap()
-            .mark_chat_read(&mark("chat-a", 1_700))
+            .mark_chat_read(&mark("chat-a", 1_700), &[])
             .unwrap();
         assert_eq!(
             SettingsStore::open(&path)
@@ -146,9 +159,9 @@ mod tests {
     #[test]
     fn a_stale_read_never_moves_a_mark_back() {
         let store = SettingsStore::in_memory().unwrap();
-        store.mark_chat_read(&mark("chat-a", 2_000)).unwrap();
+        store.mark_chat_read(&mark("chat-a", 2_000), &[]).unwrap();
         assert_eq!(
-            store.mark_chat_read(&mark("chat-a", 1_000)).unwrap(),
+            store.mark_chat_read(&mark("chat-a", 1_000), &[]).unwrap(),
             mark("chat-a", 2_000)
         );
     }
@@ -156,7 +169,7 @@ mod tests {
     #[test]
     fn marking_unread_forgets_the_mark() {
         let store = SettingsStore::in_memory().unwrap();
-        store.mark_chat_read(&mark("chat-a", 2_000)).unwrap();
+        store.mark_chat_read(&mark("chat-a", 2_000), &[]).unwrap();
         store.mark_chat_unread("chat-a").unwrap();
         assert!(store.chat_read_marks().unwrap().is_empty());
     }
@@ -166,7 +179,7 @@ mod tests {
         let store = SettingsStore::in_memory().unwrap();
         for index in 0..=MAX_CHAT_READ_MARKS {
             store
-                .mark_chat_read(&mark(&format!("chat-{index}"), 1))
+                .mark_chat_read(&mark(&format!("chat-{index}"), 1), &[])
                 .unwrap();
         }
         let marks = store.chat_read_marks().unwrap();
@@ -178,7 +191,7 @@ mod tests {
     #[test]
     fn rejects_an_unbounded_chat_identifier() {
         let store = SettingsStore::in_memory().unwrap();
-        assert!(store.mark_chat_read(&mark("", 1)).is_err());
-        assert!(store.mark_chat_read(&mark("chat-a", -1)).is_err());
+        assert!(store.mark_chat_read(&mark("", 1), &[]).is_err());
+        assert!(store.mark_chat_read(&mark("chat-a", -1), &[]).is_err());
     }
 }

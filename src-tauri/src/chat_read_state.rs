@@ -7,14 +7,14 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{Connection, params};
+use rusqlite::Connection;
 use serde::Serialize;
 
 use crate::{
     error::AppResult,
     persistence::Database,
-    project_registry::{CHAT_LATEST_TURN_ID, MAX_AGENT_RAIL_CHATS_PER_PROJECT, RAIL_RECENCY_ORDER},
-    settings_store::SettingsStore,
+    project_registry::{CHAT_LATEST_TURN_ID, rail_chat_ids, rail_chat_set},
+    settings_store::{ChatReadMark, SettingsStore},
 };
 
 /// The most chats one answer lists. Chats awaiting an approval come first,
@@ -50,33 +50,24 @@ pub struct ChatAttentionList {
     pub truncated: bool,
 }
 
-/// The chats the rail previews (attached, not temporary, and among each
-/// project's first `MAX_AGENT_RAIL_CHATS_PER_PROJECT` in its recency order)
-/// whose latest Turn waits on an approval or has finished; approvals first,
-/// then newest finish first. The read marks are bounded to exactly this many
-/// chats, so a chat the user has read keeps its mark while it is listed here.
+/// The chats the rail can show (`rail_chat_set`) whose latest Turn waits on
+/// an approval or has finished; approvals first, then newest finish first.
+/// The read marks retain exactly these chats (see `mark_read`), so a
+/// chat the user has read keeps its mark while it is listed here.
 ///
-/// The ranking pass reads only tab and chat rows. The latest Turn is looked
-/// up for the ranked-in chats alone, so at most `MAX_CHAT_READ_MARKS` rows
-/// reach the final sort, however many chats the projects hold.
+/// The latest Turn is looked up for those chats alone, so at most
+/// `MAX_RAIL_CHATS` rows reach the final sort, however many chats the
+/// projects hold.
 fn attention_candidates() -> String {
     format!(
         "SELECT c.project_id, c.tab_id, t.state = 'waitingApproval', t.terminal_at
-         FROM (
-           SELECT w.project_id AS project_id, w.id AS tab_id, c.id AS id,
-                  ROW_NUMBER() OVER (PARTITION BY w.project_id ORDER BY {RAIL_RECENCY_ORDER}) AS rank
-           FROM workbench_tabs w
-           JOIN chat_tabs ct ON ct.project_id = w.project_id AND ct.tab_id = w.id
-           JOIN chats c ON c.project_id = ct.project_id AND c.id = ct.chat_id
-           WHERE w.kind = 'chat'
-             AND COALESCE(json_extract(w.metadata_json, '$.ephemeral'), 0) = 0
-         ) c
+         FROM {} c
          JOIN turns t ON t.id = {CHAT_LATEST_TURN_ID}
-         WHERE c.rank <= ?1
-           AND (t.state = 'waitingApproval'
-             OR (t.state IN ('completed', 'failed', 'deliveryUnknown')
-                 AND t.terminal_at IS NOT NULL))
-         ORDER BY t.state = 'waitingApproval' DESC, t.terminal_at DESC, c.project_id, c.tab_id"
+         WHERE t.state = 'waitingApproval'
+            OR (t.state IN ('completed', 'failed', 'deliveryUnknown')
+                AND t.terminal_at IS NOT NULL)
+         ORDER BY t.state = 'waitingApproval' DESC, t.terminal_at DESC, c.project_id, c.tab_id",
+        rail_chat_set()
     )
 }
 
@@ -88,7 +79,7 @@ pub(crate) fn chat_attention_in(
     read_through: &HashMap<String, i64>,
 ) -> AppResult<ChatAttentionList> {
     let mut statement = connection.prepare(&attention_candidates())?;
-    let mut rows = statement.query(params![MAX_AGENT_RAIL_CHATS_PER_PROJECT])?;
+    let mut rows = statement.query([])?;
     let mut list = ChatAttentionList::default();
     while let Some(row) = rows.next()? {
         let chat_id: String = row.get(1)?;
@@ -130,6 +121,18 @@ pub(crate) fn chat_attention(
         .map(|mark| (mark.chat_id, mark.read_through))
         .collect::<HashMap<_, _>>();
     chat_attention_in(&database.connection(), &marks)
+}
+
+/// Records a read mark. The rail's chats are read first and the project
+/// database released before the settings store is locked, so the two locks
+/// are never held together.
+pub(crate) fn mark_read(
+    database: &Database,
+    settings: &SettingsStore,
+    mark: &ChatReadMark,
+) -> AppResult<ChatReadMark> {
+    let retained = rail_chat_ids(&database.connection())?;
+    settings.mark_chat_read(mark, &retained)
 }
 
 #[cfg(test)]

@@ -14,15 +14,22 @@ pub(crate) fn chat_read_marks(state: State<'_, AppState>) -> Result<Vec<ChatRead
         .map_err(|error| error.to_string())
 }
 
+/// Records a read mark, keeping the marks of every chat the rail can show.
+/// Finding those chats reads the project database, so it runs off the main
+/// thread.
 #[tauri::command]
-pub(crate) fn chat_mark_read(
+pub(crate) async fn chat_mark_read(
     state: State<'_, AppState>,
     mark: ChatReadMark,
 ) -> Result<ChatReadMark, String> {
-    state
-        .settings
-        .mark_chat_read(&mark)
-        .map_err(|error| error.to_string())
+    let database = state.database.clone();
+    let settings = state.settings.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::chat_read_state::mark_read(&database, &settings, &mark)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

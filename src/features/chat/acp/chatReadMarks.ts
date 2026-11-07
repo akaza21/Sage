@@ -13,7 +13,8 @@ import { invokeNative, isTauriRuntime } from "../../../ports/nativeInvoke";
  * otherwise the acknowledged state. A refused request is simply dropped, so
  * the rail falls back to what the store holds.
  */
-export const MAX_CHAT_READ_MARKS = 512;
+/** The store's bound: every chat the rail can show (MAX_RAIL_CHATS in Rust). */
+export const MAX_CHAT_READ_MARKS = 1072;
 
 /** A chat's read state: its mark, or `null` for no mark. */
 type ReadState = number | null;
