@@ -34,6 +34,10 @@ pub struct ChatReadMarkWrite {
     #[serde(flatten)]
     pub mark: ChatReadMark,
     pub evicted: Vec<String>,
+    /// The store's write order. Answers to writes for different chats can
+    /// arrive in any order; this tells the rail which one the store applied
+    /// last.
+    pub sequence: i64,
 }
 
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
@@ -119,10 +123,10 @@ impl SettingsStore {
                 |row| row.get(0),
             )?
             .collect::<Result<Vec<String>, _>>()?;
-        let read_through = transaction.query_row(
-            "SELECT read_through FROM chat_read_marks WHERE chat_id = ?1",
+        let (read_through, sequence) = transaction.query_row(
+            "SELECT read_through, sequence FROM chat_read_marks WHERE chat_id = ?1",
             [&mark.chat_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         transaction.commit()?;
         Ok(ChatReadMarkWrite {
@@ -131,6 +135,7 @@ impl SettingsStore {
                 read_through,
             },
             evicted,
+            sequence,
         })
     }
 
@@ -231,6 +236,16 @@ mod tests {
         let marks = store.chat_read_marks().unwrap();
         assert!(marks.iter().any(|mark| mark.chat_id == "chat-0"));
         assert!(marks.iter().any(|mark| mark.chat_id == "newest"));
+    }
+
+    #[test]
+    fn the_rail_holds_as_many_marks_as_the_store() {
+        // chatReadMarks.ts mirrors the store; a smaller bound there would
+        // drop marks the store keeps.
+        let rail = include_str!("../../../src/features/chat/acp/chatReadMarks.ts");
+        assert!(rail.contains(&format!(
+            "export const MAX_CHAT_READ_MARKS = {MAX_CHAT_READ_MARKS};"
+        )));
     }
 
     #[test]

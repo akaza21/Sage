@@ -14,6 +14,11 @@ import type {
   ResourceRef,
   WorkbenchTab,
 } from "../domain/workbench";
+import {
+  chatReadThrough,
+  markChatRead,
+  resetChatReadMarks,
+} from "../features/chat/acp/chatReadMarks";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { desktop } from "../services/desktop";
 import { acpHarnessDesktop } from "../services/acpHarnessDesktop";
@@ -870,9 +875,15 @@ describe("workbench resource and project navigation", () => {
         recoveryError: null,
       });
 
+    markChatRead("chat:cross", 5_000);
+    expect(chatReadThrough("chat:cross")).toBe(5_000);
+
     expect(
       await useWorkbenchStore.getState().archiveChat("chat:cross", "cross"),
     ).toBe(true);
+    // The store forgets an archived chat's read mark, and so does the rail.
+    expect(chatReadThrough("chat:cross")).toBeUndefined();
+    resetChatReadMarks();
     expect(archive).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: "cross",

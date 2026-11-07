@@ -46,6 +46,10 @@ let marks = new Map<string, number>();
 let known = new Map<string, number>();
 let absent = new Set<string>();
 const lanes = new Map<string, Lane>();
+// The store's write order at which each chat's mark last changed, from read
+// answers. Answers for different chats can arrive out of order, so a change
+// older than the one recorded is ignored. Bounded like `known` and `absent`.
+let sequences = new Map<string, number>();
 // Bumped on reset, so answers to an earlier session's requests are ignored.
 let epoch = 0;
 let restoring: Promise<void> | null = null;
@@ -88,6 +92,21 @@ function record(chatId: string, state: ReadState) {
   known.set(chatId, state);
   if (known.size > MAX_CHAT_READ_MARKS)
     known.delete(known.keys().next().value!);
+}
+
+/**
+ * Whether a change the store made at `sequence` is newer than what the rail
+ * holds for the chat; records it if so. An answer without one is taken.
+ */
+function newer(chatId: string, sequence: number | undefined): boolean {
+  if (sequence === undefined) return true;
+  const seen = sequences.get(chatId);
+  if (seen !== undefined && seen >= sequence) return false;
+  sequences.delete(chatId);
+  sequences.set(chatId, sequence);
+  if (sequences.size > 2 * MAX_CHAT_READ_MARKS)
+    sequences.delete(sequences.keys().next().value!);
+  return true;
 }
 
 function acknowledged(chatId: string): ReadState | undefined {
@@ -137,6 +156,14 @@ function admitEvicted(answer: unknown): string[] {
       (chatId): chatId is string =>
         typeof chatId === "string" && chatId.length > 0,
     );
+}
+
+function admitSequence(answer: unknown): number | undefined {
+  if (typeof answer !== "object" || answer === null) return undefined;
+  const { sequence } = answer as Record<string, unknown>;
+  return typeof sequence === "number" && Number.isSafeInteger(sequence)
+    ? sequence
+    : undefined;
 }
 
 function admitMark(mark: unknown): [string, number] | null {
@@ -269,10 +296,15 @@ async function drain(chatId: string, lane: Lane, started: number) {
         }
         if (started !== epoch) return;
         // The store keeps the later mark; take the one it reports, and drop
-        // the marks it evicted to make room.
-        evicted = admitEvicted(answer).filter((pruned) => pruned !== chatId);
+        // the marks it evicted to make room, unless a later write already
+        // told the rail otherwise.
+        const sequence = admitSequence(answer);
+        evicted = admitEvicted(answer).filter(
+          (pruned) => pruned !== chatId && newer(pruned, sequence),
+        );
         for (const pruned of evicted) record(pruned, null);
-        record(chatId, admitMark(answer)?.[1] ?? current.state);
+        if (newer(chatId, sequence))
+          record(chatId, admitMark(answer)?.[1] ?? current.state);
       }
     } catch {
       if (started !== epoch) return;
@@ -308,11 +340,21 @@ export function markChatUnread(chatId: string): Promise<boolean> {
   return request(chatId, null);
 }
 
+/**
+ * The store dropped the chat's mark on its own, as archiving a chat does.
+ * A restored chat then starts without one.
+ */
+export function forgetChatReadMark(chatId: string) {
+  record(chatId, null);
+  project(chatId);
+}
+
 export function resetChatReadMarks() {
   epoch += 1;
   marks = new Map();
   known = new Map();
   absent = new Set();
+  sequences = new Map();
   lanes.clear();
   restoring = null;
   restored = false;
