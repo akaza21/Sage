@@ -13,6 +13,8 @@ pub(crate) struct JournalReceipt {
     turn_cursor: AdapterTurnCursor,
     /// Set when the batch advanced the chat's child projection epoch.
     pub child_projection_epoch: Option<u64>,
+    /// False when every event in the batch was already durable.
+    applied: bool,
 }
 
 impl JournalReceipt {
@@ -24,7 +26,17 @@ impl JournalReceipt {
             projection_revision,
             turn_cursor,
             child_projection_epoch: None,
+            applied: true,
         }
+    }
+
+    pub(in crate::acp::runtime) fn with_applied(mut self, applied: bool) -> Self {
+        self.applied = applied;
+        self
+    }
+
+    pub(crate) fn applied(&self) -> bool {
+        self.applied
     }
 
     pub(in crate::acp::runtime) fn with_child_projection_epoch(

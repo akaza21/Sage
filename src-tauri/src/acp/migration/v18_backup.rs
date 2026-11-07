@@ -52,7 +52,10 @@ pub(super) fn admit_source(paths: &MigrationPaths, schema: SchemaClass) -> AppRe
     versioned.validate_containment()?;
     match schema {
         SchemaClass::CurrentV16 | SchemaClass::CurrentV17 => Ok(()),
-        SchemaClass::CurrentV18 | SchemaClass::CurrentV19 | SchemaClass::CurrentV20 => {
+        SchemaClass::CurrentV18
+        | SchemaClass::CurrentV19
+        | SchemaClass::CurrentV20
+        | SchemaClass::CurrentV21 => {
             if let Some(backup) = reject_partial_backup_publication(&versioned)?
                 && !matches!(
                     backup.source.database.schema,

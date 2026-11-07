@@ -57,6 +57,7 @@ fn snapshot() -> IntentSnapshot {
         project_generation: ProjectGeneration::new(3).unwrap(),
         chat_id,
         projection_revision: ProjectionRevision::new(7).unwrap(),
+        intent_revision: ProjectionRevision::new(7).unwrap(),
         session_id: Some(session_id),
         runtime_epoch: Some(RuntimeEpoch::new(2).unwrap()),
         turn_id: Some(turn_id),
@@ -560,8 +561,21 @@ fn exact_intent_validation_rejects_each_stale_or_foreign_component() {
         validate_session_intent(&activate, &stale),
         Err(IntentError::StaleProjectGeneration)
     );
+    // A session-neutral change after the read leaves the intent current.
+    let mut neutral = cold.clone();
+    neutral.projection_revision = ProjectionRevision::new(8).unwrap();
+    assert_eq!(validate_session_intent(&activate, &neutral), Ok(()));
+    // A send-relevant change after the read makes it stale.
+    stale = neutral.clone();
+    stale.intent_revision = ProjectionRevision::new(8).unwrap();
+    assert_eq!(
+        validate_session_intent(&activate, &stale),
+        Err(IntentError::StaleProjectionRevision)
+    );
+    // A view ahead of the chat is never current.
     stale = cold.clone();
-    stale.projection_revision = ProjectionRevision::new(8).unwrap();
+    stale.projection_revision = ProjectionRevision::new(6).unwrap();
+    stale.intent_revision = ProjectionRevision::new(6).unwrap();
     assert_eq!(
         validate_session_intent(&activate, &stale),
         Err(IntentError::StaleProjectionRevision)

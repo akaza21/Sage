@@ -3,7 +3,7 @@ use rusqlite::{OptionalExtension, Transaction, params};
 use crate::acp::{
     contract::{
         ClientIntentId, EntityRevision, ProjectionRevision, RuntimeEpoch, SafeText,
-        SageAgentSessionId, SageChatId, SageProjectId,
+        SageAgentSessionId, SageChatId, SageProjectId, admits_projection,
     },
     intent::{BindingId, ModelId},
     lifecycle::SessionState,
@@ -14,7 +14,10 @@ pub(super) const PENDING_CAPABILITIES_JSON: &str = r#"{"schemaVersion":1,"protoc
 
 use super::{
     MutationDisposition, StoreError,
-    facts::{append_fact_payload, check_add, entity_revision_from_i64, next_projection_revision},
+    facts::{
+        append_fact_payload, check_add, entity_revision_from_i64, next_projection_revision,
+        projection_from_i64,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -241,21 +244,28 @@ fn validate_start(command: &StartSessionCommand) -> Result<(), StoreError> {
     Ok(())
 }
 
+/// Admits an intent built on the `expected` view of the chat. The view stays
+/// current across session-neutral changes (notices, titles, activity rows)
+/// but not across the latest send-relevant one, and may not be ahead.
 pub(super) fn validate_chat_revision(
     transaction: &Transaction<'_>,
     project: &SageProjectId,
     chat: &SageChatId,
     expected: ProjectionRevision,
 ) -> Result<(), StoreError> {
-    let current: i64 = transaction
+    let (intent, current): (i64, i64) = transaction
         .query_row(
-            "SELECT projection_revision FROM chats WHERE project_id=?1 AND id=?2",
+            "SELECT intent_revision,projection_revision FROM chats WHERE project_id=?1 AND id=?2",
             params![project.as_str(), chat.as_str()],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?
         .ok_or(StoreError::Conflict { resource: "chat" })?;
-    if current != expected.get() as i64 {
+    if !admits_projection(
+        projection_from_i64(intent)?,
+        projection_from_i64(current)?,
+        expected,
+    ) {
         return Err(StoreError::Conflict {
             resource: "projectionRevision",
         });

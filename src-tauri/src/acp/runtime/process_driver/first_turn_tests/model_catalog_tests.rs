@@ -132,6 +132,7 @@ fn idle_worker_hydrates_model_catalog_and_bounds_pagination() {
                 project_generation: ProjectGeneration::ZERO,
                 chat_id: fixture.chat_id,
                 projection_revision: fixture.ready_projection_revision,
+                intent_revision: fixture.ready_projection_revision,
                 session_id: Some(fixture.started.session_id),
                 runtime_epoch: Some(fixture.epoch),
                 turn_id: None,
