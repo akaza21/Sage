@@ -5,8 +5,12 @@ mod windows;
 #[cfg(target_os = "linux")]
 mod xdg;
 #[cfg(target_os = "macos")]
-pub(super) use macos::{dispatch, withdraw_all};
+pub(super) use macos::{dispatch, prepare, withdraw_all};
 #[cfg(windows)]
 pub(super) use windows::{ActiveToast, dispatch};
 #[cfg(target_os = "linux")]
-pub(super) use xdg::dispatch;
+pub(super) use xdg::{dispatch, present};
+
+/// Readies the platform once notices are on; only macOS needs to.
+#[cfg(not(target_os = "macos"))]
+pub(super) fn prepare(_app: &tauri::AppHandle) {}

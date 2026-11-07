@@ -93,13 +93,21 @@ pub(crate) fn start(app: &tauri::AppHandle) {
     let enabled = state.settings.notification_preference().ok()
         == Some(NotificationPreference::BackgroundTurns);
     notifications.enabled.store(enabled, Ordering::Release);
+    if enabled {
+        platform::prepare(app);
+    }
 }
 
 impl Notifications {
     /// Applies a saved preference. Turning notices on publishes the flag before
     /// retiring receipts admitted while they were off, so none is lost or
-    /// replayed from before the switch.
-    fn apply(&self, connection: &rusqlite::Connection, value: NotificationPreference) {
+    /// replayed from before the switch, and readies the platform.
+    fn apply(
+        &self,
+        app: &tauri::AppHandle,
+        connection: &rusqlite::Connection,
+        value: NotificationPreference,
+    ) {
         let enabled = value == NotificationPreference::BackgroundTurns;
         if self.enabled.swap(enabled, Ordering::AcqRel) || !enabled {
             return;
@@ -107,6 +115,7 @@ impl Notifications {
         if receipts::retire_pending(connection).is_err() {
             tracing::warn!("turn notification receipts could not be retired");
         }
+        platform::prepare(app);
     }
 
     fn enabled(&self) -> bool {
@@ -203,7 +212,9 @@ fn should_show(app: &tauri::AppHandle, id: i64) -> bool {
         .suppresses(&target.chat_id, focused && visible)
 }
 
-fn clicked(app: &tauri::AppHandle, id: i64) {
+/// Opens a clicked notice's chat. `activation` is the token the platform
+/// granted for the click (XDG on Wayland), which lets Sage raise its window.
+fn clicked(app: &tauri::AppHandle, id: i64, activation: Option<String>) {
     let Some(state) = app.try_state::<AppState>() else {
         return;
     };
@@ -221,7 +232,13 @@ fn clicked(app: &tauri::AppHandle, id: i64) {
         .store(id, Ordering::Release);
     let _ = window.unminimize();
     let _ = window.show();
-    let _ = window.set_focus();
+    match activation {
+        #[cfg(target_os = "linux")]
+        Some(token) => platform::present(&window, token),
+        _ => {
+            let _ = window.set_focus();
+        }
+    }
     let _ = app.emit(OPEN_EVENT, ());
 }
 

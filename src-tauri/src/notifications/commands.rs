@@ -14,6 +14,7 @@ pub fn get_notification_preference(
 }
 #[tauri::command]
 pub fn set_notification_preference(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     notifications: State<'_, Notifications>,
     value: NotificationPreference,
@@ -22,7 +23,7 @@ pub fn set_notification_preference(
         .settings
         .set_notification_preference(value)
         .map_err(|_| "notification preference could not be saved".to_owned())?;
-    notifications.apply(&state.database.connection(), value);
+    notifications.apply(&app, &state.database.connection(), value);
     Ok(value)
 }
 #[tauri::command]

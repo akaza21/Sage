@@ -94,14 +94,31 @@ impl Drop for Bus {
 fn a_click_on_the_shown_notice_routes_to_its_chat() {
     let bus = Bus::start();
     let shown = Shown::send(bus.client(), Event::Completed).unwrap();
+    bus.emit("ActivationToken", |signal| {
+        signal.append2(NOTICE + 1, "other-token")
+    });
     bus.emit("ActionInvoked", |signal| {
         signal.append2(NOTICE + 1, "default")
+    });
+    bus.emit("ActivationToken", |signal| {
+        signal.append2(NOTICE, "wayland-token")
     });
     bus.emit("ActionInvoked", |signal| signal.append2(NOTICE, "default"));
     assert_eq!(
         shown.wait(Duration::from_secs(5)),
-        Some(Response::Clicked),
-        "another notice's click is ignored"
+        Some(Response::Clicked(Some("wayland-token".to_owned()))),
+        "the click carries its own activation token; another notice's click and token are ignored"
+    );
+}
+
+#[test]
+fn a_click_without_an_activation_token_still_routes() {
+    let bus = Bus::start();
+    let shown = Shown::send(bus.client(), Event::Approval).unwrap();
+    bus.emit("ActionInvoked", |signal| signal.append2(NOTICE, "default"));
+    assert_eq!(
+        shown.wait(Duration::from_secs(5)),
+        Some(Response::Clicked(None))
     );
 }
 

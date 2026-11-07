@@ -1,33 +1,43 @@
-//! macOS notices through `NSUserNotificationCenter`, with Sage's own delegate.
+//! macOS notices through `UNUserNotificationCenter`, with Sage's own delegate.
 //! The delegate presents notices while Sage is frontmost (the chat may still
 //! be out of view) and routes a click to its receipt by the notice's
 //! identifier, so no thread waits for an answer. At most `MAX_IN_FLIGHT`
 //! delivered notices are kept, like Windows toasts, and the rest are
-//! withdrawn. Every call runs on the main thread, which owns the center.
+//! withdrawn. The center is thread-safe, so the notice thread uses it
+//! directly; a dispatch slot is held until the center accepts the request.
 //!
-//! The center is deprecated in favour of `UNUserNotificationCenter`, which
-//! needs a signed bundle, an authorization prompt and a delegate installed
-//! before launch completes; it remains the follow-up once Sage ships signed.
-#![allow(
-    deprecated,
-    reason = "NSUserNotificationCenter is the macOS API usable without a signed bundle"
-)]
-
+//! The center works only inside Sage's app bundle: a development binary run
+//! outside one shows no notices rather than raising an exception.
 use super::super::{Event, MAX_IN_FLIGHT, Permit, clicked};
+use block2::{DynBlock, RcBlock};
 use objc2::{
-    ClassType, DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send,
+    AllocAnyThread, DefinedClass, available, define_class, msg_send,
     rc::Retained,
-    runtime::{NSObject, NSObjectProtocol, ProtocolObject},
+    runtime::{Bool, NSObject, NSObjectProtocol, ProtocolObject},
 };
-use objc2_foundation::{
-    NSString, NSUserNotification, NSUserNotificationCenter, NSUserNotificationCenterDelegate,
+use objc2_foundation::{NSArray, NSBundle, NSError, NSString};
+use objc2_user_notifications::{
+    UNAuthorizationOptions, UNMutableNotificationContent, UNNotification,
+    UNNotificationDefaultActionIdentifier, UNNotificationPresentationOptions,
+    UNNotificationRequest, UNNotificationResponse, UNUserNotificationCenter,
+    UNUserNotificationCenterDelegate,
 };
 use std::{
-    cell::{OnceCell, RefCell},
     collections::VecDeque,
+    sync::{Mutex, OnceLock, PoisonError},
 };
 
 const IDENTIFIER_PREFIX: &str = "sage-turn-";
+
+/// `None` when the process cannot post notices; see the module docs.
+static CENTER: OnceLock<Option<Center>> = OnceLock::new();
+
+/// Installs the delegate and asks once for permission to show alerts; macOS
+/// remembers the answer. Called at startup while notices are on and when
+/// they are turned on, so the first notice is not lost to the prompt.
+pub(in crate::notifications) fn prepare(app: &tauri::AppHandle) {
+    center(app);
+}
 
 pub(in crate::notifications) fn dispatch(
     app: tauri::AppHandle,
@@ -35,156 +45,198 @@ pub(in crate::notifications) fn dispatch(
     event: Event,
     permit: Permit,
 ) {
-    let target = app.clone();
-    let result = app.run_on_main_thread(move || {
-        let _permit = permit;
-        with_center(&target, |center| center.deliver(id, event));
-    });
-    if result.is_err() {
-        tracing::warn!("turn notification dispatcher unavailable");
+    match center(&app) {
+        Some(center) => center.deliver(id, event, permit),
+        None => tracing::debug!("turn notification skipped: no notification center"),
     }
 }
 
-/// Withdraws Sage's delivered notices when the app exits; called on the main
-/// thread from the plugin's exit event.
+/// Withdraws Sage's delivered notices when the app exits.
 pub(in crate::notifications) fn withdraw_all() {
-    CENTER.with(|cell| {
-        if let Some(Some(center)) = cell.get() {
-            center.withdraw_all();
-        }
-    });
+    if let Some(Some(center)) = CENTER.get() {
+        center.withdraw_all();
+    }
 }
 
-thread_local! {
-    /// Main thread only. `None` when the process has no notification center,
-    /// such as an unbundled development binary.
-    static CENTER: OnceCell<Option<Center>> = const { OnceCell::new() };
-}
-
-fn with_center(app: &tauri::AppHandle, use_center: impl FnOnce(&Center)) {
-    CENTER.with(|cell| {
-        if let Some(center) = cell.get_or_init(|| Center::new(app)) {
-            use_center(center);
-        }
-    });
+fn center(app: &tauri::AppHandle) -> Option<&'static Center> {
+    CENTER.get_or_init(|| Center::new(app)).as_ref()
 }
 
 struct Center {
-    center: Retained<NSUserNotificationCenter>,
-    /// The center holds its delegate unretained; this keeps it alive.
+    center: Retained<UNUserNotificationCenter>,
+    /// The center holds its delegate weakly; this keeps it alive.
     _delegate: Retained<Delegate>,
-    delivered: RefCell<VecDeque<Retained<NSUserNotification>>>,
+    delivered: Mutex<VecDeque<Retained<NSString>>>,
 }
+
+// SAFETY: Apple documents `UNUserNotificationCenter` as safe to use from any
+// thread. The delegate's only state is a thread-safe `AppHandle`, set before
+// it is shared, and the identifiers are immutable strings behind a mutex.
+unsafe impl Send for Center {}
+// SAFETY: as above.
+unsafe impl Sync for Center {}
 
 impl Center {
     fn new(app: &tauri::AppHandle) -> Option<Self> {
-        let main_thread = MainThreadMarker::new()?;
-        // SAFETY: the class method takes no arguments and returns the shared
-        // center, or nil when the process has no bundle to post for.
-        let center: Option<Retained<NSUserNotificationCenter>> = unsafe {
-            msg_send![
-                NSUserNotificationCenter::class(),
-                defaultUserNotificationCenter
-            ]
-        };
-        let center = center?;
-        let delegate = Delegate::new(main_thread, app.clone());
-        // SAFETY: `Center` keeps the delegate alive for as long as the center
-        // can call it: the thread-local lives until the process exits.
-        unsafe { center.setDelegate(Some(ProtocolObject::from_ref(&*delegate))) };
+        if !available!(macos = 10.14) {
+            return None;
+        }
+        // `currentNotificationCenter` raises outside an app bundle.
+        let bundle = NSBundle::mainBundle();
+        bundle.bundleIdentifier()?;
+        if !bundle.bundlePath().to_string().ends_with(".app") {
+            return None;
+        }
+        let center = UNUserNotificationCenter::currentNotificationCenter();
+        let delegate = Delegate::new(app.clone());
+        center.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+        let answered = RcBlock::new(|granted: Bool, _error: *mut NSError| {
+            if !granted.as_bool() {
+                tracing::info!("turn notifications are turned off in macOS settings");
+            }
+        });
+        center.requestAuthorizationWithOptions_completionHandler(
+            UNAuthorizationOptions::Alert,
+            &answered,
+        );
         Some(Self {
             center,
             _delegate: delegate,
-            delivered: RefCell::new(VecDeque::with_capacity(MAX_IN_FLIGHT)),
+            delivered: Mutex::new(VecDeque::with_capacity(MAX_IN_FLIGHT)),
         })
     }
 
-    fn deliver(&self, id: i64, event: Event) {
-        let notice = NSUserNotification::new();
+    fn deliver(&self, id: i64, event: Event, permit: Permit) {
+        let identifier = NSString::from_str(&format!("{IDENTIFIER_PREFIX}{id}"));
+        let content = UNMutableNotificationContent::new();
         // All text is fixed product copy; no harness or chat content enters it.
-        notice.setTitle(Some(&NSString::from_str("Sage")));
-        notice.setInformativeText(Some(&NSString::from_str(event.body())));
-        notice.setIdentifier(Some(&NSString::from_str(&format!(
-            "{IDENTIFIER_PREFIX}{id}"
-        ))));
-        let Ok(mut delivered) = self.delivered.try_borrow_mut() else {
-            return;
-        };
-        if delivered.len() == MAX_IN_FLIGHT
-            && let Some(oldest) = delivered.pop_front()
+        content.setTitle(&NSString::from_str("Sage"));
+        content.setBody(&NSString::from_str(event.body()));
+        let request = UNNotificationRequest::requestWithIdentifier_content_trigger(
+            &identifier,
+            &content,
+            None,
+        );
         {
-            self.center.removeDeliveredNotification(&oldest);
+            let mut delivered = self
+                .delivered
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            if delivered.len() >= MAX_IN_FLIGHT
+                && let Some(oldest) = delivered.pop_front()
+            {
+                self.withdraw(&[&*oldest]);
+            }
+            delivered.push_back(identifier);
         }
-        self.center.deliverNotification(&notice);
-        delivered.push_back(notice);
+        // The center answers on its own queue; the slot ends with the answer.
+        let slot = Mutex::new(Some(permit));
+        let added = RcBlock::new(move |error: *mut NSError| {
+            drop(slot.lock().unwrap_or_else(PoisonError::into_inner).take());
+            if !error.is_null() {
+                tracing::warn!("platform turn notification dispatch failed");
+            }
+        });
+        self.center
+            .addNotificationRequest_withCompletionHandler(&request, Some(&added));
     }
 
-    fn forget(&self, notice: &NSUserNotification) {
-        self.center.removeDeliveredNotification(notice);
-        if let Ok(mut delivered) = self.delivered.try_borrow_mut() {
-            delivered.retain(|kept| kept.identifier() != notice.identifier());
-        }
+    /// Stops tracking a notice the user answered and removes it.
+    fn forget(&self, identifier: &NSString) {
+        self.delivered
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|kept| !kept.isEqualToString(identifier));
+        self.withdraw(&[identifier]);
     }
 
     fn withdraw_all(&self) {
-        if let Ok(mut delivered) = self.delivered.try_borrow_mut() {
-            for notice in delivered.drain(..) {
-                self.center.removeDeliveredNotification(&notice);
-            }
+        let delivered: Vec<_> = self
+            .delivered
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .drain(..)
+            .collect();
+        let identifiers: Vec<&NSString> = delivered.iter().map(|kept| &**kept).collect();
+        if !identifiers.is_empty() {
+            self.withdraw(&identifiers);
         }
+    }
+
+    fn withdraw(&self, identifiers: &[&NSString]) {
+        self.center
+            .removeDeliveredNotificationsWithIdentifiers(&NSArray::from_slice(identifiers));
     }
 }
 
 /// The receipt id a notice was delivered for, from its identifier.
-fn receipt(notice: &NSUserNotification) -> Option<i64> {
-    notice
-        .identifier()?
+fn receipt(identifier: &NSString) -> Option<i64> {
+    identifier
         .to_string()
         .strip_prefix(IDENTIFIER_PREFIX)?
         .parse()
         .ok()
 }
 
+/// Banners while Sage is frontmost: the notice's chat was not in view, or it
+/// would not have been sent.
+fn presentation() -> UNNotificationPresentationOptions {
+    if available!(macos = 11.0) {
+        UNNotificationPresentationOptions::Banner | UNNotificationPresentationOptions::List
+    } else {
+        #[allow(deprecated, reason = "Banner and List need macOS 11")]
+        UNNotificationPresentationOptions::Alert
+    }
+}
+
 define_class!(
     // SAFETY: NSObject has no subclassing requirements and `Delegate` does
     // not implement `Drop`.
     #[unsafe(super(NSObject))]
-    #[thread_kind = MainThreadOnly]
+    #[thread_kind = AllocAnyThread]
     #[name = "SageTurnNoticeDelegate"]
     #[ivars = tauri::AppHandle]
     struct Delegate;
 
     unsafe impl NSObjectProtocol for Delegate {}
 
-    unsafe impl NSUserNotificationCenterDelegate for Delegate {
-        /// Present even while Sage is frontmost: the notice's chat was not in
-        /// view, or it would not have been sent.
-        #[unsafe(method(userNotificationCenter:shouldPresentNotification:))]
-        fn should_present(
+    unsafe impl UNUserNotificationCenterDelegate for Delegate {
+        #[unsafe(method(userNotificationCenter:willPresentNotification:withCompletionHandler:))]
+        fn will_present(
             &self,
-            _center: &NSUserNotificationCenter,
-            _notice: &NSUserNotification,
-        ) -> bool {
-            true
+            _center: &UNUserNotificationCenter,
+            _notice: &UNNotification,
+            completion: &DynBlock<dyn Fn(UNNotificationPresentationOptions)>,
+        ) {
+            completion.call((presentation(),));
         }
 
-        #[unsafe(method(userNotificationCenter:didActivateNotification:))]
-        fn did_activate(&self, _center: &NSUserNotificationCenter, notice: &NSUserNotification) {
-            if let Some(id) = receipt(notice) {
-                clicked(self.ivars(), id);
+        #[unsafe(method(userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:))]
+        fn did_receive(
+            &self,
+            _center: &UNUserNotificationCenter,
+            response: &UNNotificationResponse,
+            completion: &DynBlock<dyn Fn()>,
+        ) {
+            let identifier = response.notification().request().identifier();
+            // SAFETY: a constant string exported by UserNotifications.
+            let default_action = unsafe { UNNotificationDefaultActionIdentifier };
+            if response.actionIdentifier().isEqualToString(default_action)
+                && let Some(id) = receipt(&identifier)
+            {
+                clicked(self.ivars(), id, None);
             }
-            CENTER.with(|cell| {
-                if let Some(Some(center)) = cell.get() {
-                    center.forget(notice);
-                }
-            });
+            if let Some(Some(center)) = CENTER.get() {
+                center.forget(&identifier);
+            }
+            completion.call(());
         }
     }
 );
 
 impl Delegate {
-    fn new(main_thread: MainThreadMarker, app: tauri::AppHandle) -> Retained<Self> {
-        let this = Self::alloc(main_thread).set_ivars(app);
+    fn new(app: tauri::AppHandle) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(app);
         // SAFETY: NSObject's designated initializer.
         unsafe { msg_send![super(this), init] }
     }

@@ -59,7 +59,7 @@ fn show(app: &tauri::AppHandle, id: i64, event: Event) -> windows::core::Result<
     let target = app.clone();
     let token = toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(
         move |_, _| {
-            clicked(&target, id);
+            clicked(&target, id, None);
             if let Some(state) = target.try_state::<Notifications>() {
                 state
                     .toasts

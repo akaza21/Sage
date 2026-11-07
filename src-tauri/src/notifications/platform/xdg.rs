@@ -5,7 +5,8 @@
 //! expiry sent to the server is only a hint, and servers such as GNOME Shell
 //! may never report a close, so no route can hold a thread forever. A notice
 //! whose route ends is withdrawn, so no notice is left that cannot open its
-//! chat.
+//! chat. A click carries the activation token the server sends just before
+//! it, so Wayland compositors let Sage raise its window.
 use super::super::{Event, Notifications, Permit, clicked};
 use dbus::{
     arg::PropMap,
@@ -13,8 +14,9 @@ use dbus::{
     message::{MatchRule, Message},
 };
 use std::{
+    ffi::CString,
     sync::{
-        Arc, OnceLock,
+        Arc, Mutex, OnceLock, PoisonError,
         atomic::{AtomicU32, Ordering},
     },
     time::{Duration, Instant},
@@ -26,6 +28,8 @@ const PATH: &str = "/org/freedesktop/Notifications";
 const CALL_TIMEOUT: Duration = Duration::from_secs(2);
 const EXPIRE_MS: i32 = 10_000;
 const CLICK_WINDOW: Duration = Duration::from_secs(10 * 60);
+/// Tokens are short opaque strings; anything longer is not kept.
+const MAX_TOKEN_BYTES: usize = 256;
 
 pub(in crate::notifications) fn dispatch(
     app: tauri::AppHandle,
@@ -53,7 +57,7 @@ pub(in crate::notifications) fn dispatch(
                 return;
             };
             match shown.wait(CLICK_WINDOW) {
-                Some(Response::Clicked) => clicked(&app, id),
+                Some(Response::Clicked(activation)) => clicked(&app, id, activation),
                 Some(Response::Closed) => {}
                 None => shown.withdraw(),
             }
@@ -63,10 +67,41 @@ pub(in crate::notifications) fn dispatch(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Response {
-    Clicked,
+    /// Clicked, with the activation token the server sent for the click.
+    Clicked(Option<String>),
     Closed,
+}
+
+/// Raises the window with a click's activation token. GTK spends the token
+/// on its next focus request, which Wayland compositors otherwise refuse
+/// without a recent input event; on X11 it is a plain focus request.
+pub(in crate::notifications) fn present(window: &tauri::WebviewWindow, token: String) {
+    use gtk::prelude::*;
+    let target = window.clone();
+    let presented = window.run_on_main_thread(move || {
+        let Ok(gtk_window) = target.gtk_window() else {
+            return;
+        };
+        let display = gtk_window.display();
+        if display.type_().name() == "GdkWaylandDisplay"
+            && let Ok(token) = CString::new(token)
+        {
+            // SAFETY: on the main thread, `display` is a live
+            // GdkWaylandDisplay (checked by type name); GDK copies the id.
+            unsafe {
+                gdk_wayland_sys::gdk_wayland_display_set_startup_notification_id(
+                    display.as_ptr().cast(),
+                    token.as_ptr(),
+                );
+            }
+        }
+        gtk_window.present_with_time(gtk::gdk::ffi::GDK_CURRENT_TIME as u32);
+    });
+    if presented.is_err() {
+        let _ = window.set_focus();
+    }
 }
 
 /// A shown notice and the private connection that sent it. Servers address
@@ -81,13 +116,25 @@ impl Shown {
     fn send(bus: Connection, event: Event) -> Result<Self, dbus::Error> {
         let notice = Arc::new(AtomicU32::new(0));
         let response = Arc::new(OnceLock::new());
+        let token = Arc::new(Mutex::new(None::<String>));
         // Match before sending: the server may report the notice at once.
+        let (seen, granted) = (notice.clone(), token.clone());
+        bus.add_match(
+            MatchRule::new_signal(SERVICE, "ActivationToken").with_path(PATH),
+            move |(id, value): (u32, String), _: &Connection, _: &Message| {
+                if id == seen.load(Ordering::Acquire) && value.len() <= MAX_TOKEN_BYTES {
+                    *granted.lock().unwrap_or_else(PoisonError::into_inner) = Some(value);
+                }
+                true
+            },
+        )?;
         let (seen, record) = (notice.clone(), response.clone());
         bus.add_match(
             MatchRule::new_signal(SERVICE, "ActionInvoked").with_path(PATH),
             move |(id, action): (u32, String), _: &Connection, _: &Message| {
                 if id == seen.load(Ordering::Acquire) && action == "default" {
-                    let _ = record.set(Response::Clicked);
+                    let activation = token.lock().unwrap_or_else(PoisonError::into_inner).take();
+                    let _ = record.set(Response::Clicked(activation));
                 }
                 true
             },
@@ -130,7 +177,7 @@ impl Shown {
         let deadline = Instant::now() + window;
         loop {
             if let Some(response) = self.response.get() {
-                return Some(*response);
+                return Some(response.clone());
             }
             let remaining = deadline.checked_duration_since(Instant::now())?;
             if remaining.is_zero() {
