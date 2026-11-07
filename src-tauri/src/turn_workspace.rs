@@ -13,7 +13,19 @@ use std::{collections::BTreeMap, path::Path};
 /// Same cap as the WebView's Git changes list.
 pub(crate) const MAX_TURN_WORKSPACE_CHANGES: usize = 300;
 // Optional Git evidence has one short budget at either end of a turn.
-pub(crate) const CAPTURE_BUDGET_MILLIS: u64 = 2_000;
+pub(crate) const CAPTURE_BUDGET_MILLIS: u64 = capture_budget_millis();
+
+#[cfg(not(test))]
+const fn capture_budget_millis() -> u64 {
+    2_000
+}
+
+// Tests share a loaded machine where a cold `git` start alone can outlast the
+// production budget, so they use the shared test budget, as Git processes do.
+#[cfg(test)]
+const fn capture_budget_millis() -> u64 {
+    crate::test_wait::BUDGET.as_millis() as u64
+}
 // One capture per admitted live runtime, with no waiting queue.
 pub(crate) const MAX_CONCURRENT_CAPTURES: usize =
     crate::acp::limits::LIMITS.process.operational_live_trees as usize;

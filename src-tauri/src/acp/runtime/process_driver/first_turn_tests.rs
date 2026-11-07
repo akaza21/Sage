@@ -1169,11 +1169,11 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             state = FirstTurnWorkerState::Active(active)
                 .handle(&context, envelope)
                 .await;
+            // The caller measures its own elapsed time; this wait only guards
+            // against a hang, so scheduling on a loaded machine cannot fail it.
             let (dispatch, elapsed) = caller_result_receiver
-                .recv_timeout(Duration::from_millis(
-                    crate::acp::limits::LIMITS.deadlines_ms.cancel_dispatch,
-                ))
-                .expect("cancel result before dispatch deadline");
+                .recv_timeout(crate::test_wait::BUDGET)
+                .expect("cancel dispatch returned");
             caller.wait();
             assert_eq!(dispatch, Ok(()));
             assert!(elapsed <= Duration::from_millis(deadline_ms));
@@ -1212,10 +1212,8 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             wait_for_queued_control(mailbox.as_ref());
             let queued = mailbox.submit_worker(WorkerCommand::Shutdown).unwrap();
             let (timeout_result, timeout_elapsed) = timeout_result_receiver
-                .recv_timeout(Duration::from_millis(
-                    crate::acp::limits::LIMITS.deadlines_ms.cancel_dispatch,
-                ))
-                .expect("deadline result before cancel dispatch deadline");
+                .recv_timeout(crate::test_wait::BUDGET)
+                .expect("timed-out cancel dispatch returned");
             timeout.wait();
             assert_eq!(timeout_result, Err(HostError::Deadline));
             assert!(timeout_elapsed < Duration::from_secs(1));

@@ -239,9 +239,12 @@ fn symlinks_and_nonregular_files_are_refused() {
     assert!(read::read_paths(&[f.0.join("link").to_str().unwrap().into()]).is_err());
     symlink(&f.0, f.0.join("loop")).unwrap();
     assert!(f.read("").0.iter().all(|r| r.name != "loop"));
-    let socket = std::os::unix::net::UnixListener::bind(f.0.join("socket")).unwrap();
-    assert!(read::read_paths(&[f.0.join("socket").to_str().unwrap().into()]).is_err());
-    drop(socket);
+    // A device file: a socket under a macOS temporary directory would exceed
+    // the platform's socket path limit.
+    assert_eq!(
+        read::read_paths(&["/dev/null".into()]),
+        Err("Only regular files can be attached.")
+    );
 }
 
 #[cfg(unix)]
