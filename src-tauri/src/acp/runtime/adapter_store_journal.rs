@@ -15,6 +15,7 @@ use super::{
 
 mod activity;
 mod command;
+mod session_event;
 mod terminal_reason;
 
 #[cfg(test)]
@@ -284,6 +285,10 @@ impl JournalRejectionContext {
                         external_item_id: child_turn_id.as_str().to_owned(),
                     })
                 }
+                DurableAdapterEvent::Session { .. } => Some(JournalRejectionItem {
+                    kind: "session",
+                    external_item_id: "session-scoped".to_owned(),
+                }),
                 DurableAdapterEvent::Turn { .. } => None,
             })
             .collect();

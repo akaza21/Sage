@@ -137,6 +137,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                                         .map_err(AdapterPumpError::Journal)?;
                                     self.publish_child_epoch(&receipt);
                                 }
+                                AdapterEvent::Session { id, event } => {
+                                    self.commit_session_event(id, event, current.len(), now_millis)
+                                        .await?;
+                                }
                                 AdapterEvent::IgnoredLate
                                 | AdapterEvent::IgnoredDuplicate
                                 | AdapterEvent::Absorbed => {}
@@ -161,6 +165,50 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         }
         nonfatal_refusal.map_or(Ok(()), Err)
     }
+    /// Commits a session-scoped fact that arrives after the Turn terminal.
+    /// The same exact-session rule as the Turn pump applies; a foreign
+    /// identity is dropped, as the Turn pump drops it.
+    async fn commit_session_event(
+        &mut self,
+        id: crate::acp::bindings::adapter::AdapterIdentity,
+        event: crate::acp::intent::session_event::SessionScopedEvent,
+        frame_bytes: usize,
+        now_millis: i64,
+    ) -> Result<(), AdapterPumpError> {
+        let intent = &self.session_intent;
+        if !id.is_exact_session(
+            &intent.binding_digest,
+            intent.runtime_epoch,
+            &intent.session_id,
+            &intent.external_session_id,
+        ) {
+            return Ok(());
+        }
+        let scope = SessionScope {
+            project_id: intent.project_id.clone(),
+            chat_id: intent.chat_id.clone(),
+            session_id: intent.session_id.clone(),
+            runtime_epoch: intent.runtime_epoch,
+            binding_digest: hex(&intent.binding_digest),
+        };
+        let fact = super::normalize::session_fact(scope, event, now_millis)?;
+        let receipt = self
+            .journal
+            .commit(vec![fact.event], frame_bytes.max(1))
+            .await
+            .map_err(AdapterPumpError::Journal)?;
+        let _ = self
+            .publisher
+            .publish_committed(crate::acp::intent::ProjectionChangedV1 {
+                project_id: self.session_intent.project_id.clone(),
+                chat_id: self.session_intent.chat_id.clone(),
+                session_id: self.session_intent.session_id.clone(),
+                projection_revision: receipt.projection_revision,
+                child_projection_epoch: 0,
+            });
+        Ok(())
+    }
+
     /// Publishes an idle child change through the projection-changed event.
     /// Only the child epoch moves; the projection revision is unchanged, so
     /// a user action keyed to it stays current. A dropped notice is

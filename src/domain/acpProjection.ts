@@ -2,6 +2,7 @@ import type { AttachedContext } from "./attachedContext";
 import type { AcpImagePayload } from "./acpImage";
 import type { AcpGoalState } from "./acpGoal";
 import type { AcpSessionConfig } from "./acpSessionConfig";
+import type { AcpSessionSurface } from "./acpSessionSurface";
 import type { BrowserOperationProjection } from "./browserOperation";
 import type { FilePairMetadata } from "./agentDiff";
 import type {
@@ -291,4 +292,6 @@ export interface AcpChatPage {
    * projection revision, so child activity never stales a user action.
    */
   childProjectionEpoch?: number;
+  /** Session-scoped state of the current session (display only). */
+  sessionSurface?: AcpSessionSurface;
 }
