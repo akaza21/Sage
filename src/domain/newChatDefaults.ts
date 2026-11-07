@@ -17,8 +17,18 @@ export interface NewChatDefaults {
 export type DefaultHarnessStatus =
   "available" | "detecting" | "unavailable" | "notInstalled" | "unknown";
 
+/**
+ * What discovery says about a stored default model or effort. `unknown`
+ * means nothing discovered can judge it yet (the harness is not available,
+ * or it offers the option only through a live session), so a new chat checks
+ * it against the session's configuration.
+ */
+export type DefaultOptionStatus = "available" | "unavailable" | "unknown";
+
 export interface NewChatDefaultsState {
   defaults: NewChatDefaults;
-  /** `null` when no default harness is stored. */
+  /** Each status is `null` when that value is not stored. */
   harnessStatus: DefaultHarnessStatus | null;
+  modelStatus: DefaultOptionStatus | null;
+  effortStatus: DefaultOptionStatus | null;
 }

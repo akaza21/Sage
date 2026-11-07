@@ -1,8 +1,10 @@
 //! The new chat defaults commands. Saving checks the harness against the
-//! discovered catalog; reading reports what discovery says about the stored
-//! harness now, so a harness that was uninstalled later is reported and kept
-//! rather than rewritten. Model and effort are checked against the live
-//! session configuration when a chat starts, not here.
+//! discovered catalog; reading reports what discovery says about each stored
+//! value now, so a value that stops working later is reported and kept rather
+//! than rewritten. A model is judged against the models discovery lists for
+//! the harness. Most harnesses only offer models, and every harness only
+//! offers efforts, through a live session's configuration, so those values
+//! report `unknown` here and are checked when a new chat starts.
 
 use serde::Serialize;
 use tauri::State;
@@ -28,14 +30,6 @@ pub enum DefaultHarnessStatus {
     Unknown,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NewChatDefaultsState {
-    pub defaults: NewChatDefaults,
-    /// `None` when no default harness is stored.
-    pub harness_status: Option<DefaultHarnessStatus>,
-}
-
 impl From<HarnessInstallState> for DefaultHarnessStatus {
     fn from(state: HarnessInstallState) -> Self {
         match state {
@@ -47,33 +41,67 @@ impl From<HarnessInstallState> for DefaultHarnessStatus {
     }
 }
 
+/// What discovery says about a stored default model or effort.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DefaultOptionStatus {
+    /// Discovery lists it for the default harness.
+    Available,
+    /// Discovery lists the harness's options and this one is not among them.
+    Unavailable,
+    /// Nothing discovered can judge it yet: the harness is not available, or
+    /// it offers the option only through a live session.
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewChatDefaultsState {
+    pub defaults: NewChatDefaults,
+    /// Each status is `None` when that value is not stored.
+    pub harness_status: Option<DefaultHarnessStatus>,
+    pub model_status: Option<DefaultOptionStatus>,
+    pub effort_status: Option<DefaultOptionStatus>,
+}
+
 fn harness_status(catalog: &HarnessCatalog, harness_id: &str) -> DefaultHarnessStatus {
-    let Some(definition) = catalog
-        .definitions()
-        .into_iter()
-        .find(|definition| definition.id == harness_id)
-    else {
-        return DefaultHarnessStatus::Unknown;
-    };
-    [
-        HarnessInstallState::Available,
-        HarnessInstallState::Detecting,
-        HarnessInstallState::Unavailable,
-        HarnessInstallState::NotInstalled,
-    ]
-    .into_iter()
-    .find(|state| state.as_str() == definition.install_state)
-    .map_or(DefaultHarnessStatus::Unknown, Into::into)
+    catalog
+        .install_state_of(harness_id)
+        .map_or(DefaultHarnessStatus::Unknown, Into::into)
+}
+
+fn model_status(catalog: &HarnessCatalog, harness_id: &str, model_id: &str) -> DefaultOptionStatus {
+    if harness_status(catalog, harness_id) != DefaultHarnessStatus::Available {
+        return DefaultOptionStatus::Unknown;
+    }
+    match catalog.models(harness_id) {
+        Ok(models) if !models.is_empty() => {
+            if models.iter().any(|model| model.id == model_id) {
+                DefaultOptionStatus::Available
+            } else {
+                DefaultOptionStatus::Unavailable
+            }
+        }
+        _ => DefaultOptionStatus::Unknown,
+    }
 }
 
 fn state_of(catalog: &HarnessCatalog, defaults: NewChatDefaults) -> NewChatDefaultsState {
-    let harness_status = defaults
-        .harness_id
-        .as_deref()
-        .map(|harness_id| harness_status(catalog, harness_id));
+    let harness_id = defaults.harness_id.as_deref();
+    let harness_status = harness_id.map(|harness_id| harness_status(catalog, harness_id));
+    let model_status = harness_id
+        .zip(defaults.model_id.as_deref())
+        .map(|(harness_id, model_id)| model_status(catalog, harness_id, model_id));
+    // No discovery source lists efforts; the live session is the only judge.
+    let effort_status = defaults
+        .effort
+        .as_ref()
+        .map(|_| DefaultOptionStatus::Unknown);
     NewChatDefaultsState {
         defaults,
         harness_status,
+        model_status,
+        effort_status,
     }
 }
 

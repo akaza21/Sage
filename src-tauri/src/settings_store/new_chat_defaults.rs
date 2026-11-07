@@ -1,7 +1,8 @@
 //! The durable defaults a new chat starts from: a harness, and optionally a
-//! model and an effort within it. One closed record. The store keeps the
-//! values exactly as admitted; checking them against what is installed or
-//! offered by a live session belongs to the callers, which report a value
+//! model and an effort within it. One closed record. The store only admits
+//! well-formed identifiers and keeps them exactly as given; judging them
+//! against discovery (the settings commands) and against a live session's
+//! configuration (new chat start) belongs to the callers, which report a value
 //! they cannot use instead of rewriting it.
 
 use rusqlite::{Connection, OptionalExtension, params};
