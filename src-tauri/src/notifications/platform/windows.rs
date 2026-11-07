@@ -1,6 +1,6 @@
 //! Retain at most four native toast handlers, including after banner dismissal
 //! into Action Center. Eviction/exit withdraws the toast and unregisters it.
-use super::super::{Event, MAX_IN_FLIGHT, Notifications, Permit, clicked, should_show};
+use super::super::{Event, MAX_IN_FLIGHT, Notifications, Permit, clicked};
 use tauri::Manager;
 use windows::{
     Data::Xml::Dom::XmlDocument,
@@ -40,7 +40,7 @@ pub(in crate::notifications) fn dispatch(
     let target = app.clone();
     let result = app.run_on_main_thread(move || {
         let _permit = permit;
-        if should_show(&target, id) && show(&target, id, event).is_err() {
+        if show(&target, id, event).is_err() {
             tracing::warn!("platform turn notification dispatch failed");
         }
     });

@@ -1,8 +1,9 @@
 //! Turn notices observe committed truth independently of WebView projections.
-//! Four dispatch slots that end once a notice is shown, no work queue or
-//! history, and two hashed visible chat IDs.
-//! Only commits that may admit a notice reach `observe`, and the preference
-//! is cached here, so streamed content never touches notice storage.
+//! Only commits that may admit a notice reach `observe`, which never blocks:
+//! it hands the commit to one notice thread, which claims receipts and
+//! dispatches them. Four dispatch slots that end once a notice is shown, no
+//! history, and two hashed visible chat IDs. The preference is cached here,
+//! so streamed content never touches notice storage.
 mod commands;
 mod platform;
 mod receipts;
@@ -14,12 +15,17 @@ use crate::{
 pub use commands::*;
 use receipts::Event;
 use std::sync::{
-    Arc, Mutex,
+    Arc, Mutex, OnceLock,
     atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
+    mpsc::{self, SyncSender, TrySendError},
 };
 use tauri::{Emitter, Manager};
 
 const MAX_IN_FLIGHT: usize = 4;
+/// Commits waiting for the notice thread. A claim covers every pending
+/// receipt of its session, so a commit dropped from a full queue only delays
+/// its receipts to that session's next notice commit.
+const MAX_OBSERVED: usize = 16;
 const OPEN_EVENT: &str = "sage-notification-open-chat";
 
 #[derive(Default)]
@@ -28,6 +34,8 @@ pub(crate) struct Notifications {
     /// preference command, so publications never read settings.
     enabled: AtomicBool,
     visibility: Mutex<visibility::Visibility>,
+    /// The notice thread's queue, started with the first observed commit.
+    observed: OnceLock<Option<SyncSender<ProjectionChangedV1>>>,
     in_flight: Arc<AtomicUsize>,
     /// Shown XDG notices still listening for a click; see `platform::xdg`.
     #[cfg(target_os = "linux")]
@@ -64,6 +72,8 @@ pub(crate) fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
                     state.pending_open.store(0, Ordering::Release);
                     #[cfg(windows)]
                     state.toasts.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clear();
+                    #[cfg(target_os = "macos")]
+                    platform::withdraw_all();
             }
         }).build()
 }
@@ -104,6 +114,8 @@ impl Notifications {
     }
 }
 
+/// Runs on the publishing thread, often an async ACP pump, so it never
+/// touches storage: the commit is queued for the notice thread.
 pub(crate) fn observe(app: &tauri::AppHandle, notice: &ProjectionChangedV1) {
     let Some(notifications) = app.try_state::<Notifications>() else {
         return;
@@ -111,11 +123,47 @@ pub(crate) fn observe(app: &tauri::AppHandle, notice: &ProjectionChangedV1) {
     if !notifications.enabled() {
         return;
     }
+    let Some(queue) = notifications
+        .observed
+        .get_or_init(|| start_notice_thread(app.clone()))
+    else {
+        return;
+    };
+    match queue.try_send(notice.clone()) {
+        Ok(()) | Err(TrySendError::Disconnected(_)) => {}
+        Err(TrySendError::Full(_)) => {
+            tracing::debug!("turn notice queue full; pending receipts wait for the next commit");
+        }
+    }
+}
+
+fn start_notice_thread(app: tauri::AppHandle) -> Option<SyncSender<ProjectionChangedV1>> {
+    let (sender, receiver) = mpsc::sync_channel::<ProjectionChangedV1>(MAX_OBSERVED);
+    let started = std::thread::Builder::new()
+        .name("turn-notices".into())
+        .stack_size(512 * 1024)
+        .spawn(move || {
+            for notice in receiver {
+                announce(&app, &notice);
+            }
+        });
+    if started.is_err() {
+        tracing::warn!("turn notification thread unavailable");
+        return None;
+    }
+    Some(sender)
+}
+
+/// Claims the commit's receipts and dispatches each one still worth showing.
+/// Never retry an uncertain OS delivery; dispatch failure cannot fail a Turn.
+fn announce(app: &tauri::AppHandle, notice: &ProjectionChangedV1) {
+    let notifications = app.state::<Notifications>();
+    if !notifications.enabled() {
+        return;
+    }
     let Some(state) = app.try_state::<AppState>() else {
         return;
     };
-    // Synchronous receipt admission, outside the journal's committed transaction.
-    // Never retry an uncertain OS delivery; dispatch failure cannot fail a Turn.
     let Ok(claims) = receipts::claim(&state.database.connection(), notice) else {
         tracing::warn!("turn notification receipt failed");
         return;
@@ -126,7 +174,9 @@ pub(crate) fn observe(app: &tauri::AppHandle, notice: &ProjectionChangedV1) {
             tracing::warn!("turn notification skipped: every dispatch slot is busy");
             continue;
         };
-        platform::dispatch(app.clone(), id, event, permit);
+        if should_show(app, id) {
+            platform::dispatch(app.clone(), id, event, permit);
+        }
     }
 }
 

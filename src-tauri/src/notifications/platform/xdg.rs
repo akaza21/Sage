@@ -4,8 +4,9 @@
 //! `MAX_IN_FLIGHT` notices keep a click route, each for `CLICK_WINDOW`: the
 //! expiry sent to the server is only a hint, and servers such as GNOME Shell
 //! may never report a close, so no route can hold a thread forever. A notice
-//! whose route ended stays on screen; clicking it no longer opens its chat.
-use super::super::{Event, Notifications, Permit, clicked, should_show};
+//! whose route ends is withdrawn, so no notice is left that cannot open its
+//! chat.
+use super::super::{Event, Notifications, Permit, clicked};
 use dbus::{
     arg::PropMap,
     blocking::Connection,
@@ -39,9 +40,6 @@ pub(in crate::notifications) fn dispatch(
         .spawn(move || {
             let shown = {
                 let _permit = permit;
-                if !should_show(&app, id) {
-                    return;
-                }
                 match Connection::new_session().and_then(|bus| Shown::send(bus, event)) {
                     Ok(shown) => shown,
                     Err(_) => {
@@ -54,8 +52,10 @@ pub(in crate::notifications) fn dispatch(
                 tracing::debug!("turn notification shown without a click route");
                 return;
             };
-            if shown.wait(CLICK_WINDOW) == Some(Response::Clicked) {
-                clicked(&app, id);
+            match shown.wait(CLICK_WINDOW) {
+                Some(Response::Clicked) => clicked(&app, id),
+                Some(Response::Closed) => {}
+                None => shown.withdraw(),
             }
         });
     if result.is_err() {
@@ -73,6 +73,7 @@ enum Response {
 /// signals by notice id, so the connection only reacts to its own notice.
 struct Shown {
     bus: Connection,
+    notice: Arc<AtomicU32>,
     response: Arc<OnceLock<Response>>,
 }
 
@@ -117,11 +118,15 @@ impl Shown {
             ),
         )?;
         notice.store(id, Ordering::Release);
-        Ok(Self { bus, response })
+        Ok(Self {
+            bus,
+            notice,
+            response,
+        })
     }
 
     /// Waits for this notice's click or close, never past `window`.
-    fn wait(self, window: Duration) -> Option<Response> {
+    fn wait(&self, window: Duration) -> Option<Response> {
         let deadline = Instant::now() + window;
         loop {
             if let Some(response) = self.response.get() {
@@ -132,6 +137,19 @@ impl Shown {
                 return None;
             }
             self.bus.process(remaining).ok()?;
+        }
+    }
+
+    /// Removes a notice whose click route ended. Best effort: the server
+    /// may already have dropped it.
+    fn withdraw(&self) {
+        let id = self.notice.load(Ordering::Acquire);
+        let closed: Result<(), dbus::Error> = self
+            .bus
+            .with_proxy(SERVICE, PATH, CALL_TIMEOUT)
+            .method_call(SERVICE, "CloseNotification", (id,));
+        if closed.is_err() {
+            tracing::debug!("expired turn notification could not be withdrawn");
         }
     }
 }

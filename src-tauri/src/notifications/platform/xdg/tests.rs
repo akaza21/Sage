@@ -16,6 +16,7 @@ const NOTICE: u32 = 7;
 struct Bus {
     daemon: Child,
     address: String,
+    withdrawn: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     server: Option<std::thread::JoinHandle<()>>,
 }
@@ -34,11 +35,20 @@ impl Bus {
         let address = address.trim().to_owned();
         let server = Connection::new_address(&address).unwrap();
         server.request_name(SERVICE, false, true, false).unwrap();
+        let withdrawn = Arc::new(AtomicBool::new(false));
+        let record = withdrawn.clone();
         server.start_receive(
             MatchRule::new_method_call(),
-            Box::new(|call: Message, bus: &Connection| {
-                if call.member().as_deref() == Some("Notify") {
-                    let _ = bus.send(call.method_return().append1(NOTICE));
+            Box::new(move |call: Message, bus: &Connection| {
+                match call.member().as_deref() {
+                    Some("Notify") => {
+                        let _ = bus.send(call.method_return().append1(NOTICE));
+                    }
+                    Some("CloseNotification") => {
+                        record.store(call.read1::<u32>().ok() == Some(NOTICE), Ordering::Release);
+                        let _ = bus.send(call.method_return());
+                    }
+                    _ => {}
                 }
                 true
             }),
@@ -53,6 +63,7 @@ impl Bus {
         Self {
             daemon,
             address,
+            withdrawn,
             stop,
             server: Some(server),
         }
@@ -103,10 +114,12 @@ fn a_closed_notice_ends_its_route_without_a_click() {
 }
 
 #[test]
-fn a_notice_the_server_never_closes_stops_listening_at_its_deadline() {
+fn a_notice_the_server_never_closes_is_withdrawn_at_its_deadline() {
     let bus = Bus::start();
     let shown = Shown::send(bus.client(), Event::Failed).unwrap();
     let started = Instant::now();
     assert_eq!(shown.wait(Duration::from_millis(200)), None);
     assert!(started.elapsed() < Duration::from_secs(2));
+    shown.withdraw();
+    assert!(bus.withdrawn.load(Ordering::Acquire));
 }
