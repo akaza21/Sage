@@ -640,3 +640,40 @@ fn launch_authority_rejects_malformed_or_non_ascii_digests_without_panicking() {
         ));
     }
 }
+
+/// On Windows only a native `.exe` may be a user-defined agent's direct
+/// launch: a `.cmd` would run through `cmd.exe`. Curated node launches with
+/// a script entrypoint stay admitted (see the Gemini launch test above).
+#[cfg(windows)]
+#[test]
+fn a_user_named_batch_file_is_refused_as_a_direct_launch() {
+    let root = std::env::temp_dir().join(format!("sage-standard-acp-cmd-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).expect("create root");
+    let profile = super::custom::CUSTOM_PROFILES
+        .first()
+        .expect("custom profile");
+    let admitted = |name: &str| {
+        let path = root.join(name);
+        fs::write(&path, b"agent").expect("write agent");
+        admit(
+            profile,
+            StandardAcpCandidate {
+                runtime: artifact(path),
+                entrypoint: None,
+                package_manifest: None,
+                reported_version: String::new(),
+            },
+        )
+        .map(|_| ())
+    };
+    assert_eq!(
+        admitted("agent.cmd"),
+        Err(super::StandardAcpAdmissionError::Path)
+    );
+    assert_eq!(
+        admitted("agent.bat"),
+        Err(super::StandardAcpAdmissionError::Path)
+    );
+    assert_eq!(admitted("agent.EXE"), Ok(()));
+    fs::remove_dir_all(root).expect("remove root");
+}

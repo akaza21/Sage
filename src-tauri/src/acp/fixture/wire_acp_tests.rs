@@ -345,3 +345,88 @@ fn launch_rules_follow_what_each_case_waits_for() {
         assert!(!native_case_spans_restart(case), "{case}");
     }
 }
+
+fn replay_steps(requests: &str, steps: &[Value]) -> Result<Vec<Value>, FixtureError> {
+    let mut state = WireState::new();
+    let mut output = Vec::new();
+    let mut input = Cursor::new(requests.as_bytes().to_vec());
+    for step in steps {
+        execute_with_io(step, &mut state, &mut input, &mut output, &mut Vec::new())?;
+    }
+    Ok(String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect())
+}
+
+fn elicitation_steps() -> Vec<Value> {
+    vec![
+        json!({"op":"emitKnownFrame","shape":"acpElicitation","params":{"mode":"form","message":"Pick","requestedSchema":{"type":"object","properties":{"branch":{"type":"string"}}}}}),
+        json!({"op":"awaitClient","kind":"acpElicitationReply"}),
+        json!({"op":"emitKnownFrame","shape":"acpElicitationEcho"}),
+    ]
+}
+
+#[test]
+fn an_answered_elicitation_echoes_the_fields_and_never_the_values() {
+    let frames = replay_steps(
+        "{\"jsonrpc\":\"2.0\",\"id\":\"fixture-elicitation-1\",\"result\":{\"action\":\"accept\",\"content\":{\"branch\":\"secret-value\"}}}\n",
+        &elicitation_steps(),
+    )
+    .unwrap();
+    assert_eq!(frames[0]["method"], "elicitation/create");
+    assert_eq!(
+        frames[0]["params"]["sessionId"],
+        "fixture-persisted-session-1"
+    );
+    assert_eq!(
+        frames[1]["params"]["update"]["content"]["text"],
+        "Synthetic replay: the form came back with branch."
+    );
+    assert!(!frames[1].to_string().contains("secret-value"));
+    let declined = replay_steps(
+        "{\"jsonrpc\":\"2.0\",\"id\":\"fixture-elicitation-1\",\"result\":{\"action\":\"decline\"}}\n",
+        &elicitation_steps(),
+    )
+    .unwrap();
+    assert_eq!(
+        declined[1]["params"]["update"]["content"]["text"],
+        "Synthetic replay: the request was declined."
+    );
+    assert!(
+        replay_steps(
+            "{\"jsonrpc\":\"2.0\",\"id\":\"another\",\"result\":{\"action\":\"accept\"}}\n",
+            &elicitation_steps(),
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn an_auth_required_session_is_opened_after_authenticate() {
+    let frames = replay_steps(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{}}\n{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"authenticate\",\"params\":{\"methodId\":\"fixture-browser\"}}\n{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"session/new\",\"params\":{}}\n",
+        &[
+            json!({"op":"awaitClient","kind":"acpInitialize"}),
+            json!({"op":"emitKnownFrame","shape":"acpInitialize","authMethods":[{"id":"fixture-browser","name":"Synthetic sign-in"}]}),
+            json!({"op":"awaitClient","kind":"acpNew"}),
+            json!({"op":"emitKnownFrame","shape":"acpAuthRequired"}),
+            json!({"op":"awaitClient","kind":"acpAuthenticate"}),
+            json!({"op":"emitKnownFrame","shape":"acpAck"}),
+            json!({"op":"awaitClient","kind":"acpNew"}),
+            json!({"op":"emitKnownFrame","shape":"acpSession"}),
+        ],
+    )
+    .unwrap();
+    assert_eq!(
+        frames[0]["result"]["authMethods"][0]["id"],
+        "fixture-browser"
+    );
+    assert_eq!(
+        frames[1],
+        json!({"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"Authentication required"}})
+    );
+    assert_eq!(frames[2], json!({"jsonrpc":"2.0","id":3,"result":{}}));
+    assert_eq!(frames[3]["id"], 4);
+}

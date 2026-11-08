@@ -10,8 +10,8 @@ use sha2::{Digest, Sha256};
 
 use super::super::wire::decode_frame;
 use super::{
-    OpenCodeRuntime, PendingRequest, PermissionReply, PermissionState, ingress::permission_egress,
-    map_translation,
+    PendingRequest, PermissionReply, PermissionState, StandardAcpRuntime,
+    ingress::permission_egress, map_translation,
 };
 
 pub(super) fn response_id(value: &serde_json::Value) -> Result<u64, AdapterRuntimeError> {
@@ -32,14 +32,14 @@ pub(crate) fn scoped_permission_id(
     crate::acp::intent::ExternalId::new(
         "permissionIntentId",
         format!(
-            "opencode:{session_digest:x}:{}:{wire_digest:x}",
+            "standard-acp:{session_digest:x}:{}:{wire_digest:x}",
             epoch.get()
         ),
     )
     .map_err(|_| AdapterRuntimeError::Frame)
 }
 
-impl HarnessAdapter for OpenCodeRuntime {
+impl HarnessAdapter for StandardAcpRuntime {
     fn receive_command_update(&mut self, frame: &Frame) -> Result<(), AdapterRuntimeError> {
         let value =
             serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
@@ -62,6 +62,18 @@ impl HarnessAdapter for OpenCodeRuntime {
         self.capabilities.clone()
     }
 
+    fn refusal_detail(&self) -> Option<crate::acp::bindings::adapter::RefusalDetail> {
+        self.refusal_detail.clone()
+    }
+
+    fn cancel_permission(
+        &mut self,
+        request_id: &crate::acp::contract::SageServerRequestId,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.cancel_elicitation(request_id.as_str())
+            .unwrap_or(Err(AdapterRuntimeError::UnsupportedCommand))
+    }
+
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
         match command {
             AdapterCommand::Steer { .. } => Err(AdapterRuntimeError::UnsupportedCommand),
@@ -81,6 +93,9 @@ impl HarnessAdapter for OpenCodeRuntime {
                 request_id,
                 decision,
             } => {
+                if let Some(result) = self.resolve_elicitation(request_id.as_str(), &decision) {
+                    return result;
+                }
                 let record = self
                     .permissions
                     .get_mut(request_id.as_str())
@@ -156,9 +171,17 @@ impl HarnessAdapter for OpenCodeRuntime {
     }
 
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
+        if let Some(request_id) = token.cancelled_permission_request() {
+            return self
+                .settle_elicitation(request_id, None)
+                .unwrap_or(Err(AdapterRuntimeError::MandatoryDenyTeardown));
+        }
         let (request_id, replay) = token
             .deny_request()
             .ok_or(AdapterRuntimeError::EgressIntent)?;
+        if !replay && let Some(result) = self.settle_elicitation(request_id, None) {
+            return result;
+        }
         let record = self
             .permissions
             .get_mut(request_id)
@@ -196,6 +219,16 @@ impl HarnessAdapter for OpenCodeRuntime {
             )
             .then_some(())
             .ok_or(AdapterRuntimeError::MandatoryDenyTeardown);
+        }
+        if let Some(request_id) = token
+            .deny_request()
+            .filter(|(_, replay)| !replay)
+            .map(|(id, _)| id)
+            .or_else(|| token.allow_request())
+            .or_else(|| token.cancelled_permission_request())
+            && let Some(result) = self.settle_elicitation(request_id, Some(resolution))
+        {
+            return result;
         }
         if let Some((request_id, replay)) = token.deny_request() {
             let record = self
@@ -275,7 +308,7 @@ impl HarnessAdapter for OpenCodeRuntime {
     }
 }
 
-impl OpenCodeRuntime {
+impl StandardAcpRuntime {
     fn rollback_prompt(&mut self, request_id: u64) -> Result<(), AdapterRuntimeError> {
         let active = self
             .active

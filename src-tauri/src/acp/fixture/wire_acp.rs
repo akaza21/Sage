@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use std::io::{Read, Write};
 
 pub(super) const SESSION: &str = "fixture-persisted-session-1";
+const ELICITATION_ID: &str = "fixture-elicitation-1";
 
 pub(super) fn await_request(
     input: &mut impl Read,
@@ -26,6 +27,8 @@ pub(super) fn await_request(
         "acpClose" => "session/close",
         "acpPermissionDecision" => "permission",
         "acpFork" => "session/fork",
+        "acpAuthenticate" => "authenticate",
+        "acpElicitationReply" => "elicitation",
         _ => return Err(FixtureError::InvalidArguments),
     };
     for _ in 0..32 {
@@ -63,6 +66,10 @@ pub(super) fn await_request(
                 &json!({"jsonrpc":"2.0","id":id,"result":result}),
             )?;
             continue;
+        }
+        if expected == "elicitation" {
+            state.user_input_echo = Some(elicitation_echo(&request)?);
+            return Ok(());
         }
         if expected == "permission" {
             if request.get("id") != Some(&json!("fixture-permission-1"))
@@ -191,6 +198,29 @@ impl AcpConfig {
     }
 }
 
+/// Says how the client answered the elicitation: its action and, for an
+/// accepted form, the field names it filled. Answer values are never echoed.
+fn elicitation_echo(response: &Value) -> Result<String, FixtureError> {
+    if response.get("id") != Some(&json!(ELICITATION_ID)) || response.get("method").is_some() {
+        return Err(FixtureError::InvalidArguments);
+    }
+    let result = &response["result"];
+    let fields = result
+        .get("content")
+        .and_then(Value::as_object)
+        .map(|content| content.keys().take(16).cloned().collect::<Vec<_>>());
+    Ok(match (result["action"].as_str(), fields) {
+        (Some("accept"), Some(fields)) => format!(
+            "Synthetic replay: the form came back with {}.",
+            fields.join(", ")
+        ),
+        (Some("accept"), None) => "Synthetic replay: the link was opened.".to_owned(),
+        (Some("decline"), None) => "Synthetic replay: the request was declined.".to_owned(),
+        (Some("cancel"), None) => "Synthetic replay: the request was cancelled.".to_owned(),
+        _ => return Err(FixtureError::InvalidArguments),
+    })
+}
+
 fn config_options() -> Value {
     json!([{ "id":"model", "name":"Model", "category":"model", "type":"select", "currentValue":"fixture-model", "options":[{"value":"fixture-model","name":"Synthetic replay"}] }])
 }
@@ -213,6 +243,25 @@ pub(super) fn emit(
                 frame["params"]["_meta"] = substitute(meta.clone(), state, 0)?;
             }
             frame
+        }
+        "acpElicitation" => {
+            let mut params = substitute(step["params"].clone(), state, 0)?;
+            params["sessionId"] = json!(SESSION);
+            json!({"jsonrpc":"2.0","id":ELICITATION_ID,"method":"elicitation/create","params":params})
+        }
+        "acpElicitationEcho" => {
+            let text = state
+                .user_input_echo
+                .take()
+                .ok_or(FixtureError::InvalidArguments)?;
+            json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":SESSION,"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":text}}}})
+        }
+        "acpAuthRequired" => {
+            let id = state
+                .last_request_id
+                .take()
+                .ok_or(FixtureError::InvalidArguments)?;
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32000,"message":"Authentication required"}})
         }
         "acpCompleted" | "acpCancelled" | "acpError" => {
             let id = state
@@ -243,7 +292,8 @@ pub(super) fn emit(
             };
             let result = match shape {
                 "acpInitialize" => {
-                    json!({"protocolVersion":1,"agentCapabilities":{"loadSession":false,"promptCapabilities":{"image":true},"sessionCapabilities":{"close":{}}},"models":[{"id":"fixture-model","name":"Synthetic replay"}],"authMethods":[]})
+                    let auth = step.get("authMethods").cloned().unwrap_or(json!([]));
+                    json!({"protocolVersion":1,"agentCapabilities":{"loadSession":false,"promptCapabilities":{"image":true},"sessionCapabilities":{"close":{}}},"models":[{"id":"fixture-model","name":"Synthetic replay"}],"authMethods":auth})
                 }
                 // Unstable `session/fork`, advertised as claude-agent-acp 0.76.0 does.
                 "acpInitializeFork" => {

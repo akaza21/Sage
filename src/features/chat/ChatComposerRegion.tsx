@@ -56,6 +56,7 @@ export function ChatComposerRegion({
   projectTransitioning,
   workbenchError,
   chatError,
+  signInHarness = null,
   claudeSignInRequired,
   claudeAuthScope,
   accessBindingId,
@@ -183,9 +184,17 @@ export function ChatComposerRegion({
               {workbenchError}
             </div>
           ) : null}
-          {chatError ? (
+          {chatError || signInHarness ? (
             <div className="composer__error" role="alert">
-              {chatError}
+              {signInHarness ? (
+                <AuthPart
+                  part="SignInRequiredMessage"
+                  harness={signInHarness}
+                  fallback={chatError}
+                />
+              ) : (
+                chatError
+              )}
               {claudeSignInRequired ? (
                 <AuthPart part="ClaudeAuthActions" key={claudeAuthScope} />
               ) : null}

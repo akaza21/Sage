@@ -132,6 +132,15 @@ enum Phase {
     Teardown,
 }
 
+impl Phase {
+    /// Adapter requests that join the bounded initialization budget: the
+    /// handshake itself, and ACP sign-in while the session is not yet ready
+    /// (`authenticate`, then `session/new` again).
+    fn admits_initialization_request(self, session_ready: bool) -> bool {
+        self == Self::AwaitingInitialized || (self == Self::AwaitingSession && !session_ready)
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ActivationPumpError {
     #[error("activation intent or adapter completion is stale or foreign")]

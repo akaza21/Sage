@@ -54,6 +54,9 @@ impl HarnessCatalog {
                 Some(HarnessInstallState::Available)
             }
             "codex" => Some(self.codex_install_state()),
+            custom if crate::settings_store::custom_acp_number(custom).is_some() => {
+                self.custom_acp_install_state(custom)
+            }
             curated if known_harness_spec(curated).is_some() => Some(self.install_state(curated)),
             _ => None,
         }

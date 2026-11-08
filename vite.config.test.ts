@@ -138,7 +138,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/ChatNavigation.tsx",
   "src/features/chat/ChatQueueExecution.tsx",
   "src/features/chat/ChatQueueRuntime.tsx",
-  // Recovery notices and sign-in actions stay off the ready Chat path.
+  // Recovery notices, sign-in actions and the sign-in sentence stay off the
+  // ready Chat path.
   "src/features/chat/HarnessDiscoveryNotice.tsx",
   "src/features/chat/ClaudeAuthActions.tsx",
   // Queued-message rows load with the first queued message.
@@ -202,6 +203,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/settings/AgentBrowserSettings.tsx",
   // The Harnesses page loads on its first open.
   "src/features/settings/AgentHarnessSettings.tsx",
+  // The Your ACP agents editor loads with the Harnesses page, below its list.
+  "src/features/settings/CustomAgentSettings.tsx",
   "src/features/settings/AgentKeyboardSettings.tsx",
   // The native turn-notice preference loads with the Chats page.
   "src/features/settings/AgentNotificationSettings.tsx",

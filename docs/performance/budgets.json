@@ -23,8 +23,8 @@
       },
       {
         "entry": "src/features/chat/ClaudeAuthActions.tsx",
-        "maxGzipBytes": 515,
-        "reason": "Existing sign-in actions load only after a Claude authentication error; keeps their native actions and copy off the ready first-Chat path."
+        "maxGzipBytes": 630,
+        "reason": "Sign-in actions and the sign-in-required sentence load only after a harness sign-in error; measured 588, keeping both off the ready first-Chat path."
       },
       {
         "entry": "src/features/chat/ComposerSlashController.tsx",
@@ -161,8 +161,13 @@
       },
       {
         "entry": "src/features/settings/AgentHarnessSettings.tsx",
-        "maxGzipBytes": 1075,
-        "reason": "Harnesses settings page: install, version and sign-in status per harness; loaded only by Settings > Harnesses. Measured 1003 B plus 7%."
+        "maxGzipBytes": 1221,
+        "reason": "Harnesses settings page: install, version and sign-in status per harness, plus the lazy boundary for the user-defined agent editor; loaded only by Settings > Harnesses. Measured 1141 B plus 7%."
+      },
+      {
+        "entry": "src/features/settings/CustomAgentSettings.tsx",
+        "maxGzipBytes": 1360,
+        "reason": "Your ACP agents editor: at most four agents (name, executable, arguments, passed-through names) and the plain-text arguments hint; loaded only by Settings > Harnesses. Measured 1271 B plus 7%."
       },
       {
         "entry": "src/features/settings/AgentBrowserSettings.tsx",

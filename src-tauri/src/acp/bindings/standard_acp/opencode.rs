@@ -11,16 +11,6 @@ use sha2::{Digest, Sha256};
 use crate::harness_discovery::{
     InstalledHarness, authentic_harness_file, authentic_npm_global_descendant, sha256_file,
 };
-use crate::{
-    acp::{
-        bindings::{
-            adapter::AdapterRuntimeError,
-            runtime::{NativeRuntime, RuntimeFactory},
-        },
-        contract::{RuntimeEpoch, SageAgentSessionId},
-    },
-    project_registry::ProjectRootAuthority,
-};
 
 use super::{
     AdmittedStandardAcpBinding, NpmPackageManifestRequirement, StandardAcpAdmissionError,
@@ -174,60 +164,9 @@ impl OpenCodeBindingRegistration {
     }
 }
 
-pub(crate) struct OpenCodeRuntimeFactory {
-    registration: Arc<OpenCodeBindingRegistration>,
-    binding_digest: [u8; 32],
-    project_root: ProjectRootAuthority,
-    mcp: crate::acp::mcp::McpAdmission,
-}
-
-impl OpenCodeRuntimeFactory {
-    #[cfg(test)]
-    pub(crate) fn from_admitted_binding(
-        registration: Arc<OpenCodeBindingRegistration>,
-        binding: Arc<AdmittedStandardAcpBinding>,
-        project_root: ProjectRootAuthority,
-    ) -> Self {
-        Self::with_mcp(registration, binding, project_root, Default::default())
-    }
-
-    pub(crate) fn with_mcp(
-        registration: Arc<OpenCodeBindingRegistration>,
-        binding: Arc<AdmittedStandardAcpBinding>,
-        project_root: ProjectRootAuthority,
-        mcp: crate::acp::mcp::McpAdmission,
-    ) -> Self {
-        Self {
-            registration,
-            binding_digest: binding.binding_digest(),
-            project_root,
-            mcp,
-        }
-    }
-}
-
-impl RuntimeFactory for OpenCodeRuntimeFactory {
-    fn construct(
-        self: Box<Self>,
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Result<NativeRuntime, AdapterRuntimeError> {
-        let Self {
-            registration,
-            binding_digest,
-            project_root,
-            mcp,
-        } = *self;
-        Ok(NativeRuntime::new(
-            super::opencode_runtime::OpenCodeRuntime::new(
-                registration,
-                binding_digest,
-                runtime_epoch,
-                session_id,
-                project_root,
-                mcp,
-            )?,
-        ))
+impl super::StandardAcpBindingSource for OpenCodeBindingRegistration {
+    fn refresh_binding(&self) -> Option<Arc<AdmittedStandardAcpBinding>> {
+        self.refresh().ok()
     }
 }
 
@@ -380,6 +319,7 @@ mod tests {
         lifecycle::{ItemLifecycle, TurnState},
         transport::{Frame, IncrementalFrameDecoder},
     };
+    use crate::project_registry::ProjectRootAuthority;
     use serde_json::Value;
     use std::path::PathBuf;
 
@@ -426,7 +366,7 @@ mod tests {
 
     fn scoped_permission_id(label: &str, epoch: u64) -> crate::acp::contract::SageServerRequestId {
         let session = SageAgentSessionId::parse(format!("session-{label}")).expect("session");
-        let scoped = super::super::opencode_runtime::scoped_permission_id(
+        let scoped = super::super::runtime::scoped_permission_id(
             &session,
             RuntimeEpoch::new(epoch).expect("epoch"),
             "number:0",
@@ -610,7 +550,7 @@ mod tests {
         root: &TempRoot,
         version: &str,
         project_root: ProjectRootAuthority,
-    ) -> OpenCodeRuntimeFactory {
+    ) -> super::super::StandardAcpRuntimeFactory {
         let npm = root.0.join("npm");
         let runtime = npm
             .join("node_modules")
@@ -632,7 +572,11 @@ mod tests {
             &shim, version,
         ));
         let binding = registration.admitted().expect("admitted binding");
-        OpenCodeRuntimeFactory::from_admitted_binding(registration, binding, project_root)
+        super::super::StandardAcpRuntimeFactory::from_admitted_binding(
+            registration,
+            binding,
+            project_root,
+        )
     }
 
     #[test]
@@ -978,16 +922,16 @@ mod tests {
         runtime
             .resolve_egress(initialize.into_token(), EgressResolution::Written)
             .expect("initialize written");
+        // Even when OpenCode lists a method that needs no input, Sage does not
+        // call `authenticate` for it: OpenCode keeps its own sign-in guidance.
+        let mut initialized = inbound_smoke_frames()
+            .into_iter()
+            .next()
+            .expect("initialize response");
+        initialized["result"]["authMethods"] =
+            serde_json::json!([{"id": "opencode-login", "name": "Login"}]);
         runtime
-            .ingest(
-                &frame(
-                    inbound_smoke_frames()
-                        .into_iter()
-                        .next()
-                        .expect("initialize response"),
-                ),
-                &Mapper,
-            )
+            .ingest(&frame(initialized), &Mapper)
             .expect("initialize response");
         let new_session = runtime
             .command(AdapterCommand::NewSession {
@@ -1010,6 +954,10 @@ mod tests {
             ),
             Err(AdapterRuntimeError::SignInRequired)
         ));
+        assert!(
+            runtime.refusal_detail().is_none(),
+            "OpenCode's refusal carries no generic sign-in notice"
+        );
     }
 
     #[test]

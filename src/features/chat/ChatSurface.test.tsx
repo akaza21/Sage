@@ -2319,8 +2319,14 @@ describe("ChatSurface ACP resource integration", () => {
 
     render(<ChatSurface />);
 
+    // The generic refusal shows until the lazy sign-in sentence arrives.
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Claude Code requires sign-in before it can continue. Run claude auth login. Complete sign-in in the terminal. Then try again.",
+      "The harness requires sign-in before it can continue.",
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Claude Code requires sign-in before it can continue. Run claude auth login. Complete sign-in in the terminal. Then try again.",
+      ),
     );
     expect(start).not.toHaveBeenCalled();
     fireEvent.click(

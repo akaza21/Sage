@@ -150,6 +150,20 @@ pub(crate) fn admitted_modes(
                 "Auto-approve verified workspace edits; ask for other tools.",
             ),
         ],
+        // A user-defined agent: Sage answers its permission requests and
+        // stops a Turn whose agent runs a non-read tool without asking.
+        "custom-acp" => &[
+            (
+                Ask,
+                "Ask each time",
+                "Review each permission request; a tool run without asking stops the Turn.",
+            ),
+            (
+                ReadOnly,
+                "Read-only",
+                "Sage declines every permission request and file write.",
+            ),
+        ],
         _ => &[],
     };
     rows.iter()

@@ -13,13 +13,13 @@ use crate::acp::{
     intent::NormalizedPayload,
 };
 
-use super::super::{OpenCodeRuntime, PermissionReply, PermissionState, outbound};
+use super::super::{PermissionReply, PermissionState, StandardAcpRuntime, outbound};
 use super::created_file::target_absent;
 use super::path::path_inside;
 
 const MAX_CLIENT_WRITE_BYTES: usize = 256 * 1024;
 
-impl OpenCodeRuntime {
+impl StandardAcpRuntime {
     pub(super) fn ingest_client_fs_request(
         &mut self,
         value: Value,
@@ -36,16 +36,19 @@ impl OpenCodeRuntime {
             })
         };
         let events = if method == "fs/write_text_file" && result.is_err() {
+            let label = self.profile.agent_label;
             let reason = if result == Err(-32602) {
-                "OpenCode client file write refused: malformed or oversized request."
+                format!("{label} client file write refused: malformed or oversized request.")
             } else {
-                "OpenCode client file write refused: no current single-use approval for the sole pending tool and target, or filesystem safety check failed."
+                format!(
+                    "{label} client file write refused: no current single-use approval for the sole pending tool and target, or filesystem safety check failed."
+                )
             };
             vec![AdapterEvent::Error(NormalizedPayload::Error {
                 kind: None,
                 code: SafeText::new("errorCode", "clientFileWriteRefused")
                     .map_err(|_| AdapterRuntimeError::Frame)?,
-                message: SafeText::new("errorMessage", reason)
+                message: SafeText::new("errorMessage", &reason)
                     .map_err(|_| AdapterRuntimeError::Frame)?,
                 retryable: false,
             })]

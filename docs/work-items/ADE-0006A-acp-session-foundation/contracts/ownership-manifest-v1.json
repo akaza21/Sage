@@ -381,7 +381,7 @@
     {
       "owner": "h5-standard-acp-admission",
       "prefixes": ["src-tauri/src/acp/bindings/standard_acp/"],
-      "files": ["src-tauri/src/acp/bindings/registry/opencode.rs"]
+      "files": ["src-tauri/src/acp/bindings/registry/standard_acp.rs"]
     },
     {
       "owner": "serialized-final-integration",
@@ -475,6 +475,7 @@
         "src-tauri/src/acp/bindings/registry/pi.rs",
         "src-tauri/src/acp/bindings/registry/pi_native.rs",
         "src-tauri/src/acp/bindings/registry/record.rs",
+        "src-tauri/src/acp/bindings/registry/record_reason.rs",
         "src-tauri/src/acp/bindings/registry/record_root.rs",
         "src-tauri/src/acp/bindings/registry/test_support.rs",
         "src-tauri/src/acp/ipc.rs",
