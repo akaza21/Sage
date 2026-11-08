@@ -128,7 +128,7 @@ fn text_content(bytes: Vec<u8>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path, process::Command as StdCommand};
+    use std::{fs, path::Path};
 
     use uuid::Uuid;
 
@@ -138,7 +138,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            StdCommand::new("git")
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)

@@ -1,13 +1,47 @@
 import { Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { settleLazyModules } from "../../test/settleLazyModules";
 import { createCodeMirrorEditorRuntime } from "./CodeMirrorEditorRuntime";
+
+const EDITING = {
+  matchBrackets: true,
+  autoClosingBrackets: true,
+  folding: true,
+  occurrencesHighlight: true,
+  multiCursorModifier: "alt" as const,
+};
+
+// The first editor loads the editing features and its language lazily; later
+// editors reuse them. Open one first, so a cold load, which waits on the test
+// runner under load, is not timed with the keystrokes.
+beforeAll(async () => {
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  const runtime = createCodeMirrorEditorRuntime({
+    parent,
+    ariaLabel: "Edit warm.ts",
+    path: "warm.ts",
+    content: "call(item);\n",
+    disabled: false,
+    maxContentLength: 1024,
+    onChange: () => undefined,
+    editing: EDITING,
+  });
+  await settleLazyModules();
+  runtime.destroy();
+  parent.remove();
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
   document.body.replaceChildren();
 });
+
+// The spies fail on the first keystroke that builds the whole document, so a
+// few keystrokes prove it. More only add jsdom work under the test timeout.
+const KEYSTROKES = 50;
 
 function mount(content: string | Text, maxContentLength: number) {
   const parent = document.createElement("div");
@@ -34,7 +68,7 @@ describe("CodeMirrorEditorRuntime keystroke cost", () => {
     const limit = 1024 * 1024;
     const { runtime, view, onChange } = mount("é".repeat(400_000), limit);
     const toString = vi.spyOn(Text.prototype, "toString");
-    for (let index = 0; index < 1_000; index += 1) {
+    for (let index = 0; index < KEYSTROKES; index += 1) {
       view.dispatch({ changes: { from: index, insert: "x" } });
       // The store echoes the document back, as FileSurface does.
       runtime.update({
@@ -49,7 +83,7 @@ describe("CodeMirrorEditorRuntime keystroke cost", () => {
     }
     // No keystroke builds the whole document as a string.
     expect(toString).not.toHaveBeenCalled();
-    expect(onChange).toHaveBeenCalledTimes(1_000);
+    expect(onChange).toHaveBeenCalledTimes(KEYSTROKES);
     expect(onChange.mock.lastCall?.[0]).toBe(view.state.doc);
     runtime.destroy();
   });
@@ -66,23 +100,18 @@ describe("CodeMirrorEditorRuntime keystroke cost", () => {
       disabled: false,
       maxContentLength: limit,
       onChange,
-      editing: {
-        matchBrackets: true,
-        autoClosingBrackets: true,
-        folding: true,
-        occurrencesHighlight: true,
-        multiCursorModifier: "alt" as const,
-      },
+      editing: EDITING,
     };
     const runtime = createCodeMirrorEditorRuntime({ parent, ...props });
     const view = EditorView.findFromDOM(
       parent.querySelector<HTMLElement>(".cm-content")!,
     )!;
-    await vi.waitFor(() =>
-      expect(view.dom.querySelector(".cm-foldGutter")).not.toBeNull(),
-    );
+    // The editing features and the language load lazily: wait for the
+    // imports, not a clock.
+    await settleLazyModules();
+    expect(view.dom.querySelector(".cm-foldGutter")).not.toBeNull();
     const toString = vi.spyOn(Text.prototype, "toString");
-    for (let index = 0; index < 1_000; index += 1) {
+    for (let index = 0; index < KEYSTROKES; index += 1) {
       // Typing inside brackets, beside a repeated word: every feature runs.
       view.dispatch({
         changes: { from: 5 + index, insert: "x" },
@@ -96,7 +125,7 @@ describe("CodeMirrorEditorRuntime keystroke cost", () => {
       });
     }
     expect(toString).not.toHaveBeenCalled();
-    expect(onChange).toHaveBeenCalledTimes(1_000);
+    expect(onChange).toHaveBeenCalledTimes(KEYSTROKES);
     runtime.destroy();
   });
 

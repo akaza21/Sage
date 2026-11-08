@@ -27,7 +27,7 @@ fn fetch_refuses_a_repository_selected_vcs_before_running_its_alias() {
     assert!(!root.join("helper-ran").exists());
 
     // Control: ordinary Git falls back to the shell alias for this helper.
-    let output = Command::new("git")
+    let output = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&root)
         .args(["fetch", "origin"])
@@ -104,7 +104,7 @@ fn remote_helper_urls_and_rewrites_cannot_enable_unadmitted_protocols() {
         // The fixture is live: without Sage's invocation policy, Git reaches
         // this real shell alias. Keep it on the control's command line so
         // repository alias refusal cannot mask the transport restriction.
-        let output = Command::new("git")
+        let output = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["-c", "alias.remote-sage-review=!echo ran > helper-ran"])
@@ -141,7 +141,7 @@ fn admitted_protocol_names_cannot_dispatch_repository_helper_aliases() {
         assert!(message.contains("alias.remote-*"), "{message}");
         assert!(!root.join("helper-ran").exists());
 
-        let output = Command::new("git")
+        let output = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["fetch", "origin"])
@@ -306,7 +306,18 @@ fn admitted_network_transports_reach_the_remote() {
                 }
             }
         });
-        let result = sage_git(&root, &["ls-remote", "origin"]);
+        // The ssh transport runs an `ssh` program, which a machine need not
+        // have. This test binary stands in for it: Git still selects and
+        // admits the transport and passes OpenSSH's options, and the
+        // stand-in opens the connection they name. Only the program is
+        // chosen on the command line, which no repository config can do.
+        // Not covered: that Git finds a real `ssh` once Sage clears PATH.
+        let ssh_command = format!("core.sshCommand={}", ssh_stand_in());
+        let mut args = vec!["ls-remote", "origin"];
+        if protocol == "ssh" {
+            args.splice(0..0, ["-c", "ssh.variant=ssh", "-c", ssh_command.as_str()]);
+        }
+        let result = sage_git(&root, &args);
         let connected = server.join().unwrap();
         let output = result.unwrap();
         assert!(
@@ -319,4 +330,47 @@ fn admitted_network_transports_reach_the_remote() {
             "the fixture closes before Git negotiation"
         );
     }
+}
+
+const SSH_STAND_IN: &str = "sage-ssh-stand-in";
+
+/// The `core.sshCommand` that runs this test binary as `ssh`. Git appends
+/// OpenSSH's arguments after `--`, where libtest takes them as name filters
+/// that match no test. The executable's path is not verbatim, and MSYS
+/// argument conversion is off, so Git for Windows' sh runs it unchanged.
+fn ssh_stand_in() -> String {
+    let executable = plain(&std::env::current_exe().unwrap()).replace('\\', "/");
+    format!(
+        "MSYS2_ARG_CONV_EXCL='*' '{executable}' --exact \
+         git_process::repository_config::tests::remote_helpers::ssh_stand_in_fixture \
+         --nocapture -- {SSH_STAND_IN}"
+    )
+}
+
+/// Run as the ssh stand-in, connects to the host and port Git passes `ssh`
+/// and closes. Run any other way, it has nothing to do.
+#[test]
+fn ssh_stand_in_fixture() {
+    let mut arguments = std::env::args()
+        .skip_while(|argument| argument != "--")
+        .skip(1);
+    if arguments.next().as_deref() != Some(SSH_STAND_IN) {
+        return;
+    }
+    let mut port = 22;
+    while let Some(argument) = arguments.next() {
+        match argument.as_str() {
+            "-p" => port = arguments.next().unwrap().parse().unwrap(),
+            "-o" => {
+                arguments.next();
+            }
+            option if option.starts_with('-') => {}
+            destination => {
+                let host = destination.rsplit('@').next().unwrap();
+                drop(std::net::TcpStream::connect((host, port)).unwrap());
+                return;
+            }
+        }
+    }
+    panic!("Git passed the ssh stand-in no destination");
 }

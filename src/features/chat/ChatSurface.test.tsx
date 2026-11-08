@@ -66,6 +66,25 @@ vi.mock("./acp", async () => {
 
 import { ChatSurface as ChatPresentation } from "./ChatSurface";
 import { ChatQueueOwner } from "./ChatQueueOwner";
+// The chunks the first Chat, approval, Handoff and Workbench tests load
+// lazily, transformed and evaluated with the file so that a cold import
+// does not run inside a test's one-second query or its timeout.
+import "./acp/AcpChatPresentation";
+import "./acp/PermissionPrompt";
+import "./acp/TurnEditSummary";
+import "./ChatNavigation";
+import "./ChatHandoffDialog";
+import "../../workbench/AgentWorkbenchBody";
+import "../../workbench/LeftSidebar";
+import "../../workbench/AgentRailSections";
+import "../../workbench/ProjectChatNavigation";
+import "../../workbench/AgentProjectMenu";
+import "../../workbench/AgentChangesViews";
+import "../settings/AgentSettingsSurface";
+import "../settings/AgentAppearanceSettings";
+import "../settings/AgentArchivedSettings";
+import "../settings/AgentChatSettings";
+import "../settings/AgentHarnessSettings";
 
 // Exercise the same runtime/presentation boundary as the Agent host.
 function ChatSurface(props: { chatId?: string }) {
@@ -874,7 +893,10 @@ describe("ChatSurface ACP resource integration", () => {
           target: { value: "Continue while settings is open" },
         },
       );
-      fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+      // Controls by label: a role query by name computes the name of every
+      // button in the Workbench, and the settings, through jsdom's style
+      // cascade.
+      fireEvent.click(screen.getByLabelText("Queue message"));
       await waitFor(() =>
         expect(
           useWorkbenchStore.getState().chatUiById["chat-a"].queuedPrompts?.[0]
@@ -882,11 +904,9 @@ describe("ChatSurface ACP resource integration", () => {
         ).toBe("queued"),
       );
       if (hiddenBy === "Settings") {
-        fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
-        await act(async () => {
-          await vi.dynamicImportSettled();
-        });
-        await screen.findByRole("dialog", { name: "Agent settings" });
+        fireEvent.click(screen.getByLabelText("Open settings"));
+        await settleLazyModules();
+        screen.getByRole("dialog", { name: "Agent settings" });
       } else if (hiddenBy === "Editor") {
         fireEvent.click(screen.getByRole("radio", { name: "Editor" }));
         await settleLazyModules();
@@ -916,7 +936,7 @@ describe("ChatSurface ACP resource integration", () => {
         expect(
           screen.getByRole("dialog", { name: "Agent settings" }),
         ).toBeVisible();
-        fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+        fireEvent.click(screen.getByLabelText("Close settings"));
       } else if (hiddenBy === "Editor") {
         expect(screen.getByRole("radio", { name: "Editor" })).toBeChecked();
         fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
@@ -1547,7 +1567,9 @@ describe("ChatSurface ACP resource integration", () => {
     const composer = screen.getByRole("textbox", { name: "Message agent" });
     for (let index = 1; index <= 8; index += 1) {
       fireEvent.change(composer, { target: { value: `Message ${index}` } });
-      fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+      // By label: a role query names every button in the surface through
+      // jsdom's style cascade, eight times over.
+      fireEvent.click(screen.getByLabelText("Queue message"));
       await waitFor(() => expect(composer).toHaveValue(""));
     }
     expect(screen.getByLabelText("Queued messages").children).toHaveLength(8);
@@ -3075,14 +3097,16 @@ describe("ChatSurface ACP resource integration", () => {
 
     const trigger = screen.getByRole("button", { name: "Hand off chat" });
     fireEvent.click(trigger);
-    // The dialog loads in its own lazy chunk on the first Hand off.
-    const dialog = await screen.findByRole("dialog", {
-      name: "Hand off this Chat",
-    });
-    expect(
-      screen.getByRole("button", { name: "Target Chat" }),
-    ).toHaveTextContent("Testing");
-    fireEvent.click(screen.getByRole("button", { name: "Target Chat" }));
+    // The dialog loads in its own lazy chunk on the first Hand off: wait for
+    // it rather than race a cold import against findByRole's clock.
+    await settleLazyModules();
+    const dialog = screen.getByRole("dialog", { name: "Hand off this Chat" });
+    // Query inside the dialog and name only the options used: a role query
+    // by name computes each candidate's name through jsdom's style cascade,
+    // across the whole Chat surface or all 63 targets.
+    const target = within(dialog).getByRole("button", { name: "Target Chat" });
+    expect(target).toHaveTextContent("Testing");
+    fireEvent.click(target);
     const targetPicker = screen.getByRole("combobox", {
       name: "Target Chat",
     });
@@ -3091,21 +3115,18 @@ describe("ChatSurface ACP resource integration", () => {
     });
     expect(dialog).toContainElement(targetPicker);
     expect(dialog).toContainElement(targetListbox);
-    expect(screen.getAllByRole("option")).toHaveLength(63);
-    expect(screen.getByRole("option", { name: "Testing" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.getByText("Current: Testing")).toBeVisible();
+    const targets = within(targetListbox).getAllByRole("option");
+    expect(targets).toHaveLength(63);
+    expect(targets[0]).toHaveAccessibleName("Testing");
+    expect(targets[0]).toHaveAttribute("aria-selected", "true");
+    expect(within(dialog).getByText("Current: Testing")).toBeVisible();
     await waitFor(() => expect(targetPicker).toHaveFocus());
     fireEvent.keyDown(targetPicker, { key: "ArrowDown" });
     fireEvent.keyDown(targetPicker, { key: "ArrowDown" });
     fireEvent.keyDown(targetPicker, { key: "Enter" });
-    expect(
-      screen.getByRole("button", { name: "Target Chat" }),
-    ).toHaveTextContent("Indexed target 2");
-    expect(screen.getByRole("button", { name: "Target Chat" })).toHaveFocus();
-    const preview = screen.getByRole("textbox", {
+    expect(target).toHaveTextContent("Indexed target 2");
+    expect(target).toHaveFocus();
+    const preview = within(dialog).getByRole("textbox", {
       name: "Handoff prompt",
     });
     expect((preview as HTMLTextAreaElement).value).toContain(
@@ -3115,7 +3136,7 @@ describe("ChatSurface ACP resource integration", () => {
       "User: Keep SQLite authoritative.",
     );
     fireEvent.change(preview, { target: { value: "Edited ordinary prompt" } });
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(handoffChat).not.toHaveBeenCalled();
     expect(useWorkbenchStore.getState().composerText).toBe("source-only draft");
     await waitFor(() => expect(trigger).toHaveFocus());
@@ -3126,17 +3147,23 @@ describe("ChatSurface ACP resource integration", () => {
     expect(handoffChat).not.toHaveBeenCalled();
     act(() => useWorkbenchStore.setState({ projectTransitioning: false }));
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("button", { name: "Target Chat" }));
+    const reopened = screen.getByRole("dialog", { name: "Hand off this Chat" });
+    fireEvent.click(
+      within(reopened).getByRole("button", { name: "Target Chat" }),
+    );
     const reopenedTargetPicker = screen.getByRole("combobox", {
       name: "Target Chat",
     });
     fireEvent.keyDown(reopenedTargetPicker, { key: "ArrowDown" });
     fireEvent.keyDown(reopenedTargetPicker, { key: "ArrowDown" });
     fireEvent.keyDown(reopenedTargetPicker, { key: "Enter" });
-    fireEvent.change(screen.getByRole("textbox", { name: "Handoff prompt" }), {
-      target: { value: "Edited ordinary prompt" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Place in target" }));
+    fireEvent.change(
+      within(reopened).getByRole("textbox", { name: "Handoff prompt" }),
+      { target: { value: "Edited ordinary prompt" } },
+    );
+    fireEvent.click(
+      within(reopened).getByRole("button", { name: "Place in target" }),
+    );
     await waitFor(() =>
       expect(handoffChat).toHaveBeenCalledWith({
         projectId: "project-a",
@@ -3682,6 +3709,9 @@ describe("ChatSurface ACP resource integration", () => {
         selectedModelId: null,
       }),
     );
+    // The notice is a lazy chunk: wait for it rather than rely on an earlier
+    // test in the file having loaded it.
+    await settleLazyModules();
     expect(
       screen.getByText(/Checking the Codex account and available models/),
     ).toBeVisible();
@@ -3711,24 +3741,21 @@ describe("ChatSurface ACP resource integration", () => {
     const model = screen.getByRole("button", { name: "Model" });
     await waitFor(() => expect(model).toBeEnabled());
     fireEvent.click(model);
+    await settleLazyModules();
     const list = screen.getByRole("listbox", { name: "Select model" });
-    expect(screen.queryByRole("option", { name: /old model/i })).toBeNull();
-    expect(within(list).getAllByRole("option")).toHaveLength(128);
-    expect(
-      within(list).getByRole("option", {
-        name: "Fresh advertised model 1",
-      }),
-    ).toHaveAttribute("aria-selected", "true");
-    const first = within(list).getByRole("option", {
-      name: "Fresh advertised model 1",
-    });
+    expect(screen.queryByText(/old model/i)).toBeNull();
+    // Name only the options the test uses: a role query by name computes the
+    // name of all 128 through jsdom's style cascade, seconds under load.
+    const options = within(list).getAllByRole("option");
+    expect(options).toHaveLength(128);
+    const [first, second] = options;
+    expect(first).toHaveAccessibleName("Fresh advertised model 1");
+    expect(first).toHaveAttribute("aria-selected", "true");
     expect(first).toHaveFocus();
-    fireEvent.keyDown(first, { key: "ArrowDown" });
-    const second = within(list).getByRole("option", {
-      name: "Fresh advertised model 2",
-    });
+    fireEvent.keyDown(first!, { key: "ArrowDown" });
+    expect(second).toHaveAccessibleName("Fresh advertised model 2");
     expect(second).toHaveFocus();
-    fireEvent.click(second);
+    fireEvent.click(second!);
     expect(selectModel).toHaveBeenCalledExactlyOnceWith("fresh-model-2");
   });
 
