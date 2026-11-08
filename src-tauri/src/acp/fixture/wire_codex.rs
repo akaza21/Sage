@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use crate::acp::limits::LIMITS;
 
 use super::super::FixtureError;
-use super::super::interpreter::field_str;
+use super::super::interpreter::{field_str, field_u64};
 use super::{WireState, acp, user_input, write_stdout};
 
 const THREAD_ID: &str = "fixture-persisted-session-1";
@@ -246,6 +246,41 @@ pub(super) fn emit_notification(
     emit_json(output, state, &notification)
 }
 
+/// Most messages one `codexTranscript` step may write: enough to fill more
+/// than one history page (256 Items) without flooding the driver.
+pub(super) const TRANSCRIPT_MESSAGES: u64 = 600;
+
+/// Writes `count` completed assistant messages into the current turn, so a
+/// journey can open on a long transcript before it streams.
+pub(super) fn emit_transcript(
+    count: u64,
+    state: &mut WireState,
+    output: &mut impl Write,
+) -> Result<(), FixtureError> {
+    if count == 0 || count > TRANSCRIPT_MESSAGES {
+        return Err(FixtureError::InvalidArguments);
+    }
+    let turn_id = state
+        .current_turn_id
+        .clone()
+        .ok_or(FixtureError::InvalidArguments)?;
+    for index in 1..=count {
+        let item = json!({
+            "type": "agentMessage",
+            "id": format!("fixture-transcript-{index}"),
+            "text": format!(
+                "Earlier message {index} of {count}. It is synthetic history, there so the chat has more than one page to scroll back through."
+            ),
+        });
+        emit_json(
+            output,
+            state,
+            &json!({"jsonrpc":"2.0","method":"item/completed","params":{"threadId":THREAD_ID,"turnId":turn_id,"item":item}}),
+        )?;
+    }
+    Ok(())
+}
+
 pub(super) fn read_json_line(
     input: &mut impl Read,
     state: &WireState,
@@ -324,6 +359,7 @@ pub(super) fn emit_known(
         "codexInterrupted" => emit_notification("interrupted", state, output),
         "codexUserInputRequest" => user_input::emit_request(step, state, output),
         "codexUserInputEcho" => user_input::emit_echo(state, output),
+        "codexTranscript" => emit_transcript(field_u64(step, "count")?, state, output),
         _ => Err(FixtureError::InvalidArguments),
     }
 }

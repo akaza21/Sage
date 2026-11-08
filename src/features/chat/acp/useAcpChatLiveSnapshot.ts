@@ -44,20 +44,26 @@ export function useAcpChatLiveSnapshot(
     let disposed = false;
     let unlisten: (() => void) | null = null;
 
-    const refresh = coalescedRefresh(() =>
-      getGoalChatPage({
-        projectId: projectId as SageProjectId,
-        projectGeneration: String(nativeTransitionEpoch) as ProjectGeneration,
-        chatId: chatId as SageChatId,
-        cursor: null,
-      })
-        .then((page) => {
-          if (disposed || page.chatId !== chatId) return;
-          setSnapshot(projectChatLiveSnapshot(chatId, page));
+    const refresh = coalescedRefresh(
+      () =>
+        getGoalChatPage({
+          projectId: projectId as SageProjectId,
+          projectGeneration: String(nativeTransitionEpoch) as ProjectGeneration,
+          chatId: chatId as SageChatId,
+          cursor: null,
         })
-        .catch(() => {
+          .then((page) => {
+            if (disposed || page.chatId !== chatId) return;
+            setSnapshot(projectChatLiveSnapshot(chatId, page));
+          })
+          .catch(() => {
+            if (!disposed) setSnapshot(null);
+          }),
+      {
+        onThrow: () => {
           if (!disposed) setSnapshot(null);
-        }),
+        },
+      },
     );
 
     const onChange = (event: AcpProjectionChangedEvent) => {
