@@ -8,7 +8,7 @@ fn a_new_session_that_starts_in_auto_is_switched_to_sages_mode_before_it_is_read
     initialize_0101(&mut runtime);
     let batch = new_session(&mut runtime, frame(derived("newSessionInAuto")));
     assert!(
-        matches!(batch.events(), [SharedEvent::SessionPolicyPending]),
+        matches!(batch.events(), [SharedEvent::SessionPolicyPending { .. }]),
         "the session is not ready while it runs in auto"
     );
     let [set_mode] = batch.egress() else {

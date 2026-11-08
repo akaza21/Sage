@@ -221,10 +221,7 @@ mod tests {
             None
         );
         for binding in ["codex-app-server", "opencode-acp", "pi-rpc", "unknown"] {
-            assert_eq!(
-                starting_native_session_mode(binding, "0.146.0", true),
-                None
-            );
+            assert_eq!(starting_native_session_mode(binding, "0.146.0", true), None);
         }
     }
 

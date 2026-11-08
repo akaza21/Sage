@@ -183,10 +183,13 @@ pub(crate) enum AdapterEvent {
     },
     Acknowledged,
     /// The session answered, but before it is reported ready the adapter
-    /// settles one step of Sage's policy (such as the starting access mode)
-    /// with the single request in this batch. The activation pump admits at
-    /// most one such step per activation and no other request in that phase.
-    SessionPolicyPending,
+    /// settles one step of Sage's policy with the single request in this
+    /// batch, whose egress intent names the same policy kind. The activation
+    /// pump admits at most one such step per activation and no other request
+    /// in that phase; after ready it is a protocol error.
+    SessionPolicyPending {
+        kind: SessionPolicyKind,
+    },
     SteerResponse {
         request_id: u64,
         accepted: bool,
@@ -198,12 +201,25 @@ pub(crate) enum AdapterEvent {
     IgnoredDuplicate,
 }
 
+/// A step of Sage's policy an adapter settles before a new session is ready.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub(crate) enum SessionPolicyKind {
+    /// Switch the session from the harness's own starting mode to the native
+    /// mode of Sage's access policy.
+    StartingMode,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct EgressToken(EgressIntent);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum EgressIntent {
     Request(u64),
+    /// A request settling one declared policy step before the session is ready.
+    SessionPolicy {
+        id: u64,
+        kind: SessionPolicyKind,
+    },
     ProtocolNotification,
     CancelRequest(u64),
     CancelNotification,
@@ -223,6 +239,17 @@ enum EgressIntent {
 impl EgressToken {
     pub(crate) fn request(id: u64) -> Self {
         Self(EgressIntent::Request(id))
+    }
+
+    pub(crate) fn session_policy(id: u64, kind: SessionPolicyKind) -> Self {
+        Self(EgressIntent::SessionPolicy { id, kind })
+    }
+
+    pub(crate) fn session_policy_kind(&self) -> Option<SessionPolicyKind> {
+        match self.0 {
+            EgressIntent::SessionPolicy { kind, .. } => Some(kind),
+            _ => None,
+        }
     }
 
     pub(crate) fn protocol_notification() -> Self {
@@ -275,7 +302,9 @@ impl EgressToken {
 
     pub(crate) fn request_id(&self) -> Option<u64> {
         match self.0 {
-            EgressIntent::Request(id) | EgressIntent::CancelRequest(id) => Some(id),
+            EgressIntent::Request(id)
+            | EgressIntent::SessionPolicy { id, .. }
+            | EgressIntent::CancelRequest(id) => Some(id),
             _ => None,
         }
     }
@@ -339,6 +368,18 @@ impl AdapterEgress {
 
     pub(crate) fn into_token(self) -> EgressToken {
         self.token
+    }
+
+    /// Marks a plain request as the one settling a declared policy step.
+    pub(crate) fn into_session_policy(self, kind: SessionPolicyKind) -> Option<Self> {
+        let id = match self.token.0 {
+            EgressIntent::Request(id) => id,
+            _ => return None,
+        };
+        Some(Self {
+            frame: self.frame,
+            token: EgressToken::session_policy(id, kind),
+        })
     }
 }
 

@@ -180,6 +180,9 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
         }
         let mut ready = None;
         let mut policy_pending = false;
+        let declared_policy = egress
+            .first()
+            .and_then(|value| value.token().session_policy_kind());
         for event in events {
             match event {
                 AdapterEvent::Initialized { capabilities } => {
@@ -221,12 +224,13 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                         old.0 == new.0 && old.1.superseded_by(&new.1)
                     });
                 }
-                AdapterEvent::SessionPolicyPending => {
+                AdapterEvent::SessionPolicyPending { kind } => {
                     if self.phase != Phase::AwaitingSession
                         || ready.is_some()
                         || policy_pending
                         || self.session_policy_requested
                         || egress.len() != 1
+                        || declared_policy != Some(kind)
                     {
                         return self.protocol_error();
                     }
@@ -253,6 +257,10 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             }
         }
         for value in egress {
+            // A policy request is admitted only as the declared step.
+            if value.token().session_policy_kind().is_some() && !policy_pending {
+                return self.protocol_error();
+            }
             // A session that answered but is not ready yet may settle one
             // declared step of Sage's policy; its request is counted with the
             // initialization requests, so it stays bounded.

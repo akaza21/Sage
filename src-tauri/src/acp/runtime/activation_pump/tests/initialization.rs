@@ -85,11 +85,30 @@ fn initialization_followups_are_bounded_and_control_egress_is_rejected() {
     });
 }
 
-fn policy_request(id: u64) -> AdapterEgress {
+use crate::acp::bindings::adapter::SessionPolicyKind;
+
+fn egress(id: u64, token: EgressToken) -> AdapterEgress {
     AdapterEgress::new(
         crate::acp::transport::OutboundFrame::new(format!("{{\"id\":{id}}}").into_bytes()).unwrap(),
-        EgressToken::request(id),
+        token,
     )
+}
+
+fn policy_request(id: u64) -> AdapterEgress {
+    egress(
+        id,
+        EgressToken::session_policy(id, SessionPolicyKind::StartingMode),
+    )
+}
+
+fn plain_request(id: u64) -> AdapterEgress {
+    egress(id, EgressToken::request(id))
+}
+
+fn starting_mode() -> AdapterEvent {
+    AdapterEvent::SessionPolicyPending {
+        kind: SessionPolicyKind::StartingMode,
+    }
 }
 
 type ActivatedPump = (
@@ -146,11 +165,7 @@ fn one_declared_policy_step_is_admitted_between_the_session_answer_and_ready() {
     runtime().block_on(async {
         let epoch = RuntimeEpoch::new(7).unwrap();
         let (mut pump, commands, answer) = activate_with(vec![
-            AdapterBatch::new(
-                vec![AdapterEvent::SessionPolicyPending],
-                vec![policy_request(3)],
-            )
-            .unwrap(),
+            AdapterBatch::new(vec![starting_mode()], vec![policy_request(3)]).unwrap(),
             AdapterBatch::new(
                 vec![AdapterEvent::SessionReady {
                     id: identity("external-1", epoch),
@@ -180,13 +195,18 @@ fn one_declared_policy_step_is_admitted_between_the_session_answer_and_ready() {
 #[test]
 fn an_undeclared_request_after_the_session_answer_is_refused() {
     runtime().block_on(async {
-        let (pump, commands, answer) = activate_with(vec![
+        // Neither a plain request nor a policy request is admitted without
+        // the declaration, and a declaration admits only a policy request.
+        for batch in [
+            AdapterBatch::new(vec![], vec![plain_request(3)]).unwrap(),
             AdapterBatch::new(vec![], vec![policy_request(3)]).unwrap(),
-        ])
-        .await;
-        assert!(matches!(answer, Err(ActivationPumpError::Intent)));
-        assert!(pump.teardown_required());
-        assert!(commands.lock().unwrap().is_empty());
+            AdapterBatch::new(vec![starting_mode()], vec![plain_request(3)]).unwrap(),
+        ] {
+            let (pump, commands, answer) = activate_with(vec![batch]).await;
+            assert!(matches!(answer, Err(ActivationPumpError::Intent)));
+            assert!(pump.teardown_required());
+            assert!(commands.lock().unwrap().is_empty());
+        }
     });
 }
 
@@ -194,16 +214,8 @@ fn an_undeclared_request_after_the_session_answer_is_refused() {
 fn a_second_policy_step_or_a_step_without_one_request_is_refused() {
     runtime().block_on(async {
         let (mut pump, commands, answer) = activate_with(vec![
-            AdapterBatch::new(
-                vec![AdapterEvent::SessionPolicyPending],
-                vec![policy_request(3)],
-            )
-            .unwrap(),
-            AdapterBatch::new(
-                vec![AdapterEvent::SessionPolicyPending],
-                vec![policy_request(4)],
-            )
-            .unwrap(),
+            AdapterBatch::new(vec![starting_mode()], vec![policy_request(3)]).unwrap(),
+            AdapterBatch::new(vec![starting_mode()], vec![policy_request(4)]).unwrap(),
         ])
         .await;
         answer.unwrap();
@@ -218,7 +230,7 @@ fn a_second_policy_step_or_a_step_without_one_request_is_refused() {
 
         for egress in [vec![], vec![policy_request(3), policy_request(4)]] {
             let (pump, commands, answer) = activate_with(vec![
-                AdapterBatch::new(vec![AdapterEvent::SessionPolicyPending], egress).unwrap(),
+                AdapterBatch::new(vec![starting_mode()], egress).unwrap(),
             ])
             .await;
             assert!(matches!(answer, Err(ActivationPumpError::Intent)));

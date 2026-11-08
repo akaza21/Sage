@@ -8,7 +8,8 @@
 
 use super::*;
 use crate::acp::bindings::{
-    access_policy::starting_native_session_mode, claude::manifest::CLAUDE_BINDING_ID,
+    access_policy::starting_native_session_mode, adapter::SessionPolicyKind,
+    claude::manifest::CLAUDE_BINDING_ID,
 };
 
 impl ClaudeRuntime {
@@ -19,11 +20,7 @@ impl ClaudeRuntime {
             .launch_binding
             .as_ref()
             .map_or("", |binding| binding.candidate().adapter_version.as_str());
-        starting_native_session_mode(
-            CLAUDE_BINDING_ID,
-            version,
-            self.binding_is_characterised(),
-        )
+        starting_native_session_mode(CLAUDE_BINDING_ID, version, self.binding_is_characterised())
     }
 
     /// The `session/set_mode` a new session needs before it is ready, or
@@ -52,8 +49,10 @@ impl ClaudeRuntime {
             PendingRequest::StartingMode(session.clone()),
             "session/set_mode",
             json!({"sessionId": session.as_str(), "modeId": mode}),
-        )
+        )?
+        .into_session_policy(SessionPolicyKind::StartingMode)
         .map(Some)
+        .ok_or(AdapterRuntimeError::Frame)
     }
 
     /// The new session is ready only once the adapter accepted Sage's mode.

@@ -779,6 +779,23 @@ impl EgressTransport for CountingTransport {
 }
 
 #[test]
+fn a_session_policy_step_after_ready_is_a_frame_error() {
+    runtime().block_on(async {
+        let (mut pump, shared) = build_pump(vec![owned(
+            vec![AdapterEvent::SessionPolicyPending {
+                kind: crate::acp::bindings::adapter::SessionPolicyKind::StartingMode,
+            }],
+            Vec::new(),
+        )]);
+        assert!(matches!(
+            pump.push_stdout_chunk(b"{}\n", 11).await,
+            Err(AdapterPumpError::Frame)
+        ));
+        assert!(shared.0.lock().unwrap().durable_batches.is_empty());
+    });
+}
+
+#[test]
 fn normalized_events_commit_once_before_one_projection_publish() {
     runtime().block_on(async {
         let (mut pump, shared) = build_pump(vec![owned(
