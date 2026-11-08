@@ -216,6 +216,21 @@ impl PiRuntime {
         Ok((id, snapshot))
     }
 
+    pub(super) fn is_edit_tool(&self, external_id: &str) -> bool {
+        self.active_turn
+            .as_ref()
+            .and_then(|turn| turn.tools.get(external_id))
+            .is_some_and(|payload| {
+                matches!(
+                    payload,
+                    NormalizedPayload::ToolCall {
+                        category: ToolCategory::Edit,
+                        ..
+                    }
+                )
+            })
+    }
+
     pub(super) fn update_tool(
         &mut self,
         external_id: &str,
@@ -313,13 +328,19 @@ pub(super) fn tool_start_payload(
     let category = match name.as_str() {
         "read" => ToolCategory::Read,
         "edit" | "write" => ToolCategory::Edit,
-        "bash" => ToolCategory::Execute,
+        "bash" | "powershell" => ToolCategory::Execute,
         "grep" | "find" | "ls" => ToolCategory::Search,
         _ => ToolCategory::Other,
     };
-    let locations = match path {
-        Some(path) => {
-            let location = match resources.map_existing(path) {
+    let mapped = path.map(|path| resources.map_existing(path));
+    let relative = mapped
+        .as_ref()
+        .and_then(|mapped| mapped.as_ref().ok())
+        .map(|resource| resource.relative_path.as_str());
+    let label = tool_label(&name, relative);
+    let locations = match mapped {
+        Some(mapped) => {
+            let location = match mapped {
                 Ok(resource) => SafeResourceLocation::Resource { resource },
                 Err(reason) => SafeResourceLocation::unavailable(reason),
             };
@@ -334,12 +355,27 @@ pub(super) fn tool_start_payload(
     Ok(NormalizedPayload::ToolCall {
         execution: Default::default(),
         category,
-        label: SafeText::new("toolLabel", name).map_err(|_| AdapterRuntimeError::Frame)?,
+        label: SafeText::new("toolLabel", label).map_err(|_| AdapterRuntimeError::Frame)?,
         input_summary: None,
         output_summary: None,
         locations,
         command_activity: Default::default(),
     })
+}
+
+/// Pi's built-in tools read as verb plus workspace path, like every harness;
+/// extension tools keep the name their author gave them.
+fn tool_label(name: &str, path: Option<&str>) -> String {
+    let (verb, target) = match name {
+        "read" => ("Read", "a file"),
+        "edit" => ("Edited", "a file"),
+        "write" => ("Wrote", "a file"),
+        "grep" | "find" => ("Searched", "files"),
+        "ls" => ("Listed", "a folder"),
+        "bash" | "powershell" => return "Shell command".into(),
+        _ => return name.into(),
+    };
+    format!("{verb} {}", path.unwrap_or(target))
 }
 
 pub(in crate::acp::bindings::pi::runtime) fn unsupported(

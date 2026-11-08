@@ -69,6 +69,9 @@ pub struct EntrySummary {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalOutcome {
     Completed,
+    /// Sage's user asked Pi to stop.
+    Cancelled,
+    /// Pi, or Sage's authority policy, stopped the Turn on its own.
     Interrupted,
     Failed,
 }

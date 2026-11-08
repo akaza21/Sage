@@ -51,7 +51,7 @@ fn assert_terminal(batch: &AdapterBatch, expected: TurnState) {
 }
 
 #[test]
-fn stopped_async_extension_acknowledgment_settles_interrupted() {
+fn stopped_async_extension_acknowledgment_settles_cancelled() {
     let mut runtime = extension_runtime();
     let send = extension(&mut runtime, "extension-a");
     let send = deliver(&mut runtime, send);
@@ -63,7 +63,7 @@ fn stopped_async_extension_acknowledgment_settles_interrupted() {
     let batch = runtime
         .ingest(&response(&send, Value::Null), &Mapper)
         .unwrap();
-    assert_terminal(&batch, TurnState::Interrupted);
+    assert_terminal(&batch, TurnState::Cancelled);
 }
 
 fn reply(runtime: &mut PiRuntime, request: &Value, success: bool) -> AdapterBatch {
@@ -131,10 +131,7 @@ fn completed_extension_replies_cannot_affect_the_next_turn_or_discovery() {
             let old_abort = deliver(&mut runtime, old_abort);
             event(&mut runtime, "agent_start");
             event(&mut runtime, "agent_end");
-            assert_terminal(
-                &event(&mut runtime, "agent_settled"),
-                TurnState::Interrupted,
-            );
+            assert_terminal(&event(&mut runtime, "agent_settled"), TurnState::Cancelled);
             let query = runtime.discover_commands().unwrap().unwrap();
             let query = deliver(&mut runtime, query);
             let second = extension(&mut runtime, "extension-b");
@@ -160,12 +157,9 @@ fn completed_extension_replies_cannot_affect_the_next_turn_or_discovery() {
             if next_running {
                 assert_no_terminal(&ack);
                 event(&mut runtime, "agent_end");
-                assert_terminal(
-                    &event(&mut runtime, "agent_settled"),
-                    TurnState::Interrupted,
-                );
+                assert_terminal(&event(&mut runtime, "agent_settled"), TurnState::Cancelled);
             } else {
-                assert_terminal(&ack, TurnState::Interrupted);
+                assert_terminal(&ack, TurnState::Cancelled);
             }
         }
     }
@@ -195,10 +189,7 @@ fn abort_at_each_model_stage_survives_later_acknowledgment() {
                 deliver(&mut runtime, abort);
             }
         }
-        assert_terminal(
-            &event(&mut runtime, "agent_settled"),
-            TurnState::Interrupted,
-        );
+        assert_terminal(&event(&mut runtime, "agent_settled"), TurnState::Cancelled);
         assert!(runtime.command(AdapterCommand::Cancel).is_err());
         assert_no_terminal(&event(&mut runtime, "agent_settled"));
     }
@@ -223,7 +214,7 @@ fn rejected_abort_does_not_clear_another_stop_request() {
                 let second = deliver(&mut runtime, second);
                 reply(&mut runtime, &second, false);
             }
-            assert_terminal(&reply(&mut runtime, &send, true), TurnState::Interrupted);
+            assert_terminal(&reply(&mut runtime, &send, true), TurnState::Cancelled);
         }
     }
 }
@@ -293,7 +284,7 @@ fn cancelled_extension_before_delivery_can_roll_back_without_affecting_a_retry()
         let abort = deliver(&mut runtime, abort);
         reply(&mut runtime, &abort, true);
         reject_delivery(&mut runtime, old_abort, resolution);
-        assert_terminal(&reply(&mut runtime, &retry, true), TurnState::Interrupted);
+        assert_terminal(&reply(&mut runtime, &retry, true), TurnState::Cancelled);
     }
 }
 
@@ -310,7 +301,7 @@ fn extension_failure_settles_once_and_honors_cancellation_at_delivery() {
         assert_terminal(
             &reply(&mut runtime, &send, false),
             if cancel {
-                TurnState::Interrupted
+                TurnState::Cancelled
             } else {
                 TurnState::Failed
             },
@@ -359,7 +350,7 @@ fn failed_extension_acknowledgment_waits_for_model_settlement_before_reuse() {
             assert_terminal(
                 &event(&mut runtime, "agent_settled"),
                 if cancel {
-                    TurnState::Interrupted
+                    TurnState::Cancelled
                 } else {
                     TurnState::Failed
                 },

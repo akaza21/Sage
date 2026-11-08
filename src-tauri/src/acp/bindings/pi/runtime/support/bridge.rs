@@ -201,12 +201,14 @@ impl PiRuntime {
         };
         let external = ExternalId::new("piFileId", format!("file-{}", edit.tool_id))
             .map_err(|_| AdapterRuntimeError::Frame)?;
+        let (additions, deletions) = crate::acp::intent::line_delta(&edit.old, &edit.new);
+        let verb = if edit.created { "Created" } else { "Edited" };
         let facts = FileChangeFacts {
             resource: SafeResourceLocation::Resource { resource },
-            summary: SafeText::new("fileSummary", "Pi updated a workspace file")
+            summary: SafeText::new("fileSummary", format!("{verb} {}", edit.relative))
                 .map_err(|_| AdapterRuntimeError::Frame)?,
-            additions: None,
-            deletions: None,
+            additions: Some(additions),
+            deletions: Some(deletions),
             operation: if edit.created {
                 FileChangeOperation::Created
             } else {

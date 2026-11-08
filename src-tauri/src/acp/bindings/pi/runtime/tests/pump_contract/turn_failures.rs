@@ -154,7 +154,7 @@ async fn retained_retry(
     if let Some(cause) = cause {
         retry_end["finalError"] = json!(cause);
     }
-    if outcome == TurnState::Interrupted {
+    if outcome == TurnState::Cancelled {
         if streaming_cancel {
             for event in [
                 json!({"type":"agent_start"}),
@@ -249,7 +249,7 @@ async fn retained_retry(
             })
             .collect::<Vec<_>>();
         assert_eq!(texts[0], (ItemLifecycle::Failed, "Failed attempt retained"));
-        if outcome == TurnState::Interrupted && !streaming_cancel {
+        if outcome == TurnState::Cancelled && !streaming_cancel {
             assert_eq!(texts.len(), 1);
         } else {
             assert_eq!(texts.len(), 2);
@@ -258,7 +258,7 @@ async fn retained_retry(
                 (
                     match outcome {
                         TurnState::Completed => ItemLifecycle::Completed,
-                        TurnState::Interrupted => ItemLifecycle::Cancelled,
+                        TurnState::Cancelled => ItemLifecycle::Cancelled,
                         _ => ItemLifecycle::Failed,
                     },
                     "Second attempt retained"
@@ -291,7 +291,7 @@ async fn retained_retry(
                 turn.terminal_reason.as_ref().unwrap().kind,
                 TurnTerminalReason::Other
             ),
-            TurnState::Interrupted => assert_eq!(
+            TurnState::Cancelled => assert_eq!(
                 turn.terminal_reason.as_ref().unwrap().kind,
                 TurnTerminalReason::CancelledByUser
             ),
@@ -314,7 +314,7 @@ async fn automatic_retry_exhaustion_retains_attempts_and_final_cause_after_sqlit
 
 #[tokio::test]
 async fn automatic_retry_cancel_during_backoff_retains_failed_attempt_after_sqlite_reopen() {
-    retained_retry(TurnState::Interrupted, None, false, false).await;
+    retained_retry(TurnState::Cancelled, None, false, false).await;
 }
 
 #[tokio::test]
@@ -329,7 +329,7 @@ async fn exhausted_retry_without_final_cause_does_not_reuse_earlier_cause_after_
 
 #[tokio::test]
 async fn automatic_retry_cancel_during_streaming_retains_both_attempts_after_sqlite_reopen() {
-    retained_retry(TurnState::Interrupted, None, false, true).await;
+    retained_retry(TurnState::Cancelled, None, false, true).await;
 }
 
 #[tokio::test]

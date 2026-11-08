@@ -1100,26 +1100,27 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
     let start = runtime
         .ingest(&frame(json!({"type":"message_start"})), &Mapper)
         .expect("text start");
-    let AdapterEvent::Item { id, .. } = &start.events()[0] else {
-        panic!("item")
+    assert!(matches!(start.events(), [AdapterEvent::Absorbed]));
+    let first = runtime
+        .ingest(
+            &frame(json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"hello"}})),
+            &Mapper,
+        )
+        .expect("delta");
+    let [
+        AdapterEvent::Item {
+            id,
+            payload: NormalizedPayload::Text { .. },
+            ..
+        },
+    ] = first.events()
+    else {
+        panic!("text item")
     };
     assert_eq!(
         id.turn_client_message_id.as_ref().expect("client").as_str(),
         "client-pi-1"
     );
-    assert!(matches!(
-        runtime
-            .ingest(
-                &frame(json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"hello"}})),
-                &Mapper
-            )
-            .expect("delta")
-            .events(),
-        [AdapterEvent::Item {
-            payload: NormalizedPayload::Text { .. },
-            ..
-        }]
-    ));
     let second = runtime
         .ingest(
             &frame(json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":" world"}})),
@@ -1180,7 +1181,13 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
     let terminal = runtime
         .ingest(&frame(json!({"type":"agent_settled"})), &Mapper)
         .expect("settled");
-    assert!(matches!(terminal.events(), [AdapterEvent::Turn { .. }]));
+    assert!(matches!(
+        terminal.events(),
+        [AdapterEvent::Turn {
+            state: crate::acp::lifecycle::TurnState::Cancelled,
+            ..
+        }]
+    ));
 }
 
 #[test]

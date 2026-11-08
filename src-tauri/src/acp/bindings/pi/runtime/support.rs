@@ -179,6 +179,7 @@ impl PiRuntime {
                 self.require_turn(&turn_key)?;
                 let state = match outcome {
                     TerminalOutcome::Completed => TurnState::Completed,
+                    TerminalOutcome::Cancelled => TurnState::Cancelled,
                     TerminalOutcome::Interrupted => TurnState::Interrupted,
                     TerminalOutcome::Failed => TurnState::Failed,
                 };
@@ -204,22 +205,21 @@ impl PiRuntime {
                 Some(self.attempt_failed(attempt, max_attempts, message)?),
                 None,
             ),
+            // The answer's item opens with its first text, so thinking that
+            // streams first keeps its place above the answer.
             AdapterOutput::TextStarted { external_id } => {
-                let id = self.start_text(external_id)?;
-                (
-                    Some(self.item(id, ItemLifecycle::Started, None, text_payload(""))?),
-                    None,
-                )
+                self.start_text(external_id)?;
+                (Some(AdapterEvent::Absorbed), None)
             }
             AdapterOutput::TextDelta {
                 text,
                 redacted_tail,
             } => {
                 let (id, snapshot) = self.append_text(text, redacted_tail)?;
-                (
-                    Some(self.item(id, ItemLifecycle::Streaming, None, text_payload(snapshot))?),
-                    None,
-                )
+                let item = (!snapshot.is_empty())
+                    .then(|| self.item(id, ItemLifecycle::Streaming, None, text_payload(snapshot)))
+                    .transpose()?;
+                (Some(item.unwrap_or(AdapterEvent::Absorbed)), None)
             }
             AdapterOutput::ThoughtDelta {
                 text,
@@ -248,10 +248,15 @@ impl PiRuntime {
                 outcome,
             } => {
                 let (id, snapshot) = self.complete_text(external_id)?;
+                if snapshot.is_empty() {
+                    return Ok((Some(AdapterEvent::Absorbed), None));
+                }
                 let lifecycle = match outcome {
                     TerminalOutcome::Completed => ItemLifecycle::Completed,
                     TerminalOutcome::Failed => ItemLifecycle::Failed,
-                    TerminalOutcome::Interrupted => ItemLifecycle::Cancelled,
+                    TerminalOutcome::Cancelled | TerminalOutcome::Interrupted => {
+                        ItemLifecycle::Cancelled
+                    }
                 };
                 (
                     Some(self.item(id, lifecycle, None, text_payload(snapshot))?),
@@ -302,6 +307,10 @@ impl PiRuntime {
                 output,
             } => {
                 let id = external("piItemId", external_id.clone())?;
+                // A finished edit shows its diff; Pi's own success line adds nothing.
+                let output = output.filter(|_| {
+                    outcome != ToolOutcome::Completed || !self.is_edit_tool(&external_id)
+                });
                 let payload = self.update_tool(&external_id, output, true)?;
                 let (lifecycle, state) = match outcome {
                     ToolOutcome::Completed => (ItemLifecycle::Completed, ToolState::Completed),

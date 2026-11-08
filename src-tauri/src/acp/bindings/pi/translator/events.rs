@@ -200,9 +200,9 @@ impl PiTranslator {
                     turn.compaction_active = false;
                     events.push(match incoming {
                         TerminalOutcome::Failed => AdapterOutput::CompactionFailed,
-                        TerminalOutcome::Completed | TerminalOutcome::Interrupted => {
-                            AdapterOutput::CompactionInterrupted
-                        }
+                        TerminalOutcome::Completed
+                        | TerminalOutcome::Cancelled
+                        | TerminalOutcome::Interrupted => AdapterOutput::CompactionInterrupted,
                     });
                 }
                 events.push(AdapterOutput::TurnTerminal {

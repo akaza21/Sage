@@ -319,7 +319,7 @@ fn pi_interruption_cancels_the_live_thought_before_the_turn() {
                 ..
             },
             AdapterEvent::Turn {
-                state: TurnState::Interrupted,
+                state: TurnState::Cancelled,
                 ..
             }
         ]
@@ -354,10 +354,8 @@ fn pi_aborted_assistant_message_end_cancels_its_thought() {
                 payload: NormalizedPayload::ThoughtSummary { .. },
                 ..
             },
-            AdapterEvent::Item {
-                payload: NormalizedPayload::Text { .. },
-                ..
-            }
+            // The message never streamed text, so no empty answer appears.
+            AdapterEvent::Absorbed
         ]
     ));
 }
