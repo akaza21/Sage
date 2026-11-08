@@ -126,6 +126,17 @@ pub(super) fn text<'a>(
     }
 }
 
+/// The Sage Turn a Codex turn belongs to. A review runs as a nested turn
+/// whose `rootTurnId` is the turn `review/start` answered, and every item of
+/// the review carries that root, so the root is the turn's identity.
+pub(super) fn root_turn_id(turn: &Map<String, Value>) -> Result<&str, IngressError> {
+    let id = text(turn, "id", 512)?;
+    match turn.get("rootTurnId") {
+        None | Some(Value::Null) => Ok(id),
+        Some(_) => text(turn, "rootTurnId", 512),
+    }
+}
+
 pub(super) fn safe_text(
     value: Option<&Value>,
     max: usize,

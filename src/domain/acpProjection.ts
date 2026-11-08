@@ -1,4 +1,5 @@
 import type { AttachedContext } from "./attachedContext";
+import type { AcpSessionAction } from "./acpSessionAction";
 import type { AcpImagePayload } from "./acpImage";
 import type { AcpGoalState } from "./acpGoal";
 import type { AcpSessionConfig } from "./acpSessionConfig";
@@ -232,6 +233,8 @@ export interface HarnessActivityProjection {
 
 export interface TurnProjection {
   attachedContext?: readonly AttachedContext[];
+  /** The session action this Turn ran. */
+  sessionAction?: AcpSessionAction;
   id: SageTurnId;
   sessionId: SageAgentSessionId;
   runtimeEpoch: RuntimeEpoch;

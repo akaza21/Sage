@@ -8,7 +8,8 @@ export {
 } from "./useAcpChatProjection";
 export { terminalTurnStates } from "./statusSemantics";
 export { latestRetryPrompt } from "./acpTurnState";
-export { sessionActionAvailable, sessionActions } from "./sessionAction";
+export { sessionActionAvailable } from "./sessionAction";
+export { sessionActions } from "../../../domain/acpSessionAction";
 export { useRendererRecreationFocus } from "./useRendererRecreationFocus";
 export { applyAgentFileIntent } from "./agentFileOps";
 export type { AgentFileIntent, AgentFileOperation } from "./agentFileOps";

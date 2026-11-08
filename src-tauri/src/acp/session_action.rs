@@ -1,11 +1,11 @@
 //! Harness-neutral session actions. Each runs as an ordinary Turn on an idle
 //! session whose negotiated capabilities admit it; a binding maps it to its
 //! own native method.
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::{contract::RequiredText, intent::CapabilitySnapshotV1};
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -17,7 +17,7 @@ pub(crate) enum SessionAction {
     Review { target: ReviewTarget },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -31,6 +31,7 @@ pub(crate) enum ReviewTarget {
     },
     Commit {
         sha: RequiredText<64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         title: Option<RequiredText<512>>,
     },
     Custom {
@@ -89,5 +90,32 @@ mod tests {
         ] {
             assert!(serde_json::from_value::<SessionAction>(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn an_action_turn_keeps_its_action_beside_the_prompt_text() {
+        let action: SessionAction = serde_json::from_value(
+            json!({"kind":"review","target":{"kind":"commit","sha":"abc123","title":"Fix"}}),
+        )
+        .unwrap();
+        let mut prompt = crate::acp::intent::Prompt::new("prompt", action.prompt_text()).unwrap();
+        prompt.action = Some(action.clone());
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch("CREATE TABLE items(turn_id TEXT,ordinal INTEGER,kind TEXT,payload_json TEXT,payload_bytes INTEGER)")
+            .unwrap();
+        let payload = json!({"kind":"text","payload":prompt.user_payload()}).to_string();
+        connection
+            .execute(
+                "INSERT INTO items VALUES ('turn',0,'text',?1,?2)",
+                rusqlite::params![payload, payload.len() as i64],
+            )
+            .unwrap();
+        let metadata =
+            crate::acp::transcript_quote::load_prompt_metadata(&connection, "turn").unwrap();
+        assert_eq!(metadata.session_action, Some(action));
+        assert!(crate::acp::store::parse_legacy_text(&payload).is_ok());
+        let plain = crate::acp::intent::Prompt::new("prompt", "/review").unwrap();
+        assert!(plain.user_payload().get("sessionAction").is_none());
     }
 }

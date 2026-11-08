@@ -148,13 +148,7 @@ impl CodexAdapter {
         }
         match self.turn_start_correlations.observe(&id)? {
             CorrelationMatch::Pending(client_message_id) => {
-                if let Some(answered) = self
-                    .turn_start_correlations
-                    .request_for(&id)
-                    .filter(|request| self.pending_kind(*request).is_none())
-                {
-                    self.turn_start_correlations.consume(answered)?;
-                }
+                self.retire_action_handoff()?;
                 self.active_turn_client_message_id = Some(client_message_id);
                 self.active_item_terminals.clear();
                 self.active_unretried_error_fingerprints.clear();
@@ -329,6 +323,7 @@ impl CodexAdapter {
             ),
         });
         self.active_turn_id = None;
+        self.deferred_interrupt = false;
         Ok(TerminalUpdate::Apply)
     }
 

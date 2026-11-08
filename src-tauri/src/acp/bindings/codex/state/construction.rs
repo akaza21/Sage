@@ -48,6 +48,8 @@ impl CodexAdapter {
             turn_start_correlations: TurnStartCorrelations::new(),
             active_turn_id: None,
             provisional_turn: None,
+            action_handoff: None,
+            deferred_interrupt: false,
             active_turn_client_message_id: None,
             active_item_terminals: Vec::new(),
             active_terminal_id_bytes: 0,

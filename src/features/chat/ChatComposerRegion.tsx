@@ -291,9 +291,11 @@ export function ChatComposerRegion({
               modelLabelScope={JSON.stringify([dictationScope, sessionId])}
               inheritScope={dictationScope}
               accessBindingId={accessBindingId}
-              onOpenGoal={goalDetails.onOpen}
-              onCompact={onCompact}
-              imageAction={imageInput.action}
+              addActions={{
+                imageAction: imageInput.action,
+                onOpenGoal: goalDetails.onOpen,
+                onCompact,
+              }}
               availableBinding={availableBinding}
               canPrompt={canPrompt}
               discoveryPhase={discoveryPhase}

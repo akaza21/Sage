@@ -39,7 +39,10 @@ impl HarnessAdapter for CodexRuntime {
         self.configure_effort(intent).map(|()| None)
     }
     fn provisional_turn_pending(&self) -> bool {
-        self.inner.has_provisional_turn()
+        self.inner.has_provisional_turn() || self.inner.has_action_handoff()
+    }
+    fn defer_cancel(&mut self) -> bool {
+        self.inner.defer_cancel()
     }
     fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         if self.inner.goal_supported() {

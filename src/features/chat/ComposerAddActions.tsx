@@ -18,6 +18,12 @@ import {
   flattenChoices,
 } from "../../domain/acpSessionConfigControls";
 
+/** The "+" menu's own actions; each is offered only while present. */
+export type ComposerMenuActions = Pick<
+  ComponentProps<typeof ComposerAddActions>,
+  "imageAction" | "onOpenGoal" | "onCompact"
+>;
+
 export function ComposerOptionsMenu({
   id,
   triggerRef,

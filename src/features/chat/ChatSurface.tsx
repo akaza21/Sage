@@ -175,7 +175,8 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const retryLastTurn = () => {
     if (!acpPage || actionBusy || activeAcpTurn) return;
     const retry = latestRetryPrompt(acpPage);
-    if (retry)
+    if (retry?.action) void acpActions.runSessionAction(retry.action);
+    else if (retry)
       void acpActions.submit(retry.prompt, [], retry.bindingId, retry.modelId);
   };
 

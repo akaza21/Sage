@@ -1,6 +1,7 @@
 import type {
   AcpChatPage,
   AcpItem,
+  AcpSessionAction,
   AgentSessionProjection,
   SageTurnId,
   TurnProjection,
@@ -52,6 +53,8 @@ export function currentSession(
 
 export function latestRetryPrompt(page: AcpChatPage): {
   prompt: string;
+  /** Present when the Turn ran a session action: Retry runs it again. */
+  action?: AcpSessionAction;
   bindingId: AgentSessionProjection["bindingId"];
   modelId: AgentSessionProjection["modelId"];
 } | null {
@@ -68,6 +71,7 @@ export function latestRetryPrompt(page: AcpChatPage): {
   return session && turn?.sessionId === session.id && item?.kind === "text"
     ? {
         prompt: item.payload.text,
+        ...(turn.sessionAction ? { action: turn.sessionAction } : {}),
         bindingId: session.bindingId,
         modelId: session.modelId,
       }

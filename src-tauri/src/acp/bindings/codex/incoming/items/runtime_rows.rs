@@ -5,6 +5,7 @@ use crate::acp::{
     declared_test::CommandActivity,
     intent::{NormalizedPayload, ToolCategory, ToolExecution},
     lifecycle::ItemLifecycle,
+    limits::LIMITS,
 };
 
 use super::super::{IngressError, support::safe_text};
@@ -67,7 +68,11 @@ pub(super) fn exited_review(
     {
         return Ok(None);
     }
-    let text = safe_text(item.get("review"), 262_144, "review")?;
+    let text = safe_text(
+        item.get("review"),
+        LIMITS.wire.normalized_item_bytes as usize,
+        "review",
+    )?;
     Ok(Some((NormalizedPayload::Text { text }, None, None)))
 }
 

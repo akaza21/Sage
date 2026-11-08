@@ -25,12 +25,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 .validate(revision, prompt.as_str())
                 .map_err(|_| crate::acp::runtime::HostError::Intent)?;
         }
-        if let Some(action) = &prompt.action
-            && !self
-                .adapter
-                .capabilities()
-                .is_some_and(|capabilities| action.admitted_by(&capabilities))
-        {
+        if !prompt.action_admitted(self.adapter.capabilities().as_ref()) {
             return Err(crate::acp::runtime::HostError::Intent);
         }
         Ok(())

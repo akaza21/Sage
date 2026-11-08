@@ -7,7 +7,8 @@ use super::{
     CodexAdapter, IncomingEvent, IngressDisposition, IngressError, ResourceMapper, normalize_item,
     record_unprojected,
     support::{
-        error_payload, expect_thread_and_turn, identity, parse_usage, request_id_text, text,
+        error_payload, expect_thread_and_turn, identity, parse_usage, request_id_text,
+        root_turn_id, text,
     },
 };
 
@@ -86,6 +87,10 @@ pub(super) fn notification<M: ResourceMapper>(
                 }
                 "systemError" => {
                     adapter.expect_thread(thread).map_err(identity)?;
+                    // A named Turn reports its own error and terminal next.
+                    if adapter.has_active_turn() {
+                        return Ok(IngressDisposition::IgnoredLate);
+                    }
                     let payload = error_payload(
                         "codex",
                         "Codex reported a system error while starting the turn. Check the selected model or harness connection, then retry.",
@@ -162,7 +167,7 @@ pub(super) fn notification<M: ResourceMapper>(
                 .get("turn")
                 .and_then(Value::as_object)
                 .ok_or(IngressError::Malformed)?;
-            let turn_id = text(turn, "id", 512)?;
+            let turn_id = root_turn_id(turn)?;
             let (id, binding) = match adapter.observe_turn_started(turn_id) {
                 Ok(value) => value,
                 Err(error) => return Err(turn_started_rejection(adapter, error)),
@@ -324,7 +329,7 @@ fn turn_completed(
         .get("turn")
         .and_then(Value::as_object)
         .ok_or(IngressError::Malformed)?;
-    let external = text(turn, "id", 512)?;
+    let external = root_turn_id(turn)?;
     adapter.expect_turn(external).map_err(identity)?;
     let state = match text(turn, "status", 32)? {
         "completed" => TurnState::Completed,

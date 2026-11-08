@@ -319,6 +319,9 @@ pub struct ActivityProjection {
 pub struct TurnProjection {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub attached_context: Vec<super::attached_context::AttachedContext>,
+    /// The session action this Turn ran, so Retry runs it again.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) session_action: Option<super::session_action::SessionAction>,
     pub id: SageTurnId,
     pub session_id: SageAgentSessionId,
     pub runtime_epoch: RuntimeEpoch,

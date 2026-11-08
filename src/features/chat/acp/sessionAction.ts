@@ -15,12 +15,6 @@ import { typedError } from "./acpSessionActions";
 import { currentSession } from "./acpTurnState";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
 
-/** Actions the chat offers directly; a `/` command can name the same ones. */
-export const sessionActions = {
-  reviewChanges: { kind: "review", target: { kind: "uncommittedChanges" } },
-  compact: { kind: "compact" },
-} as const satisfies Record<string, AcpSessionAction>;
-
 const capabilityFor = {
   compact: "nativeSessionCompact",
   review: "nativeReview",

@@ -187,6 +187,16 @@ impl Prompt {
     pub fn as_str(&self) -> &str {
         self.text.as_str()
     }
+    /// False when the prompt carries a session action these capabilities do
+    /// not admit.
+    pub(crate) fn action_admitted(
+        &self,
+        capabilities: Option<&super::intent::CapabilitySnapshotV1>,
+    ) -> bool {
+        self.action.as_ref().is_none_or(|action| {
+            capabilities.is_some_and(|capabilities| action.admitted_by(capabilities))
+        })
+    }
     pub(crate) fn retained_bytes(&self) -> usize {
         self.resources.retained_bytes()
             + self.as_str().len()
@@ -202,19 +212,30 @@ impl Prompt {
         self
     }
     pub(crate) fn user_payload(&self) -> serde_json::Value {
-        match &self.context {
+        let mut payload = match &self.context {
             Some(context) => {
                 serde_json::json!({ "role": "user", "text": context.0, "attachedContext": context.1 })
             }
             None => serde_json::json!({ "role": "user", "text": self.as_str() }),
+        };
+        if let Some(action) = &self.action {
+            payload["sessionAction"] = serde_json::json!(action);
         }
+        payload
     }
 }
 
-pub(crate) fn load_context(
+/// What a Turn's prompt item keeps beside its text.
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct PromptMetadata {
+    pub(crate) attached_context: Vec<super::attached_context::AttachedContext>,
+    pub(crate) session_action: Option<super::session_action::SessionAction>,
+}
+
+pub(crate) fn load_prompt_metadata(
     connection: &rusqlite::Connection,
     turn_id: &str,
-) -> Result<Vec<super::attached_context::AttachedContext>, super::store::StoreError> {
+) -> Result<PromptMetadata, super::store::StoreError> {
     use super::store::StoreError;
     use rusqlite::OptionalExtension;
     let payload: Option<String> = connection.query_row(
@@ -222,21 +243,26 @@ pub(crate) fn load_context(
         [turn_id], |row| row.get(0),
     ).optional()?;
     let Some(payload) = payload else {
-        return Ok(Vec::new());
+        return Ok(PromptMetadata::default());
     };
     let value: serde_json::Value =
         serde_json::from_str(&payload).map_err(|_| StoreError::Corrupt("prompt context"))?;
-    match value
-        .get("payload")
-        .and_then(|payload| payload.get("attachedContext"))
-    {
-        Some(context) => {
-            let contexts: AttachedContexts = serde_json::from_value(context.clone())
-                .map_err(|_| StoreError::Corrupt("prompt context bound"))?;
-            Ok(contexts.as_slice().to_vec())
-        }
-        None => Ok(Vec::new()),
-    }
+    let field = |name: &str| value.get("payload").and_then(|payload| payload.get(name));
+    let attached_context = match field("attachedContext") {
+        Some(context) => serde_json::from_value::<AttachedContexts>(context.clone())
+            .map_err(|_| StoreError::Corrupt("prompt context bound"))?
+            .as_slice()
+            .to_vec(),
+        None => Vec::new(),
+    };
+    let session_action = field("sessionAction")
+        .map(|action| serde_json::from_value(action.clone()))
+        .transpose()
+        .map_err(|_| StoreError::Corrupt("prompt session action"))?;
+    Ok(PromptMetadata {
+        attached_context,
+        session_action,
+    })
 }
 
 #[cfg(test)]
@@ -299,7 +325,12 @@ mod tests {
                 rusqlite::params![payload, payload.len() as i64],
             )
             .unwrap();
-        assert_eq!(load_context(&connection, "turn").unwrap(), vec![quote]);
+        assert_eq!(
+            load_prompt_metadata(&connection, "turn")
+                .unwrap()
+                .attached_context,
+            vec![quote]
+        );
         assert_eq!(effective.user_payload()["text"], "Explain");
     }
 

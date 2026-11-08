@@ -1,0 +1,13 @@
+{
+  "scenario": "review-inline",
+  "harness": "codex",
+  "handshake": "noInitializeResponse",
+  "events": [],
+  "blocker": "codex app-server speaks its own JSON-RPC, not ACP, so the standard translator cannot replay it; codex/tests/session_action_tests.rs replays these frames through the Codex binding and asserts the projected review Turn.",
+  "notes": [
+    "Live capture against the Linux build of the pinned codex-cli 0.167.0 app-server. The model provider is a local server that refuses every request, so the review fails after its first model call and no credentials are involved.",
+    "review/start with inline delivery answers { turn: { id: X, rootTurnId: null }, reviewThreadId } where reviewThreadId is the bound thread. enteredReviewMode arrives under turnId X before turn/started.",
+    "turn/started then names a new Turn Y with rootTurnId X. Every later item, the error and turn/completed carry X, and turn/completed reports turn.id X with rootTurnId X.",
+    "Inside the review Turn Codex emits its own userMessage carrying the review prompt, then exitedReviewMode with the findings (here 'Reviewer failed to output a response.') and an agentMessage after the failure."
+  ]
+}

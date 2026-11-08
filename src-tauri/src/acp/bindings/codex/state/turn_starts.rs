@@ -182,13 +182,6 @@ impl TurnStartCorrelations {
     }
 
     /// The request whose correlation the Turn bound, if any.
-    pub(super) fn request_for(&self, turn_id: &ExternalId) -> Option<u64> {
-        self.entries.iter().find_map(|entry| {
-            matches!(&entry.state, CorrelationState::Active(active) if active == turn_id)
-                .then_some(entry.request_id)
-        })
-    }
-
     pub(super) fn register(&mut self, request_id: u64, client_message_id: RequiredText<512>) {
         debug_assert!(self.entries.len() < LIMITS.queues.outstanding_rpc_per_session as usize);
         debug_assert!(

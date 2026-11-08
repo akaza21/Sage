@@ -17,6 +17,7 @@ import {
 } from "./acpDesktopGuards";
 import { safeItem } from "./acpDesktopResponseItems";
 import { validateAttachedContexts } from "../domain/attachedContext";
+import { decodeSessionAction } from "../domain/acpSessionAction";
 
 function safeBrowserOperation(
   value: unknown,
@@ -233,6 +234,11 @@ export function safeTurn(value: unknown): TurnProjection | null {
   } catch {
     return null;
   }
+  const sessionAction =
+    value.sessionAction === undefined
+      ? undefined
+      : decodeSessionAction(value.sessionAction);
+  if (sessionAction === null) return null;
   const sessionId = safeIdentifier(value.sessionId);
   const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
   const revision = safeCounter(value.revision, true);
@@ -287,6 +293,7 @@ export function safeTurn(value: unknown): TurnProjection | null {
     ? null
     : {
         ...(attachedContext.length ? { attachedContext } : {}),
+        ...(sessionAction ? { sessionAction } : {}),
         id: id as TurnProjection["id"],
         sessionId: sessionId as TurnProjection["sessionId"],
         runtimeEpoch: runtimeEpoch as TurnProjection["runtimeEpoch"],

@@ -1,3 +1,4 @@
+mod action_handoff;
 pub(crate) mod capabilities;
 mod child_read;
 mod fork;
@@ -163,6 +164,8 @@ pub(crate) struct CodexAdapter {
     turn_start_correlations: TurnStartCorrelations,
     active_turn_id: Option<ExternalId>,
     provisional_turn: Option<ProvisionalTurn>,
+    action_handoff: Option<action_handoff::ActionHandoff>,
+    deferred_interrupt: bool,
     active_turn_client_message_id: Option<RequiredText<512>>,
     active_item_terminals: Vec<ItemTerminal>,
     active_terminal_id_bytes: usize,
@@ -273,8 +276,13 @@ impl CodexAdapter {
         if !self.pending_kind(id).is_some_and(RequestKind::starts_turn) {
             return Err(AdapterError::TurnIntentConflict);
         }
-        let correlation = self.turn_start_correlations.failure(id)?;
-        let result = match correlation {
+        let result = self.fail_correlation(id)?;
+        self.finish_turn_start_response(id)?;
+        Ok(result)
+    }
+
+    fn fail_correlation(&mut self, id: u64) -> Result<TurnStartFailure, AdapterError> {
+        Ok(match self.turn_start_correlations.failure(id)? {
             CorrelationMatch::Pending(client) => {
                 self.active_turn_client_message_id = Some(client);
                 self.active_turn_id =
@@ -288,9 +296,7 @@ impl CodexAdapter {
             }
             CorrelationMatch::Terminal { .. } => TurnStartFailure::Late,
             CorrelationMatch::Active { .. } => return Err(AdapterError::TurnIntentConflict),
-        };
-        self.finish_turn_start_response(id)?;
-        Ok(result)
+        })
     }
 
     pub(super) fn fail_pending_turn_start(&mut self) -> Result<TurnStartFailure, AdapterError> {
@@ -298,11 +304,11 @@ impl CodexAdapter {
             .pending
             .iter()
             .filter_map(|(id, kind)| kind.starts_turn().then_some(*id));
-        let id = turn_starts.next().ok_or(AdapterError::TurnIntentConflict)?;
-        if turn_starts.next().is_some() {
-            return Err(AdapterError::TurnIntentConflict);
+        match (turn_starts.next(), turn_starts.next()) {
+            (Some(id), None) => self.fail_turn_start(id),
+            (None, None) if self.action_handoff.is_some() => self.fail_action_handoff(),
+            _ => Err(AdapterError::TurnIntentConflict),
         }
-        self.fail_turn_start(id)
     }
 
     pub(super) fn fail_interrupt(&mut self) -> Result<ScopedExternalId, AdapterError> {
@@ -336,19 +342,6 @@ impl CodexAdapter {
         self.turn_start_correlations.consume(id)?;
         self.remove_pending(id);
         Ok(())
-    }
-
-    /// A compaction answers with no Turn; until `turn/started` names it, its
-    /// correlation stays pending and is retired when that Turn binds.
-    pub(super) fn accept_compact_response(&mut self, id: u64) -> Result<(), AdapterError> {
-        if self.pending_kind(id) != Some(RequestKind::Compact) {
-            return Err(AdapterError::TurnIntentConflict);
-        }
-        if self.turn_start_correlations.is_pending(id) {
-            self.remove_pending(id);
-            return Ok(());
-        }
-        self.finish_turn_start_response(id)
     }
 
     fn reserve(&mut self, request: OutgoingRequest) -> Result<OutgoingRequest, AdapterError> {

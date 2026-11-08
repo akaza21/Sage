@@ -295,11 +295,11 @@ export const TurnEditSummary = memo(function TurnEditSummary({
           ))
         : null}
       {expanded && onReview ? (
-        <div className="acp-file-changes__disposition">
+        <div className="acp-file-changes__review">
           <button type="button" onClick={onReview}>
             Review changes
           </button>
-          <span>Ask the harness to review the uncommitted changes.</span>
+          <span>Ask the agent to review the uncommitted changes.</span>
         </div>
       ) : null}
       {expanded && dispositionError ? (

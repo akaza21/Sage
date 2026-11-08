@@ -11,7 +11,9 @@ export type {
   TurnProjection,
 } from "./acpProjection";
 import type { AcpChatPage } from "./acpProjection";
+import type { AcpSessionAction } from "./acpSessionAction";
 import type { AttachedContext } from "./attachedContext";
+export type { AcpReviewTarget, AcpSessionAction } from "./acpSessionAction";
 
 export type {
   AnswerUserInputRequest,
@@ -217,16 +219,6 @@ export interface AcpSessionMutationIntent extends AcpMutationIntent {
   sessionId: SageAgentSessionId;
   runtimeEpoch: RuntimeEpoch;
 }
-
-export type AcpReviewTarget =
-  | { kind: "uncommittedChanges" }
-  | { kind: "baseBranch"; branch: string }
-  | { kind: "commit"; sha: string; title?: string }
-  | { kind: "custom"; instructions: string };
-
-/** Runs as a Turn on an idle session that negotiated it. */
-export type AcpSessionAction =
-  { kind: "compact" } | { kind: "review"; target: AcpReviewTarget };
 
 export interface RunAcpSessionActionRequest extends AcpSessionMutationIntent {
   action: AcpSessionAction;

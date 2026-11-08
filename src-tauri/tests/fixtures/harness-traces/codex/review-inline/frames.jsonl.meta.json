@@ -1,0 +1,49 @@
+{
+  "command": "codex",
+  "args": [
+    "app-server"
+  ],
+  "entrypoint": "/fixture-workspace/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+  "version": "codex-cli 0.167.0",
+  "env": {
+    "CODEX_HOME": "/fixture-workspace/codex-home (scratch home whose config.toml selects a local responses provider that answers every request with HTTP 400; no sessions, no auth)"
+  },
+  "capturedAt": "2026-11-08",
+  "reason": "complete",
+  "promptsSent": 0,
+  "flow": "initialize, thread/start in a git repository holding one untracked file, review/start of uncommittedChanges with inline delivery, frames until turn/completed, two seconds more, thread/unsubscribe",
+  "sanitization": [
+    "Scratch CODEX_HOME and working-directory paths are rewritten under /fixture-workspace.",
+    "remoteControl installationId and serverName are redacted."
+  ],
+  "timeline": [
+    "     3ms out initialize",
+    "   194ms in  result#1",
+    "   194ms in  remoteControl/status/changed",
+    "   194ms out initialized",
+    "   194ms out thread/start",
+    "   225ms in  result#2",
+    "   225ms out review/start",
+    "   226ms in  thread/started",
+    "   233ms in  result#3",
+    "   233ms in  warning",
+    "   234ms in  item/started 01a1bbe6-7daa-7eb2-90e0-be7088911c2e",
+    "   285ms in  item/completed 01a1bbe6-7daa-7eb2-90e0-be7088911c2e",
+    "   300ms in  warning",
+    "   329ms in  thread/status/changed",
+    "   329ms in  turn/started 01a1bbe6-7deb-7a60-85fd-3eda7717f39f",
+    "   337ms in  item/started 01a1bbe6-7daa-7eb2-90e0-be7088911c2e",
+    "   352ms in  item/completed 01a1bbe6-7daa-7eb2-90e0-be7088911c2e",
+    "   355ms in  thread/status/changed",
+    "   355ms in  error 01a1bbe6-7daa-7eb2-90e0-be7088911c2e",
+    "   359ms in  item/started 01a1bbe6-7daa-7eb2-90e0-be7088911c2e",
+    "   360ms in  item/completed 01a1bbe6-7daa-7eb2-90e0-be7088911c2e",
+    "   361ms in  item/started 01a1bbe6-7daa-7eb2-90e0-be7088911c2e",
+    "   361ms in  item/completed 01a1bbe6-7daa-7eb2-90e0-be7088911c2e",
+    "   366ms in  thread/readState/changed",
+    "   366ms in  turn/completed 01a1bbe6-7daa-7eb2-90e0-be7088911c2e",
+    "  2367ms out thread/unsubscribe",
+    "  2367ms in  result#4"
+  ],
+  "stderr": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/fixture-workspace\" (codex_home: AbsolutePathBuf(\"/fixture-workspace/codex-home\"))\n"
+}

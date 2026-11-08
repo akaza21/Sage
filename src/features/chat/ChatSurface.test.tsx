@@ -619,6 +619,42 @@ describe("ChatSurface ACP resource integration", () => {
     },
   );
 
+  it("retries a session-action Turn by running its action again", async () => {
+    matchConfiguredSession();
+    setTurnState("completed");
+    const action = {
+      kind: "review",
+      target: { kind: "uncommittedChanges" },
+    } as const;
+    const [turn] = hooks.page!.turns;
+    hooks.page = {
+      ...hooks.page!,
+      turns: [
+        {
+          ...turn,
+          sessionAction: action,
+          items: [
+            {
+              ...itemBase("action-prompt"),
+              kind: "text",
+              payload: { role: "user", text: "/review" },
+            } as AcpItem,
+            {
+              ...itemBase("action-findings"),
+              ordinal: 1,
+              kind: "text",
+              payload: { role: "assistant", text: "No issues found." },
+            } as AcpItem,
+          ],
+        },
+      ],
+    };
+    render(<ChatSurface />);
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    expect(hooks.actions.runSessionAction).toHaveBeenCalledWith(action);
+    expect(hooks.actions.submit).not.toHaveBeenCalled();
+  });
+
   it("opens an earlier-session assistant file link in its owning Chat", async () => {
     const resource = { rootId: "root-a", relativePath: "README.md" };
     vi.spyOn(acpDesktop, "resolveChatFileReference").mockResolvedValue({
