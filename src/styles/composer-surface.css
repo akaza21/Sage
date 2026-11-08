@@ -112,6 +112,26 @@
   line-height: var(--line-height-normal);
 }
 
+/* A picked command's input hint, drawn after the typed text like a placeholder. */
+.composer__command-hint {
+  position: absolute;
+  inset: 0 0 auto;
+  max-height: 100%;
+  padding: var(--space-3) var(--space-3) var(--space-1);
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-normal);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  pointer-events: none;
+}
+
+.composer__command-hint-typed {
+  visibility: hidden;
+}
+
 .composer textarea::placeholder {
   color: var(--color-text-muted);
 }
@@ -401,6 +421,10 @@
     padding-top: var(--space-2);
   }
 
+  .composer__command-hint {
+    padding-top: var(--space-2);
+  }
+
   .composer__context,
   .composer__shortcut {
     display: none;
@@ -416,6 +440,10 @@
   .composer__attachment-remove,
   .select-control--chip {
     border: 1px solid CanvasText;
+  }
+
+  .composer__command-hint {
+    color: GrayText;
   }
 
   .chat-dock:focus-within {

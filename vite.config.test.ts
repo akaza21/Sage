@@ -75,6 +75,8 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerAddActions.tsx",
   "src/features/chat/ComposerEffortMenu.tsx",
   "src/features/chat/ComposerModelMenu.tsx",
+  // The `/` command menu loads with the first `/` typed.
+  "src/features/chat/ComposerSlashMenu.tsx",
 ];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/chat/acp/ChatMarkdown.tsx",

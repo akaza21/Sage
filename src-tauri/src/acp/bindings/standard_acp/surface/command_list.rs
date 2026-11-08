@@ -1,5 +1,9 @@
 //! Ephemeral, bounded command advertisements. No durable history or inferred commands.
-use crate::acp::{bindings::adapter::AdapterRuntimeError, scheduler::RuntimeOwner};
+use crate::acp::{
+    bindings::adapter::AdapterRuntimeError,
+    contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
+    scheduler::RuntimeOwner,
+};
 use serde::Serialize;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -122,6 +126,13 @@ impl CommandState {
             .clone()
             .unwrap_or_default()
     }
+    fn revision(&self) -> Option<u64> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(|list| list.revision)
+    }
     pub(crate) fn validate(&self, revision: u64, text: &str) -> Result<(), AdapterRuntimeError> {
         self.0
             .lock()
@@ -138,60 +149,108 @@ impl CommandState {
     }
 }
 
+/// Tells the WebView that one live owner's command list has a new revision,
+/// so it re-reads the bounded list. It carries no command data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CommandsChangedV1 {
+    pub(crate) schema_version: u8,
+    pub(crate) sage_project_id: SageProjectId,
+    pub(crate) sage_chat_id: SageChatId,
+    pub(crate) sage_agent_session_id: SageAgentSessionId,
+    pub(crate) runtime_epoch: RuntimeEpoch,
+    pub(crate) revision: u64,
+}
+
+pub(crate) type CommandNoticeSink = Arc<dyn Fn(CommandsChangedV1) + Send + Sync>;
+
+struct Slot {
+    owner: RuntimeOwner,
+    state: Arc<CommandState>,
+    announced: u64,
+}
+
 /// One slot per bounded live runtime lane. Old epochs cannot publish or clear a new owner.
 #[derive(Default)]
-pub(crate) struct CommandChannel(Mutex<Option<(RuntimeOwner, Arc<CommandState>)>>);
+pub(crate) struct CommandChannel {
+    slot: Mutex<Option<Slot>>,
+    sink: Mutex<Option<CommandNoticeSink>>,
+}
 impl CommandChannel {
-    pub(crate) fn reserve(&self, owner: RuntimeOwner) {
-        let mut slot = self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some((_, previous)) = slot.take() {
-            previous.close();
-        }
-        *slot = Some((owner, Arc::default()));
-    }
-    pub(crate) fn update(&self, owner: &RuntimeOwner, list: Arc<CommandState>) {
-        if let Some((current, target)) = self
-            .0
+    fn slot(&self) -> std::sync::MutexGuard<'_, Option<Slot>> {
+        self.slot
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_mut()
-            && current == owner
-            && !Arc::ptr_eq(target, &list)
-        {
-            target.close();
-            *target = list;
+    }
+    pub(crate) fn set_sink(&self, sink: CommandNoticeSink) {
+        *self
+            .sink
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(sink);
+    }
+    pub(crate) fn reserve(&self, owner: RuntimeOwner) {
+        let mut slot = self.slot();
+        if let Some(previous) = slot.take() {
+            previous.state.close();
+        }
+        *slot = Some(Slot {
+            owner,
+            state: Arc::default(),
+            announced: 0,
+        });
+    }
+    /// Adopts the owner's live list and announces each new revision once.
+    pub(crate) fn update(&self, owner: &RuntimeOwner, list: Arc<CommandState>) {
+        let revision = {
+            let mut slot = self.slot();
+            let Some(current) = slot.as_mut().filter(|s| &s.owner == owner) else {
+                return;
+            };
+            if !Arc::ptr_eq(&current.state, &list) {
+                current.state.close();
+                current.state = list;
+            }
+            match current.state.revision() {
+                Some(revision) if revision != current.announced => {
+                    current.announced = revision;
+                    revision
+                }
+                _ => return,
+            }
+        };
+        let sink = self
+            .sink
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Some(sink) = sink {
+            sink(CommandsChangedV1 {
+                schema_version: 1,
+                sage_project_id: owner.project_id.clone(),
+                sage_chat_id: owner.chat_id.clone(),
+                sage_agent_session_id: owner.session_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+                revision,
+            });
         }
     }
     pub(crate) fn snapshot(&self, owner: &RuntimeOwner) -> Option<Arc<CommandState>> {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.slot()
             .as_ref()
-            .filter(|(current, _)| current == owner)
-            .map(|(_, list)| Arc::clone(list))
+            .filter(|s| &s.owner == owner)
+            .map(|s| Arc::clone(&s.state))
     }
     pub(crate) fn clear(&self, owner: &RuntimeOwner) {
-        let mut slot = self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if slot.as_ref().is_some_and(|(current, _)| current == owner)
-            && let Some((_, state)) = slot.take()
+        let mut slot = self.slot();
+        if slot.as_ref().is_some_and(|s| &s.owner == owner)
+            && let Some(previous) = slot.take()
         {
-            state.close();
+            previous.state.close();
         }
     }
     pub(crate) fn clear_all(&self) {
-        if let Some((_, state)) = self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take()
-        {
-            state.close();
+        if let Some(previous) = self.slot().take() {
+            previous.state.close();
         }
     }
 }

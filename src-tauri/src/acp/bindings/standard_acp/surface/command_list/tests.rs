@@ -146,3 +146,39 @@ fn teardown_revokes_and_frees_catalog_even_when_driver_is_retained() {
             .is_err()
     );
 }
+
+#[test]
+fn channel_announces_each_new_revision_once_for_the_exact_owner() {
+    let channel = CommandChannel::default();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink_seen = Arc::clone(&seen);
+    channel.set_sink(Arc::new(move |notice: CommandsChangedV1| {
+        sink_seen.lock().unwrap().push(notice);
+    }));
+    let live = owner(1);
+    channel.reserve(live.clone());
+    let state = Arc::new(CommandState::default());
+    // Adopting the empty list at revision 0 is not a change.
+    channel.update(&live, Arc::clone(&state));
+    assert!(seen.lock().unwrap().is_empty());
+    state
+        .replace(&json!([{"name":"plan","description":"d"}]), false)
+        .unwrap();
+    channel.update(&live, Arc::clone(&state));
+    // Every ingested frame calls update; one revision is announced once.
+    channel.update(&live, Arc::clone(&state));
+    channel.update(&owner(2), Arc::clone(&state));
+    state.replace(&json!([]), false).unwrap();
+    channel.update(&live, Arc::clone(&state));
+    let seen = seen.lock().unwrap();
+    assert_eq!(
+        seen.iter().map(|n| n.revision).collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    let wire = serde_json::to_value(&seen[0]).unwrap();
+    assert_eq!(wire["schemaVersion"], 1);
+    assert_eq!(wire["sageChatId"], "chat");
+    assert_eq!(wire["sageAgentSessionId"], "session");
+    assert_eq!(wire["runtimeEpoch"], "1");
+    assert_eq!(wire["revision"], 1);
+}

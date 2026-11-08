@@ -303,6 +303,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         composerRef={composerRef}
         fieldId={composerFieldId}
         dictationScope={chatId ?? activeTabId ?? ""}
+        commandChatId={chatId}
         sessionId={acpPage?.currentSessionId ?? null}
         descriptionId={`${composerFieldId}-description`}
         disabledReasonId={`${composerFieldId}-disabled-reason`}

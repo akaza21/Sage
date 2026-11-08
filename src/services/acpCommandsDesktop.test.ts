@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeCommandList } from "./acpCommandsDesktop";
+import { decodeCommandList, decodeCommandsNotice } from "./acpCommandsDesktop";
 describe("native command list contract", () => {
   it("preserves advertised hints and empty lists", () => {
     expect(decodeCommandList({ revision: 0, commands: [] })).toEqual({
@@ -27,5 +27,25 @@ describe("native command list contract", () => {
       },
     ])
       expect(decodeCommandList(value)).toBeNull();
+  });
+  it("admits only a well-formed change notice", () => {
+    const notice = {
+      schemaVersion: 1,
+      sageProjectId: "project",
+      sageChatId: "chat",
+      sageAgentSessionId: "session",
+      runtimeEpoch: "1",
+      revision: 1,
+    };
+    const { schemaVersion: _version, ...decoded } = notice;
+    expect(decodeCommandsNotice(notice)).toEqual(decoded);
+    for (const value of [
+      { ...notice, schemaVersion: 2 },
+      { ...notice, sageChatId: "" },
+      { ...notice, runtimeEpoch: 1 },
+      { ...notice, runtimeEpoch: "0" },
+      { ...notice, revision: 0 },
+    ])
+      expect(decodeCommandsNotice(value)).toBeNull();
   });
 });

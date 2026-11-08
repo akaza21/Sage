@@ -177,6 +177,11 @@ impl AppState {
             acp.set_browser_app(app.clone());
         }
         let goal_app = app.clone();
+        let commands_app = app.clone();
+        acp.set_commands_notice_sink(std::sync::Arc::new(move |notice| {
+            use tauri::Emitter;
+            let _ = commands_app.emit("acp-commands-changed-v1", notice);
+        }));
         acp.set_session_config_notice_sink(std::sync::Arc::new(move |notice| {
             use tauri::Emitter;
             let _ = app.emit("acp-session-config-changed-v1", notice);

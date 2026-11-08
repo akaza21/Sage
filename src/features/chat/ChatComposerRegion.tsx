@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
@@ -19,6 +20,8 @@ import { QueuedRows, lazyParts } from "./lazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
+import { ComposerCommandHint } from "./ComposerCommandHint";
+import { useComposerSlashCommands } from "./useComposerSlashCommands";
 
 const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
   () => import("./ClaudeAuthActions"),
@@ -31,6 +34,7 @@ export function ChatComposerRegion({
   composerRef,
   fieldId,
   dictationScope,
+  commandChatId,
   sessionId = null,
   descriptionId,
   disabledReasonId,
@@ -115,6 +119,15 @@ export function ChatComposerRegion({
     hidden || composerDisabled || activeTurn,
     composerRef,
   );
+  const inputAreaRef = useRef<HTMLDivElement>(null);
+  const slash = useComposerSlashCommands({
+    anchorRef: inputAreaRef,
+    boundChatId: commandChatId,
+    disabled: hidden || composerDisabled,
+    fieldId,
+    text,
+    onTextChange,
+  });
   return (
     <div className="chat-dock surface surface--dock">
       <div className="chat-edit-summary-zone" ref={onEditSummaryMount} />
@@ -212,11 +225,12 @@ export function ChatComposerRegion({
               Shift+Enter adds a new line.
             </span>
           ) : null}
-          <div className="composer__input-area">
+          <div className="composer__input-area" ref={inputAreaRef}>
             <textarea
               ref={composerRef}
               id={fieldId}
               aria-label="Message agent"
+              {...slash.fieldProps}
               spellCheck={false}
               autoCorrect="off"
               autoCapitalize="off"
@@ -225,7 +239,7 @@ export function ChatComposerRegion({
                   ? "Enter queues a message while this turn runs."
                   : undefined
               }
-              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}`}
+              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}${slash.hint ? ` ${slash.hintId}` : ""}`}
               value={text}
               maxLength={MAX_CHAT_COMPOSER_BYTES}
               rows={2}
@@ -235,8 +249,13 @@ export function ChatComposerRegion({
               )}
               disabled={composerDisabled}
               onChange={(event) => onTextChange(event.target.value)}
-              onBlur={dictation.cancel}
+              onFocus={slash.onFocus}
+              onBlur={() => {
+                dictation.cancel();
+                slash.onBlur();
+              }}
               onKeyDown={(event) => {
+                if (slash.onKeyDown(event)) return;
                 if (event.key === "Escape" && dictation.listening) {
                   event.preventDefault();
                   dictation.cancel();
@@ -251,6 +270,12 @@ export function ChatComposerRegion({
                 }
               }}
             />
+            <ComposerCommandHint
+              hint={slash.hint}
+              hintId={slash.hintId}
+              text={text}
+            />
+            {slash.menu}
           </div>
           {disabledReason ? (
             <p className="composer__disabled-reason" id={disabledReasonId}>

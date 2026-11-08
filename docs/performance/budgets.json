@@ -27,6 +27,12 @@
         "reason": "Existing sign-in actions load only after a Claude authentication error; keeps their native actions and copy off the ready first-Chat path."
       },
       {
+        "entry": "src/features/chat/ComposerSlashMenu.tsx",
+        "maxGzipBytes": 3100,
+        "maxCssGzipBytes": 560,
+        "reason": "Composer `/` command menu: native command list, change listener and reusable suggestion listbox. Loads with the first `/`. Measured 2885 B JS, 507 B CSS."
+      },
+      {
         "entry": "src/workbench/AgentTaskResources.tsx",
         "maxGzipBytes": 879,
         "reason": "Agent header resources panel and inline rename form; prewarmed while idle or on header intent, mounted on first use and unmounted while closed. Measured 824 B; cap 907 B."
