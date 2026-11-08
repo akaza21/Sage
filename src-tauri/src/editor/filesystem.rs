@@ -36,6 +36,23 @@ pub(super) fn read_disk_document(workspace: &Workspace, path: &str) -> AppResult
     disk_document_from(&file)
 }
 
+/// Like `read_disk_document`, but a File (or folder) that does not exist is
+/// `None`: a buffer can outlive its File, which was deleted outside Sage.
+pub(super) fn read_disk_document_if_present(
+    workspace: &Workspace,
+    path: &str,
+) -> AppResult<Option<DiskDocument>> {
+    match read_disk_document(workspace, path) {
+        Ok(document) => Ok(Some(document)),
+        Err(error) if is_not_found(&error) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn is_not_found(error: &AppError) -> bool {
+    matches!(error, AppError::Io(error) if error.kind() == std::io::ErrorKind::NotFound)
+}
+
 /// Builds the disk projection from an opened handle. The type check, the size
 /// check and the read all use this handle; the size check only rejects early,
 /// and the bounded read decides.
@@ -128,7 +145,13 @@ pub(super) fn cleanup_recorded_temp(
         ));
     }
     let (parent, temp_name) = split_contract_path(temp_path);
-    match HeldParent::open(workspace, parent)?.remove(temp_name) {
+    let parent = match HeldParent::open(workspace, parent) {
+        Ok(parent) => parent,
+        // The folder is gone, and the temporary file with it.
+        Err(error) if is_not_found(&error) => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    match parent.remove(temp_name) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error.into()),
@@ -192,6 +215,48 @@ impl HeldParent {
         file.sync_all()?;
         Ok(identity)
     }
+}
+
+impl HeldParent {
+    /// Creates `name` with `content`, only if nothing has that name yet:
+    /// `None` when something does. A failed write removes the new file.
+    pub(super) fn create_document(
+        &self,
+        name: &str,
+        content: &[u8],
+    ) -> AppResult<Option<RootIdentity>> {
+        let mut file = match self.create_new(name) {
+            Ok(file) => file,
+            Err(AppError::Io(error)) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+        let identity = leaf_identity(&file, &file.metadata()?)?;
+        let written = file
+            .write_all(content)
+            .and_then(|()| set_document_permissions(&file))
+            .and_then(|()| file.sync_all());
+        if let Err(error) = written {
+            drop(file);
+            let _ = self.remove(name);
+            return Err(error.into());
+        }
+        Ok(Some(identity))
+    }
+}
+
+/// New Files get the usual owner-writable, world-readable mode, not the
+/// private mode of a temporary file.
+#[cfg(unix)]
+fn set_document_permissions(file: &File) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    file.set_permissions(fs::Permissions::from_mode(0o644))
+}
+
+#[cfg(not(unix))]
+fn set_document_permissions(_file: &File) -> std::io::Result<()> {
+    Ok(())
 }
 
 /// Fails unless the canonical `path`, walked from the verified root, opens

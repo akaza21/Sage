@@ -313,6 +313,23 @@ pub async fn snapshot_editor_buffer(
     .map_err(|error| error.to_string())
 }
 
+/// "Keep mine" for an Editor buffer whose File changed or was deleted on disk.
+#[tauri::command]
+pub async fn rebase_editor_buffer(
+    state: State<'_, AppState>,
+    request: crate::domain::BufferRebaseRequest,
+) -> Result<EditorSaveResult, String> {
+    let resource = request.resource.clone();
+    run_editor_operation(
+        state,
+        resource,
+        EditorOperationKind::Terminal,
+        move |database, workspace, _| editor::rebase_buffer(database, workspace, request),
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub async fn save_editor_document(
     state: State<'_, AppState>,

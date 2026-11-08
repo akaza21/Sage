@@ -58,6 +58,18 @@ pub struct BufferSnapshotRequest {
     pub revision: u64,
 }
 
+/// "Keep mine": the buffer to put on top of the File as the user last saw it
+/// on disk (`expected_disk`, the absent version for a deleted File).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BufferRebaseRequest {
+    pub resource: ResourceRef,
+    pub expected_disk: DocumentVersion,
+    pub line_ending: String,
+    pub content: String,
+    pub revision: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BufferSnapshotAck {

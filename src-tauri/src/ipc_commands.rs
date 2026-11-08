@@ -61,6 +61,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         resource_commands::read_text_file,
         resource_commands::open_editor_document,
         resource_commands::snapshot_editor_buffer,
+        resource_commands::rebase_editor_buffer,
         resource_commands::save_editor_document,
         resource_commands::discard_editor_buffer,
         file_create_commands::create_project_file,
