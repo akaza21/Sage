@@ -77,6 +77,8 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerModelMenu.tsx",
 ];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
+  // Only the question card sends answers.
+  "src/services/acpDesktopUserInputAnswer.ts",
   "src/features/chat/acp/ChatMarkdown.tsx",
   "src/features/files/FileMarkdownPreview.tsx",
   "src/features/chat/ComposerUsageContext.tsx",
@@ -132,6 +134,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/acp/MermaidFigure.tsx",
   // The pending-approval card loads only when a request awaits a decision.
   "src/features/chat/acp/PermissionPrompt.tsx",
+  // The question card loads only when a harness asks the user questions.
+  "src/features/chat/acp/UserInputPrompt.tsx",
   "src/features/chat/acp/TurnFileActivity.tsx",
   // The stream-fade run tracker loads beside the transcript, off its path.
   "src/features/chat/acp/streamTail.ts",

@@ -613,6 +613,7 @@ fn terminal_item(
 
 fn permission(owner: &AdapterStoreOwner) -> PermissionIntent {
     let payload = NormalizedPayload::PermissionRequest {
+        user_input: None,
         category: ToolCategory::Execute,
         summary: SafeText::new("summary", "Run command?").unwrap(),
         offered_option_kinds: None,

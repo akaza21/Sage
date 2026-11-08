@@ -263,6 +263,7 @@ fn content(
             summary,
             offered_option_kinds,
             reason,
+            user_input,
         } => {
             let (request_id, state, source) =
                 permission.ok_or(StoreError::Corrupt("permission request projection"))?;
@@ -275,6 +276,7 @@ fn content(
                 offered_option_kinds,
                 category,
                 reason,
+                user_input,
             }
         }
         NormalizedPayload::Error {

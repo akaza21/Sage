@@ -225,12 +225,20 @@ pub(super) fn response(
             .and_then(|thread| thread.get("id"))
             .and_then(Value::as_str)
             .ok_or(IngressError::Malformed)?;
+        let mut events = vec![event];
         if adapter.take_browser_mcp_failure_for_thread(external) {
-            return Ok(IngressDisposition::Events(vec![
-                event,
-                browser_mcp_unavailable()?,
-            ]));
+            events.push(browser_mcp_unavailable()?);
         }
+        // Thread-less notices that arrived before this bind belong to it.
+        let notices = adapter.take_session_notices();
+        if !notices.is_empty() {
+            let session = adapter.thread_session_id(external).map_err(identity)?;
+            events.extend(notices.into_iter().map(|event| IncomingEvent::Session {
+                id: session.clone(),
+                event,
+            }));
+        }
+        return Ok(IngressDisposition::Events(events));
     }
     Ok(event.into())
 }

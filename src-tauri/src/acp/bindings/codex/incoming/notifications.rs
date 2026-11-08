@@ -21,6 +21,7 @@ mod items;
 use items::item_event;
 mod mcp_progress;
 use mcp_progress::mcp_tool_progress;
+mod notices;
 mod plan;
 mod provisional;
 mod status_line;
@@ -243,9 +244,7 @@ pub(super) fn notification<M: ResourceMapper>(
                 return Err(IngressError::Identity);
             }
             Ok(IncomingEvent::Usage {
-                turn_id: adapter
-                    .scoped_in_turn(ExternalKind::Turn, turn, turn)
-                    .map_err(identity)?,
+                turn_id: adapter.scoped_turn(turn).map_err(identity)?,
                 payload: parse_usage(params)?,
             }
             .into())
@@ -273,6 +272,13 @@ pub(super) fn notification<M: ResourceMapper>(
             }
             Ok(IncomingEvent::Error(payload).into())
         }
+        "warning" => notices::warning(adapter, params),
+        "guardianWarning" => notices::guardian_warning(adapter, params),
+        "configWarning" => notices::config_warning(adapter, params),
+        "deprecationNotice" => notices::deprecation_notice(adapter, params),
+        "model/rerouted" => notices::model_rerouted(adapter, params),
+        "model/verification" => notices::model_verification(adapter, params),
+        "model/safetyBuffering/updated" => notices::model_safety_buffering(adapter, params),
         other => {
             record_unprojected(other);
             Ok(IngressDisposition::IgnoredLate)
@@ -361,9 +367,7 @@ fn turn_completed(
         TerminalUpdate::Apply => {
             adapter.clear_command_items();
             adapter.clear_running_mcp_tools();
-            let id = adapter
-                .scoped_in_turn(ExternalKind::Turn, external, external)
-                .map_err(identity)?;
+            let id = adapter.scoped_turn(external).map_err(identity)?;
             let mut events = cancelled_hooks(adapter, thread_id)?;
             if let Some(payload) = terminal_error {
                 events.push(IncomingEvent::Error(payload));

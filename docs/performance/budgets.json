@@ -194,6 +194,12 @@
         "reason": "Composer-slot approval card, including the elevated browser developer-mode variant and its risk text (ADR-0009b); loads only while a live Turn awaits a permission decision."
       },
       {
+        "entry": "src/features/chat/acp/UserInputPrompt.tsx",
+        "maxGzipBytes": 2290,
+        "maxCssGzipBytes": 1441,
+        "reason": "Composer-slot question card; loads only while a live Turn awaits answers to a harness's questions. Measured JS 2138 B and CSS 1347 B (with the shared card styles) plus 7%."
+      },
+      {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",
         "maxGzipBytes": 3785,
         "reason": "Chat search dialog, folder fan-out and native search adapter; loads on the first Search chats request (rail, title bar or Ctrl+K)."

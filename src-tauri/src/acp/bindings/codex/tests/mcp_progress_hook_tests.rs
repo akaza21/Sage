@@ -377,12 +377,9 @@ fn a_hook_with_a_foreign_thread_or_an_invalid_run_is_refused() {
     );
 
     for (field, value) in [
-        ("eventName", json!("onSave")),
-        ("handlerType", json!("script")),
-        ("source", json!("elsewhere")),
+        ("eventName", json!(7)),
         ("displayOrder", json!("first")),
         ("statusMessage", json!(7)),
-        ("entries", json!([{"kind":"shout","text":"x"}])),
         ("entries", json!(["not an entry"])),
         ("id", json!("")),
     ] {
@@ -571,4 +568,35 @@ fn the_oldest_running_mcp_call_is_forgotten_beyond_the_cap() {
         .3,
         Some("still tracked".into())
     );
+}
+
+#[test]
+fn a_hook_run_from_a_newer_codex_is_still_shown() {
+    let mut adapter = running_adapter();
+    let mut newer: Value =
+        serde_json::from_slice(&hook("hook/started", json!("turn-1"), "running", json!([])))
+            .unwrap();
+    let run = newer["params"]["run"].as_object_mut().unwrap();
+    for field in ["handlerType", "executionMode", "scope", "sourcePath"] {
+        run.remove(field);
+    }
+    run.insert("eventName".into(), json!("preModelCall"));
+    run.insert("source".into(), json!("workspacePolicy"));
+    run.insert(
+        "entries".into(),
+        json!([{"kind":"notice","text":"New entry kind"}]),
+    );
+    let Ok(IngressDisposition::Events(events)) = adapter.ingest(&frame(newer), &Mapper) else {
+        panic!("a newer hook run is shown, not refused")
+    };
+    let [
+        IncomingEvent::Session {
+            event: SessionScopedEvent::Activity(activity),
+            ..
+        },
+    ] = events.as_slice()
+    else {
+        panic!("expected one hook activity, got {events:?}")
+    };
+    assert_eq!(activity.label.as_str(), "Codex hook #2 (unknown)");
 }

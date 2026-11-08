@@ -112,6 +112,7 @@ impl PermissionFixtureAdapter {
                     .map_err(|_| AdapterRuntimeError::Frame)?,
                     offered_option_kinds: None,
                     reason: None,
+                    user_input: None,
                 },
                 request_payload_digest: request_digest,
             }],
@@ -152,7 +153,9 @@ impl HarnessAdapter for PermissionFixtureAdapter {
                     EgressToken::permission_allow(request_id),
                 ))
             }
-            PermissionDecision::AllowAlways => Err(AdapterRuntimeError::PermissionIntent),
+            PermissionDecision::AllowAlways | PermissionDecision::Answer(_) => {
+                Err(AdapterRuntimeError::PermissionIntent)
+            }
             PermissionDecision::Deny => decline_egress(false),
         }
     }

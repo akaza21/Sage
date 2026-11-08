@@ -15,10 +15,15 @@ import type { AcpChatPage } from "./acpProjection";
 import type { AttachedContext } from "./attachedContext";
 
 export type {
+  AnswerUserInputRequest,
+  AnswerUserInputResponse,
   PermissionDecision,
   PermissionState,
   ResolvePermissionDecisionRequest,
   ResolvePermissionDecisionResponse,
+  UserInputAnswer,
+  UserInputQuestion,
+  UserInputRequest,
 } from "./acpPermission";
 
 type Brand<Value, Name extends string> = Value & {

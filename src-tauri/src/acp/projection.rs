@@ -239,6 +239,10 @@ pub enum ItemContent {
         category: ToolCategory,
         #[serde(skip_serializing_if = "Option::is_none")]
         reason: Option<SafeText<2048>>,
+        /// The harness's questions, when it asks the user rather than for
+        /// approval. Answers are never projected.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        user_input: Option<Box<super::intent::user_input::UserInputRequest>>,
     },
     Error {
         #[serde(skip_serializing_if = "Option::is_none")]

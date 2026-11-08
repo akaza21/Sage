@@ -48,9 +48,6 @@ const EVENT_NAMES: [(&str, &str); 11] = [
     ("subagentStop", "SubagentStop"),
     ("stop", "Stop"),
 ];
-const HANDLER_TYPES: [&str; 3] = ["command", "prompt", "agent"];
-const EXECUTION_MODES: [&str; 2] = ["sync", "async"];
-const SCOPES: [&str; 2] = ["thread", "turn"];
 const SOURCES: [(&str, &str); 11] = [
     ("system", "system"),
     ("user", "user"),
@@ -64,7 +61,6 @@ const SOURCES: [(&str, &str); 11] = [
     ("legacyManagedConfigMdm", "legacy managed config MDM"),
     ("unknown", "unknown"),
 ];
-const ENTRY_KINDS: [&str; 5] = ["warning", "stop", "feedback", "context", "error"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum HookPhase {
@@ -152,32 +148,29 @@ fn session_event(
     row: SessionActivity,
 ) -> Result<IncomingEvent, IngressError> {
     Ok(IncomingEvent::Session {
-        id: adapter
-            .scoped_id(ExternalKind::Session, thread)
-            .map_err(identity)?,
+        id: adapter.thread_session_id(thread).map_err(identity)?,
         event: SessionScopedEvent::Activity(row),
     })
 }
 
-/// Checks every field of the run summary and returns the row's label.
+/// Checks the run fields the row is built from and returns its label. The
+/// row is display-only, so fields it never shows (handler type, execution
+/// mode, scope, source path, command) are not required, and an event or
+/// source a newer Codex adds is labelled generically instead of refused.
 fn validate_run(run: &Map<String, Value>) -> Result<String, IngressError> {
     let event = text(run, "eventName", 64)?;
-    let (_, event_label) = EVENT_NAMES
+    let event_label = EVENT_NAMES
         .iter()
         .find(|(wire, _)| *wire == event)
-        .ok_or(IngressError::Malformed)?;
-    one_of(text(run, "handlerType", 32)?, &HANDLER_TYPES)?;
-    one_of(text(run, "executionMode", 32)?, &EXECUTION_MODES)?;
-    one_of(text(run, "scope", 32)?, &SCOPES)?;
-    text(run, "sourcePath", HOOK_PATH_BYTES)?;
+        .map_or("Codex", |(_, label)| label);
     let source = match run.contains_key("source") {
         true => text(run, "source", 64)?,
         false => "unknown",
     };
-    let (_, source_label) = SOURCES
+    let source_label = SOURCES
         .iter()
         .find(|(wire, _)| *wire == source)
-        .ok_or(IngressError::Malformed)?;
+        .map_or("unknown", |(_, label)| label);
     let order = run
         .get("displayOrder")
         .and_then(Value::as_i64)
@@ -188,7 +181,7 @@ fn validate_run(run: &Map<String, Value>) -> Result<String, IngressError> {
     optional(run.get("durationMs"), integer)?;
     optional(run.get("statusMessage"), wire_text)?;
     for entry in entries(run)? {
-        one_of(text(entry, "kind", 32)?, &ENTRY_KINDS)?;
+        text(entry, "kind", 32)?;
         wire_text(entry.get("text"))?;
     }
     // Codex orders handlers from zero; the label counts from one.
@@ -260,13 +253,6 @@ fn entries(
         return Err(IngressError::Malformed);
     }
     Ok(entries.iter().filter_map(Value::as_object))
-}
-
-fn one_of(value: &str, allowed: &[&str]) -> Result<(), IngressError> {
-    allowed
-        .contains(&value)
-        .then_some(())
-        .ok_or(IngressError::Malformed)
 }
 
 fn integer(value: Option<&Value>) -> Result<(), IngressError> {

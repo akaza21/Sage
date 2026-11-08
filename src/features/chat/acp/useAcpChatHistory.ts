@@ -12,7 +12,8 @@ export function useAcpChatHistory(boundChatId?: string | null) {
   const page = useStore(store, (state) => state.page);
   const scope = useStore(store, (state) => state.scope);
   const activeLoad = useStore(store, (state) => state.activeLoad);
-  const error = useStore(store, (state) => state.error);
+  const historyLoad = useStore(store, (state) => state.historyLoad);
+  const historyError = useStore(store, (state) => state.historyError);
 
   const loadEarlier = useCallback(() => {
     const projection = acpProjectionStoreFor(boundChatId).getState();
@@ -21,7 +22,7 @@ export function useAcpChatHistory(boundChatId?: string | null) {
     if (
       !projection.scope ||
       !cursor ||
-      projection.activeLoad ||
+      projection.historyLoad ||
       workbench.projectTransitioning ||
       workbench.project?.id !== projection.scope.projectId ||
       String(workbench.projectGeneration) !==
@@ -54,10 +55,10 @@ export function useAcpChatHistory(boundChatId?: string | null) {
   }, [boundChatId]);
 
   return {
-    historyLoading: activeLoad !== null,
+    historyLoading: activeLoad !== null || historyLoad !== null,
     hasEarlier: Boolean(page?.nextCursor && scope),
-    loadingEarlier: activeLoad?.cursor !== null && activeLoad !== null,
-    historyError: error,
+    loadingEarlier: historyLoad !== null,
+    historyError,
     onLoadEarlier: loadEarlier,
   };
 }
