@@ -42,6 +42,30 @@ impl AcpService {
         }
         result.map(|_| ())
     }
+    /// The owner of the live runtime that runs `session_id`, if one does.
+    pub(crate) fn live_owner_of(
+        &self,
+        session_id: &crate::acp::contract::SageAgentSessionId,
+    ) -> Option<RuntimeOwner> {
+        self.lanes()
+            .filter(|lane| lane.runtime.is_active())
+            .filter_map(|lane| lane.runtime.owner())
+            .find(|owner| owner.session_id == *session_id)
+    }
+    /// Reports `config` as the live session's, as a runtime would.
+    #[cfg(all(test, windows))]
+    pub(crate) fn report_session_config_for_test(
+        &self,
+        owner: &RuntimeOwner,
+        config: crate::acp::session_config::SessionConfig,
+    ) {
+        let lane = self
+            .lane_for(owner)
+            .expect("a runtime lane holds the owner");
+        lane.runtime.config.reserve(owner.clone());
+        lane.runtime.config.update(owner, config).unwrap();
+        lane.runtime.config.publish(owner);
+    }
     /// The session config the live runtime last reported for `owner`.
     pub(crate) fn live_session_config(
         &self,

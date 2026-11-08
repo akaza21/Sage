@@ -12,7 +12,7 @@ pub type SessionAccessModes = BTreeMap<String, SessionAccessMode>;
 /// the schema itself refuses it.
 macro_rules! default_modes {
     () => {
-        "'readOnly','ask','workspaceWrite','acceptEdits','plan','auto'"
+        "'readOnly','ask','workspaceWrite','acceptEdits','plan'"
     };
 }
 const DEFAULT_MODES: &str = default_modes!();
@@ -173,27 +173,30 @@ fn validate(modes: &SessionAccessModes) -> AppResult<()> {
 mod tests {
     use super::*;
     use crate::settings_store::SessionAccessMode::{
-        AcceptEdits, Ask, FullAccess, Plan, ReadOnly, WorkspaceWrite,
+        AcceptEdits, Ask, Auto, FullAccess, Plan, ReadOnly, WorkspaceWrite,
     };
 
     #[test]
-    fn full_access_is_never_a_stored_default() {
+    fn no_mode_that_needs_a_confirmation_is_a_stored_default() {
         let store = SettingsStore::in_memory().unwrap();
-        let modes = BTreeMap::from([("claude-agent-acp".into(), FullAccess)]);
-        assert!(store.set_session_access_modes(&modes).is_err());
-        assert!(store.session_access_modes().unwrap().is_empty());
-        // The schema refuses it too, so no other writer can store one.
-        assert!(
-            store
-                .0
-                .lock()
-                .unwrap()
-                .execute(
-                    "INSERT INTO binding_access_modes VALUES ('claude-agent-acp','fullAccess')",
-                    [],
-                )
-                .is_err()
-        );
+        for (mode, id) in [(FullAccess, "fullAccess"), (Auto, "auto")] {
+            assert!(!mode.is_default_eligible());
+            let modes = BTreeMap::from([("claude-agent-acp".into(), mode)]);
+            assert!(store.set_session_access_modes(&modes).is_err());
+            assert!(store.session_access_modes().unwrap().is_empty());
+            // The schema refuses it too, so no other writer can store one.
+            assert!(
+                store
+                    .0
+                    .lock()
+                    .unwrap()
+                    .execute(
+                        "INSERT INTO binding_access_modes VALUES ('claude-agent-acp',?1)",
+                        [id],
+                    )
+                    .is_err()
+            );
+        }
         let modes = BTreeMap::from([
             ("claude-agent-acp".into(), AcceptEdits),
             ("other".into(), Plan),
@@ -231,6 +234,28 @@ mod tests {
                 .unwrap(),
             modes
         );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn a_stored_auto_default_is_dropped_on_open() {
+        let directory = std::env::temp_dir().join(format!("sage-access-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("settings.sqlite");
+        rusqlite::Connection::open(&path)
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE binding_access_modes (binding_id TEXT PRIMARY KEY CHECK(length(binding_id) BETWEEN 1 AND 128), mode TEXT NOT NULL CHECK(mode IN ('readOnly','ask','workspaceWrite','acceptEdits','plan','auto'))) STRICT;
+                 INSERT INTO binding_access_modes VALUES ('claude-agent-acp','auto');
+                 INSERT INTO binding_access_modes VALUES ('codex-app-server','workspaceWrite');",
+            )
+            .unwrap();
+        let store = SettingsStore::open(&path).unwrap();
+        assert_eq!(
+            store.session_access_modes().unwrap(),
+            BTreeMap::from([("codex-app-server".into(), WorkspaceWrite)])
+        );
+        drop(store);
         std::fs::remove_dir_all(directory).unwrap();
     }
 

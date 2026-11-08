@@ -52,8 +52,10 @@ pub enum SessionAccessMode {
 
 impl SessionAccessMode {
     /// Whether this mode can be a binding's stored default for new chats.
+    /// A mode that needs a confirmation never can: it would reach every
+    /// chat without one.
     pub(crate) fn is_default_eligible(self) -> bool {
-        self != Self::FullAccess
+        !self.needs_confirmation()
     }
 
     /// Whether choosing this mode for a chat takes a confirmed token: the

@@ -20,6 +20,8 @@ use crate::acp::{
 use crate::settings_store::SessionAccessMode;
 use serde::{Deserialize, Serialize};
 
+mod native_confirm;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ChatAccessRequest {
@@ -191,7 +193,10 @@ fn record_turn_access(
     }
 }
 
-/// The binding of an existing session, when it offers `mode` to a chat.
+/// The binding of an existing session. A mode that needs a confirmation
+/// must be offered by it; any other is accepted while the session exists,
+/// so a chat can always step down from Full access or Auto, even while its
+/// harness is unavailable.
 fn chat_binding(
     state: &AppState,
     session_id: &SageAgentSessionId,
@@ -203,7 +208,7 @@ fn chat_binding(
         })?
         .as_str()
         .to_owned();
-    if !offers_mode(state.acp.binding_registry(), &binding_id, mode) {
+    if mode.needs_confirmation() && !offers_mode(state.acp.binding_registry(), &binding_id, mode) {
         return Err(AcpIpcError::InvalidRequest {
             message: safe_message("This harness does not offer the chosen access mode."),
         });
@@ -224,13 +229,15 @@ pub(crate) fn get_chat_access(
 }
 
 /// Sets a chat's mode when it needs no confirmation. It replaces any
-/// permissive mode the chat had, and applies from the next prompt.
+/// permissive mode the chat had. A live session is moved to it at once,
+/// when no turn is running; otherwise it applies from the next prompt,
+/// which always selects the chat's mode first.
 #[tauri::command]
-pub(crate) fn set_chat_access(
+pub(crate) async fn set_chat_access(
     state: State<'_, AppState>,
     request: ChooseChatAccessRequest,
 ) -> Result<(), AcpIpcError> {
-    chat_binding(&state, &request.session_id, request.mode)?;
+    let binding_id = chat_binding(&state, &request.session_id, request.mode)?;
     if request.mode.needs_confirmation() {
         return Err(AcpIpcError::InvalidRequest {
             message: safe_message("This access mode needs a confirmation."),
@@ -243,7 +250,14 @@ pub(crate) fn set_chat_access(
             request.mode,
             crate::persistence::now_millis(),
         )
-        .map_err(|_| access_unreadable())
+        .map_err(|_| access_unreadable())?;
+    if let Some(owner) = state.acp.live_owner_of(&request.session_id)
+        && let Err(error) = select_session_mode(&state, owner, &binding_id, request.mode)
+    {
+        // A running turn keeps its mode; the next prompt selects this one.
+        tracing::debug!(?error, "Chat access applies from the next prompt");
+    }
+    Ok(())
 }
 
 /// Opens the confirmation of a permissive mode and returns its token.
@@ -272,13 +286,22 @@ pub(crate) fn prepare_chat_access(
     })
 }
 
-/// Spends a confirmation to give the chat a permissive mode.
+/// Spends a confirmation to give the chat a permissive mode, once the person
+/// has also allowed it in a native dialog.
 #[tauri::command]
-pub(crate) fn grant_chat_access(
+pub(crate) async fn grant_chat_access(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: GrantChatAccessRequest,
 ) -> Result<(), AcpIpcError> {
     let binding_id = chat_binding(&state, &request.session_id, request.mode)?;
+    if !request.mode.needs_confirmation()
+        || !native_confirm::confirmed(&app, &state, &request.session_id, request.mode).await
+    {
+        return Err(AcpIpcError::Rejected {
+            message: safe_message("This access was not allowed."),
+        });
+    }
     state
         .settings
         .grant_chat_access(
