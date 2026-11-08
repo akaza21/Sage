@@ -1,4 +1,9 @@
 mod admission;
+#[allow(
+    dead_code,
+    reason = "the generic ACP runtime routes elicitation/create here next; Codex and Pi adopt the shared model in their own threads"
+)]
+pub(crate) mod elicitation;
 mod environment;
 mod handshake;
 mod launch;

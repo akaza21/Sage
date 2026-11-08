@@ -205,7 +205,7 @@ fn server_request_resolved_withdraws_a_question_card() {
 #[test]
 fn unanswerable_questions_are_declined_at_once() {
     let question = |id: &str| json!({"id": id, "header": "", "question": "?", "options": null});
-    let over_cap = (0..5)
+    let over_cap = (0..9)
         .map(|index| question(&format!("q{index}")))
         .collect::<Vec<_>>();
     let repeated_id = vec![question("q"), question("q")];

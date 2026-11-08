@@ -274,6 +274,17 @@ export interface AgentSessionProjection {
   legacy: boolean;
 }
 
+/** Most notices one session keeps (Rust `SESSION_NOTICES_MAX`). */
+export const SESSION_NOTICES_MAX = 16;
+
+/** A harness notice about the session rather than one Turn. */
+export interface SessionNotice {
+  level: "info" | "warning" | "error";
+  text: string;
+  /** Who raised it, such as "codex config". */
+  source: string | null;
+}
+
 export interface AcpChatPage {
   sessionConfig?: AcpSessionConfig | null;
   goal?: AcpGoalState;
@@ -294,4 +305,6 @@ export interface AcpChatPage {
    * projection revision, so child activity never stales a user action.
    */
   childProjectionEpoch?: number;
+  /** The current session's newest notices, oldest first (at most 16). */
+  sessionNotices?: readonly SessionNotice[];
 }

@@ -195,9 +195,15 @@
       },
       {
         "entry": "src/features/chat/acp/UserInputPrompt.tsx",
-        "maxGzipBytes": 2290,
-        "maxCssGzipBytes": 1441,
-        "reason": "Composer-slot question card; loads only while a live Turn awaits answers to a harness's questions. Measured JS 2138 B and CSS 1347 B (with the shared card styles) plus 7%."
+        "maxGzipBytes": 3370,
+        "maxCssGzipBytes": 1528,
+        "reason": "Composer-slot question and link card with answer-limit checks; loads only while a Turn awaits a harness's questions. Measured JS 3149 B, CSS 1428 B (shared card styles) plus 7%."
+      },
+      {
+        "entry": "src/features/chat/acp/SessionNoticeStrip.tsx",
+        "maxGzipBytes": 621,
+        "maxCssGzipBytes": 447,
+        "reason": "Dismissible strip of the current session's harness notices, dismissals scoped per session; loads only when the session has a notice. Measured JS 580 B and CSS 417 B plus 7%."
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",

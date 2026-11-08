@@ -104,6 +104,7 @@ fn parse(params: &Map<String, Value>) -> Option<UserInputRequest> {
     Some(UserInputRequest {
         questions: BoundedVec::new("userInputQuestions", questions).ok()?,
         auto_resolution_ms,
+        url: None,
     })
 }
 
@@ -127,12 +128,14 @@ fn question(value: &Value) -> Option<UserInputQuestion> {
         ),
     };
     Some(UserInputQuestion {
-        id: RequiredText::new("userInputQuestionId", string(value, "id")?).ok()?,
-        header: SafeText::new("userInputHeader", sanitize(string(value, "header")?)).ok()?,
-        question: SafeText::new("userInputQuestion", sanitize(string(value, "question")?)).ok()?,
         options,
         allows_other: flag(value, "isOther")?,
         secret: flag(value, "isSecret")?,
+        ..UserInputQuestion::text(
+            RequiredText::new("userInputQuestionId", string(value, "id")?).ok()?,
+            SafeText::new("userInputHeader", sanitize(string(value, "header")?)).ok()?,
+            SafeText::new("userInputQuestion", sanitize(string(value, "question")?)).ok()?,
+        )
     })
 }
 
@@ -146,6 +149,7 @@ fn option(value: &Value) -> Option<UserInputOption> {
             sanitize(string(value, "description")?),
         )
         .ok()?,
+        value: None,
     })
 }
 

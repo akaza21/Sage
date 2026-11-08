@@ -15,6 +15,7 @@ import type {
 } from "../domain/acp";
 import type { AcpGoalState } from "../domain/acpGoal";
 import { safeTurn } from "./acpDesktopResponseTurns";
+import { safeSessionNotices } from "./acpSessionNotices";
 
 const ACP_PAGE_LIMITS = {
   sessions: 32,
@@ -160,6 +161,7 @@ export function safeAcpMutationResponse(
   // Display-only extras: an unsafe value is dropped, never trusted.
   const forkedFromTurnId = safeIdentifier(projection.forkedFromTurnId);
   const epoch = projection.childProjectionEpoch as number;
+  const sessionNotices = safeSessionNotices(projection.sessionNotices);
   if (
     forkedFrom === null ||
     !projectId ||
@@ -261,6 +263,7 @@ export function safeAcpMutationResponse(
       }),
       ...(Number.isSafeInteger(epoch) &&
         epoch > 0 && { childProjectionEpoch: epoch }),
+      ...(sessionNotices.length > 0 && { sessionNotices }),
     },
   };
 }

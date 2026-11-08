@@ -30,7 +30,7 @@ import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import "./chat-home.css";
 import "./chat-transcript-polish.css";
 import { composerWorkspaceName } from "./composerChrome";
-import { ForkPart } from "./lazyParts";
+import { ForkPart, NoticePart } from "./lazyParts";
 import { isNewProjectChat } from "./newProjectChat";
 import { TranscriptInteractionsGate, TranscriptPart } from "./transcriptLazy";
 
@@ -188,6 +188,13 @@ export function ChatTranscript({
                   part="ForkDivider"
                   parentChatId={forkedFrom}
                   forkTurnId={page.forkedFromTurnId}
+                />
+              ) : null}
+              {page.sessionNotices?.length ? (
+                <NoticePart
+                  part="SessionNoticeStrip"
+                  session={page.chatId + page.currentSessionId}
+                  notices={page.sessionNotices}
                 />
               ) : null}
               <AcpChatProjection
