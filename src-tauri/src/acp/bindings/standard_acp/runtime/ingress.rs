@@ -14,14 +14,14 @@ use crate::acp::{
 };
 
 use super::super::{
-    StandardAcpHandshakeError, profile_for,
+    StandardAcpHandshakeError,
     sanitize::normalized_text,
     translator::{
         AdapterEvent as StandardEvent, PromptTerminal, ResourceMapper as StandardResourceMapper,
         StandardAcpTranslator,
     },
 };
-use super::{ActiveSession, DeferredPrompt, OpenCodeRuntime, PendingRequest, map_translation};
+use super::{ActiveSession, DeferredPrompt, PendingRequest, StandardAcpRuntime, map_translation};
 
 mod client_fs;
 mod created_file;
@@ -30,7 +30,7 @@ pub(super) mod permission;
 mod safety;
 pub(super) use permission::permission_egress;
 
-impl OpenCodeRuntime {
+impl StandardAcpRuntime {
     pub(super) fn ingest_response(
         &mut self,
         value: Value,
@@ -42,6 +42,7 @@ impl OpenCodeRuntime {
         let batch = match pending {
             PendingRequest::Initialize => self.initialize_response(value),
             PendingRequest::NewSession => self.new_session_response(value),
+            PendingRequest::Authenticate => self.authenticate_response(value),
             PendingRequest::Prompt => self.prompt_response(value, id),
             PendingRequest::SetMode => self.set_mode_response(value),
             PendingRequest::CloseSession => self.close_session_response(value),
@@ -56,11 +57,17 @@ impl OpenCodeRuntime {
         self.handshake
             .accept_initialize(&value)
             .map_err(handshake_error)?;
+        self.sign_in.accept_initialize(&value);
         let mut capabilities = capabilities()?;
         capabilities.prompt_resources = value
             .pointer("/result/agentCapabilities/promptCapabilities/embeddedContext")
             .and_then(Value::as_bool)
             == Some(true);
+        if !self.profile.close_characterised {
+            capabilities.close_session = value
+                .pointer("/result/agentCapabilities/sessionCapabilities/close")
+                .is_some_and(Value::is_object);
+        }
         self.capabilities = Some(capabilities.clone());
         AdapterBatch::new(vec![SharedEvent::Initialized { capabilities }], Vec::new())
     }
@@ -86,16 +93,14 @@ impl OpenCodeRuntime {
                     .collect()
             })
             .unwrap_or_default();
-        let external_id = self
-            .handshake
-            .accept_new_session(&value)
-            .map_err(handshake_error)
-            .and_then(|id| {
+        let external_id = match self.handshake.accept_new_session(&value) {
+            Err(StandardAcpHandshakeError::SignInRequired) => return self.sign_in_required(),
+            accepted => accepted.map_err(handshake_error).and_then(|id| {
                 ExternalId::new("externalSessionId", id).map_err(|_| AdapterRuntimeError::Frame)
-            })?;
-        let profile = profile_for("opencode").ok_or(AdapterRuntimeError::Frame)?;
-        let translator =
-            StandardAcpTranslator::new(profile, external_id.as_str()).map_err(map_translation)?;
+            })?,
+        };
+        let translator = StandardAcpTranslator::new(self.profile, external_id.as_str())
+            .map_err(map_translation)?;
         self.active = Some(ActiveSession {
             commands: std::sync::Arc::default(),
             external_id: external_id.clone(),
@@ -138,11 +143,7 @@ impl OpenCodeRuntime {
         deferred: DeferredPrompt,
     ) -> Result<SharedEvent, AdapterRuntimeError> {
         let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
-        let turn_id = ExternalId::new(
-            "externalTurnId",
-            format!("opencode-deferred-{}", deferred.request_id),
-        )
-        .map_err(|_| AdapterRuntimeError::Frame)?;
+        let turn_id = self.turn_external_id("deferred", deferred.request_id)?;
         Ok(SharedEvent::Turn {
             id: identity(
                 self.binding_digest,
@@ -291,7 +292,7 @@ impl OpenCodeRuntime {
         )
     }
 
-    fn turn_identity(&self) -> Result<AdapterIdentity, AdapterRuntimeError> {
+    pub(super) fn turn_identity(&self) -> Result<AdapterIdentity, AdapterRuntimeError> {
         let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
         let turn = active.turn.as_ref().ok_or(AdapterRuntimeError::Frame)?;
         Ok(identity(
@@ -304,7 +305,7 @@ impl OpenCodeRuntime {
         ))
     }
 
-    fn item_identity(
+    pub(super) fn item_identity(
         &self,
         external_id: ExternalId,
     ) -> Result<AdapterIdentity, AdapterRuntimeError> {
@@ -387,13 +388,13 @@ fn turn_state(terminal: PromptTerminal) -> TurnState {
     }
 }
 
-fn unsupported(method: &str) -> Result<NormalizedPayload, AdapterRuntimeError> {
+fn unsupported(label: &str, method: &str) -> Result<NormalizedPayload, AdapterRuntimeError> {
     Ok(NormalizedPayload::Unsupported {
         external_kind: normalized_text("externalKind", method)
             .map_err(|_| AdapterRuntimeError::Frame)?,
         summary: normalized_text(
             "unsupportedSummary",
-            "OpenCode ACP message is outside the mapped standard ACP surface",
+            &format!("{label} ACP message is outside the mapped standard ACP surface"),
         )
         .map_err(|_| AdapterRuntimeError::Frame)?,
     })

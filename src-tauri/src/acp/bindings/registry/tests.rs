@@ -75,7 +75,7 @@ fn opencode_registry_resolution_constructs_an_exact_direct_native_launch() {
     .expect("project root");
     let mut runtime = admitted
         .into_factory(
-            BindingProjectRoot::OpenCode(project_root),
+            BindingProjectRoot::StandardAcp(project_root),
             crate::acp::mcp::McpAdmission::default(),
         )
         .construct(
@@ -182,7 +182,7 @@ fn opencode_factory_refuses_runtime_drift_immediately_before_launch() {
     .expect("project root");
     let mut runtime = admitted
         .into_factory(
-            BindingProjectRoot::OpenCode(project_root),
+            BindingProjectRoot::StandardAcp(project_root),
             crate::acp::mcp::McpAdmission::default(),
         )
         .construct(

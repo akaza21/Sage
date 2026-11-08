@@ -17,6 +17,7 @@ pub(crate) struct StandardAcpHandshake {
     stage: Stage,
     mcp: McpAdmission,
     mcp_capabilities: McpCapabilities,
+    session_request_id: u64,
 }
 
 impl StandardAcpHandshake {
@@ -26,6 +27,7 @@ impl StandardAcpHandshake {
             stage: Stage::New,
             mcp: McpAdmission::default(),
             mcp_capabilities: McpCapabilities::default(),
+            session_request_id: 2,
         }
     }
 
@@ -41,18 +43,23 @@ impl StandardAcpHandshake {
             return Err(StandardAcpHandshakeError::Operation);
         }
         self.stage = Stage::Initializing;
+        let mut capabilities = json!({
+            "fs": {
+                "readTextFile": self.profile.client_capabilities.read_text_file,
+                "writeTextFile": self.profile.client_capabilities.write_text_file,
+            }
+        });
+        if self.profile.elicitation {
+            capabilities["terminal"] = Value::Bool(false);
+            capabilities["elicitation"] = super::elicitation::client_capability();
+        }
         Ok(json!({
             "jsonrpc": "2.0",
             "id": 1,
             "method": "initialize",
             "params": {
                 "protocolVersion": 1,
-                "clientCapabilities": {
-                    "fs": {
-                        "readTextFile": self.profile.client_capabilities.read_text_file,
-                        "writeTextFile": self.profile.client_capabilities.write_text_file,
-                    }
-                },
+                "clientCapabilities": capabilities,
                 "clientInfo": { "name": "Sage", "version": env!("CARGO_PKG_VERSION") }
             }
         }))
@@ -84,7 +91,7 @@ impl StandardAcpHandshake {
         self.stage = Stage::OpeningSession;
         Ok(json!({
             "jsonrpc": "2.0",
-            "id": 2,
+            "id": self.session_request_id,
             "method": "session/new",
             "params": { "cwd": cwd, "mcpServers": self.mcp.wire(self.mcp_capabilities) }
         }))
@@ -95,7 +102,7 @@ impl StandardAcpHandshake {
         response: &Value,
     ) -> Result<String, StandardAcpHandshakeError> {
         if self.stage != Stage::OpeningSession
-            || response.get("id").and_then(Value::as_u64) != Some(2)
+            || response.get("id").and_then(Value::as_u64) != Some(self.session_request_id)
         {
             return Err(StandardAcpHandshakeError::Frame);
         }
@@ -112,6 +119,16 @@ impl StandardAcpHandshake {
             .to_owned();
         self.stage = Stage::Active;
         Ok(session_id)
+    }
+
+    /// After the agent refused `session/new` for sign-in and the client
+    /// authenticated, the next `session/new` carries request id `id`.
+    pub(crate) fn reopen_session_as(&mut self, id: u64) -> Result<(), StandardAcpHandshakeError> {
+        if self.stage != Stage::Ready || id <= self.session_request_id {
+            return Err(StandardAcpHandshakeError::Operation);
+        }
+        self.session_request_id = id;
+        Ok(())
     }
 }
 

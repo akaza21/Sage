@@ -7,13 +7,13 @@ use crate::acp::{
 
 use super::super::super::translator::AdapterEvent as StandardEvent;
 use super::super::{
-    OpenCodeRuntime, PermissionIntent, PermissionReply, PermissionState, outbound,
+    PermissionIntent, PermissionReply, PermissionState, StandardAcpRuntime, outbound,
     permission_identity,
 };
 use super::created_file::created_file_content;
 use super::path::{workspace_edit_path, workspace_edit_target};
 
-impl OpenCodeRuntime {
+impl StandardAcpRuntime {
     pub(super) fn ingest_permission_request(
         &mut self,
         value: Value,

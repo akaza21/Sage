@@ -57,8 +57,9 @@ pub struct AppState {
 impl AppState {
     pub(crate) fn refresh_harnesses_after_window_shown(app: tauri::AppHandle) {
         tauri::async_runtime::spawn_blocking(move || {
-            let presence = crate::harness_discovery::discover_installed_harness_presence();
             let state = app.state::<AppState>();
+            crate::settings_commands::custom_acp_agents::apply_saved(&state);
+            let presence = crate::harness_discovery::discover_installed_harness_presence();
             state.harnesses.apply_presence(presence.clone());
             use tauri::Emitter;
             let _ = app.emit(

@@ -7,14 +7,14 @@ use crate::acp::{
 pub(super) enum RootPolicy {
     Codex,
     Claude,
-    OpenCode,
+    StandardAcp,
     Pi,
 }
 
 pub(crate) enum BindingProjectRoot {
     Codex(CodexProjectRootAuthority),
     Claude(crate::project_registry::ProjectRootAuthority),
-    OpenCode(crate::project_registry::ProjectRootAuthority),
+    StandardAcp(crate::project_registry::ProjectRootAuthority),
     Pi(crate::project_registry::ProjectRootAuthority),
 }
 
@@ -49,7 +49,7 @@ impl BindingProjectRoot {
         match self {
             Self::Codex(root) => root.project_id() == project_id,
             Self::Claude(root) => root.scope().0 == project_id,
-            Self::OpenCode(root) => root.scope().0 == project_id,
+            Self::StandardAcp(root) => root.scope().0 == project_id,
             Self::Pi(root) => root.scope().0 == project_id,
         }
     }
@@ -62,7 +62,7 @@ impl BindingProjectRoot {
             Self::Claude(root) => root
                 .revalidate()
                 .map_err(|_| BindingProjectRootError::Revalidation),
-            Self::OpenCode(root) => root
+            Self::StandardAcp(root) => root
                 .revalidate()
                 .map_err(|_| BindingProjectRootError::Revalidation),
             Self::Pi(root) => root
@@ -75,7 +75,7 @@ impl BindingProjectRoot {
         let path = match self {
             Self::Codex(root) => root.as_path(),
             Self::Claude(root) => root.as_path(),
-            Self::OpenCode(root) => root.as_path(),
+            Self::StandardAcp(root) => root.as_path(),
             Self::Pi(root) => root.as_path(),
         };
         let path = path.to_str().ok_or(BindingProjectRootError::NonUnicode)?;
@@ -93,7 +93,7 @@ impl BindingProjectRoot {
     ) -> Result<&CodexProjectRootAuthority, RegistryAdmissionUnavailable> {
         match self {
             Self::Codex(root) => Ok(root),
-            Self::Claude(_) | Self::OpenCode(_) => Err(RegistryAdmissionUnavailable::Drift),
+            Self::Claude(_) | Self::StandardAcp(_) => Err(RegistryAdmissionUnavailable::Drift),
             Self::Pi(_) => Err(RegistryAdmissionUnavailable::Drift),
         }
     }
@@ -108,7 +108,7 @@ impl BindingProjectRoot {
                 root_id: root.scope().2.clone(),
                 canonical_native_root: root.as_path().to_owned(),
             },
-            Self::OpenCode(root) => ConfiguredResourceRoot {
+            Self::StandardAcp(root) => ConfiguredResourceRoot {
                 root_id: root.scope().2.clone(),
                 canonical_native_root: root.as_path().to_owned(),
             },

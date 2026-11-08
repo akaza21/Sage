@@ -11,11 +11,11 @@ use crate::acp::{
 };
 
 use super::super::super::translator::AdapterEvent as StandardEvent;
-use super::super::{OpenCodeRuntime, PermissionReply, PermissionState, map_translation};
+use super::super::{PermissionReply, PermissionState, StandardAcpRuntime, map_translation};
 use super::created_file::attach_completed_created_file;
 use super::{MapperBridge, unsupported};
 
-impl OpenCodeRuntime {
+impl StandardAcpRuntime {
     pub(in super::super) fn ingest_notification(
         &mut self,
         mut value: Value,
@@ -26,6 +26,10 @@ impl OpenCodeRuntime {
             return AdapterBatch::new(vec![SharedEvent::IgnoredLate], Vec::new());
         }
         if value.get("id").is_some() {
+            if self.is_elicitation(&value) {
+                return self
+                    .ingest_elicitation(value, request_digest.ok_or(AdapterRuntimeError::Frame)?);
+            }
             if value.get("method").and_then(Value::as_str) != Some("session/request_permission") {
                 return self.ingest_client_fs_request(value);
             }
@@ -40,7 +44,10 @@ impl OpenCodeRuntime {
             .ok_or(AdapterRuntimeError::Frame)?;
         if method != "session/update" {
             return AdapterBatch::new(
-                vec![SharedEvent::Unsupported(unsupported(method)?)],
+                vec![SharedEvent::Unsupported(unsupported(
+                    self.profile.agent_label,
+                    method,
+                )?)],
                 Vec::new(),
             );
         }
@@ -101,27 +108,26 @@ impl OpenCodeRuntime {
             let cancel = self.cancel()?;
             self.safety_alerted = true;
             self.close_pending = true;
-            let (code, message) = match access_mode {
-                Some(crate::settings_store::SessionAccessMode::WorkspaceWrite) => (
-                    "workspaceWriteSafetyViolation",
-                    "OpenCode completed a non-read tool without Sage approval in WorkspaceWrite. The Turn was stopped; inspect the Project for changes.",
-                ),
-                Some(crate::settings_store::SessionAccessMode::Ask) => (
-                    "askSafetyViolation",
-                    "OpenCode completed a non-read tool without Sage approval in Ask mode. The Turn was stopped; inspect the Project for changes.",
-                ),
-                _ => (
-                    "readOnlySafetyViolation",
-                    "OpenCode completed a non-read tool without Sage approval in Read-only. The Turn was stopped; inspect the Project for changes.",
-                ),
+            let (code, mode) = match access_mode {
+                Some(crate::settings_store::SessionAccessMode::WorkspaceWrite) => {
+                    ("workspaceWriteSafetyViolation", "WorkspaceWrite")
+                }
+                Some(crate::settings_store::SessionAccessMode::Ask) => {
+                    ("askSafetyViolation", "Ask mode")
+                }
+                _ => ("readOnlySafetyViolation", "Read-only"),
             };
+            let message = format!(
+                "{} completed a non-read tool without Sage approval in {mode}. The Turn was stopped; inspect the Project for changes.",
+                self.profile.agent_label
+            );
             return AdapterBatch::new(
                 vec![
                     SharedEvent::Error(NormalizedPayload::Error {
                         kind: None,
                         code: SafeText::new("errorCode", code)
                             .map_err(|_| AdapterRuntimeError::Frame)?,
-                        message: SafeText::new("errorMessage", message)
+                        message: SafeText::new("errorMessage", &message)
                             .map_err(|_| AdapterRuntimeError::Frame)?,
                         retryable: false,
                     }),

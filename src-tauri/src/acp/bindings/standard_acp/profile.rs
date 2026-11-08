@@ -13,6 +13,18 @@ pub(crate) enum StandardAcpLaunch {
 pub(crate) enum StandardAcpVersionShape {
     DottedNumeric,
     DateBuild,
+    /// A user-defined agent: Sage never runs it to read a version, so the
+    /// admitted version is empty.
+    Unprobed,
+}
+
+/// What the launch environment adds beyond the baseline and passthrough keys.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StandardAcpLaunchPolicy {
+    Inherit,
+    /// OpenCode reads its permission policy from `OPENCODE_CONFIG_CONTENT`;
+    /// Sage pins every non-read action to `ask`.
+    OpenCodeAskConfig,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,6 +57,16 @@ pub(crate) struct StandardAcpProfile {
     pub(crate) vendor_updates: &'static [(&'static str, UnmappedUpdate)],
     pub(crate) passthrough_env: &'static [&'static str],
     pub(crate) remediation: &'static str,
+    /// Names the agent in Sage's own notices ("OpenCode completed ...").
+    pub(crate) agent_label: &'static str,
+    /// The session mode every prompt runs in, when the agent advertises it.
+    pub(crate) session_mode: Option<&'static str>,
+    pub(crate) launch_policy: StandardAcpLaunchPolicy,
+    /// Whether the runtime advertises and answers `elicitation/create`.
+    pub(crate) elicitation: bool,
+    /// Characterisation proved `session/close` even where the agent does not
+    /// advertise it; otherwise only an advertised close is used.
+    pub(crate) close_characterised: bool,
 }
 
 const GEMINI_PASSTHROUGH_ENV: &[&str] = &[
@@ -125,6 +147,11 @@ pub(crate) const PROFILES: &[StandardAcpProfile] = &[
         vendor_updates: CLAUDE_VENDOR_UPDATES,
         passthrough_env: &[],
         remediation: "Sign in by running claude auth login. Sage reuses that login from your Claude configuration directory.",
+        agent_label: "Claude",
+        session_mode: None,
+        launch_policy: StandardAcpLaunchPolicy::Inherit,
+        elicitation: false,
+        close_characterised: true,
     },
     StandardAcpProfile {
         harness_id: "gemini-cli",
@@ -144,6 +171,11 @@ pub(crate) const PROFILES: &[StandardAcpProfile] = &[
         vendor_updates: GEMINI_VENDOR_UPDATES,
         passthrough_env: GEMINI_PASSTHROUGH_ENV,
         remediation: "Sign in by running gemini, or set GOOGLE_CLOUD_PROJECT before starting Sage if the account is a Google Workspace account.",
+        agent_label: "Gemini CLI",
+        session_mode: None,
+        launch_policy: StandardAcpLaunchPolicy::Inherit,
+        elicitation: false,
+        close_characterised: true,
     },
     StandardAcpProfile {
         harness_id: "cursor-agent",
@@ -163,6 +195,11 @@ pub(crate) const PROFILES: &[StandardAcpProfile] = &[
         vendor_updates: CURSOR_VENDOR_UPDATES,
         passthrough_env: &[],
         remediation: "Sign in by running cursor-agent login.",
+        agent_label: "Cursor Agent",
+        session_mode: None,
+        launch_policy: StandardAcpLaunchPolicy::Inherit,
+        elicitation: false,
+        close_characterised: true,
     },
     StandardAcpProfile {
         harness_id: "opencode",
@@ -187,6 +224,11 @@ pub(crate) const PROFILES: &[StandardAcpProfile] = &[
         vendor_updates: OPENCODE_VENDOR_UPDATES,
         passthrough_env: &[],
         remediation: "OpenCode ACP is unavailable in Sage until its live characterization is complete.",
+        agent_label: "OpenCode",
+        session_mode: Some("build"),
+        launch_policy: StandardAcpLaunchPolicy::OpenCodeAskConfig,
+        elicitation: false,
+        close_characterised: true,
     },
 ];
 
@@ -201,6 +243,7 @@ impl StandardAcpVersionShape {
         match self {
             Self::DottedNumeric => dotted_numeric(value),
             Self::DateBuild => date_build(value),
+            Self::Unprobed => value.is_empty(),
         }
     }
 }

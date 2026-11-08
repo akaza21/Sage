@@ -16,6 +16,7 @@ mod browser_download_folder;
 mod browser_preferences;
 mod browser_site_permissions;
 mod chat_read_marks;
+mod custom_acp_agents;
 mod editor_settings;
 mod new_chat_defaults;
 mod side_chat;
@@ -28,6 +29,10 @@ pub use browser_site_permissions::{MAX_SITE_ORIGIN_BYTES, MAX_SITE_PERMISSIONS};
 #[cfg(test)]
 pub(crate) use chat_read_marks::MAX_CHAT_READ_MARKS;
 pub use chat_read_marks::{ChatReadMark, ChatReadMarkWrite, ChatReadMarks};
+pub use custom_acp_agents::{
+    CustomAcpAgent, CustomAcpAgentDraft, MAX_CUSTOM_ACP_AGENTS, custom_acp_id, custom_acp_slot,
+    validate_custom_acp_agent,
+};
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
 pub use new_chat_defaults::NewChatDefaults;
 
@@ -130,6 +135,7 @@ impl SettingsStore {
             browser_site_permissions::migrate(&migration)?;
             terminal_dock::migrate(&migration)?;
             new_chat_defaults::migrate(&migration)?;
+            custom_acp_agents::migrate(&migration)?;
             migration.commit()?;
         }
         Ok(Self(Arc::new(Mutex::new(connection))))
