@@ -95,16 +95,9 @@ use codex_discovery::CodexDiscoveryManager;
 pub(crate) use codex_launch_failure::CodexLaunchSetupError;
 use configuration::ServiceConfiguration;
 use intent_snapshot::load_intent_snapshot;
-use renderer_recreation::RendererRecreationNativeSnapshot;
+pub(crate) use renderer_recreation::RendererRecreationUsage;
 pub(crate) use renderer_recreation_orchestrator::RendererRecreationReloadLifecycle;
 
-/// The native counters a renderer recreation snapshot records.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct RendererRecreationUsage {
-    runtime_slot_active: u8,
-    live_trees: u32,
-    live_descendants: u32,
-}
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 use runtime_identity::CodexRuntimeIdentityLedger;
 use runtime_slot::RuntimeSlot;
@@ -394,48 +387,6 @@ impl AcpService {
         if let Some(notifier) = &self.notifier {
             let _ = notifier.acknowledge_authoritative_bootstrap();
         }
-    }
-
-    pub(crate) fn renderer_recreation_native_snapshot(
-        &self,
-        project_id: &SageProjectId,
-        chat_id: &SageChatId,
-    ) -> Result<RendererRecreationNativeSnapshot, StoreError> {
-        let usage = self.renderer_recreation_usage();
-        self.renderer_recreation_snapshot_on(
-            &self.database.connection(),
-            project_id,
-            chat_id,
-            usage,
-        )
-    }
-
-    /// Live runtimes and process-tree reservations, read without the store.
-    pub(crate) fn renderer_recreation_usage(&self) -> RendererRecreationUsage {
-        let (live_trees, live_descendants) =
-            crate::acp::process::TreeCapacityPool::global().observation_usage();
-        RendererRecreationUsage {
-            runtime_slot_active: u8::try_from(self.live_runtime_count()).unwrap_or(u8::MAX),
-            live_trees,
-            live_descendants,
-        }
-    }
-
-    pub(crate) fn renderer_recreation_snapshot_on(
-        &self,
-        connection: &rusqlite::Connection,
-        project_id: &SageProjectId,
-        chat_id: &SageChatId,
-        usage: RendererRecreationUsage,
-    ) -> Result<RendererRecreationNativeSnapshot, StoreError> {
-        RendererRecreationNativeSnapshot::capture(
-            connection,
-            project_id,
-            chat_id,
-            usage.runtime_slot_active,
-            usage.live_trees,
-            usage.live_descendants,
-        )
     }
 
     #[cfg(test)]
