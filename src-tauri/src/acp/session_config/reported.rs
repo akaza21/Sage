@@ -64,3 +64,15 @@ pub(crate) fn changes(old: &SessionConfig, new: &SessionConfig) -> Vec<ConfigMut
         .filter(|value| current_value(old, value).as_ref() != Some(value))
         .collect()
 }
+
+/// Whether `a` and `b` set the same mode or option.
+pub(crate) fn same_target(a: &ConfigMutation, b: &ConfigMutation) -> bool {
+    match (a, b) {
+        (ConfigMutation::Mode(_), ConfigMutation::Mode(_)) => true,
+        (
+            ConfigMutation::Option { config_id: a, .. },
+            ConfigMutation::Option { config_id: b, .. },
+        ) => a == b,
+        _ => false,
+    }
+}

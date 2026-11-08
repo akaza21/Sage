@@ -95,6 +95,12 @@ struct Entry {
     restore_pending: bool,
     /// The runtime started a new harness session rather than resuming one.
     new_session: bool,
+    /// The restore has started, so what the harness reports is a choice.
+    restoring: bool,
+    /// Stored choices the restore has not reached yet. What the harness
+    /// reports for them is not recorded, so a value it resets on its own
+    /// (an effort a model change resets) does not replace the stored one.
+    held: Vec<ConfigMutation>,
 }
 #[derive(Default)]
 struct State {
@@ -133,6 +139,8 @@ impl ConfigChannel {
             tombstone: None,
             restore_pending: true,
             new_session: false,
+            restoring: false,
+            held: Vec::new(),
         });
         state.pending = None;
     }
@@ -170,13 +178,20 @@ impl ConfigChannel {
                 old.config_revision.next()
             })?;
         // Once restored, what the harness reports itself (a mode it switched
-        // to, an effort a model change reset) is the session's choice too.
-        let reported = entry
+        // to, an effort a model change reset) is the session's choice too,
+        // except for a stored choice the restore has yet to reapply.
+        let mut reported = entry
             .overlay
             .as_ref()
-            .filter(|_| entry.live && !entry.restore_pending)
+            .filter(|_| entry.live && entry.restoring)
             .map(|old| super::reported::changes(&old.config, &config))
             .unwrap_or_default();
+        reported.retain(|value| {
+            !entry
+                .held
+                .iter()
+                .any(|held| super::reported::same_target(held, value))
+        });
         entry.overlay = Some(SessionConfigOverlay {
             sage_agent_session_id: owner.session_id.clone(),
             runtime_epoch: owner.runtime_epoch,
@@ -210,8 +225,17 @@ impl ConfigChannel {
             entry.new_session = true;
         }
     }
+    /// The restore has reached `choice`: what the harness reports for it is
+    /// recorded again.
+    pub(crate) fn release(&self, owner: &RuntimeOwner, choice: &ConfigMutation) {
+        if let Some(entry) = self.lock().entry.as_mut().filter(|e| &e.owner == owner) {
+            entry
+                .held
+                .retain(|held| !super::reported::same_target(held, choice));
+        }
+    }
     /// Makes a partly restored runtime finish its restore before its next
-    /// prompt.
+    /// prompt. The choices it has not reached stay held.
     pub(crate) fn rearm_restore(&self, owner: &RuntimeOwner) {
         if let Some(entry) = self.lock().entry.as_mut().filter(|e| &e.owner == owner) {
             entry.restore_pending = true;
@@ -235,10 +259,12 @@ impl ConfigChannel {
     /// choices have not been reapplied, with whether it started a new
     /// session. It stays pending until `ready` accepts what the session
     /// reports, so a harness that reports its options after activation is
-    /// restored before its next prompt instead.
+    /// restored before its next prompt instead. `held` are the stored
+    /// choices it is about to reapply; see `release`.
     pub(crate) fn take_restore(
         &self,
         owner: &RuntimeOwner,
+        held: &[ConfigMutation],
         ready: impl FnOnce(&SessionConfig) -> bool,
     ) -> Option<(SessionConfigOverlay, bool)> {
         let mut state = self.lock();
@@ -248,6 +274,8 @@ impl ConfigChannel {
             .filter(|e| e.live && e.restore_pending && &e.owner == owner)?;
         let overlay = entry.overlay.as_ref().filter(|o| ready(&o.config))?.clone();
         entry.restore_pending = false;
+        entry.restoring = true;
+        entry.held = held.to_vec();
         Some((overlay, entry.new_session))
     }
     pub(crate) fn remove(&self, owner: &RuntimeOwner) -> Result<(), String> {

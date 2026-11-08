@@ -12,7 +12,7 @@ use crate::acp::{
     runtime::HostError,
     scheduler::RuntimeOwner,
     session_config::{
-        ChoiceRecorder, ConfigIntent, ConfigMutation, SessionConfig, choices,
+        ChoiceRecorder, ConfigIntent, ConfigMutation, SessionConfig, SessionConfigOverlay, choices,
         reported::current_value,
     },
 };
@@ -136,12 +136,26 @@ impl AcpService {
     /// value is updated to match. A new session stores the mode it starts in.
     ///
     /// The whole restore gets one ordinary RPC deadline. What is left when it
-    /// runs out is restored before the next prompt. `Err` means a change
-    /// left the runtime needing recovery.
+    /// runs out is restored before the next prompt, and until then what the
+    /// harness reports for those choices does not replace them. `Err` means
+    /// a change left the runtime needing recovery.
     pub(crate) fn restore_session_config(&self, owner: &RuntimeOwner) -> Result<(), HostError> {
+        let deadline = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
+        self.restore_until(owner, deadline, || Instant::now() >= deadline)
+    }
+
+    /// The restore, sending changes until `out_of_time`, each answered by
+    /// `deadline`.
+    pub(super) fn restore_until(
+        &self,
+        owner: &RuntimeOwner,
+        deadline: Instant,
+        mut out_of_time: impl FnMut() -> bool,
+    ) -> Result<(), HostError> {
         let Some(lane) = self.lane_for(owner) else {
             return Ok(());
         };
+        let config = &lane.runtime.config;
         let mut stored = match choices::load(&self.database.connection(), &owner.session_id) {
             Ok(stored) => stored,
             Err(error) => {
@@ -149,10 +163,8 @@ impl AcpService {
                 return Ok(());
             }
         };
-        let Some((mut overlay, new_session)) = lane
-            .runtime
-            .config
-            .take_restore(owner, |config| ready(config, &stored))
+        let Some((mut overlay, new_session)) =
+            config.take_restore(owner, &stored, |reported| ready(reported, &stored))
         else {
             return Ok(());
         };
@@ -163,60 +175,77 @@ impl AcpService {
             );
         }
         stored.sort_by_key(|choice| priority(&overlay.config, choice));
-        let deadline = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
         for choice in stored {
             match step(&overlay.config, &choice) {
-                Step::Keep => continue,
-                Step::Forget | Step::Fallback(_) => {
-                    self.fall_back(owner, &overlay.config, &choice);
-                    continue;
-                }
-                Step::Apply => {}
-            }
-            if Instant::now() >= deadline {
-                tracing::warn!(
-                    "session config restore ran out of time; finishing before the next prompt"
-                );
-                lane.runtime.config.rearm_restore(owner);
-                return Ok(());
-            }
-            let apply = |revision| {
-                self.configure_session_until(
-                    ConfigIntent {
-                        owner: owner.clone(),
-                        expected_config_revision: revision,
-                        mutation: choice.clone(),
-                    },
-                    Some(deadline),
-                )
-            };
-            let mut result = apply(overlay.config_revision);
-            if result == Err(HostError::Intent) {
-                // A change raced this one: retry once against the new state.
-                let Some(latest) = lane.runtime.config.live_snapshot(owner) else {
-                    return Ok(());
-                };
-                overlay = latest;
-                result = match step(&overlay.config, &choice) {
-                    Step::Apply => apply(overlay.config_revision),
-                    Step::Keep => Ok(()),
-                    Step::Forget | Step::Fallback(_) => Err(HostError::ConfigMutationRejected),
-                };
-            }
-            match result {
-                Err(error) if needs_recovery(&error) => return Err(error),
-                result => {
-                    let Some(latest) = lane.runtime.config.live_snapshot(owner) else {
+                Step::Keep => {}
+                Step::Forget | Step::Fallback(_) => self.fall_back(owner, &overlay.config, &choice),
+                Step::Apply => {
+                    if out_of_time() {
+                        tracing::warn!(
+                            "session config restore ran out of time; finishing before the next prompt"
+                        );
+                        config.rearm_restore(owner);
+                        return Ok(());
+                    }
+                    let Some(latest) = self.apply_stored(owner, &overlay, &choice, deadline)?
+                    else {
                         return Ok(());
                     };
                     overlay = latest;
-                    if result == Err(HostError::ConfigMutationRejected) {
-                        self.fall_back(owner, &overlay.config, &choice);
-                    }
                 }
             }
+            config.release(owner, &choice);
         }
         Ok(())
+    }
+
+    /// Sends one stored value, retrying once if another change raced it.
+    /// Returns the session's config after it, or `None` once the runtime is
+    /// gone.
+    fn apply_stored(
+        &self,
+        owner: &RuntimeOwner,
+        overlay: &SessionConfigOverlay,
+        choice: &ConfigMutation,
+        deadline: Instant,
+    ) -> Result<Option<SessionConfigOverlay>, HostError> {
+        let Some(lane) = self.lane_for(owner) else {
+            return Ok(None);
+        };
+        let apply = |revision| {
+            self.configure_session_until(
+                ConfigIntent {
+                    owner: owner.clone(),
+                    expected_config_revision: revision,
+                    mutation: choice.clone(),
+                },
+                Some(deadline),
+            )
+        };
+        let mut result = apply(overlay.config_revision);
+        if result == Err(HostError::Intent) {
+            // A change raced this one: retry once against the new state.
+            let Some(latest) = lane.runtime.config.live_snapshot(owner) else {
+                return Ok(None);
+            };
+            result = match step(&latest.config, choice) {
+                Step::Apply => apply(latest.config_revision),
+                Step::Keep => Ok(()),
+                Step::Forget | Step::Fallback(_) => Err(HostError::ConfigMutationRejected),
+            };
+        }
+        if let Err(error) = &result
+            && needs_recovery(error)
+        {
+            return Err(error.clone());
+        }
+        let Some(latest) = lane.runtime.config.live_snapshot(owner) else {
+            return Ok(None);
+        };
+        if result == Err(HostError::ConfigMutationRejected) {
+            self.fall_back(owner, &latest.config, choice);
+        }
+        Ok(Some(latest))
     }
 }
 

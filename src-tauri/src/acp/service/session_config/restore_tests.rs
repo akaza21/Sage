@@ -42,6 +42,9 @@ impl Agent {
                 for option in self.options.as_array_mut().unwrap() {
                     if option["id"] == params["configId"] {
                         option["currentValue"] = params["value"].clone();
+                    } else if params["configId"] == "model" && option["id"] == "effort" {
+                        // Like Claude, a model change resets the effort.
+                        option["currentValue"] = json!("low");
                     }
                 }
                 vec![json!({"jsonrpc":"2.0","id":id,"result":{"configOptions":self.options}})]
@@ -369,17 +372,17 @@ fn restore_waits_until_the_session_reports_options() {
     channel.publish(&runtime);
     let has_options = |config: &SessionConfig| !config.config_options.as_slice().is_empty();
     // A harness that reports its options after activation stays pending.
-    assert!(channel.take_restore(&runtime, has_options).is_none());
+    assert!(channel.take_restore(&runtime, &[], has_options).is_none());
     channel
         .update(
             &runtime,
             SessionConfig::from_wire(&json!({"configOptions":effort("low")}), true).unwrap(),
         )
         .unwrap();
-    let (overlay, new_session) = channel.take_restore(&runtime, has_options).unwrap();
+    let (overlay, new_session) = channel.take_restore(&runtime, &[], has_options).unwrap();
     assert_ne!(overlay.config_revision, ConfigRevision::first());
     assert!(!new_session);
-    assert!(channel.take_restore(&runtime, |_| true).is_none());
+    assert!(channel.take_restore(&runtime, &[], |_| true).is_none());
 }
 
 #[test]
@@ -471,7 +474,7 @@ fn what_the_harness_reports_itself_is_stored_once_the_runtime_is_restored() {
     // Before restore, what the session reports is its defaults, not a choice.
     channel.update(&runtime, config("plan", "low")).unwrap();
     assert!(recorded.lock().unwrap().is_empty());
-    assert!(channel.take_restore(&runtime, |_| true).is_some());
+    assert!(channel.take_restore(&runtime, &[], |_| true).is_some());
     // Then the harness leaves plan mode on its own and resets the effort.
     channel
         .update(&runtime, config("acceptEdits", "high"))
@@ -480,4 +483,57 @@ fn what_the_harness_reports_itself_is_stored_once_the_runtime_is_restored() {
         *recorded.lock().unwrap(),
         [mode("acceptEdits"), option("effort", "high")]
     );
+}
+
+#[test]
+fn an_effort_the_harness_resets_keeps_its_stored_value_until_it_is_restored() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    {
+        let connection = service.database.connection();
+        let session = &owner(1).session_id;
+        assert!(choices::record(&connection, session, &option("effort", "high"), 1).unwrap());
+        assert!(choices::record(&connection, session, &option("model", "b"), 2).unwrap());
+    }
+    let options = json!([{
+        "id":"model","name":"Model","category":"model","type":"select","currentValue":"a",
+        "options":[{"value":"a","name":"A"},{"value":"b","name":"B"}]
+    }, {
+        "id":"effort","name":"Effort","category":"thought_level","type":"select",
+        "currentValue":"medium",
+        "options":[{"value":"low","name":"Low"},{"value":"medium","name":"Medium"},{"value":"high","name":"High"}]
+    }]);
+    let resumed = owner(2);
+    let agent = start(&service, &resumed, options);
+    // The model is restored first; it resets the effort to "low", and the
+    // budget runs out before the effort is reached.
+    let mut sent = 0;
+    let far = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    service
+        .restore_until(&resumed, far, || {
+            sent += 1;
+            sent > 1
+        })
+        .unwrap();
+    let requests = agent.lock().unwrap().requests.clone();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0]["params"]["configId"], "model");
+    assert_eq!(shown_effort(&service, &resumed), "low");
+    assert!(stored(&service).contains(&option("effort", "high")));
+    assert!(stored(&service).contains(&option("model", "b")));
+    // Before the next prompt the rest of the restore runs.
+    service.restore_session_config(&resumed).unwrap();
+    let requests = agent.lock().unwrap().requests.clone();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        requests[1]["params"],
+        json!({"sessionId":"external-a","configId":"effort","value":"high"})
+    );
+    assert_eq!(shown_effort(&service, &resumed), "high");
+    // Once restored, an effort the harness resets is the session's again.
+    choose(&service, &resumed, option("model", "a")).unwrap();
+    assert_eq!(shown_effort(&service, &resumed), "low");
+    assert!(stored(&service).contains(&option("effort", "low")));
+    service.shutdown_blocking().unwrap();
 }
