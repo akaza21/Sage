@@ -13,7 +13,7 @@ export function useAcpChatHistory(boundChatId?: string | null) {
   const scope = useStore(store, (state) => state.scope);
   const activeLoad = useStore(store, (state) => state.activeLoad);
   const historyLoad = useStore(store, (state) => state.historyLoad);
-  const error = useStore(store, (state) => state.error);
+  const historyError = useStore(store, (state) => state.historyError);
 
   const loadEarlier = useCallback(() => {
     const projection = acpProjectionStoreFor(boundChatId).getState();
@@ -58,7 +58,7 @@ export function useAcpChatHistory(boundChatId?: string | null) {
     historyLoading: activeLoad !== null || historyLoad !== null,
     hasEarlier: Boolean(page?.nextCursor && scope),
     loadingEarlier: historyLoad !== null,
-    historyError: error,
+    historyError,
     onLoadEarlier: loadEarlier,
   };
 }

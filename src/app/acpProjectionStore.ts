@@ -68,7 +68,11 @@ interface AcpProjectionState {
     event: AcpSessionConfigChangedV1,
   ) => ProjectionNoticeDisposition;
   takeSessionConfigChange: () => AcpSessionConfigChangedV1 | null;
+  /** Why the newest page could not be loaded. */
   error: string | null;
+  /** Why an earlier-history page could not be loaded, kept apart from
+   * `error` so a refresh and a history load never clear each other's. */
+  historyError: string | null;
   loadNonce: number;
   activateScope: (scope: AcpProjectionScope) => void;
   requestReload: () => void;
@@ -78,6 +82,8 @@ interface AcpProjectionState {
     page: AcpChatPage,
   ) => ProjectionCommitDisposition;
   failPageLoad: (intent: AcpPageLoadIntent, message: string) => boolean;
+  /** Records a refresh that failed before it could take a load slot. */
+  failRefresh: (message: string) => void;
   applyAuthoritativePage: (
     scope: AcpProjectionScope,
     page: AcpChatPage,
@@ -205,6 +211,7 @@ const initialState = {
   pendingChange: null,
   pendingConfigChange: null,
   error: null,
+  historyError: null,
   loadNonce: 0,
 } satisfies Pick<
   AcpProjectionState,
@@ -218,11 +225,16 @@ const initialState = {
   | "pendingChange"
   | "pendingConfigChange"
   | "error"
+  | "historyError"
   | "loadNonce"
 >;
 
 function loadSlot(intent: AcpPageLoadIntent): "activeLoad" | "historyLoad" {
   return intent.cursor ? "historyLoad" : "activeLoad";
+}
+
+function errorField(intent: AcpPageLoadIntent): "error" | "historyError" {
+  return intent.cursor ? "historyError" : "error";
 }
 
 export function createAcpProjectionStore() {
@@ -259,14 +271,14 @@ export function createAcpProjectionStore() {
       set({
         [loadSlot(intent)]: intent,
         requestSequence: intent.requestSequence,
-        error: null,
+        [errorField(intent)]: null,
       });
       return intent;
     },
 
     completePageLoad: (intent, page) => {
       const state = get();
-      const settled = { [loadSlot(intent)]: null };
+      const settled = { [loadSlot(intent)]: null, [errorField(intent)]: null };
       if (
         state[loadSlot(intent)]?.requestSequence !== intent.requestSequence ||
         !sameScope(state.scope, intent) ||
@@ -283,11 +295,11 @@ export function createAcpProjectionStore() {
           currentRevision,
         );
         if (comparison === null) {
-          set({ ...settled, error: null });
+          set(settled);
           return "ignoredInvalidRevision";
         }
         if (comparison < 0) {
-          set({ ...settled, error: null });
+          set(settled);
           return "ignoredStaleRevision";
         }
       }
@@ -298,11 +310,11 @@ export function createAcpProjectionStore() {
           intent.expectedProjectionRevision,
         );
         if (comparison === null) {
-          set({ ...settled, error: null });
+          set(settled);
           return "ignoredInvalidRevision";
         }
         if (comparison !== 0) {
-          set({ ...settled, error: null });
+          set(settled);
           return "ignoredStaleRevision";
         }
       }
@@ -322,7 +334,6 @@ export function createAcpProjectionStore() {
         retentionIncomplete:
           state.retentionIncomplete || retained.retentionIncomplete,
         ...settled,
-        error: null,
       });
       return "accepted";
     },
@@ -335,8 +346,12 @@ export function createAcpProjectionStore() {
       ) {
         return false;
       }
-      set({ [loadSlot(intent)]: null, error: message });
+      set({ [loadSlot(intent)]: null, [errorField(intent)]: message });
       return true;
+    },
+
+    failRefresh: (message) => {
+      set({ error: message });
     },
 
     applyAuthoritativePage: (scope, page) => {

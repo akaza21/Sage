@@ -195,6 +195,39 @@ describe("ACP projection request intents", () => {
     ).toEqual([1, 2]);
     expect(useAcpProjectionStore.getState().historyLoad).toBeNull();
   });
+  it("keeps refresh and history errors apart", () => {
+    const newest = page("1", [turn(2)]);
+    newest.nextCursor = "older" as AcpPageCursor;
+    const first = useAcpProjectionStore.getState().beginPageLoad(null);
+    useAcpProjectionStore.getState().completePageLoad(first, newest);
+
+    const history = useAcpProjectionStore
+      .getState()
+      .beginPageLoad("older" as AcpPageCursor);
+    useAcpProjectionStore.getState().failPageLoad(history, "history failed");
+    const refresh = useAcpProjectionStore.getState().beginPageLoad(null);
+    useAcpProjectionStore.getState().completePageLoad(refresh, newest);
+    expect(useAcpProjectionStore.getState().historyError).toBe(
+      "history failed",
+    );
+
+    const failing = useAcpProjectionStore.getState().beginPageLoad(null);
+    useAcpProjectionStore.getState().failPageLoad(failing, "refresh failed");
+    const retry = useAcpProjectionStore
+      .getState()
+      .beginPageLoad("older" as AcpPageCursor);
+    expect(useAcpProjectionStore.getState().historyError).toBeNull();
+    useAcpProjectionStore
+      .getState()
+      .completePageLoad(retry, page("1", [turn(1)]));
+    expect(useAcpProjectionStore.getState().error).toBe("refresh failed");
+  });
+
+  it("records a refresh that failed before it took a load slot", () => {
+    useAcpProjectionStore.getState().failRefresh("scope is not active");
+    expect(useAcpProjectionStore.getState().error).toBe("scope is not active");
+    expect(useAcpProjectionStore.getState().activeLoad).toBeNull();
+  });
 });
 
 describe("ACP projection bounds and notification mailbox", () => {
