@@ -34,13 +34,14 @@ use crate::{
 /// with the fingerprint of the version opened. Only such a File, or one with
 /// a durable buffer, may take an absent base: otherwise the WebView could
 /// create any file by naming a missing path.
-static OPENED: LazyLock<Mutex<HashMap<(String, String, String), String>>> =
-    LazyLock::new(Mutex::default);
+static OPENED: LazyLock<Mutex<HashMap<OpenedKey, String>>> = LazyLock::new(Mutex::default);
+/// Project, root and canonical path.
+type OpenedKey = (String, String, String);
 /// Bounds the map; past it, the map starts again, and a File opened before
 /// that and deleted before any edit was persisted cannot be kept.
 const MAX_OPENED: usize = 8192;
 
-fn opened_key(workspace: &Workspace, resource: &ResourceRef) -> (String, String, String) {
+fn opened_key(workspace: &Workspace, resource: &ResourceRef) -> OpenedKey {
     (
         workspace.project_id().into(),
         resource.root_id.clone(),

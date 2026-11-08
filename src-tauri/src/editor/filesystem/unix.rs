@@ -187,7 +187,7 @@ impl HeldParent {
             let ours = root_identity_metadata(&file.metadata()?)?;
             let still_ours = self
                 .open_file(target)
-                .and_then(|current| Ok(root_identity_metadata(&current.metadata()?)?))
+                .and_then(|current| root_identity_metadata(&current.metadata()?))
                 .is_ok_and(|current| current == ours);
             if still_ours {
                 let _ = self.remove(target);
