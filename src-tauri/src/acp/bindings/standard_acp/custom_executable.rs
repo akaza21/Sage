@@ -18,6 +18,7 @@ pub(crate) enum ExecutableRefusal {
     },
     NotAFile,
     /// Unix: no execute permission.
+    #[cfg(unix)]
     NotExecutable,
     /// The path crosses a link or sits outside a usable local folder.
     Unusable,
@@ -36,6 +37,7 @@ impl ExecutableRefusal {
                 "The executable is a link whose target could not be read. Choose the file it points to.".into()
             }
             Self::NotAFile => "The executable is not a file.".into(),
+            #[cfg(unix)]
             Self::NotExecutable => {
                 "The file is not executable. Mark it executable (chmod +x) or choose the agent's binary.".into()
             }
