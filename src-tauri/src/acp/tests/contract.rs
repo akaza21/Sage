@@ -856,6 +856,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         forked_from: None,
         forked_from_turn_id: None,
         child_projection_epoch: 0,
+        session_notices: Vec::new(),
     };
     assert_eq!(page.validate_page_bounds(), Ok(()));
 

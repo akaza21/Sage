@@ -150,6 +150,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/acp/PermissionPrompt.tsx",
   // The question card loads only when a harness asks the user questions.
   "src/features/chat/acp/UserInputPrompt.tsx",
+  // Harness session notices load with the first notice.
+  "src/features/chat/acp/SessionNoticeStrip.tsx",
   "src/features/chat/acp/TurnFileActivity.tsx",
   // The stream-fade run tracker loads beside the transcript, off its path.
   "src/features/chat/acp/streamTail.ts",

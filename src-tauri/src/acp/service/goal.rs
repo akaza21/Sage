@@ -190,6 +190,7 @@ mod tests {
             forked_from: None,
             forked_from_turn_id: None,
             child_projection_epoch: 0,
+            session_notices: Vec::new(),
         };
         let existing_turns = page.turns.clone();
         let full_goal = page.goal.clone();

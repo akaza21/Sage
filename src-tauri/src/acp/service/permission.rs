@@ -65,6 +65,18 @@ fn admits(decision: &PermissionDecision, payload: &NormalizedPayload) -> bool {
     }
 }
 
+/// The link an admitted answer agrees to open, for a link request.
+fn link_to_open(payload: &NormalizedPayload) -> Option<String> {
+    let NormalizedPayload::PermissionRequest {
+        user_input: Some(request),
+        ..
+    } = payload
+    else {
+        return None;
+    };
+    Some(request.url.as_ref()?.url.as_str().to_owned())
+}
+
 impl AcpService {
     pub(crate) fn resolve_permission_decision(
         &self,
@@ -79,6 +91,7 @@ impl AcpService {
             request_id,
             decision,
         } = intent;
+        let mut link = None;
         if decision.resolves_allowed() {
             let epoch = i64::try_from(runtime_epoch.get()).map_err(|_| HostError::Intent)?;
             let payload_json: Option<String> = self.database.connection().query_row(
@@ -86,13 +99,14 @@ impl AcpService {
                 rusqlite::params![request_id.as_str(), project_id.as_str(), chat_id.as_str(), session_id.as_str(), turn_id.as_str(), epoch],
                 |row| row.get(0),
             ).optional().map_err(|_| HostError::RecoveryRequired)?;
-            let admitted = payload_json
+            let payload = payload_json
                 .as_deref()
                 .and_then(|json| serde_json::from_str::<NormalizedPayload>(json).ok())
-                .is_some_and(|payload| admits(&decision, &payload));
-            if !admitted {
+                .filter(|payload| admits(&decision, payload));
+            let Some(payload) = payload else {
                 return Err(HostError::Intent);
-            }
+            };
+            link = link_to_open(&payload);
         }
         let label = decision.label();
         tracing::info!(
@@ -135,6 +149,14 @@ impl AcpService {
         self.host_for(&owner)
             .map_err(|_| HostError::Intent)?
             .resolve_permission(owner, request_id.clone(), decision)?;
+        // The user agreed to open the link the harness sent; the harness
+        // already has its acceptance, so a failure here only leaves the link
+        // for the user to open from the card.
+        if let Some(url) = link
+            && crate::browser::open_external_link(&url).is_err()
+        {
+            tracing::warn!("the agent's link could not be opened in the browser");
+        }
         Ok(PermissionDecisionResponse {
             project_id,
             chat_id,
