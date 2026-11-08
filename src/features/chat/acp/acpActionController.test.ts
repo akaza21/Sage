@@ -20,6 +20,7 @@ import type {
 } from "../../../domain/acp";
 import { AcpDesktopError } from "../../../services/acpDesktop";
 import {
+  ATTACHED_CONTEXT_PROMPT,
   type AcpActionCommands,
   type AcpActionContext,
   cancellableTurnId,
@@ -210,6 +211,24 @@ describe("ACP action controller", () => {
       }),
     );
     expect(test.cleared).toEqual([{ prompt: "", attachedContext: [quote] }]);
+  });
+  it("sends staged pasted text alone without writing a prompt into the draft", async () => {
+    const test = harness(page("10", session("hot", "2", null)));
+    vi.mocked(test.commands.sendTurn).mockRejectedValue(
+      new AcpDesktopError({
+        kind: "invalidRequest",
+        message: "Prompt text and file attachments exceed the budget.",
+      }),
+    );
+    await expect(
+      test.controller.submit("", [], bindingId, modelId, true),
+    ).resolves.toBe("rejected");
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: ATTACHED_CONTEXT_PROMPT }),
+    );
+    expect(test.cleared).toEqual([{ prompt: "", attachedContext: [] }]);
+    // A refused send restores the empty draft, not the stand-in prompt.
+    expect(test.restored).toEqual([{ prompt: "", attachedContext: [] }]);
   });
   it("sends attachment-only context and still refuses an empty send", async () => {
     const test = harness(page("10", session("hot", "2", null)));

@@ -1,3 +1,4 @@
+import { capitalizeLabel } from "../../domain/text";
 import {
   harnessUnavailableReason,
   type HarnessDefinition,
@@ -37,4 +38,36 @@ export function harnessAvailability(harness: HarnessDefinition): {
         disabledReason: harnessUnavailableReason(harness.unavailableReason),
       };
   }
+}
+
+/** The chat's one-word harness status, most blocking condition first. */
+export function harnessStatusLabel(
+  harness: Pick<HarnessDefinition, "source" | "installState"> | undefined,
+  discoveryPhase: string,
+  harnessAvailable: boolean,
+  sessionState: string | null,
+): string {
+  return !harness
+    ? "No harness"
+    : discoveryPhase === "checking"
+      ? "Checking"
+      : discoveryPhase === "signInRequired"
+        ? "Sign in required"
+        : discoveryPhase === "consent"
+          ? "Sign-in consent"
+          : discoveryPhase === "waiting"
+            ? "Waiting for sign in"
+            : discoveryPhase === "error"
+              ? "Unavailable"
+              : harness.source === "development"
+                ? "Test simulator"
+                : !harnessAvailable
+                  ? harness.installState === "installing"
+                    ? "Installing"
+                    : "Unavailable"
+                  : sessionState === "active"
+                    ? "Live"
+                    : sessionState
+                      ? capitalizeLabel(sessionState)
+                      : "Ready";
 }

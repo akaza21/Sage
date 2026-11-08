@@ -18,7 +18,12 @@ import type { ResourceRef } from "../../domain/workbench";
 import { terminalTurnStates, type OpenResourceTarget } from "./acp";
 import { currentChatUsage } from "./acp/chatUsage";
 import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
-import { composerDisabledReason, sizeReason } from "./composerDisabledReason";
+import { harnessStatusLabel } from "./harnessAvailability";
+import {
+  composerDisabledReason,
+  signInRequiredMessage,
+  sizeReason,
+} from "./composerDisabledReason";
 
 type SurfaceHarness = Pick<
   HarnessDefinition,
@@ -52,6 +57,7 @@ export function useChatSurfaceModel({
   queuePrompt,
   queuedPromptCount = 0,
   queueSavePending = false,
+  stagedCount = 0,
 }: {
   harnesses: readonly SurfaceHarness[];
   selectedHarnessId: string | null;
@@ -79,6 +85,7 @@ export function useChatSurfaceModel({
       attachedContext: readonly AttachedContext[],
       bindingId: CuratedBindingId,
       modelId: CuratedModelId | null,
+      staged?: boolean,
     ) => Promise<unknown>;
     cancel: (turnId: TurnProjection["id"]) => Promise<unknown>;
     close: () => Promise<unknown>;
@@ -88,6 +95,8 @@ export function useChatSurfaceModel({
   queuePrompt?: (bindingId: string, modelId: string | null) => Promise<boolean>;
   queuedPromptCount?: number;
   queueSavePending?: boolean;
+  /** Pasted text and files staged natively for the next send. */
+  stagedCount?: number;
 }) {
   const model = useMemo(() => {
     const selectedHarness = harnesses.find(
@@ -121,29 +130,12 @@ export function useChatSurfaceModel({
     const availableBinding = Boolean(
       useNativeAcp && harnessAvailable && bindingId,
     );
-    const harnessStatus = !selectedHarness
-      ? "No harness"
-      : discoveryPhase === "checking"
-        ? "Checking"
-        : discoveryPhase === "signInRequired"
-          ? "Sign in required"
-          : discoveryPhase === "consent"
-            ? "Sign-in consent"
-            : discoveryPhase === "waiting"
-              ? "Waiting for sign in"
-              : discoveryPhase === "error"
-                ? "Unavailable"
-                : selectedHarness.source === "development"
-                  ? "Test simulator"
-                  : !harnessAvailable
-                    ? selectedHarness.installState === "installing"
-                      ? "Installing"
-                      : "Unavailable"
-                    : selectedSession?.state === "active"
-                      ? "Live"
-                      : selectedSession
-                        ? `${selectedSession.state[0].toUpperCase()}${selectedSession.state.slice(1)}`
-                        : "Ready";
+    const harnessStatus = harnessStatusLabel(
+      selectedHarness,
+      discoveryPhase,
+      harnessAvailable,
+      selectedSession?.state ?? null,
+    );
     return {
       selectedHarness,
       useNativeAcp: Boolean(useNativeAcp),
@@ -247,6 +239,8 @@ export function useChatSurfaceModel({
     !actionBusy &&
     !projectTransitioning &&
     !queueSavePending &&
+    // Staged pasted text goes with the next sent message, never a queued one.
+    !stagedCount &&
     queuedPromptCount < MAX_QUEUED_CHAT_PROMPTS,
   );
   const composerEnabled =
@@ -301,6 +295,8 @@ export function useChatSurfaceModel({
           attachedContext,
           model.bindingId,
           model.selectedModelId,
+          // Staged pasted text alone is enough to send.
+          ...(stagedCount > 0 ? ([true] as const) : []),
         );
         return;
       }
@@ -316,6 +312,7 @@ export function useChatSurfaceModel({
       composerText,
       legacyAttachments,
       sendBlocked,
+      stagedCount,
       model.bindingId,
       model.selectedModelId,
       model.useNativeAcp,
@@ -392,11 +389,4 @@ export function useChatSurfaceModel({
     ),
     openResource,
   };
-}
-
-function signInRequiredMessage(harness: SurfaceHarness): string {
-  if (harness.signIn) {
-    return `${harness.name} requires sign-in before it can continue. Run ${harness.signIn.command}. ${harness.signIn.hint} Then try again.`;
-  }
-  return `${harness.name} requires sign-in before it can continue. Sign in with its CLI, then try again.`;
 }

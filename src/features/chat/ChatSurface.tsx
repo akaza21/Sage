@@ -28,6 +28,7 @@ import { useBoundChatComposer } from "./useBoundChatComposer";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
+import { usePastedTextAttachments } from "./usePastedTextAttachments";
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const focusedChatId = usePinnedAgentChatOwner();
   const setAgentSessionChrome = useContext(AgentSessionChromeContext);
@@ -67,6 +68,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const acpLoadFailure = useAcpChatLoadFailure(chatId);
   const acpActions = useAcpChatActions(chatId);
   const acpHistory = useAcpChatHistory(chatId);
+  // A new Turn means a send landed and may have consumed the staged batch.
+  const pasted = usePastedTextAttachments(
+    chatId,
+    acpPage?.turns.at(-1)?.id ?? null,
+  );
   const surfaceRef = useRef<HTMLElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const transcriptContentRef = useRef<HTMLDivElement>(null);
@@ -80,6 +86,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const focused = chatId == null || focusedChatId === chatId;
   const {
     selectedHarness,
+    selectedSession,
     useNativeAcp,
     availableBinding,
     harnessStatus,
@@ -129,6 +136,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     queueSavePending: queuedPrompts.some(
       (prompt) => prompt.status === "saving",
     ),
+    stagedCount: pasted.state.items.length,
   });
   useAgentSessionChromePublisher(
     setAgentSessionChrome,
@@ -308,6 +316,14 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         disabledReasonId={`${composerFieldId}-disabled-reason`}
         text={composerText}
         attachedContext={attachedContext}
+        pastedText={{
+          ...pasted,
+          attachability: {
+            nativeAcp: useNativeAcp,
+            session: selectedSession,
+            queued: queuedPrompts.length,
+          },
+        }}
         imagePreviews={imagePreviews}
         imageUploading={imageUploading}
         onAddImages={addImages}

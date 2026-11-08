@@ -1,6 +1,7 @@
 import type { AttachedContext } from "../../domain/attachedContext";
 import { utf8ByteLength } from "../../domain/text";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
+import type { HarnessDefinition } from "../../domain/harness";
 
 interface ComposerAvailability {
   actionBusy: boolean;
@@ -73,6 +74,15 @@ export function sizeReason(
       : null;
   measured.set(contexts, [text, reason]);
   return reason;
+}
+
+export function signInRequiredMessage(
+  harness: Pick<HarnessDefinition, "name" | "signIn">,
+): string {
+  if (harness.signIn) {
+    return `${harness.name} requires sign-in before it can continue. Run ${harness.signIn.command}. ${harness.signIn.hint} Then try again.`;
+  }
+  return `${harness.name} requires sign-in before it can continue. Sign in with its CLI, then try again.`;
 }
 
 /** UTF-8 upper bound of Rust's acp/attached_context.rs effective_prompt; reject oversize before dispatch. */

@@ -18,6 +18,7 @@ import {
   expectRecoveryIdentityEvidence,
 } from "./agentTurnJourneyEvidence";
 import { MAX_SCRIPTED_EVENTS } from "./agentTurnJourneyLimits";
+import { MAX_CHAT_COMPOSER_BYTES } from "../../../src/domain/chatOwnership";
 
 export function registerAgentTurnActionScenarios() {
   test("same-Chat duplicate is visibly rejected while a second Chat sends and cancellation converges", async ({
@@ -197,5 +198,36 @@ export function registerAgentTurnActionScenarios() {
     });
     expect(result.eventCount).toBeLessThanOrEqual(MAX_SCRIPTED_EVENTS);
     expectRecoveryIdentityEvidence(result);
+  });
+
+  test("an over-cap paste or edit is announced and never silently drops the draft", async ({
+    page,
+  }) => {
+    await openJourney(page);
+    const alpha = pane(page, "Alpha");
+    const composer = alpha.getByRole("textbox", { name: "Message agent" });
+    await composer.fill("Keep this draft");
+    // A real clipboard paste event, larger than the composer's byte cap.
+    const inserted = await composer.evaluate((area, text) => {
+      const data = new DataTransfer();
+      data.setData("text/plain", text);
+      return area.dispatchEvent(
+        new ClipboardEvent("paste", {
+          clipboardData: data,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }, "log line\n".repeat(2048));
+    expect(inserted).toBe(false);
+    await expect(composer).toHaveValue("Keep this draft");
+    // The web build has no native attachment store, so it says why.
+    await expect(alpha.getByText(/Nothing was pasted\.$/)).toBeVisible();
+
+    await composer.fill("a".repeat(MAX_CHAT_COMPOSER_BYTES + 1));
+    await expect(composer).toHaveValue("Keep this draft");
+    await expect(
+      alpha.getByText(/^Messages hold up to 16 KB of typed text/),
+    ).toBeVisible();
   });
 }

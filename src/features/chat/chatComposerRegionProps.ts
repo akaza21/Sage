@@ -8,6 +8,7 @@ import type {
 import type { AttachedContext } from "../../domain/attachedContext";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import type { ChatUsage } from "./acp/chatUsage";
+import type { PastedTextAttachments } from "./usePastedTextAttachments";
 
 export interface ChatComposerRegionProps {
   /** Kept mounted while an approval holds the slot, so the draft survives. */
@@ -22,6 +23,8 @@ export interface ChatComposerRegionProps {
   disabledReasonId: string;
   text: string;
   attachedContext: readonly AttachedContext[];
+  /** Over-cap pastes staged natively; absent where attachments are unsupported. */
+  pastedText?: PastedTextAttachments;
   imagePreviews?: Readonly<Record<string, string>>;
   imageUploading?: boolean;
   enabled: boolean;

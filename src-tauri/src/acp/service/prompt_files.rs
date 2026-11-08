@@ -13,6 +13,8 @@ pub(crate) const TOTAL_BYTES: usize = 96 * 1024;
 pub(crate) const FILE_COUNT: usize = 16;
 /// Prompt text, attached context and staged files together, per dispatch.
 pub(crate) const DISPATCH_BYTES: usize = 120 * 1024;
+/// The name a pasted-text resource carries; its URI still holds its own id.
+pub(crate) const PASTED_TEXT_NAME: &str = "pasted-text.txt";
 const OWNER_COUNT: usize = 16;
 const STORE_BYTES: usize = 1024 * 1024;
 
@@ -143,6 +145,50 @@ impl FileStages {
         let summary = summary(&batch);
         self.batches.insert(key, batch);
         Ok(summary)
+    }
+    /// Adds pasted composer text to the chat's batch as one more text
+    /// resource. The batch caps (count and total bytes) apply to the whole
+    /// batch, so a paste is admitted only while the batch still fits.
+    pub(crate) fn append_text(
+        &mut self,
+        project: &str,
+        chat: &str,
+        attached_at: i64,
+        expected: Option<&str>,
+        text: String,
+    ) -> Result<StagedFiles, &'static str> {
+        if text.is_empty() {
+            return Err("Pasted text is empty.");
+        }
+        if text.len() > TOTAL_BYTES {
+            return Err("Pasted text exceeds the 96 KiB attachment limit.");
+        }
+        let current = self
+            .batches
+            .get(&(project.to_owned(), chat.to_owned()))
+            .filter(|b| b.attached_at == attached_at)
+            .map(|b| b.resources.0.as_slice())
+            .unwrap_or_default();
+        if current.len() >= FILE_COUNT {
+            return Err("Attachments exceed the 16-file limit.");
+        }
+        if current.iter().map(|r| r.bytes.len()).sum::<usize>() + text.len() > TOTAL_BYTES {
+            return Err("Attachments exceed 96 KiB total.");
+        }
+        let mut next = Vec::with_capacity(current.len() + 1);
+        next.extend_from_slice(current);
+        next.push(Resource {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: PASTED_TEXT_NAME.to_owned(),
+            bytes: text.into_bytes(),
+        });
+        self.stage(
+            project,
+            chat,
+            attached_at,
+            expected,
+            Resources(Arc::new(next)),
+        )
     }
     pub(crate) fn get(&self, project: &str, chat: &str) -> Resources {
         self.batches

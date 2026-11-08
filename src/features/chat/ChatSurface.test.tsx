@@ -2971,7 +2971,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.queryByText("Live")).toBeNull();
   });
 
-  it("announces the active Chat failure and exposes the bounded composer", () => {
+  it("announces the active Chat failure and exposes the bounded composer", async () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
       tabs: [
@@ -3004,9 +3004,19 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
 
     expect(screen.getByRole("alert")).toHaveTextContent("Only Chat A failed");
+    // The byte cap is enforced with an announced notice, never a silent
+    // UTF-16 maxlength truncation.
+    const field = screen.getByRole("textbox", { name: "Message agent" });
+    expect(field).not.toHaveAttribute("maxlength");
+    fireEvent.change(field, { target: { value: "\u00e9".repeat(8193) } });
+    expect(field).toHaveValue("");
     expect(
-      screen.getByRole("textbox", { name: "Message agent" }),
-    ).toHaveAttribute("maxlength", "16384");
+      await screen.findByText(
+        /^Messages hold up to 16 KB of typed text/,
+        {},
+        { timeout: 5000 },
+      ),
+    ).toBeInTheDocument();
   });
 
   it("previews edits cancels and confirms a bounded unsent Chat Handoff", async () => {

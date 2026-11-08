@@ -21,6 +21,10 @@ import { createActionProjectionCommit, sameScope } from "./acpActionProjection";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
 
+/** The prompt an attachment-only message sends; native prompts are never empty. */
+export const ATTACHED_CONTEXT_PROMPT =
+  "Please respond to the attached context.";
+
 export { cancellableTurnId } from "./acpTurnState";
 
 const MAX_CONCURRENT_CHAT_ACTIONS = 8;
@@ -218,6 +222,8 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     attachedContext: readonly AttachedContext[],
     bindingId: CuratedBindingId,
     modelId: CuratedModelId | null,
+    /** Native staged attachments (pasted text) go with this send. */
+    staged = false,
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();
@@ -244,7 +250,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       );
       return Promise.resolve("rejected");
     }
-    if (!normalizedPrompt && !boundedContext.length) {
+    if (!normalizedPrompt && !boundedContext.length && !staged) {
       emitState(captured, "chat", {
         busy: false,
         cancellingTurnId: null,
@@ -340,7 +346,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           clientIntentId: nextIntentId(),
           sessionId: session.id,
           runtimeEpoch: session.runtimeEpoch,
-          prompt: normalizedPrompt || "Please respond to the attached context.",
+          prompt: normalizedPrompt || ATTACHED_CONTEXT_PROMPT,
           ...(boundedContext.length > 0
             ? { attachedContext: boundedContext }
             : {}),

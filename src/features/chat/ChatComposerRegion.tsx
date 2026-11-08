@@ -1,5 +1,4 @@
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
-import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
 import "../../styles/queued-messages.css";
@@ -19,9 +18,14 @@ import { QueuedRows, lazyParts } from "./lazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
+import type * as PastedChunk from "./PastedTextChips";
+import { useComposerOverflow } from "./useComposerOverflow";
 
 const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
   () => import("./ClaudeAuthActions"),
+);
+const PastedPart = lazyParts<typeof PastedChunk>(
+  () => import("./PastedTextChips"),
 );
 
 export function ChatComposerRegion({
@@ -36,6 +40,7 @@ export function ChatComposerRegion({
   disabledReasonId,
   text,
   attachedContext,
+  pastedText,
   imagePreviews,
   imageUploading = false,
   enabled,
@@ -105,9 +110,12 @@ export function ChatComposerRegion({
     actionBusy ||
     (activeTurn && !queueAvailable) ||
     imageUploading ||
-    imageInput.sendBlocked;
+    imageInput.sendBlocked ||
+    Boolean(pastedText?.state.busy);
   const queueing = activeTurn && queueAvailable && !composerDisabled;
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
+  const overflow = useComposerOverflow(text, onTextChange, pastedText);
+  const pastedItems = pastedText?.state.items ?? [];
   const dictation = useComposerDictation(
     text,
     onTextChange,
@@ -227,14 +235,14 @@ export function ChatComposerRegion({
               }
               aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}`}
               value={text}
-              maxLength={MAX_CHAT_COMPOSER_BYTES}
               rows={2}
               placeholder={composerPromptPlaceholder(
                 canPrompt,
                 sessionPromptUnavailable,
               )}
               disabled={composerDisabled}
-              onChange={(event) => onTextChange(event.target.value)}
+              onChange={overflow.onChange}
+              onPaste={overflow.onPaste}
               onBlur={dictation.cancel}
               onKeyDown={(event) => {
                 if (event.key === "Escape" && dictation.listening) {
@@ -252,6 +260,21 @@ export function ChatComposerRegion({
               }}
             />
           </div>
+          <div
+            className={overflow.status ? "composer__disabled-reason" : ""}
+            aria-live="polite"
+          >
+            {overflow.status}
+          </div>
+          {pastedItems.length > 0 ? (
+            <PastedPart
+              part="PastedTextChips"
+              items={pastedItems}
+              // A removal racing a paste is refused by revision natively.
+              disabled={actionBusy || projectTransitioning}
+              onRemove={overflow.removeAttachment}
+            />
+          ) : null}
           {disabledReason ? (
             <p className="composer__disabled-reason" id={disabledReasonId}>
               {disabledReason}
@@ -326,7 +349,8 @@ export function ChatComposerRegion({
             cancelDisabled={actionBusy || projectTransitioning}
             queueing={Boolean(activeTurn && queueAvailable)}
             sendDisabled={
-              dispatchBlocked || (!text.trim() && !attachedContext.length)
+              dispatchBlocked ||
+              (!text.trim() && !attachedContext.length && !pastedItems.length)
             }
           />
         </div>
