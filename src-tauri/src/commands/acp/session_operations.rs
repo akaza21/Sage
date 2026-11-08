@@ -168,6 +168,8 @@ pub(crate) async fn send_acp_turn_inner(
             attached_context,
         ),
     };
+    // Only the person's own text names files, never attached context.
+    let mentioned = mentions::tokens(&prompt);
     let binding_id = session_routes::durable_binding_id(state, &session_id)
         .map_err(store_error)
         .map_err(prompt_not_dispatched)?;
@@ -218,6 +220,20 @@ pub(crate) async fn send_acp_turn_inner(
     })?;
     super::turn_workspace::mark_before_prompt(state, transition, &client_intent_id, &session_id)
         .await;
+    // Mentioned files are read without the transition guard, like staged
+    // ones; authority is reacquired below before dispatch.
+    let budget = crate::acp::attached_context::files::DISPATCH_BYTES
+        .saturating_sub(prompt.retained_bytes() + files.retained_bytes());
+    let mentioned =
+        mentions::resolve_mentions(state, &project_id, &chat_id, &session_id, mentioned, budget)
+            .await;
+    prompt.mentions = match mentioned {
+        Ok(mentioned) => mentioned,
+        Err(failure) => {
+            super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
+            return Err(failure);
+        }
+    };
     // Capture can outlive a project switch. Reacquire authority before dispatch.
     let _transition = match lock_acp_context(state, &project_id, project_generation).await {
         Ok(transition) => transition,
@@ -395,3 +411,5 @@ pub(crate) async fn steer_acp_turn_inner(
         .map_err(dispatch_error)?;
     mutation_response(state, project_id, chat_id)
 }
+
+mod mentions;

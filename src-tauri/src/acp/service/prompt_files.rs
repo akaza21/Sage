@@ -4,7 +4,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 pub(crate) mod commands;
 mod read;
-mod secrets;
+pub(crate) mod secrets;
 #[cfg(test)]
 mod tests;
 

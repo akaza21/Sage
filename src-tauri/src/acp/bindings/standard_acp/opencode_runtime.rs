@@ -216,9 +216,7 @@ impl OpenCodeRuntime {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }
         let blocks = prompt
-            .resources
-            .wire(
-                prompt.as_str(),
+            .wire_blocks(
                 self.capabilities
                     .as_ref()
                     .is_some_and(|c| c.prompt_resources),
