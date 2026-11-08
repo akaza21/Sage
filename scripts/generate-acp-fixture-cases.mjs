@@ -180,6 +180,55 @@ const journeyCases = [
       { op: "exit", code: 17 },
     ],
   },
+  {
+    // The / menu on a Claude session: the fixture advertises three commands,
+    // then checks the exact text of each prompt, so a command picked in the
+    // composer must reach the wire as `/name input` through run_acp_command.
+    id: "claude-slash-commands",
+    steps: [
+      { op: "awaitClient", kind: "acpInitialize" },
+      { op: "emitKnownFrame", shape: "acpInitialize" },
+      { op: "awaitClient", kind: "acpNew" },
+      { op: "emitKnownFrame", shape: "acpSession" },
+      {
+        op: "emitKnownFrame",
+        shape: "acpUpdate",
+        update: {
+          sessionUpdate: "available_commands_update",
+          availableCommands: [
+            {
+              name: "compact",
+              description: "Summarize the conversation to free context",
+            },
+            {
+              name: "review",
+              description: "Review a pull request",
+              input: { hint: "PR number" },
+            },
+            { name: "init", description: "Set up project instructions" },
+          ],
+        },
+      },
+      ...[
+        ["/review 42", "Synthetic review of pull request 42 completed."],
+        ["/compact", "Synthetic compaction completed."],
+        ["Summarize the example", "The synthetic example is unchanged."],
+      ].flatMap(([promptText, reply]) => [
+        { op: "awaitClient", kind: "acpPrompt", promptText },
+        {
+          op: "emitKnownFrame",
+          shape: "acpUpdate",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: reply },
+          },
+        },
+        { op: "emitKnownFrame", shape: "acpCompleted" },
+      ]),
+      { op: "awaitClient", kind: "acpClose" },
+      { op: "emitKnownFrame", shape: "acpAck" },
+    ],
+  },
 ];
 journeyCases.push(...nativeCases());
 journeyCases.push(piIdleConfigJourney(), ...piBridgeJourneys());

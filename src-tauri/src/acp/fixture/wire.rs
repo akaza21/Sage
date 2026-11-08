@@ -136,7 +136,8 @@ fn await_client_kind(
         return pi::await_request(input, output, state, kind);
     }
     if kind.starts_with("acp") {
-        return acp::await_request(input, output, state, kind);
+        let prompt_text = step.get("promptText").and_then(Value::as_str);
+        return acp::await_request(input, output, state, kind, prompt_text);
     }
     if kind == "codexGoalGetWithOptionalModelList" {
         return codex::await_goal_with_optional_models(input, output, state);
