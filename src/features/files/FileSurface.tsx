@@ -36,7 +36,6 @@ import {
 import { canPreviewMarkdown } from "./filePreviewKind";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
 import { useGitGutter, type GitGutterEditor } from "./useGitGutter";
-import { isDeletedOnDisk } from "./fileEditorController";
 
 const MixedEolFileView = lazy(() =>
   import("./MixedEolFileView").then((module) => ({
@@ -211,15 +210,10 @@ export function FileSurface({
     // Availability is queried during command-palette rendering, so it reads
     // the last committed editor state rather than invoking an Effect Event.
     availableCommand.current = (command) =>
-      editor?.phase === "ready" &&
-      (command === "revert"
-        ? tab.dirty && !readOnly && !isDeletedOnDisk(editor)
-        : command === "save" || !previewing);
+      editor?.phase === "ready" && (command === "save" || !previewing);
   });
   const runCommand = useEffectEvent<FileSurfaceCommands["run"]>((command) => {
     if (command === "save") void saveActiveEditor();
-    else if (command === "revert")
-      void useWorkbenchStore.getState().discardActiveEditor();
     else if (command === "find") openFindFromSurface();
     else if (command === "replace") openFindFromSurface(true);
     else if (command === "goToLine") openGoToLine();

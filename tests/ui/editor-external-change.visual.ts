@@ -113,6 +113,12 @@ for (const width of [1280, 720]) {
     await expect(banner).toBeVisible();
     await expect(banner.getByRole("button", { name: "Reload" })).toHaveCount(0);
     await shot(page, "deleted");
+    // Explorer lets go of the File too.
+    await expect(
+      page
+        .getByRole("tree", { name: "Project files" })
+        .getByRole("treeitem", { name: /Workbench\.tsx/u }),
+    ).toHaveCount(0);
     await expect(page.locator(".file-header__disk")).toBeHidden();
     await banner.getByRole("button", { name: "Keep mine" }).click();
     await expect(banner).toBeHidden();

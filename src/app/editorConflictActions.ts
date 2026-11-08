@@ -8,7 +8,7 @@ import {
   resourceKey,
   sameResource,
 } from "../domain/resourceIdentity";
-import type { ResourceRef } from "../domain/workbench";
+import { ABSENT_FINGERPRINT, type ResourceRef } from "../domain/workbench";
 import { contentText } from "../features/files/editorContent";
 import { getFileEditorController } from "../features/files/fileEditorController";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
@@ -56,7 +56,11 @@ export async function keepActiveEditorBuffer(
       bridge.setActiveEditor({ ...active, saving: true, message: null });
       const result = await getWorkbenchPorts().editor.rebaseEditorBuffer({
         resource: active.resource,
-        expectedDisk: active.document.disk,
+        // The banner showed this version; a deletion has none.
+        expectedDisk:
+          active.document.conflict.kind === "deleted"
+            ? { fingerprint: ABSENT_FINGERPRINT, byteLen: 0, modifiedAt: null }
+            : active.document.disk,
         lineEnding: active.document.lineEnding,
         content: contentText(active.content),
         revision: Math.max(1, active.revision),

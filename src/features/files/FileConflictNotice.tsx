@@ -1,5 +1,7 @@
+import { useEffect } from "react";
+
 import { useWorkbenchStore } from "../../app/store";
-import { resourceKey } from "../../domain/resourceIdentity";
+import { parentResource, resourceKey } from "../../domain/resourceIdentity";
 import {
   ABSENT_FINGERPRINT,
   type EditorDocument,
@@ -51,6 +53,17 @@ export default function FileConflictNotice({
   );
   const compareKey = useWorkbenchStore((state) => state.editorCompareKey);
   const { conflict } = document;
+  // Explorer and Source Control learn that the File went away.
+  const deletedKey =
+    conflict?.kind === "deleted" ? resourceKey(document.resource) : null;
+  useEffect(() => {
+    if (!deletedKey) return;
+    const state = useWorkbenchStore.getState();
+    void state.loadDirectory(parentResource(document.resource), true);
+    void state.refreshRepository();
+    // Once per deletion of this File.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deletedKey]);
   if (!conflict) {
     if (document.base.fingerprint !== ABSENT_FINGERPRINT) return null;
     // The user kept the buffer of a deleted File: saving creates it again.

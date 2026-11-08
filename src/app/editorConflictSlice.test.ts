@@ -142,6 +142,25 @@ describe("a File that changed on disk under unsaved edits", () => {
     expect(tabOf(file).dirty).toBe(false);
   });
 
+  it("keeps the newest edits when disk comes to match an older snapshot", async () => {
+    const file = nextFile();
+    openTabs(file);
+    await edit(file, "first\n");
+    await store().flushActiveEditor();
+    store().updateEditorContent("second\n");
+    // Another program writes what the durable buffer holds.
+    await changeOnDisk(file, "first\n");
+
+    expect(readyEditor()).toMatchObject({ content: "second\n" });
+    // The recovery copy holds them too, should Sage stop now.
+    expect((await editor.openEditorDocument(file)).buffer.content).toBe(
+      "second\n",
+    );
+    await store().keepActiveEditorBuffer();
+    expect(await store().saveActiveEditor()).toBe(true);
+    expect(await diskText(file)).toBe("second\n");
+  });
+
   it("Keep mine is refused if disk changed again since the banner", async () => {
     const file = nextFile();
     openTabs(file);

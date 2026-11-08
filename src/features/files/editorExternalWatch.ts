@@ -8,15 +8,12 @@ import {
 } from "../../domain/editorWatch";
 import { errorMessage } from "../../domain/errors";
 import { sameResource } from "../../domain/resourceIdentity";
-import {
-  ABSENT_FINGERPRINT,
-  type DocumentVersion,
-  type ResourceRef,
-} from "../../domain/workbench";
+import type { DocumentVersion, ResourceRef } from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
-import type {
-  ActiveEditorState,
-  EditorStateBridge,
+import {
+  getFileEditorController,
+  type ActiveEditorState,
+  type EditorStateBridge,
 } from "./fileEditorController";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { sameContent } from "./editorContent";
@@ -232,15 +229,7 @@ export async function applyEditorExternalWatchNotice(
     bridge.setActiveEditor(
       {
         ...active,
-        document: {
-          ...active.document,
-          disk: {
-            fingerprint: ABSENT_FINGERPRINT,
-            byteLen: 0,
-            modifiedAt: null,
-          },
-          conflict: DELETION_CONFLICT,
-        },
+        document: { ...active.document, conflict: DELETION_CONFLICT },
         message: DELETION_CONFLICT.message,
       },
       { tabStatus: "failed" },
@@ -257,6 +246,17 @@ export async function applyEditorExternalWatchNotice(
           saving: active.saving,
         }
       : null;
+  // Reading the File drops a durable buffer that matches disk, so unsaved
+  // edits are persisted first; the editor then differs from `snapshot`,
+  // which gives it the banner below.
+  if (
+    snapshot &&
+    snapshot.revision > snapshot.persistedRevision &&
+    !snapshot.saving
+  )
+    await getFileEditorController()
+      .flush(bridge)
+      .catch(() => {});
   // The banner's "Keep mine" goes on top of the disk version read here. A
   // File that cannot be read now gets the banner too.
   const document = await editor

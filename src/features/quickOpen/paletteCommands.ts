@@ -11,6 +11,7 @@ import { useWorkbenchStore } from "../../app/store";
 import type { SidebarView } from "../../app/store";
 import { formatKeymapChords, keymapBinding } from "../../domain/keymapRegistry";
 import type { TabKind } from "../../domain/chat";
+import { isDeletedOnDisk } from "../files/fileEditorController";
 import {
   fileSurfaceCommandAvailable,
   runFileSurfaceCommand,
@@ -33,14 +34,12 @@ function shortcutOf(id: string, apple: boolean) {
   return formatKeymapChords(keymapBinding(id), apple)[0] ?? null;
 }
 
-// The keymap id of each command's shortcut, where it has one.
-const FILE_COMMANDS: Array<[FileSurfaceCommand, string, string | null]> = [
-  ["goToLine", "Go to Line…", "goToLine"],
-  ["goToSymbol", "Go to Symbol in File…", "goToSymbol"],
-  ["find", "Find", "find"],
-  ["replace", "Replace", "replace"],
-  ["save", "Save File", "save"],
-  ["revert", "Revert File", null],
+const FILE_COMMANDS: Array<[FileSurfaceCommand, string]> = [
+  ["goToLine", "Go to Line…"],
+  ["goToSymbol", "Go to Symbol in File…"],
+  ["find", "Find"],
+  ["replace", "Replace"],
+  ["save", "Save File"],
 ];
 
 const VIEWS: Array<[SidebarView, string]> = [
@@ -62,13 +61,30 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
       run: "files",
     },
   ];
-  for (const [command, label, binding] of FILE_COMMANDS) {
+  for (const [command, label] of FILE_COMMANDS) {
     if (!fileSurfaceCommandAvailable(command)) continue;
     commands.push({
       id: command,
       label,
-      shortcut: binding && shortcutOf(binding, apple),
+      shortcut: shortcutOf(command, apple),
       run: () => void runFileSurfaceCommand(command),
+    });
+  }
+  // Revert File drops the active File's unsaved edits, as Reload does; a
+  // deleted File has nothing to revert to.
+  const editor = store.activeEditor;
+  if (
+    fileSurfaceCommandAvailable("save") &&
+    activeTab?.kind === "file" &&
+    activeTab.dirty &&
+    editor?.phase === "ready" &&
+    !isDeletedOnDisk(editor)
+  ) {
+    commands.push({
+      id: "revert",
+      label: "Revert File",
+      shortcut: null,
+      run: () => void useWorkbenchStore.getState().discardActiveEditor(),
     });
   }
   if (store.tabs.some((tab) => tab.kind === "file" && tab.dirty)) {
