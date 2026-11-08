@@ -364,8 +364,9 @@
       },
       {
         "entry": "src/features/search/SearchSurface.tsx",
-        "maxGzipBytes": 6271,
-        "reason": "Editor Search tool and bounded result list; loads only when Search is selected."
+        "maxGzipBytes": 7795,
+        "maxCssGzipBytes": 820,
+        "reason": "Editor Search tool, bounded result list and Replace field; loads only when Search is selected. Replace planning and its preview load on the first Replace."
       },
       {
         "entry": "src/features/settings/openEditorSettings.ts",

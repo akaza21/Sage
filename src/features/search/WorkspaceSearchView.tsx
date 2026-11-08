@@ -22,15 +22,12 @@ import { workspaceSearchDesktop } from "./workspaceSearchDesktop";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
 import { WorkspaceSearchCommandBar } from "./WorkspaceSearchCommandBar";
 import { FileKindIcon } from "../files/FileKindIcon";
-import {
-  workspaceReplaceDesktop,
-  type WorkspaceReplaceGateway,
-} from "./workspaceReplace";
+import type { WorkspaceReplaceGateway } from "./workspaceReplace";
 import { useWorkspaceReplace } from "./useWorkspaceReplace";
 import {
   WorkspaceReplaceConfirm,
   WorkspaceReplaceStatus,
-} from "./WorkspaceReplaceDialog";
+} from "./WorkspaceReplaceStatus";
 import { highlightPreview } from "./workspaceSearchHighlight";
 import "./workspace-replace.css";
 
@@ -59,7 +56,7 @@ export function WorkspaceSearchView({
   indexGeneration,
   onOpenMatch,
   gateway = workspaceSearchDesktop,
-  replaceGateway = workspaceReplaceDesktop,
+  replaceGateway,
 }: WorkspaceSearchViewProps) {
   const {
     state,

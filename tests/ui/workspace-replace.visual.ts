@@ -23,7 +23,8 @@ async function installReplaceFixtures(page: Page) {
     async ({ openFile, diskFile, source }) => {
       const search =
         await import("/src/features/search/workspaceSearchDesktop.ts");
-      const replace = await import("/src/features/search/workspaceReplace.ts");
+      const replace =
+        await import("/src/features/search/workspaceReplacePlan.ts");
       const rootId = "visual-root";
       const lines = source.split("\n");
       const matches = [

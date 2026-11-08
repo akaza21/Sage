@@ -81,7 +81,7 @@ pub struct ReplaceFilePreview {
 pub enum ReplaceProblemKind {
     /// Changed since the preview; nothing was written.
     Stale,
-    /// Not replaced: protected, unsaved in the editor, too large, unreadable.
+    /// Not replaced: protected, too large, unreadable.
     Refused,
     NoMatches,
 }

@@ -2,14 +2,18 @@ import { useState } from "react";
 
 import type { ResourceRef } from "../../domain/workbench";
 import type { WorkspaceSearchState } from "./useWorkspaceSearch";
-import {
-  applyReplacePlan,
-  planReplace,
-  type MatchPosition,
-  type ReplaceFileProblem,
-  type ReplacePlan,
-  type WorkspaceReplaceGateway,
+import type {
+  MatchPosition,
+  ReplaceFileProblem,
+  ReplacePlan,
+  WorkspaceReplaceGateway,
 } from "./workspaceReplace";
+
+/** What previews and applies a Replace, loaded on the first one. */
+async function replacer(gateway: WorkspaceReplaceGateway | undefined) {
+  const plan = await import("./workspaceReplacePlan");
+  return { plan, gateway: gateway ?? plan.workspaceReplaceDesktop };
+}
 
 export type ReplaceStep =
   | { kind: "idle" }
@@ -40,7 +44,8 @@ export function useWorkspaceReplace({
   search,
   onReplaced,
 }: {
-  gateway: WorkspaceReplaceGateway;
+  /** The native gateway when left out. */
+  gateway?: WorkspaceReplaceGateway;
   search: WorkspaceSearchState;
   onReplaced: () => void;
 }) {
@@ -57,8 +62,9 @@ export function useWorkspaceReplace({
     setReport(null);
     setStep({ kind: "planning" });
     try {
-      const plan = await planReplace({
-        gateway,
+      const loaded = await replacer(gateway);
+      const plan = await loaded.plan.planReplace({
+        gateway: loaded.gateway,
         projectId: response.projectId,
         transitionEpoch: response.transitionEpoch,
         spec: {
@@ -85,7 +91,8 @@ export function useWorkspaceReplace({
   async function confirm(plan: ReplacePlan) {
     setStep({ kind: "applying", plan });
     try {
-      const outcome = await applyReplacePlan(plan, gateway);
+      const loaded = await replacer(gateway);
+      const outcome = await loaded.plan.applyReplacePlan(plan, loaded.gateway);
       setReport({
         message: `Replaced ${counted(outcome.matchCount, "match", "matches")} in ${counted(outcome.fileCount, "file", "files")}.`,
         problems: [...plan.problems, ...outcome.problems],

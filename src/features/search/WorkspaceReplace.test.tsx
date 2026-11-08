@@ -8,9 +8,13 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { TransactionSpec } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+
 import { useWorkbenchStore } from "../../app/store";
-import type { EditorTextReplace } from "../../domain/editorTextReplace";
+import { resourceKey } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
+import { registerReplaceEditor } from "../files/editorTextReplace";
 import type { WorkspaceReplaceGateway } from "./workspaceReplace";
 import type { WorkspaceSearchGateway } from "./workspaceSearchDomain";
 import { WorkspaceSearchView } from "./WorkspaceSearchView";
@@ -379,14 +383,15 @@ describe("Workspace Replace", () => {
         content: "oldName();\n",
       },
     } as unknown as Partial<ReturnType<typeof useWorkbenchStore.getState>>);
-    const seen: EditorTextReplace[] = [];
-    const listener = (event: Event) => {
-      const detail = (event as CustomEvent<EditorTextReplace>).detail;
-      seen.push({ ...detail });
-      detail.handled = true;
-      detail.applied = true;
-    };
-    window.addEventListener("sage:editor-text-replace", listener);
+    const view = new EditorView({ doc: "oldName();\n" });
+    const changes: string[] = [];
+    const dispatch = view.dispatch.bind(view);
+    vi.spyOn(view, "dispatch").mockImplementation((...specs) => {
+      const transaction = specs[0] as TransactionSpec;
+      changes.push(JSON.stringify(transaction.changes));
+      dispatch(transaction);
+    });
+    const unregister = registerReplaceEditor(resourceKey(alpha), view);
     try {
       const replace = replaceGateway();
       await searchAndOpenReplace(replace);
@@ -401,18 +406,16 @@ describe("Workspace Replace", () => {
       );
       fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
       await screen.findByText("Replaced 1 match in 1 file.");
-      expect(seen).toEqual([
-        {
-          resourceKey: expect.any(String),
-          expected: "oldName();\n",
-          content: "newName();\n",
-          handled: false,
-          applied: false,
-        },
+      // Only what differs is replaced, so the rest of the text keeps its
+      // marks and the cursor.
+      expect(changes).toEqual([
+        JSON.stringify({ from: 0, to: 3, insert: "new" }),
       ]);
+      expect(view.state.doc.toString()).toBe("newName();\n");
       expect(replace.apply).not.toHaveBeenCalled();
     } finally {
-      window.removeEventListener("sage:editor-text-replace", listener);
+      unregister();
+      view.destroy();
     }
   });
 });

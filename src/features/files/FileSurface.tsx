@@ -16,7 +16,6 @@ import {
   keymapBinding,
   matchesPlatformChord,
 } from "../../domain/keymapRegistry";
-import type { EditorTextReplace } from "../../domain/editorTextReplace";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
@@ -25,6 +24,7 @@ import {
   subscribeEditorFocusRequest,
   takeEditorFocusRequest,
 } from "./editorFocusRequest";
+import { registerReplaceEditor } from "./editorTextReplace";
 import {
   registerFileSurfaceCommands,
   type FileSurfaceCommands,
@@ -145,44 +145,8 @@ export function FileSurface({
   const replaceView =
     !readOnly && gutterEditor?.key === activeResourceKey ? gutterEditor : null;
   useEffect(() => {
-    if (!replaceView) return;
-    const { view, key } = replaceView;
-    const onReplace = (event: Event) => {
-      const request = (event as CustomEvent<EditorTextReplace>).detail;
-      if (request.resourceKey !== key) return;
-      request.handled = true;
-      const current = view.state.doc.toString();
-      if (current !== request.expected) return;
-      const next = request.content;
-      let from = 0;
-      while (
-        from < current.length &&
-        from < next.length &&
-        current[from] === next[from]
-      ) {
-        from += 1;
-      }
-      let tail = 0;
-      while (
-        tail < current.length - from &&
-        tail < next.length - from &&
-        current[current.length - 1 - tail] === next[next.length - 1 - tail]
-      ) {
-        tail += 1;
-      }
-      view.dispatch({
-        changes: {
-          from,
-          to: current.length - tail,
-          insert: next.slice(from, next.length - tail),
-        },
-        userEvent: "input.replace",
-      });
-      request.applied = true;
-    };
-    window.addEventListener("sage:editor-text-replace", onReplace);
-    return () =>
-      window.removeEventListener("sage:editor-text-replace", onReplace);
+    if (replaceView)
+      return registerReplaceEditor(replaceView.key, replaceView.view);
   }, [replaceView]);
   const [focusRequests, setFocusRequests] = useState(0);
   useEffect(
