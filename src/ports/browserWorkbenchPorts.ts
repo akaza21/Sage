@@ -89,19 +89,22 @@ const project: ProjectPort = {
     ),
 };
 
+/** Rejects where the native command would, rather than throwing. */
+const settle = <T>(run: () => T): Promise<T> =>
+  new Promise((resolve) => resolve(run()));
+
 const editor: EditorPort = {
   readTextFile: (resource) =>
-    Promise.resolve(browserDesktop.readTextFile(resource)),
+    settle(() => browserDesktop.readTextFile(resource)),
   openEditorDocument: (resource) =>
-    Promise.resolve(browserDesktop.openEditorDocument(resource)),
+    settle(() => browserDesktop.openEditorDocument(resource)),
   snapshotEditorBuffer: (request) =>
-    Promise.resolve(browserDesktop.snapshotEditorBuffer(request)),
+    settle(() => browserDesktop.snapshotEditorBuffer(request)),
   saveEditorDocument: (resource) =>
-    Promise.resolve(browserDesktop.saveEditorDocument(resource)),
+    settle(() => browserDesktop.saveEditorDocument(resource)),
   discardEditorBuffer: (resource) =>
-    Promise.resolve(browserDesktop.discardEditorBuffer(resource)),
-  rebaseEditorBuffer: (request) =>
-    Promise.resolve(browserEditor.rebase(request)),
+    settle(() => browserDesktop.discardEditorBuffer(resource)),
+  rebaseEditorBuffer: (request) => settle(() => browserEditor.rebase(request)),
   watchEditorDocument: async (
     resource: ResourceRef,
   ): Promise<EditorWatchSubscription> => browserEditor.watch(resource),

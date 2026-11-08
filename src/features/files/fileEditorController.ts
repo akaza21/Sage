@@ -36,6 +36,12 @@ export type ActiveEditorState =
       persisting: boolean;
       saving: boolean;
       message: string | null;
+      /**
+       * Why the edits could not be written, set by a failed save or a
+       * failed recovery snapshot; kept through further edits until a save,
+       * a reload or Keep mine.
+       */
+      unstored?: string;
     };
 
 type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;

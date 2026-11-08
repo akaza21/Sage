@@ -180,7 +180,7 @@ describe("a File that changed on disk under unsaved edits", () => {
 
     expect(readyEditor()).toMatchObject({ content: "mine\n" });
     expect(readyEditor().document.conflict?.kind).toBe("external-change");
-    expect(readyEditor().message).toBe("the disk is full");
+    expect(readyEditor().message).toBe("Couldn't save: the disk is full.");
     expect(readyEditor().revision).toBeGreaterThan(
       readyEditor().persistedRevision,
     );
@@ -191,9 +191,49 @@ describe("a File that changed on disk under unsaved edits", () => {
       }),
     );
     expect(screen.getByRole("alert").textContent).toContain(
-      "Your unsaved changes are not yet stored: the disk is full",
+      "Your unsaved changes are not yet stored. Couldn't save: the disk is full.",
     );
     cleanup();
+  });
+
+  it("names a refused save plainly and says so when disk then changes", async () => {
+    const file = nextFile();
+    openTabs(file);
+    await edit(file, "mine\n");
+    const save = vi
+      .spyOn(editor, "saveEditorDocument")
+      .mockRejectedValue(
+        new Error(
+          "filesystem operation failed: Access is denied. (os error 5)",
+        ),
+      );
+    try {
+      expect(await store().saveActiveEditor()).toBe(false);
+    } finally {
+      save.mockRestore();
+    }
+    const refused =
+      "Couldn't save: the file is read-only or you don't have permission.";
+    expect(readyEditor().message).toBe(refused);
+    expect(store().error).toBe(refused);
+    expect(tabOf(file).dirty).toBe(true);
+
+    store().updateEditorContent("mine, more\n");
+    await changeOnDisk(file, "theirs\n");
+
+    expect(readyEditor().document.conflict?.kind).toBe("external-change");
+    expect(readyEditor()).toMatchObject({ content: "mine, more\n" });
+    render(
+      createElement(FileConflictNotice, {
+        document: readyEditor().document,
+        editable: true,
+      }),
+    );
+    expect(screen.getByRole("alert").textContent).toContain(
+      `Your unsaved changes are not yet stored. ${refused}`,
+    );
+    cleanup();
+    expect(await diskText(file)).toBe("theirs\n");
   });
 
   it("Keep mine is refused if disk changed again since the banner", async () => {
@@ -241,6 +281,58 @@ describe("a File that changed on disk under unsaved edits", () => {
     expect(await diskText(file)).toBe("kept, edited\n");
     expect(listing()).toContain("Workbench.tsx");
     expect(tabOf(file).dirty).toBe(false);
+  });
+
+  it.each([
+    ["with unsaved edits", "mine\n"],
+    ["with no edits", null],
+  ])(
+    "stays deleted when another notice follows the deletion, %s",
+    async (_, edits) => {
+      const file = nextFile();
+      openTabs(file);
+      await store().loadEditor(file);
+      if (edits) store().updateEditorContent(edits);
+      await changeOnDisk(file, null);
+      expect(readyEditor().document.conflict?.kind).toBe("deleted");
+
+      // Windows ends the watch of a deleted folder with a further notice.
+      await applyEditorExternalWatchNotice(
+        { resource: file, generation: 1, kind: "changed" },
+        bridge,
+        editor,
+      );
+
+      expect(readyEditor().document.conflict?.kind).toBe("deleted");
+      expect(tabOf(file).status).toBe("failed");
+      render(
+        createElement(FileConflictNotice, {
+          document: readyEditor().document,
+          editable: true,
+        }),
+      );
+      expect(screen.getByRole("alert").textContent).toContain("File deleted.");
+      expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
+      cleanup();
+    },
+  );
+
+  it("a kept deleted File stays kept when another notice follows", async () => {
+    const file = nextFile();
+    openTabs(file);
+    await edit(file, "kept\n");
+    await changeOnDisk(file, null);
+    expect(await store().keepActiveEditorBuffer()).toBe(true);
+
+    await applyEditorExternalWatchNotice(
+      { resource: file, generation: 1, kind: "changed" },
+      bridge,
+      editor,
+    );
+
+    expect(readyEditor().document.conflict).toBeNull();
+    expect(readyEditor()).toMatchObject({ content: "kept\n" });
   });
 
   it("Close on a deleted File leaves no recovery buffer", async () => {

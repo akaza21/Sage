@@ -208,9 +208,9 @@ export const createEditorSlice: StateCreator<
         return true;
       } catch (error) {
         if (!matchesProjectIntent(get(), generation, projectId)) return false;
-        const message = errorMessage(error);
-        editorController.saveError(editorState, error);
-        set({ error: message });
+        const { saveFailed } =
+          await import("../features/files/editorNoticeState");
+        set({ error: saveFailed(editorState, error) });
         return false;
       }
     },

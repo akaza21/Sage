@@ -8,11 +8,10 @@ import {
 } from "../../domain/editorWatch";
 import { errorMessage } from "../../domain/errors";
 import { sameResource } from "../../domain/resourceIdentity";
-import type { DocumentVersion, ResourceRef } from "../../domain/workbench";
+import type { ResourceRef } from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
 import {
   getFileEditorController,
-  type ActiveEditorState,
   type EditorStateBridge,
 } from "./fileEditorController";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
@@ -30,11 +29,6 @@ export const WATCH_UNAVAILABLE_MESSAGE =
 
 /** Returns the element whose focus means the user is back in this File. */
 export type EditorFocusBoundary = () => Element | null;
-
-const DELETION_CONFLICT = {
-  kind: "deleted" as const,
-  message: "This file was deleted outside Sage.",
-};
 
 export async function bindEditorExternalWatch(
   editor: EditorPort,
@@ -222,18 +216,13 @@ export async function applyEditorExternalWatchNotice(
   if (!active || !noticeMatchesWatch(notice, active.resource)) {
     return;
   }
+  // The editor is read above, as the notice arrives; this loads meanwhile.
+  const loading = import("./editorNoticeState");
   if (notice.kind === "deleted") {
-    if (active.phase !== "ready") {
-      return;
-    }
-    bridge.setActiveEditor(
-      {
-        ...active,
-        document: { ...active.document, conflict: DELETION_CONFLICT },
-        message: DELETION_CONFLICT.message,
-      },
-      { tabStatus: "failed" },
-    );
+    const { markDeleted } = await loading;
+    const current = bridge.getActiveEditor();
+    if (current && noticeMatchesWatch(notice, current.resource))
+      markDeleted(bridge);
     return;
   }
   const snapshot =
@@ -246,6 +235,7 @@ export async function applyEditorExternalWatchNotice(
           saving: active.saving,
         }
       : null;
+  const state = await loading;
   // Reading the File drops a durable buffer that matches disk, so unsaved
   // edits are persisted first; the editor then differs from `snapshot`,
   // which gives it the banner below; one that fails is reported there.
@@ -256,9 +246,7 @@ export async function applyEditorExternalWatchNotice(
   )
     await getFileEditorController()
       .flush(bridge)
-      .catch((error: unknown) =>
-        getFileEditorController().saveError(bridge, error),
-      );
+      .catch((error: unknown) => state.saveFailed(bridge, error));
   // The banner's "Keep mine" goes on top of the disk version read here. A
   // File that cannot be read now gets the banner too.
   const document = await editor
@@ -268,6 +256,7 @@ export async function applyEditorExternalWatchNotice(
   if (!current || !noticeMatchesWatch(notice, current.resource)) {
     return;
   }
+  if (state.stillDeleted(bridge, document)) return;
   if (
     current.phase === "ready" &&
     snapshot !== null &&
@@ -290,47 +279,9 @@ export async function applyEditorExternalWatchNotice(
       current.document.disk.fingerprint === document.disk.fingerprint &&
       current.document.lineEnding === document.lineEnding;
     if (!completedMatchingSave) {
-      setExternalChangeConflict(bridge, current, document?.disk);
+      state.setExternalChangeConflict(bridge, document?.disk);
       return;
     }
   }
-  if (!document) return;
-  bridge.setActiveEditor(
-    {
-      phase: "ready",
-      resource: document.resource,
-      document,
-      content: document.buffer.content,
-      revision: document.buffer.revision,
-      persistedRevision: document.buffer.revision,
-      persisting: false,
-      saving: false,
-      message: document.conflict?.message ?? null,
-    },
-    {
-      dirty: document.dirty,
-      tabStatus: document.conflict ? "failed" : null,
-    },
-  );
-}
-
-function setExternalChangeConflict(
-  bridge: EditorStateBridge,
-  current: Extract<ActiveEditorState, { phase: "ready" }>,
-  disk: DocumentVersion | undefined,
-): void {
-  bridge.setActiveEditor(
-    {
-      ...current,
-      document: {
-        ...current.document,
-        disk: disk ?? current.document.disk,
-        conflict: {
-          kind: "external-change",
-          message: "This file changed outside Sage.",
-        },
-      },
-    },
-    { tabStatus: "failed" },
-  );
+  if (document) state.reread(bridge, document);
 }
