@@ -25,7 +25,9 @@ type ItemNormalization = (NormalizedPayload, Option<ToolState>, Option<ItemLifec
 mod file_change;
 mod presentation;
 
-pub(super) use file_change::normalize as normalize_file_change;
+pub(super) use file_change::{
+    edit_tool as file_change_edit_tool, normalize as normalize_file_change,
+};
 mod tool_kinds;
 
 use tool_kinds::{explore_presentation, mcp_tool, web_search};
@@ -42,12 +44,16 @@ pub(super) fn normalize_materialized_command(
         command.explore.as_ref(),
         command.activity,
         command.command.as_deref(),
+        &command.locations,
     );
     let (payload, tool_state, terminal) = tool_with_summary_status(ToolPresentationInput {
         category,
         label: &label,
         tool_state: parse_tool_state(command.status.as_str()).ok_or(IngressError::Malformed)?,
-        input_summary: command.command.clone(),
+        input_summary: command
+            .command
+            .clone()
+            .filter(|_| category != ToolCategory::Read),
         output_summary: command.output.clone(),
         locations: command.locations.clone(),
         command_activity: command.activity,
@@ -247,14 +253,6 @@ fn command_execution<M: ResourceMapper>(
             })
         })
         .transpose()?;
-    let explore = item
-        .get("commandActions")
-        .and_then(crate::acp::bindings::codex::state::command_explore::classify);
-    let (category, label) = explore_presentation(
-        explore.as_ref(),
-        CommandActivity::Ordinary,
-        command.as_deref(),
-    );
     let locations = item
         .get("commandActions")
         .and_then(Value::as_array)
@@ -268,11 +266,20 @@ fn command_execution<M: ResourceMapper>(
         .transpose()
         .map_err(content)?
         .unwrap_or_default();
+    let explore = item
+        .get("commandActions")
+        .and_then(crate::acp::bindings::codex::state::command_explore::classify);
+    let (category, label) = explore_presentation(
+        explore.as_ref(),
+        CommandActivity::Ordinary,
+        command.as_deref(),
+        &locations,
+    );
     tool_with_summary_status(ToolPresentationInput {
         category,
         label: &label,
         tool_state: declared_tool_state(item)?,
-        input_summary: command,
+        input_summary: command.filter(|_| category != ToolCategory::Read),
         output_summary: output,
         locations,
         command_activity: CommandActivity::Ordinary,

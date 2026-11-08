@@ -317,6 +317,8 @@ impl CodexAdapter {
             ),
         });
         self.active_turn_id = None;
+        self.active_turn_user_stop = false;
+        self.active_turn_plan = None;
         Ok(TerminalUpdate::Apply)
     }
 

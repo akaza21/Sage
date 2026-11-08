@@ -415,17 +415,6 @@
     },
     {
       "scenario": "toolCompletes",
-      "harness": "codex",
-      "owner": "Codex",
-      "visible": true,
-      "gap": "read label names the file, not its workspace path, and the shell line is kept as input",
-      "differs": {
-        "/items/0/payload/presentation/label": "Read lib.rs",
-        "/items/0/payload/inputSummary": "cat src/lib.rs"
-      }
-    },
-    {
-      "scenario": "toolCompletes",
       "harness": "pi",
       "owner": "Pi",
       "visible": true,
@@ -442,17 +431,6 @@
       "gap": "trailing answer text stays open and is swept to cancelled",
       "differs": {
         "/items/1/lifecycle": "cancelled"
-      }
-    },
-    {
-      "scenario": "toolFailsMidTurn",
-      "harness": "codex",
-      "owner": "Codex",
-      "visible": true,
-      "gap": "read label names the file, not its workspace path, and the shell line is kept as input",
-      "differs": {
-        "/items/0/payload/presentation/label": "Read lib.rs",
-        "/items/0/payload/inputSummary": "cat src/lib.rs"
       }
     },
     {
@@ -528,44 +506,6 @@
     },
     {
       "scenario": "fileEditWithDiff",
-      "harness": "codex",
-      "owner": "Codex",
-      "visible": true,
-      "gap": "the edit has no tool row; only the file change is projected",
-      "differs": {
-        "/items": [
-          {
-            "lifecycle": "completed",
-            "toolState": null,
-            "kind": "fileChangeDiff",
-            "payload": {
-              "changes": [
-                {
-                  "resource": {
-                    "kind": "resource",
-                    "resource": {
-                      "rootId": "root-1",
-                      "relativePath": "src/lib.rs"
-                    }
-                  },
-                  "operation": "updated",
-                  "originalResource": null,
-                  "summary": "Edited src/lib.rs",
-                  "additions": 1,
-                  "deletions": 1,
-                  "pairState": "available",
-                  "newBytes": 34,
-                  "oldBytes": 34
-                }
-              ],
-              "truncated": false
-            }
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "fileEditWithDiff",
       "harness": "pi",
       "owner": "Pi",
       "visible": true,
@@ -602,34 +542,12 @@
     },
     {
       "scenario": "planUpdate",
-      "harness": "codex",
-      "owner": "Codex",
-      "visible": false,
-      "gap": "the plan item is never closed and is swept to cancelled",
-      "differs": {
-        "/items/0/lifecycle": "cancelled"
-      }
-    },
-    {
-      "scenario": "planUpdate",
       "harness": "acp",
       "owner": "ACP",
       "visible": false,
       "gap": "the plan item is never closed and is swept to cancelled",
       "differs": {
         "/items/0/lifecycle": "cancelled"
-      }
-    },
-    {
-      "scenario": "cancelledWithRunningTool",
-      "harness": "codex",
-      "owner": "Codex",
-      "visible": true,
-      "gap": "a user stop settles the turn as interrupted, not cancelled; read label and input as above",
-      "differs": {
-        "/turnState": "interrupted",
-        "/items/0/payload/presentation/label": "Read lib.rs",
-        "/items/0/payload/inputSummary": "cat src/lib.rs"
       }
     },
     {

@@ -92,7 +92,9 @@ impl CodexAdapter {
             .active_turn_id
             .clone()
             .ok_or(AdapterError::TurnUnavailable)?;
-        self.reserve(OutgoingRequest::interrupt(id, &thread, &turn)?)
+        let request = self.reserve(OutgoingRequest::interrupt(id, &thread, &turn)?)?;
+        self.active_turn_user_stop = true;
+        Ok(request)
     }
 
     pub(crate) fn close(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {

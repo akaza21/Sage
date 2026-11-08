@@ -328,6 +328,7 @@ fn turn_completed(
     adapter.expect_turn(external).map_err(identity)?;
     let state = match text(turn, "status", 32)? {
         "completed" => TurnState::Completed,
+        "interrupted" if adapter.stopped_by_user(external) => TurnState::Cancelled,
         "interrupted" => TurnState::Interrupted,
         "failed" => TurnState::Failed,
         _ => return Err(IngressError::Malformed),
@@ -352,6 +353,7 @@ fn turn_completed(
     } else {
         None
     };
+    let plan = adapter.take_turn_plan(external);
     match adapter
         .accept_turn_terminal(external, state)
         .map_err(identity)?
@@ -359,7 +361,15 @@ fn turn_completed(
         TerminalUpdate::Apply => {
             adapter.clear_command_items();
             let id = adapter.scoped_turn(external).map_err(identity)?;
-            let mut events = Vec::with_capacity(2);
+            let mut events = Vec::with_capacity(3);
+            if let Some(entries) = plan {
+                events.push(plan::event(
+                    adapter,
+                    external,
+                    entries,
+                    ItemLifecycle::Completed,
+                )?);
+            }
             if let Some(payload) = terminal_error {
                 events.push(IncomingEvent::Error(payload));
             }
