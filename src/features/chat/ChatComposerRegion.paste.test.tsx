@@ -514,6 +514,32 @@ describe(
       expect(paste(log)).toBe(false);
     });
 
+    it("loads the part again on a later mount after a failed load", async () => {
+      const view = render(<Composer />);
+      fail();
+      await screen.findByText(
+        /Text over the message limit cannot be attached/,
+        undefined,
+        LAZY,
+      );
+      view.unmount();
+      // The chunk is reachable again; the failure was not kept.
+      vi.doMock("./ComposerPaste", (importOriginal) => importOriginal());
+      native.files = [{ id: "file-9", name: "notes.md", bytes: 2048 }];
+      native.revision = "revision-9";
+      render(<Composer />);
+      expect(
+        await screen.findByText("notes.md · 2 KB", undefined, LAZY),
+      ).toBeVisible();
+      expect(
+        screen.queryByText(/Text over the message limit cannot be attached/),
+      ).toBeNull();
+      expect(paste(log)).toBe(false);
+      expect(
+        await screen.findByRole("button", { name: label }, LAZY),
+      ).toBeVisible();
+    });
+
     it("names only notice elements that exist, while it loads too", async () => {
       render(<Composer />);
       const named = () =>

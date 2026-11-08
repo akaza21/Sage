@@ -29,14 +29,16 @@ const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
 );
 // Paste staging, chips and messages load with a native chat's composer or
 // with input over the cap; only the synchronous size check stays eager.
-const PastePart = lazyParts<typeof PasteChunk>(() =>
-  import("./ComposerPaste").catch(() => ({ ComposerPaste: PasteUnavailable })),
+const PastePart = lazyParts<typeof PasteChunk>(
+  () => import("./ComposerPaste"),
+  { ComposerPaste: PasteUnavailable },
 );
 
 /**
  * Stands in for a paste part that failed to load: nothing can be staged,
  * so held input is let go, sends are not held for a batch, and a standing
- * notice says why long text is refused.
+ * notice says why long text is refused. The next composer mount tries the
+ * import again.
  */
 function PasteUnavailable({
   input: { seq, take },

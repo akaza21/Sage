@@ -30,6 +30,12 @@ type Components = Record<string, AnyComponent>;
 /** One loader per chunk; all named parts render synchronously once loaded. */
 export function lazyParts<Chunk extends Components>(
   load: () => Promise<Chunk>,
+  /**
+   * Stands in for the chunk when it fails to load, for the mounts that were
+   * waiting on it; the failure is not kept, so a later mount loads again.
+   * Without it, the failure reaches the nearest error boundary.
+   */
+  unavailable?: Chunk,
 ) {
   let parts: Partial<
     Record<keyof Chunk, () => Promise<{ default: AnyComponent }>>
@@ -42,6 +48,7 @@ export function lazyParts<Chunk extends Components>(
       (error: unknown) => {
         pending = null;
         parts = {};
+        if (unavailable) return unavailable;
         throw error;
       },
     ));
