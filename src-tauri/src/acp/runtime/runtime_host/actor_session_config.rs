@@ -29,7 +29,7 @@ impl<E: RuntimeEngine> Actor<E> {
             }
         };
         if std::time::Instant::now() >= deadline {
-            let _ = reply.send(Err(HostError::Deadline));
+            let _ = reply.send(Err(HostError::NotDispatched));
             return;
         }
         if self.pending_config.is_some() {

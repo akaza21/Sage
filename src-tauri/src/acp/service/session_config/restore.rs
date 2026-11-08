@@ -141,12 +141,7 @@ impl AcpService {
     /// a change left the runtime needing recovery.
     pub(crate) fn restore_session_config(&self, owner: &RuntimeOwner) -> Result<(), HostError> {
         let deadline = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
-        // A change is sent only with time left for its answer: one that
-        // reached the runtime host already past its deadline would be
-        // refused unsent, as if a sent change had gone unanswered.
-        self.restore_until(owner, deadline, || {
-            deadline.saturating_duration_since(Instant::now()) < LEAST_ANSWER_TIME
-        })
+        self.restore_until(owner, deadline, || Instant::now() >= deadline)
     }
 
     /// The restore, sending changes until `out_of_time`, each answered by
@@ -254,8 +249,10 @@ impl AcpService {
             Ok(()) | Err(HostError::ConfigMutationRejected) => {}
             Err(error) if needs_recovery(error) => return Err(error.clone()),
             Err(error) => {
-                // Busy, full or raced again: nothing changed, so it is tried
-                // again before the next prompt.
+                // Busy, full, raced again, or out of time before it was sent
+                // (`NotDispatched`): nothing changed, so it is tried again
+                // before the next prompt. Only a change that was sent and
+                // went unanswered needs recovery.
                 tracing::warn!(?error, "session config restore deferred");
                 return Ok(Applied::Deferred);
             }
@@ -269,9 +266,6 @@ impl AcpService {
         Ok(Applied::Sent(latest))
     }
 }
-
-/// Least time a restored change needs left to be sent.
-const LEAST_ANSWER_TIME: Duration = Duration::from_secs(2);
 
 enum Applied {
     /// The harness answered; this is the session's config after it.

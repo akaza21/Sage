@@ -678,3 +678,56 @@ fn a_choice_the_user_makes_while_the_restore_is_deferred_is_kept() {
     assert!(stored(&service).contains(&option("effort", "medium")));
     service.shutdown_blocking().unwrap();
 }
+
+#[test]
+fn a_change_whose_time_ran_out_before_it_was_sent_is_restored_later_on_a_healthy_runtime() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    {
+        let connection = service.database.connection();
+        assert!(
+            choices::record(
+                &connection,
+                &owner(1).session_id,
+                &option("effort", "high"),
+                1
+            )
+            .unwrap()
+        );
+    }
+    let resumed = owner(2);
+    let agent = start(&service, &resumed, effort("low"));
+    // The budget is spent by the time the change reaches the runtime host.
+    let spent = std::time::Instant::now();
+    service.restore_until(&resumed, spent, || false).unwrap();
+    assert!(agent.lock().unwrap().requests.is_empty());
+    let host = service.lane_at(0).runtime.for_owner(&resumed).unwrap();
+    let revision = service
+        .lane_at(0)
+        .runtime
+        .config
+        .live_snapshot(&resumed)
+        .unwrap()
+        .config_revision;
+    let intent = ConfigIntent {
+        owner: resumed.clone(),
+        expected_config_revision: revision,
+        mutation: option("effort", "high"),
+    };
+    assert_eq!(
+        host.configure_session_until(intent, spent),
+        Err(HostError::NotDispatched)
+    );
+    // The runtime is not in recovery: the rest of the restore runs before
+    // the next prompt.
+    assert!(!matches!(
+        host.state(),
+        Ok(crate::acp::runtime::HostState::Recovery) | Err(_)
+    ));
+    service.restore_session_config(&resumed).unwrap();
+    assert_eq!(agent.lock().unwrap().requests.len(), 1);
+    assert_eq!(shown_effort(&service, &resumed), "high");
+    assert_eq!(stored(&service), [option("effort", "high")]);
+    service.shutdown_blocking().unwrap();
+}
