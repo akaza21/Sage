@@ -22,26 +22,39 @@ import { useComposerImageInput } from "./useComposerImageInput";
 import type * as PasteChunk from "./ComposerPaste";
 import type { StagedSummary } from "./pastedTextTypes";
 import { useComposerPasteSignal } from "./useComposerPasteSignal";
+import { ComposerPasteNotices } from "./ComposerPasteNotices";
 
 const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
   () => import("./ClaudeAuthActions"),
 );
 // Paste staging, chips and messages load with a native chat's composer or
-// with input over the cap; only the synchronous size check stays eager. If
-// they cannot load, held input is dropped, a standing notice says so, and
-// nothing is staged, so sends are not held for them.
+// with input over the cap; only the synchronous size check stays eager.
 const PastePart = lazyParts<typeof PasteChunk>(() =>
-  import("./ComposerPaste").catch(() => ({
-    ComposerPaste: ({ onStaged }: PasteProps) => {
-      useEffect(
-        () => onStaged({ revision: null, busy: false, settled: true }),
-        [onStaged],
-      );
-      return <p role="status">Long text input is unavailable.</p>;
-    },
-  })),
+  import("./ComposerPaste").catch(() => ({ ComposerPaste: PasteUnavailable })),
 );
-type PasteProps = ComponentProps<typeof PasteChunk.ComposerPaste>;
+
+/**
+ * Stands in for a paste part that failed to load: nothing can be staged,
+ * so held input is let go, sends are not held for a batch, and a standing
+ * notice says why long text is refused.
+ */
+function PasteUnavailable({
+  input: { seq, take },
+  noticeIds,
+  onStaged,
+}: ComponentProps<typeof PasteChunk.ComposerPaste>) {
+  useEffect(() => void take(), [seq, take]);
+  useEffect(
+    () => onStaged({ revision: null, busy: false, settled: true }),
+    [onStaged],
+  );
+  return (
+    <ComposerPasteNotices
+      ids={noticeIds}
+      reason="Text over the message limit cannot be attached: attachment support failed to load."
+    />
+  );
+}
 
 export function ChatComposerRegion({
   hidden = false,
@@ -126,7 +139,10 @@ export function ChatComposerRegion({
   // A native chat loads it at once, so the batch staged before a reload is
   // read back before any send, whether or not the field was focused.
   const pasteArmed = availableBinding || paste.seq > 0;
-  const pasteNoticeId = `${disabledReasonId}-paste`;
+  const pasteNoticeIds = {
+    notice: `${disabledReasonId}-paste`,
+    reason: `${disabledReasonId}-paste-reason`,
+  };
   const dispatchBlocked =
     composerDisabled ||
     sendBlocked ||
@@ -260,7 +276,7 @@ export function ChatComposerRegion({
                   ? "Enter queues a message while this turn runs."
                   : undefined
               }
-              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""} ${pasteNoticeId}`}
+              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}${pasteArmed ? ` ${pasteNoticeIds.notice} ${pasteNoticeIds.reason}` : ""}`}
               value={text}
               rows={2}
               placeholder={composerPromptPlaceholder(
@@ -302,8 +318,9 @@ export function ChatComposerRegion({
               input={paste}
               text={text}
               disabled={actionBusy || projectTransitioning}
-              noticeId={pasteNoticeId}
+              noticeIds={pasteNoticeIds}
               onStaged={setStaged}
+              fallback={<ComposerPasteNotices ids={pasteNoticeIds} />}
             />
           ) : null}
           {disabledReason ? (

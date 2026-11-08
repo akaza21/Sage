@@ -259,6 +259,14 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     render(<Composer />);
     await focusField();
     expect(describesField(status()!)).toBe(true);
+    // Every element the field names exists.
+    for (const id of field().getAttribute("aria-describedby")!.split(" "))
+      expect(document.getElementById(id), id).not.toBeNull();
+  });
+
+  it("names no paste notices where the paste part never loaded", () => {
+    render(<Composer availableBinding={false} />);
+    expect(field().getAttribute("aria-describedby")).not.toContain("paste");
   });
 
   it("reads the staged batch when a native chat's composer mounts", async () => {
@@ -317,7 +325,7 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     const reason = screen.getByText(
       /Attached text goes with the next message you send, not a queued one\./,
     );
-    expect(reason).not.toHaveAttribute("aria-live");
+    expect(reason.closest("[aria-live]")).toBeNull();
     expect(describesField(reason)).toBe(true);
   });
 
@@ -439,25 +447,24 @@ describe(
     const second = `${"y".repeat(30)}\n`.repeat(700);
     const secondLabel = "Pasted text · 700 lines · 22 KB";
 
-    it("stages two pastes made before it loads, both and in order", async () => {
+    it("stages the first of two pastes made before it loads, and refuses the second aloud", async () => {
       render(<Composer />);
       expect(paste(log)).toBe(false);
       expect(paste(second)).toBe(false);
       await new Promise((resolve) => setTimeout(resolve, 50));
+      // The chunk has not arrived: nothing was read or staged yet.
       expect(native.calls).toEqual([]);
       release();
-      await waitFor(() => {
-        const chips = screen.getAllByRole("button", {
-          name: /^Pasted text · /,
-        });
-        expect(chips.map((chip) => chip.textContent)).toEqual([
-          label,
-          secondLabel,
-        ]);
-      }, LAZY);
+      expect(
+        await screen.findByRole("button", { name: label }, LAZY),
+      ).toBeVisible();
+      await announced(
+        "Another long paste was still being attached. Nothing was pasted; paste again once it appears.",
+      );
+      expect(screen.queryByRole("button", { name: secondLabel })).toBeNull();
       expect(
         native.calls.filter((call) => call === "stage_prompt_text"),
-      ).toHaveLength(2);
+      ).toHaveLength(1);
     });
 
     it("stages a paste followed by an over-cap edit, and answers both", async () => {
@@ -466,6 +473,8 @@ describe(
       expect(paste(log)).toBe(false);
       fireEvent.change(field(), { target: { value: second } });
       expect(onTextChange).not.toHaveBeenCalled();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(native.calls).toEqual([]);
       release();
       expect(
         await screen.findByRole("button", { name: label }, LAZY),
@@ -492,15 +501,30 @@ describe(
       expect(send).toBeDisabled();
       expect(paste(log)).toBe(false);
       fail();
-      expect(
-        await screen.findByText(
-          "Long text input is unavailable.",
-          undefined,
-          LAZY,
-        ),
-      ).toBeVisible();
-      expect(send).toBeEnabled();
+      const notice = await screen.findByText(
+        /Text over the message limit cannot be attached/,
+        undefined,
+        LAZY,
+      );
+      expect(notice).toBeVisible();
+      expect(describesField(notice)).toBe(true);
+      await waitFor(() => expect(send).toBeEnabled(), LAZY);
       expect(native.calls).toEqual([]);
+      // A later long paste is still never inserted.
+      expect(paste(log)).toBe(false);
+    });
+
+    it("names only notice elements that exist, while it loads too", async () => {
+      render(<Composer />);
+      const named = () =>
+        field().getAttribute("aria-describedby")!.split(" ").filter(Boolean);
+      expect(named()).toContain("disabled-reason-paste");
+      for (const id of named())
+        expect(document.getElementById(id), id).not.toBeNull();
+      release();
+      await focusField();
+      for (const id of named())
+        expect(document.getElementById(id), id).not.toBeNull();
     });
   },
 );

@@ -2,11 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import {
-  heldPasteRefusal,
+  heldInputMessage,
   pasteAttachmentRefusal,
-  typedOverflowMessage,
   type PasteAttachability,
 } from "./composerPaste";
+import {
+  ComposerPasteNotices,
+  type PasteNoticeIds,
+} from "./ComposerPasteNotices";
 import { PastedTextChips } from "./PastedTextChips";
 import {
   pasteOver,
@@ -15,7 +18,7 @@ import {
   type StagedOwner,
 } from "./pastedTextFlow";
 import type {
-  HeldPaste,
+  HeldInput,
   PastedTextState,
   StagedSummary,
 } from "./pastedTextTypes";
@@ -23,7 +26,7 @@ import type {
 const EMPTY: PastedTextState = { revision: null, items: [], busy: false };
 
 /**
- * Lazy: loads with the composer's first focus or over-cap input. Owns the
+ * Lazy: loads with a native chat's composer or with over-cap input. Owns the
  * chat's staged pasted text: attaching a paste too long for the composer,
  * refusing one that cannot attach, the announcements, the chips and their
  * preview. The composer keeps only its synchronous size check and hands
@@ -34,10 +37,10 @@ export function ComposerPaste({
   session,
   nativeAcp,
   activeTurn,
-  input: { seq, held },
+  input: { seq, take },
   text,
   disabled,
-  noticeId,
+  noticeIds,
   onStaged,
 }: {
   chatId: string | undefined;
@@ -45,16 +48,15 @@ export function ComposerPaste({
   nativeAcp: boolean;
   activeTurn: boolean;
   /**
-   * The composer's held-back input, in order, drained here; seq is bumped
-   * for each input held, and is 0 when the part is only armed.
+   * The composer's held-back input: seq is bumped for each input held, and
+   * take hands over all of it, oldest first.
    */
-  input: { seq: number; held: { current: HeldPaste[] } };
+  input: { seq: number; take(): HeldInput[] };
   /** The draft; a notice about an earlier draft clears once it changes. */
   text: string;
   /** Busy while a send is in flight; a send may consume the batch. */
   disabled: boolean;
-  /** The field names it in aria-describedby; it holds every notice. */
-  noticeId: string;
+  noticeIds: PasteNoticeIds;
   onStaged(next: StagedSummary): void;
 }) {
   const [state, setState] = useState(EMPTY);
@@ -62,7 +64,8 @@ export function ComposerPaste({
   const ref = useRef(state);
   const settled = useRef(false);
   const handled = useRef(0);
-  // Held pastes are staged one after another, never two at once.
+  // Held input is answered in order, a paste only once the one before it
+  // was staged or refused.
   const chain = useRef(Promise.resolve());
   // Keyed to the draft it was made for, so the next edit clears it.
   const announce = useCallback(
@@ -111,27 +114,20 @@ export function ComposerPaste({
     // Each bump is handled once, also under a doubled effect.
     if (seq === handled.current) return;
     handled.current = seq;
-    // Every held input is drained, in order, whatever came last.
-    const inputs = held.current.splice(0);
+    // Everything held is taken, whatever came last.
+    const inputs = take();
+    const refusal = pasteAttachmentRefusal(
+      isTauriRuntime() ? attachability : { nativeAcp: false, session: null },
+    );
     // Announced after the event, like a native refusal would be.
     chain.current = chain.current.then(async () => {
       for (const held of inputs) {
-        if ("edit" in held)
-          announce(
-            typedOverflowMessage(
-              held.edit,
-              pasteAttachmentRefusal(
-                isTauriRuntime()
-                  ? attachability
-                  : { nativeAcp: false, session: null },
-              ),
-            ),
-          );
-        else if ("bytes" in held) announce(heldPasteRefusal(held));
-        else await pasteOver(owner, attachability, held, announce, disabled);
+        if (held.kind === "paste")
+          await pasteOver(owner, attachability, held.paste, announce, disabled);
+        else announce(heldInputMessage(held, refusal));
       }
     });
-  }, [announce, attachability, disabled, owner, seq, held]);
+  }, [announce, attachability, disabled, owner, seq, take]);
   const transient = notice?.text === text ? notice.message : "";
   const reason =
     activeTurn && state.items.length
@@ -139,15 +135,11 @@ export function ComposerPaste({
       : "";
   return (
     <>
-      <div id={noticeId}>
-        <div
-          className={transient ? "composer__disabled-reason" : ""}
-          aria-live="polite"
-        >
-          {transient}
-        </div>
-        {reason ? <p className="composer__disabled-reason">{reason}</p> : null}
-      </div>
+      <ComposerPasteNotices
+        ids={noticeIds}
+        notice={transient}
+        reason={reason}
+      />
       {state.items.length > 0 ? (
         <PastedTextChips
           items={state.items}

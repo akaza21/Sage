@@ -1,9 +1,10 @@
-/** Lazy: loads with the composer's first focus or over-cap input. */
+/** Lazy: loads with a native chat's composer or with over-cap input. */
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import {
   PROMPT_ATTACHMENT_COUNT,
   PROMPT_ATTACHMENT_TOTAL_BYTES,
 } from "../../ports/promptAttachments";
+import type { HeldInput } from "./pastedTextTypes";
 
 /** UTF-8 length without encoding a copy; a huge clipboard is never duplicated. */
 export function utf8Length(value: string): number {
@@ -89,11 +90,19 @@ export function pasteAttachmentRefusal({
   return null;
 }
 
-/** A paste held by size only: it could never attach, so nothing is sent. */
-export function heldPasteRefusal({ bytes }: { bytes: number }): string {
-  return bytes > PROMPT_ATTACHMENT_TOTAL_BYTES
-    ? `Pasted text is at least ${formatSize(bytes)}, over the ${ATTACHMENT_LIMIT} attachment limit. Nothing was pasted. Save it to a file in the project and ask the agent to read it.`
-    : `A message carries at most ${PROMPT_ATTACHMENT_COUNT} attachments. Nothing was pasted. Remove an attachment first.`;
+/** What the composer says about input it held back without its text. */
+export function heldInputMessage(
+  held: Exclude<HeldInput, { kind: "paste" }>,
+  refusal: string | null,
+): string {
+  switch (held.kind) {
+    case "edit":
+      return typedOverflowMessage(held.bytes, refusal);
+    case "overLimit":
+      return `Pasted text is at least ${formatSize(held.bytes)}, over the ${ATTACHMENT_LIMIT} attachment limit. Nothing was pasted. Save it to a file in the project and ask the agent to read it.`;
+    case "pending":
+      return "Another long paste was still being attached. Nothing was pasted; paste again once it appears.";
+  }
 }
 
 export type PasteDecision =

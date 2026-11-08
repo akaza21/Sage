@@ -8,19 +8,25 @@ export interface StagedSummary {
 }
 
 /** A paste over the composer cap, held for the lazy paste part. */
-export interface HeldText {
+export interface HeldPaste {
   before: string;
   value: string;
   after: string;
 }
 
 /**
- * Input held for the lazy paste part, in order: a paste's text; only the
- * size (a lower bound in bytes) of a paste that can never attach, being over
- * the batch limit or past the count limit; or only the size of an edit held
- * back for the composer cap, never its text.
+ * Input the composer held back for the lazy paste part, oldest first. Only
+ * a paste that may still attach keeps its text; the others keep at most a
+ * size, a lower bound in UTF-8 bytes.
  */
-export type HeldPaste = HeldText | { bytes: number } | { edit: number };
+export type HeldInput =
+  | { kind: "paste"; paste: HeldPaste }
+  /** A paste over the attachment limit, refused when it was made. */
+  | { kind: "overLimit"; bytes: number }
+  /** A paste made while another was still held, refused when it was made. */
+  | { kind: "pending" }
+  /** An edit over the composer cap, held back from the draft. */
+  | { kind: "edit"; bytes: number };
 
 /** One staged resource. Only a paste made here keeps its text for preview. */
 export interface StagedPromptItem {
