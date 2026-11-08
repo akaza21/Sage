@@ -14,6 +14,7 @@ const ALLOW_ONCE: &str = "allow_once";
 const ALLOW_ALWAYS: &str = "allow_always";
 const REJECT: &str = "reject";
 const DECLINED: &str = "The user declined this tool use.";
+const TOO_MANY: &str = "Too many approvals are already waiting for the user.";
 /// Claude's multiple-choice questions have no Sage card yet; declining with
 /// this reason makes Claude ask in its reply instead.
 const QUESTIONS_UNSUPPORTED: &str = "Sage cannot show multiple-choice questions yet. \
@@ -58,7 +59,8 @@ impl SdkBridge {
         }
         options.push(json!({"optionId": REJECT, "name": "No", "kind": "reject_once"}));
         if self.permissions.len() >= MAX_PENDING {
-            return Err(BridgeError::Capacity);
+            inbound.replies.push(decision(request_id, deny(TOO_MANY)));
+            return Ok(());
         }
         self.next_permission += 1;
         self.permissions.insert(

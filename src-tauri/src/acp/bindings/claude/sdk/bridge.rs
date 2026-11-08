@@ -136,6 +136,17 @@ impl SdkBridge {
         }
     }
 
+    /// The error reply to a control request Sage could not read, so Claude
+    /// Code does not wait on it.
+    pub(super) fn refusal(sdk: &Value) -> Option<Value> {
+        (sdk.get("type")?.as_str()? == "control_request").then_some(())?;
+        let request_id = sdk.get("request_id")?.as_str()?;
+        Some(json!({
+            "type": "control_response",
+            "response": {"subtype": "error", "request_id": request_id, "error": "Sage could not read this request"},
+        }))
+    }
+
     /// Claude Code never received a frame: forget what it started.
     pub(super) fn undo(&mut self, sent: &Sent) {
         match sent {

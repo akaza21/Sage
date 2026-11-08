@@ -87,20 +87,78 @@ impl ClaudeSdkRuntime {
                     .map_err(|_| AdapterRuntimeError::UnsupportedCommand)
             });
         let token = egress.into_token();
-        let sdk = match sdk {
-            Ok(sdk) => sdk,
+        let sent = sdk.as_ref().ok().and_then(SdkBridge::sent);
+        // The SDK frame can outgrow the ACP frame it replaces (attachment
+        // wrappers), so it is built before anything is recorded as sent.
+        let frame = match sdk.and_then(|sdk| sdk_frame(&sdk)) {
+            Ok(frame) => frame,
             Err(error) => {
+                if let (Some(sent), Some(bridge)) = (&sent, self.bridge.as_mut()) {
+                    bridge.undo(sent);
+                }
                 self.session
                     .resolve_egress(token, EgressResolution::QueueRejected)?;
                 return Err(error);
             }
         };
-        if let Some(sent) = SdkBridge::sent(&sdk)
+        if let Some(sent) = sent
             && self.sent.len() < MAX_OPEN_DELIVERIES
         {
             self.sent.push((token.clone(), sent));
         }
-        Ok(AdapterEgress::new(sdk_frame(&sdk)?, token))
+        Ok(AdapterEgress::new(frame, token))
+    }
+
+    /// One SDK frame through the bridge, its ACP frames through the session.
+    fn ingest_sdk(
+        &mut self,
+        sdk: Value,
+        resources: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        let inbound = self
+            .bridge()?
+            .inbound(sdk)
+            .map_err(|_| AdapterRuntimeError::Frame)?;
+        let mut batch = AdapterBatchBuilder::new();
+        let mut observed = false;
+        for acp in inbound.acp {
+            let digest = request_value_digest(&acp);
+            let (events, egress) = self
+                .session
+                .ingest_value(acp, digest, resources)?
+                .into_parts();
+            for event in events {
+                observed = true;
+                batch.push_event(event)?;
+            }
+            for egress in egress {
+                batch.push_egress(self.outbound(egress)?)?;
+            }
+        }
+        for reply in inbound.replies {
+            batch.push_egress(AdapterEgress::new(
+                sdk_frame(&reply)?,
+                EgressToken::protocol_notification(),
+            ))?;
+        }
+        if !observed {
+            batch.push_event(AdapterEvent::Absorbed)?;
+        }
+        Ok(batch.finish())
+    }
+}
+
+/// Paths in a frame read without its structure checks are not mapped into
+/// the project; they show as unavailable.
+struct NoResources;
+
+impl ResourceMapper for NoResources {
+    fn map_existing(
+        &self,
+        _absolute_path: &str,
+    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
+    {
+        Err(crate::acp::intent::UnavailableResourceReason::Foreign)
     }
 }
 
@@ -209,35 +267,36 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let sdk = decode_frame(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
-        let inbound = self
-            .bridge()?
-            .inbound(sdk)
-            .map_err(|_| AdapterRuntimeError::Frame)?;
-        let mut batch = AdapterBatchBuilder::new();
-        let mut observed = false;
-        for acp in inbound.acp {
-            let digest = request_value_digest(&acp);
-            let (events, egress) = self
-                .session
-                .ingest_value(acp, digest, resources)?
-                .into_parts();
-            for event in events {
-                observed = true;
-                batch.push_event(event)?;
-            }
-            for egress in egress {
-                batch.push_egress(self.outbound(egress)?)?;
-            }
+        self.ingest_sdk(sdk, resources)
+    }
+
+    /// Claude Code's own output can exceed the structure limits sized for
+    /// ACP frames: an edit's result carries its whole patch in
+    /// `tool_use_result`, which Sage never reads. Such a frame is read
+    /// without those fields; a control request still out of bounds is
+    /// refused so Claude Code is not left waiting, and anything else is
+    /// dropped (an unfinished tool row ends as failed with the turn).
+    fn discard_invalid_response(
+        &mut self,
+        frame: &Frame,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        let mut sdk: Value =
+            serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
+        let object = sdk.as_object_mut().ok_or(AdapterRuntimeError::Frame)?;
+        object.remove("tool_use_result");
+        object.remove("tool_result_meta");
+        let reduced = serde_json::to_vec(&sdk).map_err(|_| AdapterRuntimeError::Frame)?;
+        if let Ok(sdk) = decode_frame(&reduced) {
+            return self.ingest_sdk(sdk, &NoResources);
         }
-        for reply in inbound.replies {
+        let mut batch = AdapterBatchBuilder::new();
+        if let Some(reply) = SdkBridge::refusal(&sdk) {
             batch.push_egress(AdapterEgress::new(
                 sdk_frame(&reply)?,
                 EgressToken::protocol_notification(),
             ))?;
         }
-        if !observed {
-            batch.push_event(AdapterEvent::Absorbed)?;
-        }
+        batch.push_event(AdapterEvent::Absorbed)?;
         Ok(batch.finish())
     }
 

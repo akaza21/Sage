@@ -240,9 +240,11 @@ impl SdkBridge {
                 .push(self.update(json!({"sessionUpdate": "plan", "entries": entries})));
             return;
         }
-        if self.tools.len() < MAX_TRACKED_TOOLS {
-            self.tools.insert(id.to_owned(), name.to_owned());
+        // A row is shown only while it can be finished.
+        if self.tools.len() >= MAX_TRACKED_TOOLS {
+            return;
         }
+        self.tools.insert(id.to_owned(), name.to_owned());
         let mut update = tool_fields(name, input);
         update.insert("sessionUpdate".into(), "tool_call".into());
         update.insert("toolCallId".into(), id.into());

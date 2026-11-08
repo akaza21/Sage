@@ -121,7 +121,8 @@ impl SessionLaunch {
             .into(),
         );
         args.push(self.session_id.clone().into());
-        if let Some(model) = &self.model {
+        // `default` is the picker's name for Claude Code's own choice.
+        if let Some(model) = self.model.as_ref().filter(|model| *model != "default") {
             args.extend(["--model".into(), model.into()]);
         }
         args
@@ -319,21 +320,40 @@ impl ClaudeSdkBindingRegistration {
         };
     }
 
+    /// The admitted CLI, revalidated. Claude Code updates itself in place,
+    /// so a changed file still on the supported line is admitted again.
     pub(crate) fn refresh(
         &self,
     ) -> Result<Arc<AdmittedClaudeSdkBinding>, ClaudeSdkAdmissionUnavailable> {
-        let mut state = self.lock_state();
-        let binding = match &*state {
+        let binding = match &*self.lock_state() {
             RegistrationState::Admitted(binding) => Arc::clone(binding),
             RegistrationState::Pending => {
                 return Err(ClaudeSdkAdmissionUnavailable::DiscoveryPending);
             }
             RegistrationState::Unavailable(reason) => return Err(*reason),
         };
-        binding.revalidate().inspect_err(|reason| {
-            *state = RegistrationState::Unavailable(*reason);
-        })?;
-        Ok(binding)
+        let Err(drift) = binding.revalidate() else {
+            return Ok(binding);
+        };
+        let readmitted = if self.fixture_only {
+            Err(drift)
+        } else {
+            let version = crate::harness_discovery::revalidate_harness_version(
+                "claude-code",
+                &binding.executable,
+            );
+            AdmittedClaudeSdkBinding::admit(&InstalledHarness {
+                id: "claude-code",
+                executable: binding.executable.clone(),
+                version,
+            })
+            .map(Arc::new)
+        };
+        *self.lock_state() = match &readmitted {
+            Ok(binding) => RegistrationState::Admitted(Arc::clone(binding)),
+            Err(reason) => RegistrationState::Unavailable(*reason),
+        };
+        readmitted
     }
 
     pub(crate) fn is_available(&self) -> bool {

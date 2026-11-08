@@ -108,11 +108,15 @@ fn prompt_content(blocks: Option<&Value>) -> Result<Vec<Value>, BridgeError> {
         .iter()
         .map(|block| match block.get("type").and_then(Value::as_str) {
             Some("text") => Ok(json!({"type": "text", "text": text(block.get("text"))?})),
-            Some("image") => Ok(base64_block(
-                "image",
-                text(block.get("mimeType"))?,
-                text(block.get("data"))?,
-            )),
+            Some("image") => {
+                let data = text(block.get("data"))?;
+                match sniff(data) {
+                    Some(media_type) if media_type.starts_with("image/") => {
+                        Ok(base64_block("image", media_type, data))
+                    }
+                    _ => Err(BridgeError::Unsupported),
+                }
+            }
             Some("resource") => {
                 let resource = block.get("resource").ok_or(BridgeError::Unsupported)?;
                 let uri = text(resource.get("uri"))?;

@@ -259,3 +259,46 @@ fn a_prompt_claude_code_never_received_frees_the_next_prompt() {
     let user = send(&mut runtime, prompt("second"));
     assert_eq!(user["message"]["content"][0]["text"], "second");
 }
+
+#[test]
+fn an_edit_result_with_a_long_patch_finishes_its_row_instead_of_failing_the_session() {
+    let mut runtime = ready();
+    send(
+        &mut runtime,
+        AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Rewrite it").unwrap(),
+            client_message_id: RequiredText::new("client", "client-1").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::Ask,
+        },
+    );
+    feed(
+        &mut runtime,
+        json!({"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"/w/a.rs","content":"new"}}]}}),
+    );
+    let lines: Vec<String> = (0..600).map(|line| format!("-old {line}")).collect();
+    let result = frame(
+        json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"The file /w/a.rs has been updated."}]},
+        "tool_use_result":{"type":"update","structuredPatch":[{"oldStart":1,"oldLines":600,"newStart":1,"newLines":1,"lines":lines}]}}),
+    );
+    assert!(crate::acp::transport::validate_structure(&result).is_err());
+    let (events, _) = runtime
+        .discard_invalid_response(&result)
+        .unwrap()
+        .into_parts();
+    assert!(
+        !matches!(events[..], [AdapterEvent::Absorbed]),
+        "{events:?}"
+    );
+
+    let tools: Vec<String> = (0..600).map(|tool| format!("tool-{tool}")).collect();
+    let request = frame(
+        json!({"type":"control_request","request_id":"r9","request":{"subtype":"can_use_tool","tool_name":"mcp__x__y","input":{"items":tools}}}),
+    );
+    assert!(crate::acp::transport::validate_structure(&request).is_err());
+    let (_, egress) = runtime
+        .discard_invalid_response(&request)
+        .unwrap()
+        .into_parts();
+    let reply: Value = serde_json::from_slice(egress[0].frame().payload()).unwrap();
+    assert_eq!(reply["response"]["subtype"], "error");
+}
