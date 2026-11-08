@@ -141,7 +141,12 @@ impl AcpService {
     /// a change left the runtime needing recovery.
     pub(crate) fn restore_session_config(&self, owner: &RuntimeOwner) -> Result<(), HostError> {
         let deadline = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
-        self.restore_until(owner, deadline, || Instant::now() >= deadline)
+        // A change is sent only with time left for its answer: one that
+        // reached the runtime host already past its deadline would be
+        // refused unsent, as if a sent change had gone unanswered.
+        self.restore_until(owner, deadline, || {
+            deadline.saturating_duration_since(Instant::now()) < LEAST_ANSWER_TIME
+        })
     }
 
     /// The restore, sending changes until `out_of_time`, each answered by
@@ -168,7 +173,21 @@ impl AcpService {
         else {
             return Ok(());
         };
-        if new_session && let Some(modes) = &overlay.config.modes {
+        // Whichever way the restore stops short, the rest of it runs before
+        // the next prompt, and its choices stay held until then.
+        let mut unfinished = Unfinished {
+            config,
+            owner,
+            finished: false,
+        };
+        // A new session stores the mode it starts in, unless it already has
+        // one (a fork keeps its parent's).
+        if new_session
+            && !stored
+                .iter()
+                .any(|choice| matches!(choice, ConfigMutation::Mode(_)))
+            && let Some(modes) = &overlay.config.modes
+        {
             self.remember_config_choice(
                 owner,
                 &ConfigMutation::Mode(modes.current_mode_id.clone()),
@@ -184,33 +203,30 @@ impl AcpService {
                         tracing::warn!(
                             "session config restore ran out of time; finishing before the next prompt"
                         );
-                        config.rearm_restore(owner);
                         return Ok(());
                     }
-                    let Some(latest) = self.apply_stored(owner, &overlay, &choice, deadline)?
-                    else {
-                        return Ok(());
-                    };
-                    overlay = latest;
+                    match self.apply_stored(owner, &overlay, &choice, deadline)? {
+                        Applied::Sent(latest) => overlay = latest,
+                        Applied::Deferred | Applied::Gone => return Ok(()),
+                    }
                 }
             }
             config.release(owner, &choice);
         }
+        unfinished.finished = true;
         Ok(())
     }
 
     /// Sends one stored value, retrying once if another change raced it.
-    /// Returns the session's config after it, or `None` once the runtime is
-    /// gone.
     fn apply_stored(
         &self,
         owner: &RuntimeOwner,
         overlay: &SessionConfigOverlay,
         choice: &ConfigMutation,
         deadline: Instant,
-    ) -> Result<Option<SessionConfigOverlay>, HostError> {
+    ) -> Result<Applied, HostError> {
         let Some(lane) = self.lane_for(owner) else {
-            return Ok(None);
+            return Ok(Applied::Gone);
         };
         let apply = |revision| {
             self.configure_session_until(
@@ -226,7 +242,7 @@ impl AcpService {
         if result == Err(HostError::Intent) {
             // A change raced this one: retry once against the new state.
             let Some(latest) = lane.runtime.config.live_snapshot(owner) else {
-                return Ok(None);
+                return Ok(Applied::Gone);
             };
             result = match step(&latest.config, choice) {
                 Step::Apply => apply(latest.config_revision),
@@ -234,18 +250,50 @@ impl AcpService {
                 Step::Forget | Step::Fallback(_) => Err(HostError::ConfigMutationRejected),
             };
         }
-        if let Err(error) = &result
-            && needs_recovery(error)
-        {
-            return Err(error.clone());
+        match &result {
+            Ok(()) | Err(HostError::ConfigMutationRejected) => {}
+            Err(error) if needs_recovery(error) => return Err(error.clone()),
+            Err(error) => {
+                // Busy, full or raced again: nothing changed, so it is tried
+                // again before the next prompt.
+                tracing::warn!(?error, "session config restore deferred");
+                return Ok(Applied::Deferred);
+            }
         }
         let Some(latest) = lane.runtime.config.live_snapshot(owner) else {
-            return Ok(None);
+            return Ok(Applied::Gone);
         };
         if result == Err(HostError::ConfigMutationRejected) {
             self.fall_back(owner, &latest.config, choice);
         }
-        Ok(Some(latest))
+        Ok(Applied::Sent(latest))
+    }
+}
+
+/// Least time a restored change needs left to be sent.
+const LEAST_ANSWER_TIME: Duration = Duration::from_secs(2);
+
+enum Applied {
+    /// The harness answered; this is the session's config after it.
+    Sent(SessionConfigOverlay),
+    /// Not sent now; tried again before the next prompt.
+    Deferred,
+    /// The runtime is gone.
+    Gone,
+}
+
+/// Rearms a restore that stops before its last choice.
+struct Unfinished<'a> {
+    config: &'a crate::acp::session_config::ConfigChannel,
+    owner: &'a RuntimeOwner,
+    finished: bool,
+}
+
+impl Drop for Unfinished<'_> {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.config.rearm_restore(self.owner);
+        }
     }
 }
 

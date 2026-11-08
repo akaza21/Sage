@@ -26,6 +26,8 @@ struct Agent {
     options: Value,
     requests: Vec<Value>,
     refuse: bool,
+    /// The runtime fails the next change this way instead of sending it.
+    fail: Option<HostError>,
 }
 
 impl Agent {
@@ -67,6 +69,9 @@ struct HarnessEngine {
 
 impl HarnessEngine {
     fn configure(&mut self, intent: &ConfigIntent) -> Result<(), HostError> {
+        if let Some(error) = self.agent.lock().unwrap().fail.take() {
+            return Err(error);
+        }
         let request = self
             .claude
             .configure(intent)
@@ -209,6 +214,7 @@ fn open(
         options,
         requests: Vec::new(),
         refuse: false,
+        fail: None,
     }));
     let host = Arc::new(
         RuntimeHost::start(HarnessEngine {
@@ -535,5 +541,140 @@ fn an_effort_the_harness_resets_keeps_its_stored_value_until_it_is_restored() {
     choose(&service, &resumed, option("model", "a")).unwrap();
     assert_eq!(shown_effort(&service, &resumed), "low");
     assert!(stored(&service).contains(&option("effort", "low")));
+    service.shutdown_blocking().unwrap();
+}
+
+fn far() -> std::time::Instant {
+    std::time::Instant::now() + std::time::Duration::from_secs(60)
+}
+
+#[test]
+fn a_choice_raced_by_another_change_is_retried_once_against_it() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    {
+        let connection = service.database.connection();
+        assert!(
+            choices::record(
+                &connection,
+                &owner(1).session_id,
+                &option("effort", "high"),
+                1
+            )
+            .unwrap()
+        );
+    }
+    let resumed = owner(2);
+    let agent = start(&service, &resumed, effort("low"));
+    // The user switches mode just before the stored effort is sent, so it is
+    // sent against a revision that is no longer current.
+    let mut raced = false;
+    service
+        .restore_until(&resumed, far(), || {
+            if !raced {
+                raced = true;
+                choose(&service, &resumed, mode("code")).unwrap();
+            }
+            false
+        })
+        .unwrap();
+    let requests = agent.lock().unwrap().requests.clone();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0]["method"], "session/set_mode");
+    assert_eq!(
+        requests[1]["params"],
+        json!({"sessionId":"external-a","configId":"effort","value":"high"})
+    );
+    assert_eq!(shown_effort(&service, &resumed), "high");
+    let kept = stored(&service);
+    assert!(kept.contains(&mode("code")) && kept.contains(&option("effort", "high")));
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn a_change_that_needs_recovery_is_reported_instead_of_the_prompt_being_sent() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    {
+        let connection = service.database.connection();
+        assert!(
+            choices::record(
+                &connection,
+                &owner(1).session_id,
+                &option("effort", "high"),
+                1
+            )
+            .unwrap()
+        );
+    }
+    let resumed = owner(2);
+    let agent = start(&service, &resumed, effort("low"));
+    agent.lock().unwrap().fail = Some(HostError::RecoveryRequired);
+    let failure = service
+        .send_session_turn(HostPromptIntent {
+            command: crate::acp::store::PrepareTurnCommand {
+                project_id: resumed.project_id.clone(),
+                project_generation: crate::acp::contract::ProjectGeneration::new(1).unwrap(),
+                chat_id: resumed.chat_id.clone(),
+                session_id: resumed.session_id.clone(),
+                runtime_epoch: resumed.runtime_epoch,
+                expected_projection_revision: crate::acp::contract::ProjectionRevision::ZERO,
+                client_intent_id: crate::acp::contract::ClientIntentId::new(),
+                prompt: crate::acp::intent::Prompt::new("prompt", "hello").unwrap(),
+                now_millis: crate::persistence::now_millis(),
+            },
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .unwrap_err();
+    assert!(matches!(
+        failure.error,
+        crate::acp::service::CodexSessionError::Recovery
+    ));
+    // Nothing reached the harness, and the stored choice is kept.
+    assert!(agent.lock().unwrap().requests.is_empty());
+    assert_eq!(stored(&service), [option("effort", "high")]);
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn a_choice_the_user_makes_while_the_restore_is_deferred_is_kept() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    {
+        let connection = service.database.connection();
+        let session = &owner(1).session_id;
+        assert!(choices::record(&connection, session, &option("effort", "high"), 1).unwrap());
+        assert!(choices::record(&connection, session, &mode("code"), 2).unwrap());
+    }
+    let resumed = owner(2);
+    let agent = start(
+        &service,
+        &resumed,
+        json!([{
+            "id":"effort","name":"Effort","category":"thought_level","type":"select",
+            "currentValue":"low",
+            "options":[{"value":"low","name":"Low"},{"value":"medium","name":"Medium"},{"value":"high","name":"High"}]
+        }]),
+    );
+    // The mode is restored; the budget runs out before the effort.
+    let mut sends = 0;
+    service
+        .restore_until(&resumed, far(), || {
+            sends += 1;
+            sends > 1
+        })
+        .unwrap();
+    assert_eq!(agent.lock().unwrap().requests.len(), 1);
+    assert!(stored(&service).contains(&option("effort", "high")));
+    // Before the next prompt the user picks an effort of their own.
+    choose(&service, &resumed, option("effort", "medium")).unwrap();
+    // The rest of the restore does not put the old value back.
+    service.restore_session_config(&resumed).unwrap();
+    assert_eq!(agent.lock().unwrap().requests.len(), 2);
+    assert_eq!(shown_effort(&service, &resumed), "medium");
+    assert!(stored(&service).contains(&option("effort", "medium")));
     service.shutdown_blocking().unwrap();
 }
