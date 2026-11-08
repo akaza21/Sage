@@ -70,7 +70,7 @@ fn answers_must_match_the_questions_that_were_asked() {
 fn caps_are_enforced_when_a_request_or_answer_is_decoded() {
     let question = json!({"id": "q", "header": "", "question": "?"});
     assert!(
-        serde_json::from_value::<UserInputRequest>(json!({"questions": vec![question; 5]}))
+        serde_json::from_value::<UserInputRequest>(json!({"questions": vec![question; 9]}))
             .is_err()
     );
     let option = json!({"label": "a", "description": ""});
@@ -82,7 +82,7 @@ fn caps_are_enforced_when_a_request_or_answer_is_decoded() {
     );
     assert!(
         serde_json::from_value::<UserInputAnswers>(json!([{
-            "questionId": "q", "text": "x".repeat(4097)
+            "questionId": "q", "text": "x".repeat(16_385)
         }]))
         .is_err()
     );
