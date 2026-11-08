@@ -15,6 +15,7 @@ import { useWorkbenchStore } from "../../app/store";
 import type { EditorDocument, WorkbenchTab } from "../../domain/workbench";
 import { FIND_BAR_BINDINGS } from "../../domain/settingsNavigation";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
+import { settleLazyModules } from "../../test/settleLazyModules";
 import { contentText } from "./editorContent";
 import { FileSurface } from "./FileSurface";
 import { findMatches, type FindRequest } from "./inFileFind";
@@ -1344,6 +1345,8 @@ describe("FileSurface Markdown Preview", () => {
       project: { id: "project-a", name: "Sage", roots: [] },
     });
     render(<FileSurface tab={markdownTab} readOnly />);
+    // The preview loads lazily; do not rely on an earlier test's load.
+    await settleLazyModules();
 
     expect(
       screen.getByRole("navigation", { name: "File path" }),
