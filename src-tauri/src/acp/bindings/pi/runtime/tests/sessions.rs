@@ -101,3 +101,22 @@ fn a_switch_an_extension_cancels_fails_the_reopen() {
     assert!(runtime.external_session.is_none());
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn a_chat_reopens_after_pis_default_model_changed() {
+    let dir = sessions_dir();
+    std::fs::write(dir.join("1_saved.jsonl"), "{}\n").unwrap();
+    let mut runtime = launched_in(&dir);
+    let durable = "anthropic:claude";
+    assert_ne!(runtime.current_model.as_deref(), Some(durable));
+    let switch = runtime
+        .command(AdapterCommand::ResumeSession {
+            external_session_id: ExternalId::new("session", "saved").unwrap(),
+            native_root: r"C:\repo".into(),
+            model: Some(RequiredText::new("model", durable).unwrap()),
+        })
+        .unwrap();
+    let value = deliver(&mut runtime, switch);
+    assert_eq!(value["type"], "switch_session");
+    std::fs::remove_dir_all(dir).unwrap();
+}

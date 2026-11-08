@@ -252,9 +252,8 @@ impl HarnessAdapter for PiRuntime {
             AdapterCommand::NewSession { .. } => Err(AdapterRuntimeError::Operation),
             AdapterCommand::ResumeSession {
                 external_session_id,
-                model,
                 ..
-            } => self.begin_resume(&external_session_id, model.as_ref()),
+            } => self.begin_resume(&external_session_id),
             AdapterCommand::LoadSession { .. } | AdapterCommand::CloseSession => {
                 Err(AdapterRuntimeError::UnsupportedCommand)
             }
