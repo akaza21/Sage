@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 mod access;
+mod notifications;
+pub use notifications::NotificationPreference;
 mod agent_rail_view;
 mod browser_developer;
 mod browser_download_folder;

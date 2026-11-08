@@ -40,6 +40,7 @@ mod image_artifacts;
 mod image_attachment;
 mod ipc_commands;
 mod launch_profile;
+mod notifications;
 mod persistence;
 mod preview_lifecycle;
 mod project_commands;
@@ -161,6 +162,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(notifications::init())
         .plugin(window_memory::init())
         .plugin(window_viewport::init())
         .setup(|app| {
@@ -261,6 +263,7 @@ pub fn run() {
             #[cfg(not(all(windows, feature = "acp-fixture")))]
             let state = AppState::try_new_desktop(database, settings, app.handle().clone())?;
             app.manage(state);
+            notifications::start(app.handle());
             #[cfg_attr(not(windows), allow(clippy::default_constructed_unit_structs))]
             app.manage(voice_input::VoiceInputState::default());
             let main_window_config = app
