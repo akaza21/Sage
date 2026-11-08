@@ -21,8 +21,14 @@ export interface EditorBufferVersion {
   content: string;
 }
 
+/**
+ * The base of a buffer whose File is not on disk: kept over a deletion, its
+ * save creates the File again. A deleted File's disk version carries it too.
+ */
+export const ABSENT_FINGERPRINT = "absent";
+
 export interface EditorConflict {
-  kind: "external-change";
+  kind: "external-change" | "deleted";
   message: string;
 }
 
@@ -44,6 +50,18 @@ export interface BufferSnapshotRequest {
   revision: number;
 }
 
+/**
+ * "Keep mine": `content` goes on top of the File as the user saw it on disk
+ * (`expectedDisk`); if disk has moved on since, nothing changes.
+ */
+export interface BufferRebaseRequest {
+  resource: ResourceRef;
+  expectedDisk: DocumentVersion;
+  lineEnding: "lf" | "crlf" | "none";
+  content: string;
+  revision: number;
+}
+
 export interface BufferSnapshotAck {
   revision: number;
   persistedAt: number;
@@ -51,7 +69,8 @@ export interface BufferSnapshotAck {
 }
 
 export interface EditorSaveResult {
-  outcome: "saved" | "unchanged" | "conflict";
+  /** "matched": a Keep mine found disk holding the editor's own text. */
+  outcome: "saved" | "unchanged" | "conflict" | "rebased" | "matched";
   document: EditorDocument;
 }
 

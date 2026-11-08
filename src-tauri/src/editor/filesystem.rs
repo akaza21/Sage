@@ -36,6 +36,23 @@ pub(super) fn read_disk_document(workspace: &Workspace, path: &str) -> AppResult
     disk_document_from(&file)
 }
 
+/// Like `read_disk_document`, but a File (or folder) that does not exist is
+/// `None`: a buffer can outlive its File, which was deleted outside Sage.
+pub(super) fn read_disk_document_if_present(
+    workspace: &Workspace,
+    path: &str,
+) -> AppResult<Option<DiskDocument>> {
+    match read_disk_document(workspace, path) {
+        Ok(document) => Ok(Some(document)),
+        Err(error) if is_not_found(&error) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+pub(super) fn is_not_found(error: &AppError) -> bool {
+    matches!(error, AppError::Io(error) if error.kind() == std::io::ErrorKind::NotFound)
+}
+
 /// Builds the disk projection from an opened handle. The type check, the size
 /// check and the read all use this handle; the size check only rejects early,
 /// and the bounded read decides.
@@ -128,7 +145,13 @@ pub(super) fn cleanup_recorded_temp(
         ));
     }
     let (parent, temp_name) = split_contract_path(temp_path);
-    match HeldParent::open(workspace, parent)?.remove(temp_name) {
+    let parent = match HeldParent::open(workspace, parent) {
+        Ok(parent) => parent,
+        // The folder is gone, and the temporary file with it.
+        Err(error) if is_not_found(&error) => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    match parent.remove(temp_name) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error.into()),
@@ -191,6 +214,32 @@ impl HeldParent {
         file.set_permissions(permissions)?;
         file.sync_all()?;
         Ok(identity)
+    }
+}
+
+impl HeldParent {
+    /// Creates `name` with `content`, only if nothing has that name yet:
+    /// `false` when something does. The content is written to `temp_name`
+    /// beside it and renamed in without replacing anything, so no reader sees
+    /// a partial File and a File that appears meanwhile is never touched.
+    /// The temporary file is removed whatever happens.
+    pub(super) fn create_document(
+        &self,
+        name: &str,
+        temp_name: &str,
+        content: &[u8],
+        before_rename: impl FnOnce() -> std::io::Result<()>,
+    ) -> AppResult<bool> {
+        let written = self.create_new_document(temp_name).and_then(|mut file| {
+            file.write_all(content)?;
+            before_rename()?;
+            file.sync_all()?;
+            Ok(())
+        });
+        let renamed = written.and_then(|()| self.rename_new(temp_name, name));
+        // Gone after a rename; still there after a link, copy or failure.
+        let _ = self.remove(temp_name);
+        renamed
     }
 }
 

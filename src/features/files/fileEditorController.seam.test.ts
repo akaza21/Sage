@@ -41,6 +41,7 @@ function fakeEditorPort(): EditorPort {
     snapshotEditorBuffer: vi.fn(),
     saveEditorDocument: vi.fn(),
     discardEditorBuffer: vi.fn(),
+    rebaseEditorBuffer: vi.fn(),
     watchEditorDocument: vi.fn(),
   } as EditorPort;
 }
@@ -102,10 +103,13 @@ describe("file editor controller seam", () => {
       rootId: "root-notes",
       relativePath: "journal/today.md",
     });
-    expect(editor.discardEditorBuffer).toHaveBeenCalledWith({
-      rootId: "root-scratch",
-      relativePath: "drafts/idea.txt",
-    });
+    expect(editor.discardEditorBuffer).toHaveBeenCalledWith(
+      {
+        rootId: "root-scratch",
+        relativePath: "drafts/idea.txt",
+      },
+      undefined,
+    );
     await vi.advanceTimersByTimeAsync(750);
     expect(editor.snapshotEditorBuffer).toHaveBeenCalledTimes(1);
     vi.useRealTimers();

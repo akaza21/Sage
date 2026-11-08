@@ -42,6 +42,8 @@ export interface KeymapChordEvent {
   ctrlKey: boolean;
   metaKey: boolean;
   shiftKey: boolean;
+  /** Reports AltGr, which Windows sends as Control+Alt. */
+  getModifierState?: (key: "AltGraph") => boolean;
 }
 
 export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
@@ -161,6 +163,18 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     ctrlOrMeta: "required",
     shift: "allowed",
     alt: "forbidden",
+  },
+  {
+    // VS Code's Save All is the two-step Ctrl+K S; this keymap has no
+    // two-step chords, so it takes VS Code's macOS chord on every platform.
+    id: "saveAll",
+    label: "Save all files",
+    description: "Saves every open file with unsaved changes.",
+    scope: "Editor",
+    key: "s",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "required",
   },
   {
     id: "find",
@@ -356,8 +370,11 @@ export function matchesPlatformChord(
   const primary = useControl ? event.ctrlKey : event.metaKey;
   const other = useControl ? event.metaKey : event.ctrlKey;
   const chord = platformChord(binding, apple);
+  // AltGr types characters (AltGr+S is "ś" on a Polish layout); on Windows it
+  // arrives as Control+Alt, which must not run a chord.
   return (
     !other &&
+    !(!apple && event.getModifierState?.("AltGraph")) &&
     admits(chord.ctrlOrMeta, primary) &&
     admits(chord.shift, event.shiftKey) &&
     admits(chord.alt, event.altKey) &&

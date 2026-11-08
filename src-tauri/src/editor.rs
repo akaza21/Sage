@@ -1,8 +1,12 @@
+mod absent;
 mod filesystem;
 
+pub use self::absent::{ABSENT_FINGERPRINT, rebase_buffer};
+use self::absent::{create_document, deleted_conflict, deleted_document, disk_version};
 use self::filesystem::{
     DiskDocument, HeldParent, cleanup_failed_save, cleanup_recorded_temp, ensure_path_names,
-    read_disk_document, split_contract_path, temporary_contract_path,
+    read_disk_document, read_disk_document_if_present, split_contract_path,
+    temporary_contract_path,
 };
 use crate::{
     domain::{
@@ -25,11 +29,18 @@ pub fn open_document(
     resource: &ResourceRef,
 ) -> AppResult<EditorDocument> {
     let resource = normalized_resource(workspace, resource)?;
-    let disk = read_disk_document(workspace, &resource.relative_path)?;
-    let Some(buffer) = database.editor_buffer(workspace.project_id(), &resource)? else {
+    let buffer = database.editor_buffer(workspace.project_id(), &resource)?;
+    let Some(buffer) = buffer else {
+        let disk = read_disk_document(workspace, &resource.relative_path)?;
+        absent::note_opened(workspace, &resource, &disk.version.fingerprint);
         return Ok(clean_document(resource, disk));
     };
+    absent::note_opened(workspace, &resource, &buffer.base_fingerprint);
     validate_persisted_buffer(&buffer)?;
+    // A deleted File with a recovery buffer opens as that buffer.
+    let Some(disk) = read_disk_document_if_present(workspace, &resource.relative_path)? else {
+        return Ok(buffered_document(resource, None, buffer));
+    };
 
     if disk.version.fingerprint == buffer.buffer_fingerprint {
         cleanup_recorded_temp(workspace, &buffer)?;
@@ -37,7 +48,7 @@ pub fn open_document(
         return Ok(clean_document(resource, disk));
     }
 
-    Ok(buffered_document(resource, disk, buffer))
+    Ok(buffered_document(resource, Some(disk), buffer))
 }
 
 pub fn snapshot_buffer(
@@ -59,9 +70,16 @@ pub fn snapshot_buffer(
     let buffer_fingerprint = fingerprint(materialized.as_bytes());
 
     let durable_buffer = database.editor_buffer(workspace.project_id(), &request.resource)?;
-    let disk = read_disk_document(workspace, &request.resource.relative_path)?;
-    let disk_matches_base = disk.version.fingerprint == request.base.fingerprint;
-    if durable_buffer.is_none() && !disk_matches_base {
+    let disk = read_disk_document_if_present(workspace, &request.resource.relative_path)?;
+    let disk_matches_base = disk_version(disk.as_ref()).fingerprint == request.base.fingerprint;
+    if durable_buffer.is_none()
+        && !absent::admits_unbuffered_snapshot(
+            workspace,
+            &request.resource,
+            &request.base,
+            disk.as_ref(),
+        )
+    {
         return Err(AppError::InvalidRequest(
             "snapshot base no longer matches disk and no durable buffer exists".into(),
         ));
@@ -120,10 +138,18 @@ fn save_document_with(
     };
     validate_persisted_buffer(&buffer)?;
 
-    let disk = read_disk_document(workspace, &path)?;
-    if disk.version.fingerprint != buffer.base_fingerprint {
-        return Ok(conflict_result(resource, disk, buffer));
+    let disk = read_disk_document_if_present(workspace, &path)?;
+    if buffer.base_fingerprint == ABSENT_FINGERPRINT {
+        return match disk {
+            None => create_document(database, workspace, resource, buffer),
+            // Something was created at the path since the user kept the buffer.
+            Some(disk) => Ok(conflict_result(resource, Some(disk), buffer)),
+        };
     }
+    let disk = match disk {
+        Some(disk) if disk.version.fingerprint == buffer.base_fingerprint => disk,
+        disk => return Ok(conflict_result(resource, disk, buffer)),
+    };
 
     let materialized = materialize_content(&buffer.content, &buffer.line_ending);
     reject_oversized_materialized(&materialized)?;
@@ -181,7 +207,7 @@ fn save_document_with(
     drop(target);
     if latest_disk.version.fingerprint != buffer.base_fingerprint {
         abandon();
-        return Ok(conflict_result(resource, latest_disk, buffer));
+        return Ok(conflict_result(resource, Some(latest_disk), buffer));
     }
 
     let replaced = observe(SaveStage::BeforeReplace)
@@ -236,18 +262,45 @@ fn save_document_with(
     })
 }
 
+/// Drops the recovery buffer whether or not the File still exists; a deleted
+/// File comes back as a clean deleted document.
 pub fn discard_document(
     database: &Database,
     workspace: &Workspace,
     resource: &ResourceRef,
 ) -> AppResult<EditorDocument> {
     let resource = normalized_resource(workspace, resource)?;
-    let disk = read_disk_document(workspace, &resource.relative_path)?;
     if let Some(buffer) = database.editor_buffer(workspace.project_id(), &resource)? {
         cleanup_recorded_temp(workspace, &buffer)?;
     }
     database.delete_editor_buffer(workspace.project_id(), &resource)?;
-    Ok(clean_document(resource, disk))
+    Ok(
+        match read_disk_document_if_present(workspace, &resource.relative_path)? {
+            Some(disk) => clean_document(resource, disk),
+            None => deleted_document(resource),
+        },
+    )
+}
+
+/// Reload: puts the File as it is on disk in place of the buffer. A File
+/// that is gone is not reloaded as empty: the buffer stays, and the
+/// document comes back deleted.
+pub fn revert_document(
+    database: &Database,
+    workspace: &Workspace,
+    resource: &ResourceRef,
+) -> AppResult<EditorDocument> {
+    let resource = normalized_resource(workspace, resource)?;
+    if read_disk_document_if_present(workspace, &resource.relative_path)?.is_some() {
+        return discard_document(database, workspace, &resource);
+    }
+    match database.editor_buffer(workspace.project_id(), &resource)? {
+        Some(buffer) => {
+            validate_persisted_buffer(&buffer)?;
+            Ok(buffered_document(resource, None, buffer))
+        }
+        None => Ok(deleted_document(resource)),
+    }
 }
 
 pub fn recover_pending_saves(database: &Database, workspace: &Workspace) -> AppResult<()> {
@@ -306,20 +359,20 @@ fn clean_document(resource: ResourceRef, disk: DiskDocument) -> EditorDocument {
 
 fn buffered_document(
     resource: ResourceRef,
-    disk: DiskDocument,
+    disk: Option<DiskDocument>,
     buffer: PersistedEditorBuffer,
 ) -> EditorDocument {
-    let conflict = (disk.version.fingerprint != buffer.base_fingerprint).then(|| {
-        EditorConflict {
-            kind: "external-change".into(),
-            message:
-                "The file changed on disk after this buffer was opened. Saving is blocked; discard or copy the buffer before reopening."
-                    .into(),
+    let disk = disk_version(disk.as_ref());
+    let conflict = (disk.fingerprint != buffer.base_fingerprint).then(|| {
+        if disk.fingerprint == ABSENT_FINGERPRINT {
+            deleted_conflict()
+        } else {
+            external_change_conflict()
         }
     });
     EditorDocument {
         resource,
-        disk: disk.version,
+        disk,
         base: DocumentVersion {
             fingerprint: buffer.base_fingerprint,
             byte_len: buffer.base_byte_len,
@@ -337,9 +390,18 @@ fn buffered_document(
     }
 }
 
+fn external_change_conflict() -> EditorConflict {
+    EditorConflict {
+        kind: "external-change".into(),
+        message: "The file changed on disk after this buffer was opened. Reload it, keep your \
+                  version, or compare the two."
+            .into(),
+    }
+}
+
 fn conflict_result(
     resource: ResourceRef,
-    disk: DiskDocument,
+    disk: Option<DiskDocument>,
     buffer: PersistedEditorBuffer,
 ) -> EditorSaveResult {
     EditorSaveResult {
@@ -351,7 +413,7 @@ fn conflict_result(
 fn normalized_resource(workspace: &Workspace, resource: &ResourceRef) -> AppResult<ResourceRef> {
     Ok(ResourceRef {
         root_id: workspace.root_id().into(),
-        relative_path: workspace.validate_resource(resource, false)?,
+        relative_path: absent::validated_path(workspace, resource)?,
     })
 }
 

@@ -110,6 +110,30 @@ impl Database {
         content: &str,
         buffer_fingerprint: &str,
     ) -> AppResult<BufferSnapshotAck> {
+        self.write_editor_buffer(project_id, request, content, buffer_fingerprint, false)
+    }
+
+    /// "Keep mine": writes the buffer on a new base, `request.base`, in one
+    /// transaction. Unlike a snapshot it replaces the durable base instead of
+    /// refusing a different one; the caller has checked that base is on disk.
+    pub fn rebase_editor_buffer(
+        &self,
+        project_id: &str,
+        request: &BufferSnapshotRequest,
+        content: &str,
+        buffer_fingerprint: &str,
+    ) -> AppResult<BufferSnapshotAck> {
+        self.write_editor_buffer(project_id, request, content, buffer_fingerprint, true)
+    }
+
+    fn write_editor_buffer(
+        &self,
+        project_id: &str,
+        request: &BufferSnapshotRequest,
+        content: &str,
+        buffer_fingerprint: &str,
+        rebase: bool,
+    ) -> AppResult<BufferSnapshotAck> {
         let byte_len = content.len() as i64;
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
@@ -132,7 +156,15 @@ impl Database {
                 },
             )
             .optional()?;
-        if let Some((base_fingerprint, revision, updated_at)) = &existing {
+        // A rebase skips both guards: it replaces the base, and its revision
+        // may be lower than the row's (the WebView's count restarts when a
+        // File is reopened). That is safe only because rebase_editor_buffer
+        // runs as a Terminal operation, after every snapshot queued before
+        // it and before any queued after; a snapshot that then carries the
+        // old base is refused by the base guard.
+        if let Some((base_fingerprint, revision, updated_at)) = &existing
+            && !rebase
+        {
             if base_fingerprint != &request.base.fingerprint {
                 return Err(AppError::InvalidRequest(
                     "buffer base does not match the durable base".into(),
@@ -180,6 +212,9 @@ impl Database {
                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, ?12
              )
              ON CONFLICT(project_id, root_id, relative_path) DO UPDATE SET
+               base_fingerprint = excluded.base_fingerprint,
+               base_byte_len = excluded.base_byte_len,
+               base_modified_at = excluded.base_modified_at,
                line_ending = excluded.line_ending,
                buffer_content = excluded.buffer_content,
                buffer_byte_len = excluded.buffer_byte_len,
