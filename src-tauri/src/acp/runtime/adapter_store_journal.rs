@@ -362,7 +362,6 @@ fn store_error_variant(error: &StoreError) -> &'static str {
         StoreError::BatchShape => "batchShape",
         StoreError::CommitUnknown => "commitUnknown",
         StoreError::CounterExhausted => "counterExhausted",
-        StoreError::ChatArchived => "chatArchived",
     }
 }
 

@@ -75,7 +75,6 @@ pub(crate) fn start_session(
     if let Some(duplicate) = super::session_duplicates::start_duplicate(&transaction, &command)? {
         return Ok(duplicate);
     }
-    refuse_archived_chat(&transaction, &command.project_id, &command.chat_id)?;
     validate_chat_revision(
         &transaction,
         &command.project_id,
@@ -153,7 +152,6 @@ pub(crate) fn activate_session(
     if let Some(value) = super::session_duplicates::activation_duplicate(&transaction, &command)? {
         return Ok(value);
     }
-    refuse_archived_chat(&transaction, &command.project_id, &command.chat_id)?;
     validate_chat_revision(
         &transaction,
         &command.project_id,
@@ -249,28 +247,6 @@ fn validate_start(command: &StartSessionCommand) -> Result<(), StoreError> {
 /// Admits an intent built on the `expected` view of the chat. The view stays
 /// current across session-neutral changes (notices, titles, activity rows)
 /// but not across the latest send-relevant one, and may not be ahead.
-/// Refuses a session start, activation or prompt for an archived Chat: one
-/// its Project no longer attaches to a tab. Archive refuses a Chat with a
-/// running Turn in its own transaction, so whichever commits first wins and
-/// an archived Chat never gains a Turn or a live runtime.
-pub(super) fn refuse_archived_chat(
-    transaction: &Transaction<'_>,
-    project: &SageProjectId,
-    chat: &SageChatId,
-) -> Result<(), StoreError> {
-    let archived: bool = transaction.query_row(
-        "SELECT EXISTS(SELECT 1 FROM chat_tabs WHERE project_id=?1)
-           AND NOT EXISTS(SELECT 1 FROM chat_tabs WHERE project_id=?1 AND chat_id=?2)
-           AND NOT EXISTS(SELECT 1 FROM workbench_tabs WHERE project_id=?1 AND id=?2)",
-        params![project.as_str(), chat.as_str()],
-        |row| row.get(0),
-    )?;
-    if archived {
-        return Err(StoreError::ChatArchived);
-    }
-    Ok(())
-}
-
 pub(super) fn validate_chat_revision(
     transaction: &Transaction<'_>,
     project: &SageProjectId,

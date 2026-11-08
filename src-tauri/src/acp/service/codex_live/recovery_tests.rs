@@ -1503,22 +1503,54 @@ fn archive_refuses_a_running_turn_and_an_archived_chat_takes_no_prompt() {
 
     finish_app(state, root);
 
-    // An archived Chat takes no prompt: the store refuses the Turn.
+    // An archived Chat takes no prompt: the send refuses it before any Turn.
     let (state, owner, root) = app_with_idle_runtime("archived-prompt");
     state
         .database
         .archive_chat(&archive_request(&state, &owner))
         .unwrap();
-    let mut prompt = prepare_turn(&owner);
-    prompt.expected_projection_revision = state
+    let page = state
         .acp
         .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
-        .unwrap()
-        .projection_revision;
-    assert!(matches!(
-        state.database.acp_prepare_turn(prompt),
-        Err(crate::acp::store::StoreError::ChatArchived)
+        .unwrap();
+    let refused = runtime.block_on(crate::commands::acp::send_acp_turn_inner(
+        &state,
+        crate::acp::ipc::SendAcpTurnRequest::Session {
+            project_id: owner.project_id.clone(),
+            project_generation: crate::acp::contract::ProjectGeneration::ZERO,
+            chat_id: owner.chat_id.clone(),
+            expected_projection_revision: page.projection_revision,
+            client_intent_id: ClientIntentId::new(),
+            session_id: owner.session_id.clone(),
+            runtime_epoch: owner.runtime_epoch,
+            prompt: crate::acp::intent::Prompt::new("prompt", "archived").unwrap(),
+            attached_context: Default::default(),
+        },
     ));
+    let failure = refused.expect_err("an archived Chat takes no prompt");
+    assert_eq!(
+        failure.prompt_dispatch,
+        crate::acp::ipc::PromptDispatch::NotStarted
+    );
+    assert!(
+        matches!(
+            &failure.failure,
+            crate::acp::ipc::AcpIpcError::InvalidRequest { message }
+                if message.as_str() == "This Chat is archived. Restore it to continue."
+        ),
+        "{:?}",
+        failure.failure
+    );
+    assert!(
+        state
+            .acp
+            .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
+            .unwrap()
+            .turns
+            .as_slice()
+            .is_empty(),
+        "the refused prompt minted no Turn"
+    );
     finish_app(state, root);
 }
 

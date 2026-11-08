@@ -96,11 +96,6 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
                 "This Chat already belongs to another harness session; start a new Chat.",
             ),
         },
-        crate::acp::service::CodexSessionError::Session(
-            crate::acp::runtime::SessionCoordinatorError::Journal(
-                crate::acp::runtime::JournalError::Store(StoreError::ChatArchived),
-            ),
-        ) => archived_chat(),
         crate::acp::service::CodexSessionError::Session(_) => AcpIpcError::RecoveryRequired {
             message: safe_message(
                 "Native activation coordination failed safely; reload authoritative history.",
@@ -241,7 +236,6 @@ pub(super) fn store_error(error: StoreError) -> AcpIpcError {
         StoreError::Corrupt(_) => AcpIpcError::RecoveryRequired {
             message: safe_message("Durable ACP history failed bounded validation."),
         },
-        StoreError::ChatArchived => archived_chat(),
         StoreError::PayloadTooLarge | StoreError::BatchShape => AcpIpcError::InvalidRequest {
             message: safe_message("The ACP request violates its bounded contract."),
         },

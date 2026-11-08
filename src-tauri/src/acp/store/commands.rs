@@ -224,7 +224,6 @@ fn validate_prepare_owner(
     transaction: &Transaction<'_>,
     command: &PrepareTurnCommand,
 ) -> Result<(), StoreError> {
-    super::sessions::refuse_archived_chat(transaction, &command.project_id, &command.chat_id)?;
     super::sessions::validate_chat_revision(
         transaction,
         &command.project_id,
