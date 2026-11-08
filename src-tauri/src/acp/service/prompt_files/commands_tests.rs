@@ -270,12 +270,10 @@ fn pasted_text_joins_the_batch_as_a_text_resource_within_the_batch_caps() {
     });
 }
 
-/// A turn in the fixture chat whose prompt payload records `count`.
-fn turn(fixture: &Fixture, id: &str, intent: &str, ordinal: i64, count: Option<u8>, state: &str) {
-    let mut payload = serde_json::json!({"role": "user", "text": "Explain"});
-    if let Some(count) = count {
-        payload["attachments"] = count.into();
-    }
+/// A turn in the fixture chat whose prompt payload records `count`, as
+/// every prompt now records one, none included.
+fn turn(fixture: &Fixture, id: &str, intent: &str, ordinal: i64, count: u8, state: &str) {
+    let payload = serde_json::json!({"role": "user", "text": "Explain", "attachments": count});
     let payload = serde_json::json!({"kind": "text", "payload": payload});
     turn_with_prompt(
         fixture,
@@ -323,8 +321,8 @@ fn turn_with_prompt(
 fn retry_reads_the_durable_attachment_count_of_that_turn_only() {
     use super::super::{RetryOrigin, Selection, retry_origin};
     let fixture = Fixture::new();
-    turn(&fixture, "turn-files", "intent-files", 1, Some(2), "failed");
-    turn(&fixture, "turn-plain", "intent-plain", 2, None, "failed");
+    turn(&fixture, "turn-files", "intent-files", 1, 2, "failed");
+    turn(&fixture, "turn-plain", "intent-plain", 2, 0, "failed");
     let origin = |turn: &str, chat: &str| {
         retry_origin(&fixture.state.database, &fixture.project, chat, turn).unwrap()
     };
@@ -374,8 +372,20 @@ fn retry_of_a_turn_without_a_readable_prompt_record_is_refused_as_carrying_files
         "failed",
         Some(unreadable.to_string()),
     );
+    // A prompt written before every prompt recorded a count may have
+    // carried files without one.
+    let uncounted =
+        serde_json::json!({"kind": "text", "payload": {"role": "user", "text": "Explain"}});
+    turn_with_prompt(
+        &fixture,
+        "turn-uncounted",
+        "intent-c",
+        3,
+        "failed",
+        Some(uncounted.to_string()),
+    );
     let stages = fixture.state.acp.file_stages.lock().unwrap();
-    for turn in ["turn-missing-item", "turn-unreadable"] {
+    for turn in ["turn-missing-item", "turn-unreadable", "turn-uncounted"] {
         let origin = retry_origin(
             &fixture.state.database,
             &fixture.project,
@@ -431,7 +441,7 @@ fn kept_sent_files_outlive_a_completed_turn_and_end_with_their_tab() {
                 .selected(&fixture.project, &fixture.chat, &Selection::Retry(origin))
                 .map(|files| files.0.len())
         };
-        turn(&fixture, "turn-a", "intent-a", 1, Some(1), "running");
+        turn(&fixture, "turn-a", "intent-a", 1, 1, "running");
         send_paste(&fixture, "intent-a").await;
         assert_eq!(retry("intent-a"), Ok(1));
         // A completed turn still offers Retry, which resends its files.

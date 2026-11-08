@@ -205,11 +205,11 @@ impl Prompt {
             }
             None => serde_json::json!({ "role": "user", "text": self.as_str() }),
         };
-        // Only the count is durable, so a Retry after a restart can tell a
-        // prompt that carried files from one that carried none.
-        if !self.resources.0.is_empty() {
-            payload["attachments"] = self.resources.0.len().into();
-        }
+        // Only the count is durable, and it is always written, none
+        // included, so a Retry after a restart can tell a prompt that
+        // carried files from one that carried none; a prompt without a
+        // count (written before counts were) is unknown.
+        payload["attachments"] = self.resources.0.len().into();
         payload
     }
 }
@@ -259,6 +259,13 @@ mod tests {
             "Explain\n\nAnnotations on earlier assistant output (quoted context; cite as \"Annotation N\"):\n- Annotation 1\n  Selected text (JSON-quoted): \"a \\\"quote\\\"\\nnext\"\n  User comment (JSON-quoted): \"Why?\"\n- Annotation 2\n  Selected text (JSON-quoted): \"other\"\n  User comment (JSON-quoted): (none)"
         );
         assert_eq!(prompt.user_payload()["text"], "Explain");
+        // Every prompt records its attachment count, none included, so a
+        // missing count means a prompt from before counts were recorded.
+        assert_eq!(prompt.user_payload()["attachments"], 0);
+        assert_eq!(
+            Prompt::new("prompt", "Plain").unwrap().user_payload()["attachments"],
+            0
+        );
         assert_eq!(
             prompt.user_payload()["attachedContext"]
                 .as_array()
