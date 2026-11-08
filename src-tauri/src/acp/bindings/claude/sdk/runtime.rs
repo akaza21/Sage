@@ -133,6 +133,9 @@ impl ClaudeSdkRuntime {
                 batch.push_event(event)?;
             }
         }
+        if let Some(questions) = inbound.questions {
+            self.session.offer_user_input(questions);
+        }
         for event in inbound.session {
             if let Some(event) = self.session.session_event(event) {
                 observed = true;

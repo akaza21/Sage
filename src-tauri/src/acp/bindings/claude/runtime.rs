@@ -64,6 +64,8 @@ pub(crate) struct ClaudeRuntime {
     delivery_unknown: Option<DeliveryUnknown>,
     refusal_detail: Option<RefusalDetail>,
     deferred: Vec<AdapterEvent>,
+    /// Questions the next permission request asks instead of an approval.
+    next_user_input: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
     session_root: Option<String>,
     native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
     /// Recent sessions this runtime forked (bounded; see `fork.rs`).
@@ -199,6 +201,7 @@ impl ClaudeRuntime {
             delivery_unknown: None,
             refusal_detail: None,
             deferred: Vec::new(),
+            next_user_input: None,
             session_root: None,
             native_rpc_reply: None,
             forks: Vec::new(),

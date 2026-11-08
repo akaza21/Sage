@@ -330,7 +330,7 @@ fn activity(
 
 /// Harness text as shown text: hidden characters dropped, secrets and local
 /// paths redacted, clipped to `max` bytes. Blank text is not shown.
-fn prose(text: &str, max: usize) -> Option<String> {
+pub(super) fn prose(text: &str, max: usize) -> Option<String> {
     let text = neutralized(text, true);
     let text = clip(text.trim(), max);
     let text = redact("sessionNotice", &text, max.saturating_mul(2), Mode::Prose).ok()?;

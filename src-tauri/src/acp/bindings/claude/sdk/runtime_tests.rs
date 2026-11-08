@@ -475,3 +475,57 @@ fn a_compaction_reaches_the_store_as_a_session_activity() {
         }]
     ));
 }
+
+#[test]
+fn claudes_questions_become_a_question_card_and_the_answers_return_as_its_input() {
+    use crate::acp::intent::user_input::UserInputAnswers;
+    let mut runtime = prompted();
+    feed(
+        &mut runtime,
+        json!({"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"ask1","name":"AskUserQuestion","input":{}}]}}),
+    );
+    let input = json!({"questions":[
+        {"question":"Which test runner?","header":"Runner","multiSelect":false,
+         "options":[{"label":"Vitest","description":"Fast"},{"label":"Jest","description":"Familiar"}]},
+        {"question":"Anything else?","header":"Notes","multiSelect":false,
+         "options":[{"label":"No","description":""},{"label":"Yes","description":""}]}]});
+    let events = feed(
+        &mut runtime,
+        json!({"type":"control_request","request_id":"cli-q","request":{
+            "subtype":"can_use_tool","tool_name":"AskUserQuestion","tool_use_id":"ask1","input":input}}),
+    );
+    let (request_id, questions) = events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::PermissionRequest {
+                external_request_id,
+                payload: NormalizedPayload::PermissionRequest { user_input, .. },
+                ..
+            } => Some((external_request_id.clone(), user_input.clone())),
+            _ => None,
+        })
+        .expect("question card");
+    let questions = questions.expect("the card asks questions");
+    assert_eq!(
+        questions.questions.as_slice()[0].question.as_str(),
+        "Which test runner?"
+    );
+    let answers: UserInputAnswers = serde_json::from_value(json!([
+        {"questionId":"q0","selectedOption":"Vitest"},
+        {"questionId":"q1","text":"Keep the old config"}]))
+    .unwrap();
+    let egress = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse(request_id.as_str()).unwrap(),
+            decision: crate::acp::runtime::permissions::PermissionDecision::Answer(answers),
+        })
+        .unwrap();
+    let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    let response = &sdk["response"]["response"];
+    assert_eq!(response["behavior"], "allow");
+    assert_eq!(
+        response["updatedInput"]["answers"],
+        json!({"Which test runner?":"Vitest","Anything else?":"Keep the old config"})
+    );
+    assert_eq!(response["updatedInput"]["questions"], input["questions"]);
+}

@@ -20,6 +20,7 @@ mod inbound;
 mod notices;
 mod outbound;
 mod permission;
+mod questions;
 
 /// Bounds on per-turn bookkeeping; the inner session caps pending requests.
 const MAX_PENDING: usize = 32;
@@ -54,6 +55,8 @@ pub(super) struct Inbound {
     pub(super) withdrawn: Vec<u64>,
     /// Session-scoped facts: notices, activities, the effective model.
     pub(super) session: Vec<crate::acp::intent::session_event::SessionScopedEvent>,
+    /// Questions the permission request in `acp` asks instead.
+    pub(super) questions: Option<crate::acp::intent::user_input::UserInputRequest>,
 }
 
 #[derive(Debug)]
@@ -77,6 +80,8 @@ struct Permission {
     request_id: String,
     input: Value,
     suggestions: Option<Value>,
+    /// An `AskUserQuestion` card: its questions' texts, in order.
+    questions: Option<Vec<String>>,
 }
 
 #[derive(Debug)]
