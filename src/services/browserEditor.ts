@@ -42,7 +42,7 @@ function version(content: string) {
 
 /**
  * The fixture has no index: a File's staged text is its text on disk, so
- * edits in the browser renderer get gutter markers (EP-14).
+ * edits in the browser renderer get gutter markers.
  */
 function stagedText(
   resource: ResourceRef,

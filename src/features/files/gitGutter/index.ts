@@ -10,7 +10,7 @@ import type { EditorView } from "@codemirror/view";
 import { useWorkbenchStore, type WorkbenchState } from "../../../app/store";
 import type { ResourceRef } from "../../../domain/workbench";
 
-// The gutter's lazy entry (EP-14): nothing here loads until a File in a
+// The gutter's lazy entry: nothing here loads until a File in a
 // repository opens with `editor.gitGutter` on.
 let cache: ReturnType<typeof createGutterBaseCache> | null = null;
 

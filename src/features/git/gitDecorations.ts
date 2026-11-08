@@ -7,7 +7,7 @@ import type { ResourceRef } from "../../domain/workbench";
 import { markedGitState, type MarkedGitState } from "./gitDecorationsGate";
 
 /**
- * Git decorations for the Explorer and tabs (EP-13), as in VS Code: a coloured
+ * Git decorations for the Explorer and tabs, as in VS Code: a coloured
  * name and a letter for each changed File, and a tint and a dot for each
  * folder that holds one.
  */
@@ -73,7 +73,7 @@ export function fileGitDecoration(change: FileChange): GitDecoration | null {
   return state ? FILE_DECORATIONS[state] : null;
 }
 
-/** Built once per refreshed root: refreshes keep unchanged roots (EP-12). */
+/** Built once per refreshed root: refreshes keep unchanged roots. */
 const cache = new WeakMap<RootRepositoryStatus, RootGitDecorations>();
 
 const EMPTY: RootGitDecorations = Object.freeze({

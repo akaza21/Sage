@@ -32,8 +32,8 @@ const rootOf = (state: WorkbenchState, rootId: string) =>
   state.repositories.roots.find((root) => root.rootId === rootId);
 
 /**
- * Change markers for an Editor File in a repository (EP-14). The staged text
- * reloads after every Git refresh, which EP-12 runs on any outside change to
+ * Change markers for an Editor File in a repository. The staged text
+ * reloads after every Git refresh, which runs on any outside change to
  * the index, even one that leaves the status unchanged (staging a second hunk
  * of an already staged File). One load runs at a time. Agent panes pass
  * `enabled: false`.

@@ -1,6 +1,6 @@
 import { createGutterWorkerCore, type GutterRequest } from "./gutterWorkerCore";
 
-// AD-7: the gutter's diff runs here, off the typing path. One worker serves
+// The gutter's diff runs here, off the typing path. One worker serves
 // every open editor; the page stops it when the last one closes.
 const core = createGutterWorkerCore();
 
