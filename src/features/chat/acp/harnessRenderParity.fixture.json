@@ -156,7 +156,6 @@
                 "kind": "execute",
                 "label": "echo hello",
                 "summary": null,
-                "cwd": null,
                 "exitCode": 0,
                 "outputTail": null,
                 "outputTruncated": false,
@@ -462,22 +461,6 @@
       "differs": {
         "/items/0/payload/presentation/exitCode": null,
         "/items/0/payload/presentation/outputTail": "hello"
-      }
-    },
-    {
-      "scenario": "commandWithOutput",
-      "harness": "codex",
-      "owner": "Codex",
-      "visible": false,
-      "gap": "reports the working directory, which no other binding can",
-      "differs": {
-        "/items/0/payload/presentation/cwd": {
-          "kind": "resource",
-          "resource": {
-            "rootId": "root-1",
-            "relativePath": "src"
-          }
-        }
       }
     },
     {

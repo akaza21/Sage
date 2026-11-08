@@ -164,11 +164,12 @@ pub(super) fn frame(value: &Value) -> crate::acp::transport::Frame {
         .expect("complete frame")
 }
 
-/// Store-assigned identities never take part in parity.
+/// Store-assigned identities never take part in parity. `cwd` is optional,
+/// display-free metadata the store admits only as a mapped resource.
 fn strip_volatile(mut value: Value) -> Value {
     match &mut value {
         Value::Object(map) => {
-            for key in ["snapshotRevision", "contentDigest", "activityId"] {
+            for key in ["snapshotRevision", "contentDigest", "activityId", "cwd"] {
                 map.remove(key);
             }
             for child in map.values_mut() {
