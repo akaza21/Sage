@@ -5,7 +5,7 @@ import {
 } from "./editorContent";
 
 export const MAX_FIND_MATCHES = 10_000;
-/** AD-10: a regex search that has not finished by then is stopped. */
+/** A regex search that has not finished by then is stopped. */
 export const REGEX_FIND_TIMEOUT_MS = 250;
 
 export interface FindOptions {
@@ -150,8 +150,9 @@ type Settle = (result: FindMatches | null) => void;
 /**
  * Runs regex requests in one reused worker. While a search runs, newer
  * requests wait and only the latest is kept, so typing never respawns the
- * worker. The AD-10 deadline terminates a busy worker, so a runaway pattern
- * costs the main thread nothing; the next request starts a fresh one.
+ * worker. The `REGEX_FIND_TIMEOUT_MS` deadline terminates a busy worker, so
+ * a runaway pattern costs the main thread nothing; the next request starts a
+ * fresh one.
  */
 export function createFindWorkerClient(
   spawn: () => Worker,

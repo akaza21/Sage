@@ -1,5 +1,5 @@
 /**
- * Line-level Myers diff for the gutter (EP-14, AD-7). It runs in the gutter
+ * Line-level Myers diff for the gutter. It runs in the gutter
  * worker, never on the main thread. The linear-space middle-snake search is
  * GNU diff's, without its heuristics except a cost cap: past the cap a split
  * is taken at the middle of both ranges, which keeps the result a valid

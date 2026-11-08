@@ -68,13 +68,17 @@ impl SessionCoordinator {
             }
             _ => return Err((SessionCoordinatorError::JournalProtocol, proof)),
         };
-        let disposition = match self.publisher.publish_committed(ProjectionChangedV1 {
-            project_id: owner.project_id.clone(),
-            chat_id: owner.chat_id.clone(),
-            session_id: owner.session_id.clone(),
-            projection_revision: revision,
-            child_projection_epoch: 0,
-        }) {
+        // Recovery settles the epoch's open Turns, which can fail them.
+        let disposition = match self.publisher.publish_committed_with(
+            ProjectionChangedV1 {
+                project_id: owner.project_id.clone(),
+                chat_id: owner.chat_id.clone(),
+                session_id: owner.session_id.clone(),
+                projection_revision: revision,
+                child_projection_epoch: 0,
+            },
+            TurnNotice::Possible,
+        ) {
             Ok(disposition) => disposition,
             Err(error) => return Err((error.into(), proof)),
         };

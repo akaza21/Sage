@@ -22,7 +22,7 @@ export const DEFAULT_EDITOR_APPEARANCE: EditorAppearance = {
 };
 
 /**
- * The editing features (EP-03), each switchable from Settings. A read-only
+ * The editing features, each switchable from Settings. A read-only
  * view passes none, so it loads none of them.
  */
 export interface EditorEditing {

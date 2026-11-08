@@ -12,8 +12,9 @@ use crate::acp::{
         RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
         SageTurnId,
     },
+    intent::ProjectionChangedV1,
     lifecycle::ServerRequestState,
-    runtime::JournalLane,
+    runtime::{JournalLane, TurnNotice},
     store::{RequestStateCommand, StoreMutation},
 };
 use std::time::{Duration, Instant};
@@ -268,15 +269,26 @@ impl super::AcpService {
                     .unwrap_or_default()
                     .saturating_add(crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc),
             )
-            .and_then(|ticket| ticket.blocking_committed())
-            .is_ok();
-        if !committed {
+            .and_then(|ticket| ticket.blocking_committed());
+        let Ok(commit) = committed else {
             self.browser_permissions
                 .lock()
                 .ok()
                 .and_then(|mut pending| pending.remove(&request_id));
             return BrowserPermissionChoice::Deny;
-        }
+        };
+        // The request admitted an approval notice. Projection delivery is
+        // advisory: the prompt stays pending whatever routing decides.
+        let _ = self.publisher.publish_committed_with(
+            ProjectionChangedV1 {
+                project_id: owner.project_id.clone(),
+                chat_id: owner.chat_id.clone(),
+                session_id: owner.session_id.clone(),
+                projection_revision: commit.projection_revision,
+                child_projection_epoch: 0,
+            },
+            TurnNotice::Possible,
+        );
         let deadline = Instant::now() + Duration::from_secs(300);
         loop {
             if !(live)() || !self.browser_turn_live(&owner) || Instant::now() >= deadline {

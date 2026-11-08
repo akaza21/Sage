@@ -256,7 +256,7 @@ export function createCodeMirrorEditorRuntime(
           appearanceExtensions(current.appearance ?? DEFAULT_EDITOR_APPEARANCE),
         ),
         utf8LengthField,
-        // Costs the size of the edit, not the document (EP-01).
+        // Costs the size of the edit, not the document.
         EditorState.transactionFilter.of((transaction) => {
           if (withinUtf8Limit(transaction, current.maxContentLength)) {
             return transaction;

@@ -15,7 +15,7 @@ type Listener = (result: GutterWorkerResult) => void;
 export const GUTTER_WORKER_LINGER_MS = 5_000;
 
 /**
- * One worker shared by every editor with a gutter (EP-14 budget). It starts
+ * One worker shared by every editor with a gutter. It starts
  * with the first connection and is terminated a few seconds after the last
  * closes, so switching Files does not reload it and no worker stays while no
  * File is open.

@@ -52,7 +52,8 @@ mod live_lanes;
 mod live_routes;
 pub(crate) use live_lanes::{ChatRuntimeRelease, LIVE_RUNTIME_LANES};
 mod permission;
-#[cfg(test)]
+// Only the Pi bridge fixture replay drives decisions through the service from outside it.
+#[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use permission::tests::support::{
     admit_permission_request, service_with_pending_requests,
 };
@@ -95,8 +96,9 @@ use codex_discovery::CodexDiscoveryManager;
 pub(crate) use codex_launch_failure::CodexLaunchSetupError;
 use configuration::ServiceConfiguration;
 use intent_snapshot::load_intent_snapshot;
-use renderer_recreation::RendererRecreationNativeSnapshot;
+pub(crate) use renderer_recreation::RendererRecreationUsage;
 pub(crate) use renderer_recreation_orchestrator::RendererRecreationReloadLifecycle;
+
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 use runtime_identity::CodexRuntimeIdentityLedger;
 use runtime_slot::RuntimeSlot;
@@ -386,23 +388,6 @@ impl AcpService {
         if let Some(notifier) = &self.notifier {
             let _ = notifier.acknowledge_authoritative_bootstrap();
         }
-    }
-
-    pub(crate) fn renderer_recreation_native_snapshot(
-        &self,
-        project_id: &SageProjectId,
-        chat_id: &SageChatId,
-    ) -> Result<RendererRecreationNativeSnapshot, StoreError> {
-        let (live_trees, live_descendants) =
-            crate::acp::process::TreeCapacityPool::global().observation_usage();
-        RendererRecreationNativeSnapshot::capture(
-            &self.database.connection(),
-            project_id,
-            chat_id,
-            u8::try_from(self.live_runtime_count()).unwrap_or(u8::MAX),
-            live_trees,
-            live_descendants,
-        )
     }
 
     #[cfg(test)]

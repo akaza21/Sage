@@ -4,7 +4,7 @@ import { GitDecorationBadge } from "./GitDecorationBadge";
 import { resourceGitDecoration } from "./gitDecorations";
 import "./git-decorations.css";
 
-/** A File tab's title with its Git tone and letter (EP-13). */
+/** A File tab's title with its Git tone and letter. */
 export function GitTabTitle({
   title,
   resource,

@@ -1,7 +1,7 @@
 import { resourceKey } from "../../../domain/resourceIdentity";
 import type { FileGitBase, ResourceRef } from "../../../domain/workbench";
 
-/** EP-14 budget: staged texts kept for the gutter, across Files. */
+/** Budget: staged texts kept for the gutter, across Files. */
 export const MAX_GUTTER_BASE_BYTES = 16 * 1024 * 1024;
 /** Files whose last blob id is remembered. */
 const MAX_REMEMBERED_FILES = 512;
