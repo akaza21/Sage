@@ -55,7 +55,11 @@ interface AcpProjectionState {
   page: AcpChatPage | null;
   retainedBytes: number;
   retentionIncomplete: boolean;
+  /** The newest-page load in flight; a later one supersedes it. */
   activeLoad: AcpPageLoadIntent | null;
+  /** The earlier-history load in flight, tracked apart so a refresh of the
+   * newest page never drops it. */
+  historyLoad: AcpPageLoadIntent | null;
   requestSequence: number;
   pendingChange: AcpProjectionChangedEvent | null;
   pendingConfigChange: AcpSessionConfigChangedV1 | null;
@@ -196,6 +200,7 @@ const initialState = {
   retainedBytes: 0,
   retentionIncomplete: false,
   activeLoad: null,
+  historyLoad: null,
   requestSequence: 0,
   pendingChange: null,
   pendingConfigChange: null,
@@ -208,12 +213,17 @@ const initialState = {
   | "retainedBytes"
   | "retentionIncomplete"
   | "activeLoad"
+  | "historyLoad"
   | "requestSequence"
   | "pendingChange"
   | "pendingConfigChange"
   | "error"
   | "loadNonce"
 >;
+
+function loadSlot(intent: AcpPageLoadIntent): "activeLoad" | "historyLoad" {
+  return intent.cursor ? "historyLoad" : "activeLoad";
+}
 
 export function createAcpProjectionStore() {
   return create<AcpProjectionState>((set, get) => ({
@@ -247,7 +257,7 @@ export function createAcpProjectionStore() {
         expectedProjectionRevision: get().page?.projectionRevision ?? null,
       };
       set({
-        activeLoad: intent,
+        [loadSlot(intent)]: intent,
         requestSequence: intent.requestSequence,
         error: null,
       });
@@ -256,8 +266,9 @@ export function createAcpProjectionStore() {
 
     completePageLoad: (intent, page) => {
       const state = get();
+      const settled = { [loadSlot(intent)]: null };
       if (
-        state.activeLoad?.requestSequence !== intent.requestSequence ||
+        state[loadSlot(intent)]?.requestSequence !== intent.requestSequence ||
         !sameScope(state.scope, intent) ||
         page.projectId !== intent.projectId ||
         page.chatId !== intent.chatId
@@ -272,11 +283,11 @@ export function createAcpProjectionStore() {
           currentRevision,
         );
         if (comparison === null) {
-          set({ activeLoad: null, error: null });
+          set({ ...settled, error: null });
           return "ignoredInvalidRevision";
         }
         if (comparison < 0) {
-          set({ activeLoad: null, error: null });
+          set({ ...settled, error: null });
           return "ignoredStaleRevision";
         }
       }
@@ -287,17 +298,17 @@ export function createAcpProjectionStore() {
           intent.expectedProjectionRevision,
         );
         if (comparison === null) {
-          set({ activeLoad: null, error: null });
+          set({ ...settled, error: null });
           return "ignoredInvalidRevision";
         }
         if (comparison !== 0) {
-          set({ activeLoad: null, error: null });
+          set({ ...settled, error: null });
           return "ignoredStaleRevision";
         }
       }
 
       if (!sameRevisionOwner(state.page, page)) {
-        set({ activeLoad: null });
+        set(settled);
         return "ignoredStaleIntent";
       }
       const source =
@@ -310,7 +321,7 @@ export function createAcpProjectionStore() {
         retainedBytes: retained.retainedBytes,
         retentionIncomplete:
           state.retentionIncomplete || retained.retentionIncomplete,
-        activeLoad: null,
+        ...settled,
         error: null,
       });
       return "accepted";
@@ -319,12 +330,12 @@ export function createAcpProjectionStore() {
     failPageLoad: (intent, message) => {
       const state = get();
       if (
-        state.activeLoad?.requestSequence !== intent.requestSequence ||
+        state[loadSlot(intent)]?.requestSequence !== intent.requestSequence ||
         !sameScope(state.scope, intent)
       ) {
         return false;
       }
-      set({ activeLoad: null, error: message });
+      set({ [loadSlot(intent)]: null, error: message });
       return true;
     },
 
