@@ -32,8 +32,10 @@ pub fn open_document(
     let buffer = database.editor_buffer(workspace.project_id(), &resource)?;
     let Some(buffer) = buffer else {
         let disk = read_disk_document(workspace, &resource.relative_path)?;
+        absent::note_opened(workspace, &resource);
         return Ok(clean_document(resource, disk));
     };
+    absent::note_opened(workspace, &resource);
     validate_persisted_buffer(&buffer)?;
     // A deleted File with a recovery buffer opens as that buffer.
     let Some(disk) = read_disk_document_if_present(workspace, &resource.relative_path)? else {
@@ -70,7 +72,14 @@ pub fn snapshot_buffer(
     let durable_buffer = database.editor_buffer(workspace.project_id(), &request.resource)?;
     let disk = read_disk_document_if_present(workspace, &request.resource.relative_path)?;
     let disk_matches_base = disk_version(disk.as_ref()).fingerprint == request.base.fingerprint;
-    if durable_buffer.is_none() && !disk_matches_base {
+    if durable_buffer.is_none()
+        && !absent::admits_unbuffered_snapshot(
+            workspace,
+            &request.resource,
+            &request.base,
+            disk.as_ref(),
+        )
+    {
         return Err(AppError::InvalidRequest(
             "snapshot base no longer matches disk and no durable buffer exists".into(),
         ));

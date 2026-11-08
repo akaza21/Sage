@@ -156,6 +156,12 @@ impl Database {
                 },
             )
             .optional()?;
+        // A rebase skips both guards: it replaces the base, and its revision
+        // may be lower than the row's (the WebView's count restarts when a
+        // File is reopened). That is safe only because rebase_editor_buffer
+        // runs as a Terminal operation, after every snapshot queued before
+        // it and before any queued after; a snapshot that then carries the
+        // old base is refused by the base guard.
         if let Some((base_fingerprint, revision, updated_at)) = &existing
             && !rebase
         {

@@ -49,7 +49,7 @@ pub(super) fn read_disk_document_if_present(
     }
 }
 
-fn is_not_found(error: &AppError) -> bool {
+pub(super) fn is_not_found(error: &AppError) -> bool {
     matches!(error, AppError::Io(error) if error.kind() == std::io::ErrorKind::NotFound)
 }
 
@@ -219,44 +219,29 @@ impl HeldParent {
 
 impl HeldParent {
     /// Creates `name` with `content`, only if nothing has that name yet:
-    /// `None` when something does. A failed write removes the new file.
+    /// `false` when something does. The content is written to `temp_name`
+    /// beside it and renamed in without replacing anything, so no reader sees
+    /// a partial File and a File that appears meanwhile is never touched.
+    /// The temporary file is removed whatever happens.
     pub(super) fn create_document(
         &self,
         name: &str,
+        temp_name: &str,
         content: &[u8],
-    ) -> AppResult<Option<RootIdentity>> {
-        let mut file = match self.create_new(name) {
-            Ok(file) => file,
-            Err(AppError::Io(error)) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                return Ok(None);
-            }
-            Err(error) => return Err(error),
-        };
-        let identity = leaf_identity(&file, &file.metadata()?)?;
-        let written = file
-            .write_all(content)
-            .and_then(|()| set_document_permissions(&file))
-            .and_then(|()| file.sync_all());
-        if let Err(error) = written {
-            drop(file);
-            let _ = self.remove(name);
-            return Err(error.into());
+        before_rename: impl FnOnce() -> std::io::Result<()>,
+    ) -> AppResult<bool> {
+        let written = self.create_new_document(temp_name).and_then(|mut file| {
+            file.write_all(content)?;
+            before_rename()?;
+            file.sync_all()?;
+            Ok(())
+        });
+        let renamed = written.and_then(|()| self.rename_new(temp_name, name));
+        if !matches!(renamed, Ok(true)) {
+            let _ = self.remove(temp_name);
         }
-        Ok(Some(identity))
+        renamed
     }
-}
-
-/// New Files get the usual owner-writable, world-readable mode, not the
-/// private mode of a temporary file.
-#[cfg(unix)]
-fn set_document_permissions(file: &File) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    file.set_permissions(fs::Permissions::from_mode(0o644))
-}
-
-#[cfg(not(unix))]
-fn set_document_permissions(_file: &File) -> std::io::Result<()> {
-    Ok(())
 }
 
 /// Fails unless the canonical `path`, walked from the verified root, opens

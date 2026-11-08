@@ -8,7 +8,7 @@ use uuid::Uuid;
 use super::filesystem::{cleanup_failed_save_with, read_editable_bytes, temporary_contract_path};
 use super::*;
 use crate::{
-    domain::{BufferRebaseRequest, BufferSnapshotRequest},
+    domain::{BufferRebaseRequest, BufferSnapshotRequest, DocumentVersion},
     editor_content::MAX_EDITABLE_BYTES,
     editor_coordination::{EditorOperationCoordinator, EditorOperationKind},
 };
@@ -52,6 +52,13 @@ impl Fixture {
 
     fn resource(&self, path: &str) -> ResourceRef {
         self.workspace.resource(path).unwrap()
+    }
+
+    fn resource_unchecked(&self, path: &str) -> ResourceRef {
+        ResourceRef {
+            root_id: self.workspace.root_id().into(),
+            relative_path: path.into(),
+        }
     }
 
     fn buffer(&self, path: &str) -> Option<PersistedEditorBuffer> {
@@ -1310,4 +1317,181 @@ fn a_kept_deleted_file_is_not_overwritten_if_it_comes_back() {
         b"recreated elsewhere\n"
     );
     assert_eq!(fixture.buffer("back.txt").unwrap().content, "kept\n");
+}
+
+fn absent() -> DocumentVersion {
+    super::absent::absent_version()
+}
+
+#[test]
+fn a_kept_file_whose_folders_were_deleted_too_is_saved_with_them() {
+    let fixture = dirty_fixture("gone/deeper/kept.txt", b"base\n", "kept\n");
+    fs::remove_dir_all(fixture.root.join("gone")).unwrap();
+    let deleted = open_document(
+        fixture.database(),
+        &fixture.workspace,
+        "gone/deeper/kept.txt",
+    )
+    .unwrap();
+    assert_eq!(deleted.conflict.as_ref().unwrap().kind, "deleted");
+
+    let rebased = rebase_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        rebase_request(&deleted, absent(), "kept\n", 2),
+    )
+    .unwrap();
+    assert_eq!(rebased.outcome, "rebased");
+    let saved = save_document(
+        fixture.database(),
+        &fixture.workspace,
+        "gone/deeper/kept.txt",
+    )
+    .unwrap();
+
+    assert_eq!(saved.outcome, "saved");
+    assert_eq!(
+        fs::read(fixture.root.join("gone/deeper/kept.txt")).unwrap(),
+        b"kept\n"
+    );
+    assert_eq!(temp_entries(&fixture.root.join("gone/deeper")), 0);
+}
+
+#[test]
+fn an_absent_base_needs_a_file_the_editor_opened() {
+    let fixture = Fixture::new();
+    let never = ResourceRef {
+        root_id: fixture.workspace.root_id().into(),
+        relative_path: "never-opened.txt".into(),
+    };
+    let document = EditorDocument {
+        resource: never.clone(),
+        disk: absent(),
+        base: absent(),
+        buffer: EditorBufferVersion {
+            fingerprint: ABSENT_FINGERPRINT.into(),
+            byte_len: 0,
+            revision: 0,
+            content: String::new(),
+        },
+        line_ending: "lf".into(),
+        dirty: false,
+        conflict: None,
+    };
+
+    let rebase = rebase_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        rebase_request(&document, absent(), "created\n", 1),
+    );
+    let snapshot = snapshot_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        snapshot_request(&document, "created\n", 1),
+    );
+
+    assert!(rebase.is_err());
+    assert!(snapshot.is_err());
+    assert!(fixture.buffer("never-opened.txt").is_none());
+    assert!(!fixture.root.join("never-opened.txt").exists());
+}
+
+#[test]
+fn keep_mine_cannot_create_a_file_in_protected_metadata() {
+    let fixture = dirty_fixture(".git/hooks/post-commit", b"base\n", "mine\n");
+    fs::remove_file(fixture.root.join(".git/hooks/post-commit")).unwrap();
+    let deleted = open_document(
+        fixture.database(),
+        &fixture.workspace,
+        ".git/hooks/post-commit",
+    )
+    .unwrap();
+
+    let refused = rebase_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        rebase_request(&deleted, absent(), "mine\n", 2),
+    );
+
+    assert!(refused.is_err());
+    assert!(!fixture.root.join(".git/hooks/post-commit").exists());
+    assert_eq!(
+        fixture.buffer(".git/hooks/post-commit").unwrap().content,
+        "mine\n"
+    );
+}
+
+#[test]
+fn an_opened_file_deleted_before_any_snapshot_keeps_its_edits() {
+    let fixture = Fixture::new();
+    fixture.write("fresh.txt", b"base\n");
+    let opened = open_document(fixture.database(), &fixture.workspace, "fresh.txt").unwrap();
+    fs::remove_file(fixture.root.join("fresh.txt")).unwrap();
+
+    snapshot_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        snapshot_request(&opened, "edited\n", 1),
+    )
+    .unwrap();
+
+    let reopened = open_document(fixture.database(), &fixture.workspace, "fresh.txt").unwrap();
+    assert_eq!(reopened.buffer.content, "edited\n");
+    assert_eq!(reopened.conflict.unwrap().kind, "deleted");
+}
+
+#[test]
+fn keep_mine_with_no_durable_buffer_starts_one_on_the_new_disk_version() {
+    let fixture = Fixture::new();
+    fixture.write("plain.txt", b"base\n");
+    open_document(fixture.database(), &fixture.workspace, "plain.txt").unwrap();
+    fixture.write("plain.txt", b"theirs\n");
+    let seen = open_document(fixture.database(), &fixture.workspace, "plain.txt").unwrap();
+    assert!(fixture.buffer("plain.txt").is_none());
+
+    let rebased = rebase_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        rebase_request(&seen, seen.disk.clone(), "mine\n", 1),
+    )
+    .unwrap();
+
+    assert_eq!(rebased.outcome, "rebased");
+    assert!(rebased.document.dirty);
+    assert_eq!(
+        save_document(fixture.database(), &fixture.workspace, "plain.txt")
+            .unwrap()
+            .outcome,
+        "saved"
+    );
+    assert_eq!(fs::read(fixture.root.join("plain.txt")).unwrap(), b"mine\n");
+}
+
+#[test]
+fn a_failed_create_leaves_no_file_and_keeps_the_buffer() {
+    let fixture = dirty_fixture("lost.txt", b"base\n", "kept\n");
+    fs::remove_file(fixture.root.join("lost.txt")).unwrap();
+    let deleted = open_document(fixture.database(), &fixture.workspace, "lost.txt").unwrap();
+    rebase_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        rebase_request(&deleted, absent(), "kept\n", 2),
+    )
+    .unwrap();
+    let buffer = fixture.buffer("lost.txt").unwrap();
+
+    let failed = super::absent::create_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        fixture.resource_unchecked("lost.txt"),
+        buffer,
+        || Err(std::io::Error::other("the disk is full")),
+    );
+
+    assert!(failed.is_err());
+    assert!(!fixture.root.join("lost.txt").exists());
+    assert_eq!(temp_entries(&fixture.root), 0);
+    let kept = fixture.buffer("lost.txt").unwrap();
+    assert_eq!(kept.content, "kept\n");
+    assert!(kept.pending_temp_path.is_none());
 }

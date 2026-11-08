@@ -2,9 +2,15 @@
 //! the buffer is kept ("Keep mine") until a save creates the File again. Also
 //! "Keep mine" over a File that changed on disk, which rebases the buffer.
 
+use std::{
+    collections::HashSet,
+    sync::{Arc, LazyLock, Mutex, atomic::AtomicBool},
+};
+
 use super::filesystem::{
-    DiskDocument, HeldParent, cleanup_recorded_temp, read_disk_document,
-    read_disk_document_if_present, split_contract_path,
+    DiskDocument, HeldParent, cleanup_failed_save, cleanup_recorded_temp, is_not_found,
+    read_disk_document, read_disk_document_if_present, split_contract_path,
+    temporary_contract_path,
 };
 use super::{
     buffered_document, clean_document, conflict_result, normalized_resource, open_document,
@@ -21,8 +27,57 @@ use crate::{
     editor_persistence::PersistedEditorBuffer,
     error::{AppError, AppResult},
     persistence::Database,
-    workspace::Workspace,
+    workspace::{Workspace, file_create::admit_created_path},
 };
+
+/// Files this process opened in the editor, by project and canonical path.
+/// Only such a File, or one with a durable buffer, may take an absent base:
+/// otherwise the WebView could create any file by naming a missing path.
+static OPENED: LazyLock<Mutex<HashSet<(String, String, String)>>> = LazyLock::new(Mutex::default);
+/// Bounds the set; past it, the set starts again, and a File opened before
+/// that and deleted before any edit was persisted cannot be kept.
+const MAX_OPENED: usize = 8192;
+
+fn opened_key(workspace: &Workspace, resource: &ResourceRef) -> (String, String, String) {
+    (
+        workspace.project_id().into(),
+        resource.root_id.clone(),
+        resource.relative_path.clone(),
+    )
+}
+
+/// Records that the editor opened `resource`, which existed or had a buffer.
+pub(super) fn note_opened(workspace: &Workspace, resource: &ResourceRef) {
+    let mut opened = OPENED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if opened.len() >= MAX_OPENED {
+        opened.clear();
+    }
+    opened.insert(opened_key(workspace, resource));
+}
+
+fn was_opened(workspace: &Workspace, resource: &ResourceRef) -> bool {
+    OPENED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains(&opened_key(workspace, resource))
+}
+
+/// Whether a snapshot with no durable buffer behind it may start one. The
+/// base must be the File on disk, or, for a File this process opened and
+/// that was deleted since, the version it was opened at; never absent.
+pub(super) fn admits_unbuffered_snapshot(
+    workspace: &Workspace,
+    resource: &ResourceRef,
+    base: &DocumentVersion,
+    disk: Option<&DiskDocument>,
+) -> bool {
+    match disk {
+        Some(disk) => disk.version.fingerprint == base.fingerprint,
+        None => base.fingerprint != ABSENT_FINGERPRINT && was_opened(workspace, resource),
+    }
+}
 
 /// The base of a buffer whose File does not exist on disk: kept over a
 /// deletion, its save creates the File. Real fingerprints are hex digests, so
@@ -41,15 +96,29 @@ pub(super) fn disk_version(disk: Option<&DiskDocument>) -> DocumentVersion {
     disk.map_or_else(absent_version, |disk| disk.version.clone())
 }
 
-/// The resource's canonical path. One that no longer exists is accepted on
-/// its spelling, which `validate_resource` has already checked by the time
-/// it looks for the File; every later access walks the held root.
+/// The resource's canonical path. For a path that no longer exists, its
+/// nearest existing folder must be spelled canonically; the missing names
+/// are only checked for form. Two spellings of one missing name cannot both
+/// hold a buffer: a buffer starts only from an opened File or a File on disk,
+/// whose path is canonical.
 pub(super) fn validated_path(workspace: &Workspace, resource: &ResourceRef) -> AppResult<String> {
     match workspace.validate_resource(resource, false) {
-        Err(AppError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(resource.relative_path.clone())
+        Err(error) if is_not_found(&error) => {}
+        result => return result,
+    }
+    let mut folder = split_contract_path(&resource.relative_path).0;
+    loop {
+        let candidate = ResourceRef {
+            root_id: resource.root_id.clone(),
+            relative_path: folder.into(),
+        };
+        match workspace.validate_resource(&candidate, true) {
+            Ok(_) => return Ok(resource.relative_path.clone()),
+            Err(error) if is_not_found(&error) && !folder.is_empty() => {
+                folder = split_contract_path(folder).0;
+            }
+            Err(error) => return Err(error),
         }
-        result => result,
     }
 }
 
@@ -88,6 +157,15 @@ pub fn rebase_buffer(
             document,
         });
     }
+    if disk.is_none() {
+        // Keeping a deleted File means creating it on save.
+        if durable_buffer.is_none() && !was_opened(workspace, &resource) {
+            return Err(AppError::InvalidRequest(
+                "only a File opened in the editor can be kept after it was deleted".into(),
+            ));
+        }
+        admit_created_path(&resource.relative_path)?;
+    }
     if let Some(buffer) = &durable_buffer {
         cleanup_recorded_temp(workspace, buffer)?;
     }
@@ -118,22 +196,45 @@ pub fn rebase_buffer(
 }
 
 /// Saves a buffer kept over a deletion by creating its File, which must
-/// still not exist; if it does, the outcome is a conflict.
+/// still not exist; if it does, the outcome is a conflict. Folders deleted
+/// with it are created again, under the same rules as a new File.
 pub(super) fn create_document(
     database: &Database,
     workspace: &Workspace,
     resource: ResourceRef,
     buffer: PersistedEditorBuffer,
 ) -> AppResult<EditorSaveResult> {
+    create_document_with(database, workspace, resource, buffer, || Ok(()))
+}
+
+pub(super) fn create_document_with(
+    database: &Database,
+    workspace: &Workspace,
+    resource: ResourceRef,
+    buffer: PersistedEditorBuffer,
+    before_rename: impl FnOnce() -> std::io::Result<()>,
+) -> AppResult<EditorSaveResult> {
     let path = resource.relative_path.clone();
+    admit_created_path(&path)?;
     let materialized = materialize_content(&buffer.content, &buffer.line_ending);
     reject_oversized_materialized(&materialized)?;
     let (parent_path, file_name) = split_contract_path(&path);
+    ensure_folders(workspace, parent_path)?;
     let parent = HeldParent::open(workspace, parent_path)?;
-    if parent
-        .create_document(file_name, materialized.as_bytes())?
-        .is_none()
-    {
+    let temp_path = temporary_contract_path(&path)?;
+    let (_, temp_name) = split_contract_path(&temp_path);
+    database.set_editor_pending_temp(workspace.project_id(), &resource, &temp_path)?;
+    let created =
+        parent.create_document(file_name, temp_name, materialized.as_bytes(), before_rename);
+    // The temporary file is gone either way; forget it.
+    cleanup_failed_save(
+        database,
+        workspace.project_id(),
+        &resource,
+        &parent,
+        temp_name,
+    );
+    if !created? {
         let disk = read_disk_document_if_present(workspace, &path)?;
         return Ok(conflict_result(resource, disk, buffer));
     }
@@ -151,6 +252,42 @@ pub(super) fn create_document(
         outcome: "saved".into(),
         document: clean_document(resource, saved),
     })
+}
+
+/// Creates each missing folder of `parent_path`, top down, through the same
+/// held, no-follow walk as Explorer's New Folder.
+fn ensure_folders(workspace: &Workspace, parent_path: &str) -> AppResult<()> {
+    if parent_path.is_empty() {
+        return Ok(());
+    }
+    let mut existing = String::new();
+    for name in parent_path.split('/') {
+        let next = if existing.is_empty() {
+            name.to_owned()
+        } else {
+            format!("{existing}/{name}")
+        };
+        match HeldParent::open(workspace, &next) {
+            Ok(_) => {}
+            Err(error) if is_not_found(&error) => {
+                let parent = ResourceRef {
+                    root_id: workspace.root_id().into(),
+                    relative_path: existing.clone(),
+                };
+                let committed = Arc::new(AtomicBool::new(false));
+                match workspace.create_directory_observed(&parent, name, committed) {
+                    Ok(_) => {}
+                    // Created meanwhile by someone else: use it.
+                    Err(AppError::Io(error))
+                        if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            Err(error) => return Err(error),
+        }
+        existing = next;
+    }
+    Ok(())
 }
 
 /// A File with no buffer that is not on disk, as a discard leaves it.
