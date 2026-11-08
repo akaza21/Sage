@@ -84,6 +84,11 @@ impl UsageCell {
         *self.lock() = UsageState::Unsupported;
     }
 
+    /// Forgets a refusal or snapshot that an account change made stale.
+    pub(crate) fn reset(&self) {
+        *self.lock() = UsageState::Unavailable;
+    }
+
     pub(crate) fn state(&self) -> UsageState {
         self.lock().clone()
     }

@@ -135,3 +135,54 @@ fn no_read_is_sent_until_an_abandoned_one_answers() {
     );
     assert_eq!(used(&runtime), vec![11]);
 }
+
+#[test]
+fn a_pushed_snapshot_lets_a_new_read_past_an_unanswered_one() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let abandoned = request_id(&runtime.read_usage().unwrap());
+    runtime.abandon_usage_read();
+    assert!(runtime.read_usage().is_err());
+
+    runtime.ingest(&update("codex", 30), &Mapper).unwrap();
+    let next = request_id(&runtime.read_usage().unwrap());
+    answer(
+        &mut runtime,
+        abandoned,
+        json!({"result":{"rateLimits":{"limitId":"codex","primary":{"usedPercent":9}}}}),
+    );
+    assert_eq!(runtime.take_native_rpc_reply(), None);
+    assert!(runtime.native_rpc_pending());
+    answer(
+        &mut runtime,
+        next,
+        json!({"result":{"rateLimits":{"limitId":"codex","primary":{"usedPercent":31}}}}),
+    );
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::UsageRead)
+    );
+    assert_eq!(used(&runtime), vec![31]);
+}
+
+#[test]
+fn a_chatgpt_sign_in_lifts_an_earlier_refusal() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let read = request_id(&runtime.read_usage().unwrap());
+    answer(
+        &mut runtime,
+        read,
+        json!({"error":{"code":-32600,"message":"codex account authentication required"}}),
+    );
+    assert_eq!(runtime.usage().unwrap().state(), UsageState::Unsupported);
+    for (mode, state) in [
+        (json!("apikey"), UsageState::Unsupported),
+        (json!("chatgpt"), UsageState::Unavailable),
+    ] {
+        let signed_in = frame(json!({"method":"account/updated",
+            "params":{"authMode":mode,"planType":null}}));
+        runtime.ingest(&signed_in, &Mapper).unwrap();
+        assert_eq!(runtime.usage().unwrap().state(), state);
+    }
+}

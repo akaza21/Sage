@@ -32,17 +32,23 @@ impl RateLimits {
     /// reported.
     pub(in crate::acp::bindings::codex) fn read(result: &Map<String, Value>) -> Option<Self> {
         let default = result.get("rateLimits").and_then(Value::as_object);
+        let by_id = result.get("rateLimitsByLimitId").and_then(Value::as_object);
+        // Codex keys an unnamed default by its fallback id and repeats it.
+        let default_key = default.and_then(|default| {
+            by_id?
+                .iter()
+                .find(|(_, value)| value.as_object() == Some(default))
+                .map(|(key, _)| key.as_str())
+        });
         let mut limits = Self {
-            default_id: default.and_then(|bucket| text(bucket, "limitId")),
             ordinary_usage_allowed: result.get("ordinaryUsageAllowed").and_then(Value::as_bool),
             ..Self::default()
         };
-        if let Some(default) = default.and_then(|value| bucket(value, None)) {
+        if let Some(default) = default.and_then(|value| bucket(value, default_key)) {
+            limits.default_id.clone_from(&default.id);
             limits.merge(default);
         }
-        for named in result
-            .get("rateLimitsByLimitId")
-            .and_then(Value::as_object)
+        for named in by_id
             .into_iter()
             .flatten()
             .filter_map(|(id, value)| bucket(value.as_object()?, Some(id)))
@@ -279,6 +285,27 @@ mod tests {
             snapshot.windows,
             vec![window(None, 63, 300), window(Some("Spark"), 90, 300)]
         );
+    }
+
+    #[test]
+    fn an_unnamed_default_repeated_under_its_fallback_key_is_one_bucket() {
+        let default = json!({"limitId":null,"limitName":null,"planType":"plus",
+            "primary":{"usedPercent":20,"windowDurationMins":300},
+            "rateLimitReachedType":"rate_limit_reached"});
+        let mut limits = RateLimits::read(
+            json!({"rateLimits":default,"rateLimitsByLimitId":{"codex":default}})
+                .as_object()
+                .unwrap(),
+        )
+        .unwrap();
+        let snapshot = limits.snapshot();
+        assert!(snapshot.limit_reached);
+        assert_eq!(snapshot.windows, vec![window(None, 20, 300)]);
+        limits.push(push(json!({"rateLimits":{"limitId":"codex",
+            "primary":{"usedPercent":35,"windowDurationMins":300}}})));
+        let snapshot = limits.snapshot();
+        assert!(!snapshot.limit_reached);
+        assert_eq!(snapshot.windows, vec![window(None, 35, 300)]);
     }
 
     #[test]

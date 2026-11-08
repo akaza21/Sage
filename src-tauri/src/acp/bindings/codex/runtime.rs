@@ -163,7 +163,8 @@ impl CodexRuntime {
             }
             usage @ (IngressDisposition::UsageUpdated(_)
             | IngressDisposition::UsageRead(_)
-            | IngressDisposition::UsageRefused) => {
+            | IngressDisposition::UsageRefused
+            | IngressDisposition::UsageReset) => {
                 self.apply_usage(usage);
                 one(AdapterEvent::IgnoredLate)
             }

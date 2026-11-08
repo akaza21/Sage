@@ -215,6 +215,8 @@ pub(crate) enum IngressDisposition {
     UsageRead(Option<rate_limits::RateLimits>),
     /// Codex refused to report usage for this account.
     UsageRefused,
+    /// The account signed in to ChatGPT, so usage may be reported again.
+    UsageReset,
     DuplicateTerminal,
     DuplicateServerRequest {
         denial: Option<Vec<u8>>,

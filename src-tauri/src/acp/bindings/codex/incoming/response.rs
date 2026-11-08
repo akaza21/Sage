@@ -1,8 +1,9 @@
 use super::*;
 use crate::acp::bindings::codex::state::{TurnBinding, TurnStartFailure};
 
-/// Codex refuses a rate-limit read for an account without ChatGPT sign-in
-/// as an invalid request; a backend failure is an internal error.
+/// Codex refuses a rate-limit read as an invalid request both when the
+/// account is signed out and when it signed in without ChatGPT (an API
+/// key); a backend failure is an internal error.
 const INVALID_REQUEST: i64 = -32600;
 
 pub(super) fn response(

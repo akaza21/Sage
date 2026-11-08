@@ -22,6 +22,7 @@ impl CodexRuntime {
                 self.usage.mark_unsupported();
                 self.native_rpc_reply = Some(NativeRpcReply::Rejected);
             }
+            IngressDisposition::UsageReset => self.usage.reset(),
             _ => {}
         }
     }
