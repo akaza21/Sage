@@ -1,4 +1,4 @@
-//! Durable last-confirmed session config choices (schema v22).
+//! Durable last-confirmed session config choices (schema v23).
 //!
 //! The live overlay is never journaled; this table keeps only the value the
 //! harness last confirmed for each mode or option, so a resumed runtime can

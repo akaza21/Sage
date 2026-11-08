@@ -1,23 +1,23 @@
 use super::*;
 
-pub(super) const V22: &str = include_str!("../../../migrations/022_session_config_choices.sql");
+pub(super) const V23: &str = include_str!("../../../migrations/023_session_config_choices.sql");
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentV22 => return Ok(()),
-        SchemaClass::CurrentV21 => {}
-        _ => return invalid("session config choices require exact schema v21"),
+        SchemaClass::CurrentV23 => return Ok(()),
+        SchemaClass::CurrentV22 => {}
+        _ => return invalid("session config choices require exact schema v22"),
     }
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V22)?;
+    transaction.execute_batch(V23)?;
     transaction.execute(
-        "INSERT INTO schema_migrations(version,applied_at) VALUES (22,?1)",
+        "INSERT INTO schema_migrations(version,applied_at) VALUES (23,?1)",
         [now_millis()],
     )?;
-    transaction.pragma_update(None, "user_version", 22)?;
+    transaction.pragma_update(None, "user_version", 23)?;
     transaction.commit()?;
-    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV22 {
-        return invalid("database did not reach exact schema v22");
+    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV23 {
+        return invalid("database did not reach exact schema v23");
     }
     Ok(())
 }
@@ -26,24 +26,25 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
 mod tests {
     use super::*;
 
-    fn v21() -> Connection {
+    fn v22() -> Connection {
         let mut connection = Connection::open_in_memory().unwrap();
         schema_upgrade::build_fresh_v18(&mut connection).unwrap();
         workspace_changes::apply(&mut connection).unwrap();
         title_provenance::apply(&mut connection).unwrap();
         session_scope::apply(&mut connection).unwrap();
+        notifications::apply(&mut connection).unwrap();
         connection
     }
 
     #[test]
     fn upgrade_is_exact_idempotent_and_cascades_with_the_session() {
-        let mut connection = v21();
+        let mut connection = v22();
         connection.execute_batch("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Project',1,1,1);
             INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('chat','project',0,'Chat',1,1);").unwrap();
         connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,capabilities_json,state,residency,created_at,updated_at) VALUES('session','project','chat',0,'binding',?1,'{}','created','cold',1,1)", [&"a".repeat(64)]).unwrap();
         apply(&mut connection).unwrap();
         let first = fingerprint::database_fingerprint(&connection).unwrap();
-        assert_eq!(first.schema, SchemaClass::CurrentV22);
+        assert_eq!(first.schema, SchemaClass::CurrentV23);
         apply(&mut connection).unwrap();
         assert_eq!(
             fingerprint::database_fingerprint(&connection).unwrap(),
@@ -88,8 +89,8 @@ mod tests {
     }
 
     #[test]
-    fn upgrade_refuses_a_conflicting_table_and_leaves_v21() {
-        let mut connection = v21();
+    fn upgrade_refuses_a_conflicting_table_and_leaves_v22() {
+        let mut connection = v22();
         connection
             .execute_batch("CREATE TABLE acp_session_config_choices(unrelated TEXT);")
             .unwrap();
@@ -97,6 +98,6 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 21);
+        assert_eq!(version, 22);
     }
 }
