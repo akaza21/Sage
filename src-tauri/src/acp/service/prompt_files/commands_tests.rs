@@ -276,7 +276,27 @@ fn turn(fixture: &Fixture, id: &str, intent: &str, ordinal: i64, count: Option<u
     if let Some(count) = count {
         payload["attachments"] = count.into();
     }
-    let payload = serde_json::json!({"kind": "text", "payload": payload}).to_string();
+    let payload = serde_json::json!({"kind": "text", "payload": payload});
+    turn_with_prompt(
+        fixture,
+        id,
+        intent,
+        ordinal,
+        state,
+        Some(payload.to_string()),
+    );
+}
+
+/// A turn in the fixture chat whose prompt item holds `payload`, or that
+/// has no prompt item at all.
+fn turn_with_prompt(
+    fixture: &Fixture,
+    id: &str,
+    intent: &str,
+    ordinal: i64,
+    state: &str,
+    payload: Option<String>,
+) {
     let connection = fixture.state.database.connection();
     connection.execute_batch("PRAGMA foreign_keys=OFF").unwrap();
     connection
@@ -288,6 +308,7 @@ fn turn(fixture: &Fixture, id: &str, intent: &str, ordinal: i64, count: Option<u
             rusqlite::params![id, fixture.project, fixture.chat, ordinal, intent, state],
         )
         .unwrap();
+    let Some(payload) = payload else { return };
     connection
         .execute(
             "INSERT INTO items (id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,
@@ -313,9 +334,12 @@ fn retry_reads_the_durable_attachment_count_of_that_turn_only() {
     } = origin("turn-files", &fixture.chat).unwrap();
     assert_eq!(
         (client_intent_id.as_str(), attachments),
-        ("intent-files", 2)
+        ("intent-files", Some(2))
     );
-    assert_eq!(origin("turn-plain", &fixture.chat).unwrap().attachments, 0);
+    assert_eq!(
+        origin("turn-plain", &fixture.chat).unwrap().attachments,
+        Some(0)
+    );
     assert!(origin("turn-missing", &fixture.chat).is_none());
     assert!(origin("turn-files", "another-chat").is_none());
     // With nothing held (a restart), a turn that carried files is refused.
@@ -334,6 +358,41 @@ fn retry_reads_the_durable_attachment_count_of_that_turn_only() {
             .0
             .is_empty()
     );
+}
+
+#[test]
+fn retry_of_a_turn_without_a_readable_prompt_record_is_refused_as_carrying_files() {
+    use super::super::{Selection, retry_origin};
+    let fixture = Fixture::new();
+    turn_with_prompt(&fixture, "turn-missing-item", "intent-a", 1, "failed", None);
+    let unreadable = serde_json::json!({"kind": "text", "payload": {"attachments": "two"}});
+    turn_with_prompt(
+        &fixture,
+        "turn-unreadable",
+        "intent-b",
+        2,
+        "failed",
+        Some(unreadable.to_string()),
+    );
+    let stages = fixture.state.acp.file_stages.lock().unwrap();
+    for turn in ["turn-missing-item", "turn-unreadable"] {
+        let origin = retry_origin(
+            &fixture.state.database,
+            &fixture.project,
+            &fixture.chat,
+            turn,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(origin.attachments, None, "{turn}");
+        let refused = stages
+            .selected(&fixture.project, &fixture.chat, &Selection::Retry(origin))
+            .unwrap_err();
+        assert!(
+            refused.contains("does not show whether it carried attachments"),
+            "{turn}: {refused}"
+        );
+    }
 }
 
 /// Stages a paste and records it as sent by `intent`, as a dispatch does.
@@ -367,7 +426,7 @@ fn kept_sent_files_outlive_a_completed_turn_and_end_with_their_tab() {
         let state = &fixture.state;
         let retry = |intent: &str| {
             release_detached(&state.acp.file_stages, &state.database);
-            let origin = RetryOrigin { client_intent_id: intent.into(), attachments: 1 };
+            let origin = RetryOrigin { client_intent_id: intent.into(), attachments: Some(1) };
             state.acp.file_stages.lock().unwrap()
                 .selected(&fixture.project, &fixture.chat, &Selection::Retry(origin))
                 .map(|files| files.0.len())

@@ -18,7 +18,7 @@ fn named(revision: &str) -> Selection {
 fn retry(intent: &str, attachments: usize) -> Selection {
     Selection::Retry(RetryOrigin {
         client_intent_id: intent.into(),
-        attachments,
+        attachments: Some(attachments),
     })
 }
 

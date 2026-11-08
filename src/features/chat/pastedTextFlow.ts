@@ -15,7 +15,7 @@ import {
   pasteDecision,
   type PasteAttachability,
 } from "./composerPaste";
-import type { HeldText, PastedTextState } from "./pastedTextTypes";
+import type { HeldPaste, PastedTextState } from "./pastedTextTypes";
 
 type Announce = (message: string) => void;
 
@@ -90,7 +90,7 @@ export async function reconcile(staged: StagedOwner) {
 export async function pasteOver(
   staged: StagedOwner,
   attachability: PasteAttachability | undefined,
-  { before, value, after }: HeldText,
+  { before, value, after }: HeldPaste,
   announce: Announce,
   /** A send is in flight and may consume the batch. */
   sending = false,

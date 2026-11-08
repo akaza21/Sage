@@ -121,7 +121,9 @@ struct Sent {
 pub(crate) struct RetryOrigin {
     pub client_intent_id: String,
     /// How many resources its prompt carried; persisted as a count only.
-    pub attachments: usize,
+    /// `None` when its prompt record is missing or unreadable: such a turn
+    /// may have carried files, so Retry without a kept record is refused.
+    pub attachments: Option<usize>,
 }
 /// Which staged files a send carries, resolved against durable state.
 pub(crate) enum Selection {
@@ -270,10 +272,15 @@ impl FileStages {
                     .ok_or("The attachments sent with that message were released; attach them again and send a new message."),
                 // No record for that turn (a restart, a reopened tab): resend
                 // nothing only when the turn is known to have carried nothing.
-                _ if origin.attachments > 0 => Err(
-                    "The attachments sent with that message are no longer held. Attach them again and send a new message.",
-                ),
-                _ => Ok(Resources::default()),
+                _ => match origin.attachments {
+                    Some(0) => Ok(Resources::default()),
+                    Some(_) => Err(
+                        "The attachments sent with that message are no longer held. Attach them again and send a new message.",
+                    ),
+                    None => Err(
+                        "That message's record does not show whether it carried attachments, so it cannot be retried. Send it again as a new message.",
+                    ),
+                },
             },
         }
     }

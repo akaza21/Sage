@@ -59,6 +59,8 @@ pub(crate) fn retry_origin(
     let row: Option<(String, Option<String>)> = database
         .connection()
         .query_row(
+            // The items schema bounds a payload at the normalized item cap,
+            // so the prompt is read whole.
             "SELECT t.client_intent_id, i.payload_json
              FROM turns t LEFT JOIN items i ON i.turn_id=t.id AND i.ordinal=0 AND i.kind='text'
              WHERE t.id=?1 AND t.project_id=?2 AND t.chat_id=?3",
@@ -68,21 +70,21 @@ pub(crate) fn retry_origin(
         .optional()?;
     Ok(row.map(|(client_intent_id, payload)| super::RetryOrigin {
         client_intent_id,
-        // A turn without a readable prompt counts as carrying files.
-        attachments: payload.as_deref().map_or(usize::MAX, attachment_count),
+        // A turn with no prompt item is unknown, never 0.
+        attachments: payload.as_deref().and_then(attachment_count),
     }))
 }
 
-/// The count a user prompt's payload records; an unreadable one counts as
-/// carrying files, so Retry is refused rather than sent without them.
-fn attachment_count(payload: &str) -> usize {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
-        return usize::MAX;
-    };
+/// The count a user prompt's payload records, 0 when it records none;
+/// `None` when the payload is unreadable, so Retry is refused rather than
+/// sent without files it may have carried.
+fn attachment_count(payload: &str) -> Option<usize> {
+    let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
     let payload = value.get("payload").unwrap_or(&value);
-    payload
-        .get("attachments")
-        .map_or(0, |count| count.as_u64().map_or(usize::MAX, |n| n as usize))
+    match payload.get("attachments") {
+        None => Some(0),
+        Some(count) => count.as_u64().and_then(|n| usize::try_from(n).ok()),
+    }
 }
 
 /// The `attached_at` of the chat's current tab, or `None` when it has none.
