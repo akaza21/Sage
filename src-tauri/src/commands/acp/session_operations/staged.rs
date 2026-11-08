@@ -62,20 +62,94 @@ pub(super) fn record_sent(
     client_intent_id: &crate::acp::contract::ClientIntentId,
     files: &Resources,
 ) {
-    // A tab that closed meanwhile keeps nothing; the sweep drops its batch.
-    let Ok(Some(attached_at)) = attachment(&state.database, project.as_str(), chat.as_str()) else {
-        return;
-    };
-    state
+    let attached_at = attachment(&state.database, project.as_str(), chat.as_str());
+    let mut stages = state
         .acp
         .file_stages
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .consume(
-            project.as_str(),
-            chat.as_str(),
-            attached_at,
-            client_intent_id.as_str(),
-            files,
-        );
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // The prompt was dispatched, so whatever happens to the record, the
+    // batch it carried leaves the stage and is never sent twice. A tab that
+    // closed meanwhile keeps nothing, and neither does an unreadable one.
+    let attached_at = match attached_at {
+        Ok(Some(attached_at)) => attached_at,
+        Ok(None) => return stages.unstage_sent(project.as_str(), chat.as_str(), files),
+        Err(error) => {
+            tracing::warn!(?error, "Sent attachments were not kept for Retry");
+            return stages.unstage_sent(project.as_str(), chat.as_str(), files);
+        }
+    };
+    stages.consume(
+        project.as_str(),
+        chat.as_str(),
+        attached_at,
+        client_intent_id.as_str(),
+        files,
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::acp::contract::ClientIntentId;
+
+    /// A chat with an open tab and a pasted batch named by the next send.
+    fn sent_batch() -> (
+        AppState,
+        SageProjectId,
+        SageChatId,
+        Resources,
+        std::path::PathBuf,
+    ) {
+        let root = std::env::temp_dir().join(format!("sage-sent-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let database =
+            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let project = database.create_project_from_root(&root).unwrap().id;
+        let chat = database
+            .bootstrap_snapshot()
+            .unwrap()
+            .active_tab_id
+            .unwrap();
+        let state = AppState::new(database);
+        let attached_at = attachment(&state.database, &project, &chat)
+            .unwrap()
+            .unwrap();
+        let mut stages = state.acp.file_stages.lock().unwrap();
+        let revision = stages
+            .append_text(&project, &chat, attached_at, None, "pasted log".into())
+            .unwrap()
+            .revision;
+        let files = stages
+            .selected(&project, &chat, &Selection::Revision(revision))
+            .unwrap();
+        drop(stages);
+        let project = SageProjectId::parse(&project).unwrap();
+        let chat = SageChatId::parse(&chat).unwrap();
+        (state, project, chat, files, root)
+    }
+
+    #[test]
+    fn a_dispatched_batch_leaves_the_stage_even_when_its_send_is_not_recorded() {
+        let closed_tab = "DELETE FROM chat_tabs";
+        let unreadable_tab = "ALTER TABLE chat_tabs RENAME TO chat_tabs_unreadable";
+        for breakage in [closed_tab, unreadable_tab] {
+            let (state, project, chat, files, root) = sent_batch();
+            state.database.connection().execute_batch(breakage).unwrap();
+            assert_eq!(
+                attachment(&state.database, project.as_str(), chat.as_str()).is_err(),
+                breakage == unreadable_tab
+            );
+            let intent = ClientIntentId::parse("intent-sent").unwrap();
+            record_sent(&state, &project, &chat, &intent, &files);
+            let stages = state.acp.file_stages.lock().unwrap();
+            // The next message does not carry the same files again.
+            assert!(
+                stages.list(project.as_str(), chat.as_str()).is_none(),
+                "{breakage}"
+            );
+            drop(stages);
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
 }

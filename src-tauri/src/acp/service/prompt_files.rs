@@ -323,6 +323,19 @@ impl FileStages {
         batch.revision = uuid::Uuid::new_v4().to_string();
         Ok(Some(summary(batch)))
     }
+    /// A dispatched batch leaves the stage, matched by pointer so a batch
+    /// staged after it stays, even when the send cannot be recorded for
+    /// Retry; otherwise the next message would carry the same files again.
+    pub(crate) fn unstage_sent(&mut self, project: &str, chat: &str, sent: &Resources) {
+        let key = (project.to_owned(), chat.to_owned());
+        if self
+            .batches
+            .get(&key)
+            .is_some_and(|b| !sent.0.is_empty() && Arc::ptr_eq(&b.resources.0, &sent.0))
+        {
+            self.batches.remove(&key);
+        }
+    }
     /// Records a dispatched prompt as the chat's latest send, under its
     /// client intent, so Retry of that turn resends exactly what it carried:
     /// a sent batch leaves the stage, and a send without files is recorded
@@ -335,14 +348,8 @@ impl FileStages {
         client_intent_id: &str,
         sent: &Resources,
     ) {
+        self.unstage_sent(project, chat, sent);
         let key = (project.to_owned(), chat.to_owned());
-        if self
-            .batches
-            .get(&key)
-            .is_some_and(|b| !sent.0.is_empty() && Arc::ptr_eq(&b.resources.0, &sent.0))
-        {
-            self.batches.remove(&key);
-        }
         self.sequence += 1;
         self.sent.insert(
             key.clone(),
