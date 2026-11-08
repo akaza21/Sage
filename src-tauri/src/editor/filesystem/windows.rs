@@ -142,6 +142,12 @@ impl HeldParent {
         }
     }
 
+    /// Creates the folder `name` inside the held parent; one that exists, or
+    /// a link or junction, fails with `AlreadyExists` and is never followed.
+    pub(in crate::editor) fn create_folder(&self, name: &str) -> std::io::Result<()> {
+        std::fs::create_dir(self.entry(name).map_err(std::io::Error::other)?)
+    }
+
     /// Removes the empty folder `name`; one that is not empty stays.
     pub(in crate::editor) fn remove_folder(&self, name: &str) -> std::io::Result<()> {
         std::fs::remove_dir(self.entry(name).map_err(std::io::Error::other)?)

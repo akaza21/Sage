@@ -4,7 +4,7 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, LazyLock, Mutex, atomic::AtomicBool},
+    sync::{LazyLock, Mutex},
 };
 
 use super::filesystem::{
@@ -13,7 +13,8 @@ use super::filesystem::{
     temporary_contract_path,
 };
 use super::{
-    buffered_document, clean_document, conflict_result, normalized_resource, open_document,
+    buffered_document, clean_document, conflict_result, external_change_conflict,
+    normalized_resource, open_document,
 };
 use crate::{
     domain::{
@@ -158,7 +159,14 @@ pub fn rebase_buffer(
     if base.fingerprint != request.expected_disk.fingerprint {
         let document = match (disk, durable_buffer) {
             (disk, Some(buffer)) => buffered_document(resource, disk, buffer),
-            (Some(disk), None) => clean_document(resource, disk),
+            // A File that came back: the editor's version now differs from
+            // it unless it is the same text.
+            (Some(disk), None) => {
+                let differs = disk.version.fingerprint != buffer_fingerprint;
+                let mut document = clean_document(resource, disk);
+                document.conflict = differs.then(external_change_conflict);
+                document
+            }
             (None, None) => deleted_document(resource),
         };
         return Ok(EditorSaveResult {
@@ -280,9 +288,11 @@ fn create_in_folder(
     })
 }
 
-/// Creates each missing folder of `parent_path`, top down, through the same
-/// held, no-follow walk as Explorer's New Folder, and returns the ones it
-/// created, outermost first.
+/// Creates each missing folder of `parent_path`, top down, each inside its
+/// parent as held by the no-follow walk, and returns the ones it created,
+/// outermost first. A name on the path that is a link, or anything but a
+/// folder, is refused rather than followed. Nothing here lists a folder, so
+/// how many entries one holds does not matter.
 fn ensure_folders(workspace: &Workspace, parent_path: &str) -> AppResult<Vec<String>> {
     let mut created = Vec::new();
     if parent_path.is_empty() {
@@ -295,29 +305,32 @@ fn ensure_folders(workspace: &Workspace, parent_path: &str) -> AppResult<Vec<Str
         } else {
             format!("{existing}/{name}")
         };
-        match HeldParent::open(workspace, &next) {
-            Ok(_) => {}
-            Err(error) if is_not_found(&error) => {
-                let parent = ResourceRef {
-                    root_id: workspace.root_id().into(),
-                    relative_path: existing.clone(),
-                };
-                let committed = Arc::new(AtomicBool::new(false));
-                match workspace.create_directory_observed(&parent, name, committed) {
-                    Ok(_) => created.push(next.clone()),
-                    // Created meanwhile by someone else: use it.
-                    Err(AppError::Io(error))
-                        if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-                    Err(error) => {
-                        remove_folders(workspace, &created);
-                        return Err(error);
+        let outcome = match HeldParent::open(workspace, &next) {
+            Ok(_) => Ok(()),
+            Err(error) if is_not_found(&error) => HeldParent::open(workspace, &existing)
+                .and_then(|parent| match parent.create_folder(name) {
+                    Ok(()) => {
+                        created.push(next.clone());
+                        Ok(())
                     }
-                }
-            }
-            Err(error) => {
-                remove_folders(workspace, &created);
-                return Err(error);
-            }
+                    // Created meanwhile by someone else: the walk below
+                    // checks what it is.
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+                    Err(error) => Err(error.into()),
+                })
+                .and_then(|()| HeldParent::open(workspace, &next).map(drop)),
+            Err(error) => Err(error),
+        };
+        if let Err(error) = outcome {
+            remove_folders(workspace, &created);
+            return Err(if is_not_found(&error) {
+                error
+            } else {
+                AppError::InvalidRequest(format!(
+                    "the folder {next} cannot be used for this File: it is a link or not a \
+                     folder inside the project ({error})"
+                ))
+            });
         }
         existing = next;
     }

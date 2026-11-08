@@ -10,6 +10,7 @@ import {
 } from "../domain/resourceIdentity";
 import { ABSENT_FINGERPRINT, type ResourceRef } from "../domain/workbench";
 import { contentText } from "../features/files/editorContent";
+import { actionFailed } from "../features/files/editorNoticeState";
 import { getFileEditorController } from "../features/files/fileEditorController";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { SaveAllFailure } from "./editorConflictSlice";
@@ -66,7 +67,8 @@ export async function keepActiveEditorBuffer(
         revision: Math.max(1, active.revision),
       });
       if (!canCommit(active.resource)) return false;
-      if (result.outcome === "conflict") {
+      // A File that came back holding the editor's own text: nothing to keep.
+      if (result.outcome === "conflict" && result.document.conflict) {
         const { disk, conflict } = result.document;
         bridge.setActiveEditor(
           {
@@ -75,7 +77,7 @@ export async function keepActiveEditorBuffer(
             document: {
               ...active.document,
               disk,
-              conflict: conflict ?? active.document.conflict,
+              conflict,
             },
           },
           { tabStatus: "failed" },
@@ -90,7 +92,7 @@ export async function keepActiveEditorBuffer(
     });
   } catch (error) {
     if (matchesProjectIntent(get(), generation, projectId)) {
-      controller.saveError(bridge, error);
+      set({ error: actionFailed(bridge, error, "keep") });
     }
     return false;
   }

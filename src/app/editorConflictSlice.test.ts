@@ -335,6 +335,98 @@ describe("a File that changed on disk under unsaved edits", () => {
     expect(readyEditor()).toMatchObject({ content: "kept\n" });
   });
 
+  it("shows why Keep mine failed over the banner", async () => {
+    const file = nextFile();
+    openTabs(file);
+    await edit(file, "mine\n");
+    await changeOnDisk(file, "theirs\n");
+    const rebase = vi
+      .spyOn(editor, "rebaseEditorBuffer")
+      .mockRejectedValue(
+        new Error("invalid request: files cannot be created inside .git"),
+      );
+    try {
+      expect(await store().keepActiveEditorBuffer()).toBe(false);
+    } finally {
+      rebase.mockRestore();
+    }
+
+    const failed =
+      "Couldn't keep your version: Sage doesn't create Files there (inside protected folders such as .git, or through a link).";
+    expect(store().error).toBe(failed);
+    expect(readyEditor()).toMatchObject({ saving: false, content: "mine\n" });
+    render(
+      createElement(FileConflictNotice, {
+        document: readyEditor().document,
+        editable: true,
+      }),
+    );
+    const alerts = screen
+      .getAllByRole("alert")
+      .map((alert) => alert.textContent);
+    expect(alerts).toContain(failed);
+    expect(alerts.some((text) => text?.includes("External change"))).toBe(true);
+    cleanup();
+  });
+
+  it("Keep mine on a deleted File that came back shows it as changed", async () => {
+    const file = nextFile();
+    openTabs(file);
+    await edit(file, "mine\n");
+    await changeOnDisk(file, null);
+    // It comes back, with no notice.
+    browserEditor.changeOnDisk(file, "theirs\n");
+
+    expect(await store().keepActiveEditorBuffer()).toBe(false);
+    expect(readyEditor().document.conflict?.kind).toBe("external-change");
+    expect(readyEditor()).toMatchObject({ content: "mine\n" });
+
+    expect(await store().keepActiveEditorBuffer()).toBe(true);
+    expect(await store().saveActiveEditor()).toBe(true);
+    expect(await diskText(file)).toBe("mine\n");
+  });
+
+  it("a deleted File that came back is read again: clean reloads, dirty conflicts", async () => {
+    const clean = nextFile();
+    openTabs(clean);
+    await store().loadEditor(clean);
+    await changeOnDisk(clean, null);
+    await changeOnDisk(clean, "back\n");
+    expect(readyEditor()).toMatchObject({ content: "back\n" });
+    expect(readyEditor().document.conflict).toBeNull();
+
+    const dirty = nextFile();
+    openTabs(dirty);
+    await edit(dirty, "mine\n");
+    await changeOnDisk(dirty, null);
+    await changeOnDisk(dirty, "back\n");
+    expect(readyEditor()).toMatchObject({ content: "mine\n" });
+    expect(readyEditor().document.conflict?.kind).toBe("external-change");
+  });
+
+  it.each([
+    ["a recovery copy", true],
+    ["edits only in the editor", false],
+  ])("Reload of a File gone before its notice keeps %s", async (_, durable) => {
+    const file = nextFile();
+    openTabs(file);
+    await edit(file, "mine\n");
+    if (durable) await store().flushActiveEditor();
+    // Gone, and the notice has not arrived yet.
+    browserEditor.changeOnDisk(file, null);
+
+    expect(await store().discardActiveEditor(true)).toBe(false);
+
+    expect(readyEditor()).toMatchObject({ content: "mine\n" });
+    expect(readyEditor().document.conflict?.kind).toBe("deleted");
+    expect(tabOf(file).dirty).toBe(true);
+    if (durable) {
+      expect((await editor.openEditorDocument(file)).buffer.content).toBe(
+        "mine\n",
+      );
+    }
+  });
+
   it("Close on a deleted File leaves no recovery buffer", async () => {
     const file = nextFile();
     openTabs(file);

@@ -42,6 +42,8 @@ export type ActiveEditorState =
        * a reload or Keep mine.
        */
       unstored?: string;
+      /** Set for display only: why the File is quietly not watched now. */
+      unwatched?: string;
     };
 
 type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
@@ -101,9 +103,14 @@ export interface FileEditorController {
     bridge: EditorStateBridge,
     canCommit: (resource: ResourceRef) => boolean,
   ): Promise<EditorSaveResult | null>;
+  /**
+   * Drops the edits for the File on disk; null if nothing was loaded. With
+   * `reload`, a File that is gone keeps the edits and shows as deleted.
+   */
   discard(
     bridge: EditorStateBridge,
     canCommit: (resource: ResourceRef) => boolean,
+    reload?: boolean,
   ): Promise<EditorDocument | null>;
   saveError(bridge: EditorStateBridge, error: unknown): void;
 }
@@ -273,14 +280,37 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
       });
       return result;
     },
-    discard: async (bridge, canCommit) => {
+    discard: async (bridge, canCommit, reload) => {
       cancelScheduledSnapshot();
       const active = currentReady(bridge);
       if (!active || !canCommit(active.resource)) {
         return null;
       }
-      const document = await editor.discardEditorBuffer(active.resource);
+      const document = await editor.discardEditorBuffer(
+        active.resource,
+        reload,
+      );
       if (!canCommit(active.resource)) {
+        return null;
+      }
+      const current = currentReady(bridge);
+      if (
+        reload &&
+        current &&
+        document.disk.fingerprint === ABSENT_FINGERPRINT
+      ) {
+        // Gone from disk: nothing to reload, and the edits stay.
+        bridge.setActiveEditor(
+          {
+            ...current,
+            document: {
+              ...current.document,
+              disk: document.disk,
+              conflict: document.conflict,
+            },
+          },
+          { tabStatus: document.conflict ? "failed" : null },
+        );
         return null;
       }
       bridge.setActiveEditor(ready(document), {

@@ -282,6 +282,27 @@ pub fn discard_document(
     )
 }
 
+/// Reload: puts the File as it is on disk in place of the buffer. A File
+/// that is gone is not reloaded as empty: the buffer stays, and the
+/// document comes back deleted.
+pub fn revert_document(
+    database: &Database,
+    workspace: &Workspace,
+    resource: &ResourceRef,
+) -> AppResult<EditorDocument> {
+    let resource = normalized_resource(workspace, resource)?;
+    if read_disk_document_if_present(workspace, &resource.relative_path)?.is_some() {
+        return discard_document(database, workspace, &resource);
+    }
+    match database.editor_buffer(workspace.project_id(), &resource)? {
+        Some(buffer) => {
+            validate_persisted_buffer(&buffer)?;
+            Ok(buffered_document(resource, None, buffer))
+        }
+        None => Ok(deleted_document(resource)),
+    }
+}
+
 pub fn recover_pending_saves(database: &Database, workspace: &Workspace) -> AppResult<()> {
     for buffer in
         database.dirty_editor_buffers(workspace.project_id(), Some(workspace.root_id()))?
@@ -346,12 +367,7 @@ fn buffered_document(
         if disk.fingerprint == ABSENT_FINGERPRINT {
             deleted_conflict()
         } else {
-            EditorConflict {
-                kind: "external-change".into(),
-                message: "The file changed on disk after this buffer was opened. Reload it, \
-                          keep your version, or compare the two."
-                    .into(),
-            }
+            external_change_conflict()
         }
     });
     EditorDocument {
@@ -371,6 +387,15 @@ fn buffered_document(
         line_ending: buffer.line_ending,
         dirty: true,
         conflict,
+    }
+}
+
+fn external_change_conflict() -> EditorConflict {
+    EditorConflict {
+        kind: "external-change".into(),
+        message: "The file changed on disk after this buffer was opened. Reload it, keep your \
+                  version, or compare the two."
+            .into(),
     }
 }
 

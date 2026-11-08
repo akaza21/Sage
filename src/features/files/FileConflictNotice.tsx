@@ -129,7 +129,7 @@ export default function FileConflictNotice({
                 title="Revert File: drop your changes and load the File from disk"
                 onClick={() => {
                   store().setEditorCompareKey(null);
-                  thenFocus(store().discardActiveEditor());
+                  thenFocus(store().discardActiveEditor(true));
                 }}
               >
                 Reload
@@ -169,6 +169,15 @@ export default function FileConflictNotice({
           </div>
         ) : null}
       </div>
+      {ready?.message &&
+      ready.message !== conflict.message &&
+      ready.message !== ready.unstored ? (
+        // Keep mine or Reload failed: said over the banner, and announced.
+        <div className="editor-notice editor-notice--error" role="alert">
+          <AlertTriangle size={16} aria-hidden="true" />
+          <span>{ready.message}</span>
+        </div>
+      ) : null}
       {comparing && ready ? (
         <LazyModuleBoundary
           load={loadConflictCompare}

@@ -40,7 +40,8 @@ export interface EditorSlice {
   ) => void;
   flushActiveEditor: () => Promise<void>;
   saveActiveEditor: () => Promise<boolean>;
-  discardActiveEditor: () => Promise<boolean>;
+  /** With `reload`, a File that is gone keeps its edits (Reload). */
+  discardActiveEditor: (reload?: boolean) => Promise<boolean>;
 }
 
 export const createEditorSlice: StateCreator<
@@ -208,14 +209,14 @@ export const createEditorSlice: StateCreator<
         return true;
       } catch (error) {
         if (!matchesProjectIntent(get(), generation, projectId)) return false;
-        const { saveFailed } =
+        const { actionFailed } =
           await import("../features/files/editorNoticeState");
-        set({ error: saveFailed(editorState, error) });
+        set({ error: actionFailed(editorState, error) });
         return false;
       }
     },
 
-    discardActiveEditor: async () => {
+    discardActiveEditor: async (reload) => {
       const generation = get().projectGeneration;
       const projectId = get().project?.id;
       if (!projectId || get().projectTransitioning) return false;
@@ -239,6 +240,7 @@ export const createEditorSlice: StateCreator<
                 "file",
                 resource,
               ),
+            reload,
           );
           return document !== null;
         });

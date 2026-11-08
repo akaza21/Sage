@@ -197,6 +197,17 @@ impl HeldParent {
         Ok(true)
     }
 
+    /// Creates the folder `name`; one that exists, or a link, fails with
+    /// `AlreadyExists` and is never followed.
+    pub(in crate::editor) fn create_folder(&self, name: &str) -> std::io::Result<()> {
+        let name = entry_name(name).map_err(std::io::Error::other)?;
+        // SAFETY: the held descriptor and NUL-terminated name are valid for the call.
+        if unsafe { libc::mkdirat(self.directory.as_raw_fd(), name.as_ptr(), 0o777) } < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
     /// Removes the empty folder `name`; one that is not empty stays.
     pub(in crate::editor) fn remove_folder(&self, name: &str) -> std::io::Result<()> {
         let name = entry_name(name).map_err(std::io::Error::other)?;

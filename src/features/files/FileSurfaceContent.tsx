@@ -128,6 +128,7 @@ export function FileSurfaceContent({
         projectName={projectName}
         lineEnding={editor.document.lineEnding}
         diskByteLen={editor.document.disk.byteLen}
+        unwatched={editor.unwatched}
         persisting={editor.persisting}
         dirty={dirty}
         saving={editor.saving}

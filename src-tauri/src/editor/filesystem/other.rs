@@ -40,6 +40,10 @@ impl HeldParent {
         Err(unavailable())
     }
 
+    pub(in crate::editor) fn create_folder(&self, _name: &str) -> std::io::Result<()> {
+        Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
+    }
+
     pub(in crate::editor) fn remove_folder(&self, _name: &str) -> std::io::Result<()> {
         Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
     }

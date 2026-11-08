@@ -1,3 +1,7 @@
+import {
+  noticeMatchesWatch,
+  type EditorExternalWatchNotice,
+} from "../../domain/editorWatch";
 import { errorMessage } from "../../domain/errors";
 import {
   ABSENT_FINGERPRINT,
@@ -10,6 +14,8 @@ import {
   type ActiveEditorState,
   type EditorStateBridge,
 } from "./fileEditorController";
+import type { EditorPort } from "../../ports/workbenchPorts";
+import { sameContent } from "./editorContent";
 
 // Loaded with the first external-change notice or failed save, which most
 // sessions never see, so none of this adds to the editor's bundles.
@@ -94,6 +100,8 @@ export function setExternalChangeConflict(
   bridge.setActiveEditor(
     {
       ...active,
+      // An earlier conflict's text goes; edits not yet stored still say so.
+      message: active.unstored ?? null,
       document: {
         ...active.document,
         disk: disk ?? active.document.disk,
@@ -107,43 +115,148 @@ export function setExternalChangeConflict(
   );
 }
 
+const FAILED = {
+  save: "Couldn't save",
+  keep: "Couldn't keep your version",
+} as const;
+
+const REASONS: [RegExp, string][] = [
+  [
+    /access is denied|permission denied|operation not permitted|read-only|os error (1|5|13|30)\)/i,
+    "the file is read-only or you don't have permission.",
+  ],
+  [/no space|disk is full|os error (28|112)\)/i, "the disk is full."],
+  [
+    /cannot be created inside|escapes the workspace|link or not a folder/i,
+    "Sage doesn't create Files there (inside protected folders such as .git, or through a link).",
+  ],
+  [
+    /buffer recovery limit|-buffer limit|MiB project limit/i,
+    "too many Files have unsaved changes. Save or close some, then try again.",
+  ],
+  [
+    /no longer matches disk/i,
+    "the File changed on disk. Keep your version or reload it.",
+  ],
+];
+
 /**
- * Says why a save failed in the user's terms, without the native error's
- * prefix or OS error number.
+ * Says why saving or keeping the user's version failed, in their terms,
+ * without the native error's category prefix or OS error number.
  */
-export function saveFailureMessage(error: unknown): string {
+export function failureMessage(
+  error: unknown,
+  action: keyof typeof FAILED = "save",
+): string {
   const raw = errorMessage(error);
-  if (
-    /access is denied|permission denied|operation not permitted|read-only|os error (1|5|13|30)\)/i.test(
-      raw,
-    )
-  ) {
-    return "Couldn't save: the file is read-only or you don't have permission.";
-  }
-  if (/no space|disk is full|os error (28|112)\)/i.test(raw)) {
-    return "Couldn't save: the disk is full.";
-  }
-  const reason = raw
-    .replace(/^filesystem operation failed: /, "")
-    .replace(/ \(os error \d+\)$/, "");
-  return `Couldn't save: ${reason}`;
+  const known = REASONS.find(([pattern]) => pattern.test(raw));
+  const reason =
+    known?.[1] ??
+    raw
+      .replace(
+        /^(filesystem operation failed|invalid request|resource limit exceeded|unsupported operation): /,
+        "",
+      )
+      .replace(/ \(os error \d+\)$/, "");
+  return `${FAILED[action]}: ${reason}`;
 }
 
 /**
- * Reports edits that could not be written, by a save or a recovery
- * snapshot, and returns the message. They stay dirty, and the conflict
- * banner says they are not yet stored until a save, reload or Keep mine.
+ * Reports a save, recovery snapshot or Keep mine that failed, and returns
+ * the message, which shows over any conflict banner. A failed save or
+ * snapshot leaves edits that are not yet stored: they stay dirty, and the
+ * banner says so until a save, reload or Keep mine.
  */
-export function saveFailed(bridge: EditorStateBridge, error: unknown): string {
-  const message = saveFailureMessage(error);
+export function actionFailed(
+  bridge: EditorStateBridge,
+  error: unknown,
+  action: keyof typeof FAILED = "save",
+): string {
+  const message = failureMessage(error, action);
   const active = currentReady(bridge);
   if (active) {
     bridge.setActiveEditor({
       ...active,
       saving: false,
       message,
-      unstored: message,
+      ...(action === "save" ? { unstored: message } : {}),
     });
   }
   return message;
+}
+
+/**
+ * Applies an external-change notice to the editor, which was `active` when
+ * the notice arrived.
+ */
+export async function applyWatchNotice(
+  notice: EditorExternalWatchNotice,
+  bridge: EditorStateBridge,
+  editor: Pick<EditorPort, "openEditorDocument">,
+  active: ActiveEditorState,
+): Promise<void> {
+  if (notice.kind === "deleted") {
+    const current = bridge.getActiveEditor();
+    if (current && noticeMatchesWatch(notice, current.resource))
+      markDeleted(bridge);
+    return;
+  }
+  const snapshot =
+    active.phase === "ready"
+      ? {
+          revision: active.revision,
+          persistedRevision: active.persistedRevision,
+          content: active.content,
+          fingerprint: active.document.buffer.fingerprint,
+          saving: active.saving,
+        }
+      : null;
+  // Reading the File drops a durable buffer that matches disk, so unsaved
+  // edits are persisted first; the editor then differs from `snapshot`,
+  // which gives it the banner below; one that fails is reported there.
+  if (
+    snapshot &&
+    snapshot.revision > snapshot.persistedRevision &&
+    !snapshot.saving
+  )
+    await getFileEditorController()
+      .flush(bridge)
+      .catch((error: unknown) => actionFailed(bridge, error));
+  // The banner's "Keep mine" goes on top of the disk version read here. A
+  // File that cannot be read now gets the banner too.
+  const document = await editor
+    .openEditorDocument(notice.resource)
+    .catch(() => null);
+  const current = bridge.getActiveEditor();
+  if (!current || !noticeMatchesWatch(notice, current.resource)) {
+    return;
+  }
+  if (stillDeleted(bridge, document)) return;
+  if (
+    current.phase === "ready" &&
+    snapshot !== null &&
+    (!document ||
+      current.revision !== snapshot.revision ||
+      current.persistedRevision !== snapshot.persistedRevision ||
+      !sameContent(current.content, snapshot.content) ||
+      current.document.buffer.fingerprint !== snapshot.fingerprint ||
+      current.revision > current.persistedRevision)
+  ) {
+    const completedMatchingSave =
+      !!document &&
+      snapshot.saving &&
+      !current.saving &&
+      !current.document.dirty &&
+      current.document.conflict === null &&
+      current.revision === current.persistedRevision &&
+      sameContent(current.content, document.buffer.content) &&
+      current.document.buffer.fingerprint === document.buffer.fingerprint &&
+      current.document.disk.fingerprint === document.disk.fingerprint &&
+      current.document.lineEnding === document.lineEnding;
+    if (!completedMatchingSave) {
+      setExternalChangeConflict(bridge, document?.disk);
+      return;
+    }
+  }
+  if (document) reread(bridge, document);
 }

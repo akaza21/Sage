@@ -84,7 +84,7 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
       id: "revert",
       label: "Revert File",
       shortcut: null,
-      run: () => void useWorkbenchStore.getState().discardActiveEditor(),
+      run: () => void useWorkbenchStore.getState().discardActiveEditor(true),
     });
   }
   if (store.tabs.some((tab) => tab.kind === "file" && tab.dirty)) {

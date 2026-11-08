@@ -207,18 +207,35 @@ function save(resource: ResourceRef): EditorSaveResult {
 }
 
 /** Drops the buffer whether or not the File still exists, as native does. */
-function discard(resource: ResourceRef): EditorDocument {
-  buffers.delete(resourceKey(resource));
-  return diskIfPresent(resource) === null
-    ? deletedDocument(resource)
-    : open(resource);
+/** Mirrors the native discard; `keepIfAbsent` is Reload's. */
+function discard(resource: ResourceRef, keepIfAbsent = false): EditorDocument {
+  const key = resourceKey(resource);
+  if (diskIfPresent(resource) === null) {
+    if (keepIfAbsent && buffers.has(key)) return open(resource);
+    if (!keepIfAbsent) buffers.delete(key);
+    return deletedDocument(resource);
+  }
+  buffers.delete(key);
+  return open(resource);
 }
 
 function rebase(request: BufferRebaseRequest): EditorSaveResult {
   const key = resourceKey(request.resource);
   const disk = diskVersion(request.resource);
   if (disk.fingerprint !== request.expectedDisk.fingerprint) {
-    return { outcome: "conflict", document: open(request.resource) };
+    const document = open(request.resource);
+    // A File that came back with other text than the editor's.
+    if (
+      !buffers.has(key) &&
+      disk !== ABSENT_VERSION &&
+      disk.fingerprint !== fingerprint(request.content)
+    ) {
+      document.conflict = {
+        kind: "external-change",
+        message: "The browser fixture changed after this buffer was opened.",
+      };
+    }
+    return { outcome: "conflict", document };
   }
   const bufferFingerprint = fingerprint(request.content);
   if (bufferFingerprint === disk.fingerprint) {

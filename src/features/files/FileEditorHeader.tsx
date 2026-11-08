@@ -8,6 +8,8 @@ interface FileEditorHeaderProps {
   projectName?: string;
   lineEnding: string;
   diskByteLen: number;
+  /** Why the File is not watched for changes on disk, said quietly. */
+  unwatched?: string;
   persisting: boolean;
   dirty: boolean;
   saving: boolean;
@@ -23,6 +25,7 @@ export function FileEditorHeader({
   projectName,
   lineEnding,
   diskByteLen,
+  unwatched,
   persisting,
   dirty,
   saving,
@@ -50,8 +53,8 @@ export function FileEditorHeader({
       </span>
       <span className="file-header__metadata">
         UTF-8 · {lineEnding.toUpperCase()}
-        <span className="file-header__disk">
-          {` · ${diskByteLen.toLocaleString()} disk bytes`}
+        <span className="file-header__disk" title={unwatched}>
+          {` · ${diskByteLen.toLocaleString()} disk bytes${unwatched ? " · Not watched" : ""}`}
         </span>
       </span>
       {saveState || canPreview ? (

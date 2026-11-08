@@ -11,11 +11,10 @@ import { sameResource } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
 import {
-  getFileEditorController,
+  isDeletedOnDisk,
   type EditorStateBridge,
 } from "./fileEditorController";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
-import { sameContent } from "./editorContent";
 
 export { EDITOR_EXTERNAL_WATCH_EVENT };
 
@@ -26,6 +25,10 @@ export const WATCH_LIMIT_MESSAGE =
   "File is not watched: the external-change watch limit was reached. Focus this File to retry.";
 export const WATCH_UNAVAILABLE_MESSAGE =
   "File is not watched: external-change notifications could not start.";
+/** Shown quietly: the File is gone, and is watched again once it exists. */
+export const WATCH_MISSING_MESSAGE =
+  "Not watched while the File is missing. Sage checks for it every few seconds.";
+const WATCH_RETRY_MS = 2_000;
 
 /** Returns the element whose focus means the user is back in this File. */
 export type EditorFocusBoundary = () => Element | null;
@@ -94,11 +97,26 @@ export function useEditorExternalWatch(
     let subscription: EditorWatchSubscription | undefined;
     let applying = false;
     let pendingNotice: EditorExternalWatchNotice | undefined;
+    let missing = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const editor = getWorkbenchPorts().editor;
 
     const applyNotice = (notice: EditorExternalWatchNotice) => {
       if (cancelled) {
         return;
+      }
+      // A deletion can take the File's folder, and the native watch with it,
+      // and no watch starts on a missing File. So the watch starts again
+      // once the File exists, and the File is read then.
+      if (notice.kind === "deleted" && subscription) {
+        const ended = subscription;
+        subscription = undefined;
+        missing = true;
+        cancellation.current = start
+          .catch(() => undefined)
+          .then(() => ended.cancel())
+          .catch(() => undefined);
+        tryStart();
       }
       if (applying) {
         pendingNotice = notice;
@@ -166,9 +184,23 @@ export function useEditorExternalWatch(
           subscription = nextSubscription;
           stopRetryingOnFocus();
           setUnwatched(null);
+          if (missing) {
+            missing = false;
+            applyNotice({ resource: watched, generation: 0, kind: "changed" });
+          }
         })
         .catch((error: unknown) => {
           if (cancelled) return;
+          const active = bridge.getActiveEditor();
+          if (
+            missing ||
+            (active?.phase === "ready" && isDeletedOnDisk(active))
+          ) {
+            missing = true;
+            retryTimer = setTimeout(tryStart, WATCH_RETRY_MS);
+            setUnwatched({ resource: watched, message: WATCH_MISSING_MESSAGE });
+            return;
+          }
           const limited = isEditorWatchLimitError(error);
           if (limited) {
             retryOnFocus();
@@ -185,6 +217,7 @@ export function useEditorExternalWatch(
     tryStart();
 
     return () => {
+      clearTimeout(retryTimer);
       stopRetryingOnFocus();
       setUnwatched(null);
       cancelled = true;
@@ -212,76 +245,12 @@ export async function applyEditorExternalWatchNotice(
   bridge: EditorStateBridge,
   editor: Pick<EditorPort, "openEditorDocument">,
 ): Promise<void> {
+  // The editor is read now, as the notice arrives; what the notice does
+  // loads with the first one, since most sessions never see one.
   const active = bridge.getActiveEditor();
   if (!active || !noticeMatchesWatch(notice, active.resource)) {
     return;
   }
-  // The editor is read above, as the notice arrives; this loads meanwhile.
-  const loading = import("./editorNoticeState");
-  if (notice.kind === "deleted") {
-    const { markDeleted } = await loading;
-    const current = bridge.getActiveEditor();
-    if (current && noticeMatchesWatch(notice, current.resource))
-      markDeleted(bridge);
-    return;
-  }
-  const snapshot =
-    active.phase === "ready"
-      ? {
-          revision: active.revision,
-          persistedRevision: active.persistedRevision,
-          content: active.content,
-          fingerprint: active.document.buffer.fingerprint,
-          saving: active.saving,
-        }
-      : null;
-  const state = await loading;
-  // Reading the File drops a durable buffer that matches disk, so unsaved
-  // edits are persisted first; the editor then differs from `snapshot`,
-  // which gives it the banner below; one that fails is reported there.
-  if (
-    snapshot &&
-    snapshot.revision > snapshot.persistedRevision &&
-    !snapshot.saving
-  )
-    await getFileEditorController()
-      .flush(bridge)
-      .catch((error: unknown) => state.saveFailed(bridge, error));
-  // The banner's "Keep mine" goes on top of the disk version read here. A
-  // File that cannot be read now gets the banner too.
-  const document = await editor
-    .openEditorDocument(notice.resource)
-    .catch(() => null);
-  const current = bridge.getActiveEditor();
-  if (!current || !noticeMatchesWatch(notice, current.resource)) {
-    return;
-  }
-  if (state.stillDeleted(bridge, document)) return;
-  if (
-    current.phase === "ready" &&
-    snapshot !== null &&
-    (!document ||
-      current.revision !== snapshot.revision ||
-      current.persistedRevision !== snapshot.persistedRevision ||
-      !sameContent(current.content, snapshot.content) ||
-      current.document.buffer.fingerprint !== snapshot.fingerprint ||
-      current.revision > current.persistedRevision)
-  ) {
-    const completedMatchingSave =
-      !!document &&
-      snapshot.saving &&
-      !current.saving &&
-      !current.document.dirty &&
-      current.document.conflict === null &&
-      current.revision === current.persistedRevision &&
-      sameContent(current.content, document.buffer.content) &&
-      current.document.buffer.fingerprint === document.buffer.fingerprint &&
-      current.document.disk.fingerprint === document.disk.fingerprint &&
-      current.document.lineEnding === document.lineEnding;
-    if (!completedMatchingSave) {
-      state.setExternalChangeConflict(bridge, document?.disk);
-      return;
-    }
-  }
-  if (document) state.reread(bridge, document);
+  const { applyWatchNotice } = await import("./editorNoticeState");
+  await applyWatchNotice(notice, bridge, editor, active);
 }

@@ -98,7 +98,8 @@ const editor: EditorPort = {
   openEditorDocument: resourceCommand("open_editor_document"),
   snapshotEditorBuffer: requestCommand("snapshot_editor_buffer"),
   saveEditorDocument: resourceCommand("save_editor_document"),
-  discardEditorBuffer: resourceCommand("discard_editor_buffer"),
+  discardEditorBuffer: (resource, keepIfAbsent) =>
+    invokeNative("discard_editor_buffer", { resource, keepIfAbsent }),
   rebaseEditorBuffer: requestCommand("rebase_editor_buffer"),
   async watchEditorDocument(
     resource: ResourceRef,

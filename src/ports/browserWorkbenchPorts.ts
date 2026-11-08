@@ -102,8 +102,8 @@ const editor: EditorPort = {
     settle(() => browserDesktop.snapshotEditorBuffer(request)),
   saveEditorDocument: (resource) =>
     settle(() => browserDesktop.saveEditorDocument(resource)),
-  discardEditorBuffer: (resource) =>
-    settle(() => browserDesktop.discardEditorBuffer(resource)),
+  discardEditorBuffer: (resource, keepIfAbsent) =>
+    settle(() => browserDesktop.discardEditorBuffer(resource, keepIfAbsent)),
   rebaseEditorBuffer: (request) => settle(() => browserEditor.rebase(request)),
   watchEditorDocument: async (
     resource: ResourceRef,

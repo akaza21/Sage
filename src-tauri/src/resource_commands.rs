@@ -349,12 +349,19 @@ pub async fn save_editor_document(
 pub async fn discard_editor_buffer(
     state: State<'_, AppState>,
     resource: ResourceRef,
+    keep_if_absent: Option<bool>,
 ) -> Result<EditorDocument, String> {
     run_editor_operation(
         state,
         resource,
         EditorOperationKind::Terminal,
-        editor::discard_document,
+        move |database, workspace, resource| {
+            if keep_if_absent == Some(true) {
+                editor::revert_document(database, workspace, resource)
+            } else {
+                editor::discard_document(database, workspace, resource)
+            }
+        },
     )
     .await
     .map_err(|error| error.to_string())

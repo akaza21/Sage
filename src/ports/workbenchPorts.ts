@@ -146,7 +146,14 @@ export interface EditorPort {
     request: BufferSnapshotRequest,
   ): Promise<BufferSnapshotAck>;
   saveEditorDocument(resource: ResourceRef): Promise<EditorSaveResult>;
-  discardEditorBuffer(resource: ResourceRef): Promise<EditorDocument>;
+  /**
+   * Drops the buffer for the File on disk. With `keepIfAbsent` (Reload), a
+   * File that is gone keeps its buffer and comes back deleted.
+   */
+  discardEditorBuffer(
+    resource: ResourceRef,
+    keepIfAbsent?: boolean,
+  ): Promise<EditorDocument>;
   rebaseEditorBuffer(request: BufferRebaseRequest): Promise<EditorSaveResult>;
   watchEditorDocument(resource: ResourceRef): Promise<EditorWatchSubscription>;
 }

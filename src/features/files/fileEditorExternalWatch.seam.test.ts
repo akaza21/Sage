@@ -25,6 +25,7 @@ import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import {
   EDITOR_WATCH_LIMIT_ERROR,
   WATCH_LIMIT_MESSAGE,
+  WATCH_MISSING_MESSAGE,
   applyEditorExternalWatchNotice,
   bindEditorExternalWatch,
   isEditorWatchLimitError,
@@ -165,13 +166,72 @@ describe("IDE-2 editor external watch seam", () => {
     });
   });
 
+  it("watches a deleted File again once it exists, and reads it then", async () => {
+    const editor = getWorkbenchPorts().editor;
+    const delivery = createInjectedEditorWatchDelivery();
+    let gone = false;
+    const cancel = vi.fn(async () => undefined);
+    const watch = vi
+      .spyOn(editor, "watchEditorDocument")
+      .mockImplementation(async () => {
+        if (gone) throw new Error("The file does not exist.");
+        return { resource, delivery: delivery.delivery, cancel };
+      });
+    const backVersion = { fingerprint: "back", byteLen: 5, modifiedAt: null };
+    vi.spyOn(editor, "openEditorDocument").mockResolvedValue({
+      ...document,
+      disk: backVersion,
+      base: backVersion,
+      buffer: { ...document.buffer, fingerprint: "back", content: "back\n" },
+    });
+    const fileTab: WorkbenchTab = {
+      id: "file:" + resource.relativePath,
+      kind: "file",
+      title: resource.relativePath,
+      position: 1,
+      pinned: false,
+      dirty: false,
+      resource,
+    };
+    useWorkbenchStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      activeEditor: bindFileEditorController(editor).ready(document),
+    });
+    render(createElement(FileSurface, { tab: fileTab }));
+    await waitFor(() => expect(watch).toHaveBeenCalledTimes(1));
+
+    // The File goes, and its folder's watch with it.
+    gone = true;
+    act(() => delivery.emit({ resource, generation: 1, kind: "deleted" }));
+    await screen.findByText(/This file was deleted outside Sage/);
+    await screen.findByText(/Not watched$/);
+    await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+
+    // It comes back: the next try watches it, and the File is read again.
+    gone = false;
+    await waitFor(() => expect(watch).toHaveBeenCalledTimes(3), {
+      timeout: 5_000,
+    });
+    await waitFor(() =>
+      expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+        content: "back\n",
+        document: { conflict: null },
+      }),
+    );
+    expect(screen.queryByText(/Not watched/)).toBeNull();
+    expect(screen.queryByText(/deleted outside Sage/)).toBeNull();
+  });
+
   it("keeps a capped File editable and retries only when its editor takes focus", async () => {
     const editor = getWorkbenchPorts().editor;
     const delivery = createInjectedEditorWatchDelivery();
     let slotFree = false;
+    let gone = false;
     const watch = vi
       .spyOn(editor, "watchEditorDocument")
       .mockImplementation(async () => {
+        if (gone) throw new Error("The file does not exist.");
         if (!slotFree) {
           throw EDITOR_WATCH_LIMIT_ERROR;
         }
@@ -269,8 +329,13 @@ describe("IDE-2 editor external watch seam", () => {
     await act(async () => undefined);
     expect(watch).toHaveBeenCalledTimes(3);
 
+    gone = true;
     act(() => delivery.emit({ resource, generation: 1, kind: "deleted" }));
     await screen.findByText(/This file was deleted outside Sage/);
+    // The watch went with the File: said quietly, not as an error.
+    expect(
+      await screen.findByText(/disk bytes · Not watched$/),
+    ).toHaveAttribute("title", WATCH_MISSING_MESSAGE);
     unmount();
     await waitFor(() => expect(slotFree).toBe(true));
   });

@@ -1592,3 +1592,173 @@ fn link_and_copy_create_the_target_only_when_it_is_missing() {
     assert_eq!(fs::read(dir.join("copied")).unwrap(), b"mine\n");
     assert_eq!(fs::read(dir.join("taken")).unwrap(), b"theirs\n");
 }
+
+#[test]
+fn keep_mine_on_a_deleted_file_that_came_back_shows_it_as_changed() {
+    let fixture = Fixture::new();
+    fixture.write("back.txt", b"base\n");
+    let opened = open_document(fixture.database(), &fixture.workspace, "back.txt").unwrap();
+    fs::remove_file(fixture.root.join("back.txt")).unwrap();
+    fixture.write("back.txt", b"theirs\n");
+
+    let refused = rebase_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        rebase_request(&opened, absent(), "mine\n", 1),
+    )
+    .unwrap();
+
+    assert_eq!(refused.outcome, "conflict");
+    assert_eq!(refused.document.conflict.unwrap().kind, "external-change");
+    assert_ne!(refused.document.disk.fingerprint, ABSENT_FINGERPRINT);
+    // Keep mine on the File as it is now goes through.
+    let kept = rebase_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        rebase_request(&opened, refused.document.disk.clone(), "mine\n", 1),
+    )
+    .unwrap();
+    assert_eq!(kept.outcome, "rebased");
+    assert_eq!(
+        save_document(fixture.database(), &fixture.workspace, "back.txt")
+            .unwrap()
+            .outcome,
+        "saved"
+    );
+    assert_eq!(fs::read(fixture.root.join("back.txt")).unwrap(), b"mine\n");
+}
+
+#[test]
+fn keep_mine_on_a_file_that_came_back_with_the_same_text_has_no_conflict() {
+    let fixture = Fixture::new();
+    fixture.write("same.txt", b"base\n");
+    let opened = open_document(fixture.database(), &fixture.workspace, "same.txt").unwrap();
+    fs::remove_file(fixture.root.join("same.txt")).unwrap();
+    fixture.write("same.txt", b"mine\n");
+
+    let result = rebase_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        rebase_request(&opened, absent(), "mine\n", 1),
+    )
+    .unwrap();
+
+    assert_eq!(result.outcome, "conflict");
+    assert!(result.document.conflict.is_none());
+    assert_eq!(result.document.buffer.content, "mine\n");
+}
+
+#[test]
+fn reload_of_a_file_that_is_gone_keeps_the_buffer() {
+    let fixture = dirty_fixture("gone.txt", b"base\n", "mine\n");
+    fs::remove_file(fixture.root.join("gone.txt")).unwrap();
+
+    let reverted = revert_document(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource_unchecked("gone.txt"),
+    )
+    .unwrap();
+
+    assert_eq!(reverted.conflict.unwrap().kind, "deleted");
+    assert_eq!(reverted.buffer.content, "mine\n");
+    assert_eq!(fixture.buffer("gone.txt").unwrap().content, "mine\n");
+    // Reload of a File that is there still drops the buffer.
+    fixture.write("gone.txt", b"back\n");
+    let reloaded = revert_document(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource_unchecked("gone.txt"),
+    )
+    .unwrap();
+    assert_eq!(reloaded.buffer.content, "back\n");
+    assert!(fixture.buffer("gone.txt").is_none());
+}
+
+#[test]
+fn a_kept_file_is_created_again_in_a_folder_of_many_entries() {
+    let path = "big/gone/kept.txt";
+    let fixture = dirty_fixture(path, b"base\n", "kept\n");
+    for index in 0..600 {
+        fixture.write(&format!("big/entry-{index}.txt"), b"");
+    }
+    fs::remove_dir_all(fixture.root.join("big/gone")).unwrap();
+    let deleted = open_document(fixture.database(), &fixture.workspace, path).unwrap();
+    rebase_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        rebase_request(&deleted, absent(), "kept\n", 2),
+    )
+    .unwrap();
+
+    let saved = save_document(fixture.database(), &fixture.workspace, path).unwrap();
+
+    assert_eq!(saved.outcome, "saved");
+    assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"kept\n");
+}
+
+/// Keeps `path` after its folder `folder` is deleted, then puts `link` in
+/// the folder's place.
+fn kept_behind_a_link(path: &str, folder: &str, link: impl FnOnce(&Path)) -> Fixture {
+    let fixture = dirty_fixture(path, b"base\n", "kept\n");
+    fs::remove_dir_all(fixture.root.join(folder)).unwrap();
+    let deleted = open_document(fixture.database(), &fixture.workspace, path).unwrap();
+    rebase_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        rebase_request(&deleted, absent(), "kept\n", 2),
+    )
+    .unwrap();
+    link(&fixture.root.join(folder));
+    fixture
+}
+
+fn assert_refused_behind_a_link(fixture: &Fixture, path: &str, outside: &Path) {
+    let refused = save_document(fixture.database(), &fixture.workspace, path);
+
+    let message = refused.unwrap_err().to_string();
+    assert!(
+        message.contains("escapes the workspace") || message.contains("link or not a folder"),
+        "{message}"
+    );
+    assert_eq!(fs::read_dir(outside).unwrap().count(), 0);
+    assert_eq!(fixture.buffer(path).unwrap().content, "kept\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn recreating_a_folder_never_follows_a_link_out_of_the_project() {
+    let outside = std::env::temp_dir().join(format!("sage-outside-{}", Uuid::new_v4()));
+    fs::create_dir_all(&outside).unwrap();
+    for (path, folder) in [
+        ("linked/kept.txt", "linked"),
+        ("deep/linked/more/kept.txt", "deep/linked"),
+    ] {
+        let fixture = kept_behind_a_link(path, folder, |at| {
+            fs::create_dir_all(at.parent().unwrap()).unwrap();
+            std::os::unix::fs::symlink(&outside, at).unwrap();
+        });
+        assert_refused_behind_a_link(&fixture, path, &outside);
+    }
+    fs::remove_dir_all(outside).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn recreating_a_folder_never_follows_a_junction_out_of_the_project() {
+    let outside = std::env::temp_dir().join(format!("sage-outside-{}", Uuid::new_v4()));
+    fs::create_dir_all(&outside).unwrap();
+    let fixture = kept_behind_a_link("joined/kept.txt", "joined", |at| {
+        let status = std::process::Command::new("cmd")
+            .arg("/C")
+            .arg("mklink")
+            .arg("/J")
+            .arg(at)
+            .arg(&outside)
+            .status()
+            .unwrap();
+        assert!(status.success());
+    });
+    assert_refused_behind_a_link(&fixture, "joined/kept.txt", &outside);
+    fs::remove_dir_all(outside).unwrap();
+}
