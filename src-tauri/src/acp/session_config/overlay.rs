@@ -110,11 +110,14 @@ struct State {
 pub(crate) type NoticeSink = Arc<dyn Fn(SessionConfigChangedV1) + Send + Sync>;
 /// Stores the values a session reported itself once its runtime is restored.
 pub(crate) type ChoiceRecorder = Arc<dyn Fn(&RuntimeOwner, &[ConfigMutation]) + Send + Sync>;
+/// Keeps what a live session reports, shown while it has no runtime.
+pub(crate) type SnapshotRecorder = Arc<dyn Fn(&RuntimeOwner, &SessionConfig) + Send + Sync>;
 #[derive(Default)]
 pub(crate) struct ConfigChannel {
     state: Arc<Mutex<State>>,
     sink: Mutex<Option<NoticeSink>>,
     recorder: Mutex<Option<ChoiceRecorder>>,
+    snapshot: Mutex<Option<SnapshotRecorder>>,
     notice_scheduled: Arc<std::sync::atomic::AtomicBool>,
 }
 impl ConfigChannel {
@@ -129,6 +132,22 @@ impl ConfigChannel {
             .recorder
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(recorder);
+    }
+    pub(crate) fn set_snapshot_recorder(&self, recorder: SnapshotRecorder) {
+        *self
+            .snapshot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(recorder);
+    }
+    fn keep_snapshot(&self, owner: &RuntimeOwner, config: Option<SessionConfig>) {
+        let recorder = self
+            .snapshot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Some((recorder, config)) = recorder.zip(config) {
+            recorder(owner, &config);
+        }
     }
     pub(crate) fn reserve(&self, owner: RuntimeOwner) {
         let mut state = self.lock();
@@ -146,14 +165,17 @@ impl ConfigChannel {
     }
     pub(crate) fn publish(&self, owner: &RuntimeOwner) {
         let mut state = self.lock();
+        let mut snapshot = None;
         if let Some(entry) = &mut state.entry
             && &entry.owner == owner
         {
             entry.live = true;
+            snapshot = entry.overlay.as_ref().map(|overlay| overlay.config.clone());
         }
         Self::queue_notice(&mut state);
         drop(state);
         self.flush_notice();
+        self.keep_snapshot(owner, snapshot);
     }
     pub(crate) fn update(&self, owner: &RuntimeOwner, config: SessionConfig) -> Result<(), String> {
         config.validate()?;
@@ -186,6 +208,7 @@ impl ConfigChannel {
             .filter(|_| entry.live && entry.restoring)
             .map(|old| super::reported::changes(&old.config, &config))
             .unwrap_or_default();
+        let snapshot = entry.live.then(|| config.clone());
         reported.retain(|value| {
             !entry
                 .held
@@ -204,6 +227,7 @@ impl ConfigChannel {
         drop(state);
         self.flush_notice();
         self.record(owner, &reported);
+        self.keep_snapshot(owner, snapshot);
         Ok(())
     }
     fn record(&self, owner: &RuntimeOwner, choices: &[ConfigMutation]) {

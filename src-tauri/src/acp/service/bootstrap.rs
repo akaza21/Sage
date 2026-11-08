@@ -117,8 +117,10 @@ impl AcpService {
             runtime_port_finish_park_failure: std::sync::Mutex::new(false),
         };
         let recorder = service.session_config_recorder();
+        let snapshot = service.session_config_snapshot_recorder();
         for lane in service.lanes() {
             lane.runtime.config.set_recorder(recorder.clone());
+            lane.runtime.config.set_snapshot_recorder(snapshot.clone());
         }
         Ok(service)
     }

@@ -42,6 +42,14 @@
   opacity: 1;
 }
 
+/* A restored value is the chat's choice, not yet reapplied to a running
+   session: it reads in the muted tone until the session reports it. */
+.composer__model-group
+  [data-restored]
+  :is(.composer__model-label, .composer__effort-label) {
+  color: var(--composer-muted-text);
+}
+
 .composer__model-group .composer__model-trigger:has(> .composer__model-effort) {
   max-width: 240px;
 }

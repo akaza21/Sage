@@ -22,9 +22,9 @@ use crate::acp::{
 use crate::persistence::Database;
 
 /// The harness side: the options it reports and every request it received.
-struct Agent {
+pub(super) struct Agent {
     options: Value,
-    requests: Vec<Value>,
+    pub(super) requests: Vec<Value>,
     refuse: bool,
     /// The runtime fails the next change this way instead of sending it.
     fail: Option<HostError>,
@@ -164,7 +164,7 @@ impl RuntimeEngine for HarnessEngine {
     }
 }
 
-fn owner(epoch: u64) -> RuntimeOwner {
+pub(super) fn owner(epoch: u64) -> RuntimeOwner {
     RuntimeOwner {
         project_id: SageProjectId::parse("project-restore").unwrap(),
         chat_id: SageChatId::parse("chat-restore").unwrap(),
@@ -173,14 +173,38 @@ fn owner(epoch: u64) -> RuntimeOwner {
     }
 }
 
-fn seed(service: &AcpService) {
+pub(super) fn seed(service: &AcpService) {
     let connection = service.database.connection();
     connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-restore','Restore',1,1,1)", []).unwrap();
     connection.execute("INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('chat-restore','project-restore',0,'Restore',0,1,1)", []).unwrap();
-    connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,created_at,updated_at) VALUES('session-restore','project-restore','chat-restore',0,'claude-agent-acp',?1,'external-a','{}','ready','cold',1,1)", [&"a".repeat(64)]).unwrap();
+    connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,created_at,updated_at) VALUES('session-restore','project-restore','chat-restore',0,'claude-agent-acp',?1,'external-a',?2,'ready','cold',1,1)", [&"a".repeat(64), &capabilities()]).unwrap();
 }
 
-fn effort(current: &str) -> Value {
+/// A capability snapshot the chat page can project.
+fn capabilities() -> String {
+    serde_json::to_string(&crate::acp::intent::CapabilitySnapshotV1 {
+        schema_version: crate::acp::contract::SchemaVersionV1,
+        protocol_version: crate::acp::contract::RequiredText::new("protocol", "1").unwrap(),
+        new_session: true,
+        resume_session: true,
+        load_session: false,
+        close_session: true,
+        prompt: true,
+        cancel: true,
+        native_session_fork: false,
+        active_turn_steer: false,
+        child_conversation_projection: false,
+        child_transcript_read: false,
+        collaboration_event_projection: false,
+        multi_root_extension_schema_id: None,
+        model_count: 0,
+        prompt_resources: false,
+        config_count: 0,
+    })
+    .unwrap()
+}
+
+pub(super) fn effort(current: &str) -> Value {
     json!([{
         "id":"effort","name":"Effort","category":"thought_level","type":"select",
         "currentValue":current,
@@ -190,7 +214,11 @@ fn effort(current: &str) -> Value {
 
 /// Starts a resumed runtime for `owner` the way activation does: the session
 /// reports the harness defaults before the runtime is published.
-fn start(service: &AcpService, owner: &RuntimeOwner, options: Value) -> Arc<Mutex<Agent>> {
+pub(super) fn start(
+    service: &AcpService,
+    owner: &RuntimeOwner,
+    options: Value,
+) -> Arc<Mutex<Agent>> {
     open(service, owner, false, "ask", options)
 }
 
@@ -229,7 +257,7 @@ fn open(
     agent
 }
 
-fn choose(
+pub(super) fn choose(
     service: &AcpService,
     owner: &RuntimeOwner,
     mutation: ConfigMutation,
@@ -248,7 +276,7 @@ fn choose(
     })
 }
 
-fn option(id: &str, value: &str) -> ConfigMutation {
+pub(super) fn option(id: &str, value: &str) -> ConfigMutation {
     ConfigMutation::Option {
         config_id: ConfigId::new("configId", id).unwrap(),
         value: ConfigValue::Select {
@@ -282,7 +310,7 @@ fn shown_effort(service: &AcpService, owner: &RuntimeOwner) -> String {
     }
 }
 
-fn stored(service: &AcpService) -> Vec<ConfigMutation> {
+pub(super) fn stored(service: &AcpService) -> Vec<ConfigMutation> {
     choices::load(&service.database.connection(), &owner(1).session_id).unwrap()
 }
 

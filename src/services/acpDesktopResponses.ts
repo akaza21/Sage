@@ -77,7 +77,10 @@ function safeCapabilities(
   } as AgentSessionProjection["capabilities"];
 }
 
-import { decodeSessionConfig } from "../domain/acpSessionConfig";
+import {
+  decodeRestoredSessionConfig,
+  decodeSessionConfig,
+} from "../domain/acpSessionConfig";
 
 function safeSession(value: unknown): AgentSessionProjection | null {
   if (!isRecord(value)) return null;
@@ -184,6 +187,16 @@ export function safeAcpMutationResponse(
       ? null
       : decodeSessionConfig(projection.sessionConfig);
   if (projection.sessionConfig != null && !sessionConfig) return null;
+  // Restored config belongs to the current session and never sits beside a
+  // live one; anything else is dropped rather than shown.
+  const restoredConfig =
+    projection.restoredSessionConfig == null || sessionConfig
+      ? null
+      : decodeRestoredSessionConfig(projection.restoredSessionConfig);
+  const restoredSessionConfig =
+    restoredConfig?.sageAgentSessionId === currentSessionId
+      ? restoredConfig
+      : null;
   const goal =
     projection.goal === undefined || !decodeGoal
       ? undefined
@@ -250,6 +263,7 @@ export function safeAcpMutationResponse(
       currentSessionId: currentSessionId as AcpChatPage["currentSessionId"],
       sessions: safeSessions,
       sessionConfig,
+      ...(restoredSessionConfig ? { restoredSessionConfig } : {}),
       ...(goal ? { goal } : {}),
       turns: safeTurns,
       nextCursor: nextCursor as AcpChatPage["nextCursor"],

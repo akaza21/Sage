@@ -3,13 +3,23 @@
 //! The live overlay is never journaled; this table keeps only the value the
 //! harness last confirmed for each mode or option, so a resumed runtime can
 //! reapply it. Rows are rewritten in place and capped per session.
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
-use super::{ConfigId, ConfigMutation, ConfigValue};
+use super::{ConfigId, ConfigKind, ConfigMutation, ConfigValue, SessionConfig};
 use crate::acp::{
-    contract::SageAgentSessionId,
-    limits::{SESSION_CONFIG_CHOICE_BYTES, SESSION_CONFIG_CHOICES_PER_SESSION},
+    contract::{BoundedVec, SageAgentSessionId},
+    limits::{LIMITS, SESSION_CONFIG_CHOICE_BYTES, SESSION_CONFIG_CHOICES_PER_SESSION},
 };
+
+/// A session's config while it has no live runtime: what it last reported,
+/// with its stored choices as the current values.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RestoredSessionConfig {
+    pub sage_agent_session_id: SageAgentSessionId,
+    #[serde(flatten)]
+    pub config: SessionConfig,
+}
 
 const MODE_KIND: &str = "mode";
 const OPTION_KIND: &str = "option";
@@ -107,7 +117,140 @@ pub(crate) fn copy(
             SESSION_CONFIG_CHOICES_PER_SESSION as i64
         ],
     )?;
+    connection.execute(
+        "INSERT INTO acp_session_config_snapshots(session_id,config_json,updated_at)
+         SELECT ?2,config_json,updated_at FROM acp_session_config_snapshots WHERE session_id=?1",
+        params![from.as_str(), to.as_str()],
+    )?;
     Ok(())
+}
+
+/// Keeps `config` as what the session last reported, for showing while it
+/// has no live runtime. A config past the live bound is not stored.
+pub(crate) fn save_snapshot(
+    connection: &Connection,
+    session: &SageAgentSessionId,
+    config: &SessionConfig,
+    now_millis: i64,
+) -> rusqlite::Result<()> {
+    let Ok(config_json) = serde_json::to_string(config) else {
+        return Ok(());
+    };
+    if config_json.len() > LIMITS.wire.models_or_config_bytes as usize {
+        return Ok(());
+    }
+    connection.execute(
+        "INSERT INTO acp_session_config_snapshots(session_id,config_json,updated_at)
+         VALUES(?1,?2,?3)
+         ON CONFLICT(session_id) DO UPDATE SET
+           config_json=excluded.config_json,updated_at=excluded.updated_at",
+        params![session.as_str(), config_json, now_millis],
+    )?;
+    Ok(())
+}
+
+/// What a session without a live runtime shows: the config it last reported
+/// with its stored choices as the current values. A stored choice the
+/// snapshot does not offer is left out (the restore falls back for it); with
+/// no snapshot, each stored option shows only its own value. `None` when
+/// nothing is stored.
+pub(crate) fn restored(
+    connection: &Connection,
+    session: &SageAgentSessionId,
+) -> rusqlite::Result<Option<SessionConfig>> {
+    let snapshot = connection
+        .query_row(
+            "SELECT config_json FROM acp_session_config_snapshots WHERE session_id=?1",
+            [session.as_str()],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .and_then(|json| serde_json::from_str::<SessionConfig>(&json).ok())
+        .filter(|config| config.validate().is_ok());
+    let stored = load(connection, session)?;
+    if snapshot.is_none() && stored.is_empty() {
+        return Ok(None);
+    }
+    let mut config = snapshot.unwrap_or_default();
+    for choice in &stored {
+        apply(&mut config, choice);
+    }
+    Ok(Some(config))
+}
+
+/// Sets `choice` as the current value in `config` when `config` offers it.
+/// An option `config` lacks is added with the stored value as its only
+/// choice, so its label still shows.
+fn apply(config: &mut SessionConfig, choice: &ConfigMutation) {
+    match choice {
+        ConfigMutation::Mode(mode) => {
+            let _ = config.set_current_mode(mode.clone());
+        }
+        ConfigMutation::Option { config_id, value } => {
+            let mut options = config.config_options.as_slice().to_vec();
+            match options.iter_mut().find(|option| &option.id == config_id) {
+                Some(option) => {
+                    if config.validate_value(config_id.as_str(), value).is_err() {
+                        return;
+                    }
+                    option.kind = match (&option.kind, value) {
+                        (ConfigKind::Select { options, .. }, ConfigValue::Select { value }) => {
+                            ConfigKind::Select {
+                                current_value: value.clone(),
+                                options: options.clone(),
+                            }
+                        }
+                        (ConfigKind::Boolean { .. }, ConfigValue::Boolean { value }) => {
+                            ConfigKind::Boolean {
+                                current_value: *value,
+                            }
+                        }
+                        _ => return,
+                    };
+                }
+                None => {
+                    let ConfigValue::Select { value } = value else {
+                        return;
+                    };
+                    let Ok(name) = super::Label::new("name", config_id.as_str()) else {
+                        return;
+                    };
+                    let Ok(choice_name) = super::Label::new("name", value.as_str()) else {
+                        return;
+                    };
+                    let Ok(choices) = BoundedVec::new(
+                        "options",
+                        vec![super::Choice {
+                            value: value.clone(),
+                            name: choice_name,
+                            description: None,
+                        }],
+                    ) else {
+                        return;
+                    };
+                    options.push(super::ConfigOption {
+                        id: config_id.clone(),
+                        name,
+                        description: None,
+                        category: None,
+                        default_value: None,
+                        kind: ConfigKind::Select {
+                            current_value: value.clone(),
+                            options: super::Choices::Flat(choices),
+                        },
+                    });
+                }
+            }
+            let mut candidate = config.clone();
+            let Ok(options) = super::ConfigOptions::new("configOptions", options) else {
+                return;
+            };
+            candidate.config_options = options;
+            if candidate.validate().is_ok() {
+                *config = candidate;
+            }
+        }
+    }
 }
 
 /// The session's stored choices in the order they were confirmed. Restore

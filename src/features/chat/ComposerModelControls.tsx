@@ -19,6 +19,7 @@ import {
 import { type ComposerModelChoice } from "./ChatModelPicker";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { ComposerEffortControl } from "./ComposerEffortControl";
+import { RESTORED_NOTE } from "./restoredSessionConfigView";
 
 const ModelMenu = lazy(() => import("./ComposerModelMenu"));
 
@@ -38,6 +39,7 @@ export function ComposerModelControls({
   effortLabel,
   contextWindow,
   effortOption,
+  restored = false,
   awaitingSession = false,
   disabled,
   effortDisabled = disabled,
@@ -63,6 +65,8 @@ export function ComposerModelControls({
   effortLabel: string | null;
   contextWindow: string | null;
   effortOption: AcpConfigOption | undefined;
+  /** The values are the session's restored choices, not yet reapplied. */
+  restored?: boolean;
   awaitingSession?: boolean;
   disabled: boolean;
   effortDisabled?: boolean;
@@ -90,7 +94,7 @@ export function ComposerModelControls({
   const modelDescription =
     modelLabel === "Model"
       ? undefined
-      : `${modelLabel}${effortLabel ? ` ${effortLabel}` : ""}`;
+      : `${modelLabel}${effortLabel ? ` ${effortLabel}` : ""}${restored ? `. ${RESTORED_NOTE}` : ""}`;
   useEffect(() => {
     if (
       (open && !available) ||
@@ -117,6 +121,7 @@ export function ComposerModelControls({
           data-selected-id={selectedId ?? undefined}
           title={modelDescription}
           data-readonly-label={(readOnlyLabel && !pending) || undefined}
+          data-restored={restored || undefined}
           aria-controls={panelId}
           aria-haspopup="listbox"
           aria-expanded={open && available}
@@ -147,6 +152,7 @@ export function ComposerModelControls({
             anchorRef={effortAnchorRef}
             fallbackRef={triggerRef}
             option={effortOption}
+            restored={restored}
             modelLabel={modelLabel}
             open={effortOpen}
             onToggle={onToggleEffort}

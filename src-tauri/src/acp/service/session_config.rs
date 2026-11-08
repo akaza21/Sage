@@ -2,12 +2,16 @@ use super::*;
 use crate::acp::{
     contract::BoundedVec,
     scheduler::RuntimeOwner,
-    session_config::{ConfigIntent, NoticeSink},
+    session_config::{ConfigIntent, NoticeSink, choices::RestoredSessionConfig},
 };
 
 mod restore;
 #[cfg(test)]
 mod restore_tests;
+mod stored;
+#[cfg(test)]
+mod stored_tests;
+pub(crate) use stored::QueueError;
 #[cfg(test)]
 mod tests;
 
@@ -99,6 +103,22 @@ impl AcpService {
                     .filter(|c| !c.removed)
                     .map_or(0, |c| c.config.config_options.as_slice().len() as u16);
             }
+        }
+        // A session without a live config shows what it last reported, with
+        // its stored choices, until its runtime resumes and reports again.
+        page.restored_session_config = None;
+        if page.session_config.is_none()
+            && let Some(session) = sessions.iter().find(|session| {
+                Some(&session.id) == page.current_session_id.as_ref()
+                    && session.state == crate::acp::contract::SessionState::Ready
+            })
+        {
+            page.restored_session_config =
+                self.restored_session_config(&session.id)
+                    .map(|config| RestoredSessionConfig {
+                        sage_agent_session_id: session.id.clone(),
+                        config,
+                    });
         }
         page.sessions = BoundedVec::new("sessions", sessions)
             .map_err(|_| StoreError::Corrupt("session config page"))?;

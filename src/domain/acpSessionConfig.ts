@@ -48,7 +48,22 @@ export interface AcpSessionConfig {
   confirmedEffort?: string;
   modes: AcpSessionModes | null;
   configOptions: AcpConfigOption[];
+  /**
+   * Set only on the composer's view of a restored config (see
+   * `restoredSessionConfigView`): it has no runtime epoch or revision of its
+   * own, and a choice on it is stored for the session's next runtime.
+   */
+  restored?: true;
 }
+/**
+ * A session's config while it has no live runtime: what it last reported,
+ * with its stored choices as the current values. A choice made on it is
+ * stored and applied before the session's next prompt.
+ */
+export type AcpRestoredSessionConfig = Omit<
+  AcpSessionConfig,
+  "runtimeEpoch" | "configRevision" | "removed" | "restored"
+>;
 export interface AcpSessionConfigChangedV1 {
   schemaVersion: 1;
   sageProjectId: string;
@@ -271,5 +286,28 @@ export function decodeSessionConfigNotice(
     sageAgentSessionId: v.sageAgentSessionId,
     runtimeEpoch: v.runtimeEpoch,
     configRevision: v.configRevision,
+  };
+}
+export function decodeRestoredSessionConfig(
+  v: unknown,
+): AcpRestoredSessionConfig | null {
+  if (!object(v) || "runtimeEpoch" in v || "configRevision" in v) return null;
+  const decoded = decodeSessionConfig({
+    ...v,
+    runtimeEpoch: "0",
+    configRevision: "1",
+  });
+  if (!decoded || decoded.removed) return null;
+  const { sageAgentSessionId, modes, configOptions } = decoded;
+  return {
+    sageAgentSessionId,
+    modes,
+    configOptions,
+    ...(decoded.confirmedModel
+      ? { confirmedModel: decoded.confirmedModel }
+      : {}),
+    ...(decoded.confirmedEffort === undefined
+      ? {}
+      : { confirmedEffort: decoded.confirmedEffort }),
   };
 }

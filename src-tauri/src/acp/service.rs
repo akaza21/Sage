@@ -80,6 +80,7 @@ mod renderer_recreation_packet;
 pub(crate) mod runtime_identity;
 mod runtime_slot;
 mod session_config;
+pub(crate) use session_config::QueueError;
 mod session_error;
 mod slash_commands;
 pub(crate) use session_error::{CodexSessionError, SessionDispatchError};

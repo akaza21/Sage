@@ -15,7 +15,7 @@ pub(crate) mod reported;
 pub(crate) use kind::ConfigKind;
 pub(crate) use overlay::{
     ChoiceRecorder, ConfigChannel, ConfigIntent, ConfigMutation, ConfigRevision, NoticeSink,
-    SessionConfigOverlay,
+    SessionConfigOverlay, SnapshotRecorder,
 };
 
 pub(crate) type ConfigId = RequiredText<1024>;

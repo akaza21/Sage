@@ -124,6 +124,79 @@ pub(crate) async fn configure(
     mutation_response(state, request.project_id, request.chat_id)
 }
 
+/// A mode or option value for a session with no live runtime.
+#[derive(Deserialize)]
+#[serde(untagged, deny_unknown_fields)]
+pub(crate) enum QueuedChoice {
+    Mode {
+        #[serde(rename = "modeId")]
+        mode_id: ConfigId,
+    },
+    Option {
+        #[serde(rename = "configId")]
+        config_id: ConfigId,
+        value: ConfigValue,
+    },
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct QueueSessionConfigChoiceRequest {
+    pub project_id: SageProjectId,
+    pub project_generation: ProjectGeneration,
+    pub chat_id: SageChatId,
+    pub expected_projection_revision: ProjectionRevision,
+    pub session_id: SageAgentSessionId,
+    pub choice: QueuedChoice,
+}
+/// Stores a choice made while the chat's session has no live runtime. The
+/// composer shows it as restored, and the restore applies it before the
+/// session's next prompt, as it does every stored choice.
+#[tauri::command]
+pub(crate) async fn queue_acp_session_config_choice(
+    state: State<'_, AppState>,
+    request: QueueSessionConfigChoiceRequest,
+) -> Result<AcpMutationResponse, AcpIpcError> {
+    let (_transition, snapshot) = snapshot_for(
+        &state,
+        request.project_id.clone(),
+        request.project_generation,
+        request.chat_id.clone(),
+    )
+    .await?;
+    validate_base_intent(
+        &request.project_id,
+        request.project_generation,
+        &request.chat_id,
+        request.expected_projection_revision,
+        &snapshot,
+    )
+    .map_err(intent_error)?;
+    if snapshot.session_id.as_ref() != Some(&request.session_id) {
+        return Err(intent_error(IntentError::ForeignSession));
+    }
+    // A live session takes the choice through its runtime instead.
+    if snapshot.runtime_epoch.is_some() {
+        return Err(intent_error(IntentError::StaleRuntimeEpoch));
+    }
+    let choice = match request.choice {
+        QueuedChoice::Mode { mode_id } => ConfigMutation::Mode(mode_id),
+        QueuedChoice::Option { config_id, value } => ConfigMutation::Option { config_id, value },
+    };
+    state
+        .acp
+        .queue_session_config_choice(&request.session_id, &choice)
+        .map_err(|error| match error {
+            crate::acp::service::QueueError::NotOffered => AcpIpcError::Conflict {
+                resource: crate::acp::intent::AcpConflictResource::ConfigRevision,
+                message: safe_message("The session configuration changed; reload and retry."),
+            },
+            crate::acp::service::QueueError::Store => AcpIpcError::RecoveryRequired {
+                message: safe_message("The session configuration choice could not be saved."),
+            },
+        })?;
+    mutation_response(&state, request.project_id, request.chat_id)
+}
+
 fn map_config_error(error: crate::acp::runtime::HostError) -> AcpIpcError {
     match error {
         crate::acp::runtime::HostError::Intent => AcpIpcError::Conflict {

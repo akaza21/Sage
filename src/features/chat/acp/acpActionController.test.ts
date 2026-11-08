@@ -148,6 +148,7 @@ function harness(
     endSession: vi.fn(),
     setSessionMode: vi.fn(),
     setSessionConfigOption: vi.fn(),
+    queueSessionConfigChoice: vi.fn(),
   } as unknown as AcpActionCommands;
   const controller = createAcpActionController({
     commands,
@@ -1308,4 +1309,41 @@ describe("ACP action controller", () => {
     expect(first.length).toBeLessThan(512);
     expect(second.length).toBeLessThan(512);
   });
+});
+
+it("stores a choice made on a parked session's restored config instead of sending it", async () => {
+  const cold = {
+    ...page("10", session("cold", null, "2")),
+    restoredSessionConfig: {
+      sageAgentSessionId: "session-a",
+      modes: null,
+      configOptions: [
+        {
+          id: "effort",
+          name: "Effort",
+          type: "select" as const,
+          currentValue: "medium",
+          options: [
+            { value: "medium", name: "Medium" },
+            { value: "high", name: "High" },
+          ],
+        },
+      ],
+    },
+  };
+  const test = harness(cold);
+  vi.mocked(test.commands.queueSessionConfigChoice!).mockResolvedValue({
+    projection: page("11", session("cold", null, "2")),
+  });
+  await expect(
+    test.controller.setSessionConfigOption("effort", { value: "high" }),
+  ).resolves.toBe("applied");
+  expect(test.commands.queueSessionConfigChoice).toHaveBeenCalledWith({
+    ...scope,
+    projectGeneration: commandProjectGeneration,
+    expectedProjectionRevision: "10",
+    sessionId: "session-a",
+    choice: { configId: "effort", value: { value: "high" } },
+  });
+  expect(test.commands.setSessionConfigOption).not.toHaveBeenCalled();
 });

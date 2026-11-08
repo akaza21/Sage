@@ -61,6 +61,18 @@ export interface SetAcpSessionConfigOptionRequest extends AcpSessionMutationInte
   configId: string;
   value: AcpConfigValue;
 }
+/**
+ * A choice for a session with no live runtime: stored, shown as restored,
+ * and applied before the session's next prompt.
+ */
+export interface QueueAcpSessionConfigChoiceRequest {
+  projectId: SageProjectId;
+  projectGeneration: ProjectGeneration;
+  chatId: SageChatId;
+  expectedProjectionRevision: ProjectionRevision;
+  sessionId: SageAgentSessionId;
+  choice: { modeId: string } | { configId: string; value: AcpConfigValue };
+}
 export type EntityRevision = Brand<string, "EntityRevision">;
 
 export interface AcpItemIdentity {

@@ -104,6 +104,33 @@ fn shown(setup: &FixtureSetup, owner: &RuntimeOwner, id: &str) -> Option<String>
         })
 }
 
+fn confirmed_model(setup: &FixtureSetup, owner: &RuntimeOwner) -> Option<String> {
+    let snapshot = setup
+        .service
+        .lane_at(0)
+        .runtime
+        .config
+        .live_snapshot(owner)?;
+    Some(snapshot.config.confirmed_model?.id.as_str().to_owned())
+}
+
+/// The config a cold chat shows before its runtime resumes.
+fn restored(setup: &FixtureSetup, owner: &RuntimeOwner) -> serde_json::Value {
+    let page = setup.page(owner);
+    assert!(page.session_config.is_none());
+    serde_json::to_value(&page).unwrap()["restoredSessionConfig"].clone()
+}
+
+fn option_value(config: &serde_json::Value, id: &str) -> String {
+    config["configOptions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|option| option["id"] == id)
+        .map(|option| option["currentValue"].as_str().unwrap().to_owned())
+        .unwrap_or_default()
+}
+
 fn wait_shown(setup: &FixtureSetup, owner: &RuntimeOwner, id: &str, value: &str) {
     setup.wait_until(|| shown(setup, owner, id).as_deref() == Some(value));
 }
@@ -279,6 +306,11 @@ fn claude_config_choices_survive_a_graceful_restart() {
             runtime_epoch: RuntimeEpoch::new(2).unwrap(),
             ..first.clone()
         };
+        // Opened after the restart, the cold chat shows the stored choices
+        // with the labels the harness gave them, before anything resumes.
+        let restored = restored(&setup, &resumed);
+        assert_eq!(option_value(&restored, "model"), "fixture-model-deep");
+        assert_eq!(option_value(&restored, "effort"), "high");
         // The second launch resumes the parked session; before the fix the
         // fixture's launch receipt refused it and activation failed as Intent.
         activate_claude(&setup, &resumed).await;
@@ -298,7 +330,7 @@ fn claude_config_choices_survive_a_graceful_restart() {
 }
 
 #[test]
-fn codex_config_choice_survives_a_graceful_restart() {
+fn codex_model_and_effort_survive_a_graceful_restart() {
     let _serial = crate::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let profile = profile("codex-config-resume");
@@ -311,15 +343,45 @@ fn codex_config_choice_survives_a_graceful_restart() {
             &profile.selection.project_root,
         )
         .await;
-        // First launch: thread/start, then model/list and thread/goal/get in
-        // the order the live runner writes them, then one Turn.
-        let first = setup
-            .start_and_activate(RuntimeEpoch::new(1).unwrap())
-            .await;
-        wait_shown(&setup, &first, "effort", "high");
+        // A Codex model belongs to the thread: the chat opens it with the
+        // second model, as the composer does when that model is picked
+        // before the first send. The effort changes live, after a Turn.
+        let deep = crate::acp::intent::ModelId::new("modelId", "fixture-model-deep").unwrap();
+        crate::acp::service::tests::seed_codex_discovery(
+            &setup.service,
+            &setup.root(),
+            Some(deep.clone()),
+        );
+        let revision = setup
+            .service
+            .load_chat_page(setup.project_id.clone(), setup.chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+        let mut start = setup.start_command_for(&setup.chat_id, revision);
+        start.model_id = Some(deep);
+        let started = setup
+            .service
+            .start_codex_session(&setup.root(), start)
+            .await
+            .unwrap();
+        let first = RuntimeOwner {
+            project_id: setup.project_id.clone(),
+            chat_id: setup.chat_id.clone(),
+            session_id: started.session_id,
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        };
+        // thread/start, then model/list and thread/goal/get in the order the
+        // live runner writes them, then one Turn.
+        setup.activate(&first).await.unwrap();
+        setup.wait_for_ready(&first);
+        wait_shown(&setup, &first, "effort", "medium");
+        assert_eq!(
+            confirmed_model(&setup, &first).as_deref(),
+            Some("fixture-model-deep")
+        );
         setup.send_and_wait_completed(&first).await;
-        choose(&setup, &first, "effort", "low");
-        wait_shown(&setup, &first, "effort", "low");
+        choose(&setup, &first, "effort", "high");
+        wait_shown(&setup, &first, "effort", "high");
 
         let place = exit_gracefully(setup, &first);
         let setup = relaunch(&profile, registry(), place);
@@ -327,16 +389,24 @@ fn codex_config_choice_survives_a_graceful_restart() {
             runtime_epoch: RuntimeEpoch::new(2).unwrap(),
             ..first.clone()
         };
-        // Second launch: thread/resume reports the thread's own effort again,
-        // and Sage puts the stored one back before the prompt.
+        // Before anything resumes, the cold chat shows both as restored.
+        let restored = restored(&setup, &resumed);
+        assert_eq!(restored["confirmedModel"]["id"], "fixture-model-deep");
+        assert_eq!(option_value(&restored, "effort"), "high");
+        // thread/resume reports the thread's model at the Medium default,
+        // and Sage puts the stored effort back before the prompt.
         setup
             .activate(&resumed)
             .await
             .unwrap_or_else(|error| panic!("Codex resume failed: {error:?}"));
         setup.wait_for_ready(&resumed);
-        wait_shown(&setup, &resumed, "effort", "low");
+        wait_shown(&setup, &resumed, "effort", "high");
+        assert_eq!(
+            confirmed_model(&setup, &resumed).as_deref(),
+            Some("fixture-model-deep")
+        );
         setup.send_and_wait_completed(&resumed).await;
-        assert_eq!(shown(&setup, &resumed, "effort").as_deref(), Some("low"));
+        assert_eq!(shown(&setup, &resumed, "effort").as_deref(), Some("high"));
         setup.service.shutdown_blocking().unwrap();
         setup.wait_for_job_zero();
         drop(setup);

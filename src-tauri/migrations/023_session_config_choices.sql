@@ -12,3 +12,15 @@ CREATE TABLE acp_session_config_choices (
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (session_id, kind, config_id)
 ) STRICT;
+
+-- The session config the harness last reported for each agent session: its
+-- modes, its options with their labels and choices, and its confirmed model.
+-- A parked or restarted chat shows it, with the stored choices above as the
+-- current values, until its runtime resumes and reports again. One row per
+-- session, rewritten in place; bounded like the live config it copies.
+CREATE TABLE acp_session_config_snapshots (
+  session_id TEXT PRIMARY KEY REFERENCES agent_sessions(id) ON DELETE CASCADE,
+  config_json TEXT NOT NULL
+    CHECK (json_valid(config_json) AND length(CAST(config_json AS BLOB)) BETWEEN 2 AND 131072),
+  updated_at INTEGER NOT NULL
+) STRICT;

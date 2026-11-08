@@ -137,9 +137,11 @@ export function ChatHarnessControls({
   // Effort levels are known only once a session runs the selected harness and
   // model; until then effort shows as unavailable, however the selection and
   // the session were reached.
+  // A restored config is passed only for the session the selection continues.
   const sessionOwnsSelection =
-    sessionHarnessId === selectedHarnessId &&
-    sessionModelId === selectedModelId;
+    !!sessionConfig?.restored ||
+    (sessionHarnessId === selectedHarnessId &&
+      sessionModelId === selectedModelId);
   const selectedSessionConfig = sessionOwnsSelection ? sessionConfig : null;
   const configOptions = sessionConfigControls(selectedSessionConfig);
   const findOption = (category: string) =>
@@ -312,6 +314,7 @@ export function ChatHarnessControls({
           effortLabel={confirmedModelLabel || inheriting ? effortLabel : null}
           contextWindow={contextWindow}
           effortOption={effortOption}
+          restored={!!selectedSessionConfig?.restored}
           awaitingSession={
             !sessionOwnsSelection &&
             selectedHarnessId !== null &&

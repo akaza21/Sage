@@ -382,6 +382,11 @@ pub struct SessionProjection {
 #[serde(rename_all = "camelCase")]
 pub struct AcpChatPage {
     pub(crate) session_config: Option<super::session_config::SessionConfigOverlay>,
+    /// The current session's last reported config and stored choices, while
+    /// it has no live config: shown as restored, applied when it resumes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) restored_session_config:
+        Option<super::session_config::choices::RestoredSessionConfig>,
     pub(crate) goal: super::goal::GoalState,
     pub project_id: SageProjectId,
     pub chat_id: SageChatId,
