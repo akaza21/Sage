@@ -1,4 +1,4 @@
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::acp::{
     contract::RequiredText,
@@ -20,17 +20,35 @@ impl OutgoingRequest {
                 RequestKind::Compact,
                 json!({"threadId": thread_id.as_str()}),
             ),
-            SessionAction::Review {
-                target: ReviewTarget::UncommittedChanges {},
-            } => Self::build(
+            SessionAction::Review { target } => Self::build(
                 id,
                 RequestKind::Review,
                 json!({
                     "threadId": thread_id.as_str(),
-                    "target": {"type": "uncommittedChanges"},
+                    "target": review_target(target),
                     "delivery": "inline"
                 }),
             ),
+        }
+    }
+}
+
+/// The 0.167 `ReviewTarget`: the same variants, tagged by `type`.
+fn review_target(target: &ReviewTarget) -> Value {
+    match target {
+        ReviewTarget::UncommittedChanges {} => json!({"type": "uncommittedChanges"}),
+        ReviewTarget::BaseBranch { branch } => {
+            json!({"type": "baseBranch", "branch": branch.as_str()})
+        }
+        ReviewTarget::Commit { sha, title } => {
+            let mut target = json!({"type": "commit", "sha": sha.as_str()});
+            if let Some(title) = title {
+                target["title"] = json!(title.as_str());
+            }
+            target
+        }
+        ReviewTarget::Custom { instructions } => {
+            json!({"type": "custom", "instructions": instructions.as_str()})
         }
     }
 }
@@ -60,16 +78,35 @@ mod tests {
                 json!({"threadId": "thread-1"})
             )
         );
-        assert_eq!(
-            params(json!({"kind": "review", "target": {"kind": "uncommittedChanges"}})),
+        for (target, wire) in [
             (
-                "review/start".to_owned(),
-                json!({
-                    "threadId": "thread-1",
-                    "target": {"type": "uncommittedChanges"},
-                    "delivery": "inline"
-                })
-            )
-        );
+                json!({"kind": "uncommittedChanges"}),
+                json!({"type": "uncommittedChanges"}),
+            ),
+            (
+                json!({"kind": "baseBranch", "branch": "main"}),
+                json!({"type": "baseBranch", "branch": "main"}),
+            ),
+            (
+                json!({"kind": "commit", "sha": "abc123"}),
+                json!({"type": "commit", "sha": "abc123"}),
+            ),
+            (
+                json!({"kind": "commit", "sha": "abc123", "title": "Fix the parser"}),
+                json!({"type": "commit", "sha": "abc123", "title": "Fix the parser"}),
+            ),
+            (
+                json!({"kind": "custom", "instructions": "Check the error paths"}),
+                json!({"type": "custom", "instructions": "Check the error paths"}),
+            ),
+        ] {
+            assert_eq!(
+                params(json!({"kind": "review", "target": target})),
+                (
+                    "review/start".to_owned(),
+                    json!({"threadId": "thread-1", "target": wire, "delivery": "inline"})
+                )
+            );
+        }
     }
 }

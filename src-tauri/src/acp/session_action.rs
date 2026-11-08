@@ -3,7 +3,7 @@
 //! own native method.
 use serde::{Deserialize, Serialize};
 
-use super::intent::CapabilitySnapshotV1;
+use super::{contract::RequiredText, intent::CapabilitySnapshotV1};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
@@ -24,9 +24,20 @@ pub(crate) enum SessionAction {
     rename_all_fields = "camelCase",
     deny_unknown_fields
 )]
-/// What a review covers. The chat offers only the uncommitted changes.
+/// What a review covers, as Codex's `ReviewTarget` names it.
 pub(crate) enum ReviewTarget {
     UncommittedChanges {},
+    BaseBranch {
+        branch: RequiredText<256>,
+    },
+    Commit {
+        sha: RequiredText<64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<RequiredText<512>>,
+    },
+    Custom {
+        instructions: RequiredText<16384>,
+    },
 }
 
 /// The `/` commands that name session actions, as their prompts read.
@@ -44,9 +55,14 @@ impl SessionAction {
     pub(crate) fn prompt_text(&self) -> String {
         match self {
             Self::Compact {} => "/compact".to_owned(),
-            Self::Review {
-                target: ReviewTarget::UncommittedChanges {},
-            } => "/review".to_owned(),
+            Self::Review { target } => match target {
+                ReviewTarget::UncommittedChanges {} => "/review".to_owned(),
+                ReviewTarget::BaseBranch { branch } => format!("/review {}", branch.as_str()),
+                ReviewTarget::Commit { sha, .. } => format!("/review {}", sha.as_str()),
+                ReviewTarget::Custom { instructions } => {
+                    format!("/review {}", instructions.as_str())
+                }
+            },
         }
     }
 }
@@ -57,12 +73,29 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn actions_decode_only_the_offered_targets() {
+    fn actions_decode_only_bounded_known_targets() {
         let review: SessionAction =
             serde_json::from_value(json!({"kind":"review","target":{"kind":"uncommittedChanges"}}))
                 .unwrap();
         assert_eq!(review.prompt_text(), "/review");
         assert!(COMMAND_NAMES.contains(&&review.prompt_text()[1..]));
+        for (target, prompt) in [
+            (json!({"kind":"baseBranch","branch":"main"}), "/review main"),
+            (json!({"kind":"commit","sha":"abc123"}), "/review abc123"),
+            (
+                json!({"kind":"commit","sha":"abc123","title":"Fix the parser"}),
+                "/review abc123",
+            ),
+            (
+                json!({"kind":"custom","instructions":"Check the error paths"}),
+                "/review Check the error paths",
+            ),
+        ] {
+            let value = json!({"kind":"review","target":target});
+            let action: SessionAction = serde_json::from_value(value.clone()).unwrap();
+            assert_eq!(action.prompt_text(), prompt);
+            assert_eq!(serde_json::to_value(&action).unwrap(), value);
+        }
         assert_eq!(
             serde_json::from_value::<SessionAction>(json!({"kind":"compact"}))
                 .unwrap()
@@ -70,9 +103,13 @@ mod tests {
             "/compact"
         );
         for invalid in [
-            json!({"kind":"review","target":{"kind":"baseBranch","branch":"main"}}),
-            json!({"kind":"review","target":{"kind":"commit","sha":"abc123"}}),
-            json!({"kind":"review","target":{"kind":"custom","instructions":"Check"}}),
+            json!({"kind":"review","target":{"kind":"baseBranch","branch":""}}),
+            json!({"kind":"review","target":{"kind":"baseBranch"}}),
+            json!({"kind":"review","target":{"kind":"commit","sha":"a".repeat(65)}}),
+            json!({"kind":"review","target":{"kind":"commit","sha":"abc123","title":""}}),
+            json!({"kind":"review","target":{"kind":"custom","instructions":"x".repeat(16385)}}),
+            json!({"kind":"review","target":{"kind":"custom","instructions":"Check","extra":1}}),
+            json!({"kind":"review","target":{"kind":"pullRequest","number":1}}),
             json!({"kind":"review"}),
             json!({"kind":"review","target":{"kind":"uncommittedChanges","extra":1}}),
             json!({"kind":"compact","extra":1}),
@@ -117,8 +154,8 @@ mod tests {
         connection
             .execute_batch("CREATE TABLE items(turn_id TEXT,ordinal INTEGER,kind TEXT,payload_json TEXT,payload_bytes INTEGER)")
             .unwrap();
-        let payload = json!({"kind":"text","payload":{"role":"user","text":"/review main",
-            "sessionAction":{"kind":"review","target":{"kind":"baseBranch","branch":"main"}}}})
+        let payload = json!({"kind":"text","payload":{"role":"user","text":"/review 42",
+            "sessionAction":{"kind":"review","target":{"kind":"pullRequest","number":42}}}})
         .to_string();
         connection
             .execute(
@@ -131,7 +168,7 @@ mod tests {
             .session_action;
         assert_eq!(
             action,
-            Some(json!({"kind":"review","target":{"kind":"baseBranch","branch":"main"}}))
+            Some(json!({"kind":"review","target":{"kind":"pullRequest","number":42}}))
         );
         assert!(crate::acp::store::parse_legacy_text(&payload).is_ok());
     }

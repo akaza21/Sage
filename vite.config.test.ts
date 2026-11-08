@@ -77,6 +77,8 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerModelMenu.tsx",
   // The `/` command controller and menu load with the field's first focus.
   "src/features/chat/ComposerSlashController.tsx",
+  // The review target picker and the status panel load with their command.
+  "src/features/chat/ComposerCommandPanel.tsx",
 ];
 const COMMAND_DYNAMIC_FACADES = [
   // The typed command route loads with the first `/name` sent.

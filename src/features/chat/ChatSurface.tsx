@@ -361,6 +361,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onSetSessionMode={acpActions.setSessionMode}
         onSetSessionConfigOption={acpActions.setSessionConfigOption}
         onCompact={sessionAction("compact")}
+        onRunSessionAction={
+          useNativeAcp && !actionBusy && !projectTransitioning
+            ? acpActions.runSessionAction
+            : undefined
+        }
         onSelectHarness={chooseHarness}
         onSelectModel={chooseModel}
         missingBindingNotice={useNativeAcp && !availableBinding}

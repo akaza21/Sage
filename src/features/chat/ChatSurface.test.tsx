@@ -687,7 +687,7 @@ describe("ChatSurface ACP resource integration", () => {
             {
               ...itemBase("action-prompt"),
               kind: "text",
-              payload: { role: "user", text: "/review main" },
+              payload: { role: "user", text: "/review 42" },
             } as AcpItem,
             {
               ...itemBase("action-findings"),

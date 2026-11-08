@@ -16,7 +16,6 @@ import type {
 import {
   acpCommandsDesktop,
   type AcpCommandList,
-  type AvailableAcpCommand,
 } from "../../services/acpCommandsDesktop";
 import { AcpDesktopError } from "../../services/acpDesktop";
 import {
@@ -30,7 +29,7 @@ import { isImeComposing } from "../../ui/imeComposition";
 import { TextFieldSuggestions } from "../../ui/TextFieldSuggestions";
 import { createClientIntentFactory } from "./acp/clientIntent";
 import { currentContext } from "./acp/useAcpChatActions";
-import type { PickedSlashCommand } from "./composerSlashCommand";
+import { composerCommands, type ComposerCommand } from "./composerCommands";
 
 const nextIntentId = createClientIntentFactory();
 const LOADING: Load = { kind: "loading" };
@@ -57,13 +56,13 @@ function liveOwnerKey(page: AcpChatPage | null): string {
  * in advertised order.
  */
 function filterSlashCommands(
-  commands: readonly AvailableAcpCommand[],
+  commands: readonly ComposerCommand[],
   query: string,
-): AvailableAcpCommand[] {
+): ComposerCommand[] {
   const needle = query.toLocaleLowerCase();
-  const exact: AvailableAcpCommand[] = [];
-  const prefix: AvailableAcpCommand[] = [];
-  const inner: AvailableAcpCommand[] = [];
+  const exact: ComposerCommand[] = [];
+  const prefix: ComposerCommand[] = [];
+  const inner: ComposerCommand[] = [];
   for (const command of commands) {
     const name = command.name.toLocaleLowerCase();
     if (name === needle) exact.push(command);
@@ -73,7 +72,7 @@ function filterSlashCommands(
   return [...exact, ...prefix, ...inner];
 }
 
-function suggestion(command: AvailableAcpCommand): TextFieldSuggestion {
+function suggestion(command: ComposerCommand): TextFieldSuggestion {
   return {
     id: command.name,
     label: `/${command.name}`,
@@ -191,24 +190,14 @@ function menuState(
       title: "Commands are unavailable.",
       detail: load.message,
     };
-  // Revision 0: the session has not sent its first list yet.
-  if (load.list.revision === 0)
-    return {
-      kind: "loading",
-      title: "Waiting for the session's commands…",
-      detail: "The harness has not advertised any yet.",
-    };
-  if (load.list.commands.length === 0)
-    return {
-      kind: "empty",
-      title: "This harness advertises no slash commands.",
-    };
+  // The chat's own commands are listed while the harness advertises none.
   if (matches === 0)
     return { kind: "empty", title: `No commands match “/${query}”.` };
   return { kind: "ready" };
 }
 
 export function ComposerSlashMenu({
+  actionsRunnable,
   anchorRef,
   boundChatId,
   keyHandlerRef,
@@ -219,21 +208,27 @@ export function ComposerSlashMenu({
   onStatusChange,
   query,
 }: {
+  /** Session actions are listed only while they can run. */
+  actionsRunnable: boolean;
   anchorRef: RefObject<HTMLElement | null>;
   boundChatId?: string;
   keyHandlerRef: RefObject<((event: SuggestionKeyEvent) => boolean) | null>;
   listboxId: string;
   onActiveOptionChange: (optionId: string | null) => void;
   onDismiss: () => void;
-  onPick: (command: PickedSlashCommand) => void;
+  onPick: (command: ComposerCommand) => void;
   /** What the list holds, for the field's polite status region. */
   onStatusChange: (status: string) => void;
   query: string;
 }) {
   const load = useSessionCommands(boundChatId);
+  const page = useStore(acpProjectionStoreFor(boundChatId), (state) =>
+    actionsRunnable ? state.page : null,
+  );
   const commands = useMemo(
-    () => (load?.kind === "ready" ? load.list.commands : []),
-    [load],
+    () =>
+      load?.kind === "ready" ? composerCommands(page, load.list.commands) : [],
+    [load, page],
   );
   const items = useMemo(
     () => filterSlashCommands(commands, query).map(suggestion),
@@ -241,8 +236,7 @@ export function ComposerSlashMenu({
   );
   const pick = (item: TextFieldSuggestion) => {
     const command = commands.find((candidate) => candidate.name === item.id);
-    if (command)
-      onPick({ name: command.name, inputHint: command.inputHint ?? null });
+    if (command) onPick(command);
   };
   const navigation = useSuggestionNavigation(items, pick, onDismiss);
   const activeId = navigation.active?.id ?? null;
@@ -256,9 +250,19 @@ export function ComposerSlashMenu({
         !event.ctrlKey &&
         !event.metaKey &&
         !isImeComposing(event);
-      // A fully typed name runs on the first Enter, as in the Claude Code
-      // CLI: the field's own Enter sends it.
-      if (enter && navigation.active?.id === query) return false;
+      // A fully typed harness command runs on the first Enter, as in the
+      // Claude Code CLI: the field's own Enter sends it. The chat's own
+      // commands are picked.
+      const active = commands.find(
+        ({ name }) => name === navigation.active?.id,
+      );
+      if (
+        enter &&
+        active?.name === query &&
+        active.kind === "prompt" &&
+        active.text === undefined
+      )
+        return false;
       // While the list loads, Enter must not send a half-typed name.
       if (enter && loading) {
         event.preventDefault();

@@ -94,7 +94,7 @@ it("keeps a Turn whose stored session action the chat cannot run, without it", (
   expect(compact?.unrecognizedAction).toBeUndefined();
   for (const sessionAction of [
     { kind: "unrecognized" },
-    { kind: "review", target: { kind: "baseBranch", branch: "main" } },
+    { kind: "review", target: { kind: "pullRequest", number: 42 } },
     "compact",
   ]) {
     const kept = safeTurn({ ...turn, sessionAction });

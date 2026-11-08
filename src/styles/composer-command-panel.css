@@ -1,0 +1,63 @@
+/* The review target picker and the status panel opened by `/` commands.
+   Loads with them. */
+.composer-command-panel.menu-popover {
+  display: grid;
+}
+
+.composer-command-panel__form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.composer-command-panel__form fieldset {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.composer-command-panel__form legend {
+  margin-bottom: var(--space-1);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.composer-command-panel__form label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.composer-command-panel__form textarea {
+  padding: var(--space-1) var(--space-2);
+  resize: vertical;
+}
+
+.composer-command-panel__form button {
+  justify-self: end;
+}
+
+.composer-command-panel__status {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.composer-command-panel__status div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.composer-command-panel__status dt,
+.composer-command-panel__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.composer-command-panel__status dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-align: end;
+}

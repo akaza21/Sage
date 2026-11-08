@@ -110,7 +110,7 @@ test("typing / lists, filters and inserts the session's commands from the keyboa
   const field = await openComposer(page);
   await page.keyboard.type("/");
   const listbox = page.getByRole("listbox", { name: "Slash commands" });
-  await expect(listbox.getByRole("option")).toHaveCount(3);
+  await expect(listbox.getByRole("option")).toHaveCount(5);
   await expect(field).toBeFocused();
   await expect(field).toHaveAttribute("aria-controls", /commands$/u);
   const activeOption = async () =>
@@ -171,22 +171,18 @@ test("the open menu follows a new command list from the session", async ({
   await openComposer(page);
   await page.keyboard.type("/");
   const listbox = page.getByRole("listbox", { name: "Slash commands" });
-  await expect(listbox.getByRole("option")).toHaveCount(3);
+  await expect(listbox.getByRole("option")).toHaveCount(5);
   await page.evaluate(() =>
     (
       window as unknown as { __emitCommandsChanged(next: Command[]): void }
     ).__emitCommandsChanged([]),
   );
-  await expect(listbox.getByRole("option")).toHaveCount(0);
-  await expect(
-    page
-      .locator(".composer-slash-menu")
-      .getByText("This harness advertises no slash commands."),
-  ).toBeVisible();
+  // The chat's own commands stay.
+  await expect(listbox.getByRole("option")).toHaveCount(2);
   // The field's own status region announces it too.
   await expect(
     page.locator(".composer__input-area > [role='status']"),
-  ).toHaveText("This harness advertises no slash commands.");
+  ).toHaveText("2 commands");
   await page.evaluate(
     (next) =>
       (
@@ -194,7 +190,9 @@ test("the open menu follows a new command list from the session", async ({
       ).__emitCommandsChanged(next),
     [{ name: "init", description: "Set up the project", inputHint: null }],
   );
+  // The harness's /init takes the name from the chat's own.
   await expect(listbox.getByRole("option")).toHaveText([
     "/initSet up the project",
+    "/statusShow the model, effort, access and usage",
   ]);
 });

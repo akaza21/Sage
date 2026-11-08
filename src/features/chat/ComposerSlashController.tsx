@@ -9,8 +9,12 @@ import {
 import "../../styles/composer-slash.css";
 import { isImeComposing } from "../../ui/imeComposition";
 import type { SuggestionKeyEvent } from "../../ui/textFieldSuggestionNavigation";
+import type { AcpSessionAction } from "../../domain/acp";
 import { ComposerCommandHint } from "./ComposerCommandHint";
 import { ComposerSlashMenu } from "./ComposerSlashMenu";
+import type { ComposerCommand } from "./composerCommands";
+import { lazyParts } from "./lazyParts";
+import type * as PanelChunk from "./ComposerCommandPanel";
 import {
   pendingSlashCommandHint,
   slashCommandName,
@@ -20,20 +24,28 @@ import {
 } from "./composerSlashCommand";
 import { setPickedCommand } from "./slashCommandPicks";
 
+// The review target picker and the status panel load with their command.
+const PanelPart = lazyParts<typeof PanelChunk>(
+  () => import("./ComposerCommandPanel"),
+);
+
 /**
- * Replaces the leading `/token` with `/name ` through the editing commands,
- * so Undo restores what was typed, and leaves the caret after the space.
+ * Replaces the leading `/token` and the whitespace after it through the
+ * editing commands, so Undo restores what was typed, and leaves the caret
+ * after the replacement.
  */
-function insertCommand(field: HTMLTextAreaElement, name: string) {
+function replaceCommandToken(field: HTMLTextAreaElement, replacement: string) {
   const token = slashTokenEnd(field.value);
-  // Keep the whitespace that already follows the name, or add a space.
   const end = token < field.value.length ? token + 1 : token;
-  const replacement = `/${name}${field.value.charAt(token) || " "}`;
   field.focus();
   field.setSelectionRange(0, end);
   const inserted =
     typeof document.execCommand === "function" &&
-    document.execCommand("insertText", false, replacement);
+    document.execCommand(
+      replacement ? "insertText" : "delete",
+      false,
+      replacement,
+    );
   if (!inserted) {
     field.setRangeText(replacement, 0, end, "end");
     field.dispatchEvent(new Event("input", { bubbles: true }));
@@ -64,6 +76,7 @@ function setAttribute(field: HTMLElement, name: string, value: string | null) {
  * and keeps the field's combobox attributes.
  */
 export function ComposerSlashController({
+  onRunSessionAction,
   fieldRef,
   boundChatId,
   disabled,
@@ -72,6 +85,8 @@ export function ComposerSlashController({
   readyRef,
   text,
 }: {
+  /** Present while the chat can run a session action. */
+  onRunSessionAction?: (action: AcpSessionAction) => unknown;
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   boundChatId?: string;
   disabled: boolean;
@@ -93,11 +108,13 @@ export function ComposerSlashController({
   const [activeOptionId, setActiveOptionId] = useState<string | null>(null);
   const [picked, setPicked] = useState<PickedSlashCommand | null>(null);
   const [status, setStatus] = useState("");
-  // Another Chat starts with no pick and no dismissal.
+  const [panel, setPanel] = useState<"review" | "status" | null>(null);
+  // Another Chat starts with no pick, dismissal or panel.
   if (scope !== boundChatId) {
     setScope(boundChatId);
     setDismissed(false);
     setPicked(null);
+    setPanel(null);
   }
   const query = slashCommandQuery(text, caret);
   // Escape closes the menu until the caret leaves the command name.
@@ -109,13 +126,25 @@ export function ComposerSlashController({
   const hintId = `${fieldId}-command-hint`;
   const dismiss = useCallback(() => setDismissed(true), []);
   const pick = useCallback(
-    (command: PickedSlashCommand) => {
-      setPicked(command);
+    (command: ComposerCommand) => {
       const field = fieldRef.current;
-      if (field) insertCommand(field, command.name);
-      else onTextChange(`/${command.name} `);
+      // A harness command keeps the whitespace after its name, or adds a
+      // space; the chat's own prompt replaces the name; the rest clear it.
+      const text =
+        command.kind !== "prompt"
+          ? ""
+          : (command.text ??
+            `/${command.name}${field?.value.charAt(slashTokenEnd(field.value)) || " "}`);
+      if (field) replaceCommandToken(field, text);
+      else onTextChange(text);
+      if (command.kind === "prompt" && command.text === undefined)
+        setPicked({ name: command.name, inputHint: command.inputHint ?? null });
+      else if (command.kind === "action" && command.action === "compact")
+        onRunSessionAction?.({ kind: "compact" });
+      else if (command.kind !== "prompt")
+        setPanel(command.kind === "action" ? "review" : "status");
     },
-    [fieldRef, onTextChange],
+    [fieldRef, onRunSessionAction, onTextChange],
   );
   // The send route reads the pick while the prompt still names it.
   const pickedName =
@@ -204,6 +233,7 @@ export function ComposerSlashController({
       <ComposerCommandHint hint={hint} hintId={hintId} text={text} />
       {open ? (
         <ComposerSlashMenu
+          actionsRunnable={Boolean(onRunSessionAction)}
           anchorRef={anchorRef}
           boundChatId={boundChatId}
           keyHandlerRef={keyHandlerRef}
@@ -213,6 +243,16 @@ export function ComposerSlashController({
           onDismiss={dismiss}
           onPick={pick}
           query={query}
+        />
+      ) : null}
+      {panel ? (
+        <PanelPart
+          part="ComposerCommandPanel"
+          kind={panel}
+          boundChatId={boundChatId}
+          fieldRef={fieldRef}
+          onClose={() => setPanel(null)}
+          onRunSessionAction={onRunSessionAction}
         />
       ) : null}
       {/* Mounted with the usable field, ahead of the menu, so its first

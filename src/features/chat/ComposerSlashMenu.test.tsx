@@ -20,11 +20,15 @@ import type {
   SageChatId,
   SageProjectId,
 } from "../../domain/acp";
-import { agentSessionFixture } from "../../domain/acpProjection.fixture";
+import {
+  agentSessionFixture,
+  capabilitySetFixture,
+} from "../../domain/acpProjection.fixture";
 import type {
   AcpCommandList,
   AcpCommandsChangedV1,
 } from "../../services/acpCommandsDesktop";
+import { useWorkbenchStore } from "../../app/store";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { pickedCommandFor } from "./slashCommandPicks";
 
@@ -89,7 +93,9 @@ const onSubmit = vi.fn((event: { preventDefault: () => void }) =>
   event.preventDefault(),
 );
 
-function Composer() {
+function Composer({
+  onRunSessionAction,
+}: Pick<ComponentProps<typeof ChatComposerRegion>, "onRunSessionAction"> = {}) {
   const [text, setText] = useState("");
   const props = {
     composerRef: { current: null },
@@ -131,6 +137,7 @@ function Composer() {
     onTextChange: setText,
     onRemoveContext: vi.fn(),
     onCancelTurn: null,
+    onRunSessionAction,
   } satisfies ComponentProps<typeof ChatComposerRegion>;
   return <ChatComposerRegion {...props} />;
 }
@@ -202,7 +209,14 @@ describe("composer slash commands", () => {
       sessionId: "session-a",
       runtimeEpoch: "3",
     });
-    expect(names(listbox)).toEqual(["/compact", "/review", "/mcp:docs:search"]);
+    // The chat's own commands follow the harness's.
+    expect(names(listbox)).toEqual([
+      "/compact",
+      "/review",
+      "/mcp:docs:search",
+      "/init",
+      "/status",
+    ]);
     expect(
       within(listbox).getByRole("option", {
         name: "/review, Review a pull request, Input: PR",
@@ -212,11 +226,13 @@ describe("composer slash commands", () => {
     expect(field).toHaveAttribute("aria-expanded", "true");
     expect(field).toHaveAttribute("aria-autocomplete", "list");
     // The status region lives beside the field, not inside the popover.
-    await waitFor(() => expect(status()).toHaveTextContent("3 commands"));
+    await waitFor(() => expect(status()).toHaveTextContent("5 commands"));
 
     type("/s");
     // Prefix matches lead; other name matches follow.
-    await waitFor(() => expect(names(listbox)).toEqual(["/mcp:docs:search"]));
+    await waitFor(() =>
+      expect(names(listbox)).toEqual(["/status", "/mcp:docs:search"]),
+    );
     type("/re");
     await waitFor(() => expect(names(listbox)).toEqual(["/review"]));
     type("/zz");
@@ -251,6 +267,9 @@ describe("composer slash commands", () => {
     fireEvent.keyDown(field, { key: "ArrowDown" });
     expect(active()).toHaveTextContent("/review");
     expect(active()).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(field, { key: "ArrowUp" });
+    fireEvent.keyDown(field, { key: "ArrowUp" });
+    expect(active()).toHaveTextContent("/status");
     fireEvent.keyDown(field, { key: "ArrowUp" });
     fireEvent.keyDown(field, { key: "ArrowUp" });
     expect(active()).toHaveTextContent("/mcp:docs:search");
@@ -414,7 +433,7 @@ describe("composer slash commands", () => {
     announce("session-b");
     expect(native.requests).toHaveLength(1);
     announce();
-    await waitFor(() => expect(names(listbox)).toEqual(["/init"]));
+    await waitFor(() => expect(names(listbox)).toEqual(["/init", "/status"]));
   });
 
   it("keeps the newer list when an update lands during a read", async () => {
@@ -435,7 +454,7 @@ describe("composer slash commands", () => {
     // The first read finishes last with the older list; it is dropped.
     await act(async () => finishFirst({ revision: 1, commands }));
     const listbox = await screen.findByRole("listbox");
-    await waitFor(() => expect(names(listbox)).toEqual(["/init"]));
+    await waitFor(() => expect(names(listbox)).toEqual(["/init", "/status"]));
   });
 
   it("follows a session switch while the menu is open", async () => {
@@ -457,26 +476,19 @@ describe("composer slash commands", () => {
         },
       }),
     );
-    await waitFor(() => expect(names(listbox)).toEqual(["/init"]));
+    await waitFor(() => expect(names(listbox)).toEqual(["/init", "/status"]));
     expect(native.requests.at(-1)).toMatchObject({ sessionId: "session-b" });
   });
 
-  it("tells waiting, none advertised and no session apart", async () => {
+  it("lists the chat's own commands while the harness advertises none", async () => {
     native.lists = [{ revision: 0, commands: [] }];
     render(<Composer />);
-    const field = type("/");
-    expect(
-      await screen.findByText("Waiting for the session's commands…", {
-        selector: TITLE,
-      }),
-    ).toBeInTheDocument();
+    const { field, listbox } = await openMenu();
+    expect(names(listbox)).toEqual(["/init", "/status"]);
     native.lists = [{ revision: 1, commands: [] }];
     announce("session-a", 1);
-    expect(
-      await screen.findByText("This harness advertises no slash commands.", {
-        selector: TITLE,
-      }),
-    ).toBeInTheDocument();
+    await waitFor(() => expect(native.requests).toHaveLength(2));
+    expect(names(listbox)).toEqual(["/init", "/status"]);
     act(() =>
       acpProjectionStoreFor("chat-a").setState({ page: livePage(null) }),
     );
@@ -489,5 +501,230 @@ describe("composer slash commands", () => {
     // as it stands; the send path starts the session and checks the list.
     fireEvent.keyDown(field, { key: "Enter" });
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("composer session commands", () => {
+  const run = vi.fn();
+  function negotiate(page = livePage()) {
+    const session = page.sessions[0]!;
+    acpProjectionStoreFor("chat-a").setState({
+      page: {
+        ...page,
+        sessions: [
+          {
+            ...session,
+            capabilities: capabilitySetFixture({
+              nativeSessionCompact: true,
+              nativeReview: true,
+            }),
+          },
+        ],
+      },
+    });
+  }
+  const { harnesses, repositories } = useWorkbenchStore.getState();
+  beforeEach(() => {
+    run.mockReset();
+    negotiate();
+  });
+  afterEach(() => useWorkbenchStore.setState({ harnesses, repositories }));
+
+  it("lists a negotiated action in place of the harness command of that name", async () => {
+    render(<Composer onRunSessionAction={run} />);
+    const { listbox } = await openMenu();
+    expect(names(listbox)).toEqual([
+      "/review",
+      "/compact",
+      "/mcp:docs:search",
+      "/init",
+      "/status",
+    ]);
+    expect(
+      within(listbox).getByRole("option", {
+        name: /^\/review, Review changes/u,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("lists no action the chat cannot run or the session did not negotiate", async () => {
+    const { rerender } = render(<Composer />);
+    const { listbox } = await openMenu();
+    // The harness's own /compact and /review stay.
+    expect(names(listbox)).toEqual([
+      "/compact",
+      "/review",
+      "/mcp:docs:search",
+      "/init",
+      "/status",
+    ]);
+    act(() => acpProjectionStoreFor("chat-a").setState({ page: livePage() }));
+    rerender(<Composer onRunSessionAction={run} />);
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("listbox")).getByRole("option", {
+          name: /^\/review, Review a pull request/u,
+        }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("runs /compact from a pick or a fully typed name, and clears the field", async () => {
+    render(<Composer onRunSessionAction={run} />);
+    const { field } = await openMenu("/comp");
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(run).toHaveBeenCalledWith({ kind: "compact" });
+    expect(field).toHaveValue("");
+    await openMenu("/compact");
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(field).toHaveValue("");
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(pickedCommandFor("chat-a")).toBeUndefined();
+  });
+
+  it("writes the /init prompt into the field without sending it", async () => {
+    render(<Composer onRunSessionAction={run} />);
+    const { field } = await openMenu("/ini");
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect((field as HTMLTextAreaElement).value).toMatch(
+      /^Create an AGENTS\.md file at the root of this project/u,
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+    expect(pickedCommandFor("chat-a")).toBeUndefined();
+  });
+
+  it("starts a review of each target from the /review picker", async () => {
+    useWorkbenchStore.setState({
+      repositories: {
+        roots: [
+          {
+            rootId: "root",
+            state: "repository",
+            branch: "topic",
+            branches: ["main", "topic", "release"],
+            recentCommits: [{ sha: "abc1234def", subject: "Fix the parser" }],
+            changes: [],
+            truncated: false,
+            elapsedMs: 0,
+            message: null,
+          },
+        ],
+        truncated: false,
+        elapsedMs: 0,
+      },
+    });
+    render(<Composer onRunSessionAction={run} />);
+    const review = async () => {
+      const { field } = await openMenu("/rev");
+      fireEvent.keyDown(field, { key: "Enter" });
+      expect(field).toHaveValue("");
+      return screen.findByRole("dialog", { name: "Review" });
+    };
+    const start = () =>
+      fireEvent.click(screen.getByRole("button", { name: "Start review" }));
+
+    await review();
+    start();
+    expect(run).toHaveBeenLastCalledWith({
+      kind: "review",
+      target: { kind: "uncommittedChanges" },
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    let dialog = await review();
+    fireEvent.click(within(dialog).getByLabelText("Against a base branch"));
+    // The current branch is not offered.
+    const base = within(dialog).getByRole("combobox", { name: "Base branch" });
+    expect(
+      within(base)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["main", "release"]);
+    fireEvent.change(base, { target: { value: "release" } });
+    start();
+    expect(run).toHaveBeenLastCalledWith({
+      kind: "review",
+      target: { kind: "baseBranch", branch: "release" },
+    });
+
+    dialog = await review();
+    fireEvent.click(within(dialog).getByLabelText("A commit"));
+    const sha = within(dialog).getByRole("combobox", { name: "Commit SHA" });
+    fireEvent.change(sha, { target: { value: "not a sha" } });
+    expect(screen.getByRole("button", { name: "Start review" })).toBeDisabled();
+    fireEvent.change(sha, { target: { value: "ABC1234" } });
+    start();
+    expect(run).toHaveBeenLastCalledWith({
+      kind: "review",
+      target: { kind: "commit", sha: "ABC1234", title: "Fix the parser" },
+    });
+
+    dialog = await review();
+    fireEvent.click(within(dialog).getByLabelText("Custom instructions"));
+    const instructions = within(dialog).getByRole("textbox", {
+      name: "Review instructions",
+    });
+    expect(screen.getByRole("button", { name: "Start review" })).toBeDisabled();
+    fireEvent.change(instructions, {
+      target: { value: "  Check the error paths  " },
+    });
+    start();
+    expect(run).toHaveBeenLastCalledWith({
+      kind: "review",
+      target: { kind: "custom", instructions: "Check the error paths" },
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("shows the session's model, effort and access in the /status panel", async () => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          description: "Codex",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          installState: "available",
+          bindingId: "binding-a",
+          accessModes: [
+            {
+              id: "readOnly",
+              label: "Read only",
+              description: "Reads files",
+              fallback: true,
+            },
+          ],
+        },
+      ],
+    });
+    negotiate({
+      ...livePage(),
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "3",
+        configRevision: "1",
+        confirmedModel: { id: "gpt-5.5", name: "GPT-5.5" },
+        confirmedEffort: "high",
+        modes: null,
+        configOptions: [],
+      },
+    });
+    render(<Composer onRunSessionAction={run} />);
+    const { field } = await openMenu("/stat");
+    fireEvent.keyDown(field, { key: "Enter" });
+    const panel = await screen.findByRole("dialog", { name: "Session status" });
+    expect(
+      within(panel)
+        .getAllByRole("term")
+        .map((term) => `${term.textContent}: ${term.nextSibling?.textContent}`),
+    ).toEqual(["Model: GPT-5.5", "Effort: High", "Access: Read only"]);
+    expect(field).toHaveValue("");
+    fireEvent.keyDown(panel, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(field).toHaveFocus();
   });
 });

@@ -33,6 +33,12 @@
         "reason": "Composer `/` controller, command menu, listbox and hint. Loads on the field's first focus, keeping the first-Chat path to a stub. Measured 3529 B JS, 670 B CSS."
       },
       {
+        "entry": "src/features/chat/ComposerCommandPanel.tsx",
+        "maxGzipBytes": 1700,
+        "maxCssGzipBytes": 360,
+        "reason": "The `/review` target picker and the `/status` panel. Load only when their command is picked. Measured 1656 B JS, 326 B CSS."
+      },
+      {
         "entry": "src/workbench/AgentTaskResources.tsx",
         "maxGzipBytes": 879,
         "reason": "Agent header resources panel and inline rename form; prewarmed while idle or on header intent, mounted on first use and unmounted while closed. Measured 824 B; cap 907 B."

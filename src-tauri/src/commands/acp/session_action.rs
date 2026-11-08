@@ -54,8 +54,17 @@ mod tests {
         let mut missing = value.clone();
         missing.as_object_mut().unwrap().remove("runtimeEpoch");
         assert!(serde_json::from_value::<RunSessionActionRequest>(missing).is_err());
-        let mut unknown = value;
-        unknown["action"] = serde_json::json!({"kind":"revert"});
-        assert!(serde_json::from_value::<RunSessionActionRequest>(unknown).is_err());
+        let mut branch = value.clone();
+        branch["action"]["target"] = serde_json::json!({"kind":"baseBranch","branch":"main"});
+        let request: RunSessionActionRequest = serde_json::from_value(branch).unwrap();
+        assert_eq!(request.action.prompt_text(), "/review main");
+        for action in [
+            serde_json::json!({"kind":"revert"}),
+            serde_json::json!({"kind":"review","target":{"kind":"baseBranch","branch":"main","sha":"abc"}}),
+        ] {
+            let mut unknown = value.clone();
+            unknown["action"] = action;
+            assert!(serde_json::from_value::<RunSessionActionRequest>(unknown).is_err());
+        }
     }
 }
