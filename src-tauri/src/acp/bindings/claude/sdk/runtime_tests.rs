@@ -49,6 +49,7 @@ fn runtime() -> ClaudeSdkRuntime {
             SageAgentSessionId::parse("session-claude-sdk").unwrap(),
         ),
         bridge: None,
+        sent: Vec::new(),
         launch: None,
         binding: Arc::new(AdmittedClaudeSdkBinding::for_test()),
         root: None,
@@ -240,4 +241,21 @@ fn a_new_launch_names_its_session_and_a_resume_names_the_stored_one() {
         ),
         ("s-9", true, Some("opus"))
     );
+}
+
+#[test]
+fn a_prompt_claude_code_never_received_frees_the_next_prompt() {
+    let mut runtime = ready();
+    let prompt = |text: &str| AdapterCommand::Prompt {
+        prompt: Prompt::new("prompt", text).unwrap(),
+        client_message_id: RequiredText::new("client", text).unwrap(),
+        access_mode: crate::settings_store::SessionAccessMode::Ask,
+    };
+    let egress = runtime.command(prompt("first")).unwrap();
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::QueueRejected)
+        .unwrap();
+    assert!(runtime.sent.is_empty());
+    let user = send(&mut runtime, prompt("second"));
+    assert_eq!(user["message"]["content"][0]["text"], "second");
 }

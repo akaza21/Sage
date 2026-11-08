@@ -141,6 +141,14 @@ impl AcpService {
             identity.binding_digest_hex,
             identity.harness_version,
         )?;
+        if session.binding_digest != identity.binding_digest_hex {
+            rebind_claude_sdk_session(
+                &self.database,
+                &owner,
+                identity.binding_digest_hex,
+                identity.harness_version,
+            )?;
+        }
         let model = session
             .model_id
             .map(|value| ModelId::new("modelId", value))
@@ -246,6 +254,35 @@ fn load_durable_session(
         .ok_or(CodexSessionError::Intent)
 }
 
+/// Moves a cold Claude Code SDK session to the admitted CLI after an
+/// update; validation admits no other binding whose digest differs.
+fn rebind_claude_sdk_session(
+    database: &crate::persistence::Database,
+    owner: &RuntimeOwner,
+    binding_digest: &str,
+    harness_version: &str,
+) -> Result<(), CodexSessionError> {
+    let updated = database
+        .connection()
+        .execute(
+            "UPDATE agent_sessions SET binding_digest=?4,harness_version=?5
+             WHERE project_id=?1 AND chat_id=?2 AND id=?3 AND binding_id=?6
+               AND state IN ('created','ready') AND residency='cold'",
+            params![
+                owner.project_id.as_str(),
+                owner.chat_id.as_str(),
+                owner.session_id.as_str(),
+                binding_digest,
+                harness_version,
+                crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID,
+            ],
+        )
+        .map_err(|_| CodexSessionError::Intent)?;
+    (updated == 1)
+        .then_some(())
+        .ok_or(CodexSessionError::Intent)
+}
+
 fn validate_session_identity(
     session: &DurableSession,
     binding_id: &str,
@@ -261,6 +298,13 @@ fn validate_session_identity(
     {
         return Err(CodexSessionError::EarlierCodexVersion);
     }
+    // Claude Code keeps its own sessions across updates, and admission
+    // already pins the protocol line, so a resumable chat follows the CLI.
+    if binding_id == crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID
+        && session.binding_id == binding_id
+    {
+        return Ok(());
+    }
     if session.binding_id != binding_id
         || session.binding_digest != binding_digest
         || session.harness_version.as_deref() != Some(harness_version)
@@ -273,6 +317,27 @@ fn validate_session_identity(
 #[cfg(test)]
 mod version_tests {
     use super::*;
+
+    #[test]
+    fn claude_sdk_chats_resume_after_a_claude_code_update() {
+        let session = DurableSession {
+            binding_id: "claude-code-sdk".into(),
+            binding_digest: "digest-of-2.1.319".into(),
+            harness_version: Some("2.1.319".into()),
+            model_id: None,
+            external_session_id: Some("0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90".into()),
+            state: "ready".into(),
+            residency: "cold".into(),
+        };
+        assert!(
+            validate_session_identity(&session, "claude-code-sdk", "digest-of-2.1.320", "2.1.320")
+                .is_ok()
+        );
+        assert!(
+            validate_session_identity(&session, "claude-agent-acp", "digest-of-2.1.320", "2.1.320")
+                .is_err()
+        );
+    }
 
     #[test]
     fn earlier_codex_thread_has_a_distinct_resume_refusal() {

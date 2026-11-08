@@ -27,12 +27,15 @@ use crate::{
 pub(crate) const CLAUDE_SDK_BINDING_ID: &str = "claude-code-sdk";
 /// The Claude Code release whose SDK protocol this binding was characterised on.
 pub(crate) const CLAUDE_CODE_VERSION: &str = "2.1.319";
-/// The oldest release on the same line with every control request Sage sends.
+/// The oldest 2.1 release with every control request Sage sends; a new
+/// minor line may change the protocol, so it waits for its own admission.
 const SUPPORTED_MINIMUM: (u64, u64, u64) = (2, 1, 300);
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:claude-code-sdk:v1:";
 
-/// Fixed SDK-mode arguments; the session arguments follow them.
-const SDK_ARGS: [&str; 10] = [
+/// Fixed SDK-mode arguments; the session arguments follow them. The mode is
+/// forced to `default` so a settings file cannot start Claude Code in a
+/// mode the picker does not show (bypass would skip every approval).
+const SDK_ARGS: [&str; 12] = [
     "--output-format",
     "stream-json",
     "--input-format",
@@ -41,6 +44,8 @@ const SDK_ARGS: [&str; 10] = [
     "--include-partial-messages",
     "--permission-prompt-tool",
     "stdio",
+    "--permission-mode",
+    "default",
     "--setting-sources",
     "user,project,local",
 ];
@@ -133,7 +138,10 @@ fn version_admitted(version: &str) -> bool {
         );
         parts.next().is_none().then_some(version)
     };
-    parse(version).is_some_and(|found| found >= SUPPORTED_MINIMUM && found.0 == SUPPORTED_MINIMUM.0)
+    parse(version).is_some_and(|found| {
+        found >= SUPPORTED_MINIMUM
+            && (found.0, found.1) == (SUPPORTED_MINIMUM.0, SUPPORTED_MINIMUM.1)
+    })
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -363,7 +371,7 @@ mod tests {
         for (version, admitted) in [
             ("2.1.319", true),
             ("2.1.300", true),
-            ("2.2.0", true),
+            ("2.2.0", false),
             ("2.1.299", false),
             ("3.0.0", false),
             ("2.1", false),

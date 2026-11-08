@@ -253,22 +253,33 @@ fn subagent_traffic_and_unserved_control_requests_stay_out_of_the_parent_transcr
 }
 
 #[test]
-fn attachments_and_images_become_message_content() {
+fn attachments_become_text_image_and_document_content() {
     let mut bridge = initialized();
+    let blob = |name: &str, data: &str| {
+        json!({"type":"resource","resource":{
+            "uri": format!("sage-attachment:///a/{name}"), "mimeType":"application/octet-stream", "blob": data,
+        }})
+    };
     let user = bridge.outbound(&json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"prompt":[
         {"type":"text","text":"see"},
-        {"type":"image","mimeType":"image/png","data":"iVBOR"},
-        {"type":"resource","resource":{"uri":"sage-attachment:///a/notes.md","mimeType":"text/plain","text":"# Notes"}}
+        {"type":"resource","resource":{"uri":"sage-attachment:///a/notes.md","mimeType":"text/plain","text":"# Notes"}},
+        blob("shot.png", "iVBORw0KGgoAAAANSUhEUg=="),
+        blob("spec.pdf", "JVBERi0xLjcKJeLjz9MK"),
+        blob("bundle.zip", "UEsDBBQAAAAIAGFiY2RlZg=="),
     ]}})).unwrap();
     let content = &user["message"]["content"];
     assert_eq!(
-        content[1],
-        json!({"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBOR"}})
-    );
-    assert_eq!(
-        content[2]["text"],
+        content[1]["text"],
         "<context ref=\"sage-attachment:///a/notes.md\">\n# Notes\n</context>"
     );
+    assert_eq!(
+        content[2],
+        json!({"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgoAAAANSUhEUg=="}})
+    );
+    assert_eq!(content[3]["type"], "document");
+    assert_eq!(content[3]["source"]["media_type"], "application/pdf");
+    assert_eq!(content[4]["type"], "text");
+    assert!(content[4]["text"].as_str().unwrap().contains("bundle.zip"));
 }
 
 #[test]
@@ -302,5 +313,79 @@ fn a_mode_claude_code_switches_to_itself_reaches_the_picker_once() {
             .unwrap()
             .acp
             .is_empty()
+    );
+}
+
+#[test]
+fn a_withdrawn_or_outlived_approval_frees_its_slot_and_still_answers() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let ask = |bridge: &mut SdkBridge, request: &str| {
+        let asked = bridge.inbound(json!({"type":"control_request","request_id":request,"request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}})).unwrap();
+        asked.acp[0]["id"].clone()
+    };
+    let withdrawn = ask(&mut bridge, "r1");
+    let outlived = ask(&mut bridge, "r2");
+    bridge
+        .inbound(json!({"type":"control_cancel_request","request_id":"r1"}))
+        .unwrap();
+    bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false}))
+        .unwrap();
+    assert!(bridge.permissions.is_empty());
+    for (id, request) in [(withdrawn, "r1"), (outlived, "r2")] {
+        let late = bridge
+            .outbound(&json!({"id":id,"result":{"outcome":{"outcome":"selected","optionId":"allow_once"}}}))
+            .unwrap();
+        assert_eq!(late["response"]["request_id"], request);
+        assert_eq!(late["response"]["response"]["behavior"], "deny");
+    }
+}
+
+#[test]
+fn questions_are_declined_so_claude_asks_in_its_reply() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let asked = bridge.inbound(json!({"type":"control_request","request_id":"q1","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","input":{"questions":[]}}})).unwrap();
+    assert!(asked.acp.is_empty());
+    assert_eq!(asked.replies[0]["response"]["response"]["behavior"], "deny");
+}
+
+#[test]
+fn a_turn_ends_tool_rows_claude_code_never_finished_as_failed() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    bridge
+        .inbound(json!({"type":"assistant","message":{"id":"m","content":[
+            {"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/w/big.png"}}]}}))
+        .unwrap();
+    let ended = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false}))
+        .unwrap();
+    let update = updates(&ended)[0];
+    assert_eq!(
+        (update["toolCallId"].as_str(), update["status"].as_str()),
+        (Some("t1"), Some("failed"))
+    );
+}
+
+#[test]
+fn a_cli_that_starts_outside_the_picker_modes_fails_initialize() {
+    let mut bridge = SdkBridge::new(SESSION.into(), None);
+    let sdk = bridge
+        .outbound(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}))
+        .unwrap();
+    let acp = bridge
+        .inbound(success(
+            &sdk,
+            json!({"current_permission_mode":"bypassPermissions"}),
+        ))
+        .unwrap()
+        .acp;
+    assert!(
+        acp[0]["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("permission mode")
     );
 }

@@ -52,8 +52,9 @@ pub(super) struct SessionSettings {
 
 impl SessionSettings {
     /// Reads the `initialize` reply. The launch model, when Sage chose one,
-    /// is the current model; otherwise Claude Code's default.
-    pub(super) fn from_initialize(reply: &Value, launch_model: Option<&str>) -> Self {
+    /// is the current model; otherwise Claude Code's default. A starting
+    /// mode outside the picker is refused rather than shown as another.
+    pub(super) fn from_initialize(reply: &Value, launch_model: Option<&str>) -> Option<Self> {
         let models = reply
             .get("models")
             .and_then(Value::as_array)
@@ -62,15 +63,13 @@ impl SessionSettings {
         let mode = reply
             .get("current_permission_mode")
             .and_then(Value::as_str)
-            .filter(|mode| MODES.iter().any(|(id, ..)| id == mode))
-            .unwrap_or(DEFAULT)
-            .to_owned();
-        Self {
+            .unwrap_or(DEFAULT);
+        MODES.iter().any(|(id, ..)| *id == mode).then(|| Self {
             models,
-            mode,
+            mode: mode.to_owned(),
             model: launch_model.unwrap_or(DEFAULT).to_owned(),
             effort: DEFAULT.to_owned(),
-        }
+        })
     }
 
     pub(super) fn has_mode(&self, mode: &str) -> bool {
@@ -193,6 +192,7 @@ mod tests {
             }),
             None,
         )
+        .unwrap()
     }
 
     #[test]
@@ -224,14 +224,13 @@ mod tests {
     }
 
     #[test]
-    fn unknown_starting_modes_fall_back_to_manual() {
-        let settings = SessionSettings::from_initialize(
-            &json!({"current_permission_mode":"bypassPermissions"}),
-            Some("opus"),
-        );
+    fn a_starting_mode_outside_the_picker_is_refused() {
+        let reply = |mode: &str| json!({"current_permission_mode": mode});
+        assert!(SessionSettings::from_initialize(&reply("bypassPermissions"), None).is_none());
+        let settings = SessionSettings::from_initialize(&reply("plan"), Some("opus")).unwrap();
         assert_eq!(
             (settings.mode.as_str(), settings.model.as_str()),
-            ("default", "opus")
+            ("plan", "opus")
         );
     }
 }

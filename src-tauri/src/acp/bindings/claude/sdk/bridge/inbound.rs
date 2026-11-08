@@ -2,9 +2,8 @@
 
 use serde_json::{Value, json};
 
-use super::outbound::{ALLOW_ALWAYS, ALLOW_ONCE, REJECT};
 use super::{
-    BridgeError, Inbound, MAX_STREAMED_MESSAGES, MAX_TRACKED_TOOLS, Pending, Permission, SdkBridge,
+    BridgeError, Inbound, MAX_TRACKED_TOOLS, Pending, RECENT_STREAMED_MESSAGES, SdkBridge,
     acp_error, acp_result,
 };
 use crate::acp::bindings::claude::sdk::{
@@ -16,6 +15,9 @@ use crate::acp::bindings::claude::sdk::{
 /// refusal Claude's ACP surface also uses.
 const INTERNAL_ERROR: i64 = -32603;
 const AUTH_REQUIRED: i64 = -32000;
+/// Sage launches in `default`; any other starting mode would make the
+/// mode picker misstate whether approvals are asked for.
+const UNKNOWN_MODE: &str = "Claude Code started in a permission mode Sage cannot show";
 
 impl SdkBridge {
     pub(in crate::acp::bindings::claude::sdk) fn inbound(
@@ -27,6 +29,10 @@ impl SdkBridge {
         match sdk.get("type").and_then(Value::as_str) {
             Some("control_response") => self.control_response(&sdk["response"], &mut inbound)?,
             Some("control_request") => self.control_request(&sdk, &mut inbound)?,
+            Some("control_cancel_request") => {
+                let request_id = sdk.get("request_id").and_then(Value::as_str);
+                self.withdraw(request_id.ok_or(BridgeError::Frame)?);
+            }
             // Subagent traffic is projected in a later stage; the parent's
             // `Task` tool row carries the subagent's outcome.
             Some(_) if nested => {}
@@ -64,10 +70,14 @@ impl SdkBridge {
         let reply = response.get("response").unwrap_or(&Value::Null);
         match pending {
             Pending::Initialize(id) => {
-                self.settings = Some(SessionSettings::from_initialize(
-                    reply,
-                    self.launch_model.as_deref(),
-                ));
+                self.settings =
+                    SessionSettings::from_initialize(reply, self.launch_model.as_deref());
+                if self.settings.is_none() {
+                    inbound
+                        .acp
+                        .push(acp_error(id, INTERNAL_ERROR, UNKNOWN_MODE));
+                    return Ok(());
+                }
                 self.commands = commands(reply);
                 inbound.acp.push(acp_result(
                     id,
@@ -141,50 +151,7 @@ impl SdkBridge {
             }));
             return Ok(());
         }
-        let name = request
-            .get("tool_name")
-            .and_then(Value::as_str)
-            .ok_or(BridgeError::Frame)?;
-        let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
-        let suggestions = request
-            .get("permission_suggestions")
-            .filter(|value| value.as_array().is_some_and(|rules| !rules.is_empty()))
-            .cloned();
-        let mut tool_call = tool_fields(name, &input);
-        let tool_call_id = request
-            .get("tool_use_id")
-            .and_then(Value::as_str)
-            .map_or_else(|| format!("permission-{request_id}"), str::to_owned);
-        tool_call.insert("toolCallId".into(), tool_call_id.into());
-        tool_call.insert("status".into(), "pending".into());
-        if let Some(title) = request.get("title").and_then(Value::as_str) {
-            tool_call.insert("title".into(), title.into());
-        }
-        let mut options =
-            vec![json!({"optionId": ALLOW_ONCE, "name": "Yes", "kind": "allow_once"})];
-        if suggestions.is_some() {
-            options.push(json!({"optionId": ALLOW_ALWAYS, "name": "Yes, and don't ask again", "kind": "allow_always"}));
-        }
-        options.push(json!({"optionId": REJECT, "name": "No", "kind": "reject_once"}));
-        if self.permissions.len() >= super::MAX_PENDING {
-            return Err(BridgeError::Capacity);
-        }
-        self.next_permission += 1;
-        self.permissions.insert(
-            self.next_permission,
-            Permission {
-                request_id: request_id.to_owned(),
-                input,
-                suggestions,
-            },
-        );
-        inbound.acp.push(json!({
-            "jsonrpc": "2.0",
-            "id": self.next_permission,
-            "method": "session/request_permission",
-            "params": {"sessionId": self.session_id, "toolCall": tool_call, "options": options},
-        }));
-        Ok(())
+        self.can_use_tool(request_id, request, inbound)
     }
 
     /// Claude Code changes its own mode too, for example when an approval
@@ -205,10 +172,11 @@ impl SdkBridge {
     fn stream_event(&mut self, event: &Value, inbound: &mut Inbound) {
         match event.get("type").and_then(Value::as_str) {
             Some("message_start") => {
-                if let Some(id) = event.pointer("/message/id").and_then(Value::as_str)
-                    && self.streamed.len() < MAX_STREAMED_MESSAGES
-                {
-                    self.streamed.insert(id.to_owned());
+                if let Some(id) = event.pointer("/message/id").and_then(Value::as_str) {
+                    if self.streamed.len() >= RECENT_STREAMED_MESSAGES {
+                        self.streamed.pop_front();
+                    }
+                    self.streamed.push_back(id.to_owned());
                 }
             }
             Some("content_block_delta") => {
@@ -239,7 +207,7 @@ impl SdkBridge {
         let streamed = message
             .get("id")
             .and_then(Value::as_str)
-            .is_some_and(|id| self.streamed.contains(id));
+            .is_some_and(|id| self.streamed.iter().any(|streamed| streamed == id));
         for block in message
             .get("content")
             .and_then(Value::as_array)
@@ -318,10 +286,19 @@ impl SdkBridge {
     }
 
     /// `result` completes the running prompt, with the context meter first.
+    /// Tool rows Claude Code never reported on end as failed, and open
+    /// approvals are settled.
     fn result(&mut self, sdk: &Value, inbound: &mut Inbound) {
         let Some(id) = self.prompt.take() else {
             return;
         };
+        for (tool, name) in std::mem::take(&mut self.tools) {
+            inbound.acp.push(self.update(json!({
+                "sessionUpdate": "tool_call_update", "toolCallId": tool, "status": "failed",
+                "_meta": {"claudeCode": {"toolName": name}},
+            })));
+        }
+        self.settle_open();
         let usage = &sdk["usage"];
         let count = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
         let (input, output) = (count("input_tokens"), count("output_tokens"));
@@ -357,7 +334,6 @@ impl SdkBridge {
         });
         self.interrupted = false;
         self.auth_failed = false;
-        self.tools.clear();
         self.streamed.clear();
     }
 }

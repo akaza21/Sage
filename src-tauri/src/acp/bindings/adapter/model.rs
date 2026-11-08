@@ -152,6 +152,11 @@ pub(crate) trait HarnessAdapter {
     fn accept_oversized_response(&mut self, _id: u64) -> Result<(), AdapterRuntimeError> {
         Err(AdapterRuntimeError::Frame)
     }
+    /// Whether an oversized frame without a request id (such as a large
+    /// tool result) is skipped rather than failing the session.
+    fn skips_oversize_frames(&self) -> bool {
+        false
+    }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         None
     }

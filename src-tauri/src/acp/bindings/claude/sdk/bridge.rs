@@ -10,7 +10,7 @@
 //! permission id stands for which `can_use_tool` request, and the running
 //! prompt that a `result` completes.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, VecDeque};
 
 use serde_json::{Value, json};
 
@@ -18,11 +18,14 @@ use super::config::SessionSettings;
 
 mod inbound;
 mod outbound;
+mod permission;
 
 /// Bounds on per-turn bookkeeping; the inner session caps pending requests.
 const MAX_PENDING: usize = 32;
 const MAX_TRACKED_TOOLS: usize = 1_024;
-const MAX_STREAMED_MESSAGES: usize = 256;
+/// A message's final frames follow its stream directly, so only the most
+/// recent streamed ids are ever looked up.
+const RECENT_STREAMED_MESSAGES: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(super) enum BridgeError {
@@ -77,9 +80,18 @@ pub(super) struct SdkBridge {
     interrupted: bool,
     auth_failed: bool,
     permissions: BTreeMap<u64, Permission>,
+    /// Withdrawn or outlived requests: wire id to Claude Code request id.
+    settled: BTreeMap<u64, String>,
     next_permission: u64,
     tools: BTreeMap<String, String>,
-    streamed: BTreeSet<String>,
+    streamed: VecDeque<String>,
+}
+
+/// What a written SDK frame changed, so an undelivered one can be undone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Sent {
+    Prompt,
+    Control(String),
 }
 
 impl SdkBridge {
@@ -97,9 +109,10 @@ impl SdkBridge {
             interrupted: false,
             auth_failed: false,
             permissions: BTreeMap::new(),
+            settled: BTreeMap::new(),
             next_permission: 0,
             tools: BTreeMap::new(),
-            streamed: BTreeSet::new(),
+            streamed: VecDeque::new(),
         }
     }
 
@@ -111,6 +124,29 @@ impl SdkBridge {
         let request_id = format!("sage-{}", self.next_request);
         self.pending.insert(request_id.clone(), pending);
         Ok(json!({"type": "control_request", "request_id": request_id, "request": request}))
+    }
+
+    /// The state a written frame changed, if Claude Code never receiving it
+    /// would leave the bridge waiting.
+    pub(super) fn sent(sdk: &Value) -> Option<Sent> {
+        match sdk.get("type").and_then(Value::as_str)? {
+            "user" => Some(Sent::Prompt),
+            "control_request" => Some(Sent::Control(sdk.get("request_id")?.as_str()?.to_owned())),
+            _ => None,
+        }
+    }
+
+    /// Claude Code never received a frame: forget what it started.
+    pub(super) fn undo(&mut self, sent: &Sent) {
+        match sent {
+            Sent::Prompt => {
+                self.prompt = None;
+                self.interrupted = false;
+            }
+            Sent::Control(request_id) => {
+                self.pending.remove(request_id);
+            }
+        }
     }
 
     fn update(&self, update: Value) -> Value {

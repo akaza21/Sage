@@ -5,11 +5,6 @@ use serde_json::{Value, json};
 use super::{BridgeError, Pending, SdkBridge};
 use crate::acp::bindings::claude::sdk::config::{EFFORT_ID, MODE_ID, MODEL_ID, SessionSettings};
 
-pub(in crate::acp::bindings::claude::sdk) const ALLOW_ONCE: &str = "allow_once";
-pub(in crate::acp::bindings::claude::sdk) const ALLOW_ALWAYS: &str = "allow_always";
-pub(in crate::acp::bindings::claude::sdk) const REJECT: &str = "reject";
-const DECLINED: &str = "The user declined this tool use.";
-
 impl SdkBridge {
     /// The SDK frame for one ACP frame the session wants to send. Every ACP
     /// frame maps to exactly one SDK frame, so delivery outcomes stay exact.
@@ -86,39 +81,6 @@ impl SdkBridge {
         self.control(request, pending)
     }
 
-    /// A decision on a `can_use_tool` request. Allow keeps the tool's input;
-    /// allow-always also adds Claude Code's suggested permission rules.
-    fn permission_reply(
-        &mut self,
-        id: &Value,
-        result: Option<&Value>,
-    ) -> Result<Value, BridgeError> {
-        let wire = id.as_u64().ok_or(BridgeError::Unsupported)?;
-        let permission = self
-            .permissions
-            .remove(&wire)
-            .ok_or(BridgeError::Unsupported)?;
-        let outcome = result
-            .and_then(|result| result.get("outcome"))
-            .ok_or(BridgeError::Unsupported)?;
-        let selected = (outcome.get("outcome").and_then(Value::as_str) == Some("selected"))
-            .then(|| outcome.get("optionId").and_then(Value::as_str))
-            .flatten();
-        let response = match selected {
-            Some(ALLOW_ONCE) => json!({"behavior": "allow", "updatedInput": permission.input}),
-            Some(ALLOW_ALWAYS) => json!({
-                "behavior": "allow",
-                "updatedInput": permission.input,
-                "updatedPermissions": permission.suggestions.unwrap_or_else(|| json!([])),
-            }),
-            _ => json!({"behavior": "deny", "message": DECLINED}),
-        };
-        Ok(json!({
-            "type": "control_response",
-            "response": {"subtype": "success", "request_id": permission.request_id, "response": response},
-        }))
-    }
-
     fn require(&self, check: impl FnOnce(&SessionSettings) -> bool) -> Result<(), BridgeError> {
         self.settings
             .as_ref()
@@ -135,7 +97,10 @@ fn text(value: Option<&Value>) -> Result<&str, BridgeError> {
 }
 
 /// ACP prompt blocks as Messages API content: text and images pass through;
-/// an attached text file becomes a text block that names its source.
+/// an attached text file becomes a text block that names its source. Sage
+/// attaches other files as opaque blobs, so their type is read from their
+/// leading bytes: images and PDFs go as such, anything else is named but
+/// not sent, since Claude Code accepts no other binary content.
 fn prompt_content(blocks: Option<&Value>) -> Result<Vec<Value>, BridgeError> {
     blocks
         .and_then(Value::as_array)
@@ -143,26 +108,49 @@ fn prompt_content(blocks: Option<&Value>) -> Result<Vec<Value>, BridgeError> {
         .iter()
         .map(|block| match block.get("type").and_then(Value::as_str) {
             Some("text") => Ok(json!({"type": "text", "text": text(block.get("text"))?})),
-            Some("image") => Ok(json!({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": text(block.get("mimeType"))?,
-                    "data": text(block.get("data"))?,
-                },
-            })),
+            Some("image") => Ok(base64_block(
+                "image",
+                text(block.get("mimeType"))?,
+                text(block.get("data"))?,
+            )),
             Some("resource") => {
                 let resource = block.get("resource").ok_or(BridgeError::Unsupported)?;
-                Ok(json!({
-                    "type": "text",
-                    "text": format!(
-                        "<context ref=\"{}\">\n{}\n</context>",
-                        text(resource.get("uri"))?,
-                        text(resource.get("text"))?,
-                    ),
-                }))
+                let uri = text(resource.get("uri"))?;
+                let Some(blob) = resource.get("blob") else {
+                    let body = text(resource.get("text"))?;
+                    let context = format!("<context ref=\"{uri}\">\n{body}\n</context>");
+                    return Ok(json!({"type": "text", "text": context}));
+                };
+                let blob = text(Some(blob))?;
+                Ok(match sniff(blob) {
+                    Some("application/pdf") => base64_block("document", "application/pdf", blob),
+                    Some(media_type) => base64_block("image", media_type, blob),
+                    None => json!({"type": "text", "text": format!(
+                        "<context ref=\"{uri}\">\n(Binary file not shown: only images and PDFs can be sent to Claude Code.)\n</context>"
+                    )}),
+                })
             }
             _ => Err(BridgeError::Unsupported),
         })
         .collect()
+}
+
+/// The media type of a base64 file Claude accepts, from its leading bytes.
+fn sniff(blob: &str) -> Option<&'static str> {
+    use base64::Engine;
+    let head = base64::engine::general_purpose::STANDARD
+        .decode(blob.get(..16)?)
+        .ok()?;
+    match head.as_slice() {
+        [0x89, b'P', b'N', b'G', ..] => Some("image/png"),
+        [0xFF, 0xD8, 0xFF, ..] => Some("image/jpeg"),
+        [b'G', b'I', b'F', b'8', ..] => Some("image/gif"),
+        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P'] => Some("image/webp"),
+        [b'%', b'P', b'D', b'F', ..] => Some("application/pdf"),
+        _ => None,
+    }
+}
+
+fn base64_block(kind: &str, media_type: &str, data: &str) -> Value {
+    json!({"type": kind, "source": {"type": "base64", "media_type": media_type, "data": data}})
 }

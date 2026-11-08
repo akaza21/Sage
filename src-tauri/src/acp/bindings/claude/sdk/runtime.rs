@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use super::{
     admission::{AdmittedClaudeSdkBinding, SessionLaunch},
-    bridge::SdkBridge,
+    bridge::{SdkBridge, Sent},
 };
 use crate::acp::{
     bindings::{
@@ -50,6 +50,7 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
                 session_id,
             ),
             bridge: None,
+            sent: Vec::new(),
             launch: None,
             binding: self.binding,
             root: Some(self.root),
@@ -61,6 +62,8 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
 struct ClaudeSdkRuntime {
     session: ClaudeRuntime,
     bridge: Option<SdkBridge>,
+    /// Written frames whose delivery is still open, with what they started.
+    sent: Vec<(EgressToken, Sent)>,
     launch: Option<SessionLaunch>,
     binding: Arc<AdmittedClaudeSdkBinding>,
     root: Option<crate::project_registry::ProjectRootAuthority>,
@@ -73,16 +76,37 @@ impl ClaudeSdkRuntime {
     }
 
     /// Rewrites one ACP egress as its SDK frame, keeping its delivery token.
+    /// A frame Claude Code has no equivalent for is refused as never
+    /// queued, so the session rolls back what the egress began.
     fn outbound(&mut self, egress: AdapterEgress) -> Result<AdapterEgress, AdapterRuntimeError> {
-        let acp: Value = serde_json::from_slice(egress.frame().payload())
-            .map_err(|_| AdapterRuntimeError::Frame)?;
-        let sdk = self
-            .bridge()?
-            .outbound(&acp)
-            .map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
-        Ok(AdapterEgress::new(sdk_frame(&sdk)?, egress.into_token()))
+        let sdk = serde_json::from_slice::<Value>(egress.frame().payload())
+            .map_err(|_| AdapterRuntimeError::Frame)
+            .and_then(|acp| {
+                self.bridge()?
+                    .outbound(&acp)
+                    .map_err(|_| AdapterRuntimeError::UnsupportedCommand)
+            });
+        let token = egress.into_token();
+        let sdk = match sdk {
+            Ok(sdk) => sdk,
+            Err(error) => {
+                self.session
+                    .resolve_egress(token, EgressResolution::QueueRejected)?;
+                return Err(error);
+            }
+        };
+        if let Some(sent) = SdkBridge::sent(&sdk)
+            && self.sent.len() < MAX_OPEN_DELIVERIES
+        {
+            self.sent.push((token.clone(), sent));
+        }
+        Ok(AdapterEgress::new(sdk_frame(&sdk)?, token))
     }
 }
+
+/// Deliveries the pump settles before more egress; beyond this, undelivered
+/// frames are not undone (the pump fails the session on such writes anyway).
+const MAX_OPEN_DELIVERIES: usize = 64;
 
 fn sdk_frame(value: &Value) -> Result<OutboundFrame, AdapterRuntimeError> {
     let bytes = serde_json::to_vec(value).map_err(|_| AdapterRuntimeError::Frame)?;
@@ -141,6 +165,11 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.session.capabilities()
+    }
+    /// A large tool result or file write is dropped rather than ending the
+    /// session; its tool row ends as failed when the turn completes.
+    fn skips_oversize_frames(&self) -> bool {
+        true
     }
 
     /// The launch already names the session and its model, so the session
@@ -216,11 +245,25 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         self.session.commit_mandatory_egress(token)
     }
 
+    /// A frame Claude Code never received undoes what it started in the
+    /// bridge too, so the next prompt or setting is not refused as busy.
     fn resolve_egress(
         &mut self,
         token: EgressToken,
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
+        if !matches!(resolution, EgressResolution::Queued)
+            && let Some(index) = self.sent.iter().position(|(sent, _)| *sent == token)
+        {
+            let (_, sent) = self.sent.swap_remove(index);
+            if matches!(
+                resolution,
+                EgressResolution::QueueRejected | EgressResolution::WriteZeroBytes
+            ) && let Some(bridge) = self.bridge.as_mut()
+            {
+                bridge.undo(&sent);
+            }
+        }
         self.session.resolve_egress(token, resolution)
     }
 }
