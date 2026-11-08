@@ -5,31 +5,50 @@ import {
   ChevronDown,
   ChevronRight,
   Replace,
-  ReplaceAll,
 } from "../../ui/leanIcons";
 
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import {
-  type WorkspaceSearchGateway,
-  type WorkspaceSearchLimitReason,
-  type WorkspaceSearchMatch,
-  type WorkspaceSearchNavigationRequest,
-  searchResultFileName,
+  keymapBinding,
+  matchesPlatformChord,
+} from "../../domain/keymapRegistry";
+import { usesMetaModifier } from "../../ui/shortcutLabel";
+
+import type {
+  WorkspaceSearchGateway,
+  WorkspaceSearchLimitReason,
+  WorkspaceSearchMatch,
+  WorkspaceSearchNavigationRequest,
 } from "./workspaceSearchDomain";
+import { searchResultFileName } from "./searchResultFileName";
 import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
 import { workspaceSearchDesktop } from "./workspaceSearchDesktop";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
 import { WorkspaceSearchCommandBar } from "./WorkspaceSearchCommandBar";
 import { FileKindIcon } from "../files/FileKindIcon";
 import type { WorkspaceReplaceGateway } from "./workspaceReplace";
-import { useWorkspaceReplace } from "./useWorkspaceReplace";
-import {
-  WorkspaceReplaceConfirm,
-  WorkspaceReplaceStatus,
-} from "./WorkspaceReplaceStatus";
+import type * as ReplaceParts from "./WorkspaceReplaceParts";
+import type { ReplaceState } from "./WorkspaceReplaceParts";
 import { highlightPreview } from "./workspaceSearchHighlight";
-import "./workspace-replace.css";
+
+// Replace loads when the user opens it, or earlier when they reach for its
+// toggle or the window is idle, so Search alone carries none of it.
+let replaceParts: typeof ReplaceParts | undefined;
+const loadReplace = () =>
+  import("./WorkspaceReplaceParts").then((parts) => (replaceParts = parts));
+const preloadReplace = () => void loadReplace().catch(() => undefined);
+
+function preloadReplaceWhenIdle() {
+  if (typeof window.requestIdleCallback === "function") {
+    const handle = window.requestIdleCallback(preloadReplace, {
+      timeout: 2000,
+    });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const timer = setTimeout(preloadReplace, 2000);
+  return () => clearTimeout(timer);
+}
 
 interface WorkspaceSearchViewProps {
   projectId: string | null;
@@ -79,15 +98,17 @@ export function WorkspaceSearchView({
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const replace = useWorkspaceReplace({
-    gateway: replaceGateway,
-    search: state,
-    onReplaced: () => void refresh(),
-  });
-  const groupClass = replace.open
-    ? "workspace-search__file-group workspace-replace__file-group"
-    : "workspace-search__file-group";
-  const matchClass = replace.open ? "workspace-replace__match" : undefined;
+  const [parts, setParts] = useState(replaceParts);
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  // Kept here, not in the Replace chunk, so a closed Replace keeps its text.
+  const [replaceState, setReplaceState] = useState<ReplaceState>();
+  useEffect(preloadReplaceWhenIdle, []);
+
+  function toggleReplace(open = !replaceOpen) {
+    setReplaceOpen(open);
+    if (open && !parts)
+      loadReplace().then(setParts, () => setReplaceOpen(false));
+  }
 
   function openMatch(match: WorkspaceSearchMatch) {
     const response = state.response;
@@ -137,9 +158,36 @@ export function WorkspaceSearchView({
   }, [matches]);
   const allCollapsed =
     groups.length > 0 && groups.every(([key]) => collapsedPaths.has(key));
+  const replace =
+    replaceOpen && parts
+      ? {
+          state: replaceState,
+          setState: setReplaceState,
+          search: state,
+          gateway: replaceGateway,
+          onReplaced: () => void refresh(),
+          files: groups.map(([, fileMatches]) => fileMatches[0].resource),
+          projectId,
+        }
+      : undefined;
 
   return (
-    <div className="workspace-search">
+    <div
+      className="workspace-search"
+      onKeyDown={(event) => {
+        if (
+          projectId &&
+          matchesPlatformChord(
+            keymapBinding("replace"),
+            event,
+            usesMetaModifier(),
+          )
+        ) {
+          event.preventDefault();
+          toggleReplace(true);
+        }
+      }}
+    >
       <div className="sidebar__heading">
         <span>Search</span>
         <span className="sidebar__heading-actions">
@@ -147,9 +195,11 @@ export function WorkspaceSearchView({
             type="button"
             aria-label="Toggle Replace"
             title="Toggle Replace"
-            aria-pressed={replace.open}
+            aria-pressed={replaceOpen}
             disabled={!projectId}
-            onClick={() => replace.setOpen((open) => !open)}
+            onClick={() => toggleReplace()}
+            onPointerEnter={preloadReplace}
+            onFocus={preloadReplace}
           >
             <Replace size={14} aria-hidden="true" />
           </button>
@@ -191,24 +241,7 @@ export function WorkspaceSearchView({
         onCaseSensitiveChange={setCaseSensitive}
         onWholeWordChange={setWholeWord}
         onUseRegexChange={setUseRegex}
-        replace={
-          replace.open
-            ? {
-                replacement: replace.replacement,
-                preserveCase: replace.preserveCase,
-                canReplaceAll:
-                  state.phase === "results" &&
-                  groups.length > 0 &&
-                  replace.idle,
-                onReplacementChange: replace.setReplacement,
-                onPreserveCaseChange: replace.setPreserveCase,
-                onReplaceAll: () =>
-                  void replace.start(
-                    groups.map(([, fileMatches]) => fileMatches[0].resource),
-                  ),
-              }
-            : undefined
-        }
+        replaceRow={replace && parts && <parts.ReplaceRow context={replace} />}
         onIncludePatternTextChange={setIncludePatternText}
         onExcludePatternTextChange={setExcludePatternText}
         onSearch={() => void submit()}
@@ -216,7 +249,12 @@ export function WorkspaceSearchView({
       />
 
       <div className="workspace-search__body" aria-live="polite">
-        <WorkspaceReplaceStatus replace={replace} />
+        {replace && parts && (
+          <parts.ReplaceStatus
+            context={replace}
+            rootName={(rootId) => rootNames.get(rootId) ?? "Root"}
+          />
+        )}
         {!projectId ? (
           <p className="workspace-search__empty">
             Open a Project to search its files.
@@ -266,7 +304,14 @@ export function WorkspaceSearchView({
                 No matches found for "{state.response.query}".
               </p>
             ) : (
-              <div className="workspace-search__results" role="list">
+              <div
+                className={
+                  replace
+                    ? "workspace-search__results workspace-replace"
+                    : "workspace-search__results"
+                }
+                role="list"
+              >
                 {groups.map(([key, fileMatches]) => {
                   const first = fileMatches[0];
                   const collapsed = collapsedPaths.has(key);
@@ -282,7 +327,7 @@ export function WorkspaceSearchView({
                   const rootName =
                     rootNames.get(first.resource.rootId) ?? "Root";
                   return (
-                    <section className={groupClass} key={key}>
+                    <section className="workspace-search__file-group" key={key}>
                       <button
                         className="workspace-search__file-heading"
                         type="button"
@@ -316,24 +361,17 @@ export function WorkspaceSearchView({
                           {fileMatches.length}
                         </span>
                       </button>
-                      {replace.open ? (
-                        <button
-                          className="workspace-replace__action"
-                          type="button"
-                          aria-label={`Replace all in ${relativePath}`}
-                          title="Replace all in this file"
-                          disabled={!replace.idle}
-                          onClick={() => void replace.start([first.resource])}
-                        >
-                          <ReplaceAll size={14} aria-hidden="true" />
-                        </button>
-                      ) : null}
+                      {replace && parts && (
+                        <parts.ReplaceFileAction
+                          context={replace}
+                          resource={first.resource}
+                        />
+                      )}
                       {!collapsed
                         ? fileMatches.map((match, index) => (
                             <div
                               key={`${match.lineNumber}:${match.columnNumber}:${index}`}
                               role="listitem"
-                              className={matchClass}
                             >
                               <button
                                 className="workspace-search__result"
@@ -364,23 +402,12 @@ export function WorkspaceSearchView({
                                   {match.lineNumber}:{match.columnNumber}
                                 </span>
                               </button>
-                              {replace.open ? (
-                                <button
-                                  className="workspace-replace__action"
-                                  type="button"
-                                  aria-label={`Replace the match at line ${match.lineNumber}, column ${match.columnNumber} in ${match.resource.relativePath}`}
-                                  title="Replace this match"
-                                  disabled={!replace.idle}
-                                  onClick={() =>
-                                    void replace.start([match.resource], {
-                                      lineNumber: match.lineNumber,
-                                      columnNumber: match.columnNumber,
-                                    })
-                                  }
-                                >
-                                  <Replace size={14} aria-hidden="true" />
-                                </button>
-                              ) : null}
+                              {replace && parts && (
+                                <parts.ReplaceMatchAction
+                                  context={replace}
+                                  match={match}
+                                />
+                              )}
                             </div>
                           ))
                         : null}
@@ -392,10 +419,6 @@ export function WorkspaceSearchView({
           </>
         ) : null}
       </div>
-      <WorkspaceReplaceConfirm
-        replace={replace}
-        rootName={(rootId) => rootNames.get(rootId) ?? "Root"}
-      />
     </div>
   );
 }

@@ -364,9 +364,14 @@
       },
       {
         "entry": "src/features/search/SearchSurface.tsx",
-        "maxGzipBytes": 7795,
+        "maxGzipBytes": 6271,
+        "reason": "Editor Search tool and bounded result list; loads only when Search is selected."
+      },
+      {
+        "entry": "src/features/search/WorkspaceReplaceParts.tsx",
+        "maxGzipBytes": 3523,
         "maxCssGzipBytes": 820,
-        "reason": "Editor Search tool, bounded result list and Replace field; loads only when Search is selected. Replace planning and its preview load on the first Replace."
+        "reason": "Workspace Replace: field, row actions, preview and planning; loads when the user opens Replace or reaches for its toggle, never with Search alone."
       },
       {
         "entry": "src/features/settings/openEditorSettings.ts",

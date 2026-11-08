@@ -159,6 +159,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/files/MixedEolFileView.tsx",
   // New File hands focus to the editor through this, off the startup path.
   "src/features/files/editorFocusRequest.ts",
+  // Workspace Replace reaches an open File's editor through this.
+  "src/features/files/editorTextReplace.ts",
   // The editing features (EP-03) load with the first editable File.
   "src/features/files/editorEditing.ts",
   // Git marks (EP-13) load only while on and a repository is open.
@@ -176,6 +178,10 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/quickOpen/QuickOpen.tsx",
   "src/features/quickOpen/QuickOpenHost.tsx",
   "src/features/search/SearchSurface.tsx",
+  // Replace loads when opened, or while idle; the Search checks load with
+  // the Search panel, after it shows.
+  "src/features/search/WorkspaceReplaceParts.tsx",
+  "src/features/search/workspaceSearchDomain.ts",
   "src/features/settings/AgentBrowserSettings.tsx",
   // The Harnesses page loads on its first open.
   "src/features/settings/AgentHarnessSettings.tsx",

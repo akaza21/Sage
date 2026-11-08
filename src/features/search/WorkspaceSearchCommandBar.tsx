@@ -4,11 +4,10 @@ import {
   ChevronDown,
   ChevronRight,
   Regex,
-  ReplaceAll,
   X,
 } from "../../ui/leanIcons";
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 
 interface WorkspaceSearchCommandBarProps {
   projectId: string | null;
@@ -23,16 +22,8 @@ interface WorkspaceSearchCommandBarProps {
   onCaseSensitiveChange: (value: boolean) => void;
   onWholeWordChange: (value: boolean) => void;
   onUseRegexChange: (value: boolean) => void;
-  /** The Replace row, shown once the user asks for Replace. */
-  replace?: {
-    replacement: string;
-    preserveCase: boolean;
-    /** Replace all is off until there are results to replace. */
-    canReplaceAll: boolean;
-    onReplacementChange: (value: string) => void;
-    onPreserveCaseChange: (value: boolean) => void;
-    onReplaceAll: () => void;
-  };
+  /** The Replace row, shown once the user opens Replace. */
+  replaceRow?: ReactNode;
   onIncludePatternTextChange: (value: string) => void;
   onExcludePatternTextChange: (value: string) => void;
   onSearch: () => void;
@@ -52,7 +43,7 @@ export function WorkspaceSearchCommandBar({
   onCaseSensitiveChange,
   onWholeWordChange,
   onUseRegexChange,
-  replace,
+  replaceRow,
   onIncludePatternTextChange,
   onExcludePatternTextChange,
   onSearch,
@@ -147,47 +138,7 @@ export function WorkspaceSearchCommandBar({
           </span>
         </div>
       </div>
-      {replace ? (
-        <div className="workspace-search__query-row">
-          <span aria-hidden="true" />
-          <div className="workspace-search__input">
-            <input
-              type="text"
-              aria-label="Replace text"
-              maxLength={2048}
-              placeholder={useRegex ? "Replace ($1 for a group)" : "Replace"}
-              value={replace.replacement}
-              disabled={!projectId}
-              onChange={(event) =>
-                replace.onReplacementChange(event.target.value)
-              }
-            />
-            <span className="workspace-search__query-actions">
-              <button
-                type="button"
-                aria-label="Preserve case"
-                title="Preserve case"
-                aria-pressed={replace.preserveCase}
-                disabled={!projectId}
-                onClick={() =>
-                  replace.onPreserveCaseChange(!replace.preserveCase)
-                }
-              >
-                <span aria-hidden="true">AB</span>
-              </button>
-              <button
-                type="button"
-                aria-label="Replace all"
-                title="Replace all"
-                disabled={!projectId || searching || !replace.canReplaceAll}
-                onClick={replace.onReplaceAll}
-              >
-                <ReplaceAll size={16} aria-hidden="true" />
-              </button>
-            </span>
-          </div>
-        </div>
-      ) : null}
+      {replaceRow}
       {detailsOpen ? (
         <div className="workspace-search__filters">
           <label>

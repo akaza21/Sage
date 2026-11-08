@@ -24,11 +24,11 @@ interface ContinuationToken {
   o: number;
 }
 
-function safeCounter(value: unknown, minimum = 0): value is number {
+export function safeCounter(value: unknown, minimum = 0): value is number {
   return Number.isSafeInteger(value) && (value as number) >= minimum;
 }
 
-function relativePath(value: unknown): value is string {
+export function relativePath(value: unknown): value is string {
   return (
     typeof value === "string" &&
     value.length > 0 &&

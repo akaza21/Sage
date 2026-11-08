@@ -15,7 +15,7 @@ import type {
   WorkspaceSearchGateway,
   WorkspaceSearchResponse,
 } from "./workspaceSearchDomain";
-import { parseWorkspaceSearchResponse } from "./workspaceSearchDomain";
+import { loadWorkspaceSearchChecks } from "./workspaceSearchDesktop";
 import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
 
 export type WorkspaceSearchPhase = "idle" | "searching" | "results" | "error";
@@ -228,199 +228,138 @@ export function useWorkspaceSearch({
     setState((current) => ({ ...current, ...clearedResults }));
   }, []);
 
-  const submit = useCallback(async () => {
-    const query = state.query.trim();
-    if (!projectId) {
-      setState((current) => ({
-        ...current,
-        phase: "error",
-        response: null,
-        error: "Open a Project before searching.",
-      }));
-      return;
-    }
-    if (!query) {
-      setState((current) => ({
-        ...current,
-        phase: "error",
-        response: null,
-        error: "Enter text to search for.",
-      }));
-      return;
-    }
-
-    active.current?.abort();
-    const controller = new AbortController();
-    active.current = controller;
-    const requestGeneration = generation.current + 1;
-    generation.current = requestGeneration;
-    setState((current) => ({
-      ...current,
-      phase: "searching",
-      query,
-      response: null,
-      error: null,
-    }));
-
-    try {
-      const response = await gateway.search(
-        {
-          projectId,
-          expectedTransitionEpoch: transitionEpoch,
-          indexGeneration,
-          continuationToken: null,
-          query,
-          caseSensitive: state.caseSensitive,
-          wholeWord: state.wholeWord,
-          ...(state.useRegex ? { useRegex: true } : {}),
-          ...searchFilters(state.includePatternText, state.excludePatternText),
-          ...searchSettingFields(useIgnoreFiles, filesExclude),
-        },
-        controller.signal,
-      );
-      if (
-        controller.signal.aborted ||
-        generation.current !== requestGeneration
-      ) {
+  /** Runs Search afresh, or for its next page when `more`. */
+  const runSearch = useCallback(
+    async (more: boolean) => {
+      const query = state.query.trim();
+      const token = more ? state.pages.at(-1)?.continuationToken : null;
+      if (more) {
+        if (
+          !projectId ||
+          !query ||
+          !token ||
+          state.pages.length >= WORKSPACE_SEARCH_LIMITS.continuationPages
+        ) {
+          return;
+        }
+      } else if (!projectId || !query) {
+        setState((current) => ({
+          ...current,
+          phase: "error",
+          response: null,
+          error: projectId
+            ? "Enter text to search for."
+            : "Open a Project before searching.",
+        }));
         return;
       }
-      const validated = parseWorkspaceSearchResponse(response);
-      if (
-        validated.projectId !== projectId ||
-        validated.transitionEpoch !== transitionEpoch ||
-        validated.indexGeneration !== indexGeneration ||
-        validated.query !== query
-      ) {
-        throw new Error("invalid workspace Search response");
-      }
-      active.current = null;
+
+      active.current?.abort();
+      const controller = new AbortController();
+      active.current = controller;
+      const requestGeneration = generation.current + 1;
+      generation.current = requestGeneration;
+      // A fresh Search drops the shown results; a next page keeps them.
+      const fresh = more ? {} : { query, response: null };
       setState((current) => ({
         ...current,
-        phase: "results",
-        response: validated,
-        pages: [validated],
+        ...fresh,
+        phase: "searching",
         error: null,
       }));
-    } catch (error: unknown) {
-      if (
-        controller.signal.aborted ||
-        generation.current !== requestGeneration
-      ) {
-        return;
-      }
-      active.current = null;
-      setState((current) => ({
-        ...current,
-        phase: "error",
-        response: null,
-        error: errorMessage(error),
-      }));
-    }
-  }, [
-    gateway,
-    indexGeneration,
-    projectId,
-    state.caseSensitive,
-    state.wholeWord,
-    state.useRegex,
-    state.includePatternText,
-    state.excludePatternText,
-    useIgnoreFiles,
-    filesExclude,
-    state.query,
-    transitionEpoch,
-  ]);
 
-  const continueSearch = useCallback(async () => {
-    const lastPage = state.pages.at(-1);
-    const query = state.query.trim();
-    if (
-      !projectId ||
-      !query ||
-      !lastPage?.continuationToken ||
-      state.pages.length >= WORKSPACE_SEARCH_LIMITS.continuationPages
-    ) {
-      return;
-    }
+      // Usually loaded already: the panel preloads the checks on mount.
+      const checksLoad = loadWorkspaceSearchChecks();
+      // A failed load surfaces where it is awaited, not as an unhandled one.
+      void checksLoad.catch(() => undefined);
+      try {
+        const response = await gateway.search(
+          {
+            projectId,
+            expectedTransitionEpoch: transitionEpoch,
+            indexGeneration,
+            continuationToken: token ?? null,
+            query,
+            caseSensitive: state.caseSensitive,
+            wholeWord: state.wholeWord,
+            ...(state.useRegex ? { useRegex: true } : {}),
+            ...searchFilters(
+              state.includePatternText,
+              state.excludePatternText,
+            ),
+            ...searchSettingFields(useIgnoreFiles, filesExclude),
+          },
+          controller.signal,
+        );
+        const checks = await checksLoad;
+        if (
+          controller.signal.aborted ||
+          generation.current !== requestGeneration
+        ) {
+          return;
+        }
+        const validated = checks.parseWorkspaceSearchResponse(response);
+        if (
+          validated.projectId !== projectId ||
+          validated.transitionEpoch !== transitionEpoch ||
+          validated.indexGeneration !== indexGeneration ||
+          validated.query !== query
+        ) {
+          throw new Error("invalid workspace Search response");
+        }
+        active.current = null;
+        setState((current) => ({
+          ...current,
+          phase: "results",
+          response: validated,
+          pages: more
+            ? [...current.pages, validated].slice(
+                0,
+                WORKSPACE_SEARCH_LIMITS.continuationPages,
+              )
+            : [validated],
+          error: null,
+        }));
+      } catch (error: unknown) {
+        if (
+          controller.signal.aborted ||
+          generation.current !== requestGeneration
+        ) {
+          return;
+        }
+        active.current = null;
+        setState((current) => ({
+          ...current,
+          ...fresh,
+          phase: "error",
+          error: errorMessage(error),
+        }));
+      }
+    },
+    [
+      gateway,
+      indexGeneration,
+      projectId,
+      state.caseSensitive,
+      state.wholeWord,
+      state.useRegex,
+      state.includePatternText,
+      state.excludePatternText,
+      useIgnoreFiles,
+      filesExclude,
+      state.pages,
+      state.query,
+      transitionEpoch,
+    ],
+  );
+  const submit = useCallback(() => runSearch(false), [runSearch]);
+  const continueSearch = useCallback(() => runSearch(true), [runSearch]);
 
-    active.current?.abort();
-    const controller = new AbortController();
-    active.current = controller;
-    const requestGeneration = generation.current + 1;
-    generation.current = requestGeneration;
-    setState((current) => ({ ...current, phase: "searching", error: null }));
-
-    try {
-      const response = await gateway.search(
-        {
-          projectId,
-          expectedTransitionEpoch: transitionEpoch,
-          indexGeneration,
-          continuationToken: lastPage.continuationToken,
-          query,
-          caseSensitive: state.caseSensitive,
-          wholeWord: state.wholeWord,
-          ...(state.useRegex ? { useRegex: true } : {}),
-          ...searchFilters(state.includePatternText, state.excludePatternText),
-          ...searchSettingFields(useIgnoreFiles, filesExclude),
-        },
-        controller.signal,
-      );
-      if (
-        controller.signal.aborted ||
-        generation.current !== requestGeneration
-      ) {
-        return;
-      }
-      const validated = parseWorkspaceSearchResponse(response);
-      if (
-        validated.projectId !== projectId ||
-        validated.transitionEpoch !== transitionEpoch ||
-        validated.indexGeneration !== indexGeneration ||
-        validated.query !== query
-      ) {
-        throw new Error("invalid workspace Search response");
-      }
-      active.current = null;
-      setState((current) => ({
-        ...current,
-        phase: "results",
-        response: validated,
-        pages: [...current.pages, validated].slice(
-          0,
-          WORKSPACE_SEARCH_LIMITS.continuationPages,
-        ),
-        error: null,
-      }));
-    } catch (error: unknown) {
-      if (
-        controller.signal.aborted ||
-        generation.current !== requestGeneration
-      ) {
-        return;
-      }
-      active.current = null;
-      setState((current) => ({
-        ...current,
-        phase: "error",
-        error: errorMessage(error),
-      }));
-    }
-  }, [
-    gateway,
-    indexGeneration,
-    projectId,
-    state.caseSensitive,
-    state.wholeWord,
-    state.useRegex,
-    state.includePatternText,
-    state.excludePatternText,
-    useIgnoreFiles,
-    filesExclude,
-    state.pages,
-    state.query,
-    transitionEpoch,
-  ]);
+  // The checks load with the panel, in their own chunk, so the first Search
+  // never waits on them.
+  useEffect(() => {
+    loadWorkspaceSearchChecks().catch(() => undefined);
+  }, []);
 
   const submitRef = useRef(submit);
   submitRef.current = submit;

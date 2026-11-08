@@ -1,11 +1,16 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { pathGlobMatcher } from "../../domain/pathGlobMatcher";
 import { resetWorkspaceNotifyComposeForTests } from "../files/workspaceNotifyCompose";
 
 import type { WorkspaceSearchResponse } from "./workspaceSearchDomain";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
+import { loadWorkspaceSearchChecks } from "./workspaceSearchDesktop";
+
+// The panel preloads the Search checks on mount; load them once up front so
+// each Search settles within one act().
+beforeAll(() => loadWorkspaceSearchChecks());
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

@@ -161,14 +161,36 @@ async function searchAndOpenReplace(
   await screen.findByRole("button", {
     name: "Open src/alpha.ts at line 1, column 7",
   });
+  expect(screen.queryByLabelText("Replace text")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Toggle Replace" }));
-  fireEvent.change(screen.getByLabelText("Replace text"), {
+  // Replace loads on demand, so its row shows once its chunk is in.
+  fireEvent.change(await screen.findByLabelText("Replace text"), {
     target: { value: "newName" },
   });
   return search;
 }
 
 describe("Workspace Replace", () => {
+  it("opens from Ctrl+H and keeps its text while closed", async () => {
+    await searchAndOpenReplace(replaceGateway());
+    const toggle = screen.getByRole("button", { name: "Toggle Replace" });
+    expect(screen.getByLabelText("Replace text")).toHaveFocus();
+    fireEvent.click(toggle);
+    expect(screen.queryByLabelText("Replace text")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Replace all in src/alpha.ts" }),
+    ).toBeNull();
+    fireEvent.keyDown(screen.getByLabelText("Search text"), {
+      key: "h",
+      ctrlKey: true,
+    });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Replace text")).toHaveValue("newName");
+    expect(
+      screen.getByRole("button", { name: "Replace all in src/alpha.ts" }),
+    ).toBeVisible();
+  });
+
   it("sends the regex mode with the Search and keeps it in the Replace", async () => {
     const replace = replaceGateway();
     const search = await searchAndOpenReplace(
