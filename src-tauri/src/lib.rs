@@ -100,6 +100,8 @@ mod state;
 #[cfg(test)]
 mod test_diagnostics;
 #[cfg(test)]
+mod test_git;
+#[cfg(test)]
 mod test_paths;
 #[cfg(test)]
 mod test_wait;

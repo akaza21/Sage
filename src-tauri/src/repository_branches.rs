@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn lists_local_heads_from_a_live_repository() {
-        use std::{fs, process::Command};
+        use std::fs;
         use uuid::Uuid;
 
         use crate::workspace::Workspace;
@@ -252,7 +252,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("sage-git-branches-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         assert!(
-            Command::new("git")
+            crate::test_git::command()
                 .arg("-C")
                 .arg(&root)
                 .args(["init", "-q"])
@@ -266,7 +266,7 @@ mod tests {
             ("core.autocrlf", "false"),
         ] {
             assert!(
-                Command::new("git")
+                crate::test_git::command()
                     .arg("-C")
                     .arg(&root)
                     .args(["config", key, value])
@@ -277,7 +277,7 @@ mod tests {
         }
         fs::write(root.join("readme.txt"), "first\n").unwrap();
         assert!(
-            Command::new("git")
+            crate::test_git::command()
                 .arg("-C")
                 .arg(&root)
                 .args(["add", "readme.txt"])
@@ -286,7 +286,7 @@ mod tests {
                 .success()
         );
         assert!(
-            Command::new("git")
+            crate::test_git::command()
                 .arg("-C")
                 .arg(&root)
                 .args(["commit", "-q", "-m", "fixture"])
@@ -295,7 +295,7 @@ mod tests {
                 .success()
         );
         assert!(
-            Command::new("git")
+            crate::test_git::command()
                 .arg("-C")
                 .arg(&root)
                 .args(["branch", "-m", "main"])
@@ -304,7 +304,7 @@ mod tests {
                 .success()
         );
         assert!(
-            Command::new("git")
+            crate::test_git::command()
                 .arg("-C")
                 .arg(&root)
                 .args(["checkout", "-q", "-b", "topic"])

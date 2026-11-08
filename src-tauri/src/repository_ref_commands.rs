@@ -344,7 +344,7 @@ fn prefix_relative(repository: &str, inner: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, path::Path, process::Command};
+    use std::{fs, path::Path};
 
     use uuid::Uuid;
 
@@ -352,7 +352,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            Command::new("git")
+            crate::test_git::command()
                 .arg("-C")
                 .arg(root)
                 .args(args)

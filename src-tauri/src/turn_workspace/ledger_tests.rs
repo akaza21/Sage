@@ -33,7 +33,7 @@ fn root() -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!("sage-ledger-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(root.join("repo")).unwrap();
     assert!(
-        std::process::Command::new("git")
+        crate::test_git::command()
             .args(["init", "-q"])
             .current_dir(root.join("repo"))
             .status()

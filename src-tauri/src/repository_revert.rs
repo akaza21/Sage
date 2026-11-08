@@ -72,7 +72,7 @@ pub(crate) async fn continue_revert_with_policy(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path, process::Command};
+    use std::{fs, path::Path};
 
     use uuid::Uuid;
 
@@ -82,7 +82,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            Command::new("git")
+            crate::test_git::command()
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -121,7 +121,7 @@ mod tests {
         git(&root, &["commit", "-q", "-m", "to-revert"]);
         fs::write(root.join("conflict.txt"), "ours\n").unwrap();
         git(&root, &["commit", "-q", "-am", "later"]);
-        let revert = Command::new("git")
+        let revert = crate::test_git::command()
             .arg("-C")
             .arg(&root)
             .args(["revert", "--no-edit", "HEAD~1"])

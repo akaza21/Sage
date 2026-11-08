@@ -62,7 +62,7 @@ fn inherited_stdio_keeps_mutation_admission_after_proxy_exit() {
         let root =
             std::env::temp_dir().join(format!("sage-git-descendant-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&root).unwrap();
-        let init = std::process::Command::new("git")
+        let init = crate::test_git::command()
             .args(["init", "-q"])
             .current_dir(&root)
             .output()
@@ -149,7 +149,7 @@ fn a_killed_proxy_takes_its_parked_backend_with_it_on_windows() {
         let root =
             std::env::temp_dir().join(format!("sage-git-descendant-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&root).unwrap();
-        let init = std::process::Command::new("git")
+        let init = crate::test_git::command()
             .args(["init", "-q"])
             .current_dir(&root)
             .output()

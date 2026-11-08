@@ -4,7 +4,7 @@ use super::super::{GitProcessPolicy, repository_config, run};
 use super::MAX_PARALLEL_JOBS;
 
 fn git(root: &Path, args: &[&str]) {
-    let status = Command::new("git")
+    let status = crate::test_git::command()
         .arg("-C")
         .arg(root)
         .args([

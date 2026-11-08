@@ -51,7 +51,7 @@ fn mark(entries: &[(&str, &str, Option<u64>, u64)]) -> WorkspaceMark {
 
 fn git_in(root: &std::path::Path, args: &[&str]) {
     assert!(
-        std::process::Command::new("git")
+        crate::test_git::command()
             .args(["-c", "user.name=Test", "-c", "user.email=fixture"])
             .args(args)
             .current_dir(root)
@@ -384,7 +384,7 @@ fn a_shell_edit_in_a_real_repository_is_a_turn_change() {
     let root = temp_root();
     let git = |args: &[&str]| {
         assert!(
-            std::process::Command::new("git")
+            crate::test_git::command()
                 .args(args)
                 .current_dir(&root)
                 .status()
@@ -421,7 +421,7 @@ fn capture_skips_dependencies_and_ignored_directories_and_fails_closed_at_the_wa
     let _capture_guard = crate::turn_workspace::capture_test_lock();
     let root = temp_root();
     assert!(
-        std::process::Command::new("git")
+        crate::test_git::command()
             .args(["init", "-q"])
             .current_dir(&root)
             .status()
@@ -479,7 +479,7 @@ fn deleting_a_tracked_directory_preserves_its_deletions_and_unrelated_edits() {
     let root = temp_root();
     let git = |args: &[&str]| {
         assert!(
-            std::process::Command::new("git")
+            crate::test_git::command()
                 .args(args)
                 .current_dir(&root)
                 .status()

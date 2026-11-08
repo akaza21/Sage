@@ -143,7 +143,7 @@ mod tests {
     }
 
     fn fixture_repository() -> (std::path::PathBuf, Workspace) {
-        use std::{fs, process::Command};
+        use std::fs;
         use uuid::Uuid;
 
         let root = std::env::temp_dir().join(format!("sage-git-create-branch-{}", Uuid::new_v4()));
@@ -155,7 +155,7 @@ mod tests {
             vec!["config", "core.autocrlf", "false"],
         ] {
             assert!(
-                Command::new("git")
+                crate::test_git::command()
                     .arg("-C")
                     .arg(&root)
                     .args(&args)
@@ -166,7 +166,7 @@ mod tests {
         }
         fs::write(root.join("readme.txt"), "first\n").unwrap();
         assert!(
-            Command::new("git")
+            crate::test_git::command()
                 .arg("-C")
                 .arg(&root)
                 .args(["add", "readme.txt"])
@@ -175,7 +175,7 @@ mod tests {
                 .success()
         );
         assert!(
-            Command::new("git")
+            crate::test_git::command()
                 .arg("-C")
                 .arg(&root)
                 .args(["commit", "-q", "-m", "fixture"])
@@ -184,7 +184,7 @@ mod tests {
                 .success()
         );
         assert!(
-            Command::new("git")
+            crate::test_git::command()
                 .arg("-C")
                 .arg(&root)
                 .args(["branch", "-m", "main"])
@@ -193,7 +193,7 @@ mod tests {
                 .success()
         );
         assert!(
-            Command::new("git")
+            crate::test_git::command()
                 .arg("-C")
                 .arg(&root)
                 .args(["switch", "-q", "-c", "topic"])
