@@ -154,6 +154,15 @@ test("typing / lists, filters and inserts the session's commands from the keyboa
   await expect(listbox).toHaveCount(0);
   await expect(field).toHaveValue("/co");
   await expect(field).toBeFocused();
+
+  // A pick is an ordinary edit: Undo brings back what was typed.
+  await field.fill("");
+  await page.keyboard.type("/rev");
+  await expect(listbox.getByRole("option")).toHaveCount(1);
+  await page.keyboard.press("Tab");
+  await expect(field).toHaveValue("/review ");
+  await page.keyboard.press("Control+z");
+  await expect(field).toHaveValue("/rev");
 });
 
 test("the open menu follows a new command list from the session", async ({
@@ -170,8 +179,14 @@ test("the open menu follows a new command list from the session", async ({
   );
   await expect(listbox.getByRole("option")).toHaveCount(0);
   await expect(
-    page.getByText("This harness advertises no slash commands."),
+    page
+      .locator(".composer-slash-menu")
+      .getByText("This harness advertises no slash commands."),
   ).toBeVisible();
+  // The field's own status region announces it too.
+  await expect(
+    page.locator(".composer__input-area > [role='status']"),
+  ).toHaveText("This harness advertises no slash commands.");
   await page.evaluate(
     (next) =>
       (

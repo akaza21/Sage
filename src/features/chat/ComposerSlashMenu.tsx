@@ -185,6 +185,13 @@ function menuState(
       title: "Commands are unavailable.",
       detail: load.message,
     };
+  // Revision 0: the session has not sent its first list yet.
+  if (load.list.revision === 0)
+    return {
+      kind: "loading",
+      title: "Waiting for the session's commands…",
+      detail: "The harness has not advertised any yet.",
+    };
   if (load.list.commands.length === 0)
     return {
       kind: "empty",
@@ -203,6 +210,7 @@ export function ComposerSlashMenu({
   onActiveOptionChange,
   onDismiss,
   onPick,
+  onStatusChange,
   query,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
@@ -212,6 +220,8 @@ export function ComposerSlashMenu({
   onActiveOptionChange: (optionId: string | null) => void;
   onDismiss: () => void;
   onPick: (command: PickedSlashCommand) => void;
+  /** What the list holds, for the field's polite status region. */
+  onStatusChange: (status: string) => void;
   query: string;
 }) {
   const load = useSessionCommands(boundChatId);
@@ -230,8 +240,26 @@ export function ComposerSlashMenu({
   };
   const navigation = useSuggestionNavigation(items, pick, onDismiss);
   const activeId = navigation.active?.id ?? null;
+  const loading = load?.kind === "loading";
   useLayoutEffect(() => {
-    keyHandlerRef.current = navigation.onKeyDown;
+    keyHandlerRef.current = (event) => {
+      const enter =
+        event.key === "Enter" &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.nativeEvent.isComposing;
+      // A fully typed name runs on the first Enter, as in the Claude Code
+      // CLI: the field's own Enter sends it.
+      if (enter && navigation.active?.id === query) return false;
+      // While the list loads, Enter must not send a half-typed name.
+      if (enter && loading) {
+        event.preventDefault();
+        return true;
+      }
+      return navigation.onKeyDown(event);
+    };
   });
   useLayoutEffect(
     () => () => {
@@ -249,6 +277,11 @@ export function ComposerSlashMenu({
     [onActiveOptionChange],
   );
   const state = menuState(load, query, items.length);
+  const status =
+    state.kind === "ready"
+      ? `${items.length} ${items.length === 1 ? "command" : "commands"}`
+      : state.title;
+  useEffect(() => onStatusChange(status), [onStatusChange, status]);
   return (
     <TextFieldSuggestions
       anchorRef={anchorRef}
@@ -261,11 +294,6 @@ export function ComposerSlashMenu({
       onDismiss={onDismiss}
       onPick={pick}
       state={state}
-      status={
-        state.kind === "ready"
-          ? `${items.length} ${items.length === 1 ? "command" : "commands"}`
-          : ""
-      }
     />
   );
 }

@@ -1,4 +1,4 @@
-import type { FormEventHandler, ReactNode, RefObject } from "react";
+import type { FormEvent, ReactNode, RefObject } from "react";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type { AcpGoalState } from "../../domain/acpGoal";
 import type {
@@ -64,7 +64,11 @@ export interface ChatComposerRegionProps {
   project: { name: string } | null | undefined;
   usage: ChatUsage | null;
   goal: AcpGoalState;
-  onSubmit: FormEventHandler<HTMLFormElement>;
+  /** pickedCommand: the `/name` the user picked from the command menu. */
+  onSubmit: (
+    event: FormEvent<HTMLFormElement>,
+    options?: { pickedCommand?: string },
+  ) => void;
   onTextChange: (text: string) => void;
   onRemoveContext: (context: AttachedContext) => void;
   imageInputAvailable?: boolean;

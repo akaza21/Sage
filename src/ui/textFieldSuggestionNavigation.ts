@@ -15,7 +15,7 @@ export interface TextFieldSuggestion {
 
 export type TextFieldSuggestionsState =
   | { kind: "ready" }
-  | { kind: "loading"; title: string }
+  | { kind: "loading"; title: string; detail?: string }
   | { kind: "error"; title: string; detail?: string }
   | { kind: "empty"; title: string; detail?: string };
 

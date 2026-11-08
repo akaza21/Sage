@@ -207,11 +207,15 @@ impl CommandChannel {
                 return;
             };
             if !Arc::ptr_eq(&current.state, &list) {
+                // Another list counts its revisions afresh (OpenCode can hand
+                // over a new empty state), so its first revision is news.
                 current.state.close();
                 current.state = list;
+                current.announced = 0;
             }
             match current.state.revision() {
-                Some(revision) if revision != current.announced => {
+                // Revision 0 is the empty list before any advertisement.
+                Some(revision) if revision != 0 && revision != current.announced => {
                     current.announced = revision;
                     revision
                 }

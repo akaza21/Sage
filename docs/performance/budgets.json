@@ -28,9 +28,9 @@
       },
       {
         "entry": "src/features/chat/ComposerSlashMenu.tsx",
-        "maxGzipBytes": 3100,
+        "maxGzipBytes": 2600,
         "maxCssGzipBytes": 560,
-        "reason": "Composer `/` command menu: native command list, change listener and reusable suggestion listbox. Loads with the first `/`. Measured 2885 B JS, 507 B CSS."
+        "reason": "Composer `/` command menu: native command list, change listener and reusable suggestion listbox. Loads with the first `/`. Measured 2376 B JS, 507 B CSS."
       },
       {
         "entry": "src/workbench/AgentTaskResources.tsx",

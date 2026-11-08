@@ -78,6 +78,10 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   // The `/` command menu loads with the first `/` typed.
   "src/features/chat/ComposerSlashMenu.tsx",
 ];
+const COMMAND_DYNAMIC_FACADES = [
+  // The typed command route loads with the first `/name` sent.
+  "src/features/chat/slashCommandTurn.ts",
+];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/chat/acp/ChatMarkdown.tsx",
   "src/features/files/FileMarkdownPreview.tsx",
@@ -102,6 +106,7 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
 const REQUIRED_DYNAMIC_FACADES = [
   ...REQUEST_ONLY_DYNAMIC_FACADES,
   ...COMPOSER_MENU_DYNAMIC_FACADES,
+  ...COMMAND_DYNAMIC_FACADES,
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",

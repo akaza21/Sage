@@ -122,6 +122,7 @@ export function ChatComposerRegion({
   const inputAreaRef = useRef<HTMLDivElement>(null);
   const slash = useComposerSlashCommands({
     anchorRef: inputAreaRef,
+    fieldRef: composerRef,
     boundChatId: commandChatId,
     disabled: hidden || composerDisabled,
     fieldId,
@@ -146,7 +147,7 @@ export function ChatComposerRegion({
             return;
           }
           dictation.cancel();
-          onSubmit(event);
+          onSubmit(event, { pickedCommand: slash.pickedCommandFor(text) });
           composerRef.current?.focus();
         }}
       >
@@ -248,13 +249,18 @@ export function ChatComposerRegion({
                 sessionPromptUnavailable,
               )}
               disabled={composerDisabled}
-              onChange={(event) => onTextChange(event.target.value)}
+              onChange={(event) => {
+                slash.trackCaret(event);
+                onTextChange(event.target.value);
+              }}
               onFocus={slash.onFocus}
               onBlur={() => {
                 dictation.cancel();
                 slash.onBlur();
               }}
               onKeyDown={(event) => {
+                // An IME composition owns its keys, Enter included.
+                if (event.nativeEvent.isComposing) return;
                 if (slash.onKeyDown(event)) return;
                 if (event.key === "Escape" && dictation.listening) {
                   event.preventDefault();
@@ -276,6 +282,13 @@ export function ChatComposerRegion({
               text={text}
             />
             {slash.menu}
+            {/* Mounted with the usable field, ahead of the menu, so its
+                first announcement is not lost. */}
+            {composerDisabled || hidden ? null : (
+              <span className="sr-only" role="status" aria-live="polite">
+                {slash.status}
+              </span>
+            )}
           </div>
           {disabledReason ? (
             <p className="composer__disabled-reason" id={disabledReasonId}>

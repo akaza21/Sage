@@ -20,6 +20,7 @@ import { currentSession } from "./acpTurnState";
 import { createActionProjectionCommit, sameScope } from "./acpActionProjection";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
+import type { SlashCommandPort } from "../slashCommandTurn";
 
 export { cancellableTurnId } from "./acpTurnState";
 
@@ -59,6 +60,8 @@ export interface AcpActionCommands {
 
 interface AcpActionDependencies {
   commands?: AcpActionCommands;
+  /** The typed slash-command route; loaded on demand when omitted. */
+  slashCommands?: SlashCommandPort;
   getContext: () => AcpActionContext | null;
   onUnscopedRefusal?: (message: string) => void;
   settleAccessMode?: () => Promise<boolean>;
@@ -218,6 +221,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     attachedContext: readonly AttachedContext[],
     bindingId: CuratedBindingId,
     modelId: CuratedModelId | null,
+    options: { pickedCommand?: string } = {},
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();
@@ -345,13 +349,33 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
             ? { attachedContext: boundedContext }
             : {}),
         };
+        // `/name …` may be an advertised command; its route loads on demand.
+        const runCommand = !normalizedPrompt.startsWith("/")
+          ? null
+          : await (
+              await import("../slashCommandTurn")
+            ).slashCommandTurn({
+              prompt: normalizedPrompt,
+              pickedCommand: options.pickedCommand,
+              hasAttachments: boundedContext.length > 0,
+              intent: {
+                ...captured.scope,
+                projectGeneration: captured.commandProjectGeneration,
+                expectedProjectionRevision: page.projectionRevision,
+                clientIntentId: nextIntentId(),
+                sessionId: session.id,
+                runtimeEpoch: session.runtimeEpoch,
+              },
+              nextIntentId,
+              port: dependencies.slashCommands,
+            });
         dependencies.clearComposer?.(
           captured,
           normalizedPrompt,
           boundedContext,
         );
         promptCallStarted = true;
-        const sent = await commands.sendTurn(request);
+        const sent = await (runCommand?.() ?? commands.sendTurn(request));
         return apply(captured, sent) ? "applied" : "ignoredStale";
       } catch (value) {
         const error = typedError(value);

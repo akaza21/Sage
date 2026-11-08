@@ -182,3 +182,34 @@ fn channel_announces_each_new_revision_once_for_the_exact_owner() {
     assert_eq!(wire["runtimeEpoch"], "1");
     assert_eq!(wire["revision"], 1);
 }
+
+#[test]
+fn channel_announces_a_swapped_list_from_its_own_revisions() {
+    let channel = CommandChannel::default();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink_seen = Arc::clone(&seen);
+    channel.set_sink(Arc::new(move |notice: CommandsChangedV1| {
+        sink_seen.lock().unwrap().push(notice.revision);
+    }));
+    let live = owner(1);
+    channel.reserve(live.clone());
+    let first = Arc::new(CommandState::default());
+    first
+        .replace(&json!([{"name":"plan","description":"d"}]), false)
+        .unwrap();
+    channel.update(&live, Arc::clone(&first));
+    // A fresh empty state at revision 0 replaces it: nothing to announce.
+    let second = Arc::new(CommandState::default());
+    channel.update(&live, Arc::clone(&second));
+    // Its first list is revision 1 again and must still be announced.
+    second
+        .replace(&json!([{"name":"init","description":"d"}]), false)
+        .unwrap();
+    channel.update(&live, Arc::clone(&second));
+    assert_eq!(*seen.lock().unwrap(), vec![1, 1]);
+    assert!(first.snapshot().commands.is_empty());
+    assert_eq!(
+        channel.snapshot(&live).unwrap().snapshot().commands[0].name,
+        "init"
+    );
+}

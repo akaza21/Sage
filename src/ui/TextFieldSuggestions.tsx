@@ -13,7 +13,9 @@ import {
  * A bounded listbox that opens beside a text field (for example the chat
  * composer's `/` commands, later its `@` mentions). The field keeps the
  * focus and points at the active row with aria-activedescendant; rows take
- * pointer picks without taking the focus.
+ * pointer picks without taking the focus. The field's owner keeps a polite
+ * status region mounted beside the field, so announcements are not lost
+ * when the popover mounts.
  */
 export function TextFieldSuggestions({
   anchorRef,
@@ -27,7 +29,6 @@ export function TextFieldSuggestions({
   onDismiss,
   onPick,
   state,
-  status,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
   ariaLabel: string;
@@ -40,8 +41,6 @@ export function TextFieldSuggestions({
   onDismiss: () => void;
   onPick: (item: TextFieldSuggestion) => void;
   state: TextFieldSuggestionsState;
-  /** Polite announcement of what the list holds, e.g. "4 commands". */
-  status: string;
 }) {
   const rendered = items.slice(0, TEXT_FIELD_SUGGESTIONS_MAX_RENDERED);
   const activeOptionId = activeId
@@ -68,9 +67,6 @@ export function TextFieldSuggestions({
       role="none"
       triggerRef={anchorRef}
     >
-      <span className="sr-only" role="status" aria-live="polite">
-        {status}
-      </span>
       {state.kind === "ready" ? null : (
         <ResourceStateNotice
           state={state.kind === "empty" ? "idle" : state.kind}
