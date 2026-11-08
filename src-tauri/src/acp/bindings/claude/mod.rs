@@ -21,7 +21,9 @@ pub(crate) fn claude_profile() -> &'static StandardAcpProfile {
     profile_for(CLAUDE_PROFILE_ID).expect("claude profile is a compiled-in row")
 }
 
-pub(crate) use access_modes::CLAUDE_ACCESS_MODES;
+pub(crate) use access_modes::{
+    CLAUDE_ACCESS_MODES, mode_change_admitted, option_admitted, option_target_mode,
+};
 pub(crate) use admission::{
     AdmittedClaudeBinding, ClaudeAdmissionUnavailable, ClaudeBindingRegistration,
 };

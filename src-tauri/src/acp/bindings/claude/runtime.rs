@@ -39,6 +39,7 @@ mod commands;
 mod egress;
 mod fork;
 mod ingress;
+mod mode_guard;
 mod session_config;
 mod slash_commands;
 mod support;
@@ -87,6 +88,10 @@ struct TurnIntent {
     client_message_id: RequiredText<512>,
     request_id: u64,
     cancel_written: bool,
+    /// The permission mode Sage selected for this turn.
+    native_mode: Option<&'static str>,
+    /// A mode the user's answer to a permission request moves the turn into.
+    sanctioned_mode: Option<&'static str>,
 }
 
 enum PendingRequest {

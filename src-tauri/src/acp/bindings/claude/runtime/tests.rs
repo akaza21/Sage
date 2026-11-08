@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 use super::*;
+mod mode_guard;
 mod slash_commands;
 use crate::acp::{
     bindings::adapter::{AdapterCommand, AdapterRuntimeError, EgressResolution, HarnessAdapter},

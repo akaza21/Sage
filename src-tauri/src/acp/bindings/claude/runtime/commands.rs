@@ -51,7 +51,7 @@ impl ClaudeRuntime {
             AdapterCommand::Prompt {
                 prompt,
                 client_message_id,
-                ..
+                access_mode,
             } => {
                 self.require_capability(|value| value.prompt)?;
                 let blocks = prompt.resources.wire(prompt.as_str(), self.capabilities.as_ref().is_some_and(|c| c.prompt_resources)).map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
@@ -70,6 +70,11 @@ impl ClaudeRuntime {
                     client_message_id,
                     request_id: id,
                     cancel_written: false,
+                    native_mode: crate::acp::bindings::access_policy::session_mode(
+                        super::super::CLAUDE_BINDING_ID,
+                        access_mode,
+                    ),
+                    sanctioned_mode: None,
                 });
                 let external_session_id = active.external_id.clone();
                 match self.reserve(PendingRequest::Prompt, "session/prompt", json!({"sessionId":external_session_id.as_str(),"prompt":blocks})) {
@@ -107,6 +112,7 @@ impl ClaudeRuntime {
                 if record.state != DenialState::Pending {
                     return Err(AdapterRuntimeError::LaterPermissionMiss);
                 }
+                let mut chosen = None;
                 let reply = match decision {
                     PermissionDecision::Ask => {
                         let _ = resolve_later_permission(&request_id, &decision, None)
@@ -114,15 +120,17 @@ impl ClaudeRuntime {
                         return Err(AdapterRuntimeError::Operation);
                     }
                     PermissionDecision::AllowOnce => {
-                        let option_id = record.allow_once_option_id.as_deref().ok_or(AdapterRuntimeError::Operation)?;
-                        let selected = permission_selected(&record.wire_id, option_id)?;
+                        let option_id = record.allow_once_option_id.clone().ok_or(AdapterRuntimeError::Operation)?;
+                        let selected = permission_selected(&record.wire_id, &option_id)?;
                         record.reply = PermissionReply::AllowOnce;
+                        chosen = Some(option_id);
                         selected
                     }
                     PermissionDecision::AllowAlways => {
-                        let option_id = record.allow_always_option_id.as_deref().ok_or(AdapterRuntimeError::Operation)?;
-                        let selected = permission_selected(&record.wire_id, option_id)?;
+                        let option_id = record.allow_always_option_id.clone().ok_or(AdapterRuntimeError::Operation)?;
+                        let selected = permission_selected(&record.wire_id, &option_id)?;
                         record.reply = PermissionReply::AllowAlways;
+                        chosen = Some(option_id);
                         selected
                     }
                     PermissionDecision::Answer(_) => {
@@ -138,6 +146,9 @@ impl ClaudeRuntime {
                         super::denial(&external, &record.wire_id, false)?
                     }
                 };
+                if let Some(option_id) = chosen {
+                    self.sanction_option(&option_id);
+                }
                 resolve_later_permission(&request_id, &decision, Some(reply))
                     .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
                     .ok_or(AdapterRuntimeError::LaterPermissionMiss)

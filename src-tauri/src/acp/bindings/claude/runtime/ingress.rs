@@ -231,8 +231,8 @@ impl ClaudeRuntime {
         if self.commands_notification(&value)? {
             return AdapterBatch::new(vec![SharedEvent::Absorbed], Vec::new());
         }
-        if self.config_notification(&value)? {
-            return AdapterBatch::new(vec![SharedEvent::IgnoredDuplicate], Vec::new());
+        if let Some(batch) = self.config_notification(&value)? {
+            return Ok(batch);
         }
         let active = self.active.as_mut().ok_or(AdapterRuntimeError::Frame)?;
         let events = active
@@ -316,7 +316,7 @@ impl ClaudeRuntime {
         Ok(batch.finish())
     }
 
-    fn session_identity(
+    pub(super) fn session_identity(
         &self,
         external_id: ExternalId,
     ) -> crate::acp::bindings::adapter::AdapterIdentity {
