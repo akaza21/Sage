@@ -377,7 +377,7 @@ mod tests {
             SageRootId,
         },
         intent::{CapabilitySnapshotV1, NormalizedPayload, Prompt},
-        lifecycle::TurnState,
+        lifecycle::{ItemLifecycle, TurnState},
         transport::{Frame, IncrementalFrameDecoder},
     };
     use serde_json::Value;
@@ -848,18 +848,25 @@ mod tests {
                 ..
             }
         )));
+        // Three thought snapshots, then the answer text ends the thought block.
         assert_eq!(
             events
                 .iter()
-                .filter(|event| matches!(
-                    event,
+                .filter_map(|event| match event {
                     AdapterEvent::Item {
+                        lifecycle,
                         payload: NormalizedPayload::ThoughtSummary { .. },
                         ..
-                    }
-                ))
-                .count(),
-            3
+                    } => Some(*lifecycle),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+            [
+                ItemLifecycle::Streaming,
+                ItemLifecycle::Streaming,
+                ItemLifecycle::Streaming,
+                ItemLifecycle::Completed
+            ]
         );
         assert!(events.iter().any(|event| matches!(
             event,

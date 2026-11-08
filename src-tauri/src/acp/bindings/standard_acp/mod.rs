@@ -23,9 +23,13 @@ mod diff_drain_tests;
 #[cfg(test)]
 mod manifest_launch_tests;
 #[cfg(test)]
+mod open_items_tests;
+#[cfg(test)]
 mod permission_summary_tests;
 #[cfg(all(test, windows))]
 mod real_binary_tests;
+#[cfg(test)]
+mod render_contract_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

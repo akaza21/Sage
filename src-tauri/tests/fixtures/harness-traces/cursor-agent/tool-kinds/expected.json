@@ -15,6 +15,13 @@
     },
     {
       "event": "item",
+      "externalItemId": "thought:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "completed",
+      "text": "Reading notes.txt. Running the Node.js command. Creating result.txt with PONG. Replying with PONG."
+    },
+    {
+      "event": "item",
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
@@ -116,10 +123,17 @@
     },
     {
       "event": "item",
-      "externalItemId": "thought:3",
+      "externalItemId": "thought-1:3",
       "kind": "thoughtSummary",
       "lifecycle": "streaming",
       "chunks": 2
+    },
+    {
+      "event": "item",
+      "externalItemId": "thought-1:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "completed",
+      "text": "The three steps completed successfully."
     },
     {
       "event": "item",
@@ -127,6 +141,13 @@
       "kind": "text",
       "lifecycle": "streaming",
       "chunks": 2
+    },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "completed",
+      "text": "I'll read `notes.txt`, run the node command, and create `result.txt` now.PONG"
     },
     { "event": "turn", "state": "completed" }
   ],
@@ -137,6 +158,7 @@
     "cursor-agent omits kind on every completing tool_call_update, so the category asserted on each completed event is the one retained from tool start.",
     "The edit produces a separate fileChangeDiff item keyed to the edit tool id with a :diff:0 suffix, so a single edit tool yields both a toolCall item and a distinct diff item.",
     "cursor-agent asks for permission mid-turn, while all three tools are still open, and the edit is the tool it asks about. The permission request arrives as a server-initiated request carrying both an id and a method, so it is routed to translate_permission_request_value and observed as a permissionRequest item in waitingForApproval, not as a notification.",
-    "Neither this trace nor the opencode one contains a single fs/read_text_file, fs/write_text_file or terminal request. Both harnesses read and edited through their own tools even though the capture client advertised fs.readTextFile. The client filesystem capability is therefore not exercised by any captured trace, and no clientRequest event is asserted here."
+    "Neither this trace nor the opencode one contains a single fs/read_text_file, fs/write_text_file or terminal request. Both harnesses read and edited through their own tools even though the capture client advertised fs.readTextFile. The client filesystem capability is therefore not exercised by any captured trace, and no clientRequest event is asserted here.",
+    "ACP has no message end, so the translator closes output itself: answer text after an untagged thought completes that thought block (a later thought opens the next block's item), and the completed prompt response completes the turn's still-open text, thought and plan items before the turn terminal."
   ]
 }
