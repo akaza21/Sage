@@ -122,27 +122,50 @@ async fn capture_known_repository(root: &Path, limit: u64) -> Option<WorkspaceMa
     if root.canonicalize().ok()?.as_path() != root {
         return None;
     }
-    let head = history::read_head(root).await?;
-    let index = run_git(
-        root,
-        &[
-            "--no-literal-pathspecs",
-            "ls-files",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-            "-z",
-            "--",
-            ".",
-            ":(exclude,icase)node_modules/**",
-            ":(exclude,icase)**/node_modules/**",
-            ":(exclude,icase).git/**",
-            ":(exclude,icase)**/.git/**",
-        ],
-        MAX_INDEX_BYTES,
-    )
-    .await
-    .ok()?;
+    // HEAD, the size check and the status are independent reads of the same
+    // repository, so the walks run side by side: a send waits for the slower
+    // one, not the sum.
+    let (head, index, status) = tokio::join!(
+        history::read_head(root),
+        run_git(
+            root,
+            &[
+                "--no-literal-pathspecs",
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+                "--",
+                ".",
+                ":(exclude,icase)node_modules/**",
+                ":(exclude,icase)**/node_modules/**",
+                ":(exclude,icase).git/**",
+                ":(exclude,icase)**/.git/**",
+            ],
+            MAX_INDEX_BYTES,
+        ),
+        run_git(
+            root,
+            &[
+                "--no-literal-pathspecs",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--no-renames",
+                "--",
+                ".",
+                ":(exclude,icase)node_modules/**",
+                ":(exclude,icase)**/node_modules/**",
+                ":(exclude,icase).git/**",
+                ":(exclude,icase)**/.git/**",
+            ],
+            MAX_STATUS_BYTES,
+        ),
+    );
+    let head = head?;
+    let index = index.ok()?;
     if !index.succeeded() || index.stdout_truncated {
         return None;
     }
@@ -157,27 +180,7 @@ async fn capture_known_repository(root: &Path, limit: u64) -> Option<WorkspaceMa
         }
         std::str::from_utf8(path).ok()?;
     }
-
-    let status = run_git(
-        root,
-        &[
-            "--no-literal-pathspecs",
-            "status",
-            "--porcelain=v1",
-            "-z",
-            "--untracked-files=all",
-            "--no-renames",
-            "--",
-            ".",
-            ":(exclude,icase)node_modules/**",
-            ":(exclude,icase)**/node_modules/**",
-            ":(exclude,icase).git/**",
-            ":(exclude,icase)**/.git/**",
-        ],
-        MAX_STATUS_BYTES,
-    )
-    .await
-    .ok()?;
+    let status = status.ok()?;
     if !status.succeeded() || status.stdout_truncated {
         return None;
     }
