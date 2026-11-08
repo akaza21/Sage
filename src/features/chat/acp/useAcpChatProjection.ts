@@ -25,7 +25,8 @@ import { coalescedRefresh } from "./coalescedRefresh";
  * A refresh may overtake one load that hangs (the store keeps only the newest
  * answer), never more. With the live snapshot's one read and the history's
  * one earlier page, that is the four page reads the native side admits per
- * Chat at once.
+ * Chat at once. Status and file-snapshot reads share that limit, so they can
+ * meet a capacity error while all four are out.
  */
 const PAGE_LOADS_IN_FLIGHT = 2;
 

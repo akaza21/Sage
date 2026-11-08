@@ -25,6 +25,11 @@ function deferredLoads() {
       await Promise.resolve();
       await Promise.resolve();
     },
+    settleAt: async (index: number) => {
+      settles.splice(index, 1)[0]?.(false);
+      await Promise.resolve();
+      await Promise.resolve();
+    },
     maxInFlight: () => maxInFlight,
   };
 }
@@ -130,5 +135,24 @@ describe("coalescedRefresh", () => {
     await loads.settleNext();
     refresh.now();
     expect(loads.load).toHaveBeenCalledTimes(3);
+  });
+
+  it("while one load hangs, the newest lands and its rerun takes the free slot", async () => {
+    const loads = deferredLoads();
+    const refresh = coalescedRefresh(loads.load, 2);
+
+    refresh.now(); // hangs
+    refresh.now();
+    refresh.now();
+    await loads.settleAt(1); // the newest lands first
+    expect(loads.load).toHaveBeenCalledTimes(3);
+
+    refresh.now();
+    refresh.now();
+    expect(loads.load).toHaveBeenCalledTimes(3);
+    expect(loads.maxInFlight()).toBe(2);
+
+    await loads.settleAt(1); // the rerun lands: one more for both requests
+    expect(loads.load).toHaveBeenCalledTimes(4);
   });
 });
