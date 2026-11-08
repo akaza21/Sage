@@ -1,5 +1,5 @@
 use super::*;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::io::Cursor;
 
 #[path = "wire_native_projection_tests.rs"]
@@ -175,12 +175,22 @@ fn the_claude_config_journey_also_opens_a_new_session_and_refuses_a_foreign_resu
 
 #[test]
 fn the_codex_config_journey_starts_or_resumes_the_same_thread() {
-    for open in ["thread/start", "thread/resume"] {
+    // Opened without a model the thread runs the default; resumed with the
+    // second model it runs that one. Either way at the Medium default effort.
+    for (open, model, runs) in [
+        ("thread/start", Value::Null, "fixture-model"),
+        (
+            "thread/resume",
+            json!("fixture-model-deep"),
+            "fixture-model-deep",
+        ),
+        ("thread/resume", json!("retired-model"), "fixture-model"),
+    ] {
         let frames = replay(
             "codex-config-resume",
             &[
                 json!({"id":1,"method":"initialize","params":{}}),
-                json!({"id":2,"method":open,"params":{}}),
+                json!({"id":2,"method":open,"params":{"model":model}}),
                 json!({"id":3,"method":"model/list","params":{"cursor":null}}),
                 json!({"id":4,"method":"thread/goal/get","params":{}}),
                 json!({"id":5,"method":"turn/start","params":{}}),
@@ -189,8 +199,27 @@ fn the_codex_config_journey_starts_or_resumes_the_same_thread() {
         );
         let thread = frames.iter().find(|frame| frame["id"] == 2).unwrap();
         assert_eq!(thread["result"]["thread"]["id"], super::acp::SESSION);
+        assert_eq!(thread["result"]["model"], runs);
+        assert_eq!(thread["result"]["reasoningEffort"], "medium");
         let models = frames.iter().find(|frame| frame["id"] == 3).unwrap();
-        assert_eq!(models["result"]["data"].as_array().unwrap().len(), 2);
+        let catalog = models["result"]["data"].as_array().unwrap();
+        assert_eq!(
+            catalog
+                .iter()
+                .map(|model| (model["id"].clone(), model["defaultReasoningEffort"].clone()))
+                .collect::<Vec<_>>(),
+            [
+                (json!("fixture-model"), json!("medium")),
+                (json!("fixture-model-deep"), json!("medium"))
+            ]
+        );
+        assert_eq!(
+            catalog[1]["supportedReasoningEfforts"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
     }
 }
 

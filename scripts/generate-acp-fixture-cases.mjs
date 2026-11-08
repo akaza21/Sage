@@ -209,11 +209,12 @@ journeyCases.push(
       wait("codexInitialize"),
       emit("codexInitializeResult0146"),
       wait("codexStartOrResume"),
-      // A thread that names its model and effort, as the effort-menu
-      // capture does, makes Sage read the model catalogue next.
-      emit("codexThreadEffortResult"),
+      // The thread runs the model it was opened or resumed with, at the
+      // Medium default effort; naming them makes Sage read the catalogue
+      // next, which offers a second model and Low, Medium and High.
+      emit("codexThreadConfigResult"),
       wait("codexModelList"),
-      emit("codexModelListEffortResult"),
+      emit("codexModelListConfigResult"),
       wait("codexGoalGet"),
       emit("codexGoalMethodNotFound"),
       wait("codexTurnStart"),

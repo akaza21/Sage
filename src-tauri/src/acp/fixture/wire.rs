@@ -58,6 +58,8 @@ pub(super) struct WireState {
     user_input_echo: Option<String>,
     pi: pi::PiWireState,
     acp_config: Option<acp::AcpConfig>,
+    /// The model the client opened or resumed the Codex thread with.
+    codex_thread_model: Option<String>,
 }
 
 impl WireState {
@@ -75,6 +77,7 @@ impl WireState {
             user_input_echo: None,
             pi: pi::PiWireState::new(),
             acp_config: None,
+            codex_thread_model: None,
         }
     }
 
