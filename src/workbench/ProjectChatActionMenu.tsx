@@ -1,13 +1,16 @@
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { AgentSessionChrome } from "../app/agentChatOwner";
 import { lazyParts } from "../features/chat/lazyParts";
-import { FileDiff, Folder, MoreHorizontal } from "../ui/leanIcons";
-import { MenuPopover } from "../ui/MenuPopover";
-import { AgentHeaderMenuContext } from "./AgentToolsProvider";
+import { Folder, MoreHorizontal } from "../ui/leanIcons";
 import { agentRailHoverAge } from "./agentRailInteractions";
 import type { AgentRailTrailingState } from "./agentRailStatusView";
 import type * as ActionsChunk from "./ProjectChatActionPopover";
+import {
+  AgentHeaderMenuPart as MenuPart,
+  agentHeaderMenuReady,
+  preloadAgentHeaderMenu,
+} from "./agentTaskHeaderLazy";
 const ActionsPart = lazyParts<typeof ActionsChunk>(
   () => import("./ProjectChatActionPopover"),
 );
@@ -116,6 +119,23 @@ export function AgentHeaderMore({
   if (disabled && open) setOpen(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const menuId = useId();
+  // The menu body loads once the window is idle, or on the trigger's first
+  // hover, focus or press, and then stays mounted like any kept menu.
+  const [armed, setArmed] = useState(agentHeaderMenuReady);
+  if (open && !armed) setArmed(true);
+  const arm = () => {
+    void preloadAgentHeaderMenu().catch(() => undefined);
+    setArmed(true);
+  };
+  useEffect(() => {
+    if (agentHeaderMenuReady()) return;
+    const idle = window.requestIdleCallback ?? window.setTimeout;
+    const handle = idle(() => {
+      void preloadAgentHeaderMenu().catch(() => undefined);
+      setArmed(true);
+    });
+    return () => (window.cancelIdleCallback ?? window.clearTimeout)(handle);
+  }, []);
   return (
     <div className="agent-header-more">
       <button
@@ -127,6 +147,9 @@ export function AgentHeaderMore({
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
+        onPointerEnter={arm}
+        onPointerDown={arm}
+        onFocus={arm}
         onClick={() => {
           setOpeningFocus("first");
           if (open) close();
@@ -142,39 +165,20 @@ export function AgentHeaderMore({
       >
         <MoreHorizontal size={16} aria-hidden="true" />
       </button>
-      <MenuPopover
-        id={menuId}
-        open={open}
-        triggerRef={trigger}
-        ariaLabel="Chat tools"
-        className="agent-header-more__menu"
-        gap={16}
-        initialFocus={openingFocus}
-        keepMounted
-        onDismiss={close}
-      >
-        <div className="agent-header-more__project">
-          <span title={projectName}>{projectName}</span>
-          <AgentHeaderMenuContext
-            value={{ close, returnFocus: () => trigger.current?.focus() }}
-          >
-            {children}
-          </AgentHeaderMenuContext>
-        </div>
-        <button
-          type="button"
-          className="menu-item"
-          role="menuitem"
-          onClick={() => {
-            close();
-            trigger.current?.focus();
-            onChanges();
-          }}
+      {armed ? (
+        <MenuPart
+          part="AgentHeaderMenu"
+          close={close}
+          menuId={menuId}
+          onChanges={onChanges}
+          open={open}
+          openingFocus={openingFocus}
+          projectName={projectName}
+          trigger={trigger}
         >
-          <FileDiff size={14} aria-hidden="true" />
-          <span>Changes</span>
-        </button>
-      </MenuPopover>
+          {children}
+        </MenuPart>
+      ) : null}
     </div>
   );
 }

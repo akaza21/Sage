@@ -8,7 +8,16 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { preloadSearchablePicker } from "../../ui/searchablePickerLoad";
 
 import {
   acpProjectionStoreFor,
@@ -36,6 +45,9 @@ import { AgentChatRuntimeHarness } from "../../test/AgentChatRuntimeHarness";
 import { AgentChatPanes } from "../../workbench/AgentChatPanes";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
 import type * as AcpModule from "./acp";
+
+// The picker list loads when the window first idles.
+beforeAll(() => preloadSearchablePicker());
 
 const hooks = vi.hoisted(() => ({
   page: null as AcpChatPage | null,

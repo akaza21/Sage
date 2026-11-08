@@ -7,7 +7,16 @@ import {
   within,
 } from "@testing-library/react";
 import { Profiler } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { preloadAgentHeaderMenu } from "./agentTaskHeaderLazy";
 
 import {
   acpProjectionStoreFor,
@@ -39,6 +48,9 @@ import { AgentTaskHeader } from "./AgentTaskHeader";
 import { launchSideChat } from "./AgentToolPanel";
 import { SIDE_CHAT_SPLIT, useSideChatState } from "./sideChatState";
 import { WORKBENCH_LAYOUT_STORAGE_KEY } from "./workbenchLayoutStorage";
+
+// The header menu body loads when the window first idles.
+beforeAll(() => preloadAgentHeaderMenu());
 
 let resizeCallback: ResizeObserverCallback | null = null;
 const disconnect = vi.fn();

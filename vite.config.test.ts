@@ -185,6 +185,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/settings/AgentSettingsExecution.tsx",
   "src/features/settings/AgentSettingsSurface.tsx",
   "src/features/settings/openEditorSettings.ts",
+  // A searchable picker's open list loads before its first open.
+  "src/ui/SearchablePickerPopover.tsx",
   "src/workbench/ActiveEditorCanvas.tsx",
   // The sidebar options menu loads on its first open.
   "src/workbench/AgentRailOptionsPopover.tsx",
@@ -202,6 +204,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/AgentRailArchiveNotice.tsx",
   "src/workbench/AgentRecentChats.tsx",
   "src/workbench/useAgentRailStatus.ts",
+  // The Agent header menu body loads before its first open.
+  "src/workbench/AgentHeaderMenu.tsx",
   "src/workbench/ProjectChatActionPopover.tsx",
   "src/workbench/ProjectChatRename.tsx",
   "src/workbench/SettingsSurface.tsx",
@@ -454,8 +458,12 @@ function expectNoNewFeatureModules(
   ]);
   expect(
     closureForModule(graph, facade).filter(
+      // The workbench-deps group pins shared page-layer state to the shell,
+      // whichever menu or dialog imports it first.
       (id) =>
-        !allowed.has(id) && !id.endsWith("/src/app/snapshotProjection.ts"),
+        !allowed.has(id) &&
+        !id.endsWith("/src/app/snapshotProjection.ts") &&
+        !id.endsWith("/src/ui/nativePageLayers.ts"),
     ),
     facade,
   ).toEqual([]);

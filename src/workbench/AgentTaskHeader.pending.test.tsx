@@ -5,7 +5,11 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
+import { preloadAgentHeaderMenu } from "./agentTaskHeaderLazy";
+
+// The header menu body loads when the window first idles.
+beforeAll(() => preloadAgentHeaderMenu());
 import { useWorkbenchStore } from "../app/store";
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentTaskHeader } from "./AgentTaskHeader";
