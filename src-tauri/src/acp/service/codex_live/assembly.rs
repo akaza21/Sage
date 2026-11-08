@@ -20,6 +20,7 @@ impl Lane<'_> {
         self.runtime
             .reserve_start(prepared.owner.clone())
             .map_err(map_slot_error)?;
+        prepared.runtime.bind_activation(&prepared.intent.mode);
         let mut spec = match prepared.runtime.launch_spec() {
             Ok(spec) => spec,
             Err(_) => {

@@ -14,6 +14,7 @@ use crate::acp::bindings::{
 };
 
 mod claude;
+mod claude_sdk;
 mod codex;
 mod opencode;
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
@@ -83,6 +84,7 @@ pub(crate) enum RegistryUnavailable {
 pub(crate) struct BindingRegistry {
     codex: BindingRecord,
     claude: BindingRecord,
+    claude_sdk: BindingRecord,
     opencode: BindingRecord,
     pi_native: BindingRecord,
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
@@ -142,6 +144,11 @@ impl BindingRegistry {
 
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     fn isolate_fixture_records(&mut self, active_harness: &str) {
+        // Fixtures drive their own records; the SDK binding never shadows them.
+        self.claude_sdk = claude_sdk::record(Arc::new(
+            crate::acp::bindings::claude::sdk::ClaudeSdkBindingRegistration::startup(),
+        ));
+        self.claude_sdk.session_operations_enabled = false;
         for record in [
             &mut self.codex,
             &mut self.claude,
@@ -199,6 +206,9 @@ impl BindingRegistry {
                 model_provider: ModelProvider::ClaudeAdapter,
                 auth_provider: AuthProvider::Claude,
             },
+            claude_sdk: claude_sdk::record(Arc::new(
+                crate::acp::bindings::claude::sdk::ClaudeSdkBindingRegistration::startup(),
+            )),
             opencode: BindingRecord {
                 harness_id: "opencode",
                 binding_id: OPENCODE_BINDING_ID,
@@ -251,6 +261,15 @@ impl BindingRegistry {
         &self.claude
     }
 
+    pub(crate) fn claude_sdk_admission(
+        &self,
+    ) -> &Arc<crate::acp::bindings::claude::sdk::ClaudeSdkBindingRegistration> {
+        let Admission::ClaudeSdk(admission) = &self.claude_sdk.admission else {
+            unreachable!()
+        };
+        admission
+    }
+
     pub(crate) fn opencode(&self) -> &BindingRecord {
         &self.opencode
     }
@@ -276,26 +295,28 @@ impl BindingRegistry {
         if let Some(record) = self.pi.as_ref().filter(|record| record.harness_id() == id) {
             return Some(record);
         }
-        [
-            self.codex(),
-            self.claude(),
-            self.opencode(),
-            &self.pi_native,
-        ]
-        .into_iter()
-        .find(|record| record.harness_id() == id)
-        .or({
-            #[cfg(test)]
-            {
-                self.test_binding
-                    .as_ref()
-                    .filter(|record| record.harness_id() == id)
-            }
-            #[cfg(not(test))]
-            {
-                None
-            }
-        })
+        // Claude Code runs over its SDK protocol once that binding is
+        // admitted; the ACP adapter serves only installs it cannot admit.
+        let claude = if self.claude_sdk.admission_available() {
+            &self.claude_sdk
+        } else {
+            self.claude()
+        };
+        [self.codex(), claude, self.opencode(), &self.pi_native]
+            .into_iter()
+            .find(|record| record.harness_id() == id)
+            .or({
+                #[cfg(test)]
+                {
+                    self.test_binding
+                        .as_ref()
+                        .filter(|record| record.harness_id() == id)
+                }
+                #[cfg(not(test))]
+                {
+                    None
+                }
+            })
     }
 
     pub(crate) fn resolve(
@@ -316,22 +337,28 @@ impl BindingRegistry {
         {
             return Ok(record);
         }
-        [&self.codex, &self.claude, &self.opencode, &self.pi_native]
-            .into_iter()
-            .find(|record| record.binding_id() == binding_id)
-            .or({
-                #[cfg(test)]
-                {
-                    self.test_binding
-                        .as_ref()
-                        .filter(|record| record.binding_id() == binding_id)
-                }
-                #[cfg(not(test))]
-                {
-                    None
-                }
-            })
-            .ok_or(RegistryUnavailable::UnknownBinding)
+        [
+            &self.codex,
+            &self.claude,
+            &self.claude_sdk,
+            &self.opencode,
+            &self.pi_native,
+        ]
+        .into_iter()
+        .find(|record| record.binding_id() == binding_id)
+        .or({
+            #[cfg(test)]
+            {
+                self.test_binding
+                    .as_ref()
+                    .filter(|record| record.binding_id() == binding_id)
+            }
+            #[cfg(not(test))]
+            {
+                None
+            }
+        })
+        .ok_or(RegistryUnavailable::UnknownBinding)
     }
 }
 

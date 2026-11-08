@@ -44,6 +44,7 @@ type CloseDispatch =
 pub(super) enum Admission {
     Codex(CodexBindingRegistration),
     Claude(Arc<ClaudeBindingRegistration>),
+    ClaudeSdk(Arc<crate::acp::bindings::claude::sdk::ClaudeSdkBindingRegistration>),
     OpenCode(Arc<OpenCodeBindingRegistration>),
     PiNative(Arc<crate::acp::bindings::pi::native_admission::PiBindingRegistration>),
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
@@ -59,6 +60,7 @@ pub(crate) struct BoundBuild {
 pub(super) enum AdmittedBinding {
     Codex(Arc<AdmittedCodexBinding>),
     Claude(Arc<AdmittedClaudeBinding>),
+    ClaudeSdk(Arc<crate::acp::bindings::claude::sdk::AdmittedClaudeSdkBinding>),
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     Pi(Arc<crate::acp::bindings::pi::fixture_admission::PiFixtureBinding>),
     PiNative(Arc<crate::acp::bindings::pi::native_admission::AdmittedPiBinding>),
@@ -97,6 +99,7 @@ impl BindingRecord {
         match &self.admission {
             Admission::Codex(_) => crate::acp::bindings::codex::CODEX_BINDING_ID,
             Admission::Claude(_) => crate::acp::bindings::claude::CLAUDE_BINDING_ID,
+            Admission::ClaudeSdk(_) => crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID,
             Admission::OpenCode(_) => crate::acp::bindings::standard_acp::OPENCODE_BINDING_ID,
             Admission::PiNative(_) => crate::acp::bindings::pi::native_admission::PI_BINDING_ID,
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
@@ -125,6 +128,10 @@ impl BindingRecord {
                 .refresh()
                 .map(AdmittedBinding::Claude)
                 .map_err(RegistryAdmissionUnavailable::Claude)?,
+            Admission::ClaudeSdk(admission) => admission
+                .refresh()
+                .map(AdmittedBinding::ClaudeSdk)
+                .map_err(|_| RegistryAdmissionUnavailable::Drift)?,
             Admission::OpenCode(admission) => admission
                 .refresh()
                 .map(|binding| AdmittedBinding::OpenCode {
@@ -152,6 +159,7 @@ impl BindingRecord {
             Admission::Pi(binding) => binding.revalidate().is_ok(),
             Admission::Codex(admission) => admission.is_available(),
             Admission::Claude(admission) => admission.is_available(),
+            Admission::ClaudeSdk(admission) => admission.is_available(),
             Admission::OpenCode(admission) => admission.is_available(),
             Admission::PiNative(admission) => admission.is_available(),
         }
@@ -171,6 +179,11 @@ impl BindingRecord {
                 account_model_discovery: binding.model_discovery_available().unwrap_or(false),
             }),
             Admission::Claude(admission) => admission.admitted().map(|binding| BoundBuild {
+                reported_version: binding.harness_version().to_owned(),
+                characterisation: binding.characterisation(),
+                account_model_discovery: false,
+            }),
+            Admission::ClaudeSdk(admission) => admission.admitted().map(|binding| BoundBuild {
                 reported_version: binding.harness_version().to_owned(),
                 characterisation: binding.characterisation(),
                 account_model_discovery: false,
@@ -218,6 +231,16 @@ impl BindingRecord {
                 Claude::NodeEngineMismatch => HarnessUnavailableReason::NodeEngineMismatch,
                 Claude::CandidateInvalid => HarnessUnavailableReason::CandidateInvalid,
                 Claude::Drift => HarnessUnavailableReason::DriftDetected,
+            }),
+            Admission::ClaudeSdk(admission) => admission.unavailable().map(|reason| {
+                use crate::acp::bindings::claude::sdk::ClaudeSdkAdmissionUnavailable as Sdk;
+                match reason {
+                    Sdk::DiscoveryPending => HarnessUnavailableReason::AdmissionIncomplete,
+                    Sdk::Absent | Sdk::VersionUnsupported | Sdk::Unreadable => {
+                        HarnessUnavailableReason::CandidateInvalid
+                    }
+                    Sdk::Drift => HarnessUnavailableReason::DriftDetected,
+                }
             }),
             Admission::OpenCode(admission) => admission.unavailable().map(|reason| match reason {
                 OpenCode::DiscoveryPending => HarnessUnavailableReason::AdmissionIncomplete,
@@ -311,6 +334,12 @@ impl AdmittedBindingRecord<'_> {
                 artifact_digest: binding.artifact_digest(),
                 harness_version: binding.harness_version(),
             },
+            AdmittedBinding::ClaudeSdk(binding) => BindingIdentity {
+                binding_digest: binding.binding_digest(),
+                binding_digest_hex: binding.binding_digest_hex(),
+                artifact_digest: binding.artifact_digest(),
+                harness_version: binding.harness_version(),
+            },
             AdmittedBinding::PiNative(binding) => BindingIdentity {
                 binding_digest: binding.binding_digest(),
                 binding_digest_hex: binding.binding_digest_hex(),
@@ -338,7 +367,10 @@ impl AdmittedBindingRecord<'_> {
             {
                 Ok(false)
             }
-            (AdmittedBinding::Claude(_), super::ModelProvider::ClaudeAdapter) => Ok(false),
+            (
+                AdmittedBinding::Claude(_) | AdmittedBinding::ClaudeSdk(_),
+                super::ModelProvider::ClaudeAdapter,
+            ) => Ok(false),
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
             (AdmittedBinding::Claude(binding), super::ModelProvider::NoAccountModels)
                 if binding.is_fixture() =>

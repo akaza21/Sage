@@ -62,7 +62,7 @@ pub(crate) fn admitted_modes(
             "Read-only",
             "Read workspace files; no writes or network.",
         )],
-        "claude-agent-acp" => &[(
+        "claude-agent-acp" | "claude-code-sdk" => &[(
             Ask,
             "Ask each time",
             "Review each permission request; no filesystem sandbox.",

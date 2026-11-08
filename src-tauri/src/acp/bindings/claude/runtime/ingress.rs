@@ -367,9 +367,20 @@ impl ClaudeRuntime {
         resources: &dyn SharedResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let value = decode_frame(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
+        let request_digest =
+            request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?;
+        self.ingest_value(value, request_digest, resources)
+    }
+
+    /// One decoded ACP frame; `request_digest` identifies it when it is a
+    /// request.
+    pub(crate) fn ingest_value(
+        &mut self,
+        value: Value,
+        request_digest: [u8; 32],
+        resources: &dyn SharedResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
         if value.get("method").is_some() {
-            let request_digest =
-                request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?;
             self.ingest_notification(value, resources, request_digest)
         } else {
             self.ingest_response(value)
