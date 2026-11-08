@@ -308,7 +308,7 @@ fn codex_file_change_binds_only_final_disk_state_in_the_journal() {
         else {
             panic!("completed file change");
         };
-        assert_eq!(completed.len(), if kind == "add" { 2 } else { 1 });
+        assert_eq!(completed.len(), if kind == "add" { 3 } else { 2 });
         persist_events(&mut fixture, completed);
         let change = projected_change(&fixture.connection);
         assert_eq!(
