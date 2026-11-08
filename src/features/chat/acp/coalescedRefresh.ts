@@ -1,6 +1,6 @@
-/** Pause after a change event before the page is read again, so a burst of
+/** Pause after a change event before a page is read again, so a burst of
  * events during a streamed turn costs one read. */
-export const PROJECTION_REFRESH_DEBOUNCE_MS = 50;
+export const REFRESH_DEBOUNCE_MS = 50;
 
 export interface CoalescedRefresh {
   /** Loads now, or once the newest load settles if too many are in flight. */
@@ -18,7 +18,10 @@ export interface CoalescedRefresh {
  * in flight, responses also land in request order. With two, a request can
  * still overtake a load that hangs (the caller discards the older answer),
  * and the newest load is superseded at most once before it lands.
- * `load` must settle; its own handlers report failures.
+ * A failed load frees its slot like a successful one, and a rerun it owed
+ * still runs. `load` reports its own failures. There is no client-side
+ * timeout: a hung read keeps holding its native page-read lease, so freeing
+ * the slot here would only turn the stall into capacity errors.
  */
 export function coalescedRefresh(
   load: () => Promise<unknown>,
@@ -38,13 +41,14 @@ export function coalescedRefresh(
     }
     inFlight += 1;
     const id = ++newest;
-    void load().finally(() => {
+    const settle = () => {
       inFlight -= 1;
       if (rerun && id === newest) {
         rerun = false;
         now();
       }
-    });
+    };
+    void load().then(settle, settle);
   };
 
   return {
@@ -56,7 +60,7 @@ export function coalescedRefresh(
         if (disposed) return;
         beforeLoad?.();
         now();
-      }, PROJECTION_REFRESH_DEBOUNCE_MS);
+      }, REFRESH_DEBOUNCE_MS);
     },
     dispose() {
       disposed = true;

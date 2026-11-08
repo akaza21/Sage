@@ -23,8 +23,9 @@ import { coalescedRefresh } from "./coalescedRefresh";
 
 /**
  * A refresh may overtake one load that hangs (the store keeps only the newest
- * answer), never more: the live snapshot reads the same Chat, and the native
- * side admits only a few page reads per Chat at once.
+ * answer), never more. With the live snapshot's one read and the history's
+ * one earlier page, that is the four page reads the native side admits per
+ * Chat at once.
  */
 const PAGE_LOADS_IN_FLIGHT = 2;
 
