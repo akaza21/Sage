@@ -156,3 +156,23 @@ fn the_pre_turn_buffer_replaces_superseded_events_and_drops_the_oldest_at_its_ca
     assert_eq!(events.last(), Some(&title("second")));
     assert!(pending.take().is_empty());
 }
+
+#[test]
+fn a_cleared_title_replaces_the_title_and_a_repeat_clear_is_no_change() {
+    let cleared = SessionScopedEvent::Title { title: None };
+    let mut surface = SessionSurface::default();
+    assert_eq!(surface.apply(1, &cleared), None);
+    surface.apply(1, &title("Fix the sidebar"));
+    assert_eq!(surface.apply(1, &cleared), Some(SurfaceChange::SendNeutral));
+    assert_eq!(surface.title, None);
+    assert_eq!(surface.apply(1, &cleared), None);
+    assert_eq!(
+        surface.apply(1, &title("Fix the sidebar")),
+        Some(SurfaceChange::SendNeutral)
+    );
+
+    let mut pending = PendingSessionEvents::default();
+    pending.push(title("first"));
+    pending.push(cleared.clone());
+    assert_eq!(pending.take(), [cleared]);
+}

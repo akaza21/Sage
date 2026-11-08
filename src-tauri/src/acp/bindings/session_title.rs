@@ -8,12 +8,20 @@ use crate::acp::{
 
 /// The harness title as a session event, sanitized by the same rule as every
 /// chat title and capped at [`SESSION_TITLE_BYTES`]. `None` when nothing
-/// printable is left, so a harness can never clear or blank a title.
+/// printable is left: unreadable input is ignored, never taken as a clear.
 pub(crate) fn harness_title_event(raw: &str) -> Option<SessionScopedEvent> {
     let title = crate::chat_lifecycle::title_line(raw, SESSION_TITLE_BYTES)?;
     RequiredText::new("sessionTitle", title)
         .ok()
-        .map(|title| SessionScopedEvent::Title { title })
+        .map(|title| SessionScopedEvent::Title { title: Some(title) })
+}
+
+/// The event for a harness that explicitly removed its session title. The
+/// chat falls back to the title Sage would have given it, unless the user
+/// named it or it is a fork.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn harness_title_cleared() -> SessionScopedEvent {
+    SessionScopedEvent::Title { title: None }
 }
 
 #[cfg(test)]
@@ -22,7 +30,7 @@ mod tests {
 
     fn title(raw: &str) -> Option<String> {
         harness_title_event(raw).map(|event| match event {
-            SessionScopedEvent::Title { title } => title.as_str().to_owned(),
+            SessionScopedEvent::Title { title: Some(title) } => title.as_str().to_owned(),
             other => panic!("expected a title, got {other:?}"),
         })
     }

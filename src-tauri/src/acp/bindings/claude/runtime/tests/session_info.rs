@@ -21,7 +21,7 @@ fn title(batch: &AdapterBatch) -> Option<&str> {
         [
             SharedEvent::Session {
                 id,
-                event: SessionScopedEvent::Title { title },
+                event: SessionScopedEvent::Title { title: Some(title) },
             },
         ] => {
             assert_eq!(id.external_id.as_str(), "claude-session-1");

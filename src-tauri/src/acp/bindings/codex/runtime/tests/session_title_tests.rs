@@ -16,7 +16,7 @@ fn session_title(batch: &AdapterBatch) -> Option<String> {
         [
             AdapterEvent::Session {
                 id,
-                event: SessionScopedEvent::Title { title },
+                event: SessionScopedEvent::Title { title: Some(title) },
             },
         ] => {
             assert_eq!(id.external_id.as_str(), "thread-1");

@@ -1,4 +1,4 @@
-use rusqlite::{Transaction, params};
+use rusqlite::{OptionalExtension, Transaction, params};
 
 /// Who set a chat's current title. Stored in `chats.title_source`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +60,84 @@ pub(crate) fn apply_harness_title_in(
     retitle_attached_tab_in(transaction, project_id, chat_id, &title, now)
 }
 
+/// Id prefix of a temporary side chat.
+pub(crate) const SIDE_CHAT_ID_PREFIX: &str = "side-";
+
+/// The title Sage gives a new chat before anything names it.
+pub(crate) fn placeholder_chat_title(chat_id: &str) -> &'static str {
+    if chat_id.starts_with(SIDE_CHAT_ID_PREFIX) {
+        "Chat: Side chat"
+    } else {
+        "Chat: Chat"
+    }
+}
+
+/// Puts back the title Sage would have given the chat once its harness
+/// clears the title it reported: the first prompt's title, or the
+/// placeholder when there is no usable first prompt. Only a harness-titled
+/// chat changes; user and fork titles are never touched.
+pub(crate) fn clear_harness_title_in(
+    transaction: &Transaction<'_>,
+    project_id: &str,
+    chat_id: &str,
+    now: i64,
+) -> rusqlite::Result<()> {
+    let (title, source) = match first_prompt_title(transaction, project_id, chat_id)? {
+        Some(title) => (title, ChatTitleSource::Prompt),
+        None => (
+            placeholder_chat_title(chat_id).to_owned(),
+            ChatTitleSource::Default,
+        ),
+    };
+    let changed = transaction.execute(
+        "UPDATE chats SET title=?3,updated_at=?4,title_source=?5
+         WHERE project_id=?1 AND id=?2 AND title_source=?6",
+        params![
+            project_id,
+            chat_id,
+            title,
+            now,
+            source.as_str(),
+            ChatTitleSource::Harness.as_str(),
+        ],
+    )?;
+    if changed == 0 {
+        return Ok(());
+    }
+    retitle_attached_tab_in(transaction, project_id, chat_id, &title, now)
+}
+
+/// The title the chat's first prompt gives it: the primary user item of its
+/// earliest turn, by the same rule as auto-titling.
+fn first_prompt_title(
+    transaction: &Transaction<'_>,
+    project_id: &str,
+    chat_id: &str,
+) -> rusqlite::Result<Option<String>> {
+    let payload: Option<String> = transaction
+        .query_row(
+            "SELECT i.payload_json FROM items i
+             WHERE i.project_id=?1 AND i.chat_id=?2 AND i.ordinal=0 AND i.origin='primary'
+               AND i.turn_id=(SELECT id FROM turns WHERE project_id=?1 AND chat_id=?2
+                              ORDER BY created_at,ordinal LIMIT 1)",
+            params![project_id, chat_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(payload) = payload else {
+        return Ok(None);
+    };
+    let Ok(item) = serde_json::from_str::<serde_json::Value>(&payload) else {
+        return Ok(None);
+    };
+    if item["kind"] != "text" {
+        return Ok(None);
+    }
+    Ok(item["payload"]["text"]
+        .as_str()
+        .and_then(super::auto_title::first_line_title))
+}
+
 /// Mirrors a chat's new title onto the workbench tab attached to it.
 pub(super) fn retitle_attached_tab_in(
     transaction: &Transaction<'_>,
@@ -114,6 +192,26 @@ mod tests {
             let transaction = connection.transaction().unwrap();
             apply_harness_title_in(&transaction, &self.project, &self.chat, title, 7).unwrap();
             transaction.commit().unwrap();
+        }
+
+        fn clear(&self) {
+            let mut connection = self.database.write_connection().unwrap();
+            let transaction = connection.transaction().unwrap();
+            clear_harness_title_in(&transaction, &self.project, &self.chat, 8).unwrap();
+            transaction.commit().unwrap();
+        }
+
+        /// Switches the fixture to a new side chat of the current chat.
+        fn side_chat(mut self) -> Self {
+            let mut connection = self.database.write_connection().unwrap();
+            let transaction = connection.transaction().unwrap();
+            let side =
+                super::super::insert_new_chat(&transaction, &self.project, true, Some(&self.chat))
+                    .unwrap();
+            transaction.commit().unwrap();
+            drop(connection);
+            self.chat = side;
+            self
         }
 
         fn prompt(&self, text: &str) {
@@ -227,6 +325,37 @@ mod tests {
         assert_eq!(
             title.strip_prefix("Chat: ").unwrap().len(),
             super::super::MAX_CHAT_TITLE_BYTES
+        );
+    }
+
+    #[test]
+    fn a_cleared_harness_title_without_turns_restores_the_placeholder() {
+        let fixture = Fixture::new();
+        fixture.harness("Resumed session");
+        fixture.clear();
+        assert_eq!(fixture.shown(), shown("Chat: Chat", "default"));
+        fixture.harness("Named again");
+        assert_eq!(fixture.shown(), shown("Chat: Named again", "harness"));
+    }
+
+    #[test]
+    fn a_cleared_side_chat_restores_the_side_chat_placeholder() {
+        let fixture = Fixture::new().side_chat();
+        assert!(fixture.chat.starts_with(SIDE_CHAT_ID_PREFIX));
+        assert_eq!(fixture.shown(), shown("Chat: Side chat", "default"));
+        fixture.harness("Side question");
+        fixture.clear();
+        assert_eq!(fixture.shown(), shown("Chat: Side chat", "default"));
+    }
+
+    #[test]
+    fn a_clear_only_touches_a_harness_title() {
+        let fixture = Fixture::new();
+        fixture.prompt("fix the flaky upload test");
+        fixture.clear();
+        assert_eq!(
+            fixture.shown(),
+            shown("Chat: fix the flaky upload test", "prompt")
         );
     }
 }

@@ -3,7 +3,10 @@ use uuid::Uuid;
 mod auto_title;
 mod title_source;
 pub(crate) use auto_title::{auto_title_first_prompt_in, title_line};
-pub(crate) use title_source::{ChatTitleSource, apply_harness_title_in};
+pub(crate) use title_source::{
+    ChatTitleSource, SIDE_CHAT_ID_PREFIX, apply_harness_title_in, clear_harness_title_in,
+    placeholder_chat_title,
+};
 
 use crate::{
     acp::limits::LIMITS,
@@ -256,15 +259,11 @@ pub(crate) fn insert_new_chat(
         |row| row.get(0),
     )?;
     let chat_id = if parent.is_some() {
-        format!("side-{}", Uuid::new_v4())
+        format!("{SIDE_CHAT_ID_PREFIX}{}", Uuid::new_v4())
     } else {
         Uuid::new_v4().to_string()
     };
-    let title = if parent.is_some() {
-        "Chat: Side chat".to_owned()
-    } else {
-        "Chat: Chat".to_owned()
-    };
+    let title = placeholder_chat_title(&chat_id);
     let now = now_millis();
     transaction.execute(
         "INSERT INTO chats(

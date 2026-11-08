@@ -39,14 +39,23 @@ pub(super) fn apply_in(
     let Some(change) = surface.apply(owner.runtime_epoch.get(), &command.event) else {
         return Ok(false);
     };
-    if let SessionScopedEvent::Title { title } = &command.event {
-        crate::chat_lifecycle::apply_harness_title_in(
+    match &command.event {
+        SessionScopedEvent::Title { title: Some(title) } => {
+            crate::chat_lifecycle::apply_harness_title_in(
+                transaction,
+                project,
+                chat,
+                title.as_str(),
+                command.now_millis,
+            )?
+        }
+        SessionScopedEvent::Title { title: None } => crate::chat_lifecycle::clear_harness_title_in(
             transaction,
             project,
             chat,
-            title.as_str(),
             command.now_millis,
-        )?;
+        )?,
+        _ => {}
     }
     let json = bounded_json(&mut surface)?;
     let next = match revision {
