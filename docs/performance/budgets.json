@@ -162,7 +162,7 @@
       {
         "entry": "src/features/settings/AgentHarnessSettings.tsx",
         "maxGzipBytes": 1750,
-        "reason": "Harnesses settings page: install, version and sign-in status per harness, the lazy boundary for the user-defined agent editor, and the selected harness's account block; loaded only by Settings > Harnesses. Sum of the two measured increments over 1003 B is 1635 B, plus 7%."
+        "reason": "Harnesses settings page: install, version and sign-in per harness, the custom agent editor boundary and the account block. Loaded only by Settings > Harnesses. Measured 1635 B, plus 7%."
       },
       {
         "entry": "src/features/settings/CustomAgentSettings.tsx",
