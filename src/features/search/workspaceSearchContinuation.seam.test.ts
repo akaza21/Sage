@@ -228,7 +228,8 @@ describe("workspace Search continuation public seam", () => {
     for (const continuationToken of [
       "not json",
       "x".repeat(1025),
-      token.replace("}", ',"x":1}'),
+      token.replace("}", ',"z":1}'),
+      token.replace("}", ',"x":2}'),
     ]) {
       expect(() =>
         parseWorkspaceSearchResponse(truncatedPage({ continuationToken })),
@@ -263,6 +264,28 @@ describe("workspace Search continuation public seam", () => {
       validateWorkspaceSearchRequest({
         ...request,
         continuationToken: continuationToken(0, 4, 0, 1),
+      }),
+    ).toThrow("workspace Search continuation is stale");
+    // A regex page does not continue a literal Search, nor the reverse.
+    const regexToken = continuationToken(0).replace("}", ',"x":1}');
+    expect(() =>
+      validateWorkspaceSearchRequest({
+        ...request,
+        continuationToken: regexToken,
+      }),
+    ).toThrow("workspace Search continuation is stale");
+    expect(() =>
+      validateWorkspaceSearchRequest({
+        ...request,
+        useRegex: true,
+        continuationToken: regexToken,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateWorkspaceSearchRequest({
+        ...request,
+        useRegex: true,
+        continuationToken: continuationToken(0),
       }),
     ).toThrow("workspace Search continuation is stale");
   });

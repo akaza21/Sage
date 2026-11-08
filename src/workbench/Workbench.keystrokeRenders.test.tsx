@@ -127,7 +127,12 @@ it("re-renders nothing outside the File surface for keystrokes after the first, 
     "snapshotEditorBuffer",
   ).mockImplementation(async (request) => {
     persisted.push(request);
-    return { revision: request.revision, persistedAt: 1, dirty: true };
+    return {
+      revision: request.revision,
+      applied: true,
+      persistedAt: 1,
+      dirty: true,
+    };
   });
   useWorkbenchStore.setState({
     tabs,

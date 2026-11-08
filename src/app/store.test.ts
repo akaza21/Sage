@@ -995,7 +995,12 @@ describe("workbench resource and project navigation", () => {
     };
     const snapshot = vi
       .spyOn(editorPort, "snapshotEditorBuffer")
-      .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
+      .mockResolvedValue({
+        revision: 1,
+        applied: true,
+        persistedAt: 1,
+        dirty: true,
+      });
     const pendingRename = deferred<RenameChatResult>();
     const rename = vi
       .spyOn(getWorkbenchPorts().chat, "renameChat")
@@ -1253,7 +1258,12 @@ describe("workbench resource and project navigation", () => {
     };
     const snapshot = vi
       .spyOn(editorPort, "snapshotEditorBuffer")
-      .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
+      .mockResolvedValue({
+        revision: 1,
+        applied: true,
+        persistedAt: 1,
+        dirty: true,
+      });
     const pendingArchive = deferred<ArchiveChatResult>();
     const archive = vi
       .spyOn(getWorkbenchPorts().chat, "archiveChat")
@@ -2038,7 +2048,12 @@ describe("workbench resource and project navigation", () => {
     };
     const snapshot = vi
       .spyOn(editorPort, "snapshotEditorBuffer")
-      .mockResolvedValue({ revision: 2, persistedAt: 1, dirty: true });
+      .mockResolvedValue({
+        revision: 2,
+        applied: true,
+        persistedAt: 1,
+        dirty: true,
+      });
     vi.spyOn(editorPort, "openEditorDocument").mockResolvedValue(
       document(right, "fn needle() {}\n", 0, false),
     );
@@ -2226,6 +2241,7 @@ describe("workbench resource and project navigation", () => {
           ? first.promise
           : {
               revision: request.revision,
+              applied: true,
               persistedAt: 2,
               dirty: true,
             };
@@ -2261,7 +2277,7 @@ describe("workbench resource and project navigation", () => {
     await vi.waitFor(() => expect(requests).toEqual(["first\n"]));
     useWorkbenchStore.getState().updateEditorContent("latest\n");
     const save = useWorkbenchStore.getState().saveActiveEditor();
-    first.resolve({ revision: 1, persistedAt: 1, dirty: true });
+    first.resolve({ revision: 1, applied: true, persistedAt: 1, dirty: true });
     await Promise.all([timerFlush, save]);
     expect(requests).toEqual(["first\n", "latest\n"]);
   });
@@ -2467,7 +2483,12 @@ describe("workbench resource and project navigation", () => {
     const activation = useWorkbenchStore.getState().activateTab(chatTab.id);
     await vi.waitFor(() => expect(snapshot).toHaveBeenCalledOnce());
     expect(useWorkbenchStore.getState().activeTabId).toBe(fileTab.id);
-    pending.resolve({ revision: 1, persistedAt: 1, dirty: true });
+    pending.resolve({
+      revision: 1,
+      applied: true,
+      persistedAt: 1,
+      dirty: true,
+    });
     await activation;
     expect(useWorkbenchStore.getState().activeTabId).toBe(chatTab.id);
   });
@@ -2485,6 +2506,7 @@ describe("workbench resource and project navigation", () => {
     };
     vi.spyOn(editorPort, "snapshotEditorBuffer").mockResolvedValue({
       revision: 1,
+      applied: true,
       persistedAt: 1,
       dirty: true,
     });
@@ -4041,7 +4063,12 @@ describe("workbench resource and project navigation", () => {
       });
       const snapshot = vi
         .spyOn(editorPort, "snapshotEditorBuffer")
-        .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
+        .mockResolvedValue({
+          revision: 1,
+          applied: true,
+          persistedAt: 1,
+          dirty: true,
+        });
       const persist = vi
         .spyOn(projectPort, "persistProjectLayout")
         .mockResolvedValue();
@@ -4376,7 +4403,12 @@ describe("workbench resource and project navigation", () => {
     );
     await useWorkbenchStore.getState().openFile(resource("another-old.txt"));
     expect(open).not.toHaveBeenCalled();
-    pending.resolve({ revision: 1, persistedAt: 1, dirty: true });
+    pending.resolve({
+      revision: 1,
+      applied: true,
+      persistedAt: 1,
+      dirty: true,
+    });
     await switching;
     expect(useWorkbenchStore.getState().project?.id).toBe("project-b");
   });

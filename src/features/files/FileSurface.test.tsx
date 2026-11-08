@@ -305,7 +305,12 @@ describe("FileSurface durability cadence", () => {
     vi.useFakeTimers();
     const snapshot = vi
       .spyOn(editorPort, "snapshotEditorBuffer")
-      .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
+      .mockResolvedValue({
+        revision: 1,
+        applied: true,
+        persistedAt: 1,
+        dirty: true,
+      });
     useWorkbenchStore.setState({
       tabs: [tab],
       activeTabId: tab.id,

@@ -374,6 +374,22 @@
         "reason": "Editor Search tool and bounded result list; loads only when Search is selected."
       },
       {
+        "entry": "src/features/search/WorkspaceReplaceParts.tsx",
+        "maxGzipBytes": 3369,
+        "maxCssGzipBytes": 820,
+        "reason": "Workspace Replace: field, row actions, preview and planning; loads when the user opens Replace or reaches for its toggle, never with Search alone."
+      },
+      {
+        "entry": "src/features/search/workspaceReplaceApply.ts",
+        "maxGzipBytes": 2012,
+        "reason": "Workspace Replace confirm dialog and apply: editor, buffer and disk writes and the guarded reopen; loads with the first preview."
+      },
+      {
+        "entry": "src/features/search/workspaceSearchDomain.ts",
+        "maxGzipBytes": 2002,
+        "reason": "Workspace Search response checks; preloaded when the Search panel mounts and awaited before a result shows."
+      },
+      {
         "entry": "src/features/settings/openEditorSettings.ts",
         "maxGzipBytes": 466,
         "reason": "Editor Settings resource action; loads only on an explicit Settings request."

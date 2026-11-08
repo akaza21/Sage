@@ -1,5 +1,8 @@
 mod absent;
 mod filesystem;
+mod replace;
+
+pub use self::replace::{DiskReplace, read_for_replace, replace_on_disk, replaced_file_text};
 
 pub use self::absent::{ABSENT_FINGERPRINT, rebase_buffer};
 use self::absent::{create_document, deleted_conflict, deleted_document, disk_version};

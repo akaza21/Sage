@@ -1798,3 +1798,31 @@ fn recreating_a_folder_never_follows_a_junction_out_of_the_project() {
     assert_refused_behind_a_link(&fixture, "joined/kept.txt", &outside);
     fs::remove_dir_all(outside).unwrap();
 }
+
+#[test]
+fn a_snapshot_says_whether_its_text_is_the_stored_buffer() {
+    let fixture = Fixture::new();
+    let path = "acked.txt";
+    fixture.write(path, b"base\n");
+    let opened = open_document(fixture.database(), &fixture.workspace, path).unwrap();
+    let snapshot = |content: &str, revision| {
+        snapshot_buffer(
+            fixture.database(),
+            &fixture.workspace,
+            snapshot_request(&opened, content, revision),
+        )
+    };
+
+    assert!(snapshot("two\n", 2).unwrap().applied);
+    // The same revision with the same text is already applied.
+    assert!(snapshot("two\n", 2).unwrap().applied);
+    // An older revision is not applied, and says what is stored.
+    let older = snapshot("one\n", 1).unwrap();
+    assert!(!older.applied);
+    assert_eq!(older.revision, 2);
+    // The same revision with other text is an error, never an ack, whether
+    // the text is dirty or the File's own.
+    assert!(snapshot("other\n", 2).is_err());
+    assert!(snapshot("base\n", 2).is_err());
+    assert_eq!(fixture.buffer(path).unwrap().content, "two\n");
+}
