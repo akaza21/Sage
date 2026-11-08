@@ -307,14 +307,15 @@ fn admitted_network_transports_reach_the_remote() {
             }
         });
         // The ssh transport runs an `ssh` program, which a machine need not
-        // have. A stand-in named `ssh`, so Git passes it OpenSSH's options,
-        // opens the connection Git asks for: Git still selects and admits
-        // the transport itself. Only the program is chosen on the command
-        // line, which no repository config can do.
-        let ssh_command = format!("core.sshCommand={}", ssh_stand_in(&scratch.base));
+        // have. This test binary stands in for it: Git still selects and
+        // admits the transport and passes OpenSSH's options, and the
+        // stand-in opens the connection they name. Only the program is
+        // chosen on the command line, which no repository config can do.
+        // Not covered: that Git finds a real `ssh` once Sage clears PATH.
+        let ssh_command = format!("core.sshCommand={}", ssh_stand_in());
         let mut args = vec!["ls-remote", "origin"];
         if protocol == "ssh" {
-            args.splice(0..0, ["-c", ssh_command.as_str()]);
+            args.splice(0..0, ["-c", "ssh.variant=ssh", "-c", ssh_command.as_str()]);
         }
         let result = sage_git(&root, &args);
         let connected = server.join().unwrap();
@@ -331,30 +332,45 @@ fn admitted_network_transports_reach_the_remote() {
     }
 }
 
-/// An `ssh` that connects to the host and port Git passes it and closes.
-fn ssh_stand_in(directory: &Path) -> String {
-    let directory = directory.join("ssh-stand-in");
-    fs::create_dir_all(&directory).unwrap();
-    let script = directory.join("ssh");
-    fs::write(
-        &script,
-        "#!/bin/bash\n\
-         port=22\n\
-         while [ \"$#\" -gt 0 ]; do\n\
-         case \"$1\" in\n\
-         -p) port=$2; shift 2 ;;\n\
-         -o) shift 2 ;;\n\
-         -*) shift ;;\n\
-         *) host=${1#*@}; break ;;\n\
-         esac\n\
-         done\n\
-         exec 3<>\"/dev/tcp/$host/$port\"\n",
+const SSH_STAND_IN: &str = "sage-ssh-stand-in";
+
+/// The `core.sshCommand` that runs this test binary as `ssh`. Git appends
+/// OpenSSH's arguments after `--`, where libtest takes them as name filters
+/// that match no test. The executable's path is not verbatim, and MSYS
+/// argument conversion is off, so Git for Windows' sh runs it unchanged.
+fn ssh_stand_in() -> String {
+    let executable = plain(&std::env::current_exe().unwrap()).replace('\\', "/");
+    format!(
+        "MSYS2_ARG_CONV_EXCL='*' '{executable}' --exact \
+         git_process::repository_config::tests::remote_helpers::ssh_stand_in_fixture \
+         --nocapture -- {SSH_STAND_IN}"
     )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// Run as the ssh stand-in, connects to the host and port Git passes `ssh`
+/// and closes. Run any other way, it has nothing to do.
+#[test]
+fn ssh_stand_in_fixture() {
+    let mut arguments = std::env::args()
+        .skip_while(|argument| argument != "--")
+        .skip(1);
+    if arguments.next().as_deref() != Some(SSH_STAND_IN) {
+        return;
     }
-    format!("\"{}\"", script.to_string_lossy().replace('\\', "/"))
+    let mut port = 22;
+    while let Some(argument) = arguments.next() {
+        match argument.as_str() {
+            "-p" => port = arguments.next().unwrap().parse().unwrap(),
+            "-o" => {
+                arguments.next();
+            }
+            option if option.starts_with('-') => {}
+            destination => {
+                let host = destination.rsplit('@').next().unwrap();
+                drop(std::net::TcpStream::connect((host, port)).unwrap());
+                return;
+            }
+        }
+    }
+    panic!("Git passed the ssh stand-in no destination");
 }
