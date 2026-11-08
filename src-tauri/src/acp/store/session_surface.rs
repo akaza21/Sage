@@ -7,7 +7,7 @@ use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::acp::{
     contract::EntityRevision,
-    intent::session_event::{SessionScopedEvent, SessionSurface, SurfaceChange},
+    intent::session_event::{SessionNotice, SessionScopedEvent, SessionSurface, SurfaceChange},
 };
 
 use super::{AdapterStoreOwner, StoreError, facts};
@@ -119,4 +119,19 @@ pub(super) fn read(
         .and_then(|revision| EntityRevision::new(revision).ok())
         .ok_or(StoreError::Corrupt("session surface revision"))?;
     Ok(Some((surface, revision)))
+}
+
+/// The current session's notices for the chat page; none without a session.
+pub(super) fn notices(
+    connection: &rusqlite::Connection,
+    project: &str,
+    chat: &str,
+    session: Option<&str>,
+) -> Result<Vec<SessionNotice>, StoreError> {
+    let Some(session) = session else {
+        return Ok(Vec::new());
+    };
+    Ok(read(connection, project, chat, session)?
+        .map(|(surface, _)| surface.notices)
+        .unwrap_or_default())
 }

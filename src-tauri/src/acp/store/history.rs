@@ -80,6 +80,12 @@ pub(crate) fn load_chat_page(
         project_id.as_str(),
         chat_id.as_str(),
     )?;
+    let session_notices = super::session_surface::notices(
+        connection,
+        project_id.as_str(),
+        chat_id.as_str(),
+        current.as_ref().map(SageAgentSessionId::as_str),
+    )?;
     let empty_page = AcpChatPage {
         session_config: None,
         goal: crate::acp::goal::GoalState::Unsupported,
@@ -95,6 +101,7 @@ pub(crate) fn load_chat_page(
         forked_from: forked_from.clone(),
         forked_from_turn_id: forked_from_turn_id.clone(),
         child_projection_epoch,
+        session_notices: session_notices.clone(),
     };
     let base_page_bytes = serde_json::to_vec(&empty_page)
         .map_err(|_| StoreError::Corrupt("chat page serialization"))?
@@ -124,6 +131,7 @@ pub(crate) fn load_chat_page(
         forked_from,
         forked_from_turn_id,
         child_projection_epoch,
+        session_notices,
     };
     page.validate_page_bounds()
         .map_err(|_| StoreError::Corrupt("chat page ownership"))?;

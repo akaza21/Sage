@@ -232,6 +232,8 @@
         "src-tauri/src/acp/intent/tool_category.rs",
         "src-tauri/src/acp/intent/tool_execution.rs",
         "src-tauri/src/acp/intent/user_input.rs",
+        "src-tauri/src/acp/intent/user_input/form.rs",
+        "src-tauri/src/acp/intent/user_input/form/tests.rs",
         "src-tauri/src/acp/intent/user_input/tests.rs",
         "src-tauri/src/acp/lifecycle.rs",
         "src-tauri/src/acp/limits.rs",

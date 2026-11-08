@@ -89,7 +89,7 @@ mod tests {
             json!({"token": "s3cret"}),
             json!([{"questionId": "", "text": "x"}]),
             json!([{"questionId": "q", "text": "x", "extra": true}]),
-            json!(vec![json!({"questionId": "q", "text": "x"}); 5]),
+            json!(vec![json!({"questionId": "q", "text": "x"}); 9]),
         ] {
             assert!(serde_json::from_value::<AnswerUserInputRequest>(request(malformed)).is_err());
         }

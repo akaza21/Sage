@@ -402,6 +402,10 @@ pub struct AcpChatPage {
     /// `store::child_transcript::child_projection_epoch`).
     #[serde(skip_serializing_if = "is_zero")]
     pub(crate) child_projection_epoch: u64,
+    /// The current session's newest notices (at most `SESSION_NOTICES_MAX`),
+    /// oldest first, from its durable session surface.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) session_notices: Vec<super::intent::session_event::SessionNotice>,
 }
 
 fn is_zero(value: &u64) -> bool {

@@ -38,6 +38,7 @@ pub mod native_lane;
 pub(crate) mod navigation;
 pub(crate) mod page_context;
 pub(crate) mod page_controls;
+pub(crate) use page_controls::open_external_link;
 pub(crate) mod passwords;
 pub(crate) mod popups;
 mod profile;
