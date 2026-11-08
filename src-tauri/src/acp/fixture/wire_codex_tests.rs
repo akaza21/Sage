@@ -321,3 +321,58 @@ fn codex_child_read_rejects_foreign_identity_and_bounds_waits() {
         .is_err()
     );
 }
+
+#[test]
+fn long_transcript_journey_fills_more_than_a_history_page_and_paces_within_budget() {
+    let case = super::super::generated_cases::JOURNEY_CASES
+        .iter()
+        .find(|case| case.id == "codex-long-transcript-stream")
+        .unwrap();
+    let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
+    assert!(steps.len() as u64 <= LIMITS.fixture.steps_per_case);
+    let paused: u64 = steps
+        .iter()
+        .filter(|step| step["op"] == "pauseMs")
+        .map(|step| step["ms"].as_u64().unwrap())
+        .sum();
+    assert!(paused <= LIMITS.deadlines_ms.fixture_delay_maximum);
+
+    let transcript = steps
+        .iter()
+        .find(|step| step["shape"] == "codexTranscript")
+        .unwrap();
+    let mut state = WireState::new();
+    state.current_turn_id = Some("fixture-turn-1".into());
+    let mut output = Vec::new();
+    execute_with_io(
+        transcript,
+        &mut state,
+        &mut std::io::empty(),
+        &mut output,
+        &mut Vec::new(),
+    )
+    .unwrap();
+    let frames: Vec<Value> = output
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap())
+        .collect();
+    assert!(frames.len() as u64 > LIMITS.durable.history_page_items);
+    assert!(frames.iter().all(|frame| {
+        frame["method"] == "item/completed"
+            && frame["params"]["turnId"] == "fixture-turn-1"
+            && frame["params"]["item"]["type"] == "agentMessage"
+    }));
+}
+
+#[test]
+fn a_transcript_step_outside_its_bounds_is_refused() {
+    let mut state = WireState::new();
+    state.current_turn_id = Some("fixture-turn-1".into());
+    for count in [0, codex::TRANSCRIPT_MESSAGES + 1] {
+        assert_eq!(
+            codex::emit_transcript(count, &mut state, &mut Vec::new()),
+            Err(FixtureError::InvalidArguments)
+        );
+    }
+}

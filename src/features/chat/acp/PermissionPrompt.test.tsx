@@ -396,3 +396,14 @@ describe("PermissionPrompt", () => {
     expect(screen.queryByText("later command")).toBeNull();
   });
 });
+
+describe("PermissionPrompt key repeats", () => {
+  it("answers a held key at most once, even when it was pressed inside the card", () => {
+    render(<PermissionPrompt items={[permission()]} />);
+    const allow = screen.getByRole("button", { name: /Allow once/ });
+    expect(fireEvent.keyDown(allow, { key: "Enter" })).toBe(true);
+    expect(fireEvent.keyDown(allow, { key: "Enter", repeat: true })).toBe(
+      false,
+    );
+  });
+});

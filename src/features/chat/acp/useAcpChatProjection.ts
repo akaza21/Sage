@@ -106,21 +106,29 @@ export function useAcpChatProjection(
     let disposed = false;
     let unlisten: (() => void) | null = null;
 
-    const refresh = coalescedRefresh(() => {
-      const intent = beginPageLoad(null);
-      return getGoalChatPage({
-        projectId: scope.projectId,
-        projectGeneration: String(nativeTransitionEpoch) as ProjectGeneration,
-        chatId: scope.chatId,
-        cursor: null,
-      })
-        .then((projection) => {
-          completePageLoad(intent, projection);
+    const refresh = coalescedRefresh(
+      () => {
+        const intent = beginPageLoad(null);
+        return getGoalChatPage({
+          projectId: scope.projectId,
+          projectGeneration: String(nativeTransitionEpoch) as ProjectGeneration,
+          chatId: scope.chatId,
+          cursor: null,
         })
-        .catch((error: unknown) => {
-          failPageLoad(intent, errorMessage(error));
-        });
-    }, PAGE_LOADS_IN_FLIGHT);
+          .then((projection) => {
+            completePageLoad(intent, projection);
+          })
+          .catch((error: unknown) => {
+            failPageLoad(intent, errorMessage(error));
+          });
+      },
+      {
+        onThrow: (error) => {
+          if (!disposed) store.getState().failRefresh(errorMessage(error));
+        },
+        maxInFlight: PAGE_LOADS_IN_FLIGHT,
+      },
+    );
 
     const scheduleRefresh = (disposition: string) => {
       if (disposed || disposition === "ignoredStale") return;

@@ -231,6 +231,7 @@ fn a_permission_projects_its_tool_category_and_only_a_harness_reason() {
     for reason in [Some("May I retry outside the sandbox?"), None] {
         let projected = content(
             NormalizedPayload::PermissionRequest {
+                user_input: None,
                 category: crate::acp::intent::ToolCategory::Execute,
                 summary: SafeText::new("summary", "Run a command").unwrap(),
                 offered_option_kinds: None,

@@ -1,0 +1,86 @@
+/* A harness's questions: one choice (or free text) per question. */
+.acp-user-input__questions {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.acp-user-input__question {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.acp-user-input__question legend {
+  padding: 0;
+  margin-block-end: var(--space-1);
+  color: var(--approval-kind-text);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.acp-user-input__question > p {
+  margin: 0;
+}
+
+.acp-user-input__options {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.acp-user-input__option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.acp-user-input__option input {
+  margin: 0;
+  margin-block-start: var(--space-1);
+  accent-color: var(--color-accent);
+}
+
+.acp-user-input__option > span {
+  display: grid;
+}
+
+.acp-user-input__option b {
+  font-weight: var(--font-weight-semibold);
+}
+
+.acp-user-input__option span span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.acp-user-input__text {
+  min-width: 0;
+  height: var(--control-height-compact);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--approval-control-edge);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  background: var(--approval-detail-fill);
+  font: inherit;
+}
+
+.acp-user-input__text:focus-visible,
+.acp-user-input__option input:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.acp-user-input__timer {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.acp-user-input__too-long {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--font-size-xs);
+}

@@ -15,8 +15,7 @@ use super::{IncomingEvent, IngressDisposition, ResourceMapper, parse_packet_meta
 const PACKET_FIXTURE: &[u8] =
     include_bytes!("../../../../testdata/acp/codex/candidate-windows.json");
 
-const UNIMPLEMENTED_SERVER_REQUESTS: [&str; 7] = [
-    "item/tool/requestUserInput",
+const UNIMPLEMENTED_SERVER_REQUESTS: [&str; 6] = [
     "mcpServer/elicitation/request",
     "account/chatgptAuthTokens/refresh",
     "attestation/generate",
@@ -28,9 +27,9 @@ const UNIMPLEMENTED_SERVER_REQUESTS: [&str; 7] = [
 const UNPROJECTED_NOTIFICATIONS: [&str; 5] = [
     "fs/changed",
     "hook/started",
+    "item/fileChange/patchUpdated",
     "thread/realtime/started",
     "turn/diff/updated",
-    "warning",
 ];
 
 struct Mapper;
@@ -41,7 +40,7 @@ impl ResourceMapper for Mapper {
     }
 }
 
-fn adapter() -> CodexAdapter {
+pub(super) fn adapter() -> CodexAdapter {
     let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
     CodexAdapter::from_metadata_packet(
         &packet,
@@ -64,7 +63,7 @@ fn initialize_result(id: u64) -> Vec<u8> {
     .unwrap()
 }
 
-fn ready(adapter: &mut CodexAdapter) {
+pub(super) fn ready(adapter: &mut CodexAdapter) {
     adapter.initialize(900).unwrap();
     adapter.ingest(&initialize_result(900), &Mapper).unwrap();
     adapter.initialized().unwrap();
@@ -79,7 +78,7 @@ fn ready(adapter: &mut CodexAdapter) {
         .unwrap();
 }
 
-fn running_turn(adapter: &mut CodexAdapter) {
+pub(super) fn running_turn(adapter: &mut CodexAdapter) {
     let prompt = Prompt::new("prompt", "inspect").unwrap();
     let client = RequiredText::new("client", "client-hard-failure").unwrap();
     adapter.prompt(2, &prompt, &client).unwrap();
@@ -91,7 +90,7 @@ fn running_turn(adapter: &mut CodexAdapter) {
         .unwrap();
 }
 
-fn ingest(adapter: &mut CodexAdapter, frame: &Value) -> IngressDisposition {
+pub(super) fn ingest(adapter: &mut CodexAdapter, frame: &Value) -> IngressDisposition {
     adapter
         .ingest(&serde_json::to_vec(frame).unwrap(), &Mapper)
         .unwrap()
@@ -128,7 +127,7 @@ fn unimplemented_server_requests_are_answered_rather_than_tearing_the_runtime_do
 fn an_unimplemented_server_request_leaves_the_session_able_to_run_a_turn() {
     let mut adapter = adapter();
     ready(&mut adapter);
-    let frame = json!({"id": 4242, "method": "currentTime/read", "params": {}});
+    let frame = json!({"id": 4242, "method": "attestation/generate", "params": {}});
     ingest(&mut adapter, &frame);
     running_turn(&mut adapter);
     let completed = json!({"method":"turn/completed","params":{

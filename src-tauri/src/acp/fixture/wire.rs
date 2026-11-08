@@ -28,6 +28,8 @@ mod parity_tests;
 pub(crate) use child_opened_tests::child_opened_wire_for_test;
 #[cfg(test)]
 pub(crate) use pi_bridge::{pi_bridge_calls_for_test, run_pi_bridge_call_for_test};
+#[cfg(test)]
+pub(crate) use user_input::codex_user_input_wire_for_test;
 
 #[path = "wire_acp.rs"]
 mod acp;
@@ -37,6 +39,8 @@ mod codex;
 mod pi;
 #[path = "wire_pi_bridge.rs"]
 mod pi_bridge;
+#[path = "wire_codex_user_input.rs"]
+mod user_input;
 
 pub(super) struct WireState {
     stdin_open: bool,
@@ -46,6 +50,12 @@ pub(super) struct WireState {
     prompt_request_id: Option<u64>,
     current_turn_id: Option<String>,
     turn_count: u64,
+    /// Server requests the fixture has sent. Codex numbers its own requests
+    /// from one counter per connection, so an id is never reused.
+    server_requests_sent: u64,
+    /// The question request still waiting for the client's answer.
+    pending_user_input: Option<u64>,
+    user_input_echo: Option<String>,
     pi: pi::PiWireState,
 }
 
@@ -59,6 +69,9 @@ impl WireState {
             prompt_request_id: None,
             current_turn_id: None,
             turn_count: 0,
+            server_requests_sent: 0,
+            pending_user_input: None,
+            user_input_echo: None,
             pi: pi::PiWireState::new(),
         }
     }
@@ -139,6 +152,9 @@ fn await_client_kind(
         let prompt_text = step.get("promptText").and_then(Value::as_str);
         return acp::await_request(input, output, state, kind, prompt_text);
     }
+    if kind == "codexUserInputAnswer" {
+        return user_input::await_answer(input, state);
+    }
     if kind == "codexGoalGetWithOptionalModelList" {
         return codex::await_goal_with_optional_models(input, output, state);
     }
@@ -202,43 +218,8 @@ fn emit_known(
     if shape.starts_with("acp") {
         return acp::emit(step, state, output);
     }
-    if shape == "codexNative" {
-        let mut params = acp::substitute(step["params"].clone(), state, 0)?;
-        params["threadId"] = serde_json::json!(acp::SESSION);
-        params["turnId"] = serde_json::json!(
-            state
-                .current_turn_id
-                .as_deref()
-                .ok_or(FixtureError::InvalidArguments)?
-        );
-        return codex::emit_json(
-            output,
-            state,
-            &serde_json::json!({"jsonrpc":"2.0","method":field_str(step,"method")?,"params":params}),
-        );
-    }
-    match shape {
-        "codexError" => return codex::emit_notification("error", state, output),
-        "codexInitializeResult" => return codex::emit_response("initialize", state, output),
-        "codexInitializeResult0146" => {
-            return codex::emit_response("initialize0146", state, output);
-        }
-        "codexThreadResult" => return codex::emit_response("thread", state, output),
-        "codexThreadEffortResult" => return codex::emit_response("effortThread", state, output),
-        "codexModelListResult" => return codex::emit_response("models", state, output),
-        "codexModelListEffortResult" => return codex::emit_response("effortModels", state, output),
-        "codexGoalMethodNotFound" => {
-            return codex::emit_response("goalMethodNotFound", state, output);
-        }
-        "codexTurnResult" => return codex::emit_response("turn", state, output),
-        "codexForkResult" => return codex::emit_response("fork", state, output),
-        "codexStarted" => return codex::emit_notification("started", state, output),
-        "codexAck" => return codex::emit_response("ack", state, output),
-        "codexDelta" => return codex::emit_notification("delta", state, output),
-        "codexItemCompleted" => return codex::emit_notification("itemCompleted", state, output),
-        "codexCompleted" => return codex::emit_notification("completed", state, output),
-        "codexInterrupted" => return codex::emit_notification("interrupted", state, output),
-        _ => {}
+    if shape.starts_with("codex") {
+        return codex::emit_known(shape, step, state, output);
     }
     match shape {
         "childActivityDepth4"
@@ -414,3 +395,5 @@ pub(super) use output::{emit_repeated, write_stdout};
 mod capture;
 #[cfg(test)]
 pub(super) use capture::capture_steps;
+#[cfg(test)]
+pub(crate) use capture::replay_native;
