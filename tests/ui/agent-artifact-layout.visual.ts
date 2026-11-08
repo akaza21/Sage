@@ -40,7 +40,7 @@ for (const command of ["title-bar toggle", "Ctrl+B"] as const) {
     expect((await page.locator(".center-region").boundingBox())!.width).toBe(
       466,
     );
-    const composer = page.getByRole("textbox", { name: "Message agent" });
+    const composer = page.getByRole("combobox", { name: "Message agent" });
     await composer.fill("Chat remains usable");
     await expect(composer).toBeFocused();
   });

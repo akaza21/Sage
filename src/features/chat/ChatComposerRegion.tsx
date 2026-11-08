@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
+import { isImeComposing } from "../../ui/imeComposition";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
 import "../../styles/queued-messages.css";
@@ -226,6 +227,9 @@ export function ChatComposerRegion({
               ref={composerRef}
               id={fieldId}
               aria-label="Message agent"
+              // A combobox for the `/` command menu (ARIA 1.2); its menu
+              // controller owns aria-expanded once loaded.
+              role="combobox"
               aria-expanded={false}
               spellCheck={false}
               autoCorrect="off"
@@ -249,7 +253,7 @@ export function ChatComposerRegion({
               onBlur={dictation.cancel}
               onKeyDown={(event) => {
                 // An IME composition owns its keys, Enter included.
-                if (event.nativeEvent.isComposing) return;
+                if (isImeComposing(event)) return;
                 // Until the `/` menu loads, Enter holds a half-typed name.
                 if (
                   !slashReady.current &&

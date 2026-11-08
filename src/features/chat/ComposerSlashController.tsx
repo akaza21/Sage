@@ -7,6 +7,7 @@ import {
   type RefObject,
 } from "react";
 import "../../styles/composer-slash.css";
+import { isImeComposing } from "../../ui/imeComposition";
 import type { SuggestionKeyEvent } from "../../ui/textFieldSuggestionNavigation";
 import { ComposerCommandHint } from "./ComposerCommandHint";
 import { ComposerSlashMenu } from "./ComposerSlashMenu";
@@ -45,7 +46,7 @@ const plainEnter = (event: SuggestionKeyEvent) =>
   !event.altKey &&
   !event.ctrlKey &&
   !event.metaKey &&
-  !event.isComposing;
+  !isImeComposing(event);
 
 const CARET_EVENTS = ["input", "change", "select", "keyup", "mouseup"] as const;
 
@@ -134,7 +135,11 @@ export function ComposerSlashController({
     anchorRef.current = field.parentElement;
     const track = () => setCaret(field.selectionStart);
     const focus = () => setFocused(true);
-    const blur = () => setFocused(false);
+    // Leaving the field ends an Escape: the menu opens again on return.
+    const blur = () => {
+      setFocused(false);
+      setDismissed(false);
+    };
     // Runs on the field before the composer's delegated handler, so a key
     // the open menu takes never sends or reaches the composer.
     const keyDown = (event: KeyboardEvent) => {

@@ -99,7 +99,7 @@ async function openComposer(page: Page) {
   const field = page
     .locator("form.composer")
     .first()
-    .getByRole("textbox", { name: "Message agent" });
+    .getByRole("combobox", { name: "Message agent" });
   await field.focus();
   return field;
 }

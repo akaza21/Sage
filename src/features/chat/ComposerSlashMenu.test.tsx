@@ -136,7 +136,7 @@ function Composer() {
 }
 
 function type(text: string) {
-  const field = screen.getByRole("textbox", { name: "Message agent" });
+  const field = screen.getByRole("combobox", { name: "Message agent" });
   if (field.ownerDocument.activeElement !== field) act(() => field.focus());
   fireEvent.change(field, { target: { value: text } });
   return field;
@@ -192,7 +192,7 @@ const status = () =>
 describe("composer slash commands", () => {
   it("lists the session's commands for its live runtime and filters by name", async () => {
     render(<Composer />);
-    const field = screen.getByRole("textbox", { name: "Message agent" });
+    const field = screen.getByRole("combobox", { name: "Message agent" });
     expect(field).not.toHaveAttribute("aria-autocomplete");
     expect(field).toHaveAttribute("aria-expanded", "false");
     const { listbox } = await openMenu();
@@ -286,9 +286,68 @@ describe("composer slash commands", () => {
       true,
     );
     fireEvent.keyDown(field, { key: "Tab", isComposing: true });
+    // Safari and WebView2 end a composition with keyCode 229 alone.
+    expect(fireEvent.keyDown(field, { key: "Enter", keyCode: 229 })).toBe(true);
+    fireEvent.keyDown(field, { key: "Tab", keyCode: 229 });
     expect(field).toHaveValue("/re");
     expect(screen.getByRole("listbox")).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
+
+    // The composer's own Enter is held by both signals too.
+    type("hello");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    fireEvent.keyDown(field, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(field, { key: "Enter", keyCode: 229 });
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("ranks the exact name first, then prefixes, then other matches", async () => {
+    native.lists = [
+      {
+        revision: 1,
+        commands: [
+          { name: "pr-review", description: "Inner", inputHint: null },
+          { name: "review-all", description: "Prefix", inputHint: null },
+          { name: "review", description: "Exact", inputHint: null },
+        ],
+      },
+    ];
+    render(<Composer />);
+    const { listbox } = await openMenu("/review");
+    await waitFor(() =>
+      expect(names(listbox)).toEqual(["/review", "/review-all", "/pr-review"]),
+    );
+  });
+
+  it("opens again after Escape once the focus leaves and returns", async () => {
+    render(<Composer />);
+    const { field } = await openMenu("/co");
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    act(() => field.blur());
+    act(() => field.focus());
+    expect(
+      await screen.findByRole("listbox", { name: "Slash commands" }),
+    ).toBeInTheDocument();
+  });
+
+  it("is a combobox that keeps the composer's name and description", async () => {
+    render(<Composer />);
+    const field = screen.getByRole("combobox", { name: "Message agent" });
+    expect(field.tagName).toBe("TEXTAREA");
+    expect(field).toHaveAccessibleName("Message agent");
+    expect(field).toHaveAccessibleDescription(/Send a message/u);
+    expect(field).toHaveAttribute("aria-expanded", "false");
+    const { listbox } = await openMenu("/");
+    expect(field).toHaveAttribute("aria-expanded", "true");
+    expect(field).toHaveAttribute("aria-autocomplete", "list");
+    expect(field).toHaveAttribute("aria-controls", listbox.id);
+    await waitFor(() =>
+      expect(field.getAttribute("aria-activedescendant")).toMatch(/compact$/u),
+    );
+    expect(field).toHaveAccessibleName("Message agent");
   });
 
   it("picks with the mouse, keeps typed input, shows the hint and sends the pick as a command", async () => {

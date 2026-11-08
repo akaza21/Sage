@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { isImeComposing } from "./imeComposition";
 
 /** Rows rendered at once; the rest are counted and reached by typing more. */
 export const TEXT_FIELD_SUGGESTIONS_MAX_RENDERED = 50;
@@ -28,6 +29,7 @@ export type SuggestionKeyEvent = Pick<
   | "ctrlKey"
   | "metaKey"
   | "isComposing"
+  | "keyCode"
   | "preventDefault"
   | "stopPropagation"
 >;
@@ -55,7 +57,12 @@ export function useSuggestionNavigation(
   const active = items.find((item) => item.id === chosenId) ?? items[0] ?? null;
   const onKeyDown = useCallback(
     (event: SuggestionKeyEvent): boolean => {
-      if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey)
+      if (
+        isImeComposing(event) ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey
+      )
         return false;
       if (event.key === "Escape") {
         event.preventDefault();

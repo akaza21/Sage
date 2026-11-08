@@ -26,6 +26,7 @@ import {
   type TextFieldSuggestion,
   type TextFieldSuggestionsState,
 } from "../../ui/textFieldSuggestionNavigation";
+import { isImeComposing } from "../../ui/imeComposition";
 import { TextFieldSuggestions } from "../../ui/TextFieldSuggestions";
 import { createClientIntentFactory } from "./acp/clientIntent";
 import { currentContext } from "./acp/useAcpChatActions";
@@ -51,20 +52,25 @@ function liveOwnerKey(page: AcpChatPage | null): string {
     : "";
 }
 
-/** Prefix matches first, then other name matches, each in advertised order. */
+/**
+ * The exact name first, then prefix matches, then other name matches, each
+ * in advertised order.
+ */
 function filterSlashCommands(
   commands: readonly AvailableAcpCommand[],
   query: string,
 ): AvailableAcpCommand[] {
   const needle = query.toLocaleLowerCase();
+  const exact: AvailableAcpCommand[] = [];
   const prefix: AvailableAcpCommand[] = [];
   const inner: AvailableAcpCommand[] = [];
   for (const command of commands) {
     const name = command.name.toLocaleLowerCase();
-    if (name.startsWith(needle)) prefix.push(command);
+    if (name === needle) exact.push(command);
+    else if (name.startsWith(needle)) prefix.push(command);
     else if (name.includes(needle)) inner.push(command);
   }
-  return [...prefix, ...inner];
+  return [...exact, ...prefix, ...inner];
 }
 
 function suggestion(command: AvailableAcpCommand): TextFieldSuggestion {
@@ -249,7 +255,7 @@ export function ComposerSlashMenu({
         !event.altKey &&
         !event.ctrlKey &&
         !event.metaKey &&
-        !event.isComposing;
+        !isImeComposing(event);
       // A fully typed name runs on the first Enter, as in the Claude Code
       // CLI: the field's own Enter sends it.
       if (enter && navigation.active?.id === query) return false;
