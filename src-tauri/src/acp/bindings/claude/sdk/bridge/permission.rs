@@ -1,13 +1,15 @@
 //! Tool approvals: Claude Code's `can_use_tool` requests as ACP permission
 //! requests, and the user's decisions back as control responses.
 //!
-//! A request Claude Code withdraws (`control_cancel_request`) or that a turn
-//! outlives is settled: it no longer counts against the pending bound, and a
-//! late decision on it still yields the one frame its egress expects.
+//! The session holds a card for every approval until the user's answer is
+//! written, including requests Claude Code withdrew (`control_cancel_request`)
+//! or a turn outlived; a late decision on those still yields the one frame
+//! its egress expects. Requests beyond the session's card limit are declined
+//! here, before the session sees them.
 
 use serde_json::{Value, json};
 
-use super::{BridgeError, Inbound, MAX_PENDING, Permission, SdkBridge};
+use super::{BridgeError, Inbound, MAX_TRACKED_TOOLS, OPEN_APPROVALS, Permission, SdkBridge};
 use crate::acp::bindings::claude::sdk::tools::tool_fields;
 
 const ALLOW_ONCE: &str = "allow_once";
@@ -37,6 +39,10 @@ impl SdkBridge {
                 .push(decision(request_id, deny(QUESTIONS_UNSUPPORTED)));
             return Ok(());
         }
+        if self.permissions.len() + self.settled.len() + self.answering.len() >= OPEN_APPROVALS {
+            inbound.replies.push(decision(request_id, deny(TOO_MANY)));
+            return Ok(());
+        }
         let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
         let suggestions = request
             .get("permission_suggestions")
@@ -47,8 +53,20 @@ impl SdkBridge {
             .get("tool_use_id")
             .and_then(Value::as_str)
             .map_or_else(|| format!("permission-{request_id}"), str::to_owned);
-        tool_call.insert("toolCallId".into(), tool_call_id.into());
+        // A subagent's tool, or one past the tracked rows, has no row yet;
+        // the card needs one, and the turn's end must be able to finish it.
+        tool_call.insert("toolCallId".into(), tool_call_id.clone().into());
         tool_call.insert("status".into(), "pending".into());
+        if !self.tools.contains_key(&tool_call_id) {
+            if self.tools.len() >= MAX_TRACKED_TOOLS {
+                inbound.replies.push(decision(request_id, deny(TOO_MANY)));
+                return Ok(());
+            }
+            self.tools.insert(tool_call_id, name.to_owned());
+            let mut row = tool_call.clone();
+            row.insert("sessionUpdate".into(), "tool_call".into());
+            inbound.acp.push(self.update(row.into()));
+        }
         if let Some(title) = request.get("title").and_then(Value::as_str) {
             tool_call.insert("title".into(), title.into());
         }
@@ -58,10 +76,6 @@ impl SdkBridge {
             options.push(json!({"optionId": ALLOW_ALWAYS, "name": "Yes, and don't ask again", "kind": "allow_always"}));
         }
         options.push(json!({"optionId": REJECT, "name": "No", "kind": "reject_once"}));
-        if self.permissions.len() >= MAX_PENDING {
-            inbound.replies.push(decision(request_id, deny(TOO_MANY)));
-            return Ok(());
-        }
         self.next_permission += 1;
         self.permissions.insert(
             self.next_permission,
@@ -101,9 +115,6 @@ impl SdkBridge {
     fn settle(&mut self, wires: impl IntoIterator<Item = u64>) {
         for wire in wires {
             if let Some(permission) = self.permissions.remove(&wire) {
-                if self.settled.len() >= MAX_PENDING {
-                    self.settled.pop_first();
-                }
                 self.settled.insert(wire, permission.request_id);
             }
         }
@@ -121,6 +132,7 @@ impl SdkBridge {
         let wire = id.as_u64().ok_or(BridgeError::Unsupported)?;
         let Some(permission) = self.permissions.remove(&wire) else {
             let request_id = self.settled.remove(&wire).ok_or(BridgeError::Unsupported)?;
+            self.answering.insert(request_id.clone());
             return Ok(decision(&request_id, deny(DECLINED)));
         };
         let outcome = result
@@ -138,6 +150,7 @@ impl SdkBridge {
             }),
             _ => deny(DECLINED),
         };
+        self.answering.insert(permission.request_id.clone());
         Ok(decision(&permission.request_id, response))
     }
 }

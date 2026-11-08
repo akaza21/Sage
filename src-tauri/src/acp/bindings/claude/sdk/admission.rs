@@ -87,6 +87,8 @@ mod fixture;
 
 #[derive(Debug)]
 pub(crate) struct AdmittedClaudeSdkBinding {
+    /// The path discovery found; an update can repoint it at a new file.
+    launcher: PathBuf,
     executable: PathBuf,
     version: String,
     sha256: [u8; 32],
@@ -177,6 +179,7 @@ impl AdmittedClaudeSdkBinding {
             .finalize()
             .into();
         Ok(Self {
+            launcher: installed.executable.clone(),
             executable,
             version,
             sha256,
@@ -191,6 +194,7 @@ impl AdmittedClaudeSdkBinding {
     #[cfg(test)]
     pub(crate) fn for_test() -> Self {
         Self {
+            launcher: PathBuf::from("/fixture/claude"),
             executable: PathBuf::from("/fixture/claude"),
             version: CLAUDE_CODE_VERSION.into(),
             sha256: [1; 32],
@@ -222,9 +226,13 @@ impl AdmittedClaudeSdkBinding {
         }
     }
 
+    /// The admitted file is unchanged and still the one the launcher names.
     pub(crate) fn revalidate(&self) -> Result<(), ClaudeSdkAdmissionUnavailable> {
-        (crate::harness_discovery::cached_sha256_file(&self.executable).as_deref()
-            == Some(self.sha256_hex.as_str()))
+        let current = self.launcher == self.executable
+            || std::fs::canonicalize(&self.launcher).is_ok_and(|path| path == self.executable);
+        (current
+            && crate::harness_discovery::cached_sha256_file(&self.executable).as_deref()
+                == Some(self.sha256_hex.as_str()))
         .then_some(())
         .ok_or(ClaudeSdkAdmissionUnavailable::Drift)
     }
@@ -320,8 +328,9 @@ impl ClaudeSdkBindingRegistration {
         };
     }
 
-    /// The admitted CLI, revalidated. Claude Code updates itself in place,
-    /// so a changed file still on the supported line is admitted again.
+    /// The admitted CLI, revalidated. Claude Code updates itself, in place
+    /// or by repointing its launcher, so a changed file still on the
+    /// supported line is admitted again.
     pub(crate) fn refresh(
         &self,
     ) -> Result<Arc<AdmittedClaudeSdkBinding>, ClaudeSdkAdmissionUnavailable> {
@@ -335,25 +344,30 @@ impl ClaudeSdkBindingRegistration {
         let Err(drift) = binding.revalidate() else {
             return Ok(binding);
         };
-        let readmitted = if self.fixture_only {
-            Err(drift)
-        } else {
-            let version = crate::harness_discovery::revalidate_harness_version(
-                "claude-code",
-                &binding.executable,
-            );
-            AdmittedClaudeSdkBinding::admit(&InstalledHarness {
-                id: "claude-code",
-                executable: binding.executable.clone(),
-                version,
-            })
-            .map(Arc::new)
-        };
-        *self.lock_state() = match &readmitted {
-            Ok(binding) => RegistrationState::Admitted(Arc::clone(binding)),
-            Err(reason) => RegistrationState::Unavailable(*reason),
-        };
-        readmitted
+        if self.fixture_only {
+            return Err(drift);
+        }
+        // Probed through the launcher outside the lock. A failed probe is not
+        // kept, so the next launch probes again, and a state discovery or
+        // another refresh replaced meanwhile wins.
+        let version =
+            crate::harness_discovery::revalidate_harness_version("claude-code", &binding.launcher);
+        let readmitted = AdmittedClaudeSdkBinding::admit(&InstalledHarness {
+            id: "claude-code",
+            executable: binding.launcher.clone(),
+            version,
+        })
+        .map(Arc::new)?;
+        let mut state = self.lock_state();
+        match &*state {
+            RegistrationState::Admitted(current) if Arc::ptr_eq(current, &binding) => {
+                *state = RegistrationState::Admitted(Arc::clone(&readmitted));
+                Ok(readmitted)
+            }
+            RegistrationState::Admitted(current) => Ok(Arc::clone(current)),
+            RegistrationState::Pending => Err(ClaudeSdkAdmissionUnavailable::DiscoveryPending),
+            RegistrationState::Unavailable(reason) => Err(*reason),
+        }
     }
 
     pub(crate) fn is_available(&self) -> bool {

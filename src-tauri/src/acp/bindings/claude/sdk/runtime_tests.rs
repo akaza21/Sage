@@ -302,3 +302,102 @@ fn an_edit_result_with_a_long_patch_finishes_its_row_instead_of_failing_the_sess
     let reply: Value = serde_json::from_slice(egress[0].frame().payload()).unwrap();
     assert_eq!(reply["response"]["subtype"], "error");
 }
+
+fn prompted() -> ClaudeSdkRuntime {
+    let mut runtime = ready();
+    send(
+        &mut runtime,
+        AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Fetch them all").unwrap(),
+            client_message_id: RequiredText::new("client", "client-1").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::Ask,
+        },
+    );
+    runtime
+}
+
+#[test]
+fn subagent_and_parallel_approvals_past_the_card_limit_keep_the_session() {
+    let mut runtime = prompted();
+    feed(
+        &mut runtime,
+        json!({"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"task","name":"Task","input":{"prompt":"look"}}]}}),
+    );
+    let mut cards = Vec::new();
+    for n in 0..10 {
+        let (events, egress) = runtime
+            .ingest(
+                &frame(json!({"type":"control_request","request_id":format!("cli-{n}"),"request":{
+                    "subtype":"can_use_tool","tool_name":"WebFetch","tool_use_id":format!("sub-{n}"),"input":{"url":"https://example.com"}}})),
+                &Mapper,
+            )
+            .unwrap()
+            .into_parts();
+        match events.iter().find_map(|event| match event {
+            AdapterEvent::PermissionRequest {
+                external_request_id,
+                ..
+            } => Some(external_request_id.clone()),
+            _ => None,
+        }) {
+            Some(card) => cards.push(card),
+            None => {
+                assert!(n >= 8, "approval {n} has a card");
+                let denial: Value = serde_json::from_slice(egress[0].frame().payload()).unwrap();
+                assert_eq!(denial["response"]["response"]["behavior"], "deny");
+            }
+        }
+    }
+    assert_eq!(cards.len(), 8);
+    let finished = feed(
+        &mut runtime,
+        json!({"type":"user","parent_tool_use_id":"task","message":{"content":[{"type":"tool_result","tool_use_id":"sub-0","content":"page"}]}}),
+    );
+    assert!(
+        !matches!(finished[..], [AdapterEvent::Absorbed]),
+        "{finished:?}"
+    );
+    let answer = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse(cards[1].as_str()).unwrap(),
+            decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+        })
+        .unwrap();
+    let token = answer.into_token();
+    for resolution in [EgressResolution::Queued, EgressResolution::Written] {
+        runtime.resolve_egress(token.clone(), resolution).unwrap();
+    }
+    let events = feed(
+        &mut runtime,
+        json!({"type":"control_request","request_id":"cli-10","request":{
+            "subtype":"can_use_tool","tool_name":"WebFetch","tool_use_id":"sub-10","input":{"url":"https://example.com"}}}),
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::PermissionRequest { .. }))
+    );
+}
+
+#[test]
+fn a_turn_end_too_large_to_read_still_ends_the_turn() {
+    let mut runtime = prompted();
+    let denials: Vec<Value> = (0..600)
+        .map(|n| json!({"tool_name": format!("t{n}")}))
+        .collect();
+    let result = frame(
+        json!({"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":1,"output_tokens":2},"permission_denials":denials}),
+    );
+    assert!(crate::acp::transport::validate_structure(&result).is_err());
+    let (events, _) = runtime
+        .discard_invalid_response(&result)
+        .unwrap()
+        .into_parts();
+    assert!(matches!(
+        events.last(),
+        Some(AdapterEvent::Turn {
+            state: TurnState::Completed,
+            ..
+        })
+    ));
+}

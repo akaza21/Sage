@@ -322,7 +322,11 @@ fn a_withdrawn_or_outlived_approval_frees_its_slot_and_still_answers() {
     prompt(&mut bridge, 3);
     let ask = |bridge: &mut SdkBridge, request: &str| {
         let asked = bridge.inbound(json!({"type":"control_request","request_id":request,"request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}})).unwrap();
-        asked.acp[0]["id"].clone()
+        assert_eq!(
+            asked.acp[0]["params"]["update"]["sessionUpdate"],
+            "tool_call"
+        );
+        asked.acp[1]["id"].clone()
     };
     let withdrawn = ask(&mut bridge, "r1");
     let outlived = ask(&mut bridge, "r2");
@@ -339,7 +343,42 @@ fn a_withdrawn_or_outlived_approval_frees_its_slot_and_still_answers() {
             .unwrap();
         assert_eq!(late["response"]["request_id"], request);
         assert_eq!(late["response"]["response"]["behavior"], "deny");
+        let sent = SdkBridge::sent(&late).unwrap();
+        assert!(!bridge.answering.is_empty());
+        bridge.delivered(&sent);
     }
+    assert!(bridge.answering.is_empty() && bridge.settled.is_empty());
+}
+
+#[test]
+fn an_interrupt_claude_code_never_received_does_not_cancel_the_turn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let interrupt = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    bridge.undo(&SdkBridge::sent(&interrupt).unwrap());
+    let ended = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false}))
+        .unwrap();
+    assert_eq!(
+        ended.acp.last().unwrap()["result"]["stopReason"],
+        "end_turn"
+    );
+}
+
+#[test]
+fn a_reply_too_large_to_read_fails_its_request() {
+    let mut bridge = SdkBridge::new(SESSION.into(), None);
+    let sdk = bridge
+        .outbound(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}))
+        .unwrap();
+    let kept = SdkBridge::essentials(&success(&sdk, json!({"commands": []}))).unwrap();
+    let acp = bridge.inbound(kept).unwrap().acp;
+    assert_eq!(acp[0]["id"], 1);
+    assert!(acp[0]["error"].is_object());
 }
 
 #[test]

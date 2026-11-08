@@ -10,7 +10,7 @@
 //! permission id stands for which `can_use_tool` request, and the running
 //! prompt that a `result` completes.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use serde_json::{Value, json};
 
@@ -22,6 +22,11 @@ mod permission;
 
 /// Bounds on per-turn bookkeeping; the inner session caps pending requests.
 const MAX_PENDING: usize = 32;
+/// Approval cards the session holds until the user's answer is written:
+/// open, withdrawn by Claude Code, or answered but not yet delivered.
+const OPEN_APPROVALS: usize = crate::acp::limits::LIMITS
+    .queues
+    .server_requests_per_session as usize;
 const MAX_TRACKED_TOOLS: usize = 1_024;
 /// A message's final frames follow its stream directly, so only the most
 /// recent streamed ids are ever looked up.
@@ -82,6 +87,8 @@ pub(super) struct SdkBridge {
     permissions: BTreeMap<u64, Permission>,
     /// Withdrawn or outlived requests: wire id to Claude Code request id.
     settled: BTreeMap<u64, String>,
+    /// Claude Code request ids whose answer is not yet delivered.
+    answering: BTreeSet<String>,
     next_permission: u64,
     tools: BTreeMap<String, String>,
     streamed: VecDeque<String>,
@@ -92,6 +99,7 @@ pub(super) struct SdkBridge {
 pub(super) enum Sent {
     Prompt,
     Control(String),
+    Answer(String),
 }
 
 impl SdkBridge {
@@ -110,6 +118,7 @@ impl SdkBridge {
             auth_failed: false,
             permissions: BTreeMap::new(),
             settled: BTreeMap::new(),
+            answering: BTreeSet::new(),
             next_permission: 0,
             tools: BTreeMap::new(),
             streamed: VecDeque::new(),
@@ -132,6 +141,9 @@ impl SdkBridge {
         match sdk.get("type").and_then(Value::as_str)? {
             "user" => Some(Sent::Prompt),
             "control_request" => Some(Sent::Control(sdk.get("request_id")?.as_str()?.to_owned())),
+            "control_response" => Some(Sent::Answer(
+                sdk.get("response")?.get("request_id")?.as_str()?.to_owned(),
+            )),
             _ => None,
         }
     }
@@ -147,6 +159,37 @@ impl SdkBridge {
         }))
     }
 
+    /// What Sage still needs from a frame too large to read: a turn's end,
+    /// or a failed reply to one of Sage's own requests.
+    pub(super) fn essentials(sdk: &Value) -> Option<Value> {
+        match sdk.get("type")?.as_str()? {
+            "result" => {
+                let mut kept = json!({"type": "result", "usage": {}});
+                for key in ["subtype", "is_error", "stop_reason", "session_id"] {
+                    if let Some(value) = sdk.get(key).filter(|value| !value.is_object()) {
+                        kept[key] = value.clone();
+                    }
+                }
+                let usage = sdk.get("usage").and_then(Value::as_object);
+                for (key, count) in usage.into_iter().flatten() {
+                    if count.is_u64() {
+                        kept["usage"][key] = count.clone();
+                    }
+                }
+                Some(kept)
+            }
+            "control_response" => Some(json!({
+                "type": "control_response",
+                "response": {
+                    "subtype": "error",
+                    "request_id": sdk.get("response")?.get("request_id")?.as_str()?,
+                    "error": "Claude Code's reply was too large for Sage",
+                },
+            })),
+            _ => None,
+        }
+    }
+
     /// Claude Code never received a frame: forget what it started.
     pub(super) fn undo(&mut self, sent: &Sent) {
         match sent {
@@ -155,8 +198,19 @@ impl SdkBridge {
                 self.interrupted = false;
             }
             Sent::Control(request_id) => {
-                self.pending.remove(request_id);
+                if let Some(Pending::Interrupt) = self.pending.remove(request_id) {
+                    self.interrupted = false;
+                }
             }
+            Sent::Answer(_) => self.delivered(sent),
+        }
+    }
+
+    /// A frame reached Claude Code (or never will): an answered approval no
+    /// longer holds the session's card.
+    pub(super) fn delivered(&mut self, sent: &Sent) {
+        if let Sent::Answer(request_id) = sent {
+            self.answering.remove(request_id);
         }
     }
 

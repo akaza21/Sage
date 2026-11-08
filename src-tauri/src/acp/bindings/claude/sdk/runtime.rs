@@ -101,10 +101,12 @@ impl ClaudeSdkRuntime {
                 return Err(error);
             }
         };
-        if let Some(sent) = sent
-            && self.sent.len() < MAX_OPEN_DELIVERIES
-        {
-            self.sent.push((token.clone(), sent));
+        if let Some(sent) = sent {
+            if self.sent.len() < MAX_OPEN_DELIVERIES {
+                self.sent.push((token.clone(), sent));
+            } else if let Some(bridge) = self.bridge.as_mut() {
+                bridge.delivered(&sent);
+            }
         }
         Ok(AdapterEgress::new(frame, token))
     }
@@ -273,9 +275,10 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     /// Claude Code's own output can exceed the structure limits sized for
     /// ACP frames: an edit's result carries its whole patch in
     /// `tool_use_result`, which Sage never reads. Such a frame is read
-    /// without those fields; a control request still out of bounds is
-    /// refused so Claude Code is not left waiting, and anything else is
-    /// dropped (an unfinished tool row ends as failed with the turn).
+    /// without those fields. Still out of bounds, a turn's end or a reply to
+    /// Sage keeps only what ends it, a control request is refused so Claude
+    /// Code is not left waiting, and anything else is dropped (an unfinished
+    /// tool row ends as failed with the turn).
     fn discard_invalid_response(
         &mut self,
         frame: &Frame,
@@ -287,6 +290,12 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         object.remove("tool_result_meta");
         let reduced = serde_json::to_vec(&sdk).map_err(|_| AdapterRuntimeError::Frame)?;
         if let Ok(sdk) = decode_frame(&reduced) {
+            return self.ingest_sdk(sdk, &NoResources);
+        }
+        if let Some(essentials) = SdkBridge::essentials(&sdk)
+            && let Ok(essentials) = serde_json::to_vec(&essentials)
+            && let Ok(sdk) = decode_frame(&essentials)
+        {
             return self.ingest_sdk(sdk, &NoResources);
         }
         let mut batch = AdapterBatchBuilder::new();
@@ -315,12 +324,15 @@ impl HarnessAdapter for ClaudeSdkRuntime {
             && let Some(index) = self.sent.iter().position(|(sent, _)| *sent == token)
         {
             let (_, sent) = self.sent.swap_remove(index);
-            if matches!(
-                resolution,
-                EgressResolution::QueueRejected | EgressResolution::WriteZeroBytes
-            ) && let Some(bridge) = self.bridge.as_mut()
-            {
-                bridge.undo(&sent);
+            if let Some(bridge) = self.bridge.as_mut() {
+                if matches!(
+                    resolution,
+                    EgressResolution::QueueRejected | EgressResolution::WriteZeroBytes
+                ) {
+                    bridge.undo(&sent);
+                } else {
+                    bridge.delivered(&sent);
+                }
             }
         }
         self.session.resolve_egress(token, resolution)

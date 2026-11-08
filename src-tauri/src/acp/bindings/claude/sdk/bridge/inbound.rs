@@ -33,12 +33,13 @@ impl SdkBridge {
                 let request_id = sdk.get("request_id").and_then(Value::as_str);
                 self.withdraw(request_id.ok_or(BridgeError::Frame)?);
             }
-            // Subagent traffic is projected in a later stage; the parent's
-            // `Task` tool row carries the subagent's outcome.
+            // Results still finish the rows a subagent's approvals opened.
+            Some("user") => self.tool_results(&sdk["message"], &mut inbound),
+            // Other subagent traffic is projected in a later stage; the
+            // parent's `Task` tool row carries the subagent's outcome.
             Some(_) if nested => {}
             Some("stream_event") => self.stream_event(&sdk["event"], &mut inbound),
             Some("assistant") => self.assistant(&sdk, &mut inbound),
-            Some("user") => self.tool_results(&sdk["message"], &mut inbound),
             Some("result") => self.result(&sdk, &mut inbound),
             Some("system") => self.status(&sdk, &mut inbound),
             Some(_) => {}

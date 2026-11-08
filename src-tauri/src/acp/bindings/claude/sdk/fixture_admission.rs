@@ -44,6 +44,7 @@ impl AdmittedClaudeSdkBinding {
             .finalize()
             .into();
         Ok(Self {
+            launcher: selection.artifact_path.clone(),
             executable: selection.artifact_path.clone(),
             version: CLAUDE_CODE_VERSION.into(),
             sha256: selection.artifact_sha256,
