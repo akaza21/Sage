@@ -234,15 +234,16 @@ fn current_time_read_is_answered_with_whole_unix_seconds() {
     assert!((before..before + 5).contains(&now), "{now} is not now");
 }
 
-#[test]
-fn an_mcp_server_needing_sign_in_becomes_a_notice_not_a_teardown() {
-    let mut adapter = live();
-    let frame = json!({"method": "mcpServer/startupStatus/updated", "params": {
-        "threadId": "thread-1", "name": "tickets", "status": "failed",
-        "error": "token expired", "failureReason": "reauthenticationRequired"
+/// The notice a failed startup status projects; the turn keeps running.
+fn startup_failure_notice(adapter: &mut CodexAdapter, failure: Value) -> String {
+    let mut frame = json!({"method": "mcpServer/startupStatus/updated", "params": {
+        "threadId": "thread-1", "name": "tickets", "status": "failed"
     }});
-    let IngressDisposition::Events(events) = ingest(&mut adapter, &frame) else {
-        panic!("the expired sign-in must be reported");
+    for (field, value) in failure.as_object().expect("failure fields") {
+        frame["params"][field] = value.clone();
+    }
+    let IngressDisposition::Events(events) = ingest(adapter, &frame) else {
+        panic!("a failed MCP server must be reported");
     };
     let [
         IncomingEvent::Session {
@@ -253,11 +254,37 @@ fn an_mcp_server_needing_sign_in_becomes_a_notice_not_a_teardown() {
     else {
         panic!("expected one session notice, got {events:?}");
     };
+    running_delta(adapter);
+    notice.text.as_str().to_owned()
+}
+
+#[test]
+fn an_mcp_server_needing_sign_in_becomes_a_notice_not_a_teardown() {
+    let mut adapter = live();
     assert_eq!(
-        notice.text.as_str(),
+        startup_failure_notice(
+            &mut adapter,
+            json!({"error": "token expired", "failureReason": "reauthenticationRequired"})
+        ),
         "The MCP server tickets needs you to sign in again; its tools are unavailable until then."
     );
-    running_delta(&mut adapter);
+}
+
+#[test]
+fn any_failed_mcp_server_becomes_a_notice_with_its_reason_in_safe_text() {
+    let mut adapter = live();
+    assert_eq!(
+        startup_failure_notice(
+            &mut adapter,
+            json!({"error": "spawn \u{202e}tickets-mcp\u{0007} failed", "failureReason": null})
+        ),
+        "The MCP server tickets failed to start: spawn tickets-mcp  failed",
+        "bidi controls are dropped and other control characters become spaces"
+    );
+    assert_eq!(
+        startup_failure_notice(&mut adapter, json!({"failureReason": "quotaExceeded"})),
+        "The MCP server tickets failed to start."
+    );
 }
 
 fn running_delta(adapter: &mut CodexAdapter) {

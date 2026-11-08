@@ -59,23 +59,34 @@ pub(super) fn warning(
     }
 }
 
-/// `mcpServer/startupStatus/updated` failing with
-/// `reauthenticationRequired`: the server's sign-in expired. Codex keeps
-/// running without it, so the session goes on and says why its tools are
-/// missing. Before a thread is bound the notice is held, like `warning`.
-pub(super) fn mcp_sign_in_required(
+/// The startup failure reason that means the server's sign-in expired.
+pub(super) const REAUTHENTICATION_REQUIRED: &str = "reauthenticationRequired";
+
+/// `mcpServer/startupStatus/updated` with `failed`: an MCP server did not
+/// start. Codex keeps running without it, so the session goes on and says
+/// why the server's tools are missing: its sign-in expired, or Codex's own
+/// error text (redacted and clipped) when it gives one. Before a thread is
+/// bound the notice is held, like `warning`.
+pub(super) fn mcp_startup_failed(
     adapter: &mut CodexAdapter,
+    params: &Map<String, Value>,
     server: &str,
     thread: &str,
 ) -> Result<IngressDisposition, IngressError> {
-    let notice = notice(
-        SessionNoticeLevel::Warning,
-        "codex mcp",
+    let server = clean(server, ID_BYTES);
+    let message = if params.get("failureReason").and_then(Value::as_str)
+        == Some(REAUTHENTICATION_REQUIRED)
+    {
         format!(
-            "The MCP server {} needs you to sign in again; its tools are unavailable until then.",
-            clean(server, ID_BYTES)
-        ),
-    )?;
+            "The MCP server {server} needs you to sign in again; its tools are unavailable until then."
+        )
+    } else {
+        match human(params, "error") {
+            Ok(error) => format!("The MCP server {server} failed to start: {error}"),
+            Err(_) => format!("The MCP server {server} failed to start."),
+        }
+    };
+    let notice = notice(SessionNoticeLevel::Warning, "codex mcp", message)?;
     if adapter.bound_thread_id().is_none() {
         adapter.buffer_session_notice(notice);
         return Ok(IngressDisposition::IgnoredLate);
