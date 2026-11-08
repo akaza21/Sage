@@ -10,10 +10,8 @@ import { errorMessage } from "../../domain/errors";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
-import {
-  isDeletedOnDisk,
-  type EditorStateBridge,
-} from "./fileEditorController";
+import { isDeletedOnDisk } from "./editorDisk";
+import type { EditorStateBridge } from "./fileEditorController";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 
 export { EDITOR_EXTERNAL_WATCH_EVENT };

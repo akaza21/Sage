@@ -11,12 +11,14 @@ import { useWorkbenchStore } from "../../app/store";
 import type { SidebarView } from "../../app/store";
 import { formatKeymapChords, keymapBinding } from "../../domain/keymapRegistry";
 import type { TabKind } from "../../domain/chat";
-import { isDeletedOnDisk } from "../files/fileEditorController";
+import { isDeletedOnDisk } from "../files/editorDisk";
 import {
   fileSurfaceCommandAvailable,
   runFileSurfaceCommand,
   type FileSurfaceCommand,
 } from "../files/fileSurfaceCommandBus";
+
+const loadConflictActions = () => import("../../app/editorConflictActions");
 
 const isEditorTab = (kind: TabKind) =>
   kind === "file" || kind === "diff" || kind === "settings";
@@ -84,7 +86,7 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
       id: "revert",
       label: "Revert File",
       shortcut: null,
-      run: () => void useWorkbenchStore.getState().discardActiveEditor(true),
+      run: () => void loadConflictActions().then((a) => a.reloadActiveEditor()),
     });
   }
   if (store.tabs.some((tab) => tab.kind === "file" && tab.dirty)) {
@@ -92,7 +94,7 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
       id: "saveAll",
       label: "Save All",
       shortcut: shortcutOf("saveAll", apple),
-      run: () => void useWorkbenchStore.getState().saveAllEditors(),
+      run: () => void loadConflictActions().then((a) => a.saveAllEditors()),
     });
   }
   if (canGoBack()) {

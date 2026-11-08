@@ -11,6 +11,10 @@ import { AlertTriangle } from "../../ui/leanIcons";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { contentText } from "./editorContent";
 import { requestEditorFocus } from "./editorFocusRequest";
+import "./editor-conflict-notice.css";
+
+// Loaded on a press, so the banner itself shows as soon as it can.
+const loadActions = () => import("../../app/editorConflictActions");
 
 const UNSTORED_EDITS = "Your unsaved changes are not yet stored.";
 
@@ -88,7 +92,6 @@ export default function FileConflictNotice({
   const key = ready && conflictCompareKey(ready);
   const comparing =
     editable && conflict.kind === "external-change" && compareKey === key;
-  const store = useWorkbenchStore.getState;
   // Back to typing once the conflict is resolved.
   const thenFocus = (resolved: Promise<boolean>) =>
     void resolved.then((done) => {
@@ -128,8 +131,8 @@ export default function FileConflictNotice({
                 disabled={busy}
                 title="Revert File: drop your changes and load the File from disk"
                 onClick={() => {
-                  store().setEditorCompareKey(null);
-                  thenFocus(store().discardActiveEditor(true));
+                  useWorkbenchStore.setState({ editorCompareKey: null });
+                  thenFocus(loadActions().then((a) => a.reloadActiveEditor()));
                 }}
               >
                 Reload
@@ -145,8 +148,10 @@ export default function FileConflictNotice({
                   : "Keep your version; saving writes it over the File on disk"
               }
               onClick={() => {
-                store().setEditorCompareKey(null);
-                thenFocus(store().keepActiveEditorBuffer());
+                useWorkbenchStore.setState({ editorCompareKey: null });
+                thenFocus(
+                  loadActions().then((a) => a.keepActiveEditorBuffer()),
+                );
               }}
             >
               Keep mine
@@ -160,7 +165,9 @@ export default function FileConflictNotice({
                 aria-pressed={comparing}
                 title="Compare the File on disk with your version"
                 onClick={() =>
-                  store().setEditorCompareKey(comparing ? null : key)
+                  useWorkbenchStore.setState({
+                    editorCompareKey: comparing ? null : key,
+                  })
                 }
               >
                 Compare
@@ -204,9 +211,9 @@ function CloseButton({ busy }: { busy: boolean }) {
       disabled={busy}
       title="Close the File without saving"
       onClick={() => {
-        const state = useWorkbenchStore.getState();
-        if (state.activeTabId) {
-          void state.closeEditorWithoutSaving(state.activeTabId);
+        const tabId = useWorkbenchStore.getState().activeTabId;
+        if (tabId) {
+          void loadActions().then((a) => a.closeEditorWithoutSaving(tabId));
         }
       }}
     >

@@ -2,13 +2,12 @@ import { useEffect } from "react";
 
 import { errorMessage } from "../../domain/errors";
 import { sameResource } from "../../domain/resourceIdentity";
-import {
-  ABSENT_FINGERPRINT,
-  type BufferSnapshotAck,
-  type BufferSnapshotRequest,
-  type EditorDocument,
-  type EditorSaveResult,
-  type ResourceRef,
+import type {
+  BufferSnapshotAck,
+  BufferSnapshotRequest,
+  EditorDocument,
+  EditorSaveResult,
+  ResourceRef,
 } from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
@@ -46,15 +45,7 @@ export type ActiveEditorState =
       unwatched?: string;
     };
 
-type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
-
-/** The File is gone from disk, whether or not the user kept the buffer. */
-export function isDeletedOnDisk(editor: ReadyEditorState): boolean {
-  return (
-    editor.document.conflict?.kind === "deleted" ||
-    editor.document.disk.fingerprint === ABSENT_FINGERPRINT
-  );
-}
+export type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
 
 export interface EditorStateBridge {
   getActiveEditor(): ActiveEditorState | null;
@@ -105,7 +96,8 @@ export interface FileEditorController {
   ): Promise<EditorSaveResult | null>;
   /**
    * Drops the edits for the File on disk; null if nothing was loaded. With
-   * `reload`, a File that is gone keeps the edits and shows as deleted.
+   * `reload`, a File that is gone keeps its edits, and the document is
+   * returned for the caller to show rather than shown.
    */
   discard(
     bridge: EditorStateBridge,
@@ -293,30 +285,12 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
       if (!canCommit(active.resource)) {
         return null;
       }
-      const current = currentReady(bridge);
-      if (
-        reload &&
-        current &&
-        document.disk.fingerprint === ABSENT_FINGERPRINT
-      ) {
-        // Gone from disk: nothing to reload, and the edits stay.
-        bridge.setActiveEditor(
-          {
-            ...current,
-            document: {
-              ...current.document,
-              disk: document.disk,
-              conflict: document.conflict,
-            },
-          },
-          { tabStatus: document.conflict ? "failed" : null },
-        );
-        return null;
+      if (!reload) {
+        bridge.setActiveEditor(ready(document), {
+          dirty: document.dirty,
+          tabStatus: null,
+        });
       }
-      bridge.setActiveEditor(ready(document), {
-        dirty: document.dirty,
-        tabStatus: null,
-      });
       return document;
     },
     saveError: (bridge, error) => {

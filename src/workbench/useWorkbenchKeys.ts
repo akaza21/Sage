@@ -71,7 +71,9 @@ export function useWorkbenchKeys({
         matchesPlatformChord(keymapBinding("saveAll"), event, apple)
       ) {
         event.preventDefault();
-        void useWorkbenchStore.getState().saveAllEditors();
+        void import("../app/editorConflictActions").then((actions) =>
+          actions.saveAllEditors(),
+        );
       }
       if (matchesPlatformChord(keymapBinding("newTask"), event, apple)) {
         event.preventDefault();

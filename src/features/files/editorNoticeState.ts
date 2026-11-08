@@ -8,9 +8,9 @@ import {
   type DocumentVersion,
   type EditorDocument,
 } from "../../domain/workbench";
+import { isDeletedOnDisk } from "./editorDisk";
 import {
   getFileEditorController,
-  isDeletedOnDisk,
   type ActiveEditorState,
   type EditorStateBridge,
 } from "./fileEditorController";

@@ -1,7 +1,5 @@
 // Loaded on first use: resolving a change on disk and Save All are rare, so
 // they stay out of the initial bundle.
-import type { StoreApi } from "zustand";
-
 import { errorMessage } from "../domain/errors";
 import {
   parentResource,
@@ -17,10 +15,10 @@ import type { SaveAllFailure } from "./editorConflictSlice";
 import { enqueueEditorOperation } from "./editorOperations";
 import { storeEditorBridge, tabsWithEditorUpdate } from "./editorSlice";
 import { matchesActiveTabIntent, matchesProjectIntent } from "./projectIntent";
-import type { WorkbenchState } from "./store";
+import { useWorkbenchStore } from "./store";
 
-type Set = StoreApi<WorkbenchState>["setState"];
-type Get = StoreApi<WorkbenchState>["getState"];
+const set = useWorkbenchStore.setState;
+const get = useWorkbenchStore.getState;
 
 export const CHANGED_ON_DISK = "It changed on disk since it was opened.";
 export const DELETED_ON_DISK =
@@ -31,10 +29,7 @@ export const DELETED_ON_DISK =
  * it on disk (`document.disk`). If disk has moved on since, the buffer stays
  * as it is and the banner shows the File as it is now.
  */
-export async function keepActiveEditorBuffer(
-  set: Set,
-  get: Get,
-): Promise<boolean> {
+export async function keepActiveEditorBuffer(): Promise<boolean> {
   const controller = getFileEditorController();
   const bridge = storeEditorBridge(set, get);
   const generation = get().projectGeneration;
@@ -110,8 +105,68 @@ export async function keepActiveEditorBuffer(
   }
 }
 
+/**
+ * Reload: drops the edits for the File on disk. A File that is gone keeps
+ * its edits and shows as deleted, and the result is false.
+ */
+export async function reloadActiveEditor(): Promise<boolean> {
+  const controller = getFileEditorController();
+  const bridge = storeEditorBridge(set, get);
+  const generation = get().projectGeneration;
+  const projectId = get().project?.id;
+  if (!projectId || get().projectTransitioning) return false;
+  const canCommit = (resource: ResourceRef) =>
+    !get().projectTransitioning &&
+    matchesActiveTabIntent(get(), generation, projectId, "file", resource);
+  try {
+    return await enqueueEditorOperation(async () => {
+      const document = await controller.discard(bridge, canCommit, true);
+      const current = get().activeEditor;
+      if (
+        !document ||
+        current?.phase !== "ready" ||
+        !canCommit(document.resource)
+      ) {
+        return false;
+      }
+      if (document.disk.fingerprint === ABSENT_FINGERPRINT) {
+        // Gone from disk: nothing to reload, and the edits stay.
+        bridge.setActiveEditor(
+          {
+            ...current,
+            document: {
+              ...current.document,
+              disk: document.disk,
+              conflict: document.conflict,
+            },
+          },
+          { tabStatus: document.conflict ? "failed" : null },
+        );
+        return false;
+      }
+      bridge.setActiveEditor(controller.ready(document), {
+        dirty: document.dirty,
+        tabStatus: null,
+      });
+      return true;
+    });
+  } catch (error) {
+    if (matchesProjectIntent(get(), generation, projectId)) {
+      controller.saveError(bridge, error);
+      set({ error: errorMessage(error) });
+    }
+    return false;
+  }
+}
+
+/** Drops the active File's unsaved changes and closes its tab. */
+export async function closeEditorWithoutSaving(tabId: string) {
+  if (get().activeTabId !== tabId) return;
+  if (await get().discardActiveEditor()) get().closeTab(tabId);
+}
+
 /** Saves a File that is not in the editor from its native buffer. */
-async function saveBackgroundFile(set: Set, resource: ResourceRef) {
+async function saveBackgroundFile(resource: ResourceRef) {
   const markFailed = () =>
     set((state) => ({
       tabs: tabsWithEditorUpdate(state.tabs, resource, {
@@ -141,7 +196,7 @@ async function saveBackgroundFile(set: Set, resource: ResourceRef) {
   }
 }
 
-function activeSaveFailure(get: Get) {
+function activeSaveFailure() {
   const editor = get().activeEditor;
   if (editor?.phase !== "ready") return "It could not be saved.";
   const conflict = editor.document.conflict;
@@ -155,10 +210,7 @@ function activeSaveFailure(get: Get) {
  * editor, the others from their native buffers. A failure is recorded and the
  * rest still save.
  */
-export async function saveAllEditors(
-  set: Set,
-  get: Get,
-): Promise<SaveAllFailure[]> {
+export async function saveAllEditors(): Promise<SaveAllFailure[]> {
   const generation = get().projectGeneration;
   const projectId = get().project?.id;
   if (!projectId || get().projectTransitioning) return [];
@@ -184,12 +236,12 @@ export async function saveAllEditors(
     const active = get().activeEditor;
     if (active?.phase === "ready" && sameResource(active.resource, resource)) {
       if (!(await get().saveActiveEditor())) {
-        failures.push({ resource, message: activeSaveFailure(get) });
+        failures.push({ resource, message: activeSaveFailure() });
       }
       continue;
     }
     try {
-      await saveBackgroundFile(set, resource);
+      await saveBackgroundFile(resource);
       savedInBackground.push(resource);
     } catch (error) {
       failures.push({ resource, message: errorMessage(error) });
