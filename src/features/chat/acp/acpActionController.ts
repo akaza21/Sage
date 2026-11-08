@@ -350,25 +350,16 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
             : {}),
         };
         // `/name …` may be an advertised command; its route loads on demand.
-        const runCommand = !normalizedPrompt.startsWith("/")
-          ? null
-          : await (
+        const runCommand = normalizedPrompt.startsWith("/")
+          ? await (
               await import("../slashCommandTurn")
-            ).slashCommandTurn({
-              prompt: normalizedPrompt,
-              pickedCommand: options.pickedCommand,
-              hasAttachments: boundedContext.length > 0,
-              intent: {
-                ...captured.scope,
-                projectGeneration: captured.commandProjectGeneration,
-                expectedProjectionRevision: page.projectionRevision,
-                clientIntentId: nextIntentId(),
-                sessionId: session.id,
-                runtimeEpoch: session.runtimeEpoch,
-              },
+            ).slashCommandTurn(
+              request,
+              options.pickedCommand,
               nextIntentId,
-              port: dependencies.slashCommands,
-            });
+              dependencies.slashCommands,
+            )
+          : null;
         dependencies.clearComposer?.(
           captured,
           normalizedPrompt,

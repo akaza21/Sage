@@ -27,10 +27,10 @@
         "reason": "Existing sign-in actions load only after a Claude authentication error; keeps their native actions and copy off the ready first-Chat path."
       },
       {
-        "entry": "src/features/chat/ComposerSlashMenu.tsx",
-        "maxGzipBytes": 2600,
-        "maxCssGzipBytes": 560,
-        "reason": "Composer `/` command menu: native command list, change listener and reusable suggestion listbox. Loads with the first `/`. Measured 2376 B JS, 507 B CSS."
+        "entry": "src/features/chat/ComposerSlashController.tsx",
+        "maxGzipBytes": 3500,
+        "maxCssGzipBytes": 720,
+        "reason": "Composer `/` controller, command menu, listbox and hint. Loads on the field's first focus, keeping the first-Chat path to a stub. Measured 3314 B JS, 670 B CSS."
       },
       {
         "entry": "src/workbench/AgentTaskResources.tsx",

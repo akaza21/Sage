@@ -20,7 +20,6 @@ import { QueuedRows, lazyParts } from "./lazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
-import { ComposerCommandHint } from "./ComposerCommandHint";
 import { useComposerSlashCommands } from "./useComposerSlashCommands";
 
 const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
@@ -240,7 +239,7 @@ export function ChatComposerRegion({
                   ? "Enter queues a message while this turn runs."
                   : undefined
               }
-              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}${slash.hint ? ` ${slash.hintId}` : ""}`}
+              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}${slash.describedBy ? ` ${slash.describedBy}` : ""}`}
               value={text}
               maxLength={MAX_CHAT_COMPOSER_BYTES}
               rows={2}
@@ -276,19 +275,7 @@ export function ChatComposerRegion({
                 }
               }}
             />
-            <ComposerCommandHint
-              hint={slash.hint}
-              hintId={slash.hintId}
-              text={text}
-            />
-            {slash.menu}
-            {/* Mounted with the usable field, ahead of the menu, so its
-                first announcement is not lost. */}
-            {composerDisabled || hidden ? null : (
-              <span className="sr-only" role="status" aria-live="polite">
-                {slash.status}
-              </span>
-            )}
+            {slash.controller}
           </div>
           {disabledReason ? (
             <p className="composer__disabled-reason" id={disabledReasonId}>

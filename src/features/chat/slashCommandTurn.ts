@@ -1,6 +1,7 @@
 import type {
   AcpMutationResult,
   AcpSessionMutationIntent,
+  SendAcpTurnRequest,
 } from "../../domain/acp";
 import { AcpDesktopError } from "../../services/acpDesktop";
 import { acpCommandsDesktop } from "../../services/acpCommandsDesktop";
@@ -26,24 +27,26 @@ export function parseSlashCommand(
  * the user picked from the menu that the session no longer offers is
  * refused instead of being sent as text.
  */
-export async function slashCommandTurn({
-  prompt,
-  pickedCommand,
-  hasAttachments,
-  intent,
-  nextIntentId,
-  port,
-}: {
-  prompt: string;
-  pickedCommand?: string;
-  hasAttachments: boolean;
-  intent: AcpSessionMutationIntent;
-  nextIntentId: () => AcpSessionMutationIntent["clientIntentId"];
-  port?: SlashCommandPort;
-}): Promise<(() => Promise<AcpMutationResult>) | null> {
+export async function slashCommandTurn(
+  request: SendAcpTurnRequest,
+  pickedCommand: string | undefined,
+  nextIntentId: () => AcpSessionMutationIntent["clientIntentId"],
+  port?: SlashCommandPort,
+): Promise<(() => Promise<AcpMutationResult>) | null> {
+  if (request.target !== "session") return null;
+  const { prompt, attachedContext } = request;
   const command = parseSlashCommand(prompt);
   // The typed route carries no attached context; such a prompt stays text.
-  if (!command || hasAttachments) return null;
+  if (!command || attachedContext?.length) return null;
+  const intent: AcpSessionMutationIntent = {
+    projectId: request.projectId,
+    projectGeneration: request.projectGeneration,
+    chatId: request.chatId,
+    expectedProjectionRevision: request.expectedProjectionRevision,
+    clientIntentId: nextIntentId(),
+    sessionId: request.sessionId,
+    runtimeEpoch: request.runtimeEpoch,
+  };
   const commands = port ?? acpCommandsDesktop;
   const list = await commands.listCommands(intent).catch(() => null);
   if (list?.commands.some((candidate) => candidate.name === command.name)) {
