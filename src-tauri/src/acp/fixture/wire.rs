@@ -47,6 +47,7 @@ pub(super) struct WireState {
     current_turn_id: Option<String>,
     turn_count: u64,
     pi: pi::PiWireState,
+    acp_config: Option<acp::AcpConfig>,
 }
 
 impl WireState {
@@ -60,6 +61,7 @@ impl WireState {
             current_turn_id: None,
             turn_count: 0,
             pi: pi::PiWireState::new(),
+            acp_config: None,
         }
     }
 
@@ -144,6 +146,9 @@ fn await_client_kind(
     let expected_method = match kind {
         "codexInitialize" => Some("initialize"),
         "codexStart" => Some("thread/start"),
+        // A journey that runs across an app restart: a new thread first,
+        // the same thread resumed after.
+        "codexStartOrResume" => Some("thread/start|thread/resume"),
         "codexResume" => Some("thread/resume"),
         "codexModelList" => Some("model/list"),
         "codexGoalGet" => Some("thread/goal/get"),

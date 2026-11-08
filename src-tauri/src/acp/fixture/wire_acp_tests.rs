@@ -72,3 +72,124 @@ fn acp_replay_rejects_unmatched_permission_and_wrong_method() {
         );
     }
 }
+
+fn journey(id: &str) -> Vec<Value> {
+    let case = super::super::generated_cases::JOURNEY_CASES
+        .iter()
+        .find(|case| case.id == id)
+        .unwrap_or_else(|| panic!("missing {id}"));
+    serde_json::from_str(case.steps_json).unwrap()
+}
+
+fn replay(id: &str, requests: &[Value]) -> Vec<Value> {
+    let mut state = WireState::new();
+    let mut output = Vec::new();
+    let lines: String = requests
+        .iter()
+        .map(|request| format!("{request}\n"))
+        .collect();
+    let mut input = Cursor::new(lines.into_bytes());
+    for step in journey(id) {
+        execute_with_io(&step, &mut state, &mut input, &mut output, &mut Vec::new()).unwrap();
+    }
+    String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+#[test]
+fn the_claude_config_journey_resumes_in_the_defaults_and_answers_each_change() {
+    let session = super::acp::SESSION;
+    let frames = replay(
+        "claude-config-resume",
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}),
+            json!({"jsonrpc":"2.0","id":2,"method":"session/resume","params":{"sessionId":session}}),
+            json!({"jsonrpc":"2.0","id":3,"method":"session/set_config_option","params":{"sessionId":session,"configId":"model","value":"fixture-model-deep"}}),
+            json!({"jsonrpc":"2.0","id":4,"method":"session/set_config_option","params":{"sessionId":session,"configId":"effort","value":"max"}}),
+            json!({"jsonrpc":"2.0","id":5,"method":"session/set_mode","params":{"sessionId":session,"modeId":"plan"}}),
+            json!({"jsonrpc":"2.0","id":6,"method":"session/prompt","params":{"sessionId":session}}),
+            json!({"jsonrpc":"2.0","id":"fixture-permission-1","result":{"outcome":{"outcome":"selected","optionId":"fixture-allow-once"}}}),
+            json!({"jsonrpc":"2.0","id":7,"method":"session/close","params":{"sessionId":session}}),
+        ],
+    );
+    let reply = |id: u64| frames.iter().find(|frame| frame["id"] == id).unwrap();
+    let initialize = &reply(1)["result"];
+    assert!(initialize["agentCapabilities"]["sessionCapabilities"]["resume"].is_object());
+    assert_eq!(initialize["models"].as_array().unwrap().len(), 2);
+    // A resumed session reports the adapter's defaults again.
+    let resumed = &reply(2)["result"];
+    assert_eq!(resumed["sessionId"], session);
+    assert_eq!(resumed["modes"]["currentModeId"], "default");
+    assert_eq!(resumed["configOptions"][0]["currentValue"], "fixture-model");
+    assert_eq!(resumed["configOptions"][1]["currentValue"], "medium");
+    assert_eq!(
+        reply(3)["result"]["configOptions"][0]["currentValue"],
+        "fixture-model-deep"
+    );
+    assert_eq!(reply(4)["error"]["code"], -32602);
+    let mode = frames
+        .iter()
+        .position(|frame| frame["params"]["update"]["sessionUpdate"] == "current_mode_update")
+        .unwrap();
+    assert_eq!(frames[mode]["params"]["update"]["currentModeId"], "plan");
+    assert_eq!(frames[mode + 1]["id"], 5);
+    assert!(
+        frames
+            .iter()
+            .any(|frame| frame["method"] == "session/request_permission")
+    );
+    assert_eq!(reply(6)["result"]["stopReason"], "end_turn");
+}
+
+#[test]
+fn the_claude_config_journey_also_opens_a_new_session_and_refuses_a_foreign_resume() {
+    let frames = replay(
+        "claude-config-resume",
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}),
+            json!({"jsonrpc":"2.0","id":2,"method":"session/new","params":{}}),
+            json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{}}),
+            json!({"jsonrpc":"2.0","id":"fixture-permission-1","result":{"outcome":{"outcome":"cancelled"}}}),
+        ],
+    );
+    assert_eq!(frames[1]["result"]["modes"]["currentModeId"], "default");
+    let mut state = WireState::new();
+    let foreign = format!(
+        "{}\n",
+        json!({"jsonrpc":"2.0","id":2,"method":"session/resume","params":{"sessionId":"other"}})
+    );
+    assert!(
+        execute_with_io(
+            &json!({"op":"awaitClient","kind":"acpOpen"}),
+            &mut state,
+            &mut Cursor::new(foreign.into_bytes()),
+            &mut Vec::new(),
+            &mut Vec::new()
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn the_codex_config_journey_starts_or_resumes_the_same_thread() {
+    for open in ["thread/start", "thread/resume"] {
+        let frames = replay(
+            "codex-config-resume",
+            &[
+                json!({"id":1,"method":"initialize","params":{}}),
+                json!({"id":2,"method":open,"params":{}}),
+                json!({"id":3,"method":"model/list","params":{"cursor":null}}),
+                json!({"id":4,"method":"thread/goal/get","params":{}}),
+                json!({"id":5,"method":"turn/start","params":{}}),
+                json!({"id":6,"method":"thread/unsubscribe","params":{}}),
+            ],
+        );
+        let thread = frames.iter().find(|frame| frame["id"] == 2).unwrap();
+        assert_eq!(thread["result"]["thread"]["id"], super::acp::SESSION);
+        let models = frames.iter().find(|frame| frame["id"] == 3).unwrap();
+        assert_eq!(models["result"]["data"].as_array().unwrap().len(), 2);
+    }
+}

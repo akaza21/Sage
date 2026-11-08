@@ -51,7 +51,7 @@ fn await_request_inner(
             .get("method")
             .and_then(Value::as_str)
             .ok_or(FixtureError::InvalidArguments)?;
-        if object.get("id").is_none() && expected_method != method {
+        if object.get("id").is_none() && !expected(expected_method, method) {
             continue;
         }
         if method == "thread/read" {
@@ -77,7 +77,7 @@ fn await_request_inner(
                 continue;
             }
         }
-        if method != expected_method {
+        if !expected(expected_method, method) {
             return Err(FixtureError::InvalidArguments);
         }
         if let Some(id) = object.get("id").and_then(Value::as_u64) {
@@ -90,6 +90,11 @@ fn await_request_inner(
         return Err(FixtureError::InvalidArguments);
     }
     Err(FixtureError::ExpandedLimit)
+}
+
+/// `expected` names one method, or alternatives separated by `|`.
+fn expected(expected: &str, method: &str) -> bool {
+    expected.split('|').any(|candidate| candidate == method)
 }
 
 fn emit_child_read(
