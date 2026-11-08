@@ -155,4 +155,24 @@ describe("coalescedRefresh", () => {
     await loads.settleAt(1); // the rerun lands: one more for both requests
     expect(loads.load).toHaveBeenCalledTimes(4);
   });
+
+  it("frees the slot when a load throws before returning a promise", async () => {
+    const loads = deferredLoads();
+    let throwNext = true;
+    const refresh = coalescedRefresh(() => {
+      if (throwNext) {
+        throwNext = false;
+        throw new Error("scope is not active");
+      }
+      return loads.load();
+    });
+
+    expect(() => refresh.now()).toThrow("scope is not active");
+    refresh.now();
+    expect(loads.load).toHaveBeenCalledTimes(1);
+
+    refresh.now();
+    await loads.settleNext();
+    expect(loads.load).toHaveBeenCalledTimes(2);
+  });
 });

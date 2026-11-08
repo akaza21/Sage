@@ -168,6 +168,33 @@ describe("ACP projection request intents", () => {
     expect(useAcpProjectionStore.getState().activeLoad).toBeNull();
     expect(useAcpProjectionStore.getState().error).toBeNull();
   });
+  it("keeps an earlier-history load when a refresh of the newest page starts", () => {
+    const newest = page("1", [turn(2)]);
+    newest.nextCursor = "older" as AcpPageCursor;
+    const first = useAcpProjectionStore.getState().beginPageLoad(null);
+    useAcpProjectionStore.getState().completePageLoad(first, newest);
+
+    const history = useAcpProjectionStore
+      .getState()
+      .beginPageLoad("older" as AcpPageCursor);
+    const refresh = useAcpProjectionStore.getState().beginPageLoad(null);
+    expect(useAcpProjectionStore.getState().historyLoad).toBe(history);
+    expect(useAcpProjectionStore.getState().activeLoad).toBe(refresh);
+
+    expect(
+      useAcpProjectionStore.getState().completePageLoad(refresh, newest),
+    ).toBe("accepted");
+    expect(useAcpProjectionStore.getState().historyLoad).toBe(history);
+    expect(
+      useAcpProjectionStore
+        .getState()
+        .completePageLoad(history, page("1", [turn(1)])),
+    ).toBe("accepted");
+    expect(
+      useAcpProjectionStore.getState().page?.turns.map((t) => t.ordinal),
+    ).toEqual([1, 2]);
+    expect(useAcpProjectionStore.getState().historyLoad).toBeNull();
+  });
 });
 
 describe("ACP projection bounds and notification mailbox", () => {

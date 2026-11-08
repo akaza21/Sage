@@ -48,7 +48,16 @@ export function coalescedRefresh(
         now();
       }
     };
-    void load().then(settle, settle);
+    let pending: Promise<unknown>;
+    try {
+      pending = load();
+    } catch (error) {
+      // A load that throws before it returns still frees its slot, so later
+      // refreshes are not locked out; the caller sees the error as before.
+      settle();
+      throw error;
+    }
+    void pending.then(settle, settle);
   };
 
   return {
