@@ -15,6 +15,7 @@ mod chat_move;
 mod chat_pin;
 mod chat_queue;
 mod chat_queue_commands;
+mod chat_read_state;
 mod chat_search;
 mod chat_search_commands;
 #[cfg(feature = "codex-provisioning-helper")]
