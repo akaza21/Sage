@@ -223,7 +223,9 @@ impl PiTranslator {
             128,
         )?
         .ok_or(AdapterError::Malformed)?;
-        if name != "read" {
+        if name != "read"
+            && !(self.bridge_tools && matches!(name.as_str(), "write" | "edit" | "bash"))
+        {
             self.live_turn()?.authority_denied = true;
             return Ok(vec![AdapterOutput::AuthorityBlocked {
                 external_id: id,

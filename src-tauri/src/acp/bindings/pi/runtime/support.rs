@@ -3,15 +3,16 @@ use crate::acp::{
         AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent, AdapterRuntimeError,
     },
     contract::SafeText,
-    intent::{ExternalId, NormalizedPayload, ToolCategory},
+    intent::{ExternalId, NormalizedPayload},
     lifecycle::{ItemLifecycle, ToolState, TurnState},
     limits::LIMITS,
 };
 
-use super::{DenyIntent, DenyStage, PiRuntime};
+use super::PiRuntime;
 use crate::acp::bindings::pi::{AdapterOutput, TerminalOutcome, ToolOutcome};
 
 mod authority;
+mod bridge;
 mod capabilities;
 mod compaction;
 mod config;
@@ -180,6 +181,10 @@ impl PiRuntime {
                     id: self.turn_identity()?,
                     state,
                 };
+                if let Some(bridge) = self.bridge.as_mut() {
+                    bridge.pending = None;
+                    bridge.used.clear();
+                }
                 self.active_turn = None;
                 self.clear_thinking_request();
                 self.deny = None;
@@ -315,39 +320,10 @@ impl PiRuntime {
                 }),
                 None,
             ),
-            AdapterOutput::PermissionRequested { external_id } => {
-                let id = external("piPermissionId", external_id)?;
-                let turn_id = self.turn_identity()?;
-                let item_id = self.identity(
-                    id.clone(),
-                    Some(turn_id.external_id.clone()),
-                    turn_id.turn_client_message_id.clone(),
-                );
-                self.deny = Some(DenyIntent {
-                    request_id: id.clone(),
-                    command_id: String::new(),
-                    stage: DenyStage::Prepared,
-                });
-                (
-                    Some(AdapterEvent::PermissionRequest {
-                        turn_id,
-                        item_id,
-                        external_request_id: id,
-                        payload: NormalizedPayload::PermissionRequest {
-                            category: ToolCategory::Other,
-                            summary: SafeText::new(
-                                "permissionSummary",
-                                "Pi extension gate is awaiting your decision",
-                            )
-                            .map_err(|_| AdapterRuntimeError::Frame)?,
-                            offered_option_kinds: None,
-                            reason: None,
-                        },
-                        request_payload_digest: request_digest,
-                    }),
-                    None,
-                )
-            }
+            AdapterOutput::PermissionRequested { external_id } => (
+                Some(self.permission_event(external_id, request_digest)?),
+                None,
+            ),
             AdapterOutput::AuthorityBlocked { external_id, tool } => {
                 self.block_authority(external_id, tool, resources)?
             }

@@ -30,7 +30,12 @@ impl RuntimeFactory for PiFixtureRuntimeFactory {
         if !self.mcp.is_empty() {
             return Err(AdapterRuntimeError::LaunchUnavailable);
         }
-        let adapter = PiRuntime::from_fixture_binding(&self.binding, runtime_epoch, session_id)?;
+        let mut adapter =
+            PiRuntime::from_fixture_binding(&self.binding, runtime_epoch, session_id)?;
+        // A bridge case's child plays a Pi with the bundled extension installed.
+        if self.binding.bridge_installed() {
+            adapter.enable_bridge_for_root(&self.root)?;
+        }
         Ok(NativeRuntime::new(PiFixtureRuntime {
             adapter,
             binding: self.binding,

@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::intent::PermissionOptionKind;
 use crate::acp::runtime::permissions::PermissionDecision;
 
 fn approval_dialog(id: &str, method: &str) -> Value {
@@ -115,9 +116,15 @@ fn cancelled_dialog_replay_does_not_replace_a_genuine_pending_approval() {
         let batch = runtime
             .ingest(&frame(approval_dialog("fresh", method)), &Mapper)
             .unwrap();
+        // The card offers exactly the answers the runtime can deliver below.
         assert!(matches!(batch.events(), [AdapterEvent::PermissionRequest {
-            external_request_id, ..
-        }] if external_request_id.as_str() == "fresh"));
+            external_request_id,
+            payload: NormalizedPayload::PermissionRequest {
+                offered_option_kinds: Some(kinds), ..
+            },
+            ..
+        }] if external_request_id.as_str() == "fresh"
+            && kinds.as_slice() == [PermissionOptionKind::AllowOnce, PermissionOptionKind::RejectOnce]));
         let batch = runtime
             .ingest(&frame(approval_dialog("cancelled", method)), &Mapper)
             .unwrap();
