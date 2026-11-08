@@ -1,5 +1,15 @@
 use super::*;
 
+/// The transcript content one normalized payload projects to, exactly as a
+/// committed row decodes. Permission requests need their durable request
+/// facts and are not projectable here.
+pub(crate) fn project_item_content(
+    value: NormalizedPayload,
+    lifecycle: crate::acp::lifecycle::ItemLifecycle,
+) -> Result<ItemContent, StoreError> {
+    content(value, lifecycle, None, None, None)
+}
+
 #[test]
 fn attempt_error_kind_survives_durable_decode_and_projection() {
     for kind in [None, Some("attempt")] {

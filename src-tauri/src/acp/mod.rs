@@ -45,4 +45,5 @@ mod fixture_protocol;
 mod tests {
     mod contract;
     mod limits;
+    mod render_parity;
 }
