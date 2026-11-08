@@ -1,5 +1,5 @@
 use super::*;
-use std::{sync::mpsc, thread};
+use std::thread;
 
 struct TestCancellation {
     requested: AtomicBool,
@@ -20,14 +20,12 @@ fn admission_is_shared_non_waiting_and_transferable() {
     let gate = CodexOperationGate::new();
     let held = gate.prepare().unwrap();
     let concurrent = Arc::clone(&gate);
-    let (send, receive) = mpsc::sync_channel(1);
-    let worker = thread::spawn(move || send.send(concurrent.prepare().map(drop)).unwrap());
-    assert_eq!(
-        receive.recv_timeout(Duration::from_millis(100)),
-        Ok(Err(CodexDiscoveryRunError::Busy))
-    );
+    let worker = thread::spawn(move || concurrent.prepare().map(drop));
+    // The other thread returns while `held` is still alive, which a waiting
+    // admission could never do, so the join shows it did not wait without
+    // racing a clock against thread start-up.
+    assert_eq!(worker.join().unwrap(), Err(CodexDiscoveryRunError::Busy));
     drop(held);
-    worker.join().unwrap();
     let transferable = gate.prepare().unwrap();
     thread::spawn(move || drop(transferable)).join().unwrap();
     assert!(gate.prepare().is_ok());
