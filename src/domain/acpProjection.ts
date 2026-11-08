@@ -4,6 +4,7 @@ import type { AcpGoalState } from "./acpGoal";
 import type { AcpSessionConfig } from "./acpSessionConfig";
 import type { BrowserOperationProjection } from "./browserOperation";
 import type { FilePairMetadata } from "./agentDiff";
+import type { UserInputRequest } from "./acpPermission";
 import type {
   ActivityState,
   AgentSessionState,
@@ -185,6 +186,8 @@ export type AcpItem =
         category?: ToolPresentation["kind"];
         /** The harness's own explanation; absent when it gave none. */
         reason?: string | null;
+        /** The harness's questions when it asks the user, not for approval. */
+        userInput?: UserInputRequest | null;
       }
     >
   | PlainItem<

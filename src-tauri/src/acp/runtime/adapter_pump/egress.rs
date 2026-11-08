@@ -68,13 +68,13 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         else {
             return Err(AdapterPumpError::Intent);
         };
-        if pending.decision.is_some() {
+        if pending.settles_as.is_some() {
             return Err(AdapterPumpError::Intent);
         }
         if decision == crate::acp::runtime::permissions::PermissionDecision::Ask {
             let None = crate::acp::runtime::later_permission::resolve_later_permission(
                 request_id,
-                crate::acp::runtime::permissions::PermissionDecision::Ask,
+                &crate::acp::runtime::permissions::PermissionDecision::Ask,
                 None,
             )
             .map_err(|_| AdapterPumpError::Intent)?
@@ -83,12 +83,16 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             };
             return Ok(());
         }
+        let allowed = decision.resolves_allowed();
+        let intent = pending.intent.clone();
+        // The decision (and any answer text) moves into the adapter command
+        // and is dropped once the reply frame exists; only the settlement
+        // state is retained.
         let egress = self.adapter.command(AdapterCommand::ResolvePermission {
-            request_id: SageServerRequestId::parse(pending.intent.external_request_id.as_str())
+            request_id: SageServerRequestId::parse(intent.external_request_id.as_str())
                 .map_err(|_| AdapterPumpError::Intent)?,
             decision,
         })?;
-        let intent = pending.intent.clone();
         if egress.token().is_mandatory()
             && self
                 .adapter
@@ -98,15 +102,16 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             self.teardown = true;
             return Err(AdapterPumpError::TeardownRequired);
         }
-        let committed = match decision {
-            crate::acp::runtime::permissions::PermissionDecision::AllowOnce
-            | crate::acp::runtime::permissions::PermissionDecision::AllowAlways => {
-                ServerRequestState::AllowCommitted
-            }
-            crate::acp::runtime::permissions::PermissionDecision::Deny => {
-                ServerRequestState::DeclineCommitted
-            }
-            crate::acp::runtime::permissions::PermissionDecision::Ask => unreachable!(),
+        let (committed, settles_as) = if allowed {
+            (
+                ServerRequestState::AllowCommitted,
+                ServerRequestState::ResolvedAllowed,
+            )
+        } else {
+            (
+                ServerRequestState::DeclineCommitted,
+                ServerRequestState::ResolvedDeclined,
+            )
         };
         let revision = match self
             .journal
@@ -145,7 +150,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .iter_mut()
             .find(|pending| &pending.intent.request_id == request_id)
             .ok_or(AdapterPumpError::TeardownRequired)?;
-        pending.decision = Some(decision);
+        pending.settles_as = Some(settles_as);
         self.publish_revision(revision)
     }
 
@@ -251,14 +256,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 .pending_permissions
                 .iter_mut()
                 .find(|pending| pending.intent.external_request_id.as_str() == request)
-            && matches!(
-                pending.decision,
-                Some(
-                    crate::acp::runtime::permissions::PermissionDecision::AllowOnce
-                        | crate::acp::runtime::permissions::PermissionDecision::AllowAlways
-                        | crate::acp::runtime::permissions::PermissionDecision::Deny
-                )
-            )
+            && pending.settles_as.is_some()
             && pending.intent.external_request_id.as_str() == request
             && !pending.written
         {
@@ -289,25 +287,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             return Ok(false);
         }
         let intent = pending.intent.clone();
-        let decision = pending.decision.ok_or(AdapterPumpError::TeardownRequired)?;
+        let settles_as = pending
+            .settles_as
+            .ok_or(AdapterPumpError::TeardownRequired)?;
         let revision = match self
             .journal
-            .transition_permission(
-                &intent,
-                match decision {
-                    crate::acp::runtime::permissions::PermissionDecision::AllowOnce
-                    | crate::acp::runtime::permissions::PermissionDecision::AllowAlways => {
-                        ServerRequestState::ResolvedAllowed
-                    }
-                    crate::acp::runtime::permissions::PermissionDecision::Deny => {
-                        ServerRequestState::ResolvedDeclined
-                    }
-                    crate::acp::runtime::permissions::PermissionDecision::Ask => {
-                        return Err(AdapterPumpError::TeardownRequired);
-                    }
-                },
-                now_millis,
-            )
+            .transition_permission(&intent, settles_as, now_millis)
             .await
         {
             Ok(revision) => revision,

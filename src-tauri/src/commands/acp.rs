@@ -17,6 +17,7 @@ mod session_operations;
 mod session_routes;
 pub(crate) mod slash_commands;
 pub(crate) mod turn_workspace;
+pub(crate) mod user_input;
 
 pub(crate) use session_routes::{activate_acp_session_inner, start_acp_session_inner};
 

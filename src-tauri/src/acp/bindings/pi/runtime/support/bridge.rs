@@ -292,7 +292,7 @@ impl PiRuntime {
     pub(in crate::acp::bindings::pi::runtime) fn bridge_permission(
         &mut self,
         request_id: &SageServerRequestId,
-        decision: PermissionDecision,
+        decision: &PermissionDecision,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         let Some(pending) = self
             .bridge
@@ -311,7 +311,7 @@ impl PiRuntime {
         ) {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }
-        let allowed = decision == PermissionDecision::AllowOnce;
+        let allowed = *decision == PermissionDecision::AllowOnce;
         pending.approved = allowed;
         self.translator.take_pending_ui();
         let response = reply(

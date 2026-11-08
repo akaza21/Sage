@@ -91,3 +91,6 @@ mod tests;
 
 #[cfg(test)]
 mod hard_failure_tests;
+
+#[cfg(test)]
+mod user_input_tests;

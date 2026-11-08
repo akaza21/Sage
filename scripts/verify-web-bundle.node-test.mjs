@@ -1132,3 +1132,50 @@ test("lazy feature CSS never leaks into the initial CSS", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("a stylesheet two lazy features share counts against both, never neither", async () => {
+  const { root, manifest, budgets, write } = await lazyFeatureWithCss();
+  const otherKey = "src/features/chat/Other.tsx";
+  try {
+    manifest["index.html"].dynamicImports.push(otherKey);
+    manifest[otherKey] = {
+      file: "assets/other.js",
+      src: otherKey,
+      isDynamicEntry: true,
+      imports: ["index.html"],
+      css: ["assets/feature.css"],
+    };
+    await writeFile(
+      path.join(root, "dist/assets/other.js"),
+      "other chunk ".repeat(40),
+    );
+    await write();
+    // The other entry has no budget, so the shared stylesheet is not covered.
+    assert.throws(
+      () => verifyWebBundle(root),
+      /lazy CSS is shared with an unbudgeted manifest entry/,
+    );
+    budgets.bundle.lazyFeatureChunks.push({
+      entry: otherKey,
+      maxGzipBytes: 1000,
+      maxCssGzipBytes: 1000,
+      reason: "Other test feature.",
+    });
+    await write();
+    const result = verifyWebBundle(root).lazyFeatureChunks;
+    const css = await readFile(path.join(root, "dist/assets/feature.css"));
+    for (const key of [featureKey, otherKey]) {
+      assert.deepEqual(result[key].cssFiles, ["assets/feature.css"]);
+      assert.equal(result[key].cssGzipBytes, gzipSync(css).length);
+    }
+    budgets.bundle.lazyFeatureChunks[1].maxCssGzipBytes =
+      gzipSync(css).length - 1;
+    await write();
+    assert.throws(
+      () => verifyWebBundle(root),
+      new RegExp(`${otherKey} lazy CSS gzip \\d+ exceeds`),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
