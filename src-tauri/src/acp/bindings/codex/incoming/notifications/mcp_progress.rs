@@ -5,8 +5,11 @@
 use serde_json::{Map, Value};
 
 use crate::acp::{
-    bindings::codex::state::ExternalKind, contract::SafeText, intent::TOOL_PROGRESS_BYTES,
-    lifecycle::ItemLifecycle, limits::LIMITS,
+    bindings::codex::state::ExternalKind,
+    contract::SafeText,
+    intent::TOOL_PROGRESS_BYTES,
+    lifecycle::{ItemLifecycle, ToolState},
+    limits::LIMITS,
 };
 
 use super::super::{
@@ -35,8 +38,7 @@ pub(super) fn mcp_tool_progress(
         .map_err(content)?;
     // Progress for a call Sage never saw start, or whose line is unchanged,
     // has nothing to restate.
-    let Some((payload, tool_state)) = adapter.report_mcp_tool_progress(turn, external, progress)
-    else {
+    let Some(payload) = adapter.report_mcp_tool_progress(turn, external, progress) else {
         return Ok(IngressDisposition::IgnoredLate);
     };
     let id = adapter
@@ -45,7 +47,7 @@ pub(super) fn mcp_tool_progress(
     Ok(IncomingEvent::Item {
         id,
         lifecycle: ItemLifecycle::Streaming,
-        tool_state: Some(tool_state),
+        tool_state: Some(ToolState::InProgress),
         payload,
         update_mode: ItemUpdateMode::Replace,
     }

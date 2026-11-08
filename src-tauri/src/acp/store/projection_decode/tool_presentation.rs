@@ -1,7 +1,11 @@
 use crate::acp::{
     contract::{BoundedVec, SafeText},
     declared_test::CommandActivity,
-    intent::{COMMAND_RESOURCE_LIMIT, SafeResourceLocation, ToolCategory, ToolExecution},
+    intent::{
+        COMMAND_RESOURCE_LIMIT, NormalizedPayload, SafeResourceLocation, ToolCategory,
+        ToolExecution,
+    },
+    lifecycle::{ItemLifecycle, ToolState},
     projection::ToolPresentation,
 };
 
@@ -9,6 +13,21 @@ use super::super::StoreError;
 
 fn contract(_: crate::acp::contract::ContractError) -> StoreError {
     StoreError::Corrupt("projection contract")
+}
+
+/// Drops a stored status line unless the call is still running. The store
+/// terminalizes items (interrupt, crash, close) by lifecycle and tool state
+/// alone, so the payload can still hold the last running line.
+pub(super) fn retain_live_progress(
+    payload: &mut NormalizedPayload,
+    lifecycle: ItemLifecycle,
+    tool_state: Option<ToolState>,
+) {
+    if let NormalizedPayload::ToolCall { execution, .. } = payload
+        && (lifecycle.is_terminal() || tool_state != Some(ToolState::InProgress))
+    {
+        execution.progress = None;
+    }
 }
 
 pub(super) fn presentation(

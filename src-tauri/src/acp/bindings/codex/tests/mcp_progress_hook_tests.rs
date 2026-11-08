@@ -244,9 +244,9 @@ fn hook(method: &str, turn: Value, status: &str, entries: Value) -> Vec<u8> {
     frame(json!({"method":method,"params":{
         "threadId":"thread-1","turnId":turn,
         "run":{
-            "id":format!("pre-tool-use:0:{HOOK_SOURCE}"),
+            "id":format!("pre-tool-use:1:{HOOK_SOURCE}"),
             "eventName":"preToolUse","handlerType":"command","executionMode":"sync",
-            "scope":"turn","sourcePath":HOOK_SOURCE,"source":"user","displayOrder":0,
+            "scope":"turn","sourcePath":HOOK_SOURCE,"source":"project","displayOrder":1,
             "status":status,"statusMessage":"Checking shell policy",
             "startedAt":1_700_000_000,
             "completedAt":if status == "running" { Value::Null } else { json!(1_700_000_001) },
@@ -270,10 +270,16 @@ fn hook_activity(disposition: Result<IngressDisposition, AdapterError>) -> Sessi
         panic!("expected an activity, got {event:?}")
     };
     assert_eq!(activity.kind.as_str(), "hook");
-    assert_eq!(activity.label.as_str(), "PreToolUse hook");
+    assert_eq!(activity.label.as_str(), "PreToolUse hook #2 (project)");
+    let digest = activity
+        .id
+        .as_str()
+        .strip_prefix("hook-")
+        .expect("a hook row id is prefixed");
     assert!(
-        !activity.id.as_str().contains("Users"),
-        "the hook's source path never becomes its identity"
+        digest.len() == 32 && digest.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "the row id is a path-free digest: {}",
+        activity.id.as_str()
     );
     activity.clone()
 }
@@ -305,7 +311,7 @@ fn a_passing_hook_runs_then_completes_on_one_activity_row() {
 }
 
 #[test]
-fn a_blocking_or_failed_hook_completes_as_failed_with_its_message() {
+fn a_blocking_hook_completes_with_its_reason_and_a_failed_one_fails() {
     let mut adapter = running_adapter();
     let blocked = hook_activity(adapter.ingest(
         &hook(
@@ -316,7 +322,7 @@ fn a_blocking_or_failed_hook_completes_as_failed_with_its_message() {
         ),
         &Mapper,
     ));
-    assert_eq!(blocked.state, SessionActivityState::Failed);
+    assert_eq!(blocked.state, SessionActivityState::Completed);
     assert_eq!(
         blocked.progress.as_ref().map(|line| line.as_str()),
         Some("Blocked: rm -rf is not allowed")
@@ -351,7 +357,7 @@ fn a_turnless_hook_is_a_session_activity_without_any_turn() {
         &hook("hook/completed", Value::Null, "stopped", json!([])),
         &Mapper,
     ));
-    assert_eq!(completed.state, SessionActivityState::Failed);
+    assert_eq!(completed.state, SessionActivityState::Cancelled);
     assert_eq!(
         completed.progress.as_ref().map(|line| line.as_str()),
         Some("Stopped")
@@ -405,5 +411,139 @@ fn a_hook_with_a_foreign_thread_or_an_invalid_run_is_refused() {
         )),
         Some(IngressError::Malformed),
         "a completed hook must be terminal"
+    );
+}
+
+fn turn_completed() -> Vec<u8> {
+    frame(json!({"method":"turn/completed","params":{
+        "threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted"}
+    }}))
+}
+
+#[test]
+fn a_hook_still_running_when_its_turn_ends_is_settled_as_cancelled() {
+    let mut adapter = running_adapter();
+    let started = hook_activity(adapter.ingest(
+        &hook("hook/started", json!("turn-1"), "running", json!([])),
+        &Mapper,
+    ));
+    let IngressDisposition::Events(events) = adapter.ingest(&turn_completed(), &Mapper).unwrap()
+    else {
+        panic!("the turn terminal must be projected")
+    };
+    let [
+        IncomingEvent::Session {
+            event: SessionScopedEvent::Activity(cancelled),
+            ..
+        },
+        IncomingEvent::Turn { .. },
+    ] = events.as_slice()
+    else {
+        panic!("expected the cancelled hook and the turn, got {events:?}")
+    };
+    assert_eq!(cancelled.id, started.id);
+    assert_eq!(cancelled.state, SessionActivityState::Cancelled);
+    assert_eq!(cancelled.progress, None);
+}
+
+#[test]
+fn a_completed_or_turnless_hook_is_not_cancelled_when_the_turn_ends() {
+    let mut adapter = running_adapter();
+    adapter
+        .ingest(
+            &hook("hook/started", json!("turn-1"), "running", json!([])),
+            &Mapper,
+        )
+        .unwrap();
+    adapter
+        .ingest(
+            &hook("hook/completed", json!("turn-1"), "completed", json!([])),
+            &Mapper,
+        )
+        .unwrap();
+    adapter
+        .ingest(
+            &hook("hook/started", Value::Null, "running", json!([])),
+            &Mapper,
+        )
+        .unwrap();
+    let IngressDisposition::Events(events) = adapter.ingest(&turn_completed(), &Mapper).unwrap()
+    else {
+        panic!("the turn terminal must be projected")
+    };
+    assert!(
+        matches!(events.as_slice(), [IncomingEvent::Turn { .. }]),
+        "only hooks of the ending turn are cancelled: {events:?}"
+    );
+}
+
+#[test]
+fn hook_text_is_redacted_before_it_is_shown() {
+    let mut adapter = running_adapter();
+    let failed = hook_activity(adapter.ingest(
+        &hook(
+            "hook/completed",
+            json!("turn-1"),
+            "failed",
+            json!([{"kind":"error","text":
+                "cannot read /home/someone/.ssh/id_ed25519 using token sk-live-abcdef0123456789"}]),
+        ),
+        &Mapper,
+    ));
+    let line = failed.progress.expect("the failure says why");
+    let line = line.as_str();
+    assert!(line.starts_with("cannot read"), "{line}");
+    assert!(!line.contains("/home/someone"), "{line}");
+    assert!(!line.contains("sk-live-abcdef0123456789"), "{line}");
+}
+
+#[test]
+fn running_mcp_calls_are_cleared_when_the_turn_ends() {
+    let mut adapter = running_adapter();
+    adapter
+        .ingest(
+            &mcp_item("item/started", "inProgress", Value::Null),
+            &Mapper,
+        )
+        .unwrap();
+    assert_eq!(adapter.running_mcp_tool_count(), 1);
+    adapter.ingest(&turn_completed(), &Mapper).unwrap();
+    assert_eq!(adapter.running_mcp_tool_count(), 0);
+}
+
+#[test]
+fn the_oldest_running_mcp_call_is_forgotten_beyond_the_cap() {
+    let mut adapter = running_adapter();
+    let cap = super::state::RUNNING_MCP_TOOLS_MAX;
+    for index in 0..=cap {
+        adapter
+            .ingest(
+                &frame(json!({"method":"item/started","params":{
+                    "threadId":"thread-1","turnId":"turn-1",
+                    "item":{"type":"mcpToolCall","id":format!("mcp-{index}"),
+                        "server":"docs","tool":"search","status":"inProgress",
+                        "arguments":{},"result":null,"error":null}
+                }})),
+                &Mapper,
+            )
+            .unwrap();
+    }
+    assert_eq!(adapter.running_mcp_tool_count(), cap);
+    assert_eq!(
+        adapter
+            .ingest(&progress("mcp-0", "late for the oldest"), &Mapper)
+            .unwrap(),
+        IngressDisposition::IgnoredLate,
+        "the evicted oldest call is unknown"
+    );
+    let newest = format!("mcp-{cap}");
+    assert_eq!(
+        item_update(
+            adapter
+                .ingest(&progress(&newest, "still tracked"), &Mapper)
+                .unwrap()
+        )
+        .3,
+        Some("still tracked".into())
     );
 }

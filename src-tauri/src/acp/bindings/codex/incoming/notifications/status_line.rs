@@ -1,18 +1,22 @@
 //! One bounded display line from a harness status message.
 
 use super::super::support::sanitize;
+use crate::acp::redaction::text::{Mode, redact};
 
 const ELLIPSIS: char = '\u{2026}';
 
-/// Collapses whitespace to single spaces, redacts secrets and paths, and
-/// clips the result to `max` bytes with an ellipsis. Only a bounded prefix
-/// of `raw` is read, so an oversized message costs no more than a short one.
-/// Blank text yields `None`.
+/// Collapses whitespace to single spaces, redacts secrets and paths with the
+/// Codex sanitizer and then the shared prose redactor (as the other harness
+/// bindings do), and clips the result to `max` bytes with an ellipsis. Only a
+/// bounded prefix of `raw` is read, so an oversized message costs no more
+/// than a short one. Blank text, or text the redactor refuses, yields `None`.
 pub(super) fn status_line(raw: &str, max: usize) -> Option<String> {
     let prefix = clip(raw, max.saturating_mul(4));
     let collapsed = prefix.split_whitespace().collect::<Vec<_>>().join(" ");
-    let line = sanitize(&collapsed);
-    if line.is_empty() {
+    let sanitized = sanitize(&collapsed);
+    let bound = sanitized.len().saturating_mul(2).saturating_add(64);
+    let line = redact("statusLine", &sanitized, bound, Mode::Prose).ok()?;
+    if line.trim().is_empty() {
         return None;
     }
     if line.len() <= max && prefix.len() == raw.len() {
@@ -49,6 +53,10 @@ mod tests {
             status_line("token sk-secret read", 512).as_deref(),
             Some("token [redacted] read")
         );
+        let line = status_line("wrote /srv/app/secret.txt with key=abc123", 512).unwrap();
+        assert!(line.starts_with("wrote "), "{line}");
+        assert!(!line.contains("/srv/app"), "{line}");
+        assert!(!line.contains("abc123"), "{line}");
         let long = "\u{e9}".repeat(4096);
         let line = status_line(&long, 512).unwrap();
         assert!(line.len() <= 512);

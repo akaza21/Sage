@@ -5,13 +5,12 @@
 //!
 //! Cap: [`RUNNING_MCP_TOOLS_MAX`] calls. Each holds one running payload,
 //! whose label, server and status line are byte-capped by their types and
-//! whose result is absent while the call runs. Calls of a finished Turn are
-//! dropped at the next start or progress report.
+//! whose result is absent while the call runs. The set is cleared when the
+//! Turn ends or the session closes.
 
 use crate::acp::{
     contract::SafeText,
     intent::{NormalizedPayload, TOOL_PROGRESS_BYTES},
-    lifecycle::ToolState,
 };
 
 use super::CodexAdapter;
@@ -40,7 +39,6 @@ impl CodexAdapter {
         item: &str,
         payload: &NormalizedPayload,
     ) {
-        self.forget_finished_turn_mcp_tools();
         let calls = &mut self.running_mcp_tools.calls;
         calls.retain(|call| call.item != item);
         if calls.len() == RUNNING_MCP_TOOLS_MAX {
@@ -59,6 +57,15 @@ impl CodexAdapter {
             .retain(|call| call.item != item);
     }
 
+    pub(crate) fn clear_running_mcp_tools(&mut self) {
+        self.running_mcp_tools.calls.clear();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn running_mcp_tool_count(&self) -> usize {
+        self.running_mcp_tools.calls.len()
+    }
+
     /// Sets the status line of a running call and returns its restated
     /// payload, or `None` when the call is unknown, finished, or already
     /// shows this status line.
@@ -67,8 +74,7 @@ impl CodexAdapter {
         turn: &str,
         item: &str,
         progress: Option<SafeText<TOOL_PROGRESS_BYTES>>,
-    ) -> Option<(NormalizedPayload, ToolState)> {
-        self.forget_finished_turn_mcp_tools();
+    ) -> Option<NormalizedPayload> {
         let call = self
             .running_mcp_tools
             .calls
@@ -82,13 +88,6 @@ impl CodexAdapter {
             return None;
         }
         execution.progress = progress;
-        Some((call.payload.clone(), ToolState::InProgress))
-    }
-
-    fn forget_finished_turn_mcp_tools(&mut self) {
-        let active = self.active_turn_id.as_ref().map(|turn| turn.as_str());
-        self.running_mcp_tools
-            .calls
-            .retain(|call| Some(call.turn.as_str()) == active);
+        Some(call.payload.clone())
     }
 }

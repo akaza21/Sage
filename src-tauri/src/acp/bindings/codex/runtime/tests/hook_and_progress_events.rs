@@ -34,7 +34,7 @@ fn a_turnless_hook_reaches_the_pump_as_an_exact_session_event() {
         event,
         SessionScopedEvent::Activity(activity)
             if activity.kind.as_str() == "hook"
-                && activity.label.as_str() == "SessionStart hook"
+                && activity.label.as_str() == "SessionStart hook #1 (unknown)"
                 && activity.state == SessionActivityState::Running
                 && activity.progress.is_none()
     ));

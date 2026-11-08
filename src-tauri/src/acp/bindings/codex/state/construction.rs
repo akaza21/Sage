@@ -53,6 +53,7 @@ impl CodexAdapter {
             previous_turn: None,
             command_item_snapshots: CommandItemSnapshots::default(),
             running_mcp_tools: Default::default(),
+            running_hooks: Default::default(),
             subagent_labels: SubagentLabels::default(),
             child_threads: Vec::new(),
             bound_child_threads: Vec::new(),

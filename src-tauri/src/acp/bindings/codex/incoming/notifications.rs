@@ -16,7 +16,7 @@ pub(super) use child_thread::item_event as child_item_event;
 pub(super) use child_thread::turn_completed as child_turn_completed;
 mod deltas;
 mod hooks;
-use hooks::{HookPhase, hook_run};
+use hooks::{HookPhase, cancelled_hooks, hook_run};
 mod items;
 use items::item_event;
 mod mcp_progress;
@@ -360,10 +360,11 @@ fn turn_completed(
     {
         TerminalUpdate::Apply => {
             adapter.clear_command_items();
+            adapter.clear_running_mcp_tools();
             let id = adapter
                 .scoped_in_turn(ExternalKind::Turn, external, external)
                 .map_err(identity)?;
-            let mut events = Vec::with_capacity(2);
+            let mut events = cancelled_hooks(adapter, thread_id)?;
             if let Some(payload) = terminal_error {
                 events.push(IncomingEvent::Error(payload));
             }

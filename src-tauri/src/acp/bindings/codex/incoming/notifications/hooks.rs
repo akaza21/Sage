@@ -3,10 +3,11 @@
 //! fails. A hook may run outside any Turn (`turnId` is null), so the row is
 //! session-scoped rather than a transcript item.
 //!
-//! Codex names a run by its handler (event, order and source path), so a
-//! handler that runs again updates its own row. That name carries a local
-//! path, so the row's identity is a digest of it and the path never leaves
-//! this module.
+//! Codex names a run by its handler (event, order and source path), not by
+//! its invocation, so a handler that runs again updates its own row and
+//! concurrent runs of one handler share it. That name carries a local path,
+//! so the row's identity is a digest of it and the path never leaves this
+//! module; the label tells handlers apart by position and source instead.
 
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
@@ -49,18 +50,18 @@ const EVENT_NAMES: [(&str, &str); 11] = [
 const HANDLER_TYPES: [&str; 3] = ["command", "prompt", "agent"];
 const EXECUTION_MODES: [&str; 2] = ["sync", "async"];
 const SCOPES: [&str; 2] = ["thread", "turn"];
-const SOURCES: [&str; 11] = [
-    "system",
-    "user",
-    "project",
-    "mdm",
-    "sessionFlags",
-    "plugin",
-    "cloudRequirements",
-    "cloudManagedConfig",
-    "legacyManagedConfigFile",
-    "legacyManagedConfigMdm",
-    "unknown",
+const SOURCES: [(&str, &str); 11] = [
+    ("system", "system"),
+    ("user", "user"),
+    ("project", "project"),
+    ("mdm", "MDM"),
+    ("sessionFlags", "session flags"),
+    ("plugin", "plugin"),
+    ("cloudRequirements", "cloud requirements"),
+    ("cloudManagedConfig", "cloud managed config"),
+    ("legacyManagedConfigFile", "legacy managed config file"),
+    ("legacyManagedConfigMdm", "legacy managed config MDM"),
+    ("unknown", "unknown"),
 ];
 const ENTRY_KINDS: [&str; 5] = ["warning", "stop", "feedback", "context", "error"];
 
@@ -80,19 +81,17 @@ enum RunStatus {
 }
 
 pub(super) fn hook_run(
-    adapter: &CodexAdapter,
+    adapter: &mut CodexAdapter,
     params: &Map<String, Value>,
     phase: HookPhase,
 ) -> Result<IngressDisposition, IngressError> {
     let thread = text(params, "threadId", 512)?;
     adapter.expect_thread(thread).map_err(identity)?;
     // The row is session-scoped, so a turn is validated but never required.
-    match params.get("turnId") {
-        None | Some(Value::Null) => {}
-        Some(_) => {
-            text(params, "turnId", 512)?;
-        }
-    }
+    let turn = match params.get("turnId") {
+        None | Some(Value::Null) => None,
+        Some(_) => Some(text(params, "turnId", 512)?),
+    };
     let run = params
         .get("run")
         .and_then(Value::as_object)
@@ -101,30 +100,59 @@ pub(super) fn hook_run(
     let status = run_status(text(run, "status", 32)?)?;
     let state = match (phase, status) {
         (HookPhase::Started, RunStatus::Running) => SessionActivityState::Running,
-        (HookPhase::Completed, RunStatus::Completed) => SessionActivityState::Completed,
-        (HookPhase::Completed, RunStatus::Failed | RunStatus::Blocked | RunStatus::Stopped) => {
-            SessionActivityState::Failed
+        // A block is the hook doing its job; the line says what it blocked.
+        (HookPhase::Completed, RunStatus::Completed | RunStatus::Blocked) => {
+            SessionActivityState::Completed
         }
+        (HookPhase::Completed, RunStatus::Failed) => SessionActivityState::Failed,
+        (HookPhase::Completed, RunStatus::Stopped) => SessionActivityState::Cancelled,
         _ => return Err(IngressError::Malformed),
     };
     let progress = progress(run, status)?
         .map(|line| RequiredText::new("hookProgress", line))
         .transpose()
         .map_err(content)?;
-    let event = SessionScopedEvent::Activity(SessionActivity {
+    let row = SessionActivity {
         id: run_identity(text(run, "id", HOOK_PATH_BYTES)?)?,
         kind: RequiredText::new("activityKind", "hook").map_err(content)?,
         label: RequiredText::new("hookLabel", label).map_err(content)?,
         state,
         progress,
-    });
+    };
+    let in_active_turn = turn
+        .is_some_and(|turn| adapter.expect_turn(turn).is_ok() && !adapter.turn_is_terminal(turn));
+    match phase {
+        HookPhase::Started if in_active_turn => adapter.track_running_hook(&row),
+        HookPhase::Started => {}
+        HookPhase::Completed => adapter.forget_running_hook(&row),
+    }
+    Ok(session_event(adapter, thread, row)?.into())
+}
+
+/// Settles the hooks still running when the Turn ends: their completion
+/// will never arrive, so each row becomes cancelled.
+pub(super) fn cancelled_hooks(
+    adapter: &mut CodexAdapter,
+    thread: &str,
+) -> Result<Vec<IncomingEvent>, IngressError> {
+    adapter
+        .cancel_running_hooks()
+        .into_iter()
+        .map(|row| session_event(adapter, thread, row))
+        .collect()
+}
+
+fn session_event(
+    adapter: &CodexAdapter,
+    thread: &str,
+    row: SessionActivity,
+) -> Result<IncomingEvent, IngressError> {
     Ok(IncomingEvent::Session {
         id: adapter
             .scoped_id(ExternalKind::Session, thread)
             .map_err(identity)?,
-        event,
-    }
-    .into())
+        event: SessionScopedEvent::Activity(row),
+    })
 }
 
 /// Checks every field of the run summary and returns the row's label.
@@ -138,10 +166,19 @@ fn validate_run(run: &Map<String, Value>) -> Result<String, IngressError> {
     one_of(text(run, "executionMode", 32)?, &EXECUTION_MODES)?;
     one_of(text(run, "scope", 32)?, &SCOPES)?;
     text(run, "sourcePath", HOOK_PATH_BYTES)?;
-    if run.contains_key("source") {
-        one_of(text(run, "source", 64)?, &SOURCES)?;
-    }
-    integer(run.get("displayOrder"))?;
+    let source = match run.contains_key("source") {
+        true => text(run, "source", 64)?,
+        false => "unknown",
+    };
+    let (_, source_label) = SOURCES
+        .iter()
+        .find(|(wire, _)| *wire == source)
+        .ok_or(IngressError::Malformed)?;
+    let order = run
+        .get("displayOrder")
+        .and_then(Value::as_i64)
+        .filter(|order| *order >= 0)
+        .ok_or(IngressError::Malformed)?;
     integer(run.get("startedAt"))?;
     optional(run.get("completedAt"), integer)?;
     optional(run.get("durationMs"), integer)?;
@@ -150,7 +187,11 @@ fn validate_run(run: &Map<String, Value>) -> Result<String, IngressError> {
         one_of(text(entry, "kind", 32)?, &ENTRY_KINDS)?;
         wire_text(entry.get("text"))?;
     }
-    Ok(format!("{event_label} hook"))
+    // Codex orders handlers from zero; the label counts from one.
+    Ok(format!(
+        "{event_label} hook #{} ({source_label})",
+        order.saturating_add(1)
+    ))
 }
 
 fn run_status(value: &str) -> Result<RunStatus, IngressError> {
@@ -166,7 +207,7 @@ fn run_status(value: &str) -> Result<RunStatus, IngressError> {
 
 /// The configured status line while a hook runs; afterwards its first
 /// user-facing output (context entries are for the model), naming a block
-/// or stop so a Failed row says why.
+/// or stop so the row says why.
 fn progress(run: &Map<String, Value>, status: RunStatus) -> Result<Option<String>, IngressError> {
     if status == RunStatus::Running {
         return Ok(run
