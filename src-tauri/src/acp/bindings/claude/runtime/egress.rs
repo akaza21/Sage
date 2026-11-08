@@ -92,10 +92,12 @@ impl ClaudeRuntime {
                     active.turn = None;
                     self.deferred.clear();
                 }
-                // A delete that was never written stays wanted for the next
+                // A release that was never written stays wanted for the next
                 // idle, up to `MAX_FORK_DELETE_ATTEMPTS` attempts.
-                if let PendingRequest::DeleteFork(_, fork) = pending {
-                    self.want_fork_delete(&fork);
+                match pending {
+                    PendingRequest::DeleteFork(_, fork) => self.want_fork_release(&fork, false),
+                    PendingRequest::CloseFork(_, fork) => self.want_fork_release(&fork, true),
+                    _ => {}
                 }
             } else if resolution == EgressResolution::DeliveryUnknown {
                 if !self.pending.contains_key(&request_id) {

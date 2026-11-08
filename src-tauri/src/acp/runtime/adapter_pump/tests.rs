@@ -1455,6 +1455,57 @@ fn cancellation_is_rejected_after_the_durable_terminal() {
     });
 }
 
+fn harness_settled_permission_pump(
+    settled: bool,
+) -> (AdapterPump<FakeAdapter, FakeJournal, Mapper>, Shared) {
+    let external = || ExternalId::new("permissionRequest", "external-request").unwrap();
+    let request = AdapterEvent::PermissionRequest {
+        turn_id: identity("turn-envelope"),
+        item_id: identity("external-request"),
+        external_request_id: external(),
+        payload: permission(),
+        request_payload_digest: [1; 32],
+    };
+    let resolved = AdapterEvent::PermissionResolved {
+        turn_id: identity("turn-envelope"),
+        external_request_id: external(),
+        state: crate::acp::lifecycle::ServerRequestState::Cancelled,
+    };
+    let middle = if settled { resolved } else { item("other") };
+    build_pump(vec![
+        owned(vec![request], Vec::new()),
+        owned(vec![middle], Vec::new()),
+        owned(vec![terminal(TurnState::Cancelled)], Vec::new()),
+    ])
+}
+
+#[test]
+fn a_permission_the_harness_settles_no_longer_blocks_the_turn_terminal() {
+    runtime().block_on(async {
+        let (mut pump, shared) = harness_settled_permission_pump(true);
+        pump.push_stdout_chunk(b"{}\n", 1).await.unwrap();
+        let request_id = permission_request_id(&shared);
+        pump.push_stdout_chunk(b"{}\n", 2).await.unwrap();
+        assert!(matches!(
+            shared.0.lock().unwrap().durable_batches[1].as_slice(),
+            [DurableAdapterEvent::PermissionResolved { request_id: settled, state, .. }]
+                if *settled == request_id
+                    && *state == crate::acp::lifecycle::ServerRequestState::Cancelled
+        ));
+        // The settled card no longer waits on the user, so the cancelled
+        // terminal commits instead of tearing the runtime down.
+        pump.push_stdout_chunk(b"{}\n", 3).await.unwrap();
+        assert!(pump.completed_turn_ready());
+
+        // Without the harness settlement the open card still tears down.
+        let (mut open, _) = harness_settled_permission_pump(false);
+        open.push_stdout_chunk(b"{}\n", 1).await.unwrap();
+        open.push_stdout_chunk(b"{}\n", 2).await.unwrap();
+        assert!(open.push_stdout_chunk(b"{}\n", 3).await.is_err());
+        assert!(!open.completed_turn_ready());
+    });
+}
+
 #[test]
 fn unknown_commit_and_projection_recovery_are_typed_fail_closed_boundaries() {
     runtime().block_on(async {

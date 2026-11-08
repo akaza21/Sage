@@ -60,6 +60,10 @@ pub(crate) enum AdapterRuntimeError {
     LaunchUnavailable,
     #[error("the harness reports that it is not signed in")]
     SignInRequired,
+    /// The harness no longer has the native session a resume named, so the
+    /// session cannot continue there (ACP `-32002` Resource not found).
+    #[error("the harness no longer has the native session to resume")]
+    NativeSessionMissing,
     #[error("adapter frame is invalid")]
     Frame,
     #[error("adapter event batch exceeds its count limit")]

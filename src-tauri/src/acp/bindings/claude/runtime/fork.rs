@@ -39,7 +39,9 @@ impl ClaudeRuntime {
         self.pending.values().any(|pending| {
             matches!(
                 pending,
-                PendingRequest::Fork(_) | PendingRequest::DeleteFork(false, _)
+                PendingRequest::Fork(_)
+                    | PendingRequest::DeleteFork(false, _)
+                    | PendingRequest::CloseFork(false, _)
             )
         })
     }
@@ -65,6 +67,7 @@ impl ClaudeRuntime {
             self.forks.push(TrackedFork {
                 id: fork.clone(),
                 wanted,
+                close: false,
                 failures: 0,
             });
             if wanted {
@@ -90,8 +93,8 @@ impl ClaudeRuntime {
     /// session other than the bound one while a fork is in flight, belongs
     /// to the fork and is absorbed without touching the bound session.
     /// claude-agent-acp 0.76.0 forks storage only (`fork-session.js`), so the
-    /// captured `claude-code/fork` trace carries none; the guard keeps a
-    /// later adapter that announces the fork from tearing the parent down.
+    /// captured `claude-code/fork` trace carries none; 0.101.0 starts the fork
+    /// live and announces its commands, which this guard absorbs.
     pub(super) fn absorbs_fork_update(&self, value: &Value) -> bool {
         let Some(session) = value.pointer("/params/sessionId").and_then(Value::as_str) else {
             return false;
@@ -110,33 +113,49 @@ impl ClaudeRuntime {
         self.forks.iter().any(|fork| fork.id.as_str() == session)
     }
 
-    /// Marks a tracked fork's delete wanted again (its frame was never
-    /// written), for the next idle moment, until it has failed
+    /// Marks a tracked fork's release (delete or close) wanted again (its
+    /// frame was never written), for the next idle moment, until it has failed
     /// `MAX_FORK_DELETE_ATTEMPTS` times; then the fork is given up and its
-    /// slot is evictable, so a delete that can never land holds no slot.
-    pub(super) fn want_fork_delete(&mut self, fork: &ExternalId) {
+    /// slot is evictable, so a release that can never land holds no slot.
+    pub(super) fn want_fork_release(&mut self, fork: &ExternalId, close: bool) {
         if let Some(entry) = self.forks.iter_mut().find(|known| known.id == *fork) {
+            entry.close = close;
             entry.failures = entry.failures.saturating_add(1);
             entry.wanted = entry.failures < MAX_FORK_DELETE_ATTEMPTS;
         }
     }
 
-    /// A Turn is running: a refused fork's delete waits for the next idle
-    /// moment (a committed fork needs nothing), and the RPC is answered now.
+    /// A Turn is running: a refused fork's delete, or a committed fork's close
+    /// when the adapter advertises `session/close`, waits for the next idle
+    /// moment, and the RPC is answered now.
     pub(super) fn defer_fork_release_command(
         &mut self,
         fork: &ExternalId,
         committed: bool,
     ) -> bool {
+        let close = committed && self.closes_committed_forks();
         let Some(entry) = self.forks.iter_mut().find(|known| known.id == *fork) else {
             return false;
         };
-        entry.wanted |= !committed;
+        if !committed || close {
+            // A wanted delete outranks a close: the delete also tears it down.
+            let delete_wanted = entry.wanted && !entry.close;
+            entry.close = close && !delete_wanted;
+            entry.wanted = true;
+        }
         self.native_rpc_reply = Some(NativeRpcReply::Released);
         true
     }
 
-    /// Writes the oldest deferred delete while idle, as background work.
+    /// A committed fork is closed in this runtime only when the adapter
+    /// advertises `session/close`; the fork Chat resumes it in its own runtime.
+    fn closes_committed_forks(&self) -> bool {
+        self.capabilities
+            .as_ref()
+            .is_some_and(|capabilities| capabilities.close_session)
+    }
+
+    /// Writes the oldest deferred release while idle, as background work.
     pub(super) fn deferred_fork_delete(
         &mut self,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
@@ -144,10 +163,12 @@ impl ClaudeRuntime {
             .active
             .as_ref()
             .is_some_and(|active| active.turn.is_none());
-        let busy = self
-            .pending
-            .values()
-            .any(|pending| matches!(pending, PendingRequest::DeleteFork(..)));
+        let busy = self.pending.values().any(|pending| {
+            matches!(
+                pending,
+                PendingRequest::DeleteFork(..) | PendingRequest::CloseFork(..)
+            )
+        });
         let Some(entry) = self.forks.iter_mut().find(|fork| fork.wanted) else {
             return Ok(None);
         };
@@ -156,18 +177,19 @@ impl ClaudeRuntime {
         }
         entry.wanted = false;
         let fork = entry.id.clone();
-        self.reserve(
-            PendingRequest::DeleteFork(true, fork.clone()),
-            "session/delete",
-            json!({"sessionId": fork.as_str()}),
-        )
-        .map(Some)
+        let close = entry.close;
+        self.reserve_fork_release(true, close, &fork).map(Some)
     }
 
-    /// The 0.76.0 fork is a stored copy with no live state, so a committed
-    /// fork holds nothing to close (`session/close` answers "Session not
-    /// found", see the captured trace). A refused fork's orphaned copy is
-    /// removed with `session/delete`, which the adapter advertises.
+    /// A committed fork belongs to the fork Chat, which resumes it in its own
+    /// runtime. claude-agent-acp 0.101.0 also starts the fork live in this
+    /// runtime, so a committed fork is closed here with `session/close` when
+    /// the adapter advertises it; otherwise two processes would hold one
+    /// transcript. The 0.76.0 fork is a stored copy with no live state, and
+    /// its close answers "Session not found" (see the captured trace), which
+    /// is harmless: the release is answered `Released` either way. A refused
+    /// fork's orphaned copy is removed with `session/delete`, which also
+    /// tears down a live fork.
     pub(super) fn release_fork_command(
         &mut self,
         fork: &ExternalId,
@@ -176,17 +198,47 @@ impl ClaudeRuntime {
         if !self.is_fork(fork.as_str()) || self.fork_pending() {
             return Err(AdapterRuntimeError::Operation);
         }
-        if committed {
+        if committed && !self.closes_committed_forks() {
             self.native_rpc_reply = Some(NativeRpcReply::Released);
             return Ok(None);
         }
         self.native_rpc_reply = None;
-        self.reserve(
-            PendingRequest::DeleteFork(false, fork.clone()),
-            "session/delete",
-            json!({"sessionId": fork.as_str()}),
-        )
-        .map(Some)
+        self.reserve_fork_release(false, committed, fork).map(Some)
+    }
+
+    fn reserve_fork_release(
+        &mut self,
+        background: bool,
+        close: bool,
+        fork: &ExternalId,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let params = json!({"sessionId": fork.as_str()});
+        if close {
+            self.reserve(
+                PendingRequest::CloseFork(background, fork.clone()),
+                "session/close",
+                params,
+            )
+        } else {
+            self.reserve(
+                PendingRequest::DeleteFork(background, fork.clone()),
+                "session/delete",
+                params,
+            )
+        }
+    }
+
+    /// The close of a committed fork is cleanup: the fork is already the fork
+    /// Chat's, so any answer (0.76.0 answers an error for a fork it never
+    /// loaded) releases it.
+    pub(super) fn close_fork_response(
+        &mut self,
+        background: bool,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        if !background {
+            self.native_rpc_reply = Some(NativeRpcReply::Released);
+        }
+        AdapterBatch::new(vec![SharedEvent::IgnoredLate], Vec::new())
     }
 
     pub(super) fn delete_fork_response(
@@ -220,7 +272,10 @@ pub(super) const MAX_FORK_DELETE_ATTEMPTS: u8 = 3;
 pub(super) struct TrackedFork {
     id: ExternalId,
     wanted: bool,
-    /// Deletes for this fork that were never written.
+    /// The wanted release is a `session/close` (a committed fork) rather than
+    /// a `session/delete` (a refused fork).
+    close: bool,
+    /// Releases for this fork that were never written.
     failures: u8,
 }
 

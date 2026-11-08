@@ -41,6 +41,7 @@ mod fork;
 mod ingress;
 mod session_config;
 mod slash_commands;
+mod starting_mode;
 mod support;
 use support::*;
 
@@ -100,6 +101,10 @@ enum PendingRequest {
     Fork(ExternalId),
     /// `true` for a deferred (background) delete nobody waits for.
     DeleteFork(bool, ExternalId),
+    /// `session/close` of a committed fork; `true` when in the background.
+    CloseFork(bool, ExternalId),
+    /// `session/set_mode` to Sage's starting mode before a new session is ready.
+    StartingMode(ExternalId),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

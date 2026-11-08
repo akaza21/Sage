@@ -149,6 +149,21 @@ pub(super) fn result_session_id(value: &Value) -> Result<ExternalId, AdapterRunt
         })
 }
 
+/// ACP `-32002` (Resource not found) answering a resume of `expected`. SDK
+/// 2.x names the session in `data.sessionId`; a different named session is
+/// not this resume's answer.
+pub(super) fn native_session_missing(value: &Value, expected: &ExternalId) -> bool {
+    let Some(error) = value.get("error").filter(|_| value.get("result").is_none()) else {
+        return false;
+    };
+    error.get("code").and_then(Value::as_i64) == Some(RESOURCE_NOT_FOUND)
+        && error
+            .pointer("/data/sessionId")
+            .is_none_or(|session| session.as_str() == Some(expected.as_str()))
+}
+
+const RESOURCE_NOT_FOUND: i64 = -32002;
+
 pub(super) fn identity(
     binding_digest: [u8; 32],
     runtime_epoch: RuntimeEpoch,

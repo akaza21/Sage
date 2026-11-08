@@ -238,7 +238,12 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             }
         }
         for value in egress {
-            if self.phase == Phase::AwaitingInitialized {
+            // A session that answered but is not ready yet may first settle
+            // Sage's policy (such as the starting access mode); its request is
+            // counted with the initialization requests, so it stays bounded.
+            if self.phase == Phase::AwaitingInitialized
+                || (self.phase == Phase::AwaitingSession && ready.is_none())
+            {
                 self.enqueue_initialization(value)?;
             } else if self.phase == Phase::Initialized && value.token().is_notification() {
                 self.enqueue(value)?;

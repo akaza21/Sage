@@ -1,5 +1,6 @@
 //! Unstable ACP `session/fork` replay for the characterised claude-agent-acp
-//! 0.76.0 / SDK 1.4.0 pair, using the captured initialize advertisement.
+//! 0.76.0 / SDK 1.4.0 pair, using the captured initialize advertisement. The
+//! 0.101.0 / SDK 2.4.0 live fork is replayed in `adapter_0101_tests.rs`.
 
 use serde_json::{Value, json};
 
@@ -315,7 +316,7 @@ fn updates_for_a_forked_session_are_absorbed_without_touching_the_parent() {
 }
 
 #[test]
-fn a_committed_fork_needs_no_close_and_a_refused_fork_is_deleted() {
+fn a_committed_fork_is_closed_harmlessly_and_a_refused_fork_is_deleted() {
     let frames = captured_fork_frames();
     let mut runtime = ClaudeRuntime::fixture();
     ready_with(&mut runtime, captured_initialize_result());
@@ -323,7 +324,20 @@ fn a_committed_fork_needs_no_close_and_a_refused_fork_is_deleted() {
     let parent = ExternalId::new("externalSessionId", "claude-session-1".to_owned()).unwrap();
     assert!(runtime.release_fork(&parent, false).is_err());
 
-    assert!(runtime.release_fork(&fork, true).unwrap().is_none());
+    // 0.76.0 advertises `session/close`, so a committed fork is closed in this
+    // runtime; its fork is a stored copy, and the captured "Session not
+    // found" answer still releases it.
+    let close = runtime.release_fork(&fork, true).unwrap().expect("close");
+    let request: Value = serde_json::from_slice(close.frame().payload()).unwrap();
+    assert_eq!(request["method"], "session/close");
+    assert_eq!(request["params"], json!({"sessionId": CAPTURED_FORK}));
+    let id = request_id(&close);
+    runtime
+        .resolve_egress(close.into_token(), EgressResolution::Written)
+        .unwrap();
+    let mut answer = captured_answer(&frames, "session/close", CAPTURED_FORK);
+    answer["id"] = json!(id);
+    runtime.ingest(&frame(answer), &Mapper).unwrap();
     assert_eq!(
         runtime.take_native_rpc_reply(),
         Some(NativeRpcReply::Released)
@@ -369,7 +383,7 @@ fn a_refused_fork_delete_during_a_prompt_is_written_once_idle() {
     runtime
         .resolve_egress(prompt.into_token(), EgressResolution::Written)
         .unwrap();
-    // A committed fork needs nothing; a refused one is deferred.
+    // A refused fork's delete is deferred to the next idle moment.
     assert!(runtime.defer_fork_release(&fork, false));
     assert_eq!(
         runtime.take_native_rpc_reply(),

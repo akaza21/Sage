@@ -2,9 +2,10 @@ pub(crate) use crate::domain::HarnessCharacterisation as Characterisation;
 
 const CODEX_CHARACTERISED_VERSIONS: [&str; 1] = ["0.146.0"];
 
-const CLAUDE_ADAPTER_CHARACTERISED_VERSIONS: [&str; 1] = ["0.76.0"];
-
-const CLAUDE_ACP_SDK_CHARACTERISED_VERSIONS: [&str; 1] = ["1.4.0"];
+/// Exact `(claude-agent-acp, @agentclientprotocol/sdk)` builds whose wire and
+/// behaviour Sage has characterised. A build is admitted only as a whole pair:
+/// an adapter from one row with the SDK from another row is uncharacterised.
+const CLAUDE_CHARACTERISED_BUILDS: [(&str, &str); 2] = [("0.76.0", "1.4.0"), ("0.101.0", "2.4.0")];
 
 const OPENCODE_CHARACTERISED_VERSIONS: [&str; 1] = ["1.18.21"];
 
@@ -53,15 +54,12 @@ pub(crate) fn claude_characterisation(
     adapter_version: &str,
     acp_sdk_version: &str,
 ) -> Characterisation {
-    let known = |value: &str, table: &[&str]| {
-        normalized_version(value).is_some_and(|version| table.contains(&version))
-    };
-    if known(adapter_version, &CLAUDE_ADAPTER_CHARACTERISED_VERSIONS)
-        && known(acp_sdk_version, &CLAUDE_ACP_SDK_CHARACTERISED_VERSIONS)
-    {
-        Characterisation::Characterised
-    } else {
-        Characterisation::Uncharacterised
+    let pair = normalized_version(adapter_version).zip(normalized_version(acp_sdk_version));
+    match pair {
+        Some(build) if CLAUDE_CHARACTERISED_BUILDS.contains(&build) => {
+            Characterisation::Characterised
+        }
+        _ => Characterisation::Uncharacterised,
     }
 }
 
@@ -136,10 +134,26 @@ mod tests {
     }
 
     #[test]
-    fn the_recorded_claude_adapter_and_sdk_pair_is_characterised() {
+    fn the_recorded_claude_adapter_and_sdk_pairs_are_characterised() {
         assert_eq!(
             claude_characterisation("0.76.0", "1.4.0"),
             Characterisation::Characterised
+        );
+        assert_eq!(
+            claude_characterisation("0.101.0", "2.4.0"),
+            Characterisation::Characterised
+        );
+    }
+
+    #[test]
+    fn a_claude_adapter_mixed_with_another_rows_sdk_is_uncharacterised() {
+        assert_eq!(
+            claude_characterisation("0.76.0", "2.4.0"),
+            Characterisation::Uncharacterised
+        );
+        assert_eq!(
+            claude_characterisation("0.101.0", "1.4.0"),
+            Characterisation::Uncharacterised
         );
     }
 

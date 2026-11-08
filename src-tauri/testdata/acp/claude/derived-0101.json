@@ -1,0 +1,210 @@
+{
+  "adapter": "@agentclientprotocol/claude-agent-acp",
+  "adapterVersion": "0.101.0",
+  "acpSdkVersion": "2.4.0",
+  "provenance": "derived",
+  "note": "Derived from the published package code and the captured 0.76.0 traces, not captured from a live adapter. Each frame names the source that produces it. Replace with a live capture under tests/fixtures/harness-traces/claude-code when one is recorded.",
+  "sourceFiles": {
+    "dist/acp-agent.js": "aa7681b597fc44748ae57877c1eb92dae9e701bc02d6594cbb718540a9217b50",
+    "dist/session-mode.js": "3b6c18b63b529e49f0e068d331f112fa1111df9169bdf5b65632c319f3c4a189",
+    "dist/session-ultracode.js": "f201e36e4de56a3a7056f92c6e29af495e536ca25d28c708515586d8f6b058d0",
+    "node_modules/@agentclientprotocol/sdk/dist/core/jsonrpc.js": "6958f702bbe3be5e232c9e0ae82f2f6d365e8a50be24ad39402f85430ac291a1"
+  },
+  "frames": {
+    "initialize": {
+      "source": "dist/acp-agent.js initialize(): the v1 response for a client without AIR, terminal-auth or gateway capabilities",
+      "frame": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "protocolVersion": 1,
+          "agentCapabilities": {
+            "_meta": {
+              "claudeCode": { "promptQueueing": true },
+              "authStatus": {}
+            },
+            "promptCapabilities": { "image": true, "embeddedContext": true },
+            "mcpCapabilities": { "http": true, "sse": true },
+            "auth": { "logout": {} },
+            "providers": {},
+            "loadSession": true,
+            "sessionCapabilities": {
+              "additionalDirectories": {},
+              "close": {},
+              "delete": {},
+              "fork": {},
+              "list": {},
+              "resume": {},
+              "systemPrompt": { "mode": { "override": {} } }
+            }
+          },
+          "agentInfo": {
+            "name": "@agentclientprotocol/claude-agent-acp",
+            "title": "Claude Agent",
+            "version": "0.101.0"
+          },
+          "authMethods": [],
+          "_meta": { "steering": { "supported": true } }
+        }
+      }
+    },
+    "newSessionInAuto": {
+      "source": "dist/session-mode.js resolveInitialPermissionMode(): with no permissions.defaultMode a new session starts in auto when the catalog offers it; buildAvailableModes() and createUltracodeConfigOption(enabled, true) give the catalog and the boolean ultracode option",
+      "frame": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+          "sessionId": "0b5d3c1e-7a42-4f0e-9d61-2c8e4f7a1b93",
+          "modes": {
+            "currentModeId": "auto",
+            "availableModes": [
+              {
+                "id": "default",
+                "name": "Manual",
+                "description": "Always ask before making changes"
+              },
+              {
+                "id": "acceptEdits",
+                "name": "Accept edits",
+                "description": "Automatically accept all file edits"
+              },
+              {
+                "id": "plan",
+                "name": "Plan",
+                "description": "Create a plan before making changes"
+              },
+              {
+                "id": "auto",
+                "name": "Auto",
+                "description": "Claude handles permission decisions"
+              },
+              {
+                "id": "bypassPermissions",
+                "name": "Bypass permissions",
+                "description": "Accepts all permissions"
+              }
+            ]
+          },
+          "configOptions": [
+            {
+              "id": "mode",
+              "name": "Mode",
+              "description": "Session permission mode",
+              "category": "mode",
+              "type": "select",
+              "currentValue": "auto",
+              "options": [
+                {
+                  "value": "default",
+                  "name": "Manual",
+                  "description": "Always ask before making changes"
+                },
+                {
+                  "value": "acceptEdits",
+                  "name": "Accept edits",
+                  "description": "Automatically accept all file edits"
+                },
+                {
+                  "value": "plan",
+                  "name": "Plan",
+                  "description": "Create a plan before making changes"
+                },
+                {
+                  "value": "auto",
+                  "name": "Auto",
+                  "description": "Claude handles permission decisions"
+                },
+                {
+                  "value": "bypassPermissions",
+                  "name": "Bypass permissions",
+                  "description": "Accepts all permissions"
+                }
+              ]
+            },
+            {
+              "id": "ultracode",
+              "name": "Ultracode",
+              "description": "Dynamic workflows on every task, at any effort level",
+              "category": "model_config",
+              "type": "boolean",
+              "currentValue": false
+            }
+          ]
+        }
+      }
+    },
+    "setModeAccepted": {
+      "source": "dist/session-mode.js setSessionMode(): answers {} once the mode is applied",
+      "frame": { "jsonrpc": "2.0", "id": 3, "result": {} }
+    },
+    "forkLive": {
+      "source": "dist/acp-agent.js unstable_forkSession(): copies the transcript, starts the fork live with getOrCreateSession and answers { sessionId, modes, configOptions }",
+      "frame": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "result": {
+          "sessionId": "5e0c7a91-3b6d-4f28-a1c4-8d2f9e6b0a37",
+          "modes": {
+            "currentModeId": "default",
+            "availableModes": [
+              {
+                "id": "default",
+                "name": "Manual",
+                "description": "Always ask before making changes"
+              },
+              {
+                "id": "acceptEdits",
+                "name": "Accept edits",
+                "description": "Automatically accept all file edits"
+              },
+              {
+                "id": "plan",
+                "name": "Plan",
+                "description": "Create a plan before making changes"
+              }
+            ]
+          },
+          "configOptions": []
+        }
+      }
+    },
+    "forkCommands": {
+      "source": "dist/acp-agent.js afterSetupResponse(): the fork announces its slash commands after the fork answer",
+      "frame": {
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+          "sessionId": "5e0c7a91-3b6d-4f28-a1c4-8d2f9e6b0a37",
+          "update": {
+            "sessionUpdate": "available_commands_update",
+            "availableCommands": []
+          }
+        }
+      }
+    },
+    "closeAnswer": {
+      "source": "dist/acp-agent.js closeSession(): idempotent, answers {} for a loaded or an unknown session",
+      "frame": { "jsonrpc": "2.0", "id": 5, "result": {} }
+    },
+    "cancelPermissionRequest": {
+      "source": "dist/acp-agent.js ClientConnection.requestPermission() passes stopWaitingOnCancel; core/jsonrpc.js prepareRequest() then sends $/cancel_request naming the permission request and rejects it at once",
+      "frame": {
+        "jsonrpc": "2.0",
+        "method": "$/cancel_request",
+        "params": { "requestId": 7 }
+      }
+    },
+    "resumeMissing": {
+      "source": "core/jsonrpc.js RequestError.sessionNotFound(): -32002 Resource not found with data.sessionId, thrown by dist/acp-agent.js createSession() when a resumed transcript is gone",
+      "frame": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "error": {
+          "code": -32002,
+          "message": "Resource not found",
+          "data": { "sessionId": "06511af0-f6d1-4ac4-9b4a-81ddbcb007e2" }
+        }
+      }
+    }
+  }
+}

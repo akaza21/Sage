@@ -7,7 +7,7 @@ use crate::acp::runtime::{
 use crate::acp::store::CompleteActivationCommand;
 use crate::acp::transport::{FrameWriteOutcome, OutboundFrame};
 
-struct Journal;
+pub(super) struct Journal;
 impl ActivationJournal for Journal {
     fn commit_ready<'a>(
         &'a mut self,
@@ -26,7 +26,7 @@ impl ActivationJournal for Journal {
         })
     }
 }
-struct Sink;
+pub(super) struct Sink;
 impl ActivationTransport for Sink {
     fn write(&mut self, _: &OutboundFrame) -> FrameWriteOutcome {
         FrameWriteOutcome::Complete

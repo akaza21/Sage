@@ -32,7 +32,7 @@ fn ready_config_options(resume: bool, options: Value) -> ClaudeRuntime {
     runtime
         .resolve_egress(egress.into_token(), EgressResolution::Written)
         .unwrap();
-    runtime.ingest(&frame(json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":"external-a","modes":{"currentModeId":"ask","availableModes":[{"id":"ask","name":"Ask"},{"id":"code","name":"Code"}]},"configOptions":options}})), &Mapper).unwrap();
+    runtime.ingest(&frame(json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":"external-a","modes":{"currentModeId":"default","availableModes":[{"id":"default","name":"Manual"},{"id":"code","name":"Code"}]},"configOptions":options}})), &Mapper).unwrap();
     runtime
 }
 #[test]
@@ -127,7 +127,7 @@ fn idle_mode_update_changes_state_but_set_mode_ack_never_echoes() {
             .unwrap()
             .current_mode_id
             .as_str(),
-        "ask"
+        "default"
     );
     runtime.ingest(&frame(json!({"method":"session/update","params":{"sessionId":"external-a","update":{"sessionUpdate":"current_mode_update","currentModeId":"code"}}})), &Mapper).unwrap();
     assert_eq!(

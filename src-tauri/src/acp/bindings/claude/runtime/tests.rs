@@ -1099,6 +1099,9 @@ mod browser_permission_regression_tests;
 #[path = "resume_regression_tests.rs"]
 mod resume_regression_tests;
 
+#[path = "adapter_0101_tests.rs"]
+mod adapter_0101_tests;
+
 #[test]
 fn prompt_files_are_refused_without_capability_and_encoded_when_advertised() {
     use crate::acp::attached_context::files::{Resource, Resources};

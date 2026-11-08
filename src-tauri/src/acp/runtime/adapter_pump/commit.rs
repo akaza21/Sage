@@ -26,6 +26,18 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 new_permissions.push(intent.clone());
             }
         }
+        // A request the harness itself settled (for example one it stopped
+        // waiting for on cancel) is no longer waiting on the user once its
+        // terminal state is durable. Bounded by the batch's event count.
+        let harness_resolved: Vec<SageServerRequestId> = durable
+            .iter()
+            .filter_map(|event| match event {
+                DurableAdapterEvent::PermissionResolved {
+                    request_id, state, ..
+                } if state.is_terminal() => Some(request_id.clone()),
+                _ => None,
+            })
+            .collect();
         let terminal = durable.iter().rev().find_map(|event| match event {
             DurableAdapterEvent::Turn { state, .. } if state.is_terminal() => Some(*state),
             _ => None,
@@ -62,6 +74,13 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             return Err(AdapterPumpError::TeardownRequired);
         }
 
+        if committed.is_some() && !harness_resolved.is_empty() {
+            self.pending_permissions.retain(|pending| {
+                pending.decision.is_some()
+                    || pending.written
+                    || !harness_resolved.contains(&pending.intent.request_id)
+            });
+        }
         let permission_wait_path = !new_permissions.is_empty();
         for intent in new_permissions {
             self.pending_permissions.push(PendingPermission {

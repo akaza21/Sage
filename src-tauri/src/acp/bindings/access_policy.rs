@@ -140,6 +140,29 @@ pub(crate) fn effective_mode(
         .map(|mode| mode.id)
 }
 
+/// The harness-native session mode that enforces a Sage access mode, for a
+/// binding whose access policy is carried by a native session mode. Curated
+/// installation metadata: an unlisted pair has no native mode.
+pub(crate) fn native_session_mode(binding: &str, mode: SessionAccessMode) -> Option<&'static str> {
+    match (binding, mode) {
+        // Claude Code's Manual mode: every gated tool asks for permission.
+        ("claude-agent-acp", SessionAccessMode::Ask) => Some("default"),
+        _ => None,
+    }
+}
+
+/// The native mode a new session must start in: the native mode of the
+/// binding's default (fallback) access mode. A harness may otherwise start a
+/// session in a laxer mode of its own choosing.
+pub(crate) fn starting_native_session_mode(
+    binding: &str,
+    version: &str,
+    characterised: bool,
+) -> Option<&'static str> {
+    let mode = effective_mode(binding, version, None, characterised)?;
+    native_session_mode(binding, mode)
+}
+
 pub(crate) fn effective_for_binding(
     registry: &super::registry::BindingRegistry,
     binding: &str,
@@ -182,6 +205,23 @@ mod tests {
                 expected,
                 "{binding}"
             );
+        }
+    }
+
+    #[test]
+    fn claude_starts_new_sessions_in_the_native_mode_of_ask_each_time() {
+        for version in ["0.76.0", "0.101.0"] {
+            assert_eq!(
+                starting_native_session_mode("claude-agent-acp", version, true),
+                Some("default")
+            );
+        }
+        assert_eq!(
+            native_session_mode("claude-agent-acp", SessionAccessMode::WorkspaceWrite),
+            None
+        );
+        for binding in ["codex-app-server", "opencode-acp", "pi-rpc", "unknown"] {
+            assert_eq!(starting_native_session_mode(binding, "0.146.0", true), None);
         }
     }
 

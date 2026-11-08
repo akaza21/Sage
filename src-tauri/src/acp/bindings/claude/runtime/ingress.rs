@@ -1,12 +1,13 @@
 use super::*;
 
+mod cancel_request;
 mod permission;
 mod read_text_file;
 
 const MAX_CANCELLED_PROMPT_ERRORS: usize = 16;
 
 impl ClaudeRuntime {
-    fn binding_is_characterised(&self) -> bool {
+    pub(super) fn binding_is_characterised(&self) -> bool {
         self.launch_binding
             .as_ref()
             .is_none_or(|binding| binding.characterisation().is_characterised())
@@ -58,6 +59,8 @@ impl ClaudeRuntime {
             PendingRequest::DeleteFork(background, _) => {
                 self.delete_fork_response(&value, background)
             }
+            PendingRequest::CloseFork(background, _) => self.close_fork_response(background),
+            PendingRequest::StartingMode(session) => self.starting_mode_response(&value, session),
         };
         if result.is_ok() && self.delivery_unknown == Some(DeliveryUnknown::Request(id)) {
             self.delivery_unknown = None;
@@ -119,6 +122,11 @@ impl ClaudeRuntime {
         value: Value,
         expected: Option<ExternalId>,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        if let Some(expected) = expected.as_ref()
+            && native_session_missing(&value, expected)
+        {
+            return Err(AdapterRuntimeError::NativeSessionMissing);
+        }
         let external_id = result_session_id(&value)?;
         if expected
             .as_ref()
@@ -138,6 +146,18 @@ impl ClaudeRuntime {
             cancelled_prompt_errors: Default::default(),
             commands: Arc::default(),
         });
+        if expected.is_none()
+            && let Some(start_mode) = self.starting_mode_request()?
+        {
+            return AdapterBatch::new(Vec::new(), vec![start_mode]);
+        }
+        self.session_ready(external_id)
+    }
+
+    pub(super) fn session_ready(
+        &self,
+        external_id: ExternalId,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
         AdapterBatch::new(
             vec![SharedEvent::SessionReady {
                 id: self.session_identity(external_id),
@@ -215,6 +235,9 @@ impl ClaudeRuntime {
         {
             self.auth = observed;
             return AdapterBatch::new(vec![SharedEvent::Absorbed], Vec::new());
+        }
+        if method == "$/cancel_request" && value.get("id").is_none() {
+            return self.cancel_request_notification(&value);
         }
         if method != "session/update" {
             if value.get("id").is_some() {
