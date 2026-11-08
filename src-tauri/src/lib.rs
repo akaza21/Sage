@@ -98,6 +98,8 @@ mod side_chat;
 mod side_chat_storage;
 mod state;
 #[cfg(test)]
+mod test_diagnostics;
+#[cfg(test)]
 mod test_paths;
 #[cfg(test)]
 mod test_wait;
@@ -286,8 +288,13 @@ pub fn run() {
                 tauri::WebviewWindowBuilder::from_config(app.handle(), &main_window_config)?
                     .on_page_load(move |window, payload| match payload.event() {
                         PageLoadEvent::Started => {
-                            let state = renderer_recreation_app.state::<AppState>();
-                            renderer_recreation.record_admitted_start(&state);
+                            let start = renderer_recreation
+                                .begin_start(&renderer_recreation_app.state::<AppState>());
+                            let lifecycle = Arc::clone(&renderer_recreation);
+                            let app = renderer_recreation_app.clone();
+                            tauri::async_runtime::spawn_blocking(move || {
+                                lifecycle.capture_start(&app.state::<AppState>(), start);
+                            });
                         }
                         PageLoadEvent::Finished => {
                             let lifecycle = Arc::clone(&renderer_recreation);

@@ -32,7 +32,7 @@ pub(crate) fn access_modes(
 
 /// The modes Sage enforces for a binding, given whether the Pi bridge that
 /// carries Pi's workspace edits is available.
-fn admitted_modes(
+pub(crate) fn admitted_modes(
     binding: &str,
     version: &str,
     characterised: bool,

@@ -3,13 +3,14 @@ import { ChevronDown } from "../../../ui/leanIcons";
 
 import type { AcpItem, PermissionDecision } from "../../../domain/acp";
 import { MenuPopover } from "../../../ui/MenuPopover";
+import { approvalHold, resolveApproval } from "../useApprovalSlot";
 import {
-  approvalFocusInReach,
-  approvalHold,
-  resolveApproval,
-} from "../useApprovalSlot";
+  arrivalFocusAllowed,
+  logCardArrival,
+  parkFocus,
+  useCardKeyGuard,
+} from "./approvalCard";
 import { ToolKindIcon } from "./ToolItem";
-import "./permission-prompt.css";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
@@ -19,9 +20,6 @@ const nouns: Record<string, string> = {
   edit: "Edit",
   mcp: "MCP",
 };
-
-/** A follow-up request this soon after a decision never takes focus. */
-const QUEUED_FOCUS_HOLD_MS = 300;
 
 /**
  * The pending approval, shown in the composer slot. The oldest request comes
@@ -49,7 +47,7 @@ export function PermissionPrompt({
   const firstRef = useRef<HTMLButtonElement>(null);
   const chevronRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
-  const pressed = useRef(new Set<string>());
+  const keyGuard = useCardKeyGuard();
   const sectionRef = useRef<HTMLElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [focusState, setFocusState] = useState<[string, boolean] | null>(null);
@@ -68,22 +66,13 @@ export function PermissionPrompt({
     // A Deny pressed on the loading fallback carries into the card.
     const denied = approvalHold.denies.get(item.id);
     denied?.catch(() => setSent([item.id, false]));
-    const held = denied || Date.now() - approvalHold.at < QUEUED_FOCUS_HOLD_MS;
     const card = sectionRef.current;
-    const pane = card?.closest(".chat-surface") ?? null;
-    const inCard = card?.contains(document.activeElement);
-    if (
-      focused &&
-      !held &&
-      canTakeFocus() &&
-      (inCard || approvalFocusInReach(pane))
-    ) {
+    logCardArrival(item, card);
+    if (arrivalFocusAllowed(item.id, card, focused, canTakeFocus)) {
       (primaryRef.current ?? firstRef.current)?.focus();
       setFocusState([item.id, document.activeElement === primaryRef.current]);
     } else {
-      // A focused button of the previous request must not answer this one:
-      // park focus on the card itself, where Enter does nothing.
-      if (inCard) card?.focus();
+      parkFocus(card);
       setFocusState([item.id, false]);
     }
     // Focus is decided once per request; later renders never steal it.
@@ -135,22 +124,7 @@ export function PermissionPrompt({
       role="group"
       aria-label={browser ? "Browser permission" : "Permission request"}
       data-acp-item-id={item.id}
-      onKeyDownCapture={(event) => {
-        // Auto-repeat belongs to a key that went down before this card.
-        if (event.repeat) {
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-        pressed.current.add(event.key);
-      }}
-      onKeyUpCapture={(event) => {
-        // A keyup without its keydown here (Space from the composer) is inert.
-        if (!pressed.current.delete(event.key)) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      }}
+      {...keyGuard}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || menuOpen || !canDeny) return;
         event.preventDefault();

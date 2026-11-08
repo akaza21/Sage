@@ -6,10 +6,10 @@ use crate::acp::{
     lifecycle::{ServerRequestState, TurnState},
 };
 
-use super::hard_failure_tests::with_captured_diagnostics;
 use super::incoming::UNPROJECTED_DIAGNOSTIC;
 use super::*;
 use super::{incoming::IngressError, request::RequestKind, state::AdapterError};
+use crate::test_diagnostics::capture_diagnostics;
 
 mod file_change_sequence_tests;
 #[cfg(windows)]
@@ -2207,9 +2207,8 @@ fn paths_and_secrets_are_redacted_and_file_paths_require_native_mapping() {
     assert!(!text.as_str().contains("private"));
 
     let unknown = json!({"method":"`C:\\Users\\private\\method`","params":{}});
-    let (disposition, captured) = with_captured_diagnostics(|| {
-        adapter.ingest(&serde_json::to_vec(&unknown).unwrap(), &Mapper)
-    });
+    let (disposition, captured) =
+        capture_diagnostics(|| adapter.ingest(&serde_json::to_vec(&unknown).unwrap(), &Mapper));
     assert!(matches!(disposition, Ok(IngressDisposition::IgnoredLate)));
     assert!(captured.contains(UNPROJECTED_DIAGNOSTIC));
     assert!(captured.contains("[path]"));
@@ -2246,9 +2245,8 @@ fn malformed_oversized_and_unknown_inputs_are_bounded() {
     assert!(adapter.ingest(b"{", &Mapper).is_err());
     assert!(adapter.ingest(&vec![b'x'; 1_048_577], &Mapper).is_err());
     let unknown = json!({"method":"future/event","params":{}});
-    let (disposition, captured) = with_captured_diagnostics(|| {
-        adapter.ingest(&serde_json::to_vec(&unknown).unwrap(), &Mapper)
-    });
+    let (disposition, captured) =
+        capture_diagnostics(|| adapter.ingest(&serde_json::to_vec(&unknown).unwrap(), &Mapper));
     assert!(matches!(disposition, Ok(IngressDisposition::IgnoredLate)));
     assert!(captured.contains(UNPROJECTED_DIAGNOSTIC));
 }

@@ -19,6 +19,17 @@ import {
 } from "../../../services/acpGoalDesktop";
 
 import { AcpProjectionOwnerContext } from "./AcpProjectionOwnerContext";
+import { coalescedRefresh } from "./coalescedRefresh";
+
+/**
+ * A refresh may overtake one load that hangs (the store keeps only the newest
+ * refresh's answer; an earlier-history load has its own slot, so a refresh
+ * never drops it), never more. With the live snapshot's one read and the history's
+ * one earlier page, that is the four page reads the native side admits per
+ * Chat at once. Status and file-snapshot reads share that limit, so they can
+ * meet a capacity error while all four are out.
+ */
+const PAGE_LOADS_IN_FLIGHT = 2;
 
 export function useAcpRetentionIncomplete(boundChatId?: string | null) {
   return useStore(
@@ -93,13 +104,11 @@ export function useAcpChatProjection(
     };
     activateScope(scope);
     let disposed = false;
-    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let unlisten: (() => void) | null = null;
 
-    const loadLatest = () => {
-      if (disposed) return;
+    const refresh = coalescedRefresh(() => {
       const intent = beginPageLoad(null);
-      void getGoalChatPage({
+      return getGoalChatPage({
         projectId: scope.projectId,
         projectGeneration: String(nativeTransitionEpoch) as ProjectGeneration,
         chatId: scope.chatId,
@@ -111,16 +120,14 @@ export function useAcpChatProjection(
         .catch((error: unknown) => {
           failPageLoad(intent, errorMessage(error));
         });
-    };
+    }, PAGE_LOADS_IN_FLIGHT);
 
     const scheduleRefresh = (disposition: string) => {
-      if (disposed || disposition === "ignoredStale" || refreshTimer) return;
-      refreshTimer = setTimeout(() => {
-        refreshTimer = null;
+      if (disposed || disposition === "ignoredStale") return;
+      refresh.schedule(() => {
         takeProjectionChange();
         store.getState().takeSessionConfigChange();
-        loadLatest();
-      }, 50);
+      });
     };
     // Install both wake channels before the authoritative bootstrap snapshot.
     void Promise.allSettled([
@@ -155,18 +162,18 @@ export function useAcpChatProjection(
           disposeListener();
         } else {
           unlisten = disposeListener;
-          loadLatest();
+          refresh.now();
         }
       })
       .catch(() => {
         // Bootstrap remains authoritative when the disposable event listener
         // is unavailable. A later scope activation retries once.
-        loadLatest();
+        refresh.now();
       });
 
     return () => {
       disposed = true;
-      if (refreshTimer) clearTimeout(refreshTimer);
+      refresh.dispose();
       unlisten?.();
     };
   }, [

@@ -16,7 +16,7 @@ import type {
 import { acpDesktop } from "../../services/acpDesktop";
 import { awaitingPermission } from "./acp/statusSemantics";
 import { setChatAwaitingApproval } from "./acp/awaitingApproval";
-import { ApprovalPart } from "./lazyParts";
+import { ApprovalPart, QuestionPart } from "./lazyParts";
 
 type PermissionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
@@ -222,16 +222,32 @@ export function useApprovalSlot(
       </p>
     ) : (
       <ApprovalBoundary key={first.id} onError={() => setFailedFor(first.id)}>
-        <ApprovalPart
-          part="PermissionPrompt"
-          fallback={
-            <ApprovalFallback item={first} onCancelTurn={onCancelTurn} />
-          }
-          items={pending}
-          focused={focused}
-          canTakeFocus={canTakeFocus}
-          onCancelTurn={onCancelTurn}
-        />
+        {first.payload.userInput ? (
+          // A harness asking the user questions gets the question card.
+          <QuestionPart
+            part="UserInputPrompt"
+            fallback={
+              <ApprovalFallback item={first} onCancelTurn={onCancelTurn} />
+            }
+            item={first}
+            userInput={first.payload.userInput}
+            items={pending}
+            focused={focused}
+            canTakeFocus={canTakeFocus}
+            onCancelTurn={onCancelTurn}
+          />
+        ) : (
+          <ApprovalPart
+            part="PermissionPrompt"
+            fallback={
+              <ApprovalFallback item={first} onCancelTurn={onCancelTurn} />
+            }
+            items={pending}
+            focused={focused}
+            canTakeFocus={canTakeFocus}
+            onCancelTurn={onCancelTurn}
+          />
+        )}
       </ApprovalBoundary>
     ),
   };

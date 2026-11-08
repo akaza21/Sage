@@ -5,7 +5,8 @@ use serde_json::{Value, json};
 use crate::acp::limits::LIMITS;
 
 use super::super::FixtureError;
-use super::{WireState, write_stdout};
+use super::super::interpreter::field_str;
+use super::{WireState, acp, user_input, write_stdout};
 
 const THREAD_ID: &str = "fixture-persisted-session-1";
 /// The session a native capture's fork creates (Codex `thread/fork` per the
@@ -285,6 +286,51 @@ pub(super) fn emit_json(
     bytes.push(b'\n');
     write_stdout(output, state, &bytes, false)?;
     output.flush().map_err(|_| FixtureError::Io)
+}
+
+/// Emits one of the Codex frame shapes a journey step names.
+pub(super) fn emit_known(
+    shape: &str,
+    step: &Value,
+    state: &mut WireState,
+    output: &mut impl Write,
+) -> Result<(), FixtureError> {
+    if shape == "codexNative" {
+        let mut params = acp::substitute(step["params"].clone(), state, 0)?;
+        params["threadId"] = json!(acp::SESSION);
+        params["turnId"] = json!(
+            state
+                .current_turn_id
+                .as_deref()
+                .ok_or(FixtureError::InvalidArguments)?
+        );
+        return emit_json(
+            output,
+            state,
+            &json!({"jsonrpc":"2.0","method":field_str(step, "method")?,"params":params}),
+        );
+    }
+    match shape {
+        "codexError" => emit_notification("error", state, output),
+        "codexInitializeResult" => emit_response("initialize", state, output),
+        "codexInitializeResult0146" => emit_response("initialize0146", state, output),
+        "codexThreadResult" => emit_response("thread", state, output),
+        "codexThreadEffortResult" => emit_response("effortThread", state, output),
+        "codexModelListResult" => emit_response("models", state, output),
+        "codexModelListEffortResult" => emit_response("effortModels", state, output),
+        "codexGoalMethodNotFound" => emit_response("goalMethodNotFound", state, output),
+        "codexTurnResult" => emit_response("turn", state, output),
+        "codexForkResult" => emit_response("fork", state, output),
+        "codexStarted" => emit_notification("started", state, output),
+        "codexAck" => emit_response("ack", state, output),
+        "codexDelta" => emit_notification("delta", state, output),
+        "codexItemCompleted" => emit_notification("itemCompleted", state, output),
+        "codexCompleted" => emit_notification("completed", state, output),
+        "codexInterrupted" => emit_notification("interrupted", state, output),
+        "codexUserInputRequest" => user_input::emit_request(step, state, output),
+        "codexUserInputEcho" => user_input::emit_echo(state, output),
+        _ => Err(FixtureError::InvalidArguments),
+    }
 }
 
 #[cfg(test)]
