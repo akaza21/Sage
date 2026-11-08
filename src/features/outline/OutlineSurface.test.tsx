@@ -240,6 +240,7 @@ describe("OutlineSurface", () => {
   });
 
   it("says when the list stops at its cap", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     activateResource();
     setContent(
       Array.from(
@@ -249,8 +250,11 @@ describe("OutlineSurface", () => {
     );
     render(<OutlineSurface />);
 
+    // The Outline parses in slices between timers, then renders 500 rows:
+    // run it to the end rather than poll it against a one-second clock.
+    await act(() => vi.runAllTimersAsync());
     expect(
-      await screen.findByText(`First ${MAX_OUTLINE_SYMBOLS} Symbols`),
+      screen.getByText(`First ${MAX_OUTLINE_SYMBOLS} Symbols`),
     ).toBeInTheDocument();
     // Counting skips the visibility check, which runs jsdom's style cascade
     // for each of the 500 rows and their ancestors: seconds under load.
