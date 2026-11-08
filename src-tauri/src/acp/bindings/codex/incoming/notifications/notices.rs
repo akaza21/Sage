@@ -59,6 +59,30 @@ pub(super) fn warning(
     }
 }
 
+/// `mcpServer/startupStatus/updated` failing with
+/// `reauthenticationRequired`: the server's sign-in expired. Codex keeps
+/// running without it, so the session goes on and says why its tools are
+/// missing. Before a thread is bound the notice is held, like `warning`.
+pub(super) fn mcp_sign_in_required(
+    adapter: &mut CodexAdapter,
+    server: &str,
+    thread: &str,
+) -> Result<IngressDisposition, IngressError> {
+    let notice = notice(
+        SessionNoticeLevel::Warning,
+        "codex mcp",
+        format!(
+            "The MCP server {} needs you to sign in again; its tools are unavailable until then.",
+            clean(server, ID_BYTES)
+        ),
+    )?;
+    if adapter.bound_thread_id().is_none() {
+        adapter.buffer_session_notice(notice);
+        return Ok(IngressDisposition::IgnoredLate);
+    }
+    single(adapter.thread_session_id(thread).map_err(identity)?, notice)
+}
+
 /// `guardianWarning`: a warning from Codex's automatic approval reviewer.
 pub(super) fn guardian_warning(
     adapter: &CodexAdapter,

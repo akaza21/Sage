@@ -395,13 +395,11 @@ mod permission_request_tests {
             capabilities(crate::acp::bindings::codex::CODEX_OBSERVED_PROTOCOL_IDENTITY);
         assert!(!permission_requests_supported(&codex, &observed));
         observed.active_turn_steer = true;
-        let advertised = crate::acp::bindings::access_policy::access_modes(
-            "codex-app-server",
-            crate::acp::bindings::codex::CODEX_PINNED_VERSION,
-            true,
-        )
-        .iter()
-        .any(|mode| mode.id == crate::settings_store::SessionAccessMode::Ask);
+        let pinned = crate::acp::bindings::codex::CODEX_PINNED_VERSION;
+        let advertised =
+            crate::acp::bindings::access_policy::access_modes("codex-app-server", pinned, true)
+                .iter()
+                .any(|mode| mode.id == crate::settings_store::SessionAccessMode::Ask);
         assert_eq!(permission_requests_supported(&codex, &observed), advertised);
 
         let claude = BindingId::new("bindingId", "claude-agent-acp").expect("Claude binding");
