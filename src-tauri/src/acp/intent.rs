@@ -19,7 +19,7 @@ pub use error_kind::ErrorKind;
 pub use file_change::FileChangeOperation;
 pub(crate) use file_change::{FileChangeFacts, line_delta};
 pub use tool_category::ToolCategory;
-pub use tool_execution::ToolExecution;
+pub use tool_execution::{TOOL_PROGRESS_BYTES, ToolExecution};
 
 pub type BindingId = RequiredText<512>;
 pub type ModelId = RequiredText<512>;

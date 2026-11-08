@@ -806,6 +806,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         activities: BoundedVec::new("activities", vec![]).unwrap(),
         browser_operations: BoundedVec::new("browserOperations", vec![]).unwrap(),
         browser_operations_collapsed: 0,
+        session_activities: Vec::new(),
     };
     let session = SessionProjection {
         id: session_id.clone(),

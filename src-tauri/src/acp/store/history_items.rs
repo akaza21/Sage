@@ -310,6 +310,7 @@ fn project_turn(
         browser_operations: BoundedVec::new("browserOperations", browser_operations)
             .map_err(|_| StoreError::Corrupt("browser operations bound"))?,
         browser_operations_collapsed,
+        session_activities: super::turn_activity_facts::load(connection, row)?,
     })
 }
 

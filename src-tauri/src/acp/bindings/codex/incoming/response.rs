@@ -228,6 +228,10 @@ pub(super) fn response(
         }
         RequestKind::Unsubscribe => {
             adapter.clear_command_items();
+            adapter.clear_running_mcp_tools();
+            // The session closes and the next runtime epoch starts with no
+            // activity rows, so running hooks need no cancelled restatement.
+            adapter.clear_running_hooks();
             IncomingEvent::Acknowledged {
                 closes_session: true,
             }

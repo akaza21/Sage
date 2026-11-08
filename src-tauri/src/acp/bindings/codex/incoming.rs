@@ -177,6 +177,7 @@ pub(crate) enum IncomingEvent {
         turn_id: ScopedExternalId,
         payload: NormalizedPayload,
     },
+    /// A fact about the session rather than one Turn, such as a hook run.
     Session {
         id: ScopedExternalId,
         event: crate::acp::intent::session_event::SessionScopedEvent,

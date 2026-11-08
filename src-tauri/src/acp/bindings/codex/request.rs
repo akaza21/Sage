@@ -19,6 +19,11 @@ mod session_action;
 // existing bounded stdin endpoint without adapter-specific framing.
 const JSON_PAYLOAD_BYTES: usize = LIMITS.wire.frame_bytes as usize - 1;
 
+/// High-volume notifications Sage never projects, suppressed by Codex at the
+/// source: the whole-turn unified diff (Sage reads each file change from its
+/// own item) and the deprecated apply_patch output stream.
+const OPTED_OUT_NOTIFICATIONS: [&str; 2] = ["turn/diff/updated", "item/fileChange/outputDelta"];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AppServerClientIdentity {
     pub(crate) name: &'static str,
@@ -146,7 +151,10 @@ impl OutgoingRequest {
                 },
                 // Codex requires this initialize capability before it
                 // accepts the documented thread/start.dynamicTools field.
-                "capabilities": {"experimentalApi": true}
+                "capabilities": {
+                    "experimentalApi": true,
+                    "optOutNotificationMethods": OPTED_OUT_NOTIFICATIONS
+                }
             }),
         )
     }

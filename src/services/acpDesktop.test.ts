@@ -75,6 +75,40 @@ it("decodes persisted quote context only within the eight-entry UTF-8 bounds", (
   ).toBeNull();
 });
 
+it("decodes a Turn's hook rows within the native caps", () => {
+  const turn = {
+    id: "turn",
+    sessionId: "session",
+    runtimeEpoch: "1",
+    ordinal: 0,
+    revision: "0",
+    state: "running",
+    createdAt: 1,
+    updatedAt: 2,
+    terminalAt: null,
+    items: [],
+    activities: [],
+  };
+  const hook = {
+    kind: "hook",
+    label: "PostToolUse hook #1 (project)",
+    state: "failed",
+    progress: "Synthetic lint hook exited with status 1",
+  };
+  expect(safeTurn(turn)?.sessionActivities).toBeUndefined();
+  expect(
+    safeTurn({ ...turn, sessionActivities: [hook] })?.sessionActivities,
+  ).toEqual([hook]);
+  for (const sessionActivities of [
+    null,
+    Array.from({ length: 17 }, () => hook),
+    [{ ...hook, state: "blocked" }],
+    [{ ...hook, progress: "" }],
+    [{ ...hook, label: "x".repeat(257) }],
+  ])
+    expect(safeTurn({ ...turn, sessionActivities })).toBeNull();
+});
+
 it("keeps a Turn whose stored session action the chat cannot run, without it", () => {
   const turn = {
     id: "turn",

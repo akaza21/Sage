@@ -16,11 +16,16 @@ mod child_thread;
 pub(super) use child_thread::item_event as child_item_event;
 pub(super) use child_thread::turn_completed as child_turn_completed;
 mod deltas;
+mod hooks;
+use hooks::{HookPhase, cancelled_hooks, hook_run};
 mod items;
 use items::item_event;
+mod mcp_progress;
+use mcp_progress::mcp_tool_progress;
 mod notices;
 mod plan;
 mod provisional;
+mod status_line;
 use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};
 use plan::structured_plan;
 
@@ -216,6 +221,9 @@ pub(super) fn notification<M: ResourceMapper>(
             declarations,
         ),
         "item/commandExecution/outputDelta" => command_output_delta(adapter, params),
+        "item/mcpToolCall/progress" => mcp_tool_progress(adapter, params),
+        "hook/started" => hook_run(adapter, params, HookPhase::Started),
+        "hook/completed" => hook_run(adapter, params, HookPhase::Completed),
         "item/agentMessage/delta" => delta_event(adapter, params, DeltaKind::Text, None),
         "item/reasoning/summaryTextDelta" => delta_event(adapter, params, DeltaKind::Thought, None),
         // Codex shows the reasoning summary only; raw reasoning text is
@@ -376,8 +384,9 @@ fn turn_completed(
     {
         TerminalUpdate::Apply => {
             adapter.clear_command_items();
+            adapter.clear_running_mcp_tools();
             let id = adapter.scoped_turn(external).map_err(identity)?;
-            let mut events = Vec::with_capacity(2);
+            let mut events = cancelled_hooks(adapter, thread_id)?;
             if let Some(payload) = terminal_error {
                 events.push(IncomingEvent::Error(payload));
             }

@@ -39,6 +39,7 @@ mod state;
 mod terminal;
 mod terminal_reason;
 mod terminalize;
+mod turn_activity_facts;
 
 use serde::{Deserialize, Serialize};
 

@@ -11,6 +11,10 @@ mod command_snapshots;
 mod construction;
 mod errors;
 mod goal;
+mod hook_runs;
+mod mcp_tools;
+#[cfg(test)]
+pub(crate) use mcp_tools::RUNNING_MCP_TOOLS_MAX;
 mod permission_resolution;
 mod permissions;
 pub(in crate::acp::bindings::codex) use permissions::USER_INPUT_METHOD;
@@ -173,6 +177,8 @@ pub(crate) struct CodexAdapter {
     active_unretried_error_fingerprints: Vec<[u8; 32]>,
     previous_turn: Option<TurnTombstone>,
     command_item_snapshots: CommandItemSnapshots,
+    running_mcp_tools: mcp_tools::RunningMcpTools,
+    running_hooks: hook_runs::RunningHooks,
     subagent_labels: SubagentLabels,
     child_threads: Vec<SafeText<512>>,
     bound_child_threads: Vec<SafeText<512>>,

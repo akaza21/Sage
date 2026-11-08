@@ -50,6 +50,9 @@ export type SafeResourceLocation =
       displayResource?: ResourceRef | null;
     };
 
+/** Byte cap of a running tool's status line; native `TOOL_PROGRESS_BYTES`. */
+export const TOOL_PROGRESS_BYTES = 512;
+
 export type ToolPresentation =
   | {
       kind: "read" | "edit" | "delete" | "imageView";
@@ -103,6 +106,8 @@ export type ToolPresentation =
       toolLabel: string;
       argumentsSummary: string | null;
       resultSummary: string | null;
+      /** Latest status line of a running call; absent once it is terminal. */
+      progress?: string;
     }
   | {
       kind: "subagent";
@@ -235,6 +240,20 @@ export interface HarnessActivityProjection {
   revision: EntityRevision;
 }
 
+/**
+ * A session activity row (a hook run, say) in the work list of the Turn
+ * that owns it; native `TurnSessionActivityProjection`. A Turn
+ * holds at most `SESSION_ACTIVITIES_MAX` of them.
+ */
+export interface TurnSessionActivity {
+  kind: string;
+  label: string;
+  state: "running" | "completed" | "failed" | "cancelled";
+  progress?: string;
+}
+
+export const SESSION_ACTIVITIES_MAX = 16;
+
 export interface TurnProjection {
   attachedContext?: readonly AttachedContext[];
   /** The session action this Turn ran. */
@@ -265,6 +284,7 @@ export interface TurnProjection {
   activities: readonly HarnessActivityProjection[];
   browserOperations: readonly BrowserOperationProjection[];
   browserOperationsCollapsed: number;
+  sessionActivities?: readonly TurnSessionActivity[];
 }
 
 export interface AgentSessionProjection {

@@ -378,6 +378,8 @@ fn merged_execution(update: ToolExecution, call: ToolExecution) -> ToolExecution
         output_truncated: update.output_truncated || call.output_truncated,
         task_lifecycle: update.task_lifecycle.or(call.task_lifecycle),
         mcp_server: update.mcp_server.or(call.mcp_server),
+        // A running call's status line never outlives its result.
+        progress: update.progress,
     }
 }
 
