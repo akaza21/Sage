@@ -1,18 +1,11 @@
 import {
   USER_INPUT_MAX_OPTIONS,
   USER_INPUT_MAX_QUESTIONS,
-  type AnswerUserInputRequest,
-  type AnswerUserInputResponse,
   type UserInputOption,
   type UserInputQuestion,
   type UserInputRequest,
 } from "../domain/acpPermission";
-import {
-  isRecord,
-  safeCounter,
-  safeIdentifier,
-  safeText,
-} from "./acpDesktopGuards";
+import { isRecord, safeText } from "./acpDesktopGuards";
 
 const MAX_AUTO_RESOLUTION_MS = 24 * 60 * 60 * 1000;
 
@@ -92,48 +85,4 @@ export function safeUserInputRequest(
         autoResolutionMs: Math.min(window, MAX_AUTO_RESOLUTION_MS),
       }
     : undefined;
-}
-
-function safeAnswerResponse(
-  value: unknown,
-  request: AnswerUserInputRequest,
-): AnswerUserInputResponse | null {
-  if (!isRecord(value)) return null;
-  const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
-  const matches =
-    safeIdentifier(value.projectId) === request.projectId &&
-    safeIdentifier(value.chatId) === request.chatId &&
-    safeIdentifier(value.sessionId) === request.sessionId &&
-    safeIdentifier(value.turnId) === request.turnId &&
-    runtimeEpoch === request.runtimeEpoch &&
-    safeIdentifier(value.requestId) === request.requestId &&
-    value.decision === "answer" &&
-    value.state === "allowPending";
-  return matches
-    ? {
-        projectId: request.projectId,
-        chatId: request.chatId,
-        sessionId: request.sessionId,
-        turnId: request.turnId,
-        runtimeEpoch: request.runtimeEpoch,
-        requestId: request.requestId,
-        decision: "answer",
-        state: "allowPending",
-      }
-    : null;
-}
-
-/** Answers a harness question request; the reply never echoes answers. */
-export async function answerUserInput(
-  request: AnswerUserInputRequest,
-  invoke: (
-    command: string,
-    request: AnswerUserInputRequest,
-  ) => Promise<unknown>,
-  invalidResponse: () => Error,
-): Promise<AnswerUserInputResponse> {
-  const response = await invoke("answer_user_input", request);
-  const safe = safeAnswerResponse(response, request);
-  if (!safe) throw invalidResponse();
-  return safe;
 }

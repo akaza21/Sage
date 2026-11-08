@@ -10,8 +10,6 @@ import {
   useCardKeyGuard,
 } from "./approvalCard";
 import { ToolKindIcon } from "./ToolItem";
-import { UserInputPrompt } from "./UserInputPrompt";
-import "./permission-prompt.css";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
@@ -22,35 +20,6 @@ const nouns: Record<string, string> = {
   mcp: "MCP",
 };
 
-export interface ApprovalPromptProps {
-  items: readonly PermissionProjectionItem[];
-  /** Only the focused pane may take focus. */
-  focused?: boolean;
-  /** False while the composer is active or the person typed in the last 500 ms. */
-  canTakeFocus?: () => boolean;
-  /** Stop the Turn; always offered so the pane can never be stranded. */
-  onCancelTurn?: () => void;
-}
-
-/**
- * The composer-slot card for the oldest pending request: a harness asking
- * the user questions gets the question card, everything else the approval.
- */
-export function PermissionPrompt(props: ApprovalPromptProps) {
-  const item = props.items[0];
-  if (!item) return null;
-  return item.payload.userInput ? (
-    <UserInputPrompt
-      key={item.id}
-      {...props}
-      item={item}
-      userInput={item.payload.userInput}
-    />
-  ) : (
-    <ApprovalPrompt {...props} />
-  );
-}
-
 /**
  * The pending approval, shown in the composer slot. The oldest request comes
  * first. Each button answers only for itself (Enter on Deny denies); Esc
@@ -58,12 +27,20 @@ export function PermissionPrompt(props: ApprovalPromptProps) {
  * Enter from the composer, a stray keyup) are swallowed. Focus moves here
  * only for the focused pane when the person is not typing elsewhere.
  */
-function ApprovalPrompt({
+export function PermissionPrompt({
   items,
   focused = true,
   canTakeFocus = () => true,
   onCancelTurn,
-}: ApprovalPromptProps) {
+}: {
+  items: readonly PermissionProjectionItem[];
+  /** Only the focused pane may take focus. */
+  focused?: boolean;
+  /** False while the composer is active or the person typed in the last 500 ms. */
+  canTakeFocus?: () => boolean;
+  /** Stop the Turn; always offered so the pane can never be stranded. */
+  onCancelTurn?: () => void;
+}) {
   const item = items[0];
   const primaryRef = useRef<HTMLButtonElement>(null);
   const firstRef = useRef<HTMLButtonElement>(null);

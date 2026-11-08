@@ -7,10 +7,12 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { ComponentProps } from "react";
+
 import type { AcpItem, UserInputRequest } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { clearApprovalDecisions } from "../useApprovalSlot";
-import { PermissionPrompt } from "./PermissionPrompt";
+import { UserInputPrompt } from "./UserInputPrompt";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
@@ -88,6 +90,22 @@ const questions: UserInputRequest = {
 
 const submit = () => screen.getByRole("button", { name: /Submit/ });
 
+/** The card as the approval slot mounts it, for the oldest request. */
+function QuestionCard({
+  items,
+  ...props
+}: Omit<ComponentProps<typeof UserInputPrompt>, "item" | "userInput">) {
+  const [item] = items;
+  return (
+    <UserInputPrompt
+      {...props}
+      items={items}
+      item={item!}
+      userInput={item!.payload.userInput!}
+    />
+  );
+}
+
 describe("UserInputPrompt", () => {
   it("shows the questions instead of an approval and sends the chosen answers", async () => {
     const answer = vi.spyOn(acpDesktop, "answerUserInput").mockResolvedValue({
@@ -96,7 +114,7 @@ describe("UserInputPrompt", () => {
       state: "allowPending",
     });
     const deny = vi.spyOn(acpDesktop, "resolvePermissionDecision");
-    render(<PermissionPrompt items={[questionRequest(questions)]} />);
+    render(<QuestionCard items={[questionRequest(questions)]} />);
 
     const card = screen.getByRole("group", { name: "Agent question" });
     expect(card).toHaveTextContent("Which files should I change?");
@@ -133,7 +151,7 @@ describe("UserInputPrompt", () => {
       state: "allowPending",
     });
     render(
-      <PermissionPrompt
+      <QuestionCard
         items={[questionRequest({ questions: [questions.questions[0]!] })]}
       />,
     );
@@ -158,7 +176,7 @@ describe("UserInputPrompt", () => {
         state: "declinePending",
       } as never);
     const answer = vi.spyOn(acpDesktop, "answerUserInput");
-    render(<PermissionPrompt items={[questionRequest(questions)]} />);
+    render(<QuestionCard items={[questionRequest(questions)]} />);
     fireEvent.keyDown(screen.getByRole("radio", { name: /Only tests/ }), {
       key: "Escape",
     });
@@ -173,7 +191,7 @@ describe("UserInputPrompt", () => {
   it("counts down an auto-resolution window with one timer, cleared on unmount", () => {
     vi.useFakeTimers({ now: 100_000 });
     const { unmount } = render(
-      <PermissionPrompt
+      <QuestionCard
         items={[
           questionRequest({ ...questions, autoResolutionMs: 65_000 }, 100_000),
         ]}
@@ -191,7 +209,7 @@ describe("UserInputPrompt", () => {
   it("clears its timer when the card unmounts early", () => {
     vi.useFakeTimers({ now: 50_000 });
     const { unmount } = render(
-      <PermissionPrompt
+      <QuestionCard
         items={[
           questionRequest({ ...questions, autoResolutionMs: 30_000 }, 50_000),
         ]}
@@ -206,7 +224,7 @@ describe("UserInputPrompt", () => {
 
   it("keeps a chosen option when focus only passes through the Other field", () => {
     render(
-      <PermissionPrompt
+      <QuestionCard
         items={[questionRequest({ questions: [questions.questions[0]!] })]}
       />,
     );
@@ -223,7 +241,7 @@ describe("UserInputPrompt", () => {
 
   it("explains a free-text answer over the byte limit and keeps Submit off", () => {
     render(
-      <PermissionPrompt
+      <QuestionCard
         items={[questionRequest({ questions: [questions.questions[0]!] })]}
       />,
     );
@@ -241,7 +259,7 @@ describe("UserInputPrompt", () => {
   });
 
   it("lets a key held inside the card repeat in its fields, but not one held from outside", () => {
-    render(<PermissionPrompt items={[questionRequest(questions)]} />);
+    render(<QuestionCard items={[questionRequest(questions)]} />);
     const field = screen.getByLabelText("Answer: Token");
     // A repeat whose keydown came before the card is swallowed.
     expect(fireEvent.keyDown(field, { key: "ArrowLeft", repeat: true })).toBe(

@@ -173,3 +173,26 @@ describe("useApprovalSlot focus", () => {
     expect(allow()).not.toHaveFocus();
   });
 });
+
+describe("useApprovalSlot cards", () => {
+  it("gives a harness asking questions the question card, not the approval", async () => {
+    const question = permission("question");
+    if (question.kind !== "permissionRequest") throw new Error("unreachable");
+    question.payload.userInput = {
+      questions: [
+        {
+          id: "scope",
+          header: "Scope",
+          question: "Which files should I change?",
+          allowsOther: false,
+          secret: false,
+        },
+      ],
+    };
+    render(<Pane items={[question]} />);
+    expect(
+      await screen.findByRole("group", { name: "Agent question" }),
+    ).toHaveTextContent("Which files should I change?");
+    expect(screen.queryByRole("button", { name: /Allow once/ })).toBeNull();
+  });
+});

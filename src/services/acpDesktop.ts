@@ -25,7 +25,6 @@ import type { ResourceRef } from "../domain/workbench";
 import { isTauriRuntime } from "../ports/desktopRuntime";
 import { invokeNative } from "../ports/nativeInvoke";
 import { resolvePermissionDecision } from "./acpDesktopPermission";
-import { answerUserInput } from "./acpDesktopUserInput";
 import { subscribePreviewProjectionChanges } from "./acpDesktopPreview";
 import { getChatStatus, safeProjectionChanged } from "./acpDesktopProjection";
 import { isRecord, safeIdentifier } from "./acpDesktopGuards";
@@ -172,8 +171,9 @@ export const acpDesktop = {
         }),
     ),
 
-  answerUserInput: (request: AnswerUserInputRequest) =>
-    answerUserInput(
+  async answerUserInput(request: AnswerUserInputRequest) {
+    const { answerUserInput } = await import("./acpDesktopUserInputAnswer");
+    return answerUserInput(
       request,
       invokeAcp,
       () =>
@@ -181,7 +181,8 @@ export const acpDesktop = {
           kind: "internal",
           message: "Question answer returned an invalid bounded response.",
         }),
-    ),
+    );
+  },
 
   async recordAgentEditDisposition(
     request: AgentEditDisposition,

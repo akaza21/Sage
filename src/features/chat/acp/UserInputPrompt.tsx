@@ -16,7 +16,7 @@ import {
   useCardKeyGuard,
 } from "./approvalCard";
 import { ToolKindIcon } from "./ToolItem";
-import "./permission-prompt.css";
+import "./user-input-prompt.css";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 

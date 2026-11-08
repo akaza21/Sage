@@ -1,6 +1,8 @@
 import { useRef, type KeyboardEvent } from "react";
 
 import { approvalFocusInReach, approvalHold } from "../useApprovalSlot";
+// Both composer-slot cards share these styles; each loads on its first use.
+import "./permission-prompt.css";
 
 /** A follow-up request this soon after a decision never takes focus. */
 const QUEUED_FOCUS_HOLD_MS = 300;
