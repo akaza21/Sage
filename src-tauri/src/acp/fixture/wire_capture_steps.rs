@@ -1,6 +1,6 @@
 use super::*;
 
-pub(in crate::acp::fixture) fn replay_native(case_id: &str, requests: &str) -> Vec<Value> {
+pub(crate) fn replay_native(case_id: &str, requests: &str) -> Vec<Value> {
     replay_native_before(case_id, requests, "")
 }
 

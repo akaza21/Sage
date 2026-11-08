@@ -30,7 +30,7 @@ pub(in crate::acp::bindings::codex) use turns::SubagentLabels;
 
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId},
-    intent::{CapabilitySnapshotV1, ExternalId},
+    intent::{CapabilitySnapshotV1, ExternalId, session_event::SessionScopedEvent},
     lifecycle::{ItemLifecycle, ServerRequestState, TurnState},
     limits::LIMITS,
 };
@@ -157,6 +157,9 @@ pub(crate) struct CodexAdapter {
     external_thread_id: Option<ExternalId>,
     browser_mcp_failure_reported: bool,
     pending_browser_mcp_failure_threads: Vec<String>,
+    /// Thread-less notices that arrived before a thread was bound; at most
+    /// `PENDING_NOTICES_MAX`, oldest dropped first.
+    pending_session_notices: Vec<SessionScopedEvent>,
     turn_start_correlations: TurnStartCorrelations,
     active_turn_id: Option<ExternalId>,
     provisional_turn: Option<ProvisionalTurn>,

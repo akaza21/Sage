@@ -70,7 +70,7 @@ pub fn is_native_replay_case(case: &str) -> bool {
 #[cfg(test)]
 pub(crate) use wire::{
     child_opened_wire_for_test, codex_user_input_wire_for_test, pi_bridge_calls_for_test,
-    run_pi_bridge_call_for_test,
+    replay_native, run_pi_bridge_call_for_test,
 };
 
 /// A Codex replay case that answers `model/list`, so Sage reads the model

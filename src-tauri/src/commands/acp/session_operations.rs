@@ -1,10 +1,16 @@
 use super::*;
 use crate::acp::attached_context::effective_prompt;
 
+// The over-budget message names the budget as static text.
+const _: () = assert!(
+    crate::acp::attached_context::files::DISPATCH_BYTES == 120 * 1024,
+    "update the dispatch budget in the prompt-too-large message"
+);
+
 mod lifecycle;
 pub(crate) use lifecycle::{close_acp_session_inner, end_acp_session_inner};
 
-/// Context a prompt cannot carry: images (until CP-26) and page elements that
+/// Context a prompt cannot carry yet: images, and page elements that
 /// fail admission.
 fn image_input_block(contexts: &AttachedContexts) -> Result<(), AcpIpcError> {
     if contexts.as_slice().iter().any(|context| {
