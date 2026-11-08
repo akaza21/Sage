@@ -67,17 +67,29 @@ export async function keepActiveEditorBuffer(
         revision: Math.max(1, active.revision),
       });
       if (!canCommit(active.resource)) return false;
-      // A File that came back holding the editor's own text: nothing to keep.
-      if (result.outcome === "conflict" && result.document.conflict) {
+      const current = get().activeEditor;
+      if (current?.phase !== "ready") return false;
+      // Disk now holds the editor's text ("matched") only if the editor still
+      // holds it too: edits made meanwhile are never dropped for it.
+      const matched =
+        result.outcome === "matched" &&
+        contentText(current.content) === result.document.buffer.content;
+      if (
+        result.outcome === "conflict" ||
+        (result.outcome === "matched" && !matched)
+      ) {
         const { disk, conflict } = result.document;
         bridge.setActiveEditor(
           {
-            ...active,
+            ...current,
             saving: false,
             document: {
-              ...active.document,
+              ...current.document,
               disk,
-              conflict,
+              conflict: conflict ?? {
+                kind: "external-change",
+                message: "This file changed outside Sage.",
+              },
             },
           },
           { tabStatus: "failed" },

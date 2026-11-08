@@ -223,19 +223,31 @@ function rebase(request: BufferRebaseRequest): EditorSaveResult {
   const key = resourceKey(request.resource);
   const disk = diskVersion(request.resource);
   if (disk.fingerprint !== request.expectedDisk.fingerprint) {
-    const document = open(request.resource);
-    // A File that came back with other text than the editor's.
-    if (
-      !buffers.has(key) &&
-      disk !== ABSENT_VERSION &&
-      disk.fingerprint !== fingerprint(request.content)
-    ) {
-      document.conflict = {
-        kind: "external-change",
-        message: "The browser fixture changed after this buffer was opened.",
-      };
+    // Mirrors the native rebase: disk holding the editor's text matches;
+    // anything else is a conflict, whatever the recovery copy's base.
+    if (disk.fingerprint === fingerprint(request.content)) {
+      buffers.delete(key);
+      return { outcome: "matched", document: open(request.resource) };
     }
+    const document = open(request.resource);
+    document.conflict ??=
+      disk === ABSENT_VERSION
+        ? DELETED
+        : {
+            kind: "external-change",
+            message:
+              "The browser fixture changed after this buffer was opened.",
+          };
     return { outcome: "conflict", document };
+  }
+  // Mirrors the native refusal to create a kept File in protected metadata.
+  const gitName = request.resource.relativePath
+    .split("/")
+    .find((name) => name.toLowerCase() === ".git");
+  if (disk === ABSENT_VERSION && gitName) {
+    throw new Error(
+      `invalid request: files cannot be created inside ${gitName}`,
+    );
   }
   const bufferFingerprint = fingerprint(request.content);
   if (bufferFingerprint === disk.fingerprint) {

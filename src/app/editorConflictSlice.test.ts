@@ -1,4 +1,10 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -425,6 +431,77 @@ describe("a File that changed on disk under unsaved edits", () => {
         "mine\n",
       );
     }
+  });
+
+  it("Keep mine never swaps newer edits for an older recovery copy", async () => {
+    const file = nextFile();
+    openTabs(file);
+    const base = await diskText(file);
+    await edit(file, "older\n");
+    await store().flushActiveEditor();
+    // Newer edits, not yet snapshotted.
+    store().updateEditorContent("newest\n");
+    await changeOnDisk(file, null);
+    // Restored unchanged, before any notice says so.
+    browserEditor.changeOnDisk(file, base);
+
+    expect(await store().keepActiveEditorBuffer()).toBe(false);
+
+    expect(readyEditor()).toMatchObject({ content: "newest\n" });
+    expect(readyEditor().document.conflict?.kind).toBe("external-change");
+    expect(await store().keepActiveEditorBuffer()).toBe(true);
+    expect(await store().saveActiveEditor()).toBe(true);
+    expect(await diskText(file)).toBe("newest\n");
+  });
+
+  it("the banner's Reload, with the File gone before its notice, keeps the edits", async () => {
+    const file = nextFile();
+    openTabs(file);
+    await edit(file, "mine\n");
+    await changeOnDisk(file, "theirs\n");
+    // Deleted now; the notice is still on its way.
+    browserEditor.changeOnDisk(file, null);
+    render(
+      createElement(FileConflictNotice, {
+        document: readyEditor().document,
+        editable: true,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+
+    await waitFor(() =>
+      expect(readyEditor().document.conflict?.kind).toBe("deleted"),
+    );
+    expect(readyEditor()).toMatchObject({ content: "mine\n" });
+    expect(tabOf(file).dirty).toBe(true);
+    cleanup();
+  });
+
+  it("the banner's Keep mine on a deleted File inside .git says why it refused", async () => {
+    const file = browserRef(".git/hooks/post-commit");
+    openTabs(file);
+    await edit(file, "mine\n");
+    await changeOnDisk(file, null);
+    render(
+      createElement(FileConflictNotice, {
+        document: readyEditor().document,
+        editable: true,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep mine" }));
+
+    expect(
+      (
+        await screen.findByText(
+          "Couldn't keep your version: Sage doesn't create Files there (inside protected folders such as .git, or through a link).",
+        )
+      ).closest('[role="alert"]'),
+    ).not.toBeNull();
+    expect(readyEditor()).toMatchObject({ content: "mine\n", saving: false });
+    expect(readyEditor().document.conflict?.kind).toBe("deleted");
+    cleanup();
   });
 
   it("Close on a deleted File leaves no recovery buffer", async () => {

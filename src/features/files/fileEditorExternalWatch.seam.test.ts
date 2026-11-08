@@ -223,6 +223,48 @@ describe("IDE-2 editor external watch seam", () => {
     expect(screen.queryByText(/deleted outside Sage/)).toBeNull();
   });
 
+  it("does not poll, or call it missing, when a deleted File's watch hits the limit", async () => {
+    const editor = getWorkbenchPorts().editor;
+    const delivery = createInjectedEditorWatchDelivery();
+    let limited = false;
+    const watch = vi
+      .spyOn(editor, "watchEditorDocument")
+      .mockImplementation(async () => {
+        if (limited) throw EDITOR_WATCH_LIMIT_ERROR;
+        return {
+          resource,
+          delivery: delivery.delivery,
+          cancel: async () => {},
+        };
+      });
+    const fileTab: WorkbenchTab = {
+      id: "file:" + resource.relativePath,
+      kind: "file",
+      title: resource.relativePath,
+      position: 1,
+      pinned: false,
+      dirty: false,
+      resource,
+    };
+    useWorkbenchStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      activeEditor: bindFileEditorController(editor).ready(document),
+    });
+    render(createElement(FileSurface, { tab: fileTab }));
+    await waitFor(() => expect(watch).toHaveBeenCalledTimes(1));
+
+    limited = true;
+    act(() => delivery.emit({ resource, generation: 1, kind: "deleted" }));
+    await screen.findByText(/This file was deleted outside Sage/);
+    expect(
+      await screen.findByText(/Not watched: watch limit reached$/),
+    ).toHaveAttribute("title", WATCH_LIMIT_MESSAGE);
+    expect(watch).toHaveBeenCalledTimes(2);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 2_500)));
+    expect(watch).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps a capped File editable and retries only when its editor takes focus", async () => {
     const editor = getWorkbenchPorts().editor;
     const delivery = createInjectedEditorWatchDelivery();

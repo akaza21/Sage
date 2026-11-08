@@ -69,7 +69,8 @@ export interface BufferSnapshotAck {
 }
 
 export interface EditorSaveResult {
-  outcome: "saved" | "unchanged" | "conflict" | "rebased";
+  /** "matched": a Keep mine found disk holding the editor's own text. */
+  outcome: "saved" | "unchanged" | "conflict" | "rebased" | "matched";
   document: EditorDocument;
 }
 

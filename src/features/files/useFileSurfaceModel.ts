@@ -100,14 +100,17 @@ export function useFileSurfaceModel(
   );
   // An operation message (a failed save, say) shows first; the not-watched
   // notice returns once it clears, for as long as the File has no watch.
-  // A missing File's is shown quietly in the header instead.
+  // A missing File's, or one under a conflict banner, shows quietly in the
+  // header instead.
   const shownEditor = useMemo(
     () =>
-      unwatchedMessage === WATCH_MISSING_MESSAGE && editor?.phase === "ready"
-        ? { ...editor, unwatched: unwatchedMessage }
-        : unwatchedMessage && editor?.phase === "ready" && !editor.message
-          ? { ...editor, message: unwatchedMessage }
-          : editor,
+      editor?.phase !== "ready" || !unwatchedMessage
+        ? editor
+        : unwatchedMessage === WATCH_MISSING_MESSAGE || editor.document.conflict
+          ? { ...editor, unwatched: unwatchedMessage }
+          : editor.message
+            ? editor
+            : { ...editor, message: unwatchedMessage },
     [editor, unwatchedMessage],
   );
   const [findRequest, setFindRequest] = useState<FindOpenRequest | null>(null);

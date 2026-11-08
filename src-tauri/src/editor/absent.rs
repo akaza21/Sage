@@ -154,21 +154,36 @@ pub fn rebase_buffer(
     let buffer_fingerprint = fingerprint(materialized.as_bytes());
 
     let durable_buffer = database.editor_buffer(workspace.project_id(), &resource)?;
-    let disk = read_disk_document_if_present(workspace, &resource.relative_path)?;
+    let mut disk = read_disk_document_if_present(workspace, &resource.relative_path)?;
     let base = disk_version(disk.as_ref());
     if base.fingerprint != request.expected_disk.fingerprint {
-        let document = match (disk, durable_buffer) {
-            (disk, Some(buffer)) => buffered_document(resource, disk, buffer),
-            // A File that came back: the editor's version now differs from
-            // it unless it is the same text.
-            (Some(disk), None) => {
-                let differs = disk.version.fingerprint != buffer_fingerprint;
-                let mut document = clean_document(resource, disk);
-                document.conflict = differs.then(external_change_conflict);
-                document
+        // Disk moved on, and now holds exactly the editor's text: nothing is
+        // left to keep, and the recovery copy goes.
+        if let Some(disk) = disk.take_if(|disk| disk.version.fingerprint == buffer_fingerprint) {
+            if let Some(buffer) = &durable_buffer {
+                cleanup_recorded_temp(workspace, buffer)?;
+                database.delete_editor_buffer(workspace.project_id(), &resource)?;
             }
+            return Ok(EditorSaveResult {
+                outcome: "matched".into(),
+                document: clean_document(resource, disk),
+            });
+        }
+        let mut document = match (disk, durable_buffer) {
+            (disk, Some(buffer)) => buffered_document(resource, disk, buffer),
+            (Some(disk), None) => clean_document(resource, disk),
             (None, None) => deleted_document(resource),
         };
+        // The editor's text differs from disk as it is now, even where disk
+        // went back to the recovery copy's base: that copy may be older than
+        // the editor, so it is never a reason to drop the banner.
+        if document.conflict.is_none() {
+            document.conflict = Some(if document.disk.fingerprint == ABSENT_FINGERPRINT {
+                deleted_conflict()
+            } else {
+                external_change_conflict()
+            });
+        }
         return Ok(EditorSaveResult {
             outcome: "conflict".into(),
             document,

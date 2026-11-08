@@ -192,16 +192,18 @@ export function useEditorExternalWatch(
         .catch((error: unknown) => {
           if (cancelled) return;
           const active = bridge.getActiveEditor();
+          const limited = isEditorWatchLimitError(error);
+          // Every slot taken is not a missing File: it waits for focus, as
+          // ever, and the File is still read once a watch starts.
           if (
-            missing ||
-            (active?.phase === "ready" && isDeletedOnDisk(active))
+            !limited &&
+            (missing || (active?.phase === "ready" && isDeletedOnDisk(active)))
           ) {
             missing = true;
             retryTimer = setTimeout(tryStart, WATCH_RETRY_MS);
             setUnwatched({ resource: watched, message: WATCH_MISSING_MESSAGE });
             return;
           }
-          const limited = isEditorWatchLimitError(error);
           if (limited) {
             retryOnFocus();
           }

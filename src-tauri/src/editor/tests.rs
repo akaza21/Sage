@@ -1643,9 +1643,45 @@ fn keep_mine_on_a_file_that_came_back_with_the_same_text_has_no_conflict() {
     )
     .unwrap();
 
-    assert_eq!(result.outcome, "conflict");
+    assert_eq!(result.outcome, "matched");
     assert!(result.document.conflict.is_none());
     assert_eq!(result.document.buffer.content, "mine\n");
+}
+
+#[test]
+fn keep_mine_never_reports_older_recovery_text_as_matching_a_restored_file() {
+    // A recovery copy of "older" over "base"; the editor has moved on to
+    // "newest", not yet snapshotted. The File is deleted, then restored
+    // unchanged before its notice arrives.
+    let fixture = dirty_fixture("restored.txt", b"base\n", "older\n");
+    fs::remove_file(fixture.root.join("restored.txt")).unwrap();
+    fixture.write("restored.txt", b"base\n");
+    let resource = fixture.resource_unchecked("restored.txt");
+    let request = BufferRebaseRequest {
+        resource,
+        expected_disk: absent(),
+        line_ending: "lf".into(),
+        content: "newest\n".into(),
+        revision: 3,
+    };
+
+    let result = rebase_buffer(fixture.database(), &fixture.workspace, request.clone()).unwrap();
+
+    assert_eq!(result.outcome, "conflict");
+    assert_eq!(result.document.conflict.unwrap().kind, "external-change");
+    assert_ne!(result.document.disk.fingerprint, ABSENT_FINGERPRINT);
+    assert_eq!(fixture.buffer("restored.txt").unwrap().content, "older\n");
+    assert_eq!(
+        fs::read(fixture.root.join("restored.txt")).unwrap(),
+        b"base\n"
+    );
+
+    // Disk holding the editor's own text matches, and the copy goes.
+    fixture.write("restored.txt", b"newest\n");
+    let matched = rebase_buffer(fixture.database(), &fixture.workspace, request).unwrap();
+    assert_eq!(matched.outcome, "matched");
+    assert!(matched.document.conflict.is_none());
+    assert!(fixture.buffer("restored.txt").is_none());
 }
 
 #[test]

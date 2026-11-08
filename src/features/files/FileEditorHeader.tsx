@@ -1,5 +1,6 @@
 import { Eye, FilePenLine } from "../../ui/leanIcons";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
+import { WATCH_LIMIT_MESSAGE } from "./editorExternalWatch";
 import { FilePathChips } from "./FilePathChips";
 import { unsavedState } from "./fileSurfaceCommands";
 
@@ -54,7 +55,7 @@ export function FileEditorHeader({
       <span className="file-header__metadata">
         UTF-8 · {lineEnding.toUpperCase()}
         <span className="file-header__disk" title={unwatched}>
-          {` · ${diskByteLen.toLocaleString()} disk bytes${unwatched ? " · Not watched" : ""}`}
+          {` · ${diskByteLen.toLocaleString()} disk bytes${unwatched ? (unwatched === WATCH_LIMIT_MESSAGE ? " · Not watched: watch limit reached" : " · Not watched") : ""}`}
         </span>
       </span>
       {saveState || canPreview ? (
