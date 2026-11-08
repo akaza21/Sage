@@ -142,6 +142,34 @@ for (const width of [1280, 720]) {
       page.getByRole("tab", { name: /Workbench\.tsx/u }),
     ).toHaveCount(0);
   });
+
+  test(`says a deleted File is not watched at the limit at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await openFile(page);
+    // Every watch slot is taken from here on.
+    await page.evaluate(async () => {
+      const { getWorkbenchPorts } =
+        await import("/src/ports/workbenchRuntime.ts");
+      const { EDITOR_WATCH_LIMIT_ERROR } =
+        await import("/src/features/files/editorExternalWatch.ts");
+      getWorkbenchPorts().editor.watchEditorDocument = async () => {
+        throw EDITOR_WATCH_LIMIT_ERROR;
+      };
+    });
+    await typeAtEnd(page, "// kept");
+    await changeOnDisk(page, null);
+    await expect(
+      page.getByRole("alert").filter({ hasText: "File deleted." }),
+    ).toBeVisible();
+    // The size goes with the File; why it is unwatched stays in view.
+    await expect(page.locator(".file-header__disk")).toBeHidden();
+    const unwatched = page.locator(".file-header__unwatched");
+    await expect(unwatched).toBeVisible();
+    await expect(unwatched).toHaveText("· Not watched: watch limit reached");
+    await shot(page, "deleted-watch-limit");
+  });
 }
 
 test("Revert File in the command palette drops unsaved edits", async ({

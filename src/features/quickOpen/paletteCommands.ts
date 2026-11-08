@@ -7,10 +7,12 @@ import {
   goBack,
   goForward,
 } from "../../app/editorHistory";
+import type * as ConflictActions from "../../app/editorConflictActions";
 import { useWorkbenchStore } from "../../app/store";
 import type { SidebarView } from "../../app/store";
 import { formatKeymapChords, keymapBinding } from "../../domain/keymapRegistry";
 import type { TabKind } from "../../domain/chat";
+import { errorMessage } from "../../domain/errors";
 import { isDeletedOnDisk } from "../files/editorDisk";
 import {
   fileSurfaceCommandAvailable,
@@ -18,7 +20,15 @@ import {
   type FileSurfaceCommand,
 } from "../files/fileSurfaceCommandBus";
 
-const loadConflictActions = () => import("../../app/editorConflictActions");
+/** Runs a conflict or Save All action, which loads on first use. */
+const runConflictAction = (
+  action: (actions: typeof ConflictActions) => Promise<unknown>,
+) =>
+  void import("../../app/editorConflictActions")
+    .then(action)
+    .catch((error: unknown) =>
+      useWorkbenchStore.setState({ error: errorMessage(error) }),
+    );
 
 const isEditorTab = (kind: TabKind) =>
   kind === "file" || kind === "diff" || kind === "settings";
@@ -86,7 +96,9 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
       id: "revert",
       label: "Revert File",
       shortcut: null,
-      run: () => void loadConflictActions().then((a) => a.reloadActiveEditor()),
+      // The File shown now, even if another is active once the action runs.
+      run: () =>
+        runConflictAction((a) => a.reloadActiveEditor(editor.resource)),
     });
   }
   if (store.tabs.some((tab) => tab.kind === "file" && tab.dirty)) {
@@ -94,7 +106,7 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
       id: "saveAll",
       label: "Save All",
       shortcut: shortcutOf("saveAll", apple),
-      run: () => void loadConflictActions().then((a) => a.saveAllEditors()),
+      run: () => runConflictAction((a) => a.saveAllEditors()),
     });
   }
   if (canGoBack()) {

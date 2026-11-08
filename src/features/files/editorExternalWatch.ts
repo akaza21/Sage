@@ -96,6 +96,8 @@ export function useEditorExternalWatch(
     let applying = false;
     let pendingNotice: EditorExternalWatchNotice | undefined;
     let missing = false;
+    // Set while the File may have changed unseen: read once a watch starts.
+    let reread = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const editor = getWorkbenchPorts().editor;
 
@@ -110,6 +112,7 @@ export function useEditorExternalWatch(
         const ended = subscription;
         subscription = undefined;
         missing = true;
+        reread = true;
         cancellation.current = start
           .catch(() => undefined)
           .then(() => ended.cancel())
@@ -182,8 +185,9 @@ export function useEditorExternalWatch(
           subscription = nextSubscription;
           stopRetryingOnFocus();
           setUnwatched(null);
-          if (missing) {
-            missing = false;
+          missing = false;
+          if (reread) {
+            reread = false;
             applyNotice({ resource: watched, generation: 0, kind: "changed" });
           }
         })
@@ -191,12 +195,13 @@ export function useEditorExternalWatch(
           if (cancelled) return;
           const active = bridge.getActiveEditor();
           const limited = isEditorWatchLimitError(error);
+          const gone =
+            missing || (active?.phase === "ready" && isDeletedOnDisk(active));
+          // Unseen while unwatched: read once a watch starts.
+          if (gone) reread = true;
           // Every slot taken is not a missing File: it waits for focus, as
-          // ever, and the File is still read once a watch starts.
-          if (
-            !limited &&
-            (missing || (active?.phase === "ready" && isDeletedOnDisk(active)))
-          ) {
+          // ever, without polling.
+          if (!limited && gone) {
             missing = true;
             retryTimer = setTimeout(tryStart, WATCH_RETRY_MS);
             setUnwatched({ resource: watched, message: WATCH_MISSING_MESSAGE });

@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -101,6 +102,9 @@ function changeOnDisk(resource: ResourceRef, content: string | null) {
   );
 }
 
+/** The File in the editor, as a banner action names it. */
+const activeFile = () => readyEditor().resource;
+
 function readyEditor() {
   const active = store().activeEditor;
   if (active?.phase !== "ready") throw new Error("no ready editor");
@@ -120,6 +124,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   resetBrowserDesktopForTests();
 });
 
@@ -149,7 +154,7 @@ describe("a File that changed on disk under unsaved edits", () => {
     expect(await store().saveActiveEditor()).toBe(false);
     expect(await diskText(file)).toBe("theirs\n");
 
-    expect(await keepActiveEditorBuffer()).toBe(true);
+    expect(await keepActiveEditorBuffer(activeFile())).toBe(true);
     expect(readyEditor().document.conflict).toBeNull();
     expect(readyEditor()).toMatchObject({ content: "mine\n" });
     expect(tabOf(file)).toMatchObject({ dirty: true, status: undefined });
@@ -173,7 +178,7 @@ describe("a File that changed on disk under unsaved edits", () => {
     expect((await editor.openEditorDocument(file)).buffer.content).toBe(
       "second\n",
     );
-    await keepActiveEditorBuffer();
+    await keepActiveEditorBuffer(activeFile());
     expect(await store().saveActiveEditor()).toBe(true);
     expect(await diskText(file)).toBe("second\n");
   });
@@ -258,14 +263,14 @@ describe("a File that changed on disk under unsaved edits", () => {
     // A second change the banner has not shown yet.
     browserEditor.changeOnDisk(file, "second\n");
 
-    expect(await keepActiveEditorBuffer()).toBe(false);
+    expect(await keepActiveEditorBuffer(activeFile())).toBe(false);
     expect(readyEditor()).toMatchObject({ content: "mine\n", saving: false });
     expect(readyEditor().document.conflict?.kind).toBe("external-change");
     expect(tabOf(file).status).toBe("failed");
     expect(await diskText(file)).toBe("second\n");
 
     // The banner now shows the second change, and Keep mine goes on it.
-    expect(await keepActiveEditorBuffer()).toBe(true);
+    expect(await keepActiveEditorBuffer(activeFile())).toBe(true);
     expect(await store().saveActiveEditor()).toBe(true);
     expect(await diskText(file)).toBe("mine\n");
   });
@@ -282,7 +287,7 @@ describe("a File that changed on disk under unsaved edits", () => {
     expect(readyEditor().document.conflict?.kind).toBe("deleted");
     expect(listing()).not.toContain("Workbench.tsx");
 
-    expect(await keepActiveEditorBuffer()).toBe(true);
+    expect(await keepActiveEditorBuffer(activeFile())).toBe(true);
     expect(readyEditor().document.conflict).toBeNull();
     // The kept buffer is durable, so the tab can be left and come back.
     store().updateEditorContent("kept, edited\n");
@@ -337,7 +342,7 @@ describe("a File that changed on disk under unsaved edits", () => {
     openTabs(file);
     await edit(file, "kept\n");
     await changeOnDisk(file, null);
-    expect(await keepActiveEditorBuffer()).toBe(true);
+    expect(await keepActiveEditorBuffer(activeFile())).toBe(true);
 
     await applyEditorExternalWatchNotice(
       { resource: file, generation: 1, kind: "changed" },
@@ -360,7 +365,7 @@ describe("a File that changed on disk under unsaved edits", () => {
         new Error("invalid request: files cannot be created inside .git"),
       );
     try {
-      expect(await keepActiveEditorBuffer()).toBe(false);
+      expect(await keepActiveEditorBuffer(activeFile())).toBe(false);
     } finally {
       rebase.mockRestore();
     }
@@ -391,11 +396,11 @@ describe("a File that changed on disk under unsaved edits", () => {
     // It comes back, with no notice.
     browserEditor.changeOnDisk(file, "theirs\n");
 
-    expect(await keepActiveEditorBuffer()).toBe(false);
+    expect(await keepActiveEditorBuffer(activeFile())).toBe(false);
     expect(readyEditor().document.conflict?.kind).toBe("external-change");
     expect(readyEditor()).toMatchObject({ content: "mine\n" });
 
-    expect(await keepActiveEditorBuffer()).toBe(true);
+    expect(await keepActiveEditorBuffer(activeFile())).toBe(true);
     expect(await store().saveActiveEditor()).toBe(true);
     expect(await diskText(file)).toBe("mine\n");
   });
@@ -429,7 +434,7 @@ describe("a File that changed on disk under unsaved edits", () => {
     // Gone, and the notice has not arrived yet.
     browserEditor.changeOnDisk(file, null);
 
-    expect(await reloadActiveEditor()).toBe(false);
+    expect(await reloadActiveEditor(activeFile())).toBe(false);
 
     expect(readyEditor()).toMatchObject({ content: "mine\n" });
     expect(readyEditor().document.conflict?.kind).toBe("deleted");
@@ -453,11 +458,11 @@ describe("a File that changed on disk under unsaved edits", () => {
     // Restored unchanged, before any notice says so.
     browserEditor.changeOnDisk(file, base);
 
-    expect(await keepActiveEditorBuffer()).toBe(false);
+    expect(await keepActiveEditorBuffer(activeFile())).toBe(false);
 
     expect(readyEditor()).toMatchObject({ content: "newest\n" });
     expect(readyEditor().document.conflict?.kind).toBe("external-change");
-    expect(await keepActiveEditorBuffer()).toBe(true);
+    expect(await keepActiveEditorBuffer(activeFile())).toBe(true);
     expect(await store().saveActiveEditor()).toBe(true);
     expect(await diskText(file)).toBe("newest\n");
   });
@@ -510,6 +515,67 @@ describe("a File that changed on disk under unsaved edits", () => {
     expect(readyEditor()).toMatchObject({ content: "mine\n", saving: false });
     expect(readyEditor().document.conflict?.kind).toBe("deleted");
     cleanup();
+  });
+
+  it.each(["Reload", "Keep mine"])(
+    "the banner's %s leaves alone a File switched to before it runs",
+    async (name) => {
+      const [a, b] = [nextFile(), nextFile()];
+      openTabs(a, b);
+      await edit(a, "a mine\n");
+      await store().flushActiveEditor();
+      await changeOnDisk(a, "a theirs\n");
+      await backgroundBuffer(b, "b mine\n");
+      render(
+        createElement(FileConflictNotice, {
+          document: readyEditor().document,
+          editable: true,
+        }),
+      );
+      const button = screen.getByRole("button", { name });
+
+      fireEvent.click(button);
+      // Off from the press until the action ends: no second action queues.
+      expect(button).toBeDisabled();
+      // Ctrl+Tab before the action's module has loaded, as activateTab
+      // switches once A's edits are stored.
+      useWorkbenchStore.setState({
+        activeTabId: tabOf(b).id,
+        activeEditor: null,
+      });
+      await store().loadEditor(b);
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name })).toBeEnabled(),
+      );
+
+      expect(readyEditor()).toMatchObject({ resource: b, content: "b mine\n" });
+      expect(tabOf(b).dirty).toBe(true);
+      expect((await editor.openEditorDocument(b)).buffer.content).toBe(
+        "b mine\n",
+      );
+      // A is as the banner left it.
+      const left = await editor.openEditorDocument(a);
+      expect(left.buffer.content).toBe("a mine\n");
+      cleanup();
+    },
+  );
+
+  it("Revert and Keep mine for a File no longer active do nothing", async () => {
+    const [a, b] = [nextFile(), nextFile()];
+    openTabs(a, b);
+    await edit(a, "a mine\n");
+    await store().flushActiveEditor();
+    await changeOnDisk(a, "a theirs\n");
+    await backgroundBuffer(b, "b mine\n");
+    await store().activateTab(tabOf(b).id);
+
+    expect(await reloadActiveEditor(a)).toBe(false);
+    expect(await keepActiveEditorBuffer(a)).toBe(false);
+
+    expect(readyEditor()).toMatchObject({ resource: b, content: "b mine\n" });
+    expect((await editor.openEditorDocument(b)).buffer.content).toBe(
+      "b mine\n",
+    );
   });
 
   it("Close on a deleted File leaves no recovery buffer", async () => {
@@ -614,7 +680,7 @@ describe("Save All", () => {
     ]);
     expect(tabOf(broken)).toMatchObject({ dirty: true, status: "failed" });
 
-    expect(await keepActiveEditorBuffer()).toBe(true);
+    expect(await keepActiveEditorBuffer(activeFile())).toBe(true);
     expect(await store().saveActiveEditor()).toBe(true);
     render(createElement(SaveAllNotice));
     const notice = screen.getByRole("alert");
@@ -623,5 +689,23 @@ describe("Save All", () => {
       `${broken.relativePath}: The disk is full.`,
     );
     expect(notice.textContent).not.toContain(deleted.relativePath);
+    await waitFor(() =>
+      expect(store().saveAllReport?.failures).toEqual([
+        { resource: broken, message: "The disk is full." },
+      ]),
+    );
+
+    // Saved since: gone from the report, which then has nothing left.
+    await store().activateTab(tabOf(broken).id);
+    expect(await store().saveActiveEditor()).toBe(true);
+    await waitFor(() => expect(store().saveAllReport).toBeNull());
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    // Edited again, the old failure does not come back.
+    store().updateEditorContent("broken again\n");
+    expect(tabOf(broken).dirty).toBe(true);
+    await act(async () => undefined);
+    expect(screen.queryByRole("alert")).toBeNull();
+    cleanup();
   });
 });

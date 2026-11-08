@@ -10,6 +10,7 @@ import {
 import { DISCONNECTED_TERMINAL } from "./terminalDockProjection";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { useWorkbenchStore } from "../app/store";
+import { errorMessage } from "../domain/errors";
 import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import {
@@ -71,9 +72,11 @@ export function useWorkbenchKeys({
         matchesPlatformChord(keymapBinding("saveAll"), event, apple)
       ) {
         event.preventDefault();
-        void import("../app/editorConflictActions").then((actions) =>
-          actions.saveAllEditors(),
-        );
+        void import("../app/editorConflictActions")
+          .then((actions) => actions.saveAllEditors())
+          .catch((error: unknown) =>
+            useWorkbenchStore.setState({ error: errorMessage(error) }),
+          );
       }
       if (matchesPlatformChord(keymapBinding("newTask"), event, apple)) {
         event.preventDefault();

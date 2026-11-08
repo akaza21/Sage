@@ -8,7 +8,10 @@ import {
 } from "../domain/resourceIdentity";
 import { ABSENT_FINGERPRINT, type ResourceRef } from "../domain/workbench";
 import { contentText } from "../features/files/editorContent";
-import { actionFailed } from "../features/files/editorNoticeState";
+import {
+  actionFailed,
+  EXTERNAL_CHANGE,
+} from "../features/files/editorNoticeState";
 import { getFileEditorController } from "../features/files/fileEditorController";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { SaveAllFailure } from "./editorConflictSlice";
@@ -25,19 +28,38 @@ export const DELETED_ON_DISK =
   "It was deleted on disk. Keep your version to create it again, or close it.";
 
 /**
- * "Keep mine": puts the active buffer on top of the File as the banner showed
- * it on disk (`document.disk`). If disk has moved on since, the buffer stays
- * as it is and the banner shows the File as it is now.
+ * Whether `resource`, the File the user acted on, is still the File in the
+ * editor of the project the action started in: an action that waited for
+ * this module to load, or in the queue, never lands on a File the user has
+ * switched to since.
  */
-export async function keepActiveEditorBuffer(): Promise<boolean> {
+function whileActive(resource: ResourceRef) {
+  const generation = get().projectGeneration;
+  const projectId = get().project?.id;
+  return () =>
+    !!projectId &&
+    !get().projectTransitioning &&
+    sameResource(get().activeEditor?.resource, resource) &&
+    matchesActiveTabIntent(get(), generation, projectId, "file", resource);
+}
+
+/**
+ * "Keep mine": puts `resource`'s buffer on top of the File as the banner
+ * showed it on disk (`document.disk`). If disk has moved on since, the buffer
+ * stays as it is and the banner shows the File as it is now. False, doing
+ * nothing, once `resource` is no longer the active File.
+ */
+export async function keepActiveEditorBuffer(
+  resource: ResourceRef,
+): Promise<boolean> {
   const controller = getFileEditorController();
   const bridge = storeEditorBridge(set, get);
   const generation = get().projectGeneration;
   const projectId = get().project?.id;
-  if (!projectId || get().projectTransitioning) return false;
-  const canCommit = (resource: ResourceRef) =>
-    !get().projectTransitioning &&
-    matchesActiveTabIntent(get(), generation, projectId, "file", resource);
+  const isActive = whileActive(resource);
+  if (!isActive()) return false;
+  const canCommit = (other: ResourceRef) =>
+    sameResource(other, resource) && isActive();
   try {
     return await enqueueEditorOperation(async () => {
       const active = get().activeEditor;
@@ -64,15 +86,9 @@ export async function keepActiveEditorBuffer(): Promise<boolean> {
       if (!canCommit(active.resource)) return false;
       const current = get().activeEditor;
       if (current?.phase !== "ready") return false;
-      // Disk now holds the editor's text ("matched") only if the editor still
-      // holds it too: edits made meanwhile are never dropped for it.
-      const matched =
-        result.outcome === "matched" &&
-        contentText(current.content) === result.document.buffer.content;
-      if (
-        result.outcome === "conflict" ||
-        (result.outcome === "matched" && !matched)
-      ) {
+      // "matched" means disk holds the very text sent, which the editor still
+      // holds: it cannot be edited while `saving`.
+      if (result.outcome === "conflict") {
         const { disk, conflict } = result.document;
         bridge.setActiveEditor(
           {
@@ -81,10 +97,7 @@ export async function keepActiveEditorBuffer(): Promise<boolean> {
             document: {
               ...current.document,
               disk,
-              conflict: conflict ?? {
-                kind: "external-change",
-                message: "This file changed outside Sage.",
-              },
+              conflict: conflict ?? EXTERNAL_CHANGE,
             },
           },
           { tabStatus: "failed" },
@@ -98,7 +111,7 @@ export async function keepActiveEditorBuffer(): Promise<boolean> {
       return true;
     });
   } catch (error) {
-    if (matchesProjectIntent(get(), generation, projectId)) {
+    if (projectId && matchesProjectIntent(get(), generation, projectId)) {
       set({ error: actionFailed(bridge, error, "keep") });
     }
     return false;
@@ -106,18 +119,21 @@ export async function keepActiveEditorBuffer(): Promise<boolean> {
 }
 
 /**
- * Reload: drops the edits for the File on disk. A File that is gone keeps
- * its edits and shows as deleted, and the result is false.
+ * Reload: drops `resource`'s edits for the File on disk. A File that is gone
+ * keeps its edits and shows as deleted, and the result is false. False,
+ * doing nothing, once `resource` is no longer the active File.
  */
-export async function reloadActiveEditor(): Promise<boolean> {
+export async function reloadActiveEditor(
+  resource: ResourceRef,
+): Promise<boolean> {
   const controller = getFileEditorController();
   const bridge = storeEditorBridge(set, get);
   const generation = get().projectGeneration;
   const projectId = get().project?.id;
-  if (!projectId || get().projectTransitioning) return false;
-  const canCommit = (resource: ResourceRef) =>
-    !get().projectTransitioning &&
-    matchesActiveTabIntent(get(), generation, projectId, "file", resource);
+  const isActive = whileActive(resource);
+  if (!isActive()) return false;
+  const canCommit = (other: ResourceRef) =>
+    sameResource(other, resource) && isActive();
   try {
     return await enqueueEditorOperation(async () => {
       const document = await controller.discard(bridge, canCommit, true);
@@ -151,7 +167,7 @@ export async function reloadActiveEditor(): Promise<boolean> {
       return true;
     });
   } catch (error) {
-    if (matchesProjectIntent(get(), generation, projectId)) {
+    if (projectId && matchesProjectIntent(get(), generation, projectId)) {
       controller.saveError(bridge, error);
       set({ error: errorMessage(error) });
     }

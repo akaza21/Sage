@@ -1,6 +1,13 @@
+import { useEffect } from "react";
+
+import type { SaveAllFailure } from "../../app/editorConflictSlice";
 import { useWorkbenchStore } from "../../app/store";
 import { sameResource } from "../../domain/resourceIdentity";
-import type { ProjectRootSummary, ResourceRef } from "../../domain/workbench";
+import type {
+  ProjectRootSummary,
+  ResourceRef,
+  WorkbenchTab,
+} from "../../domain/workbench";
 import { AlertTriangle } from "../../ui/leanIcons";
 import "./editor-conflict-notice.css";
 
@@ -21,9 +28,26 @@ function saveAllPath(
   return `${label}/${resource.relativePath}`;
 }
 
+/** The failures whose File still has a tab with unsaved changes. */
+function unsaved(
+  failures: readonly SaveAllFailure[],
+  tabs: readonly WorkbenchTab[],
+): SaveAllFailure[] {
+  return failures.filter(({ resource }) =>
+    tabs.some(
+      (tab) =>
+        tab.kind === "file" &&
+        tab.dirty &&
+        !!tab.resource &&
+        sameResource(tab.resource, resource),
+    ),
+  );
+}
+
 /**
- * Names each File the last Save All could not save, and why, while it still
- * has unsaved changes: one saved or reverted since drops off the list.
+ * Names each File the last Save All could not save, and why. A File saved,
+ * reverted or closed since leaves the report for good, so editing it again
+ * does not bring its old failure back.
  */
 export function SaveAllNotice() {
   const report = useWorkbenchStore((state) =>
@@ -33,16 +57,20 @@ export function SaveAllNotice() {
   );
   const roots = useWorkbenchStore((state) => state.project?.roots);
   const tabs = useWorkbenchStore((state) => state.tabs);
-  const failures =
-    report?.failures.filter(({ resource }) =>
-      tabs.some(
-        (tab) =>
-          tab.kind === "file" &&
-          tab.dirty &&
-          !!tab.resource &&
-          sameResource(tab.resource, resource),
-      ),
-    ) ?? [];
+  const failures = report ? unsaved(report.failures, tabs) : [];
+  const stale = !!report && failures.length < report.failures.length;
+  useEffect(() => {
+    if (!stale) return;
+    useWorkbenchStore.setState(({ saveAllReport, tabs }) => {
+      if (!saveAllReport) return {};
+      const left = unsaved(saveAllReport.failures, tabs);
+      return {
+        saveAllReport: left.length
+          ? { ...saveAllReport, failures: left }
+          : null,
+      };
+    });
+  }, [stale]);
   const count = failures.length;
   if (!count) return null;
   return (

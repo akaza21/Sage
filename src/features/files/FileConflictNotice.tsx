@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
+import { errorMessage } from "../../domain/errors";
 import { parentResource, resourceKey } from "../../domain/resourceIdentity";
 import {
   ABSENT_FINGERPRINT,
@@ -13,8 +14,38 @@ import { contentText } from "./editorContent";
 import { requestEditorFocus } from "./editorFocusRequest";
 import "./editor-conflict-notice.css";
 
-// Loaded on a press, so the banner itself shows as soon as it can.
+// Fetched once the banner is up, so the banner itself shows as soon as it
+// can and a press rarely waits for it.
 const loadActions = () => import("../../app/editorConflictActions");
+type ConflictAction = (
+  actions: Awaited<ReturnType<typeof loadActions>>,
+) => Promise<unknown>;
+
+/**
+ * Runs `action` once the actions load, with the banner's buttons off until
+ * it ends; true from the action means it resolved the conflict.
+ */
+function useConflictAction() {
+  const [pending, setPending] = useState(false);
+  useEffect(() => {
+    // A failed fetch is reported when a button is pressed.
+    loadActions().catch(() => undefined);
+  }, []);
+  const run = (action: ConflictAction, focus?: ResourceRef) => {
+    setPending(true);
+    void loadActions()
+      .then(action)
+      .then(
+        (resolved) => {
+          if (resolved === true && focus) requestEditorFocus(focus);
+        },
+        (error: unknown) =>
+          useWorkbenchStore.setState({ error: errorMessage(error) }),
+      )
+      .finally(() => setPending(false));
+  };
+  return { pending, run };
+}
 
 const UNSTORED_EDITS = "Your unsaved changes are not yet stored.";
 
@@ -58,6 +89,8 @@ export default function FileConflictNotice({
       (state.activeEditor?.phase === "ready" && state.activeEditor.saving),
   );
   const compareKey = useWorkbenchStore((state) => state.editorCompareKey);
+  const { pending, run } = useConflictAction();
+  const off = busy || pending;
   const { conflict } = document;
   // Explorer and Source Control learn that the File went away.
   const deletedKey =
@@ -82,7 +115,7 @@ export default function FileConflictNotice({
         <span className="editor-notice__text">{KEPT_DELETED_FILE}</span>
         {editable ? (
           <div className="editor-notice__actions">
-            <CloseButton busy={busy} />
+            <CloseButton busy={off} run={run} />
           </div>
         ) : null}
       </div>
@@ -92,11 +125,6 @@ export default function FileConflictNotice({
   const key = ready && conflictCompareKey(ready);
   const comparing =
     editable && conflict.kind === "external-change" && compareKey === key;
-  // Back to typing once the conflict is resolved.
-  const thenFocus = (resolved: Promise<boolean>) =>
-    void resolved.then((done) => {
-      if (done && ready) requestEditorFocus(ready.resource);
-    });
   const deleted = conflict.kind === "deleted";
   const button = "button button--compact";
   return (
@@ -128,11 +156,15 @@ export default function FileConflictNotice({
               <button
                 className={button}
                 type="button"
-                disabled={busy}
+                disabled={off}
                 title="Revert File: drop your changes and load the File from disk"
                 onClick={() => {
                   useWorkbenchStore.setState({ editorCompareKey: null });
-                  thenFocus(loadActions().then((a) => a.reloadActiveEditor()));
+                  // Back to typing once the conflict is resolved.
+                  run(
+                    (a) => a.reloadActiveEditor(ready.resource),
+                    ready.resource,
+                  );
                 }}
               >
                 Reload
@@ -141,7 +173,7 @@ export default function FileConflictNotice({
             <button
               className={`${button} button--primary`}
               type="button"
-              disabled={busy}
+              disabled={off}
               title={
                 deleted
                   ? "Keep your version; saving creates the File again"
@@ -149,15 +181,16 @@ export default function FileConflictNotice({
               }
               onClick={() => {
                 useWorkbenchStore.setState({ editorCompareKey: null });
-                thenFocus(
-                  loadActions().then((a) => a.keepActiveEditorBuffer()),
+                run(
+                  (a) => a.keepActiveEditorBuffer(ready.resource),
+                  ready.resource,
                 );
               }}
             >
               Keep mine
             </button>
             {deleted ? (
-              <CloseButton busy={busy} />
+              <CloseButton busy={off} run={run} />
             ) : (
               <button
                 className={`${button} editor-notice__toggle`}
@@ -203,7 +236,13 @@ export default function FileConflictNotice({
 }
 
 /** Closes the active File without saving, dropping its recovery buffer. */
-function CloseButton({ busy }: { busy: boolean }) {
+function CloseButton({
+  busy,
+  run,
+}: {
+  busy: boolean;
+  run: (action: ConflictAction) => void;
+}) {
   return (
     <button
       className="button button--compact"
@@ -213,7 +252,7 @@ function CloseButton({ busy }: { busy: boolean }) {
       onClick={() => {
         const tabId = useWorkbenchStore.getState().activeTabId;
         if (tabId) {
-          void loadActions().then((a) => a.closeEditorWithoutSaving(tabId));
+          run((a) => a.closeEditorWithoutSaving(tabId));
         }
       }}
     >

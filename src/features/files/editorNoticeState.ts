@@ -6,6 +6,7 @@ import { errorMessage } from "../../domain/errors";
 import {
   ABSENT_FINGERPRINT,
   type DocumentVersion,
+  type EditorConflict,
   type EditorDocument,
 } from "../../domain/workbench";
 import { isDeletedOnDisk } from "./editorDisk";
@@ -16,6 +17,12 @@ import {
 } from "./fileEditorController";
 import type { EditorPort } from "../../ports/workbenchPorts";
 import { sameContent } from "./editorContent";
+
+/** The banner's conflict for a File whose disk text moved under the editor. */
+export const EXTERNAL_CHANGE: EditorConflict = {
+  kind: "external-change",
+  message: "This file changed outside Sage.",
+};
 
 // Loaded with the first external-change notice or failed save, which most
 // sessions never see, so none of this adds to the editor's bundles.
@@ -105,10 +112,7 @@ export function setExternalChangeConflict(
       document: {
         ...active.document,
         disk: disk ?? active.document.disk,
-        conflict: {
-          kind: "external-change",
-          message: "This file changed outside Sage.",
-        },
+        conflict: EXTERNAL_CHANGE,
       },
     },
     { tabStatus: "failed" },
