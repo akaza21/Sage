@@ -235,6 +235,8 @@ export interface TurnProjection {
   attachedContext?: readonly AttachedContext[];
   /** The session action this Turn ran. */
   sessionAction?: AcpSessionAction;
+  /** The Turn ran a session action this build cannot run again. */
+  unrecognizedAction?: true;
   id: SageTurnId;
   sessionId: SageAgentSessionId;
   runtimeEpoch: RuntimeEpoch;

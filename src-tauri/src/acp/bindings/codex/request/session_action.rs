@@ -36,17 +36,6 @@ impl OutgoingRequest {
 fn review_target(target: &ReviewTarget) -> Value {
     match target {
         ReviewTarget::UncommittedChanges {} => json!({"type": "uncommittedChanges"}),
-        ReviewTarget::BaseBranch { branch } => {
-            json!({"type": "baseBranch", "branch": branch.as_str()})
-        }
-        ReviewTarget::Commit { sha, title } => json!({
-            "type": "commit",
-            "sha": sha.as_str(),
-            "title": title.as_ref().map(RequiredText::as_str)
-        }),
-        ReviewTarget::Custom { instructions } => {
-            json!({"type": "custom", "instructions": instructions.as_str()})
-        }
     }
 }
 
@@ -75,31 +64,16 @@ mod tests {
                 json!({"threadId": "thread-1"})
             )
         );
-        for (target, wire) in [
+        assert_eq!(
+            params(json!({"kind": "review", "target": {"kind": "uncommittedChanges"}})),
             (
-                json!({"kind": "uncommittedChanges"}),
-                json!({"type": "uncommittedChanges"}),
-            ),
-            (
-                json!({"kind": "baseBranch", "branch": "main"}),
-                json!({"type": "baseBranch", "branch": "main"}),
-            ),
-            (
-                json!({"kind": "commit", "sha": "abc123", "title": "Fix"}),
-                json!({"type": "commit", "sha": "abc123", "title": "Fix"}),
-            ),
-            (
-                json!({"kind": "custom", "instructions": "Check errors"}),
-                json!({"type": "custom", "instructions": "Check errors"}),
-            ),
-        ] {
-            assert_eq!(
-                params(json!({"kind": "review", "target": target})),
-                (
-                    "review/start".to_owned(),
-                    json!({"threadId": "thread-1", "target": wire, "delivery": "inline"})
-                )
-            );
-        }
+                "review/start".to_owned(),
+                json!({
+                    "threadId": "thread-1",
+                    "target": {"type": "uncommittedChanges"},
+                    "delivery": "inline"
+                })
+            )
+        );
     }
 }

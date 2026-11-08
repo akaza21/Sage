@@ -3,7 +3,7 @@
 //! own native method.
 use serde::{Deserialize, Serialize};
 
-use super::{contract::RequiredText, intent::CapabilitySnapshotV1};
+use super::intent::CapabilitySnapshotV1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
@@ -24,19 +24,33 @@ pub(crate) enum SessionAction {
     rename_all_fields = "camelCase",
     deny_unknown_fields
 )]
+/// What a review covers. The chat offers only the uncommitted changes.
 pub(crate) enum ReviewTarget {
     UncommittedChanges {},
-    BaseBranch {
-        branch: RequiredText<256>,
-    },
-    Commit {
-        sha: RequiredText<64>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        title: Option<RequiredText<512>>,
-    },
-    Custom {
-        instructions: RequiredText<16384>,
-    },
+}
+
+/// A Turn's stored action as its projection carries it. A stored action
+/// this build does not run still marks its Turn as an action Turn, so Retry
+/// is withheld instead of resending the action's `/` text as a prompt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub(crate) enum StoredSessionAction {
+    Runnable(SessionAction),
+    Unrecognized(UnrecognizedSessionAction),
+}
+
+/// Projects as `{"kind":"unrecognized"}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename = "unrecognized")]
+pub(crate) struct UnrecognizedSessionAction {}
+
+impl StoredSessionAction {
+    pub(crate) fn decode(value: &serde_json::Value) -> Self {
+        serde_json::from_value(value.clone()).map_or(
+            Self::Unrecognized(UnrecognizedSessionAction {}),
+            Self::Runnable,
+        )
+    }
 }
 
 impl SessionAction {
@@ -51,14 +65,9 @@ impl SessionAction {
     pub(crate) fn prompt_text(&self) -> String {
         match self {
             Self::Compact {} => "/compact".to_owned(),
-            Self::Review { target } => match target {
-                ReviewTarget::UncommittedChanges {} => "/review".to_owned(),
-                ReviewTarget::BaseBranch { branch } => format!("/review {}", branch.as_str()),
-                ReviewTarget::Commit { sha, .. } => format!("/review {}", sha.as_str()),
-                ReviewTarget::Custom { instructions } => {
-                    format!("/review {}", instructions.as_str())
-                }
-            },
+            Self::Review {
+                target: ReviewTarget::UncommittedChanges {},
+            } => "/review".to_owned(),
         }
     }
 }
@@ -69,12 +78,11 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn actions_decode_only_bounded_known_targets() {
-        let review: SessionAction = serde_json::from_value(
-            json!({"kind":"review","target":{"kind":"baseBranch","branch":"main"}}),
-        )
-        .unwrap();
-        assert_eq!(review.prompt_text(), "/review main");
+    fn actions_decode_only_the_offered_targets() {
+        let review: SessionAction =
+            serde_json::from_value(json!({"kind":"review","target":{"kind":"uncommittedChanges"}}))
+                .unwrap();
+        assert_eq!(review.prompt_text(), "/review");
         assert_eq!(
             serde_json::from_value::<SessionAction>(json!({"kind":"compact"}))
                 .unwrap()
@@ -82,8 +90,10 @@ mod tests {
             "/compact"
         );
         for invalid in [
-            json!({"kind":"review","target":{"kind":"baseBranch","branch":""}}),
-            json!({"kind":"review","target":{"kind":"commit","sha":"x".repeat(65)}}),
+            json!({"kind":"review","target":{"kind":"baseBranch","branch":"main"}}),
+            json!({"kind":"review","target":{"kind":"commit","sha":"abc123"}}),
+            json!({"kind":"review","target":{"kind":"custom","instructions":"Check"}}),
+            json!({"kind":"review"}),
             json!({"kind":"review","target":{"kind":"uncommittedChanges","extra":1}}),
             json!({"kind":"compact","extra":1}),
             json!({"kind":"revert"}),
@@ -94,10 +104,9 @@ mod tests {
 
     #[test]
     fn an_action_turn_keeps_its_action_beside_the_prompt_text() {
-        let action: SessionAction = serde_json::from_value(
-            json!({"kind":"review","target":{"kind":"commit","sha":"abc123","title":"Fix"}}),
-        )
-        .unwrap();
+        let action: SessionAction =
+            serde_json::from_value(json!({"kind":"review","target":{"kind":"uncommittedChanges"}}))
+                .unwrap();
         let mut prompt = crate::acp::intent::Prompt::new("prompt", action.prompt_text()).unwrap();
         prompt.action = Some(action.clone());
         let connection = rusqlite::Connection::open_in_memory().unwrap();
@@ -113,9 +122,42 @@ mod tests {
             .unwrap();
         let metadata =
             crate::acp::transcript_quote::load_prompt_metadata(&connection, "turn").unwrap();
-        assert_eq!(metadata.session_action, Some(action));
+        assert_eq!(
+            metadata.session_action,
+            Some(StoredSessionAction::Runnable(action))
+        );
         assert!(crate::acp::store::parse_legacy_text(&payload).is_ok());
         let plain = crate::acp::intent::Prompt::new("prompt", "/review").unwrap();
         assert!(plain.user_payload().get("sessionAction").is_none());
+    }
+
+    #[test]
+    fn a_stored_action_this_build_does_not_run_still_loads_as_unrecognized() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch("CREATE TABLE items(turn_id TEXT,ordinal INTEGER,kind TEXT,payload_json TEXT,payload_bytes INTEGER)")
+            .unwrap();
+        let payload = json!({"kind":"text","payload":{"role":"user","text":"/review main",
+            "sessionAction":{"kind":"review","target":{"kind":"baseBranch","branch":"main"}}}})
+        .to_string();
+        connection
+            .execute(
+                "INSERT INTO items VALUES ('turn',0,'text',?1,?2)",
+                rusqlite::params![payload, payload.len() as i64],
+            )
+            .unwrap();
+        let action = crate::acp::transcript_quote::load_prompt_metadata(&connection, "turn")
+            .unwrap()
+            .session_action
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(&action).unwrap(),
+            json!({"kind":"unrecognized"})
+        );
+        assert!(crate::acp::store::parse_legacy_text(&payload).is_ok());
+        assert_eq!(
+            serde_json::to_value(StoredSessionAction::decode(&json!({"kind":"compact"}))).unwrap(),
+            json!({"kind":"compact"})
+        );
     }
 }

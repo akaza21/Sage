@@ -229,7 +229,7 @@ impl Prompt {
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct PromptMetadata {
     pub(crate) attached_context: Vec<super::attached_context::AttachedContext>,
-    pub(crate) session_action: Option<super::session_action::SessionAction>,
+    pub(crate) session_action: Option<super::session_action::StoredSessionAction>,
 }
 
 pub(crate) fn load_prompt_metadata(
@@ -255,10 +255,8 @@ pub(crate) fn load_prompt_metadata(
             .to_vec(),
         None => Vec::new(),
     };
-    let session_action = field("sessionAction")
-        .map(|action| serde_json::from_value(action.clone()))
-        .transpose()
-        .map_err(|_| StoreError::Corrupt("prompt session action"))?;
+    let session_action =
+        field("sessionAction").map(super::session_action::StoredSessionAction::decode);
     Ok(PromptMetadata {
         attached_context,
         session_action,

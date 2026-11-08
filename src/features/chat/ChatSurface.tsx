@@ -300,7 +300,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         messages={messages}
         developmentSimulator={selectedHarness?.source === "development"}
         onRetry={
-          useNativeAcp && !projectTransitioning && !actionBusy && !activeAcpTurn
+          useNativeAcp &&
+          !projectTransitioning &&
+          !actionBusy &&
+          !activeAcpTurn &&
+          !acpPage?.turns.at(-1)?.unrecognizedAction
             ? retryLastTurn
             : undefined
         }

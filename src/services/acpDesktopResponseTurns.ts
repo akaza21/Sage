@@ -238,7 +238,6 @@ export function safeTurn(value: unknown): TurnProjection | null {
     value.sessionAction === undefined
       ? undefined
       : decodeSessionAction(value.sessionAction);
-  if (sessionAction === null) return null;
   const sessionId = safeIdentifier(value.sessionId);
   const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
   const revision = safeCounter(value.revision, true);
@@ -293,7 +292,9 @@ export function safeTurn(value: unknown): TurnProjection | null {
     ? null
     : {
         ...(attachedContext.length ? { attachedContext } : {}),
-        ...(sessionAction ? { sessionAction } : {}),
+        ...(sessionAction === null
+          ? { unrecognizedAction: true }
+          : sessionAction && { sessionAction }),
         id: id as TurnProjection["id"],
         sessionId: sessionId as TurnProjection["sessionId"],
         runtimeEpoch: runtimeEpoch as TurnProjection["runtimeEpoch"],

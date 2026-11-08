@@ -1,8 +1,7 @@
-export type AcpReviewTarget =
-  | { kind: "uncommittedChanges" }
-  | { kind: "baseBranch"; branch: string }
-  | { kind: "commit"; sha: string; title?: string }
-  | { kind: "custom"; instructions: string };
+import { isRecord } from "./guards";
+
+/** What a review covers. The chat offers only the uncommitted changes. */
+export type AcpReviewTarget = { kind: "uncommittedChanges" };
 
 /** Runs as a Turn on an idle session that negotiated it. */
 export type AcpSessionAction =
@@ -15,14 +14,20 @@ export const sessionActions = {
 } as const satisfies Record<string, AcpSessionAction>;
 
 /**
- * The action a stored Turn ran. Only the chat starts actions, so anything
- * other than one it offers is malformed.
+ * The action a stored Turn ran, or null for one the chat does not offer,
+ * which the host projects as `{ kind: "unrecognized" }`.
  */
 export function decodeSessionAction(value: unknown): AcpSessionAction | null {
-  const json = JSON.stringify(value);
-  return (
-    Object.values(sessionActions).find(
-      (action) => JSON.stringify(action) === json,
-    ) ?? null
-  );
+  if (!isRecord(value)) return null;
+  // Two keys with a record target can only be `kind` and `target`.
+  const size = Object.keys(value).length;
+  if (value.kind === "compact" && size === 1) return sessionActions.compact;
+  const { target } = value;
+  return value.kind === "review" &&
+    size === 2 &&
+    isRecord(target) &&
+    target.kind === "uncommittedChanges" &&
+    Object.keys(target).length === 1
+    ? sessionActions.reviewChanges
+    : null;
 }

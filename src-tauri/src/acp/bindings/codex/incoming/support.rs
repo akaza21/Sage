@@ -126,14 +126,21 @@ pub(super) fn text<'a>(
     }
 }
 
-/// The Sage Turn a Codex turn belongs to. A review runs as a nested turn
-/// whose `rootTurnId` is the turn `review/start` answered, and every item of
-/// the review carries that root, so the root is the turn's identity.
-pub(super) fn root_turn_id(turn: &Map<String, Value>) -> Result<&str, IngressError> {
+/// The Codex turn a `turn/started` names. An inline review starts a nested
+/// turn whose `rootTurnId` is the turn `review/start` answered, which is
+/// already the active Turn, so that root names it. Any other root, such as
+/// an earlier finished turn, leaves the started turn as its own.
+pub(super) fn started_turn_id<'a>(
+    turn: &'a Map<String, Value>,
+    active: Option<&str>,
+) -> Result<&'a str, IngressError> {
     let id = text(turn, "id", 512)?;
     match turn.get("rootTurnId") {
         None | Some(Value::Null) => Ok(id),
-        Some(_) => text(turn, "rootTurnId", 512),
+        Some(_) => {
+            let root = text(turn, "rootTurnId", 512)?;
+            Ok(if active == Some(root) { root } else { id })
+        }
     }
 }
 
@@ -222,7 +229,7 @@ fn sanitize_with_limit(value: &str, maximum: usize, command_output: bool) -> Opt
                 .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer:"));
             let replacement = if redact_next || embedded_bearer || bare.contains("sk-") {
                 "[redacted]"
-            } else if contains_absolute_path(token) {
+            } else if contains_absolute_path(token, true) {
                 "[path]"
             } else {
                 token
@@ -248,7 +255,7 @@ pub(in crate::acp::bindings::codex) fn command_output_token(
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer:"));
     let replacement = if redact_next || embedded_bearer || bare.contains("sk-") {
         "[redacted]"
-    } else if contains_absolute_path(token) {
+    } else if contains_absolute_path(token, false) {
         "[path]"
     } else {
         token
@@ -276,7 +283,9 @@ fn append_command_output(output: &mut String, value: &str, maximum: usize) -> Op
     Some(())
 }
 
-fn contains_absolute_path(token: &str) -> bool {
+/// In prose a POSIX path needs two segments, so a `/` command such as
+/// `/review` reads as itself; command output keeps every rooted token.
+fn contains_absolute_path(token: &str, prose: bool) -> bool {
     let lower = token.to_ascii_lowercase();
     if lower.contains("file:///") || lower.contains("file://\\\\") {
         return true;
@@ -293,7 +302,9 @@ fn contains_absolute_path(token: &str) -> bool {
         }
         let rest = &bytes[index..];
         if rest.starts_with(b"\\\\")
-            || (rest.starts_with(b"/") && !rest.starts_with(b"//"))
+            || (rest.starts_with(b"/")
+                && !rest.starts_with(b"//")
+                && (!prose || crate::acp::redaction::text::paths::has_two_path_segments(rest)))
             || (rest.len() >= 3
                 && rest[0].is_ascii_alphabetic()
                 && rest[1] == b':'

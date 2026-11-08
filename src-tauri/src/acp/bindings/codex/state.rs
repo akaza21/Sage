@@ -192,6 +192,10 @@ impl CodexAdapter {
         self.active_turn_id.is_some()
     }
 
+    pub(crate) fn active_turn_id(&self) -> Option<&str> {
+        self.active_turn_id.as_ref().map(ExternalId::as_str)
+    }
+
     pub(crate) fn mark_browser_mcp_failure_reported(&mut self) -> bool {
         if self.browser_mcp_failure_reported {
             return false;
@@ -223,6 +227,7 @@ impl CodexAdapter {
         let kind = self.pending_kind(id).ok_or(AdapterError::ForeignRequest)?;
         if kind.starts_turn() {
             self.turn_start_correlations.discard_pending(id)?;
+            self.deferred_interrupt = false;
         }
         if kind == RequestKind::GoalGet {
             self.goal_get_failed(id);

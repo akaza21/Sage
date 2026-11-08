@@ -24,6 +24,8 @@ describe("decodeSessionAction", () => {
       { kind: "review", target: { kind: "uncommittedChanges", extra: 1 } },
       { kind: "review", target: { kind: "baseBranch", branch: "main" } },
       { kind: "review", target: { kind: "commit", sha: "abc123" } },
+      { kind: "unrecognized" },
+      { kind: "review", target: "uncommittedChanges" },
     ])
       expect(decodeSessionAction(value)).toBeNull();
   });

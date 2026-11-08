@@ -68,7 +68,10 @@ export function latestRetryPrompt(page: AcpChatPage): {
         candidate.kind === "text" &&
         candidate.payload.role === "user",
     );
-  return session && turn?.sessionId === session.id && item?.kind === "text"
+  return session &&
+    turn?.sessionId === session.id &&
+    !turn.unrecognizedAction &&
+    item?.kind === "text"
     ? {
         prompt: item.payload.text,
         ...(turn.sessionAction ? { action: turn.sessionAction } : {}),

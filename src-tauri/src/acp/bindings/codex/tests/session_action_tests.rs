@@ -136,9 +136,8 @@ fn the_captured_inline_review_is_one_sage_turn_named_by_its_root() {
             &format!("error {PROVIDER_REFUSAL}"),
             "client-action: Started text Reviewer failed to output a response.",
             "client-action: Completed text Reviewer failed to output a response.",
-            // Sage redacts what reads as an absolute path in harness prose.
-            "client-action: Started text Review was interrupted. Please re-run [path] and wait for it to complete.",
-            "client-action: Completed text Review was interrupted. Please re-run [path] and wait for it to complete.",
+            "client-action: Started text Review was interrupted. Please re-run /review and wait for it to complete.",
+            "client-action: Completed text Review was interrupted. Please re-run /review and wait for it to complete.",
             "client-action: turn Failed",
         ]
     );
@@ -249,5 +248,69 @@ fn a_held_cancel_is_dropped_when_its_turn_fails_before_it_is_named() {
             &Mapper,
         )
         .unwrap();
+    assert!(!adapter.take_deferred_interrupt());
+}
+
+fn ingest(adapter: &mut CodexAdapter, frame: Value) -> Vec<String> {
+    match adapter
+        .ingest(&serde_json::to_vec(&frame).unwrap(), &Mapper)
+        .unwrap()
+    {
+        IngressDisposition::Events(events) => projected(&events),
+        IngressDisposition::IgnoredLate => vec!["ignored".to_owned()],
+        other => panic!("{frame} read as {other:?}"),
+    }
+}
+
+#[test]
+fn a_turn_rooted_in_an_earlier_finished_turn_is_its_own_turn() {
+    let mut adapter = adapter();
+    ready(&mut adapter);
+    arm_turn(&mut adapter, 61, "client-first");
+    ingest(
+        &mut adapter,
+        json!({"id":61,"result":{"turn":{"id":"turn-first","status":"inProgress"}}}),
+    );
+    ingest(
+        &mut adapter,
+        json!({"method":"turn/completed","params":{"threadId":"thread-1",
+            "turn":{"id":"turn-first","status":"completed"}}}),
+    );
+    arm_turn(&mut adapter, 62, "client-next");
+    ingest(
+        &mut adapter,
+        json!({"id":62,"result":{"turn":{"id":"turn-next","status":"inProgress"}}}),
+    );
+    assert_eq!(
+        ingest(
+            &mut adapter,
+            json!({"method":"turn/started","params":{"threadId":"thread-1",
+                "turn":{"id":"turn-next","rootTurnId":"turn-first","status":"inProgress"}}}),
+        ),
+        ["client-next: turn Running"]
+    );
+    assert_eq!(
+        ingest(
+            &mut adapter,
+            json!({"method":"turn/completed","params":{"threadId":"thread-1",
+                "turn":{"id":"turn-next","rootTurnId":"turn-first","status":"completed"}}}),
+        ),
+        ["client-next: turn Completed"]
+    );
+}
+
+#[test]
+fn a_cancel_held_for_a_start_rejected_before_its_write_does_not_reach_the_next_turn() {
+    let mut adapter = adapter();
+    ready(&mut adapter);
+    arm_action(&mut adapter, 61, json!({"kind": "compact"}));
+    assert!(adapter.defer_cancel());
+    adapter.reject_before_write(61).unwrap();
+    arm_turn(&mut adapter, 62, "client-next");
+    ingest(
+        &mut adapter,
+        json!({"id":62,"result":{"turn":{"id":"turn-next","status":"inProgress"}}}),
+    );
+    assert!(adapter.has_active_turn());
     assert!(!adapter.take_deferred_interrupt());
 }

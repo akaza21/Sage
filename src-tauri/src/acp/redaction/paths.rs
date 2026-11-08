@@ -218,6 +218,7 @@ fn detect_absolute_path(value: &str, mode: PathMode) -> Option<PathKind> {
             }
             PathMode::Prose => {
                 plain_slash_path(rest)
+                    && has_two_path_segments(rest)
                     && (previous != Some(b'<') || last_slash.is_some_and(|last| last > index))
             }
         };
@@ -250,6 +251,26 @@ fn is_path_boundary(value: &[u8], index: usize) -> bool {
                 | b'@'
         )
     })
+}
+
+/// A rooted prose token names a path only with two non-empty segments once
+/// trailing prose punctuation is trimmed, so `/review` or `(/review).` stays
+/// a `/` command while `/home/u` is a path.
+pub(crate) fn has_two_path_segments(rest: &[u8]) -> bool {
+    let end = rest
+        .iter()
+        .rposition(|byte| {
+            !matches!(
+                byte,
+                b'.' | b',' | b';' | b':' | b'!' | b'?' | b')' | b']' | b'}' | b'"' | b'\'' | b'`'
+            )
+        })
+        .map_or(0, |last| last + 1);
+    rest[..end]
+        .split(|byte| *byte == b'/')
+        .filter(|segment| !segment.is_empty())
+        .nth(1)
+        .is_some()
 }
 
 fn plain_slash_path(rest: &[u8]) -> bool {

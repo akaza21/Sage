@@ -8,7 +8,7 @@ use super::{
     record_unprojected,
     support::{
         error_payload, expect_thread_and_turn, identity, parse_usage, request_id_text,
-        root_turn_id, text,
+        started_turn_id, text,
     },
 };
 
@@ -167,7 +167,7 @@ pub(super) fn notification<M: ResourceMapper>(
                 .get("turn")
                 .and_then(Value::as_object)
                 .ok_or(IngressError::Malformed)?;
-            let turn_id = root_turn_id(turn)?;
+            let turn_id = started_turn_id(turn, adapter.active_turn_id())?;
             let (id, binding) = match adapter.observe_turn_started(turn_id) {
                 Ok(value) => value,
                 Err(error) => return Err(turn_started_rejection(adapter, error)),
@@ -329,7 +329,7 @@ fn turn_completed(
         .get("turn")
         .and_then(Value::as_object)
         .ok_or(IngressError::Malformed)?;
-    let external = root_turn_id(turn)?;
+    let external = text(turn, "id", 512)?;
     adapter.expect_turn(external).map_err(identity)?;
     let state = match text(turn, "status", 32)? {
         "completed" => TurnState::Completed,

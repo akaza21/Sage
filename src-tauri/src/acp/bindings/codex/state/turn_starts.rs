@@ -181,7 +181,6 @@ impl TurnStartCorrelations {
         })
     }
 
-    /// The request whose correlation the Turn bound, if any.
     pub(super) fn register(&mut self, request_id: u64, client_message_id: RequiredText<512>) {
         debug_assert!(self.entries.len() < LIMITS.queues.outstanding_rpc_per_session as usize);
         debug_assert!(

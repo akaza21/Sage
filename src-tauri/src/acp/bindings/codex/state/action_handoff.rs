@@ -49,6 +49,7 @@ impl CodexAdapter {
             .action_handoff
             .take()
             .ok_or(AdapterError::TurnIntentConflict)?;
+        self.deferred_interrupt = false;
         let failure = self.fail_correlation(handoff.request_id)?;
         self.turn_start_correlations.consume(handoff.request_id)?;
         Ok(failure)
