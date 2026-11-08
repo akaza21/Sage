@@ -140,6 +140,8 @@ pub(crate) trait EgressTransport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum QueueDisposition {
     Queued,
+    /// The adapter holds the frame until its Turn is named.
+    Deferred,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

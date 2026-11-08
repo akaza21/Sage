@@ -13,6 +13,8 @@ import { useUsageRequest } from "./acp/useUsageRequest";
 import { SessionWorkingPill } from "./SessionWorkingPill";
 import {
   latestRetryPrompt,
+  sessionActionAvailable,
+  sessionActions,
   terminalTurnStates,
   useAcpChatActions,
   useAcpChatHistory,
@@ -169,10 +171,20 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     contentRef: transcriptContentRef,
     endRef,
   });
+  const sessionAction = (kind: keyof typeof sessionActions) => {
+    const action = sessionActions[kind];
+    return useNativeAcp &&
+      !actionBusy &&
+      !projectTransitioning &&
+      sessionActionAvailable(acpPage, action.kind)
+      ? () => void acpActions.runSessionAction(action)
+      : undefined;
+  };
+  const retry = acpPage && latestRetryPrompt(acpPage);
   const retryLastTurn = () => {
-    if (!acpPage || actionBusy || activeAcpTurn) return;
-    const retry = latestRetryPrompt(acpPage);
-    if (retry)
+    if (!retry || actionBusy || activeAcpTurn) return;
+    if (retry.action) void acpActions.runSessionAction(retry.action);
+    else
       void acpActions.submit(retry.prompt, [], retry.bindingId, retry.modelId);
   };
 
@@ -296,10 +308,16 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         messages={messages}
         developmentSimulator={selectedHarness?.source === "development"}
         onRetry={
-          useNativeAcp && !projectTransitioning && !actionBusy && !activeAcpTurn
+          useNativeAcp &&
+          !projectTransitioning &&
+          !actionBusy &&
+          !activeAcpTurn &&
+          retry &&
+          (!retry.action || sessionActionAvailable(acpPage, retry.action.kind))
             ? retryLastTurn
             : undefined
         }
+        onReviewChanges={sessionAction("reviewChanges")}
         showJumpToLatest={showJumpToLatest}
         onJumpToLatest={jumpToLatest}
       />
@@ -361,6 +379,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         focused={focused}
         onSetSessionMode={acpActions.setSessionMode}
         onSetSessionConfigOption={acpActions.setSessionConfigOption}
+        onCompact={sessionAction("compact")}
         onSelectHarness={chooseHarness}
         onSelectModel={chooseModel}
         missingBindingNotice={useNativeAcp && !availableBinding}

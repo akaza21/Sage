@@ -70,6 +70,8 @@ function safeCapabilities(
     ...(value.promptImages === true ? { promptImages: true } : {}),
     cancel: value.cancel,
     nativeSessionFork: value.nativeSessionFork,
+    ...(value.nativeSessionCompact === true && { nativeSessionCompact: true }),
+    ...(value.nativeReview === true && { nativeReview: true }),
     activeTurnSteer: value.activeTurnSteer,
     childConversationProjection: value.childConversationProjection,
     childTranscriptRead: value.childTranscriptRead,

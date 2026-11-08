@@ -26,6 +26,7 @@ import { ComposerHarnessPicker } from "./ComposerHarnessPicker";
 import { composerOptionLabel } from "./composerChrome";
 import { useComposerToolbarFit } from "./useComposerToolbarFit";
 import { formatContextWindow } from "./composerModelContext";
+import type { ComposerMenuActions } from "./ComposerAddActions";
 import { ComposerOptionsPart } from "./lazyParts";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { ComposerModelControls } from "./ComposerModelControls";
@@ -43,8 +44,7 @@ interface Props {
   contextUsage?: ChatUsage | null;
   usageRequest?: ComponentProps<typeof ComposerContext>["usageRequest"];
   accessBindingId?: string | null;
-  imageAction?: { disabled: boolean; onChoose: () => void };
-  onOpenGoal?: () => void;
+  addActions?: ComposerMenuActions;
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
@@ -75,8 +75,7 @@ export function ChatHarnessControls({
   contextUsage,
   usageRequest,
   accessBindingId,
-  imageAction,
-  onOpenGoal,
+  addActions = {},
   availableBinding,
   canPrompt,
   modelLabelScope,
@@ -217,8 +216,7 @@ export function ChatHarnessControls({
   // "+" is always the row's first control, as in Codex, so the toolbar keeps
   // the same shape in every chat; it is disabled while it has nothing to offer.
   const hasActions = Boolean(
-    imageAction ||
-    onOpenGoal ||
+    Object.values(addActions).some(Boolean) ||
     effortInMenu ||
     projectInMenu ||
     modeOptions.length > 0 ||
@@ -356,8 +354,7 @@ export function ChatHarnessControls({
             sessionConfig={selectedSessionConfig}
             pending={modePending}
             disabled={turnBusy || projectTransitioning}
-            imageAction={imageAction}
-            onOpenGoal={onOpenGoal}
+            {...addActions}
             onOpenEffort={
               effortInMenu
                 ? () => {

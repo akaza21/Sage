@@ -79,21 +79,23 @@ pub(super) fn response(
             .and_then(Value::as_str)
             .unwrap_or("Codex request failed");
         let payload = error_payload("codexRpc", message, false)?;
-        if kind != RequestKind::TurnStart {
+        if !kind.starts_turn() {
             let removed = adapter.take_pending(id);
             debug_assert_eq!(removed, Some(kind));
         }
         return match kind {
-            RequestKind::TurnStart => match adapter.fail_turn_start(id).map_err(identity)? {
-                TurnStartFailure::Failed(turn) => Ok(IngressDisposition::Events(vec![
-                    IncomingEvent::Error(payload),
-                    IncomingEvent::Turn {
-                        id: turn,
-                        state: TurnState::Failed,
-                    },
-                ])),
-                TurnStartFailure::Late => Ok(IngressDisposition::DuplicateTerminal),
-            },
+            RequestKind::TurnStart | RequestKind::Review | RequestKind::Compact => {
+                match adapter.fail_turn_start(id).map_err(identity)? {
+                    TurnStartFailure::Failed(turn) => Ok(IngressDisposition::Events(vec![
+                        IncomingEvent::Error(payload),
+                        IncomingEvent::Turn {
+                            id: turn,
+                            state: TurnState::Failed,
+                        },
+                    ])),
+                    TurnStartFailure::Late => Ok(IngressDisposition::DuplicateTerminal),
+                }
+            }
             RequestKind::Interrupt => {
                 let turn = adapter.fail_interrupt().map_err(identity)?;
                 Ok(IngressDisposition::Events(vec![
@@ -143,7 +145,7 @@ pub(super) fn response(
         .get("result")
         .and_then(Value::as_object)
         .ok_or(IngressError::Malformed)?;
-    if kind != RequestKind::TurnStart {
+    if !kind.starts_turn() {
         let removed = adapter.take_pending(id);
         debug_assert_eq!(removed, Some(kind));
     }
@@ -181,7 +183,11 @@ pub(super) fn response(
             let id = adapter.bind_thread(external).map_err(identity)?;
             IncomingEvent::SessionLoaded { id }
         }
-        RequestKind::TurnStart => {
+        RequestKind::Compact => {
+            adapter.accept_compact_response(id).map_err(identity)?;
+            return Ok(IngressDisposition::IgnoredLate);
+        }
+        RequestKind::TurnStart | RequestKind::Review => {
             let turn = result
                 .get("turn")
                 .and_then(Value::as_object)

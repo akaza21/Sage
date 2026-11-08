@@ -231,6 +231,11 @@ impl HarnessAdapter for NativeRuntime {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }
         if let AdapterCommand::Prompt { prompt, .. } = &command
+            && !prompt.action_admitted(self.capabilities().as_ref())
+        {
+            return Err(AdapterRuntimeError::UnsupportedCommand);
+        }
+        if let AdapterCommand::Prompt { prompt, .. } = &command
             && let Some(revision) = prompt.command_revision
         {
             self.0

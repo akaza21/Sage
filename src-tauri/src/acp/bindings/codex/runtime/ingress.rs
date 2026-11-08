@@ -95,7 +95,13 @@ impl CodexRuntime {
         self.record_browser_failure_diagnostic(&disposition, frame.as_bytes());
         let request_digest =
             request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?;
-        self.translate(disposition, request_digest)
+        let batch = self.translate(disposition, request_digest)?;
+        if !self.inner.take_deferred_interrupt() {
+            return Ok(batch);
+        }
+        let (events, mut egress) = batch.into_parts();
+        egress.push(self.request_with_control(CodexAdapter::cancel, true)?);
+        AdapterBatch::new(events, egress)
     }
 
     /// Runs `frames`, in order, through the protocol ingestion `ingest_frame`

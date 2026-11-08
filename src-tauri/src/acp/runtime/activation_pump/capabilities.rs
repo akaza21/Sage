@@ -47,6 +47,10 @@ pub(super) fn intersect(
         native_session_fork: curated.native_session_fork
             && advertised.native_session_fork
             && policy.native_session_fork,
+        native_session_compact: curated.native_session_compact
+            && advertised.native_session_compact
+            && policy.native_session_compact,
+        native_review: curated.native_review && advertised.native_review && policy.native_review,
         active_turn_steer: curated.active_turn_steer
             && advertised.active_turn_steer
             && policy.active_turn_steer,
@@ -97,6 +101,8 @@ mod tests {
             prompt: true,
             cancel: true,
             native_session_fork: false,
+            native_session_compact: false,
+            native_review: false,
             active_turn_steer: false,
             child_conversation_projection: false,
             child_transcript_read: false,

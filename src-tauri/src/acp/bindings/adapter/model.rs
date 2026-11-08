@@ -92,6 +92,12 @@ pub(crate) trait HarnessAdapter {
     fn provisional_turn_pending(&self) -> bool {
         false
     }
+    /// The active Turn is admitted but the harness has not named it, so a
+    /// cancel cannot address it yet: hold the cancel and send it once the
+    /// Turn binds. False when the harness has nothing to hold it for.
+    fn defer_cancel(&mut self) -> bool {
+        false
+    }
     fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(None)
     }

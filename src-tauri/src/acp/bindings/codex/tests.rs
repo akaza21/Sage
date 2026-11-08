@@ -16,6 +16,7 @@ use super::{
 use crate::test_diagnostics::capture_diagnostics;
 
 mod file_change_sequence_tests;
+mod session_action_tests;
 #[cfg(windows)]
 mod state_volume;
 mod terminal_error_tests;

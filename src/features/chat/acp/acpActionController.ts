@@ -21,6 +21,7 @@ import { createActionProjectionCommit, sameScope } from "./acpActionProjection";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
 import type { SlashCommandPort } from "../slashCommandTurn";
+import { createSessionActionRunner } from "./sessionAction";
 
 export { cancellableTurnId } from "./acpTurnState";
 
@@ -57,6 +58,7 @@ export interface AcpActionCommands {
   setSessionMode?: typeof acpDesktop.setSessionMode;
   setSessionConfigOption?: typeof acpDesktop.setSessionConfigOption;
   queueSessionConfigChoice?: typeof acpDesktop.queueSessionConfigChoice;
+  runSessionAction?: typeof acpDesktop.runSessionAction;
 }
 
 interface AcpActionDependencies {
@@ -396,8 +398,17 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       queueSessionConfigChoice: commands.queueSessionConfigChoice,
     });
 
+  const runSessionAction = createSessionActionRunner({
+    getContext: dependencies.getContext,
+    enqueue,
+    apply,
+    nextIntentId,
+    run: commands.runSessionAction ?? acpDesktop.runSessionAction,
+  });
+
   return {
     submit,
+    runSessionAction,
     steer,
     cancel,
     close,

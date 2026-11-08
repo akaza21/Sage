@@ -121,13 +121,16 @@ pub(super) fn prepare_turn_in(
         command.project_id.as_str(),
         command.chat_id.as_str(),
     )?;
-    crate::chat_lifecycle::auto_title_first_prompt_in(
-        transaction,
-        command.project_id.as_str(),
-        command.chat_id.as_str(),
-        user_payload["text"].as_str().unwrap_or_default(),
-        command.now_millis,
-    )?;
+    // A session action's `/` text names no topic, so it never titles a chat.
+    if command.prompt.action.is_none() {
+        crate::chat_lifecycle::auto_title_first_prompt_in(
+            transaction,
+            command.project_id.as_str(),
+            command.chat_id.as_str(),
+            user_payload["text"].as_str().unwrap_or_default(),
+            command.now_millis,
+        )?;
+    }
     transaction.execute(
         "INSERT INTO turns (id,project_id,chat_id,session_id,runtime_epoch,ordinal,
          client_intent_id,state,delivery_state,revision,created_at,updated_at)

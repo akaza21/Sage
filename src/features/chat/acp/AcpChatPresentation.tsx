@@ -311,6 +311,7 @@ export function AcpChatPresentation({
   projectRoots,
   retentionIncomplete,
   onRetry,
+  onReviewChanges,
   editSummaryContainer,
 }: AcpChatPresentationProps) {
   const { changes: workspaceChanges, incompleteTurnIds } =
@@ -332,6 +333,7 @@ export function AcpChatPresentation({
       workspaceChanges={workspaceChanges}
       workspaceIncomplete={incompleteTurnIds.size > 0}
       onRecordDisposition={acpDesktop.recordAgentEditDisposition}
+      onReview={onReviewChanges}
     />
   );
   const renderTurn = (turn: TurnProjection, index: number) => (

@@ -342,6 +342,8 @@ pub(crate) fn parse_legacy_text(
         text: SafeText<262144>,
         #[serde(default, rename = "attachedContext")]
         _attached_context: crate::acp::attached_context::AttachedContexts,
+        #[serde(default, rename = "sessionAction")]
+        _session_action: Option<serde::de::IgnoredAny>,
     }
     #[derive(Debug, serde::Deserialize)]
     #[serde(deny_unknown_fields)]

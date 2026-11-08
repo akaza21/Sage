@@ -57,6 +57,7 @@ const hooks = vi.hoisted(() => ({
     errorKind: null as string | null,
     cancellableTurnId: null as string | null,
     submit: vi.fn(),
+    runSessionAction: vi.fn(),
     steer: vi.fn(),
     cancel: vi.fn(),
     close: vi.fn(),
@@ -615,6 +616,123 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
     expect(screen.queryByText("Goal", { exact: true })).toBeNull();
     expect(screen.queryByLabelText("Goal details")).toBeNull();
+  });
+
+  it.each([true, false])(
+    "offers Compact context only to an idle session that negotiated it (%s)",
+    async (negotiated) => {
+      matchConfiguredSession();
+      setTurnState("completed");
+      const [session] = hooks.page!.sessions;
+      hooks.page = {
+        ...hooks.page!,
+        sessions: [
+          {
+            ...session,
+            capabilities: {
+              ...session.capabilities,
+              nativeSessionCompact: negotiated,
+            },
+          },
+        ],
+      };
+      render(<ChatSurface />);
+      await openComposerOptions();
+      const compact = screen.queryByRole("menuitem", {
+        name: "Compact context",
+      });
+      if (!negotiated) {
+        expect(compact).toBeNull();
+        return;
+      }
+      fireEvent.click(compact!);
+      expect(hooks.actions.runSessionAction).toHaveBeenCalledWith({
+        kind: "compact",
+      });
+    },
+  );
+
+  it.each([true, false])(
+    "retries a session-action Turn only while the session negotiates it (%s)",
+    async (negotiated) => {
+      matchConfiguredSession();
+      setTurnState("completed");
+      const [session] = hooks.page!.sessions;
+      const action = {
+        kind: "review",
+        target: { kind: "uncommittedChanges" },
+      } as const;
+      const [turn] = hooks.page!.turns;
+      hooks.page = {
+        ...hooks.page!,
+        sessions: [
+          {
+            ...session,
+            capabilities: { ...session.capabilities, nativeReview: negotiated },
+          },
+        ],
+        turns: [
+          {
+            ...turn,
+            sessionAction: action,
+            items: [
+              {
+                ...itemBase("action-prompt"),
+                kind: "text",
+                payload: { role: "user", text: "/review" },
+              } as AcpItem,
+              {
+                ...itemBase("action-findings"),
+                ordinal: 1,
+                kind: "text",
+                payload: { role: "assistant", text: "No issues found." },
+              } as AcpItem,
+            ],
+          },
+        ],
+      };
+      render(<ChatSurface />);
+      expect(await screen.findByText("No issues found.")).toBeInTheDocument();
+      const retry = screen.queryByRole("button", { name: "Retry" });
+      if (!negotiated) {
+        expect(retry).toBeNull();
+        return;
+      }
+      fireEvent.click(retry!);
+      expect(hooks.actions.runSessionAction).toHaveBeenCalledWith(action);
+      expect(hooks.actions.submit).not.toHaveBeenCalled();
+    },
+  );
+
+  it("offers no Retry for a Turn whose session action it cannot run", async () => {
+    matchConfiguredSession();
+    setTurnState("completed");
+    const [turn] = hooks.page!.turns;
+    hooks.page = {
+      ...hooks.page!,
+      turns: [
+        {
+          ...turn,
+          unrecognizedAction: true,
+          items: [
+            {
+              ...itemBase("action-prompt"),
+              kind: "text",
+              payload: { role: "user", text: "/review main" },
+            } as AcpItem,
+            {
+              ...itemBase("action-findings"),
+              ordinal: 1,
+              kind: "text",
+              payload: { role: "assistant", text: "No issues found." },
+            } as AcpItem,
+          ],
+        },
+      ],
+    };
+    render(<ChatSurface />);
+    expect(await screen.findByText("No issues found.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("opens an earlier-session assistant file link in its owning Chat", async () => {

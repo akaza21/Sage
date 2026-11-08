@@ -526,6 +526,7 @@ struct FakeState {
     turn_notices: Vec<TurnNotice>,
     ingest_error: Option<AdapterRuntimeError>,
     refusal_detail: Option<RefusalDetail>,
+    turn_unnamed: bool,
 }
 
 #[derive(Clone)]
@@ -543,6 +544,10 @@ impl HarnessAdapter for FakeAdapter {
 
     fn refusal_detail(&self) -> Option<RefusalDetail> {
         self.shared.0.lock().unwrap().refusal_detail.clone()
+    }
+
+    fn defer_cancel(&mut self) -> bool {
+        self.shared.0.lock().unwrap().turn_unnamed
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -1429,6 +1434,28 @@ fn cancellation_requires_the_exact_live_turn_tuple() {
         QueueDisposition::Queued
     );
     assert_eq!(shared.0.lock().unwrap().commands, ["cancel"]);
+}
+
+#[test]
+fn a_cancel_for_a_turn_the_harness_has_not_named_is_held_by_the_adapter() {
+    let (mut pump, shared) = build_pump(Vec::new());
+    shared.0.lock().unwrap().turn_unnamed = true;
+    assert_eq!(
+        pump.queue_cancel_notification(
+            &session("one"),
+            RuntimeEpoch::new(1).unwrap(),
+            &turn("one"),
+            &message()
+        )
+        .unwrap(),
+        QueueDisposition::Deferred
+    );
+    assert!(shared.0.lock().unwrap().commands.is_empty());
+    let mut transport = CountingTransport::default();
+    assert_eq!(
+        pump.flush_one(&mut transport).unwrap(),
+        FlushDisposition::Idle
+    );
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use super::{IngressError, parse_usage, sanitize};
+use super::{IngressError, parse_usage, sanitize, sanitized_command_output};
 use crate::acp::intent::NormalizedPayload;
 
 #[test]
@@ -80,4 +80,22 @@ fn malformed_usage_counts_still_fail_closed() {
 #[test]
 fn generic_bearer_colon_does_not_carry_redaction_to_the_next_token() {
     assert_eq!(sanitize("Bearer: opaque"), "[redacted] opaque");
+}
+
+#[test]
+fn a_slash_command_in_prose_is_not_a_path_but_command_output_keeps_it_private() {
+    for (prose, shown) in [
+        ("re-run /review", "re-run /review"),
+        ("(/review).", "(/review)."),
+        ("/home/u/x", "[path]"),
+        ("`/a/b`", "[path]"),
+        ("C:\\x", "[path]"),
+        ("file:///x", "[path]"),
+        ("/root", "[path]"),
+        ("/alice", "[path]"),
+        ("x=/review", "[path]"),
+    ] {
+        assert_eq!(sanitize(prose), shown);
+    }
+    assert_eq!(sanitized_command_output("/review").unwrap(), "[path]");
 }

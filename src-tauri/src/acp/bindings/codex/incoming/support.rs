@@ -126,6 +126,24 @@ pub(super) fn text<'a>(
     }
 }
 
+/// The Codex turn a `turn/started` names. An inline review starts a nested
+/// turn whose `rootTurnId` is the turn `review/start` answers, so that root
+/// names the Sage Turn when `root_names_turn` admits it. Any other root, such
+/// as an earlier finished turn, leaves the started turn as its own.
+pub(super) fn started_turn_id(
+    turn: &Map<String, Value>,
+    root_names_turn: impl FnOnce(&str) -> bool,
+) -> Result<&str, IngressError> {
+    let id = text(turn, "id", 512)?;
+    match turn.get("rootTurnId") {
+        None | Some(Value::Null) => Ok(id),
+        Some(_) => {
+            let root = text(turn, "rootTurnId", 512)?;
+            Ok(if root_names_turn(root) { root } else { id })
+        }
+    }
+}
+
 pub(super) fn safe_text(
     value: Option<&Value>,
     max: usize,
@@ -211,7 +229,7 @@ fn sanitize_with_limit(value: &str, maximum: usize, command_output: bool) -> Opt
                 .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer:"));
             let replacement = if redact_next || embedded_bearer || bare.contains("sk-") {
                 "[redacted]"
-            } else if contains_absolute_path(token) {
+            } else if contains_absolute_path(token, true) {
                 "[path]"
             } else {
                 token
@@ -237,7 +255,7 @@ pub(in crate::acp::bindings::codex) fn command_output_token(
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer:"));
     let replacement = if redact_next || embedded_bearer || bare.contains("sk-") {
         "[redacted]"
-    } else if contains_absolute_path(token) {
+    } else if contains_absolute_path(token, false) {
         "[path]"
     } else {
         token
@@ -265,7 +283,9 @@ fn append_command_output(output: &mut String, value: &str, maximum: usize) -> Op
     Some(())
 }
 
-fn contains_absolute_path(token: &str) -> bool {
+/// In prose a session-action command such as `/review` reads as itself;
+/// command output keeps every rooted token private.
+fn contains_absolute_path(token: &str, prose: bool) -> bool {
     let lower = token.to_ascii_lowercase();
     if lower.contains("file:///") || lower.contains("file://\\\\") {
         return true;
@@ -282,7 +302,13 @@ fn contains_absolute_path(token: &str) -> bool {
         }
         let rest = &bytes[index..];
         if rest.starts_with(b"\\\\")
-            || (rest.starts_with(b"/") && !rest.starts_with(b"//"))
+            || (rest.starts_with(b"/")
+                && !rest.starts_with(b"//")
+                && !(prose
+                    && crate::acp::redaction::text::paths::is_session_action_command(
+                        rest,
+                        index.checked_sub(1).map(|previous| bytes[previous]),
+                    )))
             || (rest.len() >= 3
                 && rest[0].is_ascii_alphabetic()
                 && rest[1] == b':'

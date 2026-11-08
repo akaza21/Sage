@@ -1,3 +1,4 @@
+mod action_handoff;
 pub(crate) mod capabilities;
 mod child_read;
 mod fork;
@@ -164,6 +165,8 @@ pub(crate) struct CodexAdapter {
     turn_start_correlations: TurnStartCorrelations,
     active_turn_id: Option<ExternalId>,
     provisional_turn: Option<ProvisionalTurn>,
+    action_handoff: Option<action_handoff::ActionHandoff>,
+    deferred_interrupt: bool,
     active_turn_client_message_id: Option<RequiredText<512>>,
     active_item_terminals: Vec<ItemTerminal>,
     active_terminal_id_bytes: usize,
@@ -189,6 +192,21 @@ pub(crate) struct CodexAdapter {
 impl CodexAdapter {
     pub(crate) fn has_active_turn(&self) -> bool {
         self.active_turn_id.is_some()
+    }
+
+    /// A nested turn's root names the active Turn, or, before any Turn is
+    /// named, the review whose `review/start` answer has not arrived yet.
+    pub(crate) fn root_names_turn(&self, root: &str) -> bool {
+        match &self.active_turn_id {
+            Some(active) => active.as_str() == root,
+            None => {
+                let mut starts = self.pending.iter().filter(|(_, kind)| kind.starts_turn());
+                matches!(
+                    (starts.next(), starts.next()),
+                    (Some((_, RequestKind::Review)), None)
+                )
+            }
+        }
     }
 
     pub(crate) fn mark_browser_mcp_failure_reported(&mut self) -> bool {
@@ -220,8 +238,9 @@ impl CodexAdapter {
 
     pub(crate) fn reject_before_write(&mut self, id: u64) -> Result<(), AdapterError> {
         let kind = self.pending_kind(id).ok_or(AdapterError::ForeignRequest)?;
-        if kind == RequestKind::TurnStart {
+        if kind.starts_turn() {
             self.turn_start_correlations.discard_pending(id)?;
+            self.deferred_interrupt = false;
         }
         if kind == RequestKind::GoalGet {
             self.goal_get_failed(id);
@@ -272,11 +291,16 @@ impl CodexAdapter {
     }
 
     pub(super) fn fail_turn_start(&mut self, id: u64) -> Result<TurnStartFailure, AdapterError> {
-        if self.pending_kind(id) != Some(RequestKind::TurnStart) {
+        if !self.pending_kind(id).is_some_and(RequestKind::starts_turn) {
             return Err(AdapterError::TurnIntentConflict);
         }
-        let correlation = self.turn_start_correlations.failure(id)?;
-        let result = match correlation {
+        let result = self.fail_correlation(id)?;
+        self.finish_turn_start_response(id)?;
+        Ok(result)
+    }
+
+    fn fail_correlation(&mut self, id: u64) -> Result<TurnStartFailure, AdapterError> {
+        Ok(match self.turn_start_correlations.failure(id)? {
             CorrelationMatch::Pending(client) => {
                 self.active_turn_client_message_id = Some(client);
                 self.active_turn_id =
@@ -290,21 +314,19 @@ impl CodexAdapter {
             }
             CorrelationMatch::Terminal { .. } => TurnStartFailure::Late,
             CorrelationMatch::Active { .. } => return Err(AdapterError::TurnIntentConflict),
-        };
-        self.finish_turn_start_response(id)?;
-        Ok(result)
+        })
     }
 
     pub(super) fn fail_pending_turn_start(&mut self) -> Result<TurnStartFailure, AdapterError> {
         let mut turn_starts = self
             .pending
             .iter()
-            .filter_map(|(id, kind)| (*kind == RequestKind::TurnStart).then_some(*id));
-        let id = turn_starts.next().ok_or(AdapterError::TurnIntentConflict)?;
-        if turn_starts.next().is_some() {
-            return Err(AdapterError::TurnIntentConflict);
+            .filter_map(|(id, kind)| kind.starts_turn().then_some(*id));
+        match (turn_starts.next(), turn_starts.next()) {
+            (Some(id), None) => self.fail_turn_start(id),
+            (None, None) if self.action_handoff.is_some() => self.fail_action_handoff(),
+            _ => Err(AdapterError::TurnIntentConflict),
         }
-        self.fail_turn_start(id)
     }
 
     pub(super) fn fail_interrupt(&mut self) -> Result<ScopedExternalId, AdapterError> {
@@ -332,12 +354,11 @@ impl CodexAdapter {
     }
 
     pub(super) fn finish_turn_start_response(&mut self, id: u64) -> Result<(), AdapterError> {
-        if self.pending_kind(id) != Some(RequestKind::TurnStart) {
+        if !self.pending_kind(id).is_some_and(RequestKind::starts_turn) {
             return Err(AdapterError::TurnIntentConflict);
         }
         self.turn_start_correlations.consume(id)?;
-        let removed = self.remove_pending(id);
-        debug_assert_eq!(removed, Some(RequestKind::TurnStart));
+        self.remove_pending(id);
         Ok(())
     }
 

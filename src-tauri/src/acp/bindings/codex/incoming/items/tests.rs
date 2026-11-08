@@ -244,7 +244,7 @@ fn an_item_type_this_build_never_heard_of_still_reaches_other_with_its_raw_title
 
 #[test]
 fn an_untitled_unknown_item_falls_back_to_its_raw_type_and_stays_pending_until_terminal() {
-    let untitled = item(json!({"type": "hookPrompt", "id": "hook-1"}));
+    let untitled = item(json!({"type": "futureItem", "id": "future-1"}));
     let (payload, state, lifecycle) =
         normalize_item(&untitled, ItemLifecycle::Started, &UnusedMapper)
             .expect("never rejected")
@@ -254,7 +254,7 @@ fn an_untitled_unknown_item_falls_back_to_its_raw_type_and_stays_pending_until_t
     assert!(matches!(
         payload,
         NormalizedPayload::ToolCall { category: ToolCategory::Other, ref label, .. }
-            if label.as_str() == "hookPrompt"
+            if label.as_str() == "futureItem"
     ));
 }
 
@@ -288,36 +288,142 @@ fn image_view_is_its_own_kind_that_keeps_its_clickable_path() {
 }
 
 #[test]
-fn review_mode_transitions_are_switch_mode_tools_carrying_the_review() {
-    for (kind, expected) in [
-        ("enteredReviewMode", "Entered review mode"),
-        ("exitedReviewMode", "Exited review mode"),
-    ] {
-        let transition = item(json!({
-            "type": kind,
-            "id": format!("review-{kind}"),
-            "review": "Check the adapter contract"
-        }));
-        let (payload, state, lifecycle) =
-            normalize_item(&transition, ItemLifecycle::Completed, &UnusedMapper)
-                .expect("review transition")
-                .expect("item");
-        assert_eq!(state, Some(ToolState::Completed), "{kind}");
-        assert_eq!(lifecycle, Some(ItemLifecycle::Completed), "{kind}");
-        assert!(
-            matches!(
-                payload,
-                NormalizedPayload::ToolCall {
-                    category: ToolCategory::SwitchMode,
-                    ref label,
-                    input_summary: Some(ref review),
-                    ..
-                } if label.as_str() == expected
-                    && review.as_str() == "Check the adapter contract"
-            ),
-            "{kind}"
-        );
-    }
+fn entering_review_is_a_switch_mode_tool_and_the_exit_carries_the_reply() {
+    let entered = item(json!({
+        "type": "enteredReviewMode",
+        "id": "turn-review",
+        "review": "commit 1234567: Tidy UI colors"
+    }));
+    let (payload, state, lifecycle) =
+        normalize_item(&entered, ItemLifecycle::Completed, &UnusedMapper)
+            .expect("review transition")
+            .expect("item");
+    assert_eq!(state, Some(ToolState::Completed));
+    assert_eq!(lifecycle, Some(ItemLifecycle::Completed));
+    assert!(matches!(
+        payload,
+        NormalizedPayload::ToolCall {
+            category: ToolCategory::SwitchMode,
+            ref label,
+            input_summary: Some(ref review),
+            ..
+        } if label.as_str() == "Entered review mode"
+            && review.as_str() == "commit 1234567: Tidy UI colors"
+    ));
+    let exited = item(json!({
+        "type": "exitedReviewMode",
+        "id": "turn-review",
+        "review": "Prefer Stylize helpers\nsrc/file.rs:10-20"
+    }));
+    assert_eq!(
+        normalize_item(&exited, ItemLifecycle::Completed, &UnusedMapper).unwrap(),
+        Some((
+            NormalizedPayload::Text {
+                text: SafeText::new("text", "Prefer Stylize helpers\nsrc/file.rs:10-20").unwrap()
+            },
+            None,
+            None
+        ))
+    );
+    let empty = item(json!({"type": "exitedReviewMode", "id": "turn-review", "review": ""}));
+    assert_eq!(
+        normalize_item(&empty, ItemLifecycle::Completed, &UnusedMapper).unwrap(),
+        None
+    );
+}
+
+fn tool_row(
+    raw: Value,
+    lifecycle: ItemLifecycle,
+) -> (String, Option<String>, Option<String>, ToolState) {
+    let (payload, state, _) = normalize_item(&item(raw), lifecycle, &UnusedMapper)
+        .expect("row")
+        .expect("item");
+    let NormalizedPayload::ToolCall {
+        category: ToolCategory::Other,
+        label,
+        input_summary,
+        output_summary,
+        ..
+    } = payload
+    else {
+        panic!("expected a tool row");
+    };
+    (
+        label.as_str().to_owned(),
+        input_summary.map(|value| value.as_str().to_owned()),
+        output_summary.map(|value| value.as_str().to_owned()),
+        state.expect("tool state"),
+    )
+}
+
+#[test]
+fn sleep_function_output_and_hook_prompt_render_as_rows_without_raw_json() {
+    assert_eq!(
+        tool_row(
+            json!({"type": "sleep", "id": "sleep-1", "durationMs": 30_000}),
+            ItemLifecycle::Started
+        ),
+        ("Waiting 30s".to_owned(), None, None, ToolState::InProgress)
+    );
+    assert_eq!(
+        tool_row(
+            json!({"type": "sleep", "id": "sleep-1", "durationMs": 30_000}),
+            ItemLifecycle::Completed
+        )
+        .0,
+        "Waited 30s"
+    );
+    assert_eq!(
+        tool_row(
+            json!({
+                "type": "functionCallOutput", "id": "call-1", "name": "read_page",
+                "namespace": null,
+                "output": [
+                    {"type": "input_text", "text": "Page title"},
+                    {"type": "input_image", "image_url": "data:image/png;base64,AAAA"},
+                    {"type": "encrypted_content", "encrypted_content": "secret"}
+                ]
+            }),
+            ItemLifecycle::Completed
+        ),
+        (
+            "read_page".to_owned(),
+            None,
+            Some("Page title\n[image]".to_owned()),
+            ToolState::Completed
+        )
+    );
+    assert_eq!(
+        tool_row(
+            json!({"type": "functionCallOutput", "id": "call-2", "name": "", "output": "done"}),
+            ItemLifecycle::Completed
+        ),
+        (
+            "Tool output".to_owned(),
+            None,
+            Some("done".to_owned()),
+            ToolState::Completed
+        )
+    );
+    assert_eq!(
+        tool_row(
+            json!({
+                "type": "hookPrompt", "id": "hook-1",
+                "fragments": [
+                    {"hookRunId": "run-1", "text": "Run the formatter."},
+                    {"hookRunId": "run-2", "text": "Then the tests."}
+                ]
+            }),
+            ItemLifecycle::Completed
+        ),
+        (
+            "Hook prompt".to_owned(),
+            Some("Run the formatter.\n\nThen the tests.".to_owned()),
+            None,
+            ToolState::Completed
+        )
+    );
 }
 
 #[test]

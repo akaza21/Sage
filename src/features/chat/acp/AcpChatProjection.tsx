@@ -27,6 +27,7 @@ type AcpChatProjectionProps = {
   projectRoots?: readonly Pick<ProjectRootSummary, "id" | "name" | "ordinal">[];
   retentionIncomplete?: boolean;
   onRetry?: () => void;
+  onReviewChanges?: () => void;
   feedback?: Announcement | null;
   onFeedbackQueued?: (id: string) => void;
   emptyState?: ReactNode;
@@ -50,6 +51,7 @@ export function AcpChatProjection({
   projectRoots = [],
   retentionIncomplete = false,
   onRetry,
+  onReviewChanges,
   feedback,
   onFeedbackQueued,
   emptyState,
@@ -96,6 +98,7 @@ export function AcpChatProjection({
               projectRoots={projectRoots}
               retentionIncomplete={retentionIncomplete}
               onRetry={onRetry}
+              onReviewChanges={onReviewChanges}
               editSummaryContainer={editSummaryContainer}
             />
           )}

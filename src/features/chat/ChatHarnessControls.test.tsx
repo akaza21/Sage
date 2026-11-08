@@ -632,7 +632,7 @@ describe("last confirmed model label", () => {
       );
       const props = {
         sessionConfig: confirmedModelConfig(),
-        imageAction: { disabled, onChoose: () => {} },
+        addActions: { imageAction: { disabled, onChoose: () => {} } },
       };
       const view = renderControls(props);
       fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
@@ -1514,7 +1514,9 @@ describe("composer permission mode picker", () => {
     useWorkbenchStore.setState({
       projects: [{ id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 }],
     });
-    renderControls({ imageAction: { disabled: false, onChoose: vi.fn() } });
+    renderControls({
+      addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
+    });
     const trigger = screen.getByRole("button", { name: "Composer options" });
     fireEvent.click(trigger);
     expect(
@@ -1535,7 +1537,7 @@ describe("composer permission mode picker", () => {
     async (name) => {
       renderControls({
         projectName: "Alpha",
-        imageAction: { disabled: false, onChoose: vi.fn() },
+        addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
       });
       const opener = screen.getByRole("button", { name });
       const other = screen.getByRole("button", {
@@ -1572,7 +1574,9 @@ describe("composer permission mode picker", () => {
           { id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 },
         ],
       });
-      renderControls({ imageAction: { disabled: false, onChoose: vi.fn() } });
+      renderControls({
+        addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
+      });
       const trigger = screen.getByRole("button", { name: "Composer options" });
       fireEvent.click(trigger);
       const control = screen.getByRole("menuitem", { name: "Add images" });
@@ -1821,7 +1825,7 @@ describe("composer permission mode picker", () => {
 
   it("closes an already open menu when a turn starts", async () => {
     const { rerenderControls } = renderControls({
-      imageAction: { disabled: false, onChoose: vi.fn() },
+      addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
     });
     await openOptions();
     expect(
@@ -2458,7 +2462,7 @@ it("keeps the send binding's access modes when switching between Access and Add"
   renderControls({
     selectedHarnessId: "other",
     accessBindingId: "fixture",
-    imageAction: { disabled: false, onChoose },
+    addActions: { imageAction: { disabled: false, onChoose } },
   });
   const access = screen.getByRole("button", { name: "Access options" });
   const add = screen.getByRole("button", { name: "Composer options" });
