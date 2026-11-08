@@ -1,13 +1,14 @@
 //! `$/cancel_request` from the adapter for a permission request it asked.
 //!
-//! With ACP SDK 2.x (claude-agent-acp 0.101.0) the adapter stops waiting for
-//! the permission answer when its turn is cancelled: it sends
-//! `$/cancel_request` naming the request and may resolve the prompt
-//! `cancelled` before Sage answers. SDK 1.x (0.76.0) sends the same
-//! notification but keeps waiting for the answer. In both cases an open
-//! permission card is settled as cancelled by the harness, and Sage answers
-//! `cancelled` so a waiting 1.x adapter is released; a 2.x adapter drops the
-//! late answer quietly.
+//! When its turn is cancelled the adapter stops waiting for the permission
+//! answer and sends `$/cancel_request` naming the request. With ACP SDK 2.x
+//! (claude-agent-acp 0.101.0) the SDK itself abandons the request; 0.76.0
+//! (SDK 1.x) races the permission request against the turn's abort signal
+//! locally (`acp-agent.js` 5150-5154, `raceWithAbort` at 571), so it also
+//! stops waiting. Either way the prompt may resolve `cancelled` before Sage
+//! answers. An open permission card in a running Turn is settled as cancelled
+//! by the harness, and Sage still answers `cancelled` so the request is closed
+//! on the wire; the adapter drops that late answer quietly.
 
 use super::super::*;
 
@@ -36,13 +37,19 @@ impl ClaudeRuntime {
             return AdapterBatch::new(vec![SharedEvent::IgnoredLate], Vec::new());
         }
         let Some(active) = self.active.as_ref().filter(|active| active.turn.is_some()) else {
+            // The Turn already ended, so there is no Turn to settle the card
+            // on and the adapter no longer waits for an answer. The record is
+            // settled here, so a later answer from the user is a typed miss
+            // rather than a card that can never be settled.
+            let request_id = request_id.clone();
+            self.denials.remove(&request_id);
             return AdapterBatch::new(vec![SharedEvent::IgnoredLate], Vec::new());
         };
-        let external_request_id = ExternalId::new("permissionRequest", request_id.clone())
-            .map_err(|_| AdapterRuntimeError::Frame)?;
         let server_request = crate::acp::contract::SageServerRequestId::parse(request_id.as_str())
             .map_err(|_| AdapterRuntimeError::Frame)?;
         let answer = cancelled_permission(&server_request, &record.wire_id)?;
+        let external_request_id = ExternalId::new("permissionRequest", request_id.clone())
+            .map_err(|_| AdapterRuntimeError::Frame)?;
         AdapterBatch::new(
             vec![SharedEvent::PermissionResolved {
                 turn_id: self.turn_identity(active)?,

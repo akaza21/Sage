@@ -112,6 +112,39 @@ fn a_permission_the_adapter_stops_waiting_for_is_settled_and_answered_cancelled(
 }
 
 #[test]
+fn a_cancel_request_after_the_turn_ended_still_closes_the_permission() {
+    let mut runtime = ClaudeRuntime::fixture();
+    ready_0101(&mut runtime);
+    let (prompt_id, request) = open_permission(&mut runtime);
+    // The prompt resolves before the adapter names the abandoned request.
+    runtime
+        .ingest(
+            &frame(json!({"jsonrpc":"2.0","id":prompt_id,"result":{"stopReason":"cancelled"}})),
+            &Mapper,
+        )
+        .unwrap();
+    let batch = runtime
+        .ingest(&frame(derived("cancelPermissionRequest")), &Mapper)
+        .unwrap();
+    assert!(matches!(batch.events(), [SharedEvent::IgnoredLate]));
+    assert!(
+        batch.egress().is_empty(),
+        "the adapter no longer waits for an answer"
+    );
+    // The card is settled: a later answer is a typed miss, not a wire write.
+    assert_eq!(
+        runtime
+            .command(AdapterCommand::ResolvePermission {
+                request_id: request.clone(),
+                decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+            })
+            .err(),
+        Some(AdapterRuntimeError::LaterPermissionMiss)
+    );
+    assert!(runtime.cancel_permission(&request).is_err());
+}
+
+#[test]
 fn a_permission_sage_already_cancelled_is_not_settled_twice() {
     let mut runtime = ClaudeRuntime::fixture();
     ready_0101(&mut runtime);

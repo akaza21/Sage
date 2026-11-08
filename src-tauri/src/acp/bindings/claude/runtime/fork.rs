@@ -149,6 +149,9 @@ impl ClaudeRuntime {
 
     /// A committed fork is closed in this runtime only when the adapter
     /// advertises `session/close`; the fork Chat resumes it in its own runtime.
+    /// The gate is that capability, not the adapter version: 0.76.0 also
+    /// advertises close, and its "Session not found" answer for a fork it
+    /// never loaded is expected and still releases the fork.
     fn closes_committed_forks(&self) -> bool {
         self.capabilities
             .as_ref()
