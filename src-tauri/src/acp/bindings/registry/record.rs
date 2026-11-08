@@ -232,16 +232,7 @@ impl BindingRecord {
                 Claude::CandidateInvalid => HarnessUnavailableReason::CandidateInvalid,
                 Claude::Drift => HarnessUnavailableReason::DriftDetected,
             }),
-            Admission::ClaudeSdk(admission) => admission.unavailable().map(|reason| {
-                use crate::acp::bindings::claude::sdk::ClaudeSdkAdmissionUnavailable as Sdk;
-                match reason {
-                    Sdk::DiscoveryPending => HarnessUnavailableReason::AdmissionIncomplete,
-                    Sdk::Absent | Sdk::VersionUnsupported | Sdk::Unreadable => {
-                        HarnessUnavailableReason::CandidateInvalid
-                    }
-                    Sdk::Drift => HarnessUnavailableReason::DriftDetected,
-                }
-            }),
+            Admission::ClaudeSdk(admission) => admission.unavailable().map(Into::into),
             Admission::OpenCode(admission) => admission.unavailable().map(|reason| match reason {
                 OpenCode::DiscoveryPending => HarnessUnavailableReason::AdmissionIncomplete,
                 OpenCode::Absent => HarnessUnavailableReason::CandidateInvalid,

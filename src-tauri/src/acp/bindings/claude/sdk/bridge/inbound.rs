@@ -190,23 +190,16 @@ impl SdkBridge {
     /// Claude Code changes its own mode too, for example when an approval
     /// applies a `setMode` suggestion; follow it so the picker stays true.
     fn status(&mut self, sdk: &Value, inbound: &mut Inbound) {
-        let Some(mode) = sdk
-            .get("permissionMode")
-            .and_then(Value::as_str)
-            .filter(|_| sdk.get("subtype").and_then(Value::as_str) == Some("status"))
-        else {
+        let mode = sdk.get("permissionMode").and_then(Value::as_str);
+        let settings = self.settings.as_mut();
+        let (Some(mode), Some(settings)) = (mode, settings) else {
             return;
         };
-        let Some(settings) = self
-            .settings
-            .as_mut()
-            .filter(|settings| settings.has_mode(mode) && settings.mode != mode)
-        else {
-            return;
-        };
-        settings.mode = mode.to_owned();
-        let update = json!({"sessionUpdate": "current_mode_update", "currentModeId": mode});
-        inbound.acp.push(self.update(update));
+        if sdk["subtype"] == "status" && settings.has_mode(mode) && settings.mode != mode {
+            settings.mode = mode.to_owned();
+            let update = json!({"sessionUpdate": "current_mode_update", "currentModeId": mode});
+            inbound.acp.push(self.update(update));
+        }
     }
 
     fn stream_event(&mut self, event: &Value, inbound: &mut Inbound) {

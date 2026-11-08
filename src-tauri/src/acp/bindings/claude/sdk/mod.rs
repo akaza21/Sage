@@ -11,7 +11,7 @@ mod runtime;
 mod tools;
 
 pub(crate) use admission::{
-    AdmittedClaudeSdkBinding, CLAUDE_SDK_BINDING_ID, ClaudeSdkAdmissionUnavailable,
-    ClaudeSdkBindingRegistration, launch_environment,
+    AdmittedClaudeSdkBinding, CLAUDE_SDK_BINDING_ID, ClaudeSdkBindingRegistration,
+    launch_environment,
 };
 pub(crate) use runtime::ClaudeSdkRuntimeFactory;

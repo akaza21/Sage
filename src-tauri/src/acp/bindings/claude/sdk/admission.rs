@@ -20,7 +20,7 @@ use crate::{
             RequiredContainment, TreeLimits,
         },
     },
-    domain::HarnessCharacterisation,
+    domain::{HarnessCharacterisation, HarnessUnavailableReason},
     harness_discovery::InstalledHarness,
 };
 
@@ -57,6 +57,17 @@ pub(crate) enum ClaudeSdkAdmissionUnavailable {
     Unreadable,
     #[error("the Claude Code executable changed after admission")]
     Drift,
+}
+
+impl From<ClaudeSdkAdmissionUnavailable> for HarnessUnavailableReason {
+    fn from(reason: ClaudeSdkAdmissionUnavailable) -> Self {
+        use ClaudeSdkAdmissionUnavailable as Sdk;
+        match reason {
+            Sdk::DiscoveryPending => Self::AdmissionIncomplete,
+            Sdk::Absent | Sdk::VersionUnsupported | Sdk::Unreadable => Self::CandidateInvalid,
+            Sdk::Drift => Self::DriftDetected,
+        }
+    }
 }
 
 #[derive(Debug)]
