@@ -187,19 +187,42 @@ pub(super) fn run(scenario: Scenario) -> Option<Vec<Fact>> {
         .unwrap();
     answer(&mut runtime, prompt, json!({"turn":{"id":"turn-1"}}));
     let (frames, status) = frames(scenario);
-    let mut events = Vec::new();
+    let mut facts = Vec::new();
     for value in std::iter::once(json!({
         "method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}
     }))
     .chain(frames)
-    .chain([json!({
-        "method":"turn/completed",
-        "params":{"threadId":"thread-1","turn":{"id":"turn-1","status":status,"items":[]}}
-    })]) {
-        let batch = runtime
-            .ingest(&frame(&value), &Mapper::repo())
-            .unwrap_or_else(|error| panic!("codex refused {value}: {error:?}"));
-        events.extend(batch.events().to_vec());
+    {
+        facts.extend(ingest(&mut runtime, value));
     }
-    Some(events.into_iter().filter_map(super::adapter_fact).collect())
+    if scenario == Scenario::CancelledWithRunningTool {
+        // A user stop: Sage records the cancel intent and writes
+        // `turn/interrupt`; the app server acknowledges it and then ends the
+        // turn as interrupted.
+        let interrupt = runtime.command(AdapterCommand::Cancel).unwrap();
+        let request: Value = serde_json::from_slice(interrupt.frame().payload()).unwrap();
+        assert_eq!(request["method"], "turn/interrupt");
+        facts.push(Fact::UserCancel);
+        facts.extend(
+            answer(&mut runtime, interrupt, json!({}))
+                .into_iter()
+                .filter_map(super::adapter_fact),
+        );
+    }
+    facts.extend(ingest(
+        &mut runtime,
+        json!({
+            "method":"turn/completed",
+            "params":{"threadId":"thread-1","turn":{"id":"turn-1","status":status,"items":[]}}
+        }),
+    ));
+    Some(facts)
+}
+
+fn ingest(runtime: &mut CodexRuntime, value: Value) -> Vec<Fact> {
+    let batch = runtime
+        .ingest(&frame(&value), &Mapper::repo())
+        .unwrap_or_else(|error| panic!("codex refused {value}: {error:?}"));
+    let events = batch.events().iter().cloned();
+    events.filter_map(super::adapter_fact).collect()
 }

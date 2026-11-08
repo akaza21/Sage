@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use super::{FILE, Fact, Mapper, NEW_TEXT, OLD_TEXT, ROOT, Scenario, frame};
 use crate::acp::{
     bindings::{
-        adapter::{AdapterCommand, AdapterEgress, AdapterEvent, EgressResolution, HarnessAdapter},
+        adapter::{AdapterBatch, AdapterCommand, AdapterEgress, EgressResolution, HarnessAdapter},
         pi::PiRuntime,
     },
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
@@ -18,7 +18,7 @@ use crate::settings_store::SessionAccessMode;
 struct Turn {
     runtime: PiRuntime,
     mapper: Mapper,
-    events: Vec<AdapterEvent>,
+    facts: Vec<Fact>,
 }
 
 impl Turn {
@@ -35,7 +35,7 @@ impl Turn {
         let mut turn = Self {
             runtime,
             mapper,
-            events: Vec::new(),
+            facts: Vec::new(),
         };
         let state = turn.runtime.command(AdapterCommand::Initialize).unwrap();
         let models = turn.reply(
@@ -63,7 +63,7 @@ impl Turn {
             })
             .unwrap();
         turn.reply(prompt, Value::Null);
-        turn.events.clear();
+        turn.facts.clear();
         turn.send(json!({"type":"agent_start"}));
         turn
     }
@@ -90,7 +90,7 @@ impl Turn {
                 &self.mapper,
             )
             .unwrap();
-        self.events.extend(batch.events().to_vec());
+        self.record(&batch);
         let mut egress = batch.into_parts().1.into_iter();
         egress.next()
     }
@@ -100,7 +100,7 @@ impl Turn {
             .runtime
             .ingest(&frame(&value), &self.mapper)
             .unwrap_or_else(|error| panic!("pi refused {value}: {error:?}"));
-        self.events.extend(batch.events().to_vec());
+        self.record(&batch);
         for egress in batch.into_parts().1 {
             self.deliver(egress);
         }
@@ -112,10 +112,12 @@ impl Turn {
             "stopReason":stop,"usage":{"input":2,"output":1}}],"willRetry":false}),
         );
         self.send(json!({"type":"agent_settled"}));
-        self.events
-            .into_iter()
-            .filter_map(super::adapter_fact)
-            .collect()
+        self.facts
+    }
+
+    fn record(&mut self, batch: &AdapterBatch) {
+        let facts = batch.events().iter().cloned();
+        self.facts.extend(facts.filter_map(super::adapter_fact));
     }
 }
 
@@ -170,7 +172,10 @@ pub(super) fn run(scenario: Scenario) -> Option<Vec<Fact>> {
             let mut turn = Turn::new(Mapper::repo(), None);
             tool(&mut turn, "read", read, None);
             let abort = turn.runtime.command(AdapterCommand::Cancel).unwrap();
-            turn.deliver(abort);
+            // A user stop: Sage records the cancel intent, writes Pi's
+            // `abort`, Pi accepts it and ends the run as aborted.
+            turn.facts.push(Fact::UserCancel);
+            assert!(turn.reply(abort, Value::Null).is_none());
             turn.settle("aborted")
         }
         // Sage's Pi bridge refuses every shell command, and Pi has no plan.
@@ -182,6 +187,12 @@ fn edit() -> Vec<Fact> {
     let root = std::env::temp_dir().join(format!("sage-render-parity-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(root.join("src")).unwrap();
     std::fs::write(root.join("src/lib.rs"), OLD_TEXT).unwrap();
+    // Pi runs in the project root Sage launches it in, which is always the
+    // canonical path (`ProjectRootAuthority`), so the paths Pi reports are
+    // under it. A temp dir is not canonical everywhere: on Windows it can be
+    // an 8.3 short name or lack the verbatim prefix, and the bridge would
+    // refuse the edit as outside the workspace.
+    let root = root.canonicalize().unwrap();
     let file = root.join("src/lib.rs").to_str().unwrap().to_owned();
     let mut turn = Turn::new(Mapper(root.to_str().unwrap().to_owned()), Some(&root));
     let args = json!({"path":file,"oldText":"41","newText":"42"});

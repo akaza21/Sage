@@ -130,6 +130,18 @@ async function rendered(projection: Projection): Promise<string[]> {
   return lines;
 }
 
+/**
+ * RFC 6901 reference tokens, decoded as the Rust suite's `pointer_mut` does:
+ * `~1` is `/` and `~0` is `~`, in that order.
+ */
+function pointerTokens(pointer: string): string[] {
+  if (!pointer.startsWith("/")) throw new Error(`${pointer} is not a pointer`);
+  return pointer
+    .slice(1)
+    .split("/")
+    .map((token) => token.replaceAll("~1", "/").replaceAll("~0", "~"));
+}
+
 /** The canonical projection with a harness's known differences in place. */
 function harnessProjection(
   scenario: string,
@@ -141,12 +153,15 @@ function harnessProjection(
   );
   const projection = structuredClone(canonical) as Record<string, unknown>;
   for (const [pointer, value] of Object.entries(gap?.differs ?? {})) {
-    const path = pointer.split("/").slice(1);
+    const path = pointerTokens(pointer);
     const field = path.pop()!;
-    const parent = path.reduce<Record<string, unknown>>(
-      (node, key) => node[key] as Record<string, unknown>,
+    const parent = path.reduce<Record<string, unknown> | undefined>(
+      (node, key) => node?.[key] as Record<string, unknown> | undefined,
       projection,
     );
+    if (parent === null || typeof parent !== "object" || !(field in parent)) {
+      throw new Error(`${pointer} is not in the canonical projection`);
+    }
     parent[field] = value;
   }
   return projection as Projection;
@@ -158,6 +173,16 @@ const scenarios = Object.entries(parity.scenarios) as [
 ][];
 
 describe("harness render parity", () => {
+  it("decodes gap pointers as RFC 6901 tokens", () => {
+    expect(pointerTokens("/items/0/payload")).toEqual([
+      "items",
+      "0",
+      "payload",
+    ]);
+    expect(pointerTokens("/a~1b/c~0d/~01")).toEqual(["a/b", "c~d", "~1"]);
+    expect(pointerTokens("/")).toEqual([""]);
+  });
+
   it.each(scenarios)(
     "%s renders through the one chat view",
     async (_name, scenario) => {

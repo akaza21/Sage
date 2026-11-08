@@ -404,4 +404,4 @@ fn contract(_: ContractError) -> StoreError {
 }
 
 #[cfg(test)]
-pub(super) mod tests;
+mod tests;
