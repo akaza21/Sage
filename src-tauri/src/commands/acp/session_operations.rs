@@ -1,6 +1,12 @@
 use super::*;
 use crate::acp::attached_context::effective_prompt;
 
+// The over-budget message names the budget as static text.
+const _: () = assert!(
+    crate::acp::attached_context::files::DISPATCH_BYTES == 120 * 1024,
+    "update the dispatch budget in the prompt-too-large message"
+);
+
 mod lifecycle;
 mod prompt_images;
 pub(crate) use lifecycle::{close_acp_session_inner, end_acp_session_inner};

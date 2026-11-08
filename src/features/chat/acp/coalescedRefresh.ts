@@ -23,9 +23,18 @@ export interface CoalescedRefresh {
  * timeout: a hung read keeps holding its native page-read lease, so freeing
  * the slot here would only turn the stall into capacity errors.
  */
+export interface CoalescedRefreshOptions {
+  /** Receives an error `load` throws before it returns a promise. Such a
+   * throw can start from the debounce timer or a rerun, where no caller
+   * would see it, so it is always reported here instead of rethrown. */
+  onThrow: (error: unknown) => void;
+  /** Loads allowed in flight at once. */
+  maxInFlight?: number;
+}
+
 export function coalescedRefresh(
   load: () => Promise<unknown>,
-  maxInFlight = 1,
+  { onThrow, maxInFlight = 1 }: CoalescedRefreshOptions,
 ): CoalescedRefresh {
   let disposed = false;
   let inFlight = 0;
@@ -53,9 +62,10 @@ export function coalescedRefresh(
       pending = load();
     } catch (error) {
       // A load that throws before it returns still frees its slot, so later
-      // refreshes are not locked out; the caller sees the error as before.
+      // refreshes are not locked out.
       settle();
-      throw error;
+      onThrow(error);
+      return;
     }
     void pending.then(settle, settle);
   };

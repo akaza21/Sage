@@ -1,7 +1,10 @@
 use crate::acp::{contract::RequiredText, intent::ExternalId, limits::LIMITS};
 
 use super::{AdapterError, CodexAdapter};
-use crate::acp::intent::NormalizedPayload;
+use crate::acp::intent::{NormalizedPayload, session_event::SessionScopedEvent};
+
+/// Thread-less notices held before a thread is bound.
+pub(crate) const PENDING_NOTICES_MAX: usize = 4;
 
 impl CodexAdapter {
     pub(crate) fn learn_bound_child(&mut self, child: &str) {
@@ -104,6 +107,19 @@ impl CodexAdapter {
         }
         self.pending_browser_mcp_failure_threads
             .push(thread.to_owned());
+    }
+
+    /// Holds a thread-less notice until a thread is bound; the oldest is
+    /// dropped at the cap.
+    pub(crate) fn buffer_session_notice(&mut self, notice: SessionScopedEvent) {
+        if self.pending_session_notices.len() == PENDING_NOTICES_MAX {
+            self.pending_session_notices.remove(0);
+        }
+        self.pending_session_notices.push(notice);
+    }
+
+    pub(crate) fn take_session_notices(&mut self) -> Vec<SessionScopedEvent> {
+        std::mem::take(&mut self.pending_session_notices)
     }
 
     pub(crate) fn take_browser_mcp_failure_for_thread(&mut self, thread: &str) -> bool {

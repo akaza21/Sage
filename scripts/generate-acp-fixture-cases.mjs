@@ -4,6 +4,7 @@ import {
   piIdleConfigJourney,
 } from "./acp-native-pi-cases.mjs";
 import { codexUserInputJourneys } from "./acp-native-codex-user-input-cases.mjs";
+import { codexNoticeJourneys } from "./acp-native-codex-notice-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -131,6 +132,51 @@ const rows = document.cases.map((fixtureCase) => {
   return `    FrozenCase { id: ${JSON.stringify(fixtureCase.id)}, steps_json: r#"${steps}"#, owner: FrozenOwner::${owner}, phase: FrozenPhase::${phase}, #[cfg(test)] oracle_json: r#"${oracle}"# },`;
 });
 
+/**
+ * Opens on a long transcript, then streams slowly, so a manual check can
+ * scroll back for earlier history while a reply is still arriving. The first
+ * prompt writes the transcript at once (more than one history page); the
+ * second streams a word every 0.6 s for about half a minute, which keeps the
+ * pauses inside the fixture's 30 s delay budget.
+ */
+function longTranscriptJourney() {
+  const words = Array.from(
+    { length: 50 },
+    (_, index) => `word ${index + 1} of the streamed reply. `,
+  );
+  return {
+    id: "codex-long-transcript-stream",
+    steps: [
+      { op: "awaitClient", kind: "codexInitialize" },
+      { op: "emitKnownFrame", shape: "codexInitializeResult0146" },
+      { op: "awaitClient", kind: "codexStart" },
+      { op: "emitKnownFrame", shape: "codexThreadResult" },
+      { op: "awaitClient", kind: "codexGoalGetWithOptionalModelList" },
+      { op: "emitKnownFrame", shape: "codexGoalMethodNotFound" },
+      { op: "awaitClient", kind: "codexTurnStart" },
+      { op: "emitKnownFrame", shape: "codexTurnResult" },
+      { op: "emitKnownFrame", shape: "codexStarted" },
+      { op: "emitKnownFrame", shape: "codexTranscript", count: 400 },
+      { op: "emitKnownFrame", shape: "codexCompleted" },
+      { op: "awaitClient", kind: "codexTurnStart" },
+      { op: "emitKnownFrame", shape: "codexTurnResult" },
+      { op: "emitKnownFrame", shape: "codexStarted" },
+      ...words.flatMap((delta, index) => [
+        ...(index === 0 ? [] : [{ op: "pauseMs", ms: 600 }]),
+        {
+          op: "emitKnownFrame",
+          shape: "codexNative",
+          method: "item/agentMessage/delta",
+          params: { itemId: "fixture-streamed-reply", delta },
+        },
+      ]),
+      { op: "emitKnownFrame", shape: "codexCompleted" },
+      { op: "awaitClient", kind: "codexUnsubscribe" },
+      { op: "emitKnownFrame", shape: "codexAck" },
+    ],
+  };
+}
+
 const journeyCases = [
   {
     id: "codex-browse-preview",
@@ -182,9 +228,11 @@ const journeyCases = [
     ],
   },
 ];
+journeyCases.push(longTranscriptJourney());
 journeyCases.push(...nativeCases());
 journeyCases.push(piIdleConfigJourney(), ...piBridgeJourneys());
 journeyCases.push(...codexUserInputJourneys());
+journeyCases.push(...codexNoticeJourneys());
 if (privacyFailuresForRecords(journeyCases, false).length)
   throw new Error("native fixture privacy violation");
 const journeyIds = new Set();
