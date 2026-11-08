@@ -351,13 +351,11 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         &self,
         external_request_id: &ExternalId,
     ) -> Result<SageServerRequestId, AdapterPumpError> {
-        let session_digest = Sha256::digest(self.intent.session_id.as_str().as_bytes());
-        let external_digest = Sha256::digest(external_request_id.as_str().as_bytes());
-        SageServerRequestId::parse(format!(
-            "permission:{session_digest:x}:{}:{external_digest:x}",
-            self.intent.runtime_epoch.get()
-        ))
-        .map_err(|_| AdapterPumpError::Intent)
+        scoped_permission_id(
+            &self.intent.session_id,
+            self.intent.runtime_epoch,
+            external_request_id,
+        )
     }
 
     pub(super) fn latch_frame<T>(&mut self) -> Result<T, AdapterPumpError> {
@@ -365,4 +363,19 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         self.teardown = true;
         Err(AdapterPumpError::Frame)
     }
+}
+
+/// The Sage id of a harness permission request, scoped to its session epoch.
+pub(super) fn scoped_permission_id(
+    session_id: &SageAgentSessionId,
+    runtime_epoch: RuntimeEpoch,
+    external_request_id: &ExternalId,
+) -> Result<SageServerRequestId, AdapterPumpError> {
+    let session_digest = Sha256::digest(session_id.as_str().as_bytes());
+    let external_digest = Sha256::digest(external_request_id.as_str().as_bytes());
+    SageServerRequestId::parse(format!(
+        "permission:{session_digest:x}:{}:{external_digest:x}",
+        runtime_epoch.get()
+    ))
+    .map_err(|_| AdapterPumpError::Intent)
 }

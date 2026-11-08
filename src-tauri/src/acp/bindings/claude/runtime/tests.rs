@@ -810,6 +810,18 @@ fn notification_delivery_unknown_poison_prevents_automatic_reissue() {
     ));
 }
 
+fn denial_turn() -> crate::acp::bindings::adapter::AdapterIdentity {
+    let runtime = ClaudeRuntime::fixture();
+    identity(
+        runtime.binding_digest,
+        runtime.runtime_epoch,
+        &runtime.session_id,
+        ExternalId::new("externalSessionId", "claude-session-1").expect("session"),
+        None,
+        None,
+    )
+}
+
 #[test]
 fn denial_ledger_is_exactly_bounded_and_prunes_only_oldest_written_tombstone() {
     let limit = LIMITS.queues.server_requests_per_session as usize;
@@ -819,6 +831,7 @@ fn denial_ledger_is_exactly_bounded_and_prunes_only_oldest_written_tombstone() {
         blocked
             .reserve_denial(
                 &id,
+                denial_turn(),
                 id.clone(),
                 Value::String(id.clone()),
                 Some("allow".into()),
@@ -830,6 +843,7 @@ fn denial_ledger_is_exactly_bounded_and_prunes_only_oldest_written_tombstone() {
     assert_eq!(
         blocked.reserve_denial(
             "limit-plus-one",
+            denial_turn(),
             "limit-plus-one".into(),
             Value::String("limit-plus-one".into()),
             Some("allow".into()),
@@ -844,6 +858,7 @@ fn denial_ledger_is_exactly_bounded_and_prunes_only_oldest_written_tombstone() {
         pruned
             .reserve_denial(
                 &id,
+                denial_turn(),
                 id.clone(),
                 Value::String(id.clone()),
                 Some("allow".into()),
@@ -855,6 +870,7 @@ fn denial_ledger_is_exactly_bounded_and_prunes_only_oldest_written_tombstone() {
     pruned
         .reserve_denial(
             "replacement",
+            denial_turn(),
             "replacement".into(),
             Value::String("replacement".into()),
             Some("allow".into()),

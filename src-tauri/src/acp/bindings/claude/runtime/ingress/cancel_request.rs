@@ -36,20 +36,28 @@ impl ClaudeRuntime {
         if record.state != DenialState::Pending {
             return AdapterBatch::new(vec![SharedEvent::IgnoredLate], Vec::new());
         }
+        let external_request_id = ExternalId::new("permissionRequest", request_id.clone())
+            .map_err(|_| AdapterRuntimeError::Frame)?;
         let Some(active) = self.active.as_ref().filter(|active| active.turn.is_some()) else {
-            // The Turn already ended, so there is no Turn to settle the card
-            // on and the adapter no longer waits for an answer. The record is
-            // settled here, so a later answer from the user is a typed miss
-            // rather than a card that can never be settled.
+            // The Turn already ended and the adapter no longer waits for an
+            // answer. The request is settled as cancelled on the Turn it
+            // opened in, so its durable row is terminal, and the record is
+            // dropped, so a later answer from the user is a typed miss.
+            let turn_id = record.turn.clone();
             let request_id = request_id.clone();
             self.denials.remove(&request_id);
-            return AdapterBatch::new(vec![SharedEvent::IgnoredLate], Vec::new());
+            return AdapterBatch::new(
+                vec![SharedEvent::PermissionResolved {
+                    turn_id,
+                    external_request_id,
+                    state: crate::acp::lifecycle::ServerRequestState::Cancelled,
+                }],
+                Vec::new(),
+            );
         };
         let server_request = crate::acp::contract::SageServerRequestId::parse(request_id.as_str())
             .map_err(|_| AdapterRuntimeError::Frame)?;
         let answer = cancelled_permission(&server_request, &record.wire_id)?;
-        let external_request_id = ExternalId::new("permissionRequest", request_id.clone())
-            .map_err(|_| AdapterRuntimeError::Frame)?;
         AdapterBatch::new(
             vec![SharedEvent::PermissionResolved {
                 turn_id: self.turn_identity(active)?,

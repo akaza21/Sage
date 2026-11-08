@@ -120,6 +120,9 @@ enum DenialState {
 
 struct DenialRecord {
     state: DenialState,
+    /// The Turn the request opened in, so the harness can still settle the
+    /// request after that Turn ended.
+    turn: crate::acp::bindings::adapter::AdapterIdentity,
     sequence: u64,
     translator_id: String,
     wire_id: Value,

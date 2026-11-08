@@ -116,6 +116,8 @@ fn a_cancel_request_after_the_turn_ended_still_closes_the_permission() {
     let mut runtime = ClaudeRuntime::fixture();
     ready_0101(&mut runtime);
     let (prompt_id, request) = open_permission(&mut runtime);
+    let opened_in = runtime.denials[request.as_str()].turn.clone();
+    assert!(opened_in.turn_id.is_some());
     // The prompt resolves before the adapter names the abandoned request.
     runtime
         .ingest(
@@ -126,7 +128,20 @@ fn a_cancel_request_after_the_turn_ended_still_closes_the_permission() {
     let batch = runtime
         .ingest(&frame(derived("cancelPermissionRequest")), &Mapper)
         .unwrap();
-    assert!(matches!(batch.events(), [SharedEvent::IgnoredLate]));
+    // It is settled as cancelled on the Turn it opened in.
+    let [
+        SharedEvent::PermissionResolved {
+            turn_id,
+            external_request_id,
+            state,
+        },
+    ] = batch.events()
+    else {
+        panic!("the request is settled on its Turn")
+    };
+    assert_eq!(turn_id, &opened_in);
+    assert_eq!(external_request_id.as_str(), request.as_str());
+    assert_eq!(*state, ServerRequestState::Cancelled);
     assert!(
         batch.egress().is_empty(),
         "the adapter no longer waits for an answer"

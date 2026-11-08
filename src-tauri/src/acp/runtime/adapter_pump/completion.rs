@@ -1,6 +1,9 @@
 use super::*;
 use crate::acp::intent::session_event::PendingSessionEvents;
 
+#[path = "completion/idle_permission.rs"]
+mod idle_permission;
+
 pub(crate) struct CompletedPumpParts<A, J, R> {
     pub(super) adapter: A,
     pub(super) journal: J,
@@ -140,6 +143,20 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                                         .await
                                         .map_err(AdapterPumpError::Journal)?;
                                     self.publish_child_epoch(&receipt);
+                                }
+                                AdapterEvent::PermissionResolved {
+                                    turn_id,
+                                    external_request_id,
+                                    state,
+                                } => {
+                                    self.commit_idle_permission_resolution(
+                                        turn_id,
+                                        external_request_id,
+                                        state,
+                                        current.len(),
+                                        now_millis,
+                                    )
+                                    .await?;
                                 }
                                 AdapterEvent::Session { id, event } => {
                                     // A foreign identity is dropped, as the Turn pump drops it.

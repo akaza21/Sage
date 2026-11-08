@@ -84,9 +84,14 @@ impl ClaudeRuntime {
             }
         }
         let request_event = request_event.ok_or(AdapterRuntimeError::MandatoryDenyTeardown)?;
+        let SharedEvent::PermissionRequest { turn_id: turn, .. } = &request_event else {
+            return Err(AdapterRuntimeError::MandatoryDenyTeardown);
+        };
+        let turn = turn.clone();
         published.push(request_event);
         self.reserve_denial(
             request_id.as_str(),
+            turn,
             translator_id,
             wire_id,
             allow_once_option_id,
@@ -122,6 +127,7 @@ impl ClaudeRuntime {
     pub(in crate::acp::bindings::claude::runtime) fn reserve_denial(
         &mut self,
         request_id: &str,
+        turn: crate::acp::bindings::adapter::AdapterIdentity,
         translator_id: String,
         wire_id: Value,
         allow_once_option_id: Option<String>,
@@ -146,6 +152,7 @@ impl ClaudeRuntime {
             request_id.to_owned(),
             DenialRecord {
                 state: DenialState::Pending,
+                turn,
                 sequence,
                 translator_id,
                 wire_id,
