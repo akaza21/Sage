@@ -23,7 +23,7 @@ mod permission;
 /// Bounds on per-turn bookkeeping; the inner session caps pending requests.
 const MAX_PENDING: usize = 32;
 /// Approval cards the session holds until the user's answer is written:
-/// open, withdrawn by Claude Code, or answered but not yet delivered.
+/// open, or answered but not yet delivered.
 const OPEN_APPROVALS: usize = crate::acp::limits::LIMITS
     .queues
     .server_requests_per_session as usize;
@@ -48,6 +48,9 @@ pub(super) enum BridgeError {
 pub(super) struct Inbound {
     pub(super) acp: Vec<Value>,
     pub(super) replies: Vec<Value>,
+    /// Approval cards to cancel, by wire id, before the ACP frames: Claude
+    /// Code no longer waits on them.
+    pub(super) withdrawn: Vec<u64>,
 }
 
 #[derive(Debug)]
@@ -85,8 +88,6 @@ pub(super) struct SdkBridge {
     interrupted: bool,
     auth_failed: bool,
     permissions: BTreeMap<u64, Permission>,
-    /// Withdrawn or outlived requests: wire id to Claude Code request id.
-    settled: BTreeMap<u64, String>,
     /// Claude Code request ids whose answer is not yet delivered.
     answering: BTreeSet<String>,
     next_permission: u64,
@@ -117,7 +118,6 @@ impl SdkBridge {
             interrupted: false,
             auth_failed: false,
             permissions: BTreeMap::new(),
-            settled: BTreeMap::new(),
             answering: BTreeSet::new(),
             next_permission: 0,
             tools: BTreeMap::new(),

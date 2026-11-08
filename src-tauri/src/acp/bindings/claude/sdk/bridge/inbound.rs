@@ -31,7 +31,7 @@ impl SdkBridge {
             Some("control_request") => self.control_request(&sdk, &mut inbound)?,
             Some("control_cancel_request") => {
                 let request_id = sdk.get("request_id").and_then(Value::as_str);
-                self.withdraw(request_id.ok_or(BridgeError::Frame)?);
+                self.withdraw(request_id.ok_or(BridgeError::Frame)?, &mut inbound);
             }
             // Results still finish the rows a subagent's approvals opened.
             Some("user") => self.tool_results(&sdk["message"], &mut inbound),
@@ -241,8 +241,9 @@ impl SdkBridge {
                 .push(self.update(json!({"sessionUpdate": "plan", "entries": entries})));
             return;
         }
-        // A row is shown only while it can be finished.
-        if self.tools.len() >= MAX_TRACKED_TOOLS {
+        // A row is shown only while it can be finished, and once: an
+        // approval may have opened it already.
+        if self.tools.len() >= MAX_TRACKED_TOOLS || self.tools.contains_key(id) {
             return;
         }
         self.tools.insert(id.to_owned(), name.to_owned());
@@ -289,8 +290,8 @@ impl SdkBridge {
     }
 
     /// `result` completes the running prompt, with the context meter first.
-    /// Tool rows Claude Code never reported on end as failed, and open
-    /// approvals are settled.
+    /// Open approvals are cancelled, and tool rows Claude Code never
+    /// reported on end as failed.
     fn result(&mut self, sdk: &Value, inbound: &mut Inbound) {
         let Some(id) = self.prompt.take() else {
             return;
@@ -301,7 +302,7 @@ impl SdkBridge {
                 "_meta": {"claudeCode": {"toolName": name}},
             })));
         }
-        self.settle_open();
+        self.withdraw_open(inbound);
         let usage = &sdk["usage"];
         let count = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
         let (input, output) = (count("input_tokens"), count("output_tokens"));

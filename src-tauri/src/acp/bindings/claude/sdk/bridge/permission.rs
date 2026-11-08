@@ -2,10 +2,9 @@
 //! requests, and the user's decisions back as control responses.
 //!
 //! The session holds a card for every approval until the user's answer is
-//! written, including requests Claude Code withdrew (`control_cancel_request`)
-//! or a turn outlived; a late decision on those still yields the one frame
-//! its egress expects. Requests beyond the session's card limit are declined
-//! here, before the session sees them.
+//! written. A request Claude Code withdraws (`control_cancel_request`) or a
+//! turn outlives has its card cancelled. Requests outside a turn or beyond
+//! the session's card limit are declined here, before the session sees them.
 
 use serde_json::{Value, json};
 
@@ -17,6 +16,7 @@ const ALLOW_ALWAYS: &str = "allow_always";
 const REJECT: &str = "reject";
 const DECLINED: &str = "The user declined this tool use.";
 const TOO_MANY: &str = "Too many approvals are already waiting for the user.";
+const NO_TURN: &str = "The user's turn has ended, so no one can approve this now.";
 /// Claude's multiple-choice questions have no Sage card yet; declining with
 /// this reason makes Claude ask in its reply instead.
 const QUESTIONS_UNSUPPORTED: &str = "Sage cannot show multiple-choice questions yet. \
@@ -39,7 +39,11 @@ impl SdkBridge {
                 .push(decision(request_id, deny(QUESTIONS_UNSUPPORTED)));
             return Ok(());
         }
-        if self.permissions.len() + self.settled.len() + self.answering.len() >= OPEN_APPROVALS {
+        if self.prompt.is_none() {
+            inbound.replies.push(decision(request_id, deny(NO_TURN)));
+            return Ok(());
+        }
+        if self.permissions.len() + self.answering.len() >= OPEN_APPROVALS {
             inbound.replies.push(decision(request_id, deny(TOO_MANY)));
             return Ok(());
         }
@@ -94,47 +98,36 @@ impl SdkBridge {
         Ok(())
     }
 
-    /// Claude Code withdrew a request; its card may still be answered.
-    pub(super) fn withdraw(&mut self, request_id: &str) {
-        let withdrawn = self
-            .permissions
-            .iter()
-            .find(|(_, permission)| permission.request_id == request_id)
-            .map(|(wire, _)| *wire);
-        if let Some(wire) = withdrawn {
-            self.settle([wire]);
-        }
-    }
-
-    /// The turn ended: requests still open will not be waited on.
-    pub(super) fn settle_open(&mut self) {
-        let open: Vec<u64> = self.permissions.keys().copied().collect();
-        self.settle(open);
-    }
-
-    fn settle(&mut self, wires: impl IntoIterator<Item = u64>) {
-        for wire in wires {
-            if let Some(permission) = self.permissions.remove(&wire) {
-                self.settled.insert(wire, permission.request_id);
+    /// Claude Code withdrew a request: its card is cancelled.
+    pub(super) fn withdraw(&mut self, request_id: &str, inbound: &mut Inbound) {
+        self.permissions.retain(|wire, permission| {
+            let keep = permission.request_id != request_id;
+            if !keep {
+                inbound.withdrawn.push(*wire);
             }
-        }
+            keep
+        });
+    }
+
+    /// The turn ended: cards still open are cancelled.
+    pub(super) fn withdraw_open(&mut self, inbound: &mut Inbound) {
+        inbound
+            .withdrawn
+            .extend(std::mem::take(&mut self.permissions).into_keys());
     }
 
     /// A decision on a `can_use_tool` request. Allow keeps the tool's input;
-    /// allow-always also adds Claude Code's suggested permission rules. A
-    /// decision on a settled request is still sent, as a denial Claude Code
-    /// ignores.
+    /// allow-always also adds Claude Code's suggested permission rules.
     pub(super) fn permission_reply(
         &mut self,
         id: &Value,
         result: Option<&Value>,
     ) -> Result<Value, BridgeError> {
         let wire = id.as_u64().ok_or(BridgeError::Unsupported)?;
-        let Some(permission) = self.permissions.remove(&wire) else {
-            let request_id = self.settled.remove(&wire).ok_or(BridgeError::Unsupported)?;
-            self.answering.insert(request_id.clone());
-            return Ok(decision(&request_id, deny(DECLINED)));
-        };
+        let permission = self
+            .permissions
+            .remove(&wire)
+            .ok_or(BridgeError::Unsupported)?;
         let outcome = result
             .and_then(|result| result.get("outcome"))
             .ok_or(BridgeError::Unsupported)?;

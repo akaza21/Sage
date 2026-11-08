@@ -317,7 +317,7 @@ fn a_mode_claude_code_switches_to_itself_reaches_the_picker_once() {
 }
 
 #[test]
-fn a_withdrawn_or_outlived_approval_frees_its_slot_and_still_answers() {
+fn withdrawn_and_outlived_approvals_cancel_their_cards() {
     let mut bridge = initialized();
     prompt(&mut bridge, 3);
     let ask = |bridge: &mut SdkBridge, request: &str| {
@@ -326,28 +326,38 @@ fn a_withdrawn_or_outlived_approval_frees_its_slot_and_still_answers() {
             asked.acp[0]["params"]["update"]["sessionUpdate"],
             "tool_call"
         );
-        asked.acp[1]["id"].clone()
+        asked.acp[1]["id"].as_u64().unwrap()
     };
     let withdrawn = ask(&mut bridge, "r1");
     let outlived = ask(&mut bridge, "r2");
-    bridge
+    let cancel = bridge
         .inbound(json!({"type":"control_cancel_request","request_id":"r1"}))
         .unwrap();
-    bridge
+    assert_eq!(cancel.withdrawn, [withdrawn]);
+    let ended = bridge
         .inbound(json!({"type":"result","subtype":"success","is_error":false}))
         .unwrap();
+    assert_eq!(ended.withdrawn, [outlived]);
     assert!(bridge.permissions.is_empty());
-    for (id, request) in [(withdrawn, "r1"), (outlived, "r2")] {
-        let late = bridge
-            .outbound(&json!({"id":id,"result":{"outcome":{"outcome":"selected","optionId":"allow_once"}}}))
-            .unwrap();
-        assert_eq!(late["response"]["request_id"], request);
-        assert_eq!(late["response"]["response"]["behavior"], "deny");
-        let sent = SdkBridge::sent(&late).unwrap();
-        assert!(!bridge.answering.is_empty());
-        bridge.delivered(&sent);
-    }
-    assert!(bridge.answering.is_empty() && bridge.settled.is_empty());
+    let late = bridge.outbound(
+        &json!({"id":outlived,"result":{"outcome":{"outcome":"selected","optionId":"allow_once"}}}),
+    );
+    assert_eq!(late, Err(BridgeError::Unsupported));
+    let after = bridge.inbound(json!({"type":"control_request","request_id":"r3","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}})).unwrap();
+    assert!(after.acp.is_empty(), "no turn is running");
+    assert_eq!(after.replies[0]["response"]["response"]["behavior"], "deny");
+}
+
+#[test]
+fn an_approval_before_its_tool_use_shows_one_row() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    bridge.inbound(json!({"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool","tool_name":"Bash","tool_use_id":"t1","input":{"command":"ls"}}})).unwrap();
+    let assistant = bridge
+        .inbound(json!({"type":"assistant","message":{"id":"m","content":[
+            {"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}))
+        .unwrap();
+    assert!(assistant.acp.is_empty());
 }
 
 #[test]

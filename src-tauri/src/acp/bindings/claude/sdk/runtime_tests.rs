@@ -401,3 +401,35 @@ fn a_turn_end_too_large_to_read_still_ends_the_turn() {
         })
     ));
 }
+
+#[test]
+fn a_turn_ends_cleanly_after_claude_code_withdraws_an_approval() {
+    let mut runtime = prompted();
+    feed(
+        &mut runtime,
+        json!({"type":"control_request","request_id":"cli-1","request":{
+            "subtype":"can_use_tool","tool_name":"Bash","tool_use_id":"t1","input":{"command":"ls"}}}),
+    );
+    let withdrawn = feed(
+        &mut runtime,
+        json!({"type":"control_cancel_request","request_id":"cli-1"}),
+    );
+    assert!(withdrawn.iter().any(|event| matches!(
+        event,
+        AdapterEvent::PermissionResolved {
+            state: crate::acp::lifecycle::ServerRequestState::Cancelled,
+            ..
+        }
+    )));
+    let ended = feed(
+        &mut runtime,
+        json!({"type":"result","subtype":"success","is_error":false}),
+    );
+    assert!(matches!(
+        ended.last(),
+        Some(AdapterEvent::Turn {
+            state: TurnState::Completed,
+            ..
+        })
+    ));
+}

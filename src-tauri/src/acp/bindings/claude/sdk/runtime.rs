@@ -123,6 +123,16 @@ impl ClaudeSdkRuntime {
             .map_err(|_| AdapterRuntimeError::Frame)?;
         let mut batch = AdapterBatchBuilder::new();
         let mut observed = false;
+        for wire in inbound.withdrawn {
+            let (events, _) = self.session.withdraw_permission(&wire.into())?.into_parts();
+            for event in events
+                .into_iter()
+                .filter(|event| !matches!(event, AdapterEvent::Absorbed))
+            {
+                observed = true;
+                batch.push_event(event)?;
+            }
+        }
         for acp in inbound.acp {
             let digest = request_value_digest(&acp);
             let (events, egress) = self
