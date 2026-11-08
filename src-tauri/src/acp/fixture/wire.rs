@@ -39,6 +39,8 @@ mod acp;
 mod claude_sdk;
 #[path = "wire_codex.rs"]
 mod codex;
+#[path = "wire_codex_catalog.rs"]
+mod codex_catalog;
 #[path = "wire_pi.rs"]
 mod pi;
 #[path = "wire_pi_bridge.rs"]

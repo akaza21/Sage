@@ -303,6 +303,7 @@
         "src-tauri/src/acp/session_config/kind.rs",
         "src-tauri/src/acp/session_config/mod.rs",
         "src-tauri/src/acp/session_config/mode_select.rs",
+        "src-tauri/src/acp/session_config/notices.rs",
         "src-tauri/src/acp/session_config/overlay.rs",
         "src-tauri/src/acp/session_config/reported.rs",
         "src-tauri/src/acp/session_config/tests.rs",

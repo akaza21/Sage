@@ -82,11 +82,11 @@ function safeCapabilities(
   } as AgentSessionProjection["capabilities"];
 }
 
+import { decodeSessionConfig } from "../domain/acpSessionConfig";
 import {
   decodeRestoredSessionConfig,
-  decodeSessionConfig,
   decodeSavedChoiceNotice,
-} from "../domain/acpSessionConfig";
+} from "../domain/acpRestoredSessionConfig";
 
 function safeSession(value: unknown): AgentSessionProjection | null {
   if (!isRecord(value)) return null;
