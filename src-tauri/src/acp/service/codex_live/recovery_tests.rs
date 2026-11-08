@@ -1418,6 +1418,17 @@ fn live_epochs(state: &crate::state::AppState, owner: &RuntimeOwner) -> i64 {
         .unwrap()
 }
 
+fn assert_archived_refusal(outcome: Result<(), crate::acp::ipc::AcpIpcError>) {
+    assert!(
+        matches!(
+            &outcome,
+            Err(crate::acp::ipc::AcpIpcError::InvalidRequest { message })
+                if message.as_str() == "This Chat is archived. Restore it to continue."
+        ),
+        "{outcome:?}"
+    );
+}
+
 fn finish_app(state: crate::state::AppState, root: std::path::PathBuf) {
     state.acp.shutdown_blocking().unwrap();
     drop(state);
@@ -1438,10 +1449,56 @@ fn archiving_a_chat_after_its_turn_parks_its_runtime_and_it_then_deletes() {
     assert!(archived.committed, "{:?}", archived.recovery_error);
     assert_eq!(
         live_epochs(&state, &owner),
+        1,
+        "archive answers before its runtime is released"
+    );
+    crate::chat_archive_commands::release_archived_runtime(
+        &state,
+        owner.project_id.as_str(),
+        owner.chat_id.as_str(),
+    );
+    assert_eq!(
+        live_epochs(&state, &owner),
         0,
         "an archived Chat holds no runtime"
     );
     assert!(state.acp.lane_for(&owner).is_none());
+
+    // Neither a new session nor the parked one starts for an archived Chat.
+    let revision = state
+        .acp
+        .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
+        .unwrap()
+        .projection_revision;
+    let generation =
+        crate::acp::contract::ProjectGeneration::new(archived.transition_epoch).unwrap();
+    let started = runtime.block_on(crate::commands::acp::start_acp_session_inner(
+        &state,
+        crate::acp::ipc::StartAcpSessionRequest {
+            project_id: owner.project_id.clone(),
+            project_generation: generation,
+            chat_id: owner.chat_id.clone(),
+            expected_projection_revision: revision,
+            client_intent_id: ClientIntentId::new(),
+            binding_id: BindingId::new("bindingId", "archive-command-recovery").unwrap(),
+            model_id: None,
+        },
+    ));
+    assert_archived_refusal(started.map(|_| ()));
+    let activated = runtime.block_on(crate::commands::acp::activate_acp_session_inner(
+        &state,
+        crate::acp::ipc::ActivateAcpSessionRequest {
+            project_id: owner.project_id.clone(),
+            project_generation: generation,
+            chat_id: owner.chat_id.clone(),
+            expected_projection_revision: revision,
+            client_intent_id: ClientIntentId::new(),
+            session_id: owner.session_id.clone(),
+            runtime_epoch: RuntimeEpoch::new(owner.runtime_epoch.get() + 1).unwrap(),
+        },
+    ));
+    assert_archived_refusal(activated.map(|_| ()));
+    assert_eq!(live_epochs(&state, &owner), 0);
 
     let deleted = runtime.block_on(crate::chat_archive_commands::delete_chat_inner(
         &state,
@@ -1449,6 +1506,43 @@ fn archiving_a_chat_after_its_turn_parks_its_runtime_and_it_then_deletes() {
         archived.transition_epoch,
     ));
     assert!(deleted.committed, "{:?}", deleted.recovery_error);
+    finish_app(state, root);
+}
+
+#[test]
+fn delete_waits_for_a_background_release_still_parking_the_runtime() {
+    let (state, owner, root) = app_with_idle_runtime("delete-during-release");
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let archived = runtime.block_on(crate::chat_archive_commands::archive_chat_inner(
+        &state,
+        archive_request(&state, &owner),
+        0,
+    ));
+    assert!(archived.committed, "{:?}", archived.recovery_error);
+    // Hold the lane the way a background release does while it parks, then
+    // let that release run while delete is already waiting on the lane.
+    let claim = state.acp.claim_lane_activation_for_test(&owner);
+    let deleted = std::thread::scope(|scope| {
+        let delete = scope.spawn(|| {
+            runtime.block_on(crate::chat_archive_commands::delete_chat_inner(
+                &state,
+                delete_request(&owner),
+                archived.transition_epoch,
+            ))
+        });
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(!delete.is_finished(), "delete waits for the release");
+        drop(claim);
+        crate::chat_archive_commands::release_archived_runtime(
+            &state,
+            owner.project_id.as_str(),
+            owner.chat_id.as_str(),
+        );
+        delete.join().unwrap()
+    });
+    assert!(deleted.committed, "{:?}", deleted.recovery_error);
+    assert!(state.acp.lane_for(&owner).is_none());
+    assert_eq!(live_epochs(&state, &owner), 0);
     finish_app(state, root);
 }
 

@@ -4,6 +4,27 @@ use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SagePro
 #[path = "live_lanes_test_engine.rs"]
 mod engine;
 
+impl AcpService {
+    /// Holds the activation claim on the lane serving `owner`, as an
+    /// activation or a chat release does while it works.
+    pub(in crate::acp::service) fn claim_lane_activation_for_test(
+        &self,
+        owner: &RuntimeOwner,
+    ) -> ActivationClaim<'_> {
+        let lane = self
+            .lanes
+            .iter()
+            .find(|lane| lane.holds(owner))
+            .expect("a lane serves the owner");
+        assert!(
+            lane.activating
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        );
+        ActivationClaim { lane }
+    }
+}
+
 fn activation_deadline() -> Instant {
     Instant::now() + Duration::from_secs(5)
 }

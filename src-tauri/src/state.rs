@@ -185,6 +185,7 @@ impl AppState {
             use tauri::Emitter;
             let _ = goal_app.emit("acp-goal-changed-v1", notice);
         }));
+        crate::chat_archive_commands::forget_read_marks_of_deleted_chats(&database, &settings);
         let harnesses = HarnessCatalog::with_registry(registry);
         if fixture_isolation {
             harnesses.apply_presence(Vec::new());

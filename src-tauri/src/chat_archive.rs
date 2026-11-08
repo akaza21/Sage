@@ -79,8 +79,10 @@ impl Database {
         // An archived Chat holds no harness process and starts no Turn. A
         // running Turn keeps a process, and a queued prompt would start one,
         // so the user stops the Turn and sends or removes queued prompts
-        // first. The store refuses new Turns for an archived Chat, so this
-        // transaction and a prompt's cannot both commit.
+        // first. Send, session start and activation refuse an archived Chat
+        // while holding the project transition lock this archive also takes,
+        // and archive advances the transition epoch, so a send that dropped
+        // the lock for its workspace capture fails its relock as stale.
         if delete::has_running_turn(&transaction, &request.project_id, &request.chat_id)? {
             return Err(AppError::InvalidRequest(
                 crate::acp::service::ChatRuntimeRelease::TurnRunning.message("archiving"),

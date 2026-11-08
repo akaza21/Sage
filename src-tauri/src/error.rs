@@ -85,12 +85,17 @@ pub enum AppError {
 impl AppError {
     /// The text a person reads in the UI. A typed refusal already carries a
     /// sentence written for them, so it surfaces without the category prefix
-    /// that `Display` keeps for logs; an interrupted task gets a sentence of
-    /// its own; every other error reads as `Display` does.
+    /// that `Display` keeps for logs. An interrupted task or a failed database
+    /// operation gets a retry sentence of its own, and the database detail goes
+    /// to the log rather than the UI; every other error reads as `Display` does.
     pub fn public_message(&self) -> String {
         match self {
             Self::InvalidRequest(message) => message.clone(),
             Self::TaskInterrupted(_) => "Sage could not finish this change; try again.".into(),
+            Self::Database(error) => {
+                tracing::warn!(%error, "database operation failed");
+                "Sage could not save this change; try again.".into()
+            }
             other => other.to_string(),
         }
     }
@@ -119,6 +124,15 @@ mod tests {
             "Sage could not finish this change; try again."
         );
         assert!(!interrupted.public_message().contains("panicked"));
+        let database = AppError::Database(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+            Some("database is locked in chat_tabs".into()),
+        ));
+        assert_eq!(
+            database.public_message(),
+            "Sage could not save this change; try again."
+        );
+        assert!(!database.public_message().contains("chat_tabs"));
         let limit = AppError::ResourceLimit("too many Chats".into());
         assert_eq!(limit.public_message(), limit.to_string());
         let layout = AppError::RepositoryOutsideRoot(RepositoryLayout::NestedRoot);

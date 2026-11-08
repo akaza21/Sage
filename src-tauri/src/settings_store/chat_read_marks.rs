@@ -154,6 +154,31 @@ impl SettingsStore {
         })
     }
 
+    /// Forgets the marks of chats for which `exists` answers false. A deleted
+    /// chat's mark is dropped with it, but a crash between the two writes
+    /// can leave the mark behind; startup calls this to drop it.
+    pub fn forget_chat_read_marks_unless(
+        &self,
+        mut exists: impl FnMut(&str) -> AppResult<bool>,
+    ) -> AppResult<usize> {
+        let connection = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let chats = connection
+            .prepare("SELECT chat_id FROM chat_read_marks")?
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut forgotten = 0;
+        for chat in chats {
+            if !exists(&chat)? {
+                forgotten += connection
+                    .execute("DELETE FROM chat_read_marks WHERE chat_id = ?1", [&chat])?;
+            }
+        }
+        Ok(forgotten)
+    }
+
     /// Forgets the mark, so the chat's latest update shows as Unread.
     pub fn mark_chat_unread(&self, chat_id: &str) -> AppResult<()> {
         validate_chat_identifier("Chat ID", chat_id)?;
@@ -207,6 +232,21 @@ mod tests {
                 .unwrap()
                 .mark,
             mark("chat-a", 2_000)
+        );
+    }
+
+    #[test]
+    fn only_marks_of_missing_chats_are_forgotten() {
+        let store = SettingsStore::in_memory().unwrap();
+        store.mark_chat_read(&mark("chat-kept", 1), &[]).unwrap();
+        store.mark_chat_read(&mark("chat-deleted", 2), &[]).unwrap();
+        let forgotten = store
+            .forget_chat_read_marks_unless(|chat| Ok(chat == "chat-kept"))
+            .unwrap();
+        assert_eq!(forgotten, 1);
+        assert_eq!(
+            store.chat_read_marks().unwrap().marks,
+            vec![mark("chat-kept", 1)]
         );
     }
 

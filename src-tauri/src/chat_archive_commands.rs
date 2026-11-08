@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::{
     acp::{
@@ -7,16 +7,27 @@ use crate::{
     },
     chat_commands::{execute_chat_transition, failed_transition},
     domain::{ChatDeleteRequest, ChatLifecycleRequest, ProjectTransitionResult},
+    error::AppResult,
     state::AppState,
 };
 
+/// Archives a Chat and answers as soon as the archive commits; the Chat's
+/// runtime is released afterwards on the blocking pool.
 #[tauri::command]
 pub async fn archive_chat(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: ChatLifecycleRequest,
     expected_transition_epoch: u64,
 ) -> Result<ProjectTransitionResult, String> {
-    Ok(archive_chat_inner(&state, request, expected_transition_epoch).await)
+    let (project, chat) = (request.project_id.clone(), request.chat_id.clone());
+    let result = archive_chat_inner(&state, request, expected_transition_epoch).await;
+    if result.committed {
+        tauri::async_runtime::spawn_blocking(move || {
+            release_archived_runtime(&app.state::<AppState>(), &project, &chat);
+        });
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -55,25 +66,84 @@ fn release_chat_runtime(
     }
 }
 
+/// Releases an archived Chat's runtime after its archive has answered. The
+/// park is bounded by the explicit-close deadline; one that does not settle
+/// is logged, and delete retries it. A Chat restored in the meantime keeps
+/// its runtime.
+pub(crate) fn release_archived_runtime(state: &AppState, project: &str, chat: &str) {
+    let (Ok(project), Ok(chat)) = (
+        SageProjectId::parse(project.to_owned()),
+        SageChatId::parse(chat.to_owned()),
+    ) else {
+        return;
+    };
+    let archived = || {
+        crate::chat_archive::is_archived_chat(
+            &state.database.connection(),
+            project.as_str(),
+            chat.as_str(),
+        )
+    };
+    match archived() {
+        Ok(true) => {}
+        Ok(false) => return,
+        Err(error) => {
+            tracing::warn!(%error, "archived Chat's runtime was not released");
+            return;
+        }
+    }
+    match release_chat_runtime(state, &project, &chat) {
+        Ok(()) => {}
+        Err(ChatRuntimeRelease::TurnRunning) if !matches!(archived(), Ok(true)) => {
+            tracing::debug!("a restored Chat started a Turn before its runtime was released");
+        }
+        Err(ChatRuntimeRelease::TurnRunning) => {
+            tracing::error!("archived Chat is running a Turn; archive admission was bypassed")
+        }
+        Err(refusal @ ChatRuntimeRelease::Unsettled) => {
+            tracing::warn!(?refusal, "archived Chat's runtime is not yet released");
+        }
+    }
+}
+
+/// Releases an archived Chat's runtime before it is deleted, waiting out a
+/// background release that is still parking it. Each attempt is bounded by
+/// the explicit-close deadline, and so is the wait.
+fn release_before_delete(
+    state: &AppState,
+    project: &SageProjectId,
+    chat: &SageChatId,
+) -> Result<(), ChatRuntimeRelease> {
+    let deadline = std::time::Instant::now()
+        + std::time::Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+    loop {
+        match release_chat_runtime(state, project, chat) {
+            Err(ChatRuntimeRelease::Unsettled) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            outcome => return outcome,
+        }
+    }
+}
+
 /// The Chat's typed identity when it is an archived Chat of that Project.
 fn archived_identity(
     state: &AppState,
     request: &ChatDeleteRequest,
-) -> Option<(SageProjectId, SageChatId)> {
+) -> AppResult<Option<(SageProjectId, SageChatId)>> {
     let archived = crate::chat_archive::is_archived_chat(
         &state.database.connection(),
         &request.project_id,
         &request.chat_id,
-    )
-    .unwrap_or(false);
-    archived
+    )?;
+    Ok(archived
         .then(|| {
             Some((
                 SageProjectId::parse(request.project_id.clone()).ok()?,
                 SageChatId::parse(request.chat_id.clone()).ok()?,
             ))
         })
-        .flatten()
+        .flatten())
 }
 
 pub(crate) async fn delete_chat_inner(
@@ -82,13 +152,19 @@ pub(crate) async fn delete_chat_inner(
     expected_transition_epoch: u64,
 ) -> ProjectTransitionResult {
     // An archived Chat may still hold an idle runtime from before it was
-    // archived; release it the way archive does instead of refusing. Only
-    // an archived Chat's runtime is touched; anything else is refused below.
-    if let Some((project, chat)) = archived_identity(state, &request)
-        && let Err(refusal) = release_chat_runtime(state, &project, &chat)
-    {
+    // archived, or one a background release is still parking; release it
+    // instead of refusing. Only an archived Chat's runtime is touched;
+    // anything else is refused below.
+    let refusal = match archived_identity(state, &request) {
+        Ok(Some((project, chat))) => release_before_delete(state, &project, &chat)
+            .err()
+            .map(|refusal| refusal.message("deleting")),
+        Ok(None) => None,
+        Err(error) => Some(error.public_message()),
+    };
+    if let Some(message) = refusal {
         let epoch = *state.project_transitions.lock().await;
-        return failed_transition(epoch, refusal.message("deleting"));
+        return failed_transition(epoch, message);
     }
     let chat_id = request.chat_id.clone();
     let result = execute_chat_transition(
@@ -101,11 +177,37 @@ pub(crate) async fn delete_chat_inner(
     if result.committed
         && let Err(error) = state.settings.mark_chat_unread(&chat_id)
     {
+        // Startup drops marks whose Chat no longer exists.
         tracing::warn!(?error, "deleted Chat's read mark remains");
     }
     result
 }
 
+/// Drops the read marks of Chats that no longer exist, which a crash between
+/// a delete and its mark removal leaves behind. Marks are view state, so a
+/// failure is only logged.
+pub(crate) fn forget_read_marks_of_deleted_chats(
+    database: &crate::persistence::Database,
+    settings: &crate::settings_store::SettingsStore,
+) {
+    let connection = database.connection();
+    let outcome = settings.forget_chat_read_marks_unless(|chat| {
+        Ok(connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM chats WHERE id=?1)",
+            [chat],
+            |row| row.get(0),
+        )?)
+    });
+    match outcome {
+        Ok(0) => {}
+        Ok(forgotten) => tracing::info!(forgotten, "forgot read marks of deleted Chats"),
+        Err(error) => tracing::warn!(%error, "deleted Chats' read marks remain"),
+    }
+}
+
+/// Archives the Chat and settles its Chat-scoped state. The caller releases
+/// its runtime afterwards with `release_archived_runtime`, so archive never
+/// waits on a harness exiting.
 pub(crate) async fn archive_chat_inner(
     state: &AppState,
     request: ChatLifecycleRequest,
@@ -131,19 +233,6 @@ pub(crate) async fn archive_chat_inner(
         && let (Ok(project), Ok(chat)) =
             (SageProjectId::parse(project_id), SageChatId::parse(chat_id))
     {
-        // An archived Chat holds no harness process. Archive refused a running
-        // Turn and queued prompts, and the store refuses new Turns for an
-        // archived Chat, so this parks an idle runtime. A park that does not
-        // settle in time is retried when the Chat is deleted.
-        match release_chat_runtime(state, &project, &chat) {
-            Ok(()) => {}
-            Err(ChatRuntimeRelease::TurnRunning) => {
-                tracing::error!("archived Chat is running a Turn; archive admission was bypassed")
-            }
-            Err(refusal @ ChatRuntimeRelease::Unsettled) => {
-                tracing::warn!(?refusal, "archived Chat's runtime is not yet released");
-            }
-        }
         if let Err(error) = state.terminals.close_chat(&project, &chat) {
             tracing::warn!(?error, "terminal Chat-close cleanup remains unsettled");
         }
@@ -173,146 +262,5 @@ async fn restore_chat_inner(
 }
 
 #[cfg(test)]
-mod tests {
-    use std::fs;
-
-    use uuid::Uuid;
-
-    use super::*;
-    use crate::{
-        acp::contract::{SageChatId, SageProjectId},
-        domain::ProjectLayoutRequest,
-        persistence::Database,
-    };
-
-    #[test]
-    fn native_archive_and_restore_are_epoch_checked_transitions() {
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
-            let root =
-                std::env::temp_dir().join(format!("sage-chat-command-archive-{}", Uuid::new_v4()));
-            fs::create_dir_all(&root).unwrap();
-            let database = Database::open(&root.join("sage.db")).unwrap();
-            let project = database.create_project_from_root(&root).unwrap();
-            let initial = database.bootstrap_snapshot().unwrap();
-            let first_chat_id = initial.active_tab_id.clone().unwrap();
-            database
-                .create_chat(&ProjectLayoutRequest {
-                    project_id: project.id.clone(),
-                    tabs: initial.tabs,
-                    active_tab_id: initial.active_tab_id,
-                    selected_root_id: initial.selected_root_id,
-                    selected_resource: initial.selected_resource,
-                })
-                .unwrap();
-            let attached = database.bootstrap_snapshot().unwrap();
-            let request = ChatLifecycleRequest {
-                project_id: project.id.clone(),
-                chat_id: first_chat_id.clone(),
-                current_layout: ProjectLayoutRequest {
-                    project_id: project.id.clone(),
-                    tabs: attached.tabs,
-                    active_tab_id: attached.active_tab_id,
-                    selected_root_id: attached.selected_root_id,
-                    selected_resource: attached.selected_resource,
-                },
-            };
-            let state = AppState::new(database);
-            state
-                .settings
-                .mark_chat_read(
-                    &crate::settings_store::ChatReadMark {
-                        chat_id: first_chat_id.clone(),
-                        read_through: 5_000,
-                    },
-                    &[],
-                )
-                .unwrap();
-
-            let browser_project = SageProjectId::parse(project.id.clone()).unwrap();
-            let browser_chat = SageChatId::parse(first_chat_id.clone()).unwrap();
-            state
-                .acp
-                .attach_browser_tab(
-                    browser_project.clone(),
-                    browser_chat.clone(),
-                    "browser-7",
-                    "https://example.com",
-                    1,
-                )
-                .unwrap();
-            let browser_lease = state
-                .acp
-                .browser_attachment(&browser_project, &browser_chat)
-                .unwrap();
-
-            state
-                .acp
-                .file_stages
-                .lock()
-                .unwrap()
-                .stage(
-                    &project.id,
-                    &first_chat_id,
-                    crate::acp::attached_context::files::attachment(
-                        &state.database,
-                        &project.id,
-                        &first_chat_id,
-                    )
-                    .unwrap()
-                    .unwrap(),
-                    None,
-                    crate::acp::attached_context::files::Resources(std::sync::Arc::new(vec![
-                        crate::acp::attached_context::files::Resource {
-                            id: "file-archive".into(),
-                            name: "notes.txt".into(),
-                            bytes: b"context".to_vec(),
-                        },
-                    ])),
-                )
-                .unwrap();
-            let archived = archive_chat_inner(&state, request.clone(), 0).await;
-            assert!(
-                state
-                    .acp
-                    .file_stages
-                    .lock()
-                    .unwrap()
-                    .get(&project.id, &first_chat_id)
-                    .0
-                    .is_empty()
-            );
-            assert!(archived.committed);
-            assert!(state.settings.chat_read_marks().unwrap().marks.is_empty());
-            assert!(!browser_lease.is_live());
-            assert!(
-                state
-                    .acp
-                    .browser_attachment(&browser_project, &browser_chat)
-                    .is_none()
-            );
-            assert_eq!(archived.transition_epoch, 1);
-            let archived_snapshot = archived.snapshot.unwrap();
-            assert_eq!(archived_snapshot.archived_chats[0].id, first_chat_id);
-            let restore_request = ChatLifecycleRequest {
-                project_id: project.id,
-                chat_id: first_chat_id,
-                current_layout: ProjectLayoutRequest {
-                    project_id: request.project_id,
-                    tabs: archived_snapshot.tabs,
-                    active_tab_id: archived_snapshot.active_tab_id,
-                    selected_root_id: archived_snapshot.selected_root_id,
-                    selected_resource: archived_snapshot.selected_resource,
-                },
-            };
-            let stale = restore_chat_inner(&state, restore_request.clone(), 0).await;
-            assert!(!stale.committed);
-            assert_eq!(stale.transition_epoch, 1);
-            let restored = restore_chat_inner(&state, restore_request, 1).await;
-            assert!(restored.committed);
-            assert_eq!(restored.transition_epoch, 2);
-            assert!(restored.snapshot.unwrap().archived_chats.is_empty());
-            drop(state);
-            fs::remove_dir_all(root).unwrap();
-        });
-    }
-}
+#[path = "chat_archive_commands_tests.rs"]
+mod tests;
