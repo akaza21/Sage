@@ -126,18 +126,17 @@ it("lists the Turn's hook runs in the live work list with their failure line", (
     "failed",
     "running",
   ]);
-  expect(rows[0]).toHaveAccessibleName(
-    "PreToolUse hook #1 (project), Completed",
+  // The state is part of each row's text for assistive technology.
+  expect(rows[0]).toHaveTextContent(
+    /^PreToolUse hook #1 \(project\), Completed$/,
   );
   expect(rows[1]).toHaveTextContent(
-    "PostToolUse hook #1 (project)Synthetic lint hook exited with status 1",
+    /^PostToolUse hook #1 \(project\), Failed: Synthetic lint hook exited with status 1$/,
   );
-  expect(rows[1]).toHaveAccessibleName(
-    "PostToolUse hook #1 (project), Failed, Synthetic lint hook exited with status 1",
-  );
-  expect(
-    within(rows[2]).getByRole("status", { name: "Running" }),
-  ).toBeVisible();
+  expect(within(rows[1]).getByText(", Failed:")).toHaveClass("sr-only");
+  expect(rows[2]).toHaveTextContent(/^Stop hook #2 \(user\), Running$/);
+  // A running row is not a live region of its own.
+  expect(within(list).queryAllByRole("status")).toHaveLength(0);
 });
 
 it("keeps hook rows in a settled Turn behind its Worked disclosure", () => {

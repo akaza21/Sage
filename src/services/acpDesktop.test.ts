@@ -100,6 +100,7 @@ it("decodes a Turn's hook rows within the native caps", () => {
     safeTurn({ ...turn, sessionActivities: [hook] })?.sessionActivities,
   ).toEqual([hook]);
   for (const sessionActivities of [
+    null,
     Array.from({ length: 17 }, () => hook),
     [{ ...hook, state: "blocked" }],
     [{ ...hook, progress: "" }],

@@ -310,7 +310,9 @@ export function safeTurn(value: unknown): TurnProjection | null {
   const browserOperationsCollapsed = safeOrdinal(
     value.browserOperationsCollapsed ?? 0,
   );
-  const rawSessionActivities = value.sessionActivities ?? [];
+  // Absent or an array; null is malformed.
+  const rawSessionActivities =
+    value.sessionActivities === undefined ? [] : value.sessionActivities;
   if (
     !Array.isArray(rawSessionActivities) ||
     rawSessionActivities.length > SESSION_ACTIVITIES_MAX

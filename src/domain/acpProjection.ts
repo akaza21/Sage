@@ -234,7 +234,7 @@ export interface HarnessActivityProjection {
 
 /**
  * A session activity row (a hook run, say) in the work list of the Turn
- * that last reported it; native `TurnSessionActivityProjection`. A Turn
+ * that owns it; native `TurnSessionActivityProjection`. A Turn
  * holds at most `SESSION_ACTIVITIES_MAX` of them.
  */
 export interface TurnSessionActivity {

@@ -447,6 +447,31 @@ fn a_hook_still_running_when_its_turn_ends_is_settled_as_cancelled() {
 }
 
 #[test]
+fn a_hook_that_settles_after_its_turn_ended_names_that_previous_turn() {
+    let mut adapter = running_adapter();
+    let started = hook_activity(adapter.ingest(
+        &hook("hook/started", json!("turn-1"), "running", json!([])),
+        &Mapper,
+    ));
+    assert!(!started.in_previous_turn, "a hook of the running Turn");
+    adapter.ingest(&turn_completed(), &Mapper).unwrap();
+    let late = hook_activity(adapter.ingest(
+        &hook("hook/completed", json!("turn-1"), "completed", json!([])),
+        &Mapper,
+    ));
+    assert_eq!(late.id, started.id);
+    assert!(
+        late.in_previous_turn,
+        "the store must not file it under the next Turn"
+    );
+    let turnless = hook_activity(adapter.ingest(
+        &hook("hook/started", Value::Null, "running", json!([])),
+        &Mapper,
+    ));
+    assert!(!turnless.in_previous_turn);
+}
+
+#[test]
 fn a_completed_or_turnless_hook_is_not_cancelled_when_the_turn_ends() {
     let mut adapter = running_adapter();
     adapter

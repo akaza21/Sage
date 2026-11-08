@@ -1,7 +1,8 @@
 //! `hook/started` and `hook/completed`: each configured Codex hook handler is
 //! one session activity row (kind `hook`) that runs and then completes or
-//! fails. A hook may run outside any Turn (`turnId` is null), so the row is
-//! session-scoped rather than a transcript item.
+//! fails. A hook may run outside any Turn (`turnId` is null), so the event is
+//! session-scoped; the store records the row in the Turn whose batch carries
+//! it, or in the previous Turn when Codex names that one.
 //!
 //! Codex names a run by its handler (event, order and source path), not by
 //! its invocation, so a handler that runs again updates its own row and
@@ -118,7 +119,9 @@ pub(super) fn hook_run(
         label: RequiredText::new("hookLabel", label).map_err(content)?,
         state,
         progress,
-        turn_id: None,
+        // A run of the Turn that already ended belongs to that Turn's row,
+        // not to the Turn now running.
+        in_previous_turn: turn.is_some_and(|turn| adapter.turn_is_terminal(turn)),
     };
     let in_active_turn = turn
         .is_some_and(|turn| adapter.expect_turn(turn).is_ok() && !adapter.turn_is_terminal(turn));

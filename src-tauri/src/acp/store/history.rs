@@ -66,12 +66,6 @@ pub(crate) fn load_chat_page(
         &mut has_more,
     )?;
     let activities = super::history_activities::load_activities(connection, &turn_rows)?;
-    let session_activities = super::session_surface::turn_activities(
-        connection,
-        project_id.as_str(),
-        chat_id.as_str(),
-        &turn_rows,
-    )?;
     let title = SafeText::new("chatTitle", title).map_err(|_| StoreError::Corrupt("chat title"))?;
     let projection_revision = ProjectionRevision::new(
         u64::try_from(projection).map_err(|_| StoreError::Corrupt("projection revision"))?,
@@ -113,7 +107,6 @@ pub(crate) fn load_chat_page(
         has_more_turns: has_more,
         project_roots: &project_roots,
         activities,
-        session_activities,
         base_page_bytes,
     })?;
     let page = AcpChatPage {

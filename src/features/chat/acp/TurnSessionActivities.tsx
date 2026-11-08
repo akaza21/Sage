@@ -1,6 +1,5 @@
 import type { TurnSessionActivity } from "../../../domain/acp";
-import { Check, Circle, CircleX } from "../../../ui/leanIcons";
-import { ToolRunningIndicator } from "./ToolRunningIndicator";
+import { Check, Circle, CircleX, LoaderCircle } from "../../../ui/leanIcons";
 
 const stateLabels: Record<TurnSessionActivity["state"], string> = {
   running: "Running",
@@ -12,9 +11,10 @@ const stateIcons = { completed: Check, failed: CircleX, cancelled: Circle };
 
 /**
  * The Turn's session activity rows (hook runs), one compact line each with
- * the harness's status or failure line. Rust bounds the list to the session
- * surface's activity cap; the rows carry no order relative to the Turn's
- * items, so they follow them.
+ * the harness's status or failure line. The state is read out, not
+ * announced: running rows are no live regions. Rust bounds the list to 16
+ * rows; they carry no order relative to the Turn's items, so they follow
+ * them.
  */
 export function TurnSessionActivities({
   activities,
@@ -34,22 +34,18 @@ export function TurnSessionActivities({
             className="acp-activity-row acp-session-activity"
             data-activity-kind={activity.kind}
             data-activity-state={activity.state}
-            aria-label={[
-              activity.label,
-              stateLabels[activity.state],
-              activity.progress,
-            ]
-              .filter(Boolean)
-              .join(", ")}
           >
             {Icon ? (
               <Icon size={14} aria-hidden="true" />
             ) : (
-              <ToolRunningIndicator />
+              <span className="acp-tool-running" aria-hidden="true">
+                <LoaderCircle size={12} aria-hidden="true" />
+              </span>
             )}
             <span className={running ? "acp-live-shimmer" : undefined}>
               {activity.label}
             </span>
+            <span className="sr-only">{`, ${stateLabels[activity.state]}${activity.progress ? ": " : ""}`}</span>
             {activity.progress ? (
               <span className="acp-session-activity__detail">
                 {activity.progress}

@@ -156,28 +156,3 @@ fn the_pre_turn_buffer_replaces_superseded_events_and_drops_the_oldest_at_its_ca
     assert_eq!(events.last(), Some(&title("second")));
     assert!(pending.take().is_empty());
 }
-
-#[test]
-fn a_rerun_in_a_later_turn_keeps_the_earlier_turns_row() {
-    let in_turn = |turn: &str, state| {
-        let mut row = super::fixtures::activity("hook", state, "-");
-        row.turn_id = Some(crate::acp::contract::SageTurnId::parse(turn).unwrap());
-        SessionScopedEvent::Activity(row)
-    };
-    let mut surface = SessionSurface::default();
-    surface.apply(1, &in_turn("turn-a", SessionActivityState::Running));
-    surface.apply(1, &in_turn("turn-a", SessionActivityState::Failed));
-    surface.apply(1, &in_turn("turn-b", SessionActivityState::Running));
-    let rows = surface
-        .activities
-        .iter()
-        .map(|row| (row.turn_id.as_ref().unwrap().as_str(), row.state))
-        .collect::<Vec<_>>();
-    assert_eq!(
-        rows,
-        [
-            ("turn-a", SessionActivityState::Failed),
-            ("turn-b", SessionActivityState::Running)
-        ]
-    );
-}

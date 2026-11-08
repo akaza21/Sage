@@ -8,9 +8,7 @@ use crate::acp::{
         SageRootId, SageServerRequestId, SageTurnId,
     },
     intent::PageCursor,
-    projection::{
-        ActivityProjection, ItemProjection, TurnProjection, TurnSessionActivityProjection,
-    },
+    projection::{ActivityProjection, ItemProjection, TurnProjection},
 };
 
 use super::{
@@ -35,7 +33,6 @@ pub(super) struct HistoryLoad<'a> {
     pub(super) has_more_turns: bool,
     pub(super) project_roots: &'a [SageRootId],
     pub(super) activities: BTreeMap<String, Vec<ActivityProjection>>,
-    pub(super) session_activities: BTreeMap<String, Vec<TurnSessionActivityProjection>>,
     pub(super) base_page_bytes: usize,
 }
 
@@ -48,7 +45,6 @@ pub(super) fn load(input: HistoryLoad<'_>) -> Result<HistorySlice, StoreError> {
         has_more_turns,
         project_roots,
         mut activities,
-        mut session_activities,
         base_page_bytes,
     } = input;
     let limit = crate::acp::limits::LIMITS.durable.history_page_bytes as usize;
@@ -83,7 +79,6 @@ pub(super) fn load(input: HistoryLoad<'_>) -> Result<HistorySlice, StoreError> {
             Vec::new(),
             activity,
         )?;
-        turn.session_activities = session_activities.remove(&row.id).unwrap_or_default();
         let turn_bytes = serde_json::to_vec(&turn)
             .map_err(|_| StoreError::Corrupt("turn projection serialization"))?
             .len();
@@ -313,7 +308,7 @@ fn project_turn(
         browser_operations: BoundedVec::new("browserOperations", browser_operations)
             .map_err(|_| StoreError::Corrupt("browser operations bound"))?,
         browser_operations_collapsed,
-        session_activities: Vec::new(),
+        session_activities: super::turn_activity_facts::load(connection, row)?,
     })
 }
 

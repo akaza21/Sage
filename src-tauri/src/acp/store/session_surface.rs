@@ -3,17 +3,14 @@
 //! activity rows. Updates rewrite the row in place, so storage never grows
 //! with the number of events.
 
-use std::collections::BTreeMap;
-
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::acp::{
     contract::EntityRevision,
     intent::session_event::{SessionScopedEvent, SessionSurface, SurfaceChange},
-    projection::TurnSessionActivityProjection,
 };
 
-use super::{AdapterStoreOwner, StoreError, facts, history::TurnRow};
+use super::{AdapterStoreOwner, StoreError, facts};
 
 /// Upper bound of one serialized surface; the schema enforces the same cap.
 pub(super) const SURFACE_BYTES_MAX: usize = 65_536;
@@ -36,30 +33,41 @@ pub(super) fn apply_in(
         owner.chat_id.as_str(),
         owner.session_id.as_str(),
     );
+    let projection = facts::next_projection_revision(transaction, project, chat)?;
+    // The Turn's own record of an activity outlives this live surface.
+    let recorded = match &command.event {
+        SessionScopedEvent::Activity(row) => super::turn_activity_facts::record(
+            transaction,
+            owner,
+            row,
+            projection,
+            command.now_millis,
+        )?,
+        _ => false,
+    };
     let stored = read(transaction, project, chat, session)?;
     let revision = stored.as_ref().map(|(_, revision)| *revision);
     let mut surface = stored.map(|(surface, _)| surface).unwrap_or_default();
-    // An activity belongs to the Turn whose batch reports it, even when the
-    // harness names no Turn (a session-level hook in the active Turn).
-    let stamped;
-    let event = match &command.event {
-        SessionScopedEvent::Activity(row) => {
-            let mut row = row.clone();
-            row.turn_id = Some(owner.turn_id.clone());
-            stamped = SessionScopedEvent::Activity(row);
-            &stamped
+    let change = match surface.apply(owner.runtime_epoch.get(), &command.event) {
+        Some(change) => change,
+        None if recorded => {
+            facts::publish_send_neutral_projection(
+                transaction,
+                project,
+                chat,
+                session,
+                projection,
+                command.now_millis,
+            )?;
+            return Ok(true);
         }
-        event => event,
-    };
-    let Some(change) = surface.apply(owner.runtime_epoch.get(), event) else {
-        return Ok(false);
+        None => return Ok(false),
     };
     let json = bounded_json(&mut surface)?;
     let next = match revision {
         Some(revision) => revision.next().map_err(|_| StoreError::CounterExhausted)?,
         None => EntityRevision::ZERO,
     };
-    let projection = facts::next_projection_revision(transaction, project, chat)?;
     transaction.execute(
         "INSERT INTO acp_session_surfaces
            (session_id,project_id,chat_id,surface_json,revision,updated_at)
@@ -105,40 +113,6 @@ fn bounded_json(surface: &mut SessionSurface) -> Result<String, StoreError> {
             return Err(StoreError::PayloadTooLarge);
         }
     }
-}
-
-/// The page's Turns' activity rows, by Turn id, in surface order. Each
-/// session's surface is read once and holds at most its activity cap.
-pub(super) fn turn_activities(
-    connection: &rusqlite::Connection,
-    project: &str,
-    chat: &str,
-    turns: &[TurnRow],
-) -> Result<BTreeMap<String, Vec<TurnSessionActivityProjection>>, StoreError> {
-    let mut sessions = turns
-        .iter()
-        .map(|turn| turn.session_id.as_str())
-        .collect::<Vec<_>>();
-    sessions.sort_unstable();
-    sessions.dedup();
-    let mut by_turn = BTreeMap::<String, Vec<_>>::new();
-    for session in sessions {
-        let Some((surface, _)) = read(connection, project, chat, session)? else {
-            continue;
-        };
-        for mut row in surface.activities {
-            let Some(turn) = row.turn_id.take() else {
-                continue;
-            };
-            if turns.iter().any(|candidate| candidate.id == turn.as_str()) {
-                by_turn
-                    .entry(turn.as_str().to_owned())
-                    .or_default()
-                    .push(row.into());
-            }
-        }
-    }
-    Ok(by_turn)
 }
 
 /// Reads one session's stored surface and its row revision.
