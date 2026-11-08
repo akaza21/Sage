@@ -1,5 +1,5 @@
 //! A cheap fingerprint of the Git files that change when a commit, checkout,
-//! stage, merge, fetch or push happens outside Sage (EP-12). The Workbench
+//! stage, merge, fetch or push happens outside Sage. The Workbench
 //! asks for it every second while it is visible, so it only reads metadata of
 //! a few files per root and never runs Git.
 
@@ -32,28 +32,26 @@ const CHECKOUT_FILES: &[&str] = &[
 
 #[tauri::command]
 pub async fn get_repository_change_stamp(state: State<'_, AppState>) -> Result<String, String> {
-    let project_id = state
-        .database
-        .active_project_id()
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "no project is active".to_owned())?;
-    let roots = state
-        .database
-        .root_records(&project_id)
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .map(|root| (root.id, root.absolute_path))
-        .collect::<Vec<_>>();
+    // SQLite and the file system both block, so neither runs on the async
+    // runtime that this once-a-second poll would otherwise hold up.
+    let database = state.database.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let project_id = database
+            .active_project_id()
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "no project is active".to_owned())?;
         let mut hasher = DefaultHasher::new();
-        for (root_id, path) in roots {
-            root_id.hash(&mut hasher);
-            change_stamp(&path).hash(&mut hasher);
+        for root in database
+            .root_records(&project_id)
+            .map_err(|error| error.to_string())?
+        {
+            root.id.hash(&mut hasher);
+            change_stamp(&root.absolute_path).hash(&mut hasher);
         }
-        format!("{:016x}", hasher.finish())
+        Ok(format!("{:016x}", hasher.finish()))
     })
     .await
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?
 }
 
 /// Changes whenever `HEAD`, the index, the config, a branch, a remote branch,
