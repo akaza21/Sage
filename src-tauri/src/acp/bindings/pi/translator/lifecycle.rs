@@ -131,7 +131,7 @@ impl TurnLifecycle {
 
     fn outcome(&self, incoming: TerminalOutcome) -> TerminalOutcome {
         if self.abort_accepted || self.pending_aborts > 0 {
-            TerminalOutcome::Interrupted
+            TerminalOutcome::Cancelled
         } else if self.prompt_failed {
             TerminalOutcome::Failed
         } else {

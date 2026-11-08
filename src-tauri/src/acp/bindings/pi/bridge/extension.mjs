@@ -1,4 +1,4 @@
-// Sage Pi bridge v1; admitted only with Pi 0.83.0 and exact installed bytes.
+// Sage Pi bridge v1; admitted only with Pi 1.5.0 and exact installed bytes.
 // No filesystem or shell authority lives in this extension.
 const MAX_BYTES = 262144;
 // Every answer other than "approved" or "written" is Sage's reason, shown to

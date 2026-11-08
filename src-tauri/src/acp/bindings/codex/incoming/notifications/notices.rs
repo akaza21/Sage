@@ -21,7 +21,7 @@ use crate::acp::{
     intent::session_event::{
         SESSION_NOTICE_TEXT_BYTES, SessionNotice, SessionNoticeLevel, SessionScopedEvent,
     },
-    redaction::text::neutralized,
+    redaction::text::{clip_display as clip, neutralized},
 };
 
 use super::super::{
@@ -35,7 +35,6 @@ const MODEL_BYTES: usize = 512;
 /// summary cannot crowd the details out of the notice.
 const PART_BYTES: usize = 448;
 const FILE_NAME_BYTES: usize = 96;
-const CLIPPED: &str = "\u{2026}";
 
 /// `warning`: a harness warning, optionally aimed at one thread.
 pub(super) fn warning(
@@ -298,17 +297,6 @@ fn optional_human(params: &Map<String, Value>, key: &str) -> Result<Option<Strin
 /// trims, and clips to `max` bytes.
 fn clean(value: &str, max: usize) -> String {
     clip(neutralized(value, true).trim(), max)
-}
-
-fn clip(value: &str, max: usize) -> String {
-    if value.len() <= max {
-        return value.to_owned();
-    }
-    let mut end = max - CLIPPED.len();
-    while !value.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}{CLIPPED}", &value[..end])
 }
 
 /// Only the file name of a config path is shown; the directory is local

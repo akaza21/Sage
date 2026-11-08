@@ -16,8 +16,8 @@ pub use activity_provenance::{ActivityProvenanceV1, ActivitySourceKind};
 pub use capability::CapabilitySnapshotV1;
 pub(crate) use capability::offers_prompt_capability;
 pub use error_kind::ErrorKind;
-pub(crate) use file_change::FileChangeFacts;
 pub use file_change::FileChangeOperation;
+pub(crate) use file_change::{FileChangeFacts, line_delta};
 pub use tool_category::ToolCategory;
 pub use tool_execution::ToolExecution;
 

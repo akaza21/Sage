@@ -7,7 +7,7 @@
 {"type":"compaction_end","reason":"overflow","result":{"summary":"Earlier context","firstKeptEntryId":"entry-1","tokensBefore":120000},"aborted":false,"willRetry":true}
 {"type":"agent_start"}
 {"type":"message_start","message":{"role":"assistant","content":[]}}
-{"type":"message_update","message":{"role":"assistant","content":[{"type":"text","text":"Recovered"}]},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Recovered","partial":{"role":"assistant","content":[{"type":"text","text":"Recovered"}]}}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Recovered"}}
 {"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"Recovered"}],"stopReason":"stop"}}
 {"type":"agent_end","messages":[{"role":"assistant","content":[{"type":"text","text":"Recovered"}],"stopReason":"stop"}],"willRetry":false}
 {"type":"agent_settled"}

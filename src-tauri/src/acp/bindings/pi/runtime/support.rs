@@ -2,8 +2,11 @@ use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent, AdapterRuntimeError,
     },
-    contract::SafeText,
-    intent::{ExternalId, NormalizedPayload},
+    contract::{RequiredText, SafeText},
+    intent::{
+        ExternalId, NormalizedPayload,
+        session_event::{SessionNotice, SessionScopedEvent},
+    },
     lifecycle::{ItemLifecycle, ToolState, TurnState},
     limits::LIMITS,
 };
@@ -24,6 +27,9 @@ mod identity;
 mod image;
 mod permission;
 mod requests;
+mod session;
+mod steer;
+pub(super) use steer::Steering;
 mod stream;
 mod thought;
 mod tool_cache;
@@ -126,7 +132,7 @@ impl PiRuntime {
                 self.commands.replace(&value, true)?;
                 (Some(AdapterEvent::Absorbed), None)
             }
-            AdapterOutput::SessionReset => self.command_session_reset()?,
+            AdapterOutput::SessionOpened(id) => self.open_session(id)?,
 
             AdapterOutput::State(state) => self.state_reply(state)?,
             AdapterOutput::Models(models) => {
@@ -174,6 +180,7 @@ impl PiRuntime {
                 self.require_turn(&turn_key)?;
                 let state = match outcome {
                     TerminalOutcome::Completed => TurnState::Completed,
+                    TerminalOutcome::Cancelled => TurnState::Cancelled,
                     TerminalOutcome::Interrupted => TurnState::Interrupted,
                     TerminalOutcome::Failed => TurnState::Failed,
                 };
@@ -188,7 +195,7 @@ impl PiRuntime {
                 self.active_turn = None;
                 self.clear_thinking_request();
                 self.deny = None;
-                (Some(event), None)
+                (Some(event), self.finish_steering())
             }
             AdapterOutput::FailureDetail { message } => (Some(self.failure_detail(message)?), None),
             AdapterOutput::AttemptFailed {
@@ -199,22 +206,21 @@ impl PiRuntime {
                 Some(self.attempt_failed(attempt, max_attempts, message)?),
                 None,
             ),
+            // The answer's item opens with its first text, so thinking that
+            // streams first keeps its place above the answer.
             AdapterOutput::TextStarted { external_id } => {
-                let id = self.start_text(external_id)?;
-                (
-                    Some(self.item(id, ItemLifecycle::Started, None, text_payload(""))?),
-                    None,
-                )
+                self.start_text(external_id)?;
+                (Some(AdapterEvent::Absorbed), None)
             }
             AdapterOutput::TextDelta {
                 text,
                 redacted_tail,
             } => {
                 let (id, snapshot) = self.append_text(text, redacted_tail)?;
-                (
-                    Some(self.item(id, ItemLifecycle::Streaming, None, text_payload(snapshot))?),
-                    None,
-                )
+                let item = (!snapshot.is_empty())
+                    .then(|| self.item(id, ItemLifecycle::Streaming, None, text_payload(snapshot)))
+                    .transpose()?;
+                (Some(item.unwrap_or(AdapterEvent::Absorbed)), None)
             }
             AdapterOutput::ThoughtDelta {
                 text,
@@ -243,10 +249,15 @@ impl PiRuntime {
                 outcome,
             } => {
                 let (id, snapshot) = self.complete_text(external_id)?;
+                if snapshot.is_empty() {
+                    return Ok((Some(AdapterEvent::Absorbed), None));
+                }
                 let lifecycle = match outcome {
                     TerminalOutcome::Completed => ItemLifecycle::Completed,
                     TerminalOutcome::Failed => ItemLifecycle::Failed,
-                    TerminalOutcome::Interrupted => ItemLifecycle::Cancelled,
+                    TerminalOutcome::Cancelled | TerminalOutcome::Interrupted => {
+                        ItemLifecycle::Cancelled
+                    }
                 };
                 (
                     Some(self.item(id, lifecycle, None, text_payload(snapshot))?),
@@ -297,6 +308,10 @@ impl PiRuntime {
                 output,
             } => {
                 let id = external("piItemId", external_id.clone())?;
+                // A finished edit shows its diff; Pi's own success line adds nothing.
+                let output = output.filter(|_| {
+                    outcome != ToolOutcome::Completed || !self.is_edit_tool(&external_id)
+                });
                 let payload = self.update_tool(&external_id, output, true)?;
                 let (lifecycle, state) = match outcome {
                     ToolOutcome::Completed => (ItemLifecycle::Completed, ToolState::Completed),
@@ -315,9 +330,40 @@ impl PiRuntime {
                     payload: NormalizedPayload::Usage {
                         input_tokens,
                         output_tokens,
-                        context_window: None,
+                        context_window: self.current_context_window(),
                     },
                 }),
+                None,
+            ),
+            AdapterOutput::SteerResolved {
+                command_id,
+                accepted,
+            } => (Some(self.steer_resolved(&command_id, accepted)), None),
+            AdapterOutput::Notice {
+                level,
+                source,
+                text,
+            } => (
+                Some(
+                    self.session_event(SessionScopedEvent::Notice(SessionNotice {
+                        level,
+                        text: RequiredText::new("noticeText", text)
+                            .map_err(|_| AdapterRuntimeError::Frame)?,
+                        source: Some(
+                            RequiredText::new("noticeSource", source)
+                                .map_err(|_| AdapterRuntimeError::Frame)?,
+                        ),
+                    })),
+                ),
+                None,
+            ),
+            AdapterOutput::Title(title) => (
+                Some(
+                    self.session_event(SessionScopedEvent::Title {
+                        title: RequiredText::new("sessionTitle", title)
+                            .map_err(|_| AdapterRuntimeError::Frame)?,
+                    }),
+                ),
                 None,
             ),
             AdapterOutput::PermissionRequested { external_id } => (
@@ -328,6 +374,7 @@ impl PiRuntime {
                 self.block_authority(external_id, tool, resources)?
             }
             AdapterOutput::DialogCancelled { external_id } => self.cancel_dialog(external_id)?,
+            AdapterOutput::DialogExpired { external_id } => self.expire_dialog(external_id)?,
             AdapterOutput::Image { media_type, data } => {
                 (Some(self.image_event(media_type, data)?), None)
             }

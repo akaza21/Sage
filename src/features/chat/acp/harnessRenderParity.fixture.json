@@ -374,24 +374,6 @@
   ],
   "gaps": [
     {
-      "scenario": "thinkingThenLinkedText",
-      "harness": "pi",
-      "owner": "Pi",
-      "visible": false,
-      "gap": "message_start opens the answer before thinking streams, so the answer is ordered above the thought",
-      "differs": {
-        "/items/0/kind": "text",
-        "/items/0/payload": {
-          "role": "assistant",
-          "text": "See [the guide](https://example.com/guide)."
-        },
-        "/items/1/kind": "thoughtSummary",
-        "/items/1/payload": {
-          "summary": "Checking the guide."
-        }
-      }
-    },
-    {
       "scenario": "toolCompletes",
       "harness": "codex",
       "owner": "Codex",
@@ -403,16 +385,6 @@
       }
     },
     {
-      "scenario": "toolCompletes",
-      "harness": "pi",
-      "owner": "Pi",
-      "visible": true,
-      "gap": "tool label is the raw tool name",
-      "differs": {
-        "/items/0/payload/presentation/label": "read"
-      }
-    },
-    {
       "scenario": "toolFailsMidTurn",
       "harness": "codex",
       "owner": "Codex",
@@ -421,16 +393,6 @@
       "differs": {
         "/items/0/payload/presentation/label": "Read lib.rs",
         "/items/0/payload/inputSummary": "cat src/lib.rs"
-      }
-    },
-    {
-      "scenario": "toolFailsMidTurn",
-      "harness": "pi",
-      "owner": "Pi",
-      "visible": true,
-      "gap": "tool label is the raw tool name",
-      "differs": {
-        "/items/0/payload/presentation/label": "read"
       }
     },
     {
@@ -488,20 +450,6 @@
       }
     },
     {
-      "scenario": "fileEditWithDiff",
-      "harness": "pi",
-      "owner": "Pi",
-      "visible": true,
-      "gap": "raw tool name label, tool result text kept as output, generic diff summary and no line counts",
-      "differs": {
-        "/items/0/payload/presentation/label": "edit",
-        "/items/0/payload/outputSummary": "Edited src/lib.rs",
-        "/items/1/payload/changes/0/summary": "Pi updated a workspace file",
-        "/items/1/payload/changes/0/additions": null,
-        "/items/1/payload/changes/0/deletions": null
-      }
-    },
-    {
       "scenario": "planUpdate",
       "harness": "codex",
       "owner": "Codex",
@@ -521,17 +469,6 @@
         "/turnState": "interrupted",
         "/items/0/payload/presentation/label": "Read lib.rs",
         "/items/0/payload/inputSummary": "cat src/lib.rs"
-      }
-    },
-    {
-      "scenario": "cancelledWithRunningTool",
-      "harness": "pi",
-      "owner": "Pi",
-      "visible": true,
-      "gap": "a user abort settles the turn as interrupted, not cancelled; raw tool name label",
-      "differs": {
-        "/turnState": "interrupted",
-        "/items/0/payload/presentation/label": "read"
       }
     }
   ]

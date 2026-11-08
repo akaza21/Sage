@@ -32,6 +32,7 @@ impl PiRuntime {
             request_id: id.clone(),
             command_id: String::new(),
             stage: DenyStage::Prepared,
+            releases: false,
         });
         let event = self.item(
             id,

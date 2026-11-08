@@ -49,8 +49,8 @@ fn launch_factory(
     Box::new(PiNativeRuntimeFactory { binding, root, mcp })
 }
 
-/// The truthful read-only ceiling: prompt and cancel only; no resume, load,
-/// close, fork, steer, or child projection.
+/// The truthful ceiling: prompt, cancel, steer and resume; no load, close,
+/// fork, or child projection.
 fn capabilities(
     binding: &AdmittedBinding,
 ) -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
@@ -65,13 +65,13 @@ fn capabilities(
         protocol_version: RequiredText::new("protocolVersion", format!("pi-rpc-{PI_VERSION}"))
             .map_err(|_| RegistryAdmissionUnavailable::Drift)?,
         new_session: true,
-        resume_session: false,
+        resume_session: true,
         load_session: false,
         close_session: false,
         prompt: true,
         cancel: true,
         native_session_fork: false,
-        active_turn_steer: false,
+        active_turn_steer: true,
         child_conversation_projection: false,
         child_transcript_read: false,
         collaboration_event_projection: false,

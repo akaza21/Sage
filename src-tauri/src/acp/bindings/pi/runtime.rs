@@ -10,7 +10,7 @@ use crate::acp::{
     transport::{Frame, request_payload_digest},
 };
 
-use super::{AdapterError, ModelSummary, Operation, Outbound, PiTranslator, ResearchPiBinding};
+use super::{AdapterError, ModelSummary, Operation, Outbound, PiTranslator};
 
 mod ingress;
 mod support;
@@ -26,7 +26,10 @@ pub(super) enum RequestKind {
     Commands,
     SetThinkingLevel,
     NewSession,
+    ResumeSession,
     Prompt,
+    Steer,
+    ClearQueue,
     Cancel,
 }
 
@@ -69,6 +72,8 @@ pub(super) struct DenyIntent {
     pub(super) request_id: ExternalId,
     pub(super) command_id: String,
     pub(super) stage: DenyStage,
+    /// A declined question only cancels its dialog, so the Turn goes on.
+    pub(super) releases: bool,
 }
 
 pub(crate) struct PiRuntime {
@@ -78,14 +83,16 @@ pub(crate) struct PiRuntime {
     pub(super) runtime_epoch: RuntimeEpoch,
     pub(super) session_id: SageAgentSessionId,
     pub(super) external_session: Option<ExternalId>,
+    /// Where Pi keeps this working directory's sessions, from `get_state`.
+    session_dir: Option<std::path::PathBuf>,
     pub(super) active_turn: Option<TurnIntent>,
+    steering: support::Steering,
     pub(super) deny: Option<DenyIntent>,
     cancelled_dialogs: BTreeMap<String, DenyStage>,
     recent_cancelled_dialogs: VecDeque<String>,
     staged_initialize: Option<Outbound>,
     reservations: BTreeMap<u64, RequestReservation>,
     next_egress: u64,
-    next_session: u64,
     next_item: u64,
     pub(super) model_count: u16,
     pub(super) current_model: Option<String>,
@@ -132,19 +139,6 @@ impl PiRuntime {
         )
     }
 
-    pub(crate) fn from_binding(
-        binding: &ResearchPiBinding,
-        binding_digest: [u8; 32],
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Result<Self, AdapterRuntimeError> {
-        let _ = (binding_digest, runtime_epoch, session_id);
-        binding
-            .require_launch_admission()
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        Err(AdapterRuntimeError::LaunchUnavailable)
-    }
-
     #[cfg(test)]
     pub(crate) fn fixture(runtime_epoch: RuntimeEpoch, session_id: SageAgentSessionId) -> Self {
         Self::new(
@@ -168,14 +162,15 @@ impl PiRuntime {
             runtime_epoch,
             session_id,
             external_session: None,
+            session_dir: None,
             active_turn: None,
+            steering: support::Steering::default(),
             deny: None,
             cancelled_dialogs: BTreeMap::new(),
             recent_cancelled_dialogs: VecDeque::new(),
             staged_initialize: None,
             reservations: BTreeMap::new(),
             next_egress: 0,
-            next_session: 0,
             next_item: 0,
             model_count: 0,
             current_model: None,
@@ -237,7 +232,7 @@ impl HarnessAdapter for PiRuntime {
             return Err(AdapterRuntimeError::Operation);
         }
         match command {
-            AdapterCommand::Steer { .. } => Err(AdapterRuntimeError::UnsupportedCommand),
+            AdapterCommand::Steer { prompt, .. } => self.begin_steer(&prompt),
             AdapterCommand::Initialize => self.begin_initialize(),
             AdapterCommand::ModelPage { cursor: None } if self.initialized => {
                 self.begin_one(Operation::GetModels, RequestKind::Models)
@@ -255,9 +250,14 @@ impl HarnessAdapter for PiRuntime {
                 self.begin_one(Operation::NewSession, RequestKind::NewSession)
             }
             AdapterCommand::NewSession { .. } => Err(AdapterRuntimeError::Operation),
-            AdapterCommand::ResumeSession { .. }
-            | AdapterCommand::LoadSession { .. }
-            | AdapterCommand::CloseSession => Err(AdapterRuntimeError::UnsupportedCommand),
+            AdapterCommand::ResumeSession {
+                external_session_id,
+                model,
+                ..
+            } => self.begin_resume(&external_session_id, model.as_ref()),
+            AdapterCommand::LoadSession { .. } | AdapterCommand::CloseSession => {
+                Err(AdapterRuntimeError::UnsupportedCommand)
+            }
             AdapterCommand::Prompt {
                 prompt,
                 client_message_id,

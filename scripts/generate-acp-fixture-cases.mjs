@@ -2,6 +2,7 @@ import { nativeCases } from "./acp-native-cases.mjs";
 import { emit, events, wait } from "./acp-native-case-events.mjs";
 import {
   piBridgeJourneys,
+  piFullTurnJourney,
   piIdleConfigJourney,
 } from "./acp-native-pi-cases.mjs";
 import { codexUserInputJourneys } from "./acp-native-codex-user-input-cases.mjs";
@@ -325,7 +326,11 @@ journeyCases.push(
 );
 journeyCases.push(longTranscriptJourney());
 journeyCases.push(...nativeCases());
-journeyCases.push(piIdleConfigJourney(), ...piBridgeJourneys());
+journeyCases.push(
+  piIdleConfigJourney(),
+  piFullTurnJourney(),
+  ...piBridgeJourneys(),
+);
 journeyCases.push(...codexUserInputJourneys());
 journeyCases.push(...codexNoticeJourneys());
 journeyCases.push(...customAcpJourneys());

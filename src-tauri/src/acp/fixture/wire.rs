@@ -27,7 +27,7 @@ mod parity_tests;
 #[cfg(test)]
 pub(crate) use child_opened_tests::child_opened_wire_for_test;
 #[cfg(test)]
-pub(crate) use pi_bridge::{pi_bridge_calls_for_test, run_pi_bridge_call_for_test};
+pub(crate) use pi_bridge::{pi_journey_steps_for_test, run_pi_step_for_test};
 #[cfg(test)]
 pub(crate) use user_input::codex_user_input_wire_for_test;
 
