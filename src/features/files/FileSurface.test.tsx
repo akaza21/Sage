@@ -193,7 +193,7 @@ describe("FileSurface durability cadence", () => {
       revision: 1,
     });
     expect(activeEditorText()).toBe("edited\n");
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "External change detected. Disk content changed",
     );
 
