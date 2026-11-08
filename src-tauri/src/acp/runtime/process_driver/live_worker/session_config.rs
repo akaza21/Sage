@@ -66,6 +66,15 @@ where
         }
     }
 
+    pub(crate) fn abandon_usage_read(&mut self) {
+        match self {
+            Self::Idle(idle) => idle.parts.abandon_usage_read(),
+            Self::Reusable(parts) => parts.completed.abandon_usage_read(),
+            Self::Active(active) => active.turn.driver.abandon_usage_read(),
+            _ => {}
+        }
+    }
+
     pub(crate) fn begin_native_rpc<Auth>(
         &mut self,
         context: &FirstTurnWorkerContext<Auth>,

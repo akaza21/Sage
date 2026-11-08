@@ -300,6 +300,15 @@ fn wrong_ids_login_identity_methods_eof_timeout_and_cleanup_fail_closed() {
             completed(FOREIGN, true),
         ],
         vec![initialize(1), signed_out(2), started(3), updated(false)],
+        vec![
+            initialize(1),
+            signed_out(2),
+            started(3),
+            completed(LOGIN, true),
+            json_frame(
+                json!({"method":"account/updated","params":{"authMode":"apikey","planType":null}}),
+            ),
+        ],
     ];
     for frames in cases {
         let mut transport = transport_vec(frames);

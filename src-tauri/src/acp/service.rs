@@ -372,6 +372,7 @@ impl AcpService {
         let mut page = load_chat_page(&self.database.connection(), project_id, chat_id, cursor)?;
         self.compose_session_config(&mut page)?;
         self.compose_goal(&mut page);
+        self.compose_usage(&mut page);
         self.fit_goal_to_page_budget(&mut page)?;
         Ok(page)
     }

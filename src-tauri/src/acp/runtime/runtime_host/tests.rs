@@ -665,6 +665,37 @@ fn late_native_rpc_completion_cannot_escape_its_deadline() {
 }
 
 #[test]
+fn a_passive_read_that_misses_its_deadline_is_abandoned_without_recovery() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([]).with_native_completion(Arc::clone(&completion));
+    let observed = engine.clone();
+    let host = RuntimeHost::start_with_timeout(engine, Duration::from_millis(100)).unwrap();
+    let runtime = owner("project-a");
+    host.without_timeout_override(|| host.activate(runtime.clone()))
+        .unwrap();
+    assert_eq!(
+        host.native_rpc(crate::acp::goal::NativeRpcIntent {
+            owner: runtime,
+            request: crate::acp::goal::NativeRpcRequest::UsageRead,
+        }),
+        Err(HostError::Deadline)
+    );
+    let started = Instant::now();
+    while !observed.events().contains(&"abandonConfiguration") {
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+    completion
+        .lock()
+        .unwrap()
+        .take()
+        .unwrap()
+        .complete(Ok(crate::acp::goal::NativeRpcReply::UsageRead));
+    host.without_timeout_override(|| assert_eq!(host.state(), Ok(HostState::Idle)));
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
 fn close_settles_pending_native_rpc_and_ignores_its_late_reply() {
     let completion = Arc::new(Mutex::new(None));
     let engine = FakeEngine::new([]).with_native_completion(Arc::clone(&completion));

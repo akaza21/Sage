@@ -1,15 +1,16 @@
 use super::*;
 use crate::acp::{
     goal::{NativeRpcIntent, NativeRpcRequest},
+    projection::AcpChatPage,
     runtime::HostError,
     scheduler::RuntimeOwner,
-    usage::UsageState,
+    usage::{UsageCell, UsageState},
 };
 
 impl AcpService {
     /// Refreshes the runtime's usage limits from its harness, then answers
-    /// with the latest snapshot. A refused or failed refresh still serves the
-    /// snapshot the harness last pushed.
+    /// with what the harness last reported. A read that misses its deadline
+    /// is abandoned and still serves the last snapshot.
     pub(crate) fn read_usage(&self, owner: RuntimeOwner) -> UsageState {
         let Some(lane) = self.lane_for(&owner) else {
             return UsageState::Offline;
@@ -28,15 +29,33 @@ impl AcpService {
             result,
             Err(HostError::Unavailable
                 | HostError::Closed
-                | HostError::Deadline
                 | HostError::DeliveryUnknown
                 | HostError::RecoveryRequired)
         ) {
             self.retain_config_effect_recovery(owner, host);
         }
-        cell.snapshot()
-            .map_or(UsageState::Unavailable, |snapshot| UsageState::Usage {
-                snapshot,
-            })
+        cell.state()
+    }
+
+    /// Marks the page when its live runtime can report usage limits.
+    pub(super) fn compose_usage(&self, page: &mut AcpChatPage) {
+        page.usage = self
+            .current_usage_cell(page)
+            .is_some_and(|cell| cell.supported());
+    }
+
+    fn current_usage_cell(&self, page: &AcpChatPage) -> Option<std::sync::Arc<UsageCell>> {
+        let session = page
+            .sessions
+            .as_slice()
+            .iter()
+            .find(|session| Some(&session.id) == page.current_session_id.as_ref())?;
+        let owner = RuntimeOwner {
+            project_id: page.project_id.clone(),
+            chat_id: page.chat_id.clone(),
+            session_id: session.id.clone(),
+            runtime_epoch: session.runtime_epoch?,
+        };
+        self.lane_for(&owner)?.runtime.usage.cell(&owner)
     }
 }

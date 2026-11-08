@@ -18,11 +18,13 @@ const AUTH_ERROR_BYTES: usize = 8_192;
 
 mod api_key;
 mod browser;
+mod notification;
 mod router;
 mod runner;
 mod transport;
 pub(crate) use api_key::NativeApiKey;
 pub(crate) use browser::NativeBrowser;
+pub(crate) use notification::{CodexAuthMode, CodexAuthNotification};
 pub(crate) use runner::{
     AuthBrowser, AuthTransport, CodexAuthDeadline, CodexAuthOutcome, run_account_protocol,
     run_api_key_protocol, run_login_protocol, run_logout_protocol,
@@ -104,18 +106,6 @@ impl CodexAuthRequest {
     pub(crate) fn into_frame(self) -> OutboundFrame {
         self.frame
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CodexAuthNotification {
-    /// `login_id` is absent for an API key login, which has no browser flow.
-    LoginCompleted {
-        login_id: Option<NativeLoginId>,
-        success: bool,
-    },
-    AccountUpdated {
-        signed_in: bool,
-    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -298,29 +288,6 @@ impl CodexAuthProtocol {
         }
     }
 
-    pub(crate) fn accept_notification(
-        &self,
-        frame: &Frame,
-    ) -> Result<CodexAuthNotification, CodexAuthError> {
-        let value: Value =
-            serde_json::from_slice(frame.as_bytes()).map_err(|_| CodexAuthError::Protocol)?;
-        crate::acp::bindings::codex::incoming::validate_shape(&value)
-            .map_err(|_| CodexAuthError::Protocol)?;
-        let object = value.as_object().ok_or(CodexAuthError::Protocol)?;
-        if object.len() != 2 || object.contains_key("id") || object.contains_key("result") {
-            return Err(CodexAuthError::Protocol);
-        }
-        let params = object
-            .get("params")
-            .and_then(Value::as_object)
-            .ok_or(CodexAuthError::Protocol)?;
-        match object.get("method").and_then(Value::as_str) {
-            Some("account/login/completed") => parse_completed(params),
-            Some("account/updated") => parse_updated(params),
-            _ => Err(CodexAuthError::Protocol),
-        }
-    }
-
     fn request(
         &mut self,
         method: &str,
@@ -373,53 +340,6 @@ fn response_result(frame: &Frame, expected: u64) -> Result<Map<String, Value>, C
 
 fn require_response_id(frame: &Frame, expected: u64) -> Result<(), CodexAuthError> {
     response_result(frame, expected).map(drop)
-}
-
-fn parse_completed(params: &Map<String, Value>) -> Result<CodexAuthNotification, CodexAuthError> {
-    if params.len() != 3 || !params.contains_key("error") {
-        return Err(CodexAuthError::Protocol);
-    }
-    let login_id = match params.get("loginId") {
-        Some(Value::Null) => None,
-        Some(Value::String(id)) => Some(NativeLoginId::parse(id)?),
-        _ => return Err(CodexAuthError::Protocol),
-    };
-    let success = params
-        .get("success")
-        .and_then(Value::as_bool)
-        .ok_or(CodexAuthError::Protocol)?;
-    let error_valid = if success {
-        matches!(params.get("error"), Some(Value::Null))
-    } else {
-        params
-            .get("error")
-            .and_then(Value::as_str)
-            .is_some_and(|error| error.len() <= AUTH_ERROR_BYTES && !error.contains('\0'))
-    };
-    if !error_valid {
-        return Err(CodexAuthError::Protocol);
-    }
-    Ok(CodexAuthNotification::LoginCompleted { login_id, success })
-}
-
-fn parse_updated(params: &Map<String, Value>) -> Result<CodexAuthNotification, CodexAuthError> {
-    if params.len() != 2 || !params.contains_key("planType") {
-        return Err(CodexAuthError::Protocol);
-    }
-    let signed_in = match params.get("authMode") {
-        Some(Value::String(mode)) if mode == "chatgpt" || mode == "apikey" => true,
-        Some(Value::Null) => false,
-        _ => return Err(CodexAuthError::Protocol),
-    };
-    let plan_valid = matches!(params.get("planType"), Some(Value::Null))
-        || params
-            .get("planType")
-            .and_then(Value::as_str)
-            .is_some_and(|plan| plan.len() <= 512 && !plan.contains('\0'));
-    if !plan_valid || (!signed_in && !matches!(params.get("planType"), Some(Value::Null))) {
-        return Err(CodexAuthError::Protocol);
-    }
-    Ok(CodexAuthNotification::AccountUpdated { signed_in })
 }
 
 struct NoResources;

@@ -1,10 +1,10 @@
 use super::*;
-use crate::acp::goal::NativeRpcReply;
+use crate::acp::{goal::NativeRpcReply, usage::UsageState};
 
-fn update(used: i64) -> Frame {
+fn update(limit: &str, used: i64) -> Frame {
     frame(
         json!({"method":"account/rateLimits/updated","params":{"rateLimits":{
-            "limitId":"codex","limitName":null,"planType":"plus",
+            "limitId":limit,"limitName":null,"planType":"plus",
             "primary":{"usedPercent":used,"windowDurationMins":300,"resetsAt":1_762_900_000},
             "secondary":null,"credits":null,"rateLimitReachedType":null
         }}}),
@@ -12,45 +12,60 @@ fn update(used: i64) -> Frame {
 }
 
 fn used(runtime: &CodexRuntime) -> Vec<u8> {
-    let snapshot = runtime.usage().unwrap().snapshot().unwrap();
+    let UsageState::Usage { snapshot } = runtime.usage().unwrap().state() else {
+        panic!("no usage reported");
+    };
     snapshot.windows.iter().map(|w| w.used_percent).collect()
 }
 
-#[test]
-fn pushed_usage_replaces_the_previous_snapshot_without_transcript_events() {
-    let mut runtime = fixture_runtime();
-    initialize(&mut runtime);
-    assert_eq!(runtime.usage().unwrap().snapshot(), None);
-    for percent in [12, 57] {
-        let batch = runtime.ingest(&update(percent), &Mapper).unwrap();
-        assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
-    }
-    assert_eq!(used(&runtime), vec![57]);
-    let bogus = frame(json!({"method":"account/rateLimits/updated","params":{"rateLimits":{}}}));
-    runtime.ingest(&bogus, &Mapper).unwrap();
-    assert_eq!(used(&runtime), vec![57]);
+fn answer(runtime: &mut CodexRuntime, id: u64, body: Value) {
+    let mut reply = json!({"id":id});
+    reply
+        .as_object_mut()
+        .unwrap()
+        .extend(body.as_object().unwrap().clone());
+    let batch = runtime.ingest(&frame(reply), &Mapper).unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
 }
 
 #[test]
-fn usage_read_answers_the_native_rpc_and_a_refusal_keeps_the_last_snapshot() {
+fn pushed_buckets_merge_by_limit_without_transcript_events() {
     let mut runtime = fixture_runtime();
     initialize(&mut runtime);
-    runtime.ingest(&update(30), &Mapper).unwrap();
+    assert_eq!(runtime.usage().unwrap().state(), UsageState::Unavailable);
+    for frame in [
+        update("codex", 12),
+        update("spark", 40),
+        update("codex", 57),
+    ] {
+        let batch = runtime.ingest(&frame, &Mapper).unwrap();
+        assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
+    }
+    assert_eq!(used(&runtime), vec![57, 40]);
+    let bogus = frame(json!({"method":"account/rateLimits/updated","params":{"rateLimits":{}}}));
+    runtime.ingest(&bogus, &Mapper).unwrap();
+    assert_eq!(used(&runtime), vec![57, 40]);
+}
+
+#[test]
+fn usage_read_answers_the_native_rpc_and_a_refusal_marks_usage_unsupported() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    runtime.ingest(&update("codex", 30), &Mapper).unwrap();
 
     let read = runtime.read_usage().unwrap();
     let wire: Value = serde_json::from_slice(read.frame().payload()).unwrap();
     assert_eq!(wire["method"], "account/rateLimits/read");
     assert!(runtime.native_rpc_pending());
     assert!(runtime.read_usage().is_err());
-    runtime
-        .ingest(
-            &frame(json!({"id":wire["id"],"result":{
-                "rateLimits":{"limitId":"codex","primary":{"usedPercent":64}},
-                "rateLimitsByLimitId":null,"ordinaryUsageAllowed":true
-            }})),
-            &Mapper,
-        )
-        .unwrap();
+    answer(
+        &mut runtime,
+        wire["id"].as_u64().unwrap(),
+        json!({"result":{
+            "rateLimits":{"limitId":"codex","primary":{"usedPercent":64}},
+            "rateLimitsByLimitId":null,"ordinaryUsageAllowed":true
+        }}),
+    );
     assert_eq!(
         runtime.take_native_rpc_reply(),
         Some(NativeRpcReply::UsageRead)
@@ -59,16 +74,42 @@ fn usage_read_answers_the_native_rpc_and_a_refusal_keeps_the_last_snapshot() {
     assert_eq!(used(&runtime), vec![64]);
 
     let read = runtime.read_usage().unwrap();
-    let id = request_id(&read);
-    runtime
-        .ingest(
-            &frame(json!({"id":id,"error":{"code":-32600,"message":"chatgpt authentication required"}})),
-            &Mapper,
-        )
-        .unwrap();
+    answer(
+        &mut runtime,
+        request_id(&read),
+        json!({"error":{"code":-32600,"message":"chatgpt authentication required"}}),
+    );
     assert_eq!(
         runtime.take_native_rpc_reply(),
         Some(NativeRpcReply::Rejected)
     );
-    assert_eq!(used(&runtime), vec![64]);
+    assert_eq!(runtime.usage().unwrap().state(), UsageState::Unsupported);
+}
+
+#[test]
+fn an_abandoned_read_frees_the_slot_and_its_late_answer_is_discarded() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let late = request_id(&runtime.read_usage().unwrap());
+    runtime.abandon_usage_read();
+    assert!(!runtime.native_rpc_pending());
+
+    let next = request_id(&runtime.read_usage().unwrap());
+    answer(
+        &mut runtime,
+        late,
+        json!({"result":{"rateLimits":{"limitId":"codex","primary":{"usedPercent":9}}}}),
+    );
+    assert_eq!(runtime.take_native_rpc_reply(), None);
+    assert!(runtime.native_rpc_pending());
+    answer(
+        &mut runtime,
+        next,
+        json!({"result":{"rateLimits":{"limitId":"codex","primary":{"usedPercent":11}}}}),
+    );
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::UsageRead)
+    );
+    assert_eq!(used(&runtime), vec![11]);
 }

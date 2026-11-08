@@ -56,6 +56,12 @@ pub(crate) enum NativeRpcReply {
 }
 
 impl NativeRpcIntent {
+    /// A read nothing waits on beyond its caller: it gets a short deadline,
+    /// and missing it abandons the read instead of recovering the runtime.
+    pub(crate) fn passive(&self) -> bool {
+        matches!(self.request, NativeRpcRequest::UsageRead)
+    }
+
     pub(crate) fn actual_bytes(&self) -> usize {
         self.owner.project_id.as_str().len()
             + self.owner.chat_id.as_str().len()

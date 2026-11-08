@@ -11,7 +11,7 @@ export function useUsageRequest(
   const session = page?.sessions.find(
     (candidate) => candidate.id === page.currentSessionId,
   );
-  const projectId = page?.projectId;
+  const projectId = page?.usage && page.projectId;
   const chatId = page?.chatId;
   const sessionId = session?.id;
   const runtimeEpoch = session?.runtimeEpoch;

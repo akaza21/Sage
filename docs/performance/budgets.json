@@ -407,7 +407,7 @@
         "entry": "src/features/chat/ComposerUsageLimits.tsx",
         "maxGzipBytes": 1520,
         "maxCssGzipBytes": 400,
-        "reason": "Usage-limits popover and its bounded decoder; loads only when the context meter is clicked and unmounts when closed. Measured 1418 B."
+        "reason": "Usage-limits popover and its bounded decoder; loads only when the context meter is clicked and unmounts when closed. Measured 1424 B."
       }
     ],
     "windowsInstallerMb": 45,

@@ -251,6 +251,7 @@ export function safeAcpMutationResponse(
       sessions: safeSessions,
       sessionConfig,
       ...(goal ? { goal } : {}),
+      ...(projection.usage === true && { usage: true }),
       turns: safeTurns,
       nextCursor: nextCursor as AcpChatPage["nextCursor"],
       ...(forkedFrom

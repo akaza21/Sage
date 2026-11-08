@@ -35,10 +35,10 @@ pub(crate) use admission::{
     admit_discovered_codex, startup_codex_binding_registration,
 };
 pub(crate) use auth::{
-    AuthBrowser, AuthTransport, CodexAuthDeadline, CodexAuthError, CodexAuthNotification,
-    CodexAuthOutcome, CodexAuthProtocol, NativeApiKey, NativeAuthUrl, NativeBrowser, NativeLoginId,
-    ProductionAuthTransport, run_account_protocol, run_api_key_protocol, run_login_protocol,
-    run_logout_protocol,
+    AuthBrowser, AuthTransport, CodexAuthDeadline, CodexAuthError, CodexAuthMode,
+    CodexAuthNotification, CodexAuthOutcome, CodexAuthProtocol, NativeApiKey, NativeAuthUrl,
+    NativeBrowser, NativeLoginId, ProductionAuthTransport, run_account_protocol,
+    run_api_key_protocol, run_login_protocol, run_logout_protocol,
 };
 pub(crate) use authority::{
     ConfigAuthorityError, EnvironmentAuthorityError, ResidueMarker, RetentionDecision,

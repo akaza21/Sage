@@ -10,7 +10,7 @@ import { MenuPopover } from "../../ui/MenuPopover";
 import "./composer-usage-limits.css";
 
 const NOTICE: Record<Exclude<AcpUsageState["kind"], "usage">, string> = {
-  unsupported: "This harness does not report usage limits.",
+  unsupported: "This account does not report usage limits.",
   offline: "Usage limits are available while this chat's session is running.",
   unavailable: "The harness has not reported usage limits yet.",
 };
@@ -102,7 +102,9 @@ export default function ComposerUsageLimits({
     >
       <div className="composer-usage__heading">
         <strong>Usage limits</strong>
-        {typeof state === "object" && state?.kind === "usage" ? (
+        {typeof state === "object" &&
+        state?.kind === "usage" &&
+        state.snapshot.plan ? (
           <span>{state.snapshot.plan}</span>
         ) : null}
       </div>

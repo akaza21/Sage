@@ -28,6 +28,7 @@ use snapshots::ItemSnapshots;
 mod harness;
 mod ingress;
 mod model_config;
+mod usage;
 
 mod factory;
 pub(crate) use factory::CodexRuntimeFactory;
@@ -55,6 +56,7 @@ pub(crate) struct CodexRuntime {
     model_pages_seen: u64,
     session_config: Option<crate::acp::session_config::SessionConfig>,
     usage: std::sync::Arc<crate::acp::usage::UsageCell>,
+    rate_limits: super::incoming::rate_limits::RateLimits,
 }
 
 impl CodexRuntime {
@@ -159,19 +161,10 @@ impl CodexRuntime {
                 self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::GoalApplied);
                 one(AdapterEvent::IgnoredLate)
             }
-            IngressDisposition::UsageUpdated(snapshot) => {
-                self.usage.replace(snapshot);
-                one(AdapterEvent::IgnoredLate)
-            }
-            IngressDisposition::UsageRead(snapshot) => {
-                use crate::acp::goal::NativeRpcReply;
-                self.native_rpc_reply = Some(match snapshot {
-                    Some(snapshot) => {
-                        self.usage.replace(snapshot);
-                        NativeRpcReply::UsageRead
-                    }
-                    None => NativeRpcReply::Rejected,
-                });
+            usage @ (IngressDisposition::UsageUpdated(_)
+            | IngressDisposition::UsageRead(_)
+            | IngressDisposition::UsageRefused) => {
+                self.apply_usage(usage);
                 one(AdapterEvent::IgnoredLate)
             }
             IngressDisposition::DuplicateTerminal => one(AdapterEvent::IgnoredDuplicate),

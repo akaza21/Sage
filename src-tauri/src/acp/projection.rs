@@ -383,6 +383,9 @@ pub struct SessionProjection {
 pub struct AcpChatPage {
     pub(crate) session_config: Option<super::session_config::SessionConfigOverlay>,
     pub(crate) goal: super::goal::GoalState,
+    /// The current session's live runtime reports usage limits.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) usage: bool,
     pub project_id: SageProjectId,
     pub chat_id: SageChatId,
     pub title: SafeText<8192>,

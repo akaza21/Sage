@@ -277,6 +277,8 @@ export interface AgentSessionProjection {
 export interface AcpChatPage {
   sessionConfig?: AcpSessionConfig | null;
   goal?: AcpGoalState;
+  /** The current session's live runtime reports usage limits. */
+  usage?: true;
   projectId: SageProjectId;
   chatId: SageChatId;
   title: string;

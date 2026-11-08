@@ -2,8 +2,8 @@ use std::time::{Duration, Instant};
 
 use crate::acp::{
     bindings::codex::{
-        CodexAuthError, CodexAuthNotification, CodexAuthProtocol, NativeApiKey, NativeAuthUrl,
-        NativeLoginId,
+        CodexAuthError, CodexAuthMode, CodexAuthNotification, CodexAuthProtocol, NativeApiKey,
+        NativeAuthUrl, NativeLoginId,
         discovery::{CodexDiscoveryRunError, DiscoveryZeroProcess},
     },
     limits::LIMITS,
@@ -234,11 +234,12 @@ fn api_key_login(
         while let Some(notification) = router.pop_notification() {
             if !matches!(
                 notification,
-                CodexAuthNotification::AccountUpdated { signed_in: true }
-                    | CodexAuthNotification::LoginCompleted {
-                        login_id: None,
-                        success: true,
-                    }
+                CodexAuthNotification::AccountUpdated {
+                    mode: Some(CodexAuthMode::ApiKey)
+                } | CodexAuthNotification::LoginCompleted {
+                    login_id: None,
+                    success: true,
+                }
             ) {
                 return Err(CodexDiscoveryRunError::Protocol);
             }
@@ -265,10 +266,10 @@ fn read_account(
             RoutedFrame::Response { id, frame } if id == expected => {
                 while let Some(notification) = router.pop_notification() {
                     match notification {
-                        CodexAuthNotification::AccountUpdated { signed_in }
+                        CodexAuthNotification::AccountUpdated { mode }
                             if early_update.is_none() =>
                         {
-                            early_update = Some(signed_in)
+                            early_update = Some(mode.is_some())
                         }
                         _ => return Err(CodexDiscoveryRunError::Protocol),
                     }
@@ -309,9 +310,7 @@ fn logout(
             RoutedFrame::Notification => {
                 while let Some(notification) = router.pop_notification() {
                     match notification {
-                        CodexAuthNotification::AccountUpdated { signed_in: false } => {
-                            signed_out = true
-                        }
+                        CodexAuthNotification::AccountUpdated { mode: None } => signed_out = true,
                         CodexAuthNotification::LoginCompleted { success: false, .. } => {}
                         _ => return Err(CodexDiscoveryRunError::Protocol),
                     }
@@ -346,7 +345,9 @@ fn accept_login_notification(
             login_id: Some(observed),
             success,
         } if observed == *login_id && completed.is_none() => *completed = Some(success),
-        CodexAuthNotification::AccountUpdated { signed_in: true } if !*updated => *updated = true,
+        CodexAuthNotification::AccountUpdated {
+            mode: Some(CodexAuthMode::Chatgpt),
+        } if !*updated => *updated = true,
         _ => return Err(CodexDiscoveryRunError::Protocol),
     }
     Ok(())

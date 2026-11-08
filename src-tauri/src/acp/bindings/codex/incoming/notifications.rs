@@ -49,12 +49,12 @@ pub(super) fn notification<M: ResourceMapper>(
                 _ => Err(IngressError::Malformed),
             }
         }
-        // Account state belongs to Codex and has no Sage-owned projection.
-        // The frame is bounded before reaching this matcher and its payload is
-        // discarded, so a known account update cannot become a transcript
+        // Account and skill changes belong to Codex and have no Sage-owned
+        // projection. The frame is bounded before reaching this matcher and
+        // its payload is discarded, so neither can become a transcript
         // artifact or alter a turn/session state.
         "account/updated" | "skills/changed" => Ok(IngressDisposition::IgnoredLate),
-        "account/rateLimits/updated" => Ok(super::rate_limits::usage_snapshot(params).map_or(
+        "account/rateLimits/updated" => Ok(super::rate_limits::pushed_bucket(params).map_or(
             IngressDisposition::IgnoredLate,
             IngressDisposition::UsageUpdated,
         )),

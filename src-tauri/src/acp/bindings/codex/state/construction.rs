@@ -64,6 +64,7 @@ impl CodexAdapter {
             goal_mutation_fence: None,
             pending_child_read: None,
             child_read_tombstone: None,
+            rate_limits_tombstone: None,
             pending_fork: None,
             forks: super::fork::ForkLedger::default(),
         }

@@ -9,6 +9,9 @@ pub(super) fn response(
         .get("id")
         .and_then(Value::as_u64)
         .ok_or(IngressError::Malformed)?;
+    if adapter.take_rate_limits_tombstone(id) {
+        return Ok(IngressDisposition::IgnoredLate);
+    }
     let kind = adapter.pending_kind(id).ok_or(IngressError::Uncorrelated)?;
     if kind == RequestKind::Models {
         let removed = adapter.take_pending(id);
@@ -31,11 +34,14 @@ pub(super) fn response(
     }
     if kind == RequestKind::RateLimitsRead {
         adapter.take_pending(id);
+        if object.contains_key("error") {
+            return Ok(IngressDisposition::UsageRefused);
+        }
         return Ok(IngressDisposition::UsageRead(
             object
                 .get("result")
                 .and_then(Value::as_object)
-                .and_then(super::rate_limits::usage_snapshot),
+                .and_then(super::rate_limits::RateLimits::read),
         ));
     }
     if let Some(error) = object.get("error") {

@@ -129,6 +129,8 @@ where
             envelope.reject(HostError::Intent);
             return (RunnerAction::Continue(state), None);
         }
+        let mut state = state;
+        state.abandon_usage_read();
         let Some(config) = pending_config.take() else {
             envelope.reject(HostError::State);
             return (RunnerAction::Continue(state), None);

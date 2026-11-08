@@ -1,6 +1,5 @@
 import { IconButton } from "../../ui/IconButton";
-import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
-import { Plus, Settings } from "../../ui/leanIcons";
+import { Plus } from "../../ui/leanIcons";
 
 import { useState, type ComponentProps } from "react";
 import type { ChatUsage } from "./acp/chatUsage";
@@ -22,9 +21,8 @@ import {
   sessionModeActions,
 } from "../../domain/acpSessionConfigControls";
 import { capitalizeLabel } from "../../domain/text";
-import "../../styles/harness-picker.css";
-import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
 import { ComposerAccessControl } from "./ComposerAccessControl";
+import { ComposerHarnessPicker } from "./ComposerHarnessPicker";
 import { composerOptionLabel } from "./composerChrome";
 import { useComposerToolbarFit } from "./useComposerToolbarFit";
 import { formatContextWindow } from "./composerModelContext";
@@ -105,7 +103,6 @@ export function ChatHarnessControls({
     (state) => state.projectTransitioning,
   );
   const [effortFromAdd, setEffortFromAdd] = useState(false);
-  const keyboardFocus = useHarnessKeyboardFocus();
   const {
     active,
     modelId,
@@ -120,9 +117,6 @@ export function ChatHarnessControls({
     (state) => state.selectedHarnessId,
   );
   const globalModels = useWorkbenchStore((state) => state.models);
-  const harnessesPending = harnesses.some(
-    (harness) => harness.installState === "detecting",
-  );
   const selectedHarness = harnesses.find(
     (harness) => harness.id === selectedHarnessId,
   );
@@ -271,30 +265,14 @@ export function ChatHarnessControls({
             onDismiss={dismiss}
           />
         ) : null}
-        <label
-          className="composer__control-trigger composer__harness"
-          data-keyboard-focus={keyboardFocus}
-        >
-          <HarnessSignInPicker
-            harnesses={harnesses}
-            ariaLabel="Harness"
-            open={active === "harness"}
-            onOpenChange={setHarnessOpen}
-            triggerIcon={<Settings size={16} aria-hidden="true" />}
-            candidates={harnessCandidates}
-            popoverClassName="composer__popover composer__harness-menu"
-            popoverGap={8}
-            popoverPlacement="above-start"
-            triggerClassName="composer__control-trigger composer__picker-trigger"
-            sectionLabel="Harnesses"
-            searchable={false}
-            disabled={projectTransitioning || turnBusy}
-            state={harnessesPending ? "loading" : undefined}
-            stateTitle={harnessesPending ? "Detecting harnesses…" : undefined}
-            onSelect={onSelectHarness}
-            selectedId={selectedHarnessId}
-          />
-        </label>
+        <ComposerHarnessPicker
+          open={active === "harness"}
+          onOpenChange={setHarnessOpen}
+          candidates={harnessCandidates}
+          disabled={projectTransitioning || turnBusy}
+          onSelect={onSelectHarness}
+          selectedId={selectedHarnessId}
+        />
         <ComposerModelControls
           triggerRef={modelTrigger}
           panelId={modelId}

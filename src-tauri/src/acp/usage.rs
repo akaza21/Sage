@@ -38,11 +38,9 @@ impl UsageSnapshot {
         if self.windows.len() >= MAX_USAGE_WINDOWS {
             return;
         }
-        let used_percent = used_percent.clamp(0, 100) as u8;
-        self.limit_reached |= used_percent >= 100;
         self.windows.push(UsageWindow {
             label: label.and_then(bounded_label),
-            used_percent,
+            used_percent: used_percent.clamp(0, 100) as u8,
             window_minutes: window_minutes.and_then(|m| u32::try_from(m).ok().filter(|m| *m > 0)),
             resets_at: resets_at.filter(|at| (0..=253_402_300_799).contains(at)),
         });
@@ -59,30 +57,43 @@ fn bounded_label(value: &str) -> Option<String> {
         .then(|| value.to_owned())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub(crate) enum UsageState {
     Unsupported,
     Offline,
+    #[default]
     Unavailable,
-    Usage { snapshot: UsageSnapshot },
+    Usage {
+        snapshot: UsageSnapshot,
+    },
 }
 
-/// The latest snapshot a binding observed. The binding owns it for the life
-/// of its runtime and the runtime lane only borrows it.
+/// What a binding last learned about its account's usage. The binding owns
+/// it for the life of its runtime and the runtime lane only borrows it.
 #[derive(Default)]
-pub(crate) struct UsageCell(Mutex<Option<UsageSnapshot>>);
+pub(crate) struct UsageCell(Mutex<UsageState>);
 
 impl UsageCell {
     pub(crate) fn replace(&self, snapshot: UsageSnapshot) {
-        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = Some(snapshot);
+        *self.lock() = UsageState::Usage { snapshot };
     }
 
-    pub(crate) fn snapshot(&self) -> Option<UsageSnapshot> {
-        self.0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+    /// The harness refused to report usage for this account.
+    pub(crate) fn mark_unsupported(&self) {
+        *self.lock() = UsageState::Unsupported;
+    }
+
+    pub(crate) fn state(&self) -> UsageState {
+        self.lock().clone()
+    }
+
+    pub(crate) fn supported(&self) -> bool {
+        !matches!(*self.lock(), UsageState::Unsupported)
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, UsageState> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -123,7 +134,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn windows_are_capped_clamped_and_mark_a_reached_limit() {
+    fn windows_are_capped_and_clamped() {
         let mut snapshot = UsageSnapshot::default();
         snapshot.push(Some(" 5h "), 140, Some(300), Some(-1));
         assert_eq!(
@@ -135,7 +146,6 @@ mod tests {
                 resets_at: None,
             }
         );
-        assert!(snapshot.limit_reached);
         for _ in 0..20 {
             snapshot.push(Some("\u{7}"), -5, Some(0), Some(1_700_000_000));
         }

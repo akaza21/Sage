@@ -36,6 +36,9 @@ where
     pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.pump.take_native_rpc_reply()
     }
+    pub(crate) fn abandon_usage_read(&mut self) {
+        self.pump.abandon_usage_read();
+    }
     pub(crate) fn begin_native_rpc(
         &mut self,
         intent: &crate::acp::goal::NativeRpcIntent,

@@ -14,6 +14,7 @@ mod permission_resolution;
 mod permissions;
 pub(in crate::acp::bindings::codex) use permissions::USER_INPUT_METHOD;
 mod provisional;
+mod rate_limits;
 mod session;
 mod turn_errors;
 mod turn_prompt;
@@ -180,6 +181,7 @@ pub(crate) struct CodexAdapter {
     goal_mutation_fence: Option<(u64, u64)>,
     pending_child_read: Option<(u64, String, String)>,
     child_read_tombstone: Option<u64>,
+    rate_limits_tombstone: Option<u64>,
     pending_fork: Option<u64>,
     forks: fork::ForkLedger,
 }
@@ -239,22 +241,6 @@ impl CodexAdapter {
         let removed = self.remove_pending(id);
         debug_assert_eq!(removed, Some(kind));
         Ok(())
-    }
-
-    pub(crate) fn rate_limits_read(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
-        if self.negotiated.is_none() {
-            return Err(AdapterError::CapabilityUnavailable);
-        }
-        if self.rate_limits_read_pending() {
-            return Err(AdapterError::TurnIntentConflict);
-        }
-        self.reserve(OutgoingRequest::rate_limits_read(id)?)
-    }
-
-    pub(crate) fn rate_limits_read_pending(&self) -> bool {
-        self.pending
-            .iter()
-            .any(|(_, kind)| *kind == RequestKind::RateLimitsRead)
     }
 
     pub(crate) fn pending_kind(&self, id: u64) -> Option<RequestKind> {

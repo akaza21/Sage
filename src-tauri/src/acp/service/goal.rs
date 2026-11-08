@@ -178,6 +178,7 @@ mod tests {
                     updated_at: None,
                 },
             },
+            usage: false,
             project_id: SageProjectId::parse("project-goal").unwrap(),
             chat_id: SageChatId::parse("chat-goal").unwrap(),
             title: SafeText::new("chatTitle", "History").unwrap(),
