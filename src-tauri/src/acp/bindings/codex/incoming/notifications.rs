@@ -17,6 +17,7 @@ pub(super) use child_thread::turn_completed as child_turn_completed;
 mod deltas;
 mod items;
 use items::item_event;
+mod notices;
 mod plan;
 mod provisional;
 use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};
@@ -263,6 +264,13 @@ pub(super) fn notification<M: ResourceMapper>(
             }
             Ok(IncomingEvent::Error(payload).into())
         }
+        "warning" => notices::warning(adapter, params),
+        "guardianWarning" => notices::guardian_warning(adapter, params),
+        "configWarning" => notices::config_warning(adapter, params),
+        "deprecationNotice" => notices::deprecation_notice(adapter, params),
+        "model/rerouted" => notices::model_rerouted(adapter, params),
+        "model/verification" => notices::model_verification(adapter, params),
+        "model/safetyBuffering/updated" => notices::model_safety_buffering(adapter, params),
         other => {
             record_unprojected(other);
             Ok(IngressDisposition::IgnoredLate)

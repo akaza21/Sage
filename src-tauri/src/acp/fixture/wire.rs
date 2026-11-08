@@ -394,3 +394,5 @@ pub(super) use output::{emit_repeated, write_stdout};
 mod capture;
 #[cfg(test)]
 pub(super) use capture::capture_steps;
+#[cfg(test)]
+pub(crate) use capture::replay_native;

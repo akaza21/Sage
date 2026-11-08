@@ -325,15 +325,19 @@ pub(super) fn emit_known(
     state: &mut WireState,
     output: &mut impl Write,
 ) -> Result<(), FixtureError> {
-    if shape == "codexNative" {
+    if shape == "codexNative" || shape == "codexNativeThreadless" {
         let mut params = acp::substitute(step["params"].clone(), state, 0)?;
-        params["threadId"] = json!(acp::SESSION);
-        params["turnId"] = json!(
-            state
-                .current_turn_id
-                .as_deref()
-                .ok_or(FixtureError::InvalidArguments)?
-        );
+        // A thread-less app-server notice (such as `configWarning`) may
+        // arrive before any thread or Turn exists, so it names neither.
+        if shape == "codexNative" {
+            params["threadId"] = json!(acp::SESSION);
+            params["turnId"] = json!(
+                state
+                    .current_turn_id
+                    .as_deref()
+                    .ok_or(FixtureError::InvalidArguments)?
+            );
+        }
         return emit_json(
             output,
             state,
