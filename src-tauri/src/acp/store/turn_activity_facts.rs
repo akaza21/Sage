@@ -5,9 +5,13 @@
 //! Each change of a row appends one fact; the projection folds the Turn's
 //! facts into its latest row per activity. Caps per Turn: at most
 //! [`ROWS_PER_TURN`] rows, and once [`FACTS_PER_TURN`] facts exist only a
-//! fact that settles a running row is admitted, so a Turn holds at most
-//! `FACTS_PER_TURN + ROWS_PER_TURN` facts. A row that cannot be recorded
-//! (a cap or the session's fact capacity) is dropped, never the batch.
+//! fact that settles a row (running, or cancelled at the Turn's end, to its
+//! outcome) is admitted, up to `FACTS_PER_TURN + ROWS_PER_TURN` facts.
+//! Display rows also stop at [`HEADROOM_PERCENT`] of the session's fact
+//! capacity, leaving the rest to the writes the session needs. A row that
+//! cannot be recorded is dropped, never the batch.
+
+use std::{collections::VecDeque, sync::Mutex};
 
 use rusqlite::{OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
@@ -21,6 +25,7 @@ use crate::acp::{
             SESSION_ACTIVITY_PROGRESS_BYTES, SessionActivity, SessionActivityState,
         },
     },
+    limits::LIMITS,
     projection::TurnSessionActivityProjection,
 };
 
@@ -29,6 +34,12 @@ use super::{AdapterStoreOwner, StoreError, facts, history::TurnRow};
 const KIND: &str = "sessionActivity";
 const ROWS_PER_TURN: usize = SESSION_ACTIVITIES_MAX;
 const FACTS_PER_TURN: usize = 64;
+const FACTS_PER_TURN_MAX: usize = FACTS_PER_TURN + ROWS_PER_TURN;
+const HEADROOM_PERCENT: u64 = 90;
+/// Sessions whose dropped rows were already logged; the oldest is
+/// forgotten beyond [`WARNED_MAX`].
+static WARNED: Mutex<VecDeque<String>> = Mutex::new(VecDeque::new());
+const WARNED_MAX: usize = 32;
 
 /// One recorded state of a row. `i` is the harness's row identity and
 /// stays in native storage.
@@ -63,18 +74,27 @@ pub(super) fn record(
     let admitted = match rows.iter().find(|latest| latest.i == fact.i) {
         Some(latest) if *latest == fact => false,
         Some(latest) => {
-            count < FACTS_PER_TURN
-                || (latest.s == SessionActivityState::Running && fact.s.is_terminal())
+            count < FACTS_PER_TURN || (count < FACTS_PER_TURN_MAX && settles(latest.s, fact.s))
         }
         None => count < FACTS_PER_TURN && rows.len() < ROWS_PER_TURN,
     };
     if !admitted {
         return Ok(false);
     }
+    let used: i64 = transaction.query_row(
+        "SELECT fact_count FROM acp_session_usage WHERE session_id=?1",
+        [session],
+        |row| row.get(0),
+    )?;
+    let headroom = LIMITS.durable.facts_per_session * HEADROOM_PERCENT / 100;
+    if used >= headroom as i64 {
+        warn_once(session, "sessionFactHeadroom");
+        return Ok(false);
+    }
     let payload = serde_json::to_string(&fact).map_err(|_| StoreError::Corrupt("activity fact"))?;
     match facts::ensure_fact_capacity(transaction, session, payload.len() as i64) {
         Err(StoreError::Capacity { resource, .. }) => {
-            tracing::warn!(resource, "session activity row dropped at fact capacity");
+            warn_once(session, resource);
             return Ok(false);
         }
         result => result?,
@@ -91,6 +111,31 @@ pub(super) fn record(
         now_millis,
     )?;
     Ok(true)
+}
+
+/// Whether `next` settles a row: a running one to any end, or one cancelled
+/// at its Turn's end to the outcome that arrived later.
+fn settles(latest: SessionActivityState, next: SessionActivityState) -> bool {
+    use SessionActivityState::{Cancelled, Completed, Failed, Running};
+    matches!(
+        (latest, next),
+        (Running, Completed | Failed | Cancelled) | (Cancelled, Completed | Failed)
+    )
+}
+
+/// Logs one line per session for dropped display rows, not one per hook.
+fn warn_once(session: &str, resource: &str) {
+    let Ok(mut warned) = WARNED.lock() else {
+        return;
+    };
+    if warned.iter().any(|known| known == session) {
+        return;
+    }
+    if warned.len() == WARNED_MAX {
+        warned.pop_front();
+    }
+    warned.push_back(session.to_owned());
+    tracing::warn!(resource, "session activity rows are no longer recorded");
 }
 
 /// The Turn's rows in first-report order, each at its latest state.
@@ -113,6 +158,8 @@ pub(super) fn load(
 /// The batch's Turn, or the Turn the harness names when that one already
 /// ended: the batch's Turn itself if it is terminal, else the Turn before it
 /// in the same runtime epoch. Without such a Turn the batch's Turn owns it.
+/// This assumes each Sage Turn of an epoch is exactly one harness Turn, so
+/// the harness's previous Turn is the Sage Turn before the batch's.
 fn owning_turn(
     transaction: &Transaction<'_>,
     owner: &AdapterStoreOwner,
@@ -156,7 +203,7 @@ fn folded(
         "SELECT payload_json FROM session_facts WHERE session_id=?1 AND turn_id=?2 AND kind=?3
          ORDER BY sequence LIMIT ?4",
     )?;
-    let limit = (FACTS_PER_TURN + ROWS_PER_TURN) as i64;
+    let limit = FACTS_PER_TURN_MAX as i64;
     let payloads = statement
         .query_map(params![session, turn, KIND, limit], |row| {
             row.get::<_, String>(0)

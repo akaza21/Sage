@@ -274,3 +274,132 @@ fn a_fact_that_does_not_decode_is_skipped_and_the_page_still_loads() {
     apply(&mut fixture, &owner, vec![hook("lint", Completed, "ok")]);
     assert_eq!(rows(&fixture)[0], [row("lint", "completed", "ok")]);
 }
+
+fn activity_facts(fixture: &Fixture) -> i64 {
+    fixture
+        .connection
+        .query_row(
+            "SELECT COUNT(*) FROM session_facts WHERE kind='sessionActivity'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+#[test]
+fn past_the_turn_cap_a_cancelled_hook_still_settles_to_its_late_outcome() {
+    let mut fixture = fixture();
+    let owner = fixture.owner.clone();
+    apply(
+        &mut fixture,
+        &owner,
+        vec![turn(TurnState::Running), hook("guard", Running, "-")],
+    );
+    // 63 more facts: a rerunning hook ends running at the cap of 64.
+    for run in 0..32 {
+        let mut events = vec![hook("pre", Running, &format!("run {run}"))];
+        if run < 31 {
+            events.push(hook("pre", Completed, &format!("run {run}")));
+        }
+        apply(&mut fixture, &owner, events);
+    }
+    assert_eq!(activity_facts(&fixture), 64);
+    apply(
+        &mut fixture,
+        &owner,
+        vec![
+            hook("guard", Cancelled, "-"),
+            hook("guard", Running, "rerun"),
+            hook("guard", Failed, "Guard exited with status 2"),
+            hook("guard", Completed, "-"),
+        ],
+    );
+    assert_eq!(activity_facts(&fixture), 66, "only the two settles");
+    assert_eq!(
+        rows(&fixture)[0][0],
+        row("guard", "failed", "Guard exited with status 2")
+    );
+    // Past the cap a row settles at most twice; it cannot cycle.
+    for index in 0..16 {
+        apply(
+            &mut fixture,
+            &owner,
+            vec![hook("pre", Cancelled, &index.to_string())],
+        );
+        apply(
+            &mut fixture,
+            &owner,
+            vec![hook("pre", Completed, &index.to_string())],
+        );
+    }
+    assert_eq!(activity_facts(&fixture), 68);
+}
+
+#[test]
+fn hook_rows_stop_short_of_the_sessions_fact_capacity() {
+    let mut fixture = fixture();
+    let owner = fixture.owner.clone();
+    apply(&mut fixture, &owner, vec![turn(TurnState::Running)]);
+    let headroom = LIMITS.durable.facts_per_session * 90 / 100;
+    fixture
+        .connection
+        .execute(
+            "UPDATE acp_session_usage SET fact_count=?1 WHERE session_id=?2",
+            rusqlite::params![headroom as i64, owner.session_id.as_str()],
+        )
+        .unwrap();
+    for state in [Running, Completed] {
+        let result = apply_adapter_inbound_batch(
+            &mut fixture.connection,
+            batch(&owner, vec![hook("lint", state, "-")]),
+        )
+        .unwrap();
+        assert_eq!(
+            result.disposition,
+            MutationDisposition::Applied,
+            "the live surface still moves"
+        );
+    }
+    assert_eq!(activity_facts(&fixture), 0);
+    assert!(rows(&fixture)[0].is_empty());
+}
+
+#[test]
+fn settles_past_the_turn_cap_stop_at_its_hard_ceiling() {
+    let mut fixture = fixture();
+    let owner = fixture.owner.clone();
+    let names = (0..16)
+        .map(|index| format!("hook-{index:02}"))
+        .collect::<Vec<_>>();
+    let mut events = vec![turn(TurnState::Running)];
+    events.extend(names.iter().map(|name| hook(name, Running, "-")));
+    apply(&mut fixture, &owner, events);
+    // 48 more facts leave every row running at the cap of 64.
+    for run in 0..24 {
+        apply(
+            &mut fixture,
+            &owner,
+            vec![
+                hook(&names[0], Completed, &run.to_string()),
+                hook(&names[0], Running, &run.to_string()),
+            ],
+        );
+    }
+    assert_eq!(activity_facts(&fixture), 64);
+    for name in &names {
+        apply(
+            &mut fixture,
+            &owner,
+            vec![hook(name, Cancelled, "-"), hook(name, Failed, "late")],
+        );
+    }
+    assert_eq!(activity_facts(&fixture), 80);
+    let projected = rows(&fixture);
+    assert_eq!(projected[0][0], row(&names[0], "failed", "late"));
+    assert_eq!(projected[0][7], row(&names[7], "failed", "late"));
+    assert_eq!(
+        projected[0][8],
+        row(&names[8], "running", "-"),
+        "the ceiling was spent before this row settled"
+    );
+}
