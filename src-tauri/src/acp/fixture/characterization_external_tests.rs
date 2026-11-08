@@ -157,6 +157,7 @@ fn run(case: CharacterizationCase, expected_terminal: TurnState) {
                 runtime_epoch: epoch,
                 prompt: Prompt::new("prompt", "read only").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await

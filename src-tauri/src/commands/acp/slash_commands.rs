@@ -107,6 +107,8 @@ pub(super) async fn run(
             runtime_epoch: r.runtime_epoch,
             prompt,
             attached_context: AttachedContexts::default(),
+            // A command never carries the files staged for the next message.
+            staged: None,
         },
     )
     .await

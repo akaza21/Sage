@@ -172,6 +172,16 @@ pub struct ActivateAcpSessionRequest {
     pub runtime_epoch: RuntimeEpoch,
 }
 
+/// Which staged prompt files a send carries.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub enum StagedSelection {
+    /// The chat's staged batch, only while it is still at this revision.
+    Revision(String),
+    /// The files the chat's latest dispatched prompt carried, for Retry.
+    LastSent,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "target",
@@ -191,6 +201,10 @@ pub enum SendAcpTurnRequest {
         prompt: Prompt,
         #[serde(default)]
         attached_context: AttachedContexts,
+        /// The staged prompt files this send carries. A send that names none
+        /// leaves the chat's staged batch for the send that does.
+        #[serde(default)]
+        staged: Option<StagedSelection>,
     },
     NewSession {
         project_id: SageProjectId,

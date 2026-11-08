@@ -1,10 +1,14 @@
 //! Ephemeral native prompt resources. No bytes or paths are persisted.
+use crate::acp::intent::StagedSelection;
 use serde::Serialize;
 use std::{collections::BTreeMap, sync::Arc};
 
+mod attachment;
 pub(crate) mod commands;
 mod read;
 mod secrets;
+#[cfg(test)]
+mod selection_tests;
 #[cfg(test)]
 mod tests;
 
@@ -13,8 +17,11 @@ pub(crate) const TOTAL_BYTES: usize = 96 * 1024;
 pub(crate) const FILE_COUNT: usize = 16;
 /// Prompt text, attached context and staged files together, per dispatch.
 pub(crate) const DISPATCH_BYTES: usize = 120 * 1024;
+/// The name a pasted-text resource carries; its URI still holds its own id.
+pub(crate) const PASTED_TEXT_NAME: &str = "pasted-text.txt";
 const OWNER_COUNT: usize = 16;
 const STORE_BYTES: usize = 1024 * 1024;
+pub(crate) use attachment::{attachment, release_detached};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Resource {
@@ -98,9 +105,16 @@ struct Batch {
     attached_at: i64,
     resources: Resources,
 }
+/// What a chat's latest dispatched prompt carried, kept so Retry can resend
+/// it. `None` marks files that were released to stay within the caps.
+struct Sent {
+    attached_at: i64,
+    resources: Option<Resources>,
+}
 #[derive(Default)]
 pub(crate) struct FileStages {
     batches: BTreeMap<(String, String), Batch>,
+    sent: BTreeMap<(String, String), Sent>,
 }
 impl FileStages {
     pub(crate) fn stage(
@@ -144,6 +158,82 @@ impl FileStages {
         self.batches.insert(key, batch);
         Ok(summary)
     }
+    /// Adds pasted composer text to the chat's batch as one more text
+    /// resource. The batch caps (count and total bytes) apply to the whole
+    /// batch, so a paste is admitted only while the batch still fits.
+    pub(crate) fn append_text(
+        &mut self,
+        project: &str,
+        chat: &str,
+        attached_at: i64,
+        expected: Option<&str>,
+        text: String,
+    ) -> Result<StagedFiles, &'static str> {
+        if text.is_empty() {
+            return Err("Pasted text is empty.");
+        }
+        if text.len() > TOTAL_BYTES {
+            return Err("Pasted text exceeds the 96 KiB attachment limit.");
+        }
+        let current = self
+            .batches
+            .get(&(project.to_owned(), chat.to_owned()))
+            .filter(|b| b.attached_at == attached_at)
+            .map(|b| b.resources.0.as_slice())
+            .unwrap_or_default();
+        if current.len() >= FILE_COUNT {
+            return Err("Attachments exceed the 16-file limit.");
+        }
+        if current.iter().map(|r| r.bytes.len()).sum::<usize>() + text.len() > TOTAL_BYTES {
+            return Err("Attachments exceed 96 KiB total.");
+        }
+        let mut next = Vec::with_capacity(current.len() + 1);
+        next.extend_from_slice(current);
+        next.push(Resource {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: PASTED_TEXT_NAME.to_owned(),
+            bytes: text.into_bytes(),
+        });
+        self.stage(
+            project,
+            chat,
+            attached_at,
+            expected,
+            Resources(Arc::new(next)),
+        )
+    }
+    /// The files a send carries. Naming no selection carries none, so a
+    /// queued message or a slash command never takes a batch staged for the
+    /// message the person is writing.
+    pub(crate) fn selected(
+        &self,
+        project: &str,
+        chat: &str,
+        selection: Option<&StagedSelection>,
+    ) -> Result<Resources, &'static str> {
+        let key = (project.to_owned(), chat.to_owned());
+        match selection {
+            None => Ok(Resources::default()),
+            Some(StagedSelection::Revision(revision)) => self
+                .batches
+                .get(&key)
+                .filter(|b| &b.revision == revision)
+                .map(|b| b.resources.clone())
+                .ok_or("Attachments changed; review them and send again."),
+            Some(StagedSelection::LastSent) => match self.sent.get(&key) {
+                None => Ok(Resources::default()),
+                Some(Sent {
+                    resources: Some(resources),
+                    ..
+                }) => Ok(resources.clone()),
+                Some(Sent {
+                    resources: None, ..
+                }) => Err(
+                    "The attachments sent with that message were released; attach them again and send a new message.",
+                ),
+            },
+        }
+    }
     pub(crate) fn get(&self, project: &str, chat: &str) -> Resources {
         self.batches
             .get(&(project.to_owned(), chat.to_owned()))
@@ -181,85 +271,71 @@ impl FileStages {
         batch.revision = uuid::Uuid::new_v4().to_string();
         Ok(Some(summary(batch)))
     }
+    /// Records a dispatched prompt. A sent batch leaves the stage and is kept
+    /// as the chat's last sent files; a send without files clears them, so
+    /// Retry of the latest message resends exactly what it carried.
     pub(crate) fn consume(&mut self, project: &str, chat: &str, sent: &Resources) {
         let key = (project.to_owned(), chat.to_owned());
+        if sent.0.is_empty() {
+            self.sent.remove(&key);
+            return;
+        }
         if self
             .batches
             .get(&key)
             .is_some_and(|b| Arc::ptr_eq(&b.resources.0, &sent.0))
         {
-            self.batches.remove(&key);
+            let batch = self.batches.remove(&key).expect("checked above");
+            self.sent.insert(
+                key.clone(),
+                Sent {
+                    attached_at: batch.attached_at,
+                    resources: Some(batch.resources),
+                },
+            );
+            self.bound_sent(&key);
+        }
+    }
+    /// Kept sent files share the owner and memory caps with staged batches'
+    /// own limits; the oldest-keyed other entries are released first.
+    fn bound_sent(&mut self, keep: &(String, String)) {
+        loop {
+            let held = self.sent.values().filter_map(|s| s.resources.as_ref());
+            let count = held.clone().count();
+            let bytes = held.map(Resources::retained_bytes).sum::<usize>();
+            if count <= OWNER_COUNT && bytes <= STORE_BYTES {
+                return;
+            }
+            let Some(other) = self
+                .sent
+                .iter_mut()
+                .find(|(k, s)| *k != keep && s.resources.is_some())
+            else {
+                return;
+            };
+            other.1.resources = None;
         }
     }
     pub(crate) fn clear_chat(&mut self, project: &str, chat: &str) {
-        self.batches.remove(&(project.to_owned(), chat.to_owned()));
+        let key = (project.to_owned(), chat.to_owned());
+        self.batches.remove(&key);
+        self.sent.remove(&key);
     }
     pub(crate) fn clear(&mut self) {
         self.batches.clear();
+        self.sent.clear();
     }
     fn owners(&self) -> Vec<(String, String, i64)> {
+        let sent = self.sent.iter().map(|(k, s)| (k, s.attached_at));
         self.batches
             .iter()
-            .map(|((project, chat), batch)| (project.clone(), chat.clone(), batch.attached_at))
+            .map(|(k, batch)| (k, batch.attached_at))
+            .chain(sent)
+            .map(|((project, chat), attached_at)| (project.clone(), chat.clone(), attached_at))
             .collect()
     }
 }
 
-/// The one ownership rule for staged batches: a batch lives only while the
-/// chat tab attachment it was staged in still exists. Any path that closes a
-/// tab, deletes, moves or archives a chat, or saves a layout without the tab
-/// ends that attachment; this drops the batch so it no longer counts against
-/// the owner and memory caps and is never sent from a reopened tab. Attachment
-/// commands and sends run it before they read stages, and layout persistence
-/// runs it after a commit so closed tabs release their memory promptly.
-pub(crate) fn release_detached(
-    stages: &std::sync::Mutex<FileStages>,
-    database: &crate::persistence::Database,
-) {
-    let owners = stages
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .owners();
-    if owners.is_empty() {
-        return;
-    }
-    let ended: Vec<_> = owners
-        .into_iter()
-        .filter(|(project, chat, attached_at)| {
-            attachment(database, project, chat).is_ok_and(|live| live != Some(*attached_at))
-        })
-        .collect();
-    let mut stages = stages
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    for (project, chat, attached_at) in ended {
-        let key = (project, chat);
-        if stages
-            .batches
-            .get(&key)
-            .is_some_and(|b| b.attached_at == attached_at)
-        {
-            stages.batches.remove(&key);
-        }
-    }
-}
-
-/// The `attached_at` of the chat's current tab, or `None` when it has none.
-pub(crate) fn attachment(
-    database: &crate::persistence::Database,
-    project: &str,
-    chat: &str,
-) -> rusqlite::Result<Option<i64>> {
-    use rusqlite::OptionalExtension;
-    database
-        .connection()
-        .query_row(
-            "SELECT attached_at FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
-            rusqlite::params![project, chat],
-            |row| row.get(0),
-        )
-        .optional()
-}
 fn summary(batch: &Batch) -> StagedFiles {
     StagedFiles {
         revision: batch.revision.clone(),

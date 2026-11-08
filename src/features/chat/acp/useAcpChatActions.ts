@@ -11,6 +11,7 @@ import type {
   CuratedModelId,
   ProjectGeneration,
   SageTurnId,
+  StagedSelection,
 } from "../../../domain/acp";
 import type { ChatOwnershipIntent } from "../../../domain/chatOwnership";
 import {
@@ -206,7 +207,8 @@ export function useAcpChatActions(boundChatId?: string | null) {
       attachedContext: readonly AttachedContext[],
       bindingId: CuratedBindingId,
       modelId: CuratedModelId | null,
-    ) => controller.submit(prompt, attachedContext, bindingId, modelId),
+      staged?: StagedSelection,
+    ) => controller.submit(prompt, attachedContext, bindingId, modelId, staged),
     steer: (
       prompt: string,
       attachedContext: readonly AttachedContext[],

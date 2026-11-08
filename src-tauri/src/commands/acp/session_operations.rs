@@ -70,7 +70,10 @@ pub(crate) async fn send_acp_turn_inner(
         }
     }
     #[cfg(all(windows, feature = "acp-fixture"))]
-    if let SendAcpTurnRequest::Session { session_id, .. } = &request {
+    if let SendAcpTurnRequest::Session {
+        session_id, staged, ..
+    } = &request
+    {
         let binding_id = session_routes::durable_binding_id(state, session_id)
             .map_err(store_error)
             .map_err(prompt_not_dispatched)?;
@@ -80,9 +83,8 @@ pub(crate) async fn send_acp_turn_inner(
                 .file_stages
                 .lock()
                 .map_err(|_| prompt_not_dispatched(internal_error()))?
-                .get(project_id.as_str(), chat_id.as_str())
-                .0
-                .is_empty()
+                .selected(project_id.as_str(), chat_id.as_str(), staged.as_ref())
+                .is_ok_and(|files| files.0.is_empty())
             {
                 return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
                     message: safe_message("This harness cannot accept staged file attachments."),
@@ -101,6 +103,7 @@ pub(crate) async fn send_acp_turn_inner(
         runtime_epoch,
         prompt,
         attached_context,
+        staged,
     ) = match request {
         SendAcpTurnRequest::NewSession {
             project_id,
@@ -156,6 +159,7 @@ pub(crate) async fn send_acp_turn_inner(
             runtime_epoch,
             prompt,
             attached_context,
+            staged,
         } => (
             project_id,
             project_generation,
@@ -166,6 +170,7 @@ pub(crate) async fn send_acp_turn_inner(
             runtime_epoch,
             prompt,
             attached_context,
+            staged,
         ),
     };
     let binding_id = session_routes::durable_binding_id(state, &session_id)
@@ -181,7 +186,12 @@ pub(crate) async fn send_acp_turn_inner(
         .file_stages
         .lock()
         .map_err(|_| prompt_not_dispatched(internal_error()))?
-        .get(project_id.as_str(), chat_id.as_str());
+        .selected(project_id.as_str(), chat_id.as_str(), staged.as_ref())
+        .map_err(|message| {
+            prompt_not_dispatched(AcpIpcError::InvalidRequest {
+                message: safe_message(message),
+            })
+        })?;
     if !files.0.is_empty() {
         let page = state
             .acp
@@ -231,8 +241,8 @@ pub(crate) async fn send_acp_turn_inner(
         .file_stages
         .lock()
         .map_err(|_| prompt_not_dispatched(internal_error()))?
-        .get(project_id.as_str(), chat_id.as_str());
-    if !files.same_selection(&current_files) {
+        .selected(project_id.as_str(), chat_id.as_str(), staged.as_ref());
+    if !current_files.is_ok_and(|current| files.same_selection(&current)) {
         super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
         return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
             message: safe_message("Attachments changed while preparing the prompt; send again."),

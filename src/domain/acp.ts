@@ -224,8 +224,15 @@ interface AcpTurnContent {
   attachedContext?: readonly AttachedContext[];
 }
 
+/**
+ * The staged prompt files a send carries: the chat's batch at a revision, or
+ * for Retry the files the chat's latest dispatched prompt carried.
+ */
+export type StagedSelection = { revision: string } | "lastSent";
+
 export type SendAcpTurnRequest =
-  | (AcpSessionMutationIntent & AcpTurnContent & { target: "session" })
+  | (AcpSessionMutationIntent &
+      AcpTurnContent & { target: "session"; staged?: StagedSelection })
   | (AcpMutationIntent &
       AcpTurnContent & {
         target: "newSession";

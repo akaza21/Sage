@@ -184,3 +184,88 @@ fn a_closed_tab_releases_its_batch_and_a_reopened_tab_never_inherits_it() {
         );
     });
 }
+
+#[test]
+fn pasted_text_joins_the_batch_as_a_text_resource_within_the_batch_caps() {
+    use super::super::{FILE_COUNT, PASTED_TEXT_NAME, TOTAL_BYTES};
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let state = &fixture.state;
+        let request = |expected: Option<&str>, text: String| -> StageTextRequest {
+            serde_json::from_value(serde_json::json!({
+                "owner": {"projectId": fixture.project, "chatId": fixture.chat, "projectGeneration": 0},
+                "expectedRevision": expected,
+                "text": text,
+            }))
+            .unwrap()
+        };
+        // A paste never names a path.
+        assert!(
+            serde_json::from_value::<StageTextRequest>(serde_json::json!({
+                "owner": {"projectId": "p", "chatId": "c", "projectGeneration": 0},
+                "expectedRevision": null, "text": "x", "path": "/etc/passwd",
+            }))
+            .is_err()
+        );
+        assert_eq!(
+            stage_text(state, request(None, String::new()))
+                .await
+                .err()
+                .as_deref(),
+            Some("Pasted text is empty.")
+        );
+        assert_eq!(
+            stage_text(state, request(None, "x".repeat(TOTAL_BYTES + 1)))
+                .await
+                .err()
+                .as_deref(),
+            Some("Pasted text exceeds the 96 KiB attachment limit.")
+        );
+        let log = "line\n".repeat(4096);
+        let first = stage_text(state, request(None, log.clone())).await.unwrap();
+        assert_eq!(first.files.len(), 1);
+        assert_eq!(first.files[0].name, PASTED_TEXT_NAME);
+        assert_eq!(first.files[0].bytes, log.len());
+        // A stale revision never overwrites the batch.
+        assert!(stage_text(state, request(None, "x".into())).await.is_err());
+        let room = TOTAL_BYTES - log.len();
+        assert_eq!(
+            stage_text(state, request(Some(&first.revision), "x".repeat(room + 1)))
+                .await
+                .err()
+                .as_deref(),
+            Some("Attachments exceed 96 KiB total.")
+        );
+        let second = stage_text(state, request(Some(&first.revision), "tail".into()))
+            .await
+            .unwrap();
+        assert_eq!(second.files.len(), 2);
+        let mut revision = second.revision;
+        for _ in 2..FILE_COUNT {
+            revision = stage_text(state, request(Some(&revision), "x".into()))
+                .await
+                .unwrap()
+                .revision;
+        }
+        assert_eq!(
+            stage_text(state, request(Some(&revision), "x".into()))
+                .await
+                .err()
+                .as_deref(),
+            Some("Attachments exceed the 16-file limit.")
+        );
+        // The harness receives the paste as an embedded text resource.
+        let resources = state
+            .acp
+            .file_stages
+            .lock()
+            .unwrap()
+            .get(&fixture.project, &fixture.chat);
+        let blocks = resources.wire("Explain this log", true).unwrap();
+        assert_eq!(blocks[0]["type"], "text");
+        assert_eq!(blocks[1]["type"], "resource");
+        assert_eq!(blocks[1]["resource"]["mimeType"], "text/plain");
+        assert_eq!(blocks[1]["resource"]["text"], log.as_str());
+        assert!(resources.wire("Explain this log", false).is_err());
+    });
+}

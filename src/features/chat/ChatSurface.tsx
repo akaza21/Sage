@@ -80,6 +80,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const focused = chatId == null || focusedChatId === chatId;
   const {
     selectedHarness,
+    selectedSession,
     useNativeAcp,
     availableBinding,
     harnessStatus,
@@ -165,7 +166,14 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     if (!acpPage || actionBusy || activeAcpTurn) return;
     const retry = latestRetryPrompt(acpPage);
     if (retry)
-      void acpActions.submit(retry.prompt, [], retry.bindingId, retry.modelId);
+      // Retry resends what the message carried, never the next one's paste.
+      void acpActions.submit(
+        retry.prompt,
+        [],
+        retry.bindingId,
+        retry.modelId,
+        "lastSent",
+      );
   };
 
   useEffect(() => {
@@ -308,6 +316,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         disabledReasonId={`${composerFieldId}-disabled-reason`}
         text={composerText}
         attachedContext={attachedContext}
+        pasteSession={selectedSession}
         imagePreviews={imagePreviews}
         imageUploading={imageUploading}
         onAddImages={addImages}

@@ -12,8 +12,8 @@ use crate::acp::{
         AcpIpcError, ActivateAcpSessionRequest, ActivityProvenanceV1, CancelAcpTurnRequest,
         CapabilitySnapshotV1, CloseAcpSessionRequest, GetAcpChatPageRequest, IntentError,
         IntentSnapshot, NormalizedPayload, ProjectionChangedV1, PromptDispatch, SafeResourceRef,
-        SendAcpTurnFailure, SendAcpTurnRequest, StartAcpSessionRequest, SteerAcpTurnRequest,
-        validate_base_intent, validate_cancel_intent, validate_session_intent,
+        SendAcpTurnFailure, SendAcpTurnRequest, StagedSelection, StartAcpSessionRequest,
+        SteerAcpTurnRequest, validate_base_intent, validate_cancel_intent, validate_session_intent,
         validate_steer_intent,
     },
     limits::LIMITS,
@@ -465,9 +465,25 @@ fn every_ipc_request_is_closed_and_uses_camel_case() {
     let parsed: SendAcpTurnRequest = serde_json::from_value(send.clone()).unwrap();
     assert!(matches!(
         parsed,
-        SendAcpTurnRequest::Session { attached_context, .. }
+        SendAcpTurnRequest::Session { attached_context, staged: None, .. }
             if attached_context.as_slice().is_empty()
     ));
+    // Staged files go only with a send that names them.
+    for (staged, expected) in [
+        (
+            json!({"revision": "r1"}),
+            Some(StagedSelection::Revision("r1".into())),
+        ),
+        (json!("lastSent"), Some(StagedSelection::LastSent)),
+    ] {
+        let parsed: SendAcpTurnRequest =
+            serde_json::from_value(with(send.clone(), json!({ "staged": staged }))).unwrap();
+        assert!(matches!(parsed, SendAcpTurnRequest::Session { staged, .. } if staged == expected));
+    }
+    assert!(
+        serde_json::from_value::<SendAcpTurnRequest>(with(send.clone(), json!({"staged": "all"})))
+            .is_err()
+    );
     let context = json!({
         "kind": "diffLineComment",
         "diffRef": {

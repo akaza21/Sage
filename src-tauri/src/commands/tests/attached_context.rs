@@ -304,6 +304,7 @@ impl Fixture {
                 runtime_epoch: self.owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "Review safely").unwrap(),
                 attached_context,
+                staged: None,
             }
         }
     }
@@ -583,7 +584,7 @@ fn staged_files_are_refused_without_dispatch_and_retained_for_retry() {
             let fixture = Fixture::new().await;
             let (calls, _) = fixture.install_host();
             let before = fixture.counts();
-            fixture
+            let revision = fixture
                 .state
                 .acp
                 .file_stages
@@ -600,8 +601,14 @@ fn staged_files_are_refused_without_dispatch_and_retained_for_retry() {
                         bytes: b"context".to_vec(),
                     }])),
                 )
-                .unwrap();
-            let error = acp::send_acp_turn_inner(&fixture.state, fixture.request(new_session))
+                .unwrap()
+                .revision;
+            // The send names the staged batch; a send that names none carries none.
+            let mut request = fixture.request(new_session);
+            if let SendAcpTurnRequest::Session { staged, .. } = &mut request {
+                *staged = Some(crate::acp::intent::StagedSelection::Revision(revision));
+            }
+            let error = acp::send_acp_turn_inner(&fixture.state, request)
                 .await
                 .unwrap_err();
             assert_eq!(error.prompt_dispatch, PromptDispatch::NotStarted);

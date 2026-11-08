@@ -1,6 +1,8 @@
+import { useState } from "react";
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
+import { utf8ByteLength } from "../../domain/text";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
 import "../../styles/queued-messages.css";
 import { BoundChatGoalControl } from "./BoundChatGoalControl";
@@ -19,10 +21,19 @@ import { QueuedRows, lazyParts } from "./lazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
+import type * as PasteChunk from "./ComposerPaste";
+import type { StagedSummary } from "./pastedTextTypes";
 
 const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
   () => import("./ClaudeAuthActions"),
 );
+// Paste staging, chips and messages load with the field's first focus or
+// with input over the cap; only the synchronous size check stays eager.
+const PastePart = lazyParts<typeof PasteChunk>(() => import("./ComposerPaste"));
+/** A string longer than the cap in UTF-16 units is over it in bytes too. */
+const overCap = (value: string) =>
+  value.length > MAX_CHAT_COMPOSER_BYTES ||
+  utf8ByteLength(value) > MAX_CHAT_COMPOSER_BYTES;
 
 export function ChatComposerRegion({
   hidden = false,
@@ -36,6 +47,7 @@ export function ChatComposerRegion({
   disabledReasonId,
   text,
   attachedContext,
+  pasteSession,
   imagePreviews,
   imageUploading = false,
   enabled,
@@ -99,13 +111,19 @@ export function ChatComposerRegion({
     uploading: imageUploading,
     onAddImages,
   });
+  // The paste part loads with the first focus (true) or held-back input,
+  // and reports the batch it staged for the next sent message.
+  const [paste, setPaste] = useState<string | boolean>(false);
+  const [staged, setStaged] = useState<StagedSummary>();
   const dispatchBlocked =
     composerDisabled ||
     sendBlocked ||
     actionBusy ||
     (activeTurn && !queueAvailable) ||
     imageUploading ||
-    imageInput.sendBlocked;
+    imageInput.sendBlocked ||
+    // Staged pasted text goes with a sent message, never a queued one.
+    Boolean(staged?.busy || (activeTurn && staged?.revision));
   const queueing = activeTurn && queueAvailable && !composerDisabled;
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
   const dictation = useComposerDictation(
@@ -133,7 +151,7 @@ export function ChatComposerRegion({
             return;
           }
           dictation.cancel();
-          onSubmit(event);
+          onSubmit(event, staged?.revision);
           composerRef.current?.focus();
         }}
       >
@@ -227,14 +245,21 @@ export function ChatComposerRegion({
               }
               aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}`}
               value={text}
-              maxLength={MAX_CHAT_COMPOSER_BYTES}
               rows={2}
               placeholder={composerPromptPlaceholder(
                 canPrompt,
                 sessionPromptUnavailable,
               )}
               disabled={composerDisabled}
-              onChange={(event) => onTextChange(event.target.value)}
+              onFocus={() => setPaste((armed) => armed || true)}
+              onChange={(event) => {
+                const next = event.target.value;
+                // Held back with a message, never truncated. A draft is
+                // never over the cap, so this never blocks a deletion. Once
+                // loaded, the paste part attaches a longer paste instead.
+                if (overCap(next)) setPaste(next);
+                else onTextChange(next);
+              }}
               onBlur={dictation.cancel}
               onKeyDown={(event) => {
                 if (event.key === "Escape" && dictation.listening) {
@@ -252,6 +277,20 @@ export function ChatComposerRegion({
               }}
             />
           </div>
+          {paste ? (
+            <PastePart
+              part="ComposerPaste"
+              chatId={dictationScope}
+              fieldRef={composerRef}
+              session={pasteSession}
+              nativeAcp={availableBinding}
+              activeTurn={activeTurn}
+              input={paste}
+              text={text}
+              disabled={actionBusy || projectTransitioning}
+              onStaged={setStaged}
+            />
+          ) : null}
           {disabledReason ? (
             <p className="composer__disabled-reason" id={disabledReasonId}>
               {disabledReason}
@@ -326,7 +365,8 @@ export function ChatComposerRegion({
             cancelDisabled={actionBusy || projectTransitioning}
             queueing={Boolean(activeTurn && queueAvailable)}
             sendDisabled={
-              dispatchBlocked || (!text.trim() && !attachedContext.length)
+              dispatchBlocked ||
+              (!text.trim() && !attachedContext.length && !staged?.revision)
             }
           />
         </div>

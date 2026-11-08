@@ -129,6 +129,9 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/ClaudeAuthActions.tsx",
   // Queued-message rows load with the first queued message.
   "src/features/chat/ComposerQueuedPrompts.tsx",
+  // Pasted-text staging, chips and messages load with the composer's first
+  // focus or over-cap input; only the size check stays eager.
+  "src/features/chat/ComposerPaste.tsx",
   "src/features/chat/ForkChat.tsx",
   "src/features/chat/TranscriptInteractions.tsx",
   "src/features/chat/acp/MermaidFigure.tsx",

@@ -125,6 +125,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         commands::acp::activate_acp_session,
         commands::acp::send_acp_turn,
         crate::acp::attached_context::files::commands::stage_prompt_files,
+        crate::acp::attached_context::files::commands::stage_prompt_text,
         crate::acp::attached_context::files::commands::list_prompt_files,
         crate::acp::attached_context::files::commands::remove_prompt_file,
         commands::acp::slash_commands::list_acp_commands,
