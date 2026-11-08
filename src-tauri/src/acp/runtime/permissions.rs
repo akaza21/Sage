@@ -8,13 +8,33 @@ use crate::acp::{
 /// A user choice for one exact, durably identified permission request.
 /// This remains a runtime-level value so host and adapter routing never need
 /// to know which harness originated the request.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum PermissionDecision {
     Ask,
     AllowOnce,
     AllowAlways,
     Deny,
+    /// Answers to a harness question request. It resolves the request the
+    /// way an allow does; the answers live only until the reply is built.
+    Answer(crate::acp::intent::user_input::UserInputAnswers),
+}
+
+impl PermissionDecision {
+    /// The stable wire label; it never carries answer text.
+    pub(crate) fn label(&self) -> &'static str {
+        match self {
+            Self::Ask => "ask",
+            Self::AllowOnce => "allowOnce",
+            Self::AllowAlways => "allowAlways",
+            Self::Deny => "deny",
+            Self::Answer(_) => "answer",
+        }
+    }
+
+    /// True when the decision sends the harness a positive reply.
+    pub(crate) fn resolves_allowed(&self) -> bool {
+        matches!(self, Self::AllowOnce | Self::AllowAlways | Self::Answer(_))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

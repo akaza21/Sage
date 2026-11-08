@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -42,6 +43,9 @@ afterEach(() => {
 
 it("keeps the current page on screen until the Harnesses page is ready, then focuses it", async () => {
   render(<AgentSettingsSurface />);
+  // The Chats page loads its own Notifications section on first use; let the
+  // current page finish arriving before navigating away from it.
+  await waitFor(() => expect(screen.queryByText(/Loading/)).toBeNull());
   const section = screen.getByRole("button", { name: "Harnesses" });
   section.focus();
   fireEvent.click(section);

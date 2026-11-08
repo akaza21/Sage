@@ -115,6 +115,7 @@ impl StandardAcpTranslator {
             lifecycle: ItemLifecycle::Streaming,
             tool_state: Some(ToolState::WaitingForApproval),
             payload: NormalizedPayload::PermissionRequest {
+                user_input: None,
                 category,
                 summary,
                 offered_option_kinds,

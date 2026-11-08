@@ -35,13 +35,17 @@ function deferredLoads() {
 }
 
 describe("coalescedRefresh", () => {
-  beforeEach(() => vi.useFakeTimers());
+  const onThrow = vi.fn();
+  beforeEach(() => {
+    vi.useFakeTimers();
+    onThrow.mockClear();
+  });
   afterEach(() => vi.useRealTimers());
 
   it("folds a burst of scheduled refreshes into one load after the pause", () => {
     const loads = deferredLoads();
     const beforeLoad = vi.fn();
-    const refresh = coalescedRefresh(loads.load);
+    const refresh = coalescedRefresh(loads.load, { onThrow });
 
     for (let event = 0; event < 20; event += 1) refresh.schedule(beforeLoad);
     vi.advanceTimersByTime(REFRESH_DEBOUNCE_MS - 1);
@@ -54,7 +58,7 @@ describe("coalescedRefresh", () => {
 
   it("never overlaps loads and reruns once for requests made during one", async () => {
     const loads = deferredLoads();
-    const refresh = coalescedRefresh(loads.load);
+    const refresh = coalescedRefresh(loads.load, { onThrow });
 
     refresh.now();
     for (let event = 0; event < 5; event += 1) {
@@ -73,7 +77,7 @@ describe("coalescedRefresh", () => {
 
   it("starts nothing once disposed, including a rerun owed by a load in flight", async () => {
     const loads = deferredLoads();
-    const refresh = coalescedRefresh(loads.load);
+    const refresh = coalescedRefresh(loads.load, { onThrow });
 
     refresh.now();
     refresh.now();
@@ -87,7 +91,7 @@ describe("coalescedRefresh", () => {
 
   it("with two in flight, overtakes a hung load once and reruns only after the newest lands", async () => {
     const loads = deferredLoads();
-    const refresh = coalescedRefresh(loads.load, 2);
+    const refresh = coalescedRefresh(loads.load, { onThrow, maxInFlight: 2 });
 
     refresh.now(); // hangs
     refresh.now(); // overtakes it
@@ -105,7 +109,7 @@ describe("coalescedRefresh", () => {
   it("runs beforeLoad once per pause, even while a load is still in flight", async () => {
     const loads = deferredLoads();
     const beforeLoad = vi.fn();
-    const refresh = coalescedRefresh(loads.load);
+    const refresh = coalescedRefresh(loads.load, { onThrow });
 
     refresh.now();
     refresh.schedule(beforeLoad);
@@ -125,7 +129,7 @@ describe("coalescedRefresh", () => {
 
   it("frees the slot when a load fails and still runs the rerun it owed", async () => {
     const loads = deferredLoads();
-    const refresh = coalescedRefresh(loads.load);
+    const refresh = coalescedRefresh(loads.load, { onThrow });
 
     refresh.now();
     refresh.now();
@@ -139,7 +143,7 @@ describe("coalescedRefresh", () => {
 
   it("while one load hangs, the newest lands and its rerun takes the free slot", async () => {
     const loads = deferredLoads();
-    const refresh = coalescedRefresh(loads.load, 2);
+    const refresh = coalescedRefresh(loads.load, { onThrow, maxInFlight: 2 });
 
     refresh.now(); // hangs
     refresh.now();
@@ -156,21 +160,28 @@ describe("coalescedRefresh", () => {
     expect(loads.load).toHaveBeenCalledTimes(4);
   });
 
-  it("frees the slot when a load throws before returning a promise", async () => {
+  it("reports a synchronous throw, from a call or the timer, and frees the slot", async () => {
     const loads = deferredLoads();
-    let throwNext = true;
-    const refresh = coalescedRefresh(() => {
-      if (throwNext) {
-        throwNext = false;
-        throw new Error("scope is not active");
-      }
-      return loads.load();
-    });
+    let throws = 2;
+    const refresh = coalescedRefresh(
+      () => {
+        if (throws > 0) {
+          throws -= 1;
+          throw new Error("scope is not active");
+        }
+        return loads.load();
+      },
+      { onThrow },
+    );
 
-    expect(() => refresh.now()).toThrow("scope is not active");
+    refresh.now();
+    refresh.schedule();
+    vi.advanceTimersByTime(REFRESH_DEBOUNCE_MS);
+    expect(onThrow).toHaveBeenCalledTimes(2);
+    expect(onThrow).toHaveBeenLastCalledWith(new Error("scope is not active"));
+
     refresh.now();
     expect(loads.load).toHaveBeenCalledTimes(1);
-
     refresh.now();
     await loads.settleNext();
     expect(loads.load).toHaveBeenCalledTimes(2);

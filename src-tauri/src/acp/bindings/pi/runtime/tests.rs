@@ -198,7 +198,13 @@ fn running(runtime: &mut PiRuntime) {
 
 #[test]
 fn advertised_pi_read_only_policy_emits_only_admitted_prompt() {
-    let capabilities = crate::acp::bindings::access_policy::access_modes("pi-rpc", "0.83.0", true);
+    // Without its bridge Pi is read-only, whatever this build's resources hold.
+    let capabilities = crate::acp::bindings::access_policy::admitted_modes(
+        "pi-rpc",
+        "0.83.0",
+        true,
+        Err(crate::acp::bindings::pi::bridge::install::Unavailable::Missing),
+    );
     assert_eq!(capabilities.len(), 1);
     assert_eq!(
         capabilities[0].id,

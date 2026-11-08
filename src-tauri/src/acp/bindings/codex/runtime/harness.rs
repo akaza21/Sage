@@ -224,33 +224,15 @@ impl HarnessAdapter for CodexRuntime {
             } => {
                 let pending = self
                     .inner
-                    .resolve_pending_permission(request_id.as_str(), decision)
+                    .resolve_pending_permission(request_id.as_str(), &decision)
                     .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
-                match (decision, pending) {
-                    (PermissionDecision::Ask, None) => Err(AdapterRuntimeError::Operation),
-                    (
-                        PermissionDecision::AllowOnce | PermissionDecision::AllowAlways,
-                        Some((_, bytes, _)),
-                    ) => {
+                match pending {
+                    Some((_, bytes, _)) if decision != PermissionDecision::Ask => {
                         let frame =
                             OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
                         resolve_later_permission(
                             &request_id,
-                            decision,
-                            Some(AdapterEgress::new(
-                                frame,
-                                EgressToken::protocol_notification(),
-                            )),
-                        )
-                        .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
-                        .ok_or(AdapterRuntimeError::LaterPermissionMiss)
-                    }
-                    (PermissionDecision::Deny, Some((_, bytes, _))) => {
-                        let frame =
-                            OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
-                        resolve_later_permission(
-                            &request_id,
-                            decision,
+                            &decision,
                             Some(AdapterEgress::new(
                                 frame,
                                 EgressToken::protocol_notification(),

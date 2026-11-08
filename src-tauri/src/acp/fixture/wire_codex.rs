@@ -5,7 +5,8 @@ use serde_json::{Value, json};
 use crate::acp::limits::LIMITS;
 
 use super::super::FixtureError;
-use super::{WireState, write_stdout};
+use super::super::interpreter::{field_str, field_u64};
+use super::{WireState, acp, user_input, write_stdout};
 
 const THREAD_ID: &str = "fixture-persisted-session-1";
 /// The session a native capture's fork creates (Codex `thread/fork` per the
@@ -245,6 +246,41 @@ pub(super) fn emit_notification(
     emit_json(output, state, &notification)
 }
 
+/// Most messages one `codexTranscript` step may write: enough to fill more
+/// than one history page (256 Items) without flooding the driver.
+pub(super) const TRANSCRIPT_MESSAGES: u64 = 600;
+
+/// Writes `count` completed assistant messages into the current turn, so a
+/// journey can open on a long transcript before it streams.
+pub(super) fn emit_transcript(
+    count: u64,
+    state: &mut WireState,
+    output: &mut impl Write,
+) -> Result<(), FixtureError> {
+    if count == 0 || count > TRANSCRIPT_MESSAGES {
+        return Err(FixtureError::InvalidArguments);
+    }
+    let turn_id = state
+        .current_turn_id
+        .clone()
+        .ok_or(FixtureError::InvalidArguments)?;
+    for index in 1..=count {
+        let item = json!({
+            "type": "agentMessage",
+            "id": format!("fixture-transcript-{index}"),
+            "text": format!(
+                "Earlier message {index} of {count}. It is synthetic history, there so the chat has more than one page to scroll back through."
+            ),
+        });
+        emit_json(
+            output,
+            state,
+            &json!({"jsonrpc":"2.0","method":"item/completed","params":{"threadId":THREAD_ID,"turnId":turn_id,"item":item}}),
+        )?;
+    }
+    Ok(())
+}
+
 pub(super) fn read_json_line(
     input: &mut impl Read,
     state: &WireState,
@@ -280,6 +316,56 @@ pub(super) fn emit_json(
     bytes.push(b'\n');
     write_stdout(output, state, &bytes, false)?;
     output.flush().map_err(|_| FixtureError::Io)
+}
+
+/// Emits one of the Codex frame shapes a journey step names.
+pub(super) fn emit_known(
+    shape: &str,
+    step: &Value,
+    state: &mut WireState,
+    output: &mut impl Write,
+) -> Result<(), FixtureError> {
+    if shape == "codexNative" || shape == "codexNativeThreadless" {
+        let mut params = acp::substitute(step["params"].clone(), state, 0)?;
+        // A thread-less app-server notice (such as `configWarning`) may
+        // arrive before any thread or Turn exists, so it names neither.
+        if shape == "codexNative" {
+            params["threadId"] = json!(acp::SESSION);
+            params["turnId"] = json!(
+                state
+                    .current_turn_id
+                    .as_deref()
+                    .ok_or(FixtureError::InvalidArguments)?
+            );
+        }
+        return emit_json(
+            output,
+            state,
+            &json!({"jsonrpc":"2.0","method":field_str(step, "method")?,"params":params}),
+        );
+    }
+    match shape {
+        "codexError" => emit_notification("error", state, output),
+        "codexInitializeResult" => emit_response("initialize", state, output),
+        "codexInitializeResult0146" => emit_response("initialize0146", state, output),
+        "codexThreadResult" => emit_response("thread", state, output),
+        "codexThreadEffortResult" => emit_response("effortThread", state, output),
+        "codexModelListResult" => emit_response("models", state, output),
+        "codexModelListEffortResult" => emit_response("effortModels", state, output),
+        "codexGoalMethodNotFound" => emit_response("goalMethodNotFound", state, output),
+        "codexTurnResult" => emit_response("turn", state, output),
+        "codexForkResult" => emit_response("fork", state, output),
+        "codexStarted" => emit_notification("started", state, output),
+        "codexAck" => emit_response("ack", state, output),
+        "codexDelta" => emit_notification("delta", state, output),
+        "codexItemCompleted" => emit_notification("itemCompleted", state, output),
+        "codexCompleted" => emit_notification("completed", state, output),
+        "codexInterrupted" => emit_notification("interrupted", state, output),
+        "codexUserInputRequest" => user_input::emit_request(step, state, output),
+        "codexUserInputEcho" => user_input::emit_echo(state, output),
+        "codexTranscript" => emit_transcript(field_u64(step, "count")?, state, output),
+        _ => Err(FixtureError::InvalidArguments),
+    }
 }
 
 #[cfg(test)]

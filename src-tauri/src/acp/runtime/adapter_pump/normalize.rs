@@ -3,13 +3,14 @@ use super::{
     payload::{payload_json, payload_measure},
     *,
 };
-use sha2::{Digest, Sha256};
 
 mod critical;
+mod permission;
 mod session;
 mod terminal_reason;
 mod validate;
 pub(super) use critical::control_critical;
+use permission::PermissionRequestEvent;
 pub(super) use session::session_fact;
 pub(super) use validate::{validate_batch, validate_deny_pairs};
 
@@ -247,46 +248,23 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 external_request_id,
                 payload,
                 request_payload_digest,
-            } if self.exact_turn(&turn_id) && self.exact_turn(&item_id) && terminal.is_none() => {
-                let request_id = self.scoped_permission_id(&external_request_id)?;
-                let (normalized_payload_json, measured) = payload_json(&payload)?;
-                Ok(Some(NormalizedFact::new(
-                    DurableAdapterEvent::PermissionRequest {
-                        intent: PermissionIntent {
-                            request_id,
-                            project_id: self.intent.project_id.clone(),
-                            chat_id: self.intent.chat_id.clone(),
-                            session_id: self.intent.session_id.clone(),
-                            turn_id: self.intent.active_turn.turn_id.clone(),
-                            runtime_epoch: self.intent.runtime_epoch,
-                            binding_digest: hex(&self.intent.binding_digest),
-                            external_request_id,
-                            kind: RequiredText::new("requestKind", "permission")
-                                .map_err(|_| AdapterPumpError::Intent)?,
-                            payload_digest: hex(&request_payload_digest),
-                            normalized_payload_digest: measured.digest,
-                            normalized_payload_json,
-                        },
-                        now_millis,
-                    },
-                    measured.bytes,
-                )))
-            }
+            } => self.permission_request(
+                PermissionRequestEvent {
+                    turn_id,
+                    item_id,
+                    external_request_id,
+                    payload,
+                    request_payload_digest,
+                },
+                terminal,
+                now_millis,
+            ),
             AdapterEvent::PermissionResolved {
                 turn_id,
                 external_request_id,
                 state,
             } if self.exact_turn(&turn_id) && state.is_terminal() => {
-                let request_id = self.scoped_permission_id(&external_request_id)?;
-                Ok(Some(NormalizedFact::new(
-                    DurableAdapterEvent::PermissionResolved {
-                        scope: self.scope(),
-                        request_id,
-                        state,
-                        now_millis,
-                    },
-                    external_request_id.as_str().len(),
-                )))
+                self.permission_resolved(external_request_id, state, now_millis)
             }
             // Session-scoped facts need only the exact session identity. They
             // are admitted with no Turn identity and after a Turn terminal;
@@ -308,7 +286,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             | AdapterEvent::ActivityItem(_)
             | AdapterEvent::Usage { .. }
             | AdapterEvent::Session { .. }
-            | AdapterEvent::PermissionRequest { .. }
             | AdapterEvent::PermissionResolved { .. }
             | AdapterEvent::Error(_)
             | AdapterEvent::Unsupported(_) => Ok(None),
@@ -343,19 +320,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             },
             measured.bytes,
         )))
-    }
-
-    fn scoped_permission_id(
-        &self,
-        external_request_id: &ExternalId,
-    ) -> Result<SageServerRequestId, AdapterPumpError> {
-        let session_digest = Sha256::digest(self.intent.session_id.as_str().as_bytes());
-        let external_digest = Sha256::digest(external_request_id.as_str().as_bytes());
-        SageServerRequestId::parse(format!(
-            "permission:{session_digest:x}:{}:{external_digest:x}",
-            self.intent.runtime_epoch.get()
-        ))
-        .map_err(|_| AdapterPumpError::Intent)
     }
 
     pub(super) fn latch_frame<T>(&mut self) -> Result<T, AdapterPumpError> {

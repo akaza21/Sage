@@ -32,8 +32,37 @@ pub(crate) struct PermissionDecisionResponse {
     turn_id: SageTurnId,
     runtime_epoch: RuntimeEpoch,
     request_id: SageServerRequestId,
-    decision: PermissionDecision,
+    decision: &'static str,
     state: &'static str,
+}
+
+/// Whether `decision` may resolve the pending request whose normalized
+/// payload is `payload`. Ask and Deny resolve any request; an allow needs a
+/// matching offered approval option, and answers must answer exactly the
+/// questions asked.
+fn admits(decision: &PermissionDecision, payload: &NormalizedPayload) -> bool {
+    let NormalizedPayload::PermissionRequest {
+        offered_option_kinds,
+        user_input,
+        ..
+    } = payload
+    else {
+        return false;
+    };
+    let offered = |kind| {
+        user_input.is_none()
+            && offered_option_kinds
+                .as_ref()
+                .is_some_and(|kinds| kinds.as_slice().contains(&kind))
+    };
+    match decision {
+        PermissionDecision::Ask | PermissionDecision::Deny => true,
+        PermissionDecision::AllowOnce => offered(PermissionOptionKind::AllowOnce),
+        PermissionDecision::AllowAlways => offered(PermissionOptionKind::AllowAlways),
+        PermissionDecision::Answer(answers) => user_input
+            .as_ref()
+            .is_some_and(|request| request.admit(answers).is_ok()),
+    }
 }
 
 impl AcpService {
@@ -50,37 +79,32 @@ impl AcpService {
             request_id,
             decision,
         } = intent;
-        if matches!(
-            decision,
-            PermissionDecision::AllowOnce | PermissionDecision::AllowAlways
-        ) {
+        if decision.resolves_allowed() {
             let epoch = i64::try_from(runtime_epoch.get()).map_err(|_| HostError::Intent)?;
             let payload_json: Option<String> = self.database.connection().query_row(
                 "SELECT normalized_payload_json FROM server_requests WHERE id=?1 AND project_id=?2 AND chat_id=?3 AND session_id=?4 AND turn_id=?5 AND runtime_epoch=?6 AND kind='permission' AND state IN ('received','asked')",
                 rusqlite::params![request_id.as_str(), project_id.as_str(), chat_id.as_str(), session_id.as_str(), turn_id.as_str(), epoch],
                 |row| row.get(0),
             ).optional().map_err(|_| HostError::RecoveryRequired)?;
-            let allowed = payload_json
+            let admitted = payload_json
                 .as_deref()
                 .and_then(|json| serde_json::from_str::<NormalizedPayload>(json).ok())
-                .is_some_and(|payload| {
-                    matches!(payload,
-                    NormalizedPayload::PermissionRequest { offered_option_kinds: Some(kinds), .. }
-                    if kinds.as_slice().contains(&match decision {
-                        PermissionDecision::AllowOnce => PermissionOptionKind::AllowOnce,
-                        PermissionDecision::AllowAlways => PermissionOptionKind::AllowAlways,
-                        _ => unreachable!(),
-                    }))
-                });
-            if !allowed {
+                .is_some_and(|payload| admits(&decision, &payload));
+            if !admitted {
                 return Err(HostError::Intent);
             }
         }
+        let label = decision.label();
+        tracing::info!(
+            acp_request_resolved = request_id.as_str(),
+            decision = label,
+            "user resolved a harness request"
+        );
         let state = match decision {
             PermissionDecision::Ask => ServerRequestState::Asked,
-            PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => {
-                ServerRequestState::AllowPending
-            }
+            PermissionDecision::AllowOnce
+            | PermissionDecision::AllowAlways
+            | PermissionDecision::Answer(_) => ServerRequestState::AllowPending,
             PermissionDecision::Deny => ServerRequestState::DeclinePending,
         };
         self.journal
@@ -118,7 +142,7 @@ impl AcpService {
             turn_id,
             runtime_epoch,
             request_id,
-            decision,
+            decision: label,
             state: match state {
                 ServerRequestState::Asked => "asked",
                 ServerRequestState::AllowPending => "allowPending",

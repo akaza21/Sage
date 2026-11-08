@@ -5,6 +5,10 @@ use std::sync::{
 
 use super::*;
 
+/// How long a read waits for new output before answering with none, so the
+/// renderer's long poll returns well inside any IPC timeout.
+const LONG_POLL: std::time::Duration = std::time::Duration::from_secs(25);
+
 struct ReaderPermit(Arc<AtomicBool>);
 
 impl ReaderPermit {
@@ -36,7 +40,7 @@ impl TerminalSessionPort {
         if !first.bytes.is_empty() || first.truncated {
             return Ok(first);
         }
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(25), changed.changed()).await;
+        let _ = tokio::time::timeout(LONG_POLL, changed.changed()).await;
         let (current, _) = self.checked_output(authority, scope, handle).await?;
         current.page(cursor)
     }

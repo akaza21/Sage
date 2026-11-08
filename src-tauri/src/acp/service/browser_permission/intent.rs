@@ -22,6 +22,7 @@ pub(super) fn local_intent(
     };
     let summary = SafeText::new("summary", summary).ok()?;
     let normalized_payload_json = serde_json::to_string(&NormalizedPayload::PermissionRequest {
+        user_input: None,
         category: ToolCategory::Mcp,
         summary,
         offered_option_kinds: None,
