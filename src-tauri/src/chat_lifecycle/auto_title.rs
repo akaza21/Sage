@@ -2,21 +2,44 @@ use rusqlite::{Transaction, params};
 
 use super::ChatTitleSource;
 
-/// The first line of `text` as a chat title: trimmed, control characters
-/// removed and cut at a character boundary within the title byte limit.
-pub(super) fn first_line_title(text: &str) -> Option<String> {
-    let line = text
+/// Format characters that change how surrounding text displays without
+/// showing themselves: bidirectional controls and zero-width characters. A
+/// title from a prompt or a harness must not be able to reorder or hide text
+/// in the rail.
+fn is_hidden_format_character(value: char) -> bool {
+    matches!(
+        value,
+        '\u{061c}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2069}'
+    )
+}
+
+/// The first line of `text` as display text for a title: control and hidden
+/// format characters removed, then trimmed and cut at a character boundary
+/// within `max_bytes`. `None` when nothing printable is left.
+pub(crate) fn title_line(text: &str, max_bytes: usize) -> Option<String> {
+    let visible = text
         .lines()
         .next()?
-        .trim_matches(super::is_chat_title_trim_character);
+        .chars()
+        .filter(|value| !value.is_control() && !is_hidden_format_character(*value))
+        .collect::<String>();
     let mut title = String::new();
-    for character in line.chars().filter(|character| !character.is_control()) {
-        if title.len() + character.len_utf8() > super::MAX_CHAT_TITLE_BYTES {
+    for character in visible
+        .trim_matches(super::is_chat_title_trim_character)
+        .chars()
+    {
+        if title.len() + character.len_utf8() > max_bytes {
             break;
         }
         title.push(character);
     }
-    super::canonical_chat_title(&title).ok()
+    let title = title.trim_end_matches(super::is_chat_title_trim_character);
+    (!title.is_empty()).then(|| title.to_owned())
+}
+
+/// The first line of `text` as a canonical chat title.
+pub(super) fn first_line_title(text: &str) -> Option<String> {
+    super::canonical_chat_title(&title_line(text, super::MAX_CHAT_TITLE_BYTES)?).ok()
 }
 
 pub(crate) fn auto_title_first_prompt_in(
@@ -49,9 +72,7 @@ pub(crate) fn auto_title_first_prompt_in(
             ChatTitleSource::Prompt.as_str()
         ],
     )?;
-    transaction.execute("UPDATE workbench_tabs SET title=?3,updated_at=?4 WHERE project_id=?1 AND id=?2 AND kind='chat'",
-        params![project_id, chat_id, title, now])?;
-    Ok(())
+    super::title_source::retitle_attached_tab_in(transaction, project_id, chat_id, &title, now)
 }
 
 #[cfg(test)]
@@ -84,6 +105,8 @@ mod tests {
         connection.execute_batch("CREATE TABLE chats(id TEXT,project_id TEXT,title TEXT,updated_at INTEGER,title_source TEXT);
             CREATE TABLE turns(project_id TEXT,chat_id TEXT);
             CREATE TABLE workbench_tabs(id TEXT,project_id TEXT,kind TEXT,title TEXT,updated_at INTEGER,metadata_json TEXT);
+            CREATE TABLE chat_tabs(project_id TEXT,chat_id TEXT,tab_id TEXT);
+            INSERT INTO chat_tabs VALUES('project','chat','chat');
             INSERT INTO chats VALUES('chat','project','Chat: Chat',0,'default');
             INSERT INTO workbench_tabs VALUES('chat','project','chat','Chat: Chat',0,'{}');").unwrap();
         {

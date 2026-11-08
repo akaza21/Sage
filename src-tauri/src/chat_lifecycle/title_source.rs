@@ -28,18 +28,17 @@ impl ChatTitleSource {
 }
 
 /// Shows a harness-reported title as the chat title unless the user named
-/// the chat or it is a fork. Returns whether the shown title changed. A title
-/// that is empty once sanitized is ignored, so a harness can never blank a
-/// chat.
+/// the chat or it is a fork. A title that is empty once sanitized is ignored,
+/// so a harness can never blank a chat.
 pub(crate) fn apply_harness_title_in(
     transaction: &Transaction<'_>,
     project_id: &str,
     chat_id: &str,
     harness_title: &str,
     now: i64,
-) -> rusqlite::Result<bool> {
+) -> rusqlite::Result<()> {
     let Some(title) = super::auto_title::first_line_title(harness_title) else {
-        return Ok(false);
+        return Ok(());
     };
     let changed = transaction.execute(
         "UPDATE chats SET title=?3,updated_at=?4,title_source=?5
@@ -56,15 +55,26 @@ pub(crate) fn apply_harness_title_in(
         ],
     )?;
     if changed == 0 {
-        return Ok(false);
+        return Ok(());
     }
+    retitle_attached_tab_in(transaction, project_id, chat_id, &title, now)
+}
+
+/// Mirrors a chat's new title onto the workbench tab attached to it.
+pub(super) fn retitle_attached_tab_in(
+    transaction: &Transaction<'_>,
+    project_id: &str,
+    chat_id: &str,
+    title: &str,
+    now: i64,
+) -> rusqlite::Result<()> {
     transaction.execute(
         "UPDATE workbench_tabs SET title=?3,updated_at=?4
          WHERE project_id=?1 AND kind='chat'
            AND id=(SELECT tab_id FROM chat_tabs WHERE project_id=?1 AND chat_id=?2)",
         params![project_id, chat_id, title, now],
     )?;
-    Ok(true)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -99,13 +109,11 @@ mod tests {
             }
         }
 
-        fn harness(&self, title: &str) -> bool {
+        fn harness(&self, title: &str) {
             let mut connection = self.database.write_connection().unwrap();
             let transaction = connection.transaction().unwrap();
-            let changed =
-                apply_harness_title_in(&transaction, &self.project, &self.chat, title, 7).unwrap();
+            apply_harness_title_in(&transaction, &self.project, &self.chat, title, 7).unwrap();
             transaction.commit().unwrap();
-            changed
         }
 
         fn prompt(&self, text: &str) {
@@ -120,17 +128,6 @@ mod tests {
             )
             .unwrap();
             transaction.commit().unwrap();
-        }
-
-        fn set(&self, title: &str, source: ChatTitleSource) {
-            self.database
-                .write_connection()
-                .unwrap()
-                .execute(
-                    "UPDATE chats SET title=?2,title_source=?3 WHERE id=?1",
-                    params![self.chat, title, source.as_str()],
-                )
-                .unwrap();
         }
 
         /// The chat row's title and source, and the attached tab's title.
@@ -173,13 +170,12 @@ mod tests {
             fixture.shown(),
             shown("Chat: fix the flaky upload test", "prompt")
         );
-        assert!(fixture.harness("Fix flaky upload test"));
+        fixture.harness("Fix flaky upload test");
         assert_eq!(
             fixture.shown(),
             shown("Chat: Fix flaky upload test", "harness")
         );
-        assert!(!fixture.harness("Fix flaky upload test"));
-        assert!(fixture.harness("Stabilise the upload test"));
+        fixture.harness("Stabilise the upload test");
         assert_eq!(
             fixture.shown(),
             shown("Chat: Stabilise the upload test", "harness")
@@ -189,33 +185,44 @@ mod tests {
     #[test]
     fn a_harness_title_before_the_first_prompt_is_kept() {
         let fixture = Fixture::new();
-        assert!(fixture.harness("Resumed session"));
+        fixture.harness("Resumed session");
         fixture.prompt("a new first prompt");
         assert_eq!(fixture.shown(), shown("Chat: Resumed session", "harness"));
     }
 
     #[test]
-    fn user_and_fork_titles_are_never_replaced() {
+    fn a_chat_the_user_renamed_keeps_its_title() {
         let fixture = Fixture::new();
-        for source in [ChatTitleSource::User, ChatTitleSource::Fork] {
-            fixture.set("Chat: Mine", source);
-            assert!(!fixture.harness("Harness name"));
-            let (title, stored, _) = fixture.shown();
-            assert_eq!(
-                (title.as_str(), stored.as_str()),
-                ("Chat: Mine", source.as_str())
-            );
-        }
+        fixture.harness("Harness name");
+        let snapshot = fixture.database.bootstrap_snapshot().unwrap();
+        fixture
+            .database
+            .rename_chat(&crate::domain::RenameChatRequest {
+                project_id: fixture.project.clone(),
+                chat_id: fixture.chat.clone(),
+                title: "Release notes".into(),
+                current_layout: crate::domain::ProjectLayoutRequest {
+                    project_id: fixture.project.clone(),
+                    tabs: snapshot.tabs,
+                    active_tab_id: snapshot.active_tab_id,
+                    selected_root_id: snapshot.selected_root_id,
+                    selected_resource: snapshot.selected_resource,
+                },
+            })
+            .unwrap();
+        assert_eq!(fixture.shown(), shown("Chat: Release notes", "user"));
+        fixture.harness("A later harness name");
+        assert_eq!(fixture.shown(), shown("Chat: Release notes", "user"));
     }
 
     #[test]
     fn harness_titles_are_sanitized_and_bounded() {
         let fixture = Fixture::new();
-        assert!(!fixture.harness(" \u{feff}\n second line"));
+        fixture.harness(" \u{feff}\n second line");
         assert_eq!(fixture.shown(), shown("Chat: Chat", "default"));
-        assert!(fixture.harness("Ship\u{7}it\tnow\nignored"));
+        fixture.harness("\u{7} Ship\u{202e}it\u{200b}\tnow\nignored");
         assert_eq!(fixture.shown(), shown("Chat: Shipitnow", "harness"));
-        assert!(fixture.harness(&"é".repeat(200)));
+        fixture.harness(&"é".repeat(200));
         let (title, _, _) = fixture.shown();
         assert_eq!(
             title.strip_prefix("Chat: ").unwrap().len(),

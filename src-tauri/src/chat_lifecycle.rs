@@ -2,7 +2,7 @@ use rusqlite::{OptionalExtension, params};
 use uuid::Uuid;
 mod auto_title;
 mod title_source;
-pub(crate) use auto_title::auto_title_first_prompt_in;
+pub(crate) use auto_title::{auto_title_first_prompt_in, title_line};
 pub(crate) use title_source::{ChatTitleSource, apply_harness_title_in};
 
 use crate::{

@@ -6,20 +6,11 @@ use crate::acp::{
     intent::session_event::{SESSION_TITLE_BYTES, SessionScopedEvent},
 };
 
-/// The first line of `raw` with control characters removed, trimmed and cut
-/// at a character boundary within [`SESSION_TITLE_BYTES`]. `None` when nothing
-/// printable is left, so a harness can clear or blank a title only by being
-/// ignored.
+/// The harness title as a session event, sanitized by the same rule as every
+/// chat title and capped at [`SESSION_TITLE_BYTES`]. `None` when nothing
+/// printable is left, so a harness can never clear or blank a title.
 pub(crate) fn harness_title_event(raw: &str) -> Option<SessionScopedEvent> {
-    let line = raw.lines().next()?;
-    let mut title = String::new();
-    for character in line.trim().chars().filter(|value| !value.is_control()) {
-        if title.len() + character.len_utf8() > SESSION_TITLE_BYTES {
-            break;
-        }
-        title.push(character);
-    }
-    let title = title.trim_end();
+    let title = crate::chat_lifecycle::title_line(raw, SESSION_TITLE_BYTES)?;
     RequiredText::new("sessionTitle", title)
         .ok()
         .map(|title| SessionScopedEvent::Title { title })
@@ -40,6 +31,7 @@ mod tests {
     fn keeps_the_first_printable_line_within_the_cap() {
         assert_eq!(title("  Fix login \nsecond"), Some("Fix login".into()));
         assert_eq!(title("Tab\there\u{1b}"), Some("Tabhere".into()));
+        assert_eq!(title("\u{7} \u{202e}Spoof"), Some("Spoof".into()));
         assert_eq!(title(""), None);
         assert_eq!(title(" \u{7} "), None);
         assert_eq!(title("\nlater line"), None);
