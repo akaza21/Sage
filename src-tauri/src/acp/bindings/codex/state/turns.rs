@@ -98,17 +98,6 @@ impl CodexAdapter {
         Ok(())
     }
 
-    /// The session identity for a notification about the bound thread itself
-    /// rather than one of its Turns.
-    pub(crate) fn thread_session_id(&self, value: &str) -> Result<ScopedExternalId, AdapterError> {
-        self.expect_thread(value)?;
-        let thread = self
-            .external_thread_id
-            .clone()
-            .ok_or(AdapterError::ForeignIdentity)?;
-        Ok(self.scoped(ExternalKind::Session, thread))
-    }
-
     pub(crate) fn expect_thread(&self, value: &str) -> Result<(), AdapterError> {
         match self.external_thread_id.as_ref() {
             Some(current) if current.as_str() == value => Ok(()),
