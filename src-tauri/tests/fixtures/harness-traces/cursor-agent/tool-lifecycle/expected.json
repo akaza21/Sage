@@ -17,6 +17,13 @@
     },
     {
       "event": "item",
+      "externalItemId": "thought:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "completed",
+      "text": "I will read README.md and report only its first heading."
+    },
+    {
+      "event": "item",
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
@@ -52,11 +59,18 @@
     },
     {
       "event": "item",
-      "externalItemId": "thought:3",
+      "externalItemId": "thought-1:3",
       "kind": "thoughtSummary",
       "lifecycle": "streaming",
       "updateMode": "append",
       "chunks": 2
+    },
+    {
+      "event": "item",
+      "externalItemId": "thought-1:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "completed",
+      "text": "The first heading is \"Sage\"."
     },
     {
       "event": "item",
@@ -66,12 +80,20 @@
       "updateMode": "append",
       "chunks": 2
     },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "completed",
+      "text": "I'll read `README.md` and return only its first heading.# Sage"
+    },
     { "event": "turn", "state": "completed" }
   ],
   "notes": [
     "This is the golden case for contract rule 4. All three tool frames keep kind toolCall under one external id, varying only lifecycle and toolState.",
     "Rule 4 now holds: every adapter emits toolCall for a tool's whole life, so the three frames land on one durable item instead of a toolCall plus a separate toolUpdateResult.",
     "The wire kind is read, which maps 1:1 onto ToolCategory::Read. Categories are never collapsed into a coarser file bucket.",
-    "cursor-agent tool call ids embed a newline. The contract must tolerate that without splitting the identity."
+    "cursor-agent tool call ids embed a newline. The contract must tolerate that without splitting the identity.",
+    "ACP has no message end, so the translator closes output itself: answer text after an untagged thought completes that thought block (a later thought opens the next block's item), and the completed prompt response completes the turn's still-open text, thought and plan items before the turn terminal."
   ]
 }

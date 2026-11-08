@@ -154,8 +154,7 @@ impl StandardAcpTranslator {
         label: SafeText<512>,
     ) -> Result<AdapterEvent, TranslationError> {
         let (output_summary, locations) = self.command_snapshot(tool_call_id);
-        let execution =
-            self.tool_execution(category, output_summary.as_ref().map(SafeText::as_str))?;
+        let execution = self.tool_execution(tool_call_id, category, None)?;
         Ok(AdapterEvent::Item {
             external_key: RequiredText::new("externalItemId", tool_call_id)?,
             lifecycle: ItemLifecycle::Streaming,
@@ -270,7 +269,7 @@ impl StandardAcpTranslator {
             .unwrap_or(ToolCategory::Other);
         let (_, locations) = self.command_snapshot(tool_call_id);
         Ok(NormalizedPayload::ToolCall {
-            execution: self.tool_execution(category, None)?,
+            execution: self.tool_execution(tool_call_id, category, None)?,
             category,
             label: self.permission_card_label(tool_call_id, category)?,
             input_summary: self.tool_inputs.get(tool_call_id).cloned(),

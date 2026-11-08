@@ -6,7 +6,7 @@ use crate::acp::{
     bindings::adapter::{AdapterCommand, AdapterRuntimeError, EgressResolution, HarnessAdapter},
     contract::{RequiredText, SageRootId, SageServerRequestId},
     intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef, ToolCategory},
-    lifecycle::{ToolState, TurnState},
+    lifecycle::{ItemLifecycle, ToolState, TurnState},
     transport::FrameReader,
 };
 
@@ -295,8 +295,13 @@ fn a_real_claude_turn_correlates_before_its_items_and_snapshots_usage_off_the_it
             &Mapper,
         )
         .expect("prompt result carrying vendor _meta and usage");
+    // The completed prompt closes the answer ACP never ends, before the turn.
     let [
         SharedEvent::Usage { payload, .. },
+        SharedEvent::Item {
+            lifecycle: ItemLifecycle::Completed,
+            ..
+        },
         SharedEvent::Turn {
             state: TurnState::Completed,
             ..

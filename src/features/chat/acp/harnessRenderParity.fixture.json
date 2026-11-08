@@ -375,17 +375,6 @@
   "gaps": [
     {
       "scenario": "thinkingThenLinkedText",
-      "harness": "claude",
-      "owner": "Claude",
-      "visible": false,
-      "gap": "ACP has no message end; text and thought stay open and the turn sweep marks them cancelled on a completed turn",
-      "differs": {
-        "/items/0/lifecycle": "cancelled",
-        "/items/1/lifecycle": "cancelled"
-      }
-    },
-    {
-      "scenario": "thinkingThenLinkedText",
       "harness": "pi",
       "owner": "Pi",
       "visible": false,
@@ -403,17 +392,6 @@
       }
     },
     {
-      "scenario": "thinkingThenLinkedText",
-      "harness": "acp",
-      "owner": "ACP",
-      "visible": false,
-      "gap": "ACP has no message end; text and thought stay open and the turn sweep marks them cancelled on a completed turn",
-      "differs": {
-        "/items/0/lifecycle": "cancelled",
-        "/items/1/lifecycle": "cancelled"
-      }
-    },
-    {
       "scenario": "toolCompletes",
       "harness": "codex",
       "owner": "Codex",
@@ -436,16 +414,6 @@
     },
     {
       "scenario": "toolFailsMidTurn",
-      "harness": "claude",
-      "owner": "Claude",
-      "visible": false,
-      "gap": "trailing answer text stays open and is swept to cancelled",
-      "differs": {
-        "/items/1/lifecycle": "cancelled"
-      }
-    },
-    {
-      "scenario": "toolFailsMidTurn",
       "harness": "codex",
       "owner": "Codex",
       "visible": true,
@@ -463,27 +431,6 @@
       "gap": "tool label is the raw tool name",
       "differs": {
         "/items/0/payload/presentation/label": "read"
-      }
-    },
-    {
-      "scenario": "toolFailsMidTurn",
-      "harness": "acp",
-      "owner": "ACP",
-      "visible": false,
-      "gap": "trailing answer text stays open and is swept to cancelled",
-      "differs": {
-        "/items/1/lifecycle": "cancelled"
-      }
-    },
-    {
-      "scenario": "commandWithOutput",
-      "harness": "claude",
-      "owner": "Claude",
-      "visible": false,
-      "gap": "no exit code, and output is duplicated into the output tail",
-      "differs": {
-        "/items/0/payload/presentation/exitCode": null,
-        "/items/0/payload/presentation/outputTail": "hello"
       }
     },
     {
@@ -500,30 +447,6 @@
             "relativePath": "src"
           }
         }
-      }
-    },
-    {
-      "scenario": "commandWithOutput",
-      "harness": "acp",
-      "owner": "ACP",
-      "visible": true,
-      "gap": "no exit code, output duplicated into the tail, and no command line because the profile names no command input field",
-      "differs": {
-        "/items/0/payload/presentation/exitCode": null,
-        "/items/0/payload/presentation/outputTail": "hello",
-        "/items/0/payload/inputSummary": null
-      }
-    },
-    {
-      "scenario": "fileEditWithDiff",
-      "harness": "claude",
-      "owner": "Claude",
-      "visible": true,
-      "gap": "generic diff summary text, and whole-file sides are counted as every line removed and added",
-      "differs": {
-        "/items/1/payload/changes/0/summary": "File change reported over ACP",
-        "/items/1/payload/changes/0/additions": 3,
-        "/items/1/payload/changes/0/deletions": 3
       }
     },
     {
@@ -579,41 +502,9 @@
       }
     },
     {
-      "scenario": "fileEditWithDiff",
-      "harness": "acp",
-      "owner": "ACP",
-      "visible": true,
-      "gap": "generic diff summary text, and whole-file sides are counted as every line removed and added",
-      "differs": {
-        "/items/1/payload/changes/0/summary": "File change reported over ACP",
-        "/items/1/payload/changes/0/additions": 3,
-        "/items/1/payload/changes/0/deletions": 3
-      }
-    },
-    {
-      "scenario": "planUpdate",
-      "harness": "claude",
-      "owner": "Claude",
-      "visible": false,
-      "gap": "the plan item is never closed and is swept to cancelled",
-      "differs": {
-        "/items/0/lifecycle": "cancelled"
-      }
-    },
-    {
       "scenario": "planUpdate",
       "harness": "codex",
       "owner": "Codex",
-      "visible": false,
-      "gap": "the plan item is never closed and is swept to cancelled",
-      "differs": {
-        "/items/0/lifecycle": "cancelled"
-      }
-    },
-    {
-      "scenario": "planUpdate",
-      "harness": "acp",
-      "owner": "ACP",
       "visible": false,
       "gap": "the plan item is never closed and is swept to cancelled",
       "differs": {

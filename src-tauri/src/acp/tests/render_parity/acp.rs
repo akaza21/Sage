@@ -63,7 +63,12 @@ fn frames(scenario: Scenario) -> (Vec<Value>, &'static str) {
                 "sessionUpdate":"tool_call","toolCallId":"tool-1","title":"echo hello",
                 "kind":"execute","status":"in_progress","rawInput":{"command":"echo hello"}
             })),
-            settle("completed", "hello"),
+            // The exit status in the ACP `TerminalExitStatus` spelling.
+            update(json!({
+                "sessionUpdate":"tool_call_update","toolCallId":"tool-1","status":"completed",
+                "content":[{"type":"content","content":{"type":"text","text":"hello"}}],
+                "rawOutput":{"exitCode":0}
+            })),
         ],
         Scenario::FileEditWithDiff => vec![
             update(json!({
