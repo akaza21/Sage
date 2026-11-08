@@ -77,18 +77,53 @@ fn warning_with_no_active_turn_becomes_a_session_warning() {
 }
 
 #[test]
-fn thread_less_warning_belongs_to_the_bound_thread_and_is_ignored_before_binding() {
+fn thread_less_notices_before_binding_are_buffered_then_delivered_on_bind() {
     let mut runtime = fixture_runtime();
     initialize(&mut runtime);
-    let params = json!({"threadId":null,"message":"Sandbox is degraded."});
-    assert!(matches!(
-        notify(&mut runtime, "warning", params.clone()).as_slice(),
-        [AdapterEvent::IgnoredLate]
-    ));
-    let mut runtime = fixture_runtime();
-    ready(&mut runtime);
+    for index in 1..=5 {
+        assert!(matches!(
+            notify(
+                &mut runtime,
+                "deprecationNotice",
+                json!({"summary":format!("Notice {index}.")}),
+            )
+            .as_slice(),
+            [AdapterEvent::IgnoredLate]
+        ));
+    }
+    let start = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: None,
+        })
+        .unwrap();
+    let batch = runtime
+        .ingest(
+            &frame(json!({"id":request_id(&start),"result":{"thread":{"id":"thread-1"}}})),
+            &Mapper,
+        )
+        .unwrap();
+    let [AdapterEvent::SessionReady { .. }, notices @ ..] = batch.events() else {
+        panic!("expected the session to bind first: {:?}", batch.events());
+    };
+    // At most four are held; the oldest is dropped.
+    let expected: Vec<_> = (2..=5)
+        .map(|index| {
+            notice(
+                SessionNoticeLevel::Info,
+                "codex deprecation",
+                &format!("Codex deprecation notice: Notice {index}."),
+            )
+        })
+        .collect();
+    assert_eq!(session_events(notices), expected);
+    // Once bound, a thread-less warning goes straight to the session.
     assert_eq!(
-        session_events(&notify(&mut runtime, "warning", params)),
+        session_events(&notify(
+            &mut runtime,
+            "warning",
+            json!({"threadId":null,"message":"Sandbox is degraded."}),
+        )),
         [notice(
             SessionNoticeLevel::Warning,
             "codex",
@@ -137,7 +172,7 @@ fn config_warning_names_the_file_line_and_details() {
             SessionNoticeLevel::Warning,
             "codex config",
             "Codex configuration problem: Invalid configuration; using defaults.\n\
-             In C:\\codex\\config.toml, line 4\n\
+             In config.toml, line 4\n\
              unknown variant `fast` for key `model_reasoning_effort`"
         )]
     );
@@ -176,19 +211,33 @@ fn deprecation_notice_is_an_info_notice_with_its_guidance() {
 }
 
 #[test]
-fn oversized_harness_text_is_clipped_to_the_notice_cap() {
+fn a_long_summary_is_clipped_without_hiding_the_details() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let events = notify(
+        &mut runtime,
+        "configWarning",
+        json!({"summary":"\u{e9}".repeat(4_000),"details":"Fix the model key."}),
+    );
+    let text = one_notice(&events).text.as_str().to_owned();
+    assert!(text.len() <= SESSION_NOTICE_TEXT_BYTES);
+    assert!(text.starts_with("Codex configuration problem: \u{e9}"));
+    assert!(text.ends_with("\u{2026}\nFix the model key."), "{text}");
+}
+
+#[test]
+fn harness_text_loses_control_bidi_and_zero_width_characters_but_keeps_lines() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     let events = notify(
         &mut runtime,
         "warning",
-        json!({"threadId":"thread-1","message":"\u{e9}".repeat(4_000)}),
+        json!({"threadId":"thread-1","message":"Run\u{202e}gpj.exe\u{7}\nnext\u{200b} line\u{2066}"}),
     );
-    let notice = one_notice(&events);
-    let text = notice.text.as_str();
-    assert!(text.len() <= SESSION_NOTICE_TEXT_BYTES);
-    assert!(text.len() > SESSION_NOTICE_TEXT_BYTES - 4);
-    assert!(text.starts_with("Codex warning: \u{e9}") && text.ends_with('\u{2026}'));
+    assert_eq!(
+        one_notice(&events).text.as_str(),
+        "Codex warning: Rungpj.exe \nnext line"
+    );
 }
 
 #[test]
@@ -272,7 +321,7 @@ fn model_verification_explains_slower_responses_and_ignores_an_empty_list() {
 }
 
 #[test]
-fn safety_buffering_is_validated_and_not_projected() {
+fn safety_buffering_is_identity_checked_and_not_projected() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     running_turn(&mut runtime);
@@ -290,13 +339,10 @@ fn safety_buffering_is_validated_and_not_projected() {
         .as_slice(),
         [AdapterEvent::IgnoredLate]
     ));
-    let mut missing_flag = params.clone();
-    missing_flag
-        .as_object_mut()
-        .unwrap()
-        .remove("showBufferingUi");
+    let mut missing_turn = params.clone();
+    missing_turn.as_object_mut().unwrap().remove("turnId");
     assert!(matches!(
-        rejected(&mut runtime, "model/safetyBuffering/updated", missing_flag),
+        rejected(&mut runtime, "model/safetyBuffering/updated", missing_turn),
         AdapterRuntimeError::Frame
     ));
     let mut foreign = params;
@@ -343,30 +389,58 @@ fn notices_for_a_foreign_thread_are_rejected() {
 }
 
 #[test]
-fn malformed_notice_params_are_rejected() {
-    let range = |start: Value| json!({"start":start,"end":{"line":1,"column":1}});
+fn upstream_additions_are_tolerated() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    assert_eq!(
+        session_events(&notify(
+            &mut runtime,
+            "warning",
+            json!({"threadId":"thread-1","message":"Heads up.","severity":"low"}),
+        )),
+        [notice(
+            SessionNoticeLevel::Warning,
+            "codex",
+            "Codex warning: Heads up."
+        )]
+    );
+    assert_eq!(
+        session_events(&notify(
+            &mut runtime,
+            "model/rerouted",
+            json!({"threadId":"thread-1","turnId":"turn-1","fromModel":"a",
+                "toModel":"b","reason":"someFutureReason"}),
+        ))[1],
+        notice(
+            SessionNoticeLevel::Warning,
+            "codex model",
+            "Codex answered with b instead of the requested a for a safety reason."
+        )
+    );
+    assert!(matches!(
+        notify(
+            &mut runtime,
+            "model/verification",
+            json!({"threadId":"thread-1","turnId":"turn-1","verifications":["someFutureCheck"]}),
+        )
+        .as_slice(),
+        [AdapterEvent::IgnoredLate]
+    ));
+}
+
+#[test]
+fn missing_or_wrongly_typed_required_fields_are_rejected() {
     for (method, params) in [
         ("warning", json!({"threadId":"thread-1"})),
         ("warning", json!({"threadId":"thread-1","message":"   "})),
-        (
-            "warning",
-            json!({"threadId":"thread-1","message":"x","level":"high"}),
-        ),
+        ("warning", json!({"threadId":7,"message":"x"})),
         ("guardianWarning", json!({"message":"x"})),
         ("configWarning", json!({"summary":"x","details":7})),
-        (
-            "configWarning",
-            json!({"summary":"x","path":"config.toml","range":range(json!({"line":0,"column":1}))}),
-        ),
-        (
-            "configWarning",
-            json!({"summary":"x","range":range(json!({"line":1}))}),
-        ),
         ("deprecationNotice", json!({"details":"x"})),
         (
             "model/rerouted",
-            json!({"threadId":"thread-1","turnId":"turn-1","fromModel":"a",
-                "toModel":"b","reason":"userRequested"}),
+            json!({"threadId":"thread-1","turnId":"turn-1","fromModel":"a","toModel":"b"}),
         ),
         (
             "model/rerouted",
@@ -375,12 +449,7 @@ fn malformed_notice_params_are_rejected() {
         ),
         (
             "model/verification",
-            json!({"threadId":"thread-1","turnId":"turn-1","verifications":["unknown"]}),
-        ),
-        (
-            "model/safetyBuffering/updated",
-            json!({"threadId":"thread-1","turnId":"turn-1","model":"m",
-                "useCases":vec!["x"; 17],"reasons":[],"showBufferingUi":false,"fasterModel":null}),
+            json!({"threadId":"thread-1","turnId":"turn-1","verifications":"trustedAccessForCyber"}),
         ),
     ] {
         let mut runtime = fixture_runtime();

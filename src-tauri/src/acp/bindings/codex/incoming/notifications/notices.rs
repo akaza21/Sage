@@ -1,11 +1,15 @@
 //! Codex notices: harness warnings, configuration and deprecation notices,
 //! and model reroutes, projected as session-scoped events.
 //!
-//! Each notice is a short Sage-authored lead plus the harness text, clipped
-//! to `SESSION_NOTICE_TEXT_BYTES`. Nothing is retained here: the session
-//! surface keeps the newest `SESSION_NOTICES_MAX` notices and already
-//! collapses identical ones. The app-server version is pinned, so a field
-//! outside the 0.146.0 schema is malformed.
+//! Each notice is a short Sage-authored lead plus the harness text. Harness
+//! text is redacted, stripped of control, bidi and zero-width characters,
+//! and clipped per part (`PART_BYTES`) and as a whole
+//! (`SESSION_NOTICE_TEXT_BYTES`). The session surface keeps the newest
+//! `SESSION_NOTICES_MAX` notices and already collapses identical ones.
+//! Notices for child or fork threads are filtered earlier, in `incoming.rs`.
+//! Only missing or wrongly typed required fields are malformed: fields or
+//! enum values added upstream are tolerated, so a benign app-server addition
+//! never tears the session down.
 
 use std::fmt::Write as _;
 
@@ -17,38 +21,42 @@ use crate::acp::{
     intent::session_event::{
         SESSION_NOTICE_TEXT_BYTES, SessionNotice, SessionNoticeLevel, SessionScopedEvent,
     },
+    redaction::text::neutralized,
 };
 
 use super::super::{
     CodexAdapter, IncomingEvent, IngressDisposition, IngressError,
-    support::{identity, text},
+    support::{identity, sanitize, text},
 };
 
 const ID_BYTES: usize = 512;
 const MODEL_BYTES: usize = 512;
-const PATH_BYTES: usize = 4096;
-/// Entries accepted in each `model/*` string list.
-const LIST_MAX: usize = 16;
-const LIST_ENTRY_BYTES: usize = 128;
+/// Bytes kept from each harness part (message, summary, details), so a long
+/// summary cannot crowd the details out of the notice.
+const PART_BYTES: usize = 448;
+const FILE_NAME_BYTES: usize = 96;
 const CLIPPED: &str = "\u{2026}";
 
 /// `warning`: a harness warning, optionally aimed at one thread.
 pub(super) fn warning(
-    adapter: &CodexAdapter,
+    adapter: &mut CodexAdapter,
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
-    only(params, &["threadId", "message"])?;
     let thread = optional_text(params, "threadId", ID_BYTES)?;
-    let message = human(params, "message")?;
-    let Some(session) = session(adapter, thread)? else {
-        return Ok(IngressDisposition::IgnoredLate);
-    };
-    single_notice(
-        session,
+    let notice = notice(
         SessionNoticeLevel::Warning,
         "codex",
-        format!("Codex warning: {message}"),
-    )
+        format!("Codex warning: {}", human(params, "message")?),
+    )?;
+    match thread {
+        None => thread_less(adapter, notice),
+        Some(thread) => match adapter.bound_thread_id() {
+            Some(_) => single(adapter.thread_session_id(thread).map_err(identity)?, notice),
+            // A named thread cannot be told apart from a foreign one before
+            // a thread is bound, so it is ignored rather than failing.
+            None => Ok(IngressDisposition::IgnoredLate),
+        },
+    }
 }
 
 /// `guardianWarning`: a warning from Codex's automatic approval reviewer.
@@ -56,66 +64,54 @@ pub(super) fn guardian_warning(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
-    only(params, &["threadId", "message"])?;
     let thread = text(params, "threadId", ID_BYTES)?;
-    let message = human(params, "message")?;
-    let Some(session) = session(adapter, Some(thread))? else {
-        return Ok(IngressDisposition::IgnoredLate);
-    };
-    single_notice(
-        session,
+    let notice = notice(
         SessionNoticeLevel::Warning,
         "codex approval reviewer",
-        format!("Codex approval reviewer warning: {message}"),
-    )
+        format!(
+            "Codex approval reviewer warning: {}",
+            human(params, "message")?
+        ),
+    )?;
+    if adapter.bound_thread_id().is_none() {
+        return Ok(IngressDisposition::IgnoredLate);
+    }
+    single(adapter.thread_session_id(thread).map_err(identity)?, notice)
 }
 
 /// `configWarning`: Codex could not apply part of its configuration.
 pub(super) fn config_warning(
-    adapter: &CodexAdapter,
+    adapter: &mut CodexAdapter,
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
-    only(params, &["summary", "details", "path", "range"])?;
     let mut message = format!("Codex configuration problem: {}", human(params, "summary")?);
-    let line = start_line(params.get("range"))?;
-    if let Some(path) = optional_text(params, "path", PATH_BYTES)? {
-        let _ = write!(message, "\nIn {path}");
-        if let Some(line) = line {
+    if let Some(name) = optional_text(params, "path", usize::MAX)?.and_then(file_name) {
+        let _ = write!(message, "\nIn {name}");
+        if let Some(line) = start_line(params) {
             let _ = write!(message, ", line {line}");
         }
     }
     if let Some(details) = optional_human(params, "details")? {
         let _ = write!(message, "\n{details}");
     }
-    let Some(session) = session(adapter, None)? else {
-        return Ok(IngressDisposition::IgnoredLate);
-    };
-    single_notice(
-        session,
-        SessionNoticeLevel::Warning,
-        "codex config",
-        message,
+    thread_less(
+        adapter,
+        notice(SessionNoticeLevel::Warning, "codex config", message)?,
     )
 }
 
 /// `deprecationNotice`: a Codex feature or setting in use is deprecated.
 pub(super) fn deprecation_notice(
-    adapter: &CodexAdapter,
+    adapter: &mut CodexAdapter,
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
-    only(params, &["summary", "details"])?;
     let mut message = format!("Codex deprecation notice: {}", human(params, "summary")?);
     if let Some(details) = optional_human(params, "details")? {
         let _ = write!(message, "\n{details}");
     }
-    let Some(session) = session(adapter, None)? else {
-        return Ok(IngressDisposition::IgnoredLate);
-    };
-    single_notice(
-        session,
-        SessionNoticeLevel::Info,
-        "codex deprecation",
-        message,
+    thread_less(
+        adapter,
+        notice(SessionNoticeLevel::Info, "codex deprecation", message)?,
     )
 }
 
@@ -126,15 +122,11 @@ pub(super) fn model_rerouted(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
-    only(
-        params,
-        &["threadId", "turnId", "fromModel", "toModel", "reason"],
-    )?;
     let from = text(params, "fromModel", MODEL_BYTES)?;
     let to = text(params, "toModel", MODEL_BYTES)?;
-    let reason = match text(params, "reason", 64)? {
-        "highRiskCyberActivity" => "it flagged possible high-risk cybersecurity activity",
-        _ => return Err(IngressError::Malformed),
+    let reason = match text(params, "reason", usize::MAX)? {
+        "highRiskCyberActivity" => "because it flagged possible high-risk cybersecurity activity",
+        _ => "for a safety reason",
     };
     let Some(session) = turn_session(adapter, params)? else {
         return Ok(IngressDisposition::IgnoredLate);
@@ -143,7 +135,11 @@ pub(super) fn model_rerouted(
     let notice = notice(
         SessionNoticeLevel::Warning,
         "codex model",
-        format!("Codex answered with {to} instead of the requested {from} because {reason}."),
+        format!(
+            "Codex answered with {} instead of the requested {} {reason}.",
+            clean(to, MODEL_BYTES),
+            clean(from, MODEL_BYTES)
+        ),
     )?;
     Ok(IngressDisposition::Events(vec![
         IncomingEvent::Session {
@@ -160,36 +156,37 @@ pub(super) fn model_rerouted(
 /// `model/verification`: the backend recommends account verification
 /// because the chat keeps being flagged. It explains slower responses and
 /// what the user can do, so it is user-meaningful and becomes a notice.
+/// Verification kinds Sage does not know are ignored.
 pub(super) fn model_verification(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
-    only(params, &["threadId", "turnId", "verifications"])?;
-    let verifications = list(params, "verifications")?;
-    if verifications
+    let trusted_access = params
+        .get("verifications")
+        .and_then(Value::as_array)
+        .ok_or(IngressError::Malformed)?
         .iter()
-        .any(|verification| *verification != "trustedAccessForCyber")
-    {
-        return Err(IngressError::Malformed);
-    }
+        .any(|verification| verification.as_str() == Some("trustedAccessForCyber"));
     let Some(session) = turn_session(adapter, params)? else {
         return Ok(IngressDisposition::IgnoredLate);
     };
-    if verifications.is_empty() {
+    if !trusted_access {
         return Ok(IngressDisposition::IgnoredLate);
     }
-    single_notice(
+    single(
         session,
-        SessionNoticeLevel::Warning,
-        "codex model",
-        "Codex flagged this chat for possible cybersecurity risk, so responses may be slower \
-         while extra safety checks run. Verifying the account for Trusted Access for Cyber \
-         authorizes security work."
-            .to_owned(),
+        notice(
+            SessionNoticeLevel::Warning,
+            "codex model",
+            "Codex flagged this chat for possible cybersecurity risk, so responses may be \
+             slower while extra safety checks run. Verifying the account for Trusted Access \
+             for Cyber authorizes security work."
+                .to_owned(),
+        )?,
     )
 }
 
-/// `model/safetyBuffering/updated`: validated and deliberately not
+/// `model/safetyBuffering/updated`: identity-checked and deliberately not
 /// projected. It toggles a transient "still reviewing" state within one
 /// running turn (the turn already shows as running) and offers a retry on a
 /// faster model that only Codex's own UI can perform. A durable notice
@@ -198,61 +195,40 @@ pub(super) fn model_safety_buffering(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
-    only(
-        params,
-        &[
-            "threadId",
-            "turnId",
-            "model",
-            "useCases",
-            "reasons",
-            "showBufferingUi",
-            "fasterModel",
-        ],
-    )?;
-    text(params, "model", MODEL_BYTES)?;
-    list(params, "useCases")?;
-    list(params, "reasons")?;
-    optional_text(params, "fasterModel", MODEL_BYTES)?;
-    if !params.get("showBufferingUi").is_some_and(Value::is_boolean) {
-        return Err(IngressError::Malformed);
-    }
     turn_session(adapter, params)?;
     Ok(IngressDisposition::IgnoredLate)
 }
 
-/// The session a notice belongs to. A thread-less notice comes from the
-/// app-server process, which serves exactly one bound thread, so it belongs
-/// to that thread's session. Before any thread is bound no session can own
-/// the notice, and a named thread cannot yet be told apart from a foreign
-/// one, so the notice is ignored rather than failing the runtime. Once a
-/// thread is bound, a notice for any other thread is a foreign identity.
-fn session(
-    adapter: &CodexAdapter,
-    thread: Option<&str>,
-) -> Result<Option<ScopedExternalId>, IngressError> {
-    let Some(bound) = adapter.bound_thread_id() else {
-        return Ok(None);
-    };
-    adapter
-        .thread_session_id(thread.unwrap_or(bound))
-        .map(Some)
-        .map_err(identity)
+/// A thread-less notice comes from the app-server process, which serves
+/// exactly one bound thread, so it belongs to that thread's session. Before
+/// a thread is bound it is held (bounded) and delivered when one binds.
+fn thread_less(
+    adapter: &mut CodexAdapter,
+    notice: SessionScopedEvent,
+) -> Result<IngressDisposition, IngressError> {
+    match adapter.bound_thread_id() {
+        Some(bound) => single(adapter.thread_session_id(bound).map_err(identity)?, notice),
+        None => {
+            adapter.buffer_session_notice(notice);
+            Ok(IngressDisposition::IgnoredLate)
+        }
+    }
 }
 
 /// The session of a turn-scoped `model/*` notification. It must name the
-/// active or the just-finished Turn. With no active Turn an unknown Turn is
-/// replayed history (as on resume) and is ignored; while a Turn is active a
-/// different Turn is a foreign identity.
+/// bound thread and the active or the just-finished Turn. With no active
+/// Turn an unknown Turn is replayed history (as on resume) and is ignored;
+/// while a Turn is active a different Turn is a foreign identity.
 fn turn_session(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
 ) -> Result<Option<ScopedExternalId>, IngressError> {
     let thread = text(params, "threadId", ID_BYTES)?;
     let turn = text(params, "turnId", ID_BYTES)?;
-    let Some(session) = session(adapter, Some(thread))? else {
+    if adapter.bound_thread_id().is_none() {
         return Ok(None);
-    };
+    }
+    let session = adapter.thread_session_id(thread).map_err(identity)?;
     if adapter.expect_turn(turn).is_ok() {
         Ok(Some(session))
     } else if adapter.has_active_turn() {
@@ -262,46 +238,24 @@ fn turn_session(
     }
 }
 
-fn single_notice(
+fn single(
     session: ScopedExternalId,
-    level: SessionNoticeLevel,
-    source: &'static str,
-    message: String,
+    event: SessionScopedEvent,
 ) -> Result<IngressDisposition, IngressError> {
-    Ok(IncomingEvent::Session {
-        id: session,
-        event: notice(level, source, message)?,
-    }
-    .into())
+    Ok(IncomingEvent::Session { id: session, event }.into())
 }
 
 fn notice(
     level: SessionNoticeLevel,
     source: &'static str,
-    mut message: String,
+    message: String,
 ) -> Result<SessionScopedEvent, IngressError> {
-    if message.len() > SESSION_NOTICE_TEXT_BYTES {
-        let mut end = SESSION_NOTICE_TEXT_BYTES - CLIPPED.len();
-        while !message.is_char_boundary(end) {
-            end -= 1;
-        }
-        message.truncate(end);
-        message.push_str(CLIPPED);
-    }
+    let message = clip(&message, SESSION_NOTICE_TEXT_BYTES);
     Ok(SessionScopedEvent::Notice(SessionNotice {
         level,
         text: RequiredText::new("noticeText", message).map_err(|_| IngressError::Content)?,
         source: Some(RequiredText::new("noticeSource", source).map_err(|_| IngressError::Content)?),
     }))
-}
-
-/// Rejects any field outside `allowed`.
-fn only(params: &Map<String, Value>, allowed: &[&str]) -> Result<(), IngressError> {
-    if params.keys().all(|key| allowed.contains(&key.as_str())) {
-        Ok(())
-    } else {
-        Err(IngressError::Malformed)
-    }
 }
 
 /// An absent or null field is `None`; otherwise it must be valid text.
@@ -316,75 +270,60 @@ fn optional_text<'a>(
     }
 }
 
-/// Human-readable harness text. Its length is bounded by the frame limit
-/// and the notice clips it, so only emptiness and NUL are rejected here.
-fn human<'a>(params: &'a Map<String, Value>, key: &str) -> Result<&'a str, IngressError> {
+/// Human-readable harness text: redacted, neutralized and clipped to
+/// `PART_BYTES`. The raw value is already bounded by the frame limit.
+fn human(params: &Map<String, Value>, key: &str) -> Result<String, IngressError> {
     let value = params
         .get(key)
         .and_then(Value::as_str)
-        .map(str::trim)
         .ok_or(IngressError::Malformed)?;
-    if value.is_empty() || value.contains('\0') {
+    // Neutralize first so hidden characters cannot split a secret past
+    // redaction.
+    let value = sanitize(&neutralized(value, true));
+    let value = clip(value.trim(), PART_BYTES);
+    if value.is_empty() {
         return Err(IngressError::Malformed);
     }
     Ok(value)
 }
 
-fn optional_human<'a>(
-    params: &'a Map<String, Value>,
-    key: &str,
-) -> Result<Option<&'a str>, IngressError> {
+fn optional_human(params: &Map<String, Value>, key: &str) -> Result<Option<String>, IngressError> {
     match params.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(_) => human(params, key).map(Some),
     }
 }
 
-/// A bounded list of short identifiers.
-fn list<'a>(params: &'a Map<String, Value>, key: &str) -> Result<Vec<&'a str>, IngressError> {
-    let values = params
-        .get(key)
-        .and_then(Value::as_array)
-        .filter(|values| values.len() <= LIST_MAX)
-        .ok_or(IngressError::Malformed)?;
-    values
-        .iter()
-        .map(|value| {
-            value
-                .as_str()
-                .filter(|value| {
-                    !value.is_empty() && value.len() <= LIST_ENTRY_BYTES && !value.contains('\0')
-                })
-                .ok_or(IngressError::Malformed)
-        })
-        .collect()
+/// Strips control, bidi and zero-width characters (keeping line breaks),
+/// trims, and clips to `max` bytes.
+fn clean(value: &str, max: usize) -> String {
+    clip(neutralized(value, true).trim(), max)
 }
 
-/// The 1-based start line of a config `range`, which must be exactly
-/// `{start:{line,column}, end:{line,column}}` when present.
-fn start_line(range: Option<&Value>) -> Result<Option<u64>, IngressError> {
-    let Some(range) = range.filter(|range| !range.is_null()) else {
-        return Ok(None);
-    };
-    let range = range.as_object().ok_or(IngressError::Malformed)?;
-    only(range, &["start", "end"])?;
-    let start = line(range, "start")?;
-    line(range, "end")?;
-    Ok(Some(start))
+fn clip(value: &str, max: usize) -> String {
+    if value.len() <= max {
+        return value.to_owned();
+    }
+    let mut end = max - CLIPPED.len();
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{CLIPPED}", &value[..end])
 }
 
-/// The line of one `{line, column}` position; both are 1-based.
-fn line(range: &Map<String, Value>, key: &str) -> Result<u64, IngressError> {
-    let position = range
-        .get(key)
-        .and_then(Value::as_object)
-        .ok_or(IngressError::Malformed)?;
-    only(position, &["line", "column"])?;
-    let [line, column] = ["line", "column"].map(|field| {
-        position
-            .get(field)
-            .and_then(Value::as_u64)
-            .filter(|value| *value >= 1)
-    });
-    column.and(line).ok_or(IngressError::Malformed)
+/// Only the file name of a config path is shown; the directory is local
+/// detail the notice does not need.
+fn file_name(path: &str) -> Option<String> {
+    let name = clean(path.rsplit(['/', '\\']).next()?, FILE_NAME_BYTES);
+    (!name.is_empty()).then_some(name)
+}
+
+/// The 1-based start line of a config `range`, when it has one.
+fn start_line(params: &Map<String, Value>) -> Option<u64> {
+    params
+        .get("range")?
+        .get("start")?
+        .get("line")?
+        .as_u64()
+        .filter(|line| *line >= 1)
 }

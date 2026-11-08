@@ -30,9 +30,9 @@ const UNIMPLEMENTED_SERVER_REQUESTS: [&str; 7] = [
 const UNPROJECTED_NOTIFICATIONS: [&str; 5] = [
     "fs/changed",
     "hook/started",
+    "item/fileChange/patchUpdated",
     "thread/realtime/started",
     "turn/diff/updated",
-    "turn/moderationMetadata",
 ];
 
 struct Mapper;
