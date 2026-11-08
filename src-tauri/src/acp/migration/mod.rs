@@ -10,6 +10,7 @@ mod legacy_events;
 mod legacy_project;
 mod limits;
 mod manifest;
+mod notifications;
 mod paths;
 mod platform;
 mod platform_anchor;
@@ -133,6 +134,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     workspace_changes::apply(&mut opened.connection)?;
     title_provenance::apply(&mut opened.connection)?;
     session_scope::apply(&mut opened.connection)?;
+    notifications::apply(&mut opened.connection)?;
     config_choices::apply(&mut opened.connection)?;
     Ok(opened)
 }

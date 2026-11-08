@@ -3,10 +3,7 @@
 
 use std::{ffi::OsString, fs::File, path::Path, time::Instant};
 
-use super::{
-    super::shell::{self, environment_from},
-    *,
-};
+use super::{super::shell::environment_from, *};
 
 #[test]
 fn environment_is_an_allowlist_with_a_utf8_default() {
@@ -103,7 +100,7 @@ fn environment_passes_the_desktop_session_through_on_linux_only() {
 #[cfg(target_os = "linux")]
 #[test]
 fn each_session_variable_is_kept_only_when_the_host_has_it() {
-    for &only in &shell::SESSION_VARIABLES {
+    for &only in &super::super::shell::SESSION_VARIABLES {
         let host = |name: &str| (name == only).then(|| session_value(name)).flatten();
         let entries = environment_from(Path::new("/bin/zsh"), host).unwrap();
         let names = entries.iter().map(|(name, _)| *name).collect::<Vec<_>>();

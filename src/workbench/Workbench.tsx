@@ -28,6 +28,7 @@ import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 import { useHistoryKeys } from "./useHistoryKeys";
 import { useRepositoryAutoRefresh } from "./useRepositoryAutoRefresh";
+import { useNotificationNavigation } from "./useTurnNotifications";
 import { useWorkbenchKeys, useTerminalDock } from "./useWorkbenchKeys";
 import "./workbench-window-mode.css";
 import {
@@ -145,6 +146,12 @@ export function Workbench() {
     });
   }, [editorToolRailWidth, windowMode]);
   const enterEditor = useCallback(() => setWindowMode("editor"), []);
+  const enterNotificationChat = useCallback(() => {
+    changeAgentArtifact(false);
+    setArtifactMaximized(false);
+    setWindowMode("agent");
+  }, []);
+  useNotificationNavigation(enterNotificationChat);
   const [terminalContainer, terminalSlotRef] =
     useRetainedElement<HTMLDivElement>();
   const dockSlot = useMemo(

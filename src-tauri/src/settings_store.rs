@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 mod access;
+mod notifications;
+pub use notifications::NotificationPreference;
 mod agent_rail_view;
 mod browser_developer;
 mod browser_download_folder;
@@ -23,7 +25,9 @@ pub use agent_rail_view::AgentRailView;
 pub use browser_download_folder::DownloadFolderRecord;
 pub use browser_preferences::BrowserPreferences;
 pub use browser_site_permissions::{MAX_SITE_ORIGIN_BYTES, MAX_SITE_PERMISSIONS};
-pub use chat_read_marks::ChatReadMark;
+#[cfg(test)]
+pub(crate) use chat_read_marks::MAX_CHAT_READ_MARKS;
+pub use chat_read_marks::{ChatReadMark, ChatReadMarkWrite, ChatReadMarks};
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
 pub use new_chat_defaults::NewChatDefaults;
 

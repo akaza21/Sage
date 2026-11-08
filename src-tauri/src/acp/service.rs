@@ -52,7 +52,8 @@ mod live_lanes;
 mod live_routes;
 pub(crate) use live_lanes::LIVE_RUNTIME_LANES;
 mod permission;
-#[cfg(test)]
+// Only the Pi bridge fixture replay drives decisions through the service from outside it.
+#[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use permission::tests::support::{
     admit_permission_request, service_with_pending_requests,
 };

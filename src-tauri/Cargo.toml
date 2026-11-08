@@ -56,11 +56,23 @@ zeroize = "=1.9.1"
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 libc = "=0.2.189"
 
-# macOS only: the system Trash (NSFileManager). Both crates are already in the
-# lock through Tauri and wry; this adds two Foundation binding features.
+# XDG turn notices over the session bus, and raising the window with a
+# click's activation token. All three are already in the lock through tao; no
+# new crate or system library.
+[target.'cfg(target_os = "linux")'.dependencies]
+dbus = "=0.9.12"
+gdkwayland-sys = "=0.18.2"
+gtk = "=0.18.2"
+
+# macOS only: the system Trash (NSFileManager) and turn notices
+# (UNUserNotificationCenter). All four crates are already in the lock, through
+# Tauri and wry (objc2-user-notifications through objc2-ui-kit), so no new
+# crate is fetched; this adds binding features only.
 [target.'cfg(target_os = "macos")'.dependencies]
+block2 = "=0.6.2"
 objc2 = "=0.6.4"
-objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSError", "NSFileManager", "NSString", "NSURL"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSArray", "NSBundle", "NSError", "NSFileManager", "NSString", "NSURL"] }
+objc2-user-notifications = { version = "=0.3.2", default-features = false, features = ["std", "block2", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationTrigger", "UNUserNotificationCenter"] }
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "=0.38.2"
@@ -83,6 +95,9 @@ windows = { version = "=0.61.3", default-features = false, features = [
   "Win32_System_WinRT",
   "Foundation",
   "Media_SpeechRecognition",
+  # Native turn toasts reuse this dependency, including Action Center clicks.
+  "UI_Notifications",
+  "Data_Xml_Dom",
   "Security_Credentials_UI",
 ] }
 windows-core = { version = "=0.61.2", default-features = false, features = ["std"] }

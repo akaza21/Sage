@@ -6,12 +6,7 @@ import {
   type ProjectChatSearchResponse,
   type ProjectChatSearchResult,
 } from "./chatSearchDomain";
-import type {
-  ArchivedChatSummary,
-  ProjectListItem,
-  ProjectSummary,
-  WorkbenchTab,
-} from "../../domain/workbench";
+import type { ProjectSummary } from "../../domain/workbench";
 import { MAX_AGENT_RAIL_PROJECTS } from "../../domain/agentRailLimits";
 import { projectLabel } from "../../domain/project";
 import {
@@ -71,31 +66,6 @@ export function matchesChatSearchScope(
     state.projectGeneration === scope.projectGeneration &&
     state.nativeTransitionEpoch === scope.transitionEpoch
   );
-}
-
-export function chatSearchAttachment(
-  state: {
-    project: ProjectSummary | null;
-    tabs: ReadonlyArray<WorkbenchTab>;
-    archivedChats: ReadonlyArray<ArchivedChatSummary>;
-    projects: ReadonlyArray<ProjectListItem>;
-  },
-  projectId: string,
-  chatId: string,
-): { attached: boolean; archived: boolean } {
-  if (state.project?.id === projectId) {
-    return {
-      attached: state.tabs.some(
-        (tab) => tab.kind === "chat" && tab.id === chatId,
-      ),
-      archived: state.archivedChats.some((chat) => chat.id === chatId),
-    };
-  }
-  const folder = state.projects.find((item) => item.id === projectId);
-  return {
-    attached: Boolean(folder?.railChats?.some((chat) => chat.id === chatId)),
-    archived: Boolean(folder?.railArchived?.some((chat) => chat.id === chatId)),
-  };
 }
 
 export interface ChatSearchFanoutPick extends ProjectChatSearchResult {

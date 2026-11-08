@@ -167,7 +167,7 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
         expected.pragma_update(None, "user_version", 21)?;
     }
     if version >= 22 {
-        expected.execute_batch(super::super::config_choices::V22)?;
+        expected.execute_batch(super::super::notifications::V22)?;
         expected.execute(
             "INSERT INTO schema_migrations(version, applied_at) VALUES (22, 0)",
             [],
