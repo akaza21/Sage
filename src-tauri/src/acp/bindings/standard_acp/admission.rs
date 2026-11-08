@@ -89,6 +89,7 @@ impl AdmittedStandardAcpBinding {
     }
 
     pub(crate) fn revalidate(&self) -> Result<(), StandardAcpAdmissionError> {
+        validate_direct_launch(self.profile, &self.candidate.runtime)?;
         validate_artifact(&self.candidate.runtime)?;
         if let Some(entrypoint) = &self.candidate.entrypoint {
             validate_artifact(entrypoint)?;
@@ -174,6 +175,7 @@ fn validate_candidate(
     if !profile.version_shape.accepts(&candidate.reported_version) {
         return Err(StandardAcpAdmissionError::Version);
     }
+    validate_direct_launch(profile, &candidate.runtime)?;
     validate_artifact(&candidate.runtime)?;
     match (profile.launch, candidate.entrypoint.as_ref()) {
         (StandardAcpLaunch::NodeEntrypoint, Some(entrypoint)) => validate_artifact(entrypoint),
@@ -189,6 +191,24 @@ fn validate_candidate(
         &candidate.reported_version,
     )?;
     validate_package_runtime_link(profile, candidate)
+}
+
+/// A file the user named and Sage launches directly (a user-defined
+/// agent) must be one the platform runs without a shell: on Windows a
+/// `.cmd` or `.bat` would run through `cmd.exe`, which interprets the
+/// arguments. Node runtimes, their script entrypoints and curated
+/// executables found under their package are outside this rule.
+fn validate_direct_launch(
+    profile: &StandardAcpProfile,
+    runtime: &StandardAcpArtifact,
+) -> Result<(), StandardAcpAdmissionError> {
+    let user_named = profile.launch == StandardAcpLaunch::DirectExecutable
+        && runtime.provenance == StandardAcpArtifactProvenance::Direct;
+    if user_named && !super::custom_executable::native_executable_name(&runtime.path, cfg!(windows))
+    {
+        return Err(StandardAcpAdmissionError::Path);
+    }
+    Ok(())
 }
 
 fn validate_package_manifest(
@@ -263,8 +283,7 @@ fn validate_artifact_location(
     }
     match &artifact.provenance {
         StandardAcpArtifactProvenance::Direct => {
-            super::custom_executable::native_executable_name(path, cfg!(windows))
-                && crate::harness_discovery::authentic_regular_file(path)
+            crate::harness_discovery::authentic_regular_file(path)
         }
         StandardAcpArtifactProvenance::NpmGlobal { root, relative } => {
             path == &root.join(relative)

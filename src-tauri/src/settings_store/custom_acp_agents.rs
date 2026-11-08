@@ -348,6 +348,8 @@ mod tests {
             "custom-acp-6",
             "the counter survives reopening and removal of the newest agent"
         );
+        // Windows refuses to delete a database a live connection holds open.
+        drop(store);
         std::fs::remove_dir_all(directory).unwrap();
     }
 
