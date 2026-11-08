@@ -1,9 +1,38 @@
 import { Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { createCodeMirrorEditorRuntime } from "./CodeMirrorEditorRuntime";
+
+const EDITING = {
+  matchBrackets: true,
+  autoClosingBrackets: true,
+  folding: true,
+  occurrencesHighlight: true,
+  multiCursorModifier: "alt" as const,
+};
+
+// The first editor loads the editing features and its language lazily; later
+// editors reuse them. Open one first, so a cold load, which waits on the test
+// runner under load, is not timed with the keystrokes.
+beforeAll(async () => {
+  const parent = document.createElement("div");
+  document.body.append(parent);
+  const runtime = createCodeMirrorEditorRuntime({
+    parent,
+    ariaLabel: "Edit warm.ts",
+    path: "warm.ts",
+    content: "call(item);\n",
+    disabled: false,
+    maxContentLength: 1024,
+    onChange: () => undefined,
+    editing: EDITING,
+  });
+  await settleLazyModules();
+  runtime.destroy();
+  parent.remove();
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -71,13 +100,7 @@ describe("CodeMirrorEditorRuntime keystroke cost", () => {
       disabled: false,
       maxContentLength: limit,
       onChange,
-      editing: {
-        matchBrackets: true,
-        autoClosingBrackets: true,
-        folding: true,
-        occurrencesHighlight: true,
-        multiCursorModifier: "alt" as const,
-      },
+      editing: EDITING,
     };
     const runtime = createCodeMirrorEditorRuntime({ parent, ...props });
     const view = EditorView.findFromDOM(
