@@ -57,6 +57,17 @@ impl RuntimeHost {
             || std::thread::sleep(USER_COMMAND_RETRY),
         )
     }
+    /// The same change, answered by `deadline` at the latest.
+    pub(crate) fn configure_session_until(
+        &self,
+        intent: crate::acp::session_config::ConfigIntent,
+        deadline: std::time::Instant,
+    ) -> Result<HostOutcome, HostError> {
+        yield_to_background_read(
+            || self.outcome_until(HostCommand::ConfigureSession(intent.clone()), deadline),
+            || std::thread::sleep(USER_COMMAND_RETRY),
+        )
+    }
 }
 
 #[cfg(test)]

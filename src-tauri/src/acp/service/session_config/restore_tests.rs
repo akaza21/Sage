@@ -183,9 +183,25 @@ fn effort(current: &str) -> Value {
 /// Starts a resumed runtime for `owner` the way activation does: the session
 /// reports the harness defaults before the runtime is published.
 fn start(service: &AcpService, owner: &RuntimeOwner, options: Value) -> Arc<Mutex<Agent>> {
+    open(service, owner, false, "ask", options)
+}
+
+/// Starts a runtime that opens a new session (`new`) or resumes one, in
+/// `mode`.
+fn open(
+    service: &AcpService,
+    owner: &RuntimeOwner,
+    new: bool,
+    mode: &str,
+    options: Value,
+) -> Arc<Mutex<Agent>> {
     let slot = &service.lane_at(0).runtime;
     slot.reserve_start(owner.clone()).unwrap();
-    let claude = InMemoryClaude::resumed(owner, Arc::clone(&slot.config), options.clone());
+    if new {
+        slot.config.mark_new_session(owner);
+    }
+    let claude =
+        InMemoryClaude::opened(owner, Arc::clone(&slot.config), new, mode, options.clone());
     let agent = Arc::new(Mutex::new(Agent {
         options,
         requests: Vec::new(),
@@ -282,7 +298,7 @@ fn a_restarted_runtime_sends_the_stored_effort_before_the_next_prompt() {
     let resumed = owner(2);
     let agent = start(&service, &resumed, effort("low"));
     assert_eq!(shown_effort(&service, &resumed), "low");
-    service.restore_session_config(&resumed);
+    service.restore_session_config(&resumed).unwrap();
     let requests = agent.lock().unwrap().requests.clone();
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0]["method"], "session/set_config_option");
@@ -293,7 +309,7 @@ fn a_restarted_runtime_sends_the_stored_effort_before_the_next_prompt() {
     // The composer reads the live overlay, which now shows the choice.
     assert_eq!(shown_effort(&service, &resumed), "high");
     // Restoring happens once per runtime; a later prompt sends nothing more.
-    service.restore_session_config(&resumed);
+    service.restore_session_config(&resumed).unwrap();
     assert_eq!(agent.lock().unwrap().requests.len(), 1);
     service.shutdown_blocking().unwrap();
     drop(service);
@@ -322,7 +338,7 @@ fn values_no_longer_offered_or_refused_fall_back_to_the_session_without_retrying
     let resumed = owner(2);
     let agent = start(&service, &resumed, effort("low"));
     agent.lock().unwrap().refuse = true;
-    service.restore_session_config(&resumed);
+    service.restore_session_config(&resumed).unwrap();
     // "max" is not offered and "retired" is gone: nothing is sent for them.
     // The offered mode is sent once, refused, and not retried.
     let requests = agent.lock().unwrap().requests.clone();
@@ -333,7 +349,7 @@ fn values_no_longer_offered_or_refused_fall_back_to_the_session_without_retrying
     let mut kept = stored(&service);
     kept.sort_by_key(|choice| matches!(choice, ConfigMutation::Mode(_)));
     assert_eq!(kept, [option("effort", "low"), mode("ask")]);
-    service.restore_session_config(&resumed);
+    service.restore_session_config(&resumed).unwrap();
     assert_eq!(agent.lock().unwrap().requests.len(), 1);
     // Only a confirmed choice is stored: a refused one leaves the store alone.
     assert_eq!(
@@ -351,15 +367,117 @@ fn restore_waits_until_the_session_reports_options() {
     channel.reserve(runtime.clone());
     channel.update(&runtime, SessionConfig::default()).unwrap();
     channel.publish(&runtime);
+    let has_options = |config: &SessionConfig| !config.config_options.as_slice().is_empty();
     // A harness that reports its options after activation stays pending.
-    assert!(channel.take_restore(&runtime).is_none());
+    assert!(channel.take_restore(&runtime, has_options).is_none());
     channel
         .update(
             &runtime,
             SessionConfig::from_wire(&json!({"configOptions":effort("low")}), true).unwrap(),
         )
         .unwrap();
-    let overlay = channel.take_restore(&runtime).unwrap();
+    let (overlay, new_session) = channel.take_restore(&runtime, has_options).unwrap();
     assert_ne!(overlay.config_revision, ConfigRevision::first());
-    assert!(channel.take_restore(&runtime).is_none());
+    assert!(!new_session);
+    assert!(channel.take_restore(&runtime, |_| true).is_none());
+}
+
+#[test]
+fn a_new_sessions_first_mode_survives_a_resume_that_starts_elsewhere() {
+    let directory =
+        std::env::temp_dir().join(format!("sage-config-new-mode-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("sage.db");
+    let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+    seed(&service);
+    // A new session starts in "default"; the user never changes the mode.
+    let first = owner(1);
+    let agent = open(&service, &first, true, "default", effort("low"));
+    service.restore_session_config(&first).unwrap();
+    assert!(agent.lock().unwrap().requests.is_empty());
+    assert_eq!(stored(&service), [mode("default")]);
+    service.shutdown_blocking().unwrap();
+    // The harness resumes a transcript with no mode in "auto".
+    drop(service);
+    let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+    let resumed = owner(2);
+    let agent = open(&service, &resumed, false, "auto", effort("low"));
+    service.restore_session_config(&resumed).unwrap();
+    let requests = agent.lock().unwrap().requests.clone();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0]["method"], "session/set_mode");
+    assert_eq!(requests[0]["params"]["modeId"], "default");
+    let shown = service
+        .lane_at(0)
+        .runtime
+        .config
+        .live_snapshot(&resumed)
+        .unwrap();
+    assert_eq!(
+        shown.config.modes.unwrap().current_mode_id.as_str(),
+        "default"
+    );
+    service.shutdown_blocking().unwrap();
+    drop(service);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn stored_options_are_kept_while_the_session_has_not_reported_options() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    {
+        let connection = service.database.connection();
+        let session = &owner(1).session_id;
+        assert!(choices::record(&connection, session, &mode("code"), 1).unwrap());
+        assert!(choices::record(&connection, session, &option("effort", "high"), 2).unwrap());
+    }
+    // Modes are reported at activation; options are not yet.
+    let resumed = owner(2);
+    let agent = start(&service, &resumed, json!([]));
+    service.restore_session_config(&resumed).unwrap();
+    assert!(agent.lock().unwrap().requests.is_empty());
+    assert_eq!(stored(&service), [mode("code"), option("effort", "high")]);
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn what_the_harness_reports_itself_is_stored_once_the_runtime_is_restored() {
+    let channel = ConfigChannel::default();
+    let recorded = Arc::new(Mutex::new(Vec::new()));
+    channel.set_recorder({
+        let recorded = Arc::clone(&recorded);
+        Arc::new(move |_: &RuntimeOwner, choices: &[ConfigMutation]| {
+            recorded.lock().unwrap().extend_from_slice(choices)
+        })
+    });
+    let runtime = owner(2);
+    let config = |mode: &str, effort_value: &str| {
+        SessionConfig::from_wire(
+            &json!({
+                "modes":{"currentModeId":mode,"availableModes":[
+                    {"id":"plan","name":"Plan"},{"id":"acceptEdits","name":"Accept edits"}
+                ]},
+                "configOptions":effort(effort_value)
+            }),
+            true,
+        )
+        .unwrap()
+    };
+    channel.reserve(runtime.clone());
+    channel.update(&runtime, config("plan", "high")).unwrap();
+    channel.publish(&runtime);
+    // Before restore, what the session reports is its defaults, not a choice.
+    channel.update(&runtime, config("plan", "low")).unwrap();
+    assert!(recorded.lock().unwrap().is_empty());
+    assert!(channel.take_restore(&runtime, |_| true).is_some());
+    // Then the harness leaves plan mode on its own and resets the effort.
+    channel
+        .update(&runtime, config("acceptEdits", "high"))
+        .unwrap();
+    assert_eq!(
+        *recorded.lock().unwrap(),
+        [mode("acceptEdits"), option("effort", "high")]
+    );
 }

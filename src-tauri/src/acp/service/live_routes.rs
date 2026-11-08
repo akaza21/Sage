@@ -34,9 +34,10 @@ impl AcpService {
         }
         // A resumed session reports the adapter's defaults; the choices this
         // chat made are reapplied before the activation answers, so before
-        // its next prompt can be sent.
-        self.restore_session_config(&owner);
-        Ok(())
+        // its next prompt can be sent. A change that left the runtime needing
+        // recovery is reported here rather than left silent.
+        self.restore_session_config(&owner)
+            .map_err(|_| CodexSessionError::Recovery)
     }
 
     pub(crate) fn send_session_turn(
@@ -45,7 +46,8 @@ impl AcpService {
     ) -> Result<HostOutcome, PromptSendError<CodexSessionError>> {
         // A harness that reported its options only after activation is
         // restored here, before the prompt is dispatched. A no-op otherwise.
-        self.restore_session_config(&intent.owner());
+        self.restore_session_config(&intent.owner())
+            .map_err(|_| PromptSendError::not_started(CodexSessionError::Recovery))?;
         self.lane_for(&intent.owner())
             .ok_or_else(|| PromptSendError::not_started(CodexSessionError::Intent))?
             .send_session_turn(intent)

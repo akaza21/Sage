@@ -11,9 +11,11 @@ use super::limits::LIMITS;
 pub(crate) mod choices;
 mod kind;
 mod overlay;
+pub(crate) mod reported;
 pub(crate) use kind::ConfigKind;
 pub(crate) use overlay::{
-    ConfigChannel, ConfigIntent, ConfigMutation, ConfigRevision, NoticeSink, SessionConfigOverlay,
+    ChoiceRecorder, ConfigChannel, ConfigIntent, ConfigMutation, ConfigRevision, NoticeSink,
+    SessionConfigOverlay,
 };
 
 pub(crate) type ConfigId = RequiredText<1024>;

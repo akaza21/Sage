@@ -1,4 +1,4 @@
-//! A resumed Claude runtime driven in memory, for service tests that need
+//! A new or resumed Claude runtime driven in memory, for service tests that need
 //! the real binding's wire behaviour without a child process.
 use super::*;
 use crate::acp::{
@@ -19,12 +19,14 @@ fn frame(value: &Value) -> Frame {
 }
 
 impl InMemoryClaude {
-    /// Initializes and resumes external session `external-a`, which reports
-    /// `config_options` and an `ask`/`code` mode pair, with the session
-    /// config published to `channel` as a live runtime publishes it.
-    pub(crate) fn resumed(
+    /// Opens external session `external-a`, new or resumed, which reports
+    /// `config_options` and `mode` of `default`/`ask`/`code`/`auto`, with
+    /// the session config published to `channel` as a live runtime does.
+    pub(crate) fn opened(
         owner: &RuntimeOwner,
         channel: Arc<ConfigChannel>,
+        new: bool,
+        mode: &str,
         config_options: Value,
     ) -> Self {
         let mut runtime =
@@ -33,19 +35,29 @@ impl InMemoryClaude {
         let mut runtime = NativeRuntime::new(runtime);
         runtime.attach_config(owner.clone(), channel);
         let mut this = Self(runtime);
-        let request = this
-            .send(AdapterCommand::ResumeSession {
-                external_session_id: ExternalId::new("session", "external-a").unwrap(),
-                native_root: "C:\\fixture".into(),
+        let native_root = "C:\\fixture".to_owned();
+        let command = if new {
+            AdapterCommand::NewSession {
+                native_root,
                 model: None,
-            })
-            .expect("resume");
+            }
+        } else {
+            AdapterCommand::ResumeSession {
+                external_session_id: ExternalId::new("session", "external-a").unwrap(),
+                native_root,
+                model: None,
+            }
+        };
+        let request = this.send(command).expect("open");
         this.receive(json!({"jsonrpc":"2.0","id":request["id"],"result":{
             "sessionId":"external-a",
-            "modes":{"currentModeId":"ask","availableModes":[{"id":"ask","name":"Ask"},{"id":"code","name":"Code"}]},
+            "modes":{"currentModeId":mode,"availableModes":[
+                {"id":"default","name":"Default"},
+                {"id":"ask","name":"Ask"},{"id":"code","name":"Code"},{"id":"auto","name":"Auto"}
+            ]},
             "configOptions":config_options
         }}))
-        .expect("resume response");
+        .expect("open response");
         this
     }
 

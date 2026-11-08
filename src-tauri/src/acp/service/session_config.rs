@@ -21,6 +21,14 @@ impl AcpService {
         &self,
         intent: ConfigIntent,
     ) -> Result<(), crate::acp::runtime::HostError> {
+        self.configure_session_until(intent, None)
+    }
+    /// `deadline` bounds the harness answer; `None` keeps the host's own.
+    pub(super) fn configure_session_until(
+        &self,
+        intent: ConfigIntent,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<(), crate::acp::runtime::HostError> {
         let lane = self
             .lane_for(&intent.owner)
             .ok_or(crate::acp::runtime::HostError::Intent)?;
@@ -32,7 +40,10 @@ impl AcpService {
             .config
             .validate(&intent)
             .map_err(|_| crate::acp::runtime::HostError::Intent)?;
-        let result = host.configure_session(intent.clone());
+        let result = match deadline {
+            Some(deadline) => host.configure_session_until(intent.clone(), deadline),
+            None => host.configure_session(intent.clone()),
+        };
         if result.is_ok() {
             // The harness confirmed this choice: it is what a resumed
             // runtime of this session restores.

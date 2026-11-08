@@ -1,15 +1,19 @@
-//! Keeps a chat's session config choices across park and restart.
+//! Keeps a chat's session config choices across park, restart and fork.
 //!
 //! Every binding exposes its config through the same seam: the runtime
 //! publishes what the session reports into the lane's `ConfigChannel`, and a
 //! change goes through `AcpService::configure_session` to the binding's
-//! `HarnessAdapter::configure`. So the choice the harness confirmed is stored
-//! here, and reapplied here through that same path, with no harness branch.
+//! `HarnessAdapter::configure`. So the choices are stored here, and
+//! reapplied here through that same path, with no harness branch.
+use std::time::{Duration, Instant};
+
 use crate::acp::{
+    limits::LIMITS,
     runtime::HostError,
     scheduler::RuntimeOwner,
     session_config::{
-        ConfigIntent, ConfigKind, ConfigMutation, ConfigValue, SessionConfig, choices,
+        ChoiceRecorder, ConfigIntent, ConfigMutation, SessionConfig, choices,
+        reported::current_value,
     },
 };
 
@@ -26,37 +30,6 @@ enum Step {
     Fallback(ConfigMutation),
     /// The session no longer offers the option at all.
     Forget,
-}
-
-/// The session's current value for the mode or option `choice` names, or
-/// `None` when the session does not offer it.
-fn current_value(config: &SessionConfig, choice: &ConfigMutation) -> Option<ConfigMutation> {
-    match choice {
-        ConfigMutation::Mode(_) => config
-            .modes
-            .as_ref()
-            .map(|modes| ConfigMutation::Mode(modes.current_mode_id.clone())),
-        ConfigMutation::Option { config_id, .. } => {
-            let option = config
-                .config_options
-                .as_slice()
-                .iter()
-                .find(|option| &option.id == config_id)?;
-            let value = match &option.kind {
-                ConfigKind::Select { current_value, .. } => ConfigValue::Select {
-                    value: current_value.clone(),
-                },
-                ConfigKind::Boolean { current_value } => ConfigValue::Boolean {
-                    value: *current_value,
-                },
-                ConfigKind::Unsupported { .. } => return None,
-            };
-            Some(ConfigMutation::Option {
-                config_id: config_id.clone(),
-                value,
-            })
-        }
-    }
 }
 
 fn step(config: &SessionConfig, stored: &ConfigMutation) -> Step {
@@ -79,20 +52,62 @@ fn step(config: &SessionConfig, stored: &ConfigMutation) -> Step {
     }
 }
 
+/// Mode first, then options that pick the model, then the rest, so a model
+/// is restored before an effort that depends on it. The option's category,
+/// not its ID, says what it is.
+fn priority(config: &SessionConfig, choice: &ConfigMutation) -> u8 {
+    let ConfigMutation::Option { config_id, .. } = choice else {
+        return 0;
+    };
+    let category = config
+        .config_options
+        .as_slice()
+        .iter()
+        .find(|option| &option.id == config_id)
+        .and_then(|option| option.category.as_ref());
+    match category.map(|category| category.as_str()) {
+        Some("mode") => 0,
+        Some("model") => 1,
+        _ => 2,
+    }
+}
+
+/// Whether the session reports what the stored choices need: its modes when
+/// a mode is stored, its options when an option is stored.
+fn ready(config: &SessionConfig, stored: &[ConfigMutation]) -> bool {
+    let options = !config.config_options.as_slice().is_empty();
+    let modes = config.modes.is_some();
+    (modes || options)
+        && stored.iter().all(|choice| match choice {
+            ConfigMutation::Mode(_) => modes,
+            ConfigMutation::Option { .. } => options,
+        })
+}
+
+fn needs_recovery(error: &HostError) -> bool {
+    matches!(
+        error,
+        HostError::Unavailable
+            | HostError::Closed
+            | HostError::Deadline
+            | HostError::DeliveryUnknown
+            | HostError::RecoveryRequired
+    )
+}
+
 impl AcpService {
+    /// Stores the values sessions report themselves, once restored.
+    pub(in crate::acp::service) fn session_config_recorder(&self) -> ChoiceRecorder {
+        let database = self.database.clone();
+        std::sync::Arc::new(move |owner: &RuntimeOwner, reported: &[ConfigMutation]| {
+            for choice in reported {
+                remember(&database, owner, choice);
+            }
+        })
+    }
+
     pub(super) fn remember_config_choice(&self, owner: &RuntimeOwner, choice: &ConfigMutation) {
-        let stored = self.database.write_connection().and_then(|connection| {
-            choices::record(
-                &connection,
-                &owner.session_id,
-                choice,
-                crate::persistence::now_millis(),
-            )
-            .map_err(Into::into)
-        });
-        if let Err(error) = stored {
-            tracing::warn!(?error, "session config choice was not stored");
-        }
+        remember(&self.database, owner, choice);
     }
 
     fn forget_config_choice(&self, owner: &RuntimeOwner, choice: &ConfigMutation) {
@@ -113,67 +128,121 @@ impl AcpService {
         }
     }
 
-    /// Reapplies the session's stored choices to a new runtime, once, after
-    /// the session first reports its modes or options. Each stored value that
-    /// differs and is still offered is sent through the same config path the
-    /// composer uses. A value the session no longer offers, or one the harness
-    /// refuses, falls back to the session's value, and the stored value is
-    /// updated to match; nothing is retried.
-    pub(crate) fn restore_session_config(&self, owner: &RuntimeOwner) {
+    /// Reapplies the session's stored choices to a new runtime, once the
+    /// session reports the modes and options they need. Each stored value
+    /// that differs and is still offered is sent through the same config path
+    /// the composer uses. A value the session no longer offers, or one the
+    /// harness refuses, falls back to the session's value, and the stored
+    /// value is updated to match. A new session stores the mode it starts in.
+    ///
+    /// The whole restore gets one ordinary RPC deadline. What is left when it
+    /// runs out is restored before the next prompt. `Err` means a change
+    /// left the runtime needing recovery.
+    pub(crate) fn restore_session_config(&self, owner: &RuntimeOwner) -> Result<(), HostError> {
         let Some(lane) = self.lane_for(owner) else {
-            return;
+            return Ok(());
         };
-        let Some(mut overlay) = lane.runtime.config.take_restore(owner) else {
-            return;
-        };
-        let stored = match choices::load(&self.database.connection(), &owner.session_id) {
+        let mut stored = match choices::load(&self.database.connection(), &owner.session_id) {
             Ok(stored) => stored,
             Err(error) => {
                 tracing::warn!(?error, "stored session config choices were not read");
-                return;
+                return Ok(());
             }
         };
+        let Some((mut overlay, new_session)) = lane
+            .runtime
+            .config
+            .take_restore(owner, |config| ready(config, &stored))
+        else {
+            return Ok(());
+        };
+        if new_session && let Some(modes) = &overlay.config.modes {
+            self.remember_config_choice(
+                owner,
+                &ConfigMutation::Mode(modes.current_mode_id.clone()),
+            );
+        }
+        stored.sort_by_key(|choice| priority(&overlay.config, choice));
+        let deadline = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
         for choice in stored {
             match step(&overlay.config, &choice) {
-                Step::Keep => {}
-                Step::Forget | Step::Fallback(_) => self.fall_back(owner, &overlay.config, &choice),
-                Step::Apply => {
-                    let result = self.configure_session(ConfigIntent {
+                Step::Keep => continue,
+                Step::Forget | Step::Fallback(_) => {
+                    self.fall_back(owner, &overlay.config, &choice);
+                    continue;
+                }
+                Step::Apply => {}
+            }
+            if Instant::now() >= deadline {
+                tracing::warn!(
+                    "session config restore ran out of time; finishing before the next prompt"
+                );
+                lane.runtime.config.rearm_restore(owner);
+                return Ok(());
+            }
+            let apply = |revision| {
+                self.configure_session_until(
+                    ConfigIntent {
                         owner: owner.clone(),
-                        expected_config_revision: overlay.config_revision,
+                        expected_config_revision: revision,
                         mutation: choice.clone(),
-                    });
+                    },
+                    Some(deadline),
+                )
+            };
+            let mut result = apply(overlay.config_revision);
+            if result == Err(HostError::Intent) {
+                // A change raced this one: retry once against the new state.
+                let Some(latest) = lane.runtime.config.live_snapshot(owner) else {
+                    return Ok(());
+                };
+                overlay = latest;
+                result = match step(&overlay.config, &choice) {
+                    Step::Apply => apply(overlay.config_revision),
+                    Step::Keep => Ok(()),
+                    Step::Forget | Step::Fallback(_) => Err(HostError::ConfigMutationRejected),
+                };
+            }
+            match result {
+                Err(error) if needs_recovery(&error) => return Err(error),
+                result => {
                     let Some(latest) = lane.runtime.config.live_snapshot(owner) else {
-                        return;
+                        return Ok(());
                     };
                     overlay = latest;
-                    match result {
-                        Ok(()) => {}
-                        Err(HostError::ConfigMutationRejected) => {
-                            self.fall_back(owner, &overlay.config, &choice)
-                        }
-                        // The runtime needs recovery, which owns what happens
-                        // next; the stored values stay for the next resume.
-                        Err(
-                            HostError::Unavailable
-                            | HostError::Closed
-                            | HostError::Deadline
-                            | HostError::DeliveryUnknown
-                            | HostError::RecoveryRequired,
-                        ) => return,
-                        // A concurrent change won the revision race; the
-                        // stored value stays for the next resume.
-                        Err(_) => {}
+                    if result == Err(HostError::ConfigMutationRejected) {
+                        self.fall_back(owner, &overlay.config, &choice);
                     }
                 }
             }
         }
+        Ok(())
+    }
+}
+
+fn remember(
+    database: &crate::persistence::Database,
+    owner: &RuntimeOwner,
+    choice: &ConfigMutation,
+) {
+    let stored = database.write_connection().and_then(|connection| {
+        choices::record(
+            &connection,
+            &owner.session_id,
+            choice,
+            crate::persistence::now_millis(),
+        )
+        .map_err(Into::into)
+    });
+    if let Err(error) = stored {
+        tracing::warn!(?error, "session config choice was not stored");
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::acp::session_config::{ConfigId, ConfigValue};
     use serde_json::json;
 
     fn config() -> SessionConfig {
@@ -183,8 +252,12 @@ mod tests {
                     {"id": "default", "name": "Default"}, {"id": "plan", "name": "Plan"}
                 ]},
                 "configOptions": [{
-                    "id": "effort", "name": "Effort", "type": "select", "currentValue": "low",
+                    "id": "effort", "name": "Effort", "category": "thought_level",
+                    "type": "select", "currentValue": "low",
                     "options": [{"value": "low", "name": "Low"}, {"value": "high", "name": "High"}]
+                }, {
+                    "id": "pick", "name": "Model", "category": "model", "type": "select",
+                    "currentValue": "a", "options": [{"value": "a", "name": "A"}]
                 }, {"id": "fast", "name": "Fast", "type": "boolean", "currentValue": false}]
             }),
             true,
@@ -194,19 +267,19 @@ mod tests {
 
     fn option(id: &str, value: ConfigValue) -> ConfigMutation {
         ConfigMutation::Option {
-            config_id: crate::acp::session_config::ConfigId::new("configId", id).unwrap(),
+            config_id: ConfigId::new("configId", id).unwrap(),
             value,
         }
     }
 
     fn select(value: &str) -> ConfigValue {
         ConfigValue::Select {
-            value: crate::acp::session_config::ConfigId::new("value", value).unwrap(),
+            value: ConfigId::new("value", value).unwrap(),
         }
     }
 
     fn mode(id: &str) -> ConfigMutation {
-        ConfigMutation::Mode(crate::acp::session_config::ConfigId::new("mode", id).unwrap())
+        ConfigMutation::Mode(ConfigId::new("mode", id).unwrap())
     }
 
     #[test]
@@ -228,7 +301,6 @@ mod tests {
             ),
             Step::Apply
         );
-        // A select value stored for what is now a boolean is not offered.
         assert_eq!(
             step(&config, &option("fast", select("on"))),
             Step::Fallback(option("fast", ConfigValue::Boolean { value: false }))
@@ -241,5 +313,45 @@ mod tests {
             Step::Fallback(mode("default"))
         );
         assert_eq!(step(&SessionConfig::default(), &mode("plan")), Step::Forget);
+    }
+
+    #[test]
+    fn the_mode_and_the_model_are_restored_before_what_depends_on_them() {
+        let config = config();
+        let mut stored = vec![
+            option("effort", select("high")),
+            option("fast", ConfigValue::Boolean { value: true }),
+            option("pick", select("a")),
+            mode("plan"),
+        ];
+        stored.sort_by_key(|choice| priority(&config, choice));
+        assert_eq!(
+            stored,
+            [
+                mode("plan"),
+                option("pick", select("a")),
+                option("effort", select("high")),
+                option("fast", ConfigValue::Boolean { value: true }),
+            ]
+        );
+    }
+
+    #[test]
+    fn stored_options_wait_for_the_session_to_report_options() {
+        let modes_only = SessionConfig {
+            config_options: Default::default(),
+            ..config()
+        };
+        assert!(ready(&modes_only, &[mode("plan")]));
+        assert!(!ready(
+            &modes_only,
+            &[mode("plan"), option("effort", select("high"))]
+        ));
+        assert!(ready(
+            &config(),
+            &[mode("plan"), option("effort", select("high"))]
+        ));
+        assert!(!ready(&SessionConfig::default(), &[]));
+        assert!(ready(&modes_only, &[]));
     }
 }

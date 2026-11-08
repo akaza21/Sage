@@ -1,4 +1,4 @@
-//! Durable last-confirmed session config choices (schema v21).
+//! Durable last-confirmed session config choices (schema v22).
 //!
 //! The live overlay is never journaled; this table keeps only the value the
 //! harness last confirmed for each mode or option, so a resumed runtime can
@@ -90,16 +90,36 @@ pub(crate) fn forget(
     Ok(())
 }
 
-/// The session's stored choices: options before the mode, each in the order
-/// the user confirmed them, so a model is restored before an effort that
-/// depends on it. Rows this build cannot decode are skipped.
+/// Gives session `to` the confirmed choices of session `from` (a fork
+/// continues its parent's session). Runs in the caller's transaction.
+pub(crate) fn copy(
+    connection: &Connection,
+    from: &SageAgentSessionId,
+    to: &SageAgentSessionId,
+) -> rusqlite::Result<()> {
+    connection.execute(
+        "INSERT INTO acp_session_config_choices(session_id,kind,config_id,value_json,updated_at)
+         SELECT ?2,kind,config_id,value_json,updated_at FROM acp_session_config_choices
+         WHERE session_id=?1 ORDER BY updated_at LIMIT ?3",
+        params![
+            from.as_str(),
+            to.as_str(),
+            SESSION_CONFIG_CHOICES_PER_SESSION as i64
+        ],
+    )?;
+    Ok(())
+}
+
+/// The session's stored choices in the order they were confirmed. Restore
+/// reorders them by what the live session says each option is. Rows this
+/// build cannot decode are skipped.
 pub(crate) fn load(
     connection: &Connection,
     session: &SageAgentSessionId,
 ) -> rusqlite::Result<Vec<ConfigMutation>> {
     let mut statement = connection.prepare(
         "SELECT kind,config_id,value_json FROM acp_session_config_choices
-         WHERE session_id=?1 ORDER BY kind='mode',updated_at,config_id LIMIT ?2",
+         WHERE session_id=?1 ORDER BY updated_at,kind,config_id LIMIT ?2",
     )?;
     let rows = statement.query_map(
         params![session.as_str(), SESSION_CONFIG_CHOICES_PER_SESSION as i64],
@@ -155,5 +175,31 @@ mod tests {
                 .unwrap()
                 .contains(&select("o0", "b"))
         );
+    }
+
+    #[test]
+    fn a_fork_starts_with_its_parents_choices() {
+        let database =
+            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let connection = database.connection();
+        connection.execute_batch("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Project',1,1,1);
+            INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('parent','project',0,'Parent',1,1),('child','project',1,'Child',1,1);").unwrap();
+        for (id, chat) in [("session", "parent"), ("fork", "child")] {
+            connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,capabilities_json,state,residency,created_at,updated_at) VALUES(?1,'project',?2,0,'binding',?3,'{}','created','cold',1,1)", params![id, chat, "a".repeat(64)]).unwrap();
+        }
+        let parent = SageAgentSessionId::parse("session").unwrap();
+        let fork = SageAgentSessionId::parse("fork").unwrap();
+        let mode = ConfigMutation::Mode(ConfigId::new("modeId", "plan").unwrap());
+        let fast = ConfigMutation::Option {
+            config_id: ConfigId::new("configId", "fast").unwrap(),
+            value: ConfigValue::Boolean { value: true },
+        };
+        assert!(record(&connection, &parent, &mode, 1).unwrap());
+        assert!(record(&connection, &parent, &fast, 2).unwrap());
+        copy(&connection, &parent, &fork).unwrap();
+        assert_eq!(load(&connection, &fork).unwrap(), [mode.clone(), fast]);
+        // The two sessions' choices are separate from then on.
+        forget(&connection, &fork, &mode).unwrap();
+        assert!(load(&connection, &parent).unwrap().contains(&mode));
     }
 }
