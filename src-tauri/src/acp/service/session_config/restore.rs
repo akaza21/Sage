@@ -18,6 +18,7 @@ use crate::acp::{
 };
 
 use super::AcpService;
+use crate::acp::bindings::access_policy::governs_session_modes;
 
 /// What one stored choice needs against the options the session reports now.
 #[derive(Debug, PartialEq, Eq)]
@@ -159,9 +160,24 @@ impl AcpService {
             owner,
             finished: false,
         };
+        // Where the access path owns the mode it selects the mode before
+        // every prompt, from the chat's current access. A stored mode sent
+        // here could run after that selection and restore a wider mode the
+        // chat has since given up.
+        let governed = self.access_governs_modes(owner);
+        if governed {
+            stored.retain(|choice| {
+                let mode = overlay.config.changes_mode(choice);
+                if mode {
+                    config.release(owner, choice);
+                }
+                !mode
+            });
+        }
         // A new session stores the mode it starts in, unless it already has
         // one (a fork keeps its parent's).
         if new_session
+            && !governed
             && !stored
                 .iter()
                 .any(|choice| matches!(choice, ConfigMutation::Mode(_)))
@@ -207,6 +223,22 @@ impl AcpService {
         }
         unfinished.finished = true;
         Ok(())
+    }
+
+    /// Whether only the access path may change this session's mode. A
+    /// session whose binding cannot be read or routed counts as governed, so
+    /// a failed lookup never reopens the path.
+    fn access_governs_modes(&self, owner: &RuntimeOwner) -> bool {
+        self.database
+            .connection()
+            .query_row(
+                "SELECT binding_id FROM agent_sessions WHERE id=?1",
+                [owner.session_id.as_str()],
+                |row| row.get::<_, String>(0),
+            )
+            .ok()
+            .and_then(|binding| governs_session_modes(self.binding_registry(), &binding))
+            .unwrap_or(true)
     }
 
     /// Sends one stored value, retrying once if another change raced it.

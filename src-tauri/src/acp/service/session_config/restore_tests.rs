@@ -189,10 +189,14 @@ pub(super) fn owner(epoch: u64) -> RuntimeOwner {
 }
 
 pub(super) fn seed(service: &AcpService) {
+    seed_binding(service, "opencode-acp");
+}
+
+fn seed_binding(service: &AcpService, binding: &str) {
     let connection = service.database.connection();
     connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-restore','Restore',1,1,1)", []).unwrap();
     connection.execute("INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('chat-restore','project-restore',0,'Restore',0,1,1)", []).unwrap();
-    connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,created_at,updated_at) VALUES('session-restore','project-restore','chat-restore',0,'claude-agent-acp',?1,'external-a',?2,'ready','cold',1,1)", [&"a".repeat(64), &capabilities()]).unwrap();
+    connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,created_at,updated_at) VALUES('session-restore','project-restore','chat-restore',0,?3,?1,'external-a',?2,'ready','cold',1,1)", [&"a".repeat(64), &capabilities(), binding]).unwrap();
 }
 
 /// A capability snapshot the chat page can project.
@@ -439,6 +443,31 @@ fn values_no_longer_offered_or_refused_fall_back_to_the_session_without_retrying
     );
     assert!(stored(&service).contains(&option("effort", "low")));
     service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn a_binding_whose_access_owns_its_mode_never_has_a_stored_mode_reapplied() {
+    for binding in ["claude-agent-acp", "claude-code-sdk"] {
+        let service =
+            AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        seed_binding(&service, binding);
+        {
+            let connection = service.database.connection();
+            let session = &owner(1).session_id;
+            // Picked before the chat's access was lowered.
+            assert!(choices::record(&connection, session, &mode("code"), 1).unwrap());
+            assert!(choices::record(&connection, session, &option("effort", "high"), 2).unwrap());
+        }
+        let resumed = owner(2);
+        let agent = start(&service, &resumed, effort("low"));
+        // Whenever the restore finishes, it sends no mode.
+        service.restore_session_config(&resumed).unwrap();
+        let requests = agent.lock().unwrap().requests.clone();
+        assert_eq!(requests.len(), 1, "{binding}");
+        assert_eq!(requests[0]["method"], "session/set_config_option");
+        assert_eq!(requests[0]["params"]["configId"], "effort");
+        service.shutdown_blocking().unwrap();
+    }
 }
 
 #[test]
