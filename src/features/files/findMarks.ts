@@ -31,27 +31,20 @@ export const VISIBLE_MARK_MARGIN = 250;
 /** The marks within the visible ranges and their margins. */
 function visibleMarks(view: EditorView): DecorationSet {
   const all = view.state.field(marks);
-  if (all.size === 0) return Decoration.none;
   const builder = new RangeSetBuilder<Decoration>();
-  const ranges = view.visibleRanges;
   let next = 0;
-  for (let index = 0; index < ranges.length; index += 1) {
-    const from = Math.max(ranges[index]!.from - VISIBLE_MARK_MARGIN, next);
-    let to = ranges[index]!.to;
-    // Ranges whose margins meet are drawn as one.
-    while (
-      index + 1 < ranges.length &&
-      to + 2 * VISIBLE_MARK_MARGIN > ranges[index + 1]!.from
-    )
-      to = ranges[++index]!.to;
-    to += VISIBLE_MARK_MARGIN;
-    all.between(from, to, (start, end, mark) => {
-      // A mark that straddles the last range's end was added already.
-      if (start < next) return;
-      builder.add(start, end, mark);
-      next = Math.max(end, start + 1);
-    });
-  }
+  for (const { from, to } of view.visibleRanges)
+    all.between(
+      from - VISIBLE_MARK_MARGIN,
+      to + VISIBLE_MARK_MARGIN,
+      (start, end, mark) => {
+        // Margins can overlap: a mark that starts before the last one added
+        // was added already.
+        if (start < next) return;
+        builder.add(start, end, mark);
+        next = start + 1;
+      },
+    );
   return builder.finish();
 }
 
