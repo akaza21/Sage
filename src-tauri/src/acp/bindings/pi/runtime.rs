@@ -72,6 +72,7 @@ pub(super) struct DenyIntent {
 }
 
 pub(crate) struct PiRuntime {
+    pub(super) bridge: Option<super::bridge::Bridge>,
     pub(super) translator: PiTranslator,
     pub(super) binding_digest: [u8; 32],
     pub(super) runtime_epoch: RuntimeEpoch,
@@ -161,6 +162,7 @@ impl PiRuntime {
         session_id: SageAgentSessionId,
     ) -> Self {
         Self {
+            bridge: None,
             translator,
             binding_digest,
             runtime_epoch,
@@ -259,7 +261,7 @@ impl HarnessAdapter for PiRuntime {
             AdapterCommand::Prompt {
                 prompt,
                 client_message_id,
-                ..
+                access_mode,
             } => {
                 if self.external_session.is_none() || self.active_turn.is_some() {
                     return Err(AdapterRuntimeError::Operation);
@@ -303,9 +305,12 @@ impl HarnessAdapter for PiRuntime {
                     tools: BTreeMap::new(),
                     tool_snapshot_bytes: 0,
                 });
+                // Bridge authority is scoped to the turn that was actually reserved.
+                self.begin_bridge_turn(access_mode);
                 Ok(egress)
             }
             AdapterCommand::Cancel if self.active_turn.is_some() => {
+                self.discard_bridge_edit();
                 self.begin_one(Operation::Abort, RequestKind::Cancel)
             }
             AdapterCommand::Cancel => Err(AdapterRuntimeError::Operation),
@@ -336,6 +341,19 @@ impl HarnessAdapter for PiRuntime {
         token: EgressToken,
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
+        self.resolve_bridge_egress(&token, resolution)?;
+        if token.is_notification() {
+            return if matches!(
+                resolution,
+                EgressResolution::Queued | EgressResolution::Written
+            ) {
+                Ok(())
+            } else {
+                self.discard_bridge_edit();
+                self.poisoned = true;
+                Err(AdapterRuntimeError::MandatoryDenyTeardown)
+            };
+        }
         if token.cancelled_permission_request().is_some() {
             return self.resolve_dialog_cancel(token, resolution);
         }

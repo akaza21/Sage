@@ -1,8 +1,20 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { validateMainCapabilityPermissions } from "./check-policy-permissions.mjs";
+import {
+  curatedPackageResources,
+  packageResourcePolicyErrors,
+} from "./package-resource-policy.mjs";
 
 test("app commands are allowed only in the exact main webview capability", () => {
   const main = {
@@ -48,6 +60,57 @@ test("reviewed Windows API features include only ConPTY and existing containment
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
   ]);
+});
+
+test("package resources admit only the pinned Pi bridge bytes", async () => {
+  const tauriRoot = path.resolve("src-tauri");
+  const config = JSON.parse(
+    readFileSync(path.join(tauriRoot, "tauri.conf.json"), "utf8"),
+  );
+  const windows = JSON.parse(
+    readFileSync(path.join(tauriRoot, "tauri.windows.conf.json"), "utf8"),
+  );
+  const check = (overrides) =>
+    packageResourcePolicyErrors({
+      tauriRoot,
+      bundle: config.bundle,
+      windowsBundle: windows.bundle,
+      ...overrides,
+    });
+  assert.deepEqual(await check({}), []);
+
+  const [bridge] = curatedPackageResources;
+  const resources = [bridge.path];
+  for (const bundle of [
+    { resources: [...resources, "src/other.mjs"] },
+    { resources: [] },
+    { resources: { [bridge.path]: "bridge.mjs" } },
+    { resources, externalBin: ["bin/helper"] },
+  ]) {
+    assert.notDeepEqual(await check({ bundle }), [], JSON.stringify(bundle));
+  }
+  assert.notDeepEqual(
+    await check({ windowsBundle: { ...windows.bundle, resources: [] } }),
+    [],
+  );
+
+  const changed = mkdtempSync(path.join(tmpdir(), "sage-resource-policy-"));
+  try {
+    const target = path.join(changed, bridge.path);
+    mkdirSync(path.dirname(target), { recursive: true });
+    const bytes = readFileSync(path.join(tauriRoot, bridge.path));
+    bytes[bytes.length - 1] ^= 1;
+    writeFileSync(target, bytes);
+    assert.deepEqual(await check({ tauriRoot: changed }), [
+      `Curated package resource drifted: ${bridge.path}`,
+    ]);
+    rmSync(target);
+    assert.deepEqual(await check({ tauriRoot: changed }), [
+      `Curated package resource is missing: ${bridge.path}`,
+    ]);
+  } finally {
+    rmSync(changed, { recursive: true, force: true });
+  }
 });
 
 const { sourceSecurityErrors } = await import("./check-policy.mjs");

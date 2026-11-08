@@ -26,6 +26,8 @@ mod child_opened_tests;
 mod parity_tests;
 #[cfg(test)]
 pub(crate) use child_opened_tests::child_opened_wire_for_test;
+#[cfg(test)]
+pub(crate) use pi_bridge::{pi_bridge_calls_for_test, run_pi_bridge_call_for_test};
 
 #[path = "wire_acp.rs"]
 mod acp;
@@ -33,6 +35,8 @@ mod acp;
 mod codex;
 #[path = "wire_pi.rs"]
 mod pi;
+#[path = "wire_pi_bridge.rs"]
+mod pi_bridge;
 
 pub(super) struct WireState {
     stdin_open: bool,
@@ -125,6 +129,9 @@ fn await_client_kind(
     state: &mut WireState,
 ) -> Result<(), FixtureError> {
     let kind = field_str(step, "kind")?;
+    if kind == "piBridgeTool" {
+        return pi_bridge::tool(step, input, output, state);
+    }
     if kind.starts_with("pi") {
         return pi::await_request(input, output, state, kind);
     }

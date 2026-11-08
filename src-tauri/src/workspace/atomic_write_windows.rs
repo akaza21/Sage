@@ -130,7 +130,15 @@ fn already_contains(path: &Path, bytes: &[u8]) -> io::Result<bool> {
     Ok(existing == bytes)
 }
 
-fn rename_information(target: &Path) -> io::Result<(Vec<usize>, u32)> {
+/// What the final rename may do with a file already at the target name.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Existing {
+    Replace,
+    /// Create only: a file that appeared after the last check is never replaced.
+    Refuse,
+}
+
+fn rename_information(target: &Path, existing: Existing) -> io::Result<(Vec<usize>, u32)> {
     let name = target.as_os_str().encode_wide().collect::<Vec<_>>();
     let name_bytes = name
         .len()
@@ -145,9 +153,14 @@ fn rename_information(target: &Path) -> io::Result<(Vec<usize>, u32)> {
     let info = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();
     // SAFETY: aligned, zeroed storage holds the header, UTF-16 name and terminator.
     unsafe {
-        // REPLACE_IF_EXISTS | POSIX_SEMANTICS: replace a previously opened
-        // target name atomically without writing through its old file handle.
-        (*info).Anonymous.Flags = 1 | 2;
+        // POSIX_SEMANTICS, plus REPLACE_IF_EXISTS when replacing: swap a
+        // previously opened target name atomically without writing through its
+        // old file handle. Without it the rename fails if the name exists.
+        (*info).Anonymous.Flags = if existing == Existing::Replace {
+            1 | 2
+        } else {
+            2
+        };
         (*info).RootDirectory = ptr::null_mut();
         (*info).FileNameLength = u32::try_from(name_bytes).map_err(|_| refused())?;
         ptr::copy_nonoverlapping(name.as_ptr(), (*info).FileName.as_mut_ptr(), name.len());
@@ -155,8 +168,8 @@ fn rename_information(target: &Path) -> io::Result<(Vec<usize>, u32)> {
     Ok((storage, u32::try_from(total).map_err(|_| refused())?))
 }
 
-fn rename_held(source: &File, target: &Path) -> io::Result<()> {
-    let (mut storage, total) = rename_information(target)?;
+fn rename_held(source: &File, target: &Path, existing: Existing) -> io::Result<()> {
+    let (mut storage, total) = rename_information(target, existing)?;
     // SAFETY: the request owns its aligned header and terminated UTF-16 name.
     unsafe {
         if SetFileInformationByHandle(
@@ -172,17 +185,32 @@ fn rename_held(source: &File, target: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub(super) fn atomic_write(
+pub(crate) fn atomic_write(
     root: &Path,
     identity: [u8; 24],
     path: &Path,
     bytes: &[u8],
 ) -> io::Result<()> {
+    atomic_write_checked(root, identity, path, bytes, Existing::Replace, || Ok(()))
+}
+
+/// Writes through a temporary sibling while the parent chain is held.
+/// `verify` runs after the temporary file is durable and immediately before
+/// the rename, so a caller can re-check that the target is still what it
+/// approved.
+pub(crate) fn atomic_write_checked(
+    root: &Path,
+    identity: [u8; 24],
+    path: &Path,
+    bytes: &[u8],
+    existing: Existing,
+    verify: impl Fn() -> io::Result<()>,
+) -> io::Result<()> {
     let parent = path.parent().ok_or_else(refused)?.canonicalize()?;
     let _guards = hold_parent(root, identity, &parent)?;
     let target = parent.join(path.file_name().ok_or_else(refused)?);
     check_target(&target)?;
-    if already_contains(&target, bytes)? {
+    if existing == Existing::Replace && already_contains(&target, bytes)? {
         return Ok(());
     }
     let temp = parent.join(format!(".sage-acp-{}.tmp", uuid::Uuid::new_v4()));
@@ -197,7 +225,8 @@ pub(super) fn atomic_write(
         file.write_all(bytes)?;
         file.sync_all()?;
         check_target(&target)?;
-        rename_held(&file, &target)
+        verify()?;
+        rename_held(&file, &target, existing)
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&temp);
@@ -214,7 +243,7 @@ mod tests {
         for suffix in ["", "a", "ab", "abc"] {
             let path = PathBuf::from(format!(r"C:\fixture\lock-🔒{suffix}.txt"));
             let expected = path.as_os_str().encode_wide().collect::<Vec<_>>();
-            let (storage, length) = rename_information(&path).unwrap();
+            let (storage, length) = rename_information(&path, Existing::Replace).unwrap();
             let end = offset_of!(FILE_RENAME_INFO, FileName) + expected.len() * 2;
             assert!(
                 length as usize >= end + 2,
@@ -290,6 +319,44 @@ mod tests {
         std::fs::remove_dir_all(root).expect("cleanup");
     }
 
+    #[test]
+    fn create_only_never_replaces_a_file_that_appears_before_the_rename() {
+        let root = std::env::temp_dir().join(format!("sage-create-only-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("root");
+        let root = root.canonicalize().expect("canonical root");
+        let identity = crate::workspace::root_identity_path(&root)
+            .expect("identity")
+            .stable_bytes();
+        let target = root.join("new.txt");
+        let raced =
+            atomic_write_checked(&root, identity, &target, b"agent", Existing::Refuse, || {
+                std::fs::write(&target, b"user")
+            });
+        assert!(raced.is_err());
+        assert_eq!(std::fs::read(&target).expect("user file"), b"user");
+        let duplicate =
+            atomic_write_checked(&root, identity, &target, b"user", Existing::Refuse, || {
+                Ok(())
+            });
+        assert!(
+            duplicate.is_err(),
+            "an identical existing file is still not a create"
+        );
+        let changed = root.join("changed.txt");
+        std::fs::write(&changed, b"old").expect("old");
+        let vetoed =
+            atomic_write_checked(&root, identity, &changed, b"new", Existing::Replace, || {
+                Err(refused())
+            });
+        assert!(vetoed.is_err());
+        assert_eq!(std::fs::read(&changed).expect("kept"), b"old");
+        assert_eq!(
+            std::fs::read_dir(&root).expect("list").count(),
+            2,
+            "no temporary file left"
+        );
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
     #[test]
     fn atomic_write_replaces_an_unlocked_target() {
         let root =
