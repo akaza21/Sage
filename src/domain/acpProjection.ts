@@ -232,6 +232,20 @@ export interface HarnessActivityProjection {
   revision: EntityRevision;
 }
 
+/**
+ * A session activity row (a hook run, say) in the work list of the Turn
+ * that last reported it; native `TurnSessionActivityProjection`. A Turn
+ * holds at most `SESSION_ACTIVITIES_MAX` of them.
+ */
+export interface TurnSessionActivity {
+  kind: string;
+  label: string;
+  state: "running" | "completed" | "failed" | "cancelled";
+  progress?: string;
+}
+
+export const SESSION_ACTIVITIES_MAX = 16;
+
 export interface TurnProjection {
   attachedContext?: readonly AttachedContext[];
   id: SageTurnId;
@@ -258,6 +272,7 @@ export interface TurnProjection {
   activities: readonly HarnessActivityProjection[];
   browserOperations: readonly BrowserOperationProjection[];
   browserOperationsCollapsed: number;
+  sessionActivities?: readonly TurnSessionActivity[];
 }
 
 export interface AgentSessionProjection {

@@ -101,6 +101,16 @@
   white-space: nowrap;
 }
 
+.acp-tool-rollup__progress {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .acp-live-shimmer {
   background:
     linear-gradient(

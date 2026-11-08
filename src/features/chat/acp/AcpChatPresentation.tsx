@@ -30,6 +30,7 @@ import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
 import { TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
+import { TurnSessionActivities } from "./TurnSessionActivities";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
@@ -174,6 +175,7 @@ const Turn = memo(
               thinkingPlaceholder={isSideChatId(page.chatId)}
               hasActivities={
                 workingItems.length > 0 ||
+                (turn.sessionActivities?.length ?? 0) > 0 ||
                 (turn.browserOperations?.length ?? 0) > 0 ||
                 (turn.browserOperationsCollapsed ?? 0) > 0
               }
@@ -198,6 +200,9 @@ const Turn = memo(
                   )}
                 />
               ) : null}
+              <TurnSessionActivities
+                activities={turn.sessionActivities ?? []}
+              />
               <BrowserOperations
                 operations={turn.browserOperations ?? []}
                 collapsed={turn.browserOperationsCollapsed ?? 0}

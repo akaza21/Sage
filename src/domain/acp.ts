@@ -9,6 +9,7 @@ export type {
   SafeResourceLocation,
   ToolPresentation,
   TurnProjection,
+  TurnSessionActivity,
 } from "./acpProjection";
 import type { AcpChatPage } from "./acpProjection";
 import type { AttachedContext } from "./attachedContext";

@@ -2,7 +2,9 @@ import type {
   AcpItem,
   HarnessActivityProjection,
   TurnProjection,
+  TurnSessionActivity,
 } from "../domain/acp";
+import { SESSION_ACTIVITIES_MAX } from "../domain/acpProjection";
 import type { BrowserOperationProjection } from "../domain/browserOperation";
 import {
   isOneOf,
@@ -17,6 +19,34 @@ import {
 } from "./acpDesktopGuards";
 import { safeItem } from "./acpDesktopResponseItems";
 import { validateAttachedContexts } from "../domain/attachedContext";
+
+/** Native caps: kind 64, label 256 and progress 512 bytes, none empty. */
+function safeSessionActivity(value: unknown): TurnSessionActivity | null {
+  if (!isRecord(value)) return null;
+  const kind = safeText(value.kind, 64);
+  const label = safeText(value.label, 256);
+  const progress =
+    value.progress === undefined ? undefined : safeText(value.progress, 512);
+  if (
+    !kind ||
+    !label ||
+    progress === null ||
+    progress === "" ||
+    !isOneOf(value.state, [
+      "running",
+      "completed",
+      "failed",
+      "cancelled",
+    ] as const)
+  )
+    return null;
+  return {
+    kind,
+    label,
+    state: value.state,
+    ...(progress === undefined ? {} : { progress }),
+  };
+}
 
 function safeBrowserOperation(
   value: unknown,
@@ -280,9 +310,17 @@ export function safeTurn(value: unknown): TurnProjection | null {
   const browserOperationsCollapsed = safeOrdinal(
     value.browserOperationsCollapsed ?? 0,
   );
+  const rawSessionActivities = value.sessionActivities ?? [];
+  if (
+    !Array.isArray(rawSessionActivities) ||
+    rawSessionActivities.length > SESSION_ACTIVITIES_MAX
+  )
+    return null;
+  const sessionActivities = rawSessionActivities.map(safeSessionActivity);
   return items.some((item) => !item) ||
     activities.some((activity) => !activity) ||
     browserOperations.some((operation) => !operation) ||
+    sessionActivities.some((activity) => !activity) ||
     browserOperationsCollapsed === null
     ? null
     : {
@@ -302,5 +340,8 @@ export function safeTurn(value: unknown): TurnProjection | null {
         activities: activities as HarnessActivityProjection[],
         browserOperations: browserOperations as BrowserOperationProjection[],
         browserOperationsCollapsed,
+        ...(sessionActivities.length
+          ? { sessionActivities: sessionActivities as TurnSessionActivity[] }
+          : {}),
       };
 }

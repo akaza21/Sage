@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{ExternalId, ModelId};
-use crate::acp::contract::RequiredText;
+use crate::acp::contract::{RequiredText, SageTurnId};
 
 pub(crate) const SESSION_TITLE_BYTES: usize = 256;
 pub(crate) const SESSION_NOTICE_TEXT_BYTES: usize = 1024;
@@ -63,6 +63,11 @@ pub struct SessionActivity {
     pub label: RequiredText<SESSION_ACTIVITY_LABEL_BYTES>,
     pub state: SessionActivityState,
     pub progress: Option<RequiredText<SESSION_ACTIVITY_PROGRESS_BYTES>>,
+    /// The Turn whose batch last reported this row. Adapters leave it unset
+    /// and the store stamps it, so the projection can show the row in that
+    /// Turn's work list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<SageTurnId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -238,8 +243,14 @@ impl SessionSurface {
         true
     }
 
+    /// A row is one activity within one Turn, so a hook handler that runs
+    /// again in a later Turn leaves the earlier Turn's row in place.
     fn upsert_activity(&mut self, activity: &SessionActivity) -> bool {
-        if let Some(existing) = self.activities.iter_mut().find(|row| row.id == activity.id) {
+        if let Some(existing) = self
+            .activities
+            .iter_mut()
+            .find(|row| row.id == activity.id && row.turn_id == activity.turn_id)
+        {
             if existing == activity {
                 return false;
             }

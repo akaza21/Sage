@@ -1,7 +1,9 @@
 use serde::Serialize;
 
 mod browser_operation;
+mod session_activity;
 pub use browser_operation::BrowserOperationProjection;
+pub use session_activity::TurnSessionActivityProjection;
 
 use super::{
     contract::*,
@@ -335,6 +337,9 @@ pub struct TurnProjection {
     pub activities: BoundedVec<ActivityProjection, 32>,
     pub browser_operations: BoundedVec<BrowserOperationProjection, 32>,
     pub browser_operations_collapsed: u64,
+    /// At most the session surface's activity cap.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub session_activities: Vec<TurnSessionActivityProjection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

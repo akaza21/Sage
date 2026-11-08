@@ -343,6 +343,24 @@
   font-size: var(--font-size-xs);
 }
 
+.acp-session-activities {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acp-session-activity > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acp-session-activity__detail {
+  flex: 1 1 auto;
+}
+
 .acp-activity-row > svg {
   flex: none;
 }

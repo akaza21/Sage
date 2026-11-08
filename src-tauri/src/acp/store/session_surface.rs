@@ -3,14 +3,17 @@
 //! activity rows. Updates rewrite the row in place, so storage never grows
 //! with the number of events.
 
+use std::collections::BTreeMap;
+
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::acp::{
     contract::EntityRevision,
     intent::session_event::{SessionScopedEvent, SessionSurface, SurfaceChange},
+    projection::TurnSessionActivityProjection,
 };
 
-use super::{AdapterStoreOwner, StoreError, facts};
+use super::{AdapterStoreOwner, StoreError, facts, history::TurnRow};
 
 /// Upper bound of one serialized surface; the schema enforces the same cap.
 pub(super) const SURFACE_BYTES_MAX: usize = 65_536;
@@ -36,7 +39,19 @@ pub(super) fn apply_in(
     let stored = read(transaction, project, chat, session)?;
     let revision = stored.as_ref().map(|(_, revision)| *revision);
     let mut surface = stored.map(|(surface, _)| surface).unwrap_or_default();
-    let Some(change) = surface.apply(owner.runtime_epoch.get(), &command.event) else {
+    // An activity belongs to the Turn whose batch reports it, even when the
+    // harness names no Turn (a session-level hook in the active Turn).
+    let stamped;
+    let event = match &command.event {
+        SessionScopedEvent::Activity(row) => {
+            let mut row = row.clone();
+            row.turn_id = Some(owner.turn_id.clone());
+            stamped = SessionScopedEvent::Activity(row);
+            &stamped
+        }
+        event => event,
+    };
+    let Some(change) = surface.apply(owner.runtime_epoch.get(), event) else {
         return Ok(false);
     };
     let json = bounded_json(&mut surface)?;
@@ -90,6 +105,40 @@ fn bounded_json(surface: &mut SessionSurface) -> Result<String, StoreError> {
             return Err(StoreError::PayloadTooLarge);
         }
     }
+}
+
+/// The page's Turns' activity rows, by Turn id, in surface order. Each
+/// session's surface is read once and holds at most its activity cap.
+pub(super) fn turn_activities(
+    connection: &rusqlite::Connection,
+    project: &str,
+    chat: &str,
+    turns: &[TurnRow],
+) -> Result<BTreeMap<String, Vec<TurnSessionActivityProjection>>, StoreError> {
+    let mut sessions = turns
+        .iter()
+        .map(|turn| turn.session_id.as_str())
+        .collect::<Vec<_>>();
+    sessions.sort_unstable();
+    sessions.dedup();
+    let mut by_turn = BTreeMap::<String, Vec<_>>::new();
+    for session in sessions {
+        let Some((surface, _)) = read(connection, project, chat, session)? else {
+            continue;
+        };
+        for mut row in surface.activities {
+            let Some(turn) = row.turn_id.take() else {
+                continue;
+            };
+            if turns.iter().any(|candidate| candidate.id == turn.as_str()) {
+                by_turn
+                    .entry(turn.as_str().to_owned())
+                    .or_default()
+                    .push(row.into());
+            }
+        }
+    }
+    Ok(by_turn)
 }
 
 /// Reads one session's stored surface and its row revision.

@@ -118,6 +118,7 @@ pub(super) fn hook_run(
         label: RequiredText::new("hookLabel", label).map_err(content)?,
         state,
         progress,
+        turn_id: None,
     };
     let in_active_turn = turn
         .is_some_and(|turn| adapter.expect_turn(turn).is_ok() && !adapter.turn_is_terminal(turn));
