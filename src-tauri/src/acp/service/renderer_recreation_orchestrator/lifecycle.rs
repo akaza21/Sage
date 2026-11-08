@@ -33,7 +33,16 @@ pub(crate) struct RendererRecreationReloadLifecycle {
 pub(crate) struct StartPoint {
     id: u64,
     usage: RendererRecreationUsage,
-    reader: Option<rusqlite::Connection>,
+    reader: Reader,
+}
+
+enum Reader {
+    /// A read transaction opened at the start.
+    Pinned(rusqlite::Connection),
+    /// An in-memory store, read live.
+    Live,
+    /// The pin failed; the start is not captured, so it cannot pair falsely.
+    Unavailable,
 }
 
 struct SettleOnDrop<'a> {
@@ -90,13 +99,29 @@ impl RendererRecreationReloadLifecycle {
     /// fixes the point in time the snapshot describes (a read transaction and
     /// the live counters), so the reloaded page's own requests can never land
     /// in "before"; the costly hashing waits for [`Self::capture_start`].
+    ///
+    /// The pinned reader holds back WAL checkpoints until the capture ends,
+    /// for about as long as the old capture held the store lock (and blocked
+    /// every write); the hash reads a bounded number of rows.
     pub(crate) fn begin_start(&self, state: &AppState) -> StartPoint {
+        let usage = state.acp.renderer_recreation_usage();
+        let reader = match state.database.pinned_reader() {
+            Ok(Some(reader)) => Reader::Pinned(reader),
+            // An in-memory store has no second connection to pin.
+            Ok(None) => Reader::Live,
+            Err(error) => {
+                tracing::warn!(
+                    ?error,
+                    "ACP renderer recreation pairing skipped: no pinned reader"
+                );
+                Reader::Unavailable
+            }
+        };
+        // Numbered last, so a start that fails above is never left unsettled.
         StartPoint {
             id: self.number_start(),
-            usage: state.acp.renderer_recreation_usage(),
-            // Unpinned (in-memory store, or the reader failed to open) the
-            // capture reads the live store instead.
-            reader: state.database.pinned_reader().ok().flatten(),
+            usage,
+            reader,
         }
     }
 
@@ -116,15 +141,20 @@ impl RendererRecreationReloadLifecycle {
             id: start.id,
             before: None,
         };
+        if matches!(start.reader, Reader::Unavailable) {
+            return;
+        }
+        // Admission reads the live store: a reload that switched the active
+        // Chat before this runs is paired against that Chat's pinned state.
         settle.before = admitted_codex_page(state).and_then(|(project_id, chat_id)| {
             let before = match &start.reader {
-                Some(reader) => state.acp.renderer_recreation_snapshot_on(
+                Reader::Pinned(reader) => state.acp.renderer_recreation_snapshot_on(
                     reader,
                     &project_id,
                     &chat_id,
                     start.usage,
                 ),
-                None => state.acp.renderer_recreation_snapshot_on(
+                Reader::Live | Reader::Unavailable => state.acp.renderer_recreation_snapshot_on(
                     &state.database.connection(),
                     &project_id,
                     &chat_id,

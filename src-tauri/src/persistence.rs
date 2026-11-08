@@ -53,7 +53,7 @@ pub struct Database {
     connection: Arc<Mutex<Connection>>,
     search_reader: Option<Arc<Mutex<Connection>>>,
     physical_storage: Arc<PhysicalStorage>,
-    _live_path_anchor: Arc<migration::LivePathAnchor>,
+    live_path_anchor: Arc<migration::LivePathAnchor>,
     image_artifact_root: Option<Arc<PathBuf>>,
 }
 
@@ -97,7 +97,7 @@ impl Database {
                 Some(Arc::new(Mutex::new(reader)))
             },
             physical_storage,
-            _live_path_anchor: Arc::new(live_path_anchor),
+            live_path_anchor: Arc::new(live_path_anchor),
             image_artifact_root,
         };
         // Like the exit path: a failed purge never blocks startup; the
@@ -127,12 +127,12 @@ impl Database {
         let Some(path) = self.physical_storage.path() else {
             return Ok(None);
         };
-        self._live_path_anchor.verify_path(path)?;
+        self.live_path_anchor.verify_path(path)?;
         let reader = Connection::open_with_flags(
             path,
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
-        self._live_path_anchor.verify_path(path)?;
+        self.live_path_anchor.verify_path(path)?;
         // A deferred transaction takes its snapshot at the first read.
         reader.execute_batch("BEGIN; SELECT count(*) FROM sqlite_schema;")?;
         Ok(Some(reader))
