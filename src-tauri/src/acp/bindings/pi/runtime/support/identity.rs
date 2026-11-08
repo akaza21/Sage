@@ -4,6 +4,7 @@ use crate::acp::{
     contract::{BoundedVec, RequiredText, SafeText},
     intent::{
         COMMAND_RESOURCE_LIMIT, ExternalId, NormalizedPayload, SafeResourceLocation, ToolCategory,
+        session_event::SessionScopedEvent,
     },
     lifecycle::{ItemLifecycle, ToolState},
     limits::LIMITS,
@@ -28,6 +29,25 @@ impl PiRuntime {
             turn_id,
             turn_client_message_id: client,
         }
+    }
+
+    /// A session-scoped fact; dropped before Pi's session is ready.
+    pub(super) fn session_event(&self, event: SessionScopedEvent) -> AdapterEvent {
+        match self.external_session.clone() {
+            Some(session) => AdapterEvent::Session {
+                id: self.identity(session, None, None),
+                event,
+            },
+            None => AdapterEvent::IgnoredLate,
+        }
+    }
+
+    pub(super) fn current_context_window(&self) -> Option<u32> {
+        let current = self.current_model.as_deref()?;
+        self.available_models
+            .iter()
+            .find(|model| model_key(model).is_ok_and(|key| key == current))?
+            .context_window
     }
 
     pub(super) fn turn_identity(&self) -> Result<AdapterIdentity, AdapterRuntimeError> {

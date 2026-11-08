@@ -10,7 +10,7 @@ use crate::acp::{
     transport::{Frame, request_payload_digest},
 };
 
-use super::{AdapterError, ModelSummary, Operation, Outbound, PiTranslator, ResearchPiBinding};
+use super::{AdapterError, ModelSummary, Operation, Outbound, PiTranslator};
 
 mod ingress;
 mod support;
@@ -27,6 +27,8 @@ pub(super) enum RequestKind {
     SetThinkingLevel,
     NewSession,
     Prompt,
+    Steer,
+    ClearQueue,
     Cancel,
 }
 
@@ -79,6 +81,7 @@ pub(crate) struct PiRuntime {
     pub(super) session_id: SageAgentSessionId,
     pub(super) external_session: Option<ExternalId>,
     pub(super) active_turn: Option<TurnIntent>,
+    steering: support::Steering,
     pub(super) deny: Option<DenyIntent>,
     cancelled_dialogs: BTreeMap<String, DenyStage>,
     recent_cancelled_dialogs: VecDeque<String>,
@@ -132,19 +135,6 @@ impl PiRuntime {
         )
     }
 
-    pub(crate) fn from_binding(
-        binding: &ResearchPiBinding,
-        binding_digest: [u8; 32],
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Result<Self, AdapterRuntimeError> {
-        let _ = (binding_digest, runtime_epoch, session_id);
-        binding
-            .require_launch_admission()
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        Err(AdapterRuntimeError::LaunchUnavailable)
-    }
-
     #[cfg(test)]
     pub(crate) fn fixture(runtime_epoch: RuntimeEpoch, session_id: SageAgentSessionId) -> Self {
         Self::new(
@@ -169,6 +159,7 @@ impl PiRuntime {
             session_id,
             external_session: None,
             active_turn: None,
+            steering: support::Steering::default(),
             deny: None,
             cancelled_dialogs: BTreeMap::new(),
             recent_cancelled_dialogs: VecDeque::new(),
@@ -237,7 +228,7 @@ impl HarnessAdapter for PiRuntime {
             return Err(AdapterRuntimeError::Operation);
         }
         match command {
-            AdapterCommand::Steer { .. } => Err(AdapterRuntimeError::UnsupportedCommand),
+            AdapterCommand::Steer { prompt, .. } => self.begin_steer(&prompt),
             AdapterCommand::Initialize => self.begin_initialize(),
             AdapterCommand::ModelPage { cursor: None } if self.initialized => {
                 self.begin_one(Operation::GetModels, RequestKind::Models)

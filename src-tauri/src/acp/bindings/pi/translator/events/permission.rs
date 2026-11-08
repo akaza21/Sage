@@ -2,6 +2,7 @@ use super::super::{PendingUiRequest, PiTranslator, TurnPhase};
 use crate::acp::bindings::pi::{
     AdapterError, AdapterOutput, decode::external_id, protocol::is_allow_option,
 };
+use crate::acp::intent::session_event::SessionNoticeLevel;
 use serde_json::Value;
 
 impl PiTranslator {
@@ -20,9 +21,17 @@ impl PiTranslator {
             .get("method")
             .and_then(Value::as_str)
             .unwrap_or_default();
+        if method == "notify" {
+            let level = match value.get("notifyType").and_then(Value::as_str) {
+                Some("error") => SessionNoticeLevel::Error,
+                Some("warning") => SessionNoticeLevel::Warning,
+                _ => SessionNoticeLevel::Info,
+            };
+            return Ok(vec![super::notice(level, "Pi", value.get("message"))]);
+        }
         if matches!(
             method,
-            "notify" | "setStatus" | "setWidget" | "setTitle" | "set_editor_text"
+            "setStatus" | "setWidget" | "setTitle" | "set_editor_text"
         ) {
             let live = self
                 .active

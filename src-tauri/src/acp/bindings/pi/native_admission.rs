@@ -32,7 +32,7 @@ use super::manifest::parse_version;
 
 pub(crate) const PI_BINDING_ID: &str = "pi-rpc";
 /// Oldest Pi release whose RPC commands and events the translator covers.
-pub(crate) const PI_SUPPORTED_MINIMUM: (u64, u64, u64) = (0, 74, 0);
+pub(crate) const PI_SUPPORTED_MINIMUM: (u64, u64, u64) = (1, 5, 0);
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:pi-rpc:native:v1:";
 /// Read-only launch arguments after the entrypoint.
 pub(crate) const PI_READ_ONLY_ARGS: [&str; 9] = [

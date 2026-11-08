@@ -6,7 +6,9 @@ mod extension_lifecycle;
 mod followups;
 mod pump_contract;
 mod regressions;
+mod session_facts;
 mod slash_commands;
+mod steer;
 mod store_ingress;
 
 use super::*;
@@ -118,7 +120,7 @@ fn initialize(runtime: &mut PiRuntime) {
         .ingest(
             &response(
                 &models,
-                json!({"models":[{"provider":"openai","id":"gpt","name":"GPT"}]}),
+                json!({"models":[{"provider":"openai","id":"gpt","name":"GPT","contextWindow":200000}]}),
             ),
             &Mapper,
         )
@@ -201,7 +203,7 @@ fn advertised_pi_read_only_policy_emits_only_admitted_prompt() {
     // Without its bridge Pi is read-only, whatever this build's resources hold.
     let capabilities = crate::acp::bindings::access_policy::admitted_modes(
         "pi-rpc",
-        "0.83.0",
+        crate::acp::bindings::pi::PI_VERSION,
         true,
         Err(crate::acp::bindings::pi::bridge::install::Unavailable::Missing),
     );
@@ -978,15 +980,7 @@ fn exact_candidate_remains_launch_unavailable() {
     let binding = curated
         .validate_candidate(&candidate)
         .expect("research binding");
-    assert!(matches!(
-        PiRuntime::from_binding(
-            &binding,
-            [1; 32],
-            RuntimeEpoch::new(1).expect("epoch"),
-            SageAgentSessionId::parse("session-pi-launch").expect("session")
-        ),
-        Err(AdapterRuntimeError::LaunchUnavailable)
-    ));
+    assert!(binding.require_launch_admission().is_err());
 }
 
 #[test]

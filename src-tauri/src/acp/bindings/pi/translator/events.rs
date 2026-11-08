@@ -11,6 +11,10 @@ use crate::acp::bindings::pi::{
     decode::{bounded_string, external_id, redact_structured_text},
     protocol::{AdapterError, AdapterOutput, TerminalOutcome, ToolOutcome},
 };
+use crate::acp::{
+    intent::session_event::{SESSION_NOTICE_TEXT_BYTES, SESSION_TITLE_BYTES, SessionNoticeLevel},
+    redaction::text::{clip_display, neutralized},
+};
 
 impl PiTranslator {
     pub(super) fn ingest_event(
@@ -18,11 +22,24 @@ impl PiTranslator {
         kind: &str,
         value: &Value,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
-        if matches!(
-            kind,
-            "thinking_level_changed" | "session_info_changed" | "queue_update" | "entry_appended"
-        ) {
-            return Ok(vec![AdapterOutput::LateIgnored]);
+        match kind {
+            "thinking_level_changed" | "queue_update" | "entry_appended" => {
+                return Ok(vec![AdapterOutput::LateIgnored]);
+            }
+            "session_info_changed" => {
+                return Ok(vec![
+                    display_text(value.get("name"), SESSION_TITLE_BYTES)
+                        .map_or(AdapterOutput::LateIgnored, AdapterOutput::Title),
+                ]);
+            }
+            "extension_error" => {
+                return Ok(vec![notice(
+                    SessionNoticeLevel::Error,
+                    "Pi extension",
+                    value.get("error"),
+                )]);
+            }
+            _ => {}
         }
         if kind == "extension_ui_request" {
             return self.extension_request(value);
@@ -328,6 +345,28 @@ impl PiTranslator {
         }
         self.pending_ui = None;
     }
+}
+
+/// Harness text shown as-is: control and invisible characters neutralized,
+/// secrets redacted, trimmed and clipped. `None` when nothing is left.
+fn display_text(value: Option<&Value>, max: usize) -> Option<String> {
+    let text = neutralized(value?.as_str()?, true);
+    let text = clip_display(redact_structured_text(&text).trim(), max);
+    (!text.is_empty()).then_some(text)
+}
+
+pub(super) fn notice(
+    level: SessionNoticeLevel,
+    source: &'static str,
+    text: Option<&Value>,
+) -> AdapterOutput {
+    display_text(text, SESSION_NOTICE_TEXT_BYTES).map_or(AdapterOutput::Absorbed, |text| {
+        AdapterOutput::Notice {
+            level,
+            source,
+            text,
+        }
+    })
 }
 
 fn required_tool_id(value: &Value) -> Result<String, AdapterError> {

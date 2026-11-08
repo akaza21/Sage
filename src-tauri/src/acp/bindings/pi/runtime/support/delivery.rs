@@ -25,6 +25,7 @@ impl PiRuntime {
             }
             RequestKind::Commands => self.commands_pending = false,
             RequestKind::Prompt => self.active_turn = None,
+            RequestKind::Steer => self.rollback_steer(id),
             RequestKind::ThinkingLevels => {
                 self.clear_thinking_request();
             }
@@ -33,6 +34,7 @@ impl PiRuntime {
             | RequestKind::SetModel
             | RequestKind::SetThinkingLevel
             | RequestKind::NewSession
+            | RequestKind::ClearQueue
             | RequestKind::Cancel => {}
         }
         Ok(())

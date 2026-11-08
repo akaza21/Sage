@@ -258,7 +258,7 @@ mod tests {
     fn pi_offers_workspace_edits_only_with_its_bridge_and_says_why_not() {
         use SessionAccessMode::{ReadOnly, WorkspaceWrite};
         let modes = |bridge| {
-            admitted_modes("pi-rpc", "0.83.0", true, bridge)
+            admitted_modes("pi-rpc", crate::acp::bindings::pi::PI_VERSION, true, bridge)
                 .into_iter()
                 .map(|mode| (mode.id, mode.description))
                 .collect::<Vec<_>>()
@@ -286,10 +286,15 @@ mod tests {
             )]
         );
         assert_eq!(
-            admitted_modes("pi-rpc", "0.83.0", false, Ok(()))
-                .into_iter()
-                .map(|mode| mode.id)
-                .collect::<Vec<_>>(),
+            admitted_modes(
+                "pi-rpc",
+                crate::acp::bindings::pi::PI_VERSION,
+                false,
+                Ok(())
+            )
+            .into_iter()
+            .map(|mode| mode.id)
+            .collect::<Vec<_>>(),
             vec![ReadOnly]
         );
     }

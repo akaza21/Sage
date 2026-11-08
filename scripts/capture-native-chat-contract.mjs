@@ -184,7 +184,7 @@ function validateChatIdentity(probe) {
       probe.bindingId,
     ) ||
     !IDENTIFIER.test(probe.turnId) ||
-    !["standard-acp-1", "codex-app-server-0.146.0", "pi-rpc-0.83.0"].includes(
+    !["standard-acp-1", "codex-app-server-0.146.0", "pi-rpc-1.5.0"].includes(
       probe.protocol,
     )
   )

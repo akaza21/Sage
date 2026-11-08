@@ -214,6 +214,47 @@ fn prompt_acceptance_does_not_complete_turn_and_fixture_orders_items() {
 }
 
 #[test]
+fn captured_pi_1_5_turn_projects_thinking_text_and_tool_without_unknown_events() {
+    let mut translator = admitted_translator(9);
+    accept_prompt(&mut translator, "turn-capture");
+    let capture = include_str!("../../../../testdata/acp/pi/captured_session_150.jsonl");
+    let mut outputs = Vec::new();
+    for line in capture
+        .lines()
+        .skip_while(|line| !line.contains(r#""type":"agent_start""#))
+    {
+        outputs.extend(translator.ingest(line.as_bytes()).unwrap());
+        if line.contains(r#""type":"agent_settled""#) {
+            break;
+        }
+    }
+    let unknown = |output: &AdapterOutput| matches!(output, AdapterOutput::Unsupported { .. });
+    assert!(!outputs.iter().any(unknown), "{outputs:?}");
+    assert!(outputs.contains(&AdapterOutput::ThoughtDelta {
+        text: "Thinking about it.".into(),
+        redacted_tail: false,
+    }));
+    assert!(outputs.contains(&AdapterOutput::TextDelta {
+        text: "I will inspect.".into(),
+        redacted_tail: false,
+    }));
+    assert!(outputs.iter().any(|output| matches!(
+        output,
+        AdapterOutput::ToolTerminal {
+            outcome: ToolOutcome::Completed,
+            ..
+        }
+    )));
+    assert!(matches!(
+        outputs.last(),
+        Some(AdapterOutput::TurnTerminal {
+            outcome: TerminalOutcome::Completed,
+            ..
+        })
+    ));
+}
+
+#[test]
 fn write_or_shell_observation_blocks_without_normalizing_arguments() {
     let mut translator = admitted_translator(2);
     accept_prompt(&mut translator, "turn-2");

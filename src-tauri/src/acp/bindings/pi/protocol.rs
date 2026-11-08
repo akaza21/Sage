@@ -12,6 +12,8 @@ pub enum Operation {
     SetThinkingLevel { level: String },
     NewSession,
     Prompt { turn_key: String, message: String },
+    Steer { message: String },
+    ClearQueue,
     Abort,
     GetState,
     GetMessages,
@@ -34,6 +36,7 @@ pub struct ModelSummary {
     pub provider: String,
     pub id: String,
     pub name: String,
+    pub context_window: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,6 +160,16 @@ pub enum AdapterOutput {
     PermissionRequested {
         external_id: String,
     },
+    SteerResolved {
+        command_id: String,
+        accepted: bool,
+    },
+    Notice {
+        level: crate::acp::intent::session_event::SessionNoticeLevel,
+        source: &'static str,
+        text: String,
+    },
+    Title(String),
     DialogCancelled {
         external_id: String,
     },

@@ -40,6 +40,8 @@ enum PendingKind {
     SetThinkingLevel,
     NewSession,
     Prompt,
+    Steer,
+    ClearQueue,
     Abort,
     Messages,
     Entries,
@@ -63,6 +65,8 @@ impl PendingKind {
             Self::SetThinkingLevel => "set_thinking_level",
             Self::NewSession => "new_session",
             Self::Prompt => "prompt",
+            Self::Steer => "steer",
+            Self::ClearQueue => "clear_queue",
             Self::Abort => "abort",
             Self::Messages => "get_messages",
             Self::Entries => "get_entries",
@@ -241,6 +245,8 @@ impl PiTranslator {
                 self.one(PendingKind::NewSession, Map::new())
             }
             Operation::Prompt { turn_key, message } => self.begin_prompt(turn_key, message),
+            Operation::Steer { message } => self.begin_steer(message),
+            Operation::ClearQueue => self.one(PendingKind::ClearQueue, Map::new()),
             Operation::Abort => {
                 if self
                     .active

@@ -403,7 +403,7 @@ fn pi_nonblocking_extension_notifications_never_offer_approval() {
     ready(&mut runtime);
     running(&mut runtime);
     let batch = runtime.ingest(&frame(json!({"type":"extension_ui_request","id":"notify-1","method":"notify","message":"Working","notifyType":"info"})), &Mapper).unwrap();
-    assert!(matches!(batch.events(), [AdapterEvent::Absorbed]));
+    assert!(matches!(batch.events(), [AdapterEvent::Session { .. }]));
     assert!(batch.egress().is_empty());
     let batch = runtime
         .ingest(

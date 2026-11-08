@@ -225,7 +225,11 @@ impl ActivationJournal for Journal {
 fn capabilities() -> CapabilitySnapshotV1 {
     CapabilitySnapshotV1 {
         schema_version: SchemaVersionV1,
-        protocol_version: RequiredText::new("protocolVersion", "pi-rpc-0.83.0").unwrap(),
+        protocol_version: RequiredText::new(
+            "protocolVersion",
+            format!("pi-rpc-{}", crate::acp::bindings::pi::PI_VERSION),
+        )
+        .unwrap(),
         new_session: true,
         resume_session: false,
         load_session: false,

@@ -42,7 +42,7 @@ impl PiTranslator {
         if !response.success && kind == PendingKind::Commands {
             return Ok(vec![AdapterOutput::Commands(serde_json::json!([]))]);
         }
-        if !response.success {
+        if !response.success && !matches!(kind, PendingKind::Steer | PendingKind::ClearQueue) {
             if kind == PendingKind::SetThinkingLevel {
                 self.pending_thinking = None;
             }
@@ -122,6 +122,16 @@ impl PiTranslator {
                 }
                 Ok(vec![AdapterOutput::CommandAccepted { command: "prompt" }])
             }
+            PendingKind::Steer => Ok(vec![AdapterOutput::SteerResolved {
+                accepted: response.success
+                    && self
+                        .active
+                        .as_ref()
+                        .is_some_and(|turn| !turn.authority_denied),
+                command_id: response.id,
+            }]),
+            // Clearing only guards the next prompt; there is nothing to show.
+            PendingKind::ClearQueue => Ok(vec![AdapterOutput::Absorbed]),
             PendingKind::Abort => {
                 self.active
                     .as_mut()

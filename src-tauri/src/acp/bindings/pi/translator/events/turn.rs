@@ -43,9 +43,15 @@ impl PiTranslator {
         };
         Ok(message
             .and_then(|message| message.get("usage"))
-            .map(|usage| AdapterOutput::Usage {
-                input_tokens: usage.get("input").and_then(Value::as_u64).unwrap_or(0),
-                output_tokens: usage.get("output").and_then(Value::as_u64).unwrap_or(0),
+            .map(|usage| {
+                let tokens = |key| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
+                // Cached prompt tokens still occupy the context window.
+                AdapterOutput::Usage {
+                    input_tokens: tokens("input")
+                        .saturating_add(tokens("cacheRead"))
+                        .saturating_add(tokens("cacheWrite")),
+                    output_tokens: tokens("output"),
+                }
             })
             .into_iter()
             .collect())

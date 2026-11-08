@@ -49,8 +49,8 @@ fn launch_factory(
     Box::new(PiNativeRuntimeFactory { binding, root, mcp })
 }
 
-/// The truthful read-only ceiling: prompt and cancel only; no resume, load,
-/// close, fork, steer, or child projection.
+/// The truthful ceiling: prompt, cancel and steer; no resume, load, close,
+/// fork, or child projection.
 fn capabilities(
     binding: &AdmittedBinding,
 ) -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
@@ -71,7 +71,7 @@ fn capabilities(
         prompt: true,
         cancel: true,
         native_session_fork: false,
-        active_turn_steer: false,
+        active_turn_steer: true,
         child_conversation_projection: false,
         child_transcript_read: false,
         collaboration_event_projection: false,

@@ -2,8 +2,11 @@ use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent, AdapterRuntimeError,
     },
-    contract::SafeText,
-    intent::{ExternalId, NormalizedPayload},
+    contract::{RequiredText, SafeText},
+    intent::{
+        ExternalId, NormalizedPayload,
+        session_event::{SessionNotice, SessionScopedEvent},
+    },
     lifecycle::{ItemLifecycle, ToolState, TurnState},
     limits::LIMITS,
 };
@@ -24,6 +27,8 @@ mod identity;
 mod image;
 mod permission;
 mod requests;
+mod steer;
+pub(super) use steer::Steering;
 mod stream;
 mod thought;
 mod tool_cache;
@@ -188,7 +193,7 @@ impl PiRuntime {
                 self.active_turn = None;
                 self.clear_thinking_request();
                 self.deny = None;
-                (Some(event), None)
+                (Some(event), self.finish_steering())
             }
             AdapterOutput::FailureDetail { message } => (Some(self.failure_detail(message)?), None),
             AdapterOutput::AttemptFailed {
@@ -315,9 +320,40 @@ impl PiRuntime {
                     payload: NormalizedPayload::Usage {
                         input_tokens,
                         output_tokens,
-                        context_window: None,
+                        context_window: self.current_context_window(),
                     },
                 }),
+                None,
+            ),
+            AdapterOutput::SteerResolved {
+                command_id,
+                accepted,
+            } => (Some(self.steer_resolved(&command_id, accepted)), None),
+            AdapterOutput::Notice {
+                level,
+                source,
+                text,
+            } => (
+                Some(
+                    self.session_event(SessionScopedEvent::Notice(SessionNotice {
+                        level,
+                        text: RequiredText::new("noticeText", text)
+                            .map_err(|_| AdapterRuntimeError::Frame)?,
+                        source: Some(
+                            RequiredText::new("noticeSource", source)
+                                .map_err(|_| AdapterRuntimeError::Frame)?,
+                        ),
+                    })),
+                ),
+                None,
+            ),
+            AdapterOutput::Title(title) => (
+                Some(
+                    self.session_event(SessionScopedEvent::Title {
+                        title: RequiredText::new("sessionTitle", title)
+                            .map_err(|_| AdapterRuntimeError::Frame)?,
+                    }),
+                ),
                 None,
             ),
             AdapterOutput::PermissionRequested { external_id } => (

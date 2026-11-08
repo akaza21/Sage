@@ -116,10 +116,9 @@ function assistantStream() {
       content.push({ type: kind, [kind]: "" });
     const contentIndex = content.length - 1;
     if (type.endsWith("delta")) content[contentIndex][kind] += delta;
-    const partial = snapshot();
     return frame("message_update", {
-      message: partial,
-      assistantMessageEvent: { type, contentIndex, delta, partial },
+      usage: snapshot().usage,
+      assistantMessageEvent: { type, contentIndex, delta },
     });
   };
   return {
