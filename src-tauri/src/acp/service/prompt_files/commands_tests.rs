@@ -372,8 +372,8 @@ fn retry_of_a_turn_without_a_readable_prompt_record_is_refused_as_carrying_files
         "failed",
         Some(unreadable.to_string()),
     );
-    // A prompt written before every prompt recorded a count may have
-    // carried files without one.
+    // Builds from before the count was recorded never sent prompt files,
+    // so a prompt without a count retries as plain text.
     let uncounted =
         serde_json::json!({"kind": "text", "payload": {"role": "user", "text": "Explain"}});
     turn_with_prompt(
@@ -385,7 +385,24 @@ fn retry_of_a_turn_without_a_readable_prompt_record_is_refused_as_carrying_files
         Some(uncounted.to_string()),
     );
     let stages = fixture.state.acp.file_stages.lock().unwrap();
-    for turn in ["turn-missing-item", "turn-unreadable", "turn-uncounted"] {
+    let uncounted = retry_origin(
+        &fixture.state.database,
+        &fixture.project,
+        &fixture.chat,
+        "turn-uncounted",
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(uncounted.attachments, Some(0));
+    let resent = stages
+        .selected(
+            &fixture.project,
+            &fixture.chat,
+            &Selection::Retry(uncounted),
+        )
+        .unwrap();
+    assert!(resent.0.is_empty());
+    for turn in ["turn-missing-item", "turn-unreadable"] {
         let origin = retry_origin(
             &fixture.state.database,
             &fixture.project,

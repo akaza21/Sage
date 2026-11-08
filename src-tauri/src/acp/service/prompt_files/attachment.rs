@@ -75,15 +75,18 @@ pub(crate) fn retry_origin(
     }))
 }
 
-/// The count a user prompt's payload records. `None` when the payload is
-/// unreadable or records no count (a prompt written before every prompt
-/// recorded one may have carried files), so Retry is refused rather than
-/// sent without files it may have carried.
+/// The count a user prompt's payload records. `None` when the payload or
+/// its count is unreadable, so Retry is refused rather than sent without
+/// files it may have carried.
 fn attachment_count(payload: &str) -> Option<usize> {
     let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
     let payload = value.get("payload").unwrap_or(&value);
-    let count = payload.get("attachments")?.as_u64()?;
-    usize::try_from(count).ok()
+    // Builds from before the count was recorded never sent prompt files,
+    // so a prompt without a count carried none.
+    let Some(count) = payload.get("attachments") else {
+        return Some(0);
+    };
+    usize::try_from(count.as_u64()?).ok()
 }
 
 /// The `attached_at` of the chat's current tab, or `None` when it has none.
