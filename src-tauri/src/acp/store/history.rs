@@ -222,7 +222,9 @@ fn load_sessions(
             BindingId::new("bindingId", row.2).map_err(|_| StoreError::Corrupt("binding id"))?;
         let capabilities = serde_json::from_str::<CapabilitySnapshotV1>(&row.8)
             .map_err(|_| StoreError::Corrupt("capabilities"))?;
+        let binding_notice = super::session_binding::binding_notice(connection, &row.0)?;
         result.push(SessionProjection {
+            binding_notice,
             id: SageAgentSessionId::parse(row.0).map_err(|_| StoreError::Corrupt("session id"))?,
             ordinal: u64::try_from(row.1).map_err(|_| StoreError::Corrupt("session ordinal"))?,
             binding_id: binding_id.clone(),

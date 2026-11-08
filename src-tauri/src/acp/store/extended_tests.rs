@@ -156,6 +156,7 @@ fn session_start_activate_close_is_atomic_idempotent_and_monotonic() {
         MutationDisposition::Duplicate
     );
     let completion = CompleteActivationCommand {
+        binding_change: None,
         project_id: SageProjectId::parse("project-one").unwrap(),
         chat_id: SageChatId::parse("chat-one").unwrap(),
         session_id: started.session_id.clone(),
@@ -252,6 +253,7 @@ fn proven_zero_process_parks_without_closing_or_dropping_the_head() {
     complete_activation(
         &mut connection,
         CompleteActivationCommand {
+            binding_change: None,
             project_id: SageProjectId::parse("project-one").unwrap(),
             chat_id: SageChatId::parse("chat-one").unwrap(),
             session_id: started.session_id.clone(),

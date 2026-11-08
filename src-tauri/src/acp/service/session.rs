@@ -135,12 +135,7 @@ impl AcpService {
             runtime_epoch: command.runtime_epoch,
         };
         let session = load_durable_session(&self.database, &owner)?;
-        validate_session_identity(
-            &session,
-            registered_binding_id,
-            identity.binding_digest_hex,
-            identity.harness_version,
-        )?;
+        reject_earlier_codex_thread(&session, registered_binding_id, identity.harness_version)?;
         let model = session
             .model_id
             .map(|value| ModelId::new("modelId", value))
@@ -163,12 +158,26 @@ impl AcpService {
             },
             _ => return Err(CodexSessionError::Intent),
         };
+        let binding = super::binding_drift::resolve_activation_binding(
+            &self.database.connection(),
+            &session.binding_id,
+            &session.binding_digest,
+            &super::binding_drift::AdmittedBuild {
+                binding_id: registered_binding_id,
+                digest: identity.binding_digest_hex,
+                harness_version: identity.harness_version,
+                artifact_digest: identity.artifact_digest,
+                lineage: admitted.drift_lineage(),
+            },
+            command,
+        )?;
         let ceiling = admitted
             .supported_capabilities()
             .map_err(|error| CodexSessionError::Binding(error.into()))?;
         command.artifact_digest = identity.artifact_digest.to_owned();
         let intent = ActivationIntent {
-            binding_digest: identity.binding_digest,
+            binding_change: binding.change,
+            binding_digest: binding.scope,
             artifact_digest: command.artifact_digest.clone(),
             project_id: owner.project_id.clone(),
             chat_id: owner.chat_id.clone(),
@@ -205,8 +214,14 @@ impl AcpService {
         }
         #[cfg(not(windows))]
         let mcp = crate::acp::mcp::McpAdmission::default();
-        let runtime = admitted
-            .into_factory(project_root, mcp)
+        let factory = if binding.scope == identity.binding_digest {
+            admitted.into_factory(project_root, mcp)
+        } else {
+            admitted
+                .into_continued_factory(project_root, mcp, binding.scope)
+                .ok_or(CodexSessionError::Intent)?
+        };
+        let runtime = factory
             .construct(owner.runtime_epoch, owner.session_id.clone())
             .map_err(|_| CodexSessionError::Intent)?;
         Ok(PreparedActivation {
@@ -246,10 +261,11 @@ fn load_durable_session(
         .ok_or(CodexSessionError::Intent)
 }
 
-fn validate_session_identity(
+/// A Codex 0.145 thread cannot continue on 0.146 and has its own message.
+/// Every other build change is classified in `binding_drift`.
+fn reject_earlier_codex_thread(
     session: &DurableSession,
     binding_id: &str,
-    binding_digest: &str,
     harness_version: &str,
 ) -> Result<(), CodexSessionError> {
     if session.binding_id == "codex-app-server"
@@ -260,12 +276,6 @@ fn validate_session_identity(
         && session.external_session_id.is_some()
     {
         return Err(CodexSessionError::EarlierCodexVersion);
-    }
-    if session.binding_id != binding_id
-        || session.binding_digest != binding_digest
-        || session.harness_version.as_deref() != Some(harness_version)
-    {
-        return Err(CodexSessionError::Intent);
     }
     Ok(())
 }
@@ -287,18 +297,12 @@ mod version_tests {
             residency: "cold".into(),
         };
         assert!(matches!(
-            validate_session_identity(
-                &session,
-                "codex-app-server",
-                "3bba7d86d2357d8fccd81bdba3d7f3f4278c80014d7e65e085b9a874330d7df4",
-                "0.146.0",
-            ),
+            reject_earlier_codex_thread(&session, "codex-app-server", "0.146.0"),
             Err(CodexSessionError::EarlierCodexVersion)
         ));
-        assert!(matches!(
-            validate_session_identity(&session, "codex-app-server", "foreign-digest", "0.147.0",),
-            Err(CodexSessionError::Intent)
-        ));
+        // Any other Codex build change has no drift lineage and is refused
+        // as foreign by `binding_drift::classify`.
+        assert!(reject_earlier_codex_thread(&session, "codex-app-server", "0.147.0").is_ok());
     }
 }
 

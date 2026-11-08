@@ -124,6 +124,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
         let ready = tokio::time::timeout(
             deadline.operation_before_cleanup(),
             lease.complete_activation(CompleteActivationCommand {
+                binding_change: None,
                 project_id: project_id.clone(),
                 chat_id: chat_id.clone(),
                 session_id: started.session_id.clone(),

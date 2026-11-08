@@ -352,6 +352,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             runtime_epoch: ready.runtime_epoch,
             binding_digest: digest(&ready.binding_digest),
             artifact_digest: self.intent.artifact_digest.clone(),
+            binding_change: self.intent.binding_change.clone(),
             external_session_id: ready.external_session_id.clone(),
             capabilities_json,
             now_millis,

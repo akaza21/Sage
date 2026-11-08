@@ -206,6 +206,7 @@ fn assert_native_activation(
         Journal(None),
         Resources,
         ActivationIntent {
+            binding_change: None,
             binding_digest: binding.binding_digest(),
             artifact_digest: binding.artifact_digest().into(),
             project_id: owner.project_id.clone(),

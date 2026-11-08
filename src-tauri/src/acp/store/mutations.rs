@@ -59,6 +59,7 @@ pub(crate) enum StoreMutation {
         delivery: DeliveryState,
     },
     CloseSession(super::CloseSessionCommand),
+    RefuseSessionBinding(super::RefuseSessionBindingCommand),
     FinalizeClose(FinalizeCloseCommand),
     ParkSession(ParkSessionCommand),
     ReceivePermission {
@@ -126,6 +127,9 @@ pub(super) fn standalone_commit(
         StoreMutation::CloseSession(command) => {
             StoreMutationResult::Session(super::close_session(connection, command.clone())?)
         }
+        StoreMutation::RefuseSessionBinding(command) => StoreMutationResult::Session(
+            super::refuse_session_binding(connection, command.clone())?,
+        ),
         StoreMutation::FinalizeClose(command) => StoreMutationResult::Session(
             super::finalize_close_after_zero_process(connection, command.clone())?,
         ),

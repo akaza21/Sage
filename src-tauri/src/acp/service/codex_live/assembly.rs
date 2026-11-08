@@ -10,7 +10,17 @@ impl Lane<'_> {
     ) -> Result<(), CodexSessionError> {
         let root = project_root.configured_resource_root();
         let (command, mut prepared) =
-            self.prepare_session_activation(admitted, command, project_root)?;
+            match self.prepare_session_activation(admitted, command, project_root) {
+                Err(CodexSessionError::BindingIncompatible(refusal)) => {
+                    // Nothing launched: end the session durably so the Chat
+                    // offers a new session, then report the typed refusal.
+                    self.sessions
+                        .refuse_session_binding((*refusal).clone())
+                        .await?;
+                    return Err(CodexSessionError::BindingIncompatible(refusal));
+                }
+                prepared => prepared?,
+            };
         let abort = ActivationAbortIntent::from_prepared(&prepared);
         let resources = NativeResourceMapper::new([root]).map_err(|_| CodexSessionError::Intent)?;
         let (operation_deadline, cleanup_deadline) = deadlines;

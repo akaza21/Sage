@@ -354,6 +354,7 @@ async fn ready_runtime_fixture(label: &str) -> (AcpService, RuntimeOwner) {
         .unwrap();
     lease
         .complete_activation(crate::acp::store::CompleteActivationCommand {
+            binding_change: None,
             project_id: owner.project_id.clone(),
             chat_id: owner.chat_id.clone(),
             session_id: owner.session_id.clone(),

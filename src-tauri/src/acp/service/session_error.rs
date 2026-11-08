@@ -10,6 +10,10 @@ pub(crate) enum CodexSessionError {
     Intent,
     #[error("this native Codex thread was started on an earlier Codex version")]
     EarlierCodexVersion,
+    /// The session's recorded build cannot continue on the admitted one. The
+    /// refusal is committed durably before this reaches the caller.
+    #[error("the session's harness build cannot continue on the installed build")]
+    BindingIncompatible(Box<crate::acp::store::RefuseSessionBindingCommand>),
     #[error(transparent)]
     Session(#[from] SessionCoordinatorError),
     #[error("Codex runtime capacity is occupied")]

@@ -245,6 +245,7 @@ async fn child_ipc_journey(
         complete_activation(
             &mut connection,
             CompleteActivationCommand {
+                binding_change: None,
                 project_id: project_id.clone(),
                 chat_id: chat_id.clone(),
                 session_id: session.session_id.clone(),

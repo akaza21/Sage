@@ -52,6 +52,8 @@ pub(crate) struct CandidateManifest {
 pub(crate) struct AdmittedCandidate {
     pub(crate) adapter_version: String,
     pub(crate) characterisation: Characterisation,
+    /// The curated compatibility family of this exact build, if any.
+    pub(crate) family: Option<crate::acp::bindings::compatibility::CompatibilityFamily>,
     pub(crate) artifact_path: PathBuf,
     pub(crate) runtime_path: PathBuf,
     pub(crate) artifact_sha256: String,
@@ -123,6 +125,10 @@ pub(crate) fn validate_research_candidate(
     }
     Ok(AdmittedCandidate {
         characterisation: claude_characterisation(
+            &candidate.adapter_version,
+            &candidate.acp_sdk_version,
+        ),
+        family: crate::acp::bindings::characterisation::claude_family(
             &candidate.adapter_version,
             &candidate.acp_sdk_version,
         ),

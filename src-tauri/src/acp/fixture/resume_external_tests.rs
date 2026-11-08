@@ -205,6 +205,7 @@ fn run_resume_case(case: ResumeCase) {
             CoordinatorActivationJournal::new(second_lease),
             Mapper,
             ActivationIntent {
+                binding_change: None,
                 binding_digest,
                 artifact_digest: artifact_hex.clone(),
                 project_id: project_id.clone(),

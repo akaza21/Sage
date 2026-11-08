@@ -56,6 +56,7 @@ fn a_fresh_runtime_resumes_the_stopped_chat_through_activation_and_sends_again()
 
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let intent = ActivationIntent {
+            binding_change: None,
             binding_digest: [7;32], artifact_digest: "d".repeat(64),
             project_id: SageProjectId::parse("project-one").unwrap(),
             chat_id: SageChatId::parse("chat-one").unwrap(),

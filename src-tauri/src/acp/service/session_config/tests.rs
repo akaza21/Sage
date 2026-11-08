@@ -160,6 +160,7 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
         sessions: BoundedVec::new(
             "sessions",
             vec![SessionProjection {
+                binding_notice: None,
                 id: owner.session_id.clone(),
                 ordinal: 0,
                 binding_id: BindingId::new("bindingId", "binding-config").unwrap(),

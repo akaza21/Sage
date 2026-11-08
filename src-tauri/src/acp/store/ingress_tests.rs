@@ -27,6 +27,7 @@ fn normalized_item_and_activity_ingress_are_exact_idempotent_and_terminal_safe()
     complete_activation(
         &mut connection,
         CompleteActivationCommand {
+            binding_change: None,
             project_id: SageProjectId::parse("project-one").unwrap(),
             chat_id: SageChatId::parse("chat-one").unwrap(),
             session_id: started.session_id.clone(),

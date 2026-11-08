@@ -116,6 +116,7 @@ pub(super) async fn prepare_external_case(
     let ready = tokio::time::timeout(
         deadline.operation_before_cleanup(),
         activation_journal.commit_ready(CompleteActivationCommand {
+            binding_change: None,
             project_id: project_id.clone(),
             chat_id: chat_id.clone(),
             session_id: started.session_id.clone(),

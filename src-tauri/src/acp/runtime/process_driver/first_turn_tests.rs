@@ -845,6 +845,7 @@ async fn prepare_first_turn_fixture() -> FirstTurnFixture {
     let mut activation_journal = CoordinatorActivationJournal::new(lease);
     let ready = activation_journal
         .commit_ready(CompleteActivationCommand {
+            binding_change: None,
             project_id: project_id.clone(),
             chat_id: chat_id.clone(),
             session_id: started.session_id.clone(),
@@ -1643,6 +1644,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
         let mut activation_journal = CoordinatorActivationJournal::new(lease);
         let ready = activation_journal
             .commit_ready(CompleteActivationCommand {
+                binding_change: None,
                 project_id: project_id.clone(),
                 chat_id: chat_id.clone(),
                 session_id: started.session_id.clone(),
@@ -2185,6 +2187,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
         let mut activation_journal = CoordinatorActivationJournal::new(lease);
         let ready = activation_journal
             .commit_ready(CompleteActivationCommand {
+                binding_change: None,
                 project_id: project_id.clone(),
                 chat_id: chat_id.clone(),
                 session_id: started.session_id.clone(),

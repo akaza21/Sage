@@ -525,6 +525,7 @@ fn install_command_host(
         complete_activation(
             &mut connection,
             CompleteActivationCommand {
+                binding_change: None,
                 project_id: project_id.clone(),
                 chat_id: chat_id.clone(),
                 session_id: session_id.clone(),

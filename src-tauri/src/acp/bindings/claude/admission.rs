@@ -125,6 +125,11 @@ impl AdmittedClaudeBinding {
     ) -> crate::acp::bindings::characterisation::Characterisation {
         self.candidate.characterisation
     }
+    pub(crate) fn family(
+        &self,
+    ) -> Option<crate::acp::bindings::compatibility::CompatibilityFamily> {
+        self.candidate.family
+    }
     pub(crate) fn candidate(&self) -> &super::AdmittedCandidate {
         &self.candidate
     }

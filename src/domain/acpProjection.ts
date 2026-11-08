@@ -28,6 +28,7 @@ import type {
   AcpItemIdentity,
 } from "./acp";
 import type { PermissionState } from "./acpPermission";
+import type { SessionBindingNotice } from "./sessionBinding";
 import type { ResourceRef } from "./workbench";
 
 export type SafeResourceLocation =
@@ -269,6 +270,8 @@ export interface AgentSessionProjection {
   revision: EntityRevision;
   projectionRevision: ProjectionRevision;
   legacy: boolean;
+  /** The latest harness build change this session continued across, or the refusal that ended it. */
+  bindingNotice?: SessionBindingNotice;
 }
 
 export interface AcpChatPage {

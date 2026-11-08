@@ -143,6 +143,7 @@ fn owner(mutation: &StoreMutation) -> Option<(&SageProjectId, &SageChatId)> {
         StoreMutation::CompleteActivation(c) => Some((&c.project_id, &c.chat_id)),
         StoreMutation::FailActivation(c) => Some((&c.project_id, &c.chat_id)),
         StoreMutation::CloseSession(c) => Some((&c.project_id, &c.chat_id)),
+        StoreMutation::RefuseSessionBinding(c) => Some((&c.project_id, &c.chat_id)),
         StoreMutation::FinalizeClose(c) => Some((&c.request.project_id, &c.request.chat_id)),
         StoreMutation::ParkSession(c) => Some((&c.project_id, &c.chat_id)),
         StoreMutation::ReceivePermission { intent: c, .. } => Some((&c.project_id, &c.chat_id)),

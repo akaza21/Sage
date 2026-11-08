@@ -807,6 +807,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         browser_operations_collapsed: 0,
     };
     let session = SessionProjection {
+        binding_notice: None,
         id: session_id.clone(),
         ordinal: 0,
         binding_id: RequiredText::new("bindingId", "fixture").unwrap(),

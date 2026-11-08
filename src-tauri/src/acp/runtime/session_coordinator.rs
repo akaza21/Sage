@@ -981,6 +981,7 @@ mod tests {
 
     fn complete() -> CompleteActivationCommand {
         CompleteActivationCommand {
+            binding_change: None,
             project_id: project("one"),
             chat_id: chat("one"),
             session_id: session_id("one"),
@@ -1080,6 +1081,7 @@ mod tests {
             StoreMutation::FailActivation(_) => "fail",
             StoreMutation::AbortActivation(_) => "abort",
             StoreMutation::CloseSession(_) => "close",
+            StoreMutation::RefuseSessionBinding(_) => "refuseBinding",
             StoreMutation::FinalizeClose(_) => "finalize",
             StoreMutation::ParkSession(_) => "park",
             StoreMutation::RecoverRuntimeAfterZero(_) => "recoverRuntime",

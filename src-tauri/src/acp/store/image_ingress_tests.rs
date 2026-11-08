@@ -214,6 +214,7 @@ fn setup_image_turn(connection: &mut Connection) -> SageAgentSessionId {
     complete_activation(
         connection,
         CompleteActivationCommand {
+            binding_change: None,
             project_id: SageProjectId::parse("project-one").unwrap(),
             chat_id: SageChatId::parse("chat-one").unwrap(),
             session_id: started.session_id.clone(),

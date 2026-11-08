@@ -372,6 +372,10 @@ pub struct SessionProjection {
     pub revision: EntityRevision,
     pub projection_revision: ProjectionRevision,
     pub legacy: bool,
+    /// The session's latest binding decision: a drift it continued across,
+    /// or the refusal that ended it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) binding_notice: Option<super::store::SessionBindingNotice>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

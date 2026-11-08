@@ -32,6 +32,9 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
                 "This native thread started on an earlier Codex version. Its Chat history is still available here; start a new Codex session to continue.",
             ),
         },
+        crate::acp::service::CodexSessionError::BindingIncompatible(refusal) => {
+            session_incompatible(&refusal)
+        }
         crate::acp::service::CodexSessionError::SteerOutcomeUnknown => AcpIpcError::Conflict {
             resource: AcpConflictResource::SteerOutcomeUnknown,
             message: safe_message(
@@ -101,6 +104,44 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
                 "Native activation coordination failed safely; reload authoritative history.",
             ),
         },
+    }
+}
+
+fn session_incompatible(refusal: &crate::acp::store::RefuseSessionBindingCommand) -> AcpIpcError {
+    use crate::acp::{intent::AcpSessionIncompatibleReason as Reason, store::BindingRefusalReason};
+    let installed = refusal.to_version.as_str();
+    let started = refusal
+        .from_version
+        .as_ref()
+        .map_or("an earlier build", |version| version.as_str());
+    let (reason, cause) = match refusal.reason {
+        BindingRefusalReason::UnknownBuild => (
+            Reason::UnknownBuild,
+            format!(
+                "Sage hasn't verified the installed build ({installed}) for sessions started on {started}."
+            ),
+        ),
+        BindingRefusalReason::OtherFamily => (
+            Reason::OtherFamily,
+            format!(
+                "The installed build ({installed}) uses a different session protocol than {started}."
+            ),
+        ),
+    };
+    AcpIpcError::SessionIncompatible {
+        reason,
+        // Versions are bounded to 128 bytes each, so the message always fits.
+        message: SafeText::new(
+            "message",
+            format!(
+                "This session can't be resumed. {cause} Your chat history is kept; continue in a new session."
+            ),
+        )
+        .unwrap_or_else(|_| {
+            safe_message(
+                "This session can't be resumed. Your chat history is kept; continue in a new session.",
+            )
+        }),
     }
 }
 
@@ -326,6 +367,32 @@ mod tests {
                 if message.as_str().contains("started on an earlier Codex version")
                     && message.as_str().contains("Chat history is still available")
         ));
+    }
+
+    #[test]
+    fn an_incompatible_build_is_a_typed_refusal_naming_both_builds() {
+        let refusal = crate::acp::store::RefuseSessionBindingCommand {
+            project_id: crate::acp::contract::SageProjectId::parse("project-a").unwrap(),
+            chat_id: crate::acp::contract::SageChatId::parse("chat-a").unwrap(),
+            session_id: crate::acp::contract::SageAgentSessionId::parse("session-a").unwrap(),
+            expected_projection_revision: crate::acp::contract::ProjectionRevision::ZERO,
+            client_intent_id: crate::acp::contract::ClientIntentId::parse("intent-a").unwrap(),
+            reason: crate::acp::store::BindingRefusalReason::UnknownBuild,
+            from_version: Some(SafeText::new("v", "0.101.0").unwrap()),
+            to_version: SafeText::new("v", "0.102.0").unwrap(),
+            now_millis: 1,
+        };
+        let error = session_error(crate::acp::service::CodexSessionError::BindingIncompatible(
+            Box::new(refusal),
+        ));
+        assert_eq!(
+            serde_json::to_value(error).expect("serializes"),
+            serde_json::json!({
+                "kind": "sessionIncompatible",
+                "reason": "unknownBuild",
+                "message": "This session can't be resumed. Sage hasn't verified the installed build (0.102.0) for sessions started on 0.101.0. Your chat history is kept; continue in a new session."
+            })
+        );
     }
 
     #[test]

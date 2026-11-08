@@ -90,6 +90,7 @@ pub(super) async fn activate_new(
         CoordinatorActivationJournal::new(lease),
         Mapper,
         ActivationIntent {
+            binding_change: None,
             binding_digest,
             artifact_digest: artifact_digest.into(),
             project_id: owner.project_id.clone(),

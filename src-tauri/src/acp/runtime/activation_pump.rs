@@ -63,6 +63,8 @@ pub(crate) struct ActivationIntent {
     pub mode: ActivationMode,
     pub curated_ceiling: CapabilitySnapshotV1,
     pub sage_policy: CapabilitySnapshotV1,
+    /// A compatible drift this activation must prove before it is recorded.
+    pub binding_change: Option<crate::acp::store::BindingChange>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

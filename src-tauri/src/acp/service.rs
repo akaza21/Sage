@@ -31,6 +31,7 @@ use crate::acp::{
     contract::{RuntimeEpoch, SageAgentSessionId},
 };
 
+mod binding_drift;
 mod bootstrap;
 mod browser_attachment;
 #[cfg(windows)]

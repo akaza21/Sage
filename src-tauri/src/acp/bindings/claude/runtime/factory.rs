@@ -6,6 +6,10 @@ pub(crate) struct ClaudeRuntimeFactory {
     binding: Arc<AdmittedClaudeBinding>,
     project_root: crate::project_registry::ProjectRootAuthority,
     mcp: McpAdmission,
+    /// The session's durable binding scope when it differs from the admitted
+    /// digest: a proven-compatible drift continues the session's lineage
+    /// under a new exact build. `None` stamps the admitted digest.
+    session_scope: Option<[u8; 32]>,
 }
 
 impl ClaudeRuntimeFactory {
@@ -26,6 +30,21 @@ impl ClaudeRuntimeFactory {
             binding,
             project_root,
             mcp,
+            session_scope: None,
+        }
+    }
+
+    /// Continues a session whose durable binding scope predates this exact
+    /// build. Only a classified compatible drift constructs it.
+    pub(crate) fn continuing(
+        binding: Arc<AdmittedClaudeBinding>,
+        project_root: crate::project_registry::ProjectRootAuthority,
+        mcp: McpAdmission,
+        session_scope: [u8; 32],
+    ) -> Self {
+        Self {
+            session_scope: Some(session_scope),
+            ..Self::with_mcp(binding, project_root, mcp)
         }
     }
 }
@@ -40,8 +59,14 @@ impl RuntimeFactory for ClaudeRuntimeFactory {
             binding,
             project_root,
             mcp,
+            session_scope,
         } = *self;
-        let mut runtime = ClaudeRuntime::from_admitted_binding(binding, runtime_epoch, session_id)?;
+        let mut runtime = ClaudeRuntime::from_admitted_binding(
+            binding,
+            session_scope,
+            runtime_epoch,
+            session_id,
+        )?;
         runtime.mcp = mcp;
         runtime.pending_project_root = Some(project_root);
         Ok(NativeRuntime::new(runtime))

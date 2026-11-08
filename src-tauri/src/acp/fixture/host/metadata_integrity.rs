@@ -82,6 +82,7 @@ fn capability_through_store(id: &str, step: &Value) -> Value {
     let result = complete_activation(
         &mut connection,
         CompleteActivationCommand {
+            binding_change: None,
             project_id: SageProjectId::parse("project-a").unwrap(),
             chat_id: SageChatId::parse("chat-a").unwrap(),
             session_id: SageAgentSessionId::parse("session-a").unwrap(),

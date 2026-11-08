@@ -27,6 +27,7 @@ mod request_terminal;
 mod requests;
 mod residency;
 mod send;
+mod session_binding;
 mod session_close;
 mod session_duplicates;
 mod session_surface;
@@ -92,6 +93,10 @@ pub(crate) use residency::{ParkSessionCommand, park_session_after_zero_process};
 pub(crate) use send::parse_turn_state;
 #[cfg(test)]
 pub(crate) use send::{begin_send, record_send_observation};
+pub(crate) use session_binding::{
+    BindingChange, BindingChangeKind, BindingRefusalReason, RecordedBuild,
+    RefuseSessionBindingCommand, SessionBindingNotice, recorded_build, refuse_session_binding,
+};
 pub(crate) use session_close::{
     FinalizeCloseCommand, close_session, finalize_close_after_zero_process,
 };

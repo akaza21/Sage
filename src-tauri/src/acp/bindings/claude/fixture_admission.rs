@@ -59,6 +59,7 @@ impl AdmittedClaudeBinding {
                 adapter_version: "0.76.0".into(),
                 characterisation:
                     crate::acp::bindings::characterisation::Characterisation::Characterised,
+                family: crate::acp::bindings::compatibility::claude_recorded_family("0.76.0"),
                 artifact_path: selection.artifact_path.clone(),
                 runtime_path: selection.artifact_path.clone(),
                 artifact_sha256: artifact_sha256.clone(),

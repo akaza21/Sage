@@ -22,7 +22,7 @@ mod pi_native;
 mod record;
 mod record_root;
 use record::{Admission, AdmittedBinding, RootPolicy};
-pub(crate) use record::{AdmittedBindingRecord, BindingProjectRoot, BindingRecord};
+pub(crate) use record::{AdmittedBindingRecord, BindingProjectRoot, BindingRecord, DriftLineage};
 #[cfg(all(test, windows))]
 mod test_support;
 #[cfg(all(test, windows))]

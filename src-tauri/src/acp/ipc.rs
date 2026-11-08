@@ -308,6 +308,15 @@ pub enum AcpConflictResource {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub enum AcpSessionIncompatibleReason {
+    /// The installed or the recorded build is not characterised.
+    UnknownBuild,
+    /// Both builds are characterised but in different compatibility families.
+    OtherFamily,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum AcpCapacityResource {
     ActiveTurn,
     LiveTree,
@@ -344,6 +353,13 @@ pub enum AcpIpcError {
         message: SafeText<8192>,
     },
     SignInRequired {
+        message: SafeText<8192>,
+    },
+    /// The session's recorded harness build cannot continue on the installed
+    /// one. The session has ended and keeps its history; the next prompt
+    /// starts a new session in the same Chat.
+    SessionIncompatible {
+        reason: AcpSessionIncompatibleReason,
         message: SafeText<8192>,
     },
     RecoveryRequired {

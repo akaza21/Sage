@@ -360,7 +360,9 @@ export function useChatSurfaceModel({
     foregroundError:
       acpActions.errorKind === "signInRequired" && model.selectedHarness
         ? signInRequiredMessage(model.selectedHarness)
-        : (acpActions.error ?? chatError),
+        : acpActions.errorKind === "sessionIncompatible"
+          ? null // The session binding recovery banner explains it.
+          : (acpActions.error ?? chatError),
     modeError: model.useNativeAcp ? (acpActions.modeError ?? null) : null,
     modeChanging: model.useNativeAcp && (acpActions.modeChanging ?? false),
     actionBusy,

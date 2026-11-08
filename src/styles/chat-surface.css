@@ -344,3 +344,40 @@ button.composer__control-trigger[aria-expanded="true"] {
   background: var(--chat-selection-bg);
   color: var(--color-status-foreground);
 }
+
+/* A harness build change the session continued across: shown once, above
+   the first Turn of the runtime epoch that crossed it. */
+.session-binding-notice {
+  margin: var(--space-2) 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+/* The refusal that ended a session, where the composer would resume it. */
+.session-binding-recovery {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 var(--chat-column-gutter) var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-muted);
+  font-size: var(--font-size-sm);
+}
+
+.session-binding-recovery p {
+  margin: 0;
+}
+
+.session-binding-recovery__headline {
+  font-weight: 600;
+}
+
+.session-binding-recovery__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  color: var(--color-text-muted);
+}

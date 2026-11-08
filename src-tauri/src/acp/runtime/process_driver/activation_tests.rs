@@ -706,6 +706,7 @@ fn constructor_identity_failure_retains_all_activation_parts() {
 
 fn intent() -> ActivationIntent {
     ActivationIntent {
+        binding_change: None,
         binding_digest: [7; 32],
         artifact_digest: "11".repeat(32),
         project_id: owner().project_id,

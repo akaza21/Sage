@@ -14,7 +14,10 @@ use crate::domain::{HarnessCharacterisation, HarnessUnavailableReason};
 use super::{AuthProvider, ModelProvider, RegistryAdmissionUnavailable, WireIdentity};
 
 pub(crate) use super::record_root::BindingProjectRoot;
+
+mod drift;
 pub(super) use super::record_root::RootPolicy;
+pub(crate) use drift::DriftLineage;
 
 type LaunchFactory = fn(
     AdmittedBinding,

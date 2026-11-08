@@ -32,6 +32,9 @@ pub(crate) struct CompleteActivationCommand {
     pub artifact_digest: String,
     pub external_session_id: ExternalId,
     pub capabilities_json: String,
+    /// A classified compatible drift this activation proves; committed with
+    /// the ready transition or not at all.
+    pub binding_change: Option<super::BindingChange>,
     pub now_millis: i64,
 }
 
@@ -160,6 +163,7 @@ pub(crate) fn complete_activation(
             "session",
         )?;
     }
+    super::session_binding::record_binding_change(&transaction, &command, projection)?;
     append_activation_fact(
         &transaction,
         &command.project_id,

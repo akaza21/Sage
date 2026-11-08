@@ -78,6 +78,7 @@ function safeCapabilities(
 }
 
 import { decodeSessionConfig } from "../domain/acpSessionConfig";
+import { decodeSessionBindingNotice } from "../domain/sessionBinding";
 
 function safeSession(value: unknown): AgentSessionProjection | null {
   if (!isRecord(value)) return null;
@@ -90,7 +91,12 @@ function safeSession(value: unknown): AgentSessionProjection | null {
   const revision = safeCounter(value.revision, true);
   const projectionRevision = safeCounter(value.projectionRevision, false);
   const capabilities = safeCapabilities(value.capabilities);
+  const bindingNotice =
+    value.bindingNotice === undefined
+      ? null
+      : decodeSessionBindingNotice(value.bindingNotice);
   if (
+    bindingNotice === undefined ||
     !id ||
     ordinal === null ||
     !bindingId ||
@@ -132,6 +138,7 @@ function safeSession(value: unknown): AgentSessionProjection | null {
     projectionRevision:
       projectionRevision as AgentSessionProjection["projectionRevision"],
     legacy: value.legacy,
+    ...(bindingNotice ? { bindingNotice } : {}),
   };
 }
 

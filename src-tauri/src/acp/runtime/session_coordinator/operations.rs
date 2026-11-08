@@ -26,6 +26,24 @@ impl SessionCoordinator {
         Ok(mutation)
     }
 
+    /// Durably refuses a cold session whose recorded build cannot continue
+    /// on the admitted one. No process was launched, so no tree is held.
+    pub(crate) async fn refuse_session_binding(
+        &self,
+        command: crate::acp::store::RefuseSessionBindingCommand,
+    ) -> Result<SessionMutation, SessionCoordinatorError> {
+        let project = command.project_id.clone();
+        let chat = command.chat_id.clone();
+        let mutation = self
+            .commit(
+                JournalLane::Data,
+                StoreMutation::RefuseSessionBinding(command),
+            )
+            .await?;
+        self.publish(&project, &chat, &mutation)?;
+        Ok(mutation)
+    }
+
     /// Final-window recovery after native supervision has proved this exact
     /// runtime tree is zero. Durable active state is terminalized with the
     /// same restart-recovery transaction; scheduler capacity is advertised

@@ -9,6 +9,7 @@ import type { TurnProjection } from "../../domain/acp";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { ChatHandoffControl } from "./ChatHandoffControl";
 import { ChatTranscript } from "./ChatTranscript";
+import { SessionBindingRecovery } from "./SessionBindingNotices";
 import { SessionWorkingPill } from "./SessionWorkingPill";
 import {
   latestRetryPrompt,
@@ -296,6 +297,17 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onJumpToLatest={jumpToLatest}
       />
 
+      {useNativeAcp && acpPage ? (
+        <SessionBindingRecovery
+          page={acpPage}
+          onContinue={(draft) => {
+            setComposerText(
+              composerText.trim() ? `${draft}\n\n${composerText}` : draft,
+            );
+            queueMicrotask(() => composerRef.current?.focus());
+          }}
+        />
+      ) : null}
       <ChatComposerRegion
         approvalSlot={approval.slot}
         onEditSummaryMount={setEditSummaryContainer}

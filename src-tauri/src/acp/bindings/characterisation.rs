@@ -2,11 +2,6 @@ pub(crate) use crate::domain::HarnessCharacterisation as Characterisation;
 
 const CODEX_CHARACTERISED_VERSIONS: [&str; 1] = ["0.146.0"];
 
-/// Exact `(claude-agent-acp, @agentclientprotocol/sdk)` builds whose wire and
-/// behaviour Sage has characterised. A build is admitted only as a whole pair:
-/// an adapter from one row with the SDK from another row is uncharacterised.
-const CLAUDE_CHARACTERISED_BUILDS: [(&str, &str); 2] = [("0.76.0", "1.4.0"), ("0.101.0", "2.4.0")];
-
 const OPENCODE_CHARACTERISED_VERSIONS: [&str; 1] = ["1.18.21"];
 
 pub(crate) const NODE_ENGINE_FLOOR_MAJOR: u32 = 22;
@@ -50,16 +45,25 @@ pub(crate) fn opencode_characterisation(reported_version: &str) -> Characterisat
     }
 }
 
+/// The curated compatibility family of an exact Claude build; `None` for a
+/// build outside the table (see `compatibility.rs`).
+pub(crate) fn claude_family(
+    adapter_version: &str,
+    acp_sdk_version: &str,
+) -> Option<super::compatibility::CompatibilityFamily> {
+    let (adapter, sdk) =
+        normalized_version(adapter_version).zip(normalized_version(acp_sdk_version))?;
+    super::compatibility::claude_build_family(adapter, sdk)
+}
+
 pub(crate) fn claude_characterisation(
     adapter_version: &str,
     acp_sdk_version: &str,
 ) -> Characterisation {
-    let pair = normalized_version(adapter_version).zip(normalized_version(acp_sdk_version));
-    match pair {
-        Some(build) if CLAUDE_CHARACTERISED_BUILDS.contains(&build) => {
-            Characterisation::Characterised
-        }
-        _ => Characterisation::Uncharacterised,
+    if claude_family(adapter_version, acp_sdk_version).is_some() {
+        Characterisation::Characterised
+    } else {
+        Characterisation::Uncharacterised
     }
 }
 

@@ -103,6 +103,7 @@ fn activation_intent(
     ceiling: crate::acp::intent::CapabilitySnapshotV1,
 ) -> ActivationIntent {
     ActivationIntent {
+        binding_change: None,
         binding_digest: [7; 32],
         artifact_digest: "d".repeat(64),
         project_id: crate::acp::contract::SageProjectId::parse("project-one").unwrap(),

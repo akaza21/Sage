@@ -73,6 +73,13 @@ export function safeFailure(value: unknown): AcpCommandFailure {
       return { kind, message };
     }
     if (
+      kind === "sessionIncompatible" &&
+      message &&
+      isOneOf(value.reason, ["unknownBuild", "otherFamily"])
+    ) {
+      return { kind, reason: value.reason, message };
+    }
+    if (
       (kind === "invalidRequest" ||
         kind === "rejected" ||
         kind === "recoveryRequired" ||

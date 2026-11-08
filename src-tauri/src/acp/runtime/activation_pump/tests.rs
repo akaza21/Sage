@@ -929,6 +929,7 @@ fn intent(mode: ActivationMode) -> ActivationIntent {
 
 fn intent_with_epoch(mode: ActivationMode, epoch: u64) -> ActivationIntent {
     ActivationIntent {
+        binding_change: None,
         binding_digest: [7; 32],
         artifact_digest: "ab".repeat(32),
         project_id: SageProjectId::parse("project-activation").unwrap(),

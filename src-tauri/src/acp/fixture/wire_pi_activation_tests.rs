@@ -39,6 +39,7 @@ fn pi_fixture_wire_activation_and_idless_idle_discovery_preserve_the_next_prompt
                 Journal(None),
                 NoResources,
                 ActivationIntent {
+                    binding_change: None,
                     binding_digest: [7; 32],
                     artifact_digest: "ab".repeat(32),
                     project_id: SageProjectId::parse("project-pi-wire").unwrap(),

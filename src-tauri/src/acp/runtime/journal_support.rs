@@ -98,6 +98,18 @@ pub(super) fn mutation_retained_bytes(mutation: &StoreMutation) -> usize {
                 command.session_id.as_str(),
             ) + command.client_intent_id.as_str().len()
         }
+        StoreMutation::RefuseSessionBinding(command) => {
+            session_command_bytes(
+                command.project_id.as_str(),
+                command.chat_id.as_str(),
+                command.session_id.as_str(),
+            ) + command.client_intent_id.as_str().len()
+                + command
+                    .from_version
+                    .as_ref()
+                    .map_or(0, |value| value.as_str().len())
+                + command.to_version.as_str().len()
+        }
         StoreMutation::FinalizeClose(command) => {
             let command = &command.request;
             session_command_bytes(

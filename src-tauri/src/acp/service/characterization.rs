@@ -211,6 +211,7 @@ impl AcpService {
             CoordinatorActivationJournal::new(session_lease),
             resources,
             ActivationIntent {
+                binding_change: None,
                 binding_digest: BINDING_DIGEST,
                 artifact_digest: binding.artifact_digest(),
                 project_id: owner.project_id.clone(),

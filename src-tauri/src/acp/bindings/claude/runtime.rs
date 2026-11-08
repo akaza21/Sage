@@ -148,6 +148,7 @@ enum DeliveryUnknown {
 impl ClaudeRuntime {
     pub(crate) fn from_admitted_binding(
         binding: Arc<AdmittedClaudeBinding>,
+        session_scope: Option<[u8; 32]>,
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<Self, AdapterRuntimeError> {
@@ -156,7 +157,7 @@ impl ClaudeRuntime {
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         Ok(Self::new(
             Some(binding.clone()),
-            binding.binding_digest(),
+            session_scope.unwrap_or_else(|| binding.binding_digest()),
             runtime_epoch,
             session_id,
         ))

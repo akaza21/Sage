@@ -296,6 +296,11 @@ type AcpCommandFailureDetail =
     }
   | { kind: "invalidRequest"; message: string }
   | { kind: "signInRequired"; message: string }
+  | {
+      kind: "sessionIncompatible";
+      reason: "unknownBuild" | "otherFamily";
+      message: string;
+    }
   | { kind: "rejected"; message: string }
   | { kind: "recoveryRequired"; message: string }
   | { kind: "internal"; message: string };

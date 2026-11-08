@@ -73,6 +73,7 @@ fn observe_capability(frame: Frame) -> Value {
         complete_activation(
             &mut database.connection(),
             CompleteActivationCommand {
+                binding_change: None,
                 project_id: SageProjectId::parse("project-a").unwrap(),
                 chat_id: SageChatId::parse("chat-a").unwrap(),
                 session_id: SageAgentSessionId::parse("session-a").unwrap(),

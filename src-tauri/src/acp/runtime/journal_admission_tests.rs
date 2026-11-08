@@ -115,6 +115,7 @@ fn admitted_mutations() -> Vec<StoreMutation> {
             now_millis: 1,
         }),
         StoreMutation::CompleteActivation(CompleteActivationCommand {
+            binding_change: None,
             project_id: project.clone(),
             chat_id: chat.clone(),
             session_id: session.clone(),
@@ -270,6 +271,7 @@ fn kind(mutation: &StoreMutation) -> &'static str {
         StoreMutation::FailActivation(_) => "failActivation",
         StoreMutation::TurnTerminal { .. } => "turnTerminal",
         StoreMutation::CloseSession(_) => "closeSession",
+        StoreMutation::RefuseSessionBinding(_) => "refuseSessionBinding",
         StoreMutation::FinalizeClose(_) => "finalizeClose",
         StoreMutation::ReceivePermission { .. } => "receivePermission",
         StoreMutation::RequestState(_) => "requestState",
