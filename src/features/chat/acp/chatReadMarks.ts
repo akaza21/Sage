@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 
+import { useWorkbenchStore, type WorkbenchState } from "../../../app/store";
 import { invokeNative, isTauriRuntime } from "../../../ports/nativeInvoke";
 
 /**
@@ -13,7 +14,13 @@ import { invokeNative, isTauriRuntime } from "../../../ports/nativeInvoke";
  * otherwise the acknowledged state. A refused request is simply dropped, so
  * the rail falls back to what the store holds.
  */
-export const MAX_CHAT_READ_MARKS = 512;
+/**
+ * The most read state this module holds that the store does not bound:
+ * requests not yet answered, chats known to have no mark, and, outside the
+ * desktop app where there is no store, the marks themselves. The marks the
+ * store acknowledged are bounded by the capacity it reports.
+ */
+export const MAX_HELD_READ_STATES = 512;
 
 /** A chat's read state: its mark, or `null` for no mark. */
 type ReadState = number | null;
@@ -45,6 +52,13 @@ let marks = new Map<string, number>();
 let known = new Map<string, number>();
 let absent = new Set<string>();
 const lanes = new Map<string, Lane>();
+// The store's write order at which each chat's mark last changed, from read
+// answers. Answers for different chats can arrive out of order, so a change
+// older than the one recorded is ignored. Bounded like `known` and `absent`.
+let sequences = new Map<string, number>();
+// The store's bound on its marks, from its answers; `known` mirrors the
+// store, so it is bounded the same.
+let capacity: number | null = null;
 // Bumped on reset, so answers to an earlier session's requests are ignored.
 let epoch = 0;
 let restoring: Promise<void> | null = null;
@@ -53,7 +67,7 @@ let restored = false;
 const RETRY_BASE_MS = 1_000;
 const RETRY_MAX_MS = 30_000;
 let loadFailures = 0;
-// A read the store applies prunes its oldest mark, which a snapshot taken
+// A read the store applies may evict a mark, which a snapshot taken
 // meanwhile still lists. Snapshots are only trusted when no read was in
 // flight while they were taken; otherwise they are taken again once the
 // reads land.
@@ -67,26 +81,45 @@ function emit() {
   for (const listener of listeners) listener();
 }
 
-/** Records an acknowledged state; returns chats whose mark was evicted. */
-function record(chatId: string, state: ReadState): string[] {
+/** How many marks `known` may hold: the store's capacity once it is known. */
+function knownBound() {
+  return capacity ?? MAX_HELD_READ_STATES;
+}
+
+/**
+ * Records an acknowledged state. The store alone decides which marks it
+ * evicts and reports them with each read (see `drain`), so `known` mirrors
+ * it and stays within its capacity; the trim below only guards memory
+ * against an answer that breaks that contract.
+ */
+function record(chatId: string, state: ReadState) {
   if (state === null) {
     known.delete(chatId);
     absent.delete(chatId);
     absent.add(chatId);
-    if (absent.size > MAX_CHAT_READ_MARKS)
+    if (absent.size > MAX_HELD_READ_STATES)
       absent.delete(absent.values().next().value!);
-    return [];
+    return;
   }
   absent.delete(chatId);
   known.delete(chatId);
   known.set(chatId, state);
-  const evicted: string[] = [];
-  while (known.size > MAX_CHAT_READ_MARKS) {
-    const oldest = known.keys().next().value!;
-    known.delete(oldest);
-    evicted.push(oldest);
-  }
-  return evicted;
+  if (known.size > knownBound()) known.delete(known.keys().next().value!);
+}
+
+/**
+ * Whether a change the store made at `sequence` is newer than what the rail
+ * holds for the chat; records it if so. An answer without one is taken.
+ */
+function newer(chatId: string, sequence: number | undefined): boolean {
+  if (sequence === undefined) return true;
+  const seen = sequences.get(chatId);
+  if (seen !== undefined && seen >= sequence) return false;
+  sequences.delete(chatId);
+  sequences.set(chatId, sequence);
+  if (sequences.size > knownBound() + MAX_HELD_READ_STATES)
+    sequences.delete(sequences.keys().next().value!);
+  return true;
 }
 
 function acknowledged(chatId: string): ReadState | undefined {
@@ -96,8 +129,7 @@ function acknowledged(chatId: string): ReadState | undefined {
 }
 
 function acknowledge(chatId: string, state: ReadState) {
-  // The store prunes its oldest marks the same way.
-  for (const evicted of record(chatId, state)) project(evicted);
+  record(chatId, state);
   project(chatId);
 }
 
@@ -124,6 +156,39 @@ function reproject() {
     else marks.set(chatId, pending.state);
   }
   emit();
+}
+
+/** Learns the store's bound from an answer that reports it. */
+function admitCapacity(answer: unknown) {
+  if (typeof answer !== "object" || answer === null) return;
+  const reported = (answer as Record<string, unknown>).capacity;
+  if (
+    typeof reported === "number" &&
+    Number.isSafeInteger(reported) &&
+    reported > 0
+  )
+    capacity = reported;
+}
+
+/** The chats a read's answer says the store evicted, within its bound. */
+function admitEvicted(answer: unknown): string[] {
+  if (typeof answer !== "object" || answer === null) return [];
+  const { evicted } = answer as Record<string, unknown>;
+  if (!Array.isArray(evicted)) return [];
+  return evicted
+    .slice(0, knownBound())
+    .filter(
+      (chatId): chatId is string =>
+        typeof chatId === "string" && chatId.length > 0,
+    );
+}
+
+function admitSequence(answer: unknown): number | undefined {
+  if (typeof answer !== "object" || answer === null) return undefined;
+  const { sequence } = answer as Record<string, unknown>;
+  return typeof sequence === "number" && Number.isSafeInteger(sequence)
+    ? sequence
+    : undefined;
 }
 
 function admitMark(mark: unknown): [string, number] | null {
@@ -160,8 +225,13 @@ export function restoreChatReadMarks(): Promise<void> {
         reloadWanted = true;
         return;
       }
-      const snapshot = (Array.isArray(stored) ? stored : [])
-        .slice(0, MAX_CHAT_READ_MARKS)
+      admitCapacity(stored);
+      const listed =
+        typeof stored === "object" && stored !== null
+          ? (stored as Record<string, unknown>).marks
+          : null;
+      const snapshot = (Array.isArray(listed) ? listed : [])
+        .slice(0, knownBound())
         .flatMap((mark: unknown) => {
           const admitted = admitMark(mark);
           return admitted ? [admitted] : [];
@@ -217,7 +287,8 @@ function request(chatId: string, state: ReadState): Promise<boolean> {
   }
   let lane = lanes.get(chatId);
   // Bounded like the marks: refuse rather than hold another chat's request.
-  if (!lane && lanes.size >= MAX_CHAT_READ_MARKS) return Promise.resolve(false);
+  if (!lane && lanes.size >= MAX_HELD_READ_STATES)
+    return Promise.resolve(false);
   return new Promise((settle) => {
     const created = !lane;
     lane ??= { inFlight: null, next: null };
@@ -242,7 +313,7 @@ async function drain(chatId: string, lane: Lane, started: number) {
       if (current.state === null) {
         await invokeNative("chat_mark_unread", { chatId });
         if (started !== epoch) return;
-        evicted = record(chatId, null);
+        record(chatId, null);
       } else {
         readsInFlight += 1;
         readsSent += 1;
@@ -255,8 +326,17 @@ async function drain(chatId: string, lane: Lane, started: number) {
           if (started === epoch) readsInFlight -= 1;
         }
         if (started !== epoch) return;
-        // The store keeps the later mark; take the one it reports.
-        evicted = record(chatId, admitMark(answer)?.[1] ?? current.state);
+        // The store keeps the later mark; take the one it reports, and drop
+        // the marks it evicted to make room, unless a later write already
+        // told the rail otherwise.
+        admitCapacity(answer);
+        const sequence = admitSequence(answer);
+        evicted = admitEvicted(answer).filter(
+          (pruned) => pruned !== chatId && newer(pruned, sequence),
+        );
+        for (const pruned of evicted) record(pruned, null);
+        if (newer(chatId, sequence))
+          record(chatId, admitMark(answer)?.[1] ?? current.state);
       }
     } catch {
       if (started !== epoch) return;
@@ -264,7 +344,6 @@ async function drain(chatId: string, lane: Lane, started: number) {
     }
     lane.inFlight = null;
     if (!lane.next) lanes.delete(chatId);
-    // The store prunes its oldest marks the same way.
     for (const pruned of evicted) project(pruned);
     project(chatId);
     if (reloadWanted && readsInFlight === 0 && !restoring) {
@@ -293,11 +372,38 @@ export function markChatUnread(chatId: string): Promise<boolean> {
   return request(chatId, null);
 }
 
+/** Archived chats: the open project's, and every project's on the rail. */
+function archivedChatIds(state: WorkbenchState): Set<string> {
+  const ids = new Set(state.archivedChats.map((chat) => chat.id));
+  for (const project of state.projects)
+    for (const chat of project.railArchived ?? []) ids.add(chat.id);
+  return ids;
+}
+
+// Archiving a chat drops its mark in the store (chat_archive_commands.rs),
+// so a chat that becomes archived has no mark here either; a restored chat
+// then starts without one.
+useWorkbenchStore.subscribe((state, previous) => {
+  if (
+    state.archivedChats === previous.archivedChats &&
+    state.projects === previous.projects
+  )
+    return;
+  const before = archivedChatIds(previous);
+  for (const chatId of archivedChatIds(state)) {
+    if (before.has(chatId)) continue;
+    record(chatId, null);
+    project(chatId);
+  }
+});
+
 export function resetChatReadMarks() {
   epoch += 1;
   marks = new Map();
   known = new Map();
   absent = new Set();
+  sequences = new Map();
+  capacity = null;
   lanes.clear();
   restoring = null;
   restored = false;
