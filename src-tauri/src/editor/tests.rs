@@ -8,7 +8,7 @@ use uuid::Uuid;
 use super::filesystem::{cleanup_failed_save_with, read_editable_bytes, temporary_contract_path};
 use super::*;
 use crate::{
-    domain::BufferSnapshotRequest,
+    domain::{BufferRebaseRequest, BufferSnapshotRequest},
     editor_content::MAX_EDITABLE_BYTES,
     editor_coordination::{EditorOperationCoordinator, EditorOperationKind},
 };

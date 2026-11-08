@@ -311,21 +311,6 @@ impl Workspace {
         Ok(canonical)
     }
 
-    /// Like `validate_resource`, but a path that no longer exists is accepted
-    /// on its spelling alone: an editor buffer can outlive its File. Every
-    /// later access walks the held root, so this grants no reach outside it.
-    pub(crate) fn validate_resource_allow_missing(
-        &self,
-        resource: &ResourceRef,
-    ) -> AppResult<String> {
-        match self.validate_resource(resource, false) {
-            Err(AppError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
-                Ok(resource.relative_path.clone())
-            }
-            result => result,
-        }
-    }
-
     pub(crate) fn canonical_resource_identity(
         &self,
         resource: &ResourceRef,
