@@ -3,12 +3,10 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
 use serde_json::{Value, json};
-use tracing_subscriber::{Layer, fmt::MakeWriter, layer::SubscriberExt};
 use uuid::Uuid;
 
 use crate::acp::{
@@ -204,57 +202,19 @@ fn read_sqlite(connection: &rusqlite::Connection) -> Value {
 }
 
 fn capture_structured_logs(diagnostics: &[SafeDiagnostic]) -> String {
-    let bytes = Arc::new(Mutex::new(Vec::new()));
-    let sage_targets = tracing_subscriber::filter::filter_fn(crate::is_sage_target);
-    let formatter = tracing_subscriber::fmt::layer()
-        .without_time()
-        .with_ansi(false)
-        .with_target(false)
-        .with_writer(Capture(Arc::clone(&bytes)))
-        .with_filter(sage_targets);
-    let subscriber = tracing_subscriber::registry().with(formatter);
-    tracing::subscriber::with_default(subscriber, || {
+    let ((), captured) = crate::test_diagnostics::capture_matching(crate::is_sage_target, || {
         for diagnostic in diagnostics {
             tracing::info!(?diagnostic, "ACP sensitive input redacted");
         }
         tracing::info!(target: "unrelated_dependency", "must be filtered");
     });
-    let captured = bytes.lock().unwrap().clone();
-    let captured = String::from_utf8(captured).unwrap();
+    assert!(captured.len() <= STRUCTURED_LOG_BYTES);
     assert!(!captured.contains("must be filtered"));
     assert_eq!(
         captured.matches("ACP sensitive input redacted").count(),
         diagnostics.len()
     );
     captured
-}
-
-#[derive(Clone)]
-struct Capture(Arc<Mutex<Vec<u8>>>);
-
-struct CaptureWriter(Arc<Mutex<Vec<u8>>>);
-
-impl<'a> MakeWriter<'a> for Capture {
-    type Writer = CaptureWriter;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        CaptureWriter(Arc::clone(&self.0))
-    }
-}
-
-impl Write for CaptureWriter {
-    fn write(&mut self, input: &[u8]) -> std::io::Result<usize> {
-        let mut bytes = self.0.lock().unwrap();
-        if bytes.len().saturating_add(input.len()) > STRUCTURED_LOG_BYTES {
-            return Err(std::io::Error::other("structured log capture limit"));
-        }
-        bytes.extend_from_slice(input);
-        Ok(input.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
 }
 
 fn observe_curated_evidence(observation: &Value) -> Value {
