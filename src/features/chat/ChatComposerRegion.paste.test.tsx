@@ -517,11 +517,17 @@ describe(
     it("loads the part again on a later mount after a failed load", async () => {
       const view = render(<Composer />);
       fail();
-      await screen.findByText(
+      const notice = await screen.findByText(
         /Text over the message limit cannot be attached/,
         undefined,
         LAZY,
       );
+      // The failed mount keeps its notice across renders, without loading
+      // again on each one.
+      view.rerender(<Composer text="Edited" />);
+      view.rerender(<Composer text="Edited again" />);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(notice.isConnected).toBe(true);
       view.unmount();
       // The chunk is reachable again; the failure was not kept.
       vi.doMock("./ComposerPaste", (importOriginal) => importOriginal());

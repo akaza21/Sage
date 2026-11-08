@@ -42,14 +42,20 @@ export function lazyParts<Chunk extends Components>(
   > = {};
   let loaded: Chunk | null = null;
   let pending: Promise<Chunk> | null = null;
+  // A load that fell back to `unavailable`: the mounts showing it keep their
+  // loaders across renders, and the next mount starts afresh.
+  let fellBack = false;
   const loadOnce = () =>
     (pending ??= load().then(
       (chunk) => (loaded = chunk),
       (error: unknown) => {
         pending = null;
-        parts = {};
-        if (unavailable) return unavailable;
-        throw error;
+        if (!unavailable) {
+          parts = {};
+          throw error;
+        }
+        fellBack = true;
+        return unavailable;
       },
     ));
   function Part<K extends keyof Chunk & string>({
@@ -58,7 +64,13 @@ export function lazyParts<Chunk extends Components>(
   }: { part: K; fallback?: ReactNode } & ComponentProps<Chunk[K]>) {
     const part: K = props.part;
     // Fix the subtree per mount.
-    const [Ready] = useState<AnyComponent | undefined>(() => loaded?.[part]);
+    const [Ready] = useState<AnyComponent | undefined>(() => {
+      if (fellBack) {
+        fellBack = false;
+        parts = {};
+      }
+      return loaded?.[part];
+    });
     if (Ready) return <Ready {...props} />;
     const loadPart = (parts[part] ??= () =>
       loadOnce().then((chunk) => ({ default: chunk[part]! })));
