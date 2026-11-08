@@ -13,6 +13,7 @@ import {
   type ChatLiveSnapshot,
   projectChatLiveSnapshot,
 } from "./chatLiveSnapshot";
+import { coalescedRefresh } from "./coalescedRefresh";
 
 function idleSnapshot(chatId: string): ChatLiveSnapshot {
   return projectChatLiveSnapshot(chatId, null);
@@ -41,14 +42,10 @@ export function useAcpChatLiveSnapshot(
     }
 
     let disposed = false;
-    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let unlisten: (() => void) | null = null;
-    let pending = false;
 
-    const loadLatest = () => {
-      if (disposed) return;
-      pending = false;
-      void getGoalChatPage({
+    const refresh = coalescedRefresh(() =>
+      getGoalChatPage({
         projectId: projectId as SageProjectId,
         projectGeneration: String(nativeTransitionEpoch) as ProjectGeneration,
         chatId: chatId as SageChatId,
@@ -60,8 +57,8 @@ export function useAcpChatLiveSnapshot(
         })
         .catch(() => {
           if (!disposed) setSnapshot(null);
-        });
-    };
+        }),
+    );
 
     const onChange = (event: AcpProjectionChangedEvent) => {
       if (
@@ -71,12 +68,7 @@ export function useAcpChatLiveSnapshot(
       ) {
         return;
       }
-      if (refreshTimer || pending) return;
-      pending = true;
-      refreshTimer = setTimeout(() => {
-        refreshTimer = null;
-        loadLatest();
-      }, 50);
+      refresh.schedule();
     };
 
     void acpDesktop
@@ -87,15 +79,15 @@ export function useAcpChatLiveSnapshot(
           return;
         }
         unlisten = disposeListener;
-        loadLatest();
+        refresh.now();
       })
       .catch(() => {
-        loadLatest();
+        refresh.now();
       });
 
     return () => {
       disposed = true;
-      if (refreshTimer) clearTimeout(refreshTimer);
+      refresh.dispose();
       unlisten?.();
     };
   }, [active, chatId, nativeTransitionEpoch, projectId]);

@@ -1,14 +1,12 @@
-use std::io::Write;
-use std::sync::{Arc, Mutex};
-
 use serde_json::{Value, json};
-use tracing_subscriber::fmt::MakeWriter;
 
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     intent::{NormalizedPayload, Prompt, SafeResourceRef, UnavailableResourceReason},
     lifecycle::{ItemLifecycle, ServerRequestState},
 };
+
+use crate::test_diagnostics::capture_diagnostics;
 
 use super::incoming::{ItemUpdateMode, UNPROJECTED_DIAGNOSTIC};
 use super::state::CodexAdapter;
@@ -40,97 +38,6 @@ impl ResourceMapper for Mapper {
     fn map_existing(&self, _: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
         Err(UnavailableResourceReason::Foreign)
     }
-}
-
-#[derive(Clone)]
-struct Capture(Arc<Mutex<Vec<u8>>>);
-
-impl Write for Capture {
-    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buffer);
-        Ok(buffer.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a> MakeWriter<'a> for Capture {
-    type Writer = Self;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        self.clone()
-    }
-}
-
-thread_local! {
-    static THREAD_CAPTURE: std::cell::RefCell<Option<Capture>> =
-        const { std::cell::RefCell::new(None) };
-}
-
-/// Writes only for the thread that is currently capturing.
-struct ThreadCapture;
-
-impl<'a> MakeWriter<'a> for ThreadCapture {
-    type Writer = Box<dyn Write>;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        match THREAD_CAPTURE.with(|capture| capture.borrow().clone()) {
-            Some(capture) => Box::new(capture),
-            None => Box::new(std::io::sink()),
-        }
-    }
-}
-
-/// A scoped `with_default` capture is racy under the parallel test runner:
-/// another thread can register a callsite against the global no-op
-/// dispatcher while this capture registers, caching `Interest::never` and
-/// silently dropping the captured event. One process-wide subscriber whose
-/// per-layer filter is dynamic keeps every callsite at `Interest::sometimes`
-/// and routes events only to the capturing thread's buffer.
-fn global_capture_installed() -> bool {
-    static INSTALLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *INSTALLED.get_or_init(|| {
-        use tracing_subscriber::{Layer, layer::SubscriberExt};
-        let layer = tracing_subscriber::fmt::layer()
-            .without_time()
-            .with_ansi(false)
-            .with_target(false)
-            .with_writer(ThreadCapture)
-            .with_filter(tracing_subscriber::filter::filter_fn(|_| {
-                THREAD_CAPTURE.with(|capture| capture.borrow().is_some())
-            }));
-        tracing::subscriber::set_global_default(tracing_subscriber::registry().with(layer)).is_ok()
-    })
-}
-
-struct CaptureScope;
-
-impl Drop for CaptureScope {
-    fn drop(&mut self) {
-        THREAD_CAPTURE.with(|capture| capture.borrow_mut().take());
-    }
-}
-
-pub(super) fn with_captured_diagnostics<T>(body: impl FnOnce() -> T) -> (T, String) {
-    let bytes = Arc::new(Mutex::new(Vec::new()));
-    let value = if global_capture_installed() {
-        THREAD_CAPTURE.with(|capture| *capture.borrow_mut() = Some(Capture(Arc::clone(&bytes))));
-        let _scope = CaptureScope;
-        body()
-    } else {
-        let subscriber = tracing_subscriber::fmt()
-            .without_time()
-            .with_ansi(false)
-            .with_target(false)
-            .with_max_level(tracing::Level::TRACE)
-            .with_writer(Capture(Arc::clone(&bytes)))
-            .finish();
-        tracing::subscriber::with_default(subscriber, body)
-    };
-    let captured = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
-    (value, captured)
 }
 
 pub(super) fn adapter() -> CodexAdapter {
@@ -256,7 +163,7 @@ fn malformed_thread_goal_updated_is_ignored_without_failing_the_managed_session(
         "threadId":"thread-1","goal":{"text":"ship the release"}
     }});
     let (disposition, captured) =
-        with_captured_diagnostics(|| adapter.ingest(&serde_json::to_vec(&frame).unwrap(), &Mapper));
+        capture_diagnostics(|| adapter.ingest(&serde_json::to_vec(&frame).unwrap(), &Mapper));
     assert!(
         matches!(disposition, Ok(IngressDisposition::IgnoredLate)),
         "thread/goal/updated must not kill the session: {disposition:?}"
@@ -270,9 +177,8 @@ fn unprojected_notifications_are_recorded_and_ignored_without_transcript_items()
     ready(&mut adapter);
     for method in UNPROJECTED_NOTIFICATIONS {
         let frame = json!({"method": method, "params": {"threadId": "thread-1"}});
-        let (disposition, captured) = with_captured_diagnostics(|| {
-            adapter.ingest(&serde_json::to_vec(&frame).unwrap(), &Mapper)
-        });
+        let (disposition, captured) =
+            capture_diagnostics(|| adapter.ingest(&serde_json::to_vec(&frame).unwrap(), &Mapper));
         assert!(
             matches!(disposition, Ok(IngressDisposition::IgnoredLate)),
             "{method} must be ignored rather than projected: {disposition:?}"
@@ -472,9 +378,8 @@ fn an_unknown_dynamic_tool_call_is_refused_without_tearing_the_runtime_down() {
         "threadId":"thread-1","turnId":"turn-1","callId":"call-1",
         "tool":"mystery_tool","arguments":{"url":"http://127.0.0.1:43124/proof"}
     }});
-    let (disposition, diagnostics) = with_captured_diagnostics(|| {
-        adapter.ingest(&serde_json::to_vec(&request).unwrap(), &Mapper)
-    });
+    let (disposition, diagnostics) =
+        capture_diagnostics(|| adapter.ingest(&serde_json::to_vec(&request).unwrap(), &Mapper));
     let IngressDisposition::Events(events) = disposition
         .unwrap_or_else(|error| panic!("an unknown tool must not tear the runtime down: {error}"))
     else {

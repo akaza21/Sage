@@ -191,11 +191,7 @@ pub(super) fn clear_due(_pending: &PendingClear, _generation: Option<u64>) -> Va
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        cell::Cell,
-        io::Write,
-        sync::{Arc, Mutex},
-    };
+    use std::cell::Cell;
 
     use super::{
         CopiedText, PendingClear, VaultError, VaultResult, clear_with_retries, expire,
@@ -250,20 +246,6 @@ mod tests {
         }
     }
 
-    #[derive(Clone)]
-    struct LogOutput(Arc<Mutex<Vec<u8>>>);
-
-    impl Write for LogOutput {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
     #[test]
     fn expiry_clears_a_password_when_a_busy_clipboard_becomes_free() {
         let pending = PendingClear::default();
@@ -281,14 +263,7 @@ mod tests {
         let generation = clipboard.copy(&pending, b"secret");
         clipboard.busy = usize::MAX;
         let mut warning = String::new();
-        let output = LogOutput(Arc::new(Mutex::new(Vec::new())));
-        let writer = output.clone();
-        let subscriber = tracing_subscriber::fmt()
-            .without_time()
-            .with_ansi(false)
-            .with_writer(move || writer.clone())
-            .finish();
-        tracing::subscriber::with_default(subscriber, || {
+        let ((), log) = crate::test_diagnostics::capture_diagnostics(|| {
             expire(
                 || clipboard.clear_due(&pending, Some(generation)),
                 |message| warning = message.to_owned(),
@@ -299,8 +274,6 @@ mod tests {
             "Sage could not clear the copied password from the clipboard. Copy something else now to replace it."
         );
         assert_eq!(clipboard.text, b"secret");
-        let bytes = output.0.lock().unwrap();
-        let log = String::from_utf8_lossy(&bytes);
         assert!(log.contains("Password clipboard expiry failed"));
         assert!(log.contains("The clipboard is busy."));
         assert!(!log.contains("secret"));
