@@ -306,7 +306,17 @@ fn admitted_network_transports_reach_the_remote() {
                 }
             }
         });
-        let result = sage_git(&root, &["ls-remote", "origin"]);
+        // The ssh transport runs an `ssh` program, which a machine need not
+        // have. A stand-in named `ssh`, so Git passes it OpenSSH's options,
+        // opens the connection Git asks for: Git still selects and admits
+        // the transport itself. Only the program is chosen on the command
+        // line, which no repository config can do.
+        let ssh_command = format!("core.sshCommand={}", ssh_stand_in(&scratch.base));
+        let mut args = vec!["ls-remote", "origin"];
+        if protocol == "ssh" {
+            args.splice(0..0, ["-c", ssh_command.as_str()]);
+        }
+        let result = sage_git(&root, &args);
         let connected = server.join().unwrap();
         let output = result.unwrap();
         assert!(
@@ -319,4 +329,32 @@ fn admitted_network_transports_reach_the_remote() {
             "the fixture closes before Git negotiation"
         );
     }
+}
+
+/// An `ssh` that connects to the host and port Git passes it and closes.
+fn ssh_stand_in(directory: &Path) -> String {
+    let directory = directory.join("ssh-stand-in");
+    fs::create_dir_all(&directory).unwrap();
+    let script = directory.join("ssh");
+    fs::write(
+        &script,
+        "#!/bin/bash\n\
+         port=22\n\
+         while [ \"$#\" -gt 0 ]; do\n\
+         case \"$1\" in\n\
+         -p) port=$2; shift 2 ;;\n\
+         -o) shift 2 ;;\n\
+         -*) shift ;;\n\
+         *) host=${1#*@}; break ;;\n\
+         esac\n\
+         done\n\
+         exec 3<>\"/dev/tcp/$host/$port\"\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    format!("\"{}\"", script.to_string_lossy().replace('\\', "/"))
 }

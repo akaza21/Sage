@@ -765,12 +765,16 @@ fn a_linked_config_file_is_followed_and_checked() {
     let message = refusal(sage_git(&root, &["status", "--porcelain"]));
     assert!(message.contains("filter.sentinel.clean"), "{message}");
 }
-/// Keeps `path` unreadable to every other opener until dropped.
+/// Keeps `path` unreadable to every other opener until dropped. Permission
+/// bits would not do on Unix, where root reads any file, so the path becomes a
+/// symbolic link to itself, which no opener can resolve, whatever its uid.
 struct ReadDenied {
     #[cfg(windows)]
     _exclusive: fs::File,
     #[cfg(unix)]
     path: PathBuf,
+    #[cfg(unix)]
+    held: PathBuf,
 }
 
 impl ReadDenied {
@@ -789,10 +793,12 @@ impl ReadDenied {
         };
         #[cfg(unix)]
         let denied = {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(path, fs::Permissions::from_mode(0o000)).unwrap();
+            let held = path.with_extension("held");
+            fs::rename(path, &held).unwrap();
+            std::os::unix::fs::symlink(path.file_name().unwrap(), path).unwrap();
             Self {
                 path: path.to_path_buf(),
+                held,
             }
         };
         assert!(fs::read(path).is_err(), "fixture config is still readable");
@@ -803,8 +809,8 @@ impl ReadDenied {
 #[cfg(unix)]
 impl Drop for ReadDenied {
     fn drop(&mut self) {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&self.path, fs::Permissions::from_mode(0o644));
+        let _ = fs::remove_file(&self.path);
+        let _ = fs::rename(&self.held, &self.path);
     }
 }
 
