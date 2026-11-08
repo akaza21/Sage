@@ -3,6 +3,7 @@ import {
   piBridgeJourneys,
   piIdleConfigJourney,
 } from "./acp-native-pi-cases.mjs";
+import { codexMcpHookJourneys } from "./acp-native-codex-mcp-hook-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -183,6 +184,7 @@ const journeyCases = [
 ];
 journeyCases.push(...nativeCases());
 journeyCases.push(piIdleConfigJourney(), ...piBridgeJourneys());
+journeyCases.push(...codexMcpHookJourneys());
 if (privacyFailuresForRecords(journeyCases, false).length)
   throw new Error("native fixture privacy violation");
 const journeyIds = new Set();

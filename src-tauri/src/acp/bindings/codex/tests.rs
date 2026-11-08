@@ -12,6 +12,8 @@ use super::*;
 use super::{incoming::IngressError, request::RequestKind, state::AdapterError};
 
 mod file_change_sequence_tests;
+#[cfg(feature = "acp-fixture")]
+mod mcp_progress_hook_journey_tests;
 mod mcp_progress_hook_tests;
 #[cfg(windows)]
 mod state_volume;
