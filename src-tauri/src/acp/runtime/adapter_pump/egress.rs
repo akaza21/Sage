@@ -7,6 +7,7 @@ pub(super) fn queue() -> Result<ReservedQueue<AdapterEgress>, AdapterPumpError> 
         LIMITS.queues.egress_control_frames_inside_total as usize,
         LIMITS.queues.egress_control_bytes_inside_total as usize,
     )
+    .map(|queue| queue.with_prompt_reserve(crate::acp::limits::PROMPT_EGRESS_RESERVE_BYTES))
     .map_err(|_| AdapterPumpError::Backpressure)
 }
 
@@ -333,8 +334,11 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         let mandatory = token.is_mandatory();
         let control = token.is_control();
         let bytes = value.frame().wire_len();
+        let prompt = value.frame().class() == crate::acp::transport::OutboundFrameClass::Prompt;
         let result = if control {
             self.egress.try_push_control_with(bytes, 0, || value)
+        } else if prompt {
+            self.egress.try_push_prompt_with(bytes, || value)
         } else {
             self.egress.try_push_data_with(bytes, || value)
         };

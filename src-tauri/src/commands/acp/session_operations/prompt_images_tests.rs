@@ -115,3 +115,28 @@ fn a_4k_screenshot_is_accepted_and_sent_at_most_1568_px_wide() {
     }
     assert!(admit_sizes(read.iter().map(|image| image.bytes.len())).is_ok());
 }
+
+#[test]
+fn an_image_still_too_large_after_resizing_is_refused_with_the_prompt_bounds() {
+    let store = Store::new();
+    let noise = crate::image_artifacts::ingest_test_image(
+        &store.database.connection(),
+        store.database.image_artifact_root().unwrap(),
+        "p",
+        "c",
+        &crate::image_artifacts::noise_png(2100, 1600),
+    )
+    .unwrap();
+
+    let Err(AcpIpcError::InvalidRequest { message }) = read(&store.database, "p", "c", &[&noise])
+    else {
+        panic!("noise past the prompt bound must be refused");
+    };
+    assert!(
+        message
+            .as_str()
+            .contains("at most 1 MiB after resizing to 1568 px"),
+        "{}",
+        message.as_str()
+    );
+}

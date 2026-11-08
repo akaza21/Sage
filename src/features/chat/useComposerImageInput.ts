@@ -3,6 +3,7 @@ import type { AgentSessionProjection } from "../../domain/acp";
 import {
   MAX_IMAGE_UPLOAD_BYTES,
   MAX_PROMPT_IMAGES,
+  imageUploadLimitMessage,
   type AttachedContext,
 } from "../../domain/attachedContext";
 
@@ -23,7 +24,7 @@ export function composerImageAvailability(
     return {
       available: false,
       reason:
-        "Image input is available once this harness's session starts and advertises it. Send a message first.",
+        "Images can be attached once this chat's session has started and the harness has said it accepts them. Send a first message to start the session.",
     };
   if (session.capabilities.promptImages !== true)
     return {
@@ -58,7 +59,9 @@ export function useComposerImageInput({
     if (files.length === 0) return;
     if (!available || disabled) return setError(reason);
     if (count + files.length > MAX_PROMPT_IMAGES)
-      return setError("A message can include at most four images.");
+      return setError(
+        `A message can include at most ${MAX_PROMPT_IMAGES} images.`,
+      );
     if (
       files.some(
         (file) =>
@@ -67,7 +70,7 @@ export function useComposerImageInput({
           file.size > MAX_IMAGE_UPLOAD_BYTES,
       )
     )
-      return setError("Choose PNG or JPEG images no larger than 10 MiB each.");
+      return setError(imageUploadLimitMessage);
     setError(null);
     onAddImages?.(files);
   };

@@ -91,7 +91,7 @@ pub(crate) fn prompt_blocks(
     let images = prompt
         .images
         .wire(capabilities)
-        .map_err(images::ImageRefusal::message)?;
+        .map_err(|_| "the prompt images are refused")?;
     blocks.splice(1..1, images);
     Ok(blocks)
 }

@@ -83,7 +83,7 @@ pub(crate) async fn remove_chat_image(
 
 pub(crate) fn upload_image_payload(
     database: &Database,
-    request: UploadChatImageRequest,
+    mut request: UploadChatImageRequest,
 ) -> AppResult<ImageAttachedContext> {
     if request.data_base64.is_empty() || request.data_base64.len() > MAX_IMAGE_BASE64_BYTES {
         return Err(AppError::ResourceLimit(
@@ -102,13 +102,19 @@ pub(crate) fn upload_image_payload(
             "image project is not active".into(),
         ));
     }
+    // Each copy is freed once the next exists: base64, then the raw file.
+    let encoded = std::mem::take(&mut request.data_base64);
     let bytes = STANDARD
-        .decode(&request.data_base64)
+        .decode(&encoded)
         .map_err(|_| AppError::InvalidRequest("image data is not valid base64".into()))?;
+    drop(encoded);
     // Normalised before the write connection is taken, so a large upload
     // never holds it while decoding.
     let (media_type, bytes) = match normalize_upload(request.media_type, &bytes)? {
-        Some(normalized) => (normalized.media_type, normalized.bytes),
+        Some(normalized) => {
+            drop(bytes);
+            (normalized.media_type, normalized.bytes)
+        }
         None => (request.media_type, bytes),
     };
     let connection = database.write_connection()?;

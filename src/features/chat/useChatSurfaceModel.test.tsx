@@ -169,7 +169,7 @@ it("enables image input only when the selected session advertises it", () => {
   view.rerender({ ...args, page: { ...imagePage, sessions: [] } as never });
   expect(view.result.current.imageInput.available).toBe(false);
   expect(view.result.current.imageInput.reason).toMatch(
-    /once this harness's session starts/,
+    /once this chat's session has started/,
   );
 });
 

@@ -25,15 +25,29 @@ export {
 export const MAX_ATTACHED_CONTEXTS_PER_TURN = 8;
 /** Matches a quarter of the composer budget and keeps eight notes within 32 KiB. */
 export const MAX_ATTACHED_CONTEXT_NOTE_BYTES = 4 * 1024;
+/*
+ * Image mirrors of `src-tauri/src/acp/limits/images.rs`, checked there by a
+ * parity test that reads this file.
+ */
+/** Mirrors `STORED_IMAGE_BYTES`: a stored image, for any harness. */
 export const MAX_OUTGOING_IMAGE_BYTES = 4 * 1024 * 1024;
-/** Mirrors `PROMPT_IMAGE_COUNT` in `src-tauri/src/acp/limits.rs`. */
+/** Mirrors `PROMPT_IMAGE_COUNT`. */
 export const MAX_PROMPT_IMAGES = 4;
 /**
- * Mirrors `IMAGE_UPLOAD_BYTES`: an attached file before Sage normalises it to
- * at most 1568 px on the long edge. The send then checks the normalised
- * images against `PROMPT_IMAGE_TOTAL_BYTES` and names any that still exceed it.
+ * Mirrors `IMAGE_UPLOAD_BYTES`: an attached file before Sage normalises it.
+ * A send then checks the images against the prompt bounds and names any that
+ * still exceed them.
  */
 export const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/** `bytes` as KiB or MiB, for messages built from the mirrored limits. */
+export function formatImageBytes(bytes: number): string {
+  return bytes % (1024 * 1024) === 0
+    ? `${bytes / (1024 * 1024)} MiB`
+    : `${Math.floor(bytes / 1024)} KiB`;
+}
+
+export const imageUploadLimitMessage = `Choose PNG or JPEG images no larger than ${formatImageBytes(MAX_IMAGE_UPLOAD_BYTES)} each.`;
 
 export type DiffLineSide = "old" | "new";
 

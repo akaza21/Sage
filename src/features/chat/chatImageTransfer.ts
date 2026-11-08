@@ -1,6 +1,7 @@
 import { useWorkbenchStore } from "../../app/store";
 import {
   MAX_IMAGE_UPLOAD_BYTES,
+  imageUploadLimitMessage,
   type ImageAttachedContext,
 } from "../../domain/attachedContext";
 import type { ChatOwnershipIntent } from "../../domain/chatOwnership";
@@ -52,7 +53,7 @@ export async function uploadChatImages(
       file.size < 1 ||
       file.size > MAX_IMAGE_UPLOAD_BYTES
     )
-      throw new Error("Choose PNG or JPEG images no larger than 10 MiB each.");
+      throw new Error(imageUploadLimitMessage);
     const image = await invokeNative<ImageAttachedContext>(
       "upload_chat_image",
       {

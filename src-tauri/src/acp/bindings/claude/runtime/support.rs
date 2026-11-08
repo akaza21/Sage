@@ -29,10 +29,13 @@ impl ResourceMapper for MapperBridge<'_> {
     }
 }
 
+/// `prompt` marks a `session/prompt` command, whose frame may carry image
+/// blocks past the ordinary frame bound and rides the egress prompt reserve.
 pub(super) fn request(
     id: u64,
     method: &'static str,
     params: impl Serialize,
+    prompt: bool,
 ) -> Result<AdapterEgress, AdapterRuntimeError> {
     let bytes = serde_json::to_vec(&serde_json::json!({
         "jsonrpc": "2.0",
@@ -41,7 +44,7 @@ pub(super) fn request(
         "params": params,
     }))
     .map_err(|_| AdapterRuntimeError::Frame)?;
-    let frame = if method == "session/prompt" {
+    let frame = if prompt {
         OutboundFrame::new_prompt(bytes)
     } else {
         OutboundFrame::new(bytes)

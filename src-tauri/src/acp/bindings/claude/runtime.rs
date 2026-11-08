@@ -209,7 +209,8 @@ impl ClaudeRuntime {
             .checked_add(1)
             .filter(|id| *id <= i64::MAX as u64)
             .ok_or(AdapterRuntimeError::Operation)?;
-        let egress = request(id, method, params)?;
+        let prompt = matches!(pending, PendingRequest::Prompt);
+        let egress = request(id, method, params, prompt)?;
         self.pending.insert(id, pending);
         self.next_request_id = id;
         Ok(egress)

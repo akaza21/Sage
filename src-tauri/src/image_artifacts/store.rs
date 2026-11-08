@@ -5,11 +5,18 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
-    acp::{intent::ImageMediaType, limits::IMAGE_UPLOAD_BYTES, migration},
+    acp::{
+        intent::ImageMediaType,
+        limits::{IMAGE_UPLOAD_BYTES, STORED_IMAGE_EDGE_PX, STORED_IMAGE_PIXELS},
+        migration,
+    },
     error::{AppError, AppResult},
     image_attachment::{ImageAttachedContext, ImageAttachmentKind, MAX_OUTGOING_IMAGE_BYTES},
 };
 const FULL_LIMIT: u64 = 4 * 1024 * 1024;
+/// A stored image this small is its own thumbnail; a larger one gets a
+/// 128 px PNG thumbnail, which must also stay within this size.
+const THUMBNAIL_INLINE_BYTES: usize = 256 * 1024;
 
 pub(crate) fn ingest_image(
     connection: &Connection,
@@ -21,7 +28,10 @@ pub(crate) fn ingest_image(
     label: &str,
 ) -> AppResult<ImageAttachedContext> {
     if bytes.is_empty() || bytes.len() > IMAGE_UPLOAD_BYTES {
-        return Err(invalid("image exceeds the 10 MiB upload bound"));
+        return Err(AppError::InvalidRequest(format!(
+            "image is larger than the {} upload limit",
+            super::normalize::byte_size(IMAGE_UPLOAD_BYTES)
+        )));
     }
     if label.is_empty()
         || label.len() > 80
@@ -113,7 +123,7 @@ pub(super) fn normalize_upload(
     if bytes.len() <= MAX_OUTGOING_IMAGE_BYTES as usize && valid_dimensions(width, height) {
         return Ok(None);
     }
-    super::normalize::normalize_for_prompt(media_type, bytes).map(Some)
+    super::normalize::normalize(media_type, bytes, super::normalize::STORED).map(Some)
 }
 
 fn admit_png(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
@@ -132,7 +142,7 @@ fn admit_png(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
     let frame = reader
         .next_frame(&mut decoded)
         .map_err(|_| invalid("image is malformed"))?;
-    let thumbnail = if bytes.len() <= 262_144 {
+    let thumbnail = if bytes.len() <= THUMBNAIL_INLINE_BYTES {
         bytes.to_vec()
     } else {
         let thumb_width = width.min(128);
@@ -181,7 +191,7 @@ fn admit_png(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
                 .and_then(|mut writer| writer.write_image_data(&pixels))
                 .map_err(|_| invalid("image preview could not be encoded"))?;
         }
-        if thumbnail.len() > 262_144 {
+        if thumbnail.len() > THUMBNAIL_INLINE_BYTES {
             return Err(invalid("image preview exceeds its bound"));
         }
         thumbnail
@@ -204,7 +214,7 @@ fn admit_jpeg(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
     let decoded = decoder
         .decode()
         .map_err(|_| invalid("image is malformed"))?;
-    let thumbnail = if bytes.len() <= 262_144 {
+    let thumbnail = if bytes.len() <= THUMBNAIL_INLINE_BYTES {
         bytes.to_vec()
     } else {
         let stride = match info.pixel_format {
@@ -239,7 +249,7 @@ fn admit_jpeg(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
                 .and_then(|mut writer| writer.write_image_data(&pixels))
                 .map_err(|_| invalid("image preview could not be encoded"))?;
         }
-        if thumbnail.len() > 262_144 {
+        if thumbnail.len() > THUMBNAIL_INLINE_BYTES {
             return Err(invalid("image preview exceeds its bound"));
         }
         thumbnail
@@ -250,9 +260,9 @@ fn admit_jpeg(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
 fn valid_dimensions(width: u32, height: u32) -> bool {
     width > 0
         && height > 0
-        && width <= 2048
-        && height <= 2048
-        && u64::from(width) * u64::from(height) <= 4_194_304
+        && width <= STORED_IMAGE_EDGE_PX
+        && height <= STORED_IMAGE_EDGE_PX
+        && u64::from(width) * u64::from(height) <= STORED_IMAGE_PIXELS
 }
 
 fn invalid(message: &str) -> AppError {

@@ -383,7 +383,7 @@ describe("composer image input", () => {
       dataTransfer: { files: [png()], types: ["Files"] },
     });
     expect(onAddImages).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent("four images");
+    expect(screen.getByRole("alert")).toHaveTextContent("at most 4 images");
     const options = screen.queryByRole("button", { name: "Composer options" });
     if (options) {
       fireEvent.click(options);

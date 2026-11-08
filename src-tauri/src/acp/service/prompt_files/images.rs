@@ -7,7 +7,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use crate::acp::{
     intent::{CapabilitySnapshotV1, ImageMediaType},
-    limits::{PROMPT_IMAGE_COUNT, PROMPT_IMAGE_TOTAL_BYTES},
+    limits::{PROMPT_IMAGE_COUNT, PROMPT_IMAGE_EDGE_PX, PROMPT_IMAGE_TOTAL_BYTES},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,15 +55,16 @@ pub(crate) enum ImageRefusal {
 }
 
 impl ImageRefusal {
-    pub(crate) fn message(self) -> &'static str {
+    pub(crate) fn message(self) -> String {
         match self {
-            Self::Unsupported => {
-                "This harness does not advertise image prompt support. Remove the images or choose a harness that accepts them."
-            }
-            Self::TooMany => "A message can include at most four images. Remove some images.",
-            Self::TooLarge => {
-                "Images in one message can total at most 1 MiB after resizing to 1568 px. Remove some images or crop them."
-            }
+            Self::Unsupported => "This harness does not advertise image prompt support. Remove the images or choose a harness that accepts them.".into(),
+            Self::TooMany => format!(
+                "A message can include at most {PROMPT_IMAGE_COUNT} images. Remove some images."
+            ),
+            Self::TooLarge => format!(
+                "Images in one message can total at most {} after resizing to {PROMPT_IMAGE_EDGE_PX} px. Remove some images or crop them.",
+                crate::image_artifacts::byte_size(PROMPT_IMAGE_TOTAL_BYTES)
+            ),
         }
     }
 }

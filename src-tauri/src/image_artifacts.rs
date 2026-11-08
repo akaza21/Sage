@@ -9,7 +9,10 @@ mod test_support;
 mod tests;
 
 pub(crate) use gc::reconcile_image_artifacts;
-pub(crate) use normalize::{normalize_for_prompt, preview as image_preview};
+pub(crate) use normalize::{
+    PREVIEW as PREVIEW_IMAGE_BOUNDS, PROMPT as PROMPT_IMAGE_BOUNDS, byte_size,
+    normalize as normalize_image,
+};
 pub(crate) use sent::retire_sent_images;
 pub(crate) use store::verify_image_reference;
 #[cfg(test)]

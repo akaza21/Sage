@@ -32,7 +32,7 @@ fn requested(contexts: &AttachedContexts) -> Vec<&ImageAttachedContext> {
 fn unsupported() -> AcpIpcError {
     AcpIpcError::Unavailable {
         reason: AcpUnavailableReason::ImageInputUnsupported,
-        message: safe_message(ImageRefusal::Unsupported.message()),
+        message: text(ImageRefusal::Unsupported.message()),
     }
 }
 
@@ -101,9 +101,15 @@ pub(super) async fn attach(
         .collect())
 }
 
+/// A refusal built from the `limits.rs` numbers.
+fn text(message: String) -> crate::acp::contract::SafeText<8192> {
+    crate::acp::contract::SafeText::new("message", message)
+        .unwrap_or_else(|_| safe_message("The attached images cannot be sent."))
+}
+
 fn refused(refusal: ImageRefusal) -> AcpIpcError {
     AcpIpcError::InvalidRequest {
-        message: safe_message(refusal.message()),
+        message: text(refusal.message()),
     }
 }
 
@@ -114,9 +120,6 @@ fn gone() -> AcpIpcError {
         ),
     }
 }
-
-/// The transcript copy of a sent image that is too large to keep whole.
-const PREVIEW_EDGE_PX: u32 = 768;
 
 /// The verified, owner-bound stored bytes of each image.
 fn load(
@@ -149,20 +152,26 @@ fn normalize(stored: Vec<(ImageMediaType, Vec<u8>)>) -> Result<Vec<PromptImage>,
     stored
         .into_iter()
         .map(|(media_type, bytes)| {
-            let normalized = crate::image_artifacts::normalize_for_prompt(media_type, &bytes)
-                .map_err(|error| match error {
-                    crate::error::AppError::ResourceLimit(_) => refused(ImageRefusal::TooLarge),
-                    _ => gone(),
-                })?;
+            let normalized = crate::image_artifacts::normalize_image(
+                media_type,
+                &bytes,
+                crate::image_artifacts::PROMPT_IMAGE_BOUNDS,
+            )
+            .map_err(|error| match error {
+                crate::error::AppError::ResourceLimit(_) => refused(ImageRefusal::TooLarge),
+                crate::error::AppError::InvalidRequest(message) => AcpIpcError::InvalidRequest {
+                    message: text(format!("An attached image cannot be sent: {message}.")),
+                },
+                _ => gone(),
+            })?;
             drop(bytes);
             let preview = if normalized.bytes.len() <= IMAGE_PREVIEW_BYTES {
                 ImagePreview::Full
             } else {
-                match crate::image_artifacts::image_preview(
+                match crate::image_artifacts::normalize_image(
                     normalized.media_type,
                     &normalized.bytes,
-                    PREVIEW_EDGE_PX,
-                    IMAGE_PREVIEW_BYTES,
+                    crate::image_artifacts::PREVIEW_IMAGE_BOUNDS,
                 ) {
                     Ok(small) => ImagePreview::Thumbnail(small.media_type, small.bytes),
                     Err(_) => ImagePreview::Unavailable,

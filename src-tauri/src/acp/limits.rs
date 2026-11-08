@@ -4,7 +4,9 @@ pub(crate) use preview::PREVIEW_LIMITS;
 mod browser;
 pub use browser::{BROWSER_LIMITS, BrowserLimits};
 mod fixture;
+mod images;
 pub use fixture::{FIXTURE_LIMITS, FixtureLimits};
+pub use images::*;
 
 pub(crate) const RETAINED_TOOL_OUTPUT_LINES: usize = 200;
 /// Raw UTF-8 bytes admitted per immutable file-diff side, before JSON escaping.
@@ -16,35 +18,6 @@ pub const COMMAND_RESOURCE_LIMIT: usize = 64;
 pub const ATTACHED_CONTEXT_LIMIT: usize = 8;
 /// One attached user note is capped at one quarter of the WebView composer budget.
 pub const ATTACHED_CONTEXT_NOTE_BYTES: usize = 4 * 1024;
-/// Images one prompt may carry; the composer attaches at most this many.
-pub const PROMPT_IMAGE_COUNT: usize = 4;
-/// An attached image as the user supplies it, before normalisation. A 4K or
-/// 5K screenshot fits; decoding one holds at most `IMAGE_UPLOAD_PIXELS` * 4
-/// bytes (64 MiB) natively for the duration of one upload.
-pub const IMAGE_UPLOAD_BYTES: usize = 10 * 1024 * 1024;
-pub const IMAGE_UPLOAD_EDGE_PX: u32 = 8192;
-pub const IMAGE_UPLOAD_PIXELS: u64 = 16_777_216;
-/// The long edge an attached image is normalised to. Claude's vision input
-/// resizes anything longer than about 1568 px, so more pixels carry nothing.
-pub const PROMPT_IMAGE_EDGE_PX: u32 = 1568;
-/// A normalised image stays PNG (lossless, best for screenshots) up to this
-/// size; past it the smaller of PNG and a quality-85 JPEG is kept. A typical
-/// 1568 px UI screenshot is 150-500 KiB as PNG.
-pub const PROMPT_IMAGE_PNG_BYTES: usize = 512 * 1024;
-/// Decoded bytes of every normalised image in one prompt together, and so of
-/// any one image. Roughly three or four normalised screenshots. Its base64
-/// (1.33 MiB) plus the 120 KiB text-and-file dispatch budget fits one
-/// `PROMPT_FRAME_BYTES` frame.
-pub const PROMPT_IMAGE_TOTAL_BYTES: usize = 1024 * 1024;
-/// The one outbound frame class larger than `WireLimits::frame_bytes`: an
-/// ACP `session/prompt` request carrying images. It is bounded by the egress
-/// queue's data capacity so a prompt can always be queued when the lane is
-/// idle; inbound frames keep the 1 MiB bound.
-pub const PROMPT_FRAME_BYTES: usize =
-    (LIMITS.queues.egress_bytes - LIMITS.queues.egress_control_bytes_inside_total) as usize - 1;
-/// Decoded bytes of the transcript copy of one sent image. Its base64 must fit
-/// one normalized item (`WireLimits::normalized_item_bytes`).
-pub const IMAGE_PREVIEW_BYTES: usize = 192 * 1024 - 512;
 /// A one-byte sensitive token may expand to this replacement in command output.
 pub(crate) const COMMAND_OUTPUT_REDACTION_BYTES: usize = "[redacted]".len();
 
@@ -422,16 +395,3 @@ pub const LIMITS: Limits = Limits {
     },
     fixture: FIXTURE_LIMITS,
 };
-
-// Prompt images ride in one prompt frame beside the base64 of the 96 KiB file
-// budget and the prompt text (escaped up to twice its 100 KB bound); the
-// images, their transcript previews and that text fit the driver's data lane;
-// and each transcript copy fits one normalized item with its JSON envelope.
-const PROMPT_FRAME_NEED: usize = (PROMPT_IMAGE_TOTAL_BYTES + 96 * 1024).div_ceil(3) * 4 + 4096;
-const _: () = assert!(
-    PROMPT_FRAME_NEED + 2 * (LIMITS.wire.prompt_bytes as usize) < PROMPT_FRAME_BYTES
-        && PROMPT_FRAME_BYTES > LIMITS.wire.frame_bytes as usize
-        && PROMPT_IMAGE_TOTAL_BYTES + 4 * IMAGE_PREVIEW_BYTES + 128 * 1024
-            < LIMITS.queues.driver_data_bytes as usize
-        && IMAGE_PREVIEW_BYTES.div_ceil(3) * 4 + 256 < LIMITS.wire.normalized_item_bytes as usize
-);

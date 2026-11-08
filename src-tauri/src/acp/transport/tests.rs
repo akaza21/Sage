@@ -352,3 +352,60 @@ fn control_only_pop_preserves_data_and_updates_control_accounting() {
     assert_eq!(queue.pop_control(), None);
     assert_eq!(queue.pop(), Some("data"));
 }
+
+#[test]
+fn a_full_budget_prompt_queues_beside_a_full_data_lane() {
+    use crate::acp::limits::{PROMPT_EGRESS_RESERVE_BYTES, PROMPT_FRAME_BYTES};
+    let mut queue = ReservedQueue::new(
+        LIMITS.queues.egress_frames as usize,
+        LIMITS.queues.egress_bytes as usize,
+        LIMITS.queues.egress_control_frames_inside_total as usize,
+        LIMITS.queues.egress_control_bytes_inside_total as usize,
+    )
+    .unwrap()
+    .with_prompt_reserve(PROMPT_EGRESS_RESERVE_BYTES);
+    // Ordinary frames of the largest size fill the data lane.
+    let frame = LIMITS.wire.frame_bytes as usize + 1;
+    let mut queued = 0;
+    while queue.try_push_data_with(frame, || queued).is_ok() {
+        queued += 1;
+    }
+    assert!(queued >= 1);
+    let (_, data_bytes) = queue.data_usage();
+
+    queue
+        .try_push_prompt_with(PROMPT_FRAME_BYTES + 1, || usize::MAX)
+        .unwrap();
+    assert_eq!(queue.data_usage().1, data_bytes + PROMPT_FRAME_BYTES + 1);
+    // The reserve holds one prompt; the data lane stays as full as it was.
+    assert_eq!(
+        queue.try_push_prompt_with(1, || 0),
+        Err(QueueError::CountCapacity)
+    );
+    assert_eq!(
+        queue.try_push_data_with(frame, || 0),
+        Err(QueueError::ByteCapacity)
+    );
+    // Data order is kept, and the reserve is released when the prompt leaves.
+    for value in 0..queued {
+        assert_eq!(queue.pop(), Some(value));
+    }
+    assert_eq!(queue.pop(), Some(usize::MAX));
+    assert_eq!(queue.data_usage(), (0, 0));
+    queue
+        .try_push_prompt_with(PROMPT_FRAME_BYTES + 1, || 1)
+        .unwrap();
+    assert_eq!(
+        queue.try_push_prompt_with(PROMPT_EGRESS_RESERVE_BYTES + 1, || 2),
+        Err(QueueError::CountCapacity)
+    );
+}
+
+#[test]
+fn a_queue_without_a_prompt_reserve_refuses_prompt_frames() {
+    let mut queue = ReservedQueue::new(4, 128, 1, 32).unwrap();
+    assert_eq!(
+        queue.try_push_prompt_with(8, || 1),
+        Err(QueueError::ByteCapacity)
+    );
+}

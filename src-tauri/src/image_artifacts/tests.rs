@@ -294,22 +294,24 @@ fn a_4k_screenshot_is_normalised_at_upload_and_retired_once_sent() {
     connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
     let root = database.image_artifact_root().unwrap();
 
-    // Past the 2048 px store bound, so it was refused before normalisation.
+    // Past the 2048 px store bound: once refused, now stored at that bound for
+    // every harness. An image prompt narrows it to 1568 px when it is sent.
     let screenshot = super::screenshot_png(3840, 2160);
     let image = super::ingest_test_image(&connection, root, "p", "c", &screenshot).unwrap();
-    assert_eq!((image.width, image.height), (1568, 882));
+    assert_eq!((image.width, image.height), (2048, 1152));
     assert_eq!(image.media_type, ImageMediaType::Png);
     let stored = verify_image_reference(&connection, root, "p", "c", &image).unwrap();
-    assert_eq!(super::png_dimensions(&stored), (1568, 882));
+    assert_eq!(super::png_dimensions(&stored), (2048, 1152));
 
-    // Noise that no encoding fits within 1 MiB is refused with its reason.
+    // Even noise is stored for any harness, as the smaller JPEG within 4 MiB;
+    // only an image prompt applies the tighter 1 MiB bound.
     let noise = super::noise_png(2100, 1600);
-    let error = super::ingest_test_image(&connection, root, "p", "c", &noise).unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("still larger than 1 MiB after resizing to 1568 px")
+    let noise = super::ingest_test_image(&connection, root, "p", "c", &noise).unwrap();
+    assert_eq!(
+        (noise.width, noise.height, noise.media_type),
+        (2048, 1561, ImageMediaType::Jpeg)
     );
+    assert!(noise.byte_length as usize <= crate::acp::limits::STORED_IMAGE_BYTES);
 
     super::retire_sent_images(&connection, root, "p", "c", &[&image.artifact_id]).unwrap();
     assert!(verify_image_reference(&connection, root, "p", "c", &image).is_err());
