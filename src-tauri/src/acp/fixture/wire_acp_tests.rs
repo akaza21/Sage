@@ -193,3 +193,35 @@ fn the_codex_config_journey_starts_or_resumes_the_same_thread() {
         assert_eq!(models["result"]["data"].as_array().unwrap().len(), 2);
     }
 }
+
+#[test]
+fn launch_rules_follow_what_each_case_waits_for() {
+    use crate::acp::fixture::{native_case_lists_models, native_case_spans_restart};
+    for case in [
+        "codex-config-resume",
+        "codex-model-menu",
+        "codex-effort-menu",
+    ] {
+        assert!(native_case_lists_models(case), "{case}");
+    }
+    for case in [
+        "codex-turn-completed",
+        "codex-browse-preview",
+        "codex-steer-lost-result",
+        "claude-config-resume",
+    ] {
+        assert!(!native_case_lists_models(case), "{case}");
+    }
+    for case in ["claude-config-resume", "codex-config-resume"] {
+        assert!(native_case_spans_restart(case), "{case}");
+    }
+    for case in [
+        "claude-turn-completed",
+        "claude-approval-approved",
+        "codex-turn-completed",
+        "codex-steer-lost-result",
+        "pi-turn-completed",
+    ] {
+        assert!(!native_case_spans_restart(case), "{case}");
+    }
+}
