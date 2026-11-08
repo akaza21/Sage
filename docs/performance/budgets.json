@@ -155,8 +155,8 @@
       },
       {
         "entry": "src/features/settings/AgentHarnessSettings.tsx",
-        "maxGzipBytes": 1075,
-        "reason": "Harnesses settings page: install, version and sign-in status per harness; loaded only by Settings > Harnesses. Measured 1003 B plus 7%."
+        "maxGzipBytes": 1601,
+        "reason": "Harnesses settings page with the selected harness's account block; loaded only by Settings > Harnesses. Measured 1497 B plus 7%."
       },
       {
         "entry": "src/features/settings/AgentBrowserSettings.tsx",
@@ -400,8 +400,14 @@
       },
       {
         "entry": "src/features/chat/ComposerUsageContext.tsx",
-        "maxGzipBytes": 700,
-        "reason": "Reported context usage renders only after the harness supplies a known capacity; the idle composer does not load the meter."
+        "maxGzipBytes": 890,
+        "reason": "Reported context usage renders only after the harness supplies a known capacity; the idle composer does not load the meter. Measured 832 B with the usage-limits trigger."
+      },
+      {
+        "entry": "src/features/chat/ComposerUsageLimits.tsx",
+        "maxGzipBytes": 1520,
+        "maxCssGzipBytes": 400,
+        "reason": "Usage-limits popover and its bounded decoder; loads only when the context meter is clicked and unmounts when closed. Measured 1418 B."
       }
     ],
     "windowsInstallerMb": 45,

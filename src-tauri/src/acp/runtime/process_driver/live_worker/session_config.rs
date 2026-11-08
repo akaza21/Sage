@@ -109,6 +109,9 @@ where
                 crate::acp::goal::NativeRpcRequest::ReleaseFork { fork, committed } => idle
                     .parts
                     .write_release_fork(&mut idle.transport, fork, *committed),
+                crate::acp::goal::NativeRpcRequest::UsageRead => {
+                    idle.parts.write_usage_read(&mut idle.transport)
+                }
             },
             Self::Reusable(parts) => match &intent.request {
                 crate::acp::goal::NativeRpcRequest::Goal(action) => {
@@ -128,6 +131,9 @@ where
                 crate::acp::goal::NativeRpcRequest::ReleaseFork { fork, committed } => parts
                     .completed
                     .write_release_fork(&mut parts.transport, fork, *committed),
+                crate::acp::goal::NativeRpcRequest::UsageRead => {
+                    parts.completed.write_usage_read(&mut parts.transport)
+                }
             },
             Self::Active(active) if active.stdout_allowed() => {
                 active.turn.driver.begin_native_rpc(intent)

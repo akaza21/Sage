@@ -9,6 +9,7 @@ import type { TurnProjection } from "../../domain/acp";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { ChatHandoffControl } from "./ChatHandoffControl";
 import { ChatTranscript } from "./ChatTranscript";
+import { useUsageRequest } from "./acp/useUsageRequest";
 import { SessionWorkingPill } from "./SessionWorkingPill";
 import {
   latestRetryPrompt,
@@ -130,6 +131,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       (prompt) => prompt.status === "saving",
     ),
   });
+  const usageRequest = useUsageRequest(useNativeAcp ? acpPage : null, epoch);
   useAgentSessionChromePublisher(
     setAgentSessionChrome,
     chatId,
@@ -351,6 +353,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         // cannot switch it, so it has no chip.
         project={isSideChatId(acpPage?.chatId ?? chatId) ? null : project}
         usage={usage}
+        usageRequest={usageRequest}
         goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}
         onSubmit={submit}
         onTextChange={setComposerText}

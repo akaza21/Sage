@@ -38,6 +38,8 @@ use notifications::notification;
 mod response;
 use response::{browser_mcp_unavailable, response};
 
+mod rate_limits;
+
 mod model_catalog;
 use model_catalog::parse_models;
 pub(in crate::acp::bindings::codex) use model_catalog::parse_reasoning_efforts;
@@ -207,6 +209,10 @@ pub(crate) enum IngressDisposition {
     DroppedRawReasoning,
     GoalMutationRejected,
     GoalMutationApplied,
+    /// The latest usage limits Codex pushed.
+    UsageUpdated(crate::acp::usage::UsageSnapshot),
+    /// The answer to a usage read; `None` when Codex reported none.
+    UsageRead(Option<crate::acp::usage::UsageSnapshot>),
     DuplicateTerminal,
     DuplicateServerRequest {
         denial: Option<Vec<u8>>,

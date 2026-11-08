@@ -37,6 +37,7 @@ pub(crate) use bindings::adapter::slash_commands;
 pub(crate) mod store;
 pub(crate) mod transcript_quote;
 pub(crate) mod transport;
+pub(crate) mod usage;
 
 #[cfg(all(test, feature = "acp-fixture"))]
 mod fixture_protocol;

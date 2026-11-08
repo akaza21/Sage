@@ -8,6 +8,7 @@ import type {
 import type { AttachedContext } from "../../domain/attachedContext";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import type { ChatUsage } from "./acp/chatUsage";
+import type { AcpUsageRequest } from "../../domain/acpUsage";
 
 export interface ChatComposerRegionProps {
   /** Kept mounted while an approval holds the slot, so the draft survives. */
@@ -61,6 +62,7 @@ export interface ChatComposerRegionProps {
   onRetryLoad?: (() => void) | null;
   project: { name: string } | null | undefined;
   usage: ChatUsage | null;
+  usageRequest?: AcpUsageRequest | null;
   goal: AcpGoalState;
   onSubmit: FormEventHandler<HTMLFormElement>;
   onTextChange: (text: string) => void;

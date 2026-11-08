@@ -2,7 +2,7 @@ use serde_json::{Map, Value, json};
 
 use crate::acp::{
     bindings::codex::{
-        discovery::schema::managed_chatgpt,
+        discovery::schema::{api_key_account, managed_chatgpt},
         incoming::{IncomingEvent, IngressDisposition},
         manifest::MetadataValidatedPacket,
         state::CodexAdapter,
@@ -16,14 +16,16 @@ const AUTH_URL_BYTES: usize = 16_384;
 const LOGIN_ID_BYTES: usize = 64;
 const AUTH_ERROR_BYTES: usize = 8_192;
 
+mod api_key;
 mod browser;
 mod router;
 mod runner;
 mod transport;
+pub(crate) use api_key::NativeApiKey;
 pub(crate) use browser::NativeBrowser;
 pub(crate) use runner::{
     AuthBrowser, AuthTransport, CodexAuthDeadline, CodexAuthOutcome, run_account_protocol,
-    run_login_protocol, run_logout_protocol,
+    run_api_key_protocol, run_login_protocol, run_logout_protocol,
 };
 pub(crate) use transport::ProductionAuthTransport;
 
@@ -106,8 +108,9 @@ impl CodexAuthRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CodexAuthNotification {
+    /// `login_id` is absent for an API key login, which has no browser flow.
     LoginCompleted {
-        login_id: NativeLoginId,
+        login_id: Option<NativeLoginId>,
         success: bool,
     },
     AccountUpdated {
@@ -215,7 +218,8 @@ impl CodexAuthProtocol {
         match result.get("account") {
             Some(Value::Null) => Ok(CodexAuthAccount::SignedOut),
             Some(Value::Object(account))
-                if managed_chatgpt(account).map_err(|_| CodexAuthError::Protocol)? =>
+                if api_key_account(account)
+                    || managed_chatgpt(account).map_err(|_| CodexAuthError::Protocol)? =>
             {
                 Ok(CodexAuthAccount::SignedIn)
             }
@@ -375,11 +379,11 @@ fn parse_completed(params: &Map<String, Value>) -> Result<CodexAuthNotification,
     if params.len() != 3 || !params.contains_key("error") {
         return Err(CodexAuthError::Protocol);
     }
-    let login_id = params
-        .get("loginId")
-        .and_then(Value::as_str)
-        .ok_or(CodexAuthError::Protocol)
-        .and_then(NativeLoginId::parse)?;
+    let login_id = match params.get("loginId") {
+        Some(Value::Null) => None,
+        Some(Value::String(id)) => Some(NativeLoginId::parse(id)?),
+        _ => return Err(CodexAuthError::Protocol),
+    };
     let success = params
         .get("success")
         .and_then(Value::as_bool)
@@ -403,7 +407,7 @@ fn parse_updated(params: &Map<String, Value>) -> Result<CodexAuthNotification, C
         return Err(CodexAuthError::Protocol);
     }
     let signed_in = match params.get("authMode") {
-        Some(Value::String(mode)) if mode == "chatgpt" => true,
+        Some(Value::String(mode)) if mode == "chatgpt" || mode == "apikey" => true,
         Some(Value::Null) => false,
         _ => return Err(CodexAuthError::Protocol),
     };

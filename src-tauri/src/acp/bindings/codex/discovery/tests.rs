@@ -170,8 +170,19 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
     let model_request: Value = serde_json::from_slice(model_request.payload()).unwrap();
     assert_eq!(model_request["method"], "model/list");
 
+    let mut api_key = protocol();
+    let account_id = advance_to_account(&mut api_key);
+    assert_eq!(
+        api_key
+            .accept_account(&frame(json!({"id":account_id,"result":{
+                "account":{"type":"apiKey"},"requiresOpenaiAuth":true
+            }})))
+            .unwrap(),
+        CodexAccountSnapshot::ApiKey
+    );
+
     for rejected in [
-        json!({"account":{"type":"apiKey"},"requiresOpenaiAuth":true}),
+        json!({"account":{"type":"apiKey","key":"never-retain"},"requiresOpenaiAuth":true}),
         json!({"account":{"type":"amazonBedrock"},"requiresOpenaiAuth":true}),
     ] {
         let mut candidate = protocol();

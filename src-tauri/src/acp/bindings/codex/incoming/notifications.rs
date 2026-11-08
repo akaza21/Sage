@@ -53,9 +53,11 @@ pub(super) fn notification<M: ResourceMapper>(
         // The frame is bounded before reaching this matcher and its payload is
         // discarded, so a known account update cannot become a transcript
         // artifact or alter a turn/session state.
-        "account/updated" | "account/rateLimits/updated" | "skills/changed" => {
-            Ok(IngressDisposition::IgnoredLate)
-        }
+        "account/updated" | "skills/changed" => Ok(IngressDisposition::IgnoredLate),
+        "account/rateLimits/updated" => Ok(super::rate_limits::usage_snapshot(params).map_or(
+            IngressDisposition::IgnoredLate,
+            IngressDisposition::UsageUpdated,
+        )),
         "thread/status/changed" => {
             let thread = text(params, "threadId", 512)?;
             let status = params

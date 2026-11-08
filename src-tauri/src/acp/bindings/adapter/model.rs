@@ -155,6 +155,13 @@ pub(crate) trait HarnessAdapter {
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         None
     }
+    /// The usage-limit snapshot this binding keeps; `None` when it reports none.
+    fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
+        None
+    }
+    fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
     fn mutate_goal(
         &mut self,
         _action: crate::acp::goal::GoalAction,

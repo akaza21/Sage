@@ -29,6 +29,15 @@ pub(super) fn response(
             },
         );
     }
+    if kind == RequestKind::RateLimitsRead {
+        adapter.take_pending(id);
+        return Ok(IngressDisposition::UsageRead(
+            object
+                .get("result")
+                .and_then(Value::as_object)
+                .and_then(super::rate_limits::usage_snapshot),
+        ));
+    }
     if let Some(error) = object.get("error") {
         if matches!(
             kind,
@@ -207,7 +216,8 @@ pub(super) fn response(
         | RequestKind::ChildRead
         | RequestKind::Fork
         | RequestKind::ForkRelease
-        | RequestKind::ForkDelete => {
+        | RequestKind::ForkDelete
+        | RequestKind::RateLimitsRead => {
             unreachable!("handled above")
         }
     };

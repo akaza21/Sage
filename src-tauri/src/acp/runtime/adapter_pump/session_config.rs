@@ -31,13 +31,12 @@ pub(crate) fn write_deferred_fork_release<A: HarnessAdapter>(
     let _ = adapter.resolve_egress(egress.into_token(), resolution);
 }
 
-pub(crate) fn write_goal<A: HarnessAdapter>(
+fn write_egress<A: HarnessAdapter>(
     adapter: &mut A,
     transport: &mut impl EgressTransport,
-    action: GoalAction,
+    egress: AdapterEgress,
 ) -> Result<(), crate::acp::runtime::HostError> {
     use crate::acp::runtime::HostError;
-    let egress = adapter.mutate_goal(action).map_err(|_| HostError::Intent)?;
     let outcome = transport.write(egress.frame());
     let resolution = EgressResolution::from(outcome);
     adapter
@@ -48,6 +47,26 @@ pub(crate) fn write_goal<A: HarnessAdapter>(
         FrameWriteOutcome::ZeroByteFailure => Err(HostError::Unavailable),
         FrameWriteOutcome::DeliveryUnknown { .. } => Err(HostError::DeliveryUnknown),
     }
+}
+
+pub(crate) fn write_usage_read<A: HarnessAdapter>(
+    adapter: &mut A,
+    transport: &mut impl EgressTransport,
+) -> Result<(), crate::acp::runtime::HostError> {
+    let egress = adapter
+        .read_usage()
+        .map_err(|_| crate::acp::runtime::HostError::Intent)?;
+    write_egress(adapter, transport, egress)
+}
+
+pub(crate) fn write_goal<A: HarnessAdapter>(
+    adapter: &mut A,
+    transport: &mut impl EgressTransport,
+    action: GoalAction,
+) -> Result<(), crate::acp::runtime::HostError> {
+    use crate::acp::runtime::HostError;
+    let egress = adapter.mutate_goal(action).map_err(|_| HostError::Intent)?;
+    write_egress(adapter, transport, egress)
 }
 
 /// Writes the native fork request. The fork response can carry the whole
@@ -62,16 +81,7 @@ pub(crate) fn write_fork<A: HarnessAdapter>(
         AdapterRuntimeError::BatchCount => HostError::Capacity,
         _ => HostError::Intent,
     })?;
-    let outcome = transport.write(egress.frame());
-    let resolution = EgressResolution::from(outcome);
-    adapter
-        .resolve_egress(egress.into_token(), resolution)
-        .map_err(|_| HostError::RecoveryRequired)?;
-    match outcome {
-        FrameWriteOutcome::Complete => Ok(()),
-        FrameWriteOutcome::ZeroByteFailure => Err(HostError::Unavailable),
-        FrameWriteOutcome::DeliveryUnknown { .. } => Err(HostError::DeliveryUnknown),
-    }
+    write_egress(adapter, transport, egress)
 }
 
 /// Writes the release of a fork this runtime created. A harness that holds
@@ -89,16 +99,7 @@ pub(crate) fn write_release_fork<A: HarnessAdapter>(
     else {
         return Ok(());
     };
-    let outcome = transport.write(egress.frame());
-    let resolution = EgressResolution::from(outcome);
-    adapter
-        .resolve_egress(egress.into_token(), resolution)
-        .map_err(|_| HostError::RecoveryRequired)?;
-    match outcome {
-        FrameWriteOutcome::Complete => Ok(()),
-        FrameWriteOutcome::ZeroByteFailure => Err(HostError::Unavailable),
-        FrameWriteOutcome::DeliveryUnknown { .. } => Err(HostError::DeliveryUnknown),
-    }
+    write_egress(adapter, transport, egress)
 }
 
 pub(crate) fn write_child<A: HarnessAdapter>(
@@ -111,16 +112,7 @@ pub(crate) fn write_child<A: HarnessAdapter>(
     let egress = adapter
         .read_child(child_thread_id, parent_thread_id)
         .map_err(|_| HostError::Intent)?;
-    let outcome = transport.write(egress.frame());
-    let resolution = EgressResolution::from(outcome);
-    adapter
-        .resolve_egress(egress.into_token(), resolution)
-        .map_err(|_| HostError::RecoveryRequired)?;
-    match outcome {
-        FrameWriteOutcome::Complete => Ok(()),
-        FrameWriteOutcome::ZeroByteFailure => Err(HostError::Unavailable),
-        FrameWriteOutcome::DeliveryUnknown { .. } => Err(HostError::DeliveryUnknown),
-    }
+    write_egress(adapter, transport, egress)
 }
 
 pub(crate) fn write_config<A: HarnessAdapter>(
@@ -132,16 +124,7 @@ pub(crate) fn write_config<A: HarnessAdapter>(
     let Some(egress) = adapter.configure(intent).map_err(|_| HostError::Intent)? else {
         return Ok(());
     };
-    let outcome = transport.write(egress.frame());
-    let resolution = EgressResolution::from(outcome);
-    adapter
-        .resolve_egress(egress.into_token(), resolution)
-        .map_err(|_| HostError::RecoveryRequired)?;
-    match outcome {
-        FrameWriteOutcome::Complete => Ok(()),
-        FrameWriteOutcome::ZeroByteFailure => Err(HostError::Unavailable),
-        FrameWriteOutcome::DeliveryUnknown { .. } => Err(HostError::DeliveryUnknown),
-    }
+    write_egress(adapter, transport, egress)
 }
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
@@ -179,6 +162,14 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         self.ensure_live()
             .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
         write_goal(&mut self.adapter, transport, action)
+    }
+    pub(crate) fn write_usage_read(
+        &mut self,
+        transport: &mut impl EgressTransport,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        self.ensure_live()
+            .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
+        write_usage_read(&mut self.adapter, transport)
     }
     pub(crate) fn write_child(
         &mut self,
@@ -231,6 +222,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         action: GoalAction,
     ) -> Result<(), crate::acp::runtime::HostError> {
         write_goal(&mut self.adapter, transport, action)
+    }
+    pub(crate) fn write_usage_read(
+        &mut self,
+        transport: &mut impl EgressTransport,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        write_usage_read(&mut self.adapter, transport)
     }
     pub(crate) fn write_child(
         &mut self,

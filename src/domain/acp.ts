@@ -177,13 +177,16 @@ export interface CodexDiscoveryModel {
   isDefault: boolean;
 }
 
+export type CodexAccount =
+  "managedChatgpt" | "apiKey" | "providerManaged" | "signedOut";
+
 export interface CodexDiscoveryResponse {
   projectId: SageProjectId;
   projectGeneration: ProjectGeneration;
   rootId: string;
   bindingId: CuratedBindingId;
   runtimeEpoch: RuntimeEpoch;
-  account: "managedChatgpt" | "providerManaged" | "signedOut";
+  account: CodexAccount;
   models: readonly CodexDiscoveryModel[];
   defaultModelId: CuratedModelId | null;
 }

@@ -4,6 +4,7 @@ import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { errorMessage } from "../../domain/errors";
 import { harnessAvailability } from "../chat/harnessAvailability";
 import { LazyHarnessNotice } from "../chat/lazyParts";
+import { CodexAccountSettings } from "./CodexAccountSettings";
 import { SettingsRow } from "./SettingsRow";
 
 export function AgentHarnessSettings() {
@@ -97,6 +98,11 @@ export function AgentHarnessSettings() {
                   {selected ? "Check models and sign-in" : "Select and check"}
                 </button>
               </SettingsRow>
+              {selected &&
+              harness.accountModelDiscovery &&
+              !availability.disabledReason ? (
+                <CodexAccountSettings disabled={disabled || !projectId} />
+              ) : null}
               {harness.signIn && !availability.disabledReason ? (
                 <p>
                   Run <code>{harness.signIn.command}</code> in a terminal.{" "}

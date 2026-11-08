@@ -82,6 +82,7 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/chat/acp/ChatMarkdown.tsx",
   "src/features/files/FileMarkdownPreview.tsx",
   "src/features/chat/ComposerUsageContext.tsx",
+  "src/features/chat/ComposerUsageLimits.tsx",
   "src/features/chat/composerDictationRuntime.ts",
   "src/workbench/DirtyTabDialog.tsx",
   "src/ports/editorWatchSession.ts",

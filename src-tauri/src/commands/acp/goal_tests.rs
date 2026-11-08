@@ -59,7 +59,8 @@ impl RuntimeEngine for GoalEngine {
                 }
                 crate::acp::goal::NativeRpcRequest::ChildThreadRead { .. }
                 | crate::acp::goal::NativeRpcRequest::ForkSession
-                | crate::acp::goal::NativeRpcRequest::ReleaseFork { .. } => {
+                | crate::acp::goal::NativeRpcRequest::ReleaseFork { .. }
+                | crate::acp::goal::NativeRpcRequest::UsageRead => {
                     return Err(HostError::Intent);
                 }
             };

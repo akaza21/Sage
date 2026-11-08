@@ -82,6 +82,7 @@ mod runtime_slot;
 mod session_config;
 mod session_error;
 mod slash_commands;
+mod usage;
 pub(crate) use session_error::{CodexSessionError, SessionDispatchError};
 mod shutdown;
 

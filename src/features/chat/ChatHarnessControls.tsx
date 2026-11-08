@@ -2,7 +2,7 @@ import { IconButton } from "../../ui/IconButton";
 import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 import { Plus, Settings } from "../../ui/leanIcons";
 
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import type { ChatUsage } from "./acp/chatUsage";
 import { ComposerContext } from "./ComposerContext";
 
@@ -43,6 +43,7 @@ import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 
 interface Props {
   contextUsage?: ChatUsage | null;
+  usageRequest?: ComponentProps<typeof ComposerContext>["usageRequest"];
   accessBindingId?: string | null;
   imageAction?: { disabled: boolean; onChoose: () => void };
   onOpenGoal?: () => void;
@@ -74,6 +75,7 @@ interface Props {
 
 export function ChatHarnessControls({
   contextUsage,
+  usageRequest,
   accessBindingId,
   imageAction,
   onOpenGoal,
@@ -400,9 +402,11 @@ export function ChatHarnessControls({
           </span>
         ) : null}
       </div>
-      {contextUsage && (
-        <ComposerContext usage={contextUsage} visible={contextVisible} />
-      )}
+      <ComposerContext
+        usage={contextUsage ?? null}
+        usageRequest={usageRequest}
+        visible={contextVisible}
+      />
     </>
   );
 }

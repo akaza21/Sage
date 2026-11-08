@@ -139,6 +139,9 @@ impl Lane<'_> {
         prepared
             .runtime
             .attach_goal(abort.owner.clone(), Arc::clone(&self.runtime.goal));
+        prepared
+            .runtime
+            .attach_usage(abort.owner.clone(), Arc::clone(&self.runtime.usage));
         let pump = match ActivationPump::new_retained(
             prepared.runtime,
             CoordinatorActivationJournal::new(session_lease),

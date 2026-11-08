@@ -54,6 +54,7 @@ pub(crate) struct CodexRuntime {
     next_model_cursor: Option<crate::acp::intent::PageCursor>,
     model_pages_seen: u64,
     session_config: Option<crate::acp::session_config::SessionConfig>,
+    usage: std::sync::Arc<crate::acp::usage::UsageCell>,
 }
 
 impl CodexRuntime {
@@ -156,6 +157,21 @@ impl CodexRuntime {
             }
             IngressDisposition::GoalMutationApplied => {
                 self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::GoalApplied);
+                one(AdapterEvent::IgnoredLate)
+            }
+            IngressDisposition::UsageUpdated(snapshot) => {
+                self.usage.replace(snapshot);
+                one(AdapterEvent::IgnoredLate)
+            }
+            IngressDisposition::UsageRead(snapshot) => {
+                use crate::acp::goal::NativeRpcReply;
+                self.native_rpc_reply = Some(match snapshot {
+                    Some(snapshot) => {
+                        self.usage.replace(snapshot);
+                        NativeRpcReply::UsageRead
+                    }
+                    None => NativeRpcReply::Rejected,
+                });
                 one(AdapterEvent::IgnoredLate)
             }
             IngressDisposition::DuplicateTerminal => one(AdapterEvent::IgnoredDuplicate),

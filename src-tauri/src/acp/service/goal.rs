@@ -117,7 +117,8 @@ fn goal_reply(
             | NativeRpcReply::TooLarge
             | NativeRpcReply::Rejected
             | NativeRpcReply::Forked(_)
-            | NativeRpcReply::Released,
+            | NativeRpcReply::Released
+            | NativeRpcReply::UsageRead,
         ) => Err(crate::acp::runtime::HostError::RecoveryRequired),
         Err(error) => Err(error),
     }

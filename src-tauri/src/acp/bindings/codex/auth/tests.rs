@@ -96,7 +96,7 @@ fn completion_and_account_updates_project_only_sanitized_state() {
             }
         }))),
         Ok(CodexAuthNotification::LoginCompleted {
-            login_id: NativeLoginId::parse(LOGIN_ID).unwrap(),
+            login_id: Some(NativeLoginId::parse(LOGIN_ID).unwrap()),
             success: true,
         })
     );

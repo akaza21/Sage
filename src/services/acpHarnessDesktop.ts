@@ -73,9 +73,9 @@ export const acpHarnessDesktop = {
     return safe;
   },
 };
-async function invokeCodexAuth(
+export async function invokeCodexAuth(
   command: string,
-  request: CodexAuthScope | (CodexAuthScope & { consent: true }),
+  request: CodexAuthScope & { consent?: true; apiKey?: string },
 ): Promise<CodexAuthResponse> {
   const response = await invokeAcp<unknown, typeof request>(command, request);
   const safe = safeCodexAuth(response);

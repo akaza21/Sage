@@ -72,6 +72,7 @@ export function ChatComposerRegion({
   onRetryLoad,
   project,
   usage,
+  usageRequest,
   goal,
   onSubmit,
   onTextChange,
@@ -311,6 +312,7 @@ export function ChatComposerRegion({
               onSelectModel={onSelectModel}
               onModeRemoved={() => composerRef.current?.focus()}
               contextUsage={usage}
+              usageRequest={usageRequest}
             />
           )}
           {!composerDisabled ? (

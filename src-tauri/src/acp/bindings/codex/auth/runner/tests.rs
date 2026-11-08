@@ -112,6 +112,57 @@ fn response_then_paired_notifications_completes_signed_in() {
 }
 
 #[test]
+fn api_key_login_sends_the_key_once_and_accepts_racing_account_notices() {
+    let key = NativeApiKey::try_from("sk-test-secret".to_owned()).unwrap();
+    let mut script = transport([
+        initialize(1),
+        json_frame(json!({"method":"account/login/completed","params":{
+            "loginId":null,"success":true,"error":null
+        }})),
+        json_frame(
+            json!({"method":"account/updated","params":{"authMode":"apikey","planType":null}}),
+        ),
+        json_frame(json!({"id":2,"result":{"type":"apiKey"}})),
+    ]);
+    assert_eq!(
+        run_api_key_protocol(
+            &mut protocol(),
+            &mut script,
+            &key,
+            73,
+            CodexAuthDeadline::test()
+        ),
+        Ok(CodexAuthOutcome::SignedIn)
+    );
+    assert_settled(&script, false);
+    assert_eq!(
+        script.writes[2],
+        json!({"id":2,"method":"account/login/start","params":{"type":"apiKey","apiKey":"sk-test-secret"}})
+    );
+    let carrying = script
+        .writes
+        .iter()
+        .filter(|write| write.to_string().contains("sk-test-secret"))
+        .count();
+    assert_eq!(carrying, 1);
+
+    let mut refused = transport([
+        initialize(1),
+        json_frame(json!({"id":2,"result":{"type":"chatgpt"}})),
+    ]);
+    assert_eq!(
+        run_api_key_protocol(
+            &mut protocol(),
+            &mut refused,
+            &key,
+            73,
+            CodexAuthDeadline::test()
+        ),
+        Err(CodexDiscoveryRunError::Protocol)
+    );
+}
+
+#[test]
 fn cancel_response_and_failed_completion_may_race_in_either_order() {
     for tail in [
         vec![cancelled(4), completed(LOGIN, false)],

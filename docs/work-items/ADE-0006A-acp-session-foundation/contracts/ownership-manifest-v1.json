@@ -297,6 +297,7 @@
         "src-tauri/src/acp/session_config/mod.rs",
         "src-tauri/src/acp/session_config/overlay.rs",
         "src-tauri/src/acp/session_config/tests.rs",
+        "src-tauri/src/acp/usage.rs",
         "src-tauri/src/side_chat.rs",
         "src-tauri/src/side_chat_storage.rs"
       ]

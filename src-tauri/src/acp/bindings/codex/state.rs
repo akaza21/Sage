@@ -241,6 +241,22 @@ impl CodexAdapter {
         Ok(())
     }
 
+    pub(crate) fn rate_limits_read(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
+        if self.negotiated.is_none() {
+            return Err(AdapterError::CapabilityUnavailable);
+        }
+        if self.rate_limits_read_pending() {
+            return Err(AdapterError::TurnIntentConflict);
+        }
+        self.reserve(OutgoingRequest::rate_limits_read(id)?)
+    }
+
+    pub(crate) fn rate_limits_read_pending(&self) -> bool {
+        self.pending
+            .iter()
+            .any(|(_, kind)| *kind == RequestKind::RateLimitsRead)
+    }
+
     pub(crate) fn pending_kind(&self, id: u64) -> Option<RequestKind> {
         self.pending
             .iter()
