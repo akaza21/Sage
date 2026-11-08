@@ -38,6 +38,7 @@ impl BindingRecord {
             Admission::CustomAcp(admission) => {
                 admission.unavailable().map(|reason| reason.reason())
             }
+            Admission::ClaudeSdk(admission) => admission.unavailable().map(Into::into),
             Admission::OpenCode(admission) => admission.unavailable().map(|reason| match reason {
                 OpenCode::DiscoveryPending => HarnessUnavailableReason::AdmissionIncomplete,
                 OpenCode::Absent => HarnessUnavailableReason::CandidateInvalid,

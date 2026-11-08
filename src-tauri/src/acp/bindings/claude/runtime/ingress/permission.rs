@@ -87,6 +87,44 @@ impl ClaudeRuntime {
         AdapterBatch::new(published, Vec::new())
     }
 
+    /// The harness withdrew a request the user has not answered: its card
+    /// is cancelled, so a turn may end without it.
+    pub(crate) fn withdraw_permission(
+        &mut self,
+        wire: &Value,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        let (request_id, _, _) = permission_identity(Some(wire))?;
+        let turn_open = self
+            .active
+            .as_ref()
+            .is_some_and(|active| active.turn.is_some());
+        let Some(record) = self
+            .denials
+            .get_mut(request_id.as_str())
+            .filter(|record| turn_open && record.state == DenialState::Pending)
+        else {
+            return AdapterBatch::new(vec![SharedEvent::Absorbed], Vec::new());
+        };
+        let active = self.active.as_mut().ok_or(AdapterRuntimeError::Frame)?;
+        let event = active
+            .translator
+            .permission_cancel_committed(&record.translator_id)
+            .map_err(map_translation)?;
+        record.reply = PermissionReply::Cancelled;
+        record.state = DenialState::Written;
+        if matches!(event, AdapterEvent::Item { .. }) {
+            self.deferred.push(event);
+        }
+        let mut published = self.drained_deferred()?;
+        let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
+        published.push(SharedEvent::PermissionResolved {
+            turn_id: self.turn_identity(active)?,
+            external_request_id: request_id,
+            state: crate::acp::lifecycle::ServerRequestState::Cancelled,
+        });
+        AdapterBatch::new(published, Vec::new())
+    }
+
     fn drained_deferred(&mut self) -> Result<Vec<SharedEvent>, AdapterRuntimeError> {
         let deferred = std::mem::take(&mut self.deferred);
         let mut published = Vec::with_capacity(deferred.len().saturating_add(2));

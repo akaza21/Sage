@@ -93,3 +93,25 @@ fn a_linked_session_resumes_the_earlier_thread() {
         Ok(ActivationMode::New { .. })
     ));
 }
+
+#[test]
+fn claude_sdk_chats_resume_after_a_claude_code_update() {
+    let session = DurableSession {
+        binding_id: "claude-code-sdk".into(),
+        binding_digest: "digest-of-2.1.319".into(),
+        harness_version: Some("2.1.319".into()),
+        model_id: None,
+        external_session_id: Some("0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90".into()),
+        resumed_thread: None,
+        state: "ready".into(),
+        residency: "cold".into(),
+    };
+    assert!(
+        validate_session_identity(&session, "claude-code-sdk", "digest-of-2.1.320", "2.1.320")
+            .is_ok()
+    );
+    assert!(
+        validate_session_identity(&session, "claude-agent-acp", "digest-of-2.1.320", "2.1.320")
+            .is_err()
+    );
+}

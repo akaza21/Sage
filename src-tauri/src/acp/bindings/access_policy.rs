@@ -112,6 +112,11 @@ pub(crate) fn admitted_modes(
             "Read-only",
             "Read workspace files; no writes or network.",
         )],
+        "claude-code-sdk" => &[(
+            Ask,
+            "Ask each time",
+            "Review each permission request; no filesystem sandbox.",
+        )],
         "pi-rpc" if characterised => match pi_bridge {
             Ok(_) => &[
                 (
@@ -268,6 +273,7 @@ pub(crate) fn lists_mode(
         }
         "opencode-acp" => matches!(mode, ReadOnly | Ask | WorkspaceWrite),
         "pi-rpc" => matches!(mode, ReadOnly | WorkspaceWrite),
+        "claude-code-sdk" => mode == Ask,
         _ => false,
     }
 }

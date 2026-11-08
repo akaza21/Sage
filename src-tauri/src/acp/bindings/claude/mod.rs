@@ -10,6 +10,7 @@ mod auth;
 mod capabilities;
 mod manifest;
 mod runtime;
+pub(crate) mod sdk;
 
 pub(crate) use crate::acp::bindings::standard_acp::{sanitize, translator, wire};
 

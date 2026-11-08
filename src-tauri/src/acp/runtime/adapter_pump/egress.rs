@@ -67,7 +67,18 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .iter()
             .find(|pending| &pending.intent.request_id == request_id)
         else {
-            return Err(AdapterPumpError::Intent);
+            // The harness withdrew it while the decision was on its way.
+            let withdrawn = self
+                .withdrawn_permissions
+                .iter()
+                .position(|id| id == request_id);
+            return match withdrawn {
+                Some(index) => {
+                    self.withdrawn_permissions.remove(index);
+                    Ok(())
+                }
+                None => Err(AdapterPumpError::Intent),
+            };
         };
         if pending.settles_as.is_some() {
             return Err(AdapterPumpError::Intent);

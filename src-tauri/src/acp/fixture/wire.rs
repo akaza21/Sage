@@ -27,12 +27,16 @@ mod parity_tests;
 #[cfg(test)]
 pub(crate) use child_opened_tests::child_opened_wire_for_test;
 #[cfg(test)]
+pub(crate) use claude_sdk::claude_sdk_wire_for_test;
+#[cfg(test)]
 pub(crate) use pi_bridge::{pi_journey_steps_for_test, run_pi_step_for_test};
 #[cfg(test)]
 pub(crate) use user_input::codex_user_input_wire_for_test;
 
 #[path = "wire_acp.rs"]
 mod acp;
+#[path = "wire_claude_sdk.rs"]
+mod claude_sdk;
 #[path = "wire_codex.rs"]
 mod codex;
 #[path = "wire_pi.rs"]
@@ -150,6 +154,9 @@ fn await_client_kind(
     if kind == "piBridgeTool" {
         return pi_bridge::tool(step, input, output, state);
     }
+    if kind.starts_with("claudeSdk") {
+        return claude_sdk::await_request(input, output, state, kind);
+    }
     if kind.starts_with("pi") {
         return pi::await_request(input, output, state, kind);
     }
@@ -233,6 +240,9 @@ fn emit_known(
     let shape = field_str(step, "shape")?;
     if shape == "piNative" {
         return pi::emit(step, state, output);
+    }
+    if shape == "claudeSdkNative" {
+        return claude_sdk::emit(step, state, output);
     }
     if shape.starts_with("acp") {
         return acp::emit(step, state, output);

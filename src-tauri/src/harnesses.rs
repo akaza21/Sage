@@ -207,7 +207,7 @@ impl HarnessCatalog {
             definition(
                 "claude-code",
                 "Claude Code",
-                "Launches the discovered local Claude ACP adapter through Node.",
+                "Launches the discovered local Claude Code CLI over its Agent SDK protocol.",
                 self.install_state("claude-code").as_str(),
                 "builtIn",
                 self.registered_protocol("claude-code"),

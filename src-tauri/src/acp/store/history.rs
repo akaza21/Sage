@@ -280,7 +280,8 @@ fn permission_requests_supported(
             ) && capabilities.active_turn_steer
                 && crate::acp::bindings::access_policy::CODEX_ASK_NATIVE_APPROVAL_PROVEN
         }
-        "claude-agent-acp" | "cursor-agent-acp" | "opencode-acp" | "gemini-cli-acp" => true,
+        "claude-agent-acp" | "claude-code-sdk" | "cursor-agent-acp" | "opencode-acp"
+        | "gemini-cli-acp" => true,
         _ => false,
     }
 }

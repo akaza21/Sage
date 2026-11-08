@@ -25,6 +25,10 @@ pub(crate) trait RuntimeFactory {
 }
 
 pub(crate) trait LaunchableRuntime: HarnessAdapter + Send {
+    /// Learns which session the launch opens, before `launch_spec`. A harness
+    /// that names its session on the command line needs it; one that opens
+    /// sessions over its protocol ignores it.
+    fn bind_activation(&mut self, _mode: &crate::acp::runtime::ActivationMode) {}
     fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError>;
 }
 
@@ -89,6 +93,10 @@ impl NativeRuntime {
         channel: std::sync::Arc<crate::acp::goal::GoalChannel>,
     ) {
         self.2 = Some((owner, channel));
+    }
+
+    pub(crate) fn bind_activation(&mut self, mode: &crate::acp::runtime::ActivationMode) {
+        self.0.bind_activation(mode);
     }
 
     pub(crate) fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {
@@ -169,6 +177,9 @@ impl HarnessAdapter for NativeRuntime {
     }
     fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
         self.0.accept_oversized_response(id)
+    }
+    fn skips_oversize_frames(&self) -> bool {
+        self.0.skips_oversize_frames()
     }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.0.take_native_rpc_reply()

@@ -156,6 +156,16 @@ impl ClaudeRuntime {
         ))
     }
 
+    /// The session state machine alone, for a binding that owns the launch
+    /// and speaks to Claude Code itself.
+    pub(crate) fn for_session(
+        binding_digest: [u8; 32],
+        runtime_epoch: RuntimeEpoch,
+        session_id: SageAgentSessionId,
+    ) -> Self {
+        Self::new(None, binding_digest, runtime_epoch, session_id)
+    }
+
     #[cfg(test)]
     pub(super) fn fixture() -> Self {
         Self::new(

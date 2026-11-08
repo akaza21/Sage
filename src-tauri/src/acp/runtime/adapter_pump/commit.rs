@@ -26,12 +26,26 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 new_permissions.push((intent.clone(), auto_resolve_at(intent, *now_millis)));
             }
         }
+        // Requests the harness settled on its own no longer hold the turn.
+        let resolved: Vec<SageServerRequestId> = durable
+            .iter()
+            .filter_map(|event| match event {
+                DurableAdapterEvent::PermissionResolved { request_id, .. } => {
+                    Some(request_id.clone())
+                }
+                _ => None,
+            })
+            .collect();
         let terminal = durable.iter().rev().find_map(|event| match event {
             DurableAdapterEvent::Turn { state, .. } if state.is_terminal() => Some(*state),
             _ => None,
         });
         if terminal.is_some()
-            && (!self.pending_permissions.is_empty() || !new_permissions.is_empty())
+            && (self
+                .pending_permissions
+                .iter()
+                .any(|pending| !withdrawn(pending, &resolved))
+                || !new_permissions.is_empty())
         {
             self.pending.clear();
             self.teardown = true;
@@ -62,6 +76,17 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             return Err(AdapterPumpError::TeardownRequired);
         }
 
+        for pending in &self.pending_permissions {
+            if withdrawn(pending, &resolved) {
+                if self.withdrawn_permissions.len() >= permission_limit {
+                    self.withdrawn_permissions.pop_front();
+                }
+                self.withdrawn_permissions
+                    .push_back(pending.intent.request_id.clone());
+            }
+        }
+        self.pending_permissions
+            .retain(|pending| !withdrawn(pending, &resolved));
         let permission_wait_path = !new_permissions.is_empty();
         let turn_notice = TurnNotice::possible_if(
             permission_wait_path || terminal.is_some_and(TurnState::is_notified_outcome),
@@ -171,4 +196,10 @@ fn auto_resolve_at(intent: &PermissionIntent, received_millis: i64) -> Option<i6
     };
     let window = i64::try_from(request.auto_resolution_window_ms()?).ok()?;
     Some(received_millis.saturating_add(window))
+}
+
+/// The harness settled a request the user had not answered; an answered one
+/// still waits for its reply to be written.
+fn withdrawn(pending: &PendingPermission, resolved: &[SageServerRequestId]) -> bool {
+    pending.settles_as.is_none() && resolved.contains(&pending.intent.request_id)
 }
