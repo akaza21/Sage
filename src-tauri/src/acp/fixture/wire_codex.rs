@@ -245,6 +245,41 @@ pub(super) fn emit_notification(
     emit_json(output, state, &notification)
 }
 
+/// Most messages one `codexTranscript` step may write: enough to fill more
+/// than one history page (256 Items) without flooding the driver.
+pub(super) const TRANSCRIPT_MESSAGES: u64 = 600;
+
+/// Writes `count` completed assistant messages into the current turn, so a
+/// journey can open on a long transcript before it streams.
+pub(super) fn emit_transcript(
+    count: u64,
+    state: &mut WireState,
+    output: &mut impl Write,
+) -> Result<(), FixtureError> {
+    if count == 0 || count > TRANSCRIPT_MESSAGES {
+        return Err(FixtureError::InvalidArguments);
+    }
+    let turn_id = state
+        .current_turn_id
+        .clone()
+        .ok_or(FixtureError::InvalidArguments)?;
+    for index in 1..=count {
+        let item = json!({
+            "type": "agentMessage",
+            "id": format!("fixture-transcript-{index}"),
+            "text": format!(
+                "Earlier message {index} of {count}. It is synthetic history, there so the chat has more than one page to scroll back through."
+            ),
+        });
+        emit_json(
+            output,
+            state,
+            &json!({"jsonrpc":"2.0","method":"item/completed","params":{"threadId":THREAD_ID,"turnId":turn_id,"item":item}}),
+        )?;
+    }
+    Ok(())
+}
+
 pub(super) fn read_json_line(
     input: &mut impl Read,
     state: &WireState,

@@ -237,6 +237,9 @@ fn emit_known(
         "codexItemCompleted" => return codex::emit_notification("itemCompleted", state, output),
         "codexCompleted" => return codex::emit_notification("completed", state, output),
         "codexInterrupted" => return codex::emit_notification("interrupted", state, output),
+        "codexTranscript" => {
+            return codex::emit_transcript(field_u64(step, "count")?, state, output);
+        }
         _ => {}
     }
     match shape {

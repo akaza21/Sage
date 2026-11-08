@@ -22,6 +22,7 @@ import {
   normalizeProjectionPage,
   retainUnchangedTurns,
 } from "./acpProjectionMerge";
+import { errorField, loadSlot, rejectedRevision } from "./acpProjectionLoads";
 
 export const MAX_RETAINED_TURNS = 100;
 export const MAX_RETAINED_ITEMS = 1_000;
@@ -229,14 +230,6 @@ const initialState = {
   | "loadNonce"
 >;
 
-function loadSlot(intent: AcpPageLoadIntent): "activeLoad" | "historyLoad" {
-  return intent.cursor ? "historyLoad" : "activeLoad";
-}
-
-function errorField(intent: AcpPageLoadIntent): "error" | "historyError" {
-  return intent.cursor ? "historyError" : "error";
-}
-
 export function createAcpProjectionStore() {
   return create<AcpProjectionState>((set, get) => ({
     ...initialState,
@@ -288,35 +281,10 @@ export function createAcpProjectionStore() {
         return "ignoredStaleIntent";
       }
 
-      const currentRevision = state.page?.projectionRevision ?? null;
-      if (currentRevision) {
-        const comparison = compareDecimalRevision(
-          page.projectionRevision,
-          currentRevision,
-        );
-        if (comparison === null) {
-          set(settled);
-          return "ignoredInvalidRevision";
-        }
-        if (comparison < 0) {
-          set(settled);
-          return "ignoredStaleRevision";
-        }
-      }
-
-      if (intent.cursor && intent.expectedProjectionRevision) {
-        const comparison = compareDecimalRevision(
-          page.projectionRevision,
-          intent.expectedProjectionRevision,
-        );
-        if (comparison === null) {
-          set(settled);
-          return "ignoredInvalidRevision";
-        }
-        if (comparison !== 0) {
-          set(settled);
-          return "ignoredStaleRevision";
-        }
+      const rejected = rejectedRevision(state.page, intent, page);
+      if (rejected) {
+        set(settled);
+        return rejected;
       }
 
       if (!sameRevisionOwner(state.page, page)) {
