@@ -53,6 +53,10 @@ pub(super) struct PhysicalStorage {
 }
 
 impl PhysicalStorage {
+    pub(super) fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
+    }
+
     pub(super) fn new(path: &Path, limits: StorageLimits) -> Self {
         Self {
             path: (path != Path::new(":memory:")).then(|| path.to_owned()),

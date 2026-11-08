@@ -282,7 +282,8 @@ pub fn run() {
                 tauri::WebviewWindowBuilder::from_config(app.handle(), &main_window_config)?
                     .on_page_load(move |window, payload| match payload.event() {
                         PageLoadEvent::Started => {
-                            let start = renderer_recreation.begin_start();
+                            let start = renderer_recreation
+                                .begin_start(&renderer_recreation_app.state::<AppState>());
                             let lifecycle = Arc::clone(&renderer_recreation);
                             let app = renderer_recreation_app.clone();
                             tauri::async_runtime::spawn_blocking(move || {

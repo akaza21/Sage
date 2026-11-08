@@ -6,6 +6,7 @@ use std::{
 use crate::acp::{
     contract::{SageChatId, SageProjectId},
     service::{
+        RendererRecreationUsage,
         renderer_recreation::RendererRecreationNativeSnapshot,
         renderer_recreation_orchestrator::{
             MainWindowRendererReload, RendererRecreationPairError,
@@ -26,6 +27,25 @@ const START_CAPTURE_WAIT: Duration = Duration::from_secs(30);
 pub(crate) struct RendererRecreationReloadLifecycle {
     slot: Mutex<Slot>,
     captured: Condvar,
+}
+
+/// A load start's number and the point in time its snapshot describes.
+pub(crate) struct StartPoint {
+    id: u64,
+    usage: RendererRecreationUsage,
+    reader: Option<rusqlite::Connection>,
+}
+
+struct SettleOnDrop<'a> {
+    lifecycle: &'a RendererRecreationReloadLifecycle,
+    id: u64,
+    before: Option<PendingReload>,
+}
+
+impl Drop for SettleOnDrop<'_> {
+    fn drop(&mut self) {
+        self.lifecycle.settle_start(self.id, self.before.take());
+    }
 }
 
 #[derive(Default)]
@@ -66,30 +86,58 @@ impl RendererRecreationReloadLifecycle {
         (pending.project_id == *project_id && pending.chat_id == *chat_id).then_some(pending.before)
     }
 
-    /// Called on the UI thread when a load starts: only drops the previous
-    /// snapshot and numbers this start, so the load is never held up.
-    pub(crate) fn begin_start(&self) -> u64 {
+    /// Called on the UI thread when a load starts. It numbers the start and
+    /// fixes the point in time the snapshot describes (a read transaction and
+    /// the live counters), so the reloaded page's own requests can never land
+    /// in "before"; the costly hashing waits for [`Self::capture_start`].
+    pub(crate) fn begin_start(&self, state: &AppState) -> StartPoint {
+        StartPoint {
+            id: self.number_start(),
+            usage: state.acp.renderer_recreation_usage(),
+            // Unpinned (in-memory store, or the reader failed to open) the
+            // capture reads the live store instead.
+            reader: state.database.pinned_reader().ok().flatten(),
+        }
+    }
+
+    fn number_start(&self) -> u64 {
         let mut slot = self.slot();
         slot.pending = None;
         slot.started += 1;
         slot.started
     }
 
-    /// Captures the snapshot for start `id`, off the UI thread. A newer start
+    /// Captures the snapshot for `start`, off the UI thread. A newer start
     /// supersedes it, and its own capture fills the slot instead.
-    pub(crate) fn capture_start(&self, state: &AppState, id: u64) {
-        let before = admitted_codex_page(state).and_then(|(project_id, chat_id)| {
-            let before = state
-                .acp
-                .renderer_recreation_native_snapshot(&project_id, &chat_id)
-                .ok()?;
+    pub(crate) fn capture_start(&self, state: &AppState, start: StartPoint) {
+        // Settles even if the capture panics, so a finish never waits it out.
+        let mut settle = SettleOnDrop {
+            lifecycle: self,
+            id: start.id,
+            before: None,
+        };
+        settle.before = admitted_codex_page(state).and_then(|(project_id, chat_id)| {
+            let before = match &start.reader {
+                Some(reader) => state.acp.renderer_recreation_snapshot_on(
+                    reader,
+                    &project_id,
+                    &chat_id,
+                    start.usage,
+                ),
+                None => state.acp.renderer_recreation_snapshot_on(
+                    &state.database.connection(),
+                    &project_id,
+                    &chat_id,
+                    start.usage,
+                ),
+            }
+            .ok()?;
             Some(PendingReload {
                 project_id,
                 chat_id,
                 before,
             })
         });
-        self.settle_start(id, before);
     }
 
     fn settle_start(&self, id: u64, before: Option<PendingReload>) {
@@ -108,6 +156,7 @@ impl RendererRecreationReloadLifecycle {
         window: &tauri::WebviewWindow,
     ) -> Option<Result<(), RendererRecreationPairError>> {
         if !self.wait_for_start_capture(START_CAPTURE_WAIT) {
+            tracing::warn!("ACP renderer recreation pairing skipped: start capture timed out");
             return None;
         }
         let (project_id, chat_id) = admitted_codex_page(state)?;
@@ -239,8 +288,8 @@ mod tests {
         let no_wait = std::time::Duration::ZERO;
         assert!(lifecycle.wait_for_start_capture(no_wait));
 
-        let older = lifecycle.begin_start();
-        let newer = lifecycle.begin_start();
+        let older = lifecycle.number_start();
+        let newer = lifecycle.number_start();
         assert!(!lifecycle.wait_for_start_capture(no_wait));
         // The older capture lands after the newer start: it is dropped, and
         // a finish still waits for the newer one.
