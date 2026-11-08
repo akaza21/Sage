@@ -3,45 +3,50 @@
 //! modes carries each. Claude reports its permission modes as session modes
 //! (the ACP adapter's `session/new` modes and its `mode` config option), and
 //! a mode is set through the binding's ordinary session-config path, so the
-//! rest of Sage only sees the harness-neutral `NativeAccessMode` rows. A
-//! binding over the Claude Agent SDK maps the same `permissionMode` values and
-//! can reuse this table.
+//! rest of Sage only sees the harness-neutral `NativeAccessMode` rows. The
+//! binding over Claude Code's SDK protocol reports the same permission modes
+//! through the same path, without the one it cannot select.
 
 use crate::acp::bindings::access_policy::NativeAccessMode;
 use crate::settings_store::SessionAccessMode;
 
-pub(crate) const CLAUDE_ACCESS_MODES: &[NativeAccessMode] = &[
-    NativeAccessMode {
-        id: SessionAccessMode::Ask,
-        label: "Ask each time",
-        description: "Review each permission request; no filesystem sandbox.",
-        session_mode: "default",
-    },
-    NativeAccessMode {
-        id: SessionAccessMode::AcceptEdits,
-        label: "Accept edits",
-        description: "File edits run without asking; other tools still ask. No filesystem sandbox.",
-        session_mode: "acceptEdits",
-    },
-    NativeAccessMode {
-        id: SessionAccessMode::Plan,
-        label: "Plan",
-        description: "Claude plans without changing files and asks before it starts.",
-        session_mode: "plan",
-    },
-    NativeAccessMode {
-        id: SessionAccessMode::Auto,
-        label: "Auto",
-        description: "Claude runs the actions it judges safe and asks about the rest. No filesystem sandbox.",
-        session_mode: "auto",
-    },
-    NativeAccessMode {
-        id: SessionAccessMode::FullAccess,
-        label: "Full access",
-        description: "Every edit, tool and command runs without asking, with no filesystem sandbox. This chat only.",
-        session_mode: "bypassPermissions",
-    },
-];
+const ASK: NativeAccessMode = NativeAccessMode {
+    id: SessionAccessMode::Ask,
+    label: "Ask each time",
+    description: "Review each permission request; no filesystem sandbox.",
+    session_mode: "default",
+};
+const ACCEPT_EDITS: NativeAccessMode = NativeAccessMode {
+    id: SessionAccessMode::AcceptEdits,
+    label: "Accept edits",
+    description: "File edits run without asking; other tools still ask. No filesystem sandbox.",
+    session_mode: "acceptEdits",
+};
+const PLAN: NativeAccessMode = NativeAccessMode {
+    id: SessionAccessMode::Plan,
+    label: "Plan",
+    description: "Claude plans without changing files and asks before it starts.",
+    session_mode: "plan",
+};
+const AUTO: NativeAccessMode = NativeAccessMode {
+    id: SessionAccessMode::Auto,
+    label: "Auto",
+    description: "Claude runs the actions it judges safe and asks about the rest. No filesystem sandbox.",
+    session_mode: "auto",
+};
+const FULL_ACCESS: NativeAccessMode = NativeAccessMode {
+    id: SessionAccessMode::FullAccess,
+    label: "Full access",
+    description: "Every edit, tool and command runs without asking, with no filesystem sandbox. This chat only.",
+    session_mode: "bypassPermissions",
+};
+
+pub(crate) const CLAUDE_ACCESS_MODES: &[NativeAccessMode] =
+    &[ASK, ACCEPT_EDITS, PLAN, AUTO, FULL_ACCESS];
+
+/// Claude Code over its SDK protocol. Its `bypassPermissions` mode needs a
+/// launch flag Sage does not pass, so Full access is not offered there.
+pub(crate) const CLAUDE_SDK_ACCESS_MODES: &[NativeAccessMode] = &[ASK, ACCEPT_EDITS, PLAN, AUTO];
 
 /// Claude's permission modes from least to most permissive.
 const PERMISSIVENESS: [&str; 5] = [

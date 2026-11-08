@@ -41,6 +41,7 @@ pub(crate) struct NativeAccessMode {
 fn native_access_modes(binding: &str) -> &'static [NativeAccessMode] {
     match binding {
         "claude-agent-acp" => super::claude::CLAUDE_ACCESS_MODES,
+        "claude-code-sdk" => super::claude::CLAUDE_SDK_ACCESS_MODES,
         _ => &[],
     }
 }
@@ -111,11 +112,6 @@ pub(crate) fn admitted_modes(
             ReadOnly,
             "Read-only",
             "Read workspace files; no writes or network.",
-        )],
-        "claude-code-sdk" => &[(
-            Ask,
-            "Ask each time",
-            "Review each permission request; no filesystem sandbox.",
         )],
         "pi-rpc" if characterised => match pi_bridge {
             Ok(_) => &[
@@ -273,7 +269,6 @@ pub(crate) fn lists_mode(
         }
         "opencode-acp" => matches!(mode, ReadOnly | Ask | WorkspaceWrite),
         "pi-rpc" => matches!(mode, ReadOnly | WorkspaceWrite),
-        "claude-code-sdk" => mode == Ask,
         _ => false,
     }
 }
@@ -469,6 +464,44 @@ mod tests {
         assert_eq!(
             effective_mode("claude-agent-acp", "1", None, true),
             Some(Ask)
+        );
+    }
+
+    #[test]
+    fn the_claude_sdk_binding_governs_its_modes_through_the_access_path() {
+        use SessionAccessMode::{AcceptEdits, Ask, Auto, FullAccess, Plan, ReadOnly};
+        let registry = crate::acp::bindings::registry::BindingRegistry::default();
+        assert_eq!(
+            governs_session_modes(&registry, "claude-code-sdk"),
+            Some(true)
+        );
+        let wire = serde_json::to_value(access_modes("claude-code-sdk", "2.1.320", true)).unwrap();
+        assert_eq!(
+            wire.as_array()
+                .unwrap()
+                .iter()
+                .map(|mode| (mode["id"].clone(), mode["sessionModeId"].clone()))
+                .collect::<Vec<_>>(),
+            vec![
+                (json!("ask"), json!("default")),
+                (json!("acceptEdits"), json!("acceptEdits")),
+                (json!("plan"), json!("plan")),
+                (json!("auto"), json!("auto")),
+            ]
+        );
+        // Auto stays behind the access path's two-step confirmation.
+        assert!(Auto.needs_confirmation());
+        assert!(lists_mode(&registry, "claude-code-sdk", AcceptEdits));
+        assert!(lists_mode(&registry, "claude-code-sdk", Plan));
+        assert!(lists_mode(&registry, "claude-code-sdk", Ask));
+        assert!(lists_mode(&registry, "claude-code-sdk", Auto));
+        // Nothing the SDK session cannot select is offered or falls back.
+        assert!(!lists_mode(&registry, "claude-code-sdk", FullAccess));
+        assert!(!lists_mode(&registry, "claude-code-sdk", ReadOnly));
+        assert_eq!(session_mode("claude-code-sdk", FullAccess), None);
+        assert_eq!(
+            effective_mode("claude-code-sdk", "2.1.320", Some(FullAccess), true),
+            None
         );
     }
 

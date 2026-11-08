@@ -224,6 +224,15 @@ mod tests {
     }
 
     #[test]
+    fn every_access_mode_selects_a_mode_this_binding_offers() {
+        let offered = |mode: &str| settings().has_mode(mode);
+        for mode in crate::acp::bindings::claude::CLAUDE_SDK_ACCESS_MODES {
+            assert!(offered(mode.session_mode), "{}", mode.session_mode);
+        }
+        assert!(!offered("bypassPermissions"));
+    }
+
+    #[test]
     fn a_starting_mode_outside_the_picker_is_refused() {
         let reply = |mode: &str| json!({"current_permission_mode": mode});
         assert!(SessionSettings::from_initialize(&reply("bypassPermissions"), None).is_none());

@@ -174,7 +174,7 @@ fn is_invisible(c: char) -> bool {
 
 fn harness_name(binding_id: &str) -> String {
     match binding_id {
-        "claude-agent-acp" => "Claude Code".into(),
+        "claude-agent-acp" | "claude-code-sdk" => "Claude Code".into(),
         "codex-app-server" => "Codex".into(),
         "opencode-acp" => "OpenCode".into(),
         "pi-rpc" => "Pi".into(),
