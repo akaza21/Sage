@@ -38,7 +38,6 @@ it("refuses image send and queue before mutation without exact capability or dur
     discoveryPhase: "ready" as const,
     composerText: "Look at this",
     attachedContext: [image],
-    imageInputAvailable: false,
     imageUploading: false,
     sending: false,
     chatError: null,
@@ -62,7 +61,7 @@ it("refuses image send and queue before mutation without exact capability or dur
   });
   act(() => view.result.current.submit(event));
   expect(submit).not.toHaveBeenCalled();
-  view.rerender({ ...base, imageInputAvailable: true, imageUploading: true });
+  view.rerender({ ...base, page: imagePage, imageUploading: true });
   act(() => view.result.current.submit(event));
   expect(submit).not.toHaveBeenCalled();
   view.unmount();
@@ -91,6 +90,16 @@ import { useChatSurfaceModel } from "./useChatSurfaceModel";
 const initialAccess = useSessionAccessModeStore.getState();
 afterEach(() => useSessionAccessModeStore.setState(initialAccess, true));
 
+const imageSession = {
+  id: "session-a",
+  legacy: false,
+  runtimeEpoch: "1",
+  bindingId: "binding-a",
+  modelId: null,
+  state: "ready",
+  capabilities: { closeSession: true, prompt: true, promptImages: true },
+};
+
 const page = {
   projectId: "project-a",
   chatId: "chat-a",
@@ -108,6 +117,61 @@ const page = {
     },
   ],
 } as unknown as AcpChatPage;
+
+const imagePage = {
+  ...page,
+  sessions: [imageSession],
+} as unknown as AcpChatPage;
+
+it("enables image input only when the selected session advertises it", () => {
+  const args = {
+    harnesses: [
+      {
+        id: "harness-a",
+        name: "Harness A",
+        transport: "acp" as const,
+        bindingId: "binding-a",
+        installState: "available" as const,
+        source: "builtIn" as const,
+      },
+    ],
+    selectedHarnessId: "harness-a",
+    selectedModelId: null,
+    page,
+    discoveryPhase: "ready" as const,
+    composerText: "",
+    attachedContext: [],
+    sending: false,
+    chatError: null,
+    projectTransitioning: false,
+    focused: true,
+    acpActions: {
+      busy: false,
+      error: null,
+      cancellableTurnId: null,
+      submit: vi.fn(),
+      cancel: vi.fn(),
+      close: vi.fn(),
+      end: vi.fn(),
+    },
+    sendPrompt: vi.fn(),
+  };
+  const view = renderHook((input) => useChatSurfaceModel(input), {
+    initialProps: args,
+  });
+  expect(view.result.current.imageInput.available).toBe(false);
+  expect(view.result.current.imageInput.reason).toBe(
+    "This harness does not advertise image input.",
+  );
+  view.rerender({ ...args, page: imagePage });
+  expect(view.result.current.imageInput.available).toBe(true);
+  expect(view.result.current.imageInput.reason).toBeNull();
+  view.rerender({ ...args, page: { ...imagePage, sessions: [] } as never });
+  expect(view.result.current.imageInput.available).toBe(false);
+  expect(view.result.current.imageInput.reason).toMatch(
+    /once this harness's session starts/,
+  );
+});
 
 it("blocks native submission on a failed Chat load and permits it after retry succeeds", () => {
   useSessionAccessModeStore.setState({

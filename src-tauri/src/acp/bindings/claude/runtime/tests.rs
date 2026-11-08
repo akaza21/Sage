@@ -46,6 +46,13 @@ pub(super) fn request_id(egress: &AdapterEgress) -> u64 {
 }
 
 pub(super) fn initialize(runtime: &mut ClaudeRuntime) {
+    initialize_with(
+        runtime,
+        json!({"loadSession":true,"sessionCapabilities":{"resume":{},"close":{}}}),
+    );
+}
+
+pub(super) fn initialize_with(runtime: &mut ClaudeRuntime, agent_capabilities: Value) {
     let egress = runtime
         .command(AdapterCommand::Initialize)
         .expect("initialize command");
@@ -59,10 +66,7 @@ pub(super) fn initialize(runtime: &mut ClaudeRuntime) {
             &frame(json!({
                 "jsonrpc":"2.0","id":id,"result":{
                     "protocolVersion":1,
-                    "agentCapabilities":{
-                        "loadSession":true,
-                        "sessionCapabilities":{"resume":{},"close":{}}
-                    },
+                    "agentCapabilities":agent_capabilities,
                     "models":[{"id":"claude-reviewed","name":"Claude reviewed"}]
                 }
             })),
@@ -79,6 +83,10 @@ pub(super) fn initialize(runtime: &mut ClaudeRuntime) {
 
 fn ready(runtime: &mut ClaudeRuntime) {
     initialize(runtime);
+    open_session(runtime);
+}
+
+pub(super) fn open_session(runtime: &mut ClaudeRuntime) {
     let egress = runtime
         .command(AdapterCommand::NewSession {
             native_root: r"C:\fixture\root".into(),
@@ -1098,6 +1106,9 @@ mod browser_permission_regression_tests;
 
 #[path = "resume_regression_tests.rs"]
 mod resume_regression_tests;
+
+#[path = "image_prompt_tests.rs"]
+mod image_prompt_tests;
 
 #[test]
 fn prompt_files_are_refused_without_capability_and_encoded_when_advertised() {

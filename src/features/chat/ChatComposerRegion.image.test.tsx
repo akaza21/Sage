@@ -315,6 +315,38 @@ describe("composer image input", () => {
     expect(onAddImages).toHaveBeenCalledTimes(2);
   });
 
+  it("refuses a pasted image with the session's reason when it lacks the capability", () => {
+    const { onAddImages } = renderComposer({
+      imageInputAvailable: false,
+      imageInputDisabledReason: "This harness does not advertise image input.",
+    });
+    fireEvent.paste(screen.getByRole("textbox", { name: "Message agent" }), {
+      clipboardData: { files: [png()] },
+    });
+    expect(onAddImages).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "This harness does not advertise image input.",
+    );
+  });
+
+  it("refuses pasted images over the per-message byte bound before upload", () => {
+    const { onAddImages } = renderComposer({ imageInputAvailable: true });
+    const large = new File([new Uint8Array(300 * 1024)], "large.png", {
+      type: "image/png",
+    });
+    fireEvent.paste(screen.getByRole("textbox", { name: "Message agent" }), {
+      clipboardData: { files: [large, large] },
+    });
+    expect(onAddImages).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Images in one message can total at most 512 KiB.",
+    );
+    fireEvent.paste(screen.getByRole("textbox", { name: "Message agent" }), {
+      clipboardData: { files: [large] },
+    });
+    expect(onAddImages).toHaveBeenCalledWith([large]);
+  });
+
   it("opens the persistent chooser from Add and closes the only menu", async () => {
     renderComposer({ imageInputAvailable: true });
     const chooser = screen.getByLabelText("Choose images");

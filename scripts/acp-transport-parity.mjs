@@ -22,6 +22,7 @@ export const FROZEN_ACP_TRANSPORT_FIELDS = Object.freeze({
     "nativeSessionFork",
     "newSession",
     "prompt",
+    "promptImages",
     "promptResources",
     "protocolVersion",
     "resumeSession",

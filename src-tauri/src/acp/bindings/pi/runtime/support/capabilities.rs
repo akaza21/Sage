@@ -6,6 +6,7 @@ use crate::acp::{
 pub(super) fn capabilities(model_count: u16, config_count: u16) -> CapabilitySnapshotV1 {
     CapabilitySnapshotV1 {
         prompt_resources: false,
+        prompt_images: false,
         schema_version: SchemaVersionV1,
         protocol_version: RequiredText::new("protocolVersion", "pi-rpc-0.83.0")
             .expect("fixed protocol version"),

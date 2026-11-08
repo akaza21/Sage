@@ -67,6 +67,7 @@ pub(super) fn capabilities(runtime: &OmpRuntime) -> CapabilitySnapshotV1 {
         multi_root_extension_schema_id: None,
         model_count: runtime.model_count,
         prompt_resources: false,
+        prompt_images: false,
         config_count: 0,
     }
 }

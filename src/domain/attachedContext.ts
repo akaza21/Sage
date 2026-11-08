@@ -26,6 +26,10 @@ export const MAX_ATTACHED_CONTEXTS_PER_TURN = 8;
 /** Matches a quarter of the composer budget and keeps eight notes within 32 KiB. */
 export const MAX_ATTACHED_CONTEXT_NOTE_BYTES = 4 * 1024;
 export const MAX_OUTGOING_IMAGE_BYTES = 4 * 1024 * 1024;
+/** Mirrors `PROMPT_IMAGE_COUNT` in `src-tauri/src/acp/limits.rs`. */
+export const MAX_PROMPT_IMAGES = 4;
+/** Mirrors `PROMPT_IMAGE_TOTAL_BYTES`: every image one prompt sends, together. */
+export const MAX_PROMPT_IMAGE_TOTAL_BYTES = 512 * 1024;
 
 export type DiffLineSide = "old" | "new";
 

@@ -53,6 +53,7 @@ pub(super) fn capabilities(
         multi_root_extension_schema_id: None,
         model_count: 0,
         prompt_resources: true,
+        prompt_images: true,
         config_count: 0,
     })
 }

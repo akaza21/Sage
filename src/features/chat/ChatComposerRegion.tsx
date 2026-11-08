@@ -77,6 +77,7 @@ export function ChatComposerRegion({
   onTextChange,
   onRemoveContext,
   imageInputAvailable = false,
+  imageInputDisabledReason = null,
   onAddImages,
   onCancelTurn,
   onDeleteQueuedPrompt,
@@ -95,6 +96,7 @@ export function ChatComposerRegion({
   const imageInput = useComposerImageInput({
     contexts: attachedContext,
     available: imageInputAvailable,
+    unavailableReason: imageInputDisabledReason,
     disabled: composerDisabled,
     uploading: imageUploading,
     onAddImages,

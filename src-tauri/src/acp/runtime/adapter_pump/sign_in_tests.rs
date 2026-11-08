@@ -203,6 +203,7 @@ fn pending_capabilities() -> CapabilitySnapshotV1 {
         multi_root_extension_schema_id: None,
         model_count: 0,
         prompt_resources: false,
+        prompt_images: false,
         config_count: 0,
     }
 }

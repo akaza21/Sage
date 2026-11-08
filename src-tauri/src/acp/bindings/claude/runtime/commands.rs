@@ -54,7 +54,7 @@ impl ClaudeRuntime {
                 ..
             } => {
                 self.require_capability(|value| value.prompt)?;
-                let blocks = prompt.resources.wire(prompt.as_str(), self.capabilities.as_ref().is_some_and(|c| c.prompt_resources)).map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
+                let blocks = crate::acp::attached_context::files::prompt_blocks(&prompt, self.capabilities.as_ref()).map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
                 if !self.auth.permits_prompt() {
                     return Err(AdapterRuntimeError::SignInRequired);
                 }

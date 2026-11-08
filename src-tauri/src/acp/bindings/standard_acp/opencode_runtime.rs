@@ -215,15 +215,9 @@ impl OpenCodeRuntime {
         {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }
-        let blocks = prompt
-            .resources
-            .wire(
-                prompt.as_str(),
-                self.capabilities
-                    .as_ref()
-                    .is_some_and(|c| c.prompt_resources),
-            )
-            .map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
+        let blocks =
+            crate::acp::attached_context::files::prompt_blocks(&prompt, self.capabilities.as_ref())
+                .map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
         if self.close_pending {
             return Err(AdapterRuntimeError::Operation);
         }

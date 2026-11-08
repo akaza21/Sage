@@ -19,6 +19,7 @@ import { terminalTurnStates, type OpenResourceTarget } from "./acp";
 import { currentChatUsage } from "./acp/chatUsage";
 import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
 import { composerDisabledReason, sizeReason } from "./composerDisabledReason";
+import { composerImageAvailability } from "./useComposerImageInput";
 
 type SurfaceHarness = Pick<
   HarnessDefinition,
@@ -40,7 +41,6 @@ export function useChatSurfaceModel({
   discoveryPhase,
   composerText = "",
   attachedContext = [],
-  imageInputAvailable = false,
   imageUploading = false,
   sending = false,
   chatError = null,
@@ -60,7 +60,6 @@ export function useChatSurfaceModel({
   discoveryPhase: HarnessDiscoveryPhase;
   composerText: string;
   attachedContext: readonly AttachedContext[];
-  imageInputAvailable?: boolean;
   imageUploading?: boolean;
   sending: boolean;
   chatError: string | null;
@@ -155,6 +154,7 @@ export function useChatSurfaceModel({
       harnessAvailable,
       availableBinding,
       harnessStatus,
+      imageInput: composerImageAvailability(!!useNativeAcp, selectedSession),
     };
   }, [discoveryPhase, harnesses, page, selectedHarnessId, selectedModelId]);
   const accessBindingId = model.selectedSession?.bindingId ?? model.bindingId;
@@ -239,7 +239,7 @@ export function useChatSurfaceModel({
     sizeReason(composerText, attachedContext) !== null ||
     imageUploading ||
     (attachedContext.some((context) => context.kind === "image") &&
-      !imageInputAvailable);
+      !model.imageInput.available);
   const queueAvailable = Boolean(
     model.useNativeAcp &&
     activeAcpTurn?.state === "running" &&

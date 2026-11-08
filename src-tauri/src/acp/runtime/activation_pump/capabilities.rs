@@ -42,6 +42,7 @@ pub(super) fn intersect(
         prompt_resources: curated.prompt_resources
             && advertised.prompt_resources
             && policy.prompt_resources,
+        prompt_images: curated.prompt_images && advertised.prompt_images && policy.prompt_images,
         cancel: curated.cancel && advertised.cancel && policy.cancel,
         native_session_fork: curated.native_session_fork
             && advertised.native_session_fork
@@ -103,6 +104,7 @@ mod tests {
             multi_root_extension_schema_id: None,
             model_count: 0,
             prompt_resources: false,
+            prompt_images: false,
             config_count: 0,
         }
     }

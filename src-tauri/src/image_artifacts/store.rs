@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
-    acp::{intent::ImageMediaType, migration},
+    acp::{intent::ImageMediaType, limits::IMAGE_PREVIEW_BYTES, migration},
     error::{AppError, AppResult},
     image_attachment::{ImageAttachedContext, ImageAttachmentKind, MAX_OUTGOING_IMAGE_BYTES},
 };
@@ -111,7 +111,7 @@ fn admit_png(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
     let frame = reader
         .next_frame(&mut decoded)
         .map_err(|_| invalid("image is malformed"))?;
-    let thumbnail = if bytes.len() <= 262_144 {
+    let thumbnail = if bytes.len() <= IMAGE_PREVIEW_BYTES {
         bytes.to_vec()
     } else {
         let thumb_width = width.min(128);
@@ -183,7 +183,7 @@ fn admit_jpeg(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
     let decoded = decoder
         .decode()
         .map_err(|_| invalid("image is malformed"))?;
-    let thumbnail = if bytes.len() <= 262_144 {
+    let thumbnail = if bytes.len() <= IMAGE_PREVIEW_BYTES {
         bytes.to_vec()
     } else {
         let stride = match info.pixel_format {

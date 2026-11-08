@@ -270,3 +270,63 @@ fn exact_four_mib_png_is_admitted_and_plus_one_is_rejected() {
     drop(database);
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn a_sent_image_keeps_a_transcript_sized_preview_and_retires_its_full_bytes() {
+    use crate::acp::limits::IMAGE_PREVIEW_BYTES;
+    let directory = std::env::temp_dir().join(format!("sage-image-sent-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let connection = database.connection();
+    connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
+    connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
+    // Noise just above the inline preview bound still gets a downscaled one.
+    let mut pixels = vec![0_u8; 240 * 240 * 4];
+    for (index, byte) in pixels.iter_mut().enumerate() {
+        *byte = (index.wrapping_mul(2_654_435_761) >> 13) as u8;
+    }
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, 240, 240);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(&pixels)
+            .unwrap();
+    }
+    assert!(bytes.len() > IMAGE_PREVIEW_BYTES && bytes.len() <= 262_144);
+    let root = database.image_artifact_root().unwrap();
+    let image = ingest_image(
+        &connection,
+        root,
+        "p",
+        "c",
+        ImageMediaType::Png,
+        &bytes,
+        "noise.png",
+    )
+    .unwrap();
+
+    let (media_type, preview) =
+        super::read_thumbnail(&connection, root, "p", "c", &image.artifact_id).unwrap();
+    assert_eq!(media_type, ImageMediaType::Png);
+    assert!(preview.len() <= IMAGE_PREVIEW_BYTES);
+    let decoded = png::Decoder::new(std::io::Cursor::new(&preview))
+        .read_info()
+        .unwrap();
+    assert_eq!((decoded.info().width, decoded.info().height), (128, 128));
+    assert!(super::read_thumbnail(&connection, root, "p", "other", &image.artifact_id).is_err());
+
+    super::retire_sent_images(&connection, root, "p", "c", &[&image.artifact_id]).unwrap();
+    assert!(verify_image_reference(&connection, root, "p", "c", &image).is_err());
+    assert!(!root.join(format!("{}.full", image.artifact_id)).exists());
+    assert_eq!(
+        super::read_thumbnail(&connection, root, "p", "c", &image.artifact_id).unwrap(),
+        (media_type, preview)
+    );
+    drop(connection);
+    drop(database);
+    std::fs::remove_dir_all(directory).unwrap();
+}

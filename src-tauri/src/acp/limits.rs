@@ -16,6 +16,15 @@ pub const COMMAND_RESOURCE_LIMIT: usize = 64;
 pub const ATTACHED_CONTEXT_LIMIT: usize = 8;
 /// One attached user note is capped at one quarter of the WebView composer budget.
 pub const ATTACHED_CONTEXT_NOTE_BYTES: usize = 4 * 1024;
+/// Images one prompt may carry; the composer attaches at most this many.
+pub const PROMPT_IMAGE_COUNT: usize = 4;
+/// Decoded bytes of every image in one prompt together. Their base64 (4/3)
+/// plus the 120 KiB text-and-file dispatch budget stays inside one
+/// `WireLimits::frame_bytes` outbound frame.
+pub const PROMPT_IMAGE_TOTAL_BYTES: usize = 512 * 1024;
+/// Decoded bytes of the transcript copy of one sent image. Its base64 must fit
+/// one normalized item (`WireLimits::normalized_item_bytes`).
+pub const IMAGE_PREVIEW_BYTES: usize = 192 * 1024 - 512;
 /// A one-byte sensitive token may expand to this replacement in command output.
 pub(crate) const COMMAND_OUTPUT_REDACTION_BYTES: usize = "[redacted]".len();
 
@@ -393,3 +402,11 @@ pub const LIMITS: Limits = Limits {
     },
     fixture: FIXTURE_LIMITS,
 };
+
+// Prompt images ride in one outbound frame beside the text-and-file budget,
+// and each transcript copy fits one normalized item with its JSON envelope.
+const _: () = assert!(
+    PROMPT_IMAGE_TOTAL_BYTES.div_ceil(3) * 4 + 120 * 1024 + 4096 < LIMITS.wire.frame_bytes as usize
+);
+const _: () =
+    assert!(IMAGE_PREVIEW_BYTES.div_ceil(3) * 4 + 256 < LIMITS.wire.normalized_item_bytes as usize);
