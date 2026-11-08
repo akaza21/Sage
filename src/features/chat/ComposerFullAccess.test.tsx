@@ -198,6 +198,18 @@ it("applies a pick to this chat only, and steps down natively", async () => {
   expect(useSessionAccessModeStore.getState().modes).toEqual({});
 });
 
+it("says so when stepping down stopped a running turn", async () => {
+  port.get.mockResolvedValue("fullAccess");
+  port.set.mockResolvedValue({ turnCancelled: true });
+  renderControl();
+  await waitFor(() => expect(chip()).toHaveTextContent("Full access"));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Plan" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "The running turn was stopped because this chat's access was lowered.",
+  );
+  expect(chip()).toHaveTextContent("Plan");
+});
+
 it("keeps the chat's mode and says why when a pick is refused", async () => {
   port.get.mockResolvedValue("fullAccess");
   port.set.mockRejectedValue(new Error("busy"));

@@ -207,3 +207,28 @@ fn choices_of_deleted_sessions_are_forgotten() {
     );
     assert_eq!(store.chat_access("kept").unwrap(), Some(Plan));
 }
+
+#[test]
+fn a_pending_token_is_checked_without_being_spent() {
+    let store = store();
+    let token = store
+        .prepare_chat_access("session-a", FullAccess, 1_000)
+        .unwrap();
+    let pending = |session: &str, mode, token: &str, now| {
+        store
+            .chat_access_pending(session, mode, token, now)
+            .unwrap()
+    };
+    assert!(pending("session-a", FullAccess, &token, 1_500));
+    // The check leaves the token for the grant.
+    assert!(pending("session-a", FullAccess, &token, 1_500));
+    assert!(!pending("session-a", Auto, &token, 1_500));
+    assert!(!pending("session-b", FullAccess, &token, 1_500));
+    assert!(!pending("session-a", FullAccess, "other", 1_500));
+    let expiry = 1_000 + ACCESS_CONFIRMATION_MILLIS;
+    assert!(!pending("session-a", FullAccess, &token, expiry));
+    store
+        .grant_chat_access("session-a", FullAccess, &token, 2_000)
+        .unwrap();
+    assert!(!pending("session-a", FullAccess, &token, 2_000));
+}

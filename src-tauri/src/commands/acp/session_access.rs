@@ -20,6 +20,7 @@ use crate::acp::{
 use crate::settings_store::SessionAccessMode;
 use serde::{Deserialize, Serialize};
 
+pub(crate) mod chat;
 mod native_confirm;
 
 #[derive(Deserialize)]
@@ -202,136 +203,6 @@ fn record_turn_access(
             "Access mode selected for this turn"
         );
     }
-}
-
-/// The binding of an existing session. A mode that needs a confirmation
-/// must be offered by it; any other is accepted while the session exists,
-/// so a chat can always step down from Full access or Auto, even while its
-/// harness is unavailable.
-fn chat_binding(
-    state: &AppState,
-    session_id: &SageAgentSessionId,
-    mode: SessionAccessMode,
-) -> Result<String, AcpIpcError> {
-    let binding_id = session_routes::durable_binding_id(state, session_id)
-        .map_err(|_| AcpIpcError::InvalidRequest {
-            message: safe_message("This session no longer exists."),
-        })?
-        .as_str()
-        .to_owned();
-    if mode.needs_confirmation() && !offers_mode(state.acp.binding_registry(), &binding_id, mode) {
-        return Err(AcpIpcError::InvalidRequest {
-            message: safe_message("This harness does not offer the chosen access mode."),
-        });
-    }
-    Ok(binding_id)
-}
-
-/// The chat's own access mode, if it has one.
-#[tauri::command]
-pub(crate) fn get_chat_access(
-    state: State<'_, AppState>,
-    request: ChatAccessRequest,
-) -> Result<Option<SessionAccessMode>, AcpIpcError> {
-    state
-        .settings
-        .chat_access(request.session_id.as_str())
-        .map_err(|_| access_unreadable())
-}
-
-/// Sets a chat's mode when it needs no confirmation. It replaces any
-/// permissive mode the chat had. A live session is moved to it at once,
-/// when no turn is running; otherwise it applies from the next prompt,
-/// which always selects the chat's mode first.
-#[tauri::command]
-pub(crate) async fn set_chat_access(
-    state: State<'_, AppState>,
-    request: ChooseChatAccessRequest,
-) -> Result<(), AcpIpcError> {
-    let binding_id = chat_binding(&state, &request.session_id, request.mode)?;
-    if request.mode.needs_confirmation() {
-        return Err(AcpIpcError::InvalidRequest {
-            message: safe_message("This access mode needs a confirmation."),
-        });
-    }
-    state
-        .settings
-        .set_chat_access(
-            request.session_id.as_str(),
-            request.mode,
-            crate::persistence::now_millis(),
-        )
-        .map_err(|_| access_unreadable())?;
-    if let Some(owner) = state.acp.live_owner_of(&request.session_id)
-        && let Err(error) = select_session_mode(&state, owner, &binding_id, request.mode)
-    {
-        // A running turn keeps its mode; the next prompt selects this one.
-        tracing::debug!(?error, "Chat access applies from the next prompt");
-    }
-    Ok(())
-}
-
-/// Opens the confirmation of a permissive mode and returns its token.
-#[tauri::command]
-pub(crate) fn prepare_chat_access(
-    state: State<'_, AppState>,
-    request: ChooseChatAccessRequest,
-) -> Result<AccessConfirmation, AcpIpcError> {
-    chat_binding(&state, &request.session_id, request.mode)?;
-    if !request.mode.needs_confirmation() {
-        return Err(AcpIpcError::InvalidRequest {
-            message: safe_message("This access mode needs no confirmation."),
-        });
-    }
-    let confirm_token = state
-        .settings
-        .prepare_chat_access(
-            request.session_id.as_str(),
-            request.mode,
-            crate::persistence::now_millis(),
-        )
-        .map_err(|_| access_unreadable())?;
-    Ok(AccessConfirmation {
-        confirm_token,
-        expires_in_ms: crate::settings_store::ACCESS_CONFIRMATION_MILLIS,
-    })
-}
-
-/// Spends a confirmation to give the chat a permissive mode, once the person
-/// has also allowed it in a native dialog.
-#[tauri::command]
-pub(crate) async fn grant_chat_access(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-    request: GrantChatAccessRequest,
-) -> Result<(), AcpIpcError> {
-    let binding_id = chat_binding(&state, &request.session_id, request.mode)?;
-    if !request.mode.needs_confirmation()
-        || !native_confirm::confirmed(&app, &state, &request.session_id, request.mode).await
-    {
-        return Err(AcpIpcError::Rejected {
-            message: safe_message("This access was not allowed."),
-        });
-    }
-    state
-        .settings
-        .grant_chat_access(
-            request.session_id.as_str(),
-            request.mode,
-            request.confirm_token.as_str(),
-            crate::persistence::now_millis(),
-        )
-        .map_err(|_| AcpIpcError::Conflict {
-            resource: crate::acp::intent::AcpConflictResource::ConfigRevision,
-            message: safe_message("This confirmation is missing, used or expired. Confirm again."),
-        })?;
-    tracing::warn!(
-        session_id = request.session_id.as_str(),
-        binding_id = binding_id.as_str(),
-        mode = ?request.mode,
-        "Permissive access mode granted to a chat session"
-    );
-    Ok(())
 }
 
 #[cfg(test)]

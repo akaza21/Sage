@@ -65,12 +65,14 @@ impl ClaudeRuntime {
                 }
                 // The prompt is written only while the session is, by every
                 // source it reports, in the mode selected for this turn; a
-                // flip after the select stops it here.
+                // flip after the select stops it here. An access mode Claude
+                // has no permission mode for is never sent at all.
                 let native_mode = crate::acp::bindings::access_policy::session_mode(
                     super::super::CLAUDE_BINDING_ID,
                     access_mode,
-                );
-                if native_mode.is_some_and(|mode| !active.config.in_mode(mode)) {
+                )
+                .ok_or(AdapterRuntimeError::Operation)?;
+                if !active.config.in_mode(native_mode) {
                     return Err(AdapterRuntimeError::Operation);
                 }
                 active.translator.begin_prompt(&id.to_string()).map_err(map_translation)?;
@@ -80,7 +82,7 @@ impl ClaudeRuntime {
                     client_message_id,
                     request_id: id,
                     cancel_written: false,
-                    native_mode,
+                    native_mode: Some(native_mode),
                     sanctioned_mode: None,
                 });
                 let external_session_id = active.external_id.clone();

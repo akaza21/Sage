@@ -8,8 +8,14 @@ import { invokeNative, isTauriRuntime } from "./nativeInvoke";
 export interface ChatAccessChanges {
   /** The chat's own mode, or null when it uses its harness default. */
   get(sessionId: string): Promise<unknown>;
-  /** Sets a mode that needs no confirmation; it replaces any other. */
-  set(sessionId: string, mode: SessionAccessMode): Promise<void>;
+  /**
+   * Sets a mode that needs no confirmation; it replaces any other. Stepping
+   * down from Full access or Auto stops a running turn, and says so.
+   */
+  set(
+    sessionId: string,
+    mode: SessionAccessMode,
+  ): Promise<{ turnCancelled?: boolean } | null | undefined>;
   /** Opens a confirmation and returns the single-use token it expects. */
   prepare(
     sessionId: string,

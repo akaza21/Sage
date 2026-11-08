@@ -117,13 +117,7 @@ pub(crate) async fn configure(
     let binding_id =
         session_routes::durable_binding_id(state, &owner.session_id).map_err(store_error)?;
     let live = state.acp.live_session_config(&owner);
-    // An unroutable binding is treated as governed when its live session
-    // reports modes, so a routing failure never opens a direct mode change.
-    let governed = governs_session_modes(state.acp.binding_registry(), binding_id.as_str())
-        .unwrap_or_else(|| {
-            live.as_ref()
-                .is_some_and(|overlay| overlay.config.current_mode().is_some())
-        });
+    let governed = governs_session_modes(state.acp.binding_registry(), binding_id.as_str());
     refuse_governed_mode_change(governed, live.as_ref(), &mutation)?;
     state
         .acp
@@ -140,8 +134,10 @@ pub(crate) async fn configure(
 /// access path (`session_access::select_session_mode`) may change the mode:
 /// a direct mode change here could select a mode, such as Claude's
 /// bypassPermissions, without the chat's access choice or its confirmation.
+/// A binding that cannot be routed (`governed` is None) is treated as
+/// governed, so a routing failure never opens a direct mode change.
 pub(super) fn refuse_governed_mode_change(
-    governed: bool,
+    governed: Option<bool>,
     live: Option<&crate::acp::session_config::SessionConfigOverlay>,
     mutation: &ConfigMutation,
 ) -> Result<(), AcpIpcError> {
@@ -149,7 +145,7 @@ pub(super) fn refuse_governed_mode_change(
         Some(overlay) => overlay.config.changes_mode(mutation),
         None => crate::acp::session_config::SessionConfig::may_change_mode(mutation),
     };
-    if governed && changes_mode {
+    if governed.unwrap_or(true) && changes_mode {
         return Err(AcpIpcError::InvalidRequest {
             message: safe_message("Change this chat's permission mode from its access menu."),
         });

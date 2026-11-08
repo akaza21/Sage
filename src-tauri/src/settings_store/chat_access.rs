@@ -161,6 +161,25 @@ impl SettingsStore {
         Ok(token)
     }
 
+    /// Whether the session holds an unexpired token for `mode`, without
+    /// spending it: checked before the person is asked, so a dialog never
+    /// opens for a confirmation that could not be granted.
+    pub fn chat_access_pending(
+        &self,
+        session_id: &str,
+        mode: SessionAccessMode,
+        token: &str,
+        now: i64,
+    ) -> AppResult<bool> {
+        validate_session(session_id)?;
+        Ok(self.lock().query_row(
+            "SELECT EXISTS(SELECT 1 FROM chat_access_confirmations
+             WHERE session_id=?1 AND mode=?2 AND token=?3 AND expires_at > ?4)",
+            params![session_id, mode_text(mode), token, now],
+            |row| row.get::<_, bool>(0),
+        )? && mode.needs_confirmation())
+    }
+
     /// Spends the session's token and records the confirmed mode. The token
     /// works once, only for its session and mode, and only before it expires.
     pub fn grant_chat_access(

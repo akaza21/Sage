@@ -281,3 +281,99 @@ fn a_set_option_reply_that_widens_a_running_turn_cancels_it() {
     let cancel: Value = serde_json::from_slice(reply.egress()[0].frame().payload()).unwrap();
     assert_eq!(cancel["method"], "session/cancel");
 }
+
+#[test]
+fn a_mode_switch_offered_under_unknown_ids_is_never_allowed() {
+    use crate::acp::intent::PermissionOptionKind::{AllowAlways, AllowOnce};
+    let mut runtime = ClaudeRuntime::fixture();
+    planning(&mut runtime, SessionAccessMode::Plan);
+    let batch = runtime
+        .ingest(
+            &frame(json!({
+                "id":"exit-renamed","method":"session/request_permission","params":{
+                    "sessionId":"claude-session-1",
+                    "toolCall":{"toolCallId":"exit-plan","kind":"switch_mode"},
+                    "options":[
+                        {"optionId":"plan-exit-bypass","name":"Yes, and bypass permissions","kind":"allow_always"},
+                        {"optionId":"allow-once","name":"Yes","kind":"allow_once"},
+                        {"optionId":"reject","name":"No, keep planning","kind":"reject_once"}
+                    ]
+                }
+            })),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(!offered(&batch).contains(&AllowAlways));
+    assert!(!offered(&batch).contains(&AllowOnce));
+}
+
+/// What the pinned 0.76 adapter does on `session/set_mode`: it restates
+/// the `mode` option in a `config_option_update` before its bare
+/// acknowledgement, and sends `current_mode_update` only when it falls back
+/// from Auto. Sage follows the option, so a prompt in the selected mode is
+/// written without waiting for another report.
+#[test]
+fn a_set_mode_is_followed_by_the_adapters_option_report() {
+    use crate::acp::{
+        contract::{SageChatId, SageProjectId},
+        scheduler::RuntimeOwner,
+        session_config::{ConfigId, ConfigIntent, ConfigMutation},
+    };
+    let option = |current: &str| {
+        json!([{"id":"mode","name":"Mode","category":"mode","type":"select",
+            "currentValue":current,"options":[{"value":"default","name":"Default"},
+            {"value":"acceptEdits","name":"Accept edits"},{"value":"plan","name":"Plan"}]}])
+    };
+    let mut runtime = ClaudeRuntime::fixture();
+    initialize(&mut runtime);
+    let egress = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\fixture\root".into(),
+            model: None,
+        })
+        .unwrap();
+    let id = request_id(&egress);
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Written)
+        .unwrap();
+    let modes: Value = serde_json::from_str(MODES).unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"jsonrpc":"2.0","id":id,"result":{
+                "sessionId":"claude-session-1","modes":modes,"configOptions":option("plan")}})),
+            &Mapper,
+        )
+        .unwrap();
+    let egress = runtime
+        .configure(&ConfigIntent {
+            owner: RuntimeOwner {
+                project_id: SageProjectId::parse("project-a").unwrap(),
+                chat_id: SageChatId::parse("chat-a").unwrap(),
+                session_id: SageAgentSessionId::parse("session-claude-runtime").unwrap(),
+                runtime_epoch: RuntimeEpoch::new(3).unwrap(),
+            },
+            expected_config_revision: serde_json::from_value(json!("1")).unwrap(),
+            mutation: ConfigMutation::Mode(ConfigId::new("modeId", "acceptEdits").unwrap()),
+        })
+        .unwrap()
+        .unwrap();
+    let set_mode = request_id(&egress);
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Written)
+        .unwrap();
+    assert!(prompt(&mut runtime, SessionAccessMode::AcceptEdits).is_err());
+    runtime
+        .ingest(
+            &frame(json!({"method":"session/update","params":{"sessionId":"claude-session-1",
+                "update":{"sessionUpdate":"config_option_update","configOptions":option("acceptEdits")}}})),
+            &Mapper,
+        )
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"jsonrpc":"2.0","id":set_mode,"result":{}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(prompt(&mut runtime, SessionAccessMode::AcceptEdits).is_ok());
+}

@@ -52,6 +52,22 @@ impl AcpService {
             .filter_map(|lane| lane.runtime.owner())
             .find(|owner| owner.session_id == *session_id)
     }
+    /// The turn `owner`'s live session is running, while it can still be
+    /// cancelled.
+    pub(crate) fn cancellable_turn(
+        &self,
+        owner: &RuntimeOwner,
+        generation: crate::acp::contract::ProjectGeneration,
+    ) -> Result<Option<crate::acp::contract::SageTurnId>, StoreError> {
+        let snapshot =
+            self.intent_snapshot(owner.project_id.clone(), generation, owner.chat_id.clone())?;
+        let current = snapshot.session_id.as_ref() == Some(&owner.session_id)
+            && snapshot.runtime_epoch == Some(owner.runtime_epoch)
+            && snapshot.turn_state.is_some_and(|state| {
+                state.can_transition_to(crate::acp::lifecycle::TurnState::Cancelling)
+            });
+        Ok(snapshot.turn_id.filter(|_| current))
+    }
     /// Reports `config` as the live session's, as a runtime would.
     #[cfg(all(test, windows))]
     pub(crate) fn report_session_config_for_test(

@@ -229,6 +229,34 @@ pub(crate) fn offers_mode(
     turn_mode_for_binding(registry, binding, Some(mode), None) == Some(mode)
 }
 
+/// Whether `mode` is in the routed binding's own table of access modes,
+/// whatever build is bound or whether one is: a chat may always step down to
+/// such a mode, even while its harness is unavailable, and to no other.
+pub(crate) fn lists_mode(
+    registry: &super::registry::BindingRegistry,
+    binding: &str,
+    mode: SessionAccessMode,
+) -> bool {
+    use SessionAccessMode::{Ask, ReadOnly, WorkspaceWrite};
+    let Ok(record) = registry.route(binding) else {
+        return false;
+    };
+    let policy = record.access_policy_binding_id();
+    let native = native_access_modes(policy);
+    if !native.is_empty() {
+        return native.iter().any(|native| native.id == mode);
+    }
+    match policy {
+        "codex-app-server" => {
+            matches!(mode, ReadOnly | WorkspaceWrite)
+                || (mode == Ask && CODEX_ASK_NATIVE_APPROVAL_PROVEN)
+        }
+        "opencode-acp" => matches!(mode, ReadOnly | Ask | WorkspaceWrite),
+        "pi-rpc" => matches!(mode, ReadOnly | WorkspaceWrite),
+        _ => false,
+    }
+}
+
 /// Whether the routed binding's access is enforced through its harness
 /// session modes. Only the access path may then change the session mode.
 /// None when the binding cannot be routed, so the caller decides how to

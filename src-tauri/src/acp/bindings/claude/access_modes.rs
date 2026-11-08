@@ -75,13 +75,29 @@ pub(crate) fn option_target_mode(option_id: &str) -> Option<&'static str> {
     }
 }
 
-/// Whether Sage may answer with this option. Of the plan-exit options only
-/// those known to lead to a mode no more permissive than accepting edits,
-/// without clearing the conversation, are used; any other `exit-plan-*`,
-/// including one a newer adapter adds, is refused.
-pub(crate) fn option_admitted(option_id: &str) -> bool {
-    !option_id.starts_with("exit-plan-")
-        || matches!(option_id, "exit-plan-default" | "exit-plan-accept-edits")
+/// The plan-exit options Sage may answer with: each one's kind, and the
+/// permission mode it leaves the session in, no more permissive than
+/// accepting edits and without clearing the conversation.
+const PLAN_EXIT_OPTIONS: [(&str, &str, &str); 2] = [
+    ("exit-plan-default", "allow_once", "default"),
+    ("exit-plan-accept-edits", "allow_always", "acceptEdits"),
+];
+
+/// Whether Sage may answer with this option. A request that switches the
+/// permission mode (Claude's plan exit, `switch_mode`), or an option that
+/// names a plan exit, is answered only with a known plan-exit option of its
+/// known kind; any other, whatever its id, including one a newer adapter
+/// adds, is refused.
+pub(crate) fn option_admitted(option_id: &str, kind: &str, switches_mode: bool) -> bool {
+    let plan_exit = switches_mode
+        || option_id.starts_with("exit-plan-")
+        || option_target_mode(option_id).is_some();
+    !plan_exit
+        || PLAN_EXIT_OPTIONS.iter().any(|(id, known_kind, target)| {
+            *id == option_id
+                && *known_kind == kind
+                && option_target_mode(option_id) == Some(*target)
+        })
 }
 
 /// The wider of two permission modes; an unknown one is never the wider.
@@ -108,20 +124,33 @@ mod tests {
         assert!(!mode_change_admitted("plan", "bypassPermissions"));
         assert!(!mode_change_admitted("acceptEdits", "auto"));
         assert!(!mode_change_admitted("default", "futureMode"));
-        assert!(option_admitted("exit-plan-default"));
-        assert!(option_admitted("exit-plan-accept-edits"));
-        assert!(option_admitted("allow"));
-        for refused in [
-            "exit-plan-auto",
-            "exit-plan-bypass",
-            "exit-plan-clear-auto",
-            "exit-plan-clear-bypass",
-            "exit-plan-clear-accept-edits",
-            "exit-plan-future-mode",
-            "exit-plan-",
+        let plan_exit = |id: &str, kind: &str| option_admitted(id, kind, true);
+        assert!(plan_exit("exit-plan-default", "allow_once"));
+        assert!(plan_exit("exit-plan-accept-edits", "allow_always"));
+        // Ordinary permission requests keep their own allow options.
+        assert!(option_admitted("allow", "allow_once", false));
+        assert!(option_admitted("allow-with-updates", "allow_always", false));
+        for (refused, kind) in [
+            ("exit-plan-auto", "allow_always"),
+            ("exit-plan-bypass", "allow_always"),
+            ("exit-plan-clear-auto", "allow_always"),
+            ("exit-plan-clear-bypass", "allow_always"),
+            ("exit-plan-clear-accept-edits", "allow_always"),
+            ("exit-plan-future-mode", "allow_once"),
+            ("exit-plan-", "allow_once"),
+            // A known id with another kind, or none.
+            ("exit-plan-default", "allow_always"),
+            ("exit-plan-accept-edits", ""),
+            // A mode switch offered under any other id.
+            ("allow", "allow_once"),
+            ("allow-with-updates", "allow_always"),
+            ("plan-exit-bypass", "allow_always"),
         ] {
-            assert!(!option_admitted(refused), "{refused}");
+            assert!(!plan_exit(refused, kind), "{refused} {kind}");
         }
+        // A plan-exit id is refused even on a request not marked as a switch.
+        assert!(!option_admitted("exit-plan-bypass", "allow_always", false));
+        assert!(option_admitted("exit-plan-default", "allow_once", false));
     }
 
     #[test]

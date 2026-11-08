@@ -112,7 +112,7 @@ fn prompt(runtime: &mut ClaudeRuntime) -> (u64, EgressToken) {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-message-1").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::settings_store::SessionAccessMode::Ask,
         })
         .expect("prompt command");
     let id = request_id(&egress);
@@ -388,7 +388,7 @@ fn prompt_zero_byte_rejection_rolls_back_and_delivery_unknown_is_not_replayed() 
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "must not replay").expect("prompt"),
                 client_message_id: RequiredText::new("client", "client-message-2").expect("client"),
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::settings_store::SessionAccessMode::Ask,
             })
             .is_err()
     );
@@ -1028,7 +1028,7 @@ fn a_signed_out_harness_refuses_the_prompt_instead_of_sending_it() {
         runtime.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-message-1").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::settings_store::SessionAccessMode::Ask,
         }),
         Err(AdapterRuntimeError::SignInRequired)
     ));
@@ -1079,7 +1079,7 @@ fn an_authentication_refusal_costs_one_turn_and_never_a_second() {
         runtime.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-message-2").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::settings_store::SessionAccessMode::Ask,
         }),
         Err(AdapterRuntimeError::SignInRequired)
     ));
@@ -1119,7 +1119,7 @@ fn prompt_files_are_refused_without_capability_and_encoded_when_advertised() {
     let command = || AdapterCommand::Prompt {
         prompt: prompt.clone(),
         client_message_id: RequiredText::new("client", "file-prompt").unwrap(),
-        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        access_mode: crate::settings_store::SessionAccessMode::Ask,
     };
     assert!(matches!(
         runtime.command(command()),

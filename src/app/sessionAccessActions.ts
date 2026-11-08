@@ -10,7 +10,7 @@ import { chatAccessChanges } from "../ports/chatAccessChanges";
 interface ChatAccessStore {
   /** Chats' own modes by session (null: the default), newest last. */
   modes: Readonly<Record<string, SessionAccessMode | null>>;
-  /** The last chat access change's failure; it never blocks sending. */
+  /** The last chat access change's failure or notice; never blocks sending. */
   error: string | null;
 }
 export const useChatAccessStore = create<ChatAccessStore>(() => ({
@@ -64,8 +64,14 @@ export async function chooseChatAccess(
   mode: SessionAccessMode,
 ): Promise<void> {
   try {
-    await chatAccessChanges().set(sessionId, mode);
+    const change = await chatAccessChanges().set(sessionId, mode);
     record(sessionId, mode);
+    if (change?.turnCancelled) {
+      store.setState({
+        error:
+          "The running turn was stopped because this chat's access was lowered.",
+      });
+    }
   } catch {
     store.setState({
       error: "This chat's access could not be changed. Try again.",

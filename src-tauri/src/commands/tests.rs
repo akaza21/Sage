@@ -2178,12 +2178,14 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
             },
         )
         .await;
+        // The fake runtime cannot change modes, so the select itself fails
+        // and the prompt is never prepared.
         assert!(
             matches!(
                 &refused,
                 Err(SendAcpTurnFailure {
+                    failure: AcpIpcError::RecoveryRequired { .. },
                     prompt_dispatch: PromptDispatch::NotStarted,
-                    ..
                 })
             ),
             "{refused:?}"
