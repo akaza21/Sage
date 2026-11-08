@@ -1,5 +1,9 @@
 import type { AcpChatPage } from "../../domain/acp";
-import type { AcpSessionConfig } from "../../domain/acpSessionConfig";
+import type {
+  AcpSessionConfig,
+  AcpSessionConfigNotice,
+} from "../../domain/acpSessionConfig";
+import { flattenChoices } from "../../domain/acpSessionConfigControls";
 
 /** Said of a restored value: the session has not reapplied it yet. */
 export const RESTORED_NOTE =
@@ -45,10 +49,34 @@ export function restoredSessionConfigView(
   };
 }
 
+/**
+ * What the composer says about a saved model the session does not run,
+ * naming each model as the session's options name it.
+ */
+export function sessionConfigNoticeText(
+  config: AcpSessionConfig,
+  notice: AcpSessionConfigNotice,
+): string {
+  const option = config.configOptions.find(
+    (candidate) => candidate.id === notice.configId,
+  );
+  const name = (value: string) =>
+    (option && option.type === "select"
+      ? flattenChoices(option).find((choice) => choice.value === value)?.name
+      : undefined) || value;
+  const saved = name(notice.saved);
+  const current = name(notice.current);
+  return notice.reason === "rejected"
+    ? `The harness refused the saved model ${saved}; this chat uses ${current}.`
+    : `The saved model ${saved} isn't offered any more; this chat uses ${current}.`;
+}
+
 /** The config the composer shows, with the page's notice about it. */
 export function withSessionConfigNotice(
   config: AcpSessionConfig | null,
-  notice: string | null | undefined,
+  notice: AcpSessionConfigNotice | null | undefined,
 ): AcpSessionConfig | null {
-  return config && notice ? { ...config, notice } : config;
+  return config && notice
+    ? { ...config, notice: sessionConfigNoticeText(config, notice) }
+    : config;
 }

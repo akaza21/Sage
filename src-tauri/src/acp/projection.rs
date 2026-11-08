@@ -390,7 +390,7 @@ pub struct AcpChatPage {
     /// What the composer says about a stored choice the current session
     /// could not take back, such as a saved model it no longer offers.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) session_config_notice: Option<SafeText<1024>>,
+    pub(crate) session_config_notice: Option<super::session_config::notices::SessionConfigNotice>,
     pub(crate) goal: super::goal::GoalState,
     pub project_id: SageProjectId,
     pub chat_id: SageChatId,

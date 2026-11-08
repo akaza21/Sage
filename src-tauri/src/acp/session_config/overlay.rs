@@ -259,10 +259,16 @@ impl ConfigChannel {
         }
     }
     /// Makes a partly restored runtime finish its restore before its next
-    /// prompt. The choices it has not reached stay held.
-    pub(crate) fn rearm_restore(&self, owner: &RuntimeOwner) {
+    /// prompt. The choices it has not reached stay held, and so do `hold`
+    /// (choices stored since it began), so a report does not replace them.
+    pub(crate) fn rearm_restore(&self, owner: &RuntimeOwner, hold: &[ConfigMutation]) {
         if let Some(entry) = self.lock().entry.as_mut().filter(|e| &e.owner == owner) {
             entry.restore_pending = true;
+            for choice in hold {
+                let same = |held: &ConfigMutation| super::reported::same_target(held, choice);
+                entry.held.retain(|held| !same(held));
+                entry.held.push(choice.clone());
+            }
         }
     }
     pub(crate) fn snapshot(&self, owner: &RuntimeOwner) -> Option<SessionConfigOverlay> {

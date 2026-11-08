@@ -8,6 +8,9 @@ use crate::acp::{
     },
 };
 
+#[cfg(test)]
+mod page_budget_tests;
+mod remember;
 mod restore;
 #[cfg(test)]
 mod restore_race_tests;
@@ -40,9 +43,8 @@ impl AcpService {
     ) -> Result<(), crate::acp::runtime::HostError> {
         self.send_config(intent, deadline, false)
     }
-    /// A restore change is stored only while it is still the stored value
-    /// (a newer pick wins), and one the harness does not answer in time
-    /// leaves the runtime running: the restore tries it again.
+    /// A restore change is stored only while it is still the stored value:
+    /// a newer pick wins.
     pub(super) fn send_config(
         &self,
         intent: ConfigIntent,
@@ -64,10 +66,13 @@ impl AcpService {
             Some(deadline) => host.configure_session_until(intent.clone(), deadline),
             None => host.configure_session(intent.clone()),
         };
-        if result.is_ok() && (!restoring || self.still_stored(&intent.owner, &intent.mutation)) {
-            // The harness confirmed this choice: it is what a resumed
-            // runtime of this session restores.
-            self.remember_config_choice(&intent.owner, &intent.mutation);
+        // The harness confirmed this choice: it is what a resumed runtime of
+        // this session restores. A restored one only while no newer pick
+        // replaced it.
+        match (result.is_ok(), restoring) {
+            (true, false) => self.remember_config_choice(&intent.owner, &intent.mutation),
+            (true, true) => self.confirm_restored(&intent.owner, &intent.mutation),
+            (false, _) => {}
         }
         if matches!(
             result,
@@ -162,12 +167,13 @@ impl AcpService {
 
     /// Keeps the page within its budget. A restored config that does not
     /// fit shows only the stored choices, and none at all if even those do
-    /// not fit; the transcript always stays loadable.
+    /// not fit, and then the notice goes too; the transcript always stays
+    /// loadable.
     pub(super) fn fit_session_config_to_page_budget(
         &self,
         page: &mut AcpChatPage,
     ) -> Result<(), StoreError> {
-        fit_restored_to_page_budget(
+        fit_config_to_page_budget(
             page,
             crate::acp::limits::LIMITS.durable.history_page_bytes as usize,
             |session| self.stored_choices_view(session),
@@ -181,24 +187,29 @@ fn page_bytes(page: &AcpChatPage) -> Result<usize, StoreError> {
         .map_err(|_| StoreError::Corrupt("session config page"))
 }
 
-/// The bytes a page's restored config needs, when the page is over budget
-/// with it: history is loaded again leaving that much room.
-pub(super) fn restored_reserve(page: &AcpChatPage) -> Result<Option<usize>, StoreError> {
-    let Some(restored) = &page.restored_session_config else {
-        return Ok(None);
-    };
-    if page_bytes(page)? <= crate::acp::limits::LIMITS.durable.history_page_bytes as usize {
+/// The bytes the page's session config fields (live config, restored config
+/// and notice) take beyond the page without them, when the page is over
+/// budget with them: history is loaded again leaving that much room.
+pub(super) fn config_reserve(page: &mut AcpChatPage) -> Result<Option<usize>, StoreError> {
+    let full = page_bytes(page)?;
+    if full <= crate::acp::limits::LIMITS.durable.history_page_bytes as usize {
         return Ok(None);
     }
-    serde_json::to_vec(restored)
-        .map(|bytes| Some(bytes.len().saturating_add(RESTORED_FIELD_BYTES)))
-        .map_err(|_| StoreError::Corrupt("session config page"))
+    let fields = (
+        page.session_config.take(),
+        page.restored_session_config.take(),
+        page.session_config_notice.take(),
+    );
+    let bare = page_bytes(page);
+    (
+        page.session_config,
+        page.restored_session_config,
+        page.session_config_notice,
+    ) = fields;
+    Ok(Some(full.saturating_sub(bare?)).filter(|reserve| *reserve > 0))
 }
 
-/// The `"restoredSessionConfig":` key and separator around the value.
-const RESTORED_FIELD_BYTES: usize = 32;
-
-fn fit_restored_to_page_budget(
+fn fit_config_to_page_budget(
     page: &mut AcpChatPage,
     limit: usize,
     stored_only: impl FnOnce(&crate::acp::contract::SageAgentSessionId) -> Option<SessionConfig>,
@@ -216,6 +227,9 @@ fn fit_restored_to_page_budget(
         if page_bytes(page)? <= limit {
             return Ok(());
         }
+    }
+    if page.session_config_notice.take().is_some() && page_bytes(page)? <= limit {
+        return Ok(());
     }
     Err(StoreError::Capacity {
         resource: "historyPage",

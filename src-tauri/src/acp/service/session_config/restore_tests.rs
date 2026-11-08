@@ -25,13 +25,15 @@ use crate::persistence::Database;
 pub(super) struct Agent {
     options: Value,
     pub(super) requests: Vec<Value>,
-    refuse: bool,
+    pub(super) refuse: bool,
     /// The runtime fails the next change this way instead of sending it.
     pub(super) fail: Option<HostError>,
     /// When each change reached the runtime, and the deadline it was given.
     pub(super) deadlines: Vec<(std::time::Instant, std::time::Instant)>,
     /// How long the harness takes to answer each change.
     pub(super) delay: std::time::Duration,
+    /// Runs once, while the next change is with the harness.
+    pub(super) on_send: Option<Box<dyn FnOnce() + Send>>,
 }
 
 impl Agent {
@@ -105,11 +107,14 @@ impl RuntimeEngine for HarnessEngine {
         deadline: std::time::Instant,
         completion: ConfigCompletionSink,
     ) -> Result<(), HostError> {
-        let delay = {
+        let (delay, on_send) = {
             let mut agent = self.agent.lock().unwrap();
             agent.deadlines.push((std::time::Instant::now(), deadline));
-            agent.delay
+            (agent.delay, agent.on_send.take())
         };
+        if let Some(on_send) = on_send {
+            on_send();
+        }
         std::thread::sleep(delay);
         completion.complete(self.configure(intent));
         Ok(())
@@ -232,6 +237,15 @@ pub(super) fn start(
     open(service, owner, false, "ask", options)
 }
 
+/// Finishes starting a resumed runtime whose slot `owner` already reserved.
+pub(super) fn start_reserved(
+    service: &AcpService,
+    owner: &RuntimeOwner,
+    options: Value,
+) -> Arc<Mutex<Agent>> {
+    open_reserved(service, owner, false, "ask", options)
+}
+
 /// Starts a runtime that opens a new session (`new`) or resumes one, in
 /// `mode`.
 fn open(
@@ -241,8 +255,22 @@ fn open(
     mode: &str,
     options: Value,
 ) -> Arc<Mutex<Agent>> {
+    service
+        .lane_at(0)
+        .runtime
+        .reserve_start(owner.clone())
+        .unwrap();
+    open_reserved(service, owner, new, mode, options)
+}
+
+fn open_reserved(
+    service: &AcpService,
+    owner: &RuntimeOwner,
+    new: bool,
+    mode: &str,
+    options: Value,
+) -> Arc<Mutex<Agent>> {
     let slot = &service.lane_at(0).runtime;
-    slot.reserve_start(owner.clone()).unwrap();
     if new {
         slot.config.mark_new_session(owner);
     }
@@ -255,6 +283,7 @@ fn open(
         fail: None,
         deadlines: Vec::new(),
         delay: std::time::Duration::ZERO,
+        on_send: None,
     }));
     let host = Arc::new(
         RuntimeHost::start(HarnessEngine {
@@ -555,9 +584,8 @@ fn an_effort_the_harness_resets_keeps_its_stored_value_until_it_is_restored() {
     // The model is restored first; it resets the effort to "low", and the
     // budget runs out before the effort is reached.
     let mut sent = 0;
-    let far = std::time::Instant::now() + std::time::Duration::from_secs(60);
     service
-        .restore_until(&resumed, Some(far), || {
+        .restore_until(&resumed, || {
             sent += 1;
             sent > 1
         })
@@ -584,10 +612,6 @@ fn an_effort_the_harness_resets_keeps_its_stored_value_until_it_is_restored() {
     service.shutdown_blocking().unwrap();
 }
 
-fn far() -> std::time::Instant {
-    std::time::Instant::now() + std::time::Duration::from_secs(60)
-}
-
 #[test]
 fn a_choice_raced_by_another_change_is_retried_once_against_it() {
     let service =
@@ -611,7 +635,7 @@ fn a_choice_raced_by_another_change_is_retried_once_against_it() {
     // sent against a revision that is no longer current.
     let mut raced = false;
     service
-        .restore_until(&resumed, Some(far()), || {
+        .restore_until(&resumed, || {
             if !raced {
                 raced = true;
                 choose(&service, &resumed, mode("code")).unwrap();
@@ -702,7 +726,7 @@ fn a_choice_the_user_makes_while_the_restore_is_deferred_is_kept() {
     // The mode is restored; the budget runs out before the effort.
     let mut sends = 0;
     service
-        .restore_until(&resumed, Some(far()), || {
+        .restore_until(&resumed, || {
             sends += 1;
             sends > 1
         })
@@ -740,9 +764,10 @@ fn a_change_whose_time_ran_out_before_it_was_sent_is_restored_later_on_a_healthy
     let agent = start(&service, &resumed, effort("low"));
     // The budget is spent by the time the change reaches the runtime host.
     let spent = std::time::Instant::now();
-    service
-        .restore_until(&resumed, Some(spent), || false)
-        .unwrap();
+    seam::spend_deadlines(true);
+    let restored = service.restore_until(&resumed, || false);
+    seam::spend_deadlines(false);
+    restored.unwrap();
     assert!(agent.lock().unwrap().requests.is_empty());
     let host = service.lane_at(0).runtime.for_owner(&resumed).unwrap();
     let revision = service
@@ -825,4 +850,34 @@ fn a_runtime_killed_without_shutdown_leaves_its_session_unresumable_after_restar
     assert_eq!(stored(&service), [option("effort", "high")]);
     drop(service);
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+/// The deadline each restore change gets, observed and steered per thread:
+/// the restore runs on the thread that calls it.
+pub(super) mod seam {
+    use std::{
+        cell::{Cell, RefCell},
+        time::Instant,
+    };
+
+    thread_local! {
+        static SENT: RefCell<Vec<(Instant, Instant)>> = const { RefCell::new(Vec::new()) };
+        static SPENT: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Records when a change's deadline was set and what it was. While
+    /// deadlines are spent, it gives one already past instead.
+    pub(in crate::acp::service) fn send_deadline(set_at: Instant, deadline: Instant) -> Instant {
+        SENT.with(|sent| sent.borrow_mut().push((set_at, deadline)));
+        if SPENT.get() { set_at } else { deadline }
+    }
+
+    pub(in crate::acp::service) fn spend_deadlines(spent: bool) {
+        SPENT.set(spent);
+    }
+
+    /// The deadlines set on this thread since the last call.
+    pub(in crate::acp::service) fn take_sent() -> Vec<(Instant, Instant)> {
+        SENT.with(|sent| std::mem::take(&mut *sent.borrow_mut()))
+    }
 }

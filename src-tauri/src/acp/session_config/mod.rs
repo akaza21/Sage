@@ -10,6 +10,7 @@ use super::limits::LIMITS;
 
 pub(crate) mod choices;
 mod kind;
+pub(crate) mod notices;
 mod overlay;
 pub(crate) mod reported;
 pub(crate) use kind::ConfigKind;

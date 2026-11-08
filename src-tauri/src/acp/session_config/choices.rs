@@ -98,20 +98,6 @@ pub(crate) fn record(
     Ok(written > 0)
 }
 
-/// Removes the stored value of the mode or option `choice` names.
-pub(crate) fn forget(
-    connection: &Connection,
-    session: &SageAgentSessionId,
-    choice: &ConfigMutation,
-) -> rusqlite::Result<()> {
-    let (kind, config_id, _) = columns(choice);
-    connection.execute(
-        "DELETE FROM acp_session_config_choices WHERE session_id=?1 AND kind=?2 AND config_id=?3",
-        params![session.as_str(), kind, config_id],
-    )?;
-    Ok(())
-}
-
 /// Gives session `to` the confirmed choices of session `from` (a fork
 /// continues its parent's session). Runs in the caller's transaction.
 pub(crate) fn copy(
@@ -207,49 +193,71 @@ fn with_stored(
     Ok(Some(config))
 }
 
-/// Records what the composer says about option `config_id` of the session.
-pub(crate) fn set_notice(
-    connection: &Connection,
-    session: &SageAgentSessionId,
-    config_id: &ConfigId,
-    notice: &str,
-    now_millis: i64,
-) -> rusqlite::Result<()> {
-    connection.execute(
-        "INSERT INTO acp_session_config_notices(session_id,config_id,notice,updated_at)
-         VALUES(?1,?2,?3,?4)
-         ON CONFLICT(session_id) DO UPDATE SET config_id=excluded.config_id,
-           notice=excluded.notice,updated_at=excluded.updated_at",
-        params![session.as_str(), config_id.as_str(), notice, now_millis],
-    )?;
-    Ok(())
-}
-
-/// Clears the session's notice once its option is chosen again.
-pub(crate) fn clear_notice(
+/// The value stored for the mode or option `choice` sets.
+pub(crate) fn get(
     connection: &Connection,
     session: &SageAgentSessionId,
     choice: &ConfigMutation,
-) -> rusqlite::Result<()> {
-    let (_, config_id, _) = columns(choice);
-    connection.execute(
-        "DELETE FROM acp_session_config_notices WHERE session_id=?1 AND config_id=?2",
-        params![session.as_str(), config_id],
-    )?;
-    Ok(())
+) -> rusqlite::Result<Option<ConfigMutation>> {
+    let (kind, config_id, _) = columns(choice);
+    Ok(connection
+        .query_row(
+            "SELECT value_json FROM acp_session_config_choices
+             WHERE session_id=?1 AND kind=?2 AND config_id=?3",
+            params![session.as_str(), kind, config_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .and_then(|value_json| from_columns(kind, config_id.to_owned(), &value_json)))
 }
 
-pub(crate) fn notice(
-    connection: &Connection,
+/// Compare-and-set: while `expected` is still the stored value of its mode
+/// or option, stores `new` for it (`None` removes it), settles any notice
+/// about it and sets `notice`, all in one transaction. A newer pick stored
+/// meanwhile is left as it is. Returns whether `expected` was replaced.
+pub(crate) fn replace_if_stored(
+    connection: &mut Connection,
     session: &SageAgentSessionId,
-) -> rusqlite::Result<Option<String>> {
-    connection
-        .query_row(
-            "SELECT notice FROM acp_session_config_notices WHERE session_id=?1",
-            [session.as_str()],
-            |row| row.get(0),
-        )
-        .optional()
+    expected: &ConfigMutation,
+    new: Option<&ConfigMutation>,
+    notice: Option<&super::notices::SessionConfigNotice>,
+    now_millis: i64,
+) -> rusqlite::Result<bool> {
+    let (kind, config_id, value) = columns(expected);
+    let expected_json = value.wire().to_string();
+    let transaction = connection.transaction()?;
+    let replaced = match new.map(columns) {
+        Some((new_kind, new_id, new_value)) => {
+            if (new_kind, new_id) != (kind, config_id) {
+                return Ok(false);
+            }
+            transaction.execute(
+                "UPDATE acp_session_config_choices SET value_json=?5,updated_at=?6
+                 WHERE session_id=?1 AND kind=?2 AND config_id=?3 AND value_json=?4",
+                params![
+                    session.as_str(),
+                    kind,
+                    config_id,
+                    expected_json,
+                    new_value.wire().to_string(),
+                    now_millis
+                ],
+            )?
+        }
+        None => transaction.execute(
+            "DELETE FROM acp_session_config_choices
+             WHERE session_id=?1 AND kind=?2 AND config_id=?3 AND value_json=?4",
+            params![session.as_str(), kind, config_id, expected_json],
+        )?,
+    } > 0;
+    if replaced {
+        super::notices::clear(&transaction, session, expected)?;
+        if let Some(notice) = notice {
+            super::notices::set(&transaction, session, notice, now_millis)?;
+        }
+    }
+    transaction.commit()?;
+    Ok(replaced)
 }
 
 /// Sets `choice` as the current value in `config` when `config` offers it.
@@ -366,7 +374,7 @@ mod tests {
     fn a_session_keeps_one_row_per_option_up_to_the_cap() {
         let database =
             crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
-        let connection = database.connection();
+        let mut connection = database.connection();
         connection.execute_batch("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Project',1,1,1);
             INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('chat','project',0,'Chat',1,1);").unwrap();
         connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,capabilities_json,state,residency,created_at,updated_at) VALUES('session','project','chat',0,'binding',?1,'{}','created','cold',1,1)", [&"a".repeat(64)]).unwrap();
@@ -386,7 +394,10 @@ mod tests {
         let stored = load(&connection, &session).unwrap();
         assert_eq!(stored.len(), SESSION_CONFIG_CHOICES_PER_SESSION);
         assert_eq!(stored.last(), Some(&select("o0", "b")));
-        forget(&connection, &session, &select("o0", "b")).unwrap();
+        assert!(
+            replace_if_stored(&mut connection, &session, &select("o0", "b"), None, None, 4)
+                .unwrap()
+        );
         assert!(
             !load(&connection, &session)
                 .unwrap()
@@ -398,7 +409,7 @@ mod tests {
     fn a_fork_starts_with_its_parents_choices() {
         let database =
             crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
-        let connection = database.connection();
+        let mut connection = database.connection();
         connection.execute_batch("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Project',1,1,1);
             INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('parent','project',0,'Parent',1,1),('child','project',1,'Child',1,1);").unwrap();
         for (id, chat) in [("session", "parent"), ("fork", "child")] {
@@ -416,7 +427,66 @@ mod tests {
         copy(&connection, &parent, &fork).unwrap();
         assert_eq!(load(&connection, &fork).unwrap(), [mode.clone(), fast]);
         // The two sessions' choices are separate from then on.
-        forget(&connection, &fork, &mode).unwrap();
+        assert!(replace_if_stored(&mut connection, &fork, &mode, None, None, 3).unwrap());
         assert!(load(&connection, &parent).unwrap().contains(&mode));
+    }
+
+    #[test]
+    fn a_compare_and_set_leaves_a_newer_value_and_its_notice_alone() {
+        let database =
+            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let mut connection = database.connection();
+        connection.execute_batch("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Project',1,1,1);
+            INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('chat','project',0,'Chat',1,1);").unwrap();
+        connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,capabilities_json,state,residency,created_at,updated_at) VALUES('session','project','chat',0,'binding',?1,'{}','created','cold',1,1)", [&"a".repeat(64)]).unwrap();
+        let session = SageAgentSessionId::parse("session").unwrap();
+        let model = |value: &str| ConfigMutation::Option {
+            config_id: ConfigId::new("configId", "model").unwrap(),
+            value: ConfigValue::Select {
+                value: ConfigId::new("value", value).unwrap(),
+            },
+        };
+        let notice = |saved: &str| super::super::notices::SessionConfigNotice {
+            config_id: ConfigId::new("configId", "model").unwrap(),
+            saved: ConfigId::new("saved", saved).unwrap(),
+            current: ConfigId::new("current", "a").unwrap(),
+            reason: super::super::notices::NoticeReason::NotOffered,
+        };
+        // The restore read "retired"; a pick of "b" was stored since.
+        record(&connection, &session, &model("b"), 1).unwrap();
+        super::super::notices::set(&connection, &session, &notice("old"), 1).unwrap();
+        let stale = model("retired");
+        assert!(
+            !replace_if_stored(
+                &mut connection,
+                &session,
+                &stale,
+                Some(&model("a")),
+                Some(&notice("retired")),
+                2
+            )
+            .unwrap()
+        );
+        assert!(!replace_if_stored(&mut connection, &session, &stale, None, None, 2).unwrap());
+        assert_eq!(load(&connection, &session).unwrap(), [model("b")]);
+        let kept = super::super::notices::load(&connection, &session).unwrap();
+        assert_eq!(kept.unwrap().saved.as_str(), "old");
+        // Against the value actually stored, it writes and settles the notice.
+        assert!(
+            replace_if_stored(
+                &mut connection,
+                &session,
+                &model("b"),
+                Some(&model("a")),
+                None,
+                3
+            )
+            .unwrap()
+        );
+        assert_eq!(load(&connection, &session).unwrap(), [model("a")]);
+        assert_eq!(
+            super::super::notices::load(&connection, &session).unwrap(),
+            None
+        );
     }
 }

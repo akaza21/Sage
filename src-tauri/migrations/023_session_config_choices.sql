@@ -25,12 +25,15 @@ CREATE TABLE acp_session_config_snapshots (
   updated_at INTEGER NOT NULL
 ) STRICT;
 
--- What the composer says about a stored choice the session could not take
--- back, such as a saved model it no longer offers and the one in use instead.
--- One row per session, replaced or cleared once that option is chosen again.
+-- A stored choice the session could not take back: the option, the saved
+-- value, the value the session uses instead, and whether the saved value is
+-- no longer offered or was refused. The composer words it. One row per
+-- session, replaced, or cleared once that option is chosen again.
 CREATE TABLE acp_session_config_notices (
   session_id TEXT PRIMARY KEY REFERENCES agent_sessions(id) ON DELETE CASCADE,
   config_id TEXT NOT NULL CHECK (length(CAST(config_id AS BLOB)) BETWEEN 1 AND 1024),
-  notice TEXT NOT NULL CHECK (length(CAST(notice AS BLOB)) BETWEEN 1 AND 1024),
+  saved TEXT NOT NULL CHECK (length(CAST(saved AS BLOB)) BETWEEN 1 AND 1024),
+  current TEXT NOT NULL CHECK (length(CAST(current AS BLOB)) BETWEEN 1 AND 1024),
+  reason TEXT NOT NULL CHECK (reason IN ('notOffered', 'rejected')),
   updated_at INTEGER NOT NULL
 ) STRICT;

@@ -12,8 +12,8 @@ use crate::acp::{
     runtime::HostError,
     scheduler::RuntimeOwner,
     session_config::{
-        Choice, ChoiceRecorder, Choices, ConfigId, ConfigIntent, ConfigKind, ConfigMutation,
-        ConfigValue, SessionConfig, SessionConfigOverlay, choices, reported::current_value,
+        ConfigIntent, ConfigMutation, SessionConfig, SessionConfigOverlay, choices,
+        notices::NoticeReason, reported::current_value,
     },
 };
 
@@ -84,6 +84,16 @@ fn ready(config: &SessionConfig, stored: &[ConfigMutation]) -> bool {
         })
 }
 
+/// When one restore change must be answered: the per-request timeout any
+/// config change gets, from when it is sent.
+fn send_deadline() -> Instant {
+    let now = Instant::now();
+    let deadline = now + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
+    #[cfg(test)]
+    let deadline = super::restore_tests::seam::send_deadline(now, deadline);
+    deadline
+}
+
 /// A restore change that reached the harness without a usable answer leaves
 /// the runtime needing recovery: the harness may still apply it, so the
 /// runtime host stops trusting the session's config (`Deadline` puts it in
@@ -100,135 +110,7 @@ fn needs_recovery(error: &HostError) -> bool {
     )
 }
 
-/// Whether `a` and `b` set the same mode or option.
-fn same_target(a: &ConfigMutation, b: &ConfigMutation) -> bool {
-    match (a, b) {
-        (ConfigMutation::Mode(_), ConfigMutation::Mode(_)) => true,
-        (
-            ConfigMutation::Option { config_id: a, .. },
-            ConfigMutation::Option { config_id: b, .. },
-        ) => a == b,
-        _ => false,
-    }
-}
-
-/// What the composer says when the saved model is no longer offered and the
-/// session keeps `current` instead. `None` for any other option.
-fn model_notice(
-    config: &SessionConfig,
-    saved: &ConfigMutation,
-    current: &ConfigMutation,
-) -> Option<(ConfigId, String)> {
-    let (
-        ConfigMutation::Option {
-            config_id,
-            value: ConfigValue::Select { value: saved },
-        },
-        ConfigMutation::Option {
-            value: ConfigValue::Select { value: current },
-            ..
-        },
-    ) = (saved, current)
-    else {
-        return None;
-    };
-    let option = config
-        .config_options
-        .as_slice()
-        .iter()
-        .find(|option| &option.id == config_id)
-        .filter(|option| option.category.as_ref().map(ConfigId::as_str) == Some("model"))?;
-    let ConfigKind::Select { options, .. } = &option.kind else {
-        return None;
-    };
-    let choices: Vec<&Choice> = match options {
-        Choices::Flat(choices) => choices.as_slice().iter().collect(),
-        Choices::Grouped(groups) => groups
-            .as_slice()
-            .iter()
-            .flat_map(|group| group.options.as_slice())
-            .collect(),
-    };
-    let name = choices
-        .iter()
-        .find(|choice| &choice.value == current)
-        .map_or(current.as_str(), |choice| choice.name.as_str());
-    Some((
-        config_id.clone(),
-        format!(
-            "The saved model {} isn't offered any more; this chat uses {name}.",
-            saved.as_str()
-        ),
-    ))
-}
-
 impl AcpService {
-    /// Stores the values sessions report themselves, once restored.
-    pub(in crate::acp::service) fn session_config_recorder(&self) -> ChoiceRecorder {
-        let database = self.database.clone();
-        std::sync::Arc::new(move |owner: &RuntimeOwner, reported: &[ConfigMutation]| {
-            for choice in reported {
-                remember(&database, owner, choice);
-            }
-        })
-    }
-
-    pub(super) fn remember_config_choice(&self, owner: &RuntimeOwner, choice: &ConfigMutation) {
-        remember(&self.database, owner, choice);
-    }
-
-    fn forget_config_choice(&self, owner: &RuntimeOwner, choice: &ConfigMutation) {
-        let removed = self.database.write_connection().and_then(|connection| {
-            choices::forget(&connection, &owner.session_id, choice).map_err(Into::into)
-        });
-        if let Err(error) = removed {
-            tracing::warn!(?error, "stale session config choice was not removed");
-        }
-    }
-
-    /// Stores the session's own value for `choice`, or drops the stored one
-    /// when the session no longer offers that mode or option. A saved model
-    /// that is no longer offered is logged and noted for the composer.
-    fn fall_back(&self, owner: &RuntimeOwner, config: &SessionConfig, choice: &ConfigMutation) {
-        let Some(current) = current_value(config, choice) else {
-            self.forget_config_choice(owner, choice);
-            return;
-        };
-        self.remember_config_choice(owner, &current);
-        if let Some((config_id, notice)) = model_notice(config, choice, &current) {
-            tracing::warn!("the saved model is not offered; the session keeps its own");
-            let noted = self.database.write_connection().and_then(|connection| {
-                choices::set_notice(
-                    &connection,
-                    &owner.session_id,
-                    &config_id,
-                    &notice,
-                    crate::persistence::now_millis(),
-                )
-                .map_err(Into::into)
-            });
-            if let Err(error) = noted {
-                tracing::warn!(?error, "session config notice was not stored");
-            }
-        }
-    }
-
-    /// The value now stored for the mode or option `choice` sets: a pick made
-    /// while the restore runs replaces the one it started with.
-    fn stored_now(&self, owner: &RuntimeOwner, choice: &ConfigMutation) -> Option<ConfigMutation> {
-        choices::load(&self.database.connection(), &owner.session_id)
-            .inspect_err(|error| tracing::warn!(?error, "stored session config was not read"))
-            .ok()?
-            .into_iter()
-            .find(|stored| same_target(stored, choice))
-    }
-
-    /// Whether `choice` is still the stored value, so the restore may send
-    /// it and store what the harness confirms.
-    pub(super) fn still_stored(&self, owner: &RuntimeOwner, choice: &ConfigMutation) -> bool {
-        self.stored_now(owner, choice).as_ref() == Some(choice)
-    }
-
     /// Reapplies the session's stored choices to a new runtime, once the
     /// session reports the modes and options they need. Each stored value
     /// that differs and is still offered is sent through the same config path
@@ -245,16 +127,13 @@ impl AcpService {
     /// recovery; its choice stays stored for the resumed runtime.
     pub(crate) fn restore_session_config(&self, owner: &RuntimeOwner) -> Result<(), HostError> {
         let budget = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
-        self.restore_until(owner, None, || Instant::now() >= budget)
+        self.restore_until(owner, || Instant::now() >= budget)
     }
 
-    /// The restore, sending changes until `out_of_time`, each answered by
-    /// `deadline` or, with `None`, within the per-request timeout from when
-    /// it is sent.
+    /// The restore, starting changes until `out_of_time`.
     pub(super) fn restore_until(
         &self,
         owner: &RuntimeOwner,
-        deadline: Option<Instant>,
         mut out_of_time: impl FnMut() -> bool,
     ) -> Result<(), HostError> {
         let Some(lane) = self.lane_for(owner) else {
@@ -297,7 +176,17 @@ impl AcpService {
         for choice in stored {
             match step(&overlay.config, &choice) {
                 Step::Keep => {}
-                Step::Forget | Step::Fallback(_) => self.fall_back(owner, &overlay.config, &choice),
+                // What the session runs now, not what the restore began
+                // with: a change made meanwhile (a live pick) counts.
+                Step::Forget | Step::Fallback(_) => self.fall_back(
+                    owner,
+                    &config
+                        .live_snapshot(owner)
+                        .unwrap_or_else(|| overlay.clone())
+                        .config,
+                    &choice,
+                    NoticeReason::NotOffered,
+                ),
                 // A pick made since the restore began wins over the value it
                 // started with.
                 Step::Apply if !self.still_stored(owner, &choice) => {}
@@ -308,7 +197,7 @@ impl AcpService {
                         );
                         return Ok(());
                     }
-                    match self.apply_stored(owner, &overlay, &choice, deadline)? {
+                    match self.apply_stored(owner, &overlay, &choice)? {
                         Applied::Sent(latest) => overlay = latest,
                         Applied::Deferred | Applied::Gone => return Ok(()),
                     }
@@ -326,22 +215,18 @@ impl AcpService {
         owner: &RuntimeOwner,
         overlay: &SessionConfigOverlay,
         choice: &ConfigMutation,
-        deadline: Option<Instant>,
     ) -> Result<Applied, HostError> {
         let Some(lane) = self.lane_for(owner) else {
             return Ok(Applied::Gone);
         };
         let apply = |revision| {
-            let deadline = deadline.unwrap_or_else(|| {
-                Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc)
-            });
             self.send_config(
                 ConfigIntent {
                     owner: owner.clone(),
                     expected_config_revision: revision,
                     mutation: choice.clone(),
                 },
-                Some(deadline),
+                Some(send_deadline()),
                 true,
             )
         };
@@ -377,8 +262,8 @@ impl AcpService {
         let Some(latest) = lane.runtime.config.live_snapshot(owner) else {
             return Ok(Applied::Gone);
         };
-        if result == Err(HostError::ConfigMutationRejected) && self.still_stored(owner, choice) {
-            self.fall_back(owner, &latest.config, choice);
+        if result == Err(HostError::ConfigMutationRejected) {
+            self.fall_back(owner, &latest.config, choice, NoticeReason::Rejected);
         }
         Ok(Applied::Sent(latest))
     }
@@ -403,29 +288,8 @@ struct Unfinished<'a> {
 impl Drop for Unfinished<'_> {
     fn drop(&mut self) {
         if !self.finished {
-            self.config.rearm_restore(self.owner);
+            self.config.rearm_restore(self.owner, &[]);
         }
-    }
-}
-
-fn remember(
-    database: &crate::persistence::Database,
-    owner: &RuntimeOwner,
-    choice: &ConfigMutation,
-) {
-    // A value stored for an option settles any notice about it.
-    let stored = database.write_connection().and_then(|connection| {
-        choices::clear_notice(&connection, &owner.session_id, choice)?;
-        choices::record(
-            &connection,
-            &owner.session_id,
-            choice,
-            crate::persistence::now_millis(),
-        )
-        .map_err(Into::into)
-    });
-    if let Err(error) = stored {
-        tracing::warn!(?error, "session config choice was not stored");
     }
 }
 

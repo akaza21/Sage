@@ -10,7 +10,10 @@
 use crate::acp::{
     contract::SageAgentSessionId,
     scheduler::RuntimeOwner,
-    session_config::{ConfigMutation, SessionConfig, SnapshotRecorder, choices},
+    session_config::{
+        ConfigMutation, SessionConfig, SnapshotRecorder, choices,
+        notices::{self, SessionConfigNotice},
+    },
 };
 
 use super::AcpService;
@@ -71,12 +74,11 @@ impl AcpService {
     pub(in crate::acp::service) fn session_config_notice(
         &self,
         session: &SageAgentSessionId,
-    ) -> Option<crate::acp::contract::SafeText<1024>> {
-        choices::notice(&self.database.connection(), session)
+    ) -> Option<SessionConfigNotice> {
+        notices::load(&self.database.connection(), session)
             .inspect_err(|error| tracing::warn!(?error, "session config notice was not read"))
             .ok()
             .flatten()
-            .and_then(|notice| crate::acp::contract::SafeText::new("notice", notice).ok())
     }
 
     /// Stores `choice` for a session that has no live config, when what it
@@ -107,23 +109,31 @@ impl AcpService {
             }
         };
         offered.map_err(|_| QueueError::NotOffered)?;
-        let connection = self
-            .database
-            .write_connection()
-            .map_err(|_| QueueError::Store)?;
-        match choices::record(
-            &connection,
-            session,
-            choice,
-            crate::persistence::now_millis(),
-        ) {
-            Ok(true) => {
-                // A restore that already read the stored choices runs again.
-                if let Some((lane, owner)) = lane {
-                    lane.runtime.config.rearm_restore(owner);
-                }
-                Ok(())
-            }
+        // A restore that already read the stored choices runs again, and
+        // until it reaches this one, what the harness reports for the same
+        // option does not replace it.
+        if let Some((lane, owner)) = &lane {
+            lane.runtime
+                .config
+                .rearm_restore(owner, std::slice::from_ref(choice));
+        }
+        // The pick settles any notice about its option, in the same write.
+        let stored = self.database.write_connection().and_then(|mut connection| {
+            let transaction = connection.transaction()?;
+            notices::clear(&transaction, session, choice)?;
+            let written = choices::record(
+                &transaction,
+                session,
+                choice,
+                crate::persistence::now_millis(),
+            )?;
+            transaction.commit()?;
+            Ok(written)
+        });
+        // On failure the rearmed restore resets what it holds from what is
+        // stored when it runs.
+        match stored {
+            Ok(true) => Ok(()),
             Ok(false) | Err(_) => Err(QueueError::Store),
         }
     }

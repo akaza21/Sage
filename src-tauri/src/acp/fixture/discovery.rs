@@ -6,6 +6,8 @@
 //! `initialize` and `model/list` frames its session steps send, and an
 //! account that needs no sign-in. Sage reads them with its real discovery
 //! protocol, so the composer's model menu is the catalogue the session sees.
+use std::{collections::HashMap, sync::OnceLock};
+
 use serde_json::{Value, json};
 
 use super::generated_cases::JOURNEY_CASES;
@@ -43,11 +45,18 @@ pub(crate) fn native_case_discovery_reply(case: &str, request: &Value) -> Option
         .then(|| json!({"id": id, "result": result}))
 }
 
-fn steps(case: &str) -> Option<Vec<Value>> {
-    JOURNEY_CASES
-        .iter()
-        .find(|entry| entry.id == case)
-        .and_then(|entry| serde_json::from_str(entry.steps_json).ok())
+/// Each journey case's steps, parsed once.
+fn steps(case: &str) -> Option<&'static [Value]> {
+    static STEPS: OnceLock<HashMap<&'static str, Vec<Value>>> = OnceLock::new();
+    STEPS
+        .get_or_init(|| {
+            JOURNEY_CASES
+                .iter()
+                .filter_map(|entry| Some((entry.id, serde_json::from_str(entry.steps_json).ok()?)))
+                .collect()
+        })
+        .get(case)
+        .map(Vec::as_slice)
 }
 
 /// The frame the case emits right after it waits for `kind`.

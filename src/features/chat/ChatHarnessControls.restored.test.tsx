@@ -4,7 +4,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
-import { decodeRestoredSessionConfig } from "../../domain/acpSessionConfig";
+import {
+  decodeRestoredSessionConfig,
+  decodeSavedChoiceNotice,
+} from "../../domain/acpSessionConfig";
 import { DEFAULT_SESSION_ACCESS_MODE } from "../../domain/sessionAccessMode";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import {
@@ -258,13 +261,47 @@ it("marks the restored mode and other options with the same note", async () => {
   expect(fast).toHaveAttribute("data-restored", "true");
 });
 
+it("decodes a notice only with its four bounded fields", () => {
+  const notice = {
+    configId: "model",
+    saved: "retired",
+    current: "fixture-model",
+    reason: "notOffered",
+  };
+  expect(decodeSavedChoiceNotice(notice)).toEqual(notice);
+  expect(decodeSavedChoiceNotice({ ...notice, reason: "other" })).toBeNull();
+  expect(
+    decodeSavedChoiceNotice({ ...notice, saved: "x".repeat(1025) }),
+  ).toBeNull();
+  expect(decodeSavedChoiceNotice({ ...notice, extra: 1 })).toBeNull();
+});
+
+it("words a refused saved model apart from one no longer offered", () => {
+  const view = restoredSessionConfigView(coldPage(), "fixture", null)!;
+  expect(
+    withSessionConfigNotice(view, {
+      configId: "model",
+      saved: "fixture-model-deep",
+      current: "fixture-model",
+      reason: "rejected",
+    })?.notice,
+  ).toBe(
+    "The harness refused the saved model Synthetic replay deep; this chat uses Synthetic replay.",
+  );
+});
+
 it("shows the notice about a saved model the session no longer offers", () => {
   const notice =
     "The saved model retired isn't offered any more; this chat uses Synthetic replay.";
   renderControls(
     withSessionConfigNotice(
       restoredSessionConfigView(coldPage(), "fixture", null),
-      notice,
+      {
+        configId: "model",
+        saved: "retired",
+        current: "fixture-model",
+        reason: "notOffered",
+      },
     ),
   );
   expect(screen.getByRole("status")).toHaveTextContent(notice);

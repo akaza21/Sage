@@ -53,6 +53,14 @@ mod tests {
         connection
             .execute("INSERT INTO acp_session_config_choices VALUES('session','option','effort','{\"value\":\"high\"}',1)", [])
             .unwrap();
+        connection
+            .execute("INSERT INTO acp_session_config_notices VALUES('session','model','retired','current','notOffered',1)", [])
+            .unwrap();
+        assert!(
+            connection
+                .execute("UPDATE acp_session_config_notices SET reason='other'", [])
+                .is_err()
+        );
         // Oversized values and unknown kinds are refused by the schema itself.
         assert!(
             connection
@@ -78,14 +86,14 @@ mod tests {
                  DELETE FROM agent_sessions WHERE id='session';",
             )
             .unwrap();
-        let left: i64 = connection
-            .query_row(
-                "SELECT COUNT(*) FROM acp_session_config_choices",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(left, 0);
+        for table in ["acp_session_config_choices", "acp_session_config_notices"] {
+            let left: i64 = connection
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(left, 0, "{table}");
+        }
     }
 
     #[test]

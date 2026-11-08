@@ -80,6 +80,7 @@ function safeCapabilities(
 import {
   decodeRestoredSessionConfig,
   decodeSessionConfig,
+  decodeSavedChoiceNotice,
 } from "../domain/acpSessionConfig";
 
 function safeSession(value: unknown): AgentSessionProjection | null {
@@ -197,14 +198,10 @@ export function safeAcpMutationResponse(
     restoredConfig?.sageAgentSessionId === currentSessionId
       ? restoredConfig
       : null;
-  const notice = projection.sessionConfigNotice;
   const sessionConfigNotice =
-    typeof notice === "string" &&
-    notice.length > 0 &&
-    notice.length <= 1024 &&
-    !notice.includes("\0")
-      ? notice
-      : null;
+    projection.sessionConfigNotice == null
+      ? null
+      : decodeSavedChoiceNotice(projection.sessionConfigNotice);
   const goal =
     projection.goal === undefined || !decodeGoal
       ? undefined

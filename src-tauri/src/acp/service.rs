@@ -376,8 +376,8 @@ impl AcpService {
             cursor.clone(),
         )?;
         self.compose_session_config(&mut page)?;
-        // History yields room for a restored config that does not fit.
-        if let Some(reserve) = session_config::restored_reserve(&page)? {
+        // History yields room for the session config that does not fit.
+        if let Some(reserve) = session_config::config_reserve(&mut page)? {
             page = crate::acp::store::load_chat_page_reserving(
                 &self.database.connection(),
                 project_id,

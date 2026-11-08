@@ -69,6 +69,16 @@ export type AcpRestoredSessionConfig = Omit<
   AcpSessionConfig,
   "runtimeEpoch" | "configRevision" | "removed" | "restored" | "notice"
 > & { awaiting: "resume" | "report" };
+/**
+ * A stored choice the session could not take back: the saved value of
+ * `configId`, the value the session uses instead, and why.
+ */
+export interface AcpSessionConfigNotice {
+  configId: string;
+  saved: string;
+  current: string;
+  reason: "notOffered" | "rejected";
+}
 export interface AcpSessionConfigChangedV1 {
   schemaVersion: 1;
   sageProjectId: string;
@@ -322,5 +332,24 @@ export function decodeRestoredSessionConfig(
     ...(decoded.confirmedEffort === undefined
       ? {}
       : { confirmedEffort: decoded.confirmedEffort }),
+  };
+}
+export function decodeSavedChoiceNotice(
+  v: unknown,
+): AcpSessionConfigNotice | null {
+  if (
+    !object(v) ||
+    Object.keys(v).length !== 4 ||
+    !text(v.configId) ||
+    !text(v.saved) ||
+    !text(v.current) ||
+    (v.reason !== "notOffered" && v.reason !== "rejected")
+  )
+    return null;
+  return {
+    configId: v.configId,
+    saved: v.saved,
+    current: v.current,
+    reason: v.reason,
   };
 }

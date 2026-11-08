@@ -4,6 +4,7 @@ import type { AcpGoalState } from "./acpGoal";
 import type {
   AcpRestoredSessionConfig,
   AcpSessionConfig,
+  AcpSessionConfigNotice,
 } from "./acpSessionConfig";
 import type { BrowserOperationProjection } from "./browserOperation";
 import type { FilePairMetadata } from "./agentDiff";
@@ -281,9 +282,8 @@ export interface AcpChatPage {
   sessionConfig?: AcpSessionConfig | null;
   /** The current session's restored config while it has no live one. */
   restoredSessionConfig?: AcpRestoredSessionConfig | null;
-  /** What the composer says about a stored choice the current session
-   * could not take back. */
-  sessionConfigNotice?: string | null;
+  /** A stored choice the current session could not take back. */
+  sessionConfigNotice?: AcpSessionConfigNotice | null;
   goal?: AcpGoalState;
   projectId: SageProjectId;
   chatId: SageChatId;
