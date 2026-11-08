@@ -2,6 +2,7 @@ use rusqlite::{Connection, OptionalExtension, params, types::ValueRef};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
+use super::AcpService;
 use crate::acp::{
     contract::{SageChatId, SageProjectId},
     store::StoreError,
@@ -24,6 +25,58 @@ const TABLES: [&str; 14] = [
     "acp_session_usage",
     "acp_store_usage",
 ];
+
+/// The native counters a renderer recreation snapshot records.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RendererRecreationUsage {
+    runtime_slot_active: u8,
+    live_trees: u32,
+    live_descendants: u32,
+}
+
+impl AcpService {
+    pub(crate) fn renderer_recreation_native_snapshot(
+        &self,
+        project_id: &SageProjectId,
+        chat_id: &SageChatId,
+    ) -> Result<RendererRecreationNativeSnapshot, StoreError> {
+        let usage = self.renderer_recreation_usage();
+        self.renderer_recreation_snapshot_on(
+            &self.database.connection(),
+            project_id,
+            chat_id,
+            usage,
+        )
+    }
+
+    /// Live runtimes and process-tree reservations, read without the store.
+    pub(crate) fn renderer_recreation_usage(&self) -> RendererRecreationUsage {
+        let (live_trees, live_descendants) =
+            crate::acp::process::TreeCapacityPool::global().observation_usage();
+        RendererRecreationUsage {
+            runtime_slot_active: u8::try_from(self.live_runtime_count()).unwrap_or(u8::MAX),
+            live_trees,
+            live_descendants,
+        }
+    }
+
+    pub(crate) fn renderer_recreation_snapshot_on(
+        &self,
+        connection: &Connection,
+        project_id: &SageProjectId,
+        chat_id: &SageChatId,
+        usage: RendererRecreationUsage,
+    ) -> Result<RendererRecreationNativeSnapshot, StoreError> {
+        RendererRecreationNativeSnapshot::capture(
+            connection,
+            project_id,
+            chat_id,
+            usage.runtime_slot_active,
+            usage.live_trees,
+            usage.live_descendants,
+        )
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct RendererRecreationNativeSnapshot {

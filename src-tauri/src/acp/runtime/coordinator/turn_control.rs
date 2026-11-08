@@ -1,6 +1,7 @@
 use crate::acp::{
     contract::ClientIntentId,
     lifecycle::TurnTerminalOutcome,
+    runtime::TurnNotice,
     store::{AdapterTurnCursor, BeginCancelCommand, MutationDisposition},
 };
 
@@ -217,13 +218,16 @@ impl ActiveDispatch {
 
     fn publish_current_projection(&mut self) -> Result<(), CoordinatorError> {
         let command = &self.command;
-        let disposition = self.publisher.publish_committed(ProjectionChangedV1 {
-            project_id: command.project_id.clone(),
-            chat_id: command.chat_id.clone(),
-            session_id: command.session_id.clone(),
-            projection_revision: self.accepted_projection_revision,
-            child_projection_epoch: 0,
-        })?;
+        let disposition = self.publisher.publish_committed_with(
+            ProjectionChangedV1 {
+                project_id: command.project_id.clone(),
+                chat_id: command.chat_id.clone(),
+                session_id: command.session_id.clone(),
+                projection_revision: self.accepted_projection_revision,
+                child_projection_epoch: 0,
+            },
+            TurnNotice::possible_if(self.accepted_state.is_notified_outcome()),
+        )?;
         if matches!(
             disposition,
             ProjectionPublishStatus::BootstrapRequired | ProjectionPublishStatus::RecoveryRequired

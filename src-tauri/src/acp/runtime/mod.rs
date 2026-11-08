@@ -94,7 +94,7 @@ pub(crate) use process_driver::{
 pub(crate) use process_driver::{ProcessAdapterDriver, TreeLeaseOwner};
 #[cfg(test)]
 pub(crate) use projection_publisher::ProjectionPublishError;
-pub(crate) use projection_publisher::{ProjectionPublishStatus, ProjectionPublisher};
+pub(crate) use projection_publisher::{ProjectionPublishStatus, ProjectionPublisher, TurnNotice};
 pub(crate) use runtime_host::HostState;
 pub(crate) use runtime_host::{
     ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostOutcome,

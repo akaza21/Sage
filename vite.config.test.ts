@@ -180,6 +180,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   // The Harnesses page loads on its first open.
   "src/features/settings/AgentHarnessSettings.tsx",
   "src/features/settings/AgentKeyboardSettings.tsx",
+  // The native turn-notice preference loads with the Chats page.
+  "src/features/settings/AgentNotificationSettings.tsx",
   "src/features/settings/AgentSettingsExecution.tsx",
   "src/features/settings/AgentSettingsSurface.tsx",
   "src/features/settings/openEditorSettings.ts",

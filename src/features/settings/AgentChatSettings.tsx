@@ -2,7 +2,11 @@ import { useWorkbenchStore } from "../../app/store";
 import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
 import { harnessAvailability } from "../chat/harnessAvailability";
 import { LazyHarnessNotice } from "../chat/lazyParts";
+import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { SettingsRow } from "./SettingsRow";
+
+// Native-only and below the fold, so it stays out of the Settings chunk.
+const loadNotificationSettings = () => import("./AgentNotificationSettings");
 
 export function AgentChatSettings() {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
@@ -121,6 +125,12 @@ export function AgentChatSettings() {
       {!project ? (
         <p role="status">Open a project to select a harness and model.</p>
       ) : null}
+      <h3>Notifications</h3>
+      <LazyModuleBoundary
+        label="Notification settings"
+        load={loadNotificationSettings}
+        render={(NotificationSettings) => <NotificationSettings />}
+      />
     </>
   );
 }

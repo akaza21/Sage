@@ -5,7 +5,57 @@ use crate::error::AppResult;
 
 use super::MAX_PROJECTS;
 
-pub(super) const MAX_AGENT_RAIL_CHATS_PER_PROJECT: i64 = 8;
+/// The chats the rail previews per project in each order it offers.
+pub(crate) const MAX_AGENT_RAIL_CHATS_PER_PROJECT: i64 = 8;
+
+/// The rail's "last updated" order over tabs aliased `w` and their chats
+/// aliased `c`: pinned chats first, then the most recently updated.
+const RAIL_RECENCY_ORDER: &str =
+    "w.pinned DESC, COALESCE(c.updated_at, w.updated_at, 0) DESC, w.position, w.id";
+
+/// The rail's manual order: pinned chats first, then by tab position.
+const RAIL_POSITION_ORDER: &str = "w.pinned DESC, w.position, w.id";
+
+/// The chat tabs the rail lists, as tabs aliased `w` with their chats
+/// aliased `c` (absent for a tab whose chat is not attached).
+const RAIL_CHAT_TABS: &str = "FROM workbench_tabs w
+         LEFT JOIN chat_tabs ct ON ct.project_id = w.project_id AND ct.tab_id = w.id
+         LEFT JOIN chats c ON c.project_id = ct.project_id AND c.id = ct.chat_id
+         WHERE w.kind = 'chat' AND COALESCE(json_extract(w.metadata_json,'$.ephemeral'),0)=0";
+
+/// The most chats the rail can show at once: every chat tab of the open
+/// project, and each other project's preview in both orders.
+pub(crate) const MAX_RAIL_CHATS: usize = crate::workbench_restore::MAX_RESTORED_TABS
+    + (MAX_PROJECTS as usize - 1) * 2 * MAX_AGENT_RAIL_CHATS_PER_PROJECT as usize;
+
+/// Every chat the rail can show, as a derived table with `project_id`,
+/// `tab_id` and `id` (the attached chat's id, or NULL): all chat tabs of the
+/// active project, and each other project's first chats in both orders
+/// `attach_rail_chats` previews. At most `MAX_RAIL_CHATS` rows. Ranking reads
+/// only tab and chat rows, so callers can look up Turns for these rows alone.
+pub(crate) fn rail_chat_set() -> String {
+    format!(
+        "(SELECT ranked.project_id AS project_id, ranked.tab_id AS tab_id, ranked.id AS id
+          FROM (
+            SELECT w.project_id AS project_id, w.id AS tab_id, c.id AS id,
+                   ROW_NUMBER() OVER (PARTITION BY w.project_id ORDER BY {RAIL_RECENCY_ORDER}) AS by_recency,
+                   ROW_NUMBER() OVER (PARTITION BY w.project_id ORDER BY {RAIL_POSITION_ORDER}) AS by_position
+            {RAIL_CHAT_TABS}
+          ) ranked
+          WHERE ranked.project_id IS (SELECT active_project_id FROM app_state WHERE singleton = 1)
+             OR ranked.by_recency <= {MAX_AGENT_RAIL_CHATS_PER_PROJECT}
+             OR ranked.by_position <= {MAX_AGENT_RAIL_CHATS_PER_PROJECT})"
+    )
+}
+
+/// The tab ids of every chat the rail can show; see `rail_chat_set`.
+pub(crate) fn rail_chat_ids(connection: &Connection) -> AppResult<Vec<String>> {
+    let mut statement = connection.prepare(&format!("SELECT tab_id FROM {}", rail_chat_set()))?;
+    let ids = statement
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<String>, _>>()?;
+    Ok(ids)
+}
 
 /// Projects newest first by when they were added. Opening a project or one of
 /// its chats never reorders the list, so rows stay put under the pointer.
@@ -46,23 +96,36 @@ type RailChatRow = (
     Option<i64>,
 );
 
-/// The finish time of the chat aliased `c`'s latest Turn, from its latest
-/// session that has one; NULL while that Turn runs or the chat has none.
-pub(crate) const CHAT_FINISHED_AT: &str = "(SELECT t.terminal_at FROM turns t
+/// A column of the chat aliased `c`'s latest Turn, from its latest session
+/// that has one. Every read of "the chat's latest Turn" goes through this, so
+/// the rail and the attention query agree on which Turn that is.
+macro_rules! chat_latest_turn {
+    ($column:literal) => {
+        concat!(
+            "(SELECT t.",
+            $column,
+            " FROM turns t
            WHERE t.session_id = (SELECT s.id FROM agent_sessions s
              WHERE s.project_id = c.project_id AND s.chat_id = c.id
                AND EXISTS(SELECT 1 FROM turns present WHERE present.session_id = s.id)
              ORDER BY s.ordinal DESC, s.id DESC LIMIT 1)
-           ORDER BY t.ordinal DESC, t.id DESC LIMIT 1)";
+           ORDER BY t.ordinal DESC, t.id DESC LIMIT 1)"
+        )
+    };
+}
+
+/// The finish time of the chat aliased `c`'s latest Turn; NULL while that
+/// Turn runs or the chat has none.
+pub(crate) const CHAT_FINISHED_AT: &str = chat_latest_turn!("terminal_at");
+
+/// The id of the chat aliased `c`'s latest Turn; NULL when it has none.
+pub(crate) const CHAT_LATEST_TURN_ID: &str = chat_latest_turn!("id");
 
 fn rail_chat_columns() -> String {
     format!(
         "SELECT w.id, w.title, w.pinned, w.position, w.status,
                 COALESCE(c.updated_at, w.updated_at), {CHAT_FINISHED_AT}
-         FROM workbench_tabs w
-         LEFT JOIN chat_tabs ct ON ct.project_id = w.project_id AND ct.tab_id = w.id
-         LEFT JOIN chats c ON c.project_id = ct.project_id AND c.id = ct.chat_id
-         WHERE w.project_id = ?1 AND w.kind = 'chat' AND COALESCE(json_extract(w.metadata_json,'$.ephemeral'),0)=0"
+         {RAIL_CHAT_TABS} AND w.project_id = ?1"
     )
 }
 
@@ -75,13 +138,13 @@ pub(super) fn attach_rail_chats(
 ) -> AppResult<()> {
     let mut by_recency = connection.prepare(&format!(
         "{}
-         ORDER BY w.pinned DESC, COALESCE(c.updated_at, w.updated_at, 0) DESC, w.position, w.id
+         ORDER BY {RAIL_RECENCY_ORDER}
          LIMIT ?2",
         rail_chat_columns()
     ))?;
     let mut by_position = connection.prepare(&format!(
         "{}
-         ORDER BY w.pinned DESC, w.position, w.id
+         ORDER BY {RAIL_POSITION_ORDER}
          LIMIT ?2",
         rail_chat_columns()
     ))?;
