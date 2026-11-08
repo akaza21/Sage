@@ -395,8 +395,10 @@ export function useChatSurfaceModel({
 }
 
 function signInRequiredMessage(harness: SurfaceHarness): string {
+  // A user-defined agent has no command; its hint names the offered methods.
   if (harness.signIn) {
-    return `${harness.name} requires sign-in before it can continue. Run ${harness.signIn.command}. ${harness.signIn.hint} Then try again.`;
+    const run = harness.signIn.command ? `Run ${harness.signIn.command}. ` : "";
+    return `${harness.name} requires sign-in before it can continue. ${run}${harness.signIn.hint} Then try again.`;
   }
   return `${harness.name} requires sign-in before it can continue. Sign in with its CLI, then try again.`;
 }

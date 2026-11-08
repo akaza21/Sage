@@ -155,8 +155,13 @@
       },
       {
         "entry": "src/features/settings/AgentHarnessSettings.tsx",
-        "maxGzipBytes": 1075,
-        "reason": "Harnesses settings page: install, version and sign-in status per harness; loaded only by Settings > Harnesses. Measured 1003 B plus 7%."
+        "maxGzipBytes": 1221,
+        "reason": "Harnesses settings page: install, version and sign-in status per harness, plus the lazy boundary for the user-defined agent editor; loaded only by Settings > Harnesses. Measured 1141 B plus 7%."
+      },
+      {
+        "entry": "src/features/settings/CustomAgentSettings.tsx",
+        "maxGzipBytes": 1222,
+        "reason": "Your ACP agents editor: at most four agents, each a name, executable path, arguments and passed-through variable names; loaded only when Settings > Harnesses opens. Measured 1142 B plus 7%."
       },
       {
         "entry": "src/features/settings/AgentBrowserSettings.tsx",
