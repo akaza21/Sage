@@ -11,8 +11,14 @@ This document is the reference for binding authors. The executable form is
 the parity suite:
 
 - `src-tauri/src/acp/tests/render_parity.rs` drives one scenario set through
-  each binding's real code and compares the projected transcript with one
-  canonical projection.
+  each binding's real code, commits what it emits through the store's
+  adapter batch apply against an in-memory database, reads the transcript
+  back through the chat page projection and compares it with one canonical
+  projection. A sequence the store refuses (a terminal item changed, an
+  illegal lifecycle or tool-state step, tool state and lifecycle disagreeing
+  on terminal, an item or Turn change after the Turn ended) fails the suite.
+  The stop scenario drives a real user cancel: Sage's cancel intent, the
+  binding's native cancel, the harness's answer, then the Turn end.
 - `src/features/chat/acp/harnessRenderParity.fixture.json` holds the
   canonical projections, the not-applicable cells and the known gaps.
 - `src/features/chat/acp/harnessRenderParity.test.tsx` renders each canonical
@@ -37,7 +43,7 @@ payload }` (`src-tauri/src/acp/bindings/adapter.rs:102`), plus
 4. Terminal sweep: when a Turn reaches a terminal state, every item still
    `started`/`streaming` becomes `cancelled`, and a `pending`/`inProgress`/
    `waitingForApproval` tool becomes `cancelled`
-   (`store/terminalize.rs:250`, called from `store/adapter_batch/turns.rs:100`).
+   (`store/terminalize.rs:263`, called from `store/adapter_batch/turns.rs:100`).
 5. WebView: `AcpItem` / `ToolPresentation` / `TurnProjection` in
    `src/domain/acpProjection.ts` render through `AcpChatPresentation`.
 
@@ -59,6 +65,12 @@ payload }` (`src-tauri/src/acp/bindings/adapter.rs:102`), plus
 | Images                     | `Image { media_type, data, source: Agent }` after shared admission (`acp/image_admit.rs`)                                                                                                                                                  | Never inline image bytes into text.                                                                                                                                                                                                                                                                                                                              |
 | Slash commands             | `HarnessAdapter::available_commands` / `discover_commands` (`bindings/adapter/model.rs:78`)                                                                                                                                                | The composer lists them; they never become transcript items.                                                                                                                                                                                                                                                                                                     |
 | Turn end                   | `Turn { state }`: `Completed`, `Cancelled` (user stop), `Interrupted` (harness stop), `Failed` with an `Error` item                                                                                                                         | Close every item the binding opened before the terminal Turn.                                                                                                                                                                                                                                                                                                    |
+
+`Cancelled` and `Interrupted` differ only in what the chat view shows. The
+store treats both as the end of a user stop when a durable cancel intent
+exists (`store/adapter_batch.rs:386`), and live cancel accepts either as the
+stopped Turn (`service/codex_live/live_cancel.rs:210`); the terminal sweep
+closes open items the same way for both. The distinction is display-only.
 
 Forbidden in any payload: absolute native paths (map them through the
 `ResourceMapper`), harness session, thread or tool ids, harness or model names

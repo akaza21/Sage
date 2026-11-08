@@ -1,28 +1,26 @@
 //! Cross-harness render parity (docs/harness-render-contract.md).
 //!
-//! One scenario set is driven through each harness's real binding, folded
-//! into the frontend item projection the store would decode, and compared
+//! One scenario set is driven through each harness's real binding, committed
+//! through the store's adapter batch apply, read back through the chat page
+//! projection, and compared
 //! with the single canonical projection in the shared fixture the chat view
 //! test renders. A harness that cannot produce a scenario is listed as not
 //! applicable; a known divergence is pinned with the exact fields the binding
 //! emits differently today, so fixing it or diverging further fails until the
 //! owning thread updates the fixture.
 
-use std::collections::BTreeMap;
-
-use serde_json::{Map, Value, json};
+use serde_json::Value;
 
 use crate::acp::{
     contract::SageRootId,
-    file_diff::{PairAdmission, admit_pair},
     intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason},
     lifecycle::{ItemLifecycle, ToolState, TurnState},
-    store::project_item_content,
 };
 
 mod acp;
 mod codex;
 mod pi;
+mod store;
 
 const FIXTURE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -84,10 +82,13 @@ pub(super) enum Fact {
         new_text: String,
     },
     Turn(TurnState),
+    /// The user pressed stop: Sage records its durable cancel intent before
+    /// it writes the binding's native cancel.
+    UserCancel,
 }
 
 /// A native runtime's event, stripped of its identity envelope. Permission
-/// cards are projected from durable request facts, not from this fold.
+/// cards need durable request facts this suite does not drive.
 pub(super) fn adapter_fact(event: crate::acp::bindings::adapter::AdapterEvent) -> Option<Fact> {
     use crate::acp::bindings::adapter::AdapterEvent;
     Some(match event {
@@ -163,98 +164,6 @@ pub(super) fn frame(value: &Value) -> crate::acp::transport::Frame {
         .expect("complete frame")
 }
 
-/// Folds facts the way the store commits them: the latest snapshot of each
-/// item replaces the earlier one in first-seen order, a retained pair makes
-/// the diff available, and a terminal Turn sweeps still-open items
-/// (`store/terminalize.rs`).
-fn project(facts: Vec<Fact>) -> Value {
-    let mut order = Vec::new();
-    let mut items: BTreeMap<String, (ItemLifecycle, Option<ToolState>, NormalizedPayload)> =
-        BTreeMap::new();
-    let mut turn = TurnState::Running;
-    for fact in facts {
-        match fact {
-            Fact::Item {
-                key,
-                lifecycle,
-                tool_state,
-                payload,
-            } => {
-                if !items.contains_key(&key) {
-                    order.push(key.clone());
-                }
-                items.insert(key, (lifecycle, tool_state, payload));
-            }
-            Fact::Pair {
-                key,
-                old_text,
-                new_text,
-            } => {
-                let Some((_, _, payload)) = items.get_mut(&key) else {
-                    panic!("pair {key} precedes its item")
-                };
-                retain_pair(payload, &old_text, &new_text);
-            }
-            Fact::Turn(state) => turn = state,
-        }
-    }
-    let items = order
-        .into_iter()
-        .map(|key| {
-            let (mut lifecycle, mut tool_state, mut payload) = items.remove(&key).unwrap();
-            if turn.is_terminal() && !lifecycle.is_terminal() {
-                lifecycle = ItemLifecycle::Cancelled;
-                if tool_state.is_some_and(|state| !state.is_terminal()) {
-                    tool_state = Some(ToolState::Cancelled);
-                }
-            }
-            if let NormalizedPayload::FileChangeDiff {
-                pair_available: true,
-                snapshot_revision,
-                ..
-            } = &mut payload
-            {
-                *snapshot_revision = 1;
-            }
-            let content = project_item_content(payload, lifecycle).expect("projectable");
-            let mut row = Map::new();
-            row.insert("lifecycle".into(), json!(lifecycle));
-            row.insert("toolState".into(), json!(tool_state));
-            let Value::Object(content) = serde_json::to_value(content).unwrap() else {
-                unreachable!()
-            };
-            row.extend(content);
-            strip_volatile(Value::Object(row))
-        })
-        .collect::<Vec<_>>();
-    json!({ "turnState": turn, "items": items })
-}
-
-fn retain_pair(payload: &mut NormalizedPayload, old: &str, new: &str) {
-    let NormalizedPayload::FileChangeDiff {
-        truncated,
-        snapshot_revision,
-        old_bytes,
-        new_bytes,
-        content_digest,
-        pair_available,
-        ..
-    } = payload
-    else {
-        panic!("a pair belongs to a file change")
-    };
-    let PairAdmission::Admitted {
-        old_bytes: old_len,
-        new_bytes: new_len,
-        digest,
-    } = admit_pair(old, new)
-    else {
-        panic!("scenario pairs fit")
-    };
-    (*truncated, *snapshot_revision, *pair_available) = (false, 1, true);
-    (*old_bytes, *new_bytes, *content_digest) = (old_len as u64, new_len as u64, digest);
-}
-
 /// Store-assigned identities never take part in parity.
 fn strip_volatile(mut value: Value) -> Value {
     match &mut value {
@@ -317,7 +226,15 @@ fn every_harness_projects_each_scenario_to_the_one_canonical_transcript() {
                 continue;
             };
             cells += 1;
-            let actual = project(facts);
+            let actual = match store::project(facts) {
+                Ok(actual) => actual,
+                Err(error) => {
+                    failures.push(format!(
+                        "{name}/{harness}: the store refuses the binding's sequence: {error:?}"
+                    ));
+                    continue;
+                }
+            };
             let expected = match (not_applicable, gap) {
                 (Some(_), _) => {
                     failures.push(format!("{name}/{harness}: listed N/A but has a script"));
@@ -379,4 +296,91 @@ fn parity_fixture_lists_only_known_scenarios_harnesses_and_owners() {
         let differs = gap["differs"].as_object().expect("differs");
         assert!(!differs.is_empty(), "{gap}");
     }
+}
+
+/// The store, not this suite, decides which sequences commit: a binding that
+/// emits any of these fails the parity suite.
+#[test]
+fn the_store_refuses_sequences_no_binding_may_emit() {
+    use crate::acp::{contract::SafeText, store::StoreError};
+    let text = |lifecycle| Fact::Item {
+        key: "message-1".into(),
+        lifecycle,
+        tool_state: None,
+        payload: NormalizedPayload::Text {
+            text: SafeText::new("text", "Done.").unwrap(),
+        },
+    };
+    let running_tool = || {
+        acp::generic(Scenario::CancelledWithRunningTool)
+            .unwrap()
+            .into_iter()
+            .find(|fact| matches!(fact, Fact::Item { .. }))
+            .unwrap()
+    };
+    let settled_tool = |lifecycle, state| {
+        let Fact::Item { key, payload, .. } = running_tool() else {
+            unreachable!()
+        };
+        Fact::Item {
+            key,
+            lifecycle,
+            tool_state: Some(state),
+            payload,
+        }
+    };
+    let refused = |facts: Vec<Fact>| store::project(facts).unwrap_err();
+    assert!(matches!(
+        refused(vec![
+            text(ItemLifecycle::Completed),
+            text(ItemLifecycle::Streaming)
+        ]),
+        StoreError::TerminalConflict { resource: "item" }
+    ));
+    assert!(matches!(
+        refused(vec![
+            text(ItemLifecycle::Streaming),
+            text(ItemLifecycle::Started)
+        ]),
+        StoreError::InvalidTransition { resource: "item" }
+    ));
+    assert!(matches!(
+        refused(vec![
+            settled_tool(ItemLifecycle::Streaming, ToolState::InProgress),
+            settled_tool(ItemLifecycle::Streaming, ToolState::Pending),
+        ]),
+        StoreError::InvalidTransition { resource: "tool" }
+    ));
+    assert!(matches!(
+        refused(vec![settled_tool(
+            ItemLifecycle::Completed,
+            ToolState::InProgress
+        )]),
+        StoreError::InvalidTransition {
+            resource: "itemShape"
+        }
+    ));
+    assert!(matches!(
+        refused(vec![
+            Fact::Turn(TurnState::Completed),
+            text(ItemLifecycle::Completed)
+        ]),
+        StoreError::Conflict {
+            resource: "itemOwner"
+        }
+    ));
+    assert!(matches!(
+        refused(vec![
+            Fact::Turn(TurnState::Completed),
+            Fact::Turn(TurnState::Failed)
+        ]),
+        StoreError::TerminalConflict { resource: "turn" }
+    ));
+    assert!(
+        store::project(vec![
+            text(ItemLifecycle::Completed),
+            Fact::Turn(TurnState::Completed)
+        ])
+        .is_ok()
+    );
 }

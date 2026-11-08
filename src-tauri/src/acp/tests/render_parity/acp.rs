@@ -101,22 +101,33 @@ fn run(profile: &str, scenario: Scenario) -> Vec<Fact> {
         StandardAcpTranslator::new(profile_for(profile).expect("profile"), SESSION).unwrap();
     translator.begin_prompt("3").unwrap();
     let (frames, stop) = frames(scenario);
-    let mut events = Vec::new();
+    let mut facts = Vec::new();
     for frame in frames {
-        events.extend(
+        facts.extend(
             translator
                 .translate_notification_value(frame.clone(), &Mapper::repo())
-                .unwrap_or_else(|error| panic!("{profile} refused {frame}: {error:?}")),
+                .unwrap_or_else(|error| panic!("{profile} refused {frame}: {error:?}"))
+                .into_iter()
+                .filter_map(fact),
         );
     }
-    events.extend(
+    if scenario == Scenario::CancelledWithRunningTool {
+        // A user stop: Sage records the cancel intent and the runtime writes
+        // the `session/cancel` notification, which has no reply and never
+        // reaches the translator. The agent answers by settling the pending
+        // `session/prompt` with stopReason `cancelled`.
+        facts.push(Fact::UserCancel);
+    }
+    facts.extend(
         translator
             .translate_prompt_result_value(
                 json!({"jsonrpc":"2.0","id":3,"result":{"stopReason":stop}}),
             )
-            .expect("prompt result"),
+            .expect("prompt result")
+            .into_iter()
+            .filter_map(fact),
     );
-    events.into_iter().filter_map(fact).collect()
+    facts
 }
 
 fn fact(event: AdapterEvent) -> Option<Fact> {

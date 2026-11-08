@@ -22,8 +22,6 @@ mod paging;
 mod permission_item;
 mod projection_decode;
 pub(crate) use projection_decode::parse_legacy_text;
-#[cfg(test)]
-pub(crate) use projection_decode::tests::project_item_content;
 mod request_identity;
 mod request_terminal;
 mod requests;
@@ -81,6 +79,8 @@ pub(crate) use cancel::begin_cancel;
 #[cfg(test)]
 pub(crate) use commands::prepare_turn;
 pub(crate) use commands::{lookup_active_turn, lookup_prepared_turn};
+#[cfg(test)]
+pub(crate) use facts::hex_digest;
 pub(crate) use facts::next_projection_revision;
 pub(crate) use history::load_chat_page;
 pub(crate) use item_ingress::{ItemIngressCommand, ItemIngressMutation, apply_item_ingress};
