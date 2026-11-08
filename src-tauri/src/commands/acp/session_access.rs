@@ -82,6 +82,17 @@ pub(super) fn turn_access_mode(
     })
 }
 
+/// The access a prompt runs under, selected in its live session first.
+pub(super) fn select_turn_access(
+    state: &AppState,
+    binding_id: &str,
+    owner: RuntimeOwner,
+) -> Result<SessionAccessMode, AcpIpcError> {
+    let mode = turn_access_mode(state, binding_id, &owner.session_id)?;
+    select_session_mode(state, owner, binding_id, mode)?;
+    Ok(mode)
+}
+
 /// The live session config a mode is selected through.
 pub(super) trait SessionModeHost {
     fn live_config(&self, owner: &RuntimeOwner) -> Option<SessionConfigOverlay>;

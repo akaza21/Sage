@@ -236,28 +236,17 @@ pub(crate) async fn send_acp_turn_inner(
     }
     // Read the access only now, under the reacquired authority, so a
     // choice made while the prompt was being prepared is the one it runs in.
-    let access_mode =
-        match super::session_access::turn_access_mode(state, binding_id.as_str(), &session_id)
-            .and_then(|mode| {
-                super::session_access::select_session_mode(
-                    state,
-                    RuntimeOwner {
-                        project_id: project_id.clone(),
-                        chat_id: chat_id.clone(),
-                        session_id: session_id.clone(),
-                        runtime_epoch,
-                    },
-                    binding_id.as_str(),
-                    mode,
-                )
-                .map(|()| mode)
-            }) {
-            Ok(mode) => mode,
-            Err(error) => {
-                super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
-                return Err(prompt_not_dispatched(error));
-            }
-        };
+    let owner = RuntimeOwner {
+        project_id: project_id.clone(),
+        chat_id: chat_id.clone(),
+        session_id: session_id.clone(),
+        runtime_epoch,
+    };
+    let access_mode = super::session_access::select_turn_access(state, binding_id.as_str(), owner)
+        .map_err(|error| {
+            super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
+            prompt_not_dispatched(error)
+        })?;
     prompt.resources = files.clone();
     let tracked_session = session_id.clone();
     let tracked_intent = client_intent_id.clone();
