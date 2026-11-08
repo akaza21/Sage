@@ -244,7 +244,7 @@ where
             decision,
         } if owner == &context.owner => {
             let request_id = request_id.clone();
-            let decision = *decision;
+            let decision = decision.clone();
             match active
                 .turn
                 .driver

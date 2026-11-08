@@ -139,9 +139,15 @@ impl WorkerCommand {
             Self::NativeRpc { intent, .. } => Some(intent.actual_bytes()),
             Self::AbandonConfiguration { owner } => owner_bytes(owner).checked_add(1),
             Self::ResolvePermission {
-                owner, request_id, ..
+                owner,
+                request_id,
+                decision,
             } => owner_bytes(owner)
                 .checked_add(request_id.as_str().len())?
+                .checked_add(match decision {
+                    PermissionDecision::Answer(answers) => answers.retained_bytes(),
+                    _ => 0,
+                })?
                 .checked_add(1),
             Self::PreparePrompt(intent) => owner_bytes(&intent.owner())
                 .checked_add(intent.command.client_intent_id.as_str().len())?
