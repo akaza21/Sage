@@ -69,7 +69,12 @@ test("AP-C project disclosure, context actions, and honest project menu", async 
   await expect(disclosure).toHaveAttribute("aria-expanded", "false");
   await expect(projects.locator(".project-chat-row")).toHaveCount(0);
   await disclosure.click();
-  const row = projects.locator(".project-chat-row").first();
+  // Mark unread is offered only on a chat whose last Turn finished. The
+  // project's own chat is still working, so the menu opens on the finished
+  // chat, which is pinned.
+  const row = sidebar
+    .getByRole("region", { name: "Pinned" })
+    .locator(".project-chat-row", { hasText: "Agent navigation polish" });
   await row.click({ button: "right" });
   const menu = page.getByRole("menu", { name: /^Actions for / });
   await expect(
