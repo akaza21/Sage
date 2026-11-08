@@ -931,7 +931,7 @@ fn directory_link(link: &Path, target: &Path) {
                 .trim_start_matches(r"\\?\")
                 .to_owned()
         };
-        let status = Command::new("cmd")
+        let status = std::process::Command::new("cmd")
             .args(["/C", "mklink", "/J", &plain(link), &plain(target)])
             .stdout(std::process::Stdio::null())
             .status()

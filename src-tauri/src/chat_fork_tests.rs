@@ -392,7 +392,7 @@ fn a_fork_starts_with_the_config_choices_of_its_parent() {
         contract::SageAgentSessionId,
         session_config::{ConfigId, ConfigMutation, ConfigValue, choices},
     };
-    let fixture = Fixture::new(FORKABLE);
+    let fixture = Fixture::new(&forkable());
     let parent = SageAgentSessionId::parse("session-parent").unwrap();
     let mode = ConfigMutation::Mode(ConfigId::new("modeId", "plan").unwrap());
     let effort = ConfigMutation::Option {

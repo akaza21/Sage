@@ -1,4 +1,4 @@
-use std::{fs, path::Path, process::Command, time::Duration};
+use std::{fs, path::Path, time::Duration};
 
 use super::super::{GitProcessPolicy, repository_config, run};
 use super::MAX_PARALLEL_JOBS;

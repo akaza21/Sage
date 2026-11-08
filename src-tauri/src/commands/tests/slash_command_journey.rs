@@ -111,6 +111,7 @@ fn claude_slash_commands_run_through_the_command_route_with_the_live_revision() 
             project_transitions: tokio::sync::Mutex::new(0),
             startup_recovery_notice: None,
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         };
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse(chat).unwrap();
