@@ -211,7 +211,7 @@ pub(crate) async fn execute_committed_transition_checked<T: Send + 'static>(
         return failed_transition(*transition_epoch, "project transition epoch exhausted");
     }
     if let Err(error) = preflight() {
-        return failed_transition(*transition_epoch, error.public_message());
+        return failed_transition(*transition_epoch, logged_public_message(&error));
     }
     let committed_epoch = *transition_epoch + 1;
     let mutation = tauri::async_runtime::spawn_blocking(operation)
@@ -219,7 +219,7 @@ pub(crate) async fn execute_committed_transition_checked<T: Send + 'static>(
         .map_err(|error| crate::error::AppError::TaskInterrupted(error.to_string()))
         .and_then(std::convert::identity);
     if let Err(error) = mutation {
-        return failed_transition(*transition_epoch, error.public_message());
+        return failed_transition(*transition_epoch, logged_public_message(&error));
     }
     *transition_epoch = committed_epoch;
     on_committed_project_transition_epoch(*transition_epoch);
@@ -275,6 +275,14 @@ pub(crate) async fn cancelled_transition(state: &AppState) -> ProjectTransitionR
         snapshot: None,
         recovery_error: None,
     }
+}
+
+/// The failure's public text; detail it leaves out goes to the log.
+fn logged_public_message(error: &crate::error::AppError) -> String {
+    if error.hides_detail() {
+        tracing::warn!(%error, "project transition failed");
+    }
+    error.public_message()
 }
 
 fn failed_transition(transition_epoch: u64, error: impl ToString) -> ProjectTransitionResult {

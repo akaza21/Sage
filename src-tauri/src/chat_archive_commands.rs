@@ -1,9 +1,14 @@
+use std::{
+    sync::{Condvar, Mutex, PoisonError},
+    time::{Duration, Instant},
+};
+
 use tauri::{Manager, State};
 
 use crate::{
     acp::{
         contract::{SageChatId, SageProjectId},
-        service::ChatRuntimeRelease,
+        service::{ChatRuntimeRelease, explicit_close_deadline},
     },
     chat_commands::{execute_chat_transition, failed_transition},
     domain::{ChatDeleteRequest, ChatLifecycleRequest, ProjectTransitionResult},
@@ -11,8 +16,59 @@ use crate::{
     state::AppState,
 };
 
+/// How long a release waits before asking again for a lane another holder
+/// (an activation, or another release) has claimed.
+const LANE_BUSY_RETRY: Duration = Duration::from_millis(25);
+
+/// Archive releases still running after their archive answered. Exit waits
+/// for them, within its shutdown budget, before shutting the lanes down.
+#[derive(Debug, Default)]
+pub struct ArchiveReleases {
+    running: Mutex<usize>,
+    settled: Condvar,
+}
+
+impl ArchiveReleases {
+    fn begin(&self) {
+        *self.running.lock().unwrap_or_else(PoisonError::into_inner) += 1;
+    }
+
+    fn end(&self) {
+        let mut running = self.running.lock().unwrap_or_else(PoisonError::into_inner);
+        *running = running.saturating_sub(1);
+        self.settled.notify_all();
+    }
+
+    /// Waits until no archive release is running or `deadline` passes, and
+    /// answers whether they all settled.
+    pub(crate) fn wait_settled(&self, deadline: Instant) -> bool {
+        let mut running = self.running.lock().unwrap_or_else(PoisonError::into_inner);
+        while *running > 0 {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return false;
+            }
+            running = self
+                .settled
+                .wait_timeout(running, left)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
+        }
+        true
+    }
+}
+
+/// Ends one tracked archive release however its task ends.
+struct ReleaseRunning<'a>(&'a ArchiveReleases);
+
+impl Drop for ReleaseRunning<'_> {
+    fn drop(&mut self) {
+        self.0.end();
+    }
+}
+
 /// Archives a Chat and answers as soon as the archive commits; the Chat's
-/// runtime is released afterwards on the blocking pool.
+/// runtime is released afterwards in the background.
 #[tauri::command]
 pub async fn archive_chat(
     app: tauri::AppHandle,
@@ -23,8 +79,12 @@ pub async fn archive_chat(
     let (project, chat) = (request.project_id.clone(), request.chat_id.clone());
     let result = archive_chat_inner(&state, request, expected_transition_epoch).await;
     if result.committed {
-        tauri::async_runtime::spawn_blocking(move || {
-            release_archived_runtime(&app.state::<AppState>(), &project, &chat);
+        // Counted before the task starts, so an exit requested now waits.
+        state.archive_releases.begin();
+        tauri::async_runtime::spawn(async move {
+            let state = app.state::<AppState>();
+            let _running = ReleaseRunning(&state.archive_releases);
+            release_archived_runtime(&state, &project, &chat).await;
         });
     }
     Ok(result)
@@ -49,79 +109,71 @@ pub async fn delete_chat(
     Ok(delete_chat_inner(&state, request, expected_transition_epoch).await)
 }
 
-/// Parks the Chat's live runtime through the lanes' explicit-close park,
-/// handing this thread to Tokio's blocking pool while the harness exits.
-fn release_chat_runtime(
+/// Whether the Chat is still archived; a failed lookup answers no, so the
+/// runtime is kept.
+fn still_archived(state: &AppState, project: &SageProjectId, chat: &SageChatId) -> bool {
+    crate::chat_archive::is_archived_chat(
+        &state.database.connection(),
+        project.as_str(),
+        chat.as_str(),
+    )
+    .is_ok_and(|archived| archived)
+}
+
+/// Parks an archived Chat's live runtime through the lanes' explicit-close
+/// park. One `deadline` bounds every attempt and the waits between them; a
+/// lane another holder has claimed is asked again until then, while a park
+/// that did not settle is answered at once. The lane is claimed before the
+/// Chat is checked as still archived, so a Chat restored meanwhile keeps its
+/// runtime. Each attempt hands its Tokio worker to the blocking pool.
+async fn release_until(
     state: &AppState,
     project: &SageProjectId,
     chat: &SageChatId,
+    deadline: Instant,
 ) -> Result<(), ChatRuntimeRelease> {
-    let release = || state.acp.release_chat_runtime(project, chat);
-    if tokio::runtime::Handle::try_current()
-        .is_ok_and(|handle| handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread)
-    {
-        tokio::task::block_in_place(release)
-    } else {
-        release()
+    let attempt = || {
+        state.acp.release_chat_runtime(project, chat, deadline, || {
+            still_archived(state, project, chat)
+        })
+    };
+    loop {
+        let outcome = if tokio::runtime::Handle::try_current().is_ok_and(|handle| {
+            handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread
+        }) {
+            tokio::task::block_in_place(attempt)
+        } else {
+            attempt()
+        };
+        match outcome {
+            Err(ChatRuntimeRelease::LaneBusy) if Instant::now() + LANE_BUSY_RETRY < deadline => {
+                tokio::time::sleep(LANE_BUSY_RETRY).await;
+            }
+            outcome => return outcome,
+        }
     }
 }
 
-/// Releases an archived Chat's runtime after its archive has answered. The
-/// park is bounded by the explicit-close deadline; one that does not settle
-/// is logged, and delete retries it. A Chat restored in the meantime keeps
-/// its runtime.
-pub(crate) fn release_archived_runtime(state: &AppState, project: &str, chat: &str) {
+/// Releases an archived Chat's runtime after its archive has answered,
+/// within the explicit-close deadline. An outcome other than a release is
+/// logged; delete releases the runtime again before it deletes the Chat.
+pub(crate) async fn release_archived_runtime(state: &AppState, project: &str, chat: &str) {
     let (Ok(project), Ok(chat)) = (
         SageProjectId::parse(project.to_owned()),
         SageChatId::parse(chat.to_owned()),
     ) else {
         return;
     };
-    let archived = || {
-        crate::chat_archive::is_archived_chat(
-            &state.database.connection(),
-            project.as_str(),
-            chat.as_str(),
-        )
-    };
-    match archived() {
-        Ok(true) => {}
-        Ok(false) => return,
-        Err(error) => {
-            tracing::warn!(%error, "archived Chat's runtime was not released");
-            return;
-        }
-    }
-    match release_chat_runtime(state, &project, &chat) {
+    match release_until(state, &project, &chat, explicit_close_deadline()).await {
         Ok(()) => {}
-        Err(ChatRuntimeRelease::TurnRunning) if !matches!(archived(), Ok(true)) => {
+        Err(ChatRuntimeRelease::TurnRunning) if !still_archived(state, &project, &chat) => {
             tracing::debug!("a restored Chat started a Turn before its runtime was released");
         }
         Err(ChatRuntimeRelease::TurnRunning) => {
             tracing::error!("archived Chat is running a Turn; archive admission was bypassed")
         }
-        Err(refusal @ ChatRuntimeRelease::Unsettled) => {
+        Err(refusal) => {
             tracing::warn!(?refusal, "archived Chat's runtime is not yet released");
-        }
-    }
-}
-
-/// Releases an archived Chat's runtime before it is deleted, waiting out a
-/// background release that is still parking it. Each attempt is bounded by
-/// the explicit-close deadline, and so is the wait.
-fn release_before_delete(
-    state: &AppState,
-    project: &SageProjectId,
-    chat: &SageChatId,
-) -> Result<(), ChatRuntimeRelease> {
-    let deadline = std::time::Instant::now()
-        + std::time::Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
-    loop {
-        match release_chat_runtime(state, project, chat) {
-            Err(ChatRuntimeRelease::Unsettled) if std::time::Instant::now() < deadline => {
-                std::thread::sleep(std::time::Duration::from_millis(25));
-            }
-            outcome => return outcome,
         }
     }
 }
@@ -156,11 +208,17 @@ pub(crate) async fn delete_chat_inner(
     // instead of refusing. Only an archived Chat's runtime is touched;
     // anything else is refused below.
     let refusal = match archived_identity(state, &request) {
-        Ok(Some((project, chat))) => release_before_delete(state, &project, &chat)
-            .err()
-            .map(|refusal| refusal.message("deleting")),
+        Ok(Some((project, chat))) => {
+            release_until(state, &project, &chat, explicit_close_deadline())
+                .await
+                .err()
+                .map(|refusal| refusal.message("deleting"))
+        }
         Ok(None) => None,
-        Err(error) => Some(error.public_message()),
+        Err(error) => {
+            tracing::warn!(%error, "archived Chat lookup failed before delete");
+            Some(error.public_message())
+        }
     };
     if let Some(message) = refusal {
         let epoch = *state.project_transitions.lock().await;
@@ -190,13 +248,22 @@ pub(crate) fn forget_read_marks_of_deleted_chats(
     database: &crate::persistence::Database,
     settings: &crate::settings_store::SettingsStore,
 ) {
-    let connection = database.connection();
-    let outcome = settings.forget_chat_read_marks_unless(|chat| {
-        Ok(connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM chats WHERE id=?1)",
-            [chat],
-            |row| row.get(0),
-        )?)
+    // Each store's lock is taken alone: collect, check, then forget.
+    let outcome = settings.chat_read_mark_ids().and_then(|marked| {
+        let connection = database.connection();
+        let mut missing = Vec::new();
+        for chat in marked {
+            let exists: bool = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM chats WHERE id=?1)",
+                [&chat],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                missing.push(chat);
+            }
+        }
+        drop(connection);
+        settings.forget_chat_read_marks(&missing)
     });
     match outcome {
         Ok(0) => {}

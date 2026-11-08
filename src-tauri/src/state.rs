@@ -52,6 +52,8 @@ pub struct AppState {
     pub project_transitions: tokio::sync::Mutex<u64>,
     pub startup_recovery_notice: Option<String>,
     pub terminals: crate::user_terminal::TerminalSessionPort,
+    /// Archive runtime releases still running; exit waits for them.
+    pub archive_releases: crate::chat_archive_commands::ArchiveReleases,
 }
 
 impl AppState {
@@ -134,6 +136,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 
@@ -200,6 +203,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 
@@ -237,6 +241,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 
@@ -269,6 +274,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 

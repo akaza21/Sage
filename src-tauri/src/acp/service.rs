@@ -50,7 +50,7 @@ mod debug;
 mod intent_snapshot;
 mod live_lanes;
 mod live_routes;
-pub(crate) use live_lanes::{ChatRuntimeRelease, LIVE_RUNTIME_LANES};
+pub(crate) use live_lanes::{ChatRuntimeRelease, LIVE_RUNTIME_LANES, explicit_close_deadline};
 mod permission;
 // Only the Pi bridge fixture replay drives decisions through the service from outside it.
 #[cfg(all(test, feature = "acp-fixture"))]
@@ -163,6 +163,13 @@ pub(crate) struct AcpService {
     codex_runtime_identity: Arc<CodexRuntimeIdentityLedger>,
     #[cfg(test)]
     codex_runtime_release_fail_once: AtomicBool,
+    /// Chat releases refused because another holder had the lane.
+    #[cfg(test)]
+    lane_busy_refusals: std::sync::atomic::AtomicUsize,
+    /// When set, the next lane-busy refusal lets go of the lane's claim, as
+    /// the holder finishing would.
+    #[cfg(test)]
+    yield_lane_on_busy: AtomicBool,
     #[cfg(test)]
     codex_runtime_release_fail_always: AtomicBool,
     #[cfg(all(windows, feature = "acp-fixture"))]

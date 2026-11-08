@@ -159,6 +159,9 @@ pub(crate) async fn execute_chat_transition(
         .map_err(|error| AppError::TaskInterrupted(error.to_string()))
         .and_then(std::convert::identity);
     if let Err(error) = mutation {
+        if error.hides_detail() {
+            tracing::warn!(%error, "Chat transition failed");
+        }
         return failed_transition(*transition_epoch, error.public_message());
     }
     *transition_epoch += 1;

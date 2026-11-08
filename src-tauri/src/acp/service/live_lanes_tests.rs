@@ -23,6 +23,25 @@ impl AcpService {
         );
         ActivationClaim { lane }
     }
+
+    /// How many chat releases found their lane held by another claim.
+    pub(in crate::acp::service) fn lane_busy_refusals_for_test(&self) -> usize {
+        self.lane_busy_refusals.load(Ordering::Acquire)
+    }
+
+    /// Holds the claim on the lane serving `owner` until a release is first
+    /// refused for it, then lets go, as a holder finishing would.
+    pub(in crate::acp::service) fn hold_lane_until_busy_for_test(&self, owner: &RuntimeOwner) {
+        std::mem::forget(self.claim_lane_activation_for_test(owner));
+        self.yield_lane_on_busy.store(true, Ordering::Release);
+    }
+
+    pub(super) fn observe_lane_busy_for_test(&self, lane: &LiveLane) {
+        self.lane_busy_refusals.fetch_add(1, Ordering::AcqRel);
+        if self.yield_lane_on_busy.swap(false, Ordering::AcqRel) {
+            lane.activating.store(false, Ordering::Release);
+        }
+    }
 }
 
 fn activation_deadline() -> Instant {
@@ -338,7 +357,12 @@ fn releasing_a_chat_with_a_reserved_turn_is_refused_and_keeps_its_runtime() {
     let _turn = lease.reserve_turn().unwrap();
     let owner = owner("idle-0", 1);
     assert_eq!(
-        service.release_chat_runtime(&owner.project_id, &owner.chat_id),
+        service.release_chat_runtime(
+            &owner.project_id,
+            &owner.chat_id,
+            explicit_close_deadline(),
+            || true
+        ),
         Err(ChatRuntimeRelease::TurnRunning)
     );
     assert!(service.lanes[0].scheduler.active().is_some());

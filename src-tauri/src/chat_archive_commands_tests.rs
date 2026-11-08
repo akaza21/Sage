@@ -192,6 +192,22 @@ fn archive_refuses_a_chat_with_queued_prompts_until_they_are_gone() {
 }
 
 #[test]
+fn exit_waits_for_running_archive_releases_within_its_deadline() {
+    let releases = ArchiveReleases::default();
+    assert!(releases.wait_settled(std::time::Instant::now()));
+    releases.begin();
+    // Still running at the deadline: exit goes ahead and says so.
+    assert!(!releases.wait_settled(std::time::Instant::now()));
+    std::thread::scope(|scope| {
+        let waiting = scope.spawn(|| {
+            releases.wait_settled(std::time::Instant::now() + std::time::Duration::from_secs(60))
+        });
+        drop(ReleaseRunning(&releases));
+        assert!(waiting.join().unwrap(), "the release ending wakes the wait");
+    });
+}
+
+#[test]
 fn startup_forgets_read_marks_of_deleted_chats_only() {
     let (state, request, root) = two_chat_state("marks");
     for chat_id in [request.chat_id.as_str(), "chat-deleted-before-crash"] {

@@ -154,13 +154,8 @@ impl SettingsStore {
         })
     }
 
-    /// Forgets the marks of chats for which `exists` answers false. A deleted
-    /// chat's mark is dropped with it, but a crash between the two writes
-    /// can leave the mark behind; startup calls this to drop it.
-    pub fn forget_chat_read_marks_unless(
-        &self,
-        mut exists: impl FnMut(&str) -> AppResult<bool>,
-    ) -> AppResult<usize> {
+    /// Every chat that holds a mark, in no order.
+    pub fn chat_read_mark_ids(&self) -> AppResult<Vec<String>> {
         let connection = self
             .0
             .lock()
@@ -169,13 +164,24 @@ impl SettingsStore {
             .prepare("SELECT chat_id FROM chat_read_marks")?
             .query_map([], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
+        Ok(chats)
+    }
+
+    /// Forgets these chats' marks in one transaction, as startup does for
+    /// chats that no longer exist: a deleted chat's mark is dropped with it,
+    /// but a crash between the two writes can leave the mark behind.
+    pub fn forget_chat_read_marks(&self, chat_ids: &[String]) -> AppResult<usize> {
+        let mut connection = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let transaction = connection.transaction()?;
         let mut forgotten = 0;
-        for chat in chats {
-            if !exists(&chat)? {
-                forgotten += connection
-                    .execute("DELETE FROM chat_read_marks WHERE chat_id = ?1", [&chat])?;
-            }
+        for chat in chat_ids {
+            forgotten +=
+                transaction.execute("DELETE FROM chat_read_marks WHERE chat_id = ?1", [chat])?;
         }
+        transaction.commit()?;
         Ok(forgotten)
     }
 
@@ -240,8 +246,11 @@ mod tests {
         let store = SettingsStore::in_memory().unwrap();
         store.mark_chat_read(&mark("chat-kept", 1), &[]).unwrap();
         store.mark_chat_read(&mark("chat-deleted", 2), &[]).unwrap();
+        let mut ids = store.chat_read_mark_ids().unwrap();
+        ids.sort();
+        assert_eq!(ids, ["chat-deleted", "chat-kept"]);
         let forgotten = store
-            .forget_chat_read_marks_unless(|chat| Ok(chat == "chat-kept"))
+            .forget_chat_read_marks(&["chat-deleted".into(), "chat-never-marked".into()])
             .unwrap();
         assert_eq!(forgotten, 1);
         assert_eq!(

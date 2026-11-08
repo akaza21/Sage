@@ -1343,6 +1343,15 @@ fn close_session(owner: &RuntimeOwner) -> crate::acp::store::CloseSessionCommand
 fn app_with_idle_runtime(
     label: &str,
 ) -> (crate::state::AppState, RuntimeOwner, std::path::PathBuf) {
+    app_with_runtime(label, true)
+}
+
+/// An app whose Chat holds an idle runtime; without `parkable` the runtime
+/// has no shutdown recovery, so a park of it never settles.
+fn app_with_runtime(
+    label: &str,
+    parkable: bool,
+) -> (crate::state::AppState, RuntimeOwner, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-archive-runtime-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
     let database = crate::persistence::Database::open(&root.join("sage.db")).unwrap();
@@ -1360,15 +1369,48 @@ fn app_with_idle_runtime(
         label,
     ));
     let host = Arc::new(
-        crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
-            TestRuntime::default(),
-            Arc::new(SuccessfulShutdownRecovery(owner.runtime_epoch.get())),
-        )
+        if parkable {
+            crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
+                TestRuntime::default(),
+                Arc::new(SuccessfulShutdownRecovery(owner.runtime_epoch.get())),
+            )
+        } else {
+            crate::acp::runtime::RuntimeHost::start(TestRuntime::default())
+        }
         .unwrap(),
     );
     host.activate(owner.clone()).unwrap();
     state.acp.install_runtime_for_test(owner.clone(), host);
     (state, owner, root)
+}
+
+#[test]
+fn delete_refuses_a_park_that_cannot_settle_at_once_without_retrying() {
+    let (state, owner, root) = app_with_runtime("unsettled-park", false);
+    state
+        .database
+        .archive_chat(&archive_request(&state, &owner))
+        .unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let refused = runtime.block_on(crate::chat_archive_commands::delete_chat_inner(
+        &state,
+        delete_request(&owner),
+        0,
+    ));
+    assert!(!refused.committed);
+    assert_eq!(
+        refused.recovery_error.as_deref(),
+        Some("This Chat's agent is still shutting down; try deleting it again")
+    );
+    assert_eq!(
+        state.acp.lane_busy_refusals_for_test(),
+        0,
+        "an unsettled park is not a busy lane"
+    );
+    assert!(state.acp.lane_for(&owner).is_some(), "the Chat is kept");
+    let _ = state.acp.shutdown_blocking();
+    drop(state);
+    let _ = std::fs::remove_dir_all(root);
 }
 
 fn layout_of(
@@ -1452,11 +1494,11 @@ fn archiving_a_chat_after_its_turn_parks_its_runtime_and_it_then_deletes() {
         1,
         "archive answers before its runtime is released"
     );
-    crate::chat_archive_commands::release_archived_runtime(
+    runtime.block_on(crate::chat_archive_commands::release_archived_runtime(
         &state,
         owner.project_id.as_str(),
         owner.chat_id.as_str(),
-    );
+    ));
     assert_eq!(
         live_epochs(&state, &owner),
         0,
@@ -1519,27 +1561,19 @@ fn delete_waits_for_a_background_release_still_parking_the_runtime() {
         0,
     ));
     assert!(archived.committed, "{:?}", archived.recovery_error);
-    // Hold the lane the way a background release does while it parks, then
-    // let that release run while delete is already waiting on the lane.
-    let claim = state.acp.claim_lane_activation_for_test(&owner);
-    let deleted = std::thread::scope(|scope| {
-        let delete = scope.spawn(|| {
-            runtime.block_on(crate::chat_archive_commands::delete_chat_inner(
-                &state,
-                delete_request(&owner),
-                archived.transition_epoch,
-            ))
-        });
-        std::thread::sleep(Duration::from_millis(100));
-        assert!(!delete.is_finished(), "delete waits for the release");
-        drop(claim);
-        crate::chat_archive_commands::release_archived_runtime(
-            &state,
-            owner.project_id.as_str(),
-            owner.chat_id.as_str(),
-        );
-        delete.join().unwrap()
-    });
+    // A background release holds the lane: delete is refused for it at least
+    // once, then the holder lets go and delete releases the runtime itself.
+    state.acp.hold_lane_until_busy_for_test(&owner);
+    let deleted = runtime.block_on(crate::chat_archive_commands::delete_chat_inner(
+        &state,
+        delete_request(&owner),
+        archived.transition_epoch,
+    ));
+    assert_eq!(
+        state.acp.lane_busy_refusals_for_test(),
+        1,
+        "delete waited out the held lane"
+    );
     assert!(deleted.committed, "{:?}", deleted.recovery_error);
     assert!(state.acp.lane_for(&owner).is_none());
     assert_eq!(live_epochs(&state, &owner), 0);
@@ -1663,7 +1697,12 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
     let other = SageChatId::parse("chat-other").unwrap();
 
     assert_eq!(
-        service.release_chat_runtime(&owner.project_id, &other),
+        service.release_chat_runtime(
+            &owner.project_id,
+            &other,
+            crate::acp::service::explicit_close_deadline(),
+            || true
+        ),
         Ok(())
     );
     assert!(service.lane_at(0).scheduler.active().is_some());
@@ -1699,8 +1738,27 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
         "{refused}"
     );
 
+    // A Chat restored before its release claims the lane keeps its runtime.
     assert_eq!(
-        service.release_chat_runtime(&owner.project_id, &owner.chat_id),
+        service.release_chat_runtime(
+            &owner.project_id,
+            &owner.chat_id,
+            crate::acp::service::explicit_close_deadline(),
+            || false,
+        ),
+        Ok(())
+    );
+    assert!(service.lane_at(0).scheduler.active().is_some());
+    // The release let go of the lane: it can be claimed again.
+    drop(service.claim_lane_activation_for_test(&owner));
+
+    assert_eq!(
+        service.release_chat_runtime(
+            &owner.project_id,
+            &owner.chat_id,
+            crate::acp::service::explicit_close_deadline(),
+            || true
+        ),
         Ok(())
     );
     assert!(service.lane_at(0).scheduler.active().is_none());
@@ -1719,7 +1777,12 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
     assert!(!live, "the parked runtime epoch is no longer live");
     // Nothing is left to release, and the archived Chat now deletes cleanly.
     assert_eq!(
-        service.release_chat_runtime(&owner.project_id, &owner.chat_id),
+        service.release_chat_runtime(
+            &owner.project_id,
+            &owner.chat_id,
+            crate::acp::service::explicit_close_deadline(),
+            || true
+        ),
         Ok(())
     );
     service.database.delete_archived_chat(&delete).unwrap();

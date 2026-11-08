@@ -28,13 +28,21 @@ use super::{
 /// Number of concurrently live harness runtimes Sage admits.
 pub(crate) const LIVE_RUNTIME_LANES: usize = LIMITS.process.operational_live_trees as usize;
 
+/// The explicit-close deadline from now: the bound on one release or close.
+pub(crate) fn explicit_close_deadline() -> Instant {
+    Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.explicit_close)
+}
+
 /// Why a Chat's live runtime was not released.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ChatRuntimeRelease {
     /// A Turn is running; the user stops it first.
     TurnRunning,
-    /// The runtime did not settle before its close deadline, or an
-    /// activation still holds its lane; a retry may succeed.
+    /// An activation or another release holds the lane; once it lets go, a
+    /// retry may succeed.
+    LaneBusy,
+    /// The park did not settle before its deadline; retrying now does not
+    /// help.
     Unsettled,
 }
 
@@ -43,7 +51,7 @@ impl ChatRuntimeRelease {
     pub(crate) fn message(self, action: &str) -> String {
         match self {
             Self::TurnRunning => format!("Stop this Chat's running turn before {action} it"),
-            Self::Unsettled => {
+            Self::LaneBusy | Self::Unsettled => {
                 format!("This Chat's agent is still shutting down; try {action} it again")
             }
         }
@@ -231,12 +239,15 @@ impl AcpService {
     /// evicted idle lane takes, so an archived or deleted Chat holds no
     /// harness process; a later restore resumes the session. A lane retaining
     /// recovery for the Chat is driven first. A reserved Turn is refused.
+    /// `still_wanted` is asked once the lane is claimed, so a Chat restored
+    /// meanwhile keeps its runtime; `deadline` bounds the whole release.
     pub(crate) fn release_chat_runtime(
         &self,
         project: &crate::acp::contract::SageProjectId,
         chat: &crate::acp::contract::SageChatId,
+        deadline: Instant,
+        still_wanted: impl Fn() -> bool,
     ) -> Result<(), ChatRuntimeRelease> {
-        let deadline = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.explicit_close);
         let same = |owner: &RuntimeOwner| &owner.project_id == project && &owner.chat_id == chat;
         for (index, lane) in self.lanes.iter().enumerate() {
             let active = lane.scheduler.active().filter(|active| same(&active.tree));
@@ -253,9 +264,14 @@ impl AcpService {
                 .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
                 .is_err()
             {
-                return Err(ChatRuntimeRelease::Unsettled);
+                #[cfg(test)]
+                self.observe_lane_busy_for_test(lane);
+                return Err(ChatRuntimeRelease::LaneBusy);
             }
             let _claim = ActivationClaim { lane };
+            if !still_wanted() {
+                return Ok(());
+            }
             let view = self.lane_at(index);
             if recovering {
                 let _ = view.shutdown_codex_recovery(deadline);
@@ -284,8 +300,7 @@ impl AcpService {
     }
 
     fn reclaim_replacement_parks(&self, deadline: Instant) {
-        let deadline = deadline
-            .min(Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.explicit_close));
+        let deadline = deadline.min(explicit_close_deadline());
         for (index, lane) in self.lanes.iter().enumerate() {
             if Instant::now() >= deadline {
                 break;
