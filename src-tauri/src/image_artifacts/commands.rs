@@ -40,15 +40,39 @@ pub(crate) async fn upload_chat_image(
     state: State<'_, AppState>,
     request: UploadChatImageRequest,
 ) -> Result<ImageAttachedContext, String> {
-    let transition = state.project_transitions.lock().await;
-    if request.project_generation != *transition {
-        return Err("Project changed before image upload".into());
+    upload_chat_image_inner(&state, request).await
+}
+
+/// The project lock is held only to check the generation and to store the
+/// result. Decoding runs between, without it, under an image-work permit, so
+/// a project switch never waits on a decode and decodes never overlap past
+/// the image memory ceiling.
+pub(crate) async fn upload_chat_image_inner(
+    state: &AppState,
+    request: UploadChatImageRequest,
+) -> Result<ImageAttachedContext, String> {
+    let generation = request.project_generation;
+    let stale = || "Project changed before image upload".to_owned();
+    if generation != *state.project_transitions.lock().await {
+        return Err(stale());
     }
-    let database = state.database.clone();
-    tauri::async_runtime::spawn_blocking(move || upload_image_payload(&database, request))
+    let permit = super::work::image_work_permit().await;
+    let prepared = tauri::async_runtime::spawn_blocking(move || prepare_upload(request))
         .await
         .map_err(|error| error.to_string())?
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    drop(permit);
+    let transition = state.project_transitions.lock().await;
+    if generation != *transition {
+        return Err(stale());
+    }
+    let database = state.database.clone();
+    let stored = tauri::async_runtime::spawn_blocking(move || store_upload(&database, prepared))
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string());
+    drop(transition);
+    stored
 }
 
 #[tauri::command]
@@ -81,10 +105,26 @@ pub(crate) async fn remove_chat_image(
     .map_err(|error| error.to_string())
 }
 
+/// An upload decoded and normalised, not yet stored.
+pub(crate) struct PreparedUpload {
+    project_id: String,
+    chat_id: String,
+    media_type: ImageMediaType,
+    bytes: Vec<u8>,
+    label: String,
+}
+
+/// The whole upload in one call, for tests that need no project lock.
+#[cfg(test)]
 pub(crate) fn upload_image_payload(
     database: &Database,
-    mut request: UploadChatImageRequest,
+    request: UploadChatImageRequest,
 ) -> AppResult<ImageAttachedContext> {
+    store_upload(database, prepare_upload(request)?)
+}
+
+/// Validates, decodes and normalises an upload. It touches no database.
+pub(crate) fn prepare_upload(mut request: UploadChatImageRequest) -> AppResult<PreparedUpload> {
     if request.data_base64.is_empty() || request.data_base64.len() > MAX_IMAGE_BASE64_BYTES {
         return Err(AppError::ResourceLimit(
             "image upload exceeds its bound".into(),
@@ -97,19 +137,12 @@ pub(crate) fn upload_image_payload(
     {
         return Err(AppError::InvalidRequest("image owner is invalid".into()));
     }
-    if database.active_project_id()?.as_deref() != Some(&request.project_id) {
-        return Err(AppError::InvalidRequest(
-            "image project is not active".into(),
-        ));
-    }
     // Each copy is freed once the next exists: base64, then the raw file.
     let encoded = std::mem::take(&mut request.data_base64);
     let bytes = STANDARD
         .decode(&encoded)
         .map_err(|_| AppError::InvalidRequest("image data is not valid base64".into()))?;
     drop(encoded);
-    // Normalised before the write connection is taken, so a large upload
-    // never holds it while decoding.
     let (media_type, bytes) = match normalize_upload(request.media_type, &bytes)? {
         Some(normalized) => {
             drop(bytes);
@@ -117,14 +150,33 @@ pub(crate) fn upload_image_payload(
         }
         None => (request.media_type, bytes),
     };
+    Ok(PreparedUpload {
+        project_id: request.project_id,
+        chat_id: request.chat_id,
+        media_type,
+        bytes,
+        label: request.label,
+    })
+}
+
+/// Stores a prepared upload for the active project.
+pub(crate) fn store_upload(
+    database: &Database,
+    upload: PreparedUpload,
+) -> AppResult<ImageAttachedContext> {
+    if database.active_project_id()?.as_deref() != Some(&upload.project_id) {
+        return Err(AppError::InvalidRequest(
+            "image project is not active".into(),
+        ));
+    }
     let connection = database.write_connection()?;
     ingest_image(
         &connection,
         database.image_artifact_root()?,
-        &request.project_id,
-        &request.chat_id,
-        media_type,
-        &bytes,
-        &request.label,
+        &upload.project_id,
+        &upload.chat_id,
+        upload.media_type,
+        &upload.bytes,
+        &upload.label,
     )
 }

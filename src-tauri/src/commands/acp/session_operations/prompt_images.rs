@@ -89,10 +89,13 @@ pub(super) async fn attach(
         chat_id.as_str(),
         &images,
     )?;
-    // Decoding and re-encoding take a blocking thread, not the async runtime.
+    // Decoding and re-encoding take a blocking thread, not the async runtime,
+    // and an image-work permit shared with uploads (`IMAGE_WORK_PERMITS`).
+    let permit = crate::image_artifacts::image_work_permit().await;
     let normalized = tauri::async_runtime::spawn_blocking(move || normalize(stored))
         .await
         .map_err(|_| internal_error())??;
+    drop(permit);
     admit_sizes(normalized.iter().map(|image| image.bytes.len())).map_err(refused)?;
     prompt.images = PromptImages(Arc::new(normalized));
     Ok(images

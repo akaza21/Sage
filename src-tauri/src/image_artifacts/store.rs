@@ -7,15 +7,19 @@ use uuid::Uuid;
 use crate::{
     acp::{
         intent::ImageMediaType,
-        limits::{IMAGE_UPLOAD_BYTES, STORED_IMAGE_EDGE_PX, STORED_IMAGE_PIXELS},
+        limits::{
+            IMAGE_UPLOAD_BYTES, STORED_IMAGE_BYTES, STORED_IMAGE_EDGE_PX, STORED_IMAGE_PIXELS,
+            STORED_THUMBNAIL_EDGE_PX,
+        },
         migration,
     },
     error::{AppError, AppResult},
     image_attachment::{ImageAttachedContext, ImageAttachmentKind, MAX_OUTGOING_IMAGE_BYTES},
 };
-const FULL_LIMIT: u64 = 4 * 1024 * 1024;
+/// A stored full image is read back within the store bound.
+const FULL_LIMIT: u64 = STORED_IMAGE_BYTES as u64;
 /// A stored image this small is its own thumbnail; a larger one gets a
-/// 128 px PNG thumbnail, which must also stay within this size.
+/// `STORED_THUMBNAIL_EDGE_PX` PNG thumbnail, which must also stay within this size.
 const THUMBNAIL_INLINE_BYTES: usize = 256 * 1024;
 
 pub(crate) fn ingest_image(
@@ -145,8 +149,8 @@ fn admit_png(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
     let thumbnail = if bytes.len() <= THUMBNAIL_INLINE_BYTES {
         bytes.to_vec()
     } else {
-        let thumb_width = width.min(128);
-        let thumb_height = height.min(128);
+        let thumb_width = width.min(STORED_THUMBNAIL_EDGE_PX);
+        let thumb_height = height.min(STORED_THUMBNAIL_EDGE_PX);
         let mut pixels = vec![0; thumb_width as usize * thumb_height as usize * 4];
         let stride = match frame.color_type {
             png::ColorType::Grayscale => 1,
@@ -222,8 +226,8 @@ fn admit_jpeg(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
             jpeg_decoder::PixelFormat::RGB24 => 3,
             _ => return Err(invalid("image color format is unsupported")),
         };
-        let thumb_width = width.min(128);
-        let thumb_height = height.min(128);
+        let thumb_width = width.min(STORED_THUMBNAIL_EDGE_PX);
+        let thumb_height = height.min(STORED_THUMBNAIL_EDGE_PX);
         let mut pixels = vec![0; thumb_width as usize * thumb_height as usize * 4];
         for y in 0..thumb_height as usize {
             for x in 0..thumb_width as usize {

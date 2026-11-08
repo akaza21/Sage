@@ -83,15 +83,18 @@ impl Resources {
 pub(crate) fn prompt_blocks(
     prompt: &crate::acp::intent::Prompt,
     capabilities: Option<&crate::acp::intent::CapabilitySnapshotV1>,
-) -> Result<Vec<serde_json::Value>, &'static str> {
-    let mut blocks = prompt.resources.wire(
-        prompt.as_str(),
-        capabilities.is_some_and(|value| value.prompt_resources),
-    )?;
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut blocks = prompt
+        .resources
+        .wire(
+            prompt.as_str(),
+            capabilities.is_some_and(|value| value.prompt_resources),
+        )
+        .map_err(str::to_owned)?;
     let images = prompt
         .images
         .wire(capabilities)
-        .map_err(|_| "the prompt images are refused")?;
+        .map_err(images::ImageRefusal::message)?;
     blocks.splice(1..1, images);
     Ok(blocks)
 }

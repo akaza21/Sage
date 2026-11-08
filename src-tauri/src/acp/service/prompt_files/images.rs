@@ -55,6 +55,7 @@ pub(crate) enum ImageRefusal {
 }
 
 impl ImageRefusal {
+    /// The user-facing refusal, built from the `limits.rs` numbers.
     pub(crate) fn message(self) -> String {
         match self {
             Self::Unsupported => "This harness does not advertise image prompt support. Remove the images or choose a harness that accepts them.".into(),

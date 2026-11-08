@@ -13,17 +13,35 @@ pub const PROMPT_IMAGE_COUNT: usize = 4;
 pub const IMAGE_UPLOAD_BYTES: usize = 10 * 1024 * 1024;
 pub const IMAGE_UPLOAD_EDGE_PX: u32 = 8192;
 pub const IMAGE_UPLOAD_PIXELS: u64 = 16_777_216;
-/// An upper bound on native memory while normalising one upload (about 186 MiB
-/// at the pixel bound), held on the upload's blocking thread only:
-/// - the encoded file, once its base64 has been freed;
-/// - a PNG decodes straight into its RGBA raster (4 bytes a pixel, converted
-///   in place; 16-bit channels are stripped while decoding);
-/// - a JPEG's decoder holds up to 2 bytes a sample of coefficients for three
-///   components while it writes 3-byte RGB, which is freed with the decoder
-///   before widening to RGBA (at most 4 + 3 bytes a pixel while it moves);
-/// - the downscaled raster and its encodings, at most the stored edge.
-pub const IMAGE_NORMALIZE_PEAK_BYTES: u64 =
-    IMAGE_UPLOAD_BYTES as u64 + IMAGE_UPLOAD_PIXELS * (3 * 2 + 3) + STORED_IMAGE_PIXELS * 4 * 2;
+/// Native bytes a pixel while a progressive JPEG decodes (jpeg-decoder 0.3):
+/// 2-byte coefficients for three components (6), the three component planes
+/// (3) and the RGB output (3), all live at once. This is the worst decode;
+/// a PNG decodes straight into its 4-byte RGBA raster.
+pub const IMAGE_DECODE_BYTES_PER_PIXEL: u64 = 6 + 3 + 3;
+/// Headroom the PNG decoder may take beside its raster for row buffers.
+pub const PNG_DECODER_ROW_BYTES: usize = 1024 * 1024;
+/// An upper bound on native memory while normalising one image (about 202
+/// MiB at the pixel bound). The encoded file stays alive throughout (its
+/// base64 is freed first); on top of it the larger of:
+/// - the decode above;
+/// - widening the decoded pixels to RGBA (3 + 4 bytes a pixel while it moves);
+/// - the full raster beside its downscale, its upright copy and their
+///   encodings, each at most the stored edge.
+pub const IMAGE_NORMALIZE_PEAK_BYTES: u64 = IMAGE_UPLOAD_BYTES as u64
+    + max(
+        IMAGE_UPLOAD_PIXELS * IMAGE_DECODE_BYTES_PER_PIXEL,
+        IMAGE_UPLOAD_PIXELS * 4 + STORED_IMAGE_PIXELS * 4 * 4,
+    );
+/// Native memory all image normalisation may hold at once, uploads and
+/// prompt sends together.
+pub const IMAGE_WORK_MEMORY_BYTES: u64 = 256 * 1024 * 1024;
+/// Normalisations that may run at once: as many peaks as fit the ceiling.
+pub const IMAGE_WORK_PERMITS: usize =
+    (IMAGE_WORK_MEMORY_BYTES / IMAGE_NORMALIZE_PEAK_BYTES) as usize;
+
+const fn max(left: u64, right: u64) -> u64 {
+    if left > right { left } else { right }
+}
 
 /// What the image store keeps for any harness. An upload past these bounds
 /// is normalised down to them; one within them is kept byte for byte.
@@ -43,6 +61,13 @@ pub const PROMPT_IMAGE_JPEG_QUALITY: u8 = 85;
 /// Decoded bytes of every normalised image in one prompt together, and so of
 /// any one image: three or four normalised screenshots.
 pub const PROMPT_IMAGE_TOTAL_BYTES: usize = 1024 * 1024;
+/// The long edge of the transcript copy of a sent image too large to keep
+/// whole: legible in the transcript, a quarter of the prompt's pixels.
+pub const IMAGE_PREVIEW_EDGE_PX: u32 = 768;
+/// The long edge of the store's own thumbnail of a large image.
+pub const STORED_THUMBNAIL_EDGE_PX: u32 = 128;
+/// JSON escapes a byte to at most six (a control character as `\u001b`).
+pub const JSON_ESCAPE_MAX_BYTES: usize = 6;
 
 const fn base64_len(bytes: usize) -> usize {
     bytes.div_ceil(3) * 4
@@ -53,11 +78,11 @@ const fn base64_len(bytes: usize) -> usize {
 pub const PROMPT_FRAME_ENVELOPE_BYTES: usize = 4096;
 /// The one outbound frame class larger than `WireLimits::frame_bytes`: an
 /// ACP `session/prompt` request carrying images. It is what the largest prompt
-/// needs: the images and staged files as base64 plus the prompt text escaped
-/// at most twice over. Inbound frames keep the ordinary bound.
+/// needs: the images as base64, plus the prompt text and staged files that
+/// dispatch admits (`DISPATCH_BYTES`) with every byte escaped at its worst.
+/// Inbound frames keep the ordinary bound.
 pub const PROMPT_FRAME_BYTES: usize = base64_len(PROMPT_IMAGE_TOTAL_BYTES)
-    + base64_len(PROMPT_FILE_BYTES)
-    + 2 * LIMITS.wire.prompt_bytes as usize
+    + JSON_ESCAPE_MAX_BYTES * DISPATCH_BYTES
     + PROMPT_FRAME_ENVELOPE_BYTES;
 /// Egress bytes held back for one queued prompt frame and its delimiter, on
 /// top of the ordinary data lane, so a prompt is never refused because other
@@ -80,6 +105,12 @@ const _: () = assert!(
         && PROMPT_IMAGE_EDGE_PX <= STORED_IMAGE_EDGE_PX
         && STORED_IMAGE_BYTES <= IMAGE_UPLOAD_BYTES
         && STORED_IMAGE_PIXELS <= IMAGE_UPLOAD_PIXELS
+        && IMAGE_PREVIEW_EDGE_PX <= PROMPT_IMAGE_EDGE_PX
+        // Staged files are part of the dispatch budget the frame is sized by.
+        && PROMPT_FILE_BYTES <= DISPATCH_BYTES
+        // At least one normalisation fits the ceiling, and all that run fit it.
+        && IMAGE_WORK_PERMITS >= 1
+        && IMAGE_WORK_PERMITS as u64 * IMAGE_NORMALIZE_PEAK_BYTES <= IMAGE_WORK_MEMORY_BYTES
         // A prompt with every image, its previews, text and files fits the
         // process driver's data lane.
         && PROMPT_IMAGE_TOTAL_BYTES

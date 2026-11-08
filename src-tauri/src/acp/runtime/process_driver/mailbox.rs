@@ -27,9 +27,9 @@ pub(crate) struct PromptIntent {
 impl PromptIntent {
     #[cfg(test)]
     fn actual_bytes(&self) -> Option<usize> {
-        // Images and their previews count, like every other retained byte.
         self.prompt
-            .retained_bytes()
+            .as_str()
+            .len()
             .checked_add(self.client_message_id.as_str().len())
     }
 

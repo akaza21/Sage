@@ -7,6 +7,7 @@ mod store;
 mod test_support;
 #[cfg(test)]
 mod tests;
+mod work;
 
 pub(crate) use gc::reconcile_image_artifacts;
 pub(crate) use normalize::{
@@ -19,3 +20,4 @@ pub(crate) use store::verify_image_reference;
 pub(crate) use test_support::{
     ingest_test_image, insert_test_image, noise_png, png_dimensions, screenshot_png,
 };
+pub(crate) use work::image_work_permit;

@@ -320,3 +320,63 @@ fn a_4k_screenshot_is_normalised_at_upload_and_retired_once_sent() {
     drop(database);
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn uploads_queue_for_one_image_work_permit_without_holding_the_project_lock() {
+    use std::{sync::Arc, time::Duration};
+    assert_eq!(crate::acp::limits::IMAGE_WORK_PERMITS, 1);
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            let root =
+                std::env::temp_dir().join(format!("sage-image-work-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&root).unwrap();
+            let database = Database::open(&root.join("sage.db")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let chat_id = database
+                .bootstrap_snapshot()
+                .unwrap()
+                .active_tab_id
+                .unwrap();
+            let state = Arc::new(crate::state::AppState::new(database));
+            let generation = *state.project_transitions.lock().await;
+            let upload = |state: Arc<crate::state::AppState>| {
+                let request = UploadChatImageRequest {
+                    project_id: project.id.clone(),
+                    project_generation: generation,
+                    chat_id: chat_id.clone(),
+                    media_type: ImageMediaType::Png,
+                    data_base64: STANDARD.encode(super::screenshot_png(3000, 1000)),
+                    label: "wide.png".into(),
+                };
+                tokio::spawn(async move {
+                    super::commands::upload_chat_image_inner(&state, request).await
+                })
+            };
+
+            // A decode in flight holds the only permit; both uploads wait.
+            let held = super::image_work_permit().await;
+            let first = upload(state.clone());
+            let second = upload(state.clone());
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            assert!(!first.is_finished() && !second.is_finished());
+            assert_eq!(super::work::image_work_available(), 0);
+            // A project switch is not blocked behind the waiting decodes.
+            let switch =
+                tokio::time::timeout(Duration::from_millis(200), state.project_transitions.lock())
+                    .await;
+            assert!(switch.is_ok());
+            drop(switch);
+
+            drop(held);
+            let first = first.await.unwrap().unwrap();
+            let second = second.await.unwrap().unwrap();
+            assert_ne!(first.artifact_id, second.artifact_id);
+            assert_eq!((first.width, first.height), (2048, 683));
+            assert_eq!(super::work::image_work_available(), 1);
+            drop(state);
+            let _ = std::fs::remove_dir_all(root);
+        });
+}

@@ -10,9 +10,10 @@ use crate::{
     acp::{
         intent::ImageMediaType,
         limits::{
-            IMAGE_PREVIEW_BYTES, IMAGE_UPLOAD_BYTES, IMAGE_UPLOAD_EDGE_PX, IMAGE_UPLOAD_PIXELS,
-            PROMPT_IMAGE_EDGE_PX, PROMPT_IMAGE_JPEG_QUALITY, PROMPT_IMAGE_PNG_BYTES,
-            PROMPT_IMAGE_TOTAL_BYTES, STORED_IMAGE_BYTES, STORED_IMAGE_EDGE_PX,
+            IMAGE_PREVIEW_BYTES, IMAGE_PREVIEW_EDGE_PX, IMAGE_UPLOAD_BYTES, IMAGE_UPLOAD_EDGE_PX,
+            IMAGE_UPLOAD_PIXELS, PNG_DECODER_ROW_BYTES, PROMPT_IMAGE_EDGE_PX,
+            PROMPT_IMAGE_JPEG_QUALITY, PROMPT_IMAGE_PNG_BYTES, PROMPT_IMAGE_TOTAL_BYTES,
+            STORED_IMAGE_BYTES, STORED_IMAGE_EDGE_PX,
         },
     },
     error::{AppError, AppResult},
@@ -46,7 +47,7 @@ pub(crate) const PROMPT: Bounds = Bounds {
 };
 /// The transcript copy of a sent image too large to keep whole.
 pub(crate) const PREVIEW: Bounds = Bounds {
-    edge: 768,
+    edge: IMAGE_PREVIEW_EDGE_PX,
     bytes: IMAGE_PREVIEW_BYTES,
     png_bytes: IMAGE_PREVIEW_BYTES,
     upright: true,
@@ -234,7 +235,7 @@ fn decode_png(bytes: &[u8]) -> AppResult<Raster> {
         Cursor::new(bytes),
         png::Limits {
             // The RGBA raster plus the decoder's row buffers.
-            bytes: IMAGE_UPLOAD_PIXELS as usize * 4 + 1024 * 1024,
+            bytes: IMAGE_UPLOAD_PIXELS as usize * 4 + PNG_DECODER_ROW_BYTES,
         },
     );
     decoder.set_ignore_text_chunk(true);
