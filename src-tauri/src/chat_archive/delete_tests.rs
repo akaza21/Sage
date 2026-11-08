@@ -341,7 +341,7 @@ fn deleting_an_attached_or_running_chat_is_refused_and_changes_nothing() {
     let error = database
         .delete_archived_chat(&request(project, &archived))
         .unwrap_err();
-    assert!(error.to_string().contains("Stop"), "{error}");
+    assert!(error.to_string().contains("shutting down"), "{error}");
 
     assert!(guards_intact(database));
     assert_eq!(ledger(database), before);

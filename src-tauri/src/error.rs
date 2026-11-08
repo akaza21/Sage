@@ -77,4 +77,19 @@ pub enum AppError {
     },
 }
 
+impl AppError {
+    /// The text a person reads in the UI. A typed refusal already carries a
+    /// sentence written for them, so it surfaces without the category prefix
+    /// that `Display` keeps for logs; every other error keeps its full text.
+    pub fn public_message(&self) -> String {
+        match self {
+            Self::InvalidRequest(message) | Self::UnsafeRepositoryConfig(message) => {
+                message.clone()
+            }
+            Self::RepositoryOutsideRoot(layout) => layout.public_message().to_owned(),
+            other => other.to_string(),
+        }
+    }
+}
+
 pub type AppResult<T> = Result<T, AppError>;

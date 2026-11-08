@@ -1,7 +1,11 @@
 use tauri::State;
 
 use crate::{
-    chat_commands::execute_chat_transition,
+    acp::{
+        contract::{SageChatId, SageProjectId},
+        service::ChatRuntimeRelease,
+    },
+    chat_commands::{execute_chat_transition, failed_transition},
     domain::{ChatDeleteRequest, ChatLifecycleRequest, ProjectTransitionResult},
     state::AppState,
 };
@@ -34,11 +38,58 @@ pub async fn delete_chat(
     Ok(delete_chat_inner(&state, request, expected_transition_epoch).await)
 }
 
+/// Parks the Chat's live runtime through the lanes' explicit-close park,
+/// handing this thread to Tokio's blocking pool while the harness exits.
+fn release_chat_runtime(
+    state: &AppState,
+    project: &SageProjectId,
+    chat: &SageChatId,
+) -> Result<(), ChatRuntimeRelease> {
+    let release = || state.acp.release_chat_runtime(project, chat);
+    if tokio::runtime::Handle::try_current()
+        .is_ok_and(|handle| handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread)
+    {
+        tokio::task::block_in_place(release)
+    } else {
+        release()
+    }
+}
+
+/// The Chat's typed identity when it is an archived Chat of that Project.
+fn archived_identity(
+    state: &AppState,
+    request: &ChatDeleteRequest,
+) -> Option<(SageProjectId, SageChatId)> {
+    let archived = crate::chat_archive::is_archived_chat(
+        &state.database.connection(),
+        &request.project_id,
+        &request.chat_id,
+    )
+    .unwrap_or(false);
+    archived
+        .then(|| {
+            Some((
+                SageProjectId::parse(request.project_id.clone()).ok()?,
+                SageChatId::parse(request.chat_id.clone()).ok()?,
+            ))
+        })
+        .flatten()
+}
+
 async fn delete_chat_inner(
     state: &AppState,
     request: ChatDeleteRequest,
     expected_transition_epoch: u64,
 ) -> ProjectTransitionResult {
+    // An archived Chat may still hold an idle runtime from before it was
+    // archived; release it the way archive does instead of refusing. Only
+    // an archived Chat's runtime is touched; anything else is refused below.
+    if let Some((project, chat)) = archived_identity(state, &request)
+        && let Err(refusal) = release_chat_runtime(state, &project, &chat)
+    {
+        let epoch = *state.project_transitions.lock().await;
+        return failed_transition(epoch, refusal.message("deleting"));
+    }
     let chat_id = request.chat_id.clone();
     let result = execute_chat_transition(
         state,
@@ -70,11 +121,15 @@ async fn archive_chat_inner(
     )
     .await;
     if result.committed
-        && let (Ok(project), Ok(chat)) = (
-            crate::acp::contract::SageProjectId::parse(project_id),
-            crate::acp::contract::SageChatId::parse(chat_id),
-        )
+        && let (Ok(project), Ok(chat)) =
+            (SageProjectId::parse(project_id), SageChatId::parse(chat_id))
     {
+        // An archived Chat holds no harness process. Archive refused a running
+        // Turn, so this parks an idle runtime; a park that does not settle in
+        // time is retried when the Chat is deleted.
+        if let Err(refusal) = release_chat_runtime(state, &project, &chat) {
+            tracing::warn!(?refusal, "archived Chat's runtime is not yet released");
+        }
         if let Err(error) = state.terminals.close_chat(&project, &chat) {
             tracing::warn!(?error, "terminal Chat-close cleanup remains unsettled");
         }

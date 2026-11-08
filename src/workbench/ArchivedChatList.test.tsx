@@ -34,3 +34,49 @@ it("deletes an archived chat only after the irreversible delete is confirmed", (
   expect(deleteChat).toHaveBeenCalledWith("chat:old", "project-a");
   expect(screen.queryByRole("dialog")).toBeNull();
 });
+
+it("shows a refused action on the archived row it belongs to and dismisses it", () => {
+  const restoreChat = vi.fn(async () => false);
+  useWorkbenchStore.setState({
+    restoreChat,
+    archivedChatError: {
+      projectId: "project-a",
+      chatId: "chat:old",
+      message: "Stop this Chat's running turn before deleting it",
+    },
+  });
+  render(
+    <ArchivedChatList
+      projectId="project-a"
+      chats={[
+        { id: "chat:old", title: "Chat: Research" },
+        { id: "chat:other", title: "Chat: Notes" },
+      ]}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
+
+  const alert = screen.getByRole("alert");
+  expect(alert).toHaveTextContent(
+    "Stop this Chat's running turn before deleting it",
+  );
+  expect(alert).not.toHaveTextContent(/invalid request/i);
+  expect(
+    screen.getByRole("button", { name: "Delete chat Research" }),
+  ).toHaveAccessibleDescription(
+    "Stop this Chat's running turn before deleting it",
+  );
+  expect(
+    screen.getByRole("button", { name: "Delete chat Notes" }),
+  ).not.toHaveAttribute("aria-describedby");
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Restore chat Research" }),
+  );
+  expect(restoreChat).toHaveBeenCalledWith("chat:old", "project-a", "row");
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Dismiss error for Research" }),
+  );
+  expect(screen.queryByRole("alert")).toBeNull();
+});

@@ -159,7 +159,7 @@ pub(crate) async fn execute_chat_transition(
         .map_err(|error| AppError::InvalidRequest(error.to_string()))
         .and_then(std::convert::identity);
     if let Err(error) = mutation {
-        return failed_transition(*transition_epoch, error);
+        return failed_transition(*transition_epoch, error.public_message());
     }
     *transition_epoch += 1;
     on_committed_project_transition_epoch(*transition_epoch);
@@ -179,7 +179,10 @@ pub(crate) async fn execute_chat_transition(
     }
 }
 
-fn failed_transition(transition_epoch: u64, error: impl ToString) -> ProjectTransitionResult {
+pub(crate) fn failed_transition(
+    transition_epoch: u64,
+    error: impl ToString,
+) -> ProjectTransitionResult {
     ProjectTransitionResult {
         committed: false,
         transition_epoch,

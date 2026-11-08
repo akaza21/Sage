@@ -778,7 +778,7 @@ describe("compact Workbench project tools", () => {
     fireEvent.click(
       within(region).getByRole("button", { name: "Restore chat Old" }),
     );
-    expect(restoreChat).toHaveBeenCalledWith("chat:old", "project-a");
+    expect(restoreChat).toHaveBeenCalledWith("chat:old", "project-a", "row");
 
     act(() => {
       useWorkbenchStore.setState({

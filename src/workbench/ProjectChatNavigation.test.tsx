@@ -452,7 +452,7 @@ it("restores an archived chat that belongs to another project folder", () => {
 
   fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
   fireEvent.click(screen.getByRole("button", { name: "Restore chat Extra" }));
-  expect(restoreChat).toHaveBeenCalledWith("chat:extra", "project-a");
+  expect(restoreChat).toHaveBeenCalledWith("chat:extra", "project-a", "row");
   expect(
     screen.queryByRole("button", { name: "Restore chat Local old" }),
   ).toBeNull();

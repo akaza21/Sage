@@ -10,6 +10,7 @@ import {
   MessageSquare,
   RotateCcw,
   Trash2,
+  X,
 } from "../ui/leanIcons";
 
 /** A Project's archived chats, each restorable or permanently deletable. */
@@ -26,6 +27,14 @@ export function ArchivedChatList({
   const deleteChat = useWorkbenchStore((state) => state.deleteChat);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
+  );
+  const rowError = useWorkbenchStore((state) =>
+    state.archivedChatError?.projectId === projectId
+      ? state.archivedChatError
+      : null,
+  );
+  const dismissRowError = useWorkbenchStore(
+    (state) => state.dismissArchivedChatError,
   );
   const listId = `archived-chat-list-${projectId}`;
   return (
@@ -54,6 +63,8 @@ export function ArchivedChatList({
         >
           {chats.map((chat) => {
             const displayTitle = chatDisplayTitle(chat.title);
+            const error = rowError?.chatId === chat.id ? rowError : null;
+            const errorId = `${listId}-error-${chat.id}`;
             return (
               <div className="archived-chat-row" key={chat.id}>
                 <MessageSquare size={14} aria-hidden="true" />
@@ -61,21 +72,36 @@ export function ArchivedChatList({
                 <button
                   type="button"
                   aria-label={`Restore chat ${displayTitle}`}
+                  aria-describedby={error ? errorId : undefined}
                   title={`Restore chat ${displayTitle}`}
                   disabled={projectTransitioning}
-                  onClick={() => void restoreChat(chat.id, projectId)}
+                  onClick={() => void restoreChat(chat.id, projectId, "row")}
                 >
                   <RotateCcw size={12} aria-hidden="true" />
                 </button>
                 <button
                   type="button"
                   aria-label={`Delete chat ${displayTitle}`}
+                  aria-describedby={error ? errorId : undefined}
                   title={`Delete chat ${displayTitle}`}
                   disabled={projectTransitioning}
                   onClick={() => setDeleting(chat)}
                 >
                   <Trash2 size={12} aria-hidden="true" />
                 </button>
+                {error ? (
+                  <p className="archived-chat-row__error" role="alert">
+                    <span id={errorId}>{error.message}</span>
+                    <button
+                      type="button"
+                      aria-label={`Dismiss error for ${displayTitle}`}
+                      title="Dismiss"
+                      onClick={dismissRowError}
+                    >
+                      <X size={12} aria-hidden="true" />
+                    </button>
+                  </p>
+                ) : null}
               </div>
             );
           })}

@@ -1326,6 +1326,92 @@ fn close_session(owner: &RuntimeOwner) -> crate::acp::store::CloseSessionCommand
     }
 }
 
+#[test]
+fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
+    let (service, owner) = tauri::async_runtime::block_on(ready_runtime_fixture("release-chat"));
+    let host = Arc::new(
+        crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
+            TestRuntime::default(),
+            Arc::new(SuccessfulShutdownRecovery(owner.runtime_epoch.get())),
+        )
+        .unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    service.install_runtime_for_test(owner.clone(), host);
+    let other = SageChatId::parse("chat-other").unwrap();
+
+    assert_eq!(
+        service.release_chat_runtime(&owner.project_id, &other),
+        Ok(())
+    );
+    assert!(service.lane_at(0).scheduler.active().is_some());
+
+    // Archive the Chat in the store alone: its idle runtime epoch is still
+    // live, which is what refused a delete before archive released it.
+    let layout = |snapshot: crate::domain::BootstrapSnapshot| crate::domain::ProjectLayoutRequest {
+        project_id: owner.project_id.as_str().to_owned(),
+        tabs: snapshot.tabs,
+        active_tab_id: snapshot.active_tab_id,
+        selected_root_id: snapshot.selected_root_id,
+        selected_resource: snapshot.selected_resource,
+    };
+    service
+        .database
+        .create_chat(&layout(service.database.bootstrap_snapshot().unwrap()))
+        .unwrap();
+    service
+        .database
+        .archive_chat(&crate::domain::ChatLifecycleRequest {
+            project_id: owner.project_id.as_str().to_owned(),
+            chat_id: owner.chat_id.as_str().to_owned(),
+            current_layout: layout(service.database.bootstrap_snapshot().unwrap()),
+        })
+        .unwrap();
+    let delete = crate::domain::ChatDeleteRequest {
+        project_id: owner.project_id.as_str().to_owned(),
+        chat_id: owner.chat_id.as_str().to_owned(),
+    };
+    let refused = service.database.delete_archived_chat(&delete).unwrap_err();
+    assert!(
+        refused.public_message().contains("shutting down"),
+        "{refused}"
+    );
+
+    assert_eq!(
+        service.release_chat_runtime(&owner.project_id, &owner.chat_id),
+        Ok(())
+    );
+    assert!(service.lane_at(0).scheduler.active().is_none());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_for(&owner).is_none());
+    let live: bool = service
+        .database
+        .connection()
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM session_runtime_epochs WHERE chat_id=?1
+               AND state IN ('starting','running','terminating'))",
+            [owner.chat_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(!live, "the parked runtime epoch is no longer live");
+    // Nothing is left to release, and the archived Chat now deletes cleanly.
+    assert_eq!(
+        service.release_chat_runtime(&owner.project_id, &owner.chat_id),
+        Ok(())
+    );
+    service.database.delete_archived_chat(&delete).unwrap();
+    assert!(
+        service
+            .database
+            .bootstrap_snapshot()
+            .unwrap()
+            .archived_chats
+            .is_empty()
+    );
+    service.shutdown_blocking().unwrap();
+}
+
 fn assert_recovered_runtime_is_cold(service: &AcpService, owner: &RuntimeOwner) {
     let page = service
         .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)

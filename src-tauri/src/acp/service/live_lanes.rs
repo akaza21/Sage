@@ -28,6 +28,28 @@ use super::{
 /// Number of concurrently live harness runtimes Sage admits.
 pub(crate) const LIVE_RUNTIME_LANES: usize = LIMITS.process.operational_live_trees as usize;
 
+/// Why a Chat's live runtime was not released.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChatRuntimeRelease {
+    /// A Turn is running; the user stops it first.
+    TurnRunning,
+    /// The runtime did not settle before its close deadline, or an
+    /// activation still holds its lane; a retry may succeed.
+    Unsettled,
+}
+
+impl ChatRuntimeRelease {
+    /// The refusal shown to the user for `action` ("archiving", "deleting").
+    pub(crate) fn message(self, action: &str) -> String {
+        match self {
+            Self::TurnRunning => format!("Stop this Chat's running turn before {action} it"),
+            Self::Unsettled => {
+                format!("This Chat's agent is still shutting down; try {action} it again")
+            }
+        }
+    }
+}
+
 pub(super) type RecoveryCell = Arc<Mutex<Option<PendingCodexRecovery>>>;
 
 pub(super) struct LiveLane {
@@ -203,6 +225,62 @@ impl AcpService {
             }
         }
         Err(CodexSessionError::Capacity)
+    }
+
+    /// Parks the Chat's live runtime through the explicit-close park an
+    /// evicted idle lane takes, so an archived or deleted Chat holds no
+    /// harness process; a later restore resumes the session. A lane retaining
+    /// recovery for the Chat is driven first. A reserved Turn is refused.
+    pub(crate) fn release_chat_runtime(
+        &self,
+        project: &crate::acp::contract::SageProjectId,
+        chat: &crate::acp::contract::SageChatId,
+    ) -> Result<(), ChatRuntimeRelease> {
+        let deadline = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.explicit_close);
+        let same = |owner: &RuntimeOwner| &owner.project_id == project && &owner.chat_id == chat;
+        for (index, lane) in self.lanes.iter().enumerate() {
+            let active = lane.scheduler.active().filter(|active| same(&active.tree));
+            let recovering = lane.recovery_owner().as_ref().is_some_and(same);
+            if active.is_none() && !recovering {
+                continue;
+            }
+            if active.is_some_and(|active| active.turn_reserved) {
+                return Err(ChatRuntimeRelease::TurnRunning);
+            }
+            // An activation in flight on this lane owns it until it settles.
+            if lane
+                .activating
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+            {
+                return Err(ChatRuntimeRelease::Unsettled);
+            }
+            let _claim = ActivationClaim { lane };
+            let view = self.lane_at(index);
+            if recovering {
+                let _ = view.shutdown_codex_recovery(deadline);
+            }
+            if lane
+                .scheduler
+                .active()
+                .is_some_and(|active| same(&active.tree))
+                && !matches!(view.park_idle_runtime(deadline), Ok(true))
+                && view.has_replacement_park_recovery()
+            {
+                // A park that did not converge retains its zero-process
+                // recovery; drive it now as an activation's reclaim would.
+                let _ = view.shutdown_codex_recovery(deadline);
+            }
+            let still_held = lane
+                .scheduler
+                .active()
+                .is_some_and(|active| same(&active.tree))
+                || lane.recovery_owner().as_ref().is_some_and(same);
+            if still_held {
+                return Err(ChatRuntimeRelease::Unsettled);
+            }
+        }
+        Ok(())
     }
 
     fn reclaim_replacement_parks(&self, deadline: Instant) {

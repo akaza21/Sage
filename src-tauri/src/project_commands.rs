@@ -211,7 +211,7 @@ pub(crate) async fn execute_committed_transition_checked<T: Send + 'static>(
         return failed_transition(*transition_epoch, "project transition epoch exhausted");
     }
     if let Err(error) = preflight() {
-        return failed_transition(*transition_epoch, error);
+        return failed_transition(*transition_epoch, error.public_message());
     }
     let committed_epoch = *transition_epoch + 1;
     let mutation = tauri::async_runtime::spawn_blocking(operation)
@@ -219,7 +219,7 @@ pub(crate) async fn execute_committed_transition_checked<T: Send + 'static>(
         .map_err(|error| crate::error::AppError::InvalidRequest(error.to_string()))
         .and_then(std::convert::identity);
     if let Err(error) = mutation {
-        return failed_transition(*transition_epoch, error);
+        return failed_transition(*transition_epoch, error.public_message());
     }
     *transition_epoch = committed_epoch;
     on_committed_project_transition_epoch(*transition_epoch);

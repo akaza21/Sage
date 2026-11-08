@@ -294,6 +294,67 @@ describe("per-Chat disposable ownership", () => {
     });
   });
 
+  it("reports a refused archived-Chat delete or row restore on that row, not in the active Chat", async () => {
+    vi.spyOn(getWorkbenchPorts().chat, "archiveChat").mockImplementation(
+      async (_request, expectedTransitionEpoch) => ({
+        committed: true,
+        transitionEpoch: expectedTransitionEpoch + 1,
+        snapshot: projection([chatA], chatA.id, expectedTransitionEpoch + 1, [
+          { id: chatB.id, title: chatB.title },
+        ]),
+        recoveryError: null,
+      }),
+    );
+    expect(await useWorkbenchStore.getState().archiveChat(chatB.id)).toBe(true);
+    const refusal = "Stop this Chat's running turn before deleting it";
+    vi.spyOn(getWorkbenchPorts().chat, "deleteChat").mockImplementation(
+      async (_request, expectedTransitionEpoch) => ({
+        committed: false,
+        transitionEpoch: expectedTransitionEpoch,
+        snapshot: null,
+        recoveryError: refusal,
+      }),
+    );
+
+    expect(await useWorkbenchStore.getState().deleteChat(chatB.id)).toBe(false);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      error: null,
+      projectTransitioning: false,
+      archivedChatError: {
+        projectId: "project-a",
+        chatId: chatB.id,
+        message: refusal,
+      },
+    });
+
+    vi.spyOn(getWorkbenchPorts().chat, "restoreChat").mockImplementation(
+      async (_request, expectedTransitionEpoch) => ({
+        committed: false,
+        transitionEpoch: expectedTransitionEpoch,
+        snapshot: null,
+        recoveryError: "Restore refused",
+      }),
+    );
+    expect(
+      await useWorkbenchStore
+        .getState()
+        .restoreChat(chatB.id, undefined, "row"),
+    ).toBe(false);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      error: null,
+      archivedChatError: { chatId: chatB.id, message: "Restore refused" },
+    });
+
+    // Other restore entry points keep reporting in the workbench.
+    expect(await useWorkbenchStore.getState().restoreChat(chatB.id)).toBe(
+      false,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      error: "Restore refused",
+      archivedChatError: null,
+    });
+  });
+
   it("preserves ownership through archive/restore and lets Handoff replace only the target draft", async () => {
     useWorkbenchStore.getState().setComposerText("Draft A");
     await useWorkbenchStore.getState().activateChat(chatB.id);

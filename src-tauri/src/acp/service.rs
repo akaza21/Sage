@@ -50,7 +50,7 @@ mod debug;
 mod intent_snapshot;
 mod live_lanes;
 mod live_routes;
-pub(crate) use live_lanes::LIVE_RUNTIME_LANES;
+pub(crate) use live_lanes::{ChatRuntimeRelease, LIVE_RUNTIME_LANES};
 mod permission;
 #[cfg(test)]
 pub(crate) use permission::tests::support::{

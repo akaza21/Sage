@@ -393,3 +393,16 @@ button.agent-task-header__resource-row:hover {
   cursor: default;
   opacity: 0.4;
 }
+
+/* A refused restore or delete, on the row it refers to. */
+.archived-chat-row__error {
+  display: grid;
+  grid-column: 2 / -1;
+  grid-template-columns: minmax(0, 1fr) 26px;
+  align-items: start;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}

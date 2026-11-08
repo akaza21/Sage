@@ -76,6 +76,13 @@ impl Database {
             &request.project_id,
             &request.chat_id,
         )?;
+        // An archived Chat holds no harness process, and a running Turn
+        // keeps one; the user stops the Turn before archiving.
+        if delete::has_running_turn(&transaction, &request.project_id, &request.chat_id)? {
+            return Err(AppError::InvalidRequest(
+                crate::acp::service::ChatRuntimeRelease::TurnRunning.message("archiving"),
+            ));
+        }
         if source_is_active(&transaction, &request.project_id)? {
             validate_request(request)?;
             let attached = require_exact_attached_chats(&transaction, &request.current_layout)?;
@@ -360,6 +367,7 @@ fn archived_layout(
 }
 
 mod delete;
+pub(crate) use delete::is_archived_chat;
 
 #[cfg(test)]
 mod tests;

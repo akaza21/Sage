@@ -311,6 +311,20 @@ fn a_reserved_turn_is_never_an_idle_eviction_candidate() {
 }
 
 #[test]
+fn releasing_a_chat_with_a_reserved_turn_is_refused_and_keeps_its_runtime() {
+    let service = service();
+    let lease = idle_lane(&service, 0, true);
+    let _turn = lease.reserve_turn().unwrap();
+    let owner = owner("idle-0", 1);
+    assert_eq!(
+        service.release_chat_runtime(&owner.project_id, &owner.chat_id),
+        Err(ChatRuntimeRelease::TurnRunning)
+    );
+    assert!(service.lanes[0].scheduler.active().is_some());
+    assert!(!service.lanes[0].activating.load(Ordering::Acquire));
+}
+
+#[test]
 fn never_used_or_unavailable_idle_hosts_do_not_block_parkable_capacity() {
     let service = service();
     let _leases: Vec<_> = (0..LIVE_RUNTIME_LANES)
