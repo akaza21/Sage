@@ -1,6 +1,7 @@
 import { nativeCases } from "./acp-native-cases.mjs";
 import {
   piBridgeJourneys,
+  piFullTurnJourney,
   piIdleConfigJourney,
 } from "./acp-native-pi-cases.mjs";
 import { codexUserInputJourneys } from "./acp-native-codex-user-input-cases.mjs";
@@ -230,7 +231,11 @@ const journeyCases = [
 ];
 journeyCases.push(longTranscriptJourney());
 journeyCases.push(...nativeCases());
-journeyCases.push(piIdleConfigJourney(), ...piBridgeJourneys());
+journeyCases.push(
+  piIdleConfigJourney(),
+  piFullTurnJourney(),
+  ...piBridgeJourneys(),
+);
 journeyCases.push(...codexUserInputJourneys());
 journeyCases.push(...codexNoticeJourneys());
 if (privacyFailuresForRecords(journeyCases, false).length)

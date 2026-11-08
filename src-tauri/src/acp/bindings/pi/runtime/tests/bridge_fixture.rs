@@ -79,6 +79,7 @@ struct Sage<'a> {
     line: Vec<u8>,
     cards: usize,
     tool_errors: Vec<(bool, String)>,
+    events: Vec<AdapterEvent>,
 }
 
 fn queue(replies: &Replies, runtime: &mut PiRuntime, egress: AdapterEgress) {
@@ -124,6 +125,7 @@ impl Sage<'_> {
             }
             queue(&self.replies, runtime, answer);
         }
+        self.events.extend(events);
     }
 }
 
@@ -160,6 +162,7 @@ impl io::Read for Child {
 struct Outcome {
     journey: Journey,
     cards: usize,
+    events: Vec<AdapterEvent>,
     /// Each finished tool call's error flag and result text, as Pi reports it.
     tool_errors: Vec<(bool, String)>,
 }
@@ -181,20 +184,36 @@ fn replay(case: &str, decision: PermissionDecision) -> Outcome {
         line: Vec::new(),
         cards: 0,
         tool_errors: Vec::new(),
+        events: Vec::new(),
     };
-    for call in crate::acp::fixture::pi_bridge_calls_for_test(case) {
-        crate::acp::fixture::run_pi_bridge_call_for_test(
-            &call,
-            &mut Child(Rc::clone(&replies)),
-            &mut sage,
-        );
+    let steps = crate::acp::fixture::pi_journey_steps_for_test(case);
+    // The journey's own prompt and agent_start already ran in Journey::new.
+    let started = steps
+        .iter()
+        .position(|step| step["frame"]["type"] == "agent_start")
+        .unwrap();
+    for step in &steps[started + 1..] {
+        if step["kind"] == "piSteer" {
+            let steer = sage
+                .journey
+                .runtime
+                .command(AdapterCommand::Steer {
+                    prompt: Prompt::new("prompt", "Synthetic steer.").unwrap(),
+                    client_message_id: RequiredText::new("client", "steer").unwrap(),
+                })
+                .unwrap();
+            queue(&replies, &mut sage.journey.runtime, steer);
+        }
+        crate::acp::fixture::run_pi_step_for_test(step, &mut Child(Rc::clone(&replies)), &mut sage);
     }
     let (cards, tool_errors) = (sage.cards, std::mem::take(&mut sage.tool_errors));
+    let events = std::mem::take(&mut sage.events);
     drop(sage);
     assert!(replies.borrow().is_empty(), "{case}: unread Sage reply");
     Outcome {
         journey,
         cards,
+        events,
         tool_errors,
     }
 }
@@ -278,6 +297,7 @@ fn pi_fixture_admits_the_bridge_only_for_cases_that_replay_it() {
         "pi-bridge-git-config-refused",
         "pi-bridge-device-name-refused",
         "pi-bridge-replay-refused",
+        "pi-150-full-turn",
     ] {
         assert!(
             crate::acp::fixture::native_case_uses_pi_bridge(case),
@@ -295,4 +315,76 @@ fn pi_fixture_admits_the_bridge_only_for_cases_that_replay_it() {
             "{case}"
         );
     }
+}
+
+/// The real-app Pi 1.5 journey: every surface one Turn can show, with the
+/// steer answered mid-turn and Pi's queue cleared once the Turn ends.
+#[test]
+fn pi_full_turn_fixture_projects_every_surface_and_clears_the_steer_queue() {
+    use crate::acp::{intent::session_event::SessionScopedEvent, lifecycle::TurnState};
+    let outcome = replay("pi-150-full-turn", PermissionDecision::AllowOnce);
+    assert_eq!(
+        (outcome.cards, ended(&outcome)),
+        (1, vec![(false, "export const example = 1;"), WRITTEN])
+    );
+    assert_eq!(
+        text(&outcome, "src/pi-note.txt").as_deref(),
+        Some("Created through the Sage bridge on Pi 1.5.\n")
+    );
+    let events = &outcome.events;
+    let item = |wanted: &str| {
+        events.iter().any(|event| match event {
+            AdapterEvent::Item { payload, .. } => match payload {
+                NormalizedPayload::ThoughtSummary { summary } => summary.as_str() == wanted,
+                NormalizedPayload::Text { text } => text.as_str() == wanted,
+                _ => false,
+            },
+            _ => false,
+        })
+    };
+    assert!(item("Checking the synthetic example first."));
+    assert!(item("Adjusted after your steer."));
+    let session = |wanted: &str| {
+        events.iter().any(|event| match event {
+            AdapterEvent::Session { event, .. } => match event {
+                SessionScopedEvent::Notice(notice) => notice.text.as_str() == wanted,
+                SessionScopedEvent::Title { title } => title.as_str() == wanted,
+                _ => false,
+            },
+            _ => false,
+        })
+    };
+    assert!(session("Synthetic extension notice."));
+    assert!(session("Synthetic Pi session"));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::SteerResponse { accepted: true, .. }))
+    );
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AdapterEvent::Usage {
+            payload: NormalizedPayload::Usage {
+                input_tokens: 12_400,
+                output_tokens: 600,
+                context_window: Some(200_000),
+            },
+            ..
+        }
+    )));
+    assert!(matches!(
+        events
+            .iter()
+            .rfind(|event| matches!(event, AdapterEvent::Turn { .. })),
+        Some(AdapterEvent::Turn {
+            state: TurnState::Completed,
+            ..
+        })
+    ));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::Unsupported(_) | AdapterEvent::Error(_))),
+        "{events:?}"
+    );
 }

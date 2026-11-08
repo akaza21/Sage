@@ -38,6 +38,8 @@ pub(super) fn await_request(
         "piThinkingLevels" | "piThinkingLevelsUnsupported" => "get_available_thinking_levels",
         "piCommandsUnsupported" => "get_commands",
         "piAbort" => "abort",
+        "piSteer" => "steer",
+        "piClearQueue" => "clear_queue",
         "piDialogCancelled" => "extension_ui_response",
         "piIdle" => "idle",
         _ => return Err(FixtureError::InvalidArguments),
@@ -81,7 +83,12 @@ pub(super) fn await_request(
             && !(session_request
                 && matches!(
                     expected,
-                    "prompt" | "abort" | "idle" | "get_available_thinking_levels"
+                    "prompt"
+                        | "abort"
+                        | "steer"
+                        | "clear_queue"
+                        | "idle"
+                        | "get_available_thinking_levels"
                 ))
         {
             return Err(FixtureError::InvalidArguments);
@@ -167,8 +174,16 @@ fn response_data(
                 .turn_count
                 .checked_add(1)
                 .ok_or(FixtureError::ExpandedLimit)?;
-            json!({})
+            json!({"disposition":"started"})
         }
+        "steer"
+            if request["message"]
+                .as_str()
+                .is_some_and(|message| !message.is_empty()) =>
+        {
+            json!({"disposition":"queued"})
+        }
+        "clear_queue" => json!({"steering":[],"followUp":[]}),
         "abort" => json!({}),
         _ => return Err(FixtureError::InvalidArguments),
     })
