@@ -20,6 +20,7 @@ impl AcpService {
         command: ActivateSessionCommand,
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
     ) -> Result<(), CodexSessionError> {
+        let command = self.resume_earlier_codex_session(&admitted, command)?;
         let owner = RuntimeOwner {
             project_id: command.project_id.clone(),
             chat_id: command.chat_id.clone(),

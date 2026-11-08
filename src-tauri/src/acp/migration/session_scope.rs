@@ -4,7 +4,9 @@ pub(super) const V21: &str = include_str!("../../../migrations/021_acp_session_s
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentV21 | SchemaClass::CurrentV22 => return Ok(()),
+        SchemaClass::CurrentV21 | SchemaClass::CurrentV22 | SchemaClass::CurrentResumeLink => {
+            return Ok(());
+        }
         SchemaClass::CurrentV20 => {}
         _ => return invalid("session surfaces require exact schema v20"),
     }

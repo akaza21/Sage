@@ -621,7 +621,7 @@ fn codex_activation_intent_resumes_only_the_exact_durable_external_session() {
 
 #[cfg(windows)]
 #[test]
-fn earlier_codex_session_keeps_its_chat_page_and_refuses_native_resume() {
+fn earlier_codex_session_resumes_its_thread_in_a_linked_session() {
     tauri::async_runtime::block_on(async {
         use sha2::Digest;
 
@@ -738,28 +738,71 @@ fn earlier_codex_session_keeps_its_chat_page_and_refuses_native_resume() {
             crate::acp::projection::ItemContent::Text { text, .. } if text.as_str() == old_text
         ));
         let authority = codex_root(&project_id, &project.roots[0].id, &root);
-        let admitted = service
-            .binding_registry()
-            .resolve(crate::acp::bindings::codex::CODEX_BINDING_ID)
+        let resolve = || {
+            service
+                .binding_registry()
+                .resolve(crate::acp::bindings::codex::CODEX_BINDING_ID)
+                .unwrap()
+        };
+        let command = service
+            .resume_earlier_codex_session(
+                &resolve(),
+                ActivateSessionCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    expected_projection_revision: page.projection_revision,
+                    client_intent_id: ClientIntentId::new(),
+                    session_id: started.session_id.clone(),
+                    runtime_epoch: RuntimeEpoch::new(2).unwrap(),
+                    artifact_digest: "55".repeat(32),
+                    now_millis: crate::persistence::now_millis(),
+                },
+            )
             .unwrap();
-        let result = service.prepare_session_activation(
-            admitted,
-            ActivateSessionCommand {
-                project_id,
-                chat_id,
-                expected_projection_revision: page.projection_revision,
-                client_intent_id: ClientIntentId::new(),
-                session_id: started.session_id,
-                runtime_epoch: RuntimeEpoch::new(1).unwrap(),
-                artifact_digest: "55".repeat(32),
-                now_millis: crate::persistence::now_millis(),
-            },
-            crate::acp::bindings::registry::BindingProjectRoot::Codex(authority),
-        );
+        assert_ne!(command.session_id, started.session_id);
+        assert_eq!(command.runtime_epoch, RuntimeEpoch::new(1).unwrap());
+        let (prepared_command, prepared) = service
+            .prepare_session_activation(
+                resolve(),
+                command.clone(),
+                crate::acp::bindings::registry::BindingProjectRoot::Codex(authority),
+            )
+            .unwrap();
+        assert_eq!(prepared_command.session_id, command.session_id);
         assert!(matches!(
-            result,
-            Err(super::CodexSessionError::EarlierCodexVersion)
+            &prepared.intent.mode,
+            ActivationMode::Resume { external_session_id, .. }
+                if external_session_id.as_str() == "old-thread"
         ));
+        drop(prepared);
+        let earlier: (String, Option<String>, Option<String>, String) = database
+            .connection()
+            .query_row(
+                "SELECT binding_digest,harness_version,external_session_id,state
+                 FROM agent_sessions WHERE id=?1",
+                [started.session_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            earlier,
+            (
+                "f8c2b995be263fe4bf00974043312673378081734ca8c98155d2a33887444b9e".into(),
+                Some("0.145.0".into()),
+                Some("old-thread".into()),
+                "closed".into()
+            )
+        );
+        let page = service
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        assert_eq!(page.current_session_id.as_ref(), Some(&command.session_id));
+        assert!(
+            page.turns
+                .as_slice()
+                .iter()
+                .any(|turn| turn.id.as_str() == "old-codex-turn")
+        );
         service.shutdown_blocking().unwrap();
     });
 }

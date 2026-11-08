@@ -25,6 +25,9 @@ pub(super) fn class_for_version(version: u32) -> AppResult<SchemaClass> {
         20 => SchemaClass::CurrentV20,
         21 => SchemaClass::CurrentV21,
         22 => SchemaClass::CurrentV22,
+        version if version == super::super::session_resume_link::VERSION => {
+            SchemaClass::CurrentResumeLink
+        }
         _ => return invalid("Sage schema version is above the supported maximum"),
     })
 }
