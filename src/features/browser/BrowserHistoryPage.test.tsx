@@ -209,11 +209,15 @@ function fullPages() {
 it("loads an older page from the cursor when asked", async () => {
   fullPages();
   render(<BrowserHistoryPage onNavigate={vi.fn()} onClose={vi.fn()} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
-  await waitFor(() =>
-    expect(screen.getAllByRole("button", { name: /^Remove / })).toHaveLength(
-      2 * HISTORY_PAGE_SIZE,
-    ),
+  // Find rows by their labels. A role query computes the accessible name and
+  // visibility of every button through jsdom's style cascade, about 5 ms per
+  // row here, and waitFor re-ran it on every render: most of this test's work.
+  const lastOfPage = (page: number) =>
+    `Remove https://site${100_001 - page * HISTORY_PAGE_SIZE}.example/path from history`;
+  fireEvent.click(await screen.findByText("Show more"));
+  await screen.findByLabelText(lastOfPage(2));
+  expect(screen.getAllByLabelText(/^Remove .* from history$/)).toHaveLength(
+    2 * HISTORY_PAGE_SIZE,
   );
   expect(browserHistoryPage).toHaveBeenLastCalledWith({
     search: "",

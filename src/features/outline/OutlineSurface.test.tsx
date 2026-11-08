@@ -13,6 +13,9 @@ import type { EditorDocument } from "../../domain/editor";
 import { OutlineSurface } from "./OutlineSurface";
 import { MAX_OUTLINE_SOURCE_CHARS } from "./outlineAvailability";
 import { MAX_OUTLINE_SYMBOLS } from "./syntaxOutline";
+// The Outline loads the TypeScript parser lazily. Load it with the file, so
+// the first test's findByText does not race its cold import.
+import "../files/editorLanguageJavaScript";
 const OUTLINE_SETTLE_MS = 200;
 
 const resource = { rootId: "root-a", relativePath: "src/example.ts" };
@@ -249,7 +252,11 @@ describe("OutlineSurface", () => {
     expect(
       await screen.findByText(`First ${MAX_OUTLINE_SYMBOLS} Symbols`),
     ).toBeInTheDocument();
-    expect(screen.getAllByRole("treeitem")).toHaveLength(MAX_OUTLINE_SYMBOLS);
+    // Counting skips the visibility check, which runs jsdom's style cascade
+    // for each of the 500 rows and their ancestors: seconds under load.
+    expect(screen.getAllByRole("treeitem", { hidden: true })).toHaveLength(
+      MAX_OUTLINE_SYMBOLS,
+    );
   });
 
   it("shows an honest empty state for a File type without an Outline", async () => {
