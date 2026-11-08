@@ -110,6 +110,18 @@ fn parked_chat(last_len: usize) -> AcpService {
 }
 
 #[test]
+fn a_full_history_keeps_room_for_the_usage_flag() {
+    let limit = crate::acp::limits::LIMITS.durable.history_page_bytes as usize;
+    let flag = r#","usage":true"#.len();
+    let slack = limit - CURSOR_RESERVE - bytes(&bare_page(&parked_chat(1)));
+    // Fits the page only if nothing is kept for the flag.
+    let mut page = bare_page(&parked_chat(1 + slack - flag / 2));
+    assert_eq!(items(&page), ITEMS);
+    page.usage = true;
+    assert!(bytes(&page) <= limit);
+}
+
+#[test]
 fn a_nearly_full_history_yields_room_for_the_restored_config_and_its_notice() {
     let first = owner(1);
     let limit = crate::acp::limits::LIMITS.durable.history_page_bytes as usize;
