@@ -129,6 +129,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         crate::acp::attached_context::files::commands::remove_prompt_file,
         commands::acp::slash_commands::list_acp_commands,
         commands::acp::slash_commands::run_acp_command,
+        commands::acp::session_action::run_session_action,
         image_artifacts::commands::upload_chat_image,
         image_artifacts::commands::remove_chat_image,
         commands::acp::cancel_acp_turn,

@@ -33,6 +33,8 @@ struct OptionalCapabilities {
     child_transcript_read: bool,
     collaboration_event_projection: bool,
     native_session_fork: bool,
+    native_session_compact: bool,
+    native_review: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -57,6 +59,10 @@ const OBSERVED_CAPABILITY_EVIDENCE: [ObservedCapabilityEvidence; 1] =
             // `thread/fork` params and response are pinned from the generated
             // schema (testdata/acp/codex/observed-fork-schema.json).
             native_session_fork: true,
+            // `thread/compact/start` and `review/start` are pinned from the
+            // same generated schema.
+            native_session_compact: true,
+            native_review: true,
         },
     }];
 
@@ -95,6 +101,7 @@ fn observed_capability_evidence(build: ObservedBuild<'_>) -> OptionalCapabilitie
 }
 
 fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCapabilities {
+    let pinned = ceiling.protocol_identity == super::manifest::PINNED_PROTOCOL_IDENTITY;
     OptionalCapabilities {
         resume_session: ceiling.resume_session,
         load_session: ceiling.load_session,
@@ -105,7 +112,9 @@ fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCa
         child_conversation_projection: ceiling.child_conversation_projection,
         child_transcript_read: true,
         collaboration_event_projection: ceiling.collaboration_event_projection,
-        native_session_fork: ceiling.protocol_identity == super::manifest::PINNED_PROTOCOL_IDENTITY,
+        native_session_fork: pinned,
+        native_session_compact: pinned,
+        native_review: pinned,
     }
 }
 
@@ -139,6 +148,8 @@ pub(crate) fn projected_capabilities(
         child_conversation_projection: optional.child_conversation_projection,
         collaboration_event_projection: optional.collaboration_event_projection,
         native_session_fork: optional.native_session_fork,
+        native_session_compact: optional.native_session_compact,
+        native_review: optional.native_review,
         active_turn_steer: optional.active_turn_steer,
         child_transcript_read: optional.child_transcript_read,
         multi_root_extension_schema_id: None,

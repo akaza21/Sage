@@ -409,6 +409,33 @@ describe("safeAcpMutationResponse", () => {
     ).toBeNull();
   });
 
+  it("carries native compact and review only when the wire grants them", () => {
+    const capabilities = (extra: object) =>
+      safeAcpMutationResponse(
+        mutation({
+          sessions: [
+            session(0, {
+              capabilities: {
+                ...(session() as { capabilities: object }).capabilities,
+                ...extra,
+              },
+            }),
+          ],
+        }),
+      )?.projection.sessions[0]?.capabilities;
+    expect(
+      capabilities({ nativeSessionCompact: true, nativeReview: true }),
+    ).toMatchObject({ nativeSessionCompact: true, nativeReview: true });
+    for (const granted of [
+      {},
+      { nativeSessionCompact: "true", nativeReview: 1 },
+    ]) {
+      const decoded = capabilities(granted);
+      expect(decoded).not.toHaveProperty("nativeSessionCompact");
+      expect(decoded).not.toHaveProperty("nativeReview");
+    }
+  });
+
   it("projects the session permission-request capability and rejects an absent value", () => {
     expect(
       safeAcpMutationResponse(mutation({ sessions: [session()] }))?.projection

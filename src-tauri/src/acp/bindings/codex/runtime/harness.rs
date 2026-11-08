@@ -316,7 +316,10 @@ impl HarnessAdapter for CodexRuntime {
                 resolution,
                 EgressResolution::QueueRejected | EgressResolution::WriteZeroBytes
             ) {
-                let clear = self.inner.pending_kind(request_id) == Some(RequestKind::TurnStart);
+                let clear = self
+                    .inner
+                    .pending_kind(request_id)
+                    .is_some_and(RequestKind::starts_turn);
                 self.inner
                     .reject_before_write(request_id)
                     .map_err(map_adapter)?;

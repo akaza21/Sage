@@ -55,6 +55,7 @@ export interface ChatComposerRegionProps {
     value: AcpConfigValue,
   ) => Promise<unknown>;
   onSelectHarness: (harnessId: string) => Promise<void>;
+  onCompact?: () => void;
   onSelectModel: (modelId: string) => void;
   missingBindingNotice: boolean;
   disabledReason: string | null;

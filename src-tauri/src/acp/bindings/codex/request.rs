@@ -12,6 +12,8 @@ use super::manifest::Platform;
 use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
 use super::turn_policy::{TurnPolicySurface, turn_policy, validate_turn_policy};
 
+mod session_action;
+
 // The shared writer owns the single LF delimiter. Keeping the payload one
 // byte below the wire ceiling makes the eventual payload + LF write fit the
 // existing bounded stdin endpoint without adapter-specific framing.
@@ -63,12 +65,22 @@ pub(crate) enum RequestKind {
     ForkDelete,
     Models,
     TurnStart,
+    /// `review/start`: an inline review that runs as the correlated Turn.
+    Review,
+    /// `thread/compact/start`: a compaction that runs as the correlated Turn.
+    Compact,
     Steer,
     Interrupt,
     Unsubscribe,
     GoalGet,
     GoalPause,
     GoalClear,
+}
+
+impl RequestKind {
+    pub(crate) fn starts_turn(self) -> bool {
+        matches!(self, Self::TurnStart | Self::Review | Self::Compact)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,6 +111,8 @@ impl OutgoingRequest {
             RequestKind::Fork => "thread/fork",
             RequestKind::Models => "model/list",
             RequestKind::TurnStart => "turn/start",
+            RequestKind::Review => "review/start",
+            RequestKind::Compact => "thread/compact/start",
             RequestKind::Steer => "turn/steer",
             RequestKind::Interrupt => "turn/interrupt",
             RequestKind::Unsubscribe | RequestKind::ForkRelease => "thread/unsubscribe",

@@ -149,6 +149,10 @@ export interface AcpCapabilitySet {
   promptResources?: boolean;
   cancel: boolean;
   nativeSessionFork: boolean;
+  /** Absent unless the harness negotiated it. */
+  nativeSessionCompact?: boolean;
+  /** Absent unless the harness negotiated it. */
+  nativeReview?: boolean;
   activeTurnSteer: boolean;
   childConversationProjection: boolean;
   childTranscriptRead: boolean;
@@ -212,6 +216,20 @@ export interface AcpMutationIntent {
 export interface AcpSessionMutationIntent extends AcpMutationIntent {
   sessionId: SageAgentSessionId;
   runtimeEpoch: RuntimeEpoch;
+}
+
+export type AcpReviewTarget =
+  | { kind: "uncommittedChanges" }
+  | { kind: "baseBranch"; branch: string }
+  | { kind: "commit"; sha: string; title?: string }
+  | { kind: "custom"; instructions: string };
+
+/** Runs as a Turn on an idle session that negotiated it. */
+export type AcpSessionAction =
+  { kind: "compact" } | { kind: "review"; target: AcpReviewTarget };
+
+export interface RunAcpSessionActionRequest extends AcpSessionMutationIntent {
+  action: AcpSessionAction;
 }
 
 export interface StartAcpSessionRequest extends AcpMutationIntent {

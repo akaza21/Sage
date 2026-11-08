@@ -65,6 +65,7 @@ export function ChatComposerRegion({
   focused,
   onSetSessionMode,
   onSetSessionConfigOption,
+  onCompact,
   onSelectHarness,
   onSelectModel,
   missingBindingNotice,
@@ -291,6 +292,7 @@ export function ChatComposerRegion({
               inheritScope={dictationScope}
               accessBindingId={accessBindingId}
               onOpenGoal={goalDetails.onOpen}
+              onCompact={onCompact}
               imageAction={imageInput.action}
               availableBinding={availableBinding}
               canPrompt={canPrompt}

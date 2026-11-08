@@ -12,6 +12,8 @@ import { ChatTranscript } from "./ChatTranscript";
 import { SessionWorkingPill } from "./SessionWorkingPill";
 import {
   latestRetryPrompt,
+  sessionActionAvailable,
+  sessionActions,
   terminalTurnStates,
   useAcpChatActions,
   useAcpChatHistory,
@@ -161,6 +163,15 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     contentRef: transcriptContentRef,
     endRef,
   });
+  const sessionAction = (kind: keyof typeof sessionActions) => {
+    const action = sessionActions[kind];
+    return useNativeAcp &&
+      !actionBusy &&
+      !projectTransitioning &&
+      sessionActionAvailable(acpPage, action.kind)
+      ? () => void acpActions.runSessionAction(action)
+      : undefined;
+  };
   const retryLastTurn = () => {
     if (!acpPage || actionBusy || activeAcpTurn) return;
     const retry = latestRetryPrompt(acpPage);
@@ -292,6 +303,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
             ? retryLastTurn
             : undefined
         }
+        onReviewChanges={sessionAction("reviewChanges")}
         showJumpToLatest={showJumpToLatest}
         onJumpToLatest={jumpToLatest}
       />
@@ -341,6 +353,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         focused={focused}
         onSetSessionMode={acpActions.setSessionMode}
         onSetSessionConfigOption={acpActions.setSessionConfigOption}
+        onCompact={sessionAction("compact")}
         onSelectHarness={chooseHarness}
         onSelectModel={chooseModel}
         missingBindingNotice={useNativeAcp && !availableBinding}

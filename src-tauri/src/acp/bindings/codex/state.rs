@@ -218,7 +218,7 @@ impl CodexAdapter {
 
     pub(crate) fn reject_before_write(&mut self, id: u64) -> Result<(), AdapterError> {
         let kind = self.pending_kind(id).ok_or(AdapterError::ForeignRequest)?;
-        if kind == RequestKind::TurnStart {
+        if kind.starts_turn() {
             self.turn_start_correlations.discard_pending(id)?;
         }
         if kind == RequestKind::GoalGet {
@@ -270,7 +270,7 @@ impl CodexAdapter {
     }
 
     pub(super) fn fail_turn_start(&mut self, id: u64) -> Result<TurnStartFailure, AdapterError> {
-        if self.pending_kind(id) != Some(RequestKind::TurnStart) {
+        if !self.pending_kind(id).is_some_and(RequestKind::starts_turn) {
             return Err(AdapterError::TurnIntentConflict);
         }
         let correlation = self.turn_start_correlations.failure(id)?;
@@ -297,7 +297,7 @@ impl CodexAdapter {
         let mut turn_starts = self
             .pending
             .iter()
-            .filter_map(|(id, kind)| (*kind == RequestKind::TurnStart).then_some(*id));
+            .filter_map(|(id, kind)| kind.starts_turn().then_some(*id));
         let id = turn_starts.next().ok_or(AdapterError::TurnIntentConflict)?;
         if turn_starts.next().is_some() {
             return Err(AdapterError::TurnIntentConflict);
@@ -330,13 +330,25 @@ impl CodexAdapter {
     }
 
     pub(super) fn finish_turn_start_response(&mut self, id: u64) -> Result<(), AdapterError> {
-        if self.pending_kind(id) != Some(RequestKind::TurnStart) {
+        if !self.pending_kind(id).is_some_and(RequestKind::starts_turn) {
             return Err(AdapterError::TurnIntentConflict);
         }
         self.turn_start_correlations.consume(id)?;
-        let removed = self.remove_pending(id);
-        debug_assert_eq!(removed, Some(RequestKind::TurnStart));
+        self.remove_pending(id);
         Ok(())
+    }
+
+    /// A compaction answers with no Turn; until `turn/started` names it, its
+    /// correlation stays pending and is retired when that Turn binds.
+    pub(super) fn accept_compact_response(&mut self, id: u64) -> Result<(), AdapterError> {
+        if self.pending_kind(id) != Some(RequestKind::Compact) {
+            return Err(AdapterError::TurnIntentConflict);
+        }
+        if self.turn_start_correlations.is_pending(id) {
+            self.remove_pending(id);
+            return Ok(());
+        }
+        self.finish_turn_start_response(id)
     }
 
     fn reserve(&mut self, request: OutgoingRequest) -> Result<OutgoingRequest, AdapterError> {

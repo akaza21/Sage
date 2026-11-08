@@ -167,6 +167,8 @@ pub struct Prompt {
     #[serde(skip)]
     pub(crate) command_revision: Option<u64>,
     #[serde(skip)]
+    pub(crate) action: Option<super::session_action::SessionAction>,
+    #[serde(skip)]
     context: Option<Box<(String, AttachedContexts)>>,
     #[serde(skip)]
     pub(crate) resources: super::attached_context::files::Resources,
@@ -178,6 +180,7 @@ impl Prompt {
             text: RequiredText::new(field, text)?,
             context: None,
             command_revision: None,
+            action: None,
             resources: Default::default(),
         })
     }

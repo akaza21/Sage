@@ -46,6 +46,7 @@ interface Props {
   accessBindingId?: string | null;
   imageAction?: { disabled: boolean; onChoose: () => void };
   onOpenGoal?: () => void;
+  onCompact?: () => void;
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
@@ -77,6 +78,7 @@ export function ChatHarnessControls({
   accessBindingId,
   imageAction,
   onOpenGoal,
+  onCompact,
   availableBinding,
   canPrompt,
   modelLabelScope,
@@ -221,6 +223,7 @@ export function ChatHarnessControls({
   const hasActions = Boolean(
     imageAction ||
     onOpenGoal ||
+    onCompact ||
     effortInMenu ||
     projectInMenu ||
     modeOptions.length > 0 ||
@@ -372,6 +375,7 @@ export function ChatHarnessControls({
             disabled={turnBusy || projectTransitioning}
             imageAction={imageAction}
             onOpenGoal={onOpenGoal}
+            onCompact={onCompact}
             onOpenEffort={
               effortInMenu
                 ? () => {

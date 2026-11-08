@@ -32,6 +32,8 @@ interface TurnEditSummaryProps {
   onRecordDisposition?: (
     disposition: AgentEditDisposition,
   ) => Promise<AcpMutationResult>;
+  /** Present only while the session can review its uncommitted changes. */
+  onReview?: () => void;
 }
 
 export const TurnEditSummary = memo(function TurnEditSummary({
@@ -42,6 +44,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
   workspaceIncomplete = false,
   onOpenResource,
   onRecordDisposition,
+  onReview,
 }: TurnEditSummaryProps) {
   const fetchedWorkspaceChanges = useTurnWorkspaceChanges(
     page,
@@ -291,6 +294,14 @@ export const TurnEditSummary = memo(function TurnEditSummary({
             </div>
           ))
         : null}
+      {expanded && onReview ? (
+        <div className="acp-file-changes__disposition">
+          <button type="button" onClick={onReview}>
+            Review changes
+          </button>
+          <span>Ask the harness to review the uncommitted changes.</span>
+        </div>
+      ) : null}
       {expanded && dispositionError ? (
         <p className="acp-file-changes__disclosure" role="alert">
           The edit disposition was not recorded. No workspace files were

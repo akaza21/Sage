@@ -45,6 +45,7 @@ const hooks = vi.hoisted(() => ({
     errorKind: null as string | null,
     cancellableTurnId: null as string | null,
     submit: vi.fn(),
+    runSessionAction: vi.fn(),
     steer: vi.fn(),
     cancel: vi.fn(),
     close: vi.fn(),
@@ -583,6 +584,40 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.queryByText("Goal", { exact: true })).toBeNull();
     expect(screen.queryByLabelText("Goal details")).toBeNull();
   });
+
+  it.each([true, false])(
+    "offers Compact context only to an idle session that negotiated it (%s)",
+    async (negotiated) => {
+      matchConfiguredSession();
+      setTurnState("completed");
+      const [session] = hooks.page!.sessions;
+      hooks.page = {
+        ...hooks.page!,
+        sessions: [
+          {
+            ...session,
+            capabilities: {
+              ...session.capabilities,
+              nativeSessionCompact: negotiated,
+            },
+          },
+        ],
+      };
+      render(<ChatSurface />);
+      await openComposerOptions();
+      const compact = screen.queryByRole("menuitem", {
+        name: "Compact context",
+      });
+      if (!negotiated) {
+        expect(compact).toBeNull();
+        return;
+      }
+      fireEvent.click(compact!);
+      expect(hooks.actions.runSessionAction).toHaveBeenCalledWith({
+        kind: "compact",
+      });
+    },
+  );
 
   it("opens an earlier-session assistant file link in its owning Chat", async () => {
     const resource = { rootId: "root-a", relativePath: "README.md" };
