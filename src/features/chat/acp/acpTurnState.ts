@@ -51,6 +51,7 @@ export function currentSession(
 }
 
 export function latestRetryPrompt(page: AcpChatPage): {
+  turnId: SageTurnId;
   prompt: string;
   bindingId: AgentSessionProjection["bindingId"];
   modelId: AgentSessionProjection["modelId"];
@@ -67,6 +68,7 @@ export function latestRetryPrompt(page: AcpChatPage): {
     );
   return session && turn?.sessionId === session.id && item?.kind === "text"
     ? {
+        turnId: turn.id,
         prompt: item.payload.text,
         bindingId: session.bindingId,
         modelId: session.modelId,

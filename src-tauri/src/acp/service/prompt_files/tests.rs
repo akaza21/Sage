@@ -170,8 +170,11 @@ fn staging_conflicts_owner_isolation_and_lifecycle_release() {
     let next = stages
         .stage("p", "c", 0, Some(&old.revision), f.read("two"))
         .unwrap();
-    stages.consume("p", "c", &snapshot); // Late acknowledgement cannot consume a newer selection.
+    // A late acknowledgement cannot consume a newer selection; it records
+    // only what was sent, which settling its turn releases.
+    stages.consume("p", "c", 0, "late", &snapshot);
     assert_eq!(stages.list("p", "c").unwrap().revision, next.revision);
+    stages.settle("p", "c", "late");
     drop(snapshot);
     assert!(weak.upgrade().is_none());
     assert!(
@@ -182,7 +185,7 @@ fn staging_conflicts_owner_isolation_and_lifecycle_release() {
     );
     stages.stage("p", "c", 0, None, f.read("one")).unwrap();
     let sent = stages.get("p", "c");
-    stages.consume("p", "c", &sent);
+    stages.consume("p", "c", 0, "sent", &sent);
     assert!(stages.list("p", "c").is_none());
     drop(sent);
     stages.stage("p", "c", 0, None, f.read("one")).unwrap();
@@ -257,4 +260,15 @@ fn unix_backslashes_in_names_do_not_select_a_different_file() {
     f.file("a\\b", b"selected");
     f.file("a/b", b"different");
     assert_eq!(f.read("a\\b").0[0].bytes, b"selected");
+}
+
+#[test]
+fn the_webview_mirrors_the_native_caps() {
+    let mirror = include_str!("../../../../../src/ports/promptAttachments.ts");
+    assert!(mirror.contains(&format!("PROMPT_ATTACHMENT_COUNT = {FILE_COUNT};")));
+    assert!(mirror.contains(&format!(
+        "PROMPT_ATTACHMENT_TOTAL_BYTES = {} * 1024;",
+        TOTAL_BYTES / 1024
+    )));
+    assert_eq!(TOTAL_BYTES % 1024, 0);
 }

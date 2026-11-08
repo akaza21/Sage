@@ -242,10 +242,11 @@ describe("ACP action controller", () => {
     expect(
       vi.mocked(test.commands.sendTurn).mock.calls[0][0],
     ).not.toHaveProperty("staged");
-    // Retry: the files the latest message carried go again.
-    await test.controller.submit("Again", [], bindingId, modelId, "lastSent");
+    // Retry: the files that turn carried go again.
+    const retryOf = "turn-1" as SageTurnId;
+    await test.controller.submit("Again", [], bindingId, modelId, { retryOf });
     expect(test.commands.sendTurn).toHaveBeenLastCalledWith(
-      expect.objectContaining({ prompt: "Again", staged: "lastSent" }),
+      expect.objectContaining({ prompt: "Again", staged: { retryOf } }),
     );
   });
   it("sends attachment-only context and still refuses an empty send", async () => {

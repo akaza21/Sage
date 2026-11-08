@@ -269,3 +269,158 @@ fn pasted_text_joins_the_batch_as_a_text_resource_within_the_batch_caps() {
         assert!(resources.wire("Explain this log", false).is_err());
     });
 }
+
+/// A turn in the fixture chat whose prompt payload records `count`.
+fn turn(fixture: &Fixture, id: &str, intent: &str, ordinal: i64, count: Option<u8>, state: &str) {
+    let mut payload = serde_json::json!({"role": "user", "text": "Explain"});
+    if let Some(count) = count {
+        payload["attachments"] = count.into();
+    }
+    let payload = serde_json::json!({"kind": "text", "payload": payload}).to_string();
+    let connection = fixture.state.database.connection();
+    connection.execute_batch("PRAGMA foreign_keys=OFF").unwrap();
+    connection
+        .execute(
+            "INSERT INTO turns (id,project_id,chat_id,session_id,runtime_epoch,ordinal,
+             client_intent_id,state,delivery_state,revision,created_at,updated_at,terminal_at)
+             VALUES (?1,?2,?3,'session-a',1,?4,?5,?6,'completeBytes',0,0,0,
+             CASE WHEN ?6='running' THEN NULL ELSE 0 END)",
+            rusqlite::params![id, fixture.project, fixture.chat, ordinal, intent, state],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO items (id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,
+             origin,kind,lifecycle,payload_json,payload_bytes,payload_digest,revision,created_at,updated_at,terminal_at)
+             VALUES (?1,?2,?3,'session-a',?4,1,0,'primary','text','completed',?5,?6,?7,0,0,0,0)",
+            rusqlite::params![format!("item-{id}"), fixture.project, fixture.chat, id, payload, payload.len() as i64, "0".repeat(64)],
+        )
+        .unwrap();
+}
+
+#[test]
+fn retry_reads_the_durable_attachment_count_of_that_turn_only() {
+    use super::super::{RetryOrigin, Selection, retry_origin};
+    let fixture = Fixture::new();
+    turn(&fixture, "turn-files", "intent-files", 1, Some(2), "failed");
+    turn(&fixture, "turn-plain", "intent-plain", 2, None, "failed");
+    let origin = |turn: &str, chat: &str| {
+        retry_origin(&fixture.state.database, &fixture.project, chat, turn).unwrap()
+    };
+    let RetryOrigin {
+        client_intent_id,
+        attachments,
+    } = origin("turn-files", &fixture.chat).unwrap();
+    assert_eq!(
+        (client_intent_id.as_str(), attachments),
+        ("intent-files", 2)
+    );
+    assert_eq!(origin("turn-plain", &fixture.chat).unwrap().attachments, 0);
+    assert!(origin("turn-missing", &fixture.chat).is_none());
+    assert!(origin("turn-files", "another-chat").is_none());
+    // With nothing held (a restart), a turn that carried files is refused.
+    let stages = fixture.state.acp.file_stages.lock().unwrap();
+    let refused = stages.selected(
+        &fixture.project,
+        &fixture.chat,
+        &Selection::Retry(origin("turn-files", &fixture.chat).unwrap()),
+    );
+    assert!(refused.unwrap_err().contains("no longer held"));
+    let plain = Selection::Retry(origin("turn-plain", &fixture.chat).unwrap());
+    assert!(
+        stages
+            .selected(&fixture.project, &fixture.chat, &plain)
+            .unwrap()
+            .0
+            .is_empty()
+    );
+}
+
+/// Stages a paste and records it as sent by `intent`, as a dispatch does.
+async fn send_paste(fixture: &Fixture, intent: &str) {
+    use super::super::Selection;
+    let request = serde_json::from_value(serde_json::json!({
+        "owner": {"projectId": fixture.project, "chatId": fixture.chat, "projectGeneration": 0},
+        "expectedRevision": null, "text": "pasted log",
+    }))
+    .unwrap();
+    let revision = stage_text(&fixture.state, request).await.unwrap().revision;
+    let at = attachment(&fixture.state.database, &fixture.project, &fixture.chat)
+        .unwrap()
+        .unwrap();
+    let mut stages = fixture.state.acp.file_stages.lock().unwrap();
+    let sent = stages
+        .selected(
+            &fixture.project,
+            &fixture.chat,
+            &Selection::Revision(revision),
+        )
+        .unwrap();
+    stages.consume(&fixture.project, &fixture.chat, at, intent, &sent);
+}
+
+#[test]
+fn kept_sent_files_end_with_their_tab_or_their_completed_turn() {
+    use super::super::{RetryOrigin, Selection};
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let state = &fixture.state;
+        let retry = |intent: &str| {
+            release_detached(&state.acp.file_stages, &state.database);
+            let origin = RetryOrigin { client_intent_id: intent.into(), attachments: 1 };
+            state.acp.file_stages.lock().unwrap()
+                .selected(&fixture.project, &fixture.chat, &Selection::Retry(origin))
+                .map(|files| files.0.len())
+        };
+        turn(&fixture, "turn-a", "intent-a", 1, Some(1), "running");
+        send_paste(&fixture, "intent-a").await;
+        assert_eq!(retry("intent-a"), Ok(1));
+        // Once its turn completed, no Retry is offered, so the files go.
+        state.database.connection().execute(
+            "UPDATE turns SET state='completed', terminal_at=1 WHERE client_intent_id='intent-a'", [],
+        ).unwrap();
+        assert!(retry("intent-a").unwrap_err().contains("released"));
+        // Closing the tab ends what was kept for it.
+        send_paste(&fixture, "intent-b").await;
+        assert_eq!(retry("intent-b"), Ok(1));
+        state.database.connection().execute(
+            "DELETE FROM chat_tabs WHERE chat_id=?1", [&fixture.chat],
+        ).unwrap();
+        assert!(retry("intent-b").unwrap_err().contains("no longer held"));
+    });
+}
+
+#[test]
+fn an_owner_without_a_chat_is_refused() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let request: StageTextRequest = serde_json::from_value(serde_json::json!({
+            "owner": {"projectId": fixture.project, "chatId": "", "projectGeneration": 0},
+            "expectedRevision": null, "text": "x",
+        }))
+        .unwrap();
+        assert_eq!(
+            stage_text(&fixture.state, request).await.err().as_deref(),
+            Some("Attachment owner is stale or invalid.")
+        );
+    });
+}
+
+#[test]
+fn a_paste_names_the_resource_it_added() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let request = |expected: Option<&str>| -> StageTextRequest {
+            serde_json::from_value(serde_json::json!({
+                "owner": {"projectId": fixture.project, "chatId": fixture.chat, "projectGeneration": 0},
+                "expectedRevision": expected, "text": "pasted",
+            }))
+            .unwrap()
+        };
+        let first = stage_text(&fixture.state, request(None)).await.unwrap();
+        let second = stage_text(&fixture.state, request(Some(&first.revision))).await.unwrap();
+        assert_eq!(first.added.as_deref(), Some(first.files[0].id.as_str()));
+        assert_eq!(second.added.as_deref(), Some(second.files[1].id.as_str()));
+        assert!(fixture.listed().unwrap().added.is_none());
+    });
+}

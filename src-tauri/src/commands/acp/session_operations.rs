@@ -8,6 +8,7 @@ const _: () = assert!(
 );
 
 mod lifecycle;
+mod staged;
 pub(crate) use lifecycle::{close_acp_session_inner, end_acp_session_inner};
 
 /// Context a prompt cannot carry yet: images, and page elements that
@@ -43,22 +44,6 @@ pub(crate) async fn send_acp_turn_inner(
     validate_send(state, &request, &snapshot).map_err(prompt_not_dispatched)?;
     // A batch staged in a tab that has since closed must never be sent.
     crate::acp::attached_context::files::release_detached(&state.acp.file_stages, &state.database);
-    if matches!(request, SendAcpTurnRequest::NewSession { .. })
-        && !state
-            .acp
-            .file_stages
-            .lock()
-            .map_err(|_| prompt_not_dispatched(internal_error()))?
-            .get(project_id.as_str(), chat_id.as_str())
-            .0
-            .is_empty()
-    {
-        return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
-            message: safe_message(
-                "Start a harness session before sending staged file attachments.",
-            ),
-        }));
-    }
     match &request {
         SendAcpTurnRequest::Session {
             attached_context, ..
@@ -78,18 +63,10 @@ pub(crate) async fn send_acp_turn_inner(
             .map_err(store_error)
             .map_err(prompt_not_dispatched)?;
         if state.acp.accepts_characterization(&binding_id) {
-            if !state
-                .acp
-                .file_stages
-                .lock()
-                .map_err(|_| prompt_not_dispatched(internal_error()))?
-                .selected(project_id.as_str(), chat_id.as_str(), staged.as_ref())
-                .is_ok_and(|files| files.0.is_empty())
-            {
-                return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
-                    message: safe_message("This harness cannot accept staged file attachments."),
-                }));
-            }
+            let selection = staged::resolve(state, &project_id, &chat_id, staged.clone())
+                .map_err(prompt_not_dispatched)?;
+            staged::characterization_carries_none(state, &project_id, &chat_id, &selection)
+                .map_err(prompt_not_dispatched)?;
             return characterization::send(state, request);
         }
     }
@@ -176,6 +153,8 @@ pub(crate) async fn send_acp_turn_inner(
     let binding_id = session_routes::durable_binding_id(state, &session_id)
         .map_err(store_error)
         .map_err(prompt_not_dispatched)?;
+    let staged =
+        staged::resolve(state, &project_id, &chat_id, staged).map_err(prompt_not_dispatched)?;
     let mut prompt = effective_prompt(&prompt, &attached_context)
         .map_err(|_| AcpIpcError::InvalidRequest {
             message: safe_message("The prompt and attached context exceed the native byte limit."),
@@ -186,7 +165,7 @@ pub(crate) async fn send_acp_turn_inner(
         .file_stages
         .lock()
         .map_err(|_| prompt_not_dispatched(internal_error()))?
-        .selected(project_id.as_str(), chat_id.as_str(), staged.as_ref())
+        .selected(project_id.as_str(), chat_id.as_str(), &staged)
         .map_err(|message| {
             prompt_not_dispatched(AcpIpcError::InvalidRequest {
                 message: safe_message(message),
@@ -241,7 +220,7 @@ pub(crate) async fn send_acp_turn_inner(
         .file_stages
         .lock()
         .map_err(|_| prompt_not_dispatched(internal_error()))?
-        .selected(project_id.as_str(), chat_id.as_str(), staged.as_ref());
+        .selected(project_id.as_str(), chat_id.as_str(), &staged);
     if !current_files.is_ok_and(|current| files.same_selection(&current)) {
         super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
         return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
@@ -289,12 +268,7 @@ pub(crate) async fn send_acp_turn_inner(
         Ok(_) => true,
         Err(failure) => failure.prompt_dispatch != PromptDispatch::NotStarted,
     } {
-        state
-            .acp
-            .file_stages
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .consume(project_id.as_str(), chat_id.as_str(), &files);
+        staged::record_sent(state, &project_id, &chat_id, &tracked_intent, &files);
     }
     if dispatch.is_err() {
         super::turn_workspace::forget_unprepared(state, &tracked_session, &tracked_intent);

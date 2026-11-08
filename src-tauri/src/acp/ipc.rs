@@ -178,8 +178,9 @@ pub struct ActivateAcpSessionRequest {
 pub enum StagedSelection {
     /// The chat's staged batch, only while it is still at this revision.
     Revision(String),
-    /// The files the chat's latest dispatched prompt carried, for Retry.
-    LastSent,
+    /// Retry of this turn: the files its prompt carried, only while they
+    /// are still held for it.
+    RetryOf(SageTurnId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

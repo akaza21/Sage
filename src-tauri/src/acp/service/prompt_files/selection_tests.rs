@@ -1,5 +1,5 @@
 //! Which staged files a send carries: only the batch it names, or for Retry
-//! the files the chat's latest dispatched prompt carried.
+//! of one turn the files that turn's prompt carried.
 use super::*;
 
 const AT: i64 = 7;
@@ -11,88 +11,133 @@ fn paste(stages: &mut FileStages, chat: &str, text: &str) -> String {
         .revision
 }
 
+fn named(revision: &str) -> Selection {
+    Selection::Revision(revision.to_owned())
+}
+
+fn retry(intent: &str, attachments: usize) -> Selection {
+    Selection::Retry(RetryOrigin {
+        client_intent_id: intent.into(),
+        attachments,
+    })
+}
+
 #[test]
 fn a_send_that_names_no_batch_leaves_it_for_the_next_message() {
     let mut stages = FileStages::default();
     let revision = paste(&mut stages, "c", "pasted log");
     // A queued message or a slash command dispatches with no selection.
-    let queued = stages.selected("p", "c", None).unwrap();
+    let queued = stages.selected("p", "c", &Selection::None).unwrap();
     assert!(queued.0.is_empty());
-    stages.consume("p", "c", &queued);
+    stages.consume("p", "c", AT, "queued", &queued);
     assert_eq!(stages.list("p", "c").unwrap().revision, revision);
     // The message being written names the batch and takes it.
-    let named = stages
-        .selected("p", "c", Some(&StagedSelection::Revision(revision.clone())))
-        .unwrap();
-    assert_eq!(named.0[0].bytes, b"pasted log");
-    stages.consume("p", "c", &named);
+    let sent = stages.selected("p", "c", &named(&revision)).unwrap();
+    assert_eq!(sent.0[0].bytes, b"pasted log");
+    stages.consume("p", "c", AT, "written", &sent);
     assert!(stages.list("p", "c").is_none());
     // A revision that is no longer staged is refused, never sent empty.
-    assert!(
-        stages
-            .selected("p", "c", Some(&StagedSelection::Revision(revision)))
-            .is_err()
-    );
+    assert!(stages.selected("p", "c", &named(&revision)).is_err());
 }
 
 #[test]
-fn retry_resends_what_the_latest_message_carried() {
+fn retry_resends_what_that_turn_carried() {
     let mut stages = FileStages::default();
-    let last = Some(&StagedSelection::LastSent);
-    assert!(stages.selected("p", "c", last).unwrap().0.is_empty());
     let revision = paste(&mut stages, "c", "first");
-    let sent = stages
-        .selected("p", "c", Some(&StagedSelection::Revision(revision)))
-        .unwrap();
-    stages.consume("p", "c", &sent);
+    let sent = stages.selected("p", "c", &named(&revision)).unwrap();
+    stages.consume("p", "c", AT, "first", &sent);
     // A new paste staged for the next message is not what Retry resends.
     let next = paste(&mut stages, "c", "second");
-    let retried = stages.selected("p", "c", last).unwrap();
+    let retried = stages.selected("p", "c", &retry("first", 1)).unwrap();
     assert!(retried.same_selection(&sent));
-    stages.consume("p", "c", &retried);
+    // The retry is a new turn; a Retry of it resends the same files.
+    stages.consume("p", "c", AT, "again", &retried);
+    let again = stages.selected("p", "c", &retry("again", 1)).unwrap();
+    assert!(again.same_selection(&sent));
+    assert_eq!(stages.list("p", "c").unwrap().revision, next);
+    // A later message without files is recorded as carrying none.
+    stages.consume("p", "c", AT, "plain", &Resources::default());
     assert!(
         stages
-            .selected("p", "c", last)
+            .selected("p", "c", &retry("plain", 0))
             .unwrap()
-            .same_selection(&sent)
+            .0
+            .is_empty()
     );
-    assert_eq!(stages.list("p", "c").unwrap().revision, next);
-    // A later message without files means Retry carries none.
-    stages.consume("p", "c", &Resources::default());
-    assert!(stages.selected("p", "c", last).unwrap().0.is_empty());
     stages.clear_chat("p", "c");
     assert!(stages.list("p", "c").is_none());
 }
 
 #[test]
-fn kept_sent_files_are_bounded_and_a_released_retry_is_refused() {
+fn retry_without_a_record_is_refused_when_the_turn_carried_files() {
     let mut stages = FileStages::default();
-    let chats: Vec<String> = (0..=OWNER_COUNT).map(|i| format!("c{i}")).collect();
-    for chat in &chats {
-        let revision = paste(&mut stages, chat, "kept");
-        let sent = stages
-            .selected("p", chat, Some(&StagedSelection::Revision(revision)))
-            .unwrap();
-        stages.consume("p", chat, &sent);
-    }
-    let held = stages
-        .sent
-        .values()
-        .filter(|s| s.resources.is_some())
-        .count();
-    assert_eq!(held, OWNER_COUNT);
-    let last = Some(&StagedSelection::LastSent);
-    let released = chats
-        .iter()
-        .filter(|chat| stages.selected("p", chat, last).is_err())
-        .count();
-    assert_eq!(released, 1);
-    // The chat that sent most recently always keeps its files.
+    // After a restart or a reopened tab nothing is held for the turn: one
+    // that carried files is refused, never resent without them.
+    let refused = stages.selected("p", "c", &retry("before-restart", 2));
+    assert!(refused.unwrap_err().contains("no longer held"));
     assert!(
-        !stages
-            .selected("p", chats.last().unwrap(), last)
+        stages
+            .selected("p", "c", &retry("before-restart", 0))
             .unwrap()
             .0
             .is_empty()
+    );
+    // A record for another turn is not this turn's.
+    let revision = paste(&mut stages, "c", "other");
+    let sent = stages.selected("p", "c", &named(&revision)).unwrap();
+    stages.consume("p", "c", AT, "other", &sent);
+    assert!(stages.selected("p", "c", &retry("older", 1)).is_err());
+    // A completed turn needs no Retry, so its files are released.
+    stages.settle("p", "c", "other");
+    assert!(
+        stages
+            .selected("p", "c", &retry("other", 1))
+            .unwrap_err()
+            .contains("released")
+    );
+}
+
+#[test]
+fn kept_sent_files_are_bounded_by_recency_and_a_released_retry_is_refused() {
+    let mut stages = FileStages::default();
+    let chats: Vec<String> = (0..=OWNER_COUNT).map(|i| format!("c{i}")).collect();
+    // The first chat sends last-but-one, so it is not the oldest.
+    let order: Vec<&String> = chats[1..].iter().chain([&chats[0]]).collect();
+    for chat in &order {
+        let revision = paste(&mut stages, chat, "kept");
+        let sent = stages.selected("p", chat, &named(&revision)).unwrap();
+        stages.consume("p", chat, AT, chat, &sent);
+    }
+    let released: Vec<_> = chats
+        .iter()
+        .filter(|chat| stages.selected("p", chat, &retry(chat, 1)).is_err())
+        .collect();
+    // The least recently sent chat gives way, not the lowest key.
+    assert_eq!(released, [&chats[1]]);
+}
+
+#[test]
+fn kept_sent_files_count_in_the_memory_cap_and_give_way_to_a_new_stage() {
+    let mut stages = FileStages::default();
+    let big = "x".repeat(TOTAL_BYTES);
+    let mut sent_chats = Vec::new();
+    for i in 0.. {
+        let chat = format!("s{i}");
+        let revision = paste(&mut stages, &chat, &big);
+        let sent = stages.selected("p", &chat, &named(&revision)).unwrap();
+        stages.consume("p", &chat, AT, &chat, &sent);
+        sent_chats.push(chat);
+        if stages.retained(None) + TOTAL_BYTES * 2 > STORE_BYTES {
+            break;
+        }
+    }
+    // Staging past the cap releases the oldest kept send instead of refusing.
+    paste(&mut stages, "new", &big);
+    paste(&mut stages, "newer", &big);
+    assert!(stages.retained(None) <= STORE_BYTES);
+    assert!(
+        stages
+            .selected("p", &sent_chats[0], &retry(&sent_chats[0], 1))
+            .is_err()
     );
 }

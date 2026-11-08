@@ -56,8 +56,15 @@ export function stagedItemLabel(item: {
 const TYPED_LIMIT = formatSize(MAX_CHAT_COMPOSER_BYTES);
 const ATTACHMENT_LIMIT = formatSize(PROMPT_ATTACHMENT_TOTAL_BYTES);
 
-export function typedOverflowMessage(bytes: number): string {
-  return `Messages hold up to ${TYPED_LIMIT} of typed text; this edit would make ${formatSize(bytes)}. Paste longer text to attach it instead.`;
+/** An edit over the cap; pasting attaches only where attaching works. */
+export function typedOverflowMessage(
+  bytes: number,
+  refusal: string | null,
+): string {
+  const held = `Messages hold up to ${TYPED_LIMIT} of typed text; this edit would make ${formatSize(bytes)}.`;
+  return refusal
+    ? `${held} ${refusal}`
+    : `${held} Paste longer text to attach it instead.`;
 }
 
 /** Why text over the composer cap cannot become an attachment right now. */

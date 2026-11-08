@@ -50,13 +50,11 @@ vi.mock(import("../../ports/nativeInvoke"), () => ({
           throw "Attachments exceed the 16-file limit.";
         if (total + bytes > PROMPT_ATTACHMENT_TOTAL_BYTES)
           throw "Attachments exceed 96 KiB total.";
-        native.files.push({
-          id: `file-${++native.next}`,
-          name: "pasted-text.txt",
-          bytes,
-        });
+        const id = `file-${++native.next}`;
+        native.files.push({ id, name: "pasted-text.txt", bytes });
         native.revision = `revision-${native.next}`;
-        return summary();
+        // Native names the resource the paste added.
+        return { ...summary(), added: id };
       }
       if (command === "remove_prompt_file") {
         native.files = native.files.filter((f) => f.id !== request?.id);
@@ -197,15 +195,65 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     expect(native.calls).not.toContain("stage_prompt_text");
   });
 
-  it("holds back a long paste that races the paste part's load", async () => {
+  it("stages a long paste made before the paste part loads", async () => {
     const onTextChange = vi.fn();
     render(<Composer onTextChange={onTextChange} />);
-    // The browser inserted the text before the part could intercept it.
+    // No focus yet, so the part is not loaded: the composer holds the paste
+    // back synchronously and hands it over once the part arrives.
+    expect(paste(log)).toBe(false);
+    expect(
+      await screen.findByRole("button", { name: label }, LAZY),
+    ).toBeVisible();
+    await announced(`Attached ${label}.`);
+    expect(native.calls).toContain("stage_prompt_text");
+    expect(onTextChange).not.toHaveBeenCalled();
+  });
+  it("holds back an over-cap edit that is not a paste, with a message for that path", async () => {
+    const onTextChange = vi.fn();
+    render(<Composer onTextChange={onTextChange} />);
+    // Text dropped or typed past the cap never reaches the draft.
     fireEvent.change(field(), { target: { value: log } });
     expect(onTextChange).not.toHaveBeenCalled();
     await announced(
-      "Messages hold up to 16 KB of typed text; this edit would make 74 KB.",
+      "Messages hold up to 16 KB of typed text; this edit would make 74 KB. Paste longer text to attach it instead.",
     );
+    expect(native.calls).not.toContain("stage_prompt_text");
+  });
+  it("does not suggest pasting where pasted text cannot attach", async () => {
+    render(<Composer acceptsResources={false} />);
+    fireEvent.change(field(), { target: { value: log } });
+    await announced("This harness does not accept attached text");
+    expect(status()!).not.toHaveTextContent("Paste longer text");
+  });
+  it("refuses a long paste while a send is in flight, and says so", async () => {
+    render(<Composer actionBusy />);
+    await focusField().catch(() => undefined);
+    expect(paste(log)).toBe(false);
+    await announced(
+      "Wait for the message to finish sending, then paste again.",
+    );
+    expect(native.calls).not.toContain("stage_prompt_text");
+  });
+  it("holds a send until the batch staged before a reload is read back", async () => {
+    native.files = [{ id: "file-9", name: "notes.md", bytes: 2048 }];
+    native.revision = "revision-9";
+    const onSubmit = vi.fn((event) => event.preventDefault());
+    render(<Composer text="Draft from before" onSubmit={onSubmit} />);
+    const send = screen.getByRole("button", { name: "Send message" });
+    expect(send).toBeEnabled();
+    // Focus loads the part; until its first read settles, no send goes.
+    fireEvent.focus(field());
+    expect(send).toBeDisabled();
+    await screen.findByText("notes.md · 2 KB", undefined, LAZY);
+    expect(send).toBeEnabled();
+    fireEvent.click(send);
+    expect(onSubmit).toHaveBeenCalledWith(expect.anything(), "revision-9");
+  });
+  it("ties its notices to the field", async () => {
+    render(<Composer />);
+    await focusField();
+    const live = status()!;
+    expect(field().getAttribute("aria-describedby")).toContain(live.id);
   });
 
   it("loads the staged batch with the field's first focus", async () => {
@@ -261,9 +309,12 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     expect(
       screen.getByRole("button", { name: /Queue message|Send message/ }),
     ).toBeDisabled();
-    await announced(
-      "Attached text goes with the next message you send, not a queued one.",
+    // A standing reason, apart from the transient live notices.
+    const reason = screen.getByText(
+      /Attached text goes with the next message you send, not a queued one\./,
     );
+    expect(reason).not.toHaveAttribute("aria-live");
+    expect(field().getAttribute("aria-describedby")).toContain(reason.id);
   });
 
   it("removes the chip and its staged bytes", async () => {

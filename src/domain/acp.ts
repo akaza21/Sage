@@ -226,9 +226,10 @@ interface AcpTurnContent {
 
 /**
  * The staged prompt files a send carries: the chat's batch at a revision, or
- * for Retry the files the chat's latest dispatched prompt carried.
+ * for Retry of a turn the files that turn's prompt carried. Native refuses a
+ * Retry whose files are no longer held rather than sending it without them.
  */
-export type StagedSelection = { revision: string } | "lastSent";
+export type StagedSelection = { revision: string } | { retryOf: SageTurnId };
 
 export type SendAcpTurnRequest =
   | (AcpSessionMutationIntent &

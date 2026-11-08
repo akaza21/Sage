@@ -1,17 +1,9 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type RefObject,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import {
-  fitsComposer,
+  pasteAttachmentRefusal,
   typedOverflowMessage,
-  utf8Length,
   type PasteAttachability,
 } from "./composerPaste";
 import { PastedTextChips } from "./PastedTextChips";
@@ -21,7 +13,12 @@ import {
   removeStaged,
   type StagedOwner,
 } from "./pastedTextFlow";
-import type { PastedTextState, StagedSummary } from "./pastedTextTypes";
+import type {
+  HeldPaste,
+  PastedTextState,
+  PasteSignal,
+  StagedSummary,
+} from "./pastedTextTypes";
 
 const EMPTY: PastedTextState = { revision: null, items: [], busy: false };
 
@@ -29,110 +26,121 @@ const EMPTY: PastedTextState = { revision: null, items: [], busy: false };
  * Lazy: loads with the composer's first focus or over-cap input. Owns the
  * chat's staged pasted text: attaching a paste too long for the composer,
  * refusing one that cannot attach, the announcements, the chips and their
- * preview. The composer keeps only its synchronous size check, which holds
- * back any over-cap edit, a paste racing this part's load included.
+ * preview. The composer keeps only its synchronous size check and hands
+ * over what it held back, a paste made before this part loaded included.
  */
 export function ComposerPaste({
   chatId,
-  fieldRef,
   session,
   nativeAcp,
   activeTurn,
-  input,
+  signal,
+  takePaste,
   text,
   disabled,
+  noticeId,
+  reasonId,
   onStaged,
 }: {
-  chatId: string;
-  fieldRef: RefObject<HTMLTextAreaElement | null>;
+  chatId: string | undefined;
   session: PasteAttachability["session"];
   nativeAcp: boolean;
   activeTurn: boolean;
-  /** An edit held back for the cap; `true` when only focus loaded this. */
-  input: string | boolean;
+  signal: PasteSignal;
+  takePaste(): HeldPaste | null;
   /** The draft; a notice about an earlier draft clears once it changes. */
   text: string;
   /** Busy while a send is in flight; a send may consume the batch. */
   disabled: boolean;
+  /** The ids the field names in aria-describedby. */
+  noticeId: string;
+  reasonId: string;
   onStaged(next: StagedSummary): void;
 }) {
   const [state, setState] = useState(EMPTY);
   const [notice, setNotice] = useState<{ text: string; message: string }>();
   const ref = useRef(state);
-  const handled = useRef<string | boolean>(true);
+  const settled = useRef(false);
+  const handled = useRef(0);
   // Keyed to the draft it was made for, so the next edit clears it.
   const announce = useCallback(
     (message: string) => setNotice({ text, message }),
     [text],
   );
-  const owner = useMemo<StagedOwner>(
-    () => ({
+  const owner = useMemo<StagedOwner>(() => {
+    const publish = (next: PastedTextState) =>
+      onStaged({
+        revision: next.items.length ? next.revision : null,
+        busy: next.busy,
+        settled: settled.current,
+      });
+    return {
       chatId,
       ref,
       set(next) {
         ref.current = next;
         setState(next);
-        onStaged({
-          revision: next.items.length ? next.revision : null,
-          busy: next.busy,
-        });
+        publish(next);
       },
-    }),
-    [chatId, onStaged],
-  );
+      settle() {
+        settled.current = true;
+        publish(ref.current);
+      },
+    };
+  }, [chatId, onStaged]);
   // On load, on a chat change and after each send, which may consume it.
+  // Until the first read settles, a send could miss a batch staged before
+  // a reload, so the composer holds sends until then.
   useEffect(() => {
-    if (!disabled && isTauriRuntime()) void reconcile(owner);
+    if (disabled) return;
+    if (!isTauriRuntime()) return owner.settle();
+    void reconcile(owner).finally(() => owner.settle());
   }, [owner, disabled]);
   // Nothing staged here may outlive this chat's composer.
-  useEffect(() => () => onStaged({ revision: null, busy: false }), [onStaged]);
+  useEffect(
+    () => () => onStaged({ revision: null, busy: false, settled: true }),
+    [onStaged],
+  );
+  const attachability = useMemo(
+    () => ({ nativeAcp, session }),
+    [nativeAcp, session],
+  );
   useEffect(() => {
-    // Each held-back edit is announced once, also under a doubled effect.
-    if (typeof input !== "string" || input === handled.current) return;
-    handled.current = input;
-    // Announced after the event, like a native refusal would be.
-    void Promise.resolve(typedOverflowMessage(utf8Length(input))).then(
-      announce,
-    );
-  }, [announce, input]);
-  useEffect(() => {
-    const field = fieldRef.current;
-    // Runs before the form's own paste handling; image files go on to it.
-    const onPaste = (event: ClipboardEvent) => {
-      const data = event.clipboardData;
-      if (!field || !data || data.files.length) return;
-      const value = data.getData("text/plain");
-      const before = field.value.slice(0, field.selectionStart);
-      const after = field.value.slice(field.selectionEnd);
-      if (fitsComposer(before, value, after)) return;
-      // Decided synchronously: the browser never inserts an over-cap paste.
-      event.preventDefault();
-      void pasteOver(
-        owner,
-        { nativeAcp, session },
-        { before, value, after },
+    // Each signal is handled once, also under a doubled effect.
+    if (signal.seq === handled.current) return;
+    handled.current = signal.seq;
+    if (signal.kind === "edit") {
+      const refusal = pasteAttachmentRefusal(
+        isTauriRuntime() ? attachability : { nativeAcp: false, session: null },
+      );
+      // Announced after the event, like a native refusal would be.
+      void Promise.resolve(typedOverflowMessage(signal.bytes, refusal)).then(
         announce,
       );
-    };
-    field?.addEventListener("paste", onPaste);
-    return () => field?.removeEventListener("paste", onPaste);
-  }, [announce, fieldRef, nativeAcp, owner, session]);
-  const message = [
-    notice?.text === text ? notice.message : "",
+      return;
+    }
+    const held = signal.kind === "paste" ? takePaste() : null;
+    if (held) void pasteOver(owner, attachability, held, announce, disabled);
+  }, [announce, attachability, disabled, owner, signal, takePaste]);
+  const transient = notice?.text === text ? notice.message : "";
+  const reason =
     activeTurn && state.items.length
       ? "Attached text goes with the next message you send, not a queued one. Send it once the Turn finishes."
-      : "",
-  ]
-    .join(" ")
-    .trim();
+      : "";
   return (
     <>
       <div
-        className={message ? "composer__disabled-reason" : ""}
+        id={noticeId}
+        className={transient ? "composer__disabled-reason" : ""}
         aria-live="polite"
       >
-        {message}
+        {transient}
       </div>
+      {reason ? (
+        <p id={reasonId} className="composer__disabled-reason">
+          {reason}
+        </p>
+      ) : null}
       {state.items.length > 0 ? (
         <PastedTextChips
           items={state.items}

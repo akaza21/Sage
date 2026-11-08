@@ -199,12 +199,18 @@ impl Prompt {
         self
     }
     pub(crate) fn user_payload(&self) -> serde_json::Value {
-        match &self.context {
+        let mut payload = match &self.context {
             Some(context) => {
                 serde_json::json!({ "role": "user", "text": context.0, "attachedContext": context.1 })
             }
             None => serde_json::json!({ "role": "user", "text": self.as_str() }),
+        };
+        // Only the count is durable, so a Retry after a restart can tell a
+        // prompt that carried files from one that carried none.
+        if !self.resources.0.is_empty() {
+            payload["attachments"] = self.resources.0.len().into();
         }
+        payload
     }
 }
 

@@ -47,7 +47,10 @@ pub(crate) struct RemoveFileRequest {
 /// Checks the owner under the transition guard and returns the attachment
 /// identity (`chat_tabs.attached_at`) of its chat tab.
 fn validate(state: &AppState, owner: &FileOwner, generation: u64) -> Result<i64, String> {
-    if owner.project_id.len() > 512
+    // An owner always names its chat; nothing falls back to another tab.
+    if owner.project_id.is_empty()
+        || owner.chat_id.is_empty()
+        || owner.project_id.len() > 512
         || owner.chat_id.len() > 512
         || owner.project_generation != generation
     {

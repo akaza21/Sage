@@ -1,5 +1,4 @@
 //! Ephemeral native prompt resources. No bytes or paths are persisted.
-use crate::acp::intent::StagedSelection;
 use serde::Serialize;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -21,7 +20,7 @@ pub(crate) const DISPATCH_BYTES: usize = 120 * 1024;
 pub(crate) const PASTED_TEXT_NAME: &str = "pasted-text.txt";
 const OWNER_COUNT: usize = 16;
 const STORE_BYTES: usize = 1024 * 1024;
-pub(crate) use attachment::{attachment, release_detached};
+pub(crate) use attachment::{attachment, release_detached, retry_origin};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Resource {
@@ -89,6 +88,9 @@ impl Resources {
 pub(crate) struct StagedFiles {
     pub revision: String,
     pub files: Vec<FileSummary>,
+    /// The resource a paste just added, so its preview attaches by id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub added: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,16 +107,34 @@ struct Batch {
     attached_at: i64,
     resources: Resources,
 }
-/// What a chat's latest dispatched prompt carried, kept so Retry can resend
-/// it. `None` marks files that were released to stay within the caps.
+/// What a chat's latest dispatched prompt carried, kept so Retry of that
+/// one turn can resend it. A send without files is recorded as empty, and
+/// `None` marks files released to stay within the shared caps.
 struct Sent {
     attached_at: i64,
+    client_intent_id: String,
     resources: Option<Resources>,
+    /// Recency: the least recent record is released first.
+    sequence: u64,
+}
+/// The turn a Retry repeats, as its durable record describes it.
+pub(crate) struct RetryOrigin {
+    pub client_intent_id: String,
+    /// How many resources its prompt carried; persisted as a count only.
+    pub attachments: usize,
+}
+/// Which staged files a send carries, resolved against durable state.
+pub(crate) enum Selection {
+    /// None: a queued message or slash command never takes a batch.
+    None,
+    Revision(String),
+    Retry(RetryOrigin),
 }
 #[derive(Default)]
 pub(crate) struct FileStages {
     batches: BTreeMap<(String, String), Batch>,
     sent: BTreeMap<(String, String), Sent>,
+    sequence: u64,
 }
 impl FileStages {
     pub(crate) fn stage(
@@ -140,14 +160,13 @@ impl FileStages {
         if current.is_none() && self.batches.len() >= OWNER_COUNT {
             return Err("Too many chats have staged attachments.");
         }
-        let retained = self
-            .batches
-            .iter()
-            .filter(|(k, _)| *k != &key)
-            .map(|(_, b)| b.resources.retained_bytes())
-            .sum::<usize>();
-        if retained + resources.retained_bytes() > STORE_BYTES {
-            return Err("Staged attachment memory limit reached; remove other attachments first.");
+        // Files kept for Retry share the memory cap and give way first.
+        while self.retained(Some(&key)) + resources.retained_bytes() > STORE_BYTES {
+            if !self.release_oldest_sent(None) {
+                return Err(
+                    "Staged attachment memory limit reached; remove other attachments first.",
+                );
+            }
         }
         let batch = Batch {
             revision: uuid::Uuid::new_v4().to_string(),
@@ -157,6 +176,27 @@ impl FileStages {
         let summary = summary(&batch);
         self.batches.insert(key, batch);
         Ok(summary)
+    }
+    /// Bytes held by staged batches (other than `except`'s) and kept sends.
+    fn retained(&self, except: Option<&(String, String)>) -> usize {
+        let staged = self.batches.iter().filter(|(k, _)| Some(*k) != except);
+        let sent = self.sent.values().filter_map(|s| s.resources.as_ref());
+        staged
+            .map(|(_, b)| b.resources.retained_bytes())
+            .sum::<usize>()
+            + sent.map(Resources::retained_bytes).sum::<usize>()
+    }
+    /// Releases the least recently sent files held for Retry, other than
+    /// `keep`'s. False when none are left to release.
+    fn release_oldest_sent(&mut self, keep: Option<&(String, String)>) -> bool {
+        let oldest = self
+            .sent
+            .iter_mut()
+            .filter(|(k, s)| {
+                Some(*k) != keep && s.resources.as_ref().is_some_and(|r| !r.0.is_empty())
+            })
+            .min_by_key(|(_, s)| s.sequence);
+        oldest.map(|(_, s)| s.resources = None).is_some()
     }
     /// Adds pasted composer text to the chat's batch as one more text
     /// resource. The batch caps (count and total bytes) apply to the whole
@@ -173,7 +213,7 @@ impl FileStages {
             return Err("Pasted text is empty.");
         }
         if text.len() > TOTAL_BYTES {
-            return Err("Pasted text exceeds the 96 KiB attachment limit.");
+            return Err(limits::PASTE_OVER_TOTAL.as_str());
         }
         let current = self
             .batches
@@ -182,25 +222,28 @@ impl FileStages {
             .map(|b| b.resources.0.as_slice())
             .unwrap_or_default();
         if current.len() >= FILE_COUNT {
-            return Err("Attachments exceed the 16-file limit.");
+            return Err(limits::OVER_COUNT.as_str());
         }
         if current.iter().map(|r| r.bytes.len()).sum::<usize>() + text.len() > TOTAL_BYTES {
-            return Err("Attachments exceed 96 KiB total.");
+            return Err(limits::OVER_TOTAL.as_str());
         }
+        let id = uuid::Uuid::new_v4().to_string();
         let mut next = Vec::with_capacity(current.len() + 1);
         next.extend_from_slice(current);
         next.push(Resource {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: id.clone(),
             name: PASTED_TEXT_NAME.to_owned(),
             bytes: text.into_bytes(),
         });
-        self.stage(
+        let mut staged = self.stage(
             project,
             chat,
             attached_at,
             expected,
             Resources(Arc::new(next)),
-        )
+        )?;
+        staged.added = Some(id);
+        Ok(staged)
     }
     /// The files a send carries. Naming no selection carries none, so a
     /// queued message or a slash command never takes a batch staged for the
@@ -209,31 +252,32 @@ impl FileStages {
         &self,
         project: &str,
         chat: &str,
-        selection: Option<&StagedSelection>,
+        selection: &Selection,
     ) -> Result<Resources, &'static str> {
         let key = (project.to_owned(), chat.to_owned());
         match selection {
-            None => Ok(Resources::default()),
-            Some(StagedSelection::Revision(revision)) => self
+            Selection::None => Ok(Resources::default()),
+            Selection::Revision(revision) => self
                 .batches
                 .get(&key)
-                .filter(|b| &b.revision == revision)
+                .filter(|b| b.revision == *revision)
                 .map(|b| b.resources.clone())
                 .ok_or("Attachments changed; review them and send again."),
-            Some(StagedSelection::LastSent) => match self.sent.get(&key) {
-                None => Ok(Resources::default()),
-                Some(Sent {
-                    resources: Some(resources),
-                    ..
-                }) => Ok(resources.clone()),
-                Some(Sent {
-                    resources: None, ..
-                }) => Err(
-                    "The attachments sent with that message were released; attach them again and send a new message.",
+            Selection::Retry(origin) => match self.sent.get(&key) {
+                Some(sent) if sent.client_intent_id == origin.client_intent_id => sent
+                    .resources
+                    .clone()
+                    .ok_or("The attachments sent with that message were released; attach them again and send a new message."),
+                // No record for that turn (a restart, a reopened tab): resend
+                // nothing only when the turn is known to have carried nothing.
+                _ if origin.attachments > 0 => Err(
+                    "The attachments sent with that message are no longer held. Attach them again and send a new message.",
                 ),
+                _ => Ok(Resources::default()),
             },
         }
     }
+    #[cfg(test)]
     pub(crate) fn get(&self, project: &str, chat: &str) -> Resources {
         self.batches
             .get(&(project.to_owned(), chat.to_owned()))
@@ -271,49 +315,64 @@ impl FileStages {
         batch.revision = uuid::Uuid::new_v4().to_string();
         Ok(Some(summary(batch)))
     }
-    /// Records a dispatched prompt. A sent batch leaves the stage and is kept
-    /// as the chat's last sent files; a send without files clears them, so
-    /// Retry of the latest message resends exactly what it carried.
-    pub(crate) fn consume(&mut self, project: &str, chat: &str, sent: &Resources) {
+    /// Records a dispatched prompt as the chat's latest send, under its
+    /// client intent, so Retry of that turn resends exactly what it carried:
+    /// a sent batch leaves the stage, and a send without files is recorded
+    /// as carrying none. Only the latest send per chat is kept.
+    pub(crate) fn consume(
+        &mut self,
+        project: &str,
+        chat: &str,
+        attached_at: i64,
+        client_intent_id: &str,
+        sent: &Resources,
+    ) {
         let key = (project.to_owned(), chat.to_owned());
-        if sent.0.is_empty() {
-            self.sent.remove(&key);
-            return;
-        }
         if self
             .batches
             .get(&key)
-            .is_some_and(|b| Arc::ptr_eq(&b.resources.0, &sent.0))
+            .is_some_and(|b| !sent.0.is_empty() && Arc::ptr_eq(&b.resources.0, &sent.0))
         {
-            let batch = self.batches.remove(&key).expect("checked above");
-            self.sent.insert(
-                key.clone(),
-                Sent {
-                    attached_at: batch.attached_at,
-                    resources: Some(batch.resources),
-                },
-            );
-            self.bound_sent(&key);
+            self.batches.remove(&key);
+        }
+        self.sequence += 1;
+        self.sent.insert(
+            key.clone(),
+            Sent {
+                attached_at,
+                client_intent_id: client_intent_id.to_owned(),
+                resources: Some(sent.clone()),
+                sequence: self.sequence,
+            },
+        );
+        self.bound_sent(&key);
+    }
+    /// A turn that finished needs no Retry: its files are released.
+    pub(crate) fn settle(&mut self, project: &str, chat: &str, client_intent_id: &str) {
+        let key = (project.to_owned(), chat.to_owned());
+        if let Some(sent) = self.sent.get_mut(&key)
+            && sent.client_intent_id == client_intent_id
+            && sent.resources.as_ref().is_some_and(|r| !r.0.is_empty())
+        {
+            sent.resources = None;
         }
     }
-    /// Kept sent files share the owner and memory caps with staged batches'
-    /// own limits; the oldest-keyed other entries are released first.
+    /// Files kept for Retry share the owner and memory caps with staged
+    /// batches; the least recently sent other entries are released first.
     fn bound_sent(&mut self, keep: &(String, String)) {
         loop {
-            let held = self.sent.values().filter_map(|s| s.resources.as_ref());
+            let held = self
+                .sent
+                .values()
+                .filter_map(|s| s.resources.as_ref())
+                .filter(|r| !r.0.is_empty());
             let count = held.clone().count();
-            let bytes = held.map(Resources::retained_bytes).sum::<usize>();
-            if count <= OWNER_COUNT && bytes <= STORE_BYTES {
+            if count <= OWNER_COUNT && self.retained(None) <= STORE_BYTES {
                 return;
             }
-            let Some(other) = self
-                .sent
-                .iter_mut()
-                .find(|(k, s)| *k != keep && s.resources.is_some())
-            else {
+            if !self.release_oldest_sent(Some(keep)) {
                 return;
-            };
-            other.1.resources = None;
+            }
         }
     }
     pub(crate) fn clear_chat(&mut self, project: &str, chat: &str) {
@@ -324,6 +383,14 @@ impl FileStages {
     pub(crate) fn clear(&mut self) {
         self.batches.clear();
         self.sent.clear();
+    }
+    /// Chats whose latest send still holds files for Retry, with its intent.
+    fn held_sent(&self) -> Vec<(String, String, String)> {
+        self.sent
+            .iter()
+            .filter(|(_, s)| s.resources.as_ref().is_some_and(|r| !r.0.is_empty()))
+            .map(|((project, chat), s)| (project.clone(), chat.clone(), s.client_intent_id.clone()))
+            .collect()
     }
     fn owners(&self) -> Vec<(String, String, i64)> {
         let sent = self.sent.iter().map(|(k, s)| (k, s.attached_at));
@@ -336,8 +403,26 @@ impl FileStages {
     }
 }
 
+/// Limit messages, worded from the caps they name.
+mod limits {
+    use super::{FILE_COUNT, TOTAL_BYTES};
+    use std::sync::LazyLock;
+    type Message = LazyLock<String>;
+    pub(super) static PASTE_OVER_TOTAL: Message = LazyLock::new(|| {
+        format!(
+            "Pasted text exceeds the {} KiB attachment limit.",
+            TOTAL_BYTES / 1024
+        )
+    });
+    pub(super) static OVER_COUNT: Message =
+        LazyLock::new(|| format!("Attachments exceed the {FILE_COUNT}-file limit."));
+    pub(super) static OVER_TOTAL: Message =
+        LazyLock::new(|| format!("Attachments exceed {} KiB total.", TOTAL_BYTES / 1024));
+}
+
 fn summary(batch: &Batch) -> StagedFiles {
     StagedFiles {
+        added: None,
         revision: batch.revision.clone(),
         files: batch
             .resources

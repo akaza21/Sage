@@ -12,6 +12,8 @@ export interface PromptFileOwner {
 export interface StagedPromptFiles {
   revision: string;
   files: { id: string; name: string; bytes: number }[];
+  /** The resource a paste just added. */
+  added?: string;
 }
 /** 16 files, 64 KiB/file, 96 KiB/batch; replacement is revision checked. */
 export interface PromptAttachmentsPort {

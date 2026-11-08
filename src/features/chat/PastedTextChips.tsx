@@ -20,7 +20,10 @@ export function PastedTextChips({
   const preview = items.find((item) => item.id === previewId && item.text);
   return (
     <div className="composer__paste">
-      <ul className="composer__attachments" aria-label="Attached text">
+      <ul
+        className="composer__attachments"
+        aria-label="Attachments for the next message"
+      >
         {items.map((item) => {
           const label = stagedItemLabel(item);
           const open = preview?.id === item.id;

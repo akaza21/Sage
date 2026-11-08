@@ -474,7 +474,12 @@ fn every_ipc_request_is_closed_and_uses_camel_case() {
             json!({"revision": "r1"}),
             Some(StagedSelection::Revision("r1".into())),
         ),
-        (json!("lastSent"), Some(StagedSelection::LastSent)),
+        (
+            json!({"retryOf": "turn-1"}),
+            Some(StagedSelection::RetryOf(
+                SageTurnId::parse("turn-1").unwrap(),
+            )),
+        ),
     ] {
         let parsed: SendAcpTurnRequest =
             serde_json::from_value(with(send.clone(), json!({ "staged": staged }))).unwrap();

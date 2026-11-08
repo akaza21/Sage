@@ -15,7 +15,7 @@ import {
   pasteDecision,
   type PasteAttachability,
 } from "./composerPaste";
-import type { PastedTextState } from "./pastedTextTypes";
+import type { HeldPaste, PastedTextState } from "./pastedTextTypes";
 
 type Announce = (message: string) => void;
 
@@ -24,6 +24,8 @@ export interface StagedOwner {
   chatId: string | undefined;
   ref: RefObject<PastedTextState>;
   set(next: PastedTextState): void;
+  /** Marks the batch as read back from native state. */
+  settle(): void;
 }
 
 const WEB_ONLY: PasteAttachability = { nativeAcp: false, session: null };
@@ -33,10 +35,10 @@ function failure(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+/** The chat's own owner; never another tab's, such as the active one. */
 function owner(chatId: string | undefined): PromptFileOwner | null {
   const state = useWorkbenchStore.getState();
-  const id = chatId || state.activeTabId || undefined;
-  const intent = id ? state.captureChatOwnership(id) : null;
+  const intent = chatId ? state.captureChatOwnership(chatId) : null;
   if (!intent || !isTauriRuntime()) return null;
   return {
     projectId: intent.projectId,
@@ -45,7 +47,8 @@ function owner(chatId: string | undefined): PromptFileOwner | null {
   };
 }
 
-/** Native truth replaces the list; a new id answers the paste just staged. */
+/** Native truth replaces the list; the paste just staged keeps its text by
+ * the id native names for it, never by guessing which entry is new. */
 function apply(
   staged: StagedOwner,
   result: StagedPromptFiles | null,
@@ -57,15 +60,13 @@ function apply(
     busy: current.busy,
     revision: result?.revision ?? null,
     items: (result?.files ?? []).map(({ id, name, bytes }) => {
-      const prior = known.get(id);
-      const fresh = prior ? undefined : added;
-      if (!prior) added = undefined;
+      const kept = known.get(id) ?? (id === result?.added ? added : null);
       return {
         id,
         name,
         bytes,
-        text: prior ? prior.text : (fresh?.text ?? null),
-        lines: prior ? prior.lines : (fresh?.lines ?? null),
+        text: kept?.text ?? null,
+        lines: kept?.lines ?? null,
       };
     }),
   });
@@ -89,8 +90,10 @@ export async function reconcile(staged: StagedOwner) {
 export async function pasteOver(
   staged: StagedOwner,
   attachability: PasteAttachability | undefined,
-  { before, value, after }: { before: string; value: string; after: string },
+  { before, value, after }: HeldPaste,
   announce: Announce,
+  /** A send is in flight and may consume the batch. */
+  sending = false,
 ) {
   const state = staged.ref.current;
   const decision = pasteDecision({
@@ -107,6 +110,10 @@ export async function pasteOver(
   });
   if (decision.kind === "refuse") announce(decision.message);
   if (decision.kind !== "attach") return;
+  if (sending)
+    return announce(
+      "Wait for the message to finish sending, then paste again. Nothing was pasted.",
+    );
   const target = owner(staged.chatId);
   if (!target) return announce("This chat is not ready for attachments.");
   if (state.busy)
