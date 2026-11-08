@@ -4,7 +4,9 @@ pub(super) const V22: &str = include_str!("../../../migrations/022_turn_notifica
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentV22 | SchemaClass::CurrentV23 => return Ok(()),
+        SchemaClass::CurrentV22 | SchemaClass::CurrentV23 | SchemaClass::CurrentResumeLink => {
+            return Ok(());
+        }
         SchemaClass::CurrentV21 => {}
         _ => return invalid("turn notifications require exact schema v22"),
     }

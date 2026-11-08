@@ -19,6 +19,7 @@ mod portable_coverage_tests;
 mod probe;
 mod publish;
 mod schema_upgrade;
+mod session_resume_link;
 mod session_scope;
 mod stage_owner;
 #[cfg(test)]
@@ -30,6 +31,8 @@ mod tool_result_fold_tests;
 mod v18_backup;
 mod workspace_changes;
 
+#[cfg(test)]
+pub(crate) use fingerprint::CURRENT_SCHEMA_VERSION;
 #[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use identity::legacy_binding_digest;
 pub(crate) use image_files::{read_image_file, remove_image_file};
@@ -136,6 +139,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     session_scope::apply(&mut opened.connection)?;
     notifications::apply(&mut opened.connection)?;
     config_choices::apply(&mut opened.connection)?;
+    session_resume_link::apply(&mut opened.connection)?;
     Ok(opened)
 }
 
@@ -191,7 +195,8 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
         | SchemaClass::CurrentV20
         | SchemaClass::CurrentV21
         | SchemaClass::CurrentV22
-        | SchemaClass::CurrentV23 => {
+        | SchemaClass::CurrentV23
+        | SchemaClass::CurrentResumeLink => {
             let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
             if probe::classify_live(&paths)? != source_schema {
@@ -355,6 +360,7 @@ fn verify_current(connection: &Connection) -> AppResult<()> {
             | SchemaClass::CurrentV21
             | SchemaClass::CurrentV22
             | SchemaClass::CurrentV23
+            | SchemaClass::CurrentResumeLink
     ) {
         return invalid("database did not reach an exact current schema");
     }

@@ -116,11 +116,9 @@ function scopeKey(context: AcpActionContext): string {
   ]);
 }
 
-function sessionById(
-  page: AcpChatPage,
-  sessionId: AgentSessionProjection["id"],
-): AgentSessionProjection {
-  const session = page.sessions.find((candidate) => candidate.id === sessionId);
+/** The page's head session, which activation may have replaced. */
+function headSession(page: AcpChatPage): AgentSessionProjection {
+  const session = currentSession(page);
   if (!session) throw localFailure("The authoritative session is unavailable.");
   return session;
 }
@@ -321,7 +319,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           if (!applied) return "ignoredStale";
           page = applied;
           session = requireSelectedSession(
-            sessionById(page, session.id),
+            headSession(page),
             bindingId,
             modelId,
           );
