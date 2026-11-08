@@ -12,6 +12,8 @@ import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { contentText } from "./editorContent";
 import { requestEditorFocus } from "./editorFocusRequest";
 
+const UNSTORED_EDITS = "Your unsaved changes are not yet stored:";
+
 const KEPT_DELETED_FILE =
   "This File was deleted outside Sage. Save to create it again, or close it.";
 
@@ -106,6 +108,12 @@ export default function FileConflictNotice({
             {deleted ? "File deleted." : "External change detected."}
           </strong>{" "}
           {conflict.message}
+          {ready?.message && ready.revision > ready.persistedRevision ? (
+            <>
+              {" "}
+              {UNSTORED_EDITS} {ready.message}
+            </>
+          ) : null}
         </span>
         {editable && ready ? (
           <div

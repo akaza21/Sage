@@ -1,7 +1,10 @@
+import { cleanup, render, screen } from "@testing-library/react";
+import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resourceKey, sameResource } from "../domain/resourceIdentity";
 import type { ResourceRef, WorkbenchTab } from "../domain/workbench";
+import FileConflictNotice from "../features/files/FileConflictNotice";
 import { applyEditorExternalWatchNotice } from "../features/files/editorExternalWatch";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { resetBrowserDesktopForTests } from "../services/browserDesktop";
@@ -159,6 +162,38 @@ describe("a File that changed on disk under unsaved edits", () => {
     await store().keepActiveEditorBuffer();
     expect(await store().saveActiveEditor()).toBe(true);
     expect(await diskText(file)).toBe("second\n");
+  });
+
+  it("says when unsaved edits could not be stored before the read", async () => {
+    const file = nextFile();
+    openTabs(file);
+    await edit(file, "mine\n");
+    const snapshot = vi
+      .spyOn(editor, "snapshotEditorBuffer")
+      .mockRejectedValue(new Error("the disk is full"));
+    try {
+      await changeOnDisk(file, "theirs\n");
+      expect(snapshot).toHaveBeenCalled();
+    } finally {
+      snapshot.mockRestore();
+    }
+
+    expect(readyEditor()).toMatchObject({ content: "mine\n" });
+    expect(readyEditor().document.conflict?.kind).toBe("external-change");
+    expect(readyEditor().message).toBe("the disk is full");
+    expect(readyEditor().revision).toBeGreaterThan(
+      readyEditor().persistedRevision,
+    );
+    render(
+      createElement(FileConflictNotice, {
+        document: readyEditor().document,
+        editable: true,
+      }),
+    );
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Your unsaved changes are not yet stored: the disk is full",
+    );
+    cleanup();
   });
 
   it("Keep mine is refused if disk changed again since the banner", async () => {

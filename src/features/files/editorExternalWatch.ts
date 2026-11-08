@@ -248,7 +248,7 @@ export async function applyEditorExternalWatchNotice(
       : null;
   // Reading the File drops a durable buffer that matches disk, so unsaved
   // edits are persisted first; the editor then differs from `snapshot`,
-  // which gives it the banner below.
+  // which gives it the banner below; one that fails is reported there.
   if (
     snapshot &&
     snapshot.revision > snapshot.persistedRevision &&
@@ -256,7 +256,9 @@ export async function applyEditorExternalWatchNotice(
   )
     await getFileEditorController()
       .flush(bridge)
-      .catch(() => {});
+      .catch((error: unknown) =>
+        getFileEditorController().saveError(bridge, error),
+      );
   // The banner's "Keep mine" goes on top of the disk version read here. A
   // File that cannot be read now gets the banner too.
   const document = await editor
