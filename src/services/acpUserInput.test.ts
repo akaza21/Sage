@@ -94,6 +94,9 @@ describe("harness question requests", () => {
           options: [{ label: "All", description: "Every file" }],
           allowsOther: true,
           secret: false,
+          kind: "text",
+          multiSelect: false,
+          optional: false,
         },
         {
           id: "token",
@@ -101,6 +104,9 @@ describe("harness question requests", () => {
           question: "API token?",
           allowsOther: false,
           secret: true,
+          kind: "text",
+          multiSelect: false,
+          optional: false,
         },
       ],
       autoResolutionMs: 86_400_000,
@@ -111,7 +117,7 @@ describe("harness question requests", () => {
     const question = { id: "q", header: "", question: "?" };
     for (const userInput of [
       { questions: [] },
-      { questions: Array(5).fill(question) },
+      { questions: Array(9).fill(question) },
       {
         questions: [
           {

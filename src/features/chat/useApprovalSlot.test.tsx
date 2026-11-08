@@ -186,6 +186,9 @@ describe("useApprovalSlot cards", () => {
           question: "Which files should I change?",
           allowsOther: false,
           secret: false,
+          kind: "text",
+          multiSelect: false,
+          optional: false,
         },
       ],
     };

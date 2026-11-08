@@ -1,0 +1,75 @@
+/* The session's harness notices: one bounded, dismissible list. */
+.acp-session-notices {
+  display: grid;
+  gap: var(--space-1);
+  margin-block-end: var(--space-3);
+}
+
+.acp-session-notices ul {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acp-session-notice {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border-inline-start: 2px solid var(--color-text-muted);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+}
+
+.acp-session-notice--warning {
+  border-inline-start-color: var(--color-warning);
+}
+
+.acp-session-notice--error {
+  border-inline-start-color: var(--color-danger);
+}
+
+.acp-session-notice__level {
+  flex: none;
+  font-weight: var(--font-weight-semibold);
+}
+
+.acp-session-notice--warning .acp-session-notice__level {
+  color: var(--color-warning);
+}
+
+.acp-session-notice--error .acp-session-notice__level {
+  color: var(--color-danger);
+}
+
+.acp-session-notice__text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.acp-session-notice__source {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.acp-session-notice__dismiss {
+  flex: none;
+  padding: 0 var(--space-1);
+  border: 0;
+  color: var(--color-text-muted);
+  background: none;
+  cursor: pointer;
+}
+
+.acp-session-notice__dismiss:focus-visible {
+  outline: var(--focus-ring);
+}
+
+.acp-session-notices__clear {
+  justify-self: end;
+}
