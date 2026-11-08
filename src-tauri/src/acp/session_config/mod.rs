@@ -1,4 +1,5 @@
-//! Bounded ACP v1 session configuration. This state is never journaled.
+//! Bounded ACP v1 session configuration. The live state is never journaled;
+//! only the last confirmed choice per option is stored (see `choices`).
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
@@ -7,6 +8,7 @@ use serde_json::Value;
 use super::contract::{BoundedVec, RequiredText, SafeText};
 use super::limits::LIMITS;
 
+pub(crate) mod choices;
 mod kind;
 mod overlay;
 pub(crate) use kind::ConfigKind;

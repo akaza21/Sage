@@ -1,5 +1,6 @@
 mod backup;
 mod build_intent;
+mod config_choices;
 mod file_artifact;
 mod fingerprint;
 mod identity;
@@ -132,6 +133,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     workspace_changes::apply(&mut opened.connection)?;
     title_provenance::apply(&mut opened.connection)?;
     session_scope::apply(&mut opened.connection)?;
+    config_choices::apply(&mut opened.connection)?;
     Ok(opened)
 }
 
@@ -185,7 +187,8 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
         SchemaClass::CurrentV18
         | SchemaClass::CurrentV19
         | SchemaClass::CurrentV20
-        | SchemaClass::CurrentV21 => {
+        | SchemaClass::CurrentV21
+        | SchemaClass::CurrentV22 => {
             let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
             if probe::classify_live(&paths)? != source_schema {
@@ -347,6 +350,7 @@ fn verify_current(connection: &Connection) -> AppResult<()> {
             | SchemaClass::CurrentV19
             | SchemaClass::CurrentV20
             | SchemaClass::CurrentV21
+            | SchemaClass::CurrentV22
     ) {
         return invalid("database did not reach an exact current schema");
     }

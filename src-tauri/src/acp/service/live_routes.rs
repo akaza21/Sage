@@ -27,15 +27,25 @@ impl AcpService {
             runtime_epoch: command.runtime_epoch,
         };
         let deadlines = super::codex_live::deadlines()?;
-        let (lane, _claim) = self.claim_activation_lane(&owner, deadlines.1)?;
-        lane.activate_session(admitted, command, project_root, deadlines)
-            .await
+        {
+            let (lane, _claim) = self.claim_activation_lane(&owner, deadlines.1)?;
+            lane.activate_session(admitted, command, project_root, deadlines)
+                .await?;
+        }
+        // A resumed session reports the adapter's defaults; the choices this
+        // chat made are reapplied before the activation answers, so before
+        // its next prompt can be sent.
+        self.restore_session_config(&owner);
+        Ok(())
     }
 
     pub(crate) fn send_session_turn(
         &self,
         intent: HostPromptIntent,
     ) -> Result<HostOutcome, PromptSendError<CodexSessionError>> {
+        // A harness that reported its options only after activation is
+        // restored here, before the prompt is dispatched. A no-op otherwise.
+        self.restore_session_config(&intent.owner());
         self.lane_for(&intent.owner())
             .ok_or_else(|| PromptSendError::not_started(CodexSessionError::Intent))?
             .send_session_turn(intent)

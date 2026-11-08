@@ -91,6 +91,8 @@ struct Entry {
     live: bool,
     overlay: Option<SessionConfigOverlay>,
     tombstone: Option<SessionConfigOverlay>,
+    /// Stored choices have not been reapplied to this runtime yet.
+    restore_pending: bool,
 }
 #[derive(Default)]
 struct State {
@@ -118,6 +120,7 @@ impl ConfigChannel {
             live: false,
             overlay: None,
             tombstone: None,
+            restore_pending: true,
         });
         state.pending = None;
     }
@@ -180,6 +183,24 @@ impl ConfigChannel {
             .as_ref()
             .filter(|e| e.live && &e.owner == owner)
             .and_then(|e| e.overlay.clone())
+    }
+    /// Hands out the live overlay of a runtime whose stored choices have not
+    /// been reapplied, exactly once. It stays pending until the session
+    /// reports a mode or an option, so a harness that reports its options
+    /// after activation is restored before its next prompt instead.
+    pub(crate) fn take_restore(&self, owner: &RuntimeOwner) -> Option<SessionConfigOverlay> {
+        let mut state = self.lock();
+        let entry = state
+            .entry
+            .as_mut()
+            .filter(|e| e.live && e.restore_pending && &e.owner == owner)?;
+        let overlay = entry
+            .overlay
+            .as_ref()
+            .filter(|o| o.config.modes.is_some() || !o.config.config_options.as_slice().is_empty())?
+            .clone();
+        entry.restore_pending = false;
+        Some(overlay)
     }
     pub(crate) fn remove(&self, owner: &RuntimeOwner) -> Result<(), String> {
         let mut state = self.lock();

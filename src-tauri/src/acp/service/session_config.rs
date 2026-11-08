@@ -5,6 +5,9 @@ use crate::acp::{
     session_config::{ConfigIntent, NoticeSink},
 };
 
+mod restore;
+#[cfg(test)]
+mod restore_tests;
 #[cfg(test)]
 mod tests;
 
@@ -30,6 +33,11 @@ impl AcpService {
             .validate(&intent)
             .map_err(|_| crate::acp::runtime::HostError::Intent)?;
         let result = host.configure_session(intent.clone());
+        if result.is_ok() {
+            // The harness confirmed this choice: it is what a resumed
+            // runtime of this session restores.
+            self.remember_config_choice(&intent.owner, &intent.mutation);
+        }
         if matches!(
             result,
             Err(crate::acp::runtime::HostError::Unavailable

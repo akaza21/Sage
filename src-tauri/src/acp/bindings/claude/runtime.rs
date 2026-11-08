@@ -423,4 +423,8 @@ mod durable_turn_tests;
 #[cfg(test)]
 mod fork_tests;
 #[cfg(test)]
+mod in_memory;
+#[cfg(test)]
+pub(crate) use in_memory::InMemoryClaude;
+#[cfg(test)]
 mod tests;
