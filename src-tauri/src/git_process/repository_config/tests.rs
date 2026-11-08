@@ -765,20 +765,22 @@ fn a_linked_config_file_is_followed_and_checked() {
     let message = refusal(sage_git(&root, &["status", "--porcelain"]));
     assert!(message.contains("filter.sentinel.clean"), "{message}");
 }
-/// Keeps `path` unreadable to every other opener until dropped. Permission
-/// bits would not do on Unix, where root reads any file, so the path becomes a
-/// symbolic link to itself, which no opener can resolve, whatever its uid.
+/// Keeps `path` unreadable to every other opener until dropped.
 struct ReadDenied {
     #[cfg(windows)]
     _exclusive: fs::File,
     #[cfg(unix)]
     path: PathBuf,
+    /// Where the file waits while `path` is a link to itself.
     #[cfg(unix)]
-    held: PathBuf,
+    held: Option<PathBuf>,
 }
 
 impl ReadDenied {
-    fn new(path: &Path) -> Self {
+    /// Its metadata still reads; opening it fails. On Unix the permission
+    /// bits deny any process that does not override them, as root does, so
+    /// this is `None` when this process can still read the file.
+    fn on_open(path: &Path) -> Option<Self> {
         #[cfg(windows)]
         let denied = {
             use std::os::windows::fs::OpenOptionsExt;
@@ -793,29 +795,62 @@ impl ReadDenied {
         };
         #[cfg(unix)]
         let denied = {
-            let held = path.with_extension("held");
-            fs::rename(path, &held).unwrap();
-            std::os::unix::fs::symlink(path.file_name().unwrap(), path).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(path, fs::Permissions::from_mode(0o000)).unwrap();
             Self {
                 path: path.to_path_buf(),
-                held,
+                held: None,
             }
         };
-        assert!(fs::read(path).is_err(), "fixture config is still readable");
-        denied
+        assert!(fs::metadata(path).is_ok());
+        fs::read(path).is_err().then_some(denied)
+    }
+
+    /// Even its metadata fails, whatever this process's uid: `path` becomes a
+    /// symbolic link to itself, which no opener can resolve.
+    #[cfg(unix)]
+    fn on_metadata(path: &Path) -> Self {
+        let held = path.with_extension("held");
+        fs::rename(path, &held).unwrap();
+        std::os::unix::fs::symlink(path.file_name().unwrap(), path).unwrap();
+        assert!(fs::metadata(path).is_err(), "fixture config still resolves");
+        Self {
+            path: path.to_path_buf(),
+            held: Some(held),
+        }
     }
 }
 
 #[cfg(unix)]
 impl Drop for ReadDenied {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
-        let _ = fs::rename(&self.held, &self.path);
+        match &self.held {
+            Some(held) => {
+                let _ = fs::remove_file(&self.path);
+                let _ = fs::rename(held, &self.path);
+            }
+            None => {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&self.path, fs::Permissions::from_mode(0o644));
+            }
+        }
     }
 }
 
 #[test]
 fn an_unreadable_repository_config_fails_closed_until_it_can_be_checked() {
+    // A process that reads through permission bits cannot be denied this way;
+    // the unresolvable case below still runs for it.
+    unreadable_config_fails_closed(ReadDenied::on_open);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unresolvable_repository_config_fails_closed_until_it_can_be_checked() {
+    unreadable_config_fails_closed(|config| Some(ReadDenied::on_metadata(config)));
+}
+
+fn unreadable_config_fails_closed(deny: impl FnOnce(&Path) -> Option<ReadDenied>) {
     let scratch = Scratch::new();
     let root = scratch.repository("repo");
     git(
@@ -824,7 +859,9 @@ fn an_unreadable_repository_config_fails_closed_until_it_can_be_checked() {
     );
     let config = root.join(".git").join("config");
 
-    let denied = ReadDenied::new(&config);
+    let Some(denied) = deny(&config) else {
+        return;
+    };
     for _ in 0..2 {
         let message = refusal(sage_git(&root, &["status", "--porcelain"]));
         assert_eq!(message, UNREADABLE);
