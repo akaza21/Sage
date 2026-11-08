@@ -188,6 +188,59 @@ describe("UserInputPrompt forms and links", () => {
     });
   });
 
+  it("keeps Submit disabled until answers meet the form's limits", () => {
+    const answer = answered();
+    const options = (...labels: string[]) =>
+      labels.map((label) => ({ label, description: "" }));
+    render(
+      <QuestionCard
+        items={[
+          questionRequest({
+            questions: [
+              field("name", "Name", { limits: { minLength: 2, maxLength: 3 } }),
+              field("count", "Count", {
+                kind: "integer",
+                limits: { minimum: 1, maximum: 5 },
+              }),
+              field("tags", "Tags", {
+                options: options("x", "y", "z"),
+                multiSelect: true,
+                limits: { minItems: 2 },
+              }),
+            ],
+          }),
+        ]}
+      />,
+    );
+    const name = screen.getByLabelText("Answer: Name");
+    fireEvent.input(name, { target: { value: "abcd" } });
+    expect(name).toHaveAccessibleDescription("Enter from 2 to 3 characters.");
+    fireEvent.input(name, { target: { value: "ab" } });
+    const count = screen.getByLabelText("Answer: Count");
+    fireEvent.input(count, { target: { value: "9" } });
+    expect(count).toHaveAccessibleDescription("Enter a number from 1 to 5.");
+    fireEvent.input(count, { target: { value: "0x2" } });
+    expect(count).toHaveAccessibleDescription("Enter a number.");
+    fireEvent.input(count, { target: { value: "+2" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "x" }));
+    expect(screen.getByRole("group", { name: "Tags" })).toHaveTextContent(
+      "Choose at least 2 options.",
+    );
+    expect(submit()).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "z" }));
+    expect(submit()).toBeEnabled();
+
+    fireEvent.click(submit());
+    expect(answer).toHaveBeenCalledWith({
+      ...identity,
+      answers: [
+        { questionId: "name", text: "ab" },
+        { questionId: "count", text: "+2" },
+        { questionId: "tags", selectedOptions: ["x", "z"] },
+      ],
+    });
+  });
+
   it("shows where a link leads and opens it only on the user's word", () => {
     const answer = answered();
     const deny = vi

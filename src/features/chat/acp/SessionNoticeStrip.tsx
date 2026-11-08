@@ -13,23 +13,42 @@ const LEVEL_LABEL: Record<SessionNotice["level"], string> = {
 const keyOf = (notice: SessionNotice) =>
   `${notice.level}\u0000${notice.source ?? ""}\u0000${notice.text}`;
 
+interface Dismissed {
+  session: string;
+  keys: ReadonlySet<string>;
+}
+
 /**
  * The current session's harness notices (warnings, configuration problems,
  * model reroutes), newest last. The list is already bounded by the session
- * surface; dismissing one hides it in this view only.
+ * surface; dismissing one hides it in this view only. Dismissals belong to
+ * one `session` and to the notices it still has, so another session starts
+ * clean and the dismissed set never outgrows the list.
  */
 export function SessionNoticeStrip({
+  session,
   notices,
 }: {
+  /** Identifies the session the notices belong to. */
+  session: string;
   notices: readonly SessionNotice[];
 }) {
-  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const shown = notices.filter((notice) => !dismissed.has(keyOf(notice)));
+  const [dismissed, setDismissed] = useState<Dismissed>(() => ({
+    session,
+    keys: new Set(),
+  }));
+  const current = new Set(notices.map(keyOf));
+  const kept =
+    dismissed.session === session
+      ? [...dismissed.keys].filter((key) => current.has(key))
+      : [];
+  if (dismissed.session !== session || kept.length !== dismissed.keys.size) {
+    setDismissed({ session, keys: new Set(kept) });
+  }
+  const shown = notices.filter((notice) => !kept.includes(keyOf(notice)));
   if (shown.length === 0) return null;
   const dismiss = (keys: readonly string[]) =>
-    setDismissed((current) => new Set([...current, ...keys]));
+    setDismissed({ session, keys: new Set([...kept, ...keys]) });
   return (
     <section className="acp-session-notices" aria-label="Session notices">
       <ul>

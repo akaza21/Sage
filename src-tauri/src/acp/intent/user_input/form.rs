@@ -2,13 +2,13 @@
 //! ACP `elicitation/create` (Claude Code) and MCP elicitation relayed by
 //! Codex (`mcpServer/elicitation/request`). Both carry the MCP
 //! `requestedSchema` subset: a flat object of string, enum, multi-select,
-//! boolean, number and integer properties. A form Sage cannot show exactly
-//! (an unknown property type, too many fields or options, repeated labels)
-//! is refused here, so the caller declines it instead of guessing.
-//!
-//! The mapping follows the one in T3 Code's `elicitationForm.ts` (MIT).
+//! boolean, number and integer properties, with their length, range and
+//! item-count limits. A form Sage cannot show and check exactly (an unknown
+//! property type, a `pattern` or `format` rule, too many fields or options,
+//! repeated labels, limits no answer can meet) is refused here, so the
+//! caller declines it instead of guessing.
 
-use serde_json::{Map, Value};
+use serde_json::{Map, Number, Value};
 
 use super::{
     USER_INPUT_MAX_OPTIONS, USER_INPUT_MAX_QUESTIONS, UserInputKind, UserInputOption,
@@ -24,6 +24,9 @@ use crate::acp::{
 /// `_meta` marker the Claude adapter puts on the free-text companion of an
 /// AskUserQuestion choice; it names the choice field it belongs to.
 const CUSTOM_ANSWER_META: &str = "_askUserQuestionCustomAnswer";
+/// String rules Sage does not check; a property carrying one is refused
+/// rather than shown without its rule.
+const UNCHECKED_RULES: [&str; 2] = ["pattern", "format"];
 
 /// A form elicitation as questions, or `None` when it cannot be shown.
 pub(crate) fn form_request(schema: &Value) -> Option<UserInputRequest> {
@@ -37,7 +40,20 @@ pub(crate) fn form_request(schema: &Value) -> Option<UserInputRequest> {
     let mut companions = Vec::new();
     for (key, property) in schema.get("properties")?.as_object()? {
         let property = property.as_object()?;
+        if UNCHECKED_RULES
+            .iter()
+            .any(|rule| property.contains_key(*rule))
+        {
+            return None;
+        }
         if let Some(target) = companion_of(property) {
+            // Its text is checked as the choice's answer, which has no limits.
+            if ["minLength", "maxLength"]
+                .iter()
+                .any(|key| property.contains_key(*key))
+            {
+                return None;
+            }
             companions.push((target, key.as_str()));
             continue;
         }
@@ -63,14 +79,19 @@ pub(crate) fn form_request(schema: &Value) -> Option<UserInputRequest> {
 }
 
 /// A link elicitation, admitted only for `http`/`https` with a host and no
-/// embedded credentials.
+/// embedded credentials. A link with surrounding whitespace or any control
+/// or invisible format character is refused before parsing (the parser
+/// would silently drop some), and the normalized link is what is shown and
+/// opened, never the raw text.
 pub(crate) fn url_request(url: &str) -> Option<UserInputRequest> {
+    if url.trim() != url || url.chars().any(|c| c.is_control() || is_format(c)) {
+        return None;
+    }
     let parsed = url::Url::parse(url).ok()?;
     let host = parsed.host_str()?;
     if !matches!(parsed.scheme(), "http" | "https")
         || !parsed.username().is_empty()
         || parsed.password().is_some()
-        || url.chars().any(char::is_control)
     {
         return None;
     }
@@ -78,7 +99,7 @@ pub(crate) fn url_request(url: &str) -> Option<UserInputRequest> {
         questions: BoundedVec::default(),
         auto_resolution_ms: None,
         url: Some(UserInputUrl {
-            url: RequiredText::new("userInputUrl", url).ok()?,
+            url: RequiredText::new("userInputUrl", parsed.as_str()).ok()?,
             host: RequiredText::new("userInputUrlHost", host).ok()?,
         }),
     })
@@ -124,6 +145,35 @@ pub(crate) fn display<const MAX: usize>(field: &'static str, text: &str) -> Opti
     normalized_label_text(field, &text[..end]).ok()
 }
 
+/// Unicode format characters (general category Cf): bidi controls,
+/// zero-width characters, tags and the like.
+fn is_format(character: char) -> bool {
+    matches!(
+        character,
+        '\u{ad}'
+            | '\u{600}'..='\u{605}'
+            | '\u{61c}'
+            | '\u{6dd}'
+            | '\u{70f}'
+            | '\u{890}'..='\u{891}'
+            | '\u{8e2}'
+            | '\u{180e}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{206f}'
+            | '\u{feff}'
+            | '\u{fff9}'..='\u{fffb}'
+            | '\u{110bd}'
+            | '\u{110cd}'
+            | '\u{13430}'..='\u{1343f}'
+            | '\u{1bca0}'..='\u{1bca3}'
+            | '\u{1d173}'..='\u{1d17a}'
+            | '\u{e0001}'
+            | '\u{e0020}'..='\u{e007f}'
+    )
+}
+
 fn companion_of(property: &Map<String, Value>) -> Option<&str> {
     let marker = property.get("_meta")?.get(CUSTOM_ANSWER_META)?;
     (property.get("type")?.as_str()? == "string"
@@ -139,9 +189,11 @@ fn field(key: &str, property: &Map<String, Value>) -> Option<UserInputQuestion> 
             .and_then(Value::as_str)
             .unwrap_or_default()
     };
+    // A property without a title is headed by its key.
+    let title = Some(text("title")).filter(|title| !title.trim().is_empty());
     let mut question = UserInputQuestion::text(
         RequiredText::new("userInputQuestionId", key).ok()?,
-        display("userInputHeader", text("title"))?,
+        display("userInputHeader", title.unwrap_or(key))?,
         display("userInputQuestion", text("description"))?,
     );
     let initial = |value: &Value| match value {
@@ -158,6 +210,8 @@ fn field(key: &str, property: &Map<String, Value>) -> Option<UserInputQuestion> 
             };
             if options.is_none() {
                 question.initial_text = property.get("default").and_then(initial);
+                question.limits.min_length = count(property, "minLength")?;
+                question.limits.max_length = count(property, "maxLength")?;
             }
             question.options = options;
         }
@@ -168,6 +222,19 @@ fn field(key: &str, property: &Map<String, Value>) -> Option<UserInputQuestion> 
                 None => plain_options(items.get("enum")?, None)?,
             });
             question.multi_select = true;
+            question.limits.min_items = count(property, "minItems")?;
+            question.limits.max_items = count(property, "maxItems")?;
+            let offered = question
+                .options
+                .as_ref()
+                .map_or(0, |options| options.as_slice().len());
+            if question
+                .limits
+                .min_items
+                .is_some_and(|min| min as usize > offered)
+            {
+                return None;
+            }
         }
         "boolean" => {
             question.kind = UserInputKind::Boolean;
@@ -186,10 +253,28 @@ fn field(key: &str, property: &Map<String, Value>) -> Option<UserInputQuestion> 
                 UserInputKind::Integer
             };
             question.initial_text = property.get("default").and_then(initial);
+            question.limits.minimum = bound(property, "minimum")?;
+            question.limits.maximum = bound(property, "maximum")?;
         }
         _ => return None,
     }
-    Some(question)
+    question.limits.is_ordered().then_some(question)
+}
+
+/// An optional count limit; `None` when it is present but not a count.
+fn count(property: &Map<String, Value>, key: &str) -> Option<Option<u32>> {
+    match property.get(key) {
+        None => Some(None),
+        Some(value) => u32::try_from(value.as_u64()?).ok().map(Some),
+    }
+}
+
+/// An optional numeric bound; `None` when it is present but not a number.
+fn bound(property: &Map<String, Value>, key: &str) -> Option<Option<Number>> {
+    match property.get(key) {
+        None => Some(None),
+        Some(value) => Some(Some(value.as_number()?.clone())),
+    }
 }
 
 fn titled_options(entries: &Value) -> Option<BoundedVec<UserInputOption, USER_INPUT_MAX_OPTIONS>> {
