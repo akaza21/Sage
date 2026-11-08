@@ -221,6 +221,7 @@
         "src-tauri/src/acp/fixture_protocol.rs",
         "src-tauri/src/acp/image_admit.rs",
         "src-tauri/src/acp/intent.rs",
+        "src-tauri/src/acp/intent/activity_provenance.rs",
         "src-tauri/src/acp/intent/capability.rs",
         "src-tauri/src/acp/intent/error_kind.rs",
         "src-tauri/src/acp/intent/file_change.rs",
