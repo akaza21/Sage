@@ -6,6 +6,19 @@ import {
   sessionConfigControls,
   sessionModeActions,
 } from "./acpSessionConfigControls";
+import { withoutGovernedModes } from "./governedSessionModes";
+
+const claudeAccess = [
+  {
+    id: "plan" as const,
+    label: "Plan",
+    description: "Plans.",
+    sessionModeId: "plan",
+  },
+];
+const codexAccess = [
+  { id: "ask" as const, label: "Ask", description: "Asks." },
+];
 
 const observedModes = {
   currentModeId: "default",
@@ -154,5 +167,31 @@ describe("sessionModeActions", () => {
     const config = decode(observedModes, []);
     expect(sessionModeActions({ ...config!, removed: true })).toEqual([]);
     expect(sessionModeActions(null)).toEqual([]);
+  });
+});
+
+describe("withoutGovernedModes", () => {
+  it("hands the permission modes to the access control, even a stale mode option", () => {
+    // After a set_mode the adapter moves only its option, so the option no
+    // longer restates the modes and would otherwise surface on its own.
+    const config = decode(observedModes, [
+      { ...observedModeOption, currentValue: "acceptEdits" },
+      observedModelOption,
+    ]);
+    const governed = withoutGovernedModes(config, claudeAccess);
+    expect(sessionModeActions(governed)).toEqual([]);
+    expect(sessionConfigControls(governed).map((option) => option.id)).toEqual([
+      "model",
+    ]);
+    expect(sessionConfigControls(config).map((option) => option.id)).toEqual([
+      "mode",
+      "model",
+    ]);
+  });
+
+  it("leaves a harness whose access is not mode-based untouched", () => {
+    const config = decode(observedModes, [observedModeOption]);
+    expect(withoutGovernedModes(config, codexAccess)).toBe(config);
+    expect(withoutGovernedModes(null, claudeAccess)).toBeNull();
   });
 });

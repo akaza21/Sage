@@ -42,6 +42,53 @@ impl AcpService {
         }
         result.map(|_| ())
     }
+    /// The owner of the live runtime that runs `session_id`, if one does.
+    pub(crate) fn live_owner_of(
+        &self,
+        session_id: &crate::acp::contract::SageAgentSessionId,
+    ) -> Option<RuntimeOwner> {
+        self.lanes()
+            .filter(|lane| lane.runtime.is_active())
+            .filter_map(|lane| lane.runtime.owner())
+            .find(|owner| owner.session_id == *session_id)
+    }
+    /// The turn `owner`'s live session is running, while it can still be
+    /// cancelled.
+    pub(crate) fn cancellable_turn(
+        &self,
+        owner: &RuntimeOwner,
+        generation: crate::acp::contract::ProjectGeneration,
+    ) -> Result<Option<crate::acp::contract::SageTurnId>, StoreError> {
+        let snapshot =
+            self.intent_snapshot(owner.project_id.clone(), generation, owner.chat_id.clone())?;
+        let current = snapshot.session_id.as_ref() == Some(&owner.session_id)
+            && snapshot.runtime_epoch == Some(owner.runtime_epoch)
+            && snapshot.turn_state.is_some_and(|state| {
+                state.can_transition_to(crate::acp::lifecycle::TurnState::Cancelling)
+            });
+        Ok(snapshot.turn_id.filter(|_| current))
+    }
+    /// Reports `config` as the live session's, as a runtime would.
+    #[cfg(all(test, windows))]
+    pub(crate) fn report_session_config_for_test(
+        &self,
+        owner: &RuntimeOwner,
+        config: crate::acp::session_config::SessionConfig,
+    ) {
+        let lane = self
+            .lane_for(owner)
+            .expect("a runtime lane holds the owner");
+        lane.runtime.config.reserve(owner.clone());
+        lane.runtime.config.update(owner, config).unwrap();
+        lane.runtime.config.publish(owner);
+    }
+    /// The session config the live runtime last reported for `owner`.
+    pub(crate) fn live_session_config(
+        &self,
+        owner: &RuntimeOwner,
+    ) -> Option<crate::acp::session_config::SessionConfigOverlay> {
+        self.lane_for(owner)?.runtime.config.live_snapshot(owner)
+    }
     pub(super) fn compose_session_config(&self, page: &mut AcpChatPage) -> Result<(), StoreError> {
         page.session_config = None;
         let mut sessions = page.sessions.as_slice().to_vec();

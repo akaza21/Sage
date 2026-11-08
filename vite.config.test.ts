@@ -127,6 +127,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   // The Agent New tab page and its chat resource picker load on first use.
   "src/features/browser/BrowserNewTab.tsx",
   "src/features/browser/BrowserSurface.tsx",
+  // A live chat's own access loads beside its composer.
+  "src/features/chat/ChatAccessSelection.tsx",
   "src/features/chat/ChatHandoffDialog.tsx",
   "src/features/chat/ChatNavigation.tsx",
   "src/features/chat/ChatQueueExecution.tsx",

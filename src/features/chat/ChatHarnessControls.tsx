@@ -263,6 +263,7 @@ export function ChatHarnessControls({
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
             capabilities={accessHarness.accessModes}
+            sessionConfig={sessionConfig}
             disabled={turnBusy || projectTransitioning}
             open={active === "access"}
             onToggle={() => toggle("access")}
@@ -349,6 +350,7 @@ export function ChatHarnessControls({
         {active === "options" ? (
           <ComposerOptionsPart
             part="ComposerOptionsMenu"
+            accessModes={accessHarness?.accessModes}
             fallback={
               <ComposerMenuLoading
                 triggerRef={optionsTriggerRef}

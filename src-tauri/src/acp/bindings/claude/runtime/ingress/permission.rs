@@ -47,20 +47,12 @@ impl ClaudeRuntime {
                     offered_option_kinds,
                     ..
                 } = &mut payload
-                    && allow_once_option_id.is_some()
                 {
-                    let mut kinds = offered_option_kinds
-                        .as_ref()
-                        .map_or_else(Vec::new, |existing| existing.as_slice().to_vec());
-                    if !kinds.contains(&crate::acp::intent::PermissionOptionKind::AllowOnce)
-                        && kinds.len() < 8
-                    {
-                        kinds.push(crate::acp::intent::PermissionOptionKind::AllowOnce);
-                        *offered_option_kinds = Some(
-                            crate::acp::contract::BoundedVec::new("permissionOptionKinds", kinds)
-                                .map_err(|_| AdapterRuntimeError::Frame)?,
-                        );
-                    }
+                    *offered_option_kinds = offered_kinds(
+                        offered_option_kinds.take(),
+                        allow_once_option_id.is_some(),
+                        allow_always_option_id.is_some(),
+                    )?;
                 }
                 if matches!(
                     payload,
@@ -159,26 +151,68 @@ impl ClaudeRuntime {
     }
 }
 
+/// The option kinds the user is offered: only those Sage can answer with an
+/// admitted option. An allow that would also widen the permission mode
+/// (Claude's plan exit) is never offered.
+fn offered_kinds(
+    reported: Option<crate::acp::contract::BoundedVec<crate::acp::intent::PermissionOptionKind, 8>>,
+    allow_once: bool,
+    allow_always: bool,
+) -> Result<
+    Option<crate::acp::contract::BoundedVec<crate::acp::intent::PermissionOptionKind, 8>>,
+    AdapterRuntimeError,
+> {
+    use crate::acp::intent::PermissionOptionKind::{AllowAlways, AllowOnce};
+    let original = reported.as_ref().map(|kinds| kinds.as_slice().len());
+    let mut kinds = reported.map_or_else(Vec::new, |kinds| kinds.as_slice().to_vec());
+    kinds.retain(|kind| match kind {
+        AllowAlways => allow_always,
+        AllowOnce => allow_once,
+        _ => true,
+    });
+    if allow_once && !kinds.contains(&AllowOnce) && kinds.len() < 8 {
+        kinds.push(AllowOnce);
+    }
+    if original.is_none() && kinds.is_empty() {
+        return Ok(None);
+    }
+    crate::acp::contract::BoundedVec::new("permissionOptionKinds", kinds)
+        .map(Some)
+        .map_err(|_| AdapterRuntimeError::Frame)
+}
+
 pub(super) fn permission_allow_option(
     value: &Value,
     wanted: &str,
 ) -> Result<Option<String>, AdapterRuntimeError> {
-    let options = value
+    let params = value
         .get("params")
         .and_then(Value::as_object)
-        .and_then(|params| params.get("options"))
+        .ok_or(AdapterRuntimeError::Frame)?;
+    let options = params
+        .get("options")
         .and_then(Value::as_array)
         .ok_or(AdapterRuntimeError::Frame)?;
+    let switches_mode = params
+        .get("toolCall")
+        .and_then(|tool| tool.get("kind"))
+        .and_then(Value::as_str)
+        == Some("switch_mode");
     Ok(options.iter().take(8).find_map(|option| {
         let option_id = option.get("optionId")?.as_str().map(str::to_owned)?;
-        if option_id.is_empty() || option_id.len() > 64 {
-            return None;
-        }
         let kind = option
             .get("kind")
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_ascii_lowercase();
+        // Never an option that also widens the permission mode (Claude's
+        // plan exit offers auto or bypass first) or clears the conversation.
+        if option_id.is_empty()
+            || option_id.len() > 64
+            || !crate::acp::bindings::claude::option_admitted(&option_id, &kind, switches_mode)
+        {
+            return None;
+        }
         if kind == wanted {
             return Some(option_id);
         }

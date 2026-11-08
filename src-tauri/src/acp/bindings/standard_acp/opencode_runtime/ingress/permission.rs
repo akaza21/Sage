@@ -68,7 +68,12 @@ impl OpenCodeRuntime {
         let approved_path = workspace_edit_path(&value, &self.workspace_root);
         let created_file_content = created_file_content(&value, approved_path.as_deref());
         let reply = match access_mode {
-            crate::settings_store::SessionAccessMode::ReadOnly => {
+            // Modes OpenCode's access policy never admits are denied too.
+            crate::settings_store::SessionAccessMode::ReadOnly
+            | crate::settings_store::SessionAccessMode::AcceptEdits
+            | crate::settings_store::SessionAccessMode::Plan
+            | crate::settings_store::SessionAccessMode::Auto
+            | crate::settings_store::SessionAccessMode::FullAccess => {
                 active
                     .translator
                     .translate_permission_request_value(value.clone())

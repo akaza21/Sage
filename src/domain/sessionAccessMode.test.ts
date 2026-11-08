@@ -12,11 +12,15 @@ describe("session access mode", () => {
     expect(SESSION_ACCESS_MODES[0]).toBe("readOnly");
   });
 
-  it("carries the three modes the backend accepts", () => {
+  it("carries the modes the backend accepts", () => {
     expect([...SESSION_ACCESS_MODES]).toEqual([
       "readOnly",
       "ask",
       "workspaceWrite",
+      "acceptEdits",
+      "plan",
+      "auto",
+      "fullAccess",
     ]);
   });
 

@@ -1417,6 +1417,12 @@ mod tests {
                     egress_value(&batch.egress()[0])["result"]["outcome"]["optionId"],
                     "once"
                 ),
+                mode @ (SessionAccessMode::AcceptEdits
+                | SessionAccessMode::Plan
+                | SessionAccessMode::Auto
+                | SessionAccessMode::FullAccess) => {
+                    panic!("OpenCode must not offer {mode:?}")
+                }
             }
         }
     }

@@ -10,7 +10,7 @@ fn command(revision: u64) -> AdapterCommand {
     AdapterCommand::Prompt {
         prompt,
         client_message_id: RequiredText::new("client", "slash-client").unwrap(),
-        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        access_mode: crate::settings_store::SessionAccessMode::Ask,
     }
 }
 #[test]

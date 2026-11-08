@@ -72,6 +72,11 @@
   grid-column: 3;
 }
 
+.composer-access-menu__option--full > svg:first-child,
+.composer-access-menu__warning {
+  color: var(--composer-access-full);
+}
+
 .composer-access-menu__description {
   grid-column: 2 / -1;
   color: var(--text-muted);

@@ -12,6 +12,7 @@ pub(crate) mod permission;
 pub(crate) mod read_text_file;
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 pub(crate) mod runtime_identity;
+pub(crate) mod session_access;
 pub(crate) mod session_config;
 mod session_operations;
 mod session_routes;
