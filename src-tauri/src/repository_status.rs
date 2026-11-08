@@ -280,7 +280,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("sage-status-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let git = |args: &[&str]| {
-            let output = crate::test_git::command()
+            let output = crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(args)

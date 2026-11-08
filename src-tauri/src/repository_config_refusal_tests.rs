@@ -109,7 +109,7 @@ impl Drop for Fixture {
 }
 
 fn git(root: &Path, args: &[&str]) {
-    let status = crate::test_git::command()
+    let status = crate::git_process::fixture_git()
         .arg("-C")
         .arg(root)
         .args(args)

@@ -154,7 +154,7 @@ mod tests {
             vec!["config", "core.autocrlf", "false"],
         ] {
             assert!(
-                crate::test_git::command()
+                crate::git_process::fixture_git()
                     .arg("-C")
                     .arg(&root)
                     .args(&args)
@@ -165,7 +165,7 @@ mod tests {
         }
         fs::write(root.join("readme.txt"), "first\n").unwrap();
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["add", "readme.txt"])
@@ -174,7 +174,7 @@ mod tests {
                 .success()
         );
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["commit", "-q", "-m", "fixture"])
@@ -183,7 +183,7 @@ mod tests {
                 .success()
         );
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["branch", "-m", "main"])
@@ -192,7 +192,7 @@ mod tests {
                 .success()
         );
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["branch", "--", "topic"])

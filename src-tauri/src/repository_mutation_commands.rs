@@ -159,7 +159,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -327,7 +327,7 @@ mod tests {
             .unwrap_err();
 
             assert!(error.to_string().contains("Project changed"));
-            let output = crate::test_git::command()
+            let output = crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["status", "--porcelain=v2", "--", "new.txt"])

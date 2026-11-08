@@ -127,7 +127,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -138,7 +138,7 @@ mod tests {
     }
 
     fn git_stdout(root: &Path, args: &[&str]) -> String {
-        let output = crate::test_git::command()
+        let output = crate::git_process::fixture_git()
             .arg("-C")
             .arg(root)
             .args(args)

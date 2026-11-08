@@ -300,7 +300,7 @@ mod tests {
 
         let (root, workspace) = fixture_repository();
         let git = |args: &[&str]| {
-            let output = crate::test_git::command()
+            let output = crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(args)
@@ -343,7 +343,7 @@ mod tests {
                 format!("tree {tree}\nparent {parent}\nauthor {author}\ncommitter {committer}\n\n")
                     .into_bytes();
             object.extend_from_slice(message);
-            let mut child = crate::test_git::command()
+            let mut child = crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["hash-object", "-t", "commit", "-w", "--stdin"])
@@ -355,7 +355,7 @@ mod tests {
             let output = child.wait_with_output().unwrap();
             assert!(output.status.success());
             parent = String::from_utf8(output.stdout).unwrap().trim().to_owned();
-            let stored = crate::test_git::command()
+            let stored = crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["cat-file", "commit", &parent])
@@ -399,7 +399,7 @@ mod tests {
             vec!["config", "core.autocrlf", "false"],
         ] {
             assert!(
-                crate::test_git::command()
+                crate::git_process::fixture_git()
                     .arg("-C")
                     .arg(&root)
                     .args(&args)
@@ -410,7 +410,7 @@ mod tests {
         }
         fs::write(root.join("readme.txt"), "first\n").unwrap();
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["add", "readme.txt"])
@@ -419,7 +419,7 @@ mod tests {
                 .success()
         );
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["commit", "-q", "-m", "first"])
@@ -429,7 +429,7 @@ mod tests {
         );
         fs::write(root.join("readme.txt"), "second\n").unwrap();
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["add", "readme.txt"])
@@ -438,7 +438,7 @@ mod tests {
                 .success()
         );
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["commit", "-q", "-m", "second"])
@@ -473,7 +473,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("sage-git-history-empty-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["init", "-q"])

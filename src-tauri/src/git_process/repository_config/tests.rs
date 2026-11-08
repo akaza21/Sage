@@ -67,7 +67,7 @@ impl Drop for Scratch {
 // Keep clone/worktree operands relative: Git for Windows accepts canonical
 // verbatim paths for `-C`, but rejects them in these operands.
 fn git(root: &Path, args: &[&str]) {
-    let status = crate::test_git::command()
+    let status = crate::git_process::fixture_git()
         .arg("-C")
         .arg(root)
         .args(args)
@@ -351,7 +351,7 @@ fn a_non_utf8_filter_subsection_is_refused() {
     let mut key = b"filter.".to_vec();
     key.extend_from_slice(driver);
     key.extend_from_slice(b".clean");
-    let status = crate::test_git::command()
+    let status = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&root)
         .arg("config")
@@ -421,7 +421,7 @@ fn an_admitted_repository_cannot_drift_to_a_hostile_ancestor() {
     assert!(!sentinel.exists(), "the ancestor's filter ran");
 
     // Control: unpinned discovery does reach the hostile ancestor.
-    let _ = crate::test_git::command()
+    let _ = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&inner)
         .args(["status", "--porcelain"])
@@ -595,7 +595,7 @@ fn a_commondir_alias_of_the_own_git_dir_is_refused() {
     )
     .unwrap();
     // Control: Git resolves the alias to the root's own git dir.
-    let output = crate::test_git::command()
+    let output = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&root)
         .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
@@ -954,7 +954,7 @@ fn a_switched_off_path_protection_is_refused_until_restored() {
 fn a_gitlink_win32_would_rename_cannot_reach_a_hostile_submodule() {
     let scratch = Scratch::new();
     let root = submodule_fixture(&scratch);
-    let gitlink = crate::test_git::command()
+    let gitlink = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&root)
         .args(["rev-parse", "HEAD:sub"])

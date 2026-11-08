@@ -82,7 +82,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -121,7 +121,7 @@ mod tests {
         git(&root, &["commit", "-q", "-m", "to-revert"]);
         fs::write(root.join("conflict.txt"), "ours\n").unwrap();
         git(&root, &["commit", "-q", "-am", "later"]);
-        let revert = crate::test_git::command()
+        let revert = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["revert", "--no-edit", "HEAD~1"])

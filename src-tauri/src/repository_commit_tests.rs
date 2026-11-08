@@ -34,7 +34,7 @@ impl Drop for TestRepository {
 
 fn git(root: &Path, args: &[&str]) {
     assert!(
-        crate::test_git::command()
+        crate::git_process::fixture_git()
             .arg("-C")
             .arg(root)
             .args(args)
@@ -45,7 +45,7 @@ fn git(root: &Path, args: &[&str]) {
 }
 
 fn git_stdout(root: &Path, args: &[&str]) -> String {
-    let output = crate::test_git::command()
+    let output = crate::git_process::fixture_git()
         .arg("-C")
         .arg(root)
         .args(args)
@@ -56,7 +56,7 @@ fn git_stdout(root: &Path, args: &[&str]) -> String {
 }
 
 fn git_succeeds(root: &Path, args: &[&str]) -> bool {
-    crate::test_git::command()
+    crate::git_process::fixture_git()
         .arg("-C")
         .arg(root)
         .args(args)
@@ -466,7 +466,7 @@ fn missing_promisor_object_cannot_launch_a_lazy_fetch() {
         .join(&missing_oid[2..]);
     fs::remove_file(object_path).unwrap();
 
-    let control = crate::test_git::command()
+    let control = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&repository.root)
         .args(["cat-file", "-p", &missing_oid])
@@ -568,7 +568,7 @@ fn completes_a_resolved_merge_as_a_two_parent_commit() {
     git(&repository.root, &["checkout", "-q", "-"]);
     fs::write(repository.root.join("conflict.txt"), "ours\n").unwrap();
     git(&repository.root, &["commit", "-q", "-am", "ours"]);
-    let merge = crate::test_git::command()
+    let merge = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&repository.root)
         .args(["merge", "other"])
@@ -624,7 +624,7 @@ fn rejects_a_merge_commit_while_unmerged_paths_remain() {
     git(&repository.root, &["checkout", "-q", "-"]);
     fs::write(repository.root.join("conflict.txt"), "ours\n").unwrap();
     git(&repository.root, &["commit", "-q", "-am", "ours"]);
-    let merge = crate::test_git::command()
+    let merge = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&repository.root)
         .args(["merge", "other"])

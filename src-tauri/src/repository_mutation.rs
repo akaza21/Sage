@@ -192,7 +192,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -371,7 +371,7 @@ mod tests {
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let indexed = crate::test_git::command()
+        let indexed = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["show", ":target.txt"])
@@ -748,13 +748,13 @@ mod tests {
             fs::read_to_string(root.join("first.txt")).unwrap(),
             "staged first\n"
         );
-        let partial_index = crate::test_git::command()
+        let partial_index = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["show", ":partial.txt"])
             .output()
             .unwrap();
-        let first_index = crate::test_git::command()
+        let first_index = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["show", ":first.txt"])
@@ -1038,7 +1038,7 @@ mod tests {
         git(&root, &["checkout", "-q", "-"]);
         fs::write(root.join("conflict.txt"), "master\n").unwrap();
         git(&root, &["commit", "-q", "-am", "master"]);
-        let merge = crate::test_git::command()
+        let merge = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["merge", "other"])

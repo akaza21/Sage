@@ -332,7 +332,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            crate::test_git::command()
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -371,7 +371,7 @@ mod tests {
         git(&root, &["checkout", "-q", "-"]);
         fs::write(root.join("conflict.txt"), "ours\n").unwrap();
         git(&root, &["commit", "-q", "-am", "ours"]);
-        let merge = crate::test_git::command()
+        let merge = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["merge", "other"])
@@ -421,7 +421,7 @@ mod tests {
             fs::read_to_string(root.join("conflict.txt")).unwrap(),
             "ours\n"
         );
-        let unmerged = crate::test_git::command()
+        let unmerged = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["ls-files", "--unmerged", "-z"])
@@ -477,7 +477,7 @@ mod tests {
     }
 
     fn current_branch(root: &Path) -> String {
-        let output = crate::test_git::command()
+        let output = crate::git_process::fixture_git()
             .arg("-C")
             .arg(root)
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
@@ -492,7 +492,7 @@ mod tests {
         git(&root, &["merge", "--abort"]);
         let onto = current_branch(&root);
         git(&root, &["checkout", "-q", "other"]);
-        let rebase = crate::test_git::command()
+        let rebase = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["rebase", &onto])
@@ -607,7 +607,7 @@ mod tests {
         git(&root, &["checkout", "-q", "-"]);
         fs::write(root.join("conflict.txt"), "ours\n").unwrap();
         git(&root, &["commit", "-q", "-am", "ours"]);
-        let cherry = crate::test_git::command()
+        let cherry = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["cherry-pick", "other"])

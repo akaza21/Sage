@@ -448,6 +448,20 @@ async fn run_admitted(
     }
 }
 
+/// Git for test fixtures, isolated from the global and system config as
+/// `configured_command` isolates Sage's own Git, so a developer's commit
+/// signing, hooks or aliases cannot change what a fixture builds.
+/// Repository-local config still applies.
+#[cfg(test)]
+pub(crate) fn fixture_git() -> std::process::Command {
+    let mut command = std::process::Command::new("git");
+    command
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null");
+    command
+}
+
 fn configured_command(
     root: &Path,
     args: &[&str],
