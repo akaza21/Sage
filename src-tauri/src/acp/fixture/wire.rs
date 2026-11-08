@@ -213,6 +213,17 @@ fn await_client(
     }
 }
 
+/// The frame a Codex journey step named `shape` answers request `id` with,
+/// outside a running journey.
+#[cfg(any(test, all(windows, debug_assertions)))]
+pub(super) fn codex_reply(shape: &str, id: u64) -> Option<Value> {
+    let mut state = WireState::new();
+    state.last_request_id = Some(id);
+    let mut output = Vec::new();
+    codex::emit_known(shape, &Value::Null, &mut state, &mut output).ok()?;
+    serde_json::from_slice(&output).ok()
+}
+
 fn emit_known(
     step: &Value,
     state: &mut WireState,

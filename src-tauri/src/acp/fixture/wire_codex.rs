@@ -194,6 +194,15 @@ pub(super) fn emit_response(
                     {"reasoningEffort":"medium","description":"Balanced synthetic replay"},
                     {"reasoningEffort":"high","description":"Thorough synthetic replay"}
                 ]);
+                if shape == "configModels" {
+                    // Every field a Codex 0.146 `model/list` entry carries, as
+                    // account discovery requires.
+                    let full = json!({"upgrade":null,"upgradeInfo":null,"availabilityNux":null,"inputModalities":["text"],"supportsPersonality":false,"additionalSpeedTiers":[],"serviceTiers":[],"defaultServiceTier":null});
+                    catalog["data"][0]
+                        .as_object_mut()
+                        .unwrap()
+                        .extend(full.as_object().unwrap().clone());
+                }
                 let mut alternate = catalog["data"][0].clone();
                 alternate["id"] = json!("fixture-model-fast");
                 alternate["model"] = json!("fixture-model-fast");

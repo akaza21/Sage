@@ -343,15 +343,31 @@ fn codex_model_and_effort_survive_a_graceful_restart() {
             &profile.selection.project_root,
         )
         .await;
+        // The composer's model menu: Sage's own discovery reads the case's
+        // catalogue and offers both models.
+        let root = setup.root();
+        let binding = setup.service.codex_registration().refresh().unwrap();
+        let request = crate::acp::ipc::GetCodexDiscoveryRequest {
+            project_id: root.project_id().clone(),
+            project_generation: root.project_generation(),
+            binding_id: crate::acp::intent::BindingId::new("bindingId", binding.binding_id())
+                .unwrap(),
+        };
+        let discovery = setup.service.codex_discovery_manager();
+        let prepared = discovery
+            .prepare(
+                request,
+                root,
+                crate::acp::bindings::codex::CodexDiscoveryDeadline::new().unwrap(),
+            )
+            .unwrap();
+        let menu = discovery.discover(prepared).unwrap();
+        let listed: Vec<_> = menu.models.iter().map(|model| model.id.as_str()).collect();
+        assert_eq!(listed, ["fixture-model", "fixture-model-deep"]);
         // A Codex model belongs to the thread: the chat opens it with the
         // second model, as the composer does when that model is picked
         // before the first send. The effort changes live, after a Turn.
         let deep = crate::acp::intent::ModelId::new("modelId", "fixture-model-deep").unwrap();
-        crate::acp::service::tests::seed_codex_discovery(
-            &setup.service,
-            &setup.root(),
-            Some(deep.clone()),
-        );
         let revision = setup
             .service
             .load_chat_page(setup.project_id.clone(), setup.chat_id.clone(), None)

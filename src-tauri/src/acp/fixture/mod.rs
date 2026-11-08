@@ -9,6 +9,8 @@ mod characterization_external_tests;
 mod child;
 #[cfg(test)]
 mod coverage;
+#[cfg(any(test, all(windows, debug_assertions)))]
+mod discovery;
 #[cfg(all(test, windows))]
 mod external_delivery_tests;
 #[cfg(all(test, windows))]
@@ -43,6 +45,10 @@ use self::cases::FixtureInvocation;
 
 #[cfg(windows)]
 pub(crate) use adapter::FixtureAdapter;
+#[cfg(any(test, all(windows, debug_assertions)))]
+pub(crate) use discovery::native_case_discovery_reply;
+#[cfg(all(windows, debug_assertions))]
+pub(crate) use discovery::native_case_offers_models;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FixtureError {
