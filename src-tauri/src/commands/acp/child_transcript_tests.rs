@@ -141,6 +141,19 @@ async fn native_child_ipc_reads_the_desktop_fixture_replay() {
     .await;
 }
 
+const STORED_ONLY: &str = "claude-code-sdk";
+
+#[tokio::test]
+async fn a_harness_without_a_native_child_read_serves_the_stored_transcript() {
+    child_ipc_journey(
+        ProjectGeneration::ZERO,
+        ProjectGeneration::ZERO,
+        false,
+        STORED_ONLY,
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn native_child_ipc_rejects_drifted_projection_generation_but_accepts_live_generation() {
     child_ipc_journey(
@@ -310,6 +323,37 @@ async fn child_ipc_journey(
         session_id: session.session_id.clone(),
         runtime_epoch: epoch,
     };
+    if protocol == STORED_ONLY {
+        // No native child read: the stored transcript, kept current as the
+        // child runs, is what the view reads.
+        let scope = crate::acp::store::child_transcript::ChildTranscriptScope {
+            owner,
+            item_id: "item-one".into(),
+            child_thread_id: "child-one".into(),
+            parent_thread_id: "adapter-session".into(),
+        };
+        crate::acp::store::child_transcript::persist_snapshot(
+            &mut state.database.connection(),
+            &scope,
+            &snapshot,
+            5,
+        )
+        .unwrap();
+        let request = ChildTranscriptRequest {
+            project_id,
+            project_generation: projection_generation,
+            chat_id,
+            session_id: session.session_id,
+            runtime_epoch: epoch,
+            item_id: SageItemId::parse("item-one").unwrap(),
+            agent_key: ExternalId::new("child", "child-one").unwrap(),
+        };
+        assert!(matches!(
+            get_acp_child_transcript_inner(&state, request).await,
+            Ok(ChildTranscriptResponse::Current { snapshot: stored, .. }) if stored == snapshot
+        ));
+        return;
+    }
     let calls = Arc::new(AtomicUsize::new(0));
     let host = Arc::new(
         RuntimeHost::start(ChildEngine {

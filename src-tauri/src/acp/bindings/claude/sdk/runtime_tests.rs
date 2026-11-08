@@ -49,6 +49,7 @@ fn runtime() -> ClaudeSdkRuntime {
             SageAgentSessionId::parse("session-claude-sdk").unwrap(),
         ),
         bridge: None,
+        children: Default::default(),
         sent: Vec::new(),
         launch: None,
         binding: Arc::new(AdmittedClaudeSdkBinding::for_test()),
@@ -528,4 +529,89 @@ fn claudes_questions_become_a_question_card_and_the_answers_return_as_its_input(
         json!({"Which test runner?":"Vitest","Anything else?":"Keep the old config"})
     );
     assert_eq!(response["updatedInput"]["questions"], input["questions"]);
+}
+
+#[test]
+fn a_subagent_fills_its_own_transcript_under_a_collaboration_row() {
+    let mut runtime = prompted();
+    let spawned = feed(
+        &mut runtime,
+        json!({"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"toolu_task","name":"Agent",
+            "input":{"description":"Find the tests","prompt":"List the test files","subagent_type":"Explore"}}]}}),
+    );
+    let collaboration = |events: &[AdapterEvent]| {
+        events.iter().find_map(|event| match event {
+            AdapterEvent::ChildThreadItem {
+                payload:
+                    NormalizedPayload::Collaboration {
+                        agent_states,
+                        receiver_labels,
+                        ..
+                    },
+                child_thread_id,
+                ..
+            } => Some((
+                child_thread_id.as_str().to_owned(),
+                receiver_labels.as_slice()[0].as_str().to_owned(),
+                agent_states.as_slice()[0].1.as_str().to_owned(),
+            )),
+            _ => None,
+        })
+    };
+    assert_eq!(
+        collaboration(&spawned),
+        Some((
+            "toolu_task".into(),
+            "Find the tests".into(),
+            "running".into()
+        ))
+    );
+    assert!(spawned.iter().any(|event| matches!(event,
+        AdapterEvent::ChildLiveItem { item_id, role: Some(crate::acp::bindings::codex::ChildTextRole::User), .. }
+            if item_id.as_str() == "prompt")));
+    let inner = feed(
+        &mut runtime,
+        json!({"type":"assistant","parent_tool_use_id":"toolu_task","message":{"id":"s1","content":[
+            {"type":"text","text":"Looking"},
+            {"type":"tool_use","id":"sub-1","name":"Glob","input":{"pattern":"**/*.test.ts"}}]}}),
+    );
+    assert_eq!(
+        inner
+            .iter()
+            .filter(|event| matches!(event, AdapterEvent::ChildLiveItem { .. }))
+            .count(),
+        2,
+        "{inner:?}"
+    );
+    let result = feed(
+        &mut runtime,
+        json!({"type":"user","parent_tool_use_id":"toolu_task","message":{"content":[{"type":"tool_result","tool_use_id":"sub-1","content":"a.test.ts"}]}}),
+    );
+    assert!(result.iter().any(|event| matches!(event,
+        AdapterEvent::ChildLiveItem { item_id, lifecycle, .. }
+            if item_id.as_str() == "sub-1" && lifecycle.is_terminal())));
+    let ended = feed(
+        &mut runtime,
+        json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_task","content":"a.test.ts"}]}}),
+    );
+    assert_eq!(
+        collaboration(&ended),
+        Some((
+            "toolu_task".into(),
+            "Find the tests".into(),
+            "completed".into()
+        ))
+    );
+    assert!(ended.iter().any(|event| matches!(
+        event,
+        AdapterEvent::ChildTurnStatus {
+            status: crate::acp::lifecycle::TurnState::Completed,
+            ..
+        }
+    )));
+    let late = feed(
+        &mut runtime,
+        json!({"type":"assistant","parent_tool_use_id":"toolu_task","message":{"id":"s2","content":[{"type":"text","text":"late"}]}}),
+    );
+    assert!(matches!(late[..], [AdapterEvent::Absorbed]), "{late:?}");
 }

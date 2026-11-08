@@ -21,6 +21,7 @@ mod notices;
 mod outbound;
 mod permission;
 mod questions;
+mod subagents;
 
 /// Bounds on per-turn bookkeeping; the inner session caps pending requests.
 const MAX_PENDING: usize = 32;
@@ -57,6 +58,8 @@ pub(super) struct Inbound {
     pub(super) session: Vec<crate::acp::intent::session_event::SessionScopedEvent>,
     /// Questions the permission request in `acp` asks instead.
     pub(super) questions: Option<crate::acp::intent::user_input::UserInputRequest>,
+    /// Subagent facts, applied before the ACP frames.
+    pub(super) children: Vec<crate::acp::bindings::claude::runtime::ChildEvent>,
 }
 
 #[derive(Debug)]
@@ -100,6 +103,10 @@ pub(super) struct SdkBridge {
     answering: BTreeSet<String>,
     next_permission: u64,
     tools: BTreeMap<String, String>,
+    /// Open subagents, by their `Task` tool use id.
+    subagents: BTreeSet<String>,
+    /// A subagent's own tool rows: subagent and tool name, by tool use id.
+    child_tools: BTreeMap<String, (String, String)>,
     streamed: VecDeque<String>,
     retrying: bool,
     compacting: bool,
@@ -131,6 +138,8 @@ impl SdkBridge {
             answering: BTreeSet::new(),
             next_permission: 0,
             tools: BTreeMap::new(),
+            subagents: BTreeSet::new(),
+            child_tools: BTreeMap::new(),
             streamed: VecDeque::new(),
             retrying: false,
             compacting: false,

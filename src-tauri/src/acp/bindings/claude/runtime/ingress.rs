@@ -98,6 +98,7 @@ impl ClaudeRuntime {
         // `session/load` requires cwd/MCP context that the frozen shared command
         // does not carry. Intersect the source offer with Sage's safe surface.
         capabilities.load_session = false;
+        capabilities.child_transcript_read = self.stores_children;
         let default_model = models.first().map(|model| model.id.clone());
         let mut batch = AdapterBatchBuilder::new();
         batch.push_event(SharedEvent::Initialized {

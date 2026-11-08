@@ -36,20 +36,26 @@ impl AcpService {
         &self,
         scope: ChildTranscriptScope,
     ) -> Result<ChildTranscriptRead, ChildTranscriptReadError> {
-        let running = {
+        let (native, running) = {
             let connection = self.database.connection();
-            if !observed_protocol(&connection, &scope)? {
-                return Err(ChildTranscriptReadError::Unavailable);
-            }
-            match verify_current_binding(&connection, &scope) {
+            let native = observed_protocol(&connection, &scope)?;
+            let running = match verify_current_binding(&connection, &scope) {
                 Ok(()) => true,
                 Err(ChildTranscriptStoreError::Stale) => false,
                 Err(error) => return Err(error.into()),
-            }
+            };
+            (native, running)
         };
         if !running {
             return load_earlier_snapshot(&self.database.connection(), &scope)?
                 .map(ChildTranscriptRead::FromEarlierSession)
+                .ok_or(ChildTranscriptReadError::Unavailable);
+        }
+        // A harness without a native child read streams every child item
+        // to the store as it happens, so the stored transcript is current.
+        if !native {
+            return load_snapshot(&self.database.connection(), &scope)?
+                .map(ChildTranscriptRead::Current)
                 .ok_or(ChildTranscriptReadError::Unavailable);
         }
         let host = self

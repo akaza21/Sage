@@ -19,7 +19,10 @@ use crate::acp::{
             AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, RefusalDetail,
             ResourceMapper,
         },
-        claude::{runtime::ClaudeRuntime, wire::decode_frame},
+        claude::{
+            runtime::{Children, ClaudeRuntime},
+            wire::decode_frame,
+        },
         runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
     },
     contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
@@ -50,6 +53,7 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
                 session_id,
             ),
             bridge: None,
+            children: Children::default(),
             sent: Vec::new(),
             launch: None,
             binding: self.binding,
@@ -62,6 +66,7 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
 struct ClaudeSdkRuntime {
     session: ClaudeRuntime,
     bridge: Option<SdkBridge>,
+    children: Children,
     /// Written frames whose delivery is still open, with what they started.
     sent: Vec<(EgressToken, Sent)>,
     launch: Option<SessionLaunch>,
@@ -138,6 +143,15 @@ impl ClaudeSdkRuntime {
         }
         for event in inbound.session {
             if let Some(event) = self.session.session_event(event) {
+                observed = true;
+                batch.push_event(event)?;
+            }
+        }
+        for child in inbound.children {
+            for event in self
+                .session
+                .child_event(&mut self.children, child, resources)?
+            {
                 observed = true;
                 batch.push_event(event)?;
             }

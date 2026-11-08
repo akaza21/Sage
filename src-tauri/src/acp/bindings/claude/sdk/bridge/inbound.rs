@@ -6,6 +6,7 @@ use super::{
     BridgeError, Inbound, MAX_TRACKED_TOOLS, Pending, RECENT_STREAMED_MESSAGES, SdkBridge,
     acp_error, acp_result,
 };
+use crate::acp::bindings::claude::runtime::ChildOutcome;
 use crate::acp::bindings::claude::sdk::{
     config::{EFFORT_ID, MODE_ID, MODEL_ID, SessionSettings},
     tools::{plan_entries, result_text, text_content, tool_fields},
@@ -34,10 +35,13 @@ impl SdkBridge {
                 self.withdraw(request_id.ok_or(BridgeError::Frame)?, &mut inbound);
             }
             // Results still finish the rows a subagent's approvals opened.
-            Some("user") => self.tool_results(&sdk["message"], &mut inbound),
-            // Other subagent traffic is projected in a later stage; the
-            // parent's `Task` tool row carries the subagent's outcome.
-            Some(_) if nested => {}
+            Some("user") => {
+                self.tool_results(&sdk["message"], &mut inbound);
+                if nested {
+                    self.nested(&sdk, &mut inbound);
+                }
+            }
+            Some(_) if nested => self.nested(&sdk, &mut inbound),
             Some("stream_event") => self.stream_event(&sdk["event"], &mut inbound),
             Some("assistant") => self.assistant(&sdk, &mut inbound),
             Some("result") => self.result(&sdk, &mut inbound),
@@ -221,6 +225,12 @@ impl SdkBridge {
             return;
         };
         let input = block.get("input").unwrap_or(&Value::Null);
+        if self.tools.contains_key(id) || self.subagents.contains(id) {
+            return;
+        }
+        if self.spawn(id, name, input, inbound) {
+            return;
+        }
         if let Some(entries) = plan_entries(name, input) {
             inbound
                 .acp
@@ -229,7 +239,7 @@ impl SdkBridge {
         }
         // A row is shown only while it can be finished, and once: an
         // approval may have opened it already.
-        if self.tools.len() >= MAX_TRACKED_TOOLS || self.tools.contains_key(id) {
+        if self.tools.len() >= MAX_TRACKED_TOOLS {
             return;
         }
         self.tools.insert(id.to_owned(), name.to_owned());
@@ -255,6 +265,16 @@ impl SdkBridge {
             let Some(id) = block.get("tool_use_id").and_then(Value::as_str) else {
                 continue;
             };
+            if self.subagents.contains(id) {
+                let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
+                let outcome = if failed {
+                    ChildOutcome::Failed
+                } else {
+                    ChildOutcome::Completed
+                };
+                self.end_child(id, outcome, inbound);
+                continue;
+            }
             let Some(name) = self.tools.remove(id) else {
                 continue;
             };
@@ -290,6 +310,7 @@ impl SdkBridge {
         }
         self.withdraw_open(inbound);
         self.end_retry(inbound);
+        self.end_children(inbound);
         let usage = &sdk["usage"];
         let count = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
         let (input, output) = (count("input_tokens"), count("output_tokens"));
