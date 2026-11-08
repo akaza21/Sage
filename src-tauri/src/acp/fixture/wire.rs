@@ -201,15 +201,19 @@ fn emit_known(
     if shape.starts_with("acp") {
         return acp::emit(step, state, output);
     }
-    if shape == "codexNative" {
+    if shape == "codexNative" || shape == "codexNativeThreadless" {
         let mut params = acp::substitute(step["params"].clone(), state, 0)?;
-        params["threadId"] = serde_json::json!(acp::SESSION);
-        params["turnId"] = serde_json::json!(
-            state
-                .current_turn_id
-                .as_deref()
-                .ok_or(FixtureError::InvalidArguments)?
-        );
+        // A thread-less app-server notice (such as `configWarning`) may
+        // arrive before any thread or Turn exists, so it names neither.
+        if shape == "codexNative" {
+            params["threadId"] = serde_json::json!(acp::SESSION);
+            params["turnId"] = serde_json::json!(
+                state
+                    .current_turn_id
+                    .as_deref()
+                    .ok_or(FixtureError::InvalidArguments)?
+            );
+        }
         return codex::emit_json(
             output,
             state,
@@ -413,3 +417,5 @@ pub(super) use output::{emit_repeated, write_stdout};
 mod capture;
 #[cfg(test)]
 pub(super) use capture::capture_steps;
+#[cfg(test)]
+pub(crate) use capture::replay_native;
