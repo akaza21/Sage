@@ -7,7 +7,7 @@ import type { AcpChatPage } from "../../domain/acp";
 import {
   decodeRestoredSessionConfig,
   decodeSavedChoiceNotice,
-} from "../../domain/acpSessionConfig";
+} from "../../domain/acpRestoredSessionConfig";
 import { DEFAULT_SESSION_ACCESS_MODE } from "../../domain/sessionAccessMode";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import {
