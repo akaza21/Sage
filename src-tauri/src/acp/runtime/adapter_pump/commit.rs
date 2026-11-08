@@ -63,6 +63,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         }
 
         let permission_wait_path = !new_permissions.is_empty();
+        let turn_notice = TurnNotice::possible_if(
+            permission_wait_path || terminal.is_some_and(TurnState::is_notified_outcome),
+        );
         for (intent, auto_resolve_at_millis) in new_permissions {
             self.pending_permissions.push(PendingPermission {
                 intent,
@@ -89,7 +92,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             }
         }
         if let Some(receipt) = committed {
-            self.publish(receipt)?;
+            self.publish(receipt, turn_notice)?;
         }
         if let Some(error) = egress_error {
             return Err(error);
@@ -97,34 +100,45 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         Ok(())
     }
 
-    fn publish(&mut self, receipt: JournalReceipt) -> Result<(), AdapterPumpError> {
+    fn publish(
+        &mut self,
+        receipt: JournalReceipt,
+        turn_notice: TurnNotice,
+    ) -> Result<(), AdapterPumpError> {
         self.publish_projection(
             receipt.projection_revision,
             receipt.child_projection_epoch.unwrap_or(0),
+            turn_notice,
         )
     }
 
+    /// Publishes a permission transition or cancel. Neither admits a notice:
+    /// receipts come from new requests and notified Turn outcomes only.
     pub(super) fn publish_revision(
         &mut self,
         projection_revision: ProjectionRevision,
     ) -> Result<(), AdapterPumpError> {
-        self.publish_projection(projection_revision, 0)
+        self.publish_projection(projection_revision, 0, TurnNotice::None)
     }
 
     fn publish_projection(
         &mut self,
         projection_revision: ProjectionRevision,
         child_projection_epoch: u64,
+        turn_notice: TurnNotice,
     ) -> Result<(), AdapterPumpError> {
         let disposition = self
             .publisher
-            .publish_committed(crate::acp::intent::ProjectionChangedV1 {
-                project_id: self.intent.project_id.clone(),
-                chat_id: self.intent.chat_id.clone(),
-                session_id: self.intent.session_id.clone(),
-                projection_revision,
-                child_projection_epoch,
-            })
+            .publish_committed_with(
+                crate::acp::intent::ProjectionChangedV1 {
+                    project_id: self.intent.project_id.clone(),
+                    chat_id: self.intent.chat_id.clone(),
+                    session_id: self.intent.session_id.clone(),
+                    projection_revision,
+                    child_projection_epoch,
+                },
+                turn_notice,
+            )
             .map_err(|_| {
                 self.projection_recovery_required = true;
                 AdapterPumpError::RecoveryRequired

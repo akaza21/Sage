@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { chatPlacement } from "../../app/openChat";
 import {
   parseProjectChatSearchResponse,
   validateProjectChatSearchRequest,
@@ -7,7 +8,6 @@ import {
 } from "./chatSearchDomain";
 import {
   admitChatSearchFolder,
-  chatSearchAttachment,
   chatSearchFolderOptions,
 } from "./chatSearchFanout";
 
@@ -135,7 +135,7 @@ describe("Chat search folder scope", () => {
       { id: "cross", name: "Cross" },
     ]);
     expect(
-      chatSearchAttachment(
+      chatPlacement(
         {
           project: { id: "sage", name: "Sage", roots: [] },
           tabs: [],

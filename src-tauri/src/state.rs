@@ -285,6 +285,9 @@ struct DesktopProjectionSink(
 );
 
 impl NotificationSink for DesktopProjectionSink {
+    fn observe_turn_notice(&self, event: &ProjectionChangedV1) {
+        crate::notifications::observe(&self.0, event);
+    }
     fn publish<'a>(&'a self, event: ProjectionChangedV1) -> NotificationSinkFuture<'a> {
         Box::pin(async move {
             use tauri::Emitter;

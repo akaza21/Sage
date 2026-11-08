@@ -9,7 +9,7 @@ use crate::acp::{
     },
     lifecycle::{ActivityLifecycle, DeliveryState, ServerRequestState},
     projection::ActivityRole,
-    runtime::ProjectionPublishError,
+    runtime::{ProjectionPublishError, TurnNotice},
 };
 
 use super::coalescer::{NormalizedFact, PendingIngress};
@@ -46,6 +46,13 @@ fn goal_active_response_first_mismatch_never_commits_the_provisional_turn() {
             match event { DurableAdapterEvent::Turn { state, .. } => Some(*state), _ => None }
         }).collect::<Vec<_>>();
         assert_eq!(states, [TurnState::Running, TurnState::Completed]);
+        let notices = shared.0.lock().unwrap().turn_notices.clone();
+        assert_eq!(
+            notices.last(),
+            Some(&TurnNotice::Possible),
+            "only the completion may admit a notice"
+        );
+        assert!(notices[..notices.len() - 1].iter().all(|notice| *notice == TurnNotice::None));
         assert!(shared.0.lock().unwrap().durable_batches.iter().flatten().any(|event| matches!(
             event,
             DurableAdapterEvent::Item { external_item_id, .. } if external_item_id.as_str() == "reply-1"
@@ -515,6 +522,7 @@ struct FakeState {
     resolved_request_ids: Vec<String>,
     permission_failure: Option<(ServerRequestState, PumpJournalError)>,
     log: Vec<&'static str>,
+    turn_notices: Vec<TurnNotice>,
     ingest_error: Option<AdapterRuntimeError>,
     refusal_detail: Option<RefusalDetail>,
 }
@@ -739,9 +747,20 @@ struct FakePublisher {
 impl ProjectionPublisher for FakePublisher {
     fn publish_committed(
         &self,
-        _: crate::acp::intent::ProjectionChangedV1,
+        event: crate::acp::intent::ProjectionChangedV1,
     ) -> Result<ProjectionPublishStatus, ProjectionPublishError> {
-        self.shared.0.lock().unwrap().log.push("publish");
+        self.publish_committed_with(event, TurnNotice::None)
+    }
+
+    fn publish_committed_with(
+        &self,
+        _: crate::acp::intent::ProjectionChangedV1,
+        turn_notice: TurnNotice,
+    ) -> Result<ProjectionPublishStatus, ProjectionPublishError> {
+        let mut state = self.shared.0.lock().unwrap();
+        state.log.push("publish");
+        state.turn_notices.push(turn_notice);
+        drop(state);
         self.outcomes
             .lock()
             .unwrap()
