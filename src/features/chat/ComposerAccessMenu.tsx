@@ -8,25 +8,13 @@ import type {
   SessionAccessMode,
   SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
-import { CHAT_ACCESS_SCOPE, FULL_ACCESS } from "../../domain/sessionAccessMode";
-import {
-  AlertTriangle,
-  Check,
-  FilePen,
-  ListChecks,
-  Sparkles,
-} from "../../ui/leanIcons";
+import { SESSION_ACCESS_MODE_SCOPE } from "../../domain/sessionAccessMode";
+import { Check } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { ModalDialog } from "../../ui/ModalDialog";
-import { ACCESS_ICONS } from "./composerAccessIcons";
+import { CHAT_ACCESS_ICONS as ICONS } from "./chatAccessIcons";
 
-const ICONS = {
-  ...ACCESS_ICONS,
-  acceptEdits: FilePen,
-  plan: ListChecks,
-  auto: Sparkles,
-  fullAccess: AlertTriangle,
-};
+const FULL_ACCESS: SessionAccessMode = "fullAccess";
 
 /** Modes that run actions without asking take a confirmed native token. */
 const PERMISSIVE: readonly SessionAccessMode[] = ["auto", FULL_ACCESS];
@@ -55,7 +43,7 @@ export default function ComposerAccessMenu({
   candidates: readonly SessionAccessModeCapability[];
   effective: SessionAccessMode | null;
   /** The live chat a choice applies to; null before its session starts. */
-  sessionId: string | null;
+  sessionId?: string;
   onDismiss: () => void;
 }) {
   const [confirmation, setConfirmation] =
@@ -108,7 +96,7 @@ export default function ComposerAccessMenu({
             {warning} Other chats and new chats keep their own access.
           </p>
         ) : null}
-        <p>{CHAT_ACCESS_SCOPE}</p>
+        <p>{SESSION_ACCESS_MODE_SCOPE}</p>
         <div className="dirty-dialog__actions">
           <button
             autoFocus

@@ -4,7 +4,6 @@ import {
   DEFAULT_SESSION_ACCESS_MODE,
   SESSION_ACCESS_MODES,
   admitSessionAccessMode,
-  admitSessionAccessModes,
 } from "./sessionAccessMode";
 
 describe("session access mode", () => {
@@ -23,16 +22,6 @@ describe("session access mode", () => {
       "auto",
       "fullAccess",
     ]);
-  });
-
-  it("never admits Full access as a stored default", () => {
-    expect(
-      admitSessionAccessModes({
-        "claude-agent-acp": "fullAccess",
-        other: "acceptEdits",
-        third: "plan",
-      }),
-    ).toEqual({ other: "acceptEdits", third: "plan" });
   });
 
   it("admits each known mode unchanged", () => {

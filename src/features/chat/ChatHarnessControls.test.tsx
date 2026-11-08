@@ -14,6 +14,7 @@ import {
   harnessModelIdentity,
   rememberHarnessModels,
 } from "../../app/harnessModelCache";
+import { useChatAccessStore } from "../../app/sessionAccessActions";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import { useWorkbenchStore } from "../../app/store";
 import { decodeSessionConfig } from "../../domain/acpSessionConfig";
@@ -122,11 +123,10 @@ beforeEach(async () => {
   });
   useSessionAccessModeStore.setState({
     modes: { fixture: DEFAULT_SESSION_ACCESS_MODE },
-    chatModes: {},
     ready: true,
     error: null,
-    chatError: null,
   });
+  useChatAccessStore.setState({ modes: {}, error: null });
 });
 
 afterEach(() => {

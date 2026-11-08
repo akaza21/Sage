@@ -17,6 +17,8 @@ import {
   sessionModeActions,
   flattenChoices,
 } from "../../domain/acpSessionConfigControls";
+import { withoutGovernedModes } from "../../domain/governedSessionModes";
+import type { SessionAccessModeCapability } from "../../domain/sessionAccessMode";
 
 export function ComposerOptionsMenu({
   id,
@@ -26,8 +28,11 @@ export function ComposerOptionsMenu({
   canSelectEffort,
   focused,
   onModeRemoved,
-  ...actions
+  accessModes,
+  ...given
 }: ComponentProps<typeof ComposerAddActions> & {
+  /** The harness's access modes; those carrying session modes own them. */
+  accessModes?: readonly SessionAccessModeCapability[];
   id: string;
   selectionKey: string;
   canSelectEffort: boolean;
@@ -36,6 +41,10 @@ export function ComposerOptionsMenu({
   triggerRef: RefObject<HTMLButtonElement | null>;
   onDismiss: () => void;
 }) {
+  const actions = {
+    ...given,
+    sessionConfig: withoutGovernedModes(given.sessionConfig, accessModes),
+  };
   const actionsKey = JSON.stringify([
     selectionKey,
     actions.sessionConfig?.sageAgentSessionId,

@@ -2,12 +2,22 @@ import {
   SESSION_ACCESS_MODES,
   type SessionAccessMode,
 } from "../domain/sessionAccessMode";
+import { create } from "zustand";
 import { chatAccessChanges } from "../ports/chatAccessChanges";
-import { useSessionAccessModeStore } from "./sessionAccessModeStore";
 
-// Loaded on demand, with the access menu or when a chat is first shown, so
-// the chat path carries none of it.
-const store = useSessionAccessModeStore;
+// Loaded on demand, with the access menu or a live chat's access, so the
+// chat path carries none of it.
+interface ChatAccessStore {
+  /** Chats' own modes by session (null: the default), newest last. */
+  modes: Readonly<Record<string, SessionAccessMode | null>>;
+  /** The last chat access change's failure; it never blocks sending. */
+  error: string | null;
+}
+export const useChatAccessStore = create<ChatAccessStore>(() => ({
+  modes: {},
+  error: null,
+}));
+const store = useChatAccessStore;
 /** Chats whose mode is held; older ones are read again when shown. */
 const MAX_CHAT_MODES = 32;
 
@@ -31,17 +41,17 @@ export async function loadChatAccess(sessionId: string): Promise<void> {
   try {
     const mode = await chatAccessChanges().get(sessionId);
     store.setState((state) => ({
-      chatModes: withChatMode(state.chatModes, sessionId, mode),
+      modes: withChatMode(state.modes, sessionId, mode),
     }));
   } catch {
-    store.setState({ chatError: "This chat's access could not be loaded." });
+    store.setState({ error: "This chat's access could not be loaded." });
   }
 }
 
 const record = (sessionId: string, mode: SessionAccessMode) =>
   store.setState((state) => ({
-    chatError: null,
-    chatModes: withChatMode(state.chatModes, sessionId, mode),
+    error: null,
+    modes: withChatMode(state.modes, sessionId, mode),
   }));
 
 /**
@@ -58,7 +68,7 @@ export async function chooseChatAccess(
     record(sessionId, mode);
   } catch {
     store.setState({
-      chatError: "This chat's access could not be changed. Try again.",
+      error: "This chat's access could not be changed. Try again.",
     });
     await loadChatAccess(sessionId);
   }
@@ -74,7 +84,7 @@ export async function prepareChatAccess(
     return confirmToken;
   } catch {
     store.setState({
-      chatError: "The confirmation could not be opened. Try again.",
+      error: "The confirmation could not be opened. Try again.",
     });
     return null;
   }
@@ -91,7 +101,7 @@ export async function grantChatAccess(
     record(sessionId, mode);
   } catch {
     store.setState({
-      chatError: "This access was not granted. Confirm again.",
+      error: "This access was not granted. Confirm again.",
     });
     // Show what the chat really holds after the refusal.
     await loadChatAccess(sessionId);

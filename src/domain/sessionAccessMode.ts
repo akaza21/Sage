@@ -10,9 +10,6 @@ export const SESSION_ACCESS_MODES = [
 
 export type SessionAccessMode = (typeof SESSION_ACCESS_MODES)[number];
 
-/** Full access applies to one chat, never as a default. */
-export const FULL_ACCESS: SessionAccessMode = "fullAccess";
-
 export const DEFAULT_SESSION_ACCESS_MODE: SessionAccessMode = "readOnly";
 
 export function admitSessionAccessMode(value: unknown): SessionAccessMode {
@@ -23,7 +20,7 @@ export function admitSessionAccessMode(value: unknown): SessionAccessMode {
 }
 
 export type SessionAccessModes = Readonly<Record<string, SessionAccessMode>>;
-/** Stored per-binding defaults. Full access is never one. */
+/** Stored per-binding defaults; the native store never holds Full access. */
 export function admitSessionAccessModes(value: unknown): SessionAccessModes {
   return Object.fromEntries(
     Object.entries(value && typeof value === "object" ? value : {})
@@ -32,14 +29,12 @@ export function admitSessionAccessModes(value: unknown): SessionAccessModes {
         ([binding, mode]) =>
           binding.length > 0 &&
           binding.length <= 128 &&
-          mode !== FULL_ACCESS &&
           SESSION_ACCESS_MODES.includes(mode as SessionAccessMode),
       ),
   );
 }
 export const SESSION_ACCESS_MODE_SCOPE =
-  "Applies from your next message with this harness.";
-export const CHAT_ACCESS_SCOPE = "Applies to this chat from your next message.";
+  "Applies to this chat from your next message.";
 
 export interface SessionAccessModeAvailability {
   effective: SessionAccessMode | null;
@@ -77,13 +72,12 @@ export function sessionAccessModeAvailability(
 }
 
 /**
- * The modes to offer. A mode carried by a harness session mode is offered
- * only while the live session advertises it (`advertised`, null until
- * reported). Full access is offered only to a live chat, never as a default.
+ * The modes to offer. Auto and Full access are never a default: only a live
+ * chat's access menu (`ChatAccessSelection.tsx`) offers them, confirmed.
  */
 export function sessionAccessModeCandidates(
   capabilities: readonly SessionAccessModeCapability[] | undefined,
-  advertised: readonly string[] | null = null,
+  liveChat?: boolean,
 ) {
   return (
     capabilities?.filter(
@@ -95,30 +89,8 @@ export function sessionAccessModeCandidates(
         typeof capability.description === "string" &&
         capability.description.trim().length > 0 &&
         capability.description.length <= 512 &&
-        (capability.id !== FULL_ACCESS || advertised !== null) &&
-        (capability.sessionModeId === undefined ||
-          advertised === null ||
-          advertised.includes(capability.sessionModeId)),
+        // Modes confirmed per chat are never a default.
+        (liveChat || !["auto", "fullAccess"].includes(capability.id)),
     ) ?? []
-  );
-}
-
-/** The mode the chat's next prompt runs under: its own choice, else the default. */
-export function sessionAccessEffective(
-  stored: SessionAccessMode | undefined,
-  candidates: readonly SessionAccessModeCapability[],
-  chat?: SessionAccessMode | null,
-): SessionAccessMode | null {
-  return candidates.some((candidate) => candidate.id === chat)
-    ? (chat ?? null)
-    : sessionAccessModeAvailability(stored, candidates).effective;
-}
-
-/** Whether the access control owns the harness's session modes. */
-export function accessGovernsSessionModes(
-  capabilities: readonly SessionAccessModeCapability[] | undefined,
-) {
-  return Boolean(
-    capabilities?.some((capability) => capability.sessionModeId !== undefined),
   );
 }

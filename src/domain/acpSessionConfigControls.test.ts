@@ -5,8 +5,20 @@ import {
   flattenChoices,
   sessionConfigControls,
   sessionModeActions,
-  withoutGovernedModes,
 } from "./acpSessionConfigControls";
+import { withoutGovernedModes } from "./governedSessionModes";
+
+const claudeAccess = [
+  {
+    id: "plan" as const,
+    label: "Plan",
+    description: "Plans.",
+    sessionModeId: "plan",
+  },
+];
+const codexAccess = [
+  { id: "ask" as const, label: "Ask", description: "Asks." },
+];
 
 const observedModes = {
   currentModeId: "default",
@@ -166,7 +178,7 @@ describe("withoutGovernedModes", () => {
       { ...observedModeOption, currentValue: "acceptEdits" },
       observedModelOption,
     ]);
-    const governed = withoutGovernedModes(config, true);
+    const governed = withoutGovernedModes(config, claudeAccess);
     expect(sessionModeActions(governed)).toEqual([]);
     expect(sessionConfigControls(governed).map((option) => option.id)).toEqual([
       "model",
@@ -179,7 +191,7 @@ describe("withoutGovernedModes", () => {
 
   it("leaves a harness whose access is not mode-based untouched", () => {
     const config = decode(observedModes, [observedModeOption]);
-    expect(withoutGovernedModes(config, false)).toBe(config);
-    expect(withoutGovernedModes(null, true)).toBeNull();
+    expect(withoutGovernedModes(config, codexAccess)).toBe(config);
+    expect(withoutGovernedModes(null, claudeAccess)).toBeNull();
   });
 });

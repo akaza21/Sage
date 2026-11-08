@@ -8,17 +8,9 @@ import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { createSettingWriter } from "./settingWriteQueue";
 
 interface SessionAccessModeStore {
-  /** Per-binding defaults for new and existing chats. */
   modes: SessionAccessModes;
-  /**
-   * Chats' own modes by session (null: the default), newest last. Read and
-   * changed only by `sessionAccessActions`, which loads on demand.
-   */
-  chatModes: Readonly<Record<string, SessionAccessMode | null>>;
   ready: boolean;
   error: string | null;
-  /** The last chat access change's failure; it never blocks sending. */
-  chatError: string | null;
   restore: () => Promise<void>;
   settle: () => Promise<boolean>;
   setMode: (bindingId: string, mode: SessionAccessMode) => void;
@@ -28,10 +20,8 @@ let loading: Promise<void> | null = null;
 export const useSessionAccessModeStore = create<SessionAccessModeStore>(
   (set, get) => ({
     modes: {},
-    chatModes: {},
     ready: false,
     error: null,
-    chatError: null,
     restore: async () => {
       const load = (async () => {
         try {

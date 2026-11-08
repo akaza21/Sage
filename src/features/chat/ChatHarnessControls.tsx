@@ -25,7 +25,6 @@ import { capitalizeLabel } from "../../domain/text";
 import "../../styles/harness-picker.css";
 import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
 import { ComposerAccessControl } from "./ComposerAccessControl";
-import { useComposerConfig } from "./sessionAccessTarget";
 import { composerOptionLabel } from "./composerChrome";
 import { useComposerToolbarFit } from "./useComposerToolbarFit";
 import { formatContextWindow } from "./composerModelContext";
@@ -141,8 +140,7 @@ export function ChatHarnessControls({
   const sessionOwnsSelection =
     sessionHarnessId === selectedHarnessId &&
     sessionModelId === selectedModelId;
-  const ownedConfig = sessionOwnsSelection ? sessionConfig : null;
-  const selectedSessionConfig = useComposerConfig(ownedConfig, accessHarness);
+  const selectedSessionConfig = sessionOwnsSelection ? sessionConfig : null;
   const configOptions = sessionConfigControls(selectedSessionConfig);
   const findOption = (category: string) =>
     configOptions.find(
@@ -352,6 +350,7 @@ export function ChatHarnessControls({
         {active === "options" ? (
           <ComposerOptionsPart
             part="ComposerOptionsMenu"
+            accessModes={accessHarness?.accessModes}
             fallback={
               <ComposerMenuLoading
                 triggerRef={optionsTriggerRef}

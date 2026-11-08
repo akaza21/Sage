@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useState } from "react";
+import { useChatAccessStore } from "../../app/sessionAccessActions";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import {
   getWorkbenchPorts,
@@ -62,11 +63,10 @@ beforeEach(() => {
   port.set.mockResolvedValue(undefined);
   useSessionAccessModeStore.setState({
     modes: { fixture: "readOnly" },
-    chatModes: {},
     ready: true,
     error: null,
-    chatError: null,
   });
+  useChatAccessStore.setState({ modes: {}, error: null });
 });
 afterEach(cleanup);
 

@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { useChatAccessStore } from "../../app/sessionAccessActions";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import type { SessionAccessModeCapability } from "../../domain/sessionAccessMode";
 import { resetWorkbenchPortsForTests } from "../../ports/workbenchRuntime";
@@ -103,11 +104,10 @@ beforeEach(() => {
   port.grant.mockResolvedValue(undefined);
   useSessionAccessModeStore.setState({
     modes: {},
-    chatModes: {},
     ready: true,
     error: null,
-    chatError: null,
   });
+  useChatAccessStore.setState({ modes: {}, error: null });
 });
 afterEach(cleanup);
 
