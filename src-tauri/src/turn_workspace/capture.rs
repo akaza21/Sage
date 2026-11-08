@@ -125,7 +125,8 @@ async fn capture_known_repository(root: &Path, limit: u64) -> Option<WorkspaceMa
     // HEAD and the size check are independent reads of the same repository,
     // so they run side by side. The status walk waits for the size check, so a
     // repository too large to mark never pays for it, and a capture never holds
-    // more than two of the git pool's processes.
+    // more than two of the git pool's processes. At the capture limit that can
+    // briefly fill the pool, but only for the length of a `rev-parse`.
     let (head, index) = tokio::join!(
         history::read_head(root),
         run_git(
