@@ -85,6 +85,10 @@ export function ToolItem({
         ? presentation.toolLabel
         : `${presentation.serverLabel} · ${presentation.toolLabel}`
       : presentation.label;
+  const progress =
+    presentation.kind === "mcp" && visualState === "inProgress"
+      ? (presentation.progress ?? null)
+      : null;
   const status = toolStateLabels[visualState];
   const terminal = terminalToolStates.has(visualState);
   const toolOutput =
@@ -141,6 +145,7 @@ export function ToolItem({
           </span>
         ) : null}
       </header>
+      {progress ? <p className="acp-tool-card__progress">{progress}</p> : null}
       {kind === "execute" && (commandLine || outputSummary !== null) ? (
         <ToolCommandFrame
           label="Shell"

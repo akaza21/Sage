@@ -83,6 +83,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+.acp-tool-card__progress {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .acp-tool-card__raw-kind {
   display: inline-block;
   padding: 0 var(--space-1);

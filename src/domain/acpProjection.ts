@@ -44,6 +44,9 @@ export type SafeResourceLocation =
       displayResource?: ResourceRef | null;
     };
 
+/** Byte cap of a running tool's status line; native `TOOL_PROGRESS_BYTES`. */
+export const TOOL_PROGRESS_BYTES = 512;
+
 export type ToolPresentation =
   | {
       kind: "read" | "edit" | "delete" | "imageView";
