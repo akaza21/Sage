@@ -43,13 +43,20 @@ pub(super) fn questions(input: &Value) -> Option<(UserInputRequest, Vec<String>)
                 .flatten(),
             // Claude Code always offers its own "Other" answer.
             allows_other: true,
+            multi_select: question.get("multiSelect").and_then(Value::as_bool) == Some(true),
             secret: false,
+            kind: Default::default(),
+            optional: false,
+            initial_text: None,
+            other_answer_id: None,
+            limits: Default::default(),
         });
         texts.push(text.to_owned());
     }
     let request = UserInputRequest {
         questions: BoundedVec::new("userInputQuestions", shown).ok()?,
         auto_resolution_ms: None,
+        url: None,
     };
     Some((request, texts))
 }
@@ -68,6 +75,7 @@ fn option(value: &Value) -> Option<UserInputOption> {
             prose(description, 1024).unwrap_or_default(),
         )
         .ok()?,
+        value: None,
     })
 }
 
@@ -84,11 +92,28 @@ pub(super) fn answered(input: &Value, texts: &[String], answers: Option<&Value>)
         let Some(text) = index.and_then(|index| texts.get(index)) else {
             continue;
         };
-        let picked = answer.get("selectedOption").and_then(Value::as_str);
+        // Claude Code reads several chosen labels as one comma-separated answer.
+        let picked = answer
+            .get("selectedOptions")
+            .and_then(Value::as_array)
+            .map(|picked| {
+                picked
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .filter(|picked| !picked.is_empty())
+            .or_else(|| {
+                answer
+                    .get("selectedOption")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            });
         let typed = answer.get("text").and_then(Value::as_str).map(str::trim);
         let reply = match (picked, typed.filter(|typed| !typed.is_empty())) {
             (Some(picked), Some(typed)) => format!("{picked}, {typed}"),
-            (Some(picked), None) => picked.to_owned(),
+            (Some(picked), None) => picked,
             (None, Some(typed)) => typed.to_owned(),
             (None, None) => continue,
         };

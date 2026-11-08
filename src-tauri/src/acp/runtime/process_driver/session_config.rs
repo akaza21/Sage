@@ -64,6 +64,9 @@ where
             crate::acp::goal::NativeRpcRequest::ForkSession => Err(HostError::State),
             // A Turn started before the release reached the runtime: it is
             // deferred and written once the runtime is idle again.
+            crate::acp::goal::NativeRpcRequest::Control(control) => {
+                self.pump.write_control(&mut self.transport, control)
+            }
             crate::acp::goal::NativeRpcRequest::ReleaseFork { fork, committed } => {
                 if self.pump.defer_fork_release(fork, *committed) {
                     Ok(())

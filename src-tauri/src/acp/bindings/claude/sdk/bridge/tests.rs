@@ -516,3 +516,72 @@ fn local_command_output_and_new_commands_reach_the_chat() {
         "deploy"
     );
 }
+
+#[test]
+fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
+    use crate::acp::{goal::NativeRpcReply, session_control::SessionControl};
+    let mut bridge = initialized();
+    const TURN: &str = "turn-6f9619ff-8b86-4011-b42d-00cf4fc964ff";
+    let user = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{
+            "sessionId":SESSION,"messageId":TURN,"prompt":[{"type":"text","text":"hi"}]}}),
+        )
+        .unwrap();
+    assert_eq!(user["uuid"], "6f9619ff-8b86-4011-b42d-00cf4fc964ff");
+    let undo = SessionControl::UndoTurn {
+        turn_id: crate::acp::contract::SageTurnId::parse(TURN).unwrap(),
+    };
+    let rewind = bridge.session_control(&undo).unwrap();
+    assert_eq!(rewind["request"]["subtype"], "rewind_files");
+    assert_eq!(
+        rewind["request"]["user_message_id"],
+        "6f9619ff-8b86-4011-b42d-00cf4fc964ff"
+    );
+    assert!(bridge.controlling());
+    assert_eq!(bridge.session_control(&undo), Err(BridgeError::Capacity));
+    let done = bridge
+        .inbound(success(
+            &rewind,
+            json!({"canRewind":true,"filesChanged":["a.rs","b.rs"]}),
+        ))
+        .unwrap();
+    assert!(
+        matches!(&done.native, Some(NativeRpcReply::Controlled(Some(text))) if text.as_str() == "Restored 2 files")
+    );
+    assert!(!bridge.controlling());
+    let rewind = bridge.session_control(&undo).unwrap();
+    let refused = bridge
+        .inbound(success(
+            &rewind,
+            json!({"canRewind":false,"error":"No file checkpoint found for this message."}),
+        ))
+        .unwrap();
+    assert!(
+        matches!(&refused.native, Some(NativeRpcReply::ControlRefused(Some(text)))
+        if text.as_str() == "No file checkpoint found for this message.")
+    );
+    let stop = bridge
+        .session_control(&SessionControl::StopActivity {
+            activity_id: crate::acp::intent::ExternalId::new("activityId", "task:task-7").unwrap(),
+        })
+        .unwrap();
+    assert_eq!(
+        stop["request"],
+        json!({"subtype":"stop_task","task_id":"task-7"})
+    );
+    let failed = bridge
+        .inbound(json!({"type":"control_response","response":{"subtype":"error","request_id":stop["request_id"],"error":"No task with that id"}}))
+        .unwrap();
+    assert!(failed.acp.is_empty());
+    assert!(
+        matches!(&failed.native, Some(NativeRpcReply::ControlRefused(Some(text))) if text.as_str() == "No task with that id")
+    );
+    // A turn id that names no SDK message cannot be undone.
+    assert_eq!(
+        bridge.session_control(&SessionControl::UndoTurn {
+            turn_id: crate::acp::contract::SageTurnId::parse("turn-legacy").unwrap(),
+        }),
+        Err(BridgeError::Unsupported)
+    );
+}

@@ -24,5 +24,6 @@ pub(crate) fn activity(id: &str, state: SessionActivityState, progress: &str) ->
         state,
         progress: Some(RequiredText::new("activityProgress", progress).unwrap()),
         in_previous_turn: false,
+        stoppable: false,
     }
 }

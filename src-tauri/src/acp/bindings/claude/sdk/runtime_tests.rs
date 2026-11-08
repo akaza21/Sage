@@ -50,6 +50,7 @@ fn runtime() -> ClaudeSdkRuntime {
         ),
         bridge: None,
         children: Default::default(),
+        native: None,
         sent: Vec::new(),
         launch: None,
         binding: Arc::new(AdmittedClaudeSdkBinding::for_test()),

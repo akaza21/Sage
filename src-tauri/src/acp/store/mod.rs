@@ -33,7 +33,7 @@ mod session_close;
 mod session_duplicates;
 mod session_head;
 mod session_resume;
-mod session_surface;
+pub(crate) mod session_surface;
 mod sessions;
 mod snapshots;
 mod state;

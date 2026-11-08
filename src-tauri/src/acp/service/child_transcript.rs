@@ -105,7 +105,9 @@ impl AcpService {
                 NativeRpcReply::GoalApplied
                 | NativeRpcReply::Forked(_)
                 | NativeRpcReply::Released
-                | NativeRpcReply::UsageRead,
+                | NativeRpcReply::UsageRead
+                | NativeRpcReply::Controlled(_)
+                | NativeRpcReply::ControlRefused(_),
             ) => Err(ChildTranscriptReadError::RecoveryRequired),
             Err(crate::acp::runtime::HostError::Intent | crate::acp::runtime::HostError::State) => {
                 Err(ChildTranscriptReadError::Unavailable)

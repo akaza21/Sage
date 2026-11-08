@@ -41,8 +41,8 @@ mod mode_guard;
 mod session_config;
 mod slash_commands;
 mod support;
-pub(crate) use launch::ClaudeRuntimeFactory;
 pub(crate) use children::{ChildEvent, ChildOutcome, Children};
+pub(crate) use launch::ClaudeRuntimeFactory;
 use support::*;
 
 const MAX_PENDING_REQUESTS: usize = 16;

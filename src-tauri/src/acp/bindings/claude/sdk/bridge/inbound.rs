@@ -68,6 +68,9 @@ impl SdkBridge {
                 .get("error")
                 .and_then(Value::as_str)
                 .unwrap_or("Claude Code refused the request");
+            if matches!(pending, Pending::Control) {
+                Self::controlled(Err(message), inbound);
+            }
             if let Some(id) = pending.acp_id() {
                 inbound.acp.push(acp_error(id, INTERNAL_ERROR, message));
             }
@@ -137,6 +140,7 @@ impl SdkBridge {
                 ));
             }
             Pending::Interrupt => {}
+            Pending::Control => Self::controlled(Ok(reply), inbound),
         }
         Ok(())
     }
@@ -357,7 +361,7 @@ impl Pending {
             | Self::Session(id)
             | Self::Mode { id, .. }
             | Self::Option { id, .. } => Some(id),
-            Self::Interrupt => None,
+            Self::Interrupt | Self::Control => None,
         }
     }
 }

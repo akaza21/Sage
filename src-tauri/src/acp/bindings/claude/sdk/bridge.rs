@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 
 use super::config::SessionSettings;
 
+mod controls;
 mod inbound;
 mod notices;
 mod outbound;
@@ -58,6 +59,8 @@ pub(super) struct Inbound {
     pub(super) session: Vec<crate::acp::intent::session_event::SessionScopedEvent>,
     /// Questions the permission request in `acp` asks instead.
     pub(super) questions: Option<crate::acp::intent::user_input::UserInputRequest>,
+    /// The reply to a session control.
+    pub(super) native: Option<crate::acp::goal::NativeRpcReply>,
     /// Subagent facts, applied before the ACP frames.
     pub(super) children: Vec<crate::acp::bindings::claude::runtime::ChildEvent>,
 }
@@ -76,6 +79,8 @@ enum Pending {
         value: String,
     },
     Interrupt,
+    /// A session control; its reply completes the native request.
+    Control,
 }
 
 #[derive(Debug)]

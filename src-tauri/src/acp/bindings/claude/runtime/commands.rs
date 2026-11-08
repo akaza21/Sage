@@ -86,7 +86,8 @@ impl ClaudeRuntime {
                     sanctioned_mode: None,
                 });
                 let external_session_id = active.external_id.clone();
-                match self.reserve(PendingRequest::Prompt, "session/prompt", json!({"sessionId":external_session_id.as_str(),"prompt":blocks})) {
+                let message_id = active.turn.as_ref().map(|turn| turn.client_message_id.as_str().to_owned());
+                match self.reserve(PendingRequest::Prompt, "session/prompt", json!({"sessionId":external_session_id.as_str(),"prompt":blocks,"messageId":message_id})) {
                     Ok(egress) => Ok(egress),
                     Err(error) => {
                         let active = self

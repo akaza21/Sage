@@ -18,19 +18,33 @@ impl SdkBridge {
             return self.permission_reply(&id, acp.get("result"));
         };
         match method {
-            "initialize" => self.control(json!({"subtype": "initialize"}), Pending::Initialize(id)),
+            // Sage shows a stop control on each background task, so a
+            // cancelled turn leaves the others running.
+            "initialize" => self.control(
+                json!({"subtype": "initialize", "perTaskStopAffordance": true}),
+                Pending::Initialize(id),
+            ),
             "session/new" => self.session(id),
             "session/resume" if params["sessionId"] == self.session_id.as_str() => self.session(id),
             "session/prompt" if self.prompt.is_none() => {
                 let content = prompt_content(params.get("prompt"))?;
                 self.prompt = Some(id);
                 self.interrupted = false;
-                Ok(json!({
+                let mut user = json!({
                     "type": "user",
                     "session_id": self.session_id,
                     "message": {"role": "user", "content": content},
                     "parent_tool_use_id": null,
-                }))
+                });
+                // The turn's id names its checkpoint, for undo.
+                if let Some(uuid) = params
+                    .get("messageId")
+                    .and_then(Value::as_str)
+                    .and_then(super::controls::message_uuid)
+                {
+                    user["uuid"] = uuid.into();
+                }
+                Ok(user)
             }
             "session/cancel" => {
                 self.interrupted = self.prompt.is_some();

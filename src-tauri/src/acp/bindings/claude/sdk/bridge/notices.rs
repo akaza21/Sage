@@ -27,6 +27,9 @@ const SOURCE: &str = "claude code";
 const RETRY_ACTIVITY: &str = "claude-api-retry";
 const COMPACT_ACTIVITY: &str = "claude-compaction";
 const ID_BYTES: usize = 256;
+/// Activity ids of Claude Code's background tasks: the prefix, then the
+/// task id.
+pub(super) const TASK_PREFIX: &str = "task:";
 const CLIPPED: &str = "\u{2026}";
 
 impl SdkBridge {
@@ -275,7 +278,7 @@ fn task(sdk: &Value, inbound: &mut Inbound) {
                 .and_then(Value::as_str)
                 .map(str::to_owned)
         });
-    let id = format!("task:{id}");
+    let id = format!("{TASK_PREFIX}{id}");
     activity(inbound, &id, kind, description, state, progress.as_deref());
 }
 
@@ -306,6 +309,7 @@ fn activity(
     state: SessionActivityState,
     progress: Option<&str>,
 ) {
+    let id_is_task = id.starts_with(TASK_PREFIX);
     let (Ok(id), Ok(kind), Some(Ok(label))) = (
         crate::acp::intent::ExternalId::new("activityId", clip(id, ID_BYTES)),
         RequiredText::new("activityKind", kind.to_owned()),
@@ -325,6 +329,9 @@ fn activity(
             label,
             state,
             progress,
+            // Claude Code stops one background task on request.
+            stoppable: id_is_task,
+            in_previous_turn: false,
         }));
 }
 

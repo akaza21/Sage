@@ -54,6 +54,7 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
             ),
             bridge: None,
             children: Children::default(),
+            native: None,
             sent: Vec::new(),
             launch: None,
             binding: self.binding,
@@ -67,6 +68,8 @@ struct ClaudeSdkRuntime {
     session: ClaudeRuntime,
     bridge: Option<SdkBridge>,
     children: Children,
+    /// The reply to a session control, until the host takes it.
+    native: Option<crate::acp::goal::NativeRpcReply>,
     /// Written frames whose delivery is still open, with what they started.
     sent: Vec<(EgressToken, Sent)>,
     launch: Option<SessionLaunch>,
@@ -137,6 +140,9 @@ impl ClaudeSdkRuntime {
                 observed = true;
                 batch.push_event(event)?;
             }
+        }
+        if let Some(reply) = inbound.native {
+            self.native = Some(reply);
         }
         if let Some(questions) = inbound.questions {
             self.session.offer_user_input(questions);
@@ -258,6 +264,29 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.session.capabilities()
+    }
+    fn session_control(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let sdk = self
+            .bridge()?
+            .session_control(control)
+            .map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
+        Ok(AdapterEgress::new(
+            sdk_frame(&sdk)?,
+            EgressToken::protocol_notification(),
+        ))
+    }
+    fn native_rpc_pending(&self) -> bool {
+        self.native.is_some()
+            || self.bridge.as_ref().is_some_and(SdkBridge::controlling)
+            || self.session.native_rpc_pending()
+    }
+    fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
+        self.native
+            .take()
+            .or_else(|| self.session.take_native_rpc_reply())
     }
     /// A large tool result or file write is dropped rather than ending the
     /// session; its tool row ends as failed when the turn completes.

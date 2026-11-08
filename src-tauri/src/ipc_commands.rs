@@ -150,6 +150,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         commands::acp::session_config::queue_acp_session_config_choice,
         commands::acp::goal::pause_existing_goal,
         commands::acp::goal::clear_existing_goal,
+        commands::acp::session_control::control_acp_session,
         commands::acp::permission::resolve_permission_decision,
         commands::acp::user_input::answer_user_input,
         commands::acp::read_text_file::acknowledge_acp_read_text_file,
