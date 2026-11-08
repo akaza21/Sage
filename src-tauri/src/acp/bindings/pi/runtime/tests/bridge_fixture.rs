@@ -16,6 +16,9 @@ use std::{
 
 type Replies = Rc<RefCell<VecDeque<u8>>>;
 
+/// What the user types into an extension question's card.
+const ANSWER: &str = "A note written on the question card.";
+
 /// The host side of the approval card: the permission service admits the
 /// card's decision against the request Sage recorded, then forwards it.
 struct Card {
@@ -114,13 +117,26 @@ impl Sage<'_> {
         });
         if let Some(payload) = requested {
             self.cards += 1;
-            let command = self.card.decide(
-                value["id"].as_str().unwrap(),
+            // An extension question is answered; an approval gets the fixed decision.
+            let asks = matches!(
                 payload,
-                self.decision.clone(),
+                NormalizedPayload::PermissionRequest {
+                    user_input: Some(_),
+                    ..
+                }
             );
+            let decision = if asks {
+                PermissionDecision::Answer(
+                    serde_json::from_value(json!([{"questionId":"answer","text":ANSWER}])).unwrap(),
+                )
+            } else {
+                self.decision.clone()
+            };
+            let command =
+                self.card
+                    .decide(value["id"].as_str().unwrap(), payload, decision.clone());
             let answer = runtime.command(command).unwrap();
-            if self.decision == PermissionDecision::Deny {
+            if decision == PermissionDecision::Deny {
                 runtime.commit_mandatory_egress(answer.token()).unwrap();
             }
             queue(&self.replies, runtime, answer);
@@ -325,7 +341,31 @@ fn pi_full_turn_fixture_projects_every_surface_and_clears_the_steer_queue() {
     let outcome = replay("pi-150-full-turn", PermissionDecision::AllowOnce);
     assert_eq!(
         (outcome.cards, ended(&outcome)),
-        (1, vec![(false, "export const example = 1;"), WRITTEN])
+        (2, vec![(false, "export const example = 1;"), WRITTEN])
+    );
+    let asked = outcome.events.iter().find_map(|event| match event {
+        AdapterEvent::PermissionRequest {
+            payload:
+                NormalizedPayload::PermissionRequest {
+                    user_input: Some(form),
+                    ..
+                },
+            ..
+        } => Some(form),
+        _ => None,
+    });
+    let question = &asked.expect("question card").questions.as_slice()[0];
+    assert_eq!(
+        (
+            question.question.as_str(),
+            question.kind,
+            question.initial_text.as_ref().map(|text| text.as_str())
+        ),
+        (
+            "Describe the note",
+            crate::acp::intent::user_input::UserInputKind::Multiline,
+            Some("A short note")
+        )
     );
     assert_eq!(
         text(&outcome, "src/pi-note.txt").as_deref(),

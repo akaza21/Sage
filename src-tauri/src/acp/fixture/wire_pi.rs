@@ -40,7 +40,7 @@ pub(super) fn await_request(
         "piAbort" => "abort",
         "piSteer" => "steer",
         "piClearQueue" => "clear_queue",
-        "piDialogCancelled" => "extension_ui_response",
+        "piDialogCancelled" | "piDialogAnswered" => "extension_ui_response",
         "piIdle" => "idle",
         _ => return Err(FixtureError::InvalidArguments),
     };
@@ -61,10 +61,15 @@ pub(super) fn await_request(
             .ok_or(FixtureError::InvalidArguments)?
             .to_owned();
         if command == "extension_ui_response" {
-            return if expected == command
+            let answered = kind == "piDialogAnswered"
+                && id == "fixture-question-1"
+                && request["value"]
+                    .as_str()
+                    .is_some_and(|value| !value.is_empty());
+            let cancelled = kind == "piDialogCancelled"
                 && id == "fixture-dialog-1"
-                && request["cancelled"] == true
-            {
+                && request["cancelled"] == true;
+            return if expected == command && (answered || cancelled) {
                 Ok(())
             } else {
                 Err(FixtureError::InvalidArguments)

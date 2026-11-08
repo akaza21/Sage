@@ -1,8 +1,14 @@
-use super::super::{PendingUiRequest, PiTranslator, TurnPhase};
+use super::super::{ANSWER_ID, PendingUiRequest, PiTranslator, TurnPhase};
 use crate::acp::bindings::pi::{
     AdapterError, AdapterOutput, decode::external_id, protocol::is_allow_option,
 };
-use crate::acp::intent::session_event::SessionNoticeLevel;
+use crate::acp::{
+    contract::{BoundedVec, RequiredText, SafeText},
+    intent::{
+        session_event::SessionNoticeLevel,
+        user_input::{UserInputKind, UserInputOption, UserInputQuestion, UserInputRequest, form},
+    },
+};
 use serde_json::Value;
 
 impl PiTranslator {
@@ -60,7 +66,7 @@ impl PiTranslator {
                 && turn.lifecycle.terminal().is_none()
                 && !turn.authority_denied
         });
-        if !running || matches!(method, "input" | "editor") {
+        if !running {
             return Ok(vec![AdapterOutput::DialogCancelled { external_id: id }]);
         }
         let options = if method == "select" {
@@ -71,7 +77,7 @@ impl PiTranslator {
             if values.len() > 8 {
                 return Err(AdapterError::Limit("extension options"));
             }
-            let options = values
+            values
                 .iter()
                 .map(|value| {
                     let option = value.as_str().ok_or(AdapterError::Malformed)?;
@@ -80,19 +86,73 @@ impl PiTranslator {
                     }
                     Ok(option.to_owned())
                 })
-                .collect::<Result<Vec<_>, _>>()?;
-            if !options.iter().any(|option| is_allow_option(option)) {
-                return Ok(vec![AdapterOutput::DialogCancelled { external_id: id }]);
-            }
-            options
+                .collect::<Result<Vec<_>, _>>()?
         } else {
             Vec::new()
+        };
+        // Confirm, and a select offering an allow answer, gate Pi's work; every
+        // other dialog is a question the user answers on the question card.
+        let gate = method == "confirm" || options.iter().any(|option| is_allow_option(option));
+        let form = if gate {
+            None
+        } else {
+            match question(method, value, &options) {
+                Some(form) => Some(Box::new(form)),
+                None => return Ok(vec![AdapterOutput::DialogCancelled { external_id: id }]),
+            }
         };
         self.remember_pending_ui(PendingUiRequest {
             id: id.clone(),
             method: method.to_owned(),
             options,
+            form,
         });
         Ok(vec![AdapterOutput::PermissionRequested { external_id: id }])
     }
+}
+
+/// The dialog as one question, answered under `ANSWER_ID`; `None` when it
+/// cannot be shown exactly.
+fn question(method: &str, value: &Value, options: &[String]) -> Option<UserInputRequest> {
+    let title = value
+        .get("title")
+        .and_then(Value::as_str)
+        .filter(|title| !title.trim().is_empty())?;
+    let mut question = UserInputQuestion::text(
+        RequiredText::new("userInputQuestionId", ANSWER_ID).ok()?,
+        form::display("userInputHeader", "Pi extension")?,
+        form::display("userInputQuestion", title)?,
+    );
+    match method {
+        "input" => {}
+        "editor" => {
+            question.kind = UserInputKind::Multiline;
+            question.initial_text = value
+                .get("prefill")
+                .and_then(Value::as_str)
+                .filter(|text| !text.is_empty())
+                .map(|text| SafeText::new("userInputInitialText", text))
+                .transpose()
+                .ok()?;
+        }
+        "select" if !options.is_empty() => {
+            let options = options
+                .iter()
+                .map(|label| {
+                    Some(UserInputOption {
+                        label: RequiredText::new("userInputOptionLabel", label.as_str()).ok()?,
+                        description: SafeText::new("userInputOptionDescription", "").ok()?,
+                        value: None,
+                    })
+                })
+                .collect::<Option<Vec<_>>>()?;
+            question.options = Some(BoundedVec::new("userInputOptions", options).ok()?);
+        }
+        _ => return None,
+    }
+    Some(UserInputRequest {
+        questions: BoundedVec::new("userInputQuestions", vec![question]).ok()?,
+        auto_resolution_ms: None,
+        url: None,
+    })
 }

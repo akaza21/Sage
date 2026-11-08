@@ -71,6 +71,8 @@ pub(super) struct DenyIntent {
     pub(super) request_id: ExternalId,
     pub(super) command_id: String,
     pub(super) stage: DenyStage,
+    /// A declined question only cancels its dialog, so the Turn goes on.
+    pub(super) releases: bool,
 }
 
 pub(crate) struct PiRuntime {

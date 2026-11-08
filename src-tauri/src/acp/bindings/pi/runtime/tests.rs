@@ -5,6 +5,7 @@ mod config_delivery;
 mod extension_lifecycle;
 mod followups;
 mod pump_contract;
+mod questions;
 mod regressions;
 mod session_facts;
 mod slash_commands;
@@ -1252,7 +1253,7 @@ fn allow_once_on_pi_rejects_an_ambiguous_select_option() {
         .ingest(
             &frame(json!({
                 "type":"extension_ui_request","id":"disallow-1","method":"select",
-                "options":["Disallow","Block"]
+                "title":"Allow tool?","options":["Disallow","Block"]
             })),
             &Mapper,
         )
@@ -1262,7 +1263,8 @@ fn allow_once_on_pi_rejects_an_ambiguous_select_option() {
             request_id: SageServerRequestId::parse("disallow-1").expect("request"),
             decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
         }),
-        Err(AdapterRuntimeError::LaterPermissionMiss)
+        // Without an allow option the select is a question: only an answer resolves it.
+        Err(AdapterRuntimeError::UnsupportedCommand)
     ));
 }
 

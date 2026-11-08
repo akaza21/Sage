@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use serde_json::{Map, Value};
 
-use crate::acp::intent::PermissionOptionKind;
+use crate::acp::intent::{PermissionOptionKind, user_input::UserInputRequest};
 
 use self::fingerprint::response_fingerprint;
 use self::initialization::InitializationIntent;
@@ -129,6 +129,8 @@ pub(crate) struct PendingUiRequest {
     pub id: String,
     pub method: String,
     pub options: Vec<String>,
+    /// An extension question shown on the shared question card.
+    pub form: Option<Box<UserInputRequest>>,
 }
 
 impl PendingUiRequest {
@@ -149,6 +151,9 @@ impl PendingUiRequest {
         }
     }
 }
+
+/// The field an extension question's answer is read from.
+pub(crate) const ANSWER_ID: &str = "answer";
 
 /// The pending dialog of a bridged workspace edit awaiting the user's decision.
 pub(crate) const BRIDGE_WRITE_METHOD: &str = "sage-write";

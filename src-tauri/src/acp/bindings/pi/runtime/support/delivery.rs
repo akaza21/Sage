@@ -130,6 +130,7 @@ impl PiRuntime {
         }
         match (deny.stage, resolution) {
             (DenyStage::Committed, EgressResolution::Queued) => deny.stage = DenyStage::Queued,
+            (DenyStage::Queued, EgressResolution::Written) if deny.releases => self.deny = None,
             (DenyStage::Queued, EgressResolution::Written) => deny.stage = DenyStage::Written,
             (DenyStage::Queued, EgressResolution::Queued)
             | (DenyStage::Written, EgressResolution::Written) => {}

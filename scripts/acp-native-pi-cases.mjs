@@ -258,13 +258,14 @@ function events(state, { update, finish }) {
       }),
       wait("piAbort"),
     );
+  // A select with nothing to choose cannot be shown, so Sage cancels it.
   if (state === "cancelled-dialog")
     steps.push(
       frame("extension_ui_request", {
         id: "fixture-dialog-1",
-        method: "input",
-        title: "Synthetic input",
-        placeholder: "Never submitted",
+        method: "select",
+        title: "Synthetic choice",
+        options: [],
       }),
       wait("piDialogCancelled"),
     );
@@ -455,7 +456,7 @@ export function piBridgeJourneys() {
 /**
  * One Pi 1.5 Turn through every surface the real app should show: thinking,
  * a read tool, a bridge write approval, an extension notice, a session
- * title, a steer that Pi delivers at the next model turn, and usage large
+ * title, an extension question answered on the question card, a steer that Pi delivers at the next model turn, and usage large
  * enough to move the context meter. The child holds the Turn open until
  * Sage sends the steer, and the ended Turn must clear Pi's queue.
  */
@@ -516,6 +517,13 @@ export function piFullTurnJourney() {
         notifyType: "info",
       }),
       frame("session_info_changed", { name: "Synthetic Pi session" }),
+      frame("extension_ui_request", {
+        id: "fixture-question-1",
+        method: "editor",
+        title: "Describe the note",
+        prefill: "A short note",
+      }),
+      wait("piDialogAnswered"),
       first.update("text_delta", " Waiting for a steer."),
       wait("piSteer"),
       frame("queue_update", { steering: ["Synthetic steer."], followUp: [] }),

@@ -152,6 +152,7 @@ impl PiRuntime {
                 id: id.into(),
                 method: BRIDGE_WRITE_METHOD.into(),
                 options: Vec::new(),
+                form: None,
             });
             return self.translate_outputs(
                 vec![AdapterOutput::PermissionRequested {

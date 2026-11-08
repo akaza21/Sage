@@ -1,0 +1,166 @@
+use super::*;
+use crate::acp::{
+    intent::{
+        PermissionOptionKind,
+        user_input::{UserInputAnswers, UserInputKind, UserInputRequest},
+    },
+    runtime::permissions::PermissionDecision,
+};
+
+fn ask(runtime: &mut PiRuntime, dialog: Value) -> UserInputRequest {
+    let batch = runtime.ingest(&frame(dialog), &Mapper).unwrap();
+    let [
+        AdapterEvent::PermissionRequest {
+            payload:
+                NormalizedPayload::PermissionRequest {
+                    user_input: Some(form),
+                    offered_option_kinds: Some(offered),
+                    ..
+                },
+            ..
+        },
+    ] = batch.events()
+    else {
+        panic!("question card, got {:?}", batch.events())
+    };
+    // A question is answered or declined; there is nothing to approve.
+    assert_eq!(offered.as_slice(), [PermissionOptionKind::RejectOnce]);
+    (**form).clone()
+}
+
+fn resolve(runtime: &mut PiRuntime, id: &str, decision: PermissionDecision) -> AdapterEgress {
+    runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse(id).unwrap(),
+            decision,
+        })
+        .unwrap()
+}
+
+fn answers(value: Value) -> PermissionDecision {
+    PermissionDecision::Answer(serde_json::from_value::<UserInputAnswers>(value).unwrap())
+}
+
+#[test]
+fn pi_input_editor_and_select_dialogs_are_answered_on_the_question_card() {
+    let mut runtime = fixture_runtime(80);
+    ready(&mut runtime);
+    running(&mut runtime);
+
+    let form = ask(
+        &mut runtime,
+        json!({"type":"extension_ui_request","id":"q-input","method":"input",
+            "title":"Branch name?","placeholder":"feature/x"}),
+    );
+    let question = &form.questions.as_slice()[0];
+    assert_eq!(
+        (question.question.as_str(), question.kind),
+        ("Branch name?", UserInputKind::Text)
+    );
+    let reply = resolve(
+        &mut runtime,
+        "q-input",
+        answers(json!([{"questionId":"answer","text":"feature/pi"}])),
+    );
+    assert_eq!(
+        deliver(&mut runtime, reply),
+        json!({"type":"extension_ui_response","id":"q-input","value":"feature/pi"})
+    );
+
+    let form = ask(
+        &mut runtime,
+        json!({"type":"extension_ui_request","id":"q-editor","method":"editor",
+            "title":"Commit message","prefill":"Fix the parser"}),
+    );
+    let question = &form.questions.as_slice()[0];
+    assert_eq!(
+        (
+            question.kind,
+            question.initial_text.as_ref().map(|text| text.as_str())
+        ),
+        (UserInputKind::Multiline, Some("Fix the parser"))
+    );
+    let reply = resolve(
+        &mut runtime,
+        "q-editor",
+        answers(json!([{"questionId":"answer","text":"Fix the parser\n\nAnd its tests."}])),
+    );
+    assert_eq!(
+        deliver(&mut runtime, reply)["value"],
+        "Fix the parser\n\nAnd its tests."
+    );
+
+    let form = ask(
+        &mut runtime,
+        json!({"type":"extension_ui_request","id":"q-select","method":"select",
+            "title":"Which target?","options":["debug","release"]}),
+    );
+    let labels: Vec<_> = form.questions.as_slice()[0]
+        .options
+        .as_ref()
+        .unwrap()
+        .as_slice()
+        .iter()
+        .map(|option| option.label.as_str())
+        .collect();
+    assert_eq!(labels, ["debug", "release"]);
+    let reply = resolve(
+        &mut runtime,
+        "q-select",
+        answers(json!([{"questionId":"answer","selectedOption":"release"}])),
+    );
+    assert_eq!(deliver(&mut runtime, reply)["value"], "release");
+}
+
+#[test]
+fn a_declined_question_cancels_only_its_dialog_and_the_turn_goes_on() {
+    let mut runtime = fixture_runtime(81);
+    ready(&mut runtime);
+    running(&mut runtime);
+    for id in ["q-1", "q-2"] {
+        ask(
+            &mut runtime,
+            json!({"type":"extension_ui_request","id":id,"method":"input","title":"Name?"}),
+        );
+        let reply = resolve(&mut runtime, id, PermissionDecision::Deny);
+        runtime.commit_mandatory_egress(reply.token()).unwrap();
+        assert_eq!(
+            deliver(&mut runtime, reply),
+            json!({"type":"extension_ui_response","id":id,"cancelled":true})
+        );
+    }
+    // No abort was sent, and the Turn still streams.
+    runtime
+        .ingest(&frame(json!({"type":"message_start"})), &Mapper)
+        .unwrap();
+    let batch = runtime
+        .ingest(
+            &frame(json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"Still working."}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(
+        batch.events(),
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::Text { .. },
+            ..
+        }]
+    ));
+}
+
+#[test]
+fn a_dialog_sage_cannot_show_is_still_cancelled() {
+    let mut runtime = fixture_runtime(82);
+    ready(&mut runtime);
+    running(&mut runtime);
+    for dialog in [
+        json!({"type":"extension_ui_request","id":"d-1","method":"select","title":"Pick","options":[]}),
+        json!({"type":"extension_ui_request","id":"d-2","method":"input"}),
+    ] {
+        let batch = runtime.ingest(&frame(dialog), &Mapper).unwrap();
+        let [egress] = batch.egress() else {
+            panic!("cancel reply")
+        };
+        assert_eq!(request(egress)["cancelled"], true);
+    }
+}
