@@ -11,6 +11,7 @@ import {
   safeTimestamp,
 } from "./acpDesktopGuards";
 import { admittedImageDataUrl } from "./acpDesktopResponseImage";
+import { safeUserInputRequest } from "./acpDesktopUserInput";
 import {
   MAX_FILE_CHANGES,
   safeFileChange,
@@ -236,15 +237,17 @@ export function safeItem(value: unknown): AcpItem | null {
       ] as const)
         ? payload.source
         : undefined;
-      return !isOneOf(value.toolState, [
-        "pending",
-        "inProgress",
-        "waitingForApproval",
-        "completed",
-        "failed",
-        "declined",
-        "cancelled",
-      ] as const) ||
+      const userInput = safeUserInputRequest(payload.userInput);
+      return userInput === undefined ||
+        !isOneOf(value.toolState, [
+          "pending",
+          "inProgress",
+          "waitingForApproval",
+          "completed",
+          "failed",
+          "declined",
+          "cancelled",
+        ] as const) ||
         !requestId ||
         label === null ||
         summary === null ||
@@ -280,6 +283,7 @@ export function safeItem(value: unknown): AcpItem | null {
                   ? (payload.category as ToolPresentation["kind"])
                   : undefined,
               reason: safeNullableText(payload.reason ?? null, 2048) ?? null,
+              ...(userInput ? { userInput } : {}),
             },
           };
     }

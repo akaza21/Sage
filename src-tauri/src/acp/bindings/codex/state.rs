@@ -12,6 +12,7 @@ mod errors;
 mod goal;
 mod permission_resolution;
 mod permissions;
+pub(in crate::acp::bindings::codex) use permissions::USER_INPUT_METHOD;
 mod provisional;
 mod session;
 mod turn_errors;
@@ -315,7 +316,7 @@ impl CodexAdapter {
             .ok_or(AdapterError::TurnUnavailable)?
             .as_str()
             .to_owned();
-        let scoped = self.scoped_in_turn(ExternalKind::Turn, &id, &id)?;
+        let scoped = self.scoped_turn(&id)?;
         self.accept_turn_terminal(&id, TurnState::Failed)?;
         Ok(scoped)
     }

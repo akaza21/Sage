@@ -49,7 +49,9 @@ impl LiveRuntimePort for Port {
             .map_err(|_| HostError::Intent)?;
         let expected = match decision {
             PermissionDecision::Ask => "asked",
-            PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => "allowPending",
+            PermissionDecision::AllowOnce
+            | PermissionDecision::AllowAlways
+            | PermissionDecision::Answer(_) => "allowPending",
             PermissionDecision::Deny => "declinePending",
         };
         if state != expected {
@@ -201,6 +203,7 @@ pub(crate) fn service_with_pending_requests_and_deny_id(
             request_id,
             external_request_id,
             &crate::acp::intent::NormalizedPayload::PermissionRequest {
+                user_input: None,
                 category: crate::acp::intent::ToolCategory::Other,
                 summary: crate::acp::contract::SafeText::new("summary", "Permission").unwrap(),
                 offered_option_kinds: Some(

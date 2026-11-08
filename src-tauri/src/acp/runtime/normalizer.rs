@@ -111,6 +111,7 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
             context_window: None,
         },
         NormalizerInput::Permission { category, summary } => NormalizedPayload::PermissionRequest {
+            user_input: None,
             category,
             summary: SafeText::new("permissionSummary", summary)?,
             offered_option_kinds: None,

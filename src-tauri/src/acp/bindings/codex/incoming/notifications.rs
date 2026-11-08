@@ -236,9 +236,7 @@ pub(super) fn notification<M: ResourceMapper>(
                 return Err(IngressError::Identity);
             }
             Ok(IncomingEvent::Usage {
-                turn_id: adapter
-                    .scoped_in_turn(ExternalKind::Turn, turn, turn)
-                    .map_err(identity)?,
+                turn_id: adapter.scoped_turn(turn).map_err(identity)?,
                 payload: parse_usage(params)?,
             }
             .into())
@@ -360,9 +358,7 @@ fn turn_completed(
     {
         TerminalUpdate::Apply => {
             adapter.clear_command_items();
-            let id = adapter
-                .scoped_in_turn(ExternalKind::Turn, external, external)
-                .map_err(identity)?;
+            let id = adapter.scoped_turn(external).map_err(identity)?;
             let mut events = Vec::with_capacity(2);
             if let Some(payload) = terminal_error {
                 events.push(IncomingEvent::Error(payload));

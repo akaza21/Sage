@@ -8,9 +8,10 @@
 // statically (eagerly) imported, that lands in the initial closure, or whose
 // chunk is shared with another manifest entry fails closed.
 //
-// A feature's CSS (the stylesheets its exclusive records carry) needs its own
+// A feature's CSS (every stylesheet it loads that only budgeted features
+// reach, so a stylesheet two features share is budgeted by both) needs its own
 // `maxCssGzipBytes` cap, must stay out of the initial CSS, and must not be
-// carried by any record outside the feature, like the TerminalDock rule.
+// carried by any record outside the budgeted features.
 
 // Finite catalog input capacity, independent of the byte budgets below.
 // Agent and Editor features share this catalog, including demand-only tools.
@@ -85,12 +86,12 @@ function staticClosure(manifest, key) {
   return keys;
 }
 
-function filesReachableWithout(manifest, startKey, excludedKey) {
+function filesReachableWithout(manifest, startKey, excludedKeys) {
   const keys = new Set();
   const pending = [startKey];
   while (pending.length > 0) {
     const next = pending.pop();
-    if (keys.has(next) || next === excludedKey) continue;
+    if (keys.has(next) || excludedKeys.has(next)) continue;
     const record = manifest[next];
     if (!record) fail(`manifest import is missing: ${next}`);
     keys.add(next);
@@ -113,6 +114,24 @@ export function measureLazyFeatures({
   gzipFile,
 }) {
   const result = {};
+  // Files reachable without passing through any budgeted feature belong to
+  // the initial closure or to unbudgeted chunks. There is no total CSS cap,
+  // so every other stylesheet a feature loads counts against that feature,
+  // including one it shares with another budgeted feature.
+  const unbudgeted = filesReachableWithout(
+    manifest,
+    entryKey,
+    new Set(features.map(({ entry }) => entry)),
+  );
+  const budgetedKeysFor = (entry) =>
+    [...staticClosure(manifest, entry)].filter(
+      (key) => !unbudgeted.has(manifest[key].file),
+    );
+  const budgetedKeys = new Set(
+    features
+      .filter(({ entry }) => manifest[entry]?.isDynamicEntry)
+      .flatMap(({ entry }) => budgetedKeysFor(entry)),
+  );
   for (const { entry, maxGzipBytes, maxCssGzipBytes } of features) {
     const record = manifest[entry];
     if (
@@ -138,7 +157,11 @@ export function measureLazyFeatures({
       fail(`${entry} lazy chunk is shared with another manifest entry`);
     // Files reachable without this entry are excluded, so neither the
     // initial closure nor another feature's chunk can be counted here.
-    const elsewhere = filesReachableWithout(manifest, entryKey, entry);
+    const elsewhere = filesReachableWithout(
+      manifest,
+      entryKey,
+      new Set([entry]),
+    );
     const ownKeys = [...staticClosure(manifest, entry)].filter(
       (key) =>
         manifest[key].file.endsWith(".js") &&
@@ -149,18 +172,20 @@ export function measureLazyFeatures({
     if (gzipBytes > maxGzipBytes)
       fail(`${entry} lazy gzip ${gzipBytes} exceeds ${maxGzipBytes}`);
     const cssFiles = [
-      ...new Set(ownKeys.flatMap((key) => manifest[key].css ?? [])),
+      ...new Set(
+        budgetedKeysFor(entry).flatMap((key) => manifest[key].css ?? []),
+      ),
     ].sort();
     if (cssFiles.some(isInitialCss))
       fail(`${entry} lazy CSS entered the initial CSS`);
     if (
       Object.entries(manifest).some(
         ([key, record]) =>
-          !ownKeys.includes(key) &&
+          !budgetedKeys.has(key) &&
           (record?.css ?? []).some((css) => cssFiles.includes(css)),
       )
     )
-      fail(`${entry} lazy CSS is shared with another manifest entry`);
+      fail(`${entry} lazy CSS is shared with an unbudgeted manifest entry`);
     if (cssFiles.length > 0 && maxCssGzipBytes === undefined)
       fail(`${entry} must budget its lazy CSS (maxCssGzipBytes)`);
     const cssGzipBytes = cssFiles.reduce(
