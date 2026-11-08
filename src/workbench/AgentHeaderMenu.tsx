@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from "react";
+import { useState, type ReactNode, type RefObject } from "react";
 import { FileDiff } from "../ui/leanIcons";
 import { MenuPopover } from "../ui/MenuPopover";
 import { AgentHeaderMenuContext } from "./AgentToolsProvider";
@@ -7,6 +7,7 @@ import { AgentHeaderMenuContext } from "./AgentToolsProvider";
 export function AgentHeaderMenu({
   children,
   close,
+  focusMoved,
   menuId,
   onChanges,
   open,
@@ -16,6 +17,8 @@ export function AgentHeaderMenu({
 }: {
   children: ReactNode;
   close: () => void;
+  /** True when focus moved on while this body was loading for an open. */
+  focusMoved: () => boolean;
   menuId: string;
   onChanges: () => void;
   open: boolean;
@@ -23,6 +26,9 @@ export function AgentHeaderMenu({
   projectName: string;
   trigger: RefObject<HTMLButtonElement | null>;
 }) {
+  // A body that arrives after focus moved on leaves it there for this open.
+  const [holdFocus, setHoldFocus] = useState(focusMoved);
+  if (!open && holdFocus) setHoldFocus(false);
   return (
     <MenuPopover
       id={menuId}
@@ -31,6 +37,7 @@ export function AgentHeaderMenu({
       ariaLabel="Chat tools"
       className="agent-header-more__menu"
       gap={16}
+      holdFocus={holdFocus}
       initialFocus={openingFocus}
       keepMounted
       onDismiss={close}

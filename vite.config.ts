@@ -55,8 +55,10 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     priority: 2,
     includeDependenciesRecursively: false,
     // The shared menu loads with an Editor's own menus and with an Agent
-    // menu's first open, never with the Agent UI behind that menu.
-    test: /src[\\/]ui[\\/](?:MenuPopover\.tsx|menuPopover(?:Position|DialogFocus)\.ts)$/,
+    // menu's first open, never with the Agent UI behind that menu. A
+    // searchable picker's open list and its rows join it: they load only
+    // where a MenuPopover opens, so one chunk saves a request.
+    test: /src[\\/]ui[\\/](?:(?:MenuPopover|SearchablePickerPopover|PickerOption)\.tsx|menuPopover(?:Position|DialogFocus)\.ts)$/,
   },
   {
     name: "file-kind-icons",

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { whenIdle } from "../../ui/whenIdle";
 
 import {
   closeQuickOpen,
@@ -14,19 +15,8 @@ const loadQuickOpen = () => import("./QuickOpen");
  * Fetches the chunk once the window is idle. The first open then only waits
  * a microtask for the already-loaded module, not for the network or disk.
  */
-const PRELOAD_TIMEOUT_MS = 2000;
-
-function preloadWhenIdle(): () => void {
-  const preload = () => void loadQuickOpen().catch(() => undefined);
-  if (typeof window.requestIdleCallback === "function") {
-    const handle = window.requestIdleCallback(preload, {
-      timeout: PRELOAD_TIMEOUT_MS,
-    });
-    return () => window.cancelIdleCallback(handle);
-  }
-  const timer = setTimeout(preload, PRELOAD_TIMEOUT_MS);
-  return () => clearTimeout(timer);
-}
+const preloadWhenIdle = () =>
+  whenIdle(() => void loadQuickOpen().catch(() => undefined));
 
 /** Mounts Quick Open while it is open and keeps its recent Files. */
 export function QuickOpenHost() {

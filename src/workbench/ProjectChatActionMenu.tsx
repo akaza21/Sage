@@ -1,8 +1,20 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import type { AgentSessionChrome } from "../app/agentChatOwner";
 import { lazyParts } from "../features/chat/lazyParts";
+import { useColdOpen } from "../ui/coldOpen";
 import { Folder, MoreHorizontal } from "../ui/leanIcons";
+import type { MenuDismissReason } from "../ui/MenuPopover";
+import { ResourceStateNotice } from "../ui/ResourceStateNotice";
+import { whenIdle } from "../ui/whenIdle";
 import { agentRailHoverAge } from "./agentRailInteractions";
 import type { AgentRailTrailingState } from "./agentRailStatusView";
 import type * as ActionsChunk from "./ProjectChatActionPopover";
@@ -10,10 +22,12 @@ import {
   AgentHeaderMenuPart as MenuPart,
   agentHeaderMenuReady,
   preloadAgentHeaderMenu,
+  subscribeAgentHeaderMenu,
 } from "./agentTaskHeaderLazy";
 const ActionsPart = lazyParts<typeof ActionsChunk>(
   () => import("./ProjectChatActionPopover"),
 );
+const preloadMenu = () => void preloadAgentHeaderMenu().catch(() => undefined);
 export interface ProjectChatMenuProps {
   chatId: string;
   chatTitle: string;
@@ -110,32 +124,52 @@ export function AgentHeaderMore({
   // without remounting the trigger, so focus can still return to it.
   const [openScope, setOpenScope] = useState<string | null>(null);
   const open = openScope === scope;
-  const setOpen = (next: boolean) => setOpenScope(next ? scope : null);
   const [openingFocus, setOpeningFocus] = useState<"first" | "last">("first");
-  const close = () => {
-    setOpen(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  if (open && loadFailed) setLoadFailed(false);
+  const close = useCallback(() => {
+    setOpenScope(null);
     onDismiss?.();
-  };
-  if (disabled && open) setOpen(false);
+  }, [onDismiss]);
+  if (disabled && open) setOpenScope(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menuId = useId();
   // The menu body loads once the window is idle, or on the trigger's first
-  // hover, focus or press, and then stays mounted like any kept menu.
-  const [armed, setArmed] = useState(agentHeaderMenuReady);
-  if (open && !armed) setArmed(true);
-  const arm = () => {
-    void preloadAgentHeaderMenu().catch(() => undefined);
-    setArmed(true);
-  };
+  // hover, focus or press, and then stays mounted like any kept menu. It
+  // mounts only once loaded; an open before then waits for it here.
+  const loaded = useSyncExternalStore(
+    subscribeAgentHeaderMenu,
+    agentHeaderMenuReady,
+  );
+  useEffect(
+    () => (agentHeaderMenuReady() ? undefined : whenIdle(preloadMenu)),
+    [],
+  );
   useEffect(() => {
-    if (agentHeaderMenuReady()) return;
-    const idle = window.requestIdleCallback ?? window.setTimeout;
-    const handle = idle(() => {
-      void preloadAgentHeaderMenu().catch(() => undefined);
-      setArmed(true);
+    if (!open || loaded) return;
+    let live = true;
+    void preloadAgentHeaderMenu().catch(() => {
+      if (!live) return;
+      setLoadFailed(true);
+      close();
     });
-    return () => (window.cancelIdleCallback ?? window.clearTimeout)(handle);
-  }, []);
+    return () => {
+      live = false;
+    };
+  }, [close, loaded, open]);
+  const dismissCold = useCallback(
+    (reason: MenuDismissReason) => {
+      close();
+      if (reason === "escape") trigger.current?.focus();
+    },
+    [close],
+  );
+  const coldOpen = useColdOpen({
+    dismiss: dismissCold,
+    loaded,
+    open,
+    triggerRef: trigger,
+  });
   return (
     <div className="agent-header-more">
       <button
@@ -143,32 +177,41 @@ export function AgentHeaderMore({
         className="project-chat__actions"
         type="button"
         aria-label={`Chat actions for ${title} task`}
-        aria-controls={menuId}
+        aria-controls={loaded ? menuId : undefined}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
-        onPointerEnter={arm}
-        onPointerDown={arm}
-        onFocus={arm}
+        onPointerEnter={preloadMenu}
+        onPointerDown={preloadMenu}
+        onFocus={preloadMenu}
         onClick={() => {
           setOpeningFocus("first");
           if (open) close();
-          else setOpen(true);
+          else setOpenScope(scope);
         }}
         onKeyDown={(event) => {
+          if (coldOpen.onKeyDown(event)) return;
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
             setOpeningFocus(event.key === "ArrowUp" ? "last" : "first");
-            setOpen(true);
+            setOpenScope(scope);
           }
         }}
       >
         <MoreHorizontal size={16} aria-hidden="true" />
       </button>
-      {armed ? (
+      {loadFailed ? (
+        <ResourceStateNotice
+          state="error"
+          title="Chat tools could not be loaded."
+          detail="Open the menu again to retry."
+        />
+      ) : null}
+      {loaded ? (
         <MenuPart
           part="AgentHeaderMenu"
           close={close}
+          focusMoved={coldOpen.focusMoved}
           menuId={menuId}
           onChanges={onChanges}
           open={open}

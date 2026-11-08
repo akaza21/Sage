@@ -5,11 +5,13 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentProps,
   type ReactNode,
 } from "react";
 import type { HarnessBrand } from "../domain/harness";
 import "../styles/searchable-picker.css";
+import { useColdOpen } from "./coldOpen";
 import { ChevronDown } from "./leanIcons";
 import type { MenuDismissReason } from "./MenuPopover";
 import type { MenuPlacement } from "./menuPopoverPosition";
@@ -18,13 +20,11 @@ import { ResourceStateNotice } from "./ResourceStateNotice";
 import {
   loadedSearchablePickerPopover,
   preloadSearchablePicker,
+  SEARCHABLE_PICKER_MAX_CANDIDATES,
+  subscribeSearchablePicker,
 } from "./searchablePickerLoad";
 import type * as PopoverChunk from "./SearchablePickerPopover";
-
-export const SEARCHABLE_PICKER_MAX_CANDIDATES = 500;
-export const SEARCHABLE_PICKER_MAX_RENDERED = 200;
-export const SEARCHABLE_PICKER_DEBOUNCE_MS = 50;
-export const SEARCHABLE_PICKER_PAGE_SIZE = 10;
+import { whenIdle } from "./whenIdle";
 
 export interface SearchablePickerOption {
   id: string;
@@ -47,32 +47,35 @@ const renderPopover = (
   props: PopoverProps,
 ) => <Loaded {...props} />;
 
-/** Renders the open list once its chunk has arrived. */
+/** Renders the open list; its picker mounts it once the chunk is in. */
 function PopoverSlot(props: PopoverProps) {
   const Loaded = loadedSearchablePickerPopover();
   return Loaded ? renderPopover(Loaded, props) : null;
 }
 
-/** Re-renders once the list has loaded, if it is wanted before then. */
-function usePopoverLoad(wanted: boolean) {
-  const [, setLoaded] = useState(0);
+/**
+ * The open list once its chunk has arrived, whichever picker asked for it.
+ * It is fetched when the window is idle; a picker opened before then asks
+ * again, and closes if that fails so the next open retries.
+ */
+function usePopoverLoad(wanted: boolean, onFailure: () => void) {
+  const Loaded = useSyncExternalStore(
+    subscribeSearchablePicker,
+    loadedSearchablePickerPopover,
+  );
+  useEffect(
+    () => (loadedSearchablePickerPopover() ? undefined : whenIdle(preload)),
+    [],
+  );
   useEffect(() => {
-    if (loadedSearchablePickerPopover()) return;
-    const idle = window.requestIdleCallback ?? window.setTimeout;
-    const handle = idle(preload);
-    return () => (window.cancelIdleCallback ?? window.clearTimeout)(handle);
-  }, []);
-  useEffect(() => {
-    if (!wanted || loadedSearchablePickerPopover()) return;
+    if (!wanted || Loaded) return;
     let live = true;
-    void preloadSearchablePicker().then(
-      () => live && setLoaded((count) => count + 1),
-      () => undefined,
-    );
+    void preloadSearchablePicker().catch(() => live && onFailure());
     return () => {
       live = false;
     };
-  }, [wanted]);
+  }, [Loaded, onFailure, wanted]);
+  return Loaded;
 }
 
 export function SearchablePicker({
@@ -131,10 +134,13 @@ export function SearchablePicker({
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
   const expanded = open && !disabled;
-  // Once opened, the list stays mounted so its query survives a close.
+  // Once opened, the list stays mounted; the typed query lives here, so it
+  // also outlives a close and the too-many-candidates notice.
   const [opened, setOpened] = useState(expanded);
   if (expanded && !opened) setOpened(true);
-  usePopoverLoad(opened);
+  const [draft, setDraft] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
+  if (expanded && loadFailed) setLoadFailed(false);
   const invalid = candidates.length > SEARCHABLE_PICKER_MAX_CANDIDATES;
   const selected = invalid
     ? undefined
@@ -149,6 +155,20 @@ export function SearchablePicker({
     },
     [searchable, setOpen],
   );
+  const failLoad = useCallback(() => {
+    setLoadFailed(true);
+    close();
+  }, [close]);
+  const Loaded = usePopoverLoad(expanded, failLoad);
+  const coldOpen = useColdOpen({
+    dismiss: close,
+    loaded: Boolean(Loaded),
+    onType: searchable
+      ? (text) => setDraft((current) => current + text)
+      : undefined,
+    open: expanded,
+    triggerRef,
+  });
   useLayoutEffect(() => {
     if (disabled || invalid) queueMicrotask(() => close());
   }, [close, disabled, invalid]);
@@ -176,7 +196,7 @@ export function SearchablePicker({
         title={stateTitle ?? selectedLabel}
         aria-expanded={expanded}
         aria-haspopup="listbox"
-        aria-controls={`${id}-listbox`}
+        aria-controls={Loaded && expanded ? `${id}-listbox` : undefined}
         role={triggerRole}
         data-selected-id={selectedId ?? ""}
         disabled={disabled}
@@ -184,8 +204,9 @@ export function SearchablePicker({
         onPointerEnter={preload}
         onPointerDown={preload}
         onFocus={preload}
+        onKeyUp={coldOpen.onKeyUp}
         onKeyDown={(event) => {
-          if (searchable || !open) return;
+          if (coldOpen.onKeyDown(event) || searchable || !open) return;
           if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
@@ -207,13 +228,22 @@ export function SearchablePicker({
           aria-hidden="true"
         />
       </button>
-      {opened ? (
+      {loadFailed ? (
+        <ResourceStateNotice
+          state="error"
+          title={`${ariaLabel} could not be loaded.`}
+          detail="Open it again to retry."
+        />
+      ) : null}
+      {opened && Loaded ? (
         <PopoverSlot
           ariaLabel={ariaLabel}
           candidates={candidates}
           close={close}
           disabled={disabled}
+          draft={draft}
           expanded={expanded}
+          focusMoved={coldOpen.focusMoved}
           footer={footer}
           id={id}
           onOptionRender={onOptionRender}
@@ -227,6 +257,7 @@ export function SearchablePicker({
           sectionLabel={sectionLabel}
           selected={selected}
           selectedId={selectedId}
+          setDraft={setDraft}
           setOpen={setOpen}
           state={state}
           stateDetail={stateDetail}

@@ -13,27 +13,30 @@ import { PickerOption } from "./PickerOption";
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
 import type { MenuPlacement } from "./menuPopoverPosition";
 import { ResourceStateNotice } from "./ResourceStateNotice";
+import type { SearchablePickerOption } from "./SearchablePicker";
 import {
   SEARCHABLE_PICKER_DEBOUNCE_MS,
   SEARCHABLE_PICKER_MAX_RENDERED,
   SEARCHABLE_PICKER_PAGE_SIZE,
-  type SearchablePickerOption,
-} from "./SearchablePicker";
-import { searchablePickerOptionId as optionId } from "./searchablePickerLoad";
+  searchablePickerOptionId as optionId,
+} from "./searchablePickerLoad";
 
 const EMPTY_CANDIDATES: readonly SearchablePickerOption[] = [];
 
 /**
  * The open list of a SearchablePicker: its search field, rows and keyboard
  * handling. It loads on the first open (preloaded before) and then stays
- * mounted, so the typed query outlives a close as it always has.
+ * mounted. The picker keeps the typed query (`draft`), including what was
+ * typed on the trigger before this list arrived.
  */
 export function SearchablePickerPopover({
   ariaLabel,
   candidates,
   close,
   disabled,
+  draft,
   expanded,
+  focusMoved,
   footer,
   id,
   onOptionRender,
@@ -47,6 +50,7 @@ export function SearchablePickerPopover({
   sectionLabel,
   selected,
   selectedId,
+  setDraft,
   setOpen,
   state,
   stateDetail,
@@ -57,7 +61,10 @@ export function SearchablePickerPopover({
   candidates: readonly SearchablePickerOption[];
   close: (reason?: MenuDismissReason) => void;
   disabled: boolean;
+  draft: string;
   expanded: boolean;
+  /** True when focus moved on while this list was loading for an open. */
+  focusMoved: () => boolean;
   footer?: string;
   id: string;
   onOptionRender?: (id: string) => void;
@@ -71,6 +78,7 @@ export function SearchablePickerPopover({
   sectionLabel?: string;
   selected: SearchablePickerOption | undefined;
   selectedId: string | null;
+  setDraft: (draft: string) => void;
   setOpen: (open: boolean) => void;
   state?: "error" | "idle" | "loading";
   stateDetail?: string;
@@ -78,8 +86,10 @@ export function SearchablePickerPopover({
   triggerRef: RefObject<HTMLButtonElement | null>;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [draft, setDraft] = useState("");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(draft);
+  // A list that arrives after focus moved on leaves it there for this open.
+  const [holdFocus, setHoldFocus] = useState(focusMoved);
+  if (!open && holdFocus) setHoldFocus(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   // Every close clears the active row, whichever side closed the list.
   if (!open && activeId !== null) setActiveId(null);
@@ -111,9 +121,9 @@ export function SearchablePickerPopover({
   }, [disabled, draft, open]);
 
   useLayoutEffect(() => {
-    if (!open || disabled || !searchable) return;
+    if (!open || disabled || !searchable || holdFocus) return;
     inputRef.current?.focus();
-  }, [disabled, open, searchable]);
+  }, [disabled, holdFocus, open, searchable]);
   useLayoutEffect(() => {
     if (!active) return;
     triggerRef.current?.ownerDocument
@@ -199,6 +209,7 @@ export function SearchablePickerPopover({
         .filter(Boolean)
         .join(" ")}
       focusStrategy={searchable ? "none" : "roving"}
+      holdFocus={holdFocus}
       focusKey={
         searchable
           ? undefined

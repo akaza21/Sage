@@ -6,11 +6,15 @@ import {
   within,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { decodeSessionConfig } from "../../domain/acpSessionConfig";
 import { ChatHarnessControls } from "./ChatHarnessControls";
+import { preloadSearchablePicker } from "../../ui/searchablePickerLoad";
+
+// The picker list loads when the window first idles.
+beforeAll(() => preloadSearchablePicker());
 
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
