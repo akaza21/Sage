@@ -217,6 +217,12 @@ pub(crate) async fn queue_acp_session_config_choice(
         QueuedChoice::Mode { mode_id } => ConfigMutation::Mode(mode_id),
         QueuedChoice::Option { config_id, value } => ConfigMutation::Option { config_id, value },
     };
+    // A queued choice reaches the harness on resume, so a governed binding's
+    // mode stays on the access path here too.
+    let binding_id =
+        session_routes::durable_binding_id(&state, &request.session_id).map_err(store_error)?;
+    let governed = governs_session_modes(state.acp.binding_registry(), binding_id.as_str());
+    refuse_governed_mode_change(governed, None, &choice)?;
     state
         .acp
         .queue_session_config_choice(&request.session_id, runtime.as_ref(), &choice)
