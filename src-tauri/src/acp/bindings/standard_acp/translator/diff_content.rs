@@ -95,11 +95,12 @@ impl StandardAcpTranslator {
         } else {
             resources.map_absolute(path)
         };
-        let (additions, deletions) = line_change_counts(old_text, new_text);
+        // Unknown when the pair is too different to count within the bound.
+        let counts = line_change_counts(old_text, new_text);
         let facts = DiffFacts {
             native_path: path.to_owned(),
-            additions: Some(additions),
-            deletions: Some(deletions),
+            additions: counts.map(|(additions, _)| additions),
+            deletions: counts.map(|(_, deletions)| deletions),
             operation,
             unavailable: mapped.as_ref().err().copied(),
         };

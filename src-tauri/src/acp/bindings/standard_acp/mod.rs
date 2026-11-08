@@ -24,6 +24,8 @@ mod permission_summary_tests;
 #[cfg(all(test, windows))]
 mod real_binary_tests;
 #[cfg(test)]
+mod render_contract_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tool_input_tests;

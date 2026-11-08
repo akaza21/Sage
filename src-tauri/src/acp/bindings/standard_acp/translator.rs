@@ -94,7 +94,8 @@ pub(crate) struct StandardAcpTranslator {
     tool_categories: BTreeMap<String, ToolCategory>,
     tool_labels: BTreeMap<String, SafeText<512>>,
     tool_inputs: BTreeMap<String, SafeText<65536>>,
-    tool_exit_codes: BTreeMap<String, i32>,
+    command_outcomes: BTreeMap<String, tool_execution::CommandOutcome>,
+    command_tail_bytes: usize,
     diff_records: BTreeMap<String, diff_records::DiffRecord>,
     command_snapshots: BTreeMap<
         String,
@@ -145,7 +146,8 @@ impl StandardAcpTranslator {
             tool_categories: BTreeMap::new(),
             tool_labels: BTreeMap::new(),
             tool_inputs: BTreeMap::new(),
-            tool_exit_codes: BTreeMap::new(),
+            command_outcomes: BTreeMap::new(),
+            command_tail_bytes: 0,
             diff_records: BTreeMap::new(),
             command_snapshots: BTreeMap::new(),
             command_snapshot_bytes: 0,
@@ -234,13 +236,16 @@ impl StandardAcpTranslator {
         let kind = string(update, "sessionUpdate")?;
         let mut events = match SessionUpdateKind::parse(kind) {
             Some(SessionUpdateKind::AgentMessageChunk) => {
+                // The thought closes only once the answer chunk is admitted.
+                let answer = self.content_event(update, false)?;
                 let mut events = self.close_thought_block()?;
-                events.push(self.content_event(update, false)?);
+                events.push(answer);
                 events
             }
             Some(SessionUpdateKind::AgentThoughtChunk) => vec![self.content_event(update, true)?],
             Some(SessionUpdateKind::Plan) => {
                 let external_key = self.external_key(update, "plan")?;
+                self.admit_open_item(external_key.as_str())?;
                 vec![plan_event(update, external_key)?]
             }
             Some(SessionUpdateKind::ToolCall) => self.tool_call(update, resources)?,
@@ -391,6 +396,7 @@ impl StandardAcpTranslator {
             .len()
             .saturating_add(self.tools.len())
             .saturating_add(self.image_keys.len())
+            .saturating_add(self.open_plan_count())
     }
 
     fn clear_turn_items(&mut self) {
@@ -398,7 +404,8 @@ impl StandardAcpTranslator {
         self.tool_categories.clear();
         self.tool_labels.clear();
         self.tool_inputs.clear();
-        self.tool_exit_codes.clear();
+        self.command_outcomes.clear();
+        self.command_tail_bytes = 0;
         self.diff_records.clear();
         self.settled_reports.clear();
         self.carry.clear();

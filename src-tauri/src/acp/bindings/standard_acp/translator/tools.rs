@@ -16,7 +16,7 @@ use super::decode::{
     transition_tool,
 };
 use super::diff_records::{DiffObservation, FrameState};
-use super::tool_input::{command_exit_code, command_input_patch, web_search_query};
+use super::tool_input::{command_input_patch, web_search_query};
 use super::tool_snapshots::{
     CommandPatch, command_update_payload, content_update_payload, path_locations,
 };
@@ -90,20 +90,31 @@ impl StandardAcpTranslator {
             self.tool_inputs
                 .insert(id.as_str().to_owned(), summary.clone());
         }
-        self.record_exit_code(id.as_str(), category, update);
         let label = self.resolve_tool_label(id.as_str(), update, category)?;
         let frame = FrameState {
             settling: state.is_terminal(),
             late: false,
         };
         let mut outcome = self.content_events(&id, update, resources, frame)?;
-        let label = file_action_label(update, category, &locations, &outcome.observed, resources)?
-            .unwrap_or(label);
-        self.tool_labels
-            .insert(id.as_str().to_owned(), label.clone());
+        // Only a stated label persists; a fallback is derived again each
+        // frame so a command line reported later can replace it.
+        let label =
+            match file_action_label(update, category, &locations, &outcome.observed, resources)? {
+                Some(file) => {
+                    self.tool_labels
+                        .insert(id.as_str().to_owned(), file.clone());
+                    file
+                }
+                None => label,
+            };
         self.record_diffs(id.as_str(), std::mem::take(&mut outcome.observed));
-        let execution =
-            self.tool_execution(id.as_str(), category, outcome.terminal_output.as_deref())?;
+        self.record_command_outcome(
+            id.as_str(),
+            category,
+            update,
+            outcome.terminal_output.as_deref(),
+        )?;
+        let execution = self.tool_execution(id.as_str(), category)?;
         let mut events = Vec::with_capacity(outcome.events.len().saturating_add(1));
         events.push(AdapterEvent::Item {
             external_key: id.clone(),
@@ -154,6 +165,7 @@ impl StandardAcpTranslator {
         let input_changed = input_summary
             .as_ref()
             .is_some_and(|input| self.tool_inputs.get(id.as_str()) != input.as_ref());
+        let exit_reported = self.reports_new_exit_code(id.as_str(), category, update);
         let frame = FrameState {
             settling: next.is_terminal(),
             late: current.is_terminal(),
@@ -192,6 +204,7 @@ impl StandardAcpTranslator {
             }
             let mutating = !patch.retains_output(&self.command_snapshot(id.as_str()))
                 || input_changed
+                || exit_reported
                 || protocol_locations.is_some()
                 || outcome.terminal_output.is_some()
                 || update.get("title").is_some();
@@ -210,6 +223,7 @@ impl StandardAcpTranslator {
         }
         if next == current
             && !input_changed
+            && !exit_reported
             && patch.retains_output(&self.command_snapshot(id.as_str()))
             && protocol_locations.is_none()
             && outcome.events.is_empty()
@@ -229,9 +243,13 @@ impl StandardAcpTranslator {
         if let Some(input) = input_summary {
             self.set_command_input(id.as_str(), input);
         }
-        self.record_exit_code(id.as_str(), category, update);
-        let execution =
-            self.tool_execution(id.as_str(), category, outcome.terminal_output.as_deref())?;
+        self.record_command_outcome(
+            id.as_str(),
+            category,
+            update,
+            outcome.terminal_output.as_deref(),
+        )?;
+        let execution = self.tool_execution(id.as_str(), category)?;
         let label = match file_label {
             Some(label) => {
                 self.tool_labels
@@ -331,14 +349,6 @@ fn file_action_label(
 }
 
 impl StandardAcpTranslator {
-    fn record_exit_code(&mut self, id: &str, category: ToolCategory, update: &Map<String, Value>) {
-        if category == ToolCategory::Execute
-            && let Some(code) = command_exit_code(update)
-        {
-            self.tool_exit_codes.insert(id.to_owned(), code);
-        }
-    }
-
     fn resolve_tool_label(
         &mut self,
         id: &str,
@@ -354,10 +364,19 @@ impl StandardAcpTranslator {
             self.tool_labels.insert(id.to_owned(), label.clone());
             return Ok(label);
         }
+        self.stated_or_fallback_label(id, category)
+    }
+
+    /// The label the harness stated, else the command line of an untitled
+    /// command, else the category's plain name. Fallbacks are never stored.
+    pub(super) fn stated_or_fallback_label(
+        &self,
+        id: &str,
+        category: ToolCategory,
+    ) -> Result<SafeText<512>, TranslationError> {
         if let Some(label) = self.tool_labels.get(id) {
             return Ok(label.clone());
         }
-        // An untitled command reads as its command line, never a stand-in.
         if category == ToolCategory::Execute
             && let Some(command) = self.tool_inputs.get(id)
             && let Ok(label) = normalized_label_text::<512>("toolLabel", command.as_str())

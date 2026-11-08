@@ -3,14 +3,18 @@
 //! side has is a deletion and a line only the new side has is an addition.
 //! Shared by every binding that receives whole-file sides instead of a patch.
 
-/// Above this many line comparisons the differing middle of the pair is
-/// counted as wholly replaced instead of searched for kept lines, so an
-/// oversized side costs bounded work.
-const MAX_COMPARISONS: usize = 1_000_000;
+/// Work bound for the shortest-edit search (Myers, O((N+M)·D)). A small edit
+/// to a large file stays cheap; a pair too different to settle within it has
+/// unknown counts rather than an estimate.
+const MAX_SEARCH_STEPS: usize = 1_000_000;
+/// Edit depth past which the step bound is always exceeded anyway; it sizes
+/// the per-diagonal row.
+const MAX_EDIT_DEPTH: usize = 2_048;
 
-/// Returns `(additions, deletions)`. A changed trailing newline changes the
+/// Returns `(additions, deletions)`, or `None` when the bound is reached
+/// before the shortest edit is known. A changed trailing newline changes the
 /// last line, as it does in a unified diff.
-pub(crate) fn line_change_counts(old_text: &str, new_text: &str) -> (u64, u64) {
+pub(crate) fn line_change_counts(old_text: &str, new_text: &str) -> Option<(u64, u64)> {
     let old: Vec<&str> = old_text.split_inclusive('\n').collect();
     let new: Vec<&str> = new_text.split_inclusive('\n').collect();
     let prefix = old.iter().zip(&new).take_while(|(a, b)| a == b).count();
@@ -22,28 +26,52 @@ pub(crate) fn line_change_counts(old_text: &str, new_text: &str) -> (u64, u64) {
         .take_while(|(a, b)| a == b)
         .count();
     let (old, new) = (&old[..old.len() - suffix], &new[..new.len() - suffix]);
-    let kept = kept_lines(old, new);
-    ((new.len() - kept) as u64, (old.len() - kept) as u64)
+    let distance = edit_distance(old, new)?;
+    // distance = additions + deletions and additions - deletions = M - N.
+    let additions = (distance + new.len() - old.len()) / 2;
+    Some((additions as u64, (distance - additions) as u64))
 }
 
-/// Longest common subsequence length over two rolling rows.
-fn kept_lines(old: &[&str], new: &[&str]) -> usize {
-    if old.is_empty() || new.is_empty() || old.len().saturating_mul(new.len()) > MAX_COMPARISONS {
-        return 0;
+/// Myers' greedy shortest edit script length, keeping only the furthest
+/// reaching path per diagonal.
+fn edit_distance(old: &[&str], new: &[&str]) -> Option<usize> {
+    let (n, m) = (old.len(), new.len());
+    if n == 0 || m == 0 {
+        return Some(n + m);
     }
-    let mut previous = vec![0_usize; new.len() + 1];
-    let mut current = vec![0_usize; new.len() + 1];
-    for line in old {
-        for (index, other) in new.iter().enumerate() {
-            current[index + 1] = if line == other {
-                previous[index] + 1
+    let max = (n + m).min(MAX_EDIT_DEPTH);
+    let offset = max + 1;
+    let mut furthest = vec![0_usize; 2 * max + 3];
+    let mut steps = 0_usize;
+    for depth in 0..=max {
+        for diagonal in (0..=2 * depth).step_by(2) {
+            // k = diagonal - depth, stored at index k + offset.
+            let index = offset + diagonal - depth;
+            let down = diagonal == 0
+                || (diagonal != 2 * depth && furthest[index - 1] < furthest[index + 1]);
+            let mut x = if down {
+                furthest[index + 1]
             } else {
-                previous[index + 1].max(current[index])
+                furthest[index - 1] + 1
             };
+            // y = x - k, never negative on a reachable diagonal.
+            let mut y = (x + depth).checked_sub(diagonal)?;
+            while x < n && y < m && old[x] == new[y] {
+                x += 1;
+                y += 1;
+                steps += 1;
+            }
+            steps += 1;
+            if steps > MAX_SEARCH_STEPS {
+                return None;
+            }
+            furthest[index] = x;
+            if x >= n && y >= m {
+                return Some(depth);
+            }
         }
-        std::mem::swap(&mut previous, &mut current);
     }
-    previous[new.len()]
+    None
 }
 
 #[cfg(test)]
@@ -57,43 +85,52 @@ mod tests {
                 "pub fn answer() -> u32 {\n    41\n}\n",
                 "pub fn answer() -> u32 {\n    42\n}\n"
             ),
-            (1, 1)
+            Some((1, 1))
         );
     }
 
     #[test]
     fn creation_and_deletion_count_every_line_on_their_side() {
-        assert_eq!(line_change_counts("", "a\nb\n"), (2, 0));
-        assert_eq!(line_change_counts("a\nb\nc", ""), (0, 3));
-        assert_eq!(line_change_counts("", ""), (0, 0));
+        assert_eq!(line_change_counts("", "a\nb\n"), Some((2, 0)));
+        assert_eq!(line_change_counts("a\nb\nc", ""), Some((0, 3)));
+        assert_eq!(line_change_counts("", ""), Some((0, 0)));
     }
 
     #[test]
     fn kept_lines_between_changes_are_not_counted() {
         assert_eq!(
             line_change_counts("a\nb\nc\nd\ne\n", "a\nx\nc\nd\ny\nz\ne\n"),
-            (3, 1)
+            Some((3, 1))
         );
-        assert_eq!(line_change_counts("a\nb\n", "b\na\n"), (1, 1));
+        assert_eq!(line_change_counts("a\nb\n", "b\na\n"), Some((1, 1)));
+        assert_eq!(line_change_counts("a\nb\nc\n", "c\nb\na\n"), Some((2, 2)));
     }
 
     #[test]
     fn a_dropped_trailing_newline_changes_the_last_line() {
-        assert_eq!(line_change_counts("a\nb\n", "a\nb"), (1, 1));
+        assert_eq!(line_change_counts("a\nb\n", "a\nb"), Some((1, 1)));
     }
 
     #[test]
-    fn an_oversized_middle_counts_as_replaced_instead_of_searching() {
-        let old: String = (0..1_001).map(|line| format!("old {line}\n")).collect();
-        let new: String = (0..1_001)
+    fn a_large_file_edited_at_both_ends_counts_only_the_edited_lines() {
+        let body: String = (0..999).map(|line| format!("kept {line}\n")).collect();
+        let old = format!("first\n{body}last\n");
+        let new = format!("FIRST\n{body}LAST\n");
+        assert_eq!(line_change_counts(&old, &new), Some((2, 2)));
+        let alternating: String = (0..1_001)
             .map(|line| format!("{} {line}\n", if line % 2 == 0 { "old" } else { "new" }))
             .collect();
-        let prefixed_old = format!("x\n{old}");
-        let prefixed_new = format!("y\n{new}");
+        let old_side: String = (0..1_001).map(|line| format!("old {line}\n")).collect();
         assert_eq!(
-            line_change_counts(&prefixed_old, &prefixed_new),
-            (1_001, 1_001)
+            line_change_counts(&old_side, &alternating),
+            Some((500, 500))
         );
-        assert_eq!(line_change_counts(&old, &new), (500, 500));
+    }
+
+    #[test]
+    fn a_pair_too_different_to_settle_within_the_bound_has_unknown_counts() {
+        let old: String = (0..2_000).map(|line| format!("old {line}\n")).collect();
+        let new: String = (0..2_000).map(|line| format!("new {line}\n")).collect();
+        assert_eq!(line_change_counts(&old, &new), None);
     }
 }

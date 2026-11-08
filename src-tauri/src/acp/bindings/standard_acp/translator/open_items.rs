@@ -4,7 +4,7 @@
 //! output. A cancelled or errored prompt leaves them open for the store's turn
 //! sweep, which marks unfinished output as cancelled.
 
-use crate::acp::{intent::NormalizedPayload, lifecycle::ItemLifecycle};
+use crate::acp::{intent::NormalizedPayload, lifecycle::ItemLifecycle, limits::LIMITS};
 
 use super::decode::turn_scoped_key;
 use super::{AdapterEvent, MAX_EVENTS_PER_FRAME, StandardAcpTranslator, TranslationError};
@@ -21,6 +21,25 @@ impl StandardAcpTranslator {
             0 => "thought".to_owned(),
             block => format!("thought-{block}"),
         }
+    }
+
+    /// A plan item counts toward the turn's item cap like text and tools; a
+    /// new plan id past the cap is refused before it is remembered.
+    pub(super) fn admit_open_item(&self, key: &str) -> Result<(), TranslationError> {
+        if !self.open_items.contains_key(key)
+            && self.tracked_item_count() >= LIMITS.wire.items_per_turn as usize
+        {
+            return Err(TranslationError::ItemLimit);
+        }
+        Ok(())
+    }
+
+    /// Plans are the only open items not already counted as text snapshots.
+    pub(super) fn open_plan_count(&self) -> usize {
+        self.open_items
+            .values()
+            .filter(|(_, payload)| matches!(payload, NormalizedPayload::PlanEntries { .. }))
+            .count()
     }
 
     /// Remembers the latest snapshot of an item ACP will not close.

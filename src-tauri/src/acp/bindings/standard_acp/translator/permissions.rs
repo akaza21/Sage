@@ -154,7 +154,7 @@ impl StandardAcpTranslator {
         label: SafeText<512>,
     ) -> Result<AdapterEvent, TranslationError> {
         let (output_summary, locations) = self.command_snapshot(tool_call_id);
-        let execution = self.tool_execution(tool_call_id, category, None)?;
+        let execution = self.tool_execution(tool_call_id, category)?;
         Ok(AdapterEvent::Item {
             external_key: RequiredText::new("externalItemId", tool_call_id)?,
             lifecycle: ItemLifecycle::Streaming,
@@ -207,11 +207,7 @@ impl StandardAcpTranslator {
         tool_call_id: &str,
         category: ToolCategory,
     ) -> Result<SafeText<512>, TranslationError> {
-        match self.tool_labels.get(tool_call_id) {
-            Some(label) => Ok(label.clone()),
-            None => SafeText::new("toolLabel", category_label(self.profile, category))
-                .map_err(Into::into),
-        }
+        self.stated_or_fallback_label(tool_call_id, category)
     }
 
     fn generic_permission_label(&self, label: &str) -> bool {
@@ -269,7 +265,7 @@ impl StandardAcpTranslator {
             .unwrap_or(ToolCategory::Other);
         let (_, locations) = self.command_snapshot(tool_call_id);
         Ok(NormalizedPayload::ToolCall {
-            execution: self.tool_execution(tool_call_id, category, None)?,
+            execution: self.tool_execution(tool_call_id, category)?,
             category,
             label: self.permission_card_label(tool_call_id, category)?,
             input_summary: self.tool_inputs.get(tool_call_id).cloned(),
