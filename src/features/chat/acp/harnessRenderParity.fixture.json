@@ -1,0 +1,647 @@
+{
+  "scenarios": {
+    "thinkingThenLinkedText": {
+      "title": "Thinking, then an answer with a markdown link",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "thoughtSummary",
+            "payload": {
+              "summary": "Checking the guide."
+            }
+          },
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "text",
+            "payload": {
+              "role": "assistant",
+              "text": "See [the guide](https://example.com/guide)."
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "  Worked for 0s",
+        "article",
+        "  Agent",
+        "  See",
+        "web link -> https://example.com/guide",
+        "  the guide",
+        "  ."
+      ]
+    },
+    "toolCompletes": {
+      "title": "A file read that completes",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "completed",
+            "toolState": "completed",
+            "kind": "toolCall",
+            "payload": {
+              "presentation": {
+                "kind": "read",
+                "label": "Read src/lib.rs",
+                "resources": [
+                  {
+                    "kind": "resource",
+                    "resource": {
+                      "rootId": "root-1",
+                      "relativePath": "src/lib.rs"
+                    }
+                  }
+                ]
+              },
+              "inputSummary": null,
+              "outputSummary": "pub fn answer() -> u32 {\n    41\n}\n"
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "summary",
+        "  Worked for 0s",
+        "summary \"Read lib.rs, Completed, 1s\"",
+        "  Read lib.rs",
+        "group \"Read src/lib.rs\"",
+        "note",
+        "  Read",
+        "  pub fn answer() -> u32 { 41 }",
+        "status",
+        "  ✓ Success",
+        "list \"Referenced resources\"",
+        "listitem",
+        "  lib.rs"
+      ]
+    },
+    "toolFailsMidTurn": {
+      "title": "A file read that fails, then the turn continues",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "failed",
+            "toolState": "failed",
+            "kind": "toolCall",
+            "payload": {
+              "presentation": {
+                "kind": "read",
+                "label": "Read src/lib.rs",
+                "resources": [
+                  {
+                    "kind": "resource",
+                    "resource": {
+                      "rootId": "root-1",
+                      "relativePath": "src/lib.rs"
+                    }
+                  }
+                ]
+              },
+              "inputSummary": null,
+              "outputSummary": "Permission denied"
+            }
+          },
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "text",
+            "payload": {
+              "role": "assistant",
+              "text": "The read failed."
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "summary",
+        "  Worked for 0s",
+        "summary \"Read lib.rs, Failed, 1s\"",
+        "  Read lib.rs",
+        "group \"Read src/lib.rs\"",
+        "note",
+        "  Read",
+        "  Permission denied",
+        "status",
+        "  Failed",
+        "list \"Referenced resources\"",
+        "listitem",
+        "  lib.rs",
+        "article",
+        "  Agent",
+        "  The read failed."
+      ]
+    },
+    "commandWithOutput": {
+      "title": "A shell command with output",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "completed",
+            "toolState": "completed",
+            "kind": "toolCall",
+            "payload": {
+              "presentation": {
+                "kind": "execute",
+                "label": "echo hello",
+                "summary": null,
+                "cwd": null,
+                "exitCode": 0,
+                "outputTail": null,
+                "outputTruncated": false,
+                "resources": [],
+                "activity": "ordinary"
+              },
+              "inputSummary": "echo hello",
+              "outputSummary": "hello"
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "summary",
+        "  Worked for 0s",
+        "summary \"Ran echo hello, Completed, 1s\"",
+        "  Ran echo hello",
+        "group \"echo hello\"",
+        "note",
+        "  Shell",
+        "  $ echo hello",
+        "  hello",
+        "status",
+        "  ✓ Success"
+      ]
+    },
+    "fileEditWithDiff": {
+      "title": "A file edit with its saved diff",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "completed",
+            "toolState": "completed",
+            "kind": "toolCall",
+            "payload": {
+              "presentation": {
+                "kind": "edit",
+                "label": "Edited src/lib.rs",
+                "resources": [
+                  {
+                    "kind": "resource",
+                    "resource": {
+                      "rootId": "root-1",
+                      "relativePath": "src/lib.rs"
+                    }
+                  }
+                ]
+              },
+              "inputSummary": null,
+              "outputSummary": null
+            }
+          },
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "fileChangeDiff",
+            "payload": {
+              "changes": [
+                {
+                  "resource": {
+                    "kind": "resource",
+                    "resource": {
+                      "rootId": "root-1",
+                      "relativePath": "src/lib.rs"
+                    }
+                  },
+                  "operation": "updated",
+                  "originalResource": null,
+                  "summary": "Edited src/lib.rs",
+                  "additions": 1,
+                  "deletions": 1,
+                  "pairState": "available",
+                  "newBytes": 34,
+                  "oldBytes": 34
+                }
+              ],
+              "truncated": false
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "summary",
+        "  Worked for 0s",
+        "summary \"Edited lib.rs, Completed, 1s\"",
+        "  Edited lib.rs",
+        "group \"Edited src/lib.rs\"",
+        "note",
+        "  Edit",
+        "status",
+        "  ✓ Success",
+        "list \"Referenced resources\"",
+        "listitem",
+        "  lib.rs",
+        "button",
+        "  1 file changed",
+        "  +",
+        "  1",
+        "  -",
+        "  1"
+      ]
+    },
+    "planUpdate": {
+      "title": "A plan replaced by a later plan",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "plan",
+            "payload": {
+              "entries": [
+                {
+                  "label": "Inspect",
+                  "state": "completed"
+                },
+                {
+                  "label": "Edit",
+                  "state": "inProgress"
+                },
+                {
+                  "label": "Test",
+                  "state": "pending"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "summary",
+        "  Worked for 0s",
+        "button",
+        "  Plan",
+        "status",
+        "  Hide · 1 of 3 complete",
+        "list",
+        "listitem",
+        "  Inspect",
+        "  Completed",
+        "listitem",
+        "  Edit",
+        "  In progress",
+        "listitem",
+        "  Test",
+        "  Pending"
+      ]
+    },
+    "cancelledWithRunningTool": {
+      "title": "Stop while a tool is running",
+      "projection": {
+        "turnState": "cancelled",
+        "items": [
+          {
+            "lifecycle": "cancelled",
+            "toolState": "cancelled",
+            "kind": "toolCall",
+            "payload": {
+              "presentation": {
+                "kind": "read",
+                "label": "Read src/lib.rs",
+                "resources": [
+                  {
+                    "kind": "resource",
+                    "resource": {
+                      "rootId": "root-1",
+                      "relativePath": "src/lib.rs"
+                    }
+                  }
+                ]
+              },
+              "inputSummary": null,
+              "outputSummary": null
+            }
+          }
+        ]
+      },
+      "outline": [
+        "summary",
+        "  Worked",
+        "summary \"Read lib.rs, Cancelled, 1s\"",
+        "  Read lib.rs",
+        "group \"Read src/lib.rs\"",
+        "note",
+        "  Read",
+        "status",
+        "  Cancelled",
+        "list \"Referenced resources\"",
+        "listitem",
+        "  lib.rs",
+        "status \"Cancelled\"",
+        "  Cancelled"
+      ]
+    }
+  },
+  "notApplicable": [
+    {
+      "scenario": "commandWithOutput",
+      "harness": "pi",
+      "reason": "Sage's Pi bridge refuses every shell command, so Pi never runs one."
+    },
+    {
+      "scenario": "planUpdate",
+      "harness": "pi",
+      "reason": "Pi has no plan or todo tool."
+    }
+  ],
+  "gaps": [
+    {
+      "scenario": "thinkingThenLinkedText",
+      "harness": "claude",
+      "owner": "Claude",
+      "visible": false,
+      "gap": "ACP has no message end; text and thought stay open and the turn sweep marks them cancelled on a completed turn",
+      "differs": {
+        "/items/0/lifecycle": "cancelled",
+        "/items/1/lifecycle": "cancelled"
+      }
+    },
+    {
+      "scenario": "thinkingThenLinkedText",
+      "harness": "pi",
+      "owner": "Pi",
+      "visible": false,
+      "gap": "message_start opens the answer before thinking streams, so the answer is ordered above the thought",
+      "differs": {
+        "/items/0/kind": "text",
+        "/items/0/payload": {
+          "role": "assistant",
+          "text": "See [the guide](https://example.com/guide)."
+        },
+        "/items/1/kind": "thoughtSummary",
+        "/items/1/payload": {
+          "summary": "Checking the guide."
+        }
+      }
+    },
+    {
+      "scenario": "thinkingThenLinkedText",
+      "harness": "acp",
+      "owner": "ACP",
+      "visible": false,
+      "gap": "ACP has no message end; text and thought stay open and the turn sweep marks them cancelled on a completed turn",
+      "differs": {
+        "/items/0/lifecycle": "cancelled",
+        "/items/1/lifecycle": "cancelled"
+      }
+    },
+    {
+      "scenario": "toolCompletes",
+      "harness": "codex",
+      "owner": "Codex",
+      "visible": true,
+      "gap": "read label names the file, not its workspace path, and the shell line is kept as input",
+      "differs": {
+        "/items/0/payload/presentation/label": "Read lib.rs",
+        "/items/0/payload/inputSummary": "cat src/lib.rs"
+      }
+    },
+    {
+      "scenario": "toolCompletes",
+      "harness": "pi",
+      "owner": "Pi",
+      "visible": true,
+      "gap": "tool label is the raw tool name",
+      "differs": {
+        "/items/0/payload/presentation/label": "read"
+      }
+    },
+    {
+      "scenario": "toolFailsMidTurn",
+      "harness": "claude",
+      "owner": "Claude",
+      "visible": false,
+      "gap": "trailing answer text stays open and is swept to cancelled",
+      "differs": {
+        "/items/1/lifecycle": "cancelled"
+      }
+    },
+    {
+      "scenario": "toolFailsMidTurn",
+      "harness": "codex",
+      "owner": "Codex",
+      "visible": true,
+      "gap": "read label names the file, not its workspace path, and the shell line is kept as input",
+      "differs": {
+        "/items/0/payload/presentation/label": "Read lib.rs",
+        "/items/0/payload/inputSummary": "cat src/lib.rs"
+      }
+    },
+    {
+      "scenario": "toolFailsMidTurn",
+      "harness": "pi",
+      "owner": "Pi",
+      "visible": true,
+      "gap": "tool label is the raw tool name",
+      "differs": {
+        "/items/0/payload/presentation/label": "read"
+      }
+    },
+    {
+      "scenario": "toolFailsMidTurn",
+      "harness": "acp",
+      "owner": "ACP",
+      "visible": false,
+      "gap": "trailing answer text stays open and is swept to cancelled",
+      "differs": {
+        "/items/1/lifecycle": "cancelled"
+      }
+    },
+    {
+      "scenario": "commandWithOutput",
+      "harness": "claude",
+      "owner": "Claude",
+      "visible": false,
+      "gap": "no exit code, and output is duplicated into the output tail",
+      "differs": {
+        "/items/0/payload/presentation/exitCode": null,
+        "/items/0/payload/presentation/outputTail": "hello"
+      }
+    },
+    {
+      "scenario": "commandWithOutput",
+      "harness": "codex",
+      "owner": "Codex",
+      "visible": false,
+      "gap": "reports the working directory, which no other binding can",
+      "differs": {
+        "/items/0/payload/presentation/cwd": {
+          "kind": "resource",
+          "resource": {
+            "rootId": "root-1",
+            "relativePath": "src"
+          }
+        }
+      }
+    },
+    {
+      "scenario": "commandWithOutput",
+      "harness": "acp",
+      "owner": "ACP",
+      "visible": true,
+      "gap": "no exit code, output duplicated into the tail, and no command line because the profile names no command input field",
+      "differs": {
+        "/items/0/payload/presentation/exitCode": null,
+        "/items/0/payload/presentation/outputTail": "hello",
+        "/items/0/payload/inputSummary": null
+      }
+    },
+    {
+      "scenario": "fileEditWithDiff",
+      "harness": "claude",
+      "owner": "Claude",
+      "visible": true,
+      "gap": "generic diff summary text, and whole-file sides are counted as every line removed and added",
+      "differs": {
+        "/items/1/payload/changes/0/summary": "File change reported over ACP",
+        "/items/1/payload/changes/0/additions": 3,
+        "/items/1/payload/changes/0/deletions": 3
+      }
+    },
+    {
+      "scenario": "fileEditWithDiff",
+      "harness": "codex",
+      "owner": "Codex",
+      "visible": true,
+      "gap": "the edit has no tool row; only the file change is projected",
+      "differs": {
+        "/items": [
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "fileChangeDiff",
+            "payload": {
+              "changes": [
+                {
+                  "resource": {
+                    "kind": "resource",
+                    "resource": {
+                      "rootId": "root-1",
+                      "relativePath": "src/lib.rs"
+                    }
+                  },
+                  "operation": "updated",
+                  "originalResource": null,
+                  "summary": "Edited src/lib.rs",
+                  "additions": 1,
+                  "deletions": 1,
+                  "pairState": "available",
+                  "newBytes": 34,
+                  "oldBytes": 34
+                }
+              ],
+              "truncated": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "fileEditWithDiff",
+      "harness": "pi",
+      "owner": "Pi",
+      "visible": true,
+      "gap": "raw tool name label, tool result text kept as output, generic diff summary and no line counts",
+      "differs": {
+        "/items/0/payload/presentation/label": "edit",
+        "/items/0/payload/outputSummary": "Edited src/lib.rs",
+        "/items/1/payload/changes/0/summary": "Pi updated a workspace file",
+        "/items/1/payload/changes/0/additions": null,
+        "/items/1/payload/changes/0/deletions": null
+      }
+    },
+    {
+      "scenario": "fileEditWithDiff",
+      "harness": "acp",
+      "owner": "ACP",
+      "visible": true,
+      "gap": "generic diff summary text, and whole-file sides are counted as every line removed and added",
+      "differs": {
+        "/items/1/payload/changes/0/summary": "File change reported over ACP",
+        "/items/1/payload/changes/0/additions": 3,
+        "/items/1/payload/changes/0/deletions": 3
+      }
+    },
+    {
+      "scenario": "planUpdate",
+      "harness": "claude",
+      "owner": "Claude",
+      "visible": false,
+      "gap": "the plan item is never closed and is swept to cancelled",
+      "differs": {
+        "/items/0/lifecycle": "cancelled"
+      }
+    },
+    {
+      "scenario": "planUpdate",
+      "harness": "codex",
+      "owner": "Codex",
+      "visible": false,
+      "gap": "the plan item is never closed and is swept to cancelled",
+      "differs": {
+        "/items/0/lifecycle": "cancelled"
+      }
+    },
+    {
+      "scenario": "planUpdate",
+      "harness": "acp",
+      "owner": "ACP",
+      "visible": false,
+      "gap": "the plan item is never closed and is swept to cancelled",
+      "differs": {
+        "/items/0/lifecycle": "cancelled"
+      }
+    },
+    {
+      "scenario": "cancelledWithRunningTool",
+      "harness": "codex",
+      "owner": "Codex",
+      "visible": true,
+      "gap": "a user stop settles the turn as interrupted, not cancelled; read label and input as above",
+      "differs": {
+        "/turnState": "interrupted",
+        "/items/0/payload/presentation/label": "Read lib.rs",
+        "/items/0/payload/inputSummary": "cat src/lib.rs"
+      }
+    },
+    {
+      "scenario": "cancelledWithRunningTool",
+      "harness": "pi",
+      "owner": "Pi",
+      "visible": true,
+      "gap": "a user abort settles the turn as interrupted, not cancelled; raw tool name label",
+      "differs": {
+        "/turnState": "interrupted",
+        "/items/0/payload/presentation/label": "read"
+      }
+    }
+  ]
+}

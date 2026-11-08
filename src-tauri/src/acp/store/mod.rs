@@ -80,6 +80,8 @@ pub(crate) use cancel::begin_cancel;
 #[cfg(test)]
 pub(crate) use commands::prepare_turn;
 pub(crate) use commands::{lookup_active_turn, lookup_prepared_turn};
+#[cfg(test)]
+pub(crate) use facts::hex_digest;
 pub(crate) use facts::next_projection_revision;
 pub(crate) use history::load_chat_page_reserving;
 

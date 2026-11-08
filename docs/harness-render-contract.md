@@ -1,0 +1,107 @@
+# Harness render contract
+
+Sage is the front end; every harness (Claude Code, Codex, Pi, any standard
+ACP agent) is a back end behind a native binding. A binding's only job toward
+the transcript is to turn what its harness says into the normalized shapes
+below. The store and the chat view are shared, so two bindings that emit the
+same shapes render identically. A binding must never add a harness-specific
+field, label or branch to reach the UI.
+
+This document is the reference for binding authors. The executable form is
+the parity suite:
+
+- `src-tauri/src/acp/tests/render_parity.rs` drives one scenario set through
+  each binding's real code, commits what it emits through the store's
+  adapter batch apply against an in-memory database, reads the transcript
+  back through the chat page projection and compares it with one canonical
+  projection. A sequence the store refuses (a terminal item changed, an
+  illegal lifecycle or tool-state step, tool state and lifecycle disagreeing
+  on terminal, an item or Turn change after the Turn ended) fails the suite.
+  The stop scenario drives a real user cancel: Sage's cancel intent, the
+  binding's native cancel, the harness's answer, then the Turn end.
+- `src/features/chat/acp/harnessRenderParity.fixture.json` holds the
+  canonical projections, the not-applicable cells and the known gaps.
+- `src/features/chat/acp/harnessRenderParity.test.tsx` renders each canonical
+  projection through the real chat view and checks every known gap's
+  `visible` flag against what a reader actually sees.
+
+## Pipeline
+
+1. Binding: harness wire -> `AdapterEvent::Item { id, lifecycle, tool_state,
+payload }` (`src-tauri/src/acp/bindings/adapter.rs:102`), plus
+   `FilePair`, `Turn`, `Usage`, `PermissionRequest` and
+   `Session { event: SessionScopedEvent }`. Standard ACP bindings go through
+   the shared translator's `AdapterEvent`
+   (`bindings/standard_acp/translator.rs:59`).
+2. Store: each item is keyed by its external id. A later event for the same
+   id replaces the payload (bindings send cumulative snapshots, never deltas).
+   Ordinal is fixed at first sight, so emission order is display order.
+3. Projection: `NormalizedPayload` (`acp/intent.rs:220`) decodes to
+   `ItemContent` (`acp/projection.rs:200`) in `store/projection_decode.rs`;
+   tool calls become `ToolPresentation` (`acp/projection.rs:74`) in
+   `store/projection_decode/tool_presentation.rs`.
+4. Terminal sweep: when a Turn reaches a terminal state, every item still
+   `started`/`streaming` becomes `cancelled`, and a `pending`/`inProgress`/
+   `waitingForApproval` tool becomes `cancelled`
+   (`store/terminalize.rs:263`, called from `store/adapter_batch/turns.rs:100`).
+5. WebView: `AcpItem` / `ToolPresentation` / `TurnProjection` in
+   `src/domain/acpProjection.ts` render through `AcpChatPresentation`.
+
+## Shapes
+
+| Element                    | Emit                                                                                                                                                                                                                                       | Rules                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Thinking                   | `NormalizedPayload::ThoughtSummary { summary }`, its own item id                                                                                                                                                                           | Never `Text`. Emit before the answer it precedes. Close it (`Completed`) when the harness ends the block; the view shows live thinking only while it is open.                                                                                                                                                                                                    |
+| Assistant text             | `Text { text }` (role projects as assistant)                                                                                                                                                                                               | Markdown verbatim: links stay `[label](url)`; never pre-render, strip or rewrite. Each snapshot is the whole text so far. Close it `Completed` at message end, or at the turn end when the protocol has no message end.                                                                                                                                           |
+| Tool call                  | `ToolCall { category, label, input_summary, output_summary, locations, execution }` with `tool_state`                                                                                                                                      | `category` is a `ToolCategory` (`intent/tool_category.rs:5`) chosen from protocol fields, never the harness name. File tools: `label` is verb + workspace-relative path (`Read src/lib.rs`), `locations` the mapped resources, `input_summary` empty. Lifecycle follows state: `Pending`/`InProgress` stream, `Completed` completes.                              |
+| Tool failed mid-turn       | Same item, `tool_state: Failed`, lifecycle `Failed`, error text in `output_summary`                                                                                                                                                        | The turn keeps going; later items still render. Never drop the row or turn the error into a separate `Error` item.                                                                                                                                                                                                                                               |
+| Tool cancelled             | Nothing extra                                                                                                                                                                                                                              | A user stop settles the Turn `Cancelled`; the sweep marks open tools `Cancelled`. Report `Interrupted` only when the harness stopped on its own.                                                                                                                                                                                                                  |
+| Command                    | `ToolCall` with `category: Execute`, `label` and `input_summary` = the sanitized command line, `output_summary` = output (streamed by replacement while running), `execution.exit_code` when known (`intent/tool_execution.rs:7`)          | `execution.output_tail` only when the output was truncated into `output_summary`. `cwd` only as a mapped `SafeResourceLocation`.                                                                                                                                                                                                                                 |
+| File edit and diff         | A `ToolCall { category: Edit }` row for the action, plus `FileChangeDiff` per file with `additions`/`deletions` from a real line diff and a `FilePair` carrying old/new text                                                                | `summary` is `Edited <path>` / `Created <path>` / `Deleted <path>`. A unified patch must be applied to the file context to produce the pair; never fabricate a side. Over the cap: summary only with `truncated`. The edit card's totals come from `additions`/`deletions`.                                                                                       |
+| Plan / todo                | `PlanEntries { entries }` under one stable item id per turn                                                                                                                                                                                | Every update replaces the whole list. Close the item at turn end.                                                                                                                                                                                                                                                                                                |
+| MCP tool                   | `ToolCall { category: Mcp, label: <tool> }` with `execution.mcp_server` as the harness names the server                                                                                                                                    | Result text, or the error message on failure, in `output_summary`. Live progress replaces `output_summary` while `InProgress`.                                                                                                                                                                                                                                   |
+| Subagent                   | `Collaboration { .. }` items, or `ToolCall { category: Subagent }` with `execution.task_lifecycle` when the harness models it as a task tool; child transcripts through `ActivityItem` / `ChildThreadItem`                                 | Child activity never mixes into the parent's item list.                                                                                                                                                                                                                                                                                                          |
+| Notices                    | `AdapterEvent::Session { event: SessionScopedEvent::Notice(SessionNotice) }` (`intent/session_event.rs:75`); retry attempts as `Error { kind: Some(ErrorKind::Attempt) }`; context compaction as `CompactionNotice`                        | Notices are session facts, not transcript text.                                                                                                                                                                                                                                                                                                                  |
+| Images                     | `Image { media_type, data, source: Agent }` after shared admission (`acp/image_admit.rs`)                                                                                                                                                  | Never inline image bytes into text.                                                                                                                                                                                                                                                                                                                              |
+| Slash commands             | `HarnessAdapter::available_commands` / `discover_commands` (`bindings/adapter/model.rs:78`)                                                                                                                                                | The composer lists them; they never become transcript items.                                                                                                                                                                                                                                                                                                     |
+| Turn end                   | `Turn { state }`: `Completed`, `Cancelled` (user stop), `Interrupted` (harness stop), `Failed` with an `Error` item                                                                                                                         | Close every item the binding opened before the terminal Turn.                                                                                                                                                                                                                                                                                                    |
+
+`Cancelled` and `Interrupted` differ only in what the chat view shows. The
+store treats both as the end of a user stop when a durable cancel intent
+exists (`store/adapter_batch.rs:386`), and live cancel accepts either as the
+stopped Turn (`service/codex_live/live_cancel.rs:210`); the terminal sweep
+closes open items the same way for both. The distinction is display-only.
+
+Forbidden in any payload: absolute native paths (map them through the
+`ResourceMapper`), harness session, thread or tool ids, harness or model names
+as labels (`Claude tool`, `read`), raw JSON from the wire, vendor `_meta`
+fields, and any text Sage invents to stand in for missing harness data.
+
+## Coverage today
+
+`maps` = emits the shape; `partial` = emits it with a known divergence;
+`missing` = the binding has no path for it; `n/a` = the harness cannot
+produce it. Paths are under `src-tauri/src/acp/bindings/`. The Claude column
+is the current ACP binding (the standard ACP translator with the Claude
+profile); the ACP column is the same translator with a plain profile.
+
+| Element            | Claude (ACP)                                                                                 | Codex                                                                                                 | Pi                                                                                                | Generic ACP                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Thinking           | partial: never closed, swept `cancelled` (`standard_acp/translator.rs:230`)                  | maps (`codex/incoming/notifications.rs:202`, `codex/incoming/items.rs:179`)                           | partial: ordered after the answer (`pi/translator/events.rs:65`, `pi/translator/events/message.rs:77`) | partial, as Claude                                                                                         |
+| Text and links     | partial: never closed (`standard_acp/translator.rs:229`, `:315`)                             | maps (`codex/incoming/items.rs:73`)                                                                   | maps (`pi/translator/events/message.rs:84`)                                                       | partial, as Claude                                                                                        |
+| Tool completes     | maps (`standard_acp/translator/tools.rs:32`)                                                 | partial: label `Read lib.rs`, shell line as input (`codex/incoming/items.rs:228`)                     | partial: raw tool name label (`pi/runtime/support/identity.rs:317`)                               | maps                                                                                                      |
+| Tool fails         | maps (`standard_acp/translator/decode.rs:255`)                                               | maps state; label as above (`codex/incoming/items/presentation.rs:67`)                                | maps state; label as above (`pi/translator/events.rs:290`)                                        | maps                                                                                                      |
+| Tool cancelled     | maps (`standard_acp/translator/terminal.rs:49`)                                              | partial: turn `interrupted` (`codex/incoming/notifications.rs:331`)                                   | partial: turn `interrupted` (`pi/translator/events/turn.rs:35`)                                   | maps                                                                                                      |
+| Command and output | partial: no exit code, output duplicated into the tail (`standard_acp/translator/tool_execution.rs:15`) | partial: extra cwd (`codex/incoming/items.rs:280`, `codex/incoming/notifications/deltas.rs:35`)        | n/a: the bridge refuses shell (`pi/bridge/refusal.rs:22`)                                         | partial: also no command line, no command field in the profile (`standard_acp/translator/tool_input.rs:20`) |
+| File edit and diff | partial: generic summary, whole-file line counts (`standard_acp/translator/diff_content.rs:101`, `:139`) | partial: no tool row (`codex/incoming/items.rs:97`, `codex/incoming/items/file_change.rs:22`)          | partial: raw label, generic summary, no counts (`pi/runtime/support/bridge.rs:206`)               | partial, as Claude                                                                                        |
+| Plan / todo        | partial: never closed (`standard_acp/translator/decode.rs:98`)                               | partial: never closed (`codex/incoming/notifications/plan.rs:15`)                                     | n/a: no plan tool                                                                                 | partial, as Claude                                                                                        |
+| MCP tool           | partial: no server name, label `MCP tool` (`standard_acp/translator/decode.rs:242`)          | maps; no live progress handler (`codex/incoming/items/tool_kinds.rs:29`)                              | n/a: no MCP client                                                                                | partial, as Claude                                                                                        |
+| Subagent           | maps as task tool (`standard_acp/translator/tools.rs:42`, `tool_execution.rs:16`)            | maps (`codex/incoming/items/presentation.rs:246`, `codex/child_transcript.rs`)                        | missing                                                                                           | partial: no task lifecycle (`standard_acp/profile.rs:143`)                                                |
+| Notices            | missing: no session events                                                                   | maps (`codex/incoming/notifications/notices.rs:121`)                                                  | partial: retries and compaction only (`pi/translator/events/turn.rs:94`, `pi/runtime/support/compaction.rs:20`) | missing                                                                                                   |
+| Images             | maps (`standard_acp/translator/images.rs:13`)                                                | maps (`codex/incoming/items.rs:107`, `:303`)                                                          | maps (`pi/runtime/support/image.rs:11`)                                                           | maps                                                                                                      |
+| Slash commands     | maps (`claude/runtime/slash_commands.rs:7`)                                                  | missing: no command discovery                                                                         | maps (`pi/runtime.rs:199`)                                                                        | maps (`standard_acp/surface/commands.rs:9`)                                                               |
+
+The parity fixture pins each partial cell that its scenarios reach, with the
+exact fields that differ and whether the difference is visible in the chat
+view today. Fixing a binding makes the suite fail until its gap entry is
+removed; a new divergence fails until it is fixed or recorded with an owner.
