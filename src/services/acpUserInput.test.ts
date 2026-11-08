@@ -134,6 +134,35 @@ describe("harness question requests", () => {
     expect(questionItem(undefined)?.kind).toBe("permissionRequest");
   });
 
+  it("decode answer limits and refuse malformed ones or unnormalized links", () => {
+    const question = { id: "q", header: "", question: "?" };
+    const limits = { minLength: 2, maxLength: 3, minimum: -1.5, maxItems: 2 };
+    const item = questionItem({ questions: [{ ...question, limits }] });
+    expect(
+      item?.kind === "permissionRequest" &&
+        item.payload.userInput?.questions[0]?.limits,
+    ).toEqual(limits);
+    const link = (url: string) =>
+      questionItem({ questions: [], url: { url, host: "example.com" } });
+    expect(link("https://example.com/a%20b")?.kind).toBe("permissionRequest");
+    for (const userInput of [
+      { questions: [{ ...question, limits: { minLength: -1 } }] },
+      { questions: [{ ...question, limits: { maxItems: 1.5 } }] },
+      { questions: [{ ...question, limits: { minimum: "1" } }] },
+      { questions: [{ ...question, limits: { pattern: "^a" } }] },
+      { questions: [{ ...question, limits: null }] },
+    ]) {
+      expect(questionItem(userInput)).toBeNull();
+    }
+    for (const url of [
+      "https://example.com/\u202egpj.exe",
+      "https://exa\u200bmple.com/",
+      "https://example.com/a b",
+    ]) {
+      expect(link(url)).toBeNull();
+    }
+  });
+
   it("answer through the native command and accept only the matching reply", async () => {
     const reply = {
       ...answer,

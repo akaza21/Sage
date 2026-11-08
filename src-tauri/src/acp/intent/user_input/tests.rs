@@ -103,3 +103,14 @@ fn debug_output_never_contains_answer_text() {
     assert!(!rendered.contains("s3cret-value"));
     assert!(!rendered.contains("Changed"));
 }
+
+#[test]
+fn stored_requests_without_limits_round_trip_unchanged() {
+    let stored = json!({"questions": [
+        {"id": "scope", "header": "Scope", "question": "Which files?", "allowsOther": false,
+         "secret": false, "options": [{"label": "All", "description": ""}]}
+    ]});
+    let request: UserInputRequest = serde_json::from_value(stored.clone()).unwrap();
+    assert!(request.questions.as_slice()[0].limits.is_unset());
+    assert_eq!(serde_json::to_value(&request).unwrap(), stored);
+}

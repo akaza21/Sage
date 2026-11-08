@@ -58,7 +58,7 @@ fn mcp_fields_are_typed_by_their_schema() {
     // The MCP subset Codex 0.146 relays (`McpElicitationSchema`).
     let request = form_request(&json!({"type": "object", "required": ["email", "count"],
     "properties": {
-        "email": {"type": "string", "title": "Email", "format": "email", "default": "a@b.c"},
+        "email": {"type": "string", "title": "Email", "default": "a@b.c"},
         "count": {"type": "integer", "minimum": 1},
         "ratio": {"type": "number", "default": 0.5},
         "agree": {"type": "boolean", "title": "Agree?"},
@@ -103,6 +103,10 @@ fn mcp_fields_are_typed_by_their_schema() {
             UserInputError::NotANumber,
         ),
         (
+            json!([{"questionId": "email", "text": "x"}, {"questionId": "count", "text": "0"}]),
+            UserInputError::OutOfRange,
+        ),
+        (
             json!([{"questionId": "tags", "selectedOption": "x"}]),
             UserInputError::UnknownOption,
         ),
@@ -132,8 +136,124 @@ fn forms_sage_cannot_show_exactly_are_refused() {
         json!({"type": "object", "properties": {"f": {"type": "string", "enum": []}}}),
         json!({"type": "object", "properties": {"f": {"type": "string", "enum": vec!["v"; 9]}}}),
         json!({"type": "object", "properties": {"f": {"type": "string", "enum": ["a\u{202e}b"]}}}),
+        // Rules Sage does not check, and limits no answer can meet.
+        json!({"type": "object", "properties": {"f": {"type": "string", "format": "email"}}}),
+        json!({"type": "object", "properties": {"f": {"type": "string", "format": "date"}}}),
+        json!({"type": "object", "properties": {"f": {"type": "string", "pattern": "^a"}}}),
+        json!({"type": "object", "properties": {"f": {"type": "string", "minLength": 4, "maxLength": 3}}}),
+        json!({"type": "object", "properties": {"f": {"type": "string", "minLength": -1}}}),
+        json!({"type": "object", "properties": {"f": {"type": "string", "maxLength": "3"}}}),
+        json!({"type": "object", "properties": {"f": {"type": "number", "minimum": 2, "maximum": 1.5}}}),
+        json!({"type": "object", "properties": {"f": {"type": "integer", "minimum": null}}}),
+        json!({"type": "object", "properties": {"f": {"type": "array", "minItems": 3,
+            "items": {"type": "string", "enum": ["a", "b"]}}}}),
     ] {
         assert_eq!(form_request(&schema), None, "{schema}");
+    }
+}
+
+#[test]
+fn schema_limits_are_carried_and_enforced() {
+    let request = form_request(&json!({"type": "object", "properties": {
+        "name": {"type": "string", "minLength": 2, "maxLength": 3},
+        "count": {"type": "integer", "minimum": -2, "maximum": 5},
+        "ratio": {"type": "number", "minimum": 0.5, "maximum": 1},
+        "tags": {"type": "array", "minItems": 2, "maxItems": 2,
+            "items": {"type": "string", "enum": ["x", "y", "z"]}},
+        "plain": {"type": "string"}
+    }}))
+    .unwrap();
+    let json = serde_json::to_value(&request).unwrap();
+    let limits_of = |id: &str| {
+        json["questions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|q| q["id"] == id)
+            .unwrap()
+            .get("limits")
+            .cloned()
+    };
+    assert_eq!(
+        limits_of("name"),
+        Some(json!({"minLength": 2, "maxLength": 3}))
+    );
+    assert_eq!(
+        limits_of("ratio"),
+        Some(json!({"minimum": 0.5, "maximum": 1}))
+    );
+    assert_eq!(
+        limits_of("tags"),
+        Some(json!({"minItems": 2, "maxItems": 2}))
+    );
+    assert_eq!(limits_of("plain"), None);
+    let admit = |id: &str, answer: Value| {
+        let mut answer = answer;
+        answer["questionId"] = id.into();
+        request.admit(&answers(json!([answer])))
+    };
+    let text = |id: &str, text: &str| admit(id, json!({"text": text}));
+    // Lengths count characters, not bytes.
+    assert_eq!(text("name", "é漢"), Ok(()));
+    assert_eq!(text("name", "a"), Err(UserInputError::TextLength));
+    assert_eq!(text("name", "abcd"), Err(UserInputError::TextLength));
+    for ok in ["-2", "5", "+5", " 0 "] {
+        assert_eq!(text("count", ok), Ok(()), "{ok}");
+    }
+    assert_eq!(text("count", "6"), Err(UserInputError::OutOfRange));
+    assert_eq!(text("count", "-3"), Err(UserInputError::OutOfRange));
+    assert_eq!(text("ratio", "1.0"), Ok(()));
+    assert_eq!(text("ratio", "5e-1"), Ok(()));
+    assert_eq!(text("ratio", "0.4"), Err(UserInputError::OutOfRange));
+    assert_eq!(text("ratio", "0x1"), Err(UserInputError::NotANumber));
+    let tags = |labels: Value| admit("tags", json!({"selectedOptions": labels}));
+    assert_eq!(tags(json!(["x", "y"])), Ok(()));
+    assert_eq!(tags(json!(["x"])), Err(UserInputError::ItemCount));
+    assert_eq!(tags(json!(["x", "y", "z"])), Err(UserInputError::ItemCount));
+}
+
+#[test]
+fn a_property_without_a_title_is_headed_by_its_key() {
+    let request = form_request(&json!({"type": "object", "properties": {
+        "branch_name": {"type": "string", "description": "Which branch?"},
+        "blank": {"type": "string", "title": "  "},
+        "titled": {"type": "string", "title": "Title"}
+    }}))
+    .unwrap();
+    let headers: Vec<_> = request
+        .questions
+        .as_slice()
+        .iter()
+        .map(|q| (q.id.as_str(), q.header.as_str()))
+        .collect();
+    assert!(headers.contains(&("branch_name", "branch_name")));
+    assert!(headers.contains(&("blank", "blank")));
+    assert!(headers.contains(&("titled", "Title")));
+}
+
+#[test]
+fn a_custom_answer_field_with_its_own_limits_is_refused() {
+    let mut schema = ask_user_question();
+    schema["properties"]["question_0_custom"]["maxLength"] = json!(10);
+    assert_eq!(form_request(&schema), None);
+}
+
+#[test]
+fn links_are_shown_and_opened_normalized() {
+    let request = url_request("HTTPS://Auth.Example.com/a b?q=é").unwrap();
+    let link = request.url.as_ref().unwrap();
+    assert_eq!(link.url.as_str(), "https://auth.example.com/a%20b?q=%C3%A9");
+    assert_eq!(link.host.as_str(), "auth.example.com");
+    for refused in [
+        "https://example.com/\u{202e}gpj.exe",
+        "https://exa\u{200b}mple.com/",
+        "https://example.com/\u{2066}x",
+        " https://example.com/",
+        "https://example.com/ ",
+        "https://example.com/\tx",
+        "https://exam\nple.com/",
+    ] {
+        assert_eq!(url_request(refused), None, "{refused:?}");
     }
 }
 

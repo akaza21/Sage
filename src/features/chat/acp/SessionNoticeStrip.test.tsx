@@ -19,7 +19,7 @@ const notices = safeSessionNotices([
 
 describe("SessionNoticeStrip", () => {
   it("shows each notice with its level and source, and dismisses one or all", () => {
-    render(<SessionNoticeStrip notices={notices} />);
+    render(<SessionNoticeStrip session="s1" notices={notices} />);
     const items = screen.getAllByRole("listitem");
     expect(items.map((item) => item.className)).toEqual([
       "acp-session-notice acp-session-notice--warning",
@@ -41,6 +41,36 @@ describe("SessionNoticeStrip", () => {
     expect(screen.queryByRole("region", { name: "Session notices" })).toBe(
       null,
     );
+  });
+
+  it("keeps dismissals per session and only for notices still listed", () => {
+    const { rerender } = render(
+      <SessionNoticeStrip session="s1" notices={notices} />,
+    );
+    const dismissReroute = () =>
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Dismiss notice: Codex answered with gpt-5 mini",
+        }),
+      );
+    dismissReroute();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+
+    // Another session (or chat) starts with nothing dismissed.
+    rerender(<SessionNoticeStrip session="s2" notices={notices} />);
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+
+    // A dismissed notice that leaves the list is forgotten, so it shows
+    // again if the harness raises it again.
+    dismissReroute();
+    rerender(
+      <SessionNoticeStrip
+        session="s2"
+        notices={notices.filter((notice) => notice.level !== "info")}
+      />,
+    );
+    rerender(<SessionNoticeStrip session="s2" notices={notices} />);
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
   });
 
   it("decodes only well-formed notices and keeps the newest sixteen", () => {

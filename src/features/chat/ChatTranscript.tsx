@@ -193,6 +193,7 @@ export function ChatTranscript({
               {page.sessionNotices?.length ? (
                 <NoticePart
                   part="SessionNoticeStrip"
+                  session={page.chatId + page.currentSessionId}
                   notices={page.sessionNotices}
                 />
               ) : null}

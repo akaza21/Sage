@@ -3,6 +3,7 @@ import {
   USER_INPUT_MAX_QUESTIONS,
   USER_INPUT_TEXT_BYTES,
   type UserInputKind,
+  type UserInputLimits,
   type UserInputOption,
   type UserInputQuestion,
   type UserInputRequest,
@@ -26,6 +27,19 @@ function safeOption(value: unknown): UserInputOption | null {
   return label && description !== null ? { label, description } : null;
 }
 
+/** Answer limits: counts are whole and non-negative, bounds finite. */
+function safeLimits(value: unknown): UserInputLimits | null | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  for (const [key, limit] of Object.entries(value)) {
+    const valid = /^m(in|ax)(Length|Items)$/u.test(key)
+      ? Number.isSafeInteger(limit) && (limit as number) >= 0
+      : /^m(in|ax)imum$/u.test(key) && Number.isFinite(limit);
+    if (!valid) return null;
+  }
+  return value as UserInputLimits;
+}
+
 /** An optional flag: absent means false; any other non-boolean is refused. */
 const flag = (value: unknown) =>
   value === undefined ? false : typeof value === "boolean" ? value : null;
@@ -46,13 +60,15 @@ function safeQuestion(value: unknown): UserInputQuestion | null {
     value.initialText === undefined
       ? undefined
       : safeText(value.initialText, USER_INPUT_TEXT_BYTES);
+  const limits = safeLimits(value.limits);
   if (
     !id ||
     header === null ||
     question === null ||
     !KINDS.has(kind) ||
     flags.includes(null) ||
-    initialText === null
+    initialText === null ||
+    limits === null
   ) {
     return null;
   }
@@ -67,6 +83,7 @@ function safeQuestion(value: unknown): UserInputQuestion | null {
     multiSelect,
     optional,
     ...(initialText === undefined ? {} : { initialText }),
+    ...(limits === undefined ? {} : { limits }),
   };
   if (value.options === undefined || value.options === null) return base;
   if (
@@ -86,7 +103,10 @@ function safeUrl(value: unknown): UserInputUrl | null | undefined {
   if (!isRecord(value)) return undefined;
   const url = safeText(value.url, 2048);
   const host = safeText(value.host, 256);
-  return url && host && /^https?:\/\//iu.test(url) ? { url, host } : undefined;
+  // The native side sends the normalized link, which is printable ASCII.
+  return url && host && /^https?:\/\/[\x21-\x7e]+$/iu.test(url)
+    ? { url, host }
+    : undefined;
 }
 
 /**

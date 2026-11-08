@@ -60,6 +60,22 @@ export interface UserInputQuestion {
   optional: boolean;
   /** Text the answer field starts with. */
   initialText?: string;
+  /** Limits on the answer; absent when none apply. */
+  limits?: UserInputLimits;
+}
+
+/**
+ * Limits a form puts on an answer, each optional: text length in characters
+ * (code points), an inclusive number range, and how many options a
+ * multi-select answer chooses.
+ */
+export interface UserInputLimits {
+  minLength?: number;
+  maxLength?: number;
+  minimum?: number;
+  maximum?: number;
+  minItems?: number;
+  maxItems?: number;
 }
 
 /** A link the harness asks the user to open, typically to sign in. */

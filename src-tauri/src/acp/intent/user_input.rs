@@ -21,6 +21,9 @@ use serde_json::Value;
 use crate::acp::contract::{BoundedVec, RequiredText, SafeText};
 
 pub(crate) mod form;
+mod limits;
+
+pub use limits::UserInputLimits;
 
 /// Most questions one request may ask.
 pub const USER_INPUT_MAX_QUESTIONS: usize = 8;
@@ -111,6 +114,9 @@ pub struct UserInputQuestion {
     /// for forms that pair a choice with a separate "other" field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub other_answer_id: Option<RequiredText<128>>,
+    /// Limits on the answer; absent when none apply.
+    #[serde(default, skip_serializing_if = "UserInputLimits::is_unset")]
+    pub limits: UserInputLimits,
 }
 
 impl UserInputQuestion {
@@ -132,6 +138,7 @@ impl UserInputQuestion {
             optional: false,
             initial_text: None,
             other_answer_id: None,
+            limits: UserInputLimits::default(),
         }
     }
 
@@ -180,13 +187,16 @@ impl UserInputQuestion {
         {
             return Err(UserInputError::UnknownOption);
         }
+        if self.multi_select {
+            self.limits.check_items(labels.len())?;
+        }
         if let Some(text) = &answer.text {
             if !self.admits_text() {
                 return Err(UserInputError::TextNotAdmitted);
             }
-            let numeric = matches!(self.kind, UserInputKind::Number | UserInputKind::Integer);
-            if numeric && self.other_answer_id.is_none() && self.typed(text.as_str()).is_string() {
-                return Err(UserInputError::NotANumber);
+            // Text sent under another field id answers that field instead.
+            if self.other_answer_id.is_none() {
+                self.limits.check_text(self.kind, text.as_str())?;
             }
         }
         Ok(())
@@ -202,12 +212,10 @@ impl UserInputQuestion {
         let trimmed = raw.trim();
         match self.kind {
             UserInputKind::Boolean => Value::Bool(raw == "true"),
-            UserInputKind::Integer => trimmed
-                .parse::<i64>()
-                .map_or_else(|_| raw.into(), Value::from),
-            UserInputKind::Number => trimmed
-                .parse::<f64>()
-                .ok()
+            UserInputKind::Integer => {
+                limits::parse_integer(trimmed).map_or_else(|| raw.into(), Value::from)
+            }
+            UserInputKind::Number => limits::parse_number(trimmed)
                 .and_then(serde_json::Number::from_f64)
                 .map_or_else(|| raw.into(), Value::Number),
             UserInputKind::Text | UserInputKind::Multiline => raw.into(),
@@ -281,6 +289,12 @@ pub enum UserInputError {
     TextNotAdmitted,
     #[error("an answer to a number question is not a number of that kind")]
     NotANumber,
+    #[error("an answer's text is shorter or longer than the question admits")]
+    TextLength,
+    #[error("a number answer is outside the question's range")]
+    OutOfRange,
+    #[error("an answer chooses fewer or more options than the question admits")]
+    ItemCount,
     #[error("a required question is unanswered")]
     Unanswered,
 }
