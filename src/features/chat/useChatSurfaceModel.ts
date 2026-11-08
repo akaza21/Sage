@@ -357,10 +357,12 @@ export function useChatSurfaceModel({
   return {
     ...model,
     accessBindingId,
-    foregroundError:
-      acpActions.errorKind === "signInRequired" && model.selectedHarness
-        ? signInRequiredMessage(model.selectedHarness)
-        : (acpActions.error ?? chatError),
+    foregroundError: acpActions.error ?? chatError,
+    // The sign-in sentence renders lazily in the composer, off the chat path.
+    signInHarness:
+      acpActions.errorKind === "signInRequired"
+        ? (model.selectedHarness ?? null)
+        : null,
     modeError: model.useNativeAcp ? (acpActions.modeError ?? null) : null,
     modeChanging: model.useNativeAcp && (acpActions.modeChanging ?? false),
     actionBusy,
@@ -392,13 +394,4 @@ export function useChatSurfaceModel({
     ),
     openResource,
   };
-}
-
-function signInRequiredMessage(harness: SurfaceHarness): string {
-  // A user-defined agent has no command; its hint names the offered methods.
-  if (harness.signIn) {
-    const run = harness.signIn.command ? `Run ${harness.signIn.command}. ` : "";
-    return `${harness.name} requires sign-in before it can continue. ${run}${harness.signIn.hint} Then try again.`;
-  }
-  return `${harness.name} requires sign-in before it can continue. Sign in with its CLI, then try again.`;
 }

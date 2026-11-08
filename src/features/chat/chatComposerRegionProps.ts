@@ -7,6 +7,7 @@ import type {
 } from "../../domain/acpSessionConfig";
 import type { AttachedContext } from "../../domain/attachedContext";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
+import type { HarnessDefinition } from "../../domain/harness";
 import type { ChatUsage } from "./acp/chatUsage";
 
 export interface ChatComposerRegionProps {
@@ -34,6 +35,8 @@ export interface ChatComposerRegionProps {
   projectTransitioning: boolean;
   workbenchError: string | null;
   chatError: string | null;
+  /** The harness that refused for sign-in; its guidance replaces chatError. */
+  signInHarness?: Pick<HarnessDefinition, "name" | "signIn"> | null;
   claudeSignInRequired?: boolean;
   claudeAuthScope?: string;
   accessBindingId?: string | null;

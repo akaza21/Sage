@@ -84,6 +84,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     availableBinding,
     harnessStatus,
     foregroundError,
+    signInHarness,
     modeError,
     modeChanging,
     actionBusy,
@@ -321,6 +322,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         projectTransitioning={projectTransitioning}
         workbenchError={error}
         chatError={foregroundError}
+        signInHarness={signInHarness}
         claudeSignInRequired={
           selectedHarnessId === "claude-code" &&
           acpActions.errorKind === "signInRequired"

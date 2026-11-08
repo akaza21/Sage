@@ -23,8 +23,8 @@
       },
       {
         "entry": "src/features/chat/ClaudeAuthActions.tsx",
-        "maxGzipBytes": 515,
-        "reason": "Existing sign-in actions load only after a Claude authentication error; keeps their native actions and copy off the ready first-Chat path."
+        "maxGzipBytes": 630,
+        "reason": "Sign-in actions and the sign-in-required sentence load only after a harness sign-in error; measured 588, keeping both off the ready first-Chat path."
       },
       {
         "entry": "src/workbench/AgentTaskResources.tsx",
