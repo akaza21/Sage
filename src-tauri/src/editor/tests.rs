@@ -1495,3 +1495,100 @@ fn a_failed_create_leaves_no_file_and_keeps_the_buffer() {
     assert_eq!(kept.content, "kept\n");
     assert!(kept.pending_temp_path.is_none());
 }
+
+#[test]
+fn a_file_that_appears_just_before_the_create_is_not_overwritten() {
+    let fixture = dirty_fixture("raced.txt", b"base\n", "kept\n");
+    fs::remove_file(fixture.root.join("raced.txt")).unwrap();
+    let deleted = open_document(fixture.database(), &fixture.workspace, "raced.txt").unwrap();
+    rebase_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        rebase_request(&deleted, absent(), "kept\n", 2),
+    )
+    .unwrap();
+    let buffer = fixture.buffer("raced.txt").unwrap();
+    let target = fixture.root.join("raced.txt");
+
+    let result = super::absent::create_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        fixture.resource_unchecked("raced.txt"),
+        buffer,
+        || fs::write(&target, b"theirs\n"),
+    )
+    .unwrap();
+
+    assert_eq!(result.outcome, "conflict");
+    assert_eq!(fs::read(&target).unwrap(), b"theirs\n");
+    assert_eq!(temp_entries(&fixture.root), 0);
+    assert_eq!(fixture.buffer("raced.txt").unwrap().content, "kept\n");
+}
+
+#[test]
+fn a_failed_create_removes_only_the_folders_it_made() {
+    let path = "kept/gone/deeper/lost.txt";
+    let fixture = dirty_fixture(path, b"base\n", "kept\n");
+    fs::remove_dir_all(fixture.root.join("kept/gone")).unwrap();
+    let deleted = open_document(fixture.database(), &fixture.workspace, path).unwrap();
+    rebase_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        rebase_request(&deleted, absent(), "kept\n", 2),
+    )
+    .unwrap();
+    let buffer = fixture.buffer(path).unwrap();
+
+    let failed = super::absent::create_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        fixture.resource_unchecked(path),
+        buffer,
+        || Err(std::io::Error::other("the disk is full")),
+    );
+
+    assert!(failed.is_err());
+    assert!(fixture.root.join("kept").is_dir());
+    assert!(!fixture.root.join("kept/gone").exists());
+    assert_eq!(fixture.buffer(path).unwrap().content, "kept\n");
+}
+
+#[test]
+fn an_unbuffered_snapshot_of_a_deleted_file_must_name_the_version_opened() {
+    let fixture = Fixture::new();
+    fixture.write("opened.txt", b"base\n");
+    let opened = open_document(fixture.database(), &fixture.workspace, "opened.txt").unwrap();
+    fs::remove_file(fixture.root.join("opened.txt")).unwrap();
+    let mut other = opened.clone();
+    other.base.fingerprint = "0".repeat(opened.base.fingerprint.len());
+
+    let refused = snapshot_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        snapshot_request(&other, "edited\n", 1),
+    );
+
+    assert!(refused.is_err());
+    assert!(fixture.buffer("opened.txt").is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn link_and_copy_create_the_target_only_when_it_is_missing() {
+    use super::filesystem::HeldParent;
+
+    let fixture = Fixture::new();
+    fixture.write("dir/temp", b"mine\n");
+    fixture.write("dir/taken", b"theirs\n");
+    let parent = HeldParent::open(&fixture.workspace, "dir").unwrap();
+
+    assert!(parent.link_new("temp", "linked").unwrap());
+    assert!(parent.copy_new("temp", "copied").unwrap());
+    assert!(!parent.link_new("temp", "taken").unwrap());
+    assert!(!parent.copy_new("temp", "taken").unwrap());
+
+    let dir = fixture.root.join("dir");
+    assert_eq!(fs::read(dir.join("linked")).unwrap(), b"mine\n");
+    assert_eq!(fs::read(dir.join("copied")).unwrap(), b"mine\n");
+    assert_eq!(fs::read(dir.join("taken")).unwrap(), b"theirs\n");
+}

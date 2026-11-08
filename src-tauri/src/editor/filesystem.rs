@@ -237,9 +237,8 @@ impl HeldParent {
             Ok(())
         });
         let renamed = written.and_then(|()| self.rename_new(temp_name, name));
-        if !matches!(renamed, Ok(true)) {
-            let _ = self.remove(temp_name);
-        }
+        // Gone after a rename; still there after a link, copy or failure.
+        let _ = self.remove(temp_name);
         renamed
     }
 }

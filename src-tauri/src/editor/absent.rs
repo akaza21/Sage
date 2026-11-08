@@ -3,7 +3,7 @@
 //! "Keep mine" over a File that changed on disk, which rebases the buffer.
 
 use std::{
-    collections::HashSet,
+    collections::HashMap,
     sync::{Arc, LazyLock, Mutex, atomic::AtomicBool},
 };
 
@@ -30,11 +30,13 @@ use crate::{
     workspace::{Workspace, file_create::admit_created_path},
 };
 
-/// Files this process opened in the editor, by project and canonical path.
-/// Only such a File, or one with a durable buffer, may take an absent base:
-/// otherwise the WebView could create any file by naming a missing path.
-static OPENED: LazyLock<Mutex<HashSet<(String, String, String)>>> = LazyLock::new(Mutex::default);
-/// Bounds the set; past it, the set starts again, and a File opened before
+/// Files this process opened in the editor, by project and canonical path,
+/// with the fingerprint of the version opened. Only such a File, or one with
+/// a durable buffer, may take an absent base: otherwise the WebView could
+/// create any file by naming a missing path.
+static OPENED: LazyLock<Mutex<HashMap<(String, String, String), String>>> =
+    LazyLock::new(Mutex::default);
+/// Bounds the map; past it, the map starts again, and a File opened before
 /// that and deleted before any edit was persisted cannot be kept.
 const MAX_OPENED: usize = 8192;
 
@@ -46,22 +48,25 @@ fn opened_key(workspace: &Workspace, resource: &ResourceRef) -> (String, String,
     )
 }
 
-/// Records that the editor opened `resource`, which existed or had a buffer.
-pub(super) fn note_opened(workspace: &Workspace, resource: &ResourceRef) {
+/// Records that the editor opened `resource` at the version `fingerprint`
+/// (the File on disk, or a durable buffer's base).
+pub(super) fn note_opened(workspace: &Workspace, resource: &ResourceRef, fingerprint: &str) {
     let mut opened = OPENED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     if opened.len() >= MAX_OPENED {
         opened.clear();
     }
-    opened.insert(opened_key(workspace, resource));
+    opened.insert(opened_key(workspace, resource), fingerprint.into());
 }
 
-fn was_opened(workspace: &Workspace, resource: &ResourceRef) -> bool {
+/// The fingerprint `resource` was last opened at, if this process opened it.
+fn opened_at(workspace: &Workspace, resource: &ResourceRef) -> Option<String> {
     OPENED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .contains(&opened_key(workspace, resource))
+        .get(&opened_key(workspace, resource))
+        .cloned()
 }
 
 /// Whether a snapshot with no durable buffer behind it may start one. The
@@ -75,7 +80,10 @@ pub(super) fn admits_unbuffered_snapshot(
 ) -> bool {
     match disk {
         Some(disk) => disk.version.fingerprint == base.fingerprint,
-        None => base.fingerprint != ABSENT_FINGERPRINT && was_opened(workspace, resource),
+        None => {
+            base.fingerprint != ABSENT_FINGERPRINT
+                && opened_at(workspace, resource).is_some_and(|opened| opened == base.fingerprint)
+        }
     }
 }
 
@@ -159,7 +167,7 @@ pub fn rebase_buffer(
     }
     if disk.is_none() {
         // Keeping a deleted File means creating it on save.
-        if durable_buffer.is_none() && !was_opened(workspace, &resource) {
+        if durable_buffer.is_none() && opened_at(workspace, &resource).is_none() {
             return Err(AppError::InvalidRequest(
                 "only a File opened in the editor can be kept after it was deleted".into(),
             ));
@@ -218,8 +226,25 @@ pub(super) fn create_document_with(
     admit_created_path(&path)?;
     let materialized = materialize_content(&buffer.content, &buffer.line_ending);
     reject_oversized_materialized(&materialized)?;
+    let (parent_path, _) = split_contract_path(&path);
+    let created_folders = ensure_folders(workspace, parent_path)?;
+    let result = create_in_folder(database, workspace, resource, buffer, before_rename);
+    if !matches!(&result, Ok(saved) if saved.outcome == "saved") {
+        remove_folders(workspace, &created_folders);
+    }
+    result
+}
+
+fn create_in_folder(
+    database: &Database,
+    workspace: &Workspace,
+    resource: ResourceRef,
+    buffer: PersistedEditorBuffer,
+    before_rename: impl FnOnce() -> std::io::Result<()>,
+) -> AppResult<EditorSaveResult> {
+    let path = resource.relative_path.clone();
+    let materialized = materialize_content(&buffer.content, &buffer.line_ending);
     let (parent_path, file_name) = split_contract_path(&path);
-    ensure_folders(workspace, parent_path)?;
     let parent = HeldParent::open(workspace, parent_path)?;
     let temp_path = temporary_contract_path(&path)?;
     let (_, temp_name) = split_contract_path(&temp_path);
@@ -255,10 +280,12 @@ pub(super) fn create_document_with(
 }
 
 /// Creates each missing folder of `parent_path`, top down, through the same
-/// held, no-follow walk as Explorer's New Folder.
-fn ensure_folders(workspace: &Workspace, parent_path: &str) -> AppResult<()> {
+/// held, no-follow walk as Explorer's New Folder, and returns the ones it
+/// created, outermost first.
+fn ensure_folders(workspace: &Workspace, parent_path: &str) -> AppResult<Vec<String>> {
+    let mut created = Vec::new();
     if parent_path.is_empty() {
-        return Ok(());
+        return Ok(created);
     }
     let mut existing = String::new();
     for name in parent_path.split('/') {
@@ -276,18 +303,35 @@ fn ensure_folders(workspace: &Workspace, parent_path: &str) -> AppResult<()> {
                 };
                 let committed = Arc::new(AtomicBool::new(false));
                 match workspace.create_directory_observed(&parent, name, committed) {
-                    Ok(_) => {}
+                    Ok(_) => created.push(next.clone()),
                     // Created meanwhile by someone else: use it.
                     Err(AppError::Io(error))
                         if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-                    Err(error) => return Err(error),
+                    Err(error) => {
+                        remove_folders(workspace, &created);
+                        return Err(error);
+                    }
                 }
             }
-            Err(error) => return Err(error),
+            Err(error) => {
+                remove_folders(workspace, &created);
+                return Err(error);
+            }
         }
         existing = next;
     }
-    Ok(())
+    Ok(created)
+}
+
+/// Removes folders `ensure_folders` created, innermost first, through the
+/// held walk. A folder something else has put a file in since stays.
+fn remove_folders(workspace: &Workspace, created: &[String]) {
+    for folder in created.iter().rev() {
+        let (parent, name) = split_contract_path(folder);
+        if let Ok(parent) = HeldParent::open(workspace, parent) {
+            let _ = parent.remove_folder(name);
+        }
+    }
 }
 
 /// A File with no buffer that is not on disk, as a discard leaves it.

@@ -37,6 +37,13 @@ fn entry_name(name: &str) -> AppResult<CString> {
     CString::new(name).map_err(|_| AppError::InvalidRequest("editor file name contains NUL".into()))
 }
 
+fn unsupported(error: &std::io::Error) -> bool {
+    // ENOTSUP and EOPNOTSUPP are one value on Linux and two on macOS.
+    error.raw_os_error().is_some_and(|code| {
+        code == libc::ENOSYS || code == libc::ENOTSUP || code == libc::EOPNOTSUPP
+    })
+}
+
 fn adopt(descriptor: libc::c_int) -> std::io::Result<File> {
     if descriptor < 0 {
         return Err(std::io::Error::last_os_error());
@@ -99,18 +106,20 @@ impl HeldParent {
     }
 
     /// Renames `temp` to `target` only if nothing has that name: `false`
-    /// when something does, and then `temp` is left where it is.
+    /// when something does. Where the file system cannot rename without
+    /// replacing, it links `temp` in, and failing that copies it into a
+    /// target it creates exclusively. `temp` stays for the caller to remove.
     pub(in crate::editor) fn rename_new(&self, temp: &str, target: &str) -> AppResult<bool> {
-        let (temp, target) = (entry_name(temp)?, entry_name(target)?);
+        let (temp_c, target_c) = (entry_name(temp)?, entry_name(target)?);
         let directory = self.directory.as_raw_fd();
         // SAFETY: both names are NUL-terminated and relative to the held descriptor.
         #[cfg(target_os = "linux")]
         let renamed = unsafe {
             libc::renameat2(
                 directory,
-                temp.as_ptr(),
+                temp_c.as_ptr(),
                 directory,
-                target.as_ptr(),
+                target_c.as_ptr(),
                 libc::RENAME_NOREPLACE,
             )
         };
@@ -119,9 +128,9 @@ impl HeldParent {
         let renamed = unsafe {
             libc::renameatx_np(
                 directory,
-                temp.as_ptr(),
+                temp_c.as_ptr(),
                 directory,
-                target.as_ptr(),
+                target_c.as_ptr(),
                 libc::RENAME_EXCL,
             )
         };
@@ -132,25 +141,77 @@ impl HeldParent {
         if error.kind() == std::io::ErrorKind::AlreadyExists {
             return Ok(false);
         }
-        #[cfg(target_os = "linux")]
-        if error.raw_os_error() == Some(libc::EINVAL) {
-            // The file system has no RENAME_NOREPLACE: a hard link refuses
-            // an existing name too, and the temporary name then goes.
-            // SAFETY: as above.
-            let linked =
-                unsafe { libc::linkat(directory, temp.as_ptr(), directory, target.as_ptr(), 0) };
-            if linked < 0 {
-                let error = std::io::Error::last_os_error();
-                return match error.kind() {
-                    std::io::ErrorKind::AlreadyExists => Ok(false),
-                    _ => Err(error.into()),
-                };
-            }
-            // SAFETY: as above.
-            unsafe { libc::unlinkat(directory, temp.as_ptr(), UNLINK_FILE) };
-            return Ok(true);
+        // Old kernels, seccomp filters and some file systems have no
+        // exclusive rename.
+        if unsupported(&error) || error.raw_os_error() == Some(libc::EINVAL) {
+            return self.link_new(temp, target);
         }
         Err(error.into())
+    }
+
+    /// Links `temp` in as `target` if nothing has that name, falling back to
+    /// `copy_new` where the file system has no hard links.
+    pub(in crate::editor) fn link_new(&self, temp: &str, target: &str) -> AppResult<bool> {
+        let (temp_c, target_c) = (entry_name(temp)?, entry_name(target)?);
+        let directory = self.directory.as_raw_fd();
+        // SAFETY: both names are NUL-terminated and relative to the held descriptor.
+        let linked =
+            unsafe { libc::linkat(directory, temp_c.as_ptr(), directory, target_c.as_ptr(), 0) };
+        if linked == 0 {
+            return Ok(true);
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() == std::io::ErrorKind::AlreadyExists {
+            return Ok(false);
+        }
+        // vfat, exFAT and some FUSE or SMB mounts refuse links.
+        if unsupported(&error) || error.raw_os_error() == Some(libc::EPERM) {
+            return self.copy_new(temp, target);
+        }
+        Err(error.into())
+    }
+
+    /// Creates `target` exclusively and copies `temp` into it. A target this
+    /// call created and could not fill is removed, unless it was replaced.
+    pub(in crate::editor) fn copy_new(&self, temp: &str, target: &str) -> AppResult<bool> {
+        let mut source = self.open_file(temp)?;
+        let mut file = match self.create_new_document(target) {
+            Ok(file) => file,
+            Err(AppError::Io(error)) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                return Ok(false);
+            }
+            Err(error) => return Err(error),
+        };
+        let copied = std::io::copy(&mut source, &mut file).and_then(|_| file.sync_all());
+        if let Err(error) = copied {
+            let ours = root_identity_metadata(&file.metadata()?)?;
+            let still_ours = self
+                .open_file(target)
+                .and_then(|current| Ok(root_identity_metadata(&current.metadata()?)?))
+                .is_ok_and(|current| current == ours);
+            if still_ours {
+                let _ = self.remove(target);
+            }
+            return Err(error.into());
+        }
+        Ok(true)
+    }
+
+    /// Removes the empty folder `name`; one that is not empty stays.
+    pub(in crate::editor) fn remove_folder(&self, name: &str) -> std::io::Result<()> {
+        let name = entry_name(name).map_err(std::io::Error::other)?;
+        // SAFETY: the held descriptor and NUL-terminated name are valid for the call.
+        if unsafe {
+            libc::unlinkat(
+                self.directory.as_raw_fd(),
+                name.as_ptr(),
+                libc::AT_REMOVEDIR,
+            )
+        } < 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
     }
 
     pub(in crate::editor) fn remove(&self, name: &str) -> std::io::Result<()> {

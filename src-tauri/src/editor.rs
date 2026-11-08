@@ -32,10 +32,10 @@ pub fn open_document(
     let buffer = database.editor_buffer(workspace.project_id(), &resource)?;
     let Some(buffer) = buffer else {
         let disk = read_disk_document(workspace, &resource.relative_path)?;
-        absent::note_opened(workspace, &resource);
+        absent::note_opened(workspace, &resource, &disk.version.fingerprint);
         return Ok(clean_document(resource, disk));
     };
-    absent::note_opened(workspace, &resource);
+    absent::note_opened(workspace, &resource, &buffer.base_fingerprint);
     validate_persisted_buffer(&buffer)?;
     // A deleted File with a recovery buffer opens as that buffer.
     let Some(disk) = read_disk_document_if_present(workspace, &resource.relative_path)? else {

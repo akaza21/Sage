@@ -142,6 +142,11 @@ impl HeldParent {
         }
     }
 
+    /// Removes the empty folder `name`; one that is not empty stays.
+    pub(in crate::editor) fn remove_folder(&self, name: &str) -> std::io::Result<()> {
+        std::fs::remove_dir(self.entry(name).map_err(std::io::Error::other)?)
+    }
+
     pub(in crate::editor) fn remove(&self, name: &str) -> std::io::Result<()> {
         std::fs::remove_file(self.entry(name).map_err(std::io::Error::other)?)
     }
