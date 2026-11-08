@@ -1,6 +1,7 @@
 import { createInjectedEditorWatchDelivery } from "../domain/editorWatchDelivery";
 import { browserDesktop } from "../services/browserDesktop";
 import type {
+  ChatDeleteRequest,
   ChatLifecycleRequest,
   MoveChatRequest,
   PinChatRequest,
@@ -193,6 +194,8 @@ const chat: ChatPort = {
     request: ChatLifecycleRequest,
     expectedTransitionEpoch: number,
   ) => browserDesktop.restoreChat(request, expectedTransitionEpoch),
+  deleteChat: (request: ChatDeleteRequest, expectedTransitionEpoch: number) =>
+    browserDesktop.deleteChat(request, expectedTransitionEpoch),
   moveChat: (request: MoveChatRequest, expectedTransitionEpoch: number) =>
     browserDesktop.moveChat(request, expectedTransitionEpoch),
   pinChat: (request: PinChatRequest, expectedTransitionEpoch: number) =>

@@ -1,12 +1,4 @@
-import {
-  Archive,
-  ChevronDown,
-  ChevronRight,
-  MessageSquare,
-  Pin,
-  PinOff,
-  RotateCcw,
-} from "../ui/leanIcons";
+import { Archive, Pin, PinOff } from "../ui/leanIcons";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { AgentRailChat, ArchivedChatSummary } from "../domain/workbench";
@@ -40,6 +32,7 @@ import {
   ProjectChatTrailingState,
 } from "./ProjectChatActionMenu";
 import type * as RenameChunk from "./ProjectChatRename";
+import { ArchivedChatList } from "./ArchivedChatList";
 import {
   isSideChatId,
   useParentChatStatus,
@@ -78,7 +71,6 @@ export function ProjectChatNavigation({
   const [renameDraft, setRenameDraft] = useState("");
   const [renameSaving, setRenameSaving] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
-  const [archivedOpen, setArchivedOpen] = useState(false);
   const [actionMenuChatId, setActionMenuChatId] = useState<string | null>(null);
   const interactions = useAgentRailInteractions();
   const renameInputRef = useRef<HTMLInputElement | null>(null);
@@ -86,7 +78,6 @@ export function ProjectChatNavigation({
   const pendingFocusChatId = useRef<string | null>(null);
   const storeArchivedChats = useWorkbenchStore((state) => state.archivedChats);
   const archivedChats = selected ? storeArchivedChats : (archived ?? []);
-  const archivedListId = `archived-chat-list-${projectId}`;
   // A side chat never lists; its parent keeps the highlight.
   const activeTabId = useRailChatId(
     useWorkbenchStore((state) => state.activeTabId),
@@ -95,7 +86,6 @@ export function ProjectChatNavigation({
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const openRailChat = useWorkbenchStore((state) => state.openRailChat);
   const renameChat = useWorkbenchStore((state) => state.renameChat);
-  const restoreChat = useWorkbenchStore((state) => state.restoreChat);
   const projectName = useWorkbenchStore(
     (state) =>
       state.projects.find((project) => project.id === projectId)?.name ??
@@ -342,50 +332,7 @@ export function ProjectChatNavigation({
       ) : null}
 
       {!hideArchived && archivedChats.length > 0 ? (
-        <div className="archived-chats">
-          <button
-            className="archived-chats__disclosure"
-            type="button"
-            aria-label={`Archived chats: ${archivedChats.length}`}
-            aria-expanded={archivedOpen}
-            aria-controls={archivedListId}
-            onClick={() => setArchivedOpen((open) => !open)}
-          >
-            {archivedOpen ? (
-              <ChevronDown size={14} aria-hidden="true" />
-            ) : (
-              <ChevronRight size={14} aria-hidden="true" />
-            )}
-            <span>Archived</span> <span>{archivedChats.length}</span>
-          </button>
-          {archivedOpen ? (
-            <div
-              className="archived-chat-list"
-              id={archivedListId}
-              role="region"
-              aria-label="Archived chats"
-            >
-              {archivedChats.map((chat) => {
-                const displayTitle = chatDisplayTitle(chat.title);
-                return (
-                  <div className="archived-chat-row" key={chat.id}>
-                    <MessageSquare size={14} aria-hidden="true" />
-                    <span title={displayTitle}>{displayTitle}</span>
-                    <button
-                      type="button"
-                      aria-label={`Restore chat ${displayTitle}`}
-                      title={`Restore chat ${displayTitle}`}
-                      disabled={projectTransitioning}
-                      onClick={() => void restoreChat(chat.id, projectId)}
-                    >
-                      <RotateCcw size={12} aria-hidden="true" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
+        <ArchivedChatList projectId={projectId} chats={archivedChats} />
       ) : null}
     </div>
   );

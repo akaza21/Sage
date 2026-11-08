@@ -159,6 +159,7 @@ const chat: ChatPort = {
   renameChat: epochCommand("rename_chat"),
   archiveChat: epochCommand("archive_chat"),
   restoreChat: epochCommand("restore_chat"),
+  deleteChat: epochCommand("delete_chat"),
   moveChat: epochCommand("move_chat"),
   pinChat: epochCommand("pin_chat"),
 };

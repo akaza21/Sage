@@ -19,6 +19,21 @@ import type { WorkbenchState } from "./store";
 export interface ChatArchiveSlice {
   archiveChat: (chatId: string, projectId?: string) => Promise<boolean>;
   restoreChat: (chatId: string, projectId?: string) => Promise<boolean>;
+  /** Permanently deletes an archived Chat; callers confirm first. */
+  deleteChat: (chatId: string, projectId?: string) => Promise<boolean>;
+}
+
+function archivedChat(
+  state: WorkbenchState,
+  foreign: boolean,
+  projectId: string | undefined,
+  chatId: string,
+) {
+  return foreign
+    ? state.projects
+        .find((item) => item.id === projectId)
+        ?.railArchived?.find((chat) => chat.id === chatId)
+    : state.archivedChats.find((chat) => chat.id === chatId);
 }
 
 export const createChatArchiveSlice: StateCreator<
@@ -140,11 +155,7 @@ export const createChatArchiveSlice: StateCreator<
       const foreign =
         typeof sourceProjectId === "string" &&
         sourceProjectId !== initial?.projectId;
-      const archived = foreign
-        ? get()
-            .projects.find((item) => item.id === sourceProjectId)
-            ?.railArchived?.find((chat) => chat.id === chatId)
-        : get().archivedChats.find((chat) => chat.id === chatId);
+      const archived = archivedChat(get(), foreign, sourceProjectId, chatId);
       if (
         !initial ||
         !sourceProjectId ||
@@ -164,11 +175,12 @@ export const createChatArchiveSlice: StateCreator<
         return false;
       }
       const current = currentProjectLayout(get());
-      const currentArchived = foreign
-        ? get()
-            .projects.find((item) => item.id === sourceProjectId)
-            ?.railArchived?.find((chat) => chat.id === chatId)
-        : get().archivedChats.find((chat) => chat.id === chatId);
+      const currentArchived = archivedChat(
+        get(),
+        foreign,
+        sourceProjectId,
+        chatId,
+      );
       if (!current || !currentArchived) {
         set({
           projectTransitioning: false,
@@ -227,6 +239,33 @@ export const createChatArchiveSlice: StateCreator<
         classify,
       });
       return outcome === "committed";
+    },
+
+    deleteChat: async (chatId, projectId) => {
+      const activeProjectId = currentProjectLayout(get())?.projectId;
+      const sourceProjectId = projectId ?? activeProjectId;
+      const foreign = sourceProjectId !== activeProjectId;
+      if (
+        !sourceProjectId ||
+        !archivedChat(get(), foreign, sourceProjectId, chatId) ||
+        get().projectTransitioning
+      ) {
+        return false;
+      }
+      set({ projectTransitioning: true, error: null });
+      const expectedTransitionEpoch = get().nativeTransitionEpoch;
+      return commitIdentityChatResult({
+        set,
+        get,
+        applyProjection,
+        loadAuthoritativeProjection,
+        failedMessage: "native Chat delete did not commit",
+        invoke: () =>
+          chat.deleteChat(
+            { projectId: sourceProjectId, chatId },
+            expectedTransitionEpoch,
+          ),
+      });
     },
   };
 };

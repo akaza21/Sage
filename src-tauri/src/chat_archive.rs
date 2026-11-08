@@ -359,5 +359,7 @@ fn archived_layout(
     Ok(next)
 }
 
+mod delete;
+
 #[cfg(test)]
 mod tests;

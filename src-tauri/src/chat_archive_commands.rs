@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::{
     chat_commands::execute_chat_transition,
-    domain::{ChatLifecycleRequest, ProjectTransitionResult},
+    domain::{ChatDeleteRequest, ChatLifecycleRequest, ProjectTransitionResult},
     state::AppState,
 };
 
@@ -22,6 +22,37 @@ pub async fn restore_chat(
     expected_transition_epoch: u64,
 ) -> Result<ProjectTransitionResult, String> {
     Ok(restore_chat_inner(&state, request, expected_transition_epoch).await)
+}
+
+/// Permanently deletes an archived Chat and forgets its read mark.
+#[tauri::command]
+pub async fn delete_chat(
+    state: State<'_, AppState>,
+    request: ChatDeleteRequest,
+    expected_transition_epoch: u64,
+) -> Result<ProjectTransitionResult, String> {
+    Ok(delete_chat_inner(&state, request, expected_transition_epoch).await)
+}
+
+async fn delete_chat_inner(
+    state: &AppState,
+    request: ChatDeleteRequest,
+    expected_transition_epoch: u64,
+) -> ProjectTransitionResult {
+    let chat_id = request.chat_id.clone();
+    let result = execute_chat_transition(
+        state,
+        expected_transition_epoch,
+        "project changed before the requested Chat delete",
+        move |database| database.delete_archived_chat(&request),
+    )
+    .await;
+    if result.committed
+        && let Err(error) = state.settings.mark_chat_unread(&chat_id)
+    {
+        tracing::warn!(?error, "deleted Chat's read mark remains");
+    }
+    result
 }
 
 async fn archive_chat_inner(
