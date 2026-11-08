@@ -231,13 +231,16 @@ pub(crate) fn offers_mode(
 
 /// Whether the routed binding's access is enforced through its harness
 /// session modes. Only the access path may then change the session mode.
+/// None when the binding cannot be routed, so the caller decides how to
+/// fail closed.
 pub(crate) fn governs_session_modes(
     registry: &super::registry::BindingRegistry,
     binding: &str,
-) -> bool {
+) -> Option<bool> {
     registry
         .route(binding)
-        .is_ok_and(|record| !native_access_modes(record.access_policy_binding_id()).is_empty())
+        .ok()
+        .map(|record| !native_access_modes(record.access_policy_binding_id()).is_empty())
 }
 
 /// The harness session mode that carries `mode` for a routed binding.

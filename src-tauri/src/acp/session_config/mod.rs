@@ -243,6 +243,9 @@ impl SessionConfig {
     pub(crate) fn set_current_mode(&mut self, mode: ConfigId) -> Result<(), String> {
         self.validate_mode(mode.as_str())?;
         let mut candidate = self.clone();
+        // The option restating the modes moves with them, so the two
+        // sources a mode is read from never disagree.
+        candidate.set_mode_option(&mode);
         if let Some(modes) = &mut candidate.modes {
             modes.current_mode_id = mode;
         }

@@ -41,10 +41,61 @@ impl SessionConfig {
         }
     }
 
-    /// What it takes to put the session in `mode`.
+    /// Moves the mode option to `mode`, when it offers it.
+    pub(super) fn set_mode_option(&mut self, mode: &ConfigId) {
+        let Some(option) = self.mode_option() else {
+            return;
+        };
+        if self
+            .validate_value(option.id.as_str(), &select(mode))
+            .is_err()
+        {
+            return;
+        }
+        let id = option.id.clone();
+        for option in self.config_options.as_mut_slice() {
+            if option.id == id
+                && let ConfigKind::Select { current_value, .. } = &mut option.kind
+            {
+                *current_value = mode.clone();
+            }
+        }
+    }
+
+    /// Moves the plain session modes to the mode option's value, after the
+    /// agent reported its options alone.
+    pub(crate) fn follow_mode_option(&mut self) {
+        let Some(ConfigKind::Select { current_value, .. }) =
+            self.mode_option().map(|option| option.kind.clone())
+        else {
+            return;
+        };
+        if self.validate_mode(current_value.as_str()).is_ok()
+            && let Some(modes) = &mut self.modes
+        {
+            modes.current_mode_id = current_value;
+        }
+    }
+
+    /// Whether every source the session reports its mode in says `mode`:
+    /// the mode option and the plain session modes, where present.
+    pub(crate) fn in_mode(&self, mode: &str) -> bool {
+        let option = self.mode_option().map(|option| match &option.kind {
+            ConfigKind::Select { current_value, .. } => current_value.as_str() == mode,
+            _ => false,
+        });
+        let modes = self
+            .modes
+            .as_ref()
+            .map(|modes| modes.current_mode_id.as_str() == mode);
+        (option.is_some() || modes.is_some()) && option.unwrap_or(true) && modes.unwrap_or(true)
+    }
+
+    /// What it takes to put the session in `mode`. The session is in it only
+    /// when its sources agree; otherwise the mode is set again.
     pub(crate) fn select_mode(&self, mode: &str) -> ModeSelection {
         let current = self.current_mode();
-        if current == Some(mode) {
+        if self.in_mode(mode) {
             return ModeSelection::Current;
         }
         let Ok(id) = ConfigId::new("modeId", mode) else {
@@ -97,6 +148,12 @@ impl SessionConfig {
     }
 }
 
+fn select(mode: &ConfigId) -> ConfigValue {
+    ConfigValue::Select {
+        value: mode.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,10 +188,17 @@ mod tests {
     #[test]
     fn the_mode_option_is_set_and_compared_when_the_agent_restates_modes() {
         // Claude's adapter moved the option after a set_mode without a
-        // current_mode_update, so the option is the truth.
+        // current_mode_update: the option is read first, but the session is
+        // in the mode only once both sources agree, so it is set again.
         let config = config(mode_option("acceptEdits"));
         assert_eq!(config.current_mode(), Some("acceptEdits"));
-        assert_eq!(config.select_mode("acceptEdits"), ModeSelection::Current);
+        assert!(matches!(
+            config.select_mode("acceptEdits"),
+            ModeSelection::Change { .. }
+        ));
+        let mut followed = config.clone();
+        followed.follow_mode_option();
+        assert_eq!(followed.select_mode("acceptEdits"), ModeSelection::Current);
         assert_eq!(
             config.select_mode("bypassPermissions"),
             ModeSelection::Change {
@@ -189,5 +253,33 @@ mod tests {
         assert!(!restated.changes_mode(&option("model")));
         assert!(SessionConfig::may_change_mode(&option("Mode")));
         assert!(!SessionConfig::may_change_mode(&option("effort")));
+    }
+
+    #[test]
+    fn a_mode_its_sources_disagree_on_is_set_again() {
+        // Claude reported bypassPermissions as the mode with no option
+        // update: the session is not in either mode until both agree.
+        let split = config(mode_option("default"));
+        let mut moved = split.clone();
+        if let Some(modes) = &mut moved.modes {
+            modes.current_mode_id = ConfigId::new("id", "bypassPermissions").unwrap();
+        }
+        assert!(!moved.in_mode("default"));
+        assert!(!moved.in_mode("bypassPermissions"));
+        assert!(matches!(
+            moved.select_mode("default"),
+            ModeSelection::Change { .. }
+        ));
+        // A reported mode moves the option with it.
+        let mut reported = split;
+        reported
+            .set_current_mode(ConfigId::new("id", "bypassPermissions").unwrap())
+            .unwrap();
+        assert_eq!(reported.current_mode(), Some("bypassPermissions"));
+        assert!(reported.in_mode("bypassPermissions"));
+        assert_eq!(
+            reported.select_mode("bypassPermissions"),
+            ModeSelection::Current
+        );
     }
 }

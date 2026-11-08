@@ -1,12 +1,12 @@
 //! Keeps a running turn inside the permission mode Sage selected for it.
 //! Claude can change its own mode mid-turn (entering plan mode, or a
 //! plan-exit option that switches to auto or bypass). Moving to a mode no
-//! more permissive is fine, and so is the mode the user's own answer to a
-//! permission request leads to. Anything else is a policy violation: Sage
-//! cancels the turn and says why in the chat.
+//! more permissive than the wider of the selected mode and the one the
+//! user's own answer to a permission request leads to is fine. Anything
+//! else is a policy violation: Sage cancels the turn and says why.
 
 use super::*;
-use crate::acp::bindings::claude::{mode_change_admitted, option_target_mode};
+use crate::acp::bindings::claude::{mode_change_admitted, option_target_mode, wider_mode};
 use crate::acp::intent::session_event::{SessionNotice, SessionNoticeLevel, SessionScopedEvent};
 
 impl ClaudeRuntime {
@@ -23,9 +23,10 @@ impl ClaudeRuntime {
         let Some(turn) = self.active.as_ref().and_then(|active| active.turn.as_ref()) else {
             return true;
         };
-        // A turn without a selected mode runs as Claude's default.
+        // A turn without a selected mode runs as Claude's default. The
+        // user's own plan-exit answer can widen it, up to that answer's mode.
         let selected = turn.native_mode.unwrap_or("default");
-        mode_change_admitted(selected, next) || turn.sanctioned_mode == Some(next)
+        mode_change_admitted(wider_mode(selected, turn.sanctioned_mode), next)
     }
 
     /// Cancels the running turn and tells the chat why.

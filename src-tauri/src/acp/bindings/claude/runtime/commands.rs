@@ -63,6 +63,16 @@ impl ClaudeRuntime {
                 if active.turn.is_some() {
                     return Err(AdapterRuntimeError::Operation);
                 }
+                // The prompt is written only while the session is, by every
+                // source it reports, in the mode selected for this turn; a
+                // flip after the select stops it here.
+                let native_mode = crate::acp::bindings::access_policy::session_mode(
+                    super::super::CLAUDE_BINDING_ID,
+                    access_mode,
+                );
+                if native_mode.is_some_and(|mode| !active.config.in_mode(mode)) {
+                    return Err(AdapterRuntimeError::Operation);
+                }
                 active.translator.begin_prompt(&id.to_string()).map_err(map_translation)?;
                 active.turn = Some(TurnIntent {
                     external_turn_id: ExternalId::new("externalTurnId", format!("prompt-{id}"))
@@ -70,10 +80,7 @@ impl ClaudeRuntime {
                     client_message_id,
                     request_id: id,
                     cancel_written: false,
-                    native_mode: crate::acp::bindings::access_policy::session_mode(
-                        super::super::CLAUDE_BINDING_ID,
-                        access_mode,
-                    ),
+                    native_mode,
                     sanctioned_mode: None,
                 });
                 let external_session_id = active.external_id.clone();

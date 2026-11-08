@@ -2103,6 +2103,101 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
             CommandHostMode::Idle,
             false,
         );
+        // Claude reports its permission modes as session modes.
+        state.acp.report_session_config_for_test(
+            &owner,
+            crate::acp::session_config::SessionConfig::from_wire(
+                &serde_json::json!({
+                    "modes": {"currentModeId": "default", "availableModes": [
+                        {"id": "default", "name": "Manual"},
+                        {"id": "plan", "name": "Plan"},
+                        {"id": "bypassPermissions", "name": "Bypass permissions"}
+                    ]},
+                    "configOptions": []
+                }),
+                true,
+            )
+            .unwrap(),
+        );
+        // A direct mode change is refused: only the access path sets it.
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        let direct = super::acp::session_config::configure(
+            &state,
+            ActivateAcpSessionRequest {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: session_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+            },
+            state
+                .acp
+                .live_session_config(&owner)
+                .unwrap()
+                .config_revision,
+            crate::acp::session_config::ConfigMutation::Mode(
+                crate::acp::session_config::ConfigId::new("modeId", "bypassPermissions").unwrap(),
+            ),
+        )
+        .await;
+        assert!(
+            matches!(direct, Err(AcpIpcError::InvalidRequest { .. })),
+            "{direct:?}"
+        );
+        // The chat's own mode is selected before its prompt is prepared; a
+        // select the session refuses stops the prompt.
+        state
+            .settings
+            .set_chat_access(
+                session_id.as_str(),
+                crate::settings_store::SessionAccessMode::Plan,
+                1,
+            )
+            .unwrap();
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        let refused = send_acp_turn_inner(
+            &state,
+            SendAcpTurnRequest::Session {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: session_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+                prompt: Prompt::new("prompt", "must not run in plan").unwrap(),
+                attached_context: Default::default(),
+            },
+        )
+        .await;
+        assert!(
+            matches!(
+                &refused,
+                Err(SendAcpTurnFailure {
+                    prompt_dispatch: PromptDispatch::NotStarted,
+                    ..
+                })
+            ),
+            "{refused:?}"
+        );
+        assert!(calls.lock().unwrap().is_empty());
+        // The session is already in the chat's mode: nothing to select.
+        state
+            .settings
+            .set_chat_access(
+                session_id.as_str(),
+                crate::settings_store::SessionAccessMode::Ask,
+                2,
+            )
+            .unwrap();
         let page = state
             .acp
             .load_chat_page(project_id.clone(), chat_id.clone(), None)

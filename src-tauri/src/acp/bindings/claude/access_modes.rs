@@ -75,16 +75,24 @@ pub(crate) fn option_target_mode(option_id: &str) -> Option<&'static str> {
     }
 }
 
-/// Whether Sage may answer with this option. An option that changes the
-/// permission mode is used only when it leads to a mode no more permissive
-/// than accepting edits, and never when it also clears the conversation.
+/// Whether Sage may answer with this option. Of the plan-exit options only
+/// those known to lead to a mode no more permissive than accepting edits,
+/// without clearing the conversation, are used; any other `exit-plan-*`,
+/// including one a newer adapter adds, is refused.
 pub(crate) fn option_admitted(option_id: &str) -> bool {
-    match option_target_mode(option_id) {
-        None => true,
-        Some(target) => {
-            !option_id.starts_with("exit-plan-clear-")
-                && mode_change_admitted("acceptEdits", target)
+    !option_id.starts_with("exit-plan-")
+        || matches!(option_id, "exit-plan-default" | "exit-plan-accept-edits")
+}
+
+/// The wider of two permission modes; an unknown one is never the wider.
+pub(crate) fn wider_mode<'a>(selected: &'a str, sanctioned: Option<&'a str>) -> &'a str {
+    match sanctioned {
+        Some(sanctioned)
+            if !mode_change_admitted(selected, sanctioned) && rank(sanctioned).is_some() =>
+        {
+            sanctioned
         }
+        _ => selected,
     }
 }
 
@@ -109,8 +117,18 @@ mod tests {
             "exit-plan-clear-auto",
             "exit-plan-clear-bypass",
             "exit-plan-clear-accept-edits",
+            "exit-plan-future-mode",
+            "exit-plan-",
         ] {
             assert!(!option_admitted(refused), "{refused}");
         }
+    }
+
+    #[test]
+    fn a_turn_may_narrow_from_the_wider_of_its_selected_and_sanctioned_modes() {
+        assert_eq!(wider_mode("plan", Some("acceptEdits")), "acceptEdits");
+        assert_eq!(wider_mode("acceptEdits", Some("default")), "acceptEdits");
+        assert_eq!(wider_mode("default", None), "default");
+        assert_eq!(wider_mode("default", Some("futureMode")), "default");
     }
 }

@@ -14,7 +14,8 @@ const MODES: &str = r#"{"currentModeId":"plan","availableModes":[
     {"id":"plan","name":"Plan"},{"id":"auto","name":"Auto"},
     {"id":"bypassPermissions","name":"Bypass permissions"}]}"#;
 
-fn planning(runtime: &mut ClaudeRuntime, mode: SessionAccessMode) {
+/// A ready session in Claude's plan mode, as the 0.76 adapter starts one.
+fn ready(runtime: &mut ClaudeRuntime) {
     initialize(runtime);
     let egress = runtime
         .command(AdapterCommand::NewSession {
@@ -33,6 +34,28 @@ fn planning(runtime: &mut ClaudeRuntime, mode: SessionAccessMode) {
             &Mapper,
         )
         .unwrap();
+}
+
+fn prompt(
+    runtime: &mut ClaudeRuntime,
+    mode: SessionAccessMode,
+) -> Result<AdapterEgress, AdapterRuntimeError> {
+    runtime.command(AdapterCommand::Prompt {
+        prompt: Prompt::new("prompt", "Plan the change").unwrap(),
+        client_message_id: RequiredText::new("client", "client-message-1").unwrap(),
+        access_mode: mode,
+    })
+}
+
+/// A turn running in `mode`, which Sage selected before the prompt.
+fn planning(runtime: &mut ClaudeRuntime, mode: SessionAccessMode) {
+    ready(runtime);
+    let native = crate::acp::bindings::access_policy::session_mode(
+        crate::acp::bindings::claude::CLAUDE_BINDING_ID,
+        mode,
+    )
+    .unwrap();
+    runtime.ingest(&mode_update(native), &Mapper).unwrap();
     let egress = runtime
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Plan the change").unwrap(),
@@ -205,4 +228,56 @@ fn a_narrower_mode_change_keeps_the_turn_running() {
     }
     let batch = runtime.ingest(&mode_update("auto"), &Mapper).unwrap();
     assert_eq!(batch.egress().len(), 1);
+}
+
+#[test]
+fn a_prompt_is_written_only_while_the_session_is_in_the_turns_mode() {
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    // Sage selected "default", but the session is still in plan mode: a
+    // flip between the select and the prompt stops the prompt.
+    assert!(prompt(&mut runtime, SessionAccessMode::Ask).is_err());
+    runtime.ingest(&mode_update("default"), &Mapper).unwrap();
+    assert!(prompt(&mut runtime, SessionAccessMode::Ask).is_ok());
+}
+
+#[test]
+fn a_running_turn_refuses_a_mode_change() {
+    use crate::acp::{
+        contract::{SageChatId, SageProjectId},
+        scheduler::RuntimeOwner,
+        session_config::{ConfigId, ConfigIntent, ConfigMutation},
+    };
+    let intent = ConfigIntent {
+        owner: RuntimeOwner {
+            project_id: SageProjectId::parse("project-a").unwrap(),
+            chat_id: SageChatId::parse("chat-a").unwrap(),
+            session_id: SageAgentSessionId::parse("session-claude-runtime").unwrap(),
+            runtime_epoch: RuntimeEpoch::new(3).unwrap(),
+        },
+        expected_config_revision: serde_json::from_value(json!("1")).unwrap(),
+        mutation: ConfigMutation::Mode(ConfigId::new("modeId", "default").unwrap()),
+    };
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    assert!(runtime.configure(&intent).is_ok());
+    let mut runtime = ClaudeRuntime::fixture();
+    planning(&mut runtime, SessionAccessMode::Plan);
+    assert!(runtime.configure(&intent).is_err());
+}
+
+#[test]
+fn a_set_option_reply_that_widens_a_running_turn_cancels_it() {
+    let mut runtime = ClaudeRuntime::fixture();
+    planning(&mut runtime, SessionAccessMode::Plan);
+    let reply = runtime
+        .config_response(
+            json!({"result":{"configOptions":[{"id":"mode","name":"Mode","category":"mode",
+                "type":"select","currentValue":"bypassPermissions","options":[
+                {"value":"plan","name":"Plan"},{"value":"bypassPermissions","name":"Bypass"}]}]}}),
+            true,
+        )
+        .unwrap();
+    let cancel: Value = serde_json::from_slice(reply.egress()[0].frame().payload()).unwrap();
+    assert_eq!(cancel["method"], "session/cancel");
 }

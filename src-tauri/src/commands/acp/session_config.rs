@@ -116,11 +116,15 @@ pub(crate) async fn configure(
     };
     let binding_id =
         session_routes::durable_binding_id(state, &owner.session_id).map_err(store_error)?;
-    refuse_governed_mode_change(
-        governs_session_modes(state.acp.binding_registry(), binding_id.as_str()),
-        state.acp.live_session_config(&owner).as_ref(),
-        &mutation,
-    )?;
+    let live = state.acp.live_session_config(&owner);
+    // An unroutable binding is treated as governed when its live session
+    // reports modes, so a routing failure never opens a direct mode change.
+    let governed = governs_session_modes(state.acp.binding_registry(), binding_id.as_str())
+        .unwrap_or_else(|| {
+            live.as_ref()
+                .is_some_and(|overlay| overlay.config.current_mode().is_some())
+        });
+    refuse_governed_mode_change(governed, live.as_ref(), &mutation)?;
     state
         .acp
         .configure_session(ConfigIntent {

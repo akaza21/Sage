@@ -280,6 +280,12 @@ impl<T, const MAX: usize> BoundedVec<T, MAX> {
     pub fn as_slice(&self) -> &[T] {
         &self.0
     }
+
+    /// The entries, to change in place; the bound holds since none can be
+    /// added.
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        &mut self.0
+    }
 }
 
 impl<'de, T: Deserialize<'de>, const MAX: usize> Deserialize<'de> for BoundedVec<T, MAX> {

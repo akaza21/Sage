@@ -92,7 +92,12 @@ fn ready(runtime: &mut ClaudeRuntime) {
         .expect("written");
     let batch = runtime
         .ingest(
-            &frame(json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":"claude-session-1"}})),
+            // Claude reports its permission modes, starting in "default".
+            &frame(
+                json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":"claude-session-1",
+                "modes":{"currentModeId":"default","availableModes":[
+                    {"id":"default","name":"Default"},{"id":"plan","name":"Plan"}]}}}),
+            ),
             &Mapper,
         )
         .expect("session response");

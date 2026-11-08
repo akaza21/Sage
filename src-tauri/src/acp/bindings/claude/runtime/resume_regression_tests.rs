@@ -75,7 +75,8 @@ fn a_fresh_runtime_resumes_the_stopped_chat_through_activation_and_sends_again()
         }});
         pump.push_stdout_chunk(format!("{initialize}\n").as_bytes(), 1).await.unwrap();
         pump.flush_one(&mut Sink).unwrap();
-        let resumed = json!({"jsonrpc":"2.0","id":2,"result":{"sessionId":"claude-session-1"}});
+        let resumed = json!({"jsonrpc":"2.0","id":2,"result":{"sessionId":"claude-session-1",
+            "modes":{"currentModeId":"default","availableModes":[{"id":"default","name":"Default"}]}}});
         pump.push_stdout_chunk(format!("{resumed}\n").as_bytes(), 2).await.expect("resume must cross ReadyHandoff");
         let parts = pump.try_into_idle_parts().ok().expect("reusable after cold resume");
         let (mut runtime, _, _, _) = parts.into_parts();
