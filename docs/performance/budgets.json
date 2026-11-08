@@ -196,8 +196,8 @@
       {
         "entry": "src/features/chat/acp/UserInputPrompt.tsx",
         "maxGzipBytes": 2290,
-        "maxCssGzipBytes": 515,
-        "reason": "Composer-slot question card; loads only while a live Turn awaits answers to a harness's questions. Measured JS 2138 B and CSS 479 B plus 7%."
+        "maxCssGzipBytes": 1441,
+        "reason": "Composer-slot question card; loads only while a live Turn awaits answers to a harness's questions. Measured JS 2138 B and CSS 1347 B (with the shared card styles) plus 7%."
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",

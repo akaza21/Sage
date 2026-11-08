@@ -95,6 +95,11 @@ impl AcpService {
             }
         }
         let label = decision.label();
+        tracing::info!(
+            acp_request_resolved = request_id.as_str(),
+            decision = label,
+            "user resolved a harness request"
+        );
         let state = match decision {
             PermissionDecision::Ask => ServerRequestState::Asked,
             PermissionDecision::AllowOnce

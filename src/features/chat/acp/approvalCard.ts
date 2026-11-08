@@ -31,6 +31,41 @@ export function arrivalFocusAllowed(
   );
 }
 
+const cardsByRequest = new Map<string, string>();
+
+/**
+ * Logs a composer-slot card arriving, telling a remount of the same request
+ * (same request, same item), a re-projected request (same request, new
+ * item id) and a new request apart, and warns when more than one card is in
+ * the document.
+ */
+export function logCardArrival(
+  item: { id: string; payload: { requestId: string } },
+  card: HTMLElement | null,
+) {
+  const { requestId } = item.payload;
+  const previous = cardsByRequest.get(requestId);
+  const arrival =
+    previous === undefined
+      ? "new request"
+      : previous === item.id
+        ? "remount of the same request"
+        : `same request re-projected (was item ${previous})`;
+  cardsByRequest.delete(requestId);
+  cardsByRequest.set(requestId, item.id);
+  if (cardsByRequest.size > 32)
+    cardsByRequest.delete(cardsByRequest.keys().next().value!);
+  const live = [
+    ...(card?.ownerDocument ?? document).querySelectorAll<HTMLElement>(
+      "section.acp-permission-prompt[data-acp-item-id]",
+    ),
+  ].map((section) => section.dataset.acpItemId);
+  const detail = { itemId: item.id, requestId, arrival, live };
+  if (live.length > 1)
+    console.warn("approval card: more than one card", detail);
+  else console.info(`approval card: ${arrival}`, detail);
+}
+
 /**
  * A focused control of the previous request must not answer this one: park
  * focus on the card itself, where Enter does nothing.

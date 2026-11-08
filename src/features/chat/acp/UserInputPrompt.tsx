@@ -12,6 +12,7 @@ import { acpDesktop } from "../../../services/acpDesktop";
 import { approvalHold, resolveApproval } from "../useApprovalSlot";
 import {
   arrivalFocusAllowed,
+  logCardArrival,
   parkFocus,
   useCardKeyGuard,
 } from "./approvalCard";
@@ -127,6 +128,7 @@ export function UserInputPrompt({
     // A Deny pressed on the loading fallback carries into the card.
     approvalHold.denies.get(item.id)?.catch(() => setSent(false));
     const card = sectionRef.current;
+    logCardArrival(item, card);
     // Each request mounts its own card (keyed), so a field of this card can
     // only hold focus from this card's own arrival (a replayed effect).
     const active = document.activeElement;

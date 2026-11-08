@@ -51,6 +51,13 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         }
         let request_id = self.scoped_permission_id(&external_request_id)?;
         let (normalized_payload_json, measured) = payload_json(&payload)?;
+        // Paired with the resolve log: a second request for one harness
+        // action shows here as a second admission.
+        tracing::info!(
+            acp_request_admitted = request_id.as_str(),
+            external_request_id = external_request_id.as_str(),
+            "adapter pump admitted a harness request"
+        );
         Ok(Some(NormalizedFact::new(
             DurableAdapterEvent::PermissionRequest {
                 intent: PermissionIntent {

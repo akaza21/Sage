@@ -6,6 +6,7 @@ import { MenuPopover } from "../../../ui/MenuPopover";
 import { approvalHold, resolveApproval } from "../useApprovalSlot";
 import {
   arrivalFocusAllowed,
+  logCardArrival,
   parkFocus,
   useCardKeyGuard,
 } from "./approvalCard";
@@ -66,6 +67,7 @@ export function PermissionPrompt({
     const denied = approvalHold.denies.get(item.id);
     denied?.catch(() => setSent([item.id, false]));
     const card = sectionRef.current;
+    logCardArrival(item, card);
     if (arrivalFocusAllowed(item.id, card, focused, canTakeFocus)) {
       (primaryRef.current ?? firstRef.current)?.focus();
       setFocusState([item.id, document.activeElement === primaryRef.current]);
