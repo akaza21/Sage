@@ -76,6 +76,15 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             return Err(AdapterPumpError::TeardownRequired);
         }
 
+        for pending in &self.pending_permissions {
+            if withdrawn(pending, &resolved) {
+                if self.withdrawn_permissions.len() >= permission_limit {
+                    self.withdrawn_permissions.pop_front();
+                }
+                self.withdrawn_permissions
+                    .push_back(pending.intent.request_id.clone());
+            }
+        }
         self.pending_permissions
             .retain(|pending| !withdrawn(pending, &resolved));
         let permission_wait_path = !new_permissions.is_empty();

@@ -146,6 +146,27 @@ fn codex_withdrawing_a_question_resolves_the_journaled_request() {
             })
             .collect::<Vec<_>>();
         assert_eq!(resolved, [ServerRequestState::Cancelled]);
+        let request = shared
+            .0
+            .lock()
+            .unwrap()
+            .durable_batches
+            .iter()
+            .flatten()
+            .find_map(|event| match event {
+                DurableAdapterEvent::PermissionRequest { intent, .. } => {
+                    Some(intent.request_id.clone())
+                }
+                _ => None,
+            })
+            .unwrap();
+        pump.resolve_permission(
+            &request,
+            crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+            3,
+        )
+        .await
+        .expect("a decision that crossed the withdrawal is dropped");
         let completed = serde_json::json!({"method":"turn/completed","params":{
             "threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}});
         assert!(

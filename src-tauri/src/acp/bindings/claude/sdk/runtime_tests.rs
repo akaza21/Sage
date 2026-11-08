@@ -433,3 +433,29 @@ fn a_turn_ends_cleanly_after_claude_code_withdraws_an_approval() {
         })
     ));
 }
+
+#[test]
+fn a_turn_that_ends_with_an_approval_still_open_cancels_its_card_first() {
+    let mut runtime = prompted();
+    feed(
+        &mut runtime,
+        json!({"type":"control_request","request_id":"cli-1","request":{
+            "subtype":"can_use_tool","tool_name":"Bash","tool_use_id":"t1","input":{"command":"ls"}}}),
+    );
+    let ended = feed(
+        &mut runtime,
+        json!({"type":"result","subtype":"success","is_error":false}),
+    );
+    let resolved = ended
+        .iter()
+        .position(|event| matches!(event, AdapterEvent::PermissionResolved { .. }))
+        .expect("the open card is cancelled");
+    assert!(resolved < ended.len() - 1);
+    assert!(matches!(
+        ended.last(),
+        Some(AdapterEvent::Turn {
+            state: TurnState::Completed,
+            ..
+        })
+    ));
+}

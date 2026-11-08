@@ -102,10 +102,14 @@ impl ClaudeRuntime {
         wire: &Value,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let (request_id, _, _) = permission_identity(Some(wire))?;
+        let turn_open = self
+            .active
+            .as_ref()
+            .is_some_and(|active| active.turn.is_some());
         let Some(record) = self
             .denials
             .get_mut(request_id.as_str())
-            .filter(|record| record.state == DenialState::Pending)
+            .filter(|record| turn_open && record.state == DenialState::Pending)
         else {
             return AdapterBatch::new(vec![SharedEvent::Absorbed], Vec::new());
         };
