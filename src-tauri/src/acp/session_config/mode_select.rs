@@ -71,6 +71,30 @@ impl SessionConfig {
             mutation,
         }
     }
+
+    /// Whether `mutation` changes the session mode: a plain mode change, or
+    /// a value for the option that restates the modes.
+    pub(crate) fn changes_mode(&self, mutation: &ConfigMutation) -> bool {
+        match mutation {
+            ConfigMutation::Mode(_) => true,
+            ConfigMutation::Option { config_id, .. } => {
+                self.mode_option()
+                    .is_some_and(|option| option.id == *config_id)
+                    || Self::may_change_mode(mutation)
+            }
+        }
+    }
+
+    /// The same question without a reported config: any mode change, and an
+    /// option named `mode`, are treated as changing the mode.
+    pub(crate) fn may_change_mode(mutation: &ConfigMutation) -> bool {
+        match mutation {
+            ConfigMutation::Mode(_) => true,
+            ConfigMutation::Option { config_id, .. } => {
+                config_id.as_str().eq_ignore_ascii_case("mode")
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -148,5 +172,22 @@ mod tests {
             SessionConfig::default().select_mode("default"),
             ModeSelection::NotOffered
         );
+    }
+
+    #[test]
+    fn mode_changes_are_recognised_by_kind_and_by_the_mode_option() {
+        let id = |value: &str| ConfigId::new("id", value).unwrap();
+        let option = |config_id: &str| ConfigMutation::Option {
+            config_id: id(config_id),
+            value: ConfigValue::Select {
+                value: id("bypassPermissions"),
+            },
+        };
+        let restated = config(mode_option("default"));
+        assert!(restated.changes_mode(&ConfigMutation::Mode(id("bypassPermissions"))));
+        assert!(restated.changes_mode(&option("mode")));
+        assert!(!restated.changes_mode(&option("model")));
+        assert!(SessionConfig::may_change_mode(&option("Mode")));
+        assert!(!SessionConfig::may_change_mode(&option("effort")));
     }
 }

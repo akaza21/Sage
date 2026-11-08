@@ -1,5 +1,6 @@
 use super::*;
 use crate::acp::{
+    bindings::access_policy::governs_session_modes,
     contract::*,
     session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigRevision, ConfigValue},
 };
@@ -113,6 +114,13 @@ pub(crate) async fn configure(
         session_id: request.session_id,
         runtime_epoch: request.runtime_epoch,
     };
+    let binding_id =
+        session_routes::durable_binding_id(state, &owner.session_id).map_err(store_error)?;
+    refuse_governed_mode_change(
+        governs_session_modes(state.acp.binding_registry(), binding_id.as_str()),
+        state.acp.live_session_config(&owner).as_ref(),
+        &mutation,
+    )?;
     state
         .acp
         .configure_session(ConfigIntent {
@@ -122,6 +130,27 @@ pub(crate) async fn configure(
         })
         .map_err(map_config_error)?;
     mutation_response(state, request.project_id, request.chat_id)
+}
+
+/// Where a binding's access is enforced through its session modes, only the
+/// access path (`session_access::select_session_mode`) may change the mode:
+/// a direct mode change here could select a mode, such as Claude's
+/// bypassPermissions, without the chat's access choice or its confirmation.
+pub(super) fn refuse_governed_mode_change(
+    governed: bool,
+    live: Option<&crate::acp::session_config::SessionConfigOverlay>,
+    mutation: &ConfigMutation,
+) -> Result<(), AcpIpcError> {
+    let changes_mode = match live {
+        Some(overlay) => overlay.config.changes_mode(mutation),
+        None => crate::acp::session_config::SessionConfig::may_change_mode(mutation),
+    };
+    if governed && changes_mode {
+        return Err(AcpIpcError::InvalidRequest {
+            message: safe_message("Change this chat's permission mode from its access menu."),
+        });
+    }
+    Ok(())
 }
 
 pub(super) fn map_config_error(error: crate::acp::runtime::HostError) -> AcpIpcError {

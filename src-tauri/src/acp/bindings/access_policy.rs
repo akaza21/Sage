@@ -185,21 +185,20 @@ pub(crate) fn effective_mode(
         .map(|mode| mode.id)
 }
 
-/// The mode a prompt runs under: the session's Full access grant while the
-/// binding still offers Full access, else the binding's stored default. A
-/// grant the binding cannot carry never lowers or raises the default.
+/// The mode a prompt runs under: the chat's own choice while the binding
+/// still offers exactly that mode, else the binding's stored default. A
+/// choice the binding cannot carry never lowers or raises the default.
 pub(crate) fn turn_mode(
     binding: &str,
     version: &str,
     characterised: bool,
-    full_access_granted: bool,
+    chat: Option<SessionAccessMode>,
     default: Option<SessionAccessMode>,
 ) -> Option<SessionAccessMode> {
-    let full_access = Some(SessionAccessMode::FullAccess);
-    if full_access_granted
-        && effective_mode(binding, version, full_access, characterised) == full_access
+    if let Some(chat) = chat
+        && effective_mode(binding, version, Some(chat), characterised) == Some(chat)
     {
-        return full_access;
+        return Some(chat);
     }
     effective_mode(binding, version, default, characterised)
 }
@@ -207,7 +206,7 @@ pub(crate) fn turn_mode(
 pub(crate) fn turn_mode_for_binding(
     registry: &super::registry::BindingRegistry,
     binding: &str,
-    full_access_granted: bool,
+    chat: Option<SessionAccessMode>,
     default: Option<SessionAccessMode>,
 ) -> Option<SessionAccessMode> {
     let record = registry.route(binding).ok()?;
@@ -216,17 +215,29 @@ pub(crate) fn turn_mode_for_binding(
         record.access_policy_binding_id(),
         &bound.reported_version,
         bound.characterisation.is_characterised(),
-        full_access_granted,
+        chat,
         default,
     )
 }
 
-/// Whether the routed binding offers Full access at all.
-pub(crate) fn offers_full_access(
+/// Whether the routed binding offers `mode` to a chat.
+pub(crate) fn offers_mode(
+    registry: &super::registry::BindingRegistry,
+    binding: &str,
+    mode: SessionAccessMode,
+) -> bool {
+    turn_mode_for_binding(registry, binding, Some(mode), None) == Some(mode)
+}
+
+/// Whether the routed binding's access is enforced through its harness
+/// session modes. Only the access path may then change the session mode.
+pub(crate) fn governs_session_modes(
     registry: &super::registry::BindingRegistry,
     binding: &str,
 ) -> bool {
-    turn_mode_for_binding(registry, binding, true, None) == Some(SessionAccessMode::FullAccess)
+    registry
+        .route(binding)
+        .is_ok_and(|record| !native_access_modes(record.access_policy_binding_id()).is_empty())
 }
 
 /// The harness session mode that carries `mode` for a routed binding.
@@ -409,33 +420,41 @@ mod tests {
     }
 
     #[test]
-    fn a_full_access_grant_applies_only_where_the_binding_carries_it() {
-        use SessionAccessMode::{AcceptEdits, Ask, FullAccess, Plan, ReadOnly, WorkspaceWrite};
-        let claude =
-            |granted, default| turn_mode("claude-agent-acp", "0.76.0", true, granted, default);
-        assert_eq!(claude(true, None), Some(FullAccess));
-        assert_eq!(claude(true, Some(Plan)), Some(FullAccess));
-        // Without a grant a chat runs under the binding default, which starts
-        // at Ask each time and can be any non-Full mode.
-        assert_eq!(claude(false, None), Some(Ask));
-        assert_eq!(claude(false, Some(AcceptEdits)), Some(AcceptEdits));
-        assert_eq!(claude(false, Some(Plan)), Some(Plan));
-        assert_eq!(claude(false, Some(ReadOnly)), None);
-        // A grant on a harness that cannot carry Full access keeps its own
-        // default rather than falling to some other mode.
+    fn a_chat_choice_applies_only_where_the_binding_carries_it() {
+        use SessionAccessMode::{
+            AcceptEdits, Ask, Auto, FullAccess, Plan, ReadOnly, WorkspaceWrite,
+        };
+        let claude = |chat, default| turn_mode("claude-agent-acp", "0.76.0", true, chat, default);
+        assert_eq!(claude(Some(FullAccess), None), Some(FullAccess));
+        assert_eq!(claude(Some(FullAccess), Some(Plan)), Some(FullAccess));
+        assert_eq!(claude(Some(Auto), Some(AcceptEdits)), Some(Auto));
+        assert_eq!(claude(Some(Plan), Some(AcceptEdits)), Some(Plan));
+        // Without a choice a chat runs under the binding default, which
+        // starts at Ask each time and can be any non-Full mode.
+        assert_eq!(claude(None, None), Some(Ask));
+        assert_eq!(claude(None, Some(AcceptEdits)), Some(AcceptEdits));
+        assert_eq!(claude(None, Some(ReadOnly)), None);
+        // A choice Claude cannot carry leaves the default in charge.
+        assert_eq!(claude(Some(WorkspaceWrite), Some(Plan)), Some(Plan));
+        // A choice a harness cannot carry keeps its own default rather than
+        // falling to some other mode.
         assert_eq!(
             turn_mode(
                 "codex-app-server",
                 "0.146.0",
                 true,
-                true,
+                Some(FullAccess),
                 Some(WorkspaceWrite)
             ),
             Some(WorkspaceWrite)
         );
         assert_eq!(
-            turn_mode("opencode-acp", "1", true, true, None),
+            turn_mode("opencode-acp", "1", true, Some(FullAccess), None),
             Some(ReadOnly)
+        );
+        assert_eq!(
+            turn_mode("opencode-acp", "1", true, Some(Ask), Some(ReadOnly)),
+            Some(Ask)
         );
     }
 
