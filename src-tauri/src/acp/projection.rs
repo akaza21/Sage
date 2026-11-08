@@ -134,6 +134,9 @@ pub enum ToolPresentation {
         tool_label: SafeText<512>,
         arguments_summary: Option<SafeText<16384>>,
         result_summary: Option<SafeText<16384>>,
+        /// Latest status line of a running call; absent once it is terminal.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        progress: Option<SafeText<{ super::intent::TOOL_PROGRESS_BYTES }>>,
     },
     Subagent {
         label: SafeText<512>,

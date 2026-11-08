@@ -97,6 +97,8 @@ export type ToolPresentation =
       toolLabel: string;
       argumentsSummary: string | null;
       resultSummary: string | null;
+      /** Latest status line of a running call; absent once it is terminal. */
+      progress?: string;
     }
   | {
       kind: "subagent";

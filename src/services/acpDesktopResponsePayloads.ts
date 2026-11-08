@@ -335,10 +335,12 @@ export function safeToolPresentation(value: unknown): ToolPresentation | null {
       const toolLabel = safeText(value.toolLabel, 512);
       const argumentsSummary = safeOptionalText(value.argumentsSummary, 16_384);
       const resultSummary = safeOptionalText(value.resultSummary, 16_384);
+      const progress = safeOptionalText(value.progress, 512);
       return serverLabel === null ||
         toolLabel === null ||
         argumentsSummary === undefined ||
-        resultSummary === undefined
+        resultSummary === undefined ||
+        progress === undefined
         ? null
         : {
             kind: "mcp",
@@ -347,6 +349,7 @@ export function safeToolPresentation(value: unknown): ToolPresentation | null {
             toolLabel,
             argumentsSummary,
             resultSummary,
+            ...(progress === null ? {} : { progress }),
           };
     }
     case "subagent": {

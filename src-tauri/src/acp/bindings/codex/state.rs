@@ -10,6 +10,7 @@ mod command_snapshots;
 mod construction;
 mod errors;
 mod goal;
+mod mcp_tools;
 mod permission_resolution;
 mod permissions;
 mod provisional;
@@ -165,6 +166,7 @@ pub(crate) struct CodexAdapter {
     active_unretried_error_fingerprints: Vec<[u8; 32]>,
     previous_turn: Option<TurnTombstone>,
     command_item_snapshots: CommandItemSnapshots,
+    running_mcp_tools: mcp_tools::RunningMcpTools,
     subagent_labels: SubagentLabels,
     child_threads: Vec<SafeText<512>>,
     bound_child_threads: Vec<SafeText<512>>,

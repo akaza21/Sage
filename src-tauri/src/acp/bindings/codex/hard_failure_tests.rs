@@ -29,7 +29,7 @@ const UNIMPLEMENTED_SERVER_REQUESTS: [&str; 7] = [
 
 const UNPROJECTED_NOTIFICATIONS: [&str; 5] = [
     "fs/changed",
-    "hook/started",
+    "configWarning",
     "thread/realtime/started",
     "turn/diff/updated",
     "warning",

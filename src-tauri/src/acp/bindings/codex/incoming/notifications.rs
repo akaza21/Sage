@@ -15,10 +15,15 @@ mod child_thread;
 pub(super) use child_thread::item_event as child_item_event;
 pub(super) use child_thread::turn_completed as child_turn_completed;
 mod deltas;
+mod hooks;
+use hooks::{HookPhase, hook_run};
 mod items;
 use items::item_event;
+mod mcp_progress;
+use mcp_progress::mcp_tool_progress;
 mod plan;
 mod provisional;
+mod status_line;
 use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};
 use plan::structured_plan;
 
@@ -197,6 +202,9 @@ pub(super) fn notification<M: ResourceMapper>(
             declarations,
         ),
         "item/commandExecution/outputDelta" => command_output_delta(adapter, params),
+        "item/mcpToolCall/progress" => mcp_tool_progress(adapter, params),
+        "hook/started" => hook_run(adapter, params, HookPhase::Started),
+        "hook/completed" => hook_run(adapter, params, HookPhase::Completed),
         "item/agentMessage/delta" => delta_event(adapter, params, DeltaKind::Text, None),
         "item/reasoning/summaryTextDelta" => delta_event(adapter, params, DeltaKind::Thought, None),
         // Codex shows the reasoning summary only; raw reasoning text is

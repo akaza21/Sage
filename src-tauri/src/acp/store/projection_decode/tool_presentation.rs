@@ -85,6 +85,7 @@ pub(super) fn presentation(
             label,
             arguments_summary: None,
             result_summary: None,
+            progress: execution.progress.map(|progress| *progress),
         },
         ToolCategory::Subagent => ToolPresentation::Subagent {
             label,

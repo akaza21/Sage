@@ -12,6 +12,7 @@ use super::*;
 use super::{incoming::IngressError, request::RequestKind, state::AdapterError};
 
 mod file_change_sequence_tests;
+mod mcp_progress_hook_tests;
 #[cfg(windows)]
 mod state_volume;
 mod terminal_error_tests;
@@ -2378,8 +2379,11 @@ fn all_outgoing_lifecycle_methods_are_exact_and_bounded() {
         env!("CARGO_PKG_VERSION")
     );
     assert_eq!(
-        initialize_value["params"]["capabilities"]["experimentalApi"],
-        true
+        initialize_value["params"]["capabilities"],
+        json!({
+            "experimentalApi": true,
+            "optOutNotificationMethods": ["turn/diff/updated", "item/fileChange/outputDelta"]
+        })
     );
     assert!(!initialize.bytes.ends_with(b"\n"));
     candidate.ingest(&initialize_result(1), &Mapper).unwrap();
