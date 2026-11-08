@@ -20,6 +20,7 @@ describe("session access mode", () => {
       "workspaceWrite",
       "acceptEdits",
       "plan",
+      "auto",
       "fullAccess",
     ]);
   });

@@ -4,6 +4,7 @@ export const SESSION_ACCESS_MODES = [
   "workspaceWrite",
   "acceptEdits",
   "plan",
+  "auto",
   "fullAccess",
 ] as const;
 

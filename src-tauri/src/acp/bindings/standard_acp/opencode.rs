@@ -1419,6 +1419,7 @@ mod tests {
                 ),
                 mode @ (SessionAccessMode::AcceptEdits
                 | SessionAccessMode::Plan
+                | SessionAccessMode::Auto
                 | SessionAccessMode::FullAccess) => {
                     panic!("OpenCode must not offer {mode:?}")
                 }

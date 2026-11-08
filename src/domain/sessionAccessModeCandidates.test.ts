@@ -54,6 +54,12 @@ const claude: SessionAccessModeCapability[] = [
     sessionModeId: "plan",
   },
   {
+    id: "auto",
+    label: "Auto",
+    description: "Claude runs what it judges safe.",
+    sessionModeId: "auto",
+  },
+  {
     id: "fullAccess",
     label: "Full access",
     description: "Everything runs without asking.",
@@ -73,6 +79,7 @@ it("offers only the modes the live session advertises", () => {
   expect(ids(sessionAccessModeCandidates(claude, session))).toEqual([
     "ask",
     "acceptEdits",
+    "auto",
   ]);
 });
 
@@ -81,6 +88,7 @@ it("offers Full access only to a live session, never as a new-chat default", () 
     "ask",
     "acceptEdits",
     "plan",
+    "auto",
   ]);
   expect(
     ids(
@@ -90,7 +98,7 @@ it("offers Full access only to a live session, never as a new-chat default", () 
         fullAccess: true,
       }),
     ),
-  ).toEqual(["ask", "acceptEdits", "plan"]);
+  ).toEqual(["ask", "acceptEdits", "plan", "auto"]);
 });
 
 it("runs a granted session in Full access and every other one at its default", () => {

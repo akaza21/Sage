@@ -5,6 +5,7 @@ import {
   ListChecks,
   MessageCircleQuestion,
   ShieldCheck,
+  Sparkles,
 } from "../../ui/leanIcons";
 
 export const ACCESS_ICONS = {
@@ -13,5 +14,6 @@ export const ACCESS_ICONS = {
   workspaceWrite: ShieldCheck,
   acceptEdits: FilePen,
   plan: ListChecks,
+  auto: Sparkles,
   fullAccess: AlertTriangle,
 };

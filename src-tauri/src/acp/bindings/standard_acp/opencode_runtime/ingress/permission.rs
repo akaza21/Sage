@@ -72,6 +72,7 @@ impl OpenCodeRuntime {
             crate::settings_store::SessionAccessMode::ReadOnly
             | crate::settings_store::SessionAccessMode::AcceptEdits
             | crate::settings_store::SessionAccessMode::Plan
+            | crate::settings_store::SessionAccessMode::Auto
             | crate::settings_store::SessionAccessMode::FullAccess => {
                 active
                     .translator

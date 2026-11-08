@@ -43,6 +43,8 @@ pub enum SessionAccessMode {
     AcceptEdits,
     /// The harness plans and does not change files.
     Plan,
+    /// The harness approves actions it judges safe and asks about the rest.
+    Auto,
     /// Every action runs without asking. Granted per chat session after an
     /// explicit confirmation; never a stored default.
     FullAccess,

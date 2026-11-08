@@ -22,27 +22,35 @@ pub struct AccessModeCapability {
     pub(crate) session_mode_id: Option<String>,
 }
 
-/// Claude Code's permission modes, which its ACP adapter advertises as
-/// session modes. Sage selects one before each prompt; a mode the session
-/// does not advertise is refused rather than approximated.
-const CLAUDE_SESSION_MODES: &[(SessionAccessMode, &str)] = &[
-    (SessionAccessMode::Ask, "default"),
-    (SessionAccessMode::AcceptEdits, "acceptEdits"),
-    (SessionAccessMode::Plan, "plan"),
-    (SessionAccessMode::FullAccess, "bypassPermissions"),
-];
+/// An access mode a harness enforces itself, through one of its own session
+/// (permission) modes. A binding whose access works this way lists its rows
+/// in its own module; everything else here, and the settings, grants,
+/// diagnostics and composer, stay harness-neutral. Before each prompt Sage
+/// selects `session_mode` through the binding's session-config path, and a
+/// mode the live session does not advertise is refused, never approximated.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct NativeAccessMode {
+    pub(crate) id: SessionAccessMode,
+    pub(crate) label: &'static str,
+    pub(crate) description: &'static str,
+    pub(crate) session_mode: &'static str,
+}
+
+/// The curated binding's native access modes, first being its default.
+fn native_access_modes(binding: &str) -> &'static [NativeAccessMode] {
+    match binding {
+        "claude-agent-acp" => super::claude::CLAUDE_ACCESS_MODES,
+        _ => &[],
+    }
+}
 
 /// The harness session mode that carries `mode` for `binding`, when the
 /// binding enforces access through session modes.
 pub(crate) fn session_mode(binding: &str, mode: SessionAccessMode) -> Option<&'static str> {
-    let modes: &[(SessionAccessMode, &str)] = match binding {
-        "claude-agent-acp" => CLAUDE_SESSION_MODES,
-        _ => &[],
-    };
-    modes
+    native_access_modes(binding)
         .iter()
-        .find(|(id, _)| *id == mode)
-        .map(|(_, native)| *native)
+        .find(|native| native.id == mode)
+        .map(|native| native.session_mode)
 }
 
 pub(crate) fn access_modes(
@@ -65,7 +73,21 @@ pub(crate) fn admitted_modes(
     characterised: bool,
     pi_bridge: Result<(), Unavailable>,
 ) -> Vec<AccessModeCapability> {
-    use SessionAccessMode::{AcceptEdits, Ask, FullAccess, Plan, ReadOnly, WorkspaceWrite};
+    use SessionAccessMode::{Ask, ReadOnly, WorkspaceWrite};
+    let native = native_access_modes(binding);
+    if !native.is_empty() {
+        return native
+            .iter()
+            .enumerate()
+            .map(|(index, mode)| AccessModeCapability {
+                id: mode.id,
+                label: mode.label.into(),
+                description: mode.description.into(),
+                fallback: index == 0 && mode.id.is_default_eligible(),
+                session_mode_id: Some(mode.session_mode.into()),
+            })
+            .collect();
+    }
     let rows: &[(SessionAccessMode, &str, &str)] = match binding {
         "codex-app-server" if version == "0.146.0" && characterised => &[
             (
@@ -89,28 +111,6 @@ pub(crate) fn admitted_modes(
             "Read-only",
             "Read workspace files; no writes or network.",
         )],
-        "claude-agent-acp" => &[
-            (
-                Ask,
-                "Ask each time",
-                "Review each permission request; no filesystem sandbox.",
-            ),
-            (
-                AcceptEdits,
-                "Accept edits",
-                "File edits run without asking; other tools still ask. No filesystem sandbox.",
-            ),
-            (
-                Plan,
-                "Plan",
-                "Claude plans without changing files and asks before it starts.",
-            ),
-            (
-                FullAccess,
-                "Full access",
-                "Every edit, tool and command runs without asking, with no filesystem sandbox. This chat only.",
-            ),
-        ],
         "pi-rpc" if characterised => match pi_bridge {
             Ok(_) => &[
                 (
@@ -161,8 +161,8 @@ pub(crate) fn admitted_modes(
             id: *id,
             label: (*label).into(),
             description: (*description).into(),
-            fallback: index == 0 && id.is_default_eligible(),
-            session_mode_id: session_mode(binding, *id).map(str::to_owned),
+            fallback: index == 0,
+            session_mode_id: None,
         })
         .collect()
 }
@@ -308,7 +308,7 @@ mod tests {
             (
                 "claude-agent-acp",
                 "1",
-                vec!["ask", "acceptEdits", "plan", "fullAccess"],
+                vec!["ask", "acceptEdits", "plan", "auto", "fullAccess"],
             ),
             (
                 "opencode-acp",
@@ -351,7 +351,9 @@ mod tests {
 
     #[test]
     fn claude_access_modes_select_its_advertised_permission_modes() {
-        use SessionAccessMode::{AcceptEdits, Ask, FullAccess, Plan, ReadOnly, WorkspaceWrite};
+        use SessionAccessMode::{
+            AcceptEdits, Ask, Auto, FullAccess, Plan, ReadOnly, WorkspaceWrite,
+        };
         let wire = serde_json::to_value(access_modes("claude-agent-acp", "0.76.0", true)).unwrap();
         assert_eq!(
             wire.as_array()
@@ -363,6 +365,7 @@ mod tests {
                 (json!("ask"), json!("default")),
                 (json!("acceptEdits"), json!("acceptEdits")),
                 (json!("plan"), json!("plan")),
+                (json!("auto"), json!("auto")),
                 (json!("fullAccess"), json!("bypassPermissions")),
             ]
         );
@@ -370,6 +373,7 @@ mod tests {
             (Ask, Some("default")),
             (AcceptEdits, Some("acceptEdits")),
             (Plan, Some("plan")),
+            (Auto, Some("auto")),
             (FullAccess, Some("bypassPermissions")),
             (ReadOnly, None),
             (WorkspaceWrite, None),
@@ -383,7 +387,7 @@ mod tests {
             assert!(
                 access_modes(binding, "0.146.0", true)
                     .iter()
-                    .all(|mode| !matches!(mode.id, AcceptEdits | Plan | FullAccess)
+                    .all(|mode| !matches!(mode.id, AcceptEdits | Plan | Auto | FullAccess)
                         && mode.session_mode_id.is_none())
             );
             // A grant those harnesses cannot carry falls back to read-only.

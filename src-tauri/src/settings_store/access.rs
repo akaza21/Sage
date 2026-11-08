@@ -10,7 +10,7 @@ pub type SessionAccessModes = BTreeMap<String, SessionAccessMode>;
 /// The stored defaults admit every mode a new chat may start in. Full access
 /// is granted per chat session (`full_access.rs`) and is never a default, so
 /// the schema itself refuses it.
-const BINDING_ACCESS_MODES: &str = "CREATE TABLE binding_access_modes (binding_id TEXT PRIMARY KEY CHECK(length(binding_id) BETWEEN 1 AND 128), mode TEXT NOT NULL CHECK(mode IN ('readOnly','ask','workspaceWrite','acceptEdits','plan'))) STRICT;";
+const BINDING_ACCESS_MODES: &str = "CREATE TABLE binding_access_modes (binding_id TEXT PRIMARY KEY CHECK(length(binding_id) BETWEEN 1 AND 128), mode TEXT NOT NULL CHECK(mode IN ('readOnly','ask','workspaceWrite','acceptEdits','plan','auto'))) STRICT;";
 
 pub(super) fn migrate(connection: &rusqlite::Connection) -> AppResult<()> {
     let existing: Option<String> = connection
