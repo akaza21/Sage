@@ -166,7 +166,7 @@ for (const covering of [
       await page
         .getByRole("button", { name: /Show files and preview/ })
         .click();
-    const composer = page.getByRole("textbox", {
+    const composer = page.getByRole("combobox", {
       name: "Message agent",
       exact: true,
       includeHidden: true,
@@ -408,7 +408,7 @@ test("defaults closed; the labelled toggle persists open and closed across reloa
 test("shortcut and chrome Escape preserve sessions and return focus to the composer", async ({
   page,
 }) => {
-  const composer = page.getByRole("textbox", {
+  const composer = page.getByRole("combobox", {
     name: "Message agent",
     exact: true,
   });
@@ -460,7 +460,7 @@ test("navigation and terminal commands stay independent across layout changes", 
   await toggle.click();
   await expect(dock.locator(".xterm-helper-textarea:visible")).toBeFocused();
   await page
-    .getByRole("textbox", { name: "Message agent", exact: true })
+    .getByRole("combobox", { name: "Message agent", exact: true })
     .focus();
   await page.keyboard.press("ControlOrMeta+b");
   await expect(navigation).toBeHidden();

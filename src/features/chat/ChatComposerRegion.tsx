@@ -1,5 +1,7 @@
+import { useRef, useState } from "react";
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
+import { isImeComposing } from "../../ui/imeComposition";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
 import "../../styles/queued-messages.css";
@@ -19,9 +21,14 @@ import { QueuedRows, lazyParts } from "./lazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
+import type * as SlashChunk from "./ComposerSlashController";
 
 const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
   () => import("./ClaudeAuthActions"),
+);
+// The `/` command menu loads with the field's first focus.
+const SlashPart = lazyParts<typeof SlashChunk>(
+  () => import("./ComposerSlashController"),
 );
 
 export function ChatComposerRegion({
@@ -31,6 +38,7 @@ export function ChatComposerRegion({
   composerRef,
   fieldId,
   dictationScope,
+  commandChatId,
   sessionId = null,
   descriptionId,
   disabledReasonId,
@@ -116,6 +124,8 @@ export function ChatComposerRegion({
     hidden || composerDisabled || activeTurn,
     composerRef,
   );
+  const slashReady = useRef(false);
+  const [slashArmed, setSlashArmed] = useState(false);
   return (
     <div className="chat-dock surface surface--dock">
       <div className="chat-edit-summary-zone" ref={onEditSummaryMount} />
@@ -218,6 +228,10 @@ export function ChatComposerRegion({
               ref={composerRef}
               id={fieldId}
               aria-label="Message agent"
+              // A combobox for the `/` command menu (ARIA 1.2); its menu
+              // controller owns aria-expanded once loaded.
+              role="combobox"
+              aria-expanded={false}
               spellCheck={false}
               autoCorrect="off"
               autoCapitalize="off"
@@ -236,8 +250,21 @@ export function ChatComposerRegion({
               )}
               disabled={composerDisabled}
               onChange={(event) => onTextChange(event.target.value)}
+              onFocus={() => setSlashArmed(true)}
               onBlur={dictation.cancel}
               onKeyDown={(event) => {
+                // An IME composition owns its keys, Enter included.
+                if (isImeComposing(event)) return;
+                // Until the `/` menu loads, Enter holds a half-typed name.
+                if (
+                  !slashReady.current &&
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  /^\/\S*$/u.test(text)
+                ) {
+                  event.preventDefault();
+                  return;
+                }
                 if (event.key === "Escape" && dictation.listening) {
                   event.preventDefault();
                   dictation.cancel();
@@ -252,6 +279,18 @@ export function ChatComposerRegion({
                 }
               }}
             />
+            {slashArmed ? (
+              <SlashPart
+                part="ComposerSlashController"
+                fieldRef={composerRef}
+                readyRef={slashReady}
+                boundChatId={commandChatId}
+                disabled={hidden || composerDisabled}
+                fieldId={fieldId}
+                text={text}
+                onTextChange={onTextChange}
+              />
+            ) : null}
           </div>
           {disabledReason ? (
             <p className="composer__disabled-reason" id={disabledReasonId}>

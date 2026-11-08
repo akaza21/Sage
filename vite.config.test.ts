@@ -75,6 +75,12 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerAddActions.tsx",
   "src/features/chat/ComposerEffortMenu.tsx",
   "src/features/chat/ComposerModelMenu.tsx",
+  // The `/` command controller and menu load with the field's first focus.
+  "src/features/chat/ComposerSlashController.tsx",
+];
+const COMMAND_DYNAMIC_FACADES = [
+  // The typed command route loads with the first `/name` sent.
+  "src/features/chat/slashCommandTurn.ts",
 ];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
   // Only the question card sends answers.
@@ -102,6 +108,7 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
 const REQUIRED_DYNAMIC_FACADES = [
   ...REQUEST_ONLY_DYNAMIC_FACADES,
   ...COMPOSER_MENU_DYNAMIC_FACADES,
+  ...COMMAND_DYNAMIC_FACADES,
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",

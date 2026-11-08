@@ -21,6 +21,7 @@ import { createActionProjectionCommit, sameScope } from "./acpActionProjection";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
 import { createSessionActionRunner } from "./sessionAction";
+import type { SlashCommandPort } from "../slashCommandTurn";
 
 export { cancellableTurnId } from "./acpTurnState";
 
@@ -61,6 +62,8 @@ export interface AcpActionCommands {
 
 interface AcpActionDependencies {
   commands?: AcpActionCommands;
+  /** The typed slash-command route; loaded on demand when omitted. */
+  slashCommands?: SlashCommandPort;
   getContext: () => AcpActionContext | null;
   onUnscopedRefusal?: (message: string) => void;
   settleAccessMode?: () => Promise<boolean>;
@@ -347,13 +350,23 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
             ? { attachedContext: boundedContext }
             : {}),
         };
+        // `/name …` may be an advertised command; its route loads on demand.
+        const runCommand = normalizedPrompt.startsWith("/")
+          ? await (
+              await import("../slashCommandTurn")
+            ).slashCommandTurn(
+              request,
+              nextIntentId,
+              dependencies.slashCommands,
+            )
+          : null;
         dependencies.clearComposer?.(
           captured,
           normalizedPrompt,
           boundedContext,
         );
         promptCallStarted = true;
-        const sent = await commands.sendTurn(request);
+        const sent = await (runCommand?.() ?? commands.sendTurn(request));
         return apply(captured, sent) ? "applied" : "ignoredStale";
       } catch (value) {
         const error = typedError(value);
