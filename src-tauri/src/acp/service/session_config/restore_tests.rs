@@ -731,3 +731,56 @@ fn a_change_whose_time_ran_out_before_it_was_sent_is_restored_later_on_a_healthy
     assert_eq!(stored(&service), [option("effort", "high")]);
     service.shutdown_blocking().unwrap();
 }
+
+#[test]
+fn a_runtime_killed_without_shutdown_leaves_its_session_unresumable_after_restart() {
+    // What the laptop check hit: the app was killed while the session was
+    // hot, so restart recovery fails that session (by design) and the
+    // reopened chat has nothing to resume. Its stored choices are kept.
+    let directory =
+        std::env::temp_dir().join(format!("sage-config-killed-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("sage.db");
+    {
+        let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+        seed(&service);
+        let connection = service.database.connection();
+        connection
+            .execute_batch(
+                "UPDATE agent_sessions SET residency='hot' WHERE id='session-restore';
+                 INSERT INTO chat_session_heads VALUES('project-restore','chat-restore','session-restore',0,1);
+                 INSERT INTO acp_session_usage VALUES('project-restore','chat-restore','session-restore',0,0,0,0,0,0,0);
+                 INSERT INTO acp_project_usage(project_id,chat_count,session_count,turn_count,item_count,fact_count,payload_bytes,revision) VALUES('project-restore',1,1,0,0,0,0,0);
+                 UPDATE acp_store_usage SET chat_count=1,session_count=1 WHERE singleton=1;
+                 INSERT INTO session_runtime_epochs VALUES('project-restore','chat-restore','session-restore',1,'running',NULL,1,NULL,NULL);",
+            )
+            .unwrap();
+        assert!(
+            choices::record(
+                &connection,
+                &owner(1).session_id,
+                &option("effort", "high"),
+                1
+            )
+            .unwrap()
+        );
+        // No shutdown: the process is killed here.
+    }
+    let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+    let (state, residency, heads): (String, String, i64) = service
+        .database
+        .connection()
+        .query_row(
+            "SELECT state,residency,(SELECT COUNT(*) FROM chat_session_heads) FROM agent_sessions WHERE id='session-restore'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        (state.as_str(), residency.as_str(), heads),
+        ("failed", "cold", 0)
+    );
+    assert_eq!(stored(&service), [option("effort", "high")]);
+    drop(service);
+    std::fs::remove_dir_all(directory).unwrap();
+}

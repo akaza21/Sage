@@ -208,7 +208,9 @@ journeyCases.push(
       wait("codexInitialize"),
       emit("codexInitializeResult0146"),
       wait("codexStartOrResume"),
-      emit("codexThreadResult"),
+      // A thread that names its model and effort, as the effort-menu
+      // capture does, makes Sage read the model catalogue next.
+      emit("codexThreadEffortResult"),
       wait("codexModelList"),
       emit("codexModelListEffortResult"),
       wait("codexGoalGet"),
