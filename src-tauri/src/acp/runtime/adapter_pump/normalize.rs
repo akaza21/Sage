@@ -319,6 +319,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             | AdapterEvent::SessionReady { .. }
             | AdapterEvent::Models { .. }
             | AdapterEvent::Acknowledged
+            | AdapterEvent::SessionPolicyPending
             | AdapterEvent::SteerResponse { .. } => Ok(None),
         }
     }

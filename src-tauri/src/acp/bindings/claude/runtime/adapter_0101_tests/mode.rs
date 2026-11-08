@@ -8,7 +8,7 @@ fn a_new_session_that_starts_in_auto_is_switched_to_sages_mode_before_it_is_read
     initialize_0101(&mut runtime);
     let batch = new_session(&mut runtime, frame(derived("newSessionInAuto")));
     assert!(
-        batch.events().is_empty(),
+        matches!(batch.events(), [SharedEvent::SessionPolicyPending]),
         "the session is not ready while it runs in auto"
     );
     let [set_mode] = batch.egress() else {
@@ -74,27 +74,69 @@ fn a_session_already_in_sages_mode_is_ready_at_once_and_a_catalog_without_it_fai
     assert!(matches!(batch.events(), [SharedEvent::SessionReady { .. }]));
     assert!(batch.egress().is_empty());
 
-    let mut runtime = ClaudeRuntime::fixture();
-    initialize_0101(&mut runtime);
     let mut without = derived("newSessionInAuto");
     without["result"]["modes"]["availableModes"] = json!([
         {"id":"auto","name":"Auto"}
     ]);
     without["result"]["configOptions"] = json!([]);
+    assert_session_start_fails_closed(without);
+}
+
+/// Sends `session/new`, answers it with `answer`, and checks that the start
+/// is refused and the half-started session is dropped.
+fn assert_session_start_fails_closed(mut answer: Value) {
+    let mut runtime = ClaudeRuntime::fixture();
+    initialize_0101(&mut runtime);
     let egress = runtime
         .command(AdapterCommand::NewSession {
             native_root: r"C:\fixture\root".into(),
             model: None,
         })
         .unwrap();
-    without["id"] = json!(request_id(&egress));
+    answer["id"] = json!(request_id(&egress));
     runtime
         .resolve_egress(egress.into_token(), EgressResolution::Written)
         .unwrap();
     assert!(matches!(
-        runtime.ingest(&frame(without), &Mapper),
+        runtime.ingest(&frame(answer), &Mapper),
         Err(AdapterRuntimeError::ConfigMutationRejected)
     ));
+    assert!(
+        runtime.session_config().is_none(),
+        "the half-started session is dropped"
+    );
+}
+
+#[test]
+fn a_session_without_a_mode_catalog_fails_closed() {
+    let mut answer = derived("newSessionInAuto");
+    answer["result"].as_object_mut().unwrap().remove("modes");
+    assert_session_start_fails_closed(answer);
+}
+
+#[test]
+fn the_starting_mode_follows_the_requested_access_mode() {
+    use crate::settings_store::SessionAccessMode;
+    // Claude admits only "Ask each time"; an unadmitted request still starts
+    // in its native mode rather than keeping the adapter's `auto`.
+    for requested in [
+        None,
+        Some(SessionAccessMode::Ask),
+        Some(SessionAccessMode::WorkspaceWrite),
+    ] {
+        let mut runtime = ClaudeRuntime::fixture();
+        runtime.requested_access_mode = requested;
+        initialize_0101(&mut runtime);
+        let batch = new_session(&mut runtime, frame(derived("newSessionInAuto")));
+        assert!(matches!(
+            batch.events(),
+            [SharedEvent::SessionPolicyPending]
+        ));
+        let [set_mode] = batch.egress() else {
+            panic!("one starting-mode request")
+        };
+        assert_eq!(payload(set_mode)["params"]["modeId"], "default");
+    }
 }
 
 #[test]

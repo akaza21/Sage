@@ -56,7 +56,7 @@ fn ready_with(runtime: &mut ClaudeRuntime, result: Value) {
         .unwrap();
     runtime
         .ingest(
-            &frame(json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":"claude-session-1"}})),
+            &frame(json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":"claude-session-1","modes":{"currentModeId":"default","availableModes":[{"id":"default","name":"Default"}]}}})),
             &Mapper,
         )
         .expect("session");

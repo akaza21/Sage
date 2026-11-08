@@ -222,7 +222,7 @@ fn ready(runtime: &mut ClaudeRuntime) {
         .expect("written");
     runtime
         .ingest(
-            &frame(json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":SESSION}})),
+            &frame(json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":SESSION,"modes":{"currentModeId":"default","availableModes":[{"id":"default","name":"Default"}]}}})),
             &Mapper,
         )
         .expect("session response");

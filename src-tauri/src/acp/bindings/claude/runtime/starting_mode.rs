@@ -12,18 +12,26 @@ use crate::acp::bindings::{
 };
 
 impl ClaudeRuntime {
+    /// The native mode for the session's requested access mode, falling back
+    /// to the binding's default when none is requested.
     fn starting_mode(&self) -> Option<&'static str> {
         let version = self
             .launch_binding
             .as_ref()
             .map_or("", |binding| binding.candidate().adapter_version.as_str());
-        starting_native_session_mode(CLAUDE_BINDING_ID, version, self.binding_is_characterised())
+        starting_native_session_mode(
+            CLAUDE_BINDING_ID,
+            version,
+            self.requested_access_mode,
+            self.binding_is_characterised(),
+        )
     }
 
     /// The `session/set_mode` a new session needs before it is ready, or
-    /// `None` when it already runs in Sage's mode or reports no mode catalog.
-    /// A catalog without Sage's mode cannot honour the access policy, so the
-    /// session start fails closed.
+    /// `None` when it already runs in Sage's mode. When Sage's access policy
+    /// names a native mode, a session that reports no mode catalog, or a
+    /// catalog without that mode, cannot honour the policy, so the session
+    /// start fails closed and the half-started session is dropped.
     pub(super) fn starting_mode_request(
         &mut self,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
@@ -31,16 +39,15 @@ impl ClaudeRuntime {
             return Ok(None);
         };
         let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
-        let Some(modes) = active.config.modes.as_ref() else {
-            return Ok(None);
+        let honoured = match active.config.modes.as_ref() {
+            None => Err(()),
+            Some(modes) if modes.current_mode_id.as_str() == mode => return Ok(None),
+            Some(_) => active.config.validate_mode(mode).map_err(|_| ()),
         };
-        if modes.current_mode_id.as_str() == mode {
-            return Ok(None);
+        if honoured.is_err() {
+            self.active = None;
+            return Err(AdapterRuntimeError::ConfigMutationRejected);
         }
-        active
-            .config
-            .validate_mode(mode)
-            .map_err(|_| AdapterRuntimeError::ConfigMutationRejected)?;
         let session = active.external_id.clone();
         self.reserve(
             PendingRequest::StartingMode(session.clone()),

@@ -179,6 +179,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             return Err(ActivationPumpError::Capacity);
         }
         let mut ready = None;
+        let mut policy_pending = false;
         for event in events {
             match event {
                 AdapterEvent::Initialized { capabilities } => {
@@ -204,7 +205,10 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                     next_cursor,
                 } => self.accept_models(models, next_cursor)?,
                 AdapterEvent::SessionReady { id, loaded } => {
-                    if self.phase != Phase::AwaitingSession || ready.is_some() || !egress.is_empty()
+                    if self.phase != Phase::AwaitingSession
+                        || ready.is_some()
+                        || policy_pending
+                        || !egress.is_empty()
                     {
                         return self.protocol_error();
                     }
@@ -216,6 +220,17 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                     self.pending_session.push_with((id, event), |old, new| {
                         old.0 == new.0 && old.1.superseded_by(&new.1)
                     });
+                }
+                AdapterEvent::SessionPolicyPending => {
+                    if self.phase != Phase::AwaitingSession
+                        || ready.is_some()
+                        || policy_pending
+                        || self.session_policy_requested
+                        || egress.len() != 1
+                    {
+                        return self.protocol_error();
+                    }
+                    policy_pending = true;
                 }
                 AdapterEvent::IgnoredLate
                 | AdapterEvent::IgnoredDuplicate
@@ -238,12 +253,13 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             }
         }
         for value in egress {
-            // A session that answered but is not ready yet may first settle
-            // Sage's policy (such as the starting access mode); its request is
-            // counted with the initialization requests, so it stays bounded.
-            if self.phase == Phase::AwaitingInitialized
-                || (self.phase == Phase::AwaitingSession && ready.is_none())
-            {
+            // A session that answered but is not ready yet may settle one
+            // declared step of Sage's policy; its request is counted with the
+            // initialization requests, so it stays bounded.
+            if self.phase == Phase::AwaitingInitialized || policy_pending {
+                if policy_pending {
+                    self.session_policy_requested = true;
+                }
                 self.enqueue_initialization(value)?;
             } else if self.phase == Phase::Initialized && value.token().is_notification() {
                 self.enqueue(value)?;

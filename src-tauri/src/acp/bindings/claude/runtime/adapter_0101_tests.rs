@@ -79,7 +79,9 @@ fn ready_0101(runtime: &mut ClaudeRuntime) {
     initialize_0101(runtime);
     let batch = new_session(
         runtime,
-        frame(json!({"jsonrpc":"2.0","id":0,"result":{"sessionId":"claude-session-1"}})),
+        frame(
+            json!({"jsonrpc":"2.0","id":0,"result":{"sessionId":"claude-session-1","modes":{"currentModeId":"default","availableModes":[{"id":"default","name":"Default"}]}}}),
+        ),
     );
     assert!(matches!(batch.events(), [SharedEvent::SessionReady { .. }]));
 }

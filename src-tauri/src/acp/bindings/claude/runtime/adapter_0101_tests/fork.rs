@@ -100,7 +100,9 @@ fn a_committed_fork_is_not_closed_when_the_adapter_does_not_advertise_close() {
     runtime.ingest(&frame(advertisement), &Mapper).unwrap();
     let batch = new_session(
         &mut runtime,
-        frame(json!({"jsonrpc":"2.0","id":0,"result":{"sessionId":"claude-session-1"}})),
+        frame(
+            json!({"jsonrpc":"2.0","id":0,"result":{"sessionId":"claude-session-1","modes":{"currentModeId":"default","availableModes":[{"id":"default","name":"Default"}]}}}),
+        ),
     );
     assert!(matches!(batch.events(), [SharedEvent::SessionReady { .. }]));
     let fork = fork_0101(&mut runtime);

@@ -108,7 +108,10 @@ fn open_p02_claude_session(runtime: &mut super::runtime::ClaudeRuntime) {
         .ingest(
             &p02_frame(json!({
                 "jsonrpc":"2.0", "id":session_id,
-                "result":{"sessionId":"claude-session-1"}
+                "result":{"sessionId":"claude-session-1","modes":{
+                    "currentModeId":"default",
+                    "availableModes":[{"id":"default","name":"Default"}]
+                }}
             })),
             &FixtureResources,
         )

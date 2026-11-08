@@ -182,6 +182,11 @@ pub(crate) enum AdapterEvent {
         state: crate::acp::lifecycle::ServerRequestState,
     },
     Acknowledged,
+    /// The session answered, but before it is reported ready the adapter
+    /// settles one step of Sage's policy (such as the starting access mode)
+    /// with the single request in this batch. The activation pump admits at
+    /// most one such step per activation and no other request in that phase.
+    SessionPolicyPending,
     SteerResponse {
         request_id: u64,
         accepted: bool,

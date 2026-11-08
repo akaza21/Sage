@@ -149,7 +149,7 @@ impl ClaudeRuntime {
         if expected.is_none()
             && let Some(start_mode) = self.starting_mode_request()?
         {
-            return AdapterBatch::new(Vec::new(), vec![start_mode]);
+            return AdapterBatch::new(vec![SharedEvent::SessionPolicyPending], vec![start_mode]);
         }
         self.session_ready(external_id)
     }

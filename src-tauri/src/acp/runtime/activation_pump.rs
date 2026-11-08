@@ -177,6 +177,9 @@ pub(crate) struct ActivationPump<A, J, R> {
     phase: Phase,
     initialize_attempts: u8,
     initialization_requests: u64,
+    /// Whether the adapter already settled its one declared policy step
+    /// between the session answer and `SessionReady`.
+    session_policy_requested: bool,
     session_attempts: u8,
     capabilities: Option<CapabilitySnapshotV1>,
     models: Vec<AdapterModel>,
@@ -237,6 +240,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             phase: Phase::Dormant,
             initialize_attempts: 0,
             initialization_requests: 0,
+            session_policy_requested: false,
             session_attempts: 0,
             capabilities: None,
             models: Vec::new(),

@@ -50,6 +50,9 @@ const MAX_PENDING_REQUESTS: usize = 16;
 pub(crate) struct ClaudeRuntime {
     launch_binding: Option<Arc<AdmittedClaudeBinding>>,
     pending_project_root: Option<crate::project_registry::ProjectRootAuthority>,
+    /// The Sage access mode this session asked for; `None` uses the binding's
+    /// default. It decides the native mode a new session starts in.
+    requested_access_mode: Option<crate::settings_store::SessionAccessMode>,
     binding_digest: [u8; 32],
     runtime_epoch: RuntimeEpoch,
     session_id: SageAgentSessionId,
@@ -175,6 +178,7 @@ impl ClaudeRuntime {
         Self {
             launch_binding,
             pending_project_root: None,
+            requested_access_mode: None,
             binding_digest,
             runtime_epoch,
             session_id,
@@ -280,6 +284,7 @@ pub(crate) struct ClaudeRuntimeFactory {
     binding: Arc<AdmittedClaudeBinding>,
     project_root: crate::project_registry::ProjectRootAuthority,
     mcp: McpAdmission,
+    requested_access_mode: Option<crate::settings_store::SessionAccessMode>,
 }
 
 impl ClaudeRuntimeFactory {
@@ -300,7 +305,22 @@ impl ClaudeRuntimeFactory {
             binding,
             project_root,
             mcp,
+            requested_access_mode: None,
         }
+    }
+
+    /// The access mode the session asked for, which decides the native mode a
+    /// new session starts in; without one the binding's default applies.
+    #[allow(
+        dead_code,
+        reason = "activation does not carry the requested access mode yet"
+    )]
+    pub(crate) fn with_requested_access_mode(
+        mut self,
+        mode: Option<crate::settings_store::SessionAccessMode>,
+    ) -> Self {
+        self.requested_access_mode = mode;
+        self
     }
 }
 
@@ -314,9 +334,11 @@ impl RuntimeFactory for ClaudeRuntimeFactory {
             binding,
             project_root,
             mcp,
+            requested_access_mode,
         } = *self;
         let mut runtime = ClaudeRuntime::from_admitted_binding(binding, runtime_epoch, session_id)?;
         runtime.mcp = mcp;
+        runtime.requested_access_mode = requested_access_mode;
         runtime.pending_project_root = Some(project_root);
         Ok(NativeRuntime::new(runtime))
     }
