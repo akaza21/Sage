@@ -1,8 +1,6 @@
 use super::*;
-use crate::acp::bindings::codex::{
-    hard_failure_tests::with_captured_diagnostics,
-    incoming::{reports_diagnostics, trial_read},
-};
+use crate::acp::bindings::codex::incoming::{reports_diagnostics, trial_read};
+use crate::test_diagnostics::capture_diagnostics;
 
 fn finished_turn() -> CodexRuntime {
     let mut runtime = fixture_runtime();
@@ -38,7 +36,7 @@ fn a_rejected_probe_records_and_logs_nothing() {
             "threadId":"thread-1"
         }}))
     };
-    let (admitted, diagnostics) = with_captured_diagnostics(|| {
+    let (admitted, diagnostics) = capture_diagnostics(|| {
         runtime.frames_repeat_terminal(&[interrupted(), unprojected()], &Mapper)
     });
     assert!(!admitted);
