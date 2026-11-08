@@ -393,6 +393,33 @@ fn pi_observed_write_is_declined_and_aborted_without_offering_approval() {
         }),
         Err(AdapterRuntimeError::LaterPermissionMiss)
     ));
+    // Sage's policy stopped the Turn, not the user, so it ends Interrupted.
+    let abort = batch.into_parts().1.remove(0);
+    runtime.commit_mandatory_egress(abort.token()).unwrap();
+    let abort = deliver(&mut runtime, abort);
+    runtime
+        .ingest(&response(&abort, Value::Null), &Mapper)
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"type":"agent_end","messages":[{"role":"assistant","content":[],"stopReason":"aborted"}]})),
+            &Mapper,
+        )
+        .unwrap();
+    let settled = runtime
+        .ingest(&frame(json!({"type":"agent_settled"})), &Mapper)
+        .unwrap();
+    assert!(
+        settled.events().iter().any(|event| matches!(
+            event,
+            AdapterEvent::Turn {
+                state: TurnState::Interrupted,
+                ..
+            }
+        )),
+        "{:?}",
+        settled.events()
+    );
 }
 
 #[test]

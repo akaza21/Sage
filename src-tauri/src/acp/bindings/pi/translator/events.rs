@@ -175,7 +175,8 @@ impl PiTranslator {
             self.close_config_requests();
         }
         let turn = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-        let incoming = if turn.authority_denied {
+        let denied = turn.authority_denied;
+        let incoming = if denied {
             TerminalOutcome::Interrupted
         } else {
             incoming
@@ -183,7 +184,13 @@ impl PiTranslator {
         let ended = turn.lifecycle.phase == TurnPhase::ModelEnded;
         match turn.lifecycle.settle(incoming)? {
             None => Ok(vec![AdapterOutput::DuplicateIgnored]),
-            Some(incoming) => {
+            Some(settled) => {
+                // Sage's policy abort is not the user's stop.
+                let incoming = if denied {
+                    TerminalOutcome::Interrupted
+                } else {
+                    settled
+                };
                 let mut events = Vec::new();
                 if incoming == TerminalOutcome::Failed && ended {
                     let message = turn

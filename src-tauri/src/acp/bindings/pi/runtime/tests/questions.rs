@@ -164,3 +164,72 @@ fn a_dialog_sage_cannot_show_is_still_cancelled() {
         assert_eq!(request(egress)["cancelled"], true);
     }
 }
+
+#[test]
+fn a_second_dialog_waits_out_the_open_card_and_the_first_still_answers() {
+    let mut runtime = fixture_runtime(83);
+    ready(&mut runtime);
+    running(&mut runtime);
+    ask(
+        &mut runtime,
+        json!({"type":"extension_ui_request","id":"first","method":"input","title":"Name?"}),
+    );
+    // Pi runs tools in parallel; the second dialog must not replace the first.
+    let batch = runtime
+        .ingest(
+            &frame(json!({"type":"extension_ui_request","id":"second","method":"input","title":"Other?"})),
+            &Mapper,
+        )
+        .unwrap();
+    let [egress] = batch.egress() else {
+        panic!("cancel reply")
+    };
+    assert_eq!(
+        request(egress),
+        json!({"type":"extension_ui_response","id":"second","cancelled":true})
+    );
+    let reply = resolve(
+        &mut runtime,
+        "first",
+        answers(json!([{"questionId":"answer","text":"Ada"}])),
+    );
+    assert_eq!(deliver(&mut runtime, reply)["value"], "Ada");
+}
+
+#[test]
+fn question_text_is_sanitised_and_unechoable_options_cancel_the_dialog() {
+    let mut runtime = fixture_runtime(84);
+    ready(&mut runtime);
+    running(&mut runtime);
+    let form = ask(
+        &mut runtime,
+        json!({"type":"extension_ui_request","id":"q-editor","method":"editor",
+            "title":"Notes","prefill":"Saved at /home/alice/notes.txt"}),
+    );
+    let prefill = form.questions.as_slice()[0]
+        .initial_text
+        .as_ref()
+        .unwrap()
+        .as_str()
+        .to_owned();
+    assert!(!prefill.contains("/home/alice"), "{prefill}");
+    resolve(&mut runtime, "q-editor", PermissionDecision::Deny);
+    for (id, options) in [
+        ("q-bidi", json!(["safe", "evil\u{202e}txt"])),
+        ("q-repeat", json!(["same", "same"])),
+    ] {
+        let batch = runtime
+            .ingest(
+                &frame(
+                    json!({"type":"extension_ui_request","id":id,"method":"select",
+                    "title":"Pick","options":options}),
+                ),
+                &Mapper,
+            )
+            .unwrap();
+        let [egress] = batch.egress() else {
+            panic!("cancel reply for {options}")
+        };
+        assert_eq!(request(egress)["cancelled"], true);
+    }
+}

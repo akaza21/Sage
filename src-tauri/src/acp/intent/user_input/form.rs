@@ -206,7 +206,8 @@ fn titled_options(entries: &Value) -> Option<BoundedVec<UserInputOption, USER_IN
     distinct(options)
 }
 
-fn plain_options(
+/// Options named by their values, checked as every harness's choices are.
+pub(crate) fn plain_options(
     values: &Value,
     names: Option<&Value>,
 ) -> Option<BoundedVec<UserInputOption, USER_INPUT_MAX_OPTIONS>> {

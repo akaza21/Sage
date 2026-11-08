@@ -131,6 +131,8 @@ pub(crate) struct PendingUiRequest {
     pub options: Vec<String>,
     /// An extension question shown on the shared question card.
     pub form: Option<Box<UserInputRequest>>,
+    /// Pi drops a dialog with a timeout on its own, without telling Sage.
+    pub expires: bool,
 }
 
 impl PendingUiRequest {

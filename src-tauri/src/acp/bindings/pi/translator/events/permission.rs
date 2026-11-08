@@ -66,7 +66,14 @@ impl PiTranslator {
                 && turn.lifecycle.terminal().is_none()
                 && !turn.authority_denied
         });
-        if !running {
+        // One card at a time: Pi may run tools in parallel, and a second
+        // dialog must not take the place of one the user is still answering.
+        // A dialog with a timeout may already be gone, so a newer one replaces it.
+        let open = self
+            .pending_ui
+            .as_ref()
+            .is_some_and(|pending| !pending.expires);
+        if !running || open {
             return Ok(vec![AdapterOutput::DialogCancelled { external_id: id }]);
         }
         let options = if method == "select" {
@@ -96,7 +103,7 @@ impl PiTranslator {
         let form = if gate {
             None
         } else {
-            match question(method, value, &options) {
+            match question(method, value) {
                 Some(form) => Some(Box::new(form)),
                 None => return Ok(vec![AdapterOutput::DialogCancelled { external_id: id }]),
             }
@@ -106,6 +113,9 @@ impl PiTranslator {
             method: method.to_owned(),
             options,
             form,
+            expires: value
+                .get("timeout")
+                .is_some_and(|timeout| !timeout.is_null()),
         });
         Ok(vec![AdapterOutput::PermissionRequested { external_id: id }])
     }
@@ -113,7 +123,7 @@ impl PiTranslator {
 
 /// The dialog as one question, answered under `ANSWER_ID`; `None` when it
 /// cannot be shown exactly.
-fn question(method: &str, value: &Value, options: &[String]) -> Option<UserInputRequest> {
+fn question(method: &str, value: &Value) -> Option<UserInputRequest> {
     let title = value
         .get("title")
         .and_then(Value::as_str)
@@ -127,27 +137,16 @@ fn question(method: &str, value: &Value, options: &[String]) -> Option<UserInput
         "input" => {}
         "editor" => {
             question.kind = UserInputKind::Multiline;
-            question.initial_text = value
-                .get("prefill")
-                .and_then(Value::as_str)
-                .filter(|text| !text.is_empty())
-                .map(|text| SafeText::new("userInputInitialText", text))
-                .transpose()
-                .ok()?;
+            question.initial_text = match value.get("prefill").and_then(Value::as_str) {
+                Some(text) if !text.is_empty() => {
+                    Some(form::display("userInputInitialText", text)?)
+                }
+                _ => None,
+            };
         }
-        "select" if !options.is_empty() => {
-            let options = options
-                .iter()
-                .map(|label| {
-                    Some(UserInputOption {
-                        label: RequiredText::new("userInputOptionLabel", label.as_str()).ok()?,
-                        description: SafeText::new("userInputOptionDescription", "").ok()?,
-                        value: None,
-                    })
-                })
-                .collect::<Option<Vec<_>>>()?;
-            question.options = Some(BoundedVec::new("userInputOptions", options).ok()?);
-        }
+        // A label sanitising would change, or a repeated one, cannot be
+        // echoed back exactly, so such a select is cancelled.
+        "select" => question.options = Some(form::plain_options(value.get("options")?, None)?),
         _ => return None,
     }
     Some(UserInputRequest {
