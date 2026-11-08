@@ -4,7 +4,6 @@ import {
   useMemo,
   useReducer,
   useState,
-  type KeyboardEvent,
   type RefObject,
 } from "react";
 import { useStore } from "zustand";
@@ -23,6 +22,7 @@ import { AcpDesktopError } from "../../services/acpDesktop";
 import {
   suggestionOptionId,
   useSuggestionNavigation,
+  type SuggestionKeyEvent,
   type TextFieldSuggestion,
   type TextFieldSuggestionsState,
 } from "../../ui/textFieldSuggestionNavigation";
@@ -215,7 +215,7 @@ export function ComposerSlashMenu({
 }: {
   anchorRef: RefObject<HTMLElement | null>;
   boundChatId?: string;
-  keyHandlerRef: RefObject<((event: KeyboardEvent) => boolean) | null>;
+  keyHandlerRef: RefObject<((event: SuggestionKeyEvent) => boolean) | null>;
   listboxId: string;
   onActiveOptionChange: (optionId: string | null) => void;
   onDismiss: () => void;
@@ -249,7 +249,7 @@ export function ComposerSlashMenu({
         !event.altKey &&
         !event.ctrlKey &&
         !event.metaKey &&
-        !event.nativeEvent.isComposing;
+        !event.isComposing;
       // A fully typed name runs on the first Enter, as in the Claude Code
       // CLI: the field's own Enter sends it.
       if (enter && navigation.active?.id === query) return false;

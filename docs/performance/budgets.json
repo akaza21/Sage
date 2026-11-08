@@ -28,9 +28,9 @@
       },
       {
         "entry": "src/features/chat/ComposerSlashController.tsx",
-        "maxGzipBytes": 3500,
+        "maxGzipBytes": 3700,
         "maxCssGzipBytes": 720,
-        "reason": "Composer `/` controller, command menu, listbox and hint. Loads on the field's first focus, keeping the first-Chat path to a stub. Measured 3314 B JS, 670 B CSS."
+        "reason": "Composer `/` controller, command menu, listbox and hint. Loads on the field's first focus, keeping the first-Chat path to a stub. Measured 3529 B JS, 670 B CSS."
       },
       {
         "entry": "src/workbench/AgentTaskResources.tsx",

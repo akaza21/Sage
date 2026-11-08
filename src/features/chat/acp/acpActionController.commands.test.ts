@@ -19,6 +19,7 @@ import {
   type AcpActionCommands,
 } from "./acpActionController";
 import type { SlashCommandPort } from "../slashCommandTurn";
+import { setPickedCommand } from "../slashCommandPicks";
 
 const scope = {
   projectId: "project-a" as SageProjectId,
@@ -106,9 +107,9 @@ describe("slash commands on the send path", () => {
       input: "42\nmore",
     });
     expect(test.cleared).toEqual(["/review  42\nmore"]);
-    await test.controller.submit("/review", [], bindingId, modelId, {
-      pickedCommand: "review",
-    });
+    setPickedCommand(scope.chatId, "review");
+    await test.controller.submit("/review", [], bindingId, modelId);
+    setPickedCommand(scope.chatId, null);
     expect(
       vi.mocked(test.slashCommands.runCommand).mock.calls[1]![0],
     ).not.toHaveProperty("input");
@@ -140,11 +141,12 @@ describe("slash commands on the send path", () => {
 
   it("refuses a picked command the session no longer offers and keeps the draft", async () => {
     const test = harness({ revision: 5, commands: [] });
+    // The menu records a pick for its Chat while the text names it.
+    setPickedCommand(scope.chatId, "review");
     await expect(
-      test.controller.submit("/review 42", [], bindingId, modelId, {
-        pickedCommand: "review",
-      }),
+      test.controller.submit("/review 42", [], bindingId, modelId),
     ).resolves.toBe("rejected");
+    setPickedCommand(scope.chatId, null);
     expect(test.commands.sendTurn).not.toHaveBeenCalled();
     expect(test.slashCommands.runCommand).not.toHaveBeenCalled();
     expect(test.errors.at(-1)).toBe(
@@ -156,11 +158,11 @@ describe("slash commands on the send path", () => {
 
   it("refuses a picked command when the list cannot be read, but sends typed text", async () => {
     const test = harness(new Error("unavailable"));
+    setPickedCommand(scope.chatId, "review");
     await expect(
-      test.controller.submit("/review", [], bindingId, modelId, {
-        pickedCommand: "review",
-      }),
+      test.controller.submit("/review", [], bindingId, modelId),
     ).resolves.toBe("rejected");
+    setPickedCommand(scope.chatId, null);
     await expect(
       test.controller.submit("/review", [], bindingId, modelId),
     ).resolves.toBe("applied");

@@ -221,7 +221,6 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     attachedContext: readonly AttachedContext[],
     bindingId: CuratedBindingId,
     modelId: CuratedModelId | null,
-    options: { pickedCommand?: string } = {},
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();
@@ -355,7 +354,6 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
               await import("../slashCommandTurn")
             ).slashCommandTurn(
               request,
-              options.pickedCommand,
               nextIntentId,
               dependencies.slashCommands,
             )

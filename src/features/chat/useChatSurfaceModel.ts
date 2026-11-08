@@ -79,7 +79,6 @@ export function useChatSurfaceModel({
       attachedContext: readonly AttachedContext[],
       bindingId: CuratedBindingId,
       modelId: CuratedModelId | null,
-      options?: { pickedCommand?: string },
     ) => Promise<unknown>;
     cancel: (turnId: TurnProjection["id"]) => Promise<unknown>;
     close: () => Promise<unknown>;
@@ -281,7 +280,7 @@ export function useChatSurfaceModel({
                 useNativeAcp: model.useNativeAcp,
               }));
   const submit = useCallback(
-    (event: FormEvent, options?: { pickedCommand?: string }) => {
+    (event: FormEvent) => {
       event.preventDefault();
       if (sendBlocked) return;
       if (activeAcpTurn) {
@@ -302,8 +301,6 @@ export function useChatSurfaceModel({
           attachedContext,
           model.bindingId,
           model.selectedModelId,
-          // A menu pick rides along; a plain send keeps its usual call.
-          ...(options?.pickedCommand ? [options] : []),
         );
         return;
       }

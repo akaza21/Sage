@@ -206,9 +206,7 @@ export function useAcpChatActions(boundChatId?: string | null) {
       attachedContext: readonly AttachedContext[],
       bindingId: CuratedBindingId,
       modelId: CuratedModelId | null,
-      options?: { pickedCommand?: string },
-    ) =>
-      controller.submit(prompt, attachedContext, bindingId, modelId, options),
+    ) => controller.submit(prompt, attachedContext, bindingId, modelId),
     steer: (
       prompt: string,
       attachedContext: readonly AttachedContext[],

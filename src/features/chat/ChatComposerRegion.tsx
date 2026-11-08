@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
@@ -20,10 +20,14 @@ import { QueuedRows, lazyParts } from "./lazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
-import { useComposerSlashCommands } from "./useComposerSlashCommands";
+import type * as SlashChunk from "./ComposerSlashController";
 
 const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
   () => import("./ClaudeAuthActions"),
+);
+// The `/` command menu loads with the field's first focus.
+const SlashPart = lazyParts<typeof SlashChunk>(
+  () => import("./ComposerSlashController"),
 );
 
 export function ChatComposerRegion({
@@ -118,16 +122,8 @@ export function ChatComposerRegion({
     hidden || composerDisabled || activeTurn,
     composerRef,
   );
-  const inputAreaRef = useRef<HTMLDivElement>(null);
-  const slash = useComposerSlashCommands({
-    anchorRef: inputAreaRef,
-    fieldRef: composerRef,
-    boundChatId: commandChatId,
-    disabled: hidden || composerDisabled,
-    fieldId,
-    text,
-    onTextChange,
-  });
+  const slashReady = useRef(false);
+  const [slashArmed, setSlashArmed] = useState(false);
   return (
     <div className="chat-dock surface surface--dock">
       <div className="chat-edit-summary-zone" ref={onEditSummaryMount} />
@@ -146,7 +142,7 @@ export function ChatComposerRegion({
             return;
           }
           dictation.cancel();
-          onSubmit(event, { pickedCommand: slash.pickedCommandFor(text) });
+          onSubmit(event);
           composerRef.current?.focus();
         }}
       >
@@ -225,12 +221,12 @@ export function ChatComposerRegion({
               Shift+Enter adds a new line.
             </span>
           ) : null}
-          <div className="composer__input-area" ref={inputAreaRef}>
+          <div className="composer__input-area">
             <textarea
               ref={composerRef}
               id={fieldId}
               aria-label="Message agent"
-              {...slash.fieldProps}
+              aria-expanded={false}
               spellCheck={false}
               autoCorrect="off"
               autoCapitalize="off"
@@ -239,7 +235,7 @@ export function ChatComposerRegion({
                   ? "Enter queues a message while this turn runs."
                   : undefined
               }
-              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}${slash.describedBy ? ` ${slash.describedBy}` : ""}`}
+              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}`}
               value={text}
               maxLength={MAX_CHAT_COMPOSER_BYTES}
               rows={2}
@@ -248,19 +244,22 @@ export function ChatComposerRegion({
                 sessionPromptUnavailable,
               )}
               disabled={composerDisabled}
-              onChange={(event) => {
-                slash.trackCaret(event);
-                onTextChange(event.target.value);
-              }}
-              onFocus={slash.onFocus}
-              onBlur={() => {
-                dictation.cancel();
-                slash.onBlur();
-              }}
+              onChange={(event) => onTextChange(event.target.value)}
+              onFocus={() => setSlashArmed(true)}
+              onBlur={dictation.cancel}
               onKeyDown={(event) => {
                 // An IME composition owns its keys, Enter included.
                 if (event.nativeEvent.isComposing) return;
-                if (slash.onKeyDown(event)) return;
+                // Until the `/` menu loads, Enter holds a half-typed name.
+                if (
+                  !slashReady.current &&
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  /^\/\S*$/u.test(text)
+                ) {
+                  event.preventDefault();
+                  return;
+                }
                 if (event.key === "Escape" && dictation.listening) {
                   event.preventDefault();
                   dictation.cancel();
@@ -275,7 +274,18 @@ export function ChatComposerRegion({
                 }
               }}
             />
-            {slash.controller}
+            {slashArmed ? (
+              <SlashPart
+                part="ComposerSlashController"
+                fieldRef={composerRef}
+                readyRef={slashReady}
+                boundChatId={commandChatId}
+                disabled={hidden || composerDisabled}
+                fieldId={fieldId}
+                text={text}
+                onTextChange={onTextChange}
+              />
+            ) : null}
           </div>
           {disabledReason ? (
             <p className="composer__disabled-reason" id={disabledReasonId}>

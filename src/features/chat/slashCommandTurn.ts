@@ -5,6 +5,7 @@ import type {
 } from "../../domain/acp";
 import { AcpDesktopError } from "../../services/acpDesktop";
 import { acpCommandsDesktop } from "../../services/acpCommandsDesktop";
+import { pickedCommandFor } from "./slashCommandPicks";
 
 export type SlashCommandPort = Pick<
   typeof acpCommandsDesktop,
@@ -29,7 +30,6 @@ export function parseSlashCommand(
  */
 export async function slashCommandTurn(
   request: SendAcpTurnRequest,
-  pickedCommand: string | undefined,
   nextIntentId: () => AcpSessionMutationIntent["clientIntentId"],
   port?: SlashCommandPort,
 ): Promise<(() => Promise<AcpMutationResult>) | null> {
@@ -59,7 +59,7 @@ export async function slashCommandTurn(
         ...(command.input ? { input: command.input } : {}),
       });
   }
-  if (pickedCommand === command.name) {
+  if (pickedCommandFor(request.chatId) === command.name) {
     throw new AcpDesktopError({
       kind: "invalidRequest",
       message: `This session no longer offers /${command.name}, so nothing was sent.`,

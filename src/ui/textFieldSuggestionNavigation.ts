@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type KeyboardEvent } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 /** Rows rendered at once; the rest are counted and reached by typing more. */
 export const TEXT_FIELD_SUGGESTIONS_MAX_RENDERED = 50;
@@ -18,6 +18,19 @@ export type TextFieldSuggestionsState =
   | { kind: "loading"; title: string; detail?: string }
   | { kind: "error"; title: string; detail?: string }
   | { kind: "empty"; title: string; detail?: string };
+
+/** The keys the list reads from the field's native keydown. */
+export type SuggestionKeyEvent = Pick<
+  KeyboardEvent,
+  | "key"
+  | "shiftKey"
+  | "altKey"
+  | "ctrlKey"
+  | "metaKey"
+  | "isComposing"
+  | "preventDefault"
+  | "stopPropagation"
+>;
 
 export function suggestionOptionId(listboxId: string, id: string) {
   return `${listboxId}-option-${encodeURIComponent(id)}`;
@@ -41,13 +54,8 @@ export function useSuggestionNavigation(
   const [chosenId, setChosenId] = useState<string | null>(null);
   const active = items.find((item) => item.id === chosenId) ?? items[0] ?? null;
   const onKeyDown = useCallback(
-    (event: KeyboardEvent): boolean => {
-      if (
-        event.nativeEvent.isComposing ||
-        event.altKey ||
-        event.ctrlKey ||
-        event.metaKey
-      )
+    (event: SuggestionKeyEvent): boolean => {
+      if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey)
         return false;
       if (event.key === "Escape") {
         event.preventDefault();

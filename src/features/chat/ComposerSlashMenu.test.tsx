@@ -26,6 +26,7 @@ import type {
   AcpCommandsChangedV1,
 } from "../../services/acpCommandsDesktop";
 import { ChatComposerRegion } from "./ChatComposerRegion";
+import { pickedCommandFor } from "./slashCommandPicks";
 
 const native = vi.hoisted(() => ({
   lists: [] as AcpCommandList[],
@@ -84,11 +85,8 @@ function livePage(runtimeEpoch: string | null = "3"): AcpChatPage {
   };
 }
 
-const onSubmit = vi.fn(
-  (
-    event: { preventDefault: () => void },
-    _options?: { pickedCommand?: string },
-  ) => event.preventDefault(),
+const onSubmit = vi.fn((event: { preventDefault: () => void }) =>
+  event.preventDefault(),
 );
 
 function Composer() {
@@ -310,7 +308,8 @@ describe("composer slash commands", () => {
     expect(document.querySelector(".composer__command-hint")).toBeNull();
     fireEvent.keyDown(field, { key: "Enter" });
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    expect(onSubmit.mock.calls[0]![1]).toEqual({ pickedCommand: "review" });
+    // The send route sees the pick, so a withdrawn command is refused.
+    expect(pickedCommandFor("chat-a")).toBe("review");
 
     // A pick replaces only the name: the input after it stays.
     type("/co 42");
@@ -330,7 +329,7 @@ describe("composer slash commands", () => {
     expect(field).toHaveValue("/compact");
     expect(onSubmit).toHaveBeenCalledTimes(1);
     // Not picked from the menu: the send path matches it against the list.
-    expect(onSubmit.mock.calls[0]![1]).toEqual({ pickedCommand: undefined });
+    expect(pickedCommandFor("chat-a")).toBeUndefined();
   });
 
   it("does not send a half-typed name while the list is loading", async () => {
