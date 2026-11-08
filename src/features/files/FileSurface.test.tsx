@@ -1303,15 +1303,17 @@ describe("FileSurface local symbol navigation", () => {
 
     fireEvent.keyDown(editor, { key: "F12" });
     const declaration = content.indexOf("example() {}");
+    // The caret moves before the status is set, a render later: wait for the
+    // status, then check the caret.
     await waitFor(() =>
-      expect(editorSelection(editor)).toEqual({
-        start: declaration,
-        end: declaration,
-      }),
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Moved to local symbol.",
+      ),
     );
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Moved to local symbol.",
-    );
+    expect(editorSelection(editor)).toEqual({
+      start: declaration,
+      end: declaration,
+    });
   });
 
   it("keeps F12's command-time identifier when the caret moves during loading", async () => {
