@@ -161,10 +161,6 @@ pub(crate) enum AdapterEvent {
     /// A fact about the session rather than one Turn: a notice, the harness
     /// title, the effective model, or long-lived activity. `id` is the exact
     /// session identity; it is admitted with or without an open Turn.
-    #[allow(
-        dead_code,
-        reason = "harness mappings (#204, #205, #206, #208) construct this next"
-    )]
     Session {
         id: AdapterIdentity,
         event: SessionScopedEvent,

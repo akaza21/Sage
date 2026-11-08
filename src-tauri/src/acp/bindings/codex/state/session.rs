@@ -1,8 +1,22 @@
 use super::super::request::{NativeProjectRoot, initialized_notification};
-use super::{AdapterError, CodexAdapter, ExternalId, OutgoingRequest, RequestKind};
+use super::{
+    AdapterError, CodexAdapter, ExternalId, ExternalKind, OutgoingRequest, RequestKind,
+    ScopedExternalId,
+};
 use crate::acp::{contract::RequiredText, intent::ModelId};
 
 impl CodexAdapter {
+    /// The session identity for a notification about the bound thread itself
+    /// rather than one of its Turns.
+    pub(crate) fn thread_session_id(&self, value: &str) -> Result<ScopedExternalId, AdapterError> {
+        self.expect_thread(value)?;
+        let thread = self
+            .external_thread_id
+            .clone()
+            .ok_or(AdapterError::ForeignIdentity)?;
+        Ok(self.scoped(ExternalKind::Session, thread))
+    }
+
     pub(crate) fn project_root(&self, value: String) -> Result<NativeProjectRoot, AdapterError> {
         NativeProjectRoot::new(self.platform, value).map_err(AdapterError::Request)
     }

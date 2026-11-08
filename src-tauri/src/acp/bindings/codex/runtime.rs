@@ -351,6 +351,13 @@ impl CodexRuntime {
                 },
                 None,
             ),
+            IncomingEvent::Session { id, event } => (
+                AdapterEvent::Session {
+                    id: identity(id),
+                    event,
+                },
+                None,
+            ),
             IncomingEvent::HostToolReply { .. } => unreachable!("handled before translation"),
             IncomingEvent::PermissionResolved {
                 turn_id,
