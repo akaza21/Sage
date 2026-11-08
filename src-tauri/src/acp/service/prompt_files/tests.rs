@@ -6,8 +6,11 @@ impl Fixture {
         let p = std::env::temp_dir().join(format!("sage-files-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&p).unwrap();
         // Attachments refuse linked ancestors, and macOS reaches its temporary
-        // directory through the /var link.
-        Self(p.canonicalize().unwrap())
+        // directory through the /var link. Windows canonical paths are verbatim
+        // (`\\?\`) and keep `..` literal, so Windows keeps the plain path.
+        #[cfg(unix)]
+        let p = p.canonicalize().unwrap();
+        Self(p)
     }
     fn file(&self, name: &str, bytes: &[u8]) -> String {
         let p = self.0.join(name);
