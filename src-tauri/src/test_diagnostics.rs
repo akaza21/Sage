@@ -20,6 +20,9 @@ use tracing_subscriber::{
 
 type Buffer = Arc<Mutex<Vec<u8>>>;
 
+/// Bytes one capture keeps; later output is dropped.
+const CAPTURE_BYTES: usize = 1024 * 1024;
+
 struct Route {
     bytes: Buffer,
     admit: fn(&Metadata<'_>) -> bool,
@@ -34,12 +37,14 @@ struct CapturingThread;
 
 impl<S> Filter<S> for CapturingThread {
     fn enabled(&self, metadata: &Metadata<'_>, _: &Context<'_, S>) -> bool {
-        ROUTE.with(|route| {
-            route
-                .borrow()
-                .as_ref()
-                .is_some_and(|route| (route.admit)(metadata))
-        })
+        ROUTE
+            .try_with(|route| {
+                route
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|route| (route.admit)(metadata))
+            })
+            .unwrap_or(false)
     }
 
     fn callsite_enabled(&self, _: &'static Metadata<'static>) -> Interest {
@@ -52,7 +57,9 @@ struct RouteWriter(Option<Buffer>);
 impl Write for RouteWriter {
     fn write(&mut self, input: &[u8]) -> std::io::Result<usize> {
         if let Some(bytes) = &self.0 {
-            bytes.lock().unwrap().extend_from_slice(input);
+            let mut bytes = bytes.lock().unwrap();
+            let room = CAPTURE_BYTES.saturating_sub(bytes.len());
+            bytes.extend_from_slice(&input[..input.len().min(room)]);
         }
         Ok(input.len())
     }
@@ -68,7 +75,12 @@ impl<'a> MakeWriter<'a> for CurrentRoute {
     type Writer = RouteWriter;
 
     fn make_writer(&'a self) -> Self::Writer {
-        RouteWriter(ROUTE.with(|route| route.borrow().as_ref().map(|r| Arc::clone(&r.bytes))))
+        RouteWriter(
+            ROUTE
+                .try_with(|route| route.borrow().as_ref().map(|r| Arc::clone(&r.bytes)))
+                .ok()
+                .flatten(),
+        )
     }
 }
 
@@ -107,11 +119,11 @@ pub(crate) fn capture_matching<T>(
     install();
     let bytes = Buffer::default();
     ROUTE.with(|route| {
-        let previous = route.borrow_mut().replace(Route {
+        assert!(route.borrow().is_none(), "diagnostics captures do not nest");
+        *route.borrow_mut() = Some(Route {
             bytes: Arc::clone(&bytes),
             admit,
         });
-        assert!(previous.is_none(), "diagnostics captures do not nest");
     });
     let value = {
         let _scope = RouteScope;
@@ -121,7 +133,6 @@ pub(crate) fn capture_matching<T>(
     (value, captured)
 }
 
-#[cfg(test)]
 mod tests {
     use super::capture_diagnostics;
 
