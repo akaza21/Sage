@@ -133,6 +133,12 @@ impl ClaudeSdkRuntime {
                 batch.push_event(event)?;
             }
         }
+        for event in inbound.session {
+            if let Some(event) = self.session.session_event(event) {
+                observed = true;
+                batch.push_event(event)?;
+            }
+        }
         for acp in inbound.acp {
             let digest = request_value_digest(&acp);
             let (events, egress) = self

@@ -41,7 +41,8 @@ impl SdkBridge {
             Some("stream_event") => self.stream_event(&sdk["event"], &mut inbound),
             Some("assistant") => self.assistant(&sdk, &mut inbound),
             Some("result") => self.result(&sdk, &mut inbound),
-            Some("system") => self.status(&sdk, &mut inbound),
+            Some("system") => self.system(&sdk, &mut inbound),
+            Some("rate_limit_event") => Self::rate_limit(&sdk, &mut inbound),
             Some(_) => {}
             None => return Err(BridgeError::Frame),
         }
@@ -153,21 +154,6 @@ impl SdkBridge {
             return Ok(());
         }
         self.can_use_tool(request_id, request, inbound)
-    }
-
-    /// Claude Code changes its own mode too, for example when an approval
-    /// applies a `setMode` suggestion; follow it so the picker stays true.
-    fn status(&mut self, sdk: &Value, inbound: &mut Inbound) {
-        let mode = sdk.get("permissionMode").and_then(Value::as_str);
-        let settings = self.settings.as_mut();
-        let (Some(mode), Some(settings)) = (mode, settings) else {
-            return;
-        };
-        if sdk["subtype"] == "status" && settings.has_mode(mode) && settings.mode != mode {
-            settings.mode = mode.to_owned();
-            let update = json!({"sessionUpdate": "current_mode_update", "currentModeId": mode});
-            inbound.acp.push(self.update(update));
-        }
     }
 
     fn stream_event(&mut self, event: &Value, inbound: &mut Inbound) {
@@ -303,6 +289,7 @@ impl SdkBridge {
             })));
         }
         self.withdraw_open(inbound);
+        self.end_retry(inbound);
         let usage = &sdk["usage"];
         let count = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
         let (input, output) = (count("input_tokens"), count("output_tokens"));
@@ -355,7 +342,7 @@ impl Pending {
 }
 
 /// Claude Code's commands as ACP `availableCommands`.
-fn commands(reply: &Value) -> Value {
+pub(super) fn commands(reply: &Value) -> Value {
     reply
         .get("commands")
         .and_then(Value::as_array)

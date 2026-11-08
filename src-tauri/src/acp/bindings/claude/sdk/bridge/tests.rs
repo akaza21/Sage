@@ -438,3 +438,81 @@ fn a_cli_that_starts_outside_the_picker_modes_fails_initialize() {
             .contains("permission mode")
     );
 }
+
+#[test]
+fn claude_codes_status_messages_become_notices_and_activities() {
+    use crate::acp::intent::session_event::{SessionActivityState, SessionScopedEvent};
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let state = |inbound: &Inbound| match &inbound.session[..] {
+        [SessionScopedEvent::Activity(activity)] => {
+            (activity.kind.as_str().to_owned(), activity.state)
+        }
+        other => panic!("one activity: {other:?}"),
+    };
+    let compacting = bridge
+        .inbound(json!({"type":"system","subtype":"status","status":"compacting"}))
+        .unwrap();
+    assert_eq!(
+        state(&compacting),
+        ("compaction".into(), SessionActivityState::Running)
+    );
+    let done = bridge
+        .inbound(
+            json!({"type":"system","subtype":"status","status":null,"compact_result":"success"}),
+        )
+        .unwrap();
+    assert_eq!(
+        state(&done),
+        ("compaction".into(), SessionActivityState::Completed)
+    );
+    let boundary = bridge.inbound(json!({"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":9000,"post_tokens":1200}})).unwrap();
+    let [SessionScopedEvent::Notice(notice)] = &boundary.session[..] else {
+        panic!("notice")
+    };
+    assert!(notice.text.as_str().contains("9000 to 1200"));
+
+    let task = bridge.inbound(json!({"type":"system","subtype":"task_started","task_id":"b1","description":"Run the test suite"})).unwrap();
+    assert_eq!(state(&task), ("task".into(), SessionActivityState::Running));
+    let finished = bridge.inbound(json!({"type":"system","subtype":"task_notification","task_id":"b1","status":"completed","output_file":"/tmp/x","summary":"All tests passed"})).unwrap();
+    assert_eq!(
+        state(&finished),
+        ("task".into(), SessionActivityState::Completed)
+    );
+
+    let limit = bridge.inbound(json!({"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","rateLimitType":"five_hour","utilization":0.91}})).unwrap();
+    let [SessionScopedEvent::Notice(notice)] = &limit.session[..] else {
+        panic!("notice")
+    };
+    assert!(notice.text.as_str().contains("5-hour limit (91% used)"));
+    let quiet = bridge
+        .inbound(json!({"type":"rate_limit_event","rate_limit_info":{"status":"allowed"}}))
+        .unwrap();
+    assert!(quiet.session.is_empty());
+
+    bridge.inbound(json!({"type":"system","subtype":"api_retry","attempt":2,"max_retries":10,"retry_delay_ms":500,"error_status":529,"error":"overloaded"})).unwrap();
+    let ended = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false}))
+        .unwrap();
+    assert_eq!(
+        state(&ended),
+        ("retry".into(), SessionActivityState::Completed)
+    );
+}
+
+#[test]
+fn local_command_output_and_new_commands_reach_the_chat() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let output = bridge
+        .inbound(
+            json!({"type":"system","subtype":"local_command_output","content":"Total cost: $0.12"}),
+        )
+        .unwrap();
+    assert_eq!(updates(&output)[0]["content"]["text"], "Total cost: $0.12");
+    let commands = bridge.inbound(json!({"type":"system","subtype":"commands_changed","commands":[{"name":"deploy","description":"Ship it","argumentHint":""}]})).unwrap();
+    assert_eq!(
+        updates(&commands)[0]["availableCommands"][0]["name"],
+        "deploy"
+    );
+}

@@ -316,6 +316,18 @@ impl ClaudeRuntime {
         Ok(batch.finish())
     }
 
+    /// A session-scoped fact for the open session; none before it opens.
+    pub(crate) fn session_event(
+        &self,
+        event: crate::acp::intent::session_event::SessionScopedEvent,
+    ) -> Option<SharedEvent> {
+        let active = self.active.as_ref()?;
+        Some(SharedEvent::Session {
+            id: self.session_identity(active.external_id.clone()),
+            event,
+        })
+    }
+
     pub(super) fn session_identity(
         &self,
         external_id: ExternalId,

@@ -459,3 +459,19 @@ fn a_turn_that_ends_with_an_approval_still_open_cancels_its_card_first() {
         })
     ));
 }
+
+#[test]
+fn a_compaction_reaches_the_store_as_a_session_activity() {
+    let mut runtime = prompted();
+    let events = feed(
+        &mut runtime,
+        json!({"type":"system","subtype":"status","status":"compacting"}),
+    );
+    assert!(matches!(
+        events[..],
+        [AdapterEvent::Session {
+            event: crate::acp::intent::session_event::SessionScopedEvent::Activity(_),
+            ..
+        }]
+    ));
+}

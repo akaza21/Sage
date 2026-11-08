@@ -17,6 +17,7 @@ use serde_json::{Value, json};
 use super::config::SessionSettings;
 
 mod inbound;
+mod notices;
 mod outbound;
 mod permission;
 
@@ -51,6 +52,8 @@ pub(super) struct Inbound {
     /// Approval cards to cancel, by wire id, before the ACP frames: Claude
     /// Code no longer waits on them.
     pub(super) withdrawn: Vec<u64>,
+    /// Session-scoped facts: notices, activities, the effective model.
+    pub(super) session: Vec<crate::acp::intent::session_event::SessionScopedEvent>,
 }
 
 #[derive(Debug)]
@@ -93,6 +96,8 @@ pub(super) struct SdkBridge {
     next_permission: u64,
     tools: BTreeMap<String, String>,
     streamed: VecDeque<String>,
+    retrying: bool,
+    compacting: bool,
 }
 
 /// What a written SDK frame changed, so an undelivered one can be undone.
@@ -122,6 +127,8 @@ impl SdkBridge {
             next_permission: 0,
             tools: BTreeMap::new(),
             streamed: VecDeque::new(),
+            retrying: false,
+            compacting: false,
         }
     }
 
