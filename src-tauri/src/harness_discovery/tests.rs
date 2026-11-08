@@ -70,7 +70,7 @@ fn test_basename(harness: HarnessExecutable) -> &'static str {
         .expect("each harness has one expected basename")
 }
 
-fn write_script(directory: &Path, basename: &str, body: &str) -> PathBuf {
+pub(super) fn write_script(directory: &Path, basename: &str, body: &str) -> PathBuf {
     let executable = directory.join(basename);
     #[cfg(windows)]
     fs::write(&executable, format!("@echo off\r\n{body}\r\n")).expect("write command script");

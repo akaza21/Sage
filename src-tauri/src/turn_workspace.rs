@@ -8,12 +8,24 @@
 //! change. Both the marks and the computed results are bounded and owned by
 //! Rust; the WebView only renders them.
 
-use std::{collections::BTreeMap, path::Path, time::UNIX_EPOCH};
+use std::{collections::BTreeMap, path::Path};
 
 /// Same cap as the WebView's Git changes list.
 pub(crate) const MAX_TURN_WORKSPACE_CHANGES: usize = 300;
 // Optional Git evidence has one short budget at either end of a turn.
-pub(crate) const CAPTURE_BUDGET_MILLIS: u64 = 2_000;
+pub(crate) const CAPTURE_BUDGET_MILLIS: u64 = capture_budget_millis();
+
+#[cfg(not(test))]
+const fn capture_budget_millis() -> u64 {
+    2_000
+}
+
+// Tests share a loaded machine where a cold `git` start alone can outlast the
+// production budget, so they use the shared test budget, as Git processes do.
+#[cfg(test)]
+const fn capture_budget_millis() -> u64 {
+    crate::test_wait::BUDGET.as_millis() as u64
+}
 // One capture per admitted live runtime, with no waiting queue.
 pub(crate) const MAX_CONCURRENT_CAPTURES: usize =
     crate::acp::limits::LIMITS.process.operational_live_trees as usize;
@@ -129,16 +141,13 @@ fn parse_mark(
             break;
         }
         let status = String::from_utf8_lossy(&record[..2]).into_owned();
-        let metadata = anchor.metadata(Path::new(path))?;
+        let entry = anchor.entry_status(Path::new(path))?;
         entries.insert(
             path.to_owned(),
             Fingerprint {
                 status,
-                len: metadata.as_ref().map(std::fs::Metadata::len),
-                modified_nanos: metadata
-                    .and_then(|metadata| metadata.modified().ok())
-                    .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-                    .and_then(|elapsed| u64::try_from(elapsed.as_nanos()).ok()),
+                len: entry.map(|entry| entry.len),
+                modified_nanos: entry.and_then(|entry| entry.modified_nanos),
             },
         );
     }
