@@ -27,7 +27,11 @@ pub(super) struct Agent {
     pub(super) requests: Vec<Value>,
     refuse: bool,
     /// The runtime fails the next change this way instead of sending it.
-    fail: Option<HostError>,
+    pub(super) fail: Option<HostError>,
+    /// When each change reached the runtime, and the deadline it was given.
+    pub(super) deadlines: Vec<(std::time::Instant, std::time::Instant)>,
+    /// How long the harness takes to answer each change.
+    pub(super) delay: std::time::Duration,
 }
 
 impl Agent {
@@ -98,9 +102,15 @@ impl RuntimeEngine for HarnessEngine {
     fn begin_configure_session(
         &mut self,
         intent: &ConfigIntent,
-        _: std::time::Instant,
+        deadline: std::time::Instant,
         completion: ConfigCompletionSink,
     ) -> Result<(), HostError> {
+        let delay = {
+            let mut agent = self.agent.lock().unwrap();
+            agent.deadlines.push((std::time::Instant::now(), deadline));
+            agent.delay
+        };
+        std::thread::sleep(delay);
         completion.complete(self.configure(intent));
         Ok(())
     }
@@ -243,6 +253,8 @@ fn open(
         requests: Vec::new(),
         refuse: false,
         fail: None,
+        deadlines: Vec::new(),
+        delay: std::time::Duration::ZERO,
     }));
     let host = Arc::new(
         RuntimeHost::start(HarnessEngine {
@@ -285,11 +297,11 @@ pub(super) fn option(id: &str, value: &str) -> ConfigMutation {
     }
 }
 
-fn mode(id: &str) -> ConfigMutation {
+pub(super) fn mode(id: &str) -> ConfigMutation {
     ConfigMutation::Mode(ConfigId::new("modeId", id).unwrap())
 }
 
-fn shown_effort(service: &AcpService, owner: &RuntimeOwner) -> String {
+pub(super) fn shown_effort(service: &AcpService, owner: &RuntimeOwner) -> String {
     let overlay = service
         .lane_at(0)
         .runtime
@@ -545,7 +557,7 @@ fn an_effort_the_harness_resets_keeps_its_stored_value_until_it_is_restored() {
     let mut sent = 0;
     let far = std::time::Instant::now() + std::time::Duration::from_secs(60);
     service
-        .restore_until(&resumed, far, || {
+        .restore_until(&resumed, Some(far), || {
             sent += 1;
             sent > 1
         })
@@ -599,7 +611,7 @@ fn a_choice_raced_by_another_change_is_retried_once_against_it() {
     // sent against a revision that is no longer current.
     let mut raced = false;
     service
-        .restore_until(&resumed, far(), || {
+        .restore_until(&resumed, Some(far()), || {
             if !raced {
                 raced = true;
                 choose(&service, &resumed, mode("code")).unwrap();
@@ -690,7 +702,7 @@ fn a_choice_the_user_makes_while_the_restore_is_deferred_is_kept() {
     // The mode is restored; the budget runs out before the effort.
     let mut sends = 0;
     service
-        .restore_until(&resumed, far(), || {
+        .restore_until(&resumed, Some(far()), || {
             sends += 1;
             sends > 1
         })
@@ -728,7 +740,9 @@ fn a_change_whose_time_ran_out_before_it_was_sent_is_restored_later_on_a_healthy
     let agent = start(&service, &resumed, effort("low"));
     // The budget is spent by the time the change reaches the runtime host.
     let spent = std::time::Instant::now();
-    service.restore_until(&resumed, spent, || false).unwrap();
+    service
+        .restore_until(&resumed, Some(spent), || false)
+        .unwrap();
     assert!(agent.lock().unwrap().requests.is_empty());
     let host = service.lane_at(0).runtime.for_owner(&resumed).unwrap();
     let revision = service

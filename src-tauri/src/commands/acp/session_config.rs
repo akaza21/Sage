@@ -174,22 +174,30 @@ pub(crate) async fn queue_acp_session_config_choice(
     if snapshot.session_id.as_ref() != Some(&request.session_id) {
         return Err(intent_error(IntentError::ForeignSession));
     }
-    // A live session takes the choice through its runtime instead.
-    if snapshot.runtime_epoch.is_some() {
-        return Err(intent_error(IntentError::StaleRuntimeEpoch));
-    }
+    // A live runtime that has not reported its config yet takes the choice
+    // once it has, as a parked session does on resume.
+    let runtime = snapshot
+        .runtime_epoch
+        .map(|runtime_epoch| crate::acp::scheduler::RuntimeOwner {
+            project_id: request.project_id.clone(),
+            chat_id: request.chat_id.clone(),
+            session_id: request.session_id.clone(),
+            runtime_epoch,
+        });
     let choice = match request.choice {
         QueuedChoice::Mode { mode_id } => ConfigMutation::Mode(mode_id),
         QueuedChoice::Option { config_id, value } => ConfigMutation::Option { config_id, value },
     };
     state
         .acp
-        .queue_session_config_choice(&request.session_id, &choice)
+        .queue_session_config_choice(&request.session_id, runtime.as_ref(), &choice)
         .map_err(|error| match error {
-            crate::acp::service::QueueError::NotOffered => AcpIpcError::Conflict {
-                resource: crate::acp::intent::AcpConflictResource::ConfigRevision,
-                message: safe_message("The session configuration changed; reload and retry."),
-            },
+            crate::acp::service::QueueError::NotOffered | crate::acp::service::QueueError::Live => {
+                AcpIpcError::Conflict {
+                    resource: crate::acp::intent::AcpConflictResource::ConfigRevision,
+                    message: safe_message("The session configuration changed; reload and retry."),
+                }
+            }
             crate::acp::service::QueueError::Store => AcpIpcError::RecoveryRequired {
                 message: safe_message("The session configuration choice could not be saved."),
             },

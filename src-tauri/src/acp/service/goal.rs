@@ -167,6 +167,7 @@ mod tests {
         let mut page = AcpChatPage {
             session_config: None,
             restored_session_config: None,
+            session_config_notice: None,
             goal: GoalState::Goal {
                 snapshot: GoalSnapshot {
                     objective: "x".repeat(4_000),

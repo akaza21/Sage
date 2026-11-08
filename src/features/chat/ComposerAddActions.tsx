@@ -169,7 +169,13 @@ export function ComposerAddActions({
         }}
       />
       {modes.length ? (
-        <div role="group" aria-label="Session mode">
+        <div
+          role="group"
+          aria-label="Session mode"
+          aria-description={sessionConfig?.restored}
+          title={sessionConfig?.restored}
+          data-restored={sessionConfig?.restored ? true : undefined}
+        >
           {modes.map((mode) => {
             const plan = mode.name.toLocaleLowerCase() === "plan";
             const label = plan ? "Plan mode" : mode.name || mode.id;

@@ -197,6 +197,14 @@ export function safeAcpMutationResponse(
     restoredConfig?.sageAgentSessionId === currentSessionId
       ? restoredConfig
       : null;
+  const notice = projection.sessionConfigNotice;
+  const sessionConfigNotice =
+    typeof notice === "string" &&
+    notice.length > 0 &&
+    notice.length <= 1024 &&
+    !notice.includes("\0")
+      ? notice
+      : null;
   const goal =
     projection.goal === undefined || !decodeGoal
       ? undefined
@@ -264,6 +272,7 @@ export function safeAcpMutationResponse(
       sessions: safeSessions,
       sessionConfig,
       ...(restoredSessionConfig ? { restoredSessionConfig } : {}),
+      ...(sessionConfigNotice ? { sessionConfigNotice } : {}),
       ...(goal ? { goal } : {}),
       turns: safeTurns,
       nextCursor: nextCursor as AcpChatPage["nextCursor"],

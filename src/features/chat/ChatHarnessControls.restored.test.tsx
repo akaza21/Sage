@@ -8,8 +8,10 @@ import { decodeRestoredSessionConfig } from "../../domain/acpSessionConfig";
 import { DEFAULT_SESSION_ACCESS_MODE } from "../../domain/sessionAccessMode";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import {
+  PENDING_NOTE,
   RESTORED_NOTE,
   restoredSessionConfigView,
+  withSessionConfigNotice,
 } from "./restoredSessionConfigView";
 
 const initialWorkbenchState = useWorkbenchStore.getState();
@@ -19,7 +21,14 @@ const noop = () => Promise.resolve();
 // session last reported, with its stored model and effort as current values.
 const restored = decodeRestoredSessionConfig({
   sageAgentSessionId: "session-1",
-  modes: null,
+  awaiting: "resume",
+  modes: {
+    currentModeId: "plan",
+    availableModes: [
+      { id: "default", name: "Default" },
+      { id: "plan", name: "Plan" },
+    ],
+  },
   configOptions: [
     {
       id: "model",
@@ -43,6 +52,12 @@ const restored = decodeRestoredSessionConfig({
         { value: "medium", name: "Medium" },
         { value: "high", name: "High" },
       ],
+    },
+    {
+      id: "fast",
+      name: "Fast",
+      type: "boolean",
+      currentValue: true,
     },
   ],
 });
@@ -110,6 +125,7 @@ afterEach(() => {
 
 it("decodes a restored config without a runtime epoch or revision", () => {
   expect(restored?.sageAgentSessionId).toBe("session-1");
+  expect(restored?.awaiting).toBe("resume");
   expect(
     decodeRestoredSessionConfig({
       ...restored,
@@ -117,14 +133,32 @@ it("decodes a restored config without a runtime epoch or revision", () => {
       configRevision: "1",
     }),
   ).toBeNull();
+  expect(
+    decodeRestoredSessionConfig({ ...restored, awaiting: undefined }),
+  ).toBeNull();
+});
+
+it("says a live session that has not reported will apply the stored choice", () => {
+  const view = restoredSessionConfigView(
+    coldPage({
+      restoredSessionConfig: { ...restored!, awaiting: "report" },
+    }),
+    "fixture",
+    null,
+  );
+  expect(view?.restored).toBe(PENDING_NOTE);
+  expect(restoredSessionConfigView(coldPage(), "fixture", null)?.restored).toBe(
+    RESTORED_NOTE,
+  );
 });
 
 it("views the restored config only for the session the selection continues", () => {
   const view = restoredSessionConfigView(coldPage(), "fixture", null);
-  expect(view?.restored).toBe(true);
+  expect(view?.restored).toBe(RESTORED_NOTE);
   expect(view?.configOptions.map((option) => option.id)).toEqual([
     "model",
     "effort",
+    "fast",
   ]);
   expect(restoredSessionConfigView(coldPage(), "other", null)).toBeNull();
   expect(restoredSessionConfigView(coldPage(), "fixture", "x")).toBeNull();
@@ -183,4 +217,60 @@ it("shows a cold chat's stored model and effort as restored, and a pick goes to 
   expect(onSetSessionConfigOption).toHaveBeenCalledWith("model", {
     value: "fixture-model",
   });
+});
+
+function renderControls(
+  sessionConfig: ReturnType<typeof restoredSessionConfigView>,
+) {
+  return render(
+    <ChatHarnessControls
+      availableBinding
+      canPrompt
+      discoveryPhase="ready"
+      modelLabelScope="project/chat/session-1"
+      sessionHarnessId={null}
+      sessionModelId={null}
+      selectedHarnessId="restored-test"
+      selectedModelId={null}
+      projectName={null}
+      turnBusy={false}
+      sessionConfig={sessionConfig}
+      modePending={false}
+      modeError={null}
+      focused={false}
+      onSetSessionMode={noop}
+      onSetSessionConfigOption={noop}
+      onSelectHarness={noop}
+      onSelectModel={() => {}}
+      onModeRemoved={() => {}}
+    />,
+  );
+}
+
+it("marks the restored mode and other options with the same note", async () => {
+  renderControls(restoredSessionConfigView(coldPage(), "fixture", null));
+  fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+  const mode = await screen.findByRole("group", { name: "Session mode" });
+  expect(mode).toHaveAttribute("aria-description", RESTORED_NOTE);
+  expect(mode).toHaveAttribute("data-restored", "true");
+  const fast = screen.getByRole("group", { name: "Session fast" });
+  expect(fast).toHaveAttribute("aria-description", RESTORED_NOTE);
+  expect(fast).toHaveAttribute("data-restored", "true");
+});
+
+it("shows the notice about a saved model the session no longer offers", () => {
+  const notice =
+    "The saved model retired isn't offered any more; this chat uses Synthetic replay.";
+  renderControls(
+    withSessionConfigNotice(
+      restoredSessionConfigView(coldPage(), "fixture", null),
+      notice,
+    ),
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(notice);
+  expect(
+    screen
+      .getByLabelText("Model", { exact: true })
+      .getAttribute("aria-description"),
+  ).toContain(notice);
 });

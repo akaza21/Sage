@@ -19,7 +19,6 @@ import {
 import { type ComposerModelChoice } from "./ChatModelPicker";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { ComposerEffortControl } from "./ComposerEffortControl";
-import { RESTORED_NOTE } from "./restoredSessionConfigView";
 
 const ModelMenu = lazy(() => import("./ComposerModelMenu"));
 
@@ -39,7 +38,8 @@ export function ComposerModelControls({
   effortLabel,
   contextWindow,
   effortOption,
-  restored = false,
+  restored,
+  notice,
   awaitingSession = false,
   disabled,
   effortDisabled = disabled,
@@ -65,8 +65,11 @@ export function ComposerModelControls({
   effortLabel: string | null;
   contextWindow: string | null;
   effortOption: AcpConfigOption | undefined;
-  /** The values are the session's restored choices, not yet reapplied. */
-  restored?: boolean;
+  /** The note on values that are the chat's stored choices, not yet
+   * reapplied to the session. */
+  restored?: string;
+  /** What the session could not take back of the stored choices. */
+  notice?: string;
   awaitingSession?: boolean;
   disabled: boolean;
   effortDisabled?: boolean;
@@ -94,7 +97,13 @@ export function ComposerModelControls({
   const modelDescription =
     modelLabel === "Model"
       ? undefined
-      : `${modelLabel}${effortLabel ? ` ${effortLabel}` : ""}${restored ? `. ${RESTORED_NOTE}` : ""}`;
+      : [
+          `${modelLabel}${effortLabel ? ` ${effortLabel}` : ""}`,
+          restored,
+          notice,
+        ]
+          .filter(Boolean)
+          .join(". ");
   useEffect(() => {
     if (
       (open && !available) ||
@@ -121,7 +130,7 @@ export function ComposerModelControls({
           data-selected-id={selectedId ?? undefined}
           title={modelDescription}
           data-readonly-label={(readOnlyLabel && !pending) || undefined}
-          data-restored={restored || undefined}
+          data-restored={restored ? true : undefined}
           aria-controls={panelId}
           aria-haspopup="listbox"
           aria-expanded={open && available}
@@ -182,6 +191,11 @@ export function ComposerModelControls({
         ) : null}
         {contextWindow ? (
           <span className="composer__capacity">{contextWindow} context</span>
+        ) : null}
+        {notice ? (
+          <span className="composer__config-notice" role="status">
+            {notice}
+          </span>
         ) : null}
       </div>
       {open && available ? (

@@ -24,3 +24,13 @@ CREATE TABLE acp_session_config_snapshots (
     CHECK (json_valid(config_json) AND length(CAST(config_json AS BLOB)) BETWEEN 2 AND 131072),
   updated_at INTEGER NOT NULL
 ) STRICT;
+
+-- What the composer says about a stored choice the session could not take
+-- back, such as a saved model it no longer offers and the one in use instead.
+-- One row per session, replaced or cleared once that option is chosen again.
+CREATE TABLE acp_session_config_notices (
+  session_id TEXT PRIMARY KEY REFERENCES agent_sessions(id) ON DELETE CASCADE,
+  config_id TEXT NOT NULL CHECK (length(CAST(config_id AS BLOB)) BETWEEN 1 AND 1024),
+  notice TEXT NOT NULL CHECK (length(CAST(notice AS BLOB)) BETWEEN 1 AND 1024),
+  updated_at INTEGER NOT NULL
+) STRICT;

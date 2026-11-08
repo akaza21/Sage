@@ -17,8 +17,20 @@ use crate::acp::{
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RestoredSessionConfig {
     pub sage_agent_session_id: SageAgentSessionId,
+    /// What has to happen before the shown choices are the session's.
+    pub awaiting: Awaiting,
     #[serde(flatten)]
     pub config: SessionConfig,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum Awaiting {
+    /// No runtime: the choices are reapplied when the chat resumes.
+    Resume,
+    /// A live runtime that has not reported its config yet: the choices are
+    /// reapplied once it does.
+    Report,
 }
 
 const MODE_KIND: &str = "mode";
@@ -167,6 +179,23 @@ pub(crate) fn restored(
         .optional()?
         .and_then(|json| serde_json::from_str::<SessionConfig>(&json).ok())
         .filter(|config| config.validate().is_ok());
+    with_stored(connection, session, snapshot)
+}
+
+/// Only the stored choices, each shown with its own value: the smaller view
+/// a page shows when the full snapshot does not fit its budget.
+pub(crate) fn stored_only(
+    connection: &Connection,
+    session: &SageAgentSessionId,
+) -> rusqlite::Result<Option<SessionConfig>> {
+    with_stored(connection, session, None)
+}
+
+fn with_stored(
+    connection: &Connection,
+    session: &SageAgentSessionId,
+    snapshot: Option<SessionConfig>,
+) -> rusqlite::Result<Option<SessionConfig>> {
     let stored = load(connection, session)?;
     if snapshot.is_none() && stored.is_empty() {
         return Ok(None);
@@ -176,6 +205,51 @@ pub(crate) fn restored(
         apply(&mut config, choice);
     }
     Ok(Some(config))
+}
+
+/// Records what the composer says about option `config_id` of the session.
+pub(crate) fn set_notice(
+    connection: &Connection,
+    session: &SageAgentSessionId,
+    config_id: &ConfigId,
+    notice: &str,
+    now_millis: i64,
+) -> rusqlite::Result<()> {
+    connection.execute(
+        "INSERT INTO acp_session_config_notices(session_id,config_id,notice,updated_at)
+         VALUES(?1,?2,?3,?4)
+         ON CONFLICT(session_id) DO UPDATE SET config_id=excluded.config_id,
+           notice=excluded.notice,updated_at=excluded.updated_at",
+        params![session.as_str(), config_id.as_str(), notice, now_millis],
+    )?;
+    Ok(())
+}
+
+/// Clears the session's notice once its option is chosen again.
+pub(crate) fn clear_notice(
+    connection: &Connection,
+    session: &SageAgentSessionId,
+    choice: &ConfigMutation,
+) -> rusqlite::Result<()> {
+    let (_, config_id, _) = columns(choice);
+    connection.execute(
+        "DELETE FROM acp_session_config_notices WHERE session_id=?1 AND config_id=?2",
+        params![session.as_str(), config_id],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn notice(
+    connection: &Connection,
+    session: &SageAgentSessionId,
+) -> rusqlite::Result<Option<String>> {
+    connection
+        .query_row(
+            "SELECT notice FROM acp_session_config_notices WHERE session_id=?1",
+            [session.as_str()],
+            |row| row.get(0),
+        )
+        .optional()
 }
 
 /// Sets `choice` as the current value in `config` when `config` offers it.

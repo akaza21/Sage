@@ -260,9 +260,10 @@ export function createAcpSessionActions(
   type Mutation =
     { modeId: string } | { configId: string; value: AcpConfigValue };
   /**
-   * A session with no live runtime shows its restored config. A choice on
-   * it is stored, not sent: the restore applies it before the session's next
-   * prompt, as it does every stored choice, so no runtime starts for it.
+   * A session with no live config (no runtime, or a live runtime that has
+   * not reported yet) shows its restored config. A choice on it is stored,
+   * not sent: the restore applies it before the session's next prompt, as
+   * it does every stored choice, so no runtime starts for it.
    */
   const queue = (
     captured: AcpActionContext,
@@ -273,12 +274,7 @@ export function createAcpSessionActions(
       const context = dependencies.getContext();
       if (!dependencies.sameScope(context, captured)) return "ignoredStale";
       const session = currentSession(context.page);
-      if (
-        !session ||
-        session.id !== sessionId ||
-        session.runtimeEpoch ||
-        context.page.sessionConfig
-      )
+      if (!session || session.id !== sessionId || context.page.sessionConfig)
         return "ignoredStale";
       try {
         const result = await dependencies.queueSessionConfigChoice?.({

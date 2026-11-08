@@ -50,6 +50,15 @@
   color: var(--composer-muted-text);
 }
 
+.composer__config-notice {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--composer-muted-text);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composer__model-group .composer__model-trigger:has(> .composer__model-effort) {
   max-width: 240px;
 }

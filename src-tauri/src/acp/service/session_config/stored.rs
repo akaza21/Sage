@@ -20,6 +20,8 @@ use super::AcpService;
 pub(crate) enum QueueError {
     /// Nothing restored offers this mode or value.
     NotOffered,
+    /// The session's runtime reports its config: change it there.
+    Live,
     Store,
 }
 
@@ -53,13 +55,48 @@ impl AcpService {
             .flatten()
     }
 
-    /// Stores `choice` for a session that has no live runtime, when what it
-    /// shows offers it. Its next runtime reapplies it before the next prompt.
+    /// Only the session's stored choices, for a page with no room for more.
+    pub(in crate::acp::service) fn stored_choices_view(
+        &self,
+        session: &SageAgentSessionId,
+    ) -> Option<SessionConfig> {
+        choices::stored_only(&self.database.connection(), session)
+            .inspect_err(|error| tracing::warn!(?error, "stored session config was not read"))
+            .ok()
+            .flatten()
+    }
+
+    /// What the composer says about a stored choice the session could not
+    /// take back.
+    pub(in crate::acp::service) fn session_config_notice(
+        &self,
+        session: &SageAgentSessionId,
+    ) -> Option<crate::acp::contract::SafeText<1024>> {
+        choices::notice(&self.database.connection(), session)
+            .inspect_err(|error| tracing::warn!(?error, "session config notice was not read"))
+            .ok()
+            .flatten()
+            .and_then(|notice| crate::acp::contract::SafeText::new("notice", notice).ok())
+    }
+
+    /// Stores `choice` for a session that has no live config, when what it
+    /// shows offers it: a parked session's next runtime reapplies it before
+    /// the next prompt, and a live runtime that has not reported its config
+    /// yet reapplies it once it has, before the next prompt too.
     pub(crate) fn queue_session_config_choice(
         &self,
         session: &SageAgentSessionId,
+        runtime: Option<&RuntimeOwner>,
         choice: &ConfigMutation,
     ) -> Result<(), QueueError> {
+        let lane = runtime.and_then(|owner| self.lane_for(owner).zip(Some(owner)));
+        // A runtime that reports its config takes changes through it.
+        if lane
+            .as_ref()
+            .is_some_and(|(lane, owner)| lane.runtime.config.live_snapshot(owner).is_some())
+        {
+            return Err(QueueError::Live);
+        }
         let shown = self
             .restored_session_config(session)
             .ok_or(QueueError::NotOffered)?;
@@ -80,7 +117,13 @@ impl AcpService {
             choice,
             crate::persistence::now_millis(),
         ) {
-            Ok(true) => Ok(()),
+            Ok(true) => {
+                // A restore that already read the stored choices runs again.
+                if let Some((lane, owner)) = lane {
+                    lane.runtime.config.rearm_restore(owner);
+                }
+                Ok(())
+            }
             Ok(false) | Err(_) => Err(QueueError::Store),
         }
     }

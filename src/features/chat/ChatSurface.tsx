@@ -28,7 +28,10 @@ import { useBoundChatComposer } from "./useBoundChatComposer";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
-import { restoredSessionConfigView } from "./restoredSessionConfigView";
+import {
+  restoredSessionConfigView,
+  withSessionConfigNotice,
+} from "./restoredSessionConfigView";
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const focusedChatId = usePinnedAgentChatOwner();
   const setAgentSessionChrome = useContext(AgentSessionChromeContext);
@@ -336,14 +339,15 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         selectedHarnessId={selectedHarnessId}
         selectedModelId={selectedModelId}
         sessionPromptUnavailable={sessionPromptUnavailable}
-        sessionConfig={
+        sessionConfig={withSessionConfigNotice(
           acpPage?.sessionConfig ??
-          restoredSessionConfigView(
-            acpPage,
-            selectedHarness?.bindingId,
-            selectedModelId,
-          )
-        }
+            restoredSessionConfigView(
+              acpPage,
+              selectedHarness?.bindingId,
+              selectedModelId,
+            ),
+          acpPage?.sessionConfigNotice,
+        )}
         modePending={modeChanging}
         modeError={modeError}
         focused={focused}

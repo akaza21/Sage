@@ -12,8 +12,8 @@ use crate::acp::{
     runtime::HostError,
     scheduler::RuntimeOwner,
     session_config::{
-        ChoiceRecorder, ConfigIntent, ConfigMutation, SessionConfig, SessionConfigOverlay, choices,
-        reported::current_value,
+        Choice, ChoiceRecorder, Choices, ConfigId, ConfigIntent, ConfigKind, ConfigMutation,
+        ConfigValue, SessionConfig, SessionConfigOverlay, choices, reported::current_value,
     },
 };
 
@@ -84,6 +84,11 @@ fn ready(config: &SessionConfig, stored: &[ConfigMutation]) -> bool {
         })
 }
 
+/// A restore change that reached the harness without a usable answer leaves
+/// the runtime needing recovery: the harness may still apply it, so the
+/// runtime host stops trusting the session's config (`Deadline` puts it in
+/// recovery itself). The choice stays stored, and the resumed runtime
+/// restores it.
 fn needs_recovery(error: &HostError) -> bool {
     matches!(
         error,
@@ -93,6 +98,68 @@ fn needs_recovery(error: &HostError) -> bool {
             | HostError::DeliveryUnknown
             | HostError::RecoveryRequired
     )
+}
+
+/// Whether `a` and `b` set the same mode or option.
+fn same_target(a: &ConfigMutation, b: &ConfigMutation) -> bool {
+    match (a, b) {
+        (ConfigMutation::Mode(_), ConfigMutation::Mode(_)) => true,
+        (
+            ConfigMutation::Option { config_id: a, .. },
+            ConfigMutation::Option { config_id: b, .. },
+        ) => a == b,
+        _ => false,
+    }
+}
+
+/// What the composer says when the saved model is no longer offered and the
+/// session keeps `current` instead. `None` for any other option.
+fn model_notice(
+    config: &SessionConfig,
+    saved: &ConfigMutation,
+    current: &ConfigMutation,
+) -> Option<(ConfigId, String)> {
+    let (
+        ConfigMutation::Option {
+            config_id,
+            value: ConfigValue::Select { value: saved },
+        },
+        ConfigMutation::Option {
+            value: ConfigValue::Select { value: current },
+            ..
+        },
+    ) = (saved, current)
+    else {
+        return None;
+    };
+    let option = config
+        .config_options
+        .as_slice()
+        .iter()
+        .find(|option| &option.id == config_id)
+        .filter(|option| option.category.as_ref().map(ConfigId::as_str) == Some("model"))?;
+    let ConfigKind::Select { options, .. } = &option.kind else {
+        return None;
+    };
+    let choices: Vec<&Choice> = match options {
+        Choices::Flat(choices) => choices.as_slice().iter().collect(),
+        Choices::Grouped(groups) => groups
+            .as_slice()
+            .iter()
+            .flat_map(|group| group.options.as_slice())
+            .collect(),
+    };
+    let name = choices
+        .iter()
+        .find(|choice| &choice.value == current)
+        .map_or(current.as_str(), |choice| choice.name.as_str());
+    Some((
+        config_id.clone(),
+        format!(
+            "The saved model {} isn't offered any more; this chat uses {name}.",
+            saved.as_str()
+        ),
+    ))
 }
 
 impl AcpService {
@@ -120,12 +187,46 @@ impl AcpService {
     }
 
     /// Stores the session's own value for `choice`, or drops the stored one
-    /// when the session no longer offers that mode or option.
+    /// when the session no longer offers that mode or option. A saved model
+    /// that is no longer offered is logged and noted for the composer.
     fn fall_back(&self, owner: &RuntimeOwner, config: &SessionConfig, choice: &ConfigMutation) {
-        match current_value(config, choice) {
-            Some(current) => self.remember_config_choice(owner, &current),
-            None => self.forget_config_choice(owner, choice),
+        let Some(current) = current_value(config, choice) else {
+            self.forget_config_choice(owner, choice);
+            return;
+        };
+        self.remember_config_choice(owner, &current);
+        if let Some((config_id, notice)) = model_notice(config, choice, &current) {
+            tracing::warn!("the saved model is not offered; the session keeps its own");
+            let noted = self.database.write_connection().and_then(|connection| {
+                choices::set_notice(
+                    &connection,
+                    &owner.session_id,
+                    &config_id,
+                    &notice,
+                    crate::persistence::now_millis(),
+                )
+                .map_err(Into::into)
+            });
+            if let Err(error) = noted {
+                tracing::warn!(?error, "session config notice was not stored");
+            }
         }
+    }
+
+    /// The value now stored for the mode or option `choice` sets: a pick made
+    /// while the restore runs replaces the one it started with.
+    fn stored_now(&self, owner: &RuntimeOwner, choice: &ConfigMutation) -> Option<ConfigMutation> {
+        choices::load(&self.database.connection(), &owner.session_id)
+            .inspect_err(|error| tracing::warn!(?error, "stored session config was not read"))
+            .ok()?
+            .into_iter()
+            .find(|stored| same_target(stored, choice))
+    }
+
+    /// Whether `choice` is still the stored value, so the restore may send
+    /// it and store what the harness confirms.
+    pub(super) fn still_stored(&self, owner: &RuntimeOwner, choice: &ConfigMutation) -> bool {
+        self.stored_now(owner, choice).as_ref() == Some(choice)
     }
 
     /// Reapplies the session's stored choices to a new runtime, once the
@@ -135,21 +236,25 @@ impl AcpService {
     /// harness refuses, falls back to the session's value, and the stored
     /// value is updated to match. A new session stores the mode it starts in.
     ///
-    /// The whole restore gets one ordinary RPC deadline. What is left when it
-    /// runs out is restored before the next prompt, and until then what the
-    /// harness reports for those choices does not replace them. `Err` means
-    /// a change left the runtime needing recovery.
+    /// Each change gets the whole per-request timeout any config change
+    /// gets, from when it is sent, and the restore starts no new change once
+    /// one such timeout has passed since it began. What is left then, or a
+    /// change that could not be sent in time, is restored before the next
+    /// prompt, and until then what the harness reports for those choices
+    /// does not replace them. `Err` means a change left the runtime needing
+    /// recovery; its choice stays stored for the resumed runtime.
     pub(crate) fn restore_session_config(&self, owner: &RuntimeOwner) -> Result<(), HostError> {
-        let deadline = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
-        self.restore_until(owner, deadline, || Instant::now() >= deadline)
+        let budget = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
+        self.restore_until(owner, None, || Instant::now() >= budget)
     }
 
     /// The restore, sending changes until `out_of_time`, each answered by
-    /// `deadline`.
+    /// `deadline` or, with `None`, within the per-request timeout from when
+    /// it is sent.
     pub(super) fn restore_until(
         &self,
         owner: &RuntimeOwner,
-        deadline: Instant,
+        deadline: Option<Instant>,
         mut out_of_time: impl FnMut() -> bool,
     ) -> Result<(), HostError> {
         let Some(lane) = self.lane_for(owner) else {
@@ -193,6 +298,9 @@ impl AcpService {
             match step(&overlay.config, &choice) {
                 Step::Keep => {}
                 Step::Forget | Step::Fallback(_) => self.fall_back(owner, &overlay.config, &choice),
+                // A pick made since the restore began wins over the value it
+                // started with.
+                Step::Apply if !self.still_stored(owner, &choice) => {}
                 Step::Apply => {
                     if out_of_time() {
                         tracing::warn!(
@@ -218,27 +326,36 @@ impl AcpService {
         owner: &RuntimeOwner,
         overlay: &SessionConfigOverlay,
         choice: &ConfigMutation,
-        deadline: Instant,
+        deadline: Option<Instant>,
     ) -> Result<Applied, HostError> {
         let Some(lane) = self.lane_for(owner) else {
             return Ok(Applied::Gone);
         };
         let apply = |revision| {
-            self.configure_session_until(
+            let deadline = deadline.unwrap_or_else(|| {
+                Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc)
+            });
+            self.send_config(
                 ConfigIntent {
                     owner: owner.clone(),
                     expected_config_revision: revision,
                     mutation: choice.clone(),
                 },
                 Some(deadline),
+                true,
             )
         };
         let mut result = apply(overlay.config_revision);
         if result == Err(HostError::Intent) {
-            // A change raced this one: retry once against the new state.
+            // A change raced this one. A pick of the same option made
+            // meanwhile is the newer choice and is kept; otherwise retry once
+            // against the new state.
             let Some(latest) = lane.runtime.config.live_snapshot(owner) else {
                 return Ok(Applied::Gone);
             };
+            if !self.still_stored(owner, choice) {
+                return Ok(Applied::Sent(latest));
+            }
             result = match step(&latest.config, choice) {
                 Step::Apply => apply(latest.config_revision),
                 Step::Keep => Ok(()),
@@ -249,10 +366,10 @@ impl AcpService {
             Ok(()) | Err(HostError::ConfigMutationRejected) => {}
             Err(error) if needs_recovery(error) => return Err(error.clone()),
             Err(error) => {
-                // Busy, full, raced again, or out of time before it was sent
-                // (`NotDispatched`): nothing changed, so it is tried again
-                // before the next prompt. Only a change that was sent and
-                // went unanswered needs recovery.
+                // Busy, full, raced again or not sent in time
+                // (`NotDispatched`): nothing reached the harness, the session
+                // keeps running and the choice is tried again before the
+                // next prompt.
                 tracing::warn!(?error, "session config restore deferred");
                 return Ok(Applied::Deferred);
             }
@@ -260,7 +377,7 @@ impl AcpService {
         let Some(latest) = lane.runtime.config.live_snapshot(owner) else {
             return Ok(Applied::Gone);
         };
-        if result == Err(HostError::ConfigMutationRejected) {
+        if result == Err(HostError::ConfigMutationRejected) && self.still_stored(owner, choice) {
             self.fall_back(owner, &latest.config, choice);
         }
         Ok(Applied::Sent(latest))
@@ -296,7 +413,9 @@ fn remember(
     owner: &RuntimeOwner,
     choice: &ConfigMutation,
 ) {
+    // A value stored for an option settles any notice about it.
     let stored = database.write_connection().and_then(|connection| {
+        choices::clear_notice(&connection, &owner.session_id, choice)?;
         choices::record(
             &connection,
             &owner.session_id,

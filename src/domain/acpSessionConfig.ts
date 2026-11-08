@@ -50,20 +50,25 @@ export interface AcpSessionConfig {
   configOptions: AcpConfigOption[];
   /**
    * Set only on the composer's view of a restored config (see
-   * `restoredSessionConfigView`): it has no runtime epoch or revision of its
-   * own, and a choice on it is stored for the session's next runtime.
+   * `restoredSessionConfigView`), to the note its controls carry: it has no
+   * runtime epoch or revision of its own, and a choice on it is stored for
+   * the session to apply.
    */
-  restored?: true;
+  restored?: string;
+  /** What the composer says about a stored choice the session could not
+   * take back, such as a saved model it no longer offers. */
+  notice?: string;
 }
 /**
- * A session's config while it has no live runtime: what it last reported,
- * with its stored choices as the current values. A choice made on it is
- * stored and applied before the session's next prompt.
+ * A session's config while it has no live one: what it last reported, with
+ * its stored choices as the current values. A choice made on it is stored
+ * and applied before the session's next prompt: on resume when it has no
+ * runtime (`resume`), or once its live runtime reports (`report`).
  */
 export type AcpRestoredSessionConfig = Omit<
   AcpSessionConfig,
-  "runtimeEpoch" | "configRevision" | "removed" | "restored"
->;
+  "runtimeEpoch" | "configRevision" | "removed" | "restored" | "notice"
+> & { awaiting: "resume" | "report" };
 export interface AcpSessionConfigChangedV1 {
   schemaVersion: 1;
   sageProjectId: string;
@@ -291,7 +296,14 @@ export function decodeSessionConfigNotice(
 export function decodeRestoredSessionConfig(
   v: unknown,
 ): AcpRestoredSessionConfig | null {
-  if (!object(v) || "runtimeEpoch" in v || "configRevision" in v) return null;
+  if (
+    !object(v) ||
+    "runtimeEpoch" in v ||
+    "configRevision" in v ||
+    (v.awaiting !== "resume" && v.awaiting !== "report")
+  )
+    return null;
+  const awaiting = v.awaiting;
   const decoded = decodeSessionConfig({
     ...v,
     runtimeEpoch: "0",
@@ -301,6 +313,7 @@ export function decodeRestoredSessionConfig(
   const { sageAgentSessionId, modes, configOptions } = decoded;
   return {
     sageAgentSessionId,
+    awaiting,
     modes,
     configOptions,
     ...(decoded.confirmedModel

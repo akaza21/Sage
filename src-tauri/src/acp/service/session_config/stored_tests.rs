@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use super::restore_tests::{choose, effort, option, owner, seed, start, stored};
 
 /// The restore fixture with the session installed as the chat's current one.
-fn seed_chat(service: &AcpService) {
+pub(super) fn seed_chat(service: &AcpService) {
     seed(service);
     service
         .database
@@ -55,6 +55,7 @@ fn a_parked_chat_shows_the_stored_choice_with_its_labels_before_resuming() {
     // labels the harness gave it, before any runtime starts.
     let restored = restored_page(&service);
     assert_eq!(restored["sageAgentSessionId"], "session-restore");
+    assert_eq!(restored["awaiting"], "resume");
     assert_eq!(
         restored["configOptions"],
         json!([{
@@ -86,18 +87,19 @@ fn a_choice_made_while_parked_shows_at_once_and_is_restored_on_resume() {
     );
     // A value the stored config does not offer is refused, not stored.
     assert_eq!(
-        service.queue_session_config_choice(&session, &option("effort", "max")),
+        service.queue_session_config_choice(&session, None, &option("effort", "max")),
         Err(QueueError::NotOffered)
     );
     assert_eq!(
         service.queue_session_config_choice(
             &session,
+            None,
             &ConfigMutation::Mode(ConfigId::new("modeId", "plan").unwrap())
         ),
         Err(QueueError::NotOffered)
     );
     service
-        .queue_session_config_choice(&session, &option("effort", "high"))
+        .queue_session_config_choice(&session, None, &option("effort", "high"))
         .unwrap();
     assert_eq!(stored(&service), [option("effort", "high")]);
     assert_eq!(

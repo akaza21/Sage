@@ -281,6 +281,9 @@ export interface AcpChatPage {
   sessionConfig?: AcpSessionConfig | null;
   /** The current session's restored config while it has no live one. */
   restoredSessionConfig?: AcpRestoredSessionConfig | null;
+  /** What the composer says about a stored choice the current session
+   * could not take back. */
+  sessionConfigNotice?: string | null;
   goal?: AcpGoalState;
   projectId: SageProjectId;
   chatId: SageChatId;

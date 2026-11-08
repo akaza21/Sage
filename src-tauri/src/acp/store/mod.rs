@@ -80,7 +80,16 @@ pub(crate) use cancel::begin_cancel;
 pub(crate) use commands::prepare_turn;
 pub(crate) use commands::{lookup_active_turn, lookup_prepared_turn};
 pub(crate) use facts::next_projection_revision;
-pub(crate) use history::load_chat_page;
+pub(crate) use history::load_chat_page_reserving;
+
+pub(crate) fn load_chat_page(
+    connection: &rusqlite::Connection,
+    project_id: crate::acp::contract::SageProjectId,
+    chat_id: crate::acp::contract::SageChatId,
+    cursor: Option<crate::acp::intent::PageCursor>,
+) -> Result<crate::acp::projection::AcpChatPage, StoreError> {
+    load_chat_page_reserving(connection, project_id, chat_id, cursor, 0)
+}
 pub(crate) use item_ingress::{ItemIngressCommand, ItemIngressMutation, apply_item_ingress};
 pub(crate) use mutations::{StoreMutation, StoreMutationResult};
 pub(crate) use paging::{RecoveryCandidate, load_recovery_candidates};

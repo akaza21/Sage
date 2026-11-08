@@ -314,7 +314,8 @@ export function ChatHarnessControls({
           effortLabel={confirmedModelLabel || inheriting ? effortLabel : null}
           contextWindow={contextWindow}
           effortOption={effortOption}
-          restored={!!selectedSessionConfig?.restored}
+          restored={selectedSessionConfig?.restored}
+          notice={selectedSessionConfig?.notice}
           awaitingSession={
             !sessionOwnsSelection &&
             selectedHarnessId !== null &&

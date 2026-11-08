@@ -152,6 +152,7 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
     let mut page = AcpChatPage {
         session_config: None,
         restored_session_config: None,
+        session_config_notice: None,
         goal: crate::acp::goal::GoalState::Unsupported,
         project_id: owner.project_id.clone(),
         chat_id: owner.chat_id.clone(),

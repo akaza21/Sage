@@ -29,11 +29,14 @@ pub(super) struct TurnRow {
     pub(super) item_before: Option<i64>,
 }
 
-pub(crate) fn load_chat_page(
+/// A page whose history leaves `reserve` bytes of the page budget free for
+/// what the service adds to it.
+pub(crate) fn load_chat_page_reserving(
     connection: &rusqlite::Connection,
     project_id: SageProjectId,
     chat_id: SageChatId,
     cursor: Option<PageCursor>,
+    reserve: usize,
 ) -> Result<AcpChatPage, StoreError> {
     let (title, projection): (String, i64) = connection
         .query_row(
@@ -83,6 +86,7 @@ pub(crate) fn load_chat_page(
     let empty_page = AcpChatPage {
         session_config: None,
         restored_session_config: None,
+        session_config_notice: None,
         goal: crate::acp::goal::GoalState::Unsupported,
         project_id: project_id.clone(),
         chat_id: chat_id.clone(),
@@ -99,7 +103,8 @@ pub(crate) fn load_chat_page(
     };
     let base_page_bytes = serde_json::to_vec(&empty_page)
         .map_err(|_| StoreError::Corrupt("chat page serialization"))?
-        .len();
+        .len()
+        .saturating_add(reserve);
     let slice = super::history_items::load(super::history_items::HistoryLoad {
         connection,
         project: &project_id,
@@ -113,6 +118,7 @@ pub(crate) fn load_chat_page(
     let page = AcpChatPage {
         session_config: None,
         restored_session_config: None,
+        session_config_notice: None,
         goal: crate::acp::goal::GoalState::Unsupported,
         project_id,
         chat_id,

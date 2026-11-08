@@ -4,6 +4,9 @@ import type { AcpSessionConfig } from "../../domain/acpSessionConfig";
 /** Said of a restored value: the session has not reapplied it yet. */
 export const RESTORED_NOTE =
   "Restored from this chat's last session; applied when the chat resumes.";
+/** Said of a stored value while a live session has not reported its own. */
+export const PENDING_NOTE =
+  "Saved for this chat; applied once the session reports its settings.";
 
 /**
  * What the composer shows for a chat whose current session has no live
@@ -33,10 +36,19 @@ export function restoredSessionConfigView(
     (session.modelId ?? null) !== modelId
   )
     return null;
+  const { awaiting, ...config } = restored;
   return {
-    ...restored,
+    ...config,
     runtimeEpoch: "",
     configRevision: "",
-    restored: true,
+    restored: awaiting === "report" ? PENDING_NOTE : RESTORED_NOTE,
   };
+}
+
+/** The config the composer shows, with the page's notice about it. */
+export function withSessionConfigNotice(
+  config: AcpSessionConfig | null,
+  notice: string | null | undefined,
+): AcpSessionConfig | null {
+  return config && notice ? { ...config, notice } : config;
 }
