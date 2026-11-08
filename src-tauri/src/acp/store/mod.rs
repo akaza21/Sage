@@ -128,6 +128,8 @@ pub(crate) enum StoreError {
     CommitUnknown,
     #[error("a monotonic SQLite counter is exhausted")]
     CounterExhausted,
+    #[error("the Chat is archived")]
+    ChatArchived,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

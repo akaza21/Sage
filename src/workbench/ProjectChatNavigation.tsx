@@ -1,6 +1,6 @@
 import { Archive, Pin, PinOff } from "../ui/leanIcons";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import type { AgentRailChat, ArchivedChatSummary } from "../domain/workbench";
 
 import { useWorkbenchStore } from "../app/store";
@@ -33,6 +33,7 @@ import {
 } from "./ProjectChatActionMenu";
 import type * as RenameChunk from "./ProjectChatRename";
 import { ArchivedChatList } from "./ArchivedChatList";
+import { ChatRowErrorNotice, chatRowErrorId } from "./ChatRowErrorNotice";
 import {
   isSideChatId,
   useParentChatStatus,
@@ -77,6 +78,13 @@ export function ProjectChatNavigation({
   const renameTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusChatId = useRef<string | null>(null);
   const storeArchivedChats = useWorkbenchStore((state) => state.archivedChats);
+  // Recents repeats chats the project tree lists, so a refused row action
+  // reports once, on the project tree's row.
+  const rowError = useWorkbenchStore((state) =>
+    !recent && state.chatRowError?.projectId === projectId
+      ? state.chatRowError
+      : null,
+  );
   const archivedChats = selected ? storeArchivedChats : (archived ?? []);
   // A side chat never lists; its parent keeps the highlight.
   const activeTabId = useRailChatId(
@@ -180,10 +188,14 @@ export function ProjectChatNavigation({
         const PinIcon = tab.pinned ? PinOff : Pin;
         const archiveDisabled =
           projectTransitioning || (projectChatCount ?? chatTabs.length) <= 1;
+        const archiveError =
+          rowError?.chatId === tab.id && rowError.action === "archive"
+            ? rowError
+            : null;
         const archive = () => {
           void useWorkbenchStore
             .getState()
-            .archiveChat(tab.id, projectId)
+            .archiveChat(tab.id, projectId, "row")
             .then((committed) => {
               if (committed)
                 setAgentRailArchiveUndo({
@@ -198,126 +210,143 @@ export function ProjectChatNavigation({
             ? sessionRailStatusLabel(tab.status, true)
             : "";
         return (
-          <div
-            className={`project-chat-row${focused ? " project-chat-row--active" : ""}${selected ? "" : " project-chat-row--foreign"}${flat ? " project-chat-row--flat" : ""}`}
-            key={tab.id}
-            onPointerEnter={(event) =>
-              hoverCard.show(tab.id, event.currentTarget)
-            }
-            onPointerLeave={hoverCard.hide}
-            onPointerDown={hoverCard.hide}
-            onContextMenu={(event) => {
-              if (projectTransitioning) return;
-              event.preventDefault();
-              setActionMenuChatId(tab.id);
-            }}
-          >
-            <button
-              className={`project-chat ${
-                focused ? "project-chat--active" : ""
-              }`}
-              type="button"
-              aria-label={`${recent ? "Open recent chat" : "Open chat"} ${displayTitle}${tab.pinned ? ", pinned" : ""}${approvalLabel ? `, ${approvalLabel}` : ""}`}
-              data-chat-id={tab.id}
-              aria-current={focused ? "page" : undefined}
-              onClick={() => {
-                clearAgentRailUnread(tab.id);
-                if (selected) {
-                  // Opening the chat acknowledges its finished Turn, even
-                  // when it is already on screen after "Mark unread".
-                  if (sessionRailFinished(status))
-                    markChatRead(tab.id, tab.finishedAt ?? 0);
-                  void activateTab(tab.id);
-                  return;
-                }
-                void openRailChat(projectId, tab.id);
+          <Fragment key={tab.id}>
+            <div
+              className={`project-chat-row${focused ? " project-chat-row--active" : ""}${selected ? "" : " project-chat-row--foreign"}${flat ? " project-chat-row--flat" : ""}`}
+              onPointerEnter={(event) =>
+                hoverCard.show(tab.id, event.currentTarget)
+              }
+              onPointerLeave={hoverCard.hide}
+              onPointerDown={hoverCard.hide}
+              onContextMenu={(event) => {
+                if (projectTransitioning) return;
+                event.preventDefault();
+                setActionMenuChatId(tab.id);
               }}
             >
-              <span className="project-chat__copy">
-                <span className="project-chat__title">
-                  <span className="project-chat__title-label">
-                    {displayTitle}
-                  </span>
-                  {tab.pinned ? (
-                    <Pin
-                      className="project-chat__pinned"
-                      size={10}
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                  {approvalLabel ? (
-                    <span className="rail-pill rail-pill--approval">
-                      {approvalLabel}
-                    </span>
-                  ) : null}
-                </span>
-              </span>
-            </button>
-            <div className="project-chat__trailing">
-              <ProjectChatTrailingState
-                awaitingApproval={Boolean(approvalLabel)}
-                focused={focused}
-                state={trailingState}
-              />
-              <div className="project-chat__quick-actions">
-                <button
-                  type="button"
-                  aria-label={`${tab.pinned ? "Unpin" : "Pin"} ${displayTitle}`}
-                  title={tab.pinned ? "Unpin chat" : "Pin chat"}
-                  disabled={projectTransitioning}
-                  onClick={() =>
-                    void useWorkbenchStore.getState().pinChat(tab.id, projectId)
+              <button
+                className={`project-chat ${
+                  focused ? "project-chat--active" : ""
+                }`}
+                type="button"
+                aria-label={`${recent ? "Open recent chat" : "Open chat"} ${displayTitle}${tab.pinned ? ", pinned" : ""}${approvalLabel ? `, ${approvalLabel}` : ""}`}
+                data-chat-id={tab.id}
+                aria-current={focused ? "page" : undefined}
+                onClick={() => {
+                  clearAgentRailUnread(tab.id);
+                  if (selected) {
+                    // Opening the chat acknowledges its finished Turn, even
+                    // when it is already on screen after "Mark unread".
+                    if (sessionRailFinished(status))
+                      markChatRead(tab.id, tab.finishedAt ?? 0);
+                    void activateTab(tab.id);
+                    return;
                   }
-                >
-                  <PinIcon size={14} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Archive ${displayTitle}`}
-                  title="Archive chat"
-                  disabled={archiveDisabled}
-                  onClick={archive}
-                >
-                  <Archive size={14} aria-hidden="true" />
-                </button>
+                  void openRailChat(projectId, tab.id);
+                }}
+              >
+                <span className="project-chat__copy">
+                  <span className="project-chat__title">
+                    <span className="project-chat__title-label">
+                      {displayTitle}
+                    </span>
+                    {tab.pinned ? (
+                      <Pin
+                        className="project-chat__pinned"
+                        size={10}
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    {approvalLabel ? (
+                      <span className="rail-pill rail-pill--approval">
+                        {approvalLabel}
+                      </span>
+                    ) : null}
+                  </span>
+                </span>
+              </button>
+              <div className="project-chat__trailing">
+                <ProjectChatTrailingState
+                  awaitingApproval={Boolean(approvalLabel)}
+                  focused={focused}
+                  state={trailingState}
+                />
+                <div className="project-chat__quick-actions">
+                  <button
+                    type="button"
+                    aria-label={`${tab.pinned ? "Unpin" : "Pin"} ${displayTitle}`}
+                    title={tab.pinned ? "Unpin chat" : "Pin chat"}
+                    disabled={projectTransitioning}
+                    onClick={() =>
+                      void useWorkbenchStore
+                        .getState()
+                        .pinChat(tab.id, projectId)
+                    }
+                  >
+                    <PinIcon size={14} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Archive ${displayTitle}`}
+                    aria-describedby={
+                      archiveError
+                        ? chatRowErrorId(projectId, tab.id)
+                        : undefined
+                    }
+                    title="Archive chat"
+                    disabled={archiveDisabled}
+                    onClick={archive}
+                  >
+                    <Archive size={14} aria-hidden="true" />
+                  </button>
+                </div>
+                <ProjectChatActionMenu
+                  chatId={tab.id}
+                  projectId={projectId}
+                  chatTitle={displayTitle}
+                  pinned={tab.pinned}
+                  open={actionMenuChatId === tab.id}
+                  disabled={projectTransitioning}
+                  archiveDisabled={archiveDisabled}
+                  onOpenChange={(open) =>
+                    setActionMenuChatId(open ? tab.id : null)
+                  }
+                  onRename={() => {
+                    setRenameError(null);
+                    setRenameDraft(displayTitle);
+                    setRenamingChatId(tab.id);
+                  }}
+                  // Only a finished Turn has a time to read through (Codex
+                  // offers Mark unread on the same chats).
+                  onMarkUnread={
+                    sessionRailFinished(status)
+                      ? () => {
+                          markAgentRailUnread(tab.id);
+                          // A refused request leaves the chat read in the store.
+                          void markChatUnread(tab.id).then((stored) => {
+                            if (!stored) clearAgentRailUnread(tab.id);
+                          });
+                        }
+                      : undefined
+                  }
+                  onArchive={archive}
+                  triggerRef={(node) => {
+                    if (node) renameTriggerRefs.current.set(tab.id, node);
+                    else renameTriggerRefs.current.delete(tab.id);
+                  }}
+                />
               </div>
-              <ProjectChatActionMenu
-                chatId={tab.id}
-                projectId={projectId}
-                chatTitle={displayTitle}
-                pinned={tab.pinned}
-                open={actionMenuChatId === tab.id}
-                disabled={projectTransitioning}
-                archiveDisabled={archiveDisabled}
-                onOpenChange={(open) =>
-                  setActionMenuChatId(open ? tab.id : null)
-                }
-                onRename={() => {
-                  setRenameError(null);
-                  setRenameDraft(displayTitle);
-                  setRenamingChatId(tab.id);
-                }}
-                // Only a finished Turn has a time to read through (Codex
-                // offers Mark unread on the same chats).
-                onMarkUnread={
-                  sessionRailFinished(status)
-                    ? () => {
-                        markAgentRailUnread(tab.id);
-                        // A refused request leaves the chat read in the store.
-                        void markChatUnread(tab.id).then((stored) => {
-                          if (!stored) clearAgentRailUnread(tab.id);
-                        });
-                      }
-                    : undefined
-                }
-                onArchive={archive}
-                triggerRef={(node) => {
-                  if (node) renameTriggerRefs.current.set(tab.id, node);
-                  else renameTriggerRefs.current.delete(tab.id);
-                }}
-              />
             </div>
-          </div>
+            {archiveError ? (
+              <ChatRowErrorNotice
+                error={archiveError}
+                title={displayTitle}
+                focusAfterDismiss={() =>
+                  renameTriggerRefs.current.get(tab.id) ?? null
+                }
+              />
+            ) : null}
+          </Fragment>
         );
       })}
 

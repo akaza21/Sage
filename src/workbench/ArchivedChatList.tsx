@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../app/store";
 import { chatDisplayTitle } from "../domain/chatTitle";
@@ -10,8 +10,12 @@ import {
   MessageSquare,
   RotateCcw,
   Trash2,
-  X,
 } from "../ui/leanIcons";
+import {
+  ChatRowErrorNotice,
+  chatRowErrorId,
+  useChatRowError,
+} from "./ChatRowErrorNotice";
 
 /** A Project's archived chats, each restorable or permanently deletable. */
 export function ArchivedChatList({
@@ -23,19 +27,7 @@ export function ArchivedChatList({
 }) {
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState<ArchivedChatSummary | null>(null);
-  const restoreChat = useWorkbenchStore((state) => state.restoreChat);
   const deleteChat = useWorkbenchStore((state) => state.deleteChat);
-  const projectTransitioning = useWorkbenchStore(
-    (state) => state.projectTransitioning,
-  );
-  const rowError = useWorkbenchStore((state) =>
-    state.archivedChatError?.projectId === projectId
-      ? state.archivedChatError
-      : null,
-  );
-  const dismissRowError = useWorkbenchStore(
-    (state) => state.dismissArchivedChatError,
-  );
   const listId = `archived-chat-list-${projectId}`;
   return (
     <div className="archived-chats">
@@ -61,50 +53,14 @@ export function ArchivedChatList({
           role="region"
           aria-label="Archived chats"
         >
-          {chats.map((chat) => {
-            const displayTitle = chatDisplayTitle(chat.title);
-            const error = rowError?.chatId === chat.id ? rowError : null;
-            const errorId = `${listId}-error-${chat.id}`;
-            return (
-              <div className="archived-chat-row" key={chat.id}>
-                <MessageSquare size={14} aria-hidden="true" />
-                <span title={displayTitle}>{displayTitle}</span>
-                <button
-                  type="button"
-                  aria-label={`Restore chat ${displayTitle}`}
-                  aria-describedby={error ? errorId : undefined}
-                  title={`Restore chat ${displayTitle}`}
-                  disabled={projectTransitioning}
-                  onClick={() => void restoreChat(chat.id, projectId, "row")}
-                >
-                  <RotateCcw size={12} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Delete chat ${displayTitle}`}
-                  aria-describedby={error ? errorId : undefined}
-                  title={`Delete chat ${displayTitle}`}
-                  disabled={projectTransitioning}
-                  onClick={() => setDeleting(chat)}
-                >
-                  <Trash2 size={12} aria-hidden="true" />
-                </button>
-                {error ? (
-                  <p className="archived-chat-row__error" role="alert">
-                    <span id={errorId}>{error.message}</span>
-                    <button
-                      type="button"
-                      aria-label={`Dismiss error for ${displayTitle}`}
-                      title="Dismiss"
-                      onClick={dismissRowError}
-                    >
-                      <X size={12} aria-hidden="true" />
-                    </button>
-                  </p>
-                ) : null}
-              </div>
-            );
-          })}
+          {chats.map((chat) => (
+            <ArchivedChatRow
+              key={chat.id}
+              projectId={projectId}
+              chat={chat}
+              onDelete={() => setDeleting(chat)}
+            />
+          ))}
         </div>
       ) : null}
       {deleting ? (
@@ -117,6 +73,63 @@ export function ArchivedChatList({
             setDeleting(null);
             void deleteChat(deleting.id, projectId);
           }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ArchivedChatRow({
+  projectId,
+  chat,
+  onDelete,
+}: {
+  projectId: string;
+  chat: ArchivedChatSummary;
+  onDelete: () => void;
+}) {
+  const restoreChat = useWorkbenchStore((state) => state.restoreChat);
+  const projectTransitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
+  const error = useChatRowError(projectId, chat.id);
+  const restoreRef = useRef<HTMLButtonElement>(null);
+  const deleteRef = useRef<HTMLButtonElement>(null);
+  const displayTitle = chatDisplayTitle(chat.title);
+  const describedBy = error ? chatRowErrorId(projectId, chat.id) : undefined;
+  return (
+    <div className="archived-chat-row">
+      <MessageSquare size={14} aria-hidden="true" />
+      <span title={displayTitle}>{displayTitle}</span>
+      <button
+        ref={restoreRef}
+        type="button"
+        aria-label={`Restore chat ${displayTitle}`}
+        aria-describedby={describedBy}
+        title={`Restore chat ${displayTitle}`}
+        disabled={projectTransitioning}
+        onClick={() => void restoreChat(chat.id, projectId, "row")}
+      >
+        <RotateCcw size={12} aria-hidden="true" />
+      </button>
+      <button
+        ref={deleteRef}
+        type="button"
+        aria-label={`Delete chat ${displayTitle}`}
+        aria-describedby={describedBy}
+        title={`Delete chat ${displayTitle}`}
+        disabled={projectTransitioning}
+        onClick={onDelete}
+      >
+        <Trash2 size={12} aria-hidden="true" />
+      </button>
+      {error ? (
+        <ChatRowErrorNotice
+          error={error}
+          title={displayTitle}
+          focusAfterDismiss={(action) =>
+            action === "restore" ? restoreRef.current : deleteRef.current
+          }
         />
       ) : null}
     </div>

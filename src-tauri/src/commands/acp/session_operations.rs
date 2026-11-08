@@ -35,6 +35,8 @@ pub(crate) async fn send_acp_turn_inner(
             .await
             .map_err(prompt_not_dispatched)?;
     validate_send(state, &request, &snapshot).map_err(prompt_not_dispatched)?;
+    session_routes::refuse_archived_chat(state, project_id, chat_id)
+        .map_err(prompt_not_dispatched)?;
     // A batch staged in a tab that has since closed must never be sent.
     crate::acp::attached_context::files::release_detached(&state.acp.file_stages, &state.database);
     if matches!(request, SendAcpTurnRequest::NewSession { .. })

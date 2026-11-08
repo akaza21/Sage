@@ -271,12 +271,12 @@ impl AcpService {
                 // recovery; drive it now as an activation's reclaim would.
                 let _ = view.shutdown_codex_recovery(deadline);
             }
-            let still_held = lane
-                .scheduler
-                .active()
-                .is_some_and(|active| same(&active.tree))
-                || lane.recovery_owner().as_ref().is_some_and(same);
-            if still_held {
+            let held = lane.scheduler.active().filter(|active| same(&active.tree));
+            // A prompt that won the idle-drain race keeps its runtime running.
+            if held.as_ref().is_some_and(|active| active.turn_reserved) {
+                return Err(ChatRuntimeRelease::TurnRunning);
+            }
+            if held.is_some() || lane.recovery_owner().as_ref().is_some_and(same) {
                 return Err(ChatRuntimeRelease::Unsettled);
             }
         }

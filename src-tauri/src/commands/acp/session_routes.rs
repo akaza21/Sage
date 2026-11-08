@@ -19,6 +19,7 @@ pub(crate) async fn start_acp_session_inner(
         &snapshot,
     )
     .map_err(intent_error)?;
+    refuse_archived_chat(state, &request.project_id, &request.chat_id)?;
     #[cfg(all(windows, feature = "acp-fixture"))]
     if state.acp.accepts_characterization(&request.binding_id) {
         return characterization::start(state, request).await;
@@ -66,6 +67,7 @@ pub(crate) async fn activate_acp_session_inner(
     )
     .await?;
     validate_session_intent(&request, &snapshot).map_err(intent_error)?;
+    refuse_archived_chat(state, &request.project_id, &request.chat_id)?;
     let binding_id = durable_binding_id(state, &request.session_id).map_err(store_error)?;
     #[cfg(all(windows, feature = "acp-fixture"))]
     if state.acp.accepts_characterization(&binding_id) {
@@ -132,4 +134,23 @@ pub(super) fn durable_binding_id(
         .map_err(crate::acp::store::StoreError::Database)?;
     crate::acp::intent::BindingId::new("bindingId", binding_id)
         .map_err(|_| crate::acp::store::StoreError::Corrupt("session binding identity"))
+}
+
+/// An archived Chat runs no agent. Prompt, session start and activation
+/// refuse it here with a typed message; the store refuses it again inside
+/// the transaction that would add the Turn or runtime epoch.
+pub(super) fn refuse_archived_chat(
+    state: &AppState,
+    project_id: &SageProjectId,
+    chat_id: &SageChatId,
+) -> Result<(), AcpIpcError> {
+    match crate::chat_archive::is_archived_chat(
+        &state.database.connection(),
+        project_id.as_str(),
+        chat_id.as_str(),
+    ) {
+        Ok(false) => Ok(()),
+        Ok(true) => Err(archived_chat()),
+        Err(_) => Err(internal_error()),
+    }
 }

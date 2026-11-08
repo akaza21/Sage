@@ -76,11 +76,19 @@ impl Database {
             &request.project_id,
             &request.chat_id,
         )?;
-        // An archived Chat holds no harness process, and a running Turn
-        // keeps one; the user stops the Turn before archiving.
+        // An archived Chat holds no harness process and starts no Turn. A
+        // running Turn keeps a process, and a queued prompt would start one,
+        // so the user stops the Turn and sends or removes queued prompts
+        // first. The store refuses new Turns for an archived Chat, so this
+        // transaction and a prompt's cannot both commit.
         if delete::has_running_turn(&transaction, &request.project_id, &request.chat_id)? {
             return Err(AppError::InvalidRequest(
                 crate::acp::service::ChatRuntimeRelease::TurnRunning.message("archiving"),
+            ));
+        }
+        if delete::has_queued_prompts(&transaction, &request.project_id, &request.chat_id)? {
+            return Err(AppError::InvalidRequest(
+                "Send or remove this Chat's queued prompts before archiving it".into(),
             ));
         }
         if source_is_active(&transaction, &request.project_id)? {

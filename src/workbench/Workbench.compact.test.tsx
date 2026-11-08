@@ -767,7 +767,7 @@ describe("compact Workbench project tools", () => {
 
     await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
-    expect(archiveChat).toHaveBeenCalledWith("chat:b", "project-a");
+    expect(archiveChat).toHaveBeenCalledWith("chat:b", "project-a", "row");
     const disclosure = screen.getByRole("button", {
       name: "Archived chats: 1",
     });

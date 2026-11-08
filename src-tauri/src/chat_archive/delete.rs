@@ -52,6 +52,19 @@ pub(super) fn has_running_turn(
     )?)
 }
 
+/// Whether the Chat holds prompts queued to send after its current Turn.
+pub(super) fn has_queued_prompts(
+    connection: &Connection,
+    project: &str,
+    chat: &str,
+) -> AppResult<bool> {
+    Ok(connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM chat_queued_prompts WHERE project_id=?1 AND chat_id=?2)",
+        params![project, chat],
+        |row| row.get(0),
+    )?)
+}
+
 /// Admits only an archived Chat of that Project with no running Turn, no
 /// live runtime and no fork descending from it. The delete command releases
 /// an idle runtime before this runs.

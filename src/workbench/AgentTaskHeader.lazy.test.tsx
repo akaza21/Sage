@@ -180,5 +180,5 @@ it("keeps header mutations scoped and refreshes the open move destinations", asy
   expect(moveChat).toHaveBeenCalledWith(tab.id, "destination", "project-lazy");
   await openActions();
   fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
-  expect(archiveChat).toHaveBeenCalledWith(tab.id, "project-lazy");
+  expect(archiveChat).toHaveBeenCalledWith(tab.id, "project-lazy", "row");
 });

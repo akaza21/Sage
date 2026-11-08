@@ -294,7 +294,31 @@ describe("per-Chat disposable ownership", () => {
     });
   });
 
-  it("reports a refused archived-Chat delete or row restore on that row, not in the active Chat", async () => {
+  it("reports a refused row archive, restore or delete on that row, not in the active Chat", async () => {
+    const archiveRefusal = "Stop this Chat's running turn before archiving it";
+    vi.spyOn(getWorkbenchPorts().chat, "archiveChat").mockImplementationOnce(
+      async (_request, expectedTransitionEpoch) => ({
+        committed: false,
+        transitionEpoch: expectedTransitionEpoch,
+        snapshot: null,
+        recoveryError: archiveRefusal,
+      }),
+    );
+    expect(
+      await useWorkbenchStore
+        .getState()
+        .archiveChat(chatB.id, undefined, "row"),
+    ).toBe(false);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      error: null,
+      chatRowError: {
+        projectId: "project-a",
+        chatId: chatB.id,
+        action: "archive",
+        message: archiveRefusal,
+      },
+    });
+
     vi.spyOn(getWorkbenchPorts().chat, "archiveChat").mockImplementation(
       async (_request, expectedTransitionEpoch) => ({
         committed: true,
@@ -320,9 +344,10 @@ describe("per-Chat disposable ownership", () => {
     expect(useWorkbenchStore.getState()).toMatchObject({
       error: null,
       projectTransitioning: false,
-      archivedChatError: {
+      chatRowError: {
         projectId: "project-a",
         chatId: chatB.id,
+        action: "delete",
         message: refusal,
       },
     });
@@ -342,7 +367,11 @@ describe("per-Chat disposable ownership", () => {
     ).toBe(false);
     expect(useWorkbenchStore.getState()).toMatchObject({
       error: null,
-      archivedChatError: { chatId: chatB.id, message: "Restore refused" },
+      chatRowError: {
+        chatId: chatB.id,
+        action: "restore",
+        message: "Restore refused",
+      },
     });
 
     // Other restore entry points keep reporting in the workbench.
@@ -351,7 +380,7 @@ describe("per-Chat disposable ownership", () => {
     );
     expect(useWorkbenchStore.getState()).toMatchObject({
       error: "Restore refused",
-      archivedChatError: null,
+      chatRowError: null,
     });
   });
 

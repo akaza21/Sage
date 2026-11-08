@@ -311,6 +311,18 @@ async fn ready_runtime_fixture(label: &str) -> (AcpService, RuntimeOwner) {
     };
     let chat_id = SageChatId::parse(chat).unwrap();
     let service = AcpService::new(database).unwrap();
+    let owner = seat_ready_session(&service, project_id, chat_id, label).await;
+    (service, owner)
+}
+
+/// Starts, activates and completes activation of a session for the Chat on
+/// lane 0, so its runtime epoch is running and resumable.
+async fn seat_ready_session(
+    service: &AcpService,
+    project_id: SageProjectId,
+    chat_id: SageChatId,
+    label: &str,
+) -> RuntimeOwner {
     let revision = service
         .load_chat_page(project_id.clone(), chat_id.clone(), None)
         .unwrap()
@@ -371,7 +383,7 @@ async fn ready_runtime_fixture(label: &str) -> (AcpService, RuntimeOwner) {
         .await
         .unwrap();
     drop(lease);
-    (service, owner)
+    owner
 }
 
 #[test]
@@ -1324,6 +1336,190 @@ fn close_session(owner: &RuntimeOwner) -> crate::acp::store::CloseSessionCommand
         runtime_epoch: owner.runtime_epoch,
         now_millis: crate::persistence::now_millis(),
     }
+}
+
+/// An app whose first Chat holds an idle, resumable runtime on lane 0 and
+/// whose second Chat stays attached, so the first can be archived.
+fn app_with_idle_runtime(
+    label: &str,
+) -> (crate::state::AppState, RuntimeOwner, std::path::PathBuf) {
+    let root = std::env::temp_dir().join(format!("sage-archive-runtime-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let database = crate::persistence::Database::open(&root.join("sage.db")).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let bootstrap = database.bootstrap_snapshot().unwrap();
+    let chat = bootstrap.active_tab_id.clone().unwrap();
+    database
+        .create_chat(&layout_of(&project.id, bootstrap))
+        .unwrap();
+    let state = crate::state::AppState::new(database);
+    let owner = tauri::async_runtime::block_on(seat_ready_session(
+        &state.acp,
+        SageProjectId::parse(project.id).unwrap(),
+        SageChatId::parse(chat).unwrap(),
+        label,
+    ));
+    let host = Arc::new(
+        crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
+            TestRuntime::default(),
+            Arc::new(SuccessfulShutdownRecovery(owner.runtime_epoch.get())),
+        )
+        .unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    state.acp.install_runtime_for_test(owner.clone(), host);
+    (state, owner, root)
+}
+
+fn layout_of(
+    project: &str,
+    snapshot: crate::domain::BootstrapSnapshot,
+) -> crate::domain::ProjectLayoutRequest {
+    crate::domain::ProjectLayoutRequest {
+        project_id: project.to_owned(),
+        tabs: snapshot.tabs,
+        active_tab_id: snapshot.active_tab_id,
+        selected_root_id: snapshot.selected_root_id,
+        selected_resource: snapshot.selected_resource,
+    }
+}
+
+fn archive_request(
+    state: &crate::state::AppState,
+    owner: &RuntimeOwner,
+) -> crate::domain::ChatLifecycleRequest {
+    crate::domain::ChatLifecycleRequest {
+        project_id: owner.project_id.as_str().to_owned(),
+        chat_id: owner.chat_id.as_str().to_owned(),
+        current_layout: layout_of(
+            owner.project_id.as_str(),
+            state.database.bootstrap_snapshot().unwrap(),
+        ),
+    }
+}
+
+fn delete_request(owner: &RuntimeOwner) -> crate::domain::ChatDeleteRequest {
+    crate::domain::ChatDeleteRequest {
+        project_id: owner.project_id.as_str().to_owned(),
+        chat_id: owner.chat_id.as_str().to_owned(),
+    }
+}
+
+fn live_epochs(state: &crate::state::AppState, owner: &RuntimeOwner) -> i64 {
+    state
+        .database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM session_runtime_epochs WHERE chat_id=?1
+               AND state IN ('starting','running','terminating')",
+            [owner.chat_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+fn finish_app(state: crate::state::AppState, root: std::path::PathBuf) {
+    state.acp.shutdown_blocking().unwrap();
+    drop(state);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn archiving_a_chat_after_its_turn_parks_its_runtime_and_it_then_deletes() {
+    let (state, owner, root) = app_with_idle_runtime("archive-command");
+    assert_eq!(live_epochs(&state, &owner), 1);
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+
+    let archived = runtime.block_on(crate::chat_archive_commands::archive_chat_inner(
+        &state,
+        archive_request(&state, &owner),
+        0,
+    ));
+    assert!(archived.committed, "{:?}", archived.recovery_error);
+    assert_eq!(
+        live_epochs(&state, &owner),
+        0,
+        "an archived Chat holds no runtime"
+    );
+    assert!(state.acp.lane_for(&owner).is_none());
+
+    let deleted = runtime.block_on(crate::chat_archive_commands::delete_chat_inner(
+        &state,
+        delete_request(&owner),
+        archived.transition_epoch,
+    ));
+    assert!(deleted.committed, "{:?}", deleted.recovery_error);
+    finish_app(state, root);
+}
+
+#[test]
+fn deleting_an_archived_chat_releases_a_runtime_it_still_holds() {
+    let (state, owner, root) = app_with_idle_runtime("delete-command");
+    // Archived before archive released runtimes: the epoch is still live.
+    state
+        .database
+        .archive_chat(&archive_request(&state, &owner))
+        .unwrap();
+    assert_eq!(live_epochs(&state, &owner), 1);
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+
+    let deleted = runtime.block_on(crate::chat_archive_commands::delete_chat_inner(
+        &state,
+        delete_request(&owner),
+        0,
+    ));
+    assert!(deleted.committed, "{:?}", deleted.recovery_error);
+    assert!(state.acp.lane_for(&owner).is_none());
+    finish_app(state, root);
+}
+
+#[test]
+fn archive_refuses_a_running_turn_and_an_archived_chat_takes_no_prompt() {
+    let (state, owner, root) = app_with_idle_runtime("archive-refusal");
+    let mut prompt = prepare_turn(&owner);
+    prompt.expected_projection_revision = state
+        .acp
+        .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
+        .unwrap()
+        .projection_revision;
+    state.database.acp_prepare_turn(prompt).unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+
+    let refused = runtime.block_on(crate::chat_archive_commands::archive_chat_inner(
+        &state,
+        archive_request(&state, &owner),
+        0,
+    ));
+    assert!(!refused.committed);
+    assert_eq!(
+        refused.recovery_error.as_deref(),
+        Some("Stop this Chat's running turn before archiving it")
+    );
+    assert_eq!(
+        live_epochs(&state, &owner),
+        1,
+        "a refused archive keeps the runtime"
+    );
+
+    finish_app(state, root);
+
+    // An archived Chat takes no prompt: the store refuses the Turn.
+    let (state, owner, root) = app_with_idle_runtime("archived-prompt");
+    state
+        .database
+        .archive_chat(&archive_request(&state, &owner))
+        .unwrap();
+    let mut prompt = prepare_turn(&owner);
+    prompt.expected_projection_revision = state
+        .acp
+        .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
+        .unwrap()
+        .projection_revision;
+    assert!(matches!(
+        state.database.acp_prepare_turn(prompt),
+        Err(crate::acp::store::StoreError::ChatArchived)
+    ));
+    finish_app(state, root);
 }
 
 #[test]

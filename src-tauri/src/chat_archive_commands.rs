@@ -76,7 +76,7 @@ fn archived_identity(
         .flatten()
 }
 
-async fn delete_chat_inner(
+pub(crate) async fn delete_chat_inner(
     state: &AppState,
     request: ChatDeleteRequest,
     expected_transition_epoch: u64,
@@ -106,7 +106,7 @@ async fn delete_chat_inner(
     result
 }
 
-async fn archive_chat_inner(
+pub(crate) async fn archive_chat_inner(
     state: &AppState,
     request: ChatLifecycleRequest,
     expected_transition_epoch: u64,
@@ -132,10 +132,17 @@ async fn archive_chat_inner(
             (SageProjectId::parse(project_id), SageChatId::parse(chat_id))
     {
         // An archived Chat holds no harness process. Archive refused a running
-        // Turn, so this parks an idle runtime; a park that does not settle in
-        // time is retried when the Chat is deleted.
-        if let Err(refusal) = release_chat_runtime(state, &project, &chat) {
-            tracing::warn!(?refusal, "archived Chat's runtime is not yet released");
+        // Turn and queued prompts, and the store refuses new Turns for an
+        // archived Chat, so this parks an idle runtime. A park that does not
+        // settle in time is retried when the Chat is deleted.
+        match release_chat_runtime(state, &project, &chat) {
+            Ok(()) => {}
+            Err(ChatRuntimeRelease::TurnRunning) => {
+                tracing::error!("archived Chat is running a Turn; archive admission was bypassed")
+            }
+            Err(refusal @ ChatRuntimeRelease::Unsettled) => {
+                tracing::warn!(?refusal, "archived Chat's runtime is not yet released");
+            }
         }
         if let Err(error) = state.terminals.close_chat(&project, &chat) {
             tracing::warn!(?error, "terminal Chat-close cleanup remains unsettled");

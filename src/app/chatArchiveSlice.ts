@@ -16,29 +16,38 @@ import {
 import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
 
-/** A restore or delete refused for one archived Chat, shown on its row. */
-export interface ArchivedChatError {
+/** A Chat action started from a rail or archived-list row. */
+export type ChatRowAction = "archive" | "restore" | "delete";
+
+/** A row action the backend refused, shown on the row it was started from
+ * instead of in whichever Chat is open. */
+export interface ChatRowError {
   projectId: string;
   chatId: string;
+  action: ChatRowAction;
   message: string;
 }
 
-/** Where a refused restore reports: the Chat's archived row, or the
- * workbench's shared error. */
-export type ArchivedChatReport = "row" | "workbench";
+/** Where a refused archive or restore reports: the row it was started from,
+ * or the workbench's shared error. */
+export type ChatActionReport = "row" | "workbench";
 
 export interface ChatArchiveSlice {
-  archivedChatError: ArchivedChatError | null;
-  archiveChat: (chatId: string, projectId?: string) => Promise<boolean>;
+  chatRowError: ChatRowError | null;
+  archiveChat: (
+    chatId: string,
+    projectId?: string,
+    report?: ChatActionReport,
+  ) => Promise<boolean>;
   restoreChat: (
     chatId: string,
     projectId?: string,
-    report?: ArchivedChatReport,
+    report?: ChatActionReport,
   ) => Promise<boolean>;
   /** Permanently deletes an archived Chat; callers confirm first. A refusal
    * is reported on the Chat's archived row. */
   deleteChat: (chatId: string, projectId?: string) => Promise<boolean>;
-  dismissArchivedChatError: () => void;
+  dismissChatRowError: () => void;
 }
 
 function archivedChat(
@@ -64,153 +73,164 @@ export const createChatArchiveSlice: StateCreator<
   const { applyProjection, loadAuthoritativeProjection, runChatTransition } =
     createChatTransitionContext(set, get);
 
-  /** Moves a refusal the transition left in the shared error onto the
-   * archived row it belongs to. A transition whose state is unknown keeps
-   * the workbench-wide error. */
-  const reportOnRow = (
-    projectId: string | undefined,
+  /** Runs a row action and, when `report` is "row", moves a refusal the
+   * transition left in the shared error onto the row it was started from.
+   * A transition whose state is unknown keeps the workbench-wide error. */
+  const runRowAction = async (
+    action: ChatRowAction,
     chatId: string,
-    committed: boolean,
+    projectId: string | undefined,
+    report: ChatActionReport,
+    run: () => Promise<boolean>,
   ) => {
+    set({ chatRowError: null });
+    const rowProjectId = projectId ?? currentProjectLayout(get())?.projectId;
+    const committed = await run();
     const { error, phase } = get();
-    if (!committed && projectId && error && phase !== "error") {
+    if (
+      report === "row" &&
+      !committed &&
+      rowProjectId &&
+      error &&
+      phase !== "error"
+    ) {
       set({
         error: null,
-        archivedChatError: { projectId, chatId, message: error },
+        chatRowError: {
+          projectId: rowProjectId,
+          chatId,
+          action,
+          message: error,
+        },
       });
     }
     return committed;
   };
 
   return {
-    archivedChatError: null,
-    dismissArchivedChatError: () => set({ archivedChatError: null }),
+    chatRowError: null,
+    dismissChatRowError: () => set({ chatRowError: null }),
 
-    archiveChat: async (chatId, projectId) => {
-      const initial = currentProjectLayout(get());
-      const sourceProjectId = projectId ?? initial?.projectId;
-      const attachedChats = initial?.tabs.filter((tab) => tab.kind === "chat");
-      const foreign =
-        typeof sourceProjectId === "string" &&
-        sourceProjectId !== initial?.projectId;
-      const foreignChats =
-        get().projects.find((item) => item.id === sourceProjectId)?.railChats ??
-        [];
-      if (
-        !initial ||
-        !sourceProjectId ||
-        get().projectTransitioning ||
-        (!foreign &&
-          (!attachedChats?.some((tab) => tab.id === chatId) ||
-            attachedChats.length <= 1)) ||
-        (foreign &&
-          (!foreignChats.some((chat) => chat.id === chatId) ||
-            foreignChats.length <= 1))
-      ) {
-        if (
-          (!foreign && attachedChats?.length === 1) ||
-          (foreign && foreignChats.length === 1)
-        ) {
-          set({ error: "The last attached Chat cannot be archived" });
-        }
-        return false;
-      }
-      set({ projectTransitioning: true, error: null });
-      try {
-        await get().flushActiveEditor();
-      } catch (error) {
-        set({
-          projectTransitioning: false,
-          error: `Chat archive blocked by editor snapshot failure: ${errorMessage(error)}`,
-        });
-        return false;
-      }
-      const current = currentProjectLayout(get());
-      if (
-        !current ||
-        (!foreign && !current.tabs.some((tab) => tab.id === chatId))
-      ) {
-        set({
-          projectTransitioning: false,
-          error: "Chat archive target disappeared before mutation",
-        });
-        return false;
-      }
-      if (foreign) {
-        const expectedTransitionEpoch = get().nativeTransitionEpoch;
-        return commitIdentityChatResult({
-          set,
-          get,
-          applyProjection,
-          loadAuthoritativeProjection,
-          failedMessage: "native Chat archive did not commit",
-          invoke: () =>
-            chat.archiveChat(
-              {
-                projectId: sourceProjectId,
-                chatId,
-                currentLayout: current,
-              },
-              expectedTransitionEpoch,
-            ),
-        });
-      }
-      let requested: ProjectLayoutRequest;
-      try {
-        requested = archiveChatLayout(current, chatId);
-      } catch (error) {
-        set({ projectTransitioning: false, error: errorMessage(error) });
-        return false;
-      }
-      const expectedTransitionEpoch = get().nativeTransitionEpoch;
-      const classify = (snapshot: BootstrapSnapshot): ProjectionOutcome => {
-        const isArchived = snapshot.archivedChats.some(
-          (chat) => chat.id === chatId,
-        );
-        if (isArchived && matchesExactLayout(snapshot, requested)) {
-          return "committed";
-        }
-        if (!isArchived && matchesExactLayout(snapshot, current)) {
-          return "unchanged";
-        }
-        return "diverged";
-      };
-      const outcome = await runChatTransition({
-        action: "archive",
-        expectedTransitionEpoch,
-        invoke: () =>
-          chat.archiveChat(
-            { projectId: current.projectId, chatId, currentLayout: current },
-            expectedTransitionEpoch,
-          ),
-        classify,
-      });
-      return outcome === "committed";
-    },
+    archiveChat: (chatId, projectId, report = "workbench") =>
+      runRowAction("archive", chatId, projectId, report, () =>
+        archiveAttachedChat(chatId, projectId),
+      ),
 
-    restoreChat: async (chatId, projectId, report = "workbench") => {
-      set({ archivedChatError: null });
-      const committed = await restoreArchivedChat(chatId, projectId);
-      return report === "row"
-        ? reportOnRow(
-            projectId ?? currentProjectLayout(get())?.projectId,
-            chatId,
-            committed,
-          )
-        : committed;
-    },
+    restoreChat: (chatId, projectId, report = "workbench") =>
+      runRowAction("restore", chatId, projectId, report, () =>
+        restoreArchivedChat(chatId, projectId),
+      ),
 
-    deleteChat: async (chatId, projectId) => {
-      set({ archivedChatError: null });
+    deleteChat: (chatId, projectId) => {
       const sourceProjectId =
         projectId ?? currentProjectLayout(get())?.projectId;
-      return reportOnRow(
-        sourceProjectId,
-        chatId,
-        await deleteArchivedChat(chatId, sourceProjectId),
+      return runRowAction("delete", chatId, sourceProjectId, "row", () =>
+        deleteArchivedChat(chatId, sourceProjectId),
       );
     },
   };
+
+  async function archiveAttachedChat(chatId: string, projectId?: string) {
+    const initial = currentProjectLayout(get());
+    const sourceProjectId = projectId ?? initial?.projectId;
+    const attachedChats = initial?.tabs.filter((tab) => tab.kind === "chat");
+    const foreign =
+      typeof sourceProjectId === "string" &&
+      sourceProjectId !== initial?.projectId;
+    const foreignChats =
+      get().projects.find((item) => item.id === sourceProjectId)?.railChats ??
+      [];
+    if (
+      !initial ||
+      !sourceProjectId ||
+      get().projectTransitioning ||
+      (!foreign &&
+        (!attachedChats?.some((tab) => tab.id === chatId) ||
+          attachedChats.length <= 1)) ||
+      (foreign &&
+        (!foreignChats.some((chat) => chat.id === chatId) ||
+          foreignChats.length <= 1))
+    ) {
+      if (
+        (!foreign && attachedChats?.length === 1) ||
+        (foreign && foreignChats.length === 1)
+      ) {
+        set({ error: "The last attached Chat cannot be archived" });
+      }
+      return false;
+    }
+    set({ projectTransitioning: true, error: null });
+    try {
+      await get().flushActiveEditor();
+    } catch (error) {
+      set({
+        projectTransitioning: false,
+        error: `Chat archive blocked by editor snapshot failure: ${errorMessage(error)}`,
+      });
+      return false;
+    }
+    const current = currentProjectLayout(get());
+    if (
+      !current ||
+      (!foreign && !current.tabs.some((tab) => tab.id === chatId))
+    ) {
+      set({
+        projectTransitioning: false,
+        error: "Chat archive target disappeared before mutation",
+      });
+      return false;
+    }
+    if (foreign) {
+      const expectedTransitionEpoch = get().nativeTransitionEpoch;
+      return commitIdentityChatResult({
+        set,
+        get,
+        applyProjection,
+        loadAuthoritativeProjection,
+        failedMessage: "native Chat archive did not commit",
+        invoke: () =>
+          chat.archiveChat(
+            {
+              projectId: sourceProjectId,
+              chatId,
+              currentLayout: current,
+            },
+            expectedTransitionEpoch,
+          ),
+      });
+    }
+    let requested: ProjectLayoutRequest;
+    try {
+      requested = archiveChatLayout(current, chatId);
+    } catch (error) {
+      set({ projectTransitioning: false, error: errorMessage(error) });
+      return false;
+    }
+    const expectedTransitionEpoch = get().nativeTransitionEpoch;
+    const classify = (snapshot: BootstrapSnapshot): ProjectionOutcome => {
+      const isArchived = snapshot.archivedChats.some(
+        (chat) => chat.id === chatId,
+      );
+      if (isArchived && matchesExactLayout(snapshot, requested)) {
+        return "committed";
+      }
+      if (!isArchived && matchesExactLayout(snapshot, current)) {
+        return "unchanged";
+      }
+      return "diverged";
+    };
+    const outcome = await runChatTransition({
+      action: "archive",
+      expectedTransitionEpoch,
+      invoke: () =>
+        chat.archiveChat(
+          { projectId: current.projectId, chatId, currentLayout: current },
+          expectedTransitionEpoch,
+        ),
+      classify,
+    });
+    return outcome === "committed";
+  }
 
   async function restoreArchivedChat(chatId: string, projectId?: string) {
     const initial = currentProjectLayout(get());

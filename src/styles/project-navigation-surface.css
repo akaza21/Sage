@@ -394,10 +394,9 @@ button.agent-task-header__resource-row:hover {
   opacity: 0.4;
 }
 
-/* A refused restore or delete, on the row it refers to. */
-.archived-chat-row__error {
+/* A refused archive, restore or delete, under the row it was started from. */
+.chat-row-error {
   display: grid;
-  grid-column: 2 / -1;
   grid-template-columns: minmax(0, 1fr) 26px;
   align-items: start;
   gap: var(--space-2);
@@ -405,4 +404,30 @@ button.agent-task-header__resource-row:hover {
   color: var(--color-danger);
   font-size: var(--font-size-xs);
   overflow-wrap: anywhere;
+}
+
+.archived-chat-row > .chat-row-error {
+  grid-column: 2 / -1;
+}
+
+.project-chat-row + .chat-row-error {
+  padding: 0 var(--space-2) var(--space-1) 28px;
+}
+
+.chat-row-error button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.chat-row-error button:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }

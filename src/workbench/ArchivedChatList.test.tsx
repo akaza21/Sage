@@ -39,9 +39,10 @@ it("shows a refused action on the archived row it belongs to and dismisses it", 
   const restoreChat = vi.fn(async () => false);
   useWorkbenchStore.setState({
     restoreChat,
-    archivedChatError: {
+    chatRowError: {
       projectId: "project-a",
       chatId: "chat:old",
+      action: "delete",
       message: "Stop this Chat's running turn before deleting it",
     },
   });
@@ -79,4 +80,32 @@ it("shows a refused action on the archived row it belongs to and dismisses it", 
     screen.getByRole("button", { name: "Dismiss error for Research" }),
   );
   expect(screen.queryByRole("alert")).toBeNull();
+  // Focus returns to the control whose action was refused.
+  expect(
+    screen.getByRole("button", { name: "Delete chat Research" }),
+  ).toHaveFocus();
+});
+
+it("returns focus to Restore after dismissing a refused restore", () => {
+  useWorkbenchStore.setState({
+    chatRowError: {
+      projectId: "project-a",
+      chatId: "chat:old",
+      action: "restore",
+      message: "Restore refused",
+    },
+  });
+  render(
+    <ArchivedChatList
+      projectId="project-a"
+      chats={[{ id: "chat:old", title: "Chat: Research" }]}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Dismiss error for Research" }),
+  );
+  expect(
+    screen.getByRole("button", { name: "Restore chat Research" }),
+  ).toHaveFocus();
 });

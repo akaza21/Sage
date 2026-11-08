@@ -156,7 +156,7 @@ pub(crate) async fn execute_chat_transition(
     let database = state.database.clone();
     let mutation = tauri::async_runtime::spawn_blocking(move || operation(database))
         .await
-        .map_err(|error| AppError::InvalidRequest(error.to_string()))
+        .map_err(|error| AppError::TaskInterrupted(error.to_string()))
         .and_then(std::convert::identity);
     if let Err(error) = mutation {
         return failed_transition(*transition_epoch, error.public_message());
