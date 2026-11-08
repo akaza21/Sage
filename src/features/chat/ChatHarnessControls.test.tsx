@@ -25,6 +25,23 @@ import {
 import { PickerOption } from "../../ui/PickerOption";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 
+const chatAccess = vi.hoisted(() => ({
+  get: vi.fn(() => Promise.resolve(null)),
+  set: vi.fn(),
+  prepare: vi.fn(),
+  grant: vi.fn(),
+}));
+vi.mock("../../ports/chatAccessChanges", () => ({
+  chatAccessChanges: () => chatAccess,
+}));
+const liveSession = decodeSessionConfig({
+  sageAgentSessionId: "session-1",
+  runtimeEpoch: "1",
+  configRevision: "1",
+  modes: null,
+  configOptions: [],
+});
+
 const noop = () => Promise.resolve();
 // The toolbar's compaction stylesheet decides which controls are laid out.
 const toolbarStyle = document.createElement("style");
@@ -105,8 +122,10 @@ beforeEach(async () => {
   });
   useSessionAccessModeStore.setState({
     modes: { fixture: DEFAULT_SESSION_ACCESS_MODE },
+    chatModes: {},
     ready: true,
     error: null,
+    chatError: null,
   });
 });
 
@@ -2289,32 +2308,42 @@ describe("composer permission mode picker", () => {
     ).toHaveTextContent("Workspace edits");
   });
 
-  it("persists a chosen mode through the settings port", async () => {
+  it("applies a chosen mode to this chat, leaving the harness default", async () => {
+    chatAccess.set.mockResolvedValue(undefined);
     const save = vi.spyOn(
       getWorkbenchPorts().settings,
       "setSessionAccessModes",
     );
-    renderControls();
+    renderControls({ sessionConfig: liveSession });
     await openOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     fireEvent.click(
       await screen.findByRole("menuitemradio", { name: "Workspace edits" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Switch access" }));
-    expect(save).toHaveBeenCalledWith({ fixture: "workspaceWrite" });
     await waitFor(() =>
-      expect(useSessionAccessModeStore.getState().modes["fixture"]).toBe(
+      expect(chatAccess.set).toHaveBeenCalledWith(
+        "session-1",
         "workspaceWrite",
       ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Access options" }),
+      ).toHaveTextContent("Workspace edits"),
+    );
+    expect(save).not.toHaveBeenCalled();
+    expect(useSessionAccessModeStore.getState().modes["fixture"]).toBe(
+      DEFAULT_SESSION_ACCESS_MODE,
     );
   });
 
   it("states when the chosen mode takes effect", async () => {
-    renderControls();
+    renderControls({ sessionConfig: liveSession });
     await openOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     expect(
-      screen.getByText(/Applies from your next message with this harness./),
+      screen.getByText(/Applies to this chat from your next message./),
     ).toBeInTheDocument();
   });
 
@@ -2370,11 +2399,8 @@ describe("composer permission mode picker", () => {
   });
 
   it("surfaces a save failure instead of silently reverting", async () => {
-    vi.spyOn(
-      getWorkbenchPorts().settings,
-      "setSessionAccessModes",
-    ).mockRejectedValue(new Error("nope"));
-    renderControls();
+    chatAccess.set.mockRejectedValue(new Error("nope"));
+    renderControls({ sessionConfig: liveSession });
     await openOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     fireEvent.click(
@@ -2384,9 +2410,12 @@ describe("composer permission mode picker", () => {
 
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "Permission mode could not be saved.",
+        "This chat's access could not be changed. Try again.",
       ),
     );
+    expect(
+      screen.getByRole("button", { name: "Access options" }),
+    ).toHaveTextContent("Read-only");
   });
 });
 

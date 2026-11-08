@@ -12,7 +12,34 @@ import {
   getWorkbenchPorts,
   resetWorkbenchPortsForTests,
 } from "../../ports/workbenchRuntime";
-import { ComposerAccessControl } from "./ComposerAccessControl";
+import type { AcpSessionConfig } from "../../domain/acpSessionConfig";
+import { ComposerAccessControl as Control } from "./ComposerAccessControl";
+
+const port = vi.hoisted(() => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  prepare: vi.fn(),
+  grant: vi.fn(),
+}));
+vi.mock("../../ports/chatAccessChanges", () => ({
+  chatAccessChanges: () => port,
+}));
+
+/** A live chat whose harness reports no session modes. */
+const liveChat: AcpSessionConfig = {
+  sageAgentSessionId: "session-1",
+  runtimeEpoch: "1",
+  configRevision: "1",
+  modes: null,
+  configOptions: [],
+};
+
+// A pick applies to the live chat it is made in.
+function ComposerAccessControl(
+  props: Omit<Parameters<typeof Control>[0], "sessionConfig">,
+) {
+  return <Control sessionConfig={liveChat} {...props} />;
+}
 
 const capabilities = [
   {
@@ -30,10 +57,15 @@ const capabilities = [
 
 beforeEach(() => {
   resetWorkbenchPortsForTests();
+  for (const fn of Object.values(port)) fn.mockReset();
+  port.get.mockResolvedValue(null);
+  port.set.mockResolvedValue(undefined);
   useSessionAccessModeStore.setState({
     modes: { fixture: "readOnly" },
+    chatModes: {},
     ready: true,
     error: null,
+    chatError: null,
   });
 });
 afterEach(cleanup);
@@ -87,14 +119,16 @@ it("introduces the approval question and distinct icons only for admitted modes"
     />,
   );
   expect(
-    await screen.findByText("How should agent actions be approved?"),
+    await screen.findByText(
+      "How should agent actions be approved in this chat?",
+    ),
   ).toBeVisible();
   const menu = screen.getByRole("menu", { name: "Access mode" });
   expect(menu).toHaveAccessibleDescription(
-    "How should agent actions be approved?",
+    "How should agent actions be approved in this chat?",
   );
   expect(
-    screen.getByText("How should agent actions be approved?"),
+    screen.getByText("How should agent actions be approved in this chat?"),
   ).toHaveAttribute("aria-hidden", "true");
   expect(menu.querySelectorAll('[role="menuitemradio"]')).toHaveLength(3);
   expect(
@@ -142,13 +176,13 @@ it("shows admitted descriptions, checked selection, keyboard navigation and Esca
   expect(write).toHaveAccessibleDescription(capabilities[1].description);
   expect(screen.queryByRole("combobox")).toBeNull();
   const scope = screen.getByText(
-    "Read workspace files; no writes or network. Applies from your next message with this harness.",
+    "Read workspace files; no writes or network. Applies to this chat from your next message.",
   );
   expect(scope.closest('[role="menu"]')).toBeNull();
   expect(
     screen.getByRole("button", { name: "Access options" }),
   ).toHaveAccessibleDescription(
-    "Read workspace files; no writes or network. Applies from your next message with this harness.",
+    "Read workspace files; no writes or network. Applies to this chat from your next message.",
   );
   expect(
     Array.from(screen.getByRole("menu").children).map((element) =>
@@ -169,7 +203,7 @@ it("shows admitted descriptions, checked selection, keyboard navigation and Esca
   expect(screen.getByRole("button", { name: "Access options" })).toHaveFocus();
 });
 
-it("persists the selected policy and returns focus to access", async () => {
+it("applies the confirmed policy to this chat only and returns focus to access", async () => {
   const save = vi.spyOn(getWorkbenchPorts().settings, "setSessionAccessModes");
   const dismiss = vi.fn();
   function Control() {
@@ -205,8 +239,10 @@ it("persists the selected policy and returns focus to access", async () => {
   });
   fireEvent.click(screen.getByRole("button", { name: "Switch access" }));
   await waitFor(() =>
-    expect(save).toHaveBeenCalledWith({ fixture: "workspaceWrite" }),
+    expect(port.set).toHaveBeenCalledWith("session-1", "workspaceWrite"),
   );
+  // Defaults for other and new chats are chosen in Settings.
+  expect(save).not.toHaveBeenCalled();
   expect(dismiss).toHaveBeenCalled();
   expect(focus).toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "Access options" })).toHaveFocus();
@@ -240,6 +276,7 @@ it("cancels workspace-write escalation without persisting, and drops it on bindi
   rerender(<ComposerAccessControl {...props} bindingId="other" />);
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(save).not.toHaveBeenCalled();
+  expect(port.set).not.toHaveBeenCalled();
 });
 
 it.each(["disabled", "withdrawn"])(
@@ -275,6 +312,7 @@ it.each(["disabled", "withdrawn"])(
     rerender(<ComposerAccessControl {...props} />);
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(save).not.toHaveBeenCalled();
+    expect(port.set).not.toHaveBeenCalled();
   },
 );
 

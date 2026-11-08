@@ -1,61 +1,45 @@
 import { create } from "zustand";
 import {
   admitSessionAccessModes,
-  FULL_ACCESS,
   type SessionAccessMode,
   type SessionAccessModes,
 } from "../domain/sessionAccessMode";
-import {
-  listFullAccessSessions,
-  MAX_FULL_ACCESS_SESSIONS,
-} from "../ports/fullAccessSessions";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { createSettingWriter } from "./settingWriteQueue";
 
 interface SessionAccessModeStore {
   /** Per-binding defaults for new and existing chats. */
   modes: SessionAccessModes;
-  /** Sessions holding a Full access grant, most recent first. */
-  fullAccessSessions: readonly string[];
+  /**
+   * Chats' own modes by session (null: the default), newest last. Read and
+   * changed only by `sessionAccessActions`, which loads on demand.
+   */
+  chatModes: Readonly<Record<string, SessionAccessMode | null>>;
   ready: boolean;
   error: string | null;
-  /** The last Full access request's failure; it never blocks sending. */
-  fullAccessError: string | null;
+  /** The last chat access change's failure; it never blocks sending. */
+  chatError: string | null;
   restore: () => Promise<void>;
   settle: () => Promise<boolean>;
   setMode: (bindingId: string, mode: SessionAccessMode) => void;
 }
 const writes = createSettingWriter<SessionAccessModes>({});
 let loading: Promise<void> | null = null;
-const admitSessions = (value: unknown) =>
-  (Array.isArray(value) ? value : [])
-    .filter(
-      (id): id is string =>
-        typeof id === "string" && id.length > 0 && id.length <= 256,
-    )
-    .slice(0, MAX_FULL_ACCESS_SESSIONS);
 export const useSessionAccessModeStore = create<SessionAccessModeStore>(
   (set, get) => ({
     modes: {},
-    fullAccessSessions: [],
+    chatModes: {},
     ready: false,
     error: null,
-    fullAccessError: null,
+    chatError: null,
     restore: async () => {
       const load = (async () => {
         try {
-          const [stored, granted] = await Promise.all([
-            getWorkbenchPorts().settings.getSessionAccessModes(),
-            listFullAccessSessions(),
-          ]);
-          const modes = admitSessionAccessModes(stored);
+          const modes = admitSessionAccessModes(
+            await getWorkbenchPorts().settings.getSessionAccessModes(),
+          );
           writes.persisted(modes);
-          set({
-            modes,
-            fullAccessSessions: admitSessions(granted),
-            ready: true,
-            error: null,
-          });
+          set({ modes, ready: true, error: null });
         } catch {
           set({ ready: false, error: "Permission mode could not be loaded." });
         }
@@ -70,7 +54,7 @@ export const useSessionAccessModeStore = create<SessionAccessModeStore>(
       return get().ready && get().error === null;
     },
     setMode: (bindingId, mode) => {
-      if (!get().ready || mode === FULL_ACCESS) return;
+      if (!get().ready) return;
       const modes = admitSessionAccessModes({
         ...get().modes,
         [bindingId]: mode,

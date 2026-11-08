@@ -10,7 +10,7 @@ export const SESSION_ACCESS_MODES = [
 
 export type SessionAccessMode = (typeof SESSION_ACCESS_MODES)[number];
 
-/** Full access is granted to one chat session, never stored as a default. */
+/** Full access applies to one chat, never as a default. */
 export const FULL_ACCESS: SessionAccessMode = "fullAccess";
 
 export const DEFAULT_SESSION_ACCESS_MODE: SessionAccessMode = "readOnly";
@@ -39,7 +39,7 @@ export function admitSessionAccessModes(value: unknown): SessionAccessModes {
 }
 export const SESSION_ACCESS_MODE_SCOPE =
   "Applies from your next message with this harness.";
-export const FULL_ACCESS_SCOPE = "Applies from your next message in this chat.";
+export const CHAT_ACCESS_SCOPE = "Applies to this chat from your next message.";
 
 export interface SessionAccessModeAvailability {
   effective: SessionAccessMode | null;
@@ -53,15 +53,6 @@ export interface SessionAccessModeCapability {
   fallback?: boolean;
   /** The harness session mode this access mode selects. */
   sessionModeId?: string;
-}
-
-/** The live session an access choice applies to. */
-export interface SessionAccessContext {
-  sessionId: string;
-  /** The session modes the live session advertises; null until reported. */
-  availableModeIds: readonly string[] | null;
-  /** Whether this session holds a Full access grant. */
-  fullAccess: boolean;
 }
 
 export function sessionAccessModeAvailability(
@@ -87,14 +78,13 @@ export function sessionAccessModeAvailability(
 
 /**
  * The modes to offer. A mode carried by a harness session mode is offered
- * only while the live session advertises it. Full access needs a live
- * session, since it is granted to that session alone.
+ * only while the live session advertises it (`advertised`, null until
+ * reported). Full access is offered only to a live chat, never as a default.
  */
 export function sessionAccessModeCandidates(
   capabilities: readonly SessionAccessModeCapability[] | undefined,
-  session?: SessionAccessContext | null,
+  advertised: readonly string[] | null = null,
 ) {
-  const advertised = session?.availableModeIds ?? null;
   return (
     capabilities?.filter(
       (capability) =>
@@ -113,18 +103,15 @@ export function sessionAccessModeCandidates(
   );
 }
 
-/** The mode the next prompt in this session runs under. */
+/** The mode the chat's next prompt runs under: its own choice, else the default. */
 export function sessionAccessEffective(
   stored: SessionAccessMode | undefined,
   candidates: readonly SessionAccessModeCapability[],
-  session?: SessionAccessContext | null,
+  chat?: SessionAccessMode | null,
 ): SessionAccessMode | null {
-  if (
-    session?.fullAccess &&
-    candidates.some((candidate) => candidate.id === FULL_ACCESS)
-  )
-    return FULL_ACCESS;
-  return sessionAccessModeAvailability(stored, candidates).effective;
+  return candidates.some((candidate) => candidate.id === chat)
+    ? (chat ?? null)
+    : sessionAccessModeAvailability(stored, candidates).effective;
 }
 
 /** Whether the access control owns the harness's session modes. */

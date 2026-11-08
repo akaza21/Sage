@@ -2,20 +2,13 @@ import { lazy, Suspense, useId, useRef } from "react";
 import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
 import type { AcpSessionConfig } from "../../domain/acpSessionConfig";
 import {
-  FULL_ACCESS,
-  FULL_ACCESS_SCOPE,
-  SESSION_ACCESS_MODE_SCOPE,
+  CHAT_ACCESS_SCOPE,
   type SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
 import { ACCESS_ICONS } from "./composerAccessIcons";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { sessionAccessTarget } from "./sessionAccessTarget";
 const AccessMenu = lazy(() => import("./ComposerAccessMenu"));
-
-const LABEL_TONE: Partial<Record<string, string>> = {
-  workspaceWrite: " composer__access-label--write",
-  [FULL_ACCESS]: " composer__access-label--full",
-};
 
 export function ComposerAccessControl({
   bindingId,
@@ -28,7 +21,7 @@ export function ComposerAccessControl({
 }: {
   bindingId: string;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
-  /** The live session Full access and session-mode availability apply to. */
+  /** The live session a choice and session-mode availability apply to. */
   sessionConfig?: AcpSessionConfig | null;
   disabled: boolean;
   open: boolean;
@@ -38,18 +31,20 @@ export function ComposerAccessControl({
   const id = useId();
   const session = sessionAccessTarget(sessionConfig);
   const trigger = useRef<HTMLButtonElement>(null);
-  const { ready, error, fullAccessError, candidates, effective } =
+  const { ready, error, chatError, candidates, effective } =
     useSessionAccessSelection(bindingId, capabilities, session);
   const selected = candidates.find((candidate) => candidate.id === effective);
-  const Icon = ACCESS_ICONS[effective ?? "workspaceWrite"];
+  // The menu carries the other modes' icons; the label names every mode.
+  const Icon =
+    ACCESS_ICONS[(effective ?? "workspaceWrite") as keyof typeof ACCESS_ICONS];
   if (candidates.length === 0) return null;
-  const problem = error ?? fullAccessError;
+  const problem = error ?? chatError;
   return (
     <>
       <button
         ref={trigger}
         type="button"
-        className={`composer__control-trigger composer__access-label${LABEL_TONE[effective ?? ""] ?? ""}`}
+        className={`composer__control-trigger composer__access-label${effective === "workspaceWrite" ? " composer__access-label--write" : effective === "fullAccess" ? " composer__access-label--full" : ""}`}
         aria-label="Access options"
         aria-describedby={`${id}-scope`}
         aria-haspopup="menu"
@@ -59,7 +54,7 @@ export function ComposerAccessControl({
         disabled={disabled || !ready}
         onClick={onToggle}
       >
-        <Icon size={13} aria-hidden="true" />
+        {Icon ? <Icon size={13} aria-hidden="true" /> : null}
         <span className="composer__access-text">
           {selected?.label ?? "Choose access"}
         </span>
@@ -77,16 +72,12 @@ export function ComposerAccessControl({
             candidates={candidates}
             effective={effective}
             onDismiss={onDismiss}
-            bindingId={bindingId}
             sessionId={session?.sessionId ?? null}
           />
         </Suspense>
       ) : null}
       <span id={`${id}-scope`} className="sr-only">
-        {selected?.description}{" "}
-        {effective === FULL_ACCESS
-          ? FULL_ACCESS_SCOPE
-          : SESSION_ACCESS_MODE_SCOPE}
+        {selected?.description} {CHAT_ACCESS_SCOPE}
       </span>
       {problem ? (
         <span

@@ -1,32 +1,52 @@
 import { useEffect, useState, type RefObject } from "react";
 import {
-  chooseAccess,
-  grantFullAccess,
-  prepareFullAccess,
+  chooseChatAccess,
+  grantChatAccess,
+  prepareChatAccess,
 } from "../../app/sessionAccessActions";
 import type {
   SessionAccessMode,
   SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
+import { CHAT_ACCESS_SCOPE, FULL_ACCESS } from "../../domain/sessionAccessMode";
 import {
-  FULL_ACCESS,
-  FULL_ACCESS_SCOPE,
-  SESSION_ACCESS_MODE_SCOPE,
-} from "../../domain/sessionAccessMode";
-import { Check } from "../../ui/leanIcons";
+  AlertTriangle,
+  Check,
+  FilePen,
+  ListChecks,
+  Sparkles,
+} from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { ACCESS_ICONS } from "./composerAccessIcons";
 
-/** Modes that widen what runs without asking are confirmed first. */
-const CONFIRMED: readonly SessionAccessMode[] = ["workspaceWrite", FULL_ACCESS];
+const ICONS = {
+  ...ACCESS_ICONS,
+  acceptEdits: FilePen,
+  plan: ListChecks,
+  auto: Sparkles,
+  fullAccess: AlertTriangle,
+};
+
+/** Modes that run actions without asking take a confirmed native token. */
+const PERMISSIVE: readonly SessionAccessMode[] = ["auto", FULL_ACCESS];
+/** Modes confirmed before they apply. */
+const CONFIRMED: readonly SessionAccessMode[] = [
+  "workspaceWrite",
+  ...PERMISSIVE,
+];
+
+const WARNING: Partial<Record<SessionAccessMode, string>> = {
+  auto: "Claude's own checks decide which actions run without asking. Sage does not review them, and there is no filesystem sandbox.",
+  fullAccess:
+    "The agent can change or delete files and run commands without asking, with no filesystem sandbox.",
+};
 
 export default function ComposerAccessMenu({
   id,
   triggerRef,
   candidates,
   effective,
-  bindingId,
   sessionId,
   onDismiss,
 }: {
@@ -34,8 +54,7 @@ export default function ComposerAccessMenu({
   triggerRef: RefObject<HTMLButtonElement | null>;
   candidates: readonly SessionAccessModeCapability[];
   effective: SessionAccessMode | null;
-  bindingId: string;
-  /** The live chat a Full access grant applies to. */
+  /** The live chat a choice applies to; null before its session starts. */
   sessionId: string | null;
   onDismiss: () => void;
 }) {
@@ -43,18 +62,22 @@ export default function ComposerAccessMenu({
     useState<SessionAccessModeCapability | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
-  const fullAccess = confirmation?.id === FULL_ACCESS;
+  const permissive =
+    confirmation !== null && PERMISSIVE.includes(confirmation.id)
+      ? confirmation.id
+      : null;
   useEffect(() => {
     if (!closing) return;
     onDismiss();
     triggerRef.current?.focus();
   }, [closing, onDismiss, triggerRef]);
-  // The native side issues a single-use token when this dialog opens; only
-  // the confirm below spends it, so a stale or replayed grant fails.
+  // The native side issues a single-use token, bound to this chat and mode,
+  // when the dialog opens; only the confirm below spends it, so a stale or
+  // replayed command cannot skip the confirmation.
   useEffect(() => {
-    if (!fullAccess || !sessionId) return;
+    if (!permissive || !sessionId) return;
     let live = true;
-    void prepareFullAccess(sessionId).then((issued) => {
+    void prepareChatAccess(sessionId, permissive).then((issued) => {
       if (!live) return;
       if (issued) setToken(issued);
       else setClosing(true);
@@ -62,11 +85,12 @@ export default function ComposerAccessMenu({
     return () => {
       live = false;
     };
-  }, [fullAccess, sessionId]);
+  }, [permissive, sessionId]);
   const close = () => setClosing(true);
   if (closing) return null;
   if (confirmation && !candidates.includes(confirmation)) setConfirmation(null);
-  if (confirmation && candidates.includes(confirmation))
+  if (confirmation && sessionId && candidates.includes(confirmation)) {
+    const warning = WARNING[confirmation.id];
     return (
       <ModalDialog
         className="dialog--scrim"
@@ -74,18 +98,17 @@ export default function ComposerAccessMenu({
         onDismiss={close}
       >
         <h2 id={id + "-confirm"}>
-          {fullAccess
-            ? "Allow full access in this chat?"
+          {permissive
+            ? `Allow ${confirmation.label.toLowerCase()} in this chat?`
             : `Switch to ${confirmation.label}?`}
         </h2>
         <p>{confirmation.description}</p>
-        {fullAccess ? (
+        {warning ? (
           <p className="composer-access-menu__warning">
-            The agent can change or delete files and run commands without
-            asking. Other chats and new chats keep their own access.
+            {warning} Other chats and new chats keep their own access.
           </p>
         ) : null}
-        <p>{fullAccess ? FULL_ACCESS_SCOPE : SESSION_ACCESS_MODE_SCOPE}</p>
+        <p>{CHAT_ACCESS_SCOPE}</p>
         <div className="dirty-dialog__actions">
           <button
             autoFocus
@@ -98,20 +121,23 @@ export default function ComposerAccessMenu({
           <button
             className="button--compact"
             type="button"
-            disabled={fullAccess && token === null}
+            disabled={permissive !== null && token === null}
             onClick={() => {
-              if (!fullAccess)
-                void chooseAccess(bindingId, sessionId, confirmation.id);
-              else if (sessionId && token)
-                void grantFullAccess(sessionId, token);
+              if (!permissive)
+                void chooseChatAccess(sessionId, confirmation.id);
+              else if (token)
+                void grantChatAccess(sessionId, permissive, token);
               close();
             }}
           >
-            {fullAccess ? "Allow full access" : "Switch access"}
+            {permissive
+              ? `Allow ${confirmation.label.toLowerCase()}`
+              : "Switch access"}
           </button>
         </div>
       </ModalDialog>
     );
+  }
   return (
     <MenuPopover
       id={id}
@@ -133,10 +159,12 @@ export default function ComposerAccessMenu({
         className="composer-access-menu__heading"
         aria-hidden="true"
       >
-        How should agent actions be approved?
+        {sessionId
+          ? "How should agent actions be approved in this chat?"
+          : "This chat's access can change once its session starts. Defaults for new chats are in Settings."}
       </p>
       {candidates.map((candidate) => {
-        const Icon = ACCESS_ICONS[candidate.id];
+        const Icon = ICONS[candidate.id];
         return (
           <button
             key={candidate.id}
@@ -145,18 +173,17 @@ export default function ComposerAccessMenu({
             className={`menu-item composer-access-menu__option${candidate.id === FULL_ACCESS ? " composer-access-menu__option--full" : ""}`}
             aria-label={candidate.label}
             aria-checked={candidate.id === effective}
+            aria-disabled={!sessionId}
             data-option-id={candidate.id}
             aria-describedby={id + "-" + candidate.id}
             tabIndex={-1}
             onClick={() => {
-              if (
-                CONFIRMED.includes(candidate.id) &&
-                effective !== candidate.id
-              )
+              if (!sessionId) return;
+              if (effective === candidate.id) close();
+              else if (CONFIRMED.includes(candidate.id))
                 setConfirmation(candidate);
               else {
-                if (effective !== candidate.id)
-                  void chooseAccess(bindingId, sessionId, candidate.id);
+                void chooseChatAccess(sessionId, candidate.id);
                 close();
               }
             }}

@@ -71,12 +71,8 @@ const ids = (candidates: readonly SessionAccessModeCapability[]) =>
 
 it("offers only the modes the live session advertises", () => {
   // Claude run as root advertises no bypass mode, and this one no plan mode.
-  const session = {
-    sessionId: "session-1",
-    availableModeIds: ["default", "acceptEdits", "auto"],
-    fullAccess: false,
-  };
-  expect(ids(sessionAccessModeCandidates(claude, session))).toEqual([
+  const advertised = ["default", "acceptEdits", "auto"];
+  expect(ids(sessionAccessModeCandidates(claude, advertised))).toEqual([
     "ask",
     "acceptEdits",
     "auto",
@@ -90,44 +86,31 @@ it("offers Full access only to a live session, never as a new-chat default", () 
     "plan",
     "auto",
   ]);
-  expect(
-    ids(
-      sessionAccessModeCandidates(claude, {
-        sessionId: "session-1",
-        availableModeIds: null,
-        fullAccess: true,
-      }),
-    ),
-  ).toEqual(["ask", "acceptEdits", "plan", "auto"]);
+  expect(ids(sessionAccessModeCandidates(claude, null))).toEqual([
+    "ask",
+    "acceptEdits",
+    "plan",
+    "auto",
+  ]);
 });
 
-it("runs a granted session in Full access and every other one at its default", () => {
-  const advertised = ["default", "acceptEdits", "plan", "bypassPermissions"];
-  const granted = {
-    sessionId: "session-1",
-    availableModeIds: advertised,
-    fullAccess: true,
-  };
-  const other = { ...granted, sessionId: "session-2", fullAccess: false };
-  expect(
-    sessionAccessEffective(
-      "acceptEdits",
-      sessionAccessModeCandidates(claude, granted),
-      granted,
-    ),
-  ).toBe("fullAccess");
-  expect(
-    sessionAccessEffective(
-      "acceptEdits",
-      sessionAccessModeCandidates(claude, other),
-      other,
-    ),
-  ).toBe("acceptEdits");
-  expect(
-    sessionAccessEffective(
-      undefined,
-      sessionAccessModeCandidates(claude, other),
-      other,
-    ),
-  ).toBe("ask");
+it("runs a chat in its own mode and every other chat at the default", () => {
+  const candidates = sessionAccessModeCandidates(claude, [
+    "default",
+    "acceptEdits",
+    "plan",
+    "bypassPermissions",
+  ]);
+  expect(sessionAccessEffective("acceptEdits", candidates, "fullAccess")).toBe(
+    "fullAccess",
+  );
+  expect(sessionAccessEffective("acceptEdits", candidates, "plan")).toBe(
+    "plan",
+  );
+  expect(sessionAccessEffective("acceptEdits", candidates, null)).toBe(
+    "acceptEdits",
+  );
+  expect(sessionAccessEffective(undefined, candidates, undefined)).toBe("ask");
+  // A choice the session no longer offers falls back to the default.
+  expect(sessionAccessEffective("plan", candidates, "auto")).toBe("plan");
 });

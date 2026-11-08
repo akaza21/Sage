@@ -8,24 +8,17 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import type { SessionAccessModeCapability } from "../../domain/sessionAccessMode";
-import {
-  getWorkbenchPorts,
-  resetWorkbenchPortsForTests,
-} from "../../ports/workbenchRuntime";
+import { resetWorkbenchPortsForTests } from "../../ports/workbenchRuntime";
 import { ComposerAccessControl } from "./ComposerAccessControl";
 
 const port = vi.hoisted(() => ({
-  list: vi.fn(),
+  get: vi.fn(),
+  set: vi.fn(),
   prepare: vi.fn(),
   grant: vi.fn(),
-  revoke: vi.fn(),
 }));
-vi.mock("../../ports/fullAccessSessions", () => ({
-  MAX_FULL_ACCESS_SESSIONS: 64,
-  listFullAccessSessions: () => port.list(),
-}));
-vi.mock("../../ports/sessionFullAccessPort", () => ({
-  sessionFullAccessPort: () => port,
+vi.mock("../../ports/chatAccessChanges", () => ({
+  chatAccessChanges: () => port,
 }));
 
 const claude: SessionAccessModeCapability[] = [
@@ -49,6 +42,12 @@ const claude: SessionAccessModeCapability[] = [
     sessionModeId: "plan",
   },
   {
+    id: "auto",
+    label: "Auto",
+    description: "Claude runs what it judges safe.",
+    sessionModeId: "auto",
+  },
+  {
     id: "fullAccess",
     label: "Full access",
     description: "Everything runs without asking.",
@@ -57,7 +56,13 @@ const claude: SessionAccessModeCapability[] = [
 ];
 const session = {
   sessionId: "session-1",
-  availableModeIds: ["default", "acceptEdits", "plan", "bypassPermissions"],
+  availableModeIds: [
+    "default",
+    "acceptEdits",
+    "plan",
+    "auto",
+    "bypassPermissions",
+  ],
 };
 
 function renderControl(target: typeof session | null = session) {
@@ -92,43 +97,62 @@ const chip = () => screen.getByRole("button", { name: "Access options" });
 beforeEach(() => {
   resetWorkbenchPortsForTests();
   for (const fn of Object.values(port)) fn.mockReset();
+  port.get.mockResolvedValue(null);
+  port.set.mockResolvedValue(undefined);
   port.prepare.mockResolvedValue({ confirmToken: "token-1" });
   port.grant.mockResolvedValue(undefined);
-  port.revoke.mockResolvedValue(undefined);
   useSessionAccessModeStore.setState({
     modes: {},
-    fullAccessSessions: [],
+    chatModes: {},
     ready: true,
     error: null,
-    fullAccessError: null,
+    chatError: null,
   });
 });
 afterEach(cleanup);
 
-it("confirms Full access with the token issued when the dialog opened", async () => {
+async function confirm(label: string, heading: string, button: string) {
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: label }));
+  expect(await screen.findByRole("heading", { name: heading })).toBeVisible();
+  const allow = screen.getByRole("button", { name: button });
+  await waitFor(() => expect(allow).toBeEnabled());
+  return allow;
+}
+
+it("confirms Full access with the token issued for this chat and mode", async () => {
   renderControl();
   expect(chip()).toHaveTextContent("Ask each time");
-  fireEvent.click(
-    await screen.findByRole("menuitemradio", { name: "Full access" }),
+  const allow = await confirm(
+    "Full access",
+    "Allow full access in this chat?",
+    "Allow full access",
   );
-  expect(
-    await screen.findByRole("heading", {
-      name: "Allow full access in this chat?",
-    }),
-  ).toBeVisible();
-  const allow = screen.getByRole("button", { name: "Allow full access" });
-  await waitFor(() => expect(allow).toBeEnabled());
   expect(port.prepare).toHaveBeenCalledTimes(1);
-  expect(port.prepare).toHaveBeenCalledWith("session-1");
+  expect(port.prepare).toHaveBeenCalledWith("session-1", "fullAccess");
   expect(port.grant).not.toHaveBeenCalled();
   fireEvent.click(allow);
   await waitFor(() =>
-    expect(port.grant).toHaveBeenCalledWith("session-1", "token-1"),
+    expect(port.grant).toHaveBeenCalledWith(
+      "session-1",
+      "fullAccess",
+      "token-1",
+    ),
   );
   await waitFor(() => expect(chip()).toHaveTextContent("Full access"));
   expect(chip()).toHaveClass("composer__access-label--full");
   // Never stored as the harness default for other or new chats.
   expect(useSessionAccessModeStore.getState().modes).toEqual({});
+});
+
+it("confirms Auto too, and says what it lets run", async () => {
+  renderControl();
+  const allow = await confirm("Auto", "Allow auto in this chat?", "Allow auto");
+  expect(screen.getByText(/Sage does not review them/)).toBeVisible();
+  fireEvent.click(allow);
+  await waitFor(() =>
+    expect(port.grant).toHaveBeenCalledWith("session-1", "auto", "token-1"),
+  );
+  await waitFor(() => expect(chip()).toHaveTextContent("Auto"));
 });
 
 it("grants nothing when the confirmation is cancelled", async () => {
@@ -141,50 +165,51 @@ it("grants nothing when the confirmation is cancelled", async () => {
   expect(chip()).toHaveTextContent("Ask each time");
 });
 
-it("keeps the previous mode and says why when the grant is refused", async () => {
+it("shows what the chat really holds after a refused grant", async () => {
   port.grant.mockRejectedValue(new Error("expired"));
   renderControl();
-  fireEvent.click(
-    await screen.findByRole("menuitemradio", { name: "Full access" }),
+  const allow = await confirm(
+    "Full access",
+    "Allow full access in this chat?",
+    "Allow full access",
   );
-  const allow = await screen.findByRole("button", {
-    name: "Allow full access",
-  });
-  await waitFor(() => expect(allow).toBeEnabled());
+  port.get.mockResolvedValue("plan");
   fireEvent.click(allow);
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Full access was not granted. Confirm again.",
+    "This access was not granted. Confirm again.",
   );
-  expect(chip()).toHaveTextContent("Ask each time");
+  await waitFor(() => expect(chip()).toHaveTextContent("Plan"));
+  expect(port.get).toHaveBeenLastCalledWith("session-1");
 });
 
-it("ends Full access before storing another mode, and only once it ended", async () => {
-  useSessionAccessModeStore.setState({ fullAccessSessions: ["session-1"] });
-  port.revoke.mockRejectedValueOnce(new Error("busy"));
-  const { unmount } = renderControl();
-  expect(chip()).toHaveTextContent("Full access");
-  fireEvent.click(
-    await screen.findByRole("menuitemradio", { name: "Accept edits" }),
-  );
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Full access could not be turned off. Try again.",
-  );
-  expect(useSessionAccessModeStore.getState().modes).toEqual({});
-  expect(chip()).toHaveTextContent("Full access");
-  unmount();
+it("applies a pick to this chat only, and steps down natively", async () => {
+  // The window has not seen this chat's Full access yet: stepping down
+  // must not depend on it.
+  port.get.mockReturnValue(new Promise(() => {}));
   renderControl();
   fireEvent.click(
     await screen.findByRole("menuitemradio", { name: "Accept edits" }),
   );
+  await waitFor(() =>
+    expect(port.set).toHaveBeenCalledWith("session-1", "acceptEdits"),
+  );
   await waitFor(() => expect(chip()).toHaveTextContent("Accept edits"));
-  expect(port.revoke).toHaveBeenLastCalledWith("session-1");
-  expect(useSessionAccessModeStore.getState().modes).toEqual({
-    "claude-agent-acp": "acceptEdits",
-  });
-  await useSessionAccessModeStore.getState().settle();
-  expect(await getWorkbenchPorts().settings.getSessionAccessModes()).toEqual({
-    "claude-agent-acp": "acceptEdits",
-  });
+  // The harness default for other and new chats is untouched.
+  expect(useSessionAccessModeStore.getState().modes).toEqual({});
+});
+
+it("keeps the chat's mode and says why when a pick is refused", async () => {
+  port.get.mockResolvedValue("fullAccess");
+  port.set.mockRejectedValue(new Error("busy"));
+  renderControl();
+  await waitFor(() => expect(chip()).toHaveTextContent("Full access"));
+  fireEvent.click(
+    await screen.findByRole("menuitemradio", { name: "Accept edits" }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "This chat's access could not be changed. Try again.",
+  );
+  expect(chip()).toHaveTextContent("Full access");
 });
 
 it("offers only advertised modes, and Full access only to a live session", async () => {
@@ -196,8 +221,12 @@ it("offers only advertised modes, and Full access only to a live session", async
   ).toEqual(["Ask each time", "Accept edits"]);
   cleanup();
   renderControl(null);
-  await screen.findByRole("menuitemradio", { name: "Plan" });
+  const plan = await screen.findByRole("menuitemradio", { name: "Plan" });
   expect(
     screen.queryByRole("menuitemradio", { name: "Full access" }),
   ).toBeNull();
+  // Without a live session nothing here changes the chat.
+  expect(plan).toHaveAttribute("aria-disabled", "true");
+  fireEvent.click(plan);
+  expect(port.set).not.toHaveBeenCalled();
 });

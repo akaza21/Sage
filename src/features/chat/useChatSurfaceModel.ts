@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, type FormEvent } from "react";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import { openAgentArtifact } from "../../app/openAgentArtifact";
 import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
-import { sessionAccessTarget } from "./sessionAccessTarget";
 import type {
   AcpChatPage,
   AcpCommandFailure,
@@ -162,7 +161,6 @@ export function useChatSurfaceModel({
   const access = useSessionAccessSelection(
     accessBindingId,
     model.selectedHarness?.accessModes,
-    sessionAccessTarget(page?.sessionConfig),
   );
   const accessReason = model.availableBinding ? access.reason : null;
   const pageRef = useRef(page);

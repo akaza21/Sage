@@ -1,8 +1,8 @@
+import { useEffect } from "react";
 import { useSessionAccessModeStore } from "./sessionAccessModeStore";
 import {
   sessionAccessEffective,
   sessionAccessModeCandidates,
-  type SessionAccessContext,
   type SessionAccessModeCapability,
 } from "../domain/sessionAccessMode";
 
@@ -20,24 +20,30 @@ export function useSessionAccessSelection(
   const mode = useSessionAccessModeStore((state) =>
     bindingId ? state.modes[bindingId] : undefined,
   );
-  const fullAccess = useSessionAccessModeStore((state) =>
-    target ? state.fullAccessSessions.includes(target.sessionId) : false,
+  const sessionId = target?.sessionId;
+  const chat = useSessionAccessModeStore((state) =>
+    sessionId ? state.chatModes[sessionId] : null,
   );
   const ready = useSessionAccessModeStore((state) => state.ready);
   const error = useSessionAccessModeStore((state) => state.error);
-  const fullAccessError = useSessionAccessModeStore(
-    (state) => state.fullAccessError,
-  );
+  const chatError = useSessionAccessModeStore((state) => state.chatError);
   const setMode = useSessionAccessModeStore((state) => state.setMode);
-  const session: SessionAccessContext | null = target
-    ? { ...target, fullAccess }
-    : null;
-  const candidates = sessionAccessModeCandidates(capabilities, session);
-  const effective = sessionAccessEffective(mode, candidates, session);
+  const unread = chat === undefined;
+  useEffect(() => {
+    if (sessionId && unread)
+      void import("./sessionAccessActions").then((actions) =>
+        actions.loadChatAccess(sessionId),
+      );
+  }, [sessionId, unread]);
+  const candidates = sessionAccessModeCandidates(
+    capabilities,
+    target?.availableModeIds,
+  );
+  const effective = sessionAccessEffective(mode, candidates, chat);
   return {
     ready,
     error,
-    fullAccessError,
+    chatError,
     setMode,
     candidates,
     effective,
