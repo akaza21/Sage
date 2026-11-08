@@ -37,25 +37,37 @@ impl RateLimits {
             ordinary_usage_allowed: result.get("ordinaryUsageAllowed").and_then(Value::as_bool),
             ..Self::default()
         };
-        if let Some(default) = default.and_then(bucket) {
+        if let Some(default) = default.and_then(|value| bucket(value, None)) {
             limits.merge(default);
         }
         for named in result
             .get("rateLimitsByLimitId")
             .and_then(Value::as_object)
             .into_iter()
-            .flat_map(Map::values)
-            .filter_map(Value::as_object)
-            .filter_map(bucket)
+            .flatten()
+            .filter_map(|(id, value)| bucket(value.as_object()?, Some(id)))
         {
             limits.merge(named);
         }
         (!limits.buckets.is_empty() || limits.ordinary_usage_allowed.is_some()).then_some(limits)
     }
 
+    /// Merges a pushed bucket. One without a `limitId` is the default
+    /// bucket, and until a read names the default the first pushed bucket
+    /// stands in for it.
+    pub(in crate::acp::bindings::codex) fn push(&mut self, mut bucket: RateLimitBucket) {
+        if bucket.id.is_none() {
+            bucket.id.clone_from(&self.default_id);
+        }
+        if self.buckets.is_empty() && self.default_id.is_none() {
+            self.default_id.clone_from(&bucket.id);
+        }
+        self.merge(bucket);
+    }
+
     /// Replaces the bucket with the same `limitId`, or admits a new one while
     /// under the cap.
-    pub(in crate::acp::bindings::codex) fn merge(&mut self, bucket: RateLimitBucket) {
+    fn merge(&mut self, bucket: RateLimitBucket) {
         if let Some(known) = self.buckets.iter_mut().find(|known| known.id == bucket.id) {
             *known = bucket;
         } else if self.buckets.len() < MAX_USAGE_WINDOWS {
@@ -104,10 +116,11 @@ impl RateLimits {
 pub(in crate::acp::bindings::codex) fn pushed_bucket(
     params: &Map<String, Value>,
 ) -> Option<RateLimitBucket> {
-    bucket(params.get("rateLimits")?.as_object()?)
+    bucket(params.get("rateLimits")?.as_object()?, None)
 }
 
-fn bucket(value: &Map<String, Value>) -> Option<RateLimitBucket> {
+/// `key` names a bucket of `rateLimitsByLimitId` that omits its `limitId`.
+fn bucket(value: &Map<String, Value>, key: Option<&str>) -> Option<RateLimitBucket> {
     let windows: Vec<Window> = ["primary", "secondary"]
         .into_iter()
         .filter_map(|key| {
@@ -125,7 +138,8 @@ fn bucket(value: &Map<String, Value>) -> Option<RateLimitBucket> {
         .is_some_and(|reached| !reached.is_null())
         || value.get("spendControlReached") == Some(&Value::Bool(true));
     (!windows.is_empty() || reached).then(|| RateLimitBucket {
-        id: text(value, "limitId"),
+        id: text(value, "limitId")
+            .or_else(|| key.filter(|key| key.len() <= 128).map(str::to_owned)),
         name: text(value, "limitName"),
         plan: text(value, "planType")
             .filter(|plan| plan != "unknown")
@@ -232,23 +246,26 @@ mod tests {
         );
     }
 
+    fn push(value: Value) -> RateLimitBucket {
+        pushed_bucket(value.as_object().unwrap()).unwrap()
+    }
+
     #[test]
     fn a_pushed_bucket_replaces_only_its_own_limit() {
         let mut limits = RateLimits::read(
             json!({"rateLimits":{"limitId":"codex","planType":"plus",
                 "primary":{"usedPercent":20,"windowDurationMins":300}},
-                "rateLimitsByLimitId":{"spark":{"limitId":"spark","limitName":"Spark",
+                "rateLimitsByLimitId":{"spark":{"limitName":"Spark",
                     "primary":{"usedPercent":50,"windowDurationMins":300}}}})
             .as_object()
             .unwrap(),
         )
         .unwrap();
-        let push = |value: Value| pushed_bucket(value.as_object().unwrap()).unwrap();
-        limits.merge(push(
+        limits.push(push(
             json!({"rateLimits":{"limitId":"spark","limitName":"Spark",
             "primary":{"usedPercent":90,"windowDurationMins":300}}}),
         ));
-        limits.merge(push(json!({"rateLimits":{"limitId":"codex",
+        limits.push(push(json!({"rateLimits":{
             "planType":"self_serve_business_usage_based",
             "primary":{"usedPercent":63,"windowDurationMins":300},
             "rateLimitReachedType":"workspace_member_usage_limit_reached"}})));
@@ -261,6 +278,25 @@ mod tests {
         assert_eq!(
             snapshot.windows,
             vec![window(None, 63, 300), window(Some("Spark"), 90, 300)]
+        );
+    }
+
+    #[test]
+    fn before_any_read_the_first_pushed_bucket_decides_the_limit() {
+        let mut limits = RateLimits::default();
+        limits.push(push(json!({"rateLimits":{"limitId":"codex",
+            "primary":{"usedPercent":100,"windowDurationMins":300},
+            "rateLimitReachedType":"rate_limit_reached"}})));
+        limits.push(push(json!({"rateLimits":{"limitId":"spark",
+            "primary":{"usedPercent":10,"windowDurationMins":300}}})));
+        assert!(limits.snapshot().limit_reached);
+        limits.push(push(json!({"rateLimits":{
+            "primary":{"usedPercent":40,"windowDurationMins":300}}})));
+        let snapshot = limits.snapshot();
+        assert!(!snapshot.limit_reached);
+        assert_eq!(
+            snapshot.windows,
+            vec![window(None, 40, 300), window(None, 10, 300)]
         );
     }
 

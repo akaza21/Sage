@@ -11,21 +11,21 @@ export function useUsageRequest(
   const session = page?.sessions.find(
     (candidate) => candidate.id === page.currentSessionId,
   );
-  const projectId = page?.usage && page.projectId;
+  const usage = page?.usage ?? false;
+  const projectId = page?.projectId;
   const chatId = page?.chatId;
   const sessionId = session?.id;
   const runtimeEpoch = session?.runtimeEpoch;
-  return useMemo(
-    () =>
-      projectId && chatId && sessionId && runtimeEpoch
-        ? {
-            projectId,
-            projectGeneration: String(projectGeneration) as ProjectGeneration,
-            chatId,
-            sessionId,
-            runtimeEpoch,
-          }
-        : null,
-    [projectId, chatId, sessionId, runtimeEpoch, projectGeneration],
-  );
+  return useMemo(() => {
+    if (!usage || !projectId || !chatId || !sessionId || !runtimeEpoch) {
+      return null;
+    }
+    return {
+      projectId,
+      projectGeneration: String(projectGeneration) as ProjectGeneration,
+      chatId,
+      sessionId,
+      runtimeEpoch,
+    };
+  }, [usage, projectId, chatId, sessionId, runtimeEpoch, projectGeneration]);
 }

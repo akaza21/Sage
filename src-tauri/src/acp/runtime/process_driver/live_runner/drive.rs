@@ -77,14 +77,12 @@ where
         } else {
             None
         };
-        let expiring = pending_config.as_ref().is_some_and(PendingConfig::expired);
-        settle_pending_config(
+        if settle_pending_config(
             &mut pending_config,
             state.config_pending(),
             state.native_rpc_pending(),
             native_reply,
-        );
-        if expiring && pending_config.is_none() {
+        ) {
             state.abandon_usage_read();
         }
         if let Err(error) = terminal::queue(&state, &host, &notified, &mut pending) {

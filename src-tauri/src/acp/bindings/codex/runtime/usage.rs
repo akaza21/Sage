@@ -7,7 +7,7 @@ impl CodexRuntime {
     pub(super) fn apply_usage(&mut self, disposition: IngressDisposition) {
         match disposition {
             IngressDisposition::UsageUpdated(bucket) => {
-                self.rate_limits.merge(bucket);
+                self.rate_limits.push(bucket);
                 self.usage.replace(self.rate_limits.snapshot());
             }
             IngressDisposition::UsageRead(Some(limits)) => {

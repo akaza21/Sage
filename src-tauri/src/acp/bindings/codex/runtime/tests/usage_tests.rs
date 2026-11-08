@@ -87,24 +87,46 @@ fn usage_read_answers_the_native_rpc_and_a_refusal_marks_usage_unsupported() {
 }
 
 #[test]
-fn an_abandoned_read_frees_the_slot_and_its_late_answer_is_discarded() {
+fn a_backend_failure_rejects_the_read_and_keeps_the_last_snapshot() {
     let mut runtime = fixture_runtime();
     initialize(&mut runtime);
-    let late = request_id(&runtime.read_usage().unwrap());
+    runtime.ingest(&update("codex", 30), &Mapper).unwrap();
+    let read = request_id(&runtime.read_usage().unwrap());
+    answer(
+        &mut runtime,
+        read,
+        json!({"error":{"code":-32603,"message":"failed to fetch codex rate limits"}}),
+    );
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::Rejected)
+    );
+    assert_eq!(used(&runtime), vec![30]);
+}
+
+#[test]
+fn no_read_is_sent_until_an_abandoned_one_answers() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    runtime.ingest(&update("codex", 30), &Mapper).unwrap();
+    let a = request_id(&runtime.read_usage().unwrap());
     runtime.abandon_usage_read();
     assert!(!runtime.native_rpc_pending());
 
-    let next = request_id(&runtime.read_usage().unwrap());
+    assert!(runtime.read_usage().is_err());
+    assert_eq!(used(&runtime), vec![30]);
     answer(
         &mut runtime,
-        late,
+        a,
         json!({"result":{"rateLimits":{"limitId":"codex","primary":{"usedPercent":9}}}}),
     );
     assert_eq!(runtime.take_native_rpc_reply(), None);
-    assert!(runtime.native_rpc_pending());
+    assert_eq!(used(&runtime), vec![30]);
+
+    let c = request_id(&runtime.read_usage().unwrap());
     answer(
         &mut runtime,
-        next,
+        c,
         json!({"result":{"rateLimits":{"limitId":"codex","primary":{"usedPercent":11}}}}),
     );
     assert_eq!(

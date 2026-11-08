@@ -43,6 +43,7 @@ struct FakeEngine {
     terminal_gate: Option<TerminalGate>,
     config_completion: Option<ConfigCompletion>,
     native_completion: Option<NativeCompletion>,
+    native_begin_error: Option<HostError>,
     steer_completion: Option<ConfigCompletion>,
     steer_port: Option<Arc<Mutex<crate::acp::runtime::process_driver::ProcessLivePort>>>,
 }
@@ -66,6 +67,7 @@ impl FakeEngine {
             terminal_gate: None,
             config_completion: None,
             native_completion: None,
+            native_begin_error: None,
             steer_completion: None,
             steer_port: None,
         }
@@ -137,6 +139,11 @@ impl FakeEngine {
         self
     }
 
+    fn with_native_begin_error(mut self, error: HostError) -> Self {
+        self.native_begin_error = Some(error);
+        self
+    }
+
     fn with_steer_completion(mut self, completion: ConfigCompletion) -> Self {
         self.steer_completion = Some(completion);
         self
@@ -167,6 +174,9 @@ impl RuntimeEngine for FakeEngine {
         completion: NativeRpcCompletionSink,
     ) -> Result<(), HostError> {
         self.push("beginNativeRpc");
+        if let Some(error) = self.native_begin_error.clone() {
+            return Err(error);
+        }
         *self.native_completion.as_ref().unwrap().lock().unwrap() = Some(completion);
         Ok(())
     }
@@ -693,6 +703,34 @@ fn a_passive_read_that_misses_its_deadline_is_abandoned_without_recovery() {
         .complete(Ok(crate::acp::goal::NativeRpcReply::UsageRead));
     host.without_timeout_override(|| assert_eq!(host.state(), Ok(HostState::Idle)));
     host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn a_native_rpc_that_cannot_begin_in_time_recovers_only_when_not_passive() {
+    for (request, settled) in [
+        (
+            crate::acp::goal::NativeRpcRequest::UsageRead,
+            HostState::Idle,
+        ),
+        (
+            crate::acp::goal::NativeRpcRequest::Goal(crate::acp::goal::GoalAction::PauseExisting),
+            HostState::Recovery,
+        ),
+    ] {
+        let engine = FakeEngine::new([]).with_native_begin_error(HostError::Deadline);
+        let host = RuntimeHost::start(engine).unwrap();
+        let runtime = owner("project-a");
+        host.activate(runtime.clone()).unwrap();
+        assert_eq!(
+            host.native_rpc(crate::acp::goal::NativeRpcIntent {
+                owner: runtime,
+                request,
+            }),
+            Err(HostError::Deadline)
+        );
+        assert_eq!(host.state(), Ok(settled));
+        host.shutdown(RuntimeHost::close_deadline()).unwrap();
+    }
 }
 
 #[test]

@@ -31,6 +31,7 @@ fn queued_steer_overtaken_by_cancel_never_writes() {
                     cancel_count: Arc::new(AtomicUsize::new(0)),
                     final_stdout: None,
                     config_pending: false,
+                    usage_read_pending: false,
                 },
                 activation_journal,
                 Mapper,

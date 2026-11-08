@@ -6,7 +6,9 @@ impl CodexAdapter {
         if self.negotiated.is_none() {
             return Err(AdapterError::CapabilityUnavailable);
         }
-        if self.rate_limits_read_pending() {
+        // An abandoned read may still answer; one read at most is ever
+        // outstanding against Codex.
+        if self.rate_limits_read_pending() || self.rate_limits_tombstone.is_some() {
             return Err(AdapterError::TurnIntentConflict);
         }
         self.reserve(OutgoingRequest::rate_limits_read(id)?)
