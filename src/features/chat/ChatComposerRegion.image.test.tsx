@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 
@@ -390,7 +396,7 @@ describe("composer image input", () => {
     expect(onRemoveContext).toHaveBeenCalledWith(image);
   });
 
-  it("enables Send with only an attachment and no text (Codex s2/f0095)", () => {
+  it("enables Send with only an attachment and no text (Codex s2/f0095)", async () => {
     const image = {
       kind: "image" as const,
       artifactId: "00000000-0000-4000-8000-000000000000",
@@ -413,10 +419,11 @@ describe("composer image input", () => {
       imageInputAvailable: true,
       attachedContext: [image],
     });
-    expect(send).toBeEnabled();
+    // A native chat's send waits for its staged batch to be read back.
+    await waitFor(() => expect(send).toBeEnabled(), { timeout: 5_000 });
   });
 
-  it("keeps attachment-only Send paired with a visible page chip, then disables it on removal", () => {
+  it("keeps attachment-only Send paired with a visible page chip, then disables it on removal", async () => {
     const page = {
       kind: "browserPage" as const,
       tabId: "browser-1",
@@ -428,7 +435,13 @@ describe("composer image input", () => {
       text: "  ",
       attachedContext: [page],
     });
-    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole("button", { name: "Send message" }),
+        ).toBeEnabled(),
+      { timeout: 5_000 },
+    );
     expect(screen.getByText("Page · Example page")).toBeVisible();
     rerenderComposer({ text: "  ", attachedContext: [] });
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();

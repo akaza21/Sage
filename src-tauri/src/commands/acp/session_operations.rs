@@ -1,12 +1,6 @@
 use super::*;
 use crate::acp::attached_context::effective_prompt;
 
-// The over-budget message names the budget as static text.
-const _: () = assert!(
-    crate::acp::attached_context::files::DISPATCH_BYTES == 120 * 1024,
-    "update the dispatch budget in the prompt-too-large message"
-);
-
 mod lifecycle;
 mod staged;
 pub(crate) use lifecycle::{close_acp_session_inner, end_acp_session_inner};
@@ -234,7 +228,7 @@ pub(crate) async fn send_acp_turn_inner(
         super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
         return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
             message: safe_message(
-                "Prompt text and file attachments exceed the 120 KiB native dispatch budget. Shorten the prompt or remove attachments.",
+                crate::acp::attached_context::files::limits::DISPATCH_OVER.as_str(),
             ),
         }));
     }

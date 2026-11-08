@@ -87,13 +87,13 @@ fn retry_without_a_record_is_refused_when_the_turn_carried_files() {
     let sent = stages.selected("p", "c", &named(&revision)).unwrap();
     stages.consume("p", "c", AT, "other", &sent);
     assert!(stages.selected("p", "c", &retry("older", 1)).is_err());
-    // A completed turn needs no Retry, so its files are released.
-    stages.settle("p", "c", "other");
+    // A completed turn offers Retry too, so its files stay until the next
+    // send in the chat, its tab closing, or the caps release them.
     assert!(
         stages
             .selected("p", "c", &retry("other", 1))
-            .unwrap_err()
-            .contains("released")
+            .unwrap()
+            .same_selection(&sent)
     );
 }
 

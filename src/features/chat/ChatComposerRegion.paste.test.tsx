@@ -49,7 +49,7 @@ vi.mock(import("../../ports/nativeInvoke"), () => ({
         if (native.files.length >= PROMPT_ATTACHMENT_COUNT)
           throw "Attachments exceed the 16-file limit.";
         if (total + bytes > PROMPT_ATTACHMENT_TOTAL_BYTES)
-          throw "Attachments exceed 96 KiB total.";
+          throw "Attachments exceed 96 KB total.";
         const id = `file-${++native.next}`;
         native.files.push({ id, name: "pasted-text.txt", bytes });
         native.revision = `revision-${native.next}`;
@@ -90,6 +90,8 @@ type Props = ComponentProps<typeof ChatComposerRegion>;
 /** The paste module and chips load lazily, so first use may take a moment. */
 const LAZY = { timeout: 5000 };
 
+/** The region under test; cold tests swap in a fresh, gated copy. */
+let Region = ChatComposerRegion;
 function Composer({
   acceptsResources = true,
   ...overrides
@@ -140,19 +142,25 @@ function Composer({
     onCancelTurn: null,
     ...overrides,
   };
-  return <ChatComposerRegion {...props} />;
+  return <Region {...props} />;
 }
 
 const field = () => screen.getByRole("textbox", { name: "Message agent" });
 
-/** Focuses the field, which loads the paste part and the staged batch. */
+/** Waits for the paste part to load and read the staged batch. */
 async function focusField() {
-  fireEvent.focus(field());
   await waitFor(
     () => expect(native.calls).toContain("list_prompt_files"),
     LAZY,
   );
 }
+
+/** Whether the field's aria-describedby takes in this element. */
+const describesField = (element: HTMLElement) =>
+  field()
+    .getAttribute("aria-describedby")!
+    .split(" ")
+    .some((id) => document.getElementById(id)?.contains(element));
 
 /** Fires a text paste; returns whether the browser would insert it. */
 function paste(text: string, files: File[] = []) {
@@ -173,14 +181,13 @@ const label = "Pasted text · 2,431 lines · 74 KB";
 
 // The first test pays for loading the lazy paste part.
 describe("composer large paste", { timeout: 15_000 }, () => {
-  it("loads nothing until the field is focused, then keeps a fitting paste inline", async () => {
-    render(<Composer />);
+  it("outside a native chat, loads nothing for a paste that fits inline", async () => {
+    render(<Composer availableBinding={false} />);
+    fireEvent.focus(field());
     expect(paste("short note")).toBe(true);
-    // The paste part loads with the field's first focus, not with the chat.
+    // Only held-back input loads the paste part there.
+    await new Promise((resolve) => setTimeout(resolve, 50));
     expect(native.calls).toEqual([]);
-    await focusField();
-    expect(paste("short note")).toBe(true);
-    expect(native.calls).not.toContain("stage_prompt_text");
   });
 
   it("leaves an image paste to the form's image input", async () => {
@@ -198,8 +205,8 @@ describe("composer large paste", { timeout: 15_000 }, () => {
   it("stages a long paste made before the paste part loads", async () => {
     const onTextChange = vi.fn();
     render(<Composer onTextChange={onTextChange} />);
-    // No focus yet, so the part is not loaded: the composer holds the paste
-    // back synchronously and hands it over once the part arrives.
+    // The part may not be loaded yet: the composer holds the paste back
+    // synchronously and hands it over once the part arrives.
     expect(paste(log)).toBe(false);
     expect(
       await screen.findByRole("button", { name: label }, LAZY),
@@ -215,7 +222,7 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     fireEvent.change(field(), { target: { value: log } });
     expect(onTextChange).not.toHaveBeenCalled();
     await announced(
-      "Messages hold up to 16 KB of typed text; this edit would make 74 KB. Paste longer text to attach it instead.",
+      "Messages hold up to 16 KB of typed text; this edit would make at least 74 KB. Paste longer text to attach it instead.",
     );
     expect(native.calls).not.toContain("stage_prompt_text");
   });
@@ -240,9 +247,8 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     const onSubmit = vi.fn((event) => event.preventDefault());
     render(<Composer text="Draft from before" onSubmit={onSubmit} />);
     const send = screen.getByRole("button", { name: "Send message" });
-    expect(send).toBeEnabled();
-    // Focus loads the part; until its first read settles, no send goes.
-    fireEvent.focus(field());
+    // A native chat loads the part at once, with no focus needed; until its
+    // first read settles, no send goes, a click with no prior focus included.
     expect(send).toBeDisabled();
     await screen.findByText("notes.md · 2 KB", undefined, LAZY);
     expect(send).toBeEnabled();
@@ -252,17 +258,15 @@ describe("composer large paste", { timeout: 15_000 }, () => {
   it("ties its notices to the field", async () => {
     render(<Composer />);
     await focusField();
-    const live = status()!;
-    expect(field().getAttribute("aria-describedby")).toContain(live.id);
+    expect(describesField(status()!)).toBe(true);
   });
 
-  it("loads the staged batch with the field's first focus", async () => {
+  it("reads the staged batch when a native chat's composer mounts", async () => {
     native.files = [{ id: "file-9", name: "notes.md", bytes: 2048 }];
     native.revision = "revision-9";
     render(<Composer />);
     const send = screen.getByRole("button", { name: "Send message" });
     expect(send).toBeDisabled();
-    fireEvent.focus(screen.getByRole("textbox", { name: "Message agent" }));
     await screen.findByText("notes.md · 2 KB", undefined, LAZY);
     expect(native.calls).toEqual(["list_prompt_files"]);
     // The batch alone can be sent, by its revision.
@@ -314,7 +318,7 @@ describe("composer large paste", { timeout: 15_000 }, () => {
       /Attached text goes with the next message you send, not a queued one\./,
     );
     expect(reason).not.toHaveAttribute("aria-live");
-    expect(field().getAttribute("aria-describedby")).toContain(reason.id);
+    expect(describesField(reason)).toBe(true);
   });
 
   it("removes the chip and its staged bytes", async () => {
@@ -337,7 +341,7 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     const huge = "y".repeat(PROMPT_ATTACHMENT_TOTAL_BYTES + 1);
     expect(paste(huge)).toBe(false);
     await announced(
-      "Pasted text is 97 KB, over the 96 KB attachment limit. Nothing was pasted.",
+      "Pasted text is at least 97 KB, over the 96 KB attachment limit. Nothing was pasted.",
     );
     expect(onTextChange).not.toHaveBeenCalled();
     expect(screen.getByRole("textbox", { name: "Message agent" })).toHaveValue(
@@ -389,7 +393,7 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     });
     expect(onTextChange).not.toHaveBeenCalled();
     await announced(
-      "Messages hold up to 16 KB of typed text; this edit would make 17 KB.",
+      "Messages hold up to 16 KB of typed text; this edit would make at least 17 KB.",
     );
     fireEvent.change(field, { target: { value: full.slice(1) } });
     expect(onTextChange).toHaveBeenCalledWith(full.slice(1));
@@ -400,3 +404,103 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     expect(status()).toBeEmptyDOMElement();
   });
 });
+
+// The paste part's chunk arrives only when a test lets it, so pastes and
+// edits made before then must be held, never dropped.
+describe(
+  "composer large paste before the paste part loads",
+  { timeout: 15_000 },
+  () => {
+    let release = () => {};
+    let fail = () => {};
+    beforeEach(async () => {
+      vi.resetModules();
+      const gate = new Promise<void>((resolve, reject) => {
+        release = resolve;
+        fail = () => reject(new Error("The chunk did not load."));
+      });
+      vi.doMock("./ComposerPaste", async (importOriginal) => {
+        await gate;
+        return importOriginal();
+      });
+      Region = (await import("./ChatComposerRegion")).ChatComposerRegion;
+      const fresh = (await import("../../app/store")).useWorkbenchStore;
+      fresh.setState({
+        captureChatOwnership: useWorkbenchStore.getState().captureChatOwnership,
+      });
+    });
+    afterEach(() => {
+      release();
+      vi.doUnmock("./ComposerPaste");
+      Region = ChatComposerRegion;
+    });
+    // 700 lines of 31 bytes: over the composer cap, and beside the log it
+    // still fits the batch.
+    const second = `${"y".repeat(30)}\n`.repeat(700);
+    const secondLabel = "Pasted text · 700 lines · 22 KB";
+
+    it("stages two pastes made before it loads, both and in order", async () => {
+      render(<Composer />);
+      expect(paste(log)).toBe(false);
+      expect(paste(second)).toBe(false);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(native.calls).toEqual([]);
+      release();
+      await waitFor(() => {
+        const chips = screen.getAllByRole("button", {
+          name: /^Pasted text · /,
+        });
+        expect(chips.map((chip) => chip.textContent)).toEqual([
+          label,
+          secondLabel,
+        ]);
+      }, LAZY);
+      expect(
+        native.calls.filter((call) => call === "stage_prompt_text"),
+      ).toHaveLength(2);
+    });
+
+    it("stages a paste followed by an over-cap edit, and answers both", async () => {
+      const onTextChange = vi.fn();
+      render(<Composer onTextChange={onTextChange} />);
+      expect(paste(log)).toBe(false);
+      fireEvent.change(field(), { target: { value: second } });
+      expect(onTextChange).not.toHaveBeenCalled();
+      release();
+      expect(
+        await screen.findByRole("button", { name: label }, LAZY),
+      ).toBeVisible();
+      await announced("this edit would make at least 22 KB");
+      expect(
+        native.calls.filter((call) => call === "stage_prompt_text"),
+      ).toHaveLength(1);
+    });
+
+    it("refuses a paste over the batch limit by its size, without keeping it", async () => {
+      render(<Composer />);
+      expect(paste("z".repeat(PROMPT_ATTACHMENT_TOTAL_BYTES + 1))).toBe(false);
+      release();
+      await announced(
+        "Pasted text is at least 97 KB, over the 96 KB attachment limit.",
+      );
+      expect(native.calls).not.toContain("stage_prompt_text");
+    });
+
+    it("unblocks sends and says so when the part cannot load", async () => {
+      render(<Composer text="Draft from before" />);
+      const send = screen.getByRole("button", { name: "Send message" });
+      expect(send).toBeDisabled();
+      expect(paste(log)).toBe(false);
+      fail();
+      expect(
+        await screen.findByText(
+          "Long text input is unavailable.",
+          undefined,
+          LAZY,
+        ),
+      ).toBeVisible();
+      expect(send).toBeEnabled();
+      expect(native.calls).toEqual([]);
+    });
+  },
+);

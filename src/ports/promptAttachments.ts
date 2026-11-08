@@ -15,7 +15,7 @@ export interface StagedPromptFiles {
   /** The resource a paste just added. */
   added?: string;
 }
-/** 16 files, 64 KiB/file, 96 KiB/batch; replacement is revision checked. */
+/** 16 files, 64 KB/file, 96 KB/batch; replacement is revision checked. */
 export interface PromptAttachmentsPort {
   /** Opens the native picker; the WebView never supplies paths. Null when cancelled. */
   stagePromptFiles(request: {

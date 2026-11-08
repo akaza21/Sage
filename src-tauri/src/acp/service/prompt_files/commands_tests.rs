@@ -219,7 +219,7 @@ fn pasted_text_joins_the_batch_as_a_text_resource_within_the_batch_caps() {
                 .await
                 .err()
                 .as_deref(),
-            Some("Pasted text exceeds the 96 KiB attachment limit.")
+            Some("Pasted text exceeds the 96 KB attachment limit.")
         );
         let log = "line\n".repeat(4096);
         let first = stage_text(state, request(None, log.clone())).await.unwrap();
@@ -234,7 +234,7 @@ fn pasted_text_joins_the_batch_as_a_text_resource_within_the_batch_caps() {
                 .await
                 .err()
                 .as_deref(),
-            Some("Attachments exceed 96 KiB total.")
+            Some("Attachments exceed 96 KB total.")
         );
         let second = stage_text(state, request(Some(&first.revision), "tail".into()))
             .await
@@ -360,7 +360,7 @@ async fn send_paste(fixture: &Fixture, intent: &str) {
 }
 
 #[test]
-fn kept_sent_files_end_with_their_tab_or_their_completed_turn() {
+fn kept_sent_files_outlive_a_completed_turn_and_end_with_their_tab() {
     use super::super::{RetryOrigin, Selection};
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let fixture = Fixture::new();
@@ -375,11 +375,11 @@ fn kept_sent_files_end_with_their_tab_or_their_completed_turn() {
         turn(&fixture, "turn-a", "intent-a", 1, Some(1), "running");
         send_paste(&fixture, "intent-a").await;
         assert_eq!(retry("intent-a"), Ok(1));
-        // Once its turn completed, no Retry is offered, so the files go.
+        // A completed turn still offers Retry, which resends its files.
         state.database.connection().execute(
             "UPDATE turns SET state='completed', terminal_at=1 WHERE client_intent_id='intent-a'", [],
         ).unwrap();
-        assert!(retry("intent-a").unwrap_err().contains("released"));
+        assert_eq!(retry("intent-a"), Ok(1));
         // Closing the tab ends what was kept for it.
         send_paste(&fixture, "intent-b").await;
         assert_eq!(retry("intent-b"), Ok(1));

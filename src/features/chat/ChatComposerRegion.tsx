@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState, type ComponentProps } from "react";
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
@@ -26,9 +26,22 @@ import { useComposerPasteSignal } from "./useComposerPasteSignal";
 const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
   () => import("./ClaudeAuthActions"),
 );
-// Paste staging, chips and messages load with the field's first focus or
-// with input over the cap; only the synchronous size check stays eager.
-const PastePart = lazyParts<typeof PasteChunk>(() => import("./ComposerPaste"));
+// Paste staging, chips and messages load with a native chat's composer or
+// with input over the cap; only the synchronous size check stays eager. If
+// they cannot load, held input is dropped, a standing notice says so, and
+// nothing is staged, so sends are not held for them.
+const PastePart = lazyParts<typeof PasteChunk>(() =>
+  import("./ComposerPaste").catch(() => ({
+    ComposerPaste: ({ onStaged }: PasteProps) => {
+      useEffect(
+        () => onStaged({ revision: null, busy: false, settled: true }),
+        [onStaged],
+      );
+      return <p role="status">Long text input is unavailable.</p>;
+    },
+  })),
+);
+type PasteProps = ComponentProps<typeof PasteChunk.ComposerPaste>;
 
 export function ChatComposerRegion({
   hidden = false,
@@ -106,10 +119,13 @@ export function ChatComposerRegion({
     uploading: imageUploading,
     onAddImages,
   });
-  // The paste part loads with the first focus in the composer or with
-  // held-back input, and reports the batch it staged for the next message.
+  // The paste part loads with the composer of a native chat, or with
+  // held-back input, and reports the batch it staged.
   const paste = useComposerPasteSignal();
   const [staged, setStaged] = useState<StagedSummary>();
+  // A native chat loads it at once, so the batch staged before a reload is
+  // read back before any send, whether or not the field was focused.
+  const pasteArmed = availableBinding || paste.seq > 0;
   const pasteNoticeId = `${disabledReasonId}-paste`;
   const dispatchBlocked =
     composerDisabled ||
@@ -120,8 +136,11 @@ export function ChatComposerRegion({
     imageInput.sendBlocked ||
     // Staged pasted text goes with a sent message, never a queued one, and
     // no send goes before the batch staged earlier has been read back.
-    Boolean(staged?.busy || (activeTurn && staged?.revision)) ||
-    Boolean(paste.signal && !staged?.settled);
+    Boolean(
+      staged?.busy ||
+      (activeTurn && staged?.revision) ||
+      (pasteArmed && !staged?.settled),
+    );
   const queueing = activeTurn && queueAvailable && !composerDisabled;
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
   const dictation = useComposerDictation(
@@ -143,7 +162,6 @@ export function ChatComposerRegion({
         onDragOver={imageInput.onDragOver}
         onDrop={imageInput.onDrop}
         onPaste={imageInput.onPaste}
-        onFocus={paste.arm}
         onSubmit={(event) => {
           if (dispatchBlocked) {
             event.preventDefault();
@@ -242,7 +260,7 @@ export function ChatComposerRegion({
                   ? "Enter queues a message while this turn runs."
                   : undefined
               }
-              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}${paste.signal ? ` ${pasteNoticeId} ${pasteNoticeId}-reason` : ""}`}
+              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""} ${pasteNoticeId}`}
               value={text}
               rows={2}
               placeholder={composerPromptPlaceholder(
@@ -274,19 +292,17 @@ export function ChatComposerRegion({
               }}
             />
           </div>
-          {paste.signal ? (
+          {pasteArmed ? (
             <PastePart
               part="ComposerPaste"
               chatId={dictationScope}
               session={pasteSession}
               nativeAcp={availableBinding}
               activeTurn={activeTurn}
-              signal={paste.signal}
-              takePaste={paste.takePaste}
+              input={paste}
               text={text}
               disabled={actionBusy || projectTransitioning}
               noticeId={pasteNoticeId}
-              reasonId={`${pasteNoticeId}-reason`}
               onStaged={setStaged}
             />
           ) : null}

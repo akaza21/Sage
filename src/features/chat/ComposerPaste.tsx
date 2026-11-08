@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import {
+  heldPasteRefusal,
   pasteAttachmentRefusal,
   typedOverflowMessage,
   type PasteAttachability,
@@ -16,7 +17,6 @@ import {
 import type {
   HeldPaste,
   PastedTextState,
-  PasteSignal,
   StagedSummary,
 } from "./pastedTextTypes";
 
@@ -34,27 +34,27 @@ export function ComposerPaste({
   session,
   nativeAcp,
   activeTurn,
-  signal,
-  takePaste,
+  input: { seq, held },
   text,
   disabled,
   noticeId,
-  reasonId,
   onStaged,
 }: {
   chatId: string | undefined;
   session: PasteAttachability["session"];
   nativeAcp: boolean;
   activeTurn: boolean;
-  signal: PasteSignal;
-  takePaste(): HeldPaste | null;
+  /**
+   * The composer's held-back input, in order, drained here; seq is bumped
+   * for each input held, and is 0 when the part is only armed.
+   */
+  input: { seq: number; held: { current: HeldPaste[] } };
   /** The draft; a notice about an earlier draft clears once it changes. */
   text: string;
   /** Busy while a send is in flight; a send may consume the batch. */
   disabled: boolean;
-  /** The ids the field names in aria-describedby. */
+  /** The field names it in aria-describedby; it holds every notice. */
   noticeId: string;
-  reasonId: string;
   onStaged(next: StagedSummary): void;
 }) {
   const [state, setState] = useState(EMPTY);
@@ -62,6 +62,8 @@ export function ComposerPaste({
   const ref = useRef(state);
   const settled = useRef(false);
   const handled = useRef(0);
+  // Held pastes are staged one after another, never two at once.
+  const chain = useRef(Promise.resolve());
   // Keyed to the draft it was made for, so the next edit clears it.
   const announce = useCallback(
     (message: string) => setNotice({ text, message }),
@@ -106,22 +108,30 @@ export function ComposerPaste({
     [nativeAcp, session],
   );
   useEffect(() => {
-    // Each signal is handled once, also under a doubled effect.
-    if (signal.seq === handled.current) return;
-    handled.current = signal.seq;
-    if (signal.kind === "edit") {
-      const refusal = pasteAttachmentRefusal(
-        isTauriRuntime() ? attachability : { nativeAcp: false, session: null },
-      );
-      // Announced after the event, like a native refusal would be.
-      void Promise.resolve(typedOverflowMessage(signal.bytes, refusal)).then(
-        announce,
-      );
-      return;
-    }
-    const held = signal.kind === "paste" ? takePaste() : null;
-    if (held) void pasteOver(owner, attachability, held, announce, disabled);
-  }, [announce, attachability, disabled, owner, signal, takePaste]);
+    // Each bump is handled once, also under a doubled effect.
+    if (seq === handled.current) return;
+    handled.current = seq;
+    // Every held input is drained, in order, whatever came last.
+    const inputs = held.current.splice(0);
+    // Announced after the event, like a native refusal would be.
+    chain.current = chain.current.then(async () => {
+      for (const held of inputs) {
+        if ("edit" in held)
+          announce(
+            typedOverflowMessage(
+              held.edit,
+              pasteAttachmentRefusal(
+                isTauriRuntime()
+                  ? attachability
+                  : { nativeAcp: false, session: null },
+              ),
+            ),
+          );
+        else if ("bytes" in held) announce(heldPasteRefusal(held));
+        else await pasteOver(owner, attachability, held, announce, disabled);
+      }
+    });
+  }, [announce, attachability, disabled, owner, seq, held]);
   const transient = notice?.text === text ? notice.message : "";
   const reason =
     activeTurn && state.items.length
@@ -129,18 +139,15 @@ export function ComposerPaste({
       : "";
   return (
     <>
-      <div
-        id={noticeId}
-        className={transient ? "composer__disabled-reason" : ""}
-        aria-live="polite"
-      >
-        {transient}
+      <div id={noticeId}>
+        <div
+          className={transient ? "composer__disabled-reason" : ""}
+          aria-live="polite"
+        >
+          {transient}
+        </div>
+        {reason ? <p className="composer__disabled-reason">{reason}</p> : null}
       </div>
-      {reason ? (
-        <p id={reasonId} className="composer__disabled-reason">
-          {reason}
-        </p>
-      ) : null}
       {state.items.length > 0 ? (
         <PastedTextChips
           items={state.items}

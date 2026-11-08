@@ -347,16 +347,6 @@ impl FileStages {
         );
         self.bound_sent(&key);
     }
-    /// A turn that finished needs no Retry: its files are released.
-    pub(crate) fn settle(&mut self, project: &str, chat: &str, client_intent_id: &str) {
-        let key = (project.to_owned(), chat.to_owned());
-        if let Some(sent) = self.sent.get_mut(&key)
-            && sent.client_intent_id == client_intent_id
-            && sent.resources.as_ref().is_some_and(|r| !r.0.is_empty())
-        {
-            sent.resources = None;
-        }
-    }
     /// Files kept for Retry share the owner and memory caps with staged
     /// batches; the least recently sent other entries are released first.
     fn bound_sent(&mut self, keep: &(String, String)) {
@@ -384,14 +374,6 @@ impl FileStages {
         self.batches.clear();
         self.sent.clear();
     }
-    /// Chats whose latest send still holds files for Retry, with its intent.
-    fn held_sent(&self) -> Vec<(String, String, String)> {
-        self.sent
-            .iter()
-            .filter(|(_, s)| s.resources.as_ref().is_some_and(|r| !r.0.is_empty()))
-            .map(|((project, chat), s)| (project.clone(), chat.clone(), s.client_intent_id.clone()))
-            .collect()
-    }
     fn owners(&self) -> Vec<(String, String, i64)> {
         let sent = self.sent.iter().map(|(k, s)| (k, s.attached_at));
         self.batches
@@ -403,21 +385,40 @@ impl FileStages {
     }
 }
 
-/// Limit messages, worded from the caps they name.
-mod limits {
-    use super::{FILE_COUNT, TOTAL_BYTES};
+/// Limit messages, worded from the caps they name in the units the WebView
+/// uses (KB of 1,024 bytes, as `formatSize` in composerPaste.ts).
+pub(crate) mod limits {
+    use super::{DISPATCH_BYTES, FILE_BYTES, FILE_COUNT, TOTAL_BYTES};
     use std::sync::LazyLock;
     type Message = LazyLock<String>;
-    pub(super) static PASTE_OVER_TOTAL: Message = LazyLock::new(|| {
+    const fn kb(bytes: usize) -> usize {
+        bytes / 1024
+    }
+    pub(crate) static PASTE_OVER_TOTAL: Message = LazyLock::new(|| {
         format!(
-            "Pasted text exceeds the {} KiB attachment limit.",
-            TOTAL_BYTES / 1024
+            "Pasted text exceeds the {} KB attachment limit.",
+            kb(TOTAL_BYTES)
         )
     });
-    pub(super) static OVER_COUNT: Message =
+    pub(crate) static OVER_COUNT: Message =
         LazyLock::new(|| format!("Attachments exceed the {FILE_COUNT}-file limit."));
-    pub(super) static OVER_TOTAL: Message =
-        LazyLock::new(|| format!("Attachments exceed {} KiB total.", TOTAL_BYTES / 1024));
+    pub(crate) static OVER_TOTAL: Message =
+        LazyLock::new(|| format!("Attachments exceed {} KB total.", kb(TOTAL_BYTES)));
+    pub(crate) static FILE_OVER: Message =
+        LazyLock::new(|| format!("A file exceeds the {} KB attachment limit.", kb(FILE_BYTES)));
+    pub(crate) static READ_OVER: Message = LazyLock::new(|| {
+        format!(
+            "Attachments exceed {} KB per file or {} KB total.",
+            kb(FILE_BYTES),
+            kb(TOTAL_BYTES)
+        )
+    });
+    pub(crate) static DISPATCH_OVER: Message = LazyLock::new(|| {
+        format!(
+            "Prompt text and file attachments exceed the {} KB native dispatch budget. Shorten the prompt or remove attachments.",
+            kb(DISPATCH_BYTES)
+        )
+    });
 }
 
 fn summary(batch: &Batch) -> StagedFiles {

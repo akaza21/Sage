@@ -171,10 +171,10 @@ fn staging_conflicts_owner_isolation_and_lifecycle_release() {
         .stage("p", "c", 0, Some(&old.revision), f.read("two"))
         .unwrap();
     // A late acknowledgement cannot consume a newer selection; it records
-    // only what was sent, which settling its turn releases.
+    // only what was sent, which a later send replaces.
     stages.consume("p", "c", 0, "late", &snapshot);
     assert_eq!(stages.list("p", "c").unwrap().revision, next.revision);
-    stages.settle("p", "c", "late");
+    stages.consume("p", "c", 0, "later", &Resources::default());
     drop(snapshot);
     assert!(weak.upgrade().is_none());
     assert!(

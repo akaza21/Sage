@@ -61,7 +61,7 @@ export function typedOverflowMessage(
   bytes: number,
   refusal: string | null,
 ): string {
-  const held = `Messages hold up to ${TYPED_LIMIT} of typed text; this edit would make ${formatSize(bytes)}.`;
+  const held = `Messages hold up to ${TYPED_LIMIT} of typed text; this edit would make at least ${formatSize(bytes)}.`;
   return refusal
     ? `${held} ${refusal}`
     : `${held} Paste longer text to attach it instead.`;
@@ -87,6 +87,13 @@ export function pasteAttachmentRefusal({
   if (acceptsResources === false)
     return `This harness does not accept attached text (no embedded-context support), so text over ${TYPED_LIMIT} cannot be sent here.`;
   return null;
+}
+
+/** A paste held by size only: it could never attach, so nothing is sent. */
+export function heldPasteRefusal({ bytes }: { bytes: number }): string {
+  return bytes > PROMPT_ATTACHMENT_TOTAL_BYTES
+    ? `Pasted text is at least ${formatSize(bytes)}, over the ${ATTACHMENT_LIMIT} attachment limit. Nothing was pasted. Save it to a file in the project and ask the agent to read it.`
+    : `A message carries at most ${PROMPT_ATTACHMENT_COUNT} attachments. Nothing was pasted. Remove an attachment first.`;
 }
 
 export type PasteDecision =
