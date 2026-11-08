@@ -122,10 +122,11 @@ async fn capture_known_repository(root: &Path, limit: u64) -> Option<WorkspaceMa
     if root.canonicalize().ok()?.as_path() != root {
         return None;
     }
-    // HEAD, the size check and the status are independent reads of the same
-    // repository, so the walks run side by side: a send waits for the slower
-    // one, not the sum.
-    let (head, index, status) = tokio::join!(
+    // HEAD and the size check are independent reads of the same repository,
+    // so they run side by side. The status walk waits for the size check, so a
+    // repository too large to mark never pays for it, and a capture never holds
+    // more than two of the git pool's processes.
+    let (head, index) = tokio::join!(
         history::read_head(root),
         run_git(
             root,
@@ -145,24 +146,6 @@ async fn capture_known_repository(root: &Path, limit: u64) -> Option<WorkspaceMa
             ],
             MAX_INDEX_BYTES,
         ),
-        run_git(
-            root,
-            &[
-                "--no-literal-pathspecs",
-                "status",
-                "--porcelain=v1",
-                "-z",
-                "--untracked-files=all",
-                "--no-renames",
-                "--",
-                ".",
-                ":(exclude,icase)node_modules/**",
-                ":(exclude,icase)**/node_modules/**",
-                ":(exclude,icase).git/**",
-                ":(exclude,icase)**/.git/**",
-            ],
-            MAX_STATUS_BYTES,
-        ),
     );
     let head = head?;
     let index = index.ok()?;
@@ -180,7 +163,26 @@ async fn capture_known_repository(root: &Path, limit: u64) -> Option<WorkspaceMa
         }
         std::str::from_utf8(path).ok()?;
     }
-    let status = status.ok()?;
+    let status = run_git(
+        root,
+        &[
+            "--no-literal-pathspecs",
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--no-renames",
+            "--",
+            ".",
+            ":(exclude,icase)node_modules/**",
+            ":(exclude,icase)**/node_modules/**",
+            ":(exclude,icase).git/**",
+            ":(exclude,icase)**/.git/**",
+        ],
+        MAX_STATUS_BYTES,
+    )
+    .await
+    .ok()?;
     if !status.succeeded() || status.stdout_truncated {
         return None;
     }
