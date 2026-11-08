@@ -280,7 +280,10 @@ fn every_mode_a_binding_admits_is_in_its_own_table() {
     let registry = crate::acp::bindings::registry::BindingRegistry::default();
     for (binding, version) in [
         ("claude-agent-acp", "0.76.0"),
-        ("codex-app-server", crate::acp::bindings::codex::CODEX_PINNED_VERSION),
+        (
+            "codex-app-server",
+            crate::acp::bindings::codex::CODEX_PINNED_VERSION,
+        ),
         ("opencode-acp", "1.0.0"),
         ("pi-rpc", "0.83.0"),
     ] {

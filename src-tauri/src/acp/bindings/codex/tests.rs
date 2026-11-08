@@ -16,10 +16,10 @@ use super::{
 use crate::test_diagnostics::capture_diagnostics;
 
 mod file_change_sequence_tests;
-mod session_action_tests;
 #[cfg(feature = "acp-fixture")]
 mod mcp_progress_hook_journey_tests;
 mod mcp_progress_hook_tests;
+mod session_action_tests;
 #[cfg(windows)]
 mod state_volume;
 mod terminal_error_tests;

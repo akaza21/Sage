@@ -146,8 +146,13 @@ impl Database {
         // runs as a Terminal operation, after every snapshot queued before
         // it and before any queued after; a snapshot that then carries the
         // old base is refused by the base guard.
-        let (stored, settled) =
-            settled_by_stored(&transaction, project_id, request, buffer_fingerprint, rebase)?;
+        let (stored, settled) = settled_by_stored(
+            &transaction,
+            project_id,
+            request,
+            buffer_fingerprint,
+            rebase,
+        )?;
         if let Some(ack) = settled {
             return Ok(ack);
         }
