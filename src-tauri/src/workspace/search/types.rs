@@ -43,6 +43,9 @@ pub struct WorkspaceSearchRequest {
     pub case_sensitive: bool,
     #[serde(default)]
     pub whole_word: bool,
+    /// The query is a regular expression.
+    #[serde(default)]
+    pub use_regex: bool,
     #[serde(default)]
     pub include_patterns: Vec<String>,
     #[serde(default)]
@@ -148,6 +151,10 @@ struct ContinuationToken {
     case_sensitive: u8,
     #[serde(rename = "w", default)]
     whole_word: u8,
+    /// Written only for a regular-expression search, so other tokens are
+    /// as they were.
+    #[serde(rename = "x", default, skip_serializing_if = "is_zero")]
+    use_regex: u8,
     #[serde(rename = "f")]
     filter_hash: String,
     #[serde(rename = "q")]
@@ -179,6 +186,7 @@ fn read_continuation_token(value: &str) -> AppResult<ContinuationToken> {
     if token.version != 1
         || !matches!(token.case_sensitive, 0 | 1)
         || !matches!(token.whole_word, 0 | 1)
+        || !matches!(token.use_regex, 0 | 1)
         || !valid_sha256(&token.filter_hash)
         || !valid_sha256(&token.query_hash)
         || !valid_token_identifier(&token.root_id)
@@ -201,6 +209,7 @@ pub fn validate_continuation_stamp(
         || token.transition_epoch != request.expected_transition_epoch
         || token.case_sensitive != u8::from(request.case_sensitive)
         || token.whole_word != u8::from(request.whole_word)
+        || token.use_regex != u8::from(request.use_regex)
         || token.filter_hash != search_filter_hash(request)
         || token.query_hash != search_query_hash(query)
     {
@@ -220,6 +229,7 @@ pub fn encode_continuation_token(
         transition_epoch: request.expected_transition_epoch,
         case_sensitive: u8::from(request.case_sensitive),
         whole_word: u8::from(request.whole_word),
+        use_regex: u8::from(request.use_regex),
         filter_hash: search_filter_hash(request),
         query_hash: search_query_hash(query),
         root_id: cursor.root_id.clone(),
@@ -229,6 +239,10 @@ pub fn encode_continuation_token(
     })
     .expect("continuation token serialization is infallible");
     (encoded.len() <= MAX_CONTINUATION_TOKEN_BYTES).then_some(encoded)
+}
+
+fn is_zero(value: &u8) -> bool {
+    *value == 0
 }
 
 fn continuation_cursor(token: ContinuationToken) -> ContinuationCursor {

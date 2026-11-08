@@ -1,0 +1,154 @@
+/* Replace in the Search panel. Loaded with the panel, never at startup. */
+
+.workspace-replace__file-group {
+  position: relative;
+}
+
+.workspace-replace__action {
+  display: inline-grid;
+  width: var(--editor-list-row-height);
+  height: var(--editor-list-row-height);
+  flex: none;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.workspace-replace__action:hover,
+.workspace-replace__action:focus-visible {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.workspace-replace__action:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* The file-level action sits at the right end of the file heading, which
+   leaves it room so the path and count stay clear of it. */
+.workspace-replace__file-group > .workspace-search__file-heading {
+  padding-right: var(--editor-list-row-height);
+}
+
+.workspace-search__file-heading + .workspace-replace__action {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.workspace-replace__match {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.workspace-replace__report {
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-accent);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+}
+
+.workspace-replace__report p,
+.workspace-replace__report ul {
+  margin: 0;
+}
+
+.workspace-replace__report ul {
+  padding-left: var(--space-4);
+  color: var(--color-text-muted);
+}
+
+.workspace-replace-dialog {
+  width: min(640px, calc(100vw - 32px));
+}
+
+.workspace-replace-dialog__changes {
+  display: grid;
+  max-height: min(50vh, 420px);
+  margin-top: var(--space-3);
+  gap: var(--space-3);
+  overflow-y: auto;
+}
+
+.workspace-replace-dialog__changes h3 {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+}
+
+.workspace-replace-dialog__changes h3 > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-replace-dialog__changes h3 > span:last-child {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.workspace-replace-dialog__changes ol {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 2px;
+  list-style: none;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+}
+
+.workspace-replace-dialog__changes li {
+  display: grid;
+  grid-template-columns: 4ch minmax(0, 1fr);
+  column-gap: var(--space-2);
+}
+
+.workspace-replace-dialog__line {
+  grid-row: span 2;
+  color: var(--color-text-muted);
+  text-align: right;
+}
+
+.workspace-replace-dialog__changes del,
+.workspace-replace-dialog__changes ins {
+  overflow: hidden;
+  padding: 0 var(--space-1);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.workspace-replace-dialog__changes del {
+  color: var(--color-text-secondary);
+  background: var(--color-danger-muted);
+}
+
+.workspace-replace-dialog__changes ins {
+  color: var(--color-text-primary);
+  background: var(--color-success-muted);
+}
+
+.workspace-replace-dialog__more,
+.workspace-replace-dialog__notice {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+ul.workspace-replace-dialog__notice {
+  padding-left: var(--space-4);
+}

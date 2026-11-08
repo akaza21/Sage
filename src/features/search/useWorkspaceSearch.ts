@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -24,6 +25,7 @@ export interface WorkspaceSearchState {
   query: string;
   caseSensitive: boolean;
   wholeWord: boolean;
+  useRegex: boolean;
   includePatternText: string;
   excludePatternText: string;
   response: WorkspaceSearchResponse | null;
@@ -43,6 +45,7 @@ const initialState = (): WorkspaceSearchState => ({
   query: "",
   caseSensitive: false,
   wholeWord: false,
+  useRegex: false,
   includePatternText: "",
   excludePatternText: "",
   response: null,
@@ -204,24 +207,17 @@ export function useWorkspaceSearch({
     },
     [retireCriteria],
   );
-  const setQuery = useCallback(
-    (query: string) => setCriterion("query", query),
-    [setCriterion],
-  );
-  const setCaseSensitive = useCallback(
-    (caseSensitive: boolean) => setCriterion("caseSensitive", caseSensitive),
-    [setCriterion],
-  );
-  const setWholeWord = useCallback(
-    (wholeWord: boolean) => setCriterion("wholeWord", wholeWord),
-    [setCriterion],
-  );
-  const setIncludePatternText = useCallback(
-    (text: string) => setCriterion("includePatternText", text),
-    [setCriterion],
-  );
-  const setExcludePatternText = useCallback(
-    (text: string) => setCriterion("excludePatternText", text),
+  const setters = useMemo(
+    () => ({
+      setQuery: (query: string) => setCriterion("query", query),
+      setCaseSensitive: (on: boolean) => setCriterion("caseSensitive", on),
+      setWholeWord: (on: boolean) => setCriterion("wholeWord", on),
+      setUseRegex: (on: boolean) => setCriterion("useRegex", on),
+      setIncludePatternText: (text: string) =>
+        setCriterion("includePatternText", text),
+      setExcludePatternText: (text: string) =>
+        setCriterion("excludePatternText", text),
+    }),
     [setCriterion],
   );
 
@@ -276,6 +272,7 @@ export function useWorkspaceSearch({
           query,
           caseSensitive: state.caseSensitive,
           wholeWord: state.wholeWord,
+          ...(state.useRegex ? { useRegex: true } : {}),
           ...searchFilters(state.includePatternText, state.excludePatternText),
           ...searchSettingFields(useIgnoreFiles, filesExclude),
         },
@@ -325,6 +322,7 @@ export function useWorkspaceSearch({
     projectId,
     state.caseSensitive,
     state.wholeWord,
+    state.useRegex,
     state.includePatternText,
     state.excludePatternText,
     useIgnoreFiles,
@@ -362,6 +360,7 @@ export function useWorkspaceSearch({
           query,
           caseSensitive: state.caseSensitive,
           wholeWord: state.wholeWord,
+          ...(state.useRegex ? { useRegex: true } : {}),
           ...searchFilters(state.includePatternText, state.excludePatternText),
           ...searchSettingFields(useIgnoreFiles, filesExclude),
         },
@@ -413,6 +412,7 @@ export function useWorkspaceSearch({
     projectId,
     state.caseSensitive,
     state.wholeWord,
+    state.useRegex,
     state.includePatternText,
     state.excludePatternText,
     useIgnoreFiles,
@@ -443,11 +443,7 @@ export function useWorkspaceSearch({
 
   return {
     state,
-    setQuery,
-    setCaseSensitive,
-    setWholeWord,
-    setIncludePatternText,
-    setExcludePatternText,
+    ...setters,
     submit,
     continueSearch,
     cancel,

@@ -14,6 +14,8 @@ interface ContinuationToken {
   e: number;
   c: 0 | 1;
   w: 0 | 1;
+  /** Present, as 1, only for a regular-expression search. */
+  x?: 1;
   f: string;
   q: string;
   r: string;
@@ -84,9 +86,11 @@ function readContinuationToken(value: string): ContinuationToken | null {
     "l",
     "o",
   ];
+  const regex = Object.hasOwn(token, "x");
   if (
-    Object.keys(token).length !== expectedKeys.length ||
-    !expectedKeys.every((key) => Object.hasOwn(token, key))
+    Object.keys(token).length !== expectedKeys.length + (regex ? 1 : 0) ||
+    !expectedKeys.every((key) => Object.hasOwn(token, key)) ||
+    (regex && token.x !== 1)
   ) {
     return null;
   }
@@ -123,6 +127,7 @@ export function assertWorkspaceSearchContinuationMatchesRequest(
     expectedTransitionEpoch: number;
     caseSensitive: boolean;
     wholeWord: boolean;
+    useRegex?: boolean;
   },
 ): void {
   const parsed = readContinuationToken(token);
@@ -133,7 +138,8 @@ export function assertWorkspaceSearchContinuationMatchesRequest(
     parsed.g !== request.indexGeneration ||
     parsed.e !== request.expectedTransitionEpoch ||
     parsed.c !== (request.caseSensitive ? 1 : 0) ||
-    parsed.w !== (request.wholeWord ? 1 : 0)
+    parsed.w !== (request.wholeWord ? 1 : 0) ||
+    (parsed.x === 1) !== (request.useRegex === true)
   ) {
     throw new Error("workspace Search continuation is stale");
   }

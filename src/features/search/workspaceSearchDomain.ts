@@ -38,6 +38,8 @@ export interface WorkspaceSearchRequest {
   query: string;
   caseSensitive: boolean;
   wholeWord: boolean;
+  /** The query is a regular expression; sent only when true. */
+  useRegex?: boolean;
   includePatterns: string[];
   excludePatterns: string[];
   /** `search.useIgnoreFiles`; the native default is true. */
@@ -223,6 +225,11 @@ export function validateWorkspaceSearchRequest(
   }
   if (typeof request.wholeWord !== "boolean") {
     throw new Error("workspace Search whole-word mode must be a boolean");
+  }
+  if (request.useRegex !== undefined && typeof request.useRegex !== "boolean") {
+    throw new Error(
+      "workspace Search regular-expression mode must be a boolean",
+    );
   }
   if (
     request.useIgnoreFiles !== undefined &&
