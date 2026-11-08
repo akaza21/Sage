@@ -108,6 +108,7 @@ impl PiTranslator {
                 None => return Ok(vec![AdapterOutput::DialogCancelled { external_id: id }]),
             }
         };
+        let expired = self.pending_ui.take().map(|pending| pending.id);
         self.remember_pending_ui(PendingUiRequest {
             id: id.clone(),
             method: method.to_owned(),
@@ -117,7 +118,11 @@ impl PiTranslator {
                 .get("timeout")
                 .is_some_and(|timeout| !timeout.is_null()),
         });
-        Ok(vec![AdapterOutput::PermissionRequested { external_id: id }])
+        let requested = AdapterOutput::PermissionRequested { external_id: id };
+        Ok(match expired {
+            Some(external_id) => vec![AdapterOutput::DialogExpired { external_id }, requested],
+            None => vec![requested],
+        })
     }
 }
 

@@ -185,6 +185,8 @@ impl PiTranslator {
         match turn.lifecycle.settle(incoming)? {
             None => Ok(vec![AdapterOutput::DuplicateIgnored]),
             Some(settled) => {
+                // A card left open is gone with its turn.
+                self.pending_ui = None;
                 // Sage's policy abort is not the user's stop.
                 let incoming = if denied {
                     TerminalOutcome::Interrupted

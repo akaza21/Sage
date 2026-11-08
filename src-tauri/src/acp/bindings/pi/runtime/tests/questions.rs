@@ -4,6 +4,7 @@ use crate::acp::{
         PermissionOptionKind,
         user_input::{UserInputAnswers, UserInputKind, UserInputRequest},
     },
+    lifecycle::ServerRequestState,
     runtime::permissions::PermissionDecision,
 };
 
@@ -194,6 +195,60 @@ fn a_second_dialog_waits_out_the_open_card_and_the_first_still_answers() {
         answers(json!([{"questionId":"answer","text":"Ada"}])),
     );
     assert_eq!(deliver(&mut runtime, reply)["value"], "Ada");
+}
+
+#[test]
+fn a_timed_question_pi_dropped_gives_way_to_the_next_dialog() {
+    let mut runtime = fixture_runtime(85);
+    ready(&mut runtime);
+    running(&mut runtime);
+    ask(
+        &mut runtime,
+        json!({"type":"extension_ui_request","id":"timed","method":"input","title":"Name?","timeout":1}),
+    );
+    let batch = runtime
+        .ingest(
+            &frame(json!({"type":"extension_ui_request","id":"next","method":"input","title":"Other?"})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(batch.events(), [
+        AdapterEvent::PermissionResolved { external_request_id: expired, state: ServerRequestState::Cancelled, .. },
+        AdapterEvent::PermissionRequest { external_request_id, .. },
+    ] if expired.as_str() == "timed" && external_request_id.as_str() == "next"));
+    assert!(batch.egress().is_empty());
+    let reply = resolve(
+        &mut runtime,
+        "next",
+        answers(json!([{"questionId":"answer","text":"Ada"}])),
+    );
+    assert_eq!(deliver(&mut runtime, reply)["value"], "Ada");
+}
+
+#[test]
+fn a_card_left_open_when_the_turn_stops_does_not_block_the_next_turn() {
+    let mut runtime = fixture_runtime(86);
+    ready(&mut runtime);
+    running(&mut runtime);
+    ask(
+        &mut runtime,
+        json!({"type":"extension_ui_request","id":"left-open","method":"input","title":"Name?"}),
+    );
+    let abort = runtime.command(AdapterCommand::Cancel).unwrap();
+    let abort = deliver(&mut runtime, abort);
+    runtime
+        .ingest(&response(&abort, Value::Null), &Mapper)
+        .unwrap();
+    for event in ["agent_end", "agent_settled"] {
+        runtime
+            .ingest(&frame(json!({"type":event,"messages":[]})), &Mapper)
+            .unwrap();
+    }
+    running(&mut runtime);
+    ask(
+        &mut runtime,
+        json!({"type":"extension_ui_request","id":"next-turn","method":"input","title":"Name?"}),
+    );
 }
 
 #[test]

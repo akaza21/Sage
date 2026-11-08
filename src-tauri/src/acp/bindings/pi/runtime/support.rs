@@ -373,6 +373,7 @@ impl PiRuntime {
                 self.block_authority(external_id, tool, resources)?
             }
             AdapterOutput::DialogCancelled { external_id } => self.cancel_dialog(external_id)?,
+            AdapterOutput::DialogExpired { external_id } => self.expire_dialog(external_id)?,
             AdapterOutput::Image { media_type, data } => {
                 (Some(self.image_event(media_type, data)?), None)
             }

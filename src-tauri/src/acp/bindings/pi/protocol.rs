@@ -176,6 +176,10 @@ pub enum AdapterOutput {
     DialogCancelled {
         external_id: String,
     },
+    /// A dialog Pi timed out on its own, replaced by a newer one.
+    DialogExpired {
+        external_id: String,
+    },
     AuthorityBlocked {
         external_id: String,
         tool: String,

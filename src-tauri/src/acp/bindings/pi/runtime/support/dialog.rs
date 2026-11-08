@@ -4,7 +4,7 @@ use crate::acp::{
     },
     contract::SafeText,
     intent::NormalizedPayload,
-    lifecycle::ItemLifecycle,
+    lifecycle::{ItemLifecycle, ServerRequestState},
     limits::LIMITS,
     transport::OutboundFrame,
 };
@@ -84,6 +84,26 @@ impl PiRuntime {
                 EgressToken::permission_cancel(external),
             )),
         ))
+    }
+
+    /// Pi dropped a timed dialog without a word; its card goes too.
+    pub(super) fn expire_dialog(
+        &mut self,
+        id: String,
+    ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
+        if self
+            .deny
+            .as_ref()
+            .is_some_and(|deny| deny.request_id.as_str() == id && deny.stage == DenyStage::Prepared)
+        {
+            self.deny = None;
+        }
+        let resolved = AdapterEvent::PermissionResolved {
+            turn_id: self.turn_identity()?,
+            external_request_id: super::identity::external("piPermissionId", id)?,
+            state: ServerRequestState::Cancelled,
+        };
+        Ok((Some(resolved), None))
     }
 
     pub(in crate::acp::bindings::pi::runtime) fn commit_dialog_cancel(
