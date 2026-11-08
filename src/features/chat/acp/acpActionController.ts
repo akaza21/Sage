@@ -56,6 +56,7 @@ export interface AcpActionCommands {
   endSession: typeof acpDesktop.endSession;
   setSessionMode?: typeof acpDesktop.setSessionMode;
   setSessionConfigOption?: typeof acpDesktop.setSessionConfigOption;
+  queueSessionConfigChoice?: typeof acpDesktop.queueSessionConfigChoice;
 }
 
 interface AcpActionDependencies {
@@ -394,6 +395,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       endSession: commands.endSession,
       setSessionMode: commands.setSessionMode,
       setSessionConfigOption: commands.setSessionConfigOption,
+      queueSessionConfigChoice: commands.queueSessionConfigChoice,
     });
 
   return {

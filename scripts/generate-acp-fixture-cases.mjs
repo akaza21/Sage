@@ -1,4 +1,5 @@
 import { nativeCases } from "./acp-native-cases.mjs";
+import { emit, events, wait } from "./acp-native-case-events.mjs";
 import {
   piBridgeJourneys,
   piIdleConfigJourney,
@@ -277,6 +278,50 @@ const journeyCases = [
     ],
   },
 ];
+// Session config across an app restart. Each launch of the fixture opens the
+// session (new the first time, resumed after a restart) in the adapter's
+// default model, effort and mode, and answers every model, effort and mode
+// change, so a restart shows whether Sage reapplies the chosen ones. One
+// prompt per launch; the Claude one asks permission for its tool call.
+journeyCases.push(
+  {
+    id: "claude-config-resume",
+    steps: [
+      wait("acpInitialize"),
+      emit("acpInitializeConfig"),
+      wait("acpOpen"),
+      emit("acpSession"),
+      wait("acpPrompt"),
+      ...events("claude", "approval-approved"),
+      emit("acpCompleted"),
+      wait("acpClose"),
+      emit("acpAck"),
+    ],
+  },
+  {
+    id: "codex-config-resume",
+    steps: [
+      wait("codexInitialize"),
+      emit("codexInitializeResult0146"),
+      wait("codexStartOrResume"),
+      // The thread runs the model it was opened or resumed with, at the
+      // Medium default effort; naming them makes Sage read the catalogue
+      // next, which offers a second model and Low, Medium and High.
+      emit("codexThreadConfigResult"),
+      wait("codexModelList"),
+      emit("codexModelListConfigResult"),
+      wait("codexGoalGet"),
+      emit("codexGoalMethodNotFound"),
+      wait("codexTurnStart"),
+      emit("codexTurnResult"),
+      emit("codexStarted"),
+      emit("codexDelta"),
+      emit("codexCompleted"),
+      wait("codexUnsubscribe"),
+      emit("codexAck"),
+    ],
+  },
+);
 journeyCases.push(longTranscriptJourney());
 journeyCases.push(...nativeCases());
 journeyCases.push(piIdleConfigJourney(), ...piBridgeJourneys());

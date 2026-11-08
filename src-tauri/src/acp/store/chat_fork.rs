@@ -205,6 +205,9 @@ pub(crate) fn install_fork(
         params![project, child, session_id.as_str()],
     )?;
     increment_session_usage(transaction, project)?;
+    // The fork continues the parent's session, so it keeps the parent's
+    // confirmed config choices.
+    crate::acp::session_config::choices::copy(transaction, &source.session_id, &session_id)?;
     transaction.execute(
         "INSERT INTO chat_session_heads(project_id,chat_id,session_id,installed_revision,installed_at)
          VALUES(?1,?2,?3,?4,?5)",

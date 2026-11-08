@@ -1,7 +1,11 @@
 import type { AttachedContext } from "./attachedContext";
 import type { AcpImagePayload } from "./acpImage";
 import type { AcpGoalState } from "./acpGoal";
-import type { AcpSessionConfig } from "./acpSessionConfig";
+import type {
+  AcpRestoredSessionConfig,
+  AcpSessionConfig,
+  AcpSessionConfigNotice,
+} from "./acpSessionConfig";
 import type { BrowserOperationProjection } from "./browserOperation";
 import type { FilePairMetadata } from "./agentDiff";
 import type { UserInputRequest } from "./acpPermission";
@@ -276,6 +280,10 @@ export interface AgentSessionProjection {
 
 export interface AcpChatPage {
   sessionConfig?: AcpSessionConfig | null;
+  /** The current session's restored config while it has no live one. */
+  restoredSessionConfig?: AcpRestoredSessionConfig | null;
+  /** A stored choice the current session could not take back. */
+  sessionConfigNotice?: AcpSessionConfigNotice | null;
   goal?: AcpGoalState;
   projectId: SageProjectId;
   chatId: SageChatId;

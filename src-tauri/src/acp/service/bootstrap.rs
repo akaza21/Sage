@@ -81,7 +81,7 @@ impl AcpService {
             configuration.registry.codex_admission().clone(),
             Arc::clone(&codex_gate),
         );
-        Ok(Self {
+        let service = Self {
             file_stages: Arc::new(std::sync::Mutex::new(Default::default())),
             file_stage_reader: Arc::new(tokio::sync::Mutex::new(())),
             read_text_files: super::ReadTextFileService::new(database.clone()),
@@ -115,7 +115,14 @@ impl AcpService {
             last_cancel_stage: std::sync::Mutex::new("none"),
             #[cfg(test)]
             runtime_port_finish_park_failure: std::sync::Mutex::new(false),
-        })
+        };
+        let recorder = service.session_config_recorder();
+        let snapshot = service.session_config_snapshot_recorder();
+        for lane in service.lanes() {
+            lane.runtime.config.set_recorder(recorder.clone());
+            lane.runtime.config.set_snapshot_recorder(snapshot.clone());
+        }
+        Ok(service)
     }
 }
 

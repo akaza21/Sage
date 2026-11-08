@@ -80,6 +80,7 @@ mod renderer_recreation_packet;
 pub(crate) mod runtime_identity;
 mod runtime_slot;
 mod session_config;
+pub(crate) use session_config::QueueError;
 mod session_error;
 mod slash_commands;
 pub(crate) use session_error::{CodexSessionError, SessionDispatchError};
@@ -368,8 +369,25 @@ impl AcpService {
         chat_id: SageChatId,
         cursor: Option<PageCursor>,
     ) -> Result<AcpChatPage, StoreError> {
-        let mut page = load_chat_page(&self.database.connection(), project_id, chat_id, cursor)?;
+        let mut page = load_chat_page(
+            &self.database.connection(),
+            project_id.clone(),
+            chat_id.clone(),
+            cursor.clone(),
+        )?;
         self.compose_session_config(&mut page)?;
+        // History yields room for the session config that does not fit.
+        if let Some(reserve) = session_config::config_reserve(&mut page)? {
+            page = crate::acp::store::load_chat_page_reserving(
+                &self.database.connection(),
+                project_id,
+                chat_id,
+                cursor,
+                reserve,
+            )?;
+            self.compose_session_config(&mut page)?;
+        }
+        self.fit_session_config_to_page_budget(&mut page)?;
         self.compose_goal(&mut page);
         self.fit_goal_to_page_budget(&mut page)?;
         Ok(page)

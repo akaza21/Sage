@@ -120,9 +120,16 @@ impl BindingRegistry {
     pub(crate) fn desktop_codex_fixture(
         selection: crate::launch_profile::CodexFixtureSelection,
     ) -> Result<Self, CodexAdmissionUnavailable> {
+        // A case whose session runs the model it is opened with offers its
+        // catalogue through the same discovery a real Codex account uses.
+        let offers_models = crate::acp::fixture::native_case_offers_models(&selection.case);
         let codex = CodexBindingRegistration::desktop_fixture(selection)?;
         let mut registry = Self::new(codex, ClaudeBindingRegistration::fixture_disabled());
-        registry.codex.model_provider = ModelProvider::NoAccountModels;
+        registry.codex.model_provider = if offers_models {
+            ModelProvider::CodexAccount
+        } else {
+            ModelProvider::NoAccountModels
+        };
         registry.codex.auth_provider = AuthProvider::None;
         registry.isolate_fixture_records(registry.codex.harness_id);
         Ok(registry)

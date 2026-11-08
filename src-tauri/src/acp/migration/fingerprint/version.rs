@@ -25,6 +25,7 @@ pub(super) fn class_for_version(version: u32) -> AppResult<SchemaClass> {
         20 => SchemaClass::CurrentV20,
         21 => SchemaClass::CurrentV21,
         22 => SchemaClass::CurrentV22,
+        23 => SchemaClass::CurrentV23,
         _ => return invalid("Sage schema version is above the supported maximum"),
     })
 }

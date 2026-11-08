@@ -143,6 +143,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         commands::acp::session_access::chat::prepare_chat_access,
         commands::acp::session_access::chat::grant_chat_access,
         commands::acp::session_config::set_acp_session_config_option,
+        commands::acp::session_config::queue_acp_session_config_choice,
         commands::acp::goal::pause_existing_goal,
         commands::acp::goal::clear_existing_goal,
         commands::acp::permission::resolve_permission_decision,

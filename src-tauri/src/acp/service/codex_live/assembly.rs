@@ -20,6 +20,12 @@ impl Lane<'_> {
         self.runtime
             .reserve_start(prepared.owner.clone())
             .map_err(map_slot_error)?;
+        if matches!(
+            prepared.intent.mode,
+            crate::acp::runtime::ActivationMode::New { .. }
+        ) {
+            self.runtime.config.mark_new_session(&prepared.owner);
+        }
         let mut spec = match prepared.runtime.launch_spec() {
             Ok(spec) => spec,
             Err(_) => {

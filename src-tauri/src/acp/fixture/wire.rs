@@ -57,6 +57,9 @@ pub(super) struct WireState {
     pending_user_input: Option<u64>,
     user_input_echo: Option<String>,
     pi: pi::PiWireState,
+    acp_config: Option<acp::AcpConfig>,
+    /// The model the client opened or resumed the Codex thread with.
+    codex_thread_model: Option<String>,
 }
 
 impl WireState {
@@ -73,6 +76,8 @@ impl WireState {
             pending_user_input: None,
             user_input_echo: None,
             pi: pi::PiWireState::new(),
+            acp_config: None,
+            codex_thread_model: None,
         }
     }
 
@@ -161,6 +166,9 @@ fn await_client_kind(
     let expected_method = match kind {
         "codexInitialize" => Some("initialize"),
         "codexStart" => Some("thread/start"),
+        // A journey that runs across an app restart: a new thread first,
+        // the same thread resumed after.
+        "codexStartOrResume" => Some("thread/start|thread/resume"),
         "codexResume" => Some("thread/resume"),
         "codexModelList" => Some("model/list"),
         "codexGoalGet" => Some("thread/goal/get"),
@@ -204,6 +212,17 @@ fn await_client(
             return Err(FixtureError::ExpandedLimit);
         }
     }
+}
+
+/// The frame a Codex journey step named `shape` answers request `id` with,
+/// outside a running journey.
+#[cfg(any(test, all(windows, debug_assertions)))]
+pub(super) fn codex_reply(shape: &str, id: u64) -> Option<Value> {
+    let mut state = WireState::new();
+    state.last_request_id = Some(id);
+    let mut output = Vec::new();
+    codex::emit_known(shape, &Value::Null, &mut state, &mut output).ok()?;
+    serde_json::from_slice(&output).ok()
 }
 
 fn emit_known(

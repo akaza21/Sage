@@ -18,6 +18,12 @@ pub const COMMAND_RESOURCE_LIMIT: usize = 64;
 pub const ATTACHED_CONTEXT_LIMIT: usize = 8;
 /// One attached user note is capped at one quarter of the WebView composer budget.
 pub const ATTACHED_CONTEXT_NOTE_BYTES: usize = 4 * 1024;
+/// Stored session config choices per agent session: one per config option a
+/// session may advertise (`models_or_config_entries`) plus its mode.
+pub(crate) const SESSION_CONFIG_CHOICES_PER_SESSION: usize = 129;
+/// Serialized bytes of one stored session config choice; the schema enforces
+/// the same cap.
+pub(crate) const SESSION_CONFIG_CHOICE_BYTES: usize = 8_192;
 /// A one-byte sensitive token may expand to this replacement in command output.
 pub(crate) const COMMAND_OUTPUT_REDACTION_BYTES: usize = "[redacted]".len();
 

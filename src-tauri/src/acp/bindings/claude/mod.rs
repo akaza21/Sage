@@ -35,6 +35,8 @@ pub(crate) use manifest::{
 };
 pub(crate) use runtime::ClaudeRuntimeFactory;
 #[cfg(test)]
+pub(crate) use runtime::InMemoryClaude;
+#[cfg(test)]
 pub(crate) use translator::TranslationError;
 pub(crate) use translator::{
     AdapterEvent, PromptTerminal, ResourceMapper, StandardAcpTranslator as ClaudeTranslator,

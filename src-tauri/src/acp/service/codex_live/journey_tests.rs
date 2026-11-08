@@ -1103,6 +1103,10 @@ fn assert_completed_turns(setup: &FixtureSetup, owner: &RuntimeOwner, expected: 
     }
 }
 
+#[cfg(all(feature = "acp-fixture", debug_assertions))]
+#[path = "journey_tests/config_restart_tests.rs"]
+mod config_restart_tests;
+
 #[cfg(windows)]
 #[path = "journey_shutdown_tests.rs"]
 mod journey_shutdown_tests;

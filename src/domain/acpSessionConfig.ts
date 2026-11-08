@@ -48,6 +48,36 @@ export interface AcpSessionConfig {
   confirmedEffort?: string;
   modes: AcpSessionModes | null;
   configOptions: AcpConfigOption[];
+  /**
+   * Set only on the composer's view of a restored config (see
+   * `restoredSessionConfigView`), to the note its controls carry: it has no
+   * runtime epoch or revision of its own, and a choice on it is stored for
+   * the session to apply.
+   */
+  restored?: string;
+  /** What the composer says about a stored choice the session could not
+   * take back, such as a saved model it no longer offers. */
+  notice?: string;
+}
+/**
+ * A session's config while it has no live one: what it last reported, with
+ * its stored choices as the current values. A choice made on it is stored
+ * and applied before the session's next prompt: on resume when it has no
+ * runtime (`resume`), or once its live runtime reports (`report`).
+ */
+export type AcpRestoredSessionConfig = Omit<
+  AcpSessionConfig,
+  "runtimeEpoch" | "configRevision" | "removed" | "restored" | "notice"
+> & { awaiting: "resume" | "report" };
+/**
+ * A stored choice the session could not take back: the saved value of
+ * `configId`, the value the session uses instead, and why.
+ */
+export interface AcpSessionConfigNotice {
+  configId: string;
+  saved: string;
+  current: string;
+  reason: "notOffered" | "rejected";
 }
 export interface AcpSessionConfigChangedV1 {
   schemaVersion: 1;
@@ -271,5 +301,55 @@ export function decodeSessionConfigNotice(
     sageAgentSessionId: v.sageAgentSessionId,
     runtimeEpoch: v.runtimeEpoch,
     configRevision: v.configRevision,
+  };
+}
+export function decodeRestoredSessionConfig(
+  v: unknown,
+): AcpRestoredSessionConfig | null {
+  if (
+    !object(v) ||
+    "runtimeEpoch" in v ||
+    "configRevision" in v ||
+    (v.awaiting !== "resume" && v.awaiting !== "report")
+  )
+    return null;
+  const awaiting = v.awaiting;
+  const decoded = decodeSessionConfig({
+    ...v,
+    runtimeEpoch: "0",
+    configRevision: "1",
+  });
+  if (!decoded || decoded.removed) return null;
+  const { sageAgentSessionId, modes, configOptions } = decoded;
+  return {
+    sageAgentSessionId,
+    awaiting,
+    modes,
+    configOptions,
+    ...(decoded.confirmedModel
+      ? { confirmedModel: decoded.confirmedModel }
+      : {}),
+    ...(decoded.confirmedEffort === undefined
+      ? {}
+      : { confirmedEffort: decoded.confirmedEffort }),
+  };
+}
+export function decodeSavedChoiceNotice(
+  v: unknown,
+): AcpSessionConfigNotice | null {
+  if (
+    !object(v) ||
+    Object.keys(v).length !== 4 ||
+    !text(v.configId) ||
+    !text(v.saved) ||
+    !text(v.current) ||
+    (v.reason !== "notOffered" && v.reason !== "rejected")
+  )
+    return null;
+  return {
+    configId: v.configId,
+    saved: v.saved,
+    current: v.current,
+    reason: v.reason,
   };
 }

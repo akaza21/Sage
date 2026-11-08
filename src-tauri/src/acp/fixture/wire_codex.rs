@@ -9,6 +9,8 @@ use super::super::interpreter::{field_str, field_u64};
 use super::{WireState, acp, user_input, write_stdout};
 
 const THREAD_ID: &str = "fixture-persisted-session-1";
+/// The restart journey's catalogue: its default model, then a second one.
+const CONFIG_MODELS: [&str; 2] = ["fixture-model", "fixture-model-deep"];
 /// The session a native capture's fork creates (Codex `thread/fork` per the
 /// pinned 0.146 schema; Claude `session/fork` per claude-agent-acp 0.76.0).
 pub(super) const FORK_THREAD_ID: &str = "fixture-fork-session-1";
@@ -52,7 +54,7 @@ fn await_request_inner(
             .get("method")
             .and_then(Value::as_str)
             .ok_or(FixtureError::InvalidArguments)?;
-        if object.get("id").is_none() && expected_method != method {
+        if object.get("id").is_none() && !expected(expected_method, method) {
             continue;
         }
         if method == "thread/read" {
@@ -78,11 +80,17 @@ fn await_request_inner(
                 continue;
             }
         }
-        if method != expected_method {
+        if !expected(expected_method, method) {
             return Err(FixtureError::InvalidArguments);
         }
         if let Some(id) = object.get("id").and_then(Value::as_u64) {
             state.last_request_id = Some(id);
+            if matches!(method, "thread/start" | "thread/resume") {
+                state.codex_thread_model = request
+                    .pointer("/params/model")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+            }
             return Ok(());
         }
         if expected_method == "initialized" {
@@ -91,6 +99,11 @@ fn await_request_inner(
         return Err(FixtureError::InvalidArguments);
     }
     Err(FixtureError::ExpandedLimit)
+}
+
+/// `expected` names one method, or alternatives separated by `|`.
+fn expected(expected: &str, method: &str) -> bool {
+    expected.split('|').any(|candidate| candidate == method)
 }
 
 fn emit_child_read(
@@ -160,25 +173,48 @@ pub(super) fn emit_response(
             "thread":{"id": THREAD_ID},
             "model":"fixture-model-fast","reasoningEffort":"high"
         }),
-        "models" | "effortModels" => {
+        // A restart journey's thread runs the model it was opened or resumed
+        // with, at the catalogue's default effort, as Codex reports it.
+        "configThread" => json!({
+            "thread":{"id": THREAD_ID},
+            "model": state.codex_thread_model.as_deref()
+                .filter(|model| CONFIG_MODELS.contains(model)).unwrap_or(CONFIG_MODELS[0]),
+            "reasoningEffort":"medium"
+        }),
+        "models" | "effortModels" | "configModels" => {
             let mut catalog = json!({"data":[{
             "id":"fixture-model","model":"fixture-model","displayName":"Synthetic replay",
             "description":"Synthetic native replay model","isDefault":true,"hidden":false,
             "supportedReasoningEfforts":[]
         }],"nextCursor":null});
-            if shape == "effortModels" {
+            if shape != "models" {
                 catalog["data"][0]["defaultReasoningEffort"] = json!("medium");
                 catalog["data"][0]["supportedReasoningEfforts"] = json!([
                     {"reasoningEffort":"low","description":"Quick synthetic replay"},
                     {"reasoningEffort":"medium","description":"Balanced synthetic replay"},
                     {"reasoningEffort":"high","description":"Thorough synthetic replay"}
                 ]);
+                if shape == "configModels" {
+                    // Every field a Codex 0.146 `model/list` entry carries, as
+                    // account discovery requires.
+                    let full = json!({"upgrade":null,"upgradeInfo":null,"availabilityNux":null,"inputModalities":["text"],"supportsPersonality":false,"additionalSpeedTiers":[],"serviceTiers":[],"defaultServiceTier":null});
+                    catalog["data"][0]
+                        .as_object_mut()
+                        .unwrap()
+                        .extend(full.as_object().unwrap().clone());
+                }
                 let mut alternate = catalog["data"][0].clone();
                 alternate["id"] = json!("fixture-model-fast");
                 alternate["model"] = json!("fixture-model-fast");
                 alternate["displayName"] = json!("Synthetic replay fast");
                 alternate["isDefault"] = json!(false);
                 alternate["defaultReasoningEffort"] = json!("low");
+                if shape == "configModels" {
+                    alternate["id"] = json!(CONFIG_MODELS[1]);
+                    alternate["model"] = json!(CONFIG_MODELS[1]);
+                    alternate["displayName"] = json!("Synthetic replay deep");
+                    alternate["defaultReasoningEffort"] = json!("medium");
+                }
                 catalog["data"].as_array_mut().unwrap().push(alternate);
             }
             catalog
@@ -352,6 +388,8 @@ pub(super) fn emit_known(
         "codexThreadEffortResult" => emit_response("effortThread", state, output),
         "codexModelListResult" => emit_response("models", state, output),
         "codexModelListEffortResult" => emit_response("effortModels", state, output),
+        "codexThreadConfigResult" => emit_response("configThread", state, output),
+        "codexModelListConfigResult" => emit_response("configModels", state, output),
         "codexGoalMethodNotFound" => emit_response("goalMethodNotFound", state, output),
         "codexTurnResult" => emit_response("turn", state, output),
         "codexForkResult" => emit_response("fork", state, output),
