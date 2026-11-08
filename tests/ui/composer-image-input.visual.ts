@@ -23,7 +23,7 @@ async function pasteScreenshot(page: Page) {
   await page
     .locator("form.composer")
     .first()
-    .getByRole("textbox", { name: "Message agent" })
+    .getByRole("combobox", { name: "Message agent" })
     .evaluate(async (textbox) => {
       const canvas = document.createElement("canvas");
       canvas.width = 320;

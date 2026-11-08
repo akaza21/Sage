@@ -322,7 +322,7 @@ describe("composer image input", () => {
       imageInputAvailable: false,
       imageInputDisabledReason: "This harness does not advertise image input.",
     });
-    fireEvent.paste(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.paste(screen.getByRole("combobox", { name: "Message agent" }), {
       clipboardData: { files: [png()] },
     });
     expect(onAddImages).not.toHaveBeenCalled();
@@ -336,14 +336,14 @@ describe("composer image input", () => {
     const screenshot = new File([new Uint8Array(6 * 1024 * 1024)], "4k.png", {
       type: "image/png",
     });
-    fireEvent.paste(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.paste(screen.getByRole("combobox", { name: "Message agent" }), {
       clipboardData: { files: [screenshot, screenshot] },
     });
     expect(onAddImages).toHaveBeenCalledWith([screenshot, screenshot]);
     const huge = new File([new Uint8Array(10 * 1024 * 1024 + 1)], "huge.png", {
       type: "image/png",
     });
-    fireEvent.paste(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.paste(screen.getByRole("combobox", { name: "Message agent" }), {
       clipboardData: { files: [huge] },
     });
     expect(onAddImages).toHaveBeenCalledTimes(1);
