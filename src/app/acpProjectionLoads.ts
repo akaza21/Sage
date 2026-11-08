@@ -21,9 +21,10 @@ export function errorField(
 }
 
 /**
- * Why a loaded page must not be committed, judged by revision alone: it is
- * older than the page shown, or (for an earlier-history page) it was not cut
- * from the revision it was requested at. Null when the revision is fine.
+ * Why a loaded page must not be committed, judged by revision alone. A newest
+ * page older than the page shown is stale. An earlier-history page is
+ * anchored by its cursor rather than the live revision, so only a malformed
+ * revision rejects it: a stream moving the revision must not drop it.
  */
 export function rejectedRevision(
   shown: AcpChatPage | null,
@@ -34,21 +35,12 @@ export function rejectedRevision(
   "ignoredInvalidRevision" | "ignoredStaleRevision"
 > | null {
   const shownRevision = shown?.projectionRevision;
-  if (shownRevision) {
-    const comparison = compareDecimalRevision(
-      page.projectionRevision,
-      shownRevision,
-    );
-    if (comparison === null) return "ignoredInvalidRevision";
-    if (comparison < 0) return "ignoredStaleRevision";
-  }
-  if (intent.cursor && intent.expectedProjectionRevision) {
-    const comparison = compareDecimalRevision(
-      page.projectionRevision,
-      intent.expectedProjectionRevision,
-    );
-    if (comparison === null) return "ignoredInvalidRevision";
-    if (comparison !== 0) return "ignoredStaleRevision";
-  }
+  if (!shownRevision) return null;
+  const comparison = compareDecimalRevision(
+    page.projectionRevision,
+    shownRevision,
+  );
+  if (comparison === null) return "ignoredInvalidRevision";
+  if (comparison < 0 && !intent.cursor) return "ignoredStaleRevision";
   return null;
 }

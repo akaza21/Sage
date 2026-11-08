@@ -11,15 +11,14 @@ import type {
   AcpPageCursor,
   AcpProjectionChangedEvent,
   ProjectGeneration,
-  ProjectionRevision,
   SageChatId,
   SageProjectId,
   TurnProjection,
 } from "../domain/acp";
 import {
   compareDecimalRevision,
-  mergeProjectionPage,
-  normalizeProjectionPage,
+  mergeHistoryPage,
+  mergeNewestPage,
   retainUnchangedTurns,
 } from "./acpProjectionMerge";
 import { errorField, loadSlot, rejectedRevision } from "./acpProjectionLoads";
@@ -39,7 +38,6 @@ export interface AcpProjectionScope {
 export interface AcpPageLoadIntent extends AcpProjectionScope {
   requestSequence: number;
   cursor: AcpPageCursor | null;
-  expectedProjectionRevision: ProjectionRevision | null;
 }
 
 export type ProjectionCommitDisposition =
@@ -259,7 +257,6 @@ export function createAcpProjectionStore() {
         ...scope,
         requestSequence: sequence + 1,
         cursor,
-        expectedProjectionRevision: get().page?.projectionRevision ?? null,
       };
       set({
         [loadSlot(intent)]: intent,
@@ -287,14 +284,14 @@ export function createAcpProjectionStore() {
         return rejected;
       }
 
-      if (!sameRevisionOwner(state.page, page)) {
+      if (!intent.cursor && !sameRevisionOwner(state.page, page)) {
         set(settled);
         return "ignoredStaleIntent";
       }
       const source =
         intent.cursor && state.page
-          ? mergeProjectionPage(state.page, page)
-          : normalizeProjectionPage(page);
+          ? mergeHistoryPage(state.page, page, intent.cursor)
+          : mergeNewestPage(state.page, page);
       const retained = trimToByteLimit(preserveNewerConfig(state.page, source));
       set({
         page: retainUnchangedTurns(state.page, retained.page),
@@ -341,7 +338,7 @@ export function createAcpProjectionStore() {
       }
       if (!sameRevisionOwner(state.page, page)) return "ignoredStaleIntent";
       const retained = trimToByteLimit(
-        preserveNewerConfig(state.page, normalizeProjectionPage(page)),
+        preserveNewerConfig(state.page, mergeNewestPage(state.page, page)),
       );
       set({
         page: retainUnchangedTurns(state.page, retained.page),

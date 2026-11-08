@@ -1,5 +1,6 @@
 import type {
   AcpChatPage,
+  AcpPageCursor,
   EntityRevision,
   TurnProjection,
 } from "../domain/acp";
@@ -93,15 +94,77 @@ export function normalizeProjectionPage(page: AcpChatPage): AcpChatPage {
   return { ...page, sessions, turns };
 }
 
-export function mergeProjectionPage(
+/**
+ * Merges an earlier-history page into the page shown. A history page is
+ * anchored by its cursor, not by the live revision, so the page-level fields
+ * (revision, title, head session) stay those of the page shown and each Turn,
+ * Item and session merges by its own revision. The cursor moves back only
+ * when the page extends the oldest edge the page shown still has.
+ */
+export function mergeHistoryPage(
   current: AcpChatPage,
   incoming: AcpChatPage,
+  cursor: AcpPageCursor,
 ): AcpChatPage {
   return normalizeProjectionPage({
-    ...incoming,
-    currentSessionId: incoming.currentSessionId ?? current.currentSessionId,
+    ...current,
     sessions: mergeById(current.sessions, incoming.sessions),
     turns: mergeTurns(current.turns, incoming.turns),
+    nextCursor:
+      current.nextCursor === cursor ? incoming.nextCursor : current.nextCursor,
+  });
+}
+
+/**
+ * Lays a newest page over the page shown. Inside the newest page's window it
+ * is authoritative; earlier Turns and Items the page shown already loaded stay,
+ * with its cursor, so a refresh during a stream never drops loaded history.
+ */
+export function mergeNewestPage(
+  current: AcpChatPage | null,
+  incoming: AcpChatPage,
+): AcpChatPage {
+  const next = normalizeProjectionPage(incoming);
+  const first = next.turns[0];
+  if (
+    !current ||
+    !first ||
+    next.nextCursor === null ||
+    current.projectId !== next.projectId ||
+    current.chatId !== next.chatId
+  )
+    return next;
+  const ordinals = new Map(
+    [...current.sessions, ...next.sessions].map((s) => [s.id, s.ordinal]),
+  );
+  const position = (turn: TurnProjection) => [
+    ordinals.get(turn.sessionId) ?? Number.MAX_SAFE_INTEGER,
+    turn.ordinal,
+  ];
+  const [firstSession, firstTurn] = position(first);
+  const older = current.turns.filter((turn) => {
+    const [session, ordinal] = position(turn);
+    return (
+      session < firstSession ||
+      (session === firstSession && ordinal < firstTurn)
+    );
+  });
+  const edge = first.items[0]?.ordinal;
+  const earlierItems =
+    edge === undefined
+      ? []
+      : (current.turns
+          .find((turn) => turn.id === first.id)
+          ?.items.filter((item) => item.ordinal < edge) ?? []);
+  if (older.length === 0 && earlierItems.length === 0) return next;
+  return normalizeProjectionPage({
+    ...next,
+    nextCursor: current.nextCursor,
+    turns: [
+      ...older,
+      { ...first, items: [...earlierItems, ...first.items] },
+      ...next.turns.slice(1),
+    ],
   });
 }
 
