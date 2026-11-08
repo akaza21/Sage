@@ -32,7 +32,7 @@ const UNPROJECTED_NOTIFICATIONS: [&str; 5] = [
     "hook/started",
     "thread/realtime/started",
     "turn/diff/updated",
-    "warning",
+    "turn/moderationMetadata",
 ];
 
 struct Mapper;

@@ -175,6 +175,10 @@ pub(crate) enum IncomingEvent {
         turn_id: ScopedExternalId,
         payload: NormalizedPayload,
     },
+    Session {
+        id: ScopedExternalId,
+        event: crate::acp::intent::session_event::SessionScopedEvent,
+    },
     HostToolReply {
         bytes: Vec<u8>,
     },

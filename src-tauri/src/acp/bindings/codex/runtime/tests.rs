@@ -27,6 +27,7 @@ mod browser_mcp_tests;
 mod duplicate_terminal_probe;
 mod fork_tests;
 mod model_identity;
+mod notice_tests;
 mod saved_diff_tests;
 
 struct Mapper;
