@@ -71,6 +71,10 @@ const CODEMIRROR_LANGUAGE_DYNAMIC_FACADES = {
 } as const;
 
 const COMPOSER_MENU_DYNAMIC_FACADES = [
+  // The `@` file picker loads with the draft's first `@`.
+  "src/features/chat/ComposerMentionController.tsx",
+  // The attach flow and its file chips load with the first attach press.
+  "src/features/chat/ComposerAttach.tsx",
   "src/features/chat/ComposerAccessMenu.tsx",
   "src/features/chat/ComposerAddActions.tsx",
   "src/features/chat/ComposerEffortMenu.tsx",

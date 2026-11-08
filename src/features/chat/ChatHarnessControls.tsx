@@ -2,7 +2,7 @@ import { IconButton } from "../../ui/IconButton";
 import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 import { Plus, Settings } from "../../ui/leanIcons";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { ChatUsage } from "./acp/chatUsage";
 import { ComposerContext } from "./ComposerContext";
 
@@ -45,6 +45,8 @@ interface Props {
   contextUsage?: ChatUsage | null;
   accessBindingId?: string | null;
   imageAction?: { disabled: boolean; onChoose: () => void };
+  /** The attach button, beside the options button. */
+  attachSlot?: ReactNode;
   onOpenGoal?: () => void;
   availableBinding: boolean;
   canPrompt: boolean;
@@ -76,6 +78,7 @@ export function ChatHarnessControls({
   contextUsage,
   accessBindingId,
   imageAction,
+  attachSlot,
   onOpenGoal,
   availableBinding,
   canPrompt,
@@ -259,6 +262,7 @@ export function ChatHarnessControls({
         >
           <Plus size={16} aria-hidden="true" />
         </IconButton>
+        {attachSlot}
         {availableBinding && accessHarness?.bindingId ? (
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
