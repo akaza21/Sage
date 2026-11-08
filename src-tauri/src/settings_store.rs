@@ -30,7 +30,7 @@ pub use browser_site_permissions::{MAX_SITE_ORIGIN_BYTES, MAX_SITE_PERMISSIONS};
 pub(crate) use chat_read_marks::MAX_CHAT_READ_MARKS;
 pub use chat_read_marks::{ChatReadMark, ChatReadMarkWrite, ChatReadMarks};
 pub use custom_acp_agents::{
-    CustomAcpAgent, CustomAcpAgentDraft, MAX_CUSTOM_ACP_AGENTS, custom_acp_id, custom_acp_slot,
+    CustomAcpAgent, CustomAcpAgentDraft, MAX_CUSTOM_ACP_AGENTS, custom_acp_number,
     validate_custom_acp_agent,
 };
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};

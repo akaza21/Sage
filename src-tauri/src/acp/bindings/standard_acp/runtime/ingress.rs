@@ -94,7 +94,11 @@ impl StandardAcpRuntime {
             })
             .unwrap_or_default();
         let external_id = match self.handshake.accept_new_session(&value) {
-            Err(StandardAcpHandshakeError::SignInRequired) => return self.sign_in_required(),
+            Err(StandardAcpHandshakeError::SignInRequired)
+                if self.profile.authenticate_on_auth_required =>
+            {
+                return self.sign_in_required();
+            }
             accepted => accepted.map_err(handshake_error).and_then(|id| {
                 ExternalId::new("externalSessionId", id).map_err(|_| AdapterRuntimeError::Frame)
             })?,
@@ -107,6 +111,7 @@ impl StandardAcpRuntime {
             translator,
             turn: None,
         });
+        self.source.session_ready();
         AdapterBatch::new(
             vec![SharedEvent::SessionReady {
                 id: self.session_identity(external_id),

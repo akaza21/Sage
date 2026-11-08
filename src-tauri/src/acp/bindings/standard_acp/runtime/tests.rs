@@ -28,12 +28,13 @@ use crate::{
     settings_store::{CustomAcpAgent, SessionAccessMode},
 };
 
-use super::super::{CustomAcpRegistration, StandardAcpRuntimeFactory};
+use super::super::{CustomAcpRegistration, StandardAcpBindingSource, StandardAcpRuntimeFactory};
 
 const SESSION: &str = "agent-session-1";
 
 struct Fixture {
     root: PathBuf,
+    registration: Arc<CustomAcpRegistration>,
     runtime: NativeRuntime,
 }
 
@@ -84,7 +85,10 @@ fn custom_runtime(label: &str) -> Fixture {
     std::fs::create_dir_all(&root).expect("root");
     let root = root.canonicalize().expect("canonical root");
     let executable = root.join("agent.exe");
-    std::fs::write(&executable, b"scripted agent").expect("agent");
+    crate::acp::bindings::standard_acp::custom_executable::write_test_executable(
+        &executable,
+        b"scripted agent",
+    );
     let registration = Arc::new(CustomAcpRegistration::startup(1).expect("slot"));
     registration.apply(Some(&CustomAcpAgent {
         id: "custom-acp-1".into(),
@@ -102,7 +106,7 @@ fn custom_runtime(label: &str) -> Fixture {
     )
     .expect("project root");
     let runtime = Box::new(StandardAcpRuntimeFactory::from_admitted_binding(
-        registration,
+        Arc::clone(&registration) as _,
         binding,
         project_root,
     ))
@@ -111,7 +115,11 @@ fn custom_runtime(label: &str) -> Fixture {
         SageAgentSessionId::parse(format!("session-{label}")).unwrap(),
     )
     .expect("runtime");
-    Fixture { root, runtime }
+    Fixture {
+        root,
+        registration,
+        runtime,
+    }
 }
 
 fn initialize(fixture: &mut Fixture, agent_capabilities: Value, auth_methods: Value) -> Value {
@@ -276,7 +284,7 @@ fn a_plain_turn_runs_without_any_mode_switch() {
     assert_eq!(*state, TurnState::Completed);
     assert_eq!(
         id.turn_id.as_ref().unwrap().as_str(),
-        format!("custom-acp-1-prompt-{prompt}")
+        format!("custom-acp-slot-1-prompt-{prompt}")
     );
 }
 
@@ -471,4 +479,93 @@ fn sign_in_that_needs_the_user_is_a_notice_naming_each_method() {
             "The agent needs sign-in. It offers: Terminal login (run the agent in a terminal with login)."
         )
     );
+}
+
+#[test]
+fn an_opened_session_clears_a_sign_in_notice_left_by_an_earlier_refusal() {
+    let mut fixture = custom_runtime("auth-cleared");
+    fixture
+        .registration
+        .record_sign_in("Scripted agent needs sign-in. It offers: Terminal login.");
+    assert!(fixture.registration.sign_in_notice().is_some());
+    initialize(&mut fixture, json!({}), json!([]));
+    open_session(&mut fixture);
+    ready(&mut fixture, 2);
+    assert_eq!(fixture.registration.sign_in_notice(), None);
+}
+
+#[test]
+fn an_agent_that_refuses_after_authenticating_is_not_told_sage_signs_in() {
+    let mut fixture = custom_runtime("auth-again");
+    initialize(
+        &mut fixture,
+        json!({}),
+        json!([{"id": "browser", "name": "Browser sign-in"}]),
+    );
+    open_session(&mut fixture);
+    let refusal = json!({"code": -32000, "message": "Authentication required"});
+    let batch = fixture
+        .runtime
+        .ingest(
+            &frame(json!({"jsonrpc": "2.0", "id": 2, "error": refusal})),
+            &Mapper,
+        )
+        .expect("authenticate");
+    let authenticate = batch.into_parts().1.into_iter().next().expect("egress");
+    written(&mut fixture.runtime, authenticate);
+    let batch = fixture
+        .runtime
+        .ingest(
+            &frame(json!({"jsonrpc": "2.0", "id": 3, "result": {}})),
+            &Mapper,
+        )
+        .expect("reopen");
+    let reopen = batch
+        .into_parts()
+        .1
+        .into_iter()
+        .next()
+        .expect("session/new");
+    written(&mut fixture.runtime, reopen);
+    let refused = fixture.runtime.ingest(
+        &frame(json!({"jsonrpc": "2.0", "id": 4, "error": refusal})),
+        &Mapper,
+    );
+    assert!(matches!(refused, Err(AdapterRuntimeError::SignInRequired)));
+    let expected = "The agent needs sign-in. It offers: Browser sign-in (Sage tried it and the agent did not accept it; sign in outside Sage).";
+    assert_eq!(
+        fixture.runtime.refusal_detail().expect("notice").message(),
+        Some(expected)
+    );
+    assert_eq!(
+        fixture.registration.sign_in_notice().as_deref(),
+        Some(expected)
+    );
+}
+
+#[test]
+fn a_failed_authenticate_is_a_sign_in_notice_without_a_second_attempt() {
+    let mut fixture = custom_runtime("auth-failed");
+    initialize(
+        &mut fixture,
+        json!({}),
+        json!([{"id": "browser", "name": "Browser sign-in"}]),
+    );
+    open_session(&mut fixture);
+    let batch = fixture
+        .runtime
+        .ingest(
+            &frame(json!({"jsonrpc": "2.0", "id": 2, "error": {"code": -32000, "message": "Authentication required"}})),
+            &Mapper,
+        )
+        .expect("authenticate");
+    let authenticate = batch.into_parts().1.into_iter().next().expect("egress");
+    written(&mut fixture.runtime, authenticate);
+    let failed = fixture.runtime.ingest(
+        &frame(json!({"jsonrpc": "2.0", "id": 3, "error": {"code": -32603, "message": "browser closed"}})),
+        &Mapper,
+    );
+    assert!(matches!(failed, Err(AdapterRuntimeError::SignInRequired)));
+    let notice = fixture.registration.sign_in_notice().expect("notice");
+    assert!(!notice.contains("Sage signs in for you"), "{notice}");
 }

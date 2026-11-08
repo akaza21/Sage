@@ -915,16 +915,16 @@ mod tests {
         runtime
             .resolve_egress(initialize.into_token(), EgressResolution::Written)
             .expect("initialize written");
+        // Even when OpenCode lists a method that needs no input, Sage does not
+        // call `authenticate` for it: OpenCode keeps its own sign-in guidance.
+        let mut initialized = inbound_smoke_frames()
+            .into_iter()
+            .next()
+            .expect("initialize response");
+        initialized["result"]["authMethods"] =
+            serde_json::json!([{"id": "opencode-login", "name": "Login"}]);
         runtime
-            .ingest(
-                &frame(
-                    inbound_smoke_frames()
-                        .into_iter()
-                        .next()
-                        .expect("initialize response"),
-                ),
-                &Mapper,
-            )
+            .ingest(&frame(initialized), &Mapper)
             .expect("initialize response");
         let new_session = runtime
             .command(AdapterCommand::NewSession {
@@ -947,6 +947,10 @@ mod tests {
             ),
             Err(AdapterRuntimeError::SignInRequired)
         ));
+        assert!(
+            runtime.refusal_detail().is_none(),
+            "OpenCode's refusal carries no generic sign-in notice"
+        );
     }
 
     #[test]

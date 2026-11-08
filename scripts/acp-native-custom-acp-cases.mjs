@@ -104,6 +104,45 @@ export function customAcpJourneys() {
       ],
     },
     {
+      // Sage authenticates with the no-input method and the agent fails it:
+      // Sage shows the sign-in notice, no longer offering that method as
+      // one Sage completes.
+      id: "custom-acp-auth-failed",
+      steps: [
+        wait("acpInitialize"),
+        emit("acpInitialize", {
+          authMethods: [
+            { id: "fixture-browser", name: "Synthetic browser sign-in" },
+          ],
+        }),
+        wait("acpNew"),
+        emit("acpAuthRequired"),
+        wait("acpAuthenticate"),
+        emit("acpAuthRequired"),
+        wait("acpClose"),
+      ],
+    },
+    {
+      // Authenticate succeeds yet the agent still refuses the session:
+      // Sage does not authenticate twice and shows the notice.
+      id: "custom-acp-auth-still-refused",
+      steps: [
+        wait("acpInitialize"),
+        emit("acpInitialize", {
+          authMethods: [
+            { id: "fixture-browser", name: "Synthetic browser sign-in" },
+          ],
+        }),
+        wait("acpNew"),
+        emit("acpAuthRequired"),
+        wait("acpAuthenticate"),
+        emit("acpAck"),
+        wait("acpNew"),
+        emit("acpAuthRequired"),
+        wait("acpClose"),
+      ],
+    },
+    {
       // Only methods that need the user: Sage shows a notice naming them.
       id: "custom-acp-auth-notice",
       steps: [

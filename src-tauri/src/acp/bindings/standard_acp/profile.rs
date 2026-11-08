@@ -64,6 +64,11 @@ pub(crate) struct StandardAcpProfile {
     pub(crate) launch_policy: StandardAcpLaunchPolicy,
     /// Whether the runtime advertises and answers `elicitation/create`.
     pub(crate) elicitation: bool,
+    /// Whether a `session/new` refused for sign-in leads Sage to call
+    /// `authenticate` with a method that needs no input and to keep a notice
+    /// naming the offered methods. Only user-defined agents: a curated
+    /// agent fails with sign-in required and keeps its own guidance.
+    pub(crate) authenticate_on_auth_required: bool,
     /// Characterisation proved `session/close` even where the agent does not
     /// advertise it; otherwise only an advertised close is used.
     pub(crate) close_characterised: bool,
@@ -151,6 +156,7 @@ pub(crate) const PROFILES: &[StandardAcpProfile] = &[
         session_mode: None,
         launch_policy: StandardAcpLaunchPolicy::Inherit,
         elicitation: false,
+        authenticate_on_auth_required: false,
         close_characterised: true,
     },
     StandardAcpProfile {
@@ -175,6 +181,7 @@ pub(crate) const PROFILES: &[StandardAcpProfile] = &[
         session_mode: None,
         launch_policy: StandardAcpLaunchPolicy::Inherit,
         elicitation: false,
+        authenticate_on_auth_required: false,
         close_characterised: true,
     },
     StandardAcpProfile {
@@ -199,6 +206,7 @@ pub(crate) const PROFILES: &[StandardAcpProfile] = &[
         session_mode: None,
         launch_policy: StandardAcpLaunchPolicy::Inherit,
         elicitation: false,
+        authenticate_on_auth_required: false,
         close_characterised: true,
     },
     StandardAcpProfile {
@@ -228,6 +236,7 @@ pub(crate) const PROFILES: &[StandardAcpProfile] = &[
         session_mode: Some("build"),
         launch_policy: StandardAcpLaunchPolicy::OpenCodeAskConfig,
         elicitation: false,
+        authenticate_on_auth_required: false,
         close_characterised: true,
     },
 ];

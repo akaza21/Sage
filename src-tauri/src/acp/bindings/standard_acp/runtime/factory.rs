@@ -23,6 +23,9 @@ pub(crate) trait StandardAcpBindingSource: Send + Sync {
     /// Keeps the sign-in notice the agent's methods produced, so the harness
     /// list can show it. Curated sources already carry their own guidance.
     fn record_sign_in(&self, _notice: &str) {}
+
+    /// A session opened, so any recorded sign-in notice is stale.
+    fn session_ready(&self) {}
 }
 
 pub(crate) struct StandardAcpRuntimeFactory {

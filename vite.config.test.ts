@@ -181,6 +181,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/settings/AgentBrowserSettings.tsx",
   // The Harnesses page loads on its first open.
   "src/features/settings/AgentHarnessSettings.tsx",
+  // The Your ACP agents editor loads with the Harnesses page, below its list.
+  "src/features/settings/CustomAgentSettings.tsx",
   "src/features/settings/AgentKeyboardSettings.tsx",
   // The native turn-notice preference loads with the Chats page.
   "src/features/settings/AgentNotificationSettings.tsx",

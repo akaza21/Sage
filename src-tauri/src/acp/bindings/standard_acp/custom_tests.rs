@@ -45,9 +45,13 @@ fn registration() -> CustomAcpRegistration {
 fn a_slot_is_pending_until_settings_apply_then_admits_a_regular_file() {
     let root = temp("admit");
     let executable = root.0.join("agent.exe");
-    std::fs::write(&executable, b"synthetic agent").unwrap();
+    crate::acp::bindings::standard_acp::custom_executable::write_test_executable(
+        &executable,
+        b"synthetic agent",
+    );
     let registration = registration();
-    assert_eq!(registration.profile().harness_id, "custom-acp-2");
+    assert_eq!(registration.profile().harness_id, "custom-acp-slot-2");
+    assert_eq!(registration.agent_id(), None);
     assert_eq!(
         registration.unavailable(),
         Some(CustomAcpUnavailable::Pending)
@@ -85,7 +89,10 @@ fn a_missing_file_or_a_directory_is_never_admitted() {
 fn arguments_and_passed_names_are_part_of_the_binding_identity() {
     let root = temp("digest");
     let executable = root.0.join("agent.exe");
-    std::fs::write(&executable, b"synthetic agent").unwrap();
+    crate::acp::bindings::standard_acp::custom_executable::write_test_executable(
+        &executable,
+        b"synthetic agent",
+    );
     let digest = |args: &[&str], env: &[&str]| {
         let registration = registration();
         registration.apply(Some(&agent(&executable, args, env)));
@@ -102,11 +109,17 @@ fn arguments_and_passed_names_are_part_of_the_binding_identity() {
 fn an_executable_rebuilt_in_place_is_admitted_again_by_its_new_digest() {
     let root = temp("rebuild");
     let executable = root.0.join("agent.exe");
-    std::fs::write(&executable, b"first build").unwrap();
+    crate::acp::bindings::standard_acp::custom_executable::write_test_executable(
+        &executable,
+        b"first build",
+    );
     let registration = registration();
     registration.apply(Some(&agent(&executable, &[], &[])));
     let first = registration.refresh().expect("first").binding_digest();
-    std::fs::write(&executable, b"second build, longer").unwrap();
+    crate::acp::bindings::standard_acp::custom_executable::write_test_executable(
+        &executable,
+        b"second build, longer",
+    );
     let second = registration
         .refresh()
         .expect("re-admitted")
@@ -123,7 +136,10 @@ fn an_executable_rebuilt_in_place_is_admitted_again_by_its_new_digest() {
 fn the_launch_runs_the_file_directly_with_the_configured_arguments_and_names() {
     let root = temp("launch");
     let executable = root.0.join("agent.exe");
-    std::fs::write(&executable, b"synthetic agent").unwrap();
+    crate::acp::bindings::standard_acp::custom_executable::write_test_executable(
+        &executable,
+        b"synthetic agent",
+    );
     let registration = Arc::new(registration());
     registration.apply(Some(&agent(
         &executable,

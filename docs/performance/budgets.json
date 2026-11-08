@@ -160,8 +160,8 @@
       },
       {
         "entry": "src/features/settings/CustomAgentSettings.tsx",
-        "maxGzipBytes": 1222,
-        "reason": "Your ACP agents editor: at most four agents, each a name, executable path, arguments and passed-through variable names; loaded only when Settings > Harnesses opens. Measured 1142 B plus 7%."
+        "maxGzipBytes": 1360,
+        "reason": "Your ACP agents editor: at most four agents (name, executable, arguments, passed-through names) and the plain-text arguments hint; loaded only by Settings > Harnesses. Measured 1271 B plus 7%."
       },
       {
         "entry": "src/features/settings/AgentBrowserSettings.tsx",

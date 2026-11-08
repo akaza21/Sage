@@ -1,8 +1,10 @@
-//! User-defined ACP agents. Each of the four settings slots owns a static
-//! profile (its harness and binding identity); what the user configured
-//! (executable, arguments, passed-through variable names) is admitted as a
-//! launch extension of that profile. The executable is launched directly,
-//! never through a shell, and its digest is re-proved before every launch.
+//! User-defined ACP agents. Sage holds four registrations, one per live
+//! agent; each owns a static profile whose ids are internal. The agent's
+//! own `custom-acp-<n>` id, which is never reused, is the harness and
+//! binding id sessions see. What the user configured (executable,
+//! arguments, passed-through variable names) is admitted as a launch
+//! extension of the profile. The executable is launched directly, never
+//! through a shell, and its digest is re-proved before every launch.
 
 use std::{
     path::PathBuf,
@@ -11,13 +13,14 @@ use std::{
 
 use crate::{
     domain::HarnessUnavailableReason,
-    settings_store::{CustomAcpAgent, MAX_CUSTOM_ACP_AGENTS, custom_acp_slot},
+    settings_store::{CustomAcpAgent, MAX_CUSTOM_ACP_AGENTS, custom_acp_number},
 };
 
 use super::{
     AdmittedStandardAcpBinding, StandardAcpArtifact, StandardAcpArtifactProvenance,
     StandardAcpBindingSource, StandardAcpCandidate,
     admission::{StandardAcpLaunchExtension, admit_extended},
+    custom_executable::check_custom_executable,
     profile::{
         StandardAcpClientCapabilities, StandardAcpLaunch, StandardAcpLaunchPolicy,
         StandardAcpProfile, StandardAcpVersionShape,
@@ -52,15 +55,16 @@ const fn custom_profile(id: &'static str) -> StandardAcpProfile {
         session_mode: None,
         launch_policy: StandardAcpLaunchPolicy::Inherit,
         elicitation: true,
+        authenticate_on_auth_required: true,
         close_characterised: false,
     }
 }
 
 pub(crate) static CUSTOM_PROFILES: [StandardAcpProfile; MAX_CUSTOM_ACP_AGENTS] = [
-    custom_profile("custom-acp-1"),
-    custom_profile("custom-acp-2"),
-    custom_profile("custom-acp-3"),
-    custom_profile("custom-acp-4"),
+    custom_profile("custom-acp-slot-1"),
+    custom_profile("custom-acp-slot-2"),
+    custom_profile("custom-acp-slot-3"),
+    custom_profile("custom-acp-slot-4"),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,8 +84,9 @@ enum State {
     },
 }
 
-/// One settings slot's admission. Interior state changes when the user
-/// saves or removes the agent; the registry record stays fixed.
+/// One live agent's admission. Interior state changes when the user saves
+/// or removes an agent; the registry record stays fixed and answers to
+/// whichever agent id the registration holds.
 #[derive(Debug)]
 pub(crate) struct CustomAcpRegistration {
     profile: &'static StandardAcpProfile,
@@ -102,17 +107,51 @@ impl CustomAcpRegistration {
         self.profile
     }
 
-    /// Admits `agent` (or clears the slot), proving the executable is a
-    /// regular file and recording its digest.
+    /// Admits `agent` (or clears the registration), proving the executable
+    /// is a launchable regular file and recording its digest. The same
+    /// agent applied again keeps an admission it holds, and its sign-in
+    /// notice; one that was refused is admitted afresh.
     pub(crate) fn apply(&self, agent: Option<&CustomAcpAgent>) {
-        let next = match agent {
-            Some(agent) if custom_acp_slot(&agent.id).is_some() => State::Configured {
+        let mut state = self.lock();
+        if let (
+            State::Configured {
+                agent: held,
+                binding: Ok(_),
+            },
+            Some(agent),
+        ) = (&*state, agent)
+            && held == agent
+        {
+            return;
+        }
+        *state = match agent {
+            Some(agent) if custom_acp_number(&agent.id).is_some() => State::Configured {
                 binding: admit_agent(self.profile, agent),
                 agent: agent.clone(),
             },
             _ => State::Empty,
         };
-        *self.lock() = next;
+        drop(state);
+        self.clear_sign_in();
+    }
+
+    /// The id of the agent this registration holds.
+    pub(crate) fn agent_id(&self) -> Option<String> {
+        match &*self.lock() {
+            State::Configured { agent, .. } => Some(agent.id.clone()),
+            State::Pending | State::Empty => None,
+        }
+    }
+
+    pub(crate) fn serves(&self, id: &str) -> bool {
+        matches!(&*self.lock(), State::Configured { agent, .. } if agent.id == id)
+    }
+
+    pub(crate) fn is_vacant(&self) -> bool {
+        !matches!(&*self.lock(), State::Configured { .. })
+    }
+
+    fn clear_sign_in(&self) {
         *self.sign_in.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
 
@@ -189,6 +228,10 @@ impl StandardAcpBindingSource for CustomAcpRegistration {
         let notice: String = notice.chars().take(NOTICE_CHARS).collect();
         *self.sign_in.lock().unwrap_or_else(|e| e.into_inner()) = Some(notice);
     }
+
+    fn session_ready(&self) {
+        self.clear_sign_in();
+    }
 }
 
 impl CustomAcpUnavailable {
@@ -207,10 +250,8 @@ fn admit_agent(
     agent: &CustomAcpAgent,
 ) -> Result<Arc<AdmittedStandardAcpBinding>, CustomAcpUnavailable> {
     let path = PathBuf::from(&agent.executable);
-    let metadata = std::fs::metadata(&path).map_err(|_| CustomAcpUnavailable::ExecutableInvalid)?;
-    if !metadata.is_file() {
-        return Err(CustomAcpUnavailable::ExecutableInvalid);
-    }
+    let metadata =
+        check_custom_executable(&path).map_err(|_| CustomAcpUnavailable::ExecutableInvalid)?;
     let candidate = StandardAcpCandidate {
         runtime: StandardAcpArtifact {
             sha256: crate::harness_discovery::sha256_file(&path)
@@ -227,7 +268,7 @@ fn admit_agent(
         args: agent.args.clone(),
         passthrough_env: agent.env.clone(),
     };
-    admit_extended(profile, candidate, extension)
+    admit_extended(profile, &agent.id, candidate, extension)
         .map_err(|_| CustomAcpUnavailable::ExecutableInvalid)
 }
 

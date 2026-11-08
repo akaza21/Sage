@@ -78,7 +78,7 @@ impl SignIn {
             let offered = self
                 .methods
                 .iter()
-                .map(describe)
+                .map(|method| describe(method, self.attempted))
                 .collect::<Vec<_>>()
                 .join("; ");
             format!("{label} needs sign-in. It offers: {offered}.")
@@ -91,8 +91,14 @@ impl SignIn {
     }
 }
 
-fn describe(method: &AuthMethod) -> String {
+/// After Sage tried a no-input method and the agent still refused, that
+/// method is no longer described as one Sage completes.
+fn describe(method: &AuthMethod, attempted: bool) -> String {
     match &method.kind {
+        AuthKind::Agent if attempted => format!(
+            "{} (Sage tried it and the agent did not accept it; sign in outside Sage)",
+            method.name
+        ),
         AuthKind::Agent => format!("{} (Sage signs in for you)", method.name),
         AuthKind::EnvVar(Some(name)) => format!(
             "{} (set {name} and add it to the agent's passed-through variables)",
@@ -245,6 +251,22 @@ mod tests {
         assert_eq!(
             sign_in(json!([])).notice("My agent"),
             "My agent needs sign-in and offered no sign-in method."
+        );
+    }
+
+    #[test]
+    fn a_tried_method_is_no_longer_offered_as_one_sage_completes() {
+        let mut offered = sign_in(json!([{"id": "oauth", "name": "Browser"}]));
+        assert_eq!(
+            offered.notice("My agent"),
+            "My agent needs sign-in. It offers: Browser (Sage signs in for you)."
+        );
+        offered.attempted = true;
+        let notice = offered.notice("My agent");
+        assert!(!notice.contains("Sage signs in for you"), "{notice}");
+        assert_eq!(
+            notice,
+            "My agent needs sign-in. It offers: Browser (Sage tried it and the agent did not accept it; sign in outside Sage)."
         );
     }
 

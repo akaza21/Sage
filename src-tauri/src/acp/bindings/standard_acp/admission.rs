@@ -46,6 +46,9 @@ pub(crate) struct StandardAcpLaunchExtension {
 #[derive(Debug)]
 pub(crate) struct AdmittedStandardAcpBinding {
     profile: &'static StandardAcpProfile,
+    /// The id sessions bind to: the profile's for a curated agent, the
+    /// agent's own `custom-acp-<n>` for a user-defined one.
+    binding_id: String,
     candidate: StandardAcpCandidate,
     extension: StandardAcpLaunchExtension,
     binding_digest: [u8; 32],
@@ -55,6 +58,10 @@ pub(crate) struct AdmittedStandardAcpBinding {
 impl AdmittedStandardAcpBinding {
     pub(crate) fn profile(&self) -> &'static StandardAcpProfile {
         self.profile
+    }
+
+    pub(crate) fn binding_id(&self) -> &str {
+        &self.binding_id
     }
 
     pub(crate) fn candidate(&self) -> &StandardAcpCandidate {
@@ -100,20 +107,27 @@ pub(crate) fn admit(
     profile: &'static StandardAcpProfile,
     candidate: StandardAcpCandidate,
 ) -> Result<Arc<AdmittedStandardAcpBinding>, StandardAcpAdmissionError> {
-    admit_extended(profile, candidate, StandardAcpLaunchExtension::default())
+    admit_extended(
+        profile,
+        profile.binding_id,
+        candidate,
+        StandardAcpLaunchExtension::default(),
+    )
 }
 
-/// Admits `candidate` with launch inputs beyond its profile. An empty
-/// extension yields exactly the digest [`admit`] gives.
+/// Admits `candidate` under `binding_id` with launch inputs beyond its
+/// profile. The profile's own id and an empty extension yield exactly the
+/// digest [`admit`] gives.
 pub(crate) fn admit_extended(
     profile: &'static StandardAcpProfile,
+    binding_id: &str,
     candidate: StandardAcpCandidate,
     extension: StandardAcpLaunchExtension,
 ) -> Result<Arc<AdmittedStandardAcpBinding>, StandardAcpAdmissionError> {
     validate_candidate(profile, &candidate)?;
     let mut digest = Sha256::new()
         .chain_update(BINDING_DIGEST_DOMAIN)
-        .chain_update(profile.binding_id.as_bytes())
+        .chain_update(binding_id.as_bytes())
         .chain_update(candidate.reported_version.as_bytes())
         .chain_update(candidate.runtime.sha256.as_bytes())
         .chain_update(
@@ -142,6 +156,7 @@ pub(crate) fn admit_extended(
     let binding_digest: [u8; 32] = digest.finalize().into();
     Ok(Arc::new(AdmittedStandardAcpBinding {
         profile,
+        binding_id: binding_id.to_owned(),
         candidate,
         extension,
         binding_digest_hex: binding_digest
@@ -248,7 +263,8 @@ fn validate_artifact_location(
     }
     match &artifact.provenance {
         StandardAcpArtifactProvenance::Direct => {
-            crate::harness_discovery::authentic_regular_file(path)
+            super::custom_executable::native_executable_name(path, cfg!(windows))
+                && crate::harness_discovery::authentic_regular_file(path)
         }
         StandardAcpArtifactProvenance::NpmGlobal { root, relative } => {
             path == &root.join(relative)

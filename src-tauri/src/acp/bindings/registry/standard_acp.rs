@@ -19,7 +19,7 @@ use super::{
     Admission, AdmittedBinding, BindingProjectRoot, BindingRecord, BindingRegistry,
     RegistryAdmissionUnavailable, RootPolicy,
 };
-use crate::settings_store::{CustomAcpAgent, MAX_CUSTOM_ACP_AGENTS, custom_acp_slot};
+use crate::settings_store::CustomAcpAgent;
 
 pub(super) fn launch_factory(
     binding: AdmittedBinding,
@@ -66,7 +66,7 @@ pub(super) fn capabilities(
     })
 }
 
-/// The record for one user-defined agent slot.
+/// The record for one user-defined agent registration.
 pub(super) fn custom_record(registration: Arc<CustomAcpRegistration>) -> BindingRecord {
     let profile = registration.profile();
     BindingRecord {
@@ -87,23 +87,44 @@ pub(super) fn custom_record(registration: Arc<CustomAcpRegistration>) -> Binding
 }
 
 impl BindingRegistry {
-    /// The registration of user-defined agent `slot` (1-based).
-    pub(crate) fn custom_acp(&self, slot: usize) -> Option<&Arc<CustomAcpRegistration>> {
-        match &self.custom.get(slot.checked_sub(1)?)?.admission {
-            Admission::CustomAcp(registration) => Some(registration),
-            _ => None,
-        }
+    pub(crate) fn custom_acp_registrations(
+        &self,
+    ) -> impl Iterator<Item = &Arc<CustomAcpRegistration>> {
+        self.custom
+            .iter()
+            .filter_map(|record| match &record.admission {
+                Admission::CustomAcp(registration) => Some(registration),
+                _ => None,
+            })
     }
 
-    /// Admits the saved user-defined agents; a slot with no agent is cleared.
+    /// The registration holding the user-defined agent `id`.
+    pub(crate) fn custom_acp(&self, id: &str) -> Option<&Arc<CustomAcpRegistration>> {
+        self.custom_acp_registrations()
+            .find(|registration| registration.serves(id))
+    }
+
+    /// Makes the registrations hold exactly `agents` (the saved list, at
+    /// most one per registration). An agent already held stays in its
+    /// registration; a removed agent's registration is cleared; a new agent
+    /// takes a vacant one.
     pub(crate) fn apply_custom_acp_agents(&self, agents: &[CustomAcpAgent]) {
-        for slot in 1..=MAX_CUSTOM_ACP_AGENTS {
-            if let Some(registration) = self.custom_acp(slot) {
-                registration.apply(
-                    agents
-                        .iter()
-                        .find(|agent| custom_acp_slot(&agent.id) == Some(slot)),
-                );
+        let mut placed = vec![false; agents.len()];
+        for registration in self.custom_acp_registrations() {
+            let held = registration
+                .agent_id()
+                .and_then(|id| agents.iter().position(|agent| agent.id == id));
+            if let Some(index) = held {
+                placed[index] = true;
+            }
+            registration.apply(held.map(|index| &agents[index]));
+        }
+        for (agent, _) in agents.iter().zip(&placed).filter(|(_, placed)| !**placed) {
+            if let Some(registration) = self
+                .custom_acp_registrations()
+                .find(|registration| registration.is_vacant())
+            {
+                registration.apply(Some(agent));
             }
         }
     }

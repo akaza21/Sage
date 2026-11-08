@@ -90,11 +90,30 @@ pub(crate) struct BindingRecord {
 }
 
 impl BindingRecord {
+    /// The record's fixed id; routing goes through `serves_harness`, which
+    /// also answers for a user-defined agent's own id.
+    #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
     pub(crate) fn harness_id(&self) -> &'static str {
         self.harness_id
     }
     pub(crate) fn binding_id(&self) -> &'static str {
         self.binding_id
+    }
+
+    /// A user-defined agent's record answers to the id of the agent its
+    /// registration holds now, never to its internal profile id.
+    pub(super) fn serves_harness(&self, id: &str) -> bool {
+        match &self.admission {
+            Admission::CustomAcp(registration) => registration.serves(id),
+            _ => self.harness_id == id,
+        }
+    }
+
+    pub(super) fn serves_binding(&self, id: &str) -> bool {
+        match &self.admission {
+            Admission::CustomAcp(registration) => registration.serves(id),
+            _ => self.binding_id == id,
+        }
     }
 
     pub(crate) fn access_policy_binding_id(&self) -> &'static str {
@@ -253,8 +272,13 @@ impl AdmittedBindingRecord<'_> {
         }
     }
 
-    pub(crate) fn binding_id(&self) -> &'static str {
-        self.record.binding_id()
+    /// The id this admission binds sessions to; a standard ACP binding
+    /// carries its own, which for a user-defined agent is the agent's id.
+    pub(crate) fn binding_id(&self) -> &str {
+        match &self.binding {
+            AdmittedBinding::StandardAcp { binding, .. } => binding.binding_id(),
+            _ => self.record.binding_id(),
+        }
     }
 
     pub(crate) fn identity(&self) -> BindingIdentity<'_> {

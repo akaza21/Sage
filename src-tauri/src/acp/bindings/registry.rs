@@ -91,7 +91,7 @@ pub(crate) struct BindingRegistry {
     claude: BindingRecord,
     opencode: BindingRecord,
     pi_native: BindingRecord,
-    /// One fixed record per user-defined agent slot.
+    /// One fixed record per live user-defined agent.
     custom: Vec<BindingRecord>,
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     pi: Option<BindingRecord>,
@@ -299,7 +299,7 @@ impl BindingRegistry {
         ]
         .into_iter()
         .chain(self.custom.iter())
-        .find(|record| record.harness_id() == id)
+        .find(|record| record.serves_harness(id))
         .or({
             #[cfg(test)]
             {
@@ -335,7 +335,7 @@ impl BindingRegistry {
         [&self.codex, &self.claude, &self.opencode, &self.pi_native]
             .into_iter()
             .chain(self.custom.iter())
-            .find(|record| record.binding_id() == binding_id)
+            .find(|record| record.serves_binding(binding_id))
             .or({
                 #[cfg(test)]
                 {

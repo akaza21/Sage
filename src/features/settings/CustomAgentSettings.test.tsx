@@ -63,7 +63,15 @@ it("adds an agent with its arguments and passed-through names", async () => {
   fireEvent.change(screen.getByLabelText("Executable path"), {
     target: { value: saved.executable },
   });
-  fireEvent.change(screen.getByLabelText("Arguments (one per line)"), {
+  const argumentsField = screen.getByLabelText("Arguments (one per line)");
+  // The field says its text is stored as typed and where secrets belong.
+  expect(screen.getByText(/saved and shown in plain text/u).id).toBe(
+    argumentsField.getAttribute("aria-describedby"),
+  );
+  expect(
+    screen.getByText(/saved and shown in plain text/u).textContent,
+  ).toMatch(/environment variables/u);
+  fireEvent.change(argumentsField, {
     target: { value: "--acp" },
   });
   fireEvent.change(
@@ -88,7 +96,7 @@ it("adds an agent with its arguments and passed-through names", async () => {
 it("shows why Sage refused an agent and keeps the form open", async () => {
   invoke.mockImplementation(async (command) => {
     if (command === "custom_acp_agents") return [];
-    throw new Error("The executable does not exist or is not a file.");
+    throw new Error("The executable does not exist.");
   });
   render(<CustomAgentSettings />);
   fireEvent.click(await screen.findByRole("button", { name: "Add ACP agent" }));
@@ -100,7 +108,7 @@ it("shows why Sage refused an agent and keeps the form open", async () => {
   });
   fireEvent.click(screen.getByRole("button", { name: "Save agent" }));
   expect(
-    await screen.findByText("The executable does not exist or is not a file."),
+    await screen.findByText("The executable does not exist."),
   ).toBeTruthy();
   expect(screen.getByLabelText("Name")).toBeTruthy();
 });

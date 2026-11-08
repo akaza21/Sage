@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { errorMessage } from "../../domain/errors";
 import { invokeNative, isTauriRuntime } from "../../ports/nativeInvoke";
 import { SettingsRow } from "./SettingsRow";
@@ -46,6 +46,7 @@ export default function CustomAgentSettings() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const argumentsHintId = useId();
   const native = isTauriRuntime();
 
   useEffect(() => {
@@ -94,9 +95,9 @@ export default function CustomAgentSettings() {
       <h3>Your ACP agents</h3>
       <p>
         Add any agent that speaks the Agent Client Protocol over stdio. Sage
-        runs the executable directly, never through a shell. List only the names
-        of environment variables to pass through; their values stay in your
-        environment.
+        runs the executable directly, never through a shell; on Windows it must
+        be a native .exe file. List only the names of environment variables to
+        pass through; their values stay in your environment.
       </p>
       {agents.map((agent) => (
         <SettingsRow
@@ -161,11 +162,17 @@ export default function CustomAgentSettings() {
             <textarea
               value={draft.args}
               rows={3}
+              aria-describedby={argumentsHintId}
               onChange={(event) =>
                 setDraft({ ...draft, args: event.target.value })
               }
             />
           </label>
+          <p id={argumentsHintId}>
+            Arguments are saved and shown in plain text. Do not put API keys or
+            tokens here: set them as environment variables and list their names
+            below.
+          </p>
           <label>
             Environment variable names to pass through
             <input

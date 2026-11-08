@@ -1,5 +1,6 @@
 mod admission;
 mod custom;
+pub(crate) mod custom_executable;
 pub(crate) mod elicitation;
 mod environment;
 mod handshake;
