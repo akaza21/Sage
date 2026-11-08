@@ -19,6 +19,14 @@ import {
 } from "../../../services/acpGoalDesktop";
 
 import { AcpProjectionOwnerContext } from "./AcpProjectionOwnerContext";
+import { coalescedRefresh } from "./coalescedRefresh";
+
+/**
+ * A refresh may overtake one load that hangs (the store keeps only the newest
+ * answer), never more: the live snapshot reads the same Chat, and the native
+ * side admits only a few page reads per Chat at once.
+ */
+const PAGE_LOADS_IN_FLIGHT = 2;
 
 export function useAcpRetentionIncomplete(boundChatId?: string | null) {
   return useStore(
@@ -93,13 +101,11 @@ export function useAcpChatProjection(
     };
     activateScope(scope);
     let disposed = false;
-    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let unlisten: (() => void) | null = null;
 
-    const loadLatest = () => {
-      if (disposed) return;
+    const refresh = coalescedRefresh(() => {
       const intent = beginPageLoad(null);
-      void getGoalChatPage({
+      return getGoalChatPage({
         projectId: scope.projectId,
         projectGeneration: String(nativeTransitionEpoch) as ProjectGeneration,
         chatId: scope.chatId,
@@ -111,16 +117,14 @@ export function useAcpChatProjection(
         .catch((error: unknown) => {
           failPageLoad(intent, errorMessage(error));
         });
-    };
+    }, PAGE_LOADS_IN_FLIGHT);
 
     const scheduleRefresh = (disposition: string) => {
-      if (disposed || disposition === "ignoredStale" || refreshTimer) return;
-      refreshTimer = setTimeout(() => {
-        refreshTimer = null;
+      if (disposed || disposition === "ignoredStale") return;
+      refresh.schedule(() => {
         takeProjectionChange();
         store.getState().takeSessionConfigChange();
-        loadLatest();
-      }, 50);
+      });
     };
     // Install both wake channels before the authoritative bootstrap snapshot.
     void Promise.allSettled([
@@ -155,18 +159,18 @@ export function useAcpChatProjection(
           disposeListener();
         } else {
           unlisten = disposeListener;
-          loadLatest();
+          refresh.now();
         }
       })
       .catch(() => {
         // Bootstrap remains authoritative when the disposable event listener
         // is unavailable. A later scope activation retries once.
-        loadLatest();
+        refresh.now();
       });
 
     return () => {
       disposed = true;
-      if (refreshTimer) clearTimeout(refreshTimer);
+      refresh.dispose();
       unlisten?.();
     };
   }, [
