@@ -24,7 +24,7 @@ export function registerAgentTurnContinuityScenarios() {
     await openJourney(page);
     const evidence = screenshotEvidence(testInfo, page);
     const alpha = pane(page, "Alpha");
-    const composer = alpha.getByRole("textbox", { name: "Message agent" });
+    const composer = alpha.getByRole("combobox", { name: "Message agent" });
 
     await composer.fill("First terminal Turn");
     await alpha.getByRole("button", { name: "Send message" }).click();
@@ -95,7 +95,7 @@ export function registerAgentTurnContinuityScenarios() {
     await evidence("jumped-to-latest");
 
     const beta = await focusPane(page, "Beta");
-    const betaComposer = beta.getByRole("textbox", { name: "Message agent" });
+    const betaComposer = beta.getByRole("combobox", { name: "Message agent" });
     await betaComposer.fill("Background completion");
     await beta.getByRole("button", { name: "Send message" }).click();
     await runEvent(page, {
@@ -154,7 +154,7 @@ export function registerAgentTurnContinuityScenarios() {
     await openJourney(page);
     const evidence = screenshotEvidence(testInfo, page);
     const alpha = pane(page, "Alpha");
-    const composer = alpha.getByRole("textbox", { name: "Message agent" });
+    const composer = alpha.getByRole("combobox", { name: "Message agent" });
     await composer.fill("Keep this Turn locked");
     await alpha.getByRole("button", { name: "Send message" }).click();
     await runEvent(page, {

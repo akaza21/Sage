@@ -152,7 +152,7 @@ export async function expectTurnState(
 export async function expectRunningComposerReadyToQueue(
   owner: ReturnType<typeof pane>,
 ) {
-  const composer = owner.getByRole("textbox", { name: "Message agent" });
+  const composer = owner.getByRole("combobox", { name: "Message agent" });
   await expect(composer).toBeEnabled();
   // Wave 5 (Codex): the placeholder stays "Do anything"; queueing is
   // announced through the accessible description below.
@@ -185,7 +185,7 @@ export async function focusPane(page: Page, name: "Alpha" | "Beta") {
   await expect(
     target.getByRole("region", { name: "Agent chat " + name }),
   ).toBeVisible();
-  const composer = target.getByRole("textbox", { name: "Message agent" });
+  const composer = target.getByRole("combobox", { name: "Message agent" });
   if (await composer.isEnabled()) {
     await composer.focus();
     await expect(composer).toBeFocused();

@@ -390,10 +390,10 @@ describe("ChatSurface approval slot", () => {
       activeTabId: "chat-a",
     });
     const { rerender } = render(<ChatSurface chatId="chat-a" />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Message agent" }), {
       target: { value: "keep this draft" },
     });
-    expect(screen.getByRole("textbox", { name: "Message agent" })).toHaveValue(
+    expect(screen.getByRole("combobox", { name: "Message agent" })).toHaveValue(
       "keep this draft",
     );
     withPermission("received");
@@ -411,7 +411,9 @@ describe("ChatSurface approval slot", () => {
     expect(within(prompt).getByRole("status")).toHaveTextContent(
       "Approval needed: Allow this command?",
     );
-    expect(screen.queryByRole("textbox", { name: "Message agent" })).toBeNull();
+    expect(
+      screen.queryByRole("combobox", { name: "Message agent" }),
+    ).toBeNull();
     expect(document.querySelector("form.composer")).toHaveAttribute("hidden");
     expect(
       document.querySelector(
@@ -422,7 +424,7 @@ describe("ChatSurface approval slot", () => {
     withPermission("declinePending");
     rerender(<ChatSurface chatId="chat-a" />);
     expect(screen.queryByRole("button", { name: /Allow once/ })).toBeNull();
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     expect(composer).toHaveValue("keep this draft");
     expect(composer).toHaveFocus();
   });
@@ -472,7 +474,7 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface chatId="chat-a" />);
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
     expect(
-      screen.getByRole("textbox", { name: "Message agent" }),
+      screen.getByRole("combobox", { name: "Message agent" }),
     ).toBeDisabled();
     expect(useWorkbenchStore.getState().chatUiById["chat-a"].harnessId).toBe(
       "unavailable-binding:absent-binding",
@@ -486,7 +488,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
     expect(
-      screen.getByRole("textbox", { name: "Message agent" }),
+      screen.getByRole("combobox", { name: "Message agent" }),
     ).toBeDisabled();
     expect(useWorkbenchStore.getState().selectedHarnessId).toBe(
       "unavailable-binding:absent-binding",
@@ -769,13 +771,13 @@ describe("ChatSurface ACP resource integration", () => {
       activeTabId: "chat-a",
     });
     const view = render(<ChatSurface chatId="chat-a" />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Message agent" }), {
       target: { value: "Follow up" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
     await waitFor(() =>
       expect(
-        screen.getByRole("textbox", { name: "Message agent" }),
+        screen.getByRole("combobox", { name: "Message agent" }),
       ).toHaveValue(""),
     );
     expect(await screen.findByText("Follow up")).toBeInTheDocument();
@@ -820,7 +822,7 @@ describe("ChatSurface ACP resource integration", () => {
       </AgentChatRuntimeHarness>,
     );
     fireEvent.change(
-      await screen.findByRole("textbox", { name: "Message agent" }),
+      await screen.findByRole("combobox", { name: "Message agent" }),
       {
         target: { value: "Continue behind the artifact" },
       },
@@ -837,7 +839,9 @@ describe("ChatSurface ACP resource integration", () => {
         <AgentChatPanes visible={false} />
       </AgentChatRuntimeHarness>,
     );
-    expect(screen.queryByRole("textbox", { name: "Message agent" })).toBeNull();
+    expect(
+      screen.queryByRole("combobox", { name: "Message agent" }),
+    ).toBeNull();
     setTurnState("completed");
     act(() => {
       const store = acpProjectionStoreFor("chat-a");
@@ -855,13 +859,15 @@ describe("ChatSurface ACP resource integration", () => {
         useWorkbenchStore.getState().chatUiById["chat-a"].queuedPrompts,
       ).toEqual([]),
     );
-    expect(screen.queryByRole("textbox", { name: "Message agent" })).toBeNull();
+    expect(
+      screen.queryByRole("combobox", { name: "Message agent" }),
+    ).toBeNull();
     view.rerender(
       <AgentChatRuntimeHarness>
         <AgentChatPanes />
       </AgentChatRuntimeHarness>,
     );
-    await screen.findByRole("textbox", { name: "Message agent" });
+    await screen.findByRole("combobox", { name: "Message agent" });
     expect(screen.queryByText("Continue behind the artifact")).toBeNull();
   });
 
@@ -900,7 +906,7 @@ describe("ChatSurface ACP resource integration", () => {
       fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
       await settleLazyModules();
       fireEvent.change(
-        await screen.findByRole("textbox", { name: "Message agent" }),
+        await screen.findByRole("combobox", { name: "Message agent" }),
         {
           target: { value: "Continue while settings is open" },
         },
@@ -927,7 +933,7 @@ describe("ChatSurface ACP resource integration", () => {
         fireEvent(document, new Event("visibilitychange"));
       }
       expect(
-        screen.queryByRole("textbox", { name: "Message agent" }),
+        screen.queryByRole("combobox", { name: "Message agent" }),
       ).toBeNull();
       setTurnState("completed");
       view.rerender(<Workbench />);
@@ -956,7 +962,7 @@ describe("ChatSurface ACP resource integration", () => {
         vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
         fireEvent(document, new Event("visibilitychange"));
       }
-      await screen.findByRole("textbox", { name: "Message agent" });
+      await screen.findByRole("combobox", { name: "Message agent" });
       expect(hooks.actions.submit).toHaveBeenCalledOnce();
     },
   );
@@ -980,7 +986,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface chatId="chat-a" />);
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     expect(composer).toHaveAccessibleDescription(
       /Enter queues a message while this turn runs\. Shift\+Enter adds a new line\./,
     );
@@ -1032,7 +1038,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface chatId="chat-a" />);
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     fireEvent.change(composer, { target: { value: "Follow up" } });
     fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
 
@@ -1078,7 +1084,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     const view = render(<ChatSurface chatId="chat-a" />);
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     fireEvent.change(composer, { target: { value: "Once only" } });
     fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
     setTurnState("completed");
@@ -1115,7 +1121,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface chatId="chat-a" />);
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     fireEvent.change(composer, { target: { value: "Keep this" } });
     fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
 
@@ -1155,7 +1161,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface chatId="chat-a" />);
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     fireEvent.change(composer, { target: { value: "Remove me" } });
     fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
     await waitFor(() => expect(composer).toHaveValue(""));
@@ -1190,7 +1196,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface chatId="chat-a" />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Message agent" }), {
       target: { value: "Keep this row" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
@@ -1236,7 +1242,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     const view = render(<ChatSurface chatId="chat-a" />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Message agent" }), {
       target: { value: "Old queue row" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
@@ -1304,13 +1310,13 @@ describe("ChatSurface ACP resource integration", () => {
       activeTabId: "chat-a",
     });
     const view = render(<ChatSurface chatId="chat-a" />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Message agent" }), {
       target: { value: "Change direction" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
     await waitFor(() =>
       expect(
-        screen.getByRole("textbox", { name: "Message agent" }),
+        screen.getByRole("combobox", { name: "Message agent" }),
       ).toHaveValue(""),
     );
     fireEvent.click(
@@ -1363,13 +1369,13 @@ describe("ChatSurface ACP resource integration", () => {
       activeTabId: "chat-a",
     });
     render(<ChatSurface chatId="chat-a" />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Message agent" }), {
       target: { value: "Check the result" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
     await waitFor(() =>
       expect(
-        screen.getByRole("textbox", { name: "Message agent" }),
+        screen.getByRole("combobox", { name: "Message agent" }),
       ).toHaveValue(""),
     );
     fireEvent.click(
@@ -1416,7 +1422,7 @@ describe("ChatSurface ACP resource integration", () => {
       activeTabId: "chat-a",
     });
     const view = render(<ChatSurface chatId="chat-a" />);
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     for (const message of ["First", "Second"]) {
       fireEvent.change(composer, { target: { value: message } });
       fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
@@ -1486,7 +1492,7 @@ describe("ChatSurface ACP resource integration", () => {
       activeTabId: "chat-a",
     });
     const view = render(<ChatSurface chatId="chat-a" />);
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     for (const message of ["First", "Second"]) {
       fireEvent.change(composer, { target: { value: message } });
       fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
@@ -1541,7 +1547,7 @@ describe("ChatSurface ACP resource integration", () => {
       activeTabId: "chat-a",
     });
     const view = render(<ChatSurface chatId="chat-a" />);
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     for (const message of ["First", "Second"]) {
       fireEvent.change(composer, { target: { value: message } });
       fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
@@ -1576,7 +1582,7 @@ describe("ChatSurface ACP resource integration", () => {
       activeTabId: "chat-a",
     });
     render(<ChatSurface chatId="chat-a" />);
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     for (let index = 1; index <= 8; index += 1) {
       fireEvent.change(composer, { target: { value: `Message ${index}` } });
       // By label: a role query names every button in the surface through
@@ -1701,7 +1707,7 @@ describe("ChatSurface ACP resource integration", () => {
       activeTabId: "chat-a",
     });
     const view = render(<ChatSurface chatId="chat-a" />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Message agent" }), {
       target: { value: "Try again" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
@@ -1736,7 +1742,7 @@ describe("ChatSurface ACP resource integration", () => {
       activeTabId: "chat-a",
     });
     const view = render(<ChatSurface chatId="chat-a" />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Message agent" }), {
       target: { value: "After return" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
@@ -2016,7 +2022,7 @@ describe("ChatSurface ACP resource integration", () => {
     await openComposerOptions();
 
     expect(
-      screen.getByRole("textbox", { name: "Message agent" }),
+      screen.getByRole("combobox", { name: "Message agent" }),
     ).toBeEnabled();
     expect(screen.getByRole("button", { name: "Model" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Harness" })).toBeEnabled();
@@ -2037,7 +2043,7 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
 
     expect(
-      screen.getByRole("textbox", { name: "Message agent" }),
+      screen.getByRole("combobox", { name: "Message agent" }),
     ).toBeEnabled();
     expect(
       screen.queryByText(
@@ -2077,7 +2083,7 @@ describe("ChatSurface ACP resource integration", () => {
 
     expect(screen.getByLabelText("Harness status: Ready")).toBeInTheDocument();
     expect(
-      screen.getByRole("textbox", { name: "Message agent" }),
+      screen.getByRole("combobox", { name: "Message agent" }),
     ).toHaveAttribute("placeholder", "This session cannot accept prompts.");
     expect(
       screen.getByText(
@@ -2178,7 +2184,7 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeNull();
     await waitFor(() =>
       expect(
-        screen.getByRole("textbox", { name: "Message agent" }),
+        screen.getByRole("combobox", { name: "Message agent" }),
       ).toHaveFocus(),
     );
   });
@@ -2327,7 +2333,7 @@ describe("ChatSurface ACP resource integration", () => {
       screen.getByText("Claude reports signed in. Send your prompt again."),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("textbox", { name: "Message agent" }),
+      screen.getByRole("combobox", { name: "Message agent" }),
     ).toBeEnabled();
     let finishCheck: (value: { loggedIn: boolean }) => void = () => {};
     status.mockImplementationOnce(
@@ -2852,7 +2858,7 @@ describe("ChatSurface ACP resource integration", () => {
       useWorkbenchStore.setState({ selectedHarnessId: "pinned-codex" }),
     );
     expect(screen.getByText("Read-only")).toBeVisible();
-    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Message agent" }), {
       target: { value: "Inspect safely" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
@@ -2940,7 +2946,7 @@ describe("ChatSurface ACP resource integration", () => {
         screen.queryByRole("button", { name: "Access options" }),
       ).toBeNull();
       expect(
-        screen.getByRole("textbox", { name: "Message agent" }),
+        screen.getByRole("combobox", { name: "Message agent" }),
       ).toBeDisabled();
       expect(
         screen.getByText("Choose a supported access mode before sending."),
@@ -3039,7 +3045,7 @@ describe("ChatSurface ACP resource integration", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("Only Chat A failed");
     expect(
-      screen.getByRole("textbox", { name: "Message agent" }),
+      screen.getByRole("combobox", { name: "Message agent" }),
     ).toHaveAttribute("maxlength", "16384");
   });
 
@@ -3189,7 +3195,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() =>
       expect(
-        screen.getByRole("textbox", { name: "Message agent" }),
+        screen.getByRole("combobox", { name: "Message agent" }),
       ).toHaveFocus(),
     );
     expect(hooks.actions.submit).not.toHaveBeenCalled();
@@ -3435,7 +3441,7 @@ describe("ChatSurface ACP resource integration", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(
-      screen.getByRole("textbox", { name: "Message agent" }),
+      screen.getByRole("combobox", { name: "Message agent" }),
     ).not.toHaveFocus();
   });
 
@@ -3462,7 +3468,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(document.querySelector(".message-list")).not.toHaveAttribute(
       "aria-live",
     );
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
 
     expect(composer).toBeEnabled();
     expect(composer).toHaveAccessibleDescription(
@@ -3493,7 +3499,7 @@ describe("ChatSurface ACP resource integration", () => {
   it("restores focus only after the authoritative Turn becomes terminal", () => {
     useWorkbenchStore.setState({ composerText: "Follow up" });
     const { rerender } = render(<ChatSurface />);
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
 
     hooks.actions.cancellableTurnId = "turn-a";
     rerender(<ChatSurface />);
@@ -3526,7 +3532,7 @@ describe("ChatSurface ACP resource integration", () => {
 
     expect(foregroundControl).toHaveFocus();
     expect(
-      screen.getByRole("textbox", { name: "Message agent" }),
+      screen.getByRole("combobox", { name: "Message agent" }),
     ).not.toHaveFocus();
   });
 
@@ -3554,7 +3560,7 @@ describe("ChatSurface ACP resource integration", () => {
       document.querySelector(".chat-surface")!.append(figure, action);
       setTurnState("completed");
       rerender(renderPane());
-      const composer = screen.getByRole("textbox", { name: "Message agent" });
+      const composer = screen.getByRole("combobox", { name: "Message agent" });
       expect(composer).not.toHaveFocus();
       const deliberateTarget =
         target === "diagram"
@@ -4446,7 +4452,7 @@ describe("ChatSurface per-chat composer", () => {
     ).toHaveTextContent("Codex");
 
     fireEvent.change(
-      within(left).getByRole("textbox", { name: "Message agent" }),
+      within(left).getByRole("combobox", { name: "Message agent" }),
       {
         target: { value: "left only" },
       },
@@ -5033,7 +5039,7 @@ describe("ChatSurface composer focus hotkey", () => {
       selectedHarnessId: "sage-simulator",
     });
     render(<ChatSurface />);
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     expect(composer).toBeEnabled();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(
@@ -5067,7 +5073,7 @@ describe("ChatSurface composer focus hotkey", () => {
     });
     hooks.page = null;
     render(<ChatSurface />);
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     expect(composer).toBeDisabled();
     expect(composer).toHaveAttribute(
       "placeholder",

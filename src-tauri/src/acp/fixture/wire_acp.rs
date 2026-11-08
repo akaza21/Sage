@@ -10,7 +10,11 @@ pub(super) fn await_request(
     output: &mut impl Write,
     state: &mut WireState,
     kind: &str,
+    prompt_text: Option<&str>,
 ) -> Result<(), FixtureError> {
+    if prompt_text.is_some() && kind != "acpPrompt" {
+        return Err(FixtureError::InvalidArguments);
+    }
     let expected = match kind {
         "acpInitialize" => "initialize",
         "acpNew" => "session/new",
@@ -85,6 +89,13 @@ pub(super) fn await_request(
             .ok_or(FixtureError::InvalidArguments)?;
         state.last_request_id = Some(id);
         if expected == "session/prompt" {
+            // A journey that names the prompt text proves what Sage put on
+            // the wire: one text block, byte for byte.
+            if let Some(text) = prompt_text
+                && request["params"]["prompt"] != json!([{"type":"text","text":text}])
+            {
+                return Err(FixtureError::InvalidArguments);
+            }
             state.prompt_request_id = Some(id);
         }
         return Ok(());

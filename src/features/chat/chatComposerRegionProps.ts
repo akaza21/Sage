@@ -17,6 +17,8 @@ export interface ChatComposerRegionProps {
   composerRef: RefObject<HTMLTextAreaElement | null>;
   fieldId: string;
   dictationScope: string;
+  /** The bound Chat whose live session lists the `/` commands. */
+  commandChatId?: string;
   sessionId?: string | null;
   descriptionId: string;
   disabledReasonId: string;

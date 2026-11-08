@@ -114,7 +114,7 @@ for (const width of [480, 1280]) {
       }));
     });
     const draft = "Keep this draft while approval recovers.\n".repeat(40);
-    const input = page.getByRole("textbox", { name: "Message agent" });
+    const input = page.getByRole("combobox", { name: "Message agent" });
     await input.fill(draft);
     await applyApproval(page, "received");
     const dock = page.locator(".chat-dock");
@@ -277,7 +277,7 @@ test("CP-46 approval replaces the composer slot, opens its menu above, and yield
   await expect(prompt).toHaveCount(0);
   await expect(composer).toBeVisible();
   await expect(
-    page.getByRole("textbox", { name: "Message agent" }),
+    page.getByRole("combobox", { name: "Message agent" }),
   ).toBeVisible();
   await expect(
     page.getByText("Awaiting approval", { exact: true }),

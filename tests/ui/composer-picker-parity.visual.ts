@@ -347,7 +347,7 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
     .locator(".composer__harness")
     .boundingBox())!;
   const promptBox = (await composer
-    .getByRole("textbox", { name: "Message agent", exact: true })
+    .getByRole("combobox", { name: "Message agent", exact: true })
     .boundingBox())!;
   expect(triggerBox!.y).toBeGreaterThanOrEqual(promptBox.y + promptBox.height);
   expect(triggerBox!.y).toBeGreaterThanOrEqual(wrapperBox.y);
@@ -532,7 +532,7 @@ for (const forcedColors of ["none", "active"] as const) {
       beforeSend: true,
       belowPrompt: true,
     });
-    await composer.getByRole("textbox").focus();
+    await composer.getByRole("combobox", { name: "Message agent" }).focus();
     await page.keyboard.press("Tab");
     while (
       !(await meter.evaluate((element) => element === document.activeElement))

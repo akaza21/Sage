@@ -71,7 +71,7 @@ it("restores Files with collapsed navigation when split space returns and lets n
     screen.getByRole("button", { name: /Show files and preview/ }),
   );
   await settleLazyModules();
-  const composer = screen.getByRole("textbox", { name: "Message agent" });
+  const composer = screen.getByRole("combobox", { name: "Message agent" });
   composer.focus();
   act(() => {
     vi.stubGlobal("innerWidth", 700);
@@ -117,7 +117,7 @@ it.each([false, true])(
       );
       await settleLazyModules();
     }
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     fireEvent.change(composer, { target: { value: "Overlay draft" } });
     fireEvent.click(
       screen.getByRole("button", { name: /Show files and preview/ }),
@@ -253,11 +253,11 @@ it.each(["approval", "disabled"] as const)(
         await screen.findByRole("group", { name: "Permission request" }),
       ).toBeVisible();
       expect(
-        screen.queryByRole("textbox", { name: "Message agent" }),
+        screen.queryByRole("combobox", { name: "Message agent" }),
       ).toBeNull();
     } else
       expect(
-        screen.getByRole("textbox", { name: "Message agent" }),
+        screen.getByRole("combobox", { name: "Message agent" }),
       ).toBeDisabled();
     const pane = screen.getByRole("region", { name: /^Chat pane / });
     const home = screen.getByRole("button", { name: "Home" });
@@ -325,10 +325,10 @@ it.each(["parent", "side"] as const)(
     const focused = panes.find((pane) => pane.dataset.chatId === focusedId)!;
     const other = panes.find((pane) => pane !== focused)!;
     expect(
-      within(focused).getByRole("textbox", { name: "Message agent" }),
+      within(focused).getByRole("combobox", { name: "Message agent" }),
     ).toBeDisabled();
     expect(
-      within(other).getByRole("textbox", { name: "Message agent" }),
+      within(other).getByRole("combobox", { name: "Message agent" }),
     ).toBeEnabled();
     const home = screen.getByRole("button", { name: "Home" });
     home.focus();
@@ -338,8 +338,12 @@ it.each(["parent", "side"] as const)(
     expect(focused).toHaveClass("agent-chat-pane--focused");
     expect(useWorkbenchStore.getState().activeTabId).toBe(focusedId);
     expect(useSideChatState.getState().pairedId).toBe(sideId);
-    expect(within(panes[0]!).getByRole("textbox")).toHaveValue("Parent draft");
-    expect(within(panes[1]!).getByRole("textbox")).toHaveValue("Side draft");
+    expect(
+      within(panes[0]!).getByRole("combobox", { name: "Message agent" }),
+    ).toHaveValue("Parent draft");
+    expect(
+      within(panes[1]!).getByRole("combobox", { name: "Message agent" }),
+    ).toHaveValue("Side draft");
     expect(await ports.project.getBootstrapSnapshot()).toEqual(before);
     expect(create).not.toHaveBeenCalled();
   },
@@ -361,7 +365,7 @@ it.each([false, true])(
       );
       await settleLazyModules();
     }
-    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    const composer = screen.getByRole("combobox", { name: "Message agent" });
     fireEvent.change(composer, { target: { value: "Keep this unsent text" } });
     for (let click = 0; click < 3; click += 1) {
       const navigation = screen.getByRole("navigation", {

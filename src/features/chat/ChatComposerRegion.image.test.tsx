@@ -93,13 +93,13 @@ describe("composer image input", () => {
     expect(container.querySelector(".composer__controls")).toBeNull();
     rerenderComposer({ hidden: false });
     expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
-    expect(screen.getByRole("textbox", { name: "Message agent" })).toHaveValue(
+    expect(screen.getByRole("combobox", { name: "Message agent" })).toHaveValue(
       "A prompt",
     );
   });
   it("leaves prompt paths and code uncorrected", () => {
     renderComposer({ text: "src/loong_file.ts npm --flag" });
-    const prompt = screen.getByRole("textbox", { name: "Message agent" });
+    const prompt = screen.getByRole("combobox", { name: "Message agent" });
     expect(prompt).toHaveAttribute("spellcheck", "false");
     expect(prompt).toHaveAttribute("autocorrect", "off");
     expect(prompt).toHaveAttribute("autocapitalize", "off");
@@ -107,7 +107,7 @@ describe("composer image input", () => {
   });
   it("keeps the draft focused while sending and saving a queued message", () => {
     const { rerenderComposer } = renderComposer();
-    const prompt = screen.getByRole("textbox", { name: "Message agent" });
+    const prompt = screen.getByRole("combobox", { name: "Message agent" });
     prompt.focus();
     rerenderComposer({ actionBusy: true });
     expect(prompt).toBeEnabled();
@@ -154,7 +154,7 @@ describe("composer image input", () => {
 
   it("keeps the running prompt plain while describing queue behavior accessibly", () => {
     renderComposer({ activeTurn: true, queueAvailable: true });
-    const prompt = screen.getByRole("textbox", { name: "Message agent" });
+    const prompt = screen.getByRole("combobox", { name: "Message agent" });
     expect(prompt).toHaveAttribute("placeholder", "Do anything");
     expect(prompt).toHaveAttribute(
       "aria-description",
@@ -280,7 +280,9 @@ describe("composer image input", () => {
     const form = screen.getByRole("form");
     const body = form.querySelector(".composer__body");
     expect(body).not.toBeNull();
-    expect(body).toContainElement(screen.getByRole("textbox"));
+    expect(body).toContainElement(
+      screen.getByRole("combobox", { name: "Message agent" }),
+    );
     expect(body).toContainElement(screen.getByRole("alert"));
     expect(body).not.toContainElement(form.querySelector(".composer__toolbar"));
     expect(form.querySelector(".composer__toolbar")?.parentElement).toBe(form);
@@ -304,7 +306,7 @@ describe("composer image input", () => {
 
   it("accepts image paste and chooser only with capability", () => {
     const { onAddImages } = renderComposer({ imageInputAvailable: true });
-    fireEvent.paste(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.paste(screen.getByRole("combobox", { name: "Message agent" }), {
       clipboardData: { files: [png()] },
     });
     expect(onAddImages).toHaveBeenCalledWith([
@@ -449,7 +451,7 @@ describe("composer image input", () => {
     const { unmount } = renderComposer({ attachedContext: [image], onSubmit });
     const form = screen.getByRole("form") as HTMLFormElement;
     form.requestSubmit = vi.fn(() => fireEvent.submit(form));
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Message agent" }), {
       key: "Enter",
     });
     expect(form.requestSubmit).toHaveBeenCalled();
