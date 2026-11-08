@@ -74,6 +74,10 @@ fn capabilities(
     binding
         .revalidate()
         .map_err(|_| RegistryAdmissionUnavailable::Drift)?;
+    ceiling()
+}
+
+fn ceiling() -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
     Ok(CapabilitySnapshotV1 {
         schema_version: SchemaVersionV1,
         protocol_version: RequiredText::new("protocolVersion", "1")
@@ -94,7 +98,15 @@ fn capabilities(
         multi_root_extension_schema_id: None,
         model_count: 0,
         prompt_resources: true,
-        prompt_images: false,
+        prompt_images: true,
         config_count: 0,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_sdk_route_admits_the_image_blocks_its_bridge_forwards() {
+        assert!(super::ceiling().expect("ceiling").prompt_images);
+    }
 }
