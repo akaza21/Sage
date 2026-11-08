@@ -1,9 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resourceKey, sameResource } from "../domain/resourceIdentity";
 import type { ResourceRef, WorkbenchTab } from "../domain/workbench";
 import { applyEditorExternalWatchNotice } from "../features/files/editorExternalWatch";
-import { RECREATE_BEFORE_LEAVING } from "../features/files/fileEditorController";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { resetBrowserDesktopForTests } from "../services/browserDesktop";
 import { browserEditor } from "../services/browserEditor";
@@ -12,7 +11,7 @@ import {
   browserRef,
   browserSnapshot,
 } from "../services/browserWorkspaceFixture";
-import { CHANGED_ON_DISK } from "./editorConflictActions";
+import { CHANGED_ON_DISK, DELETED_ON_DISK } from "./editorConflictActions";
 import { storeEditorBridge } from "./editorSlice";
 import { useWorkbenchStore } from "./store";
 
@@ -143,6 +142,26 @@ describe("a File that changed on disk under unsaved edits", () => {
     expect(tabOf(file).dirty).toBe(false);
   });
 
+  it("Keep mine is refused if disk changed again since the banner", async () => {
+    const file = nextFile();
+    openTabs(file);
+    await edit(file, "mine\n");
+    await changeOnDisk(file, "first\n");
+    // A second change the banner has not shown yet.
+    browserEditor.changeOnDisk(file, "second\n");
+
+    expect(await store().keepActiveEditorBuffer()).toBe(false);
+    expect(readyEditor()).toMatchObject({ content: "mine\n", saving: false });
+    expect(readyEditor().document.conflict?.kind).toBe("external-change");
+    expect(tabOf(file).status).toBe("failed");
+    expect(await diskText(file)).toBe("second\n");
+
+    // The banner now shows the second change, and Keep mine goes on it.
+    expect(await store().keepActiveEditorBuffer()).toBe(true);
+    expect(await store().saveActiveEditor()).toBe(true);
+    expect(await diskText(file)).toBe("mine\n");
+  });
+
   it("Keep mine on a deleted File creates it again on save", async () => {
     const file = browserRef("src/workbench/Workbench.tsx");
     const listing = () =>
@@ -156,17 +175,50 @@ describe("a File that changed on disk under unsaved edits", () => {
     expect(listing()).not.toContain("Workbench.tsx");
 
     expect(await store().keepActiveEditorBuffer()).toBe(true);
-    expect(readyEditor()).toMatchObject({ recreateOnSave: true });
-    // Leaving would lose the only copy, so it is refused until a save.
-    await expect(store().flushActiveEditor()).rejects.toThrow(
-      RECREATE_BEFORE_LEAVING,
-    );
+    expect(readyEditor().document.conflict).toBeNull();
+    // The kept buffer is durable, so the tab can be left and come back.
+    store().updateEditorContent("kept, edited\n");
+    await store().flushActiveEditor();
+    useWorkbenchStore.setState({ activeEditor: null });
+    await store().loadEditor(file);
+    expect(readyEditor()).toMatchObject({ content: "kept, edited\n" });
 
     expect(await store().saveActiveEditor()).toBe(true);
-    expect(await diskText(file)).toBe("kept\n");
+    expect(await diskText(file)).toBe("kept, edited\n");
     expect(listing()).toContain("Workbench.tsx");
-    expect(readyEditor().recreateOnSave).toBeUndefined();
     expect(tabOf(file).dirty).toBe(false);
+  });
+
+  it("Close on a deleted File leaves no recovery buffer", async () => {
+    const file = nextFile();
+    openTabs(file);
+    await edit(file, "mine\n");
+    await store().flushActiveEditor();
+    await changeOnDisk(file, null);
+
+    await store().closeEditorWithoutSaving(tabOf(file).id);
+
+    expect(store().tabs.some((tab) => sameResource(tab.resource, file))).toBe(
+      false,
+    );
+    // With no buffer and no File, there is nothing left to open.
+    await expect(async () => editor.openEditorDocument(file)).rejects.toThrow(
+      "does not exist",
+    );
+  });
+
+  it("shows a deleted File's buffer when its background tab is activated", async () => {
+    const [front, back] = [nextFile(), nextFile()];
+    openTabs(front, back);
+    await store().loadEditor(front);
+    await backgroundBuffer(back, "mine\n");
+    browserEditor.changeOnDisk(back, null);
+
+    await store().activateTab(tabOf(back).id);
+
+    expect(readyEditor()).toMatchObject({ resource: back, content: "mine\n" });
+    expect(readyEditor().document.conflict?.kind).toBe("deleted");
+    expect(tabOf(back).status).toBe("failed");
   });
 
   it("shows the conflict when a background tab is activated", async () => {
@@ -213,5 +265,36 @@ describe("Save All", () => {
       projectId: browserSnapshot.project!.id,
       failures,
     });
+  });
+
+  it("names why each File failed and forgets the ones saved since", async () => {
+    const [deleted, broken] = [nextFile(), nextFile()];
+    openTabs(deleted, broken);
+    await edit(deleted, "kept\n");
+    await changeOnDisk(deleted, null);
+    await backgroundBuffer(broken, "broken\n");
+    const save = editor.saveEditorDocument;
+    const failing = vi
+      .spyOn(editor, "saveEditorDocument")
+      .mockImplementation((resource) =>
+        sameResource(resource, broken)
+          ? Promise.reject(new Error("The disk is full."))
+          : save(resource),
+      );
+
+    const failures = await store().saveAllEditors();
+    failing.mockRestore();
+
+    expect(failures).toEqual([
+      { resource: deleted, message: DELETED_ON_DISK },
+      { resource: broken, message: "The disk is full." },
+    ]);
+    expect(tabOf(broken)).toMatchObject({ dirty: true, status: "failed" });
+
+    expect(await store().keepActiveEditorBuffer()).toBe(true);
+    expect(await store().saveActiveEditor()).toBe(true);
+    expect(store().saveAllReport?.failures).toEqual([
+      { resource: broken, message: "The disk is full." },
+    ]);
   });
 });

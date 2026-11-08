@@ -338,8 +338,8 @@
       },
       {
         "entry": "src/features/files/FileSurface.tsx",
-        "maxGzipBytes": 7000,
-        "reason": "File resource surface and editor host; loads only when a File is opened, language packs deferred. #235 adds the disk-conflict banner and Revert File. Measured 6953 B; cap 7000 B."
+        "maxGzipBytes": 6639,
+        "reason": "File resource surface and editor host; loads only when a File is opened, with language packs still deferred."
       },
       {
         "entry": "src/features/preview/AgentPreviewPresentation.tsx",

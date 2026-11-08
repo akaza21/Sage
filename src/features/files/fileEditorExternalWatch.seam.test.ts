@@ -60,6 +60,7 @@ function fakeEditorPort(): EditorPort {
     snapshotEditorBuffer: vi.fn(),
     saveEditorDocument: vi.fn(),
     discardEditorBuffer: vi.fn(),
+    rebaseEditorBuffer: vi.fn(),
     watchEditorDocument: vi.fn(),
   };
 }

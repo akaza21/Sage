@@ -2,12 +2,13 @@ import { useEffect } from "react";
 
 import { errorMessage } from "../../domain/errors";
 import { sameResource } from "../../domain/resourceIdentity";
-import type {
-  BufferSnapshotAck,
-  BufferSnapshotRequest,
-  EditorDocument,
-  EditorSaveResult,
-  ResourceRef,
+import {
+  ABSENT_FINGERPRINT,
+  type BufferSnapshotAck,
+  type BufferSnapshotRequest,
+  type EditorDocument,
+  type EditorSaveResult,
+  type ResourceRef,
 } from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
@@ -16,9 +17,6 @@ import type { EditorContent, EditorContentBase } from "./editorContent";
 export const EDITOR_SNAPSHOT_DELAY_MS = 750;
 
 const MAX_SNAPSHOTS_PER_FLUSH = 8;
-
-export const RECREATE_BEFORE_LEAVING =
-  "This File was deleted outside Sage. Save it to create it again, or close it.";
 
 export type ActiveEditorState =
   | { phase: "loading"; resource: ResourceRef }
@@ -38,12 +36,6 @@ export type ActiveEditorState =
       persisting: boolean;
       saving: boolean;
       message: string | null;
-      /**
-       * The File was deleted outside Sage and the user kept this buffer: the
-       * next save creates the File again. Until then there is no disk version
-       * to snapshot against.
-       */
-      recreateOnSave?: true;
     };
 
 type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
@@ -51,7 +43,8 @@ type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
 /** The File is gone from disk, whether or not the user kept the buffer. */
 export function isDeletedOnDisk(editor: ReadyEditorState): boolean {
   return (
-    editor.document.conflict?.kind === "deleted" || !!editor.recreateOnSave
+    editor.document.conflict?.kind === "deleted" ||
+    editor.document.disk.fingerprint === ABSENT_FINGERPRINT
   );
 }
 
@@ -68,7 +61,6 @@ interface EditorLifecycleState {
   resource: ResourceRef;
   revision?: number;
   persistedRevision?: number;
-  recreateOnSave?: true;
 }
 
 interface FileEditorLifecycleOptions {
@@ -142,12 +134,6 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
   const persistLatestEditor = async (bridge: EditorStateBridge) => {
     for (let attempt = 0; attempt < MAX_SNAPSHOTS_PER_FLUSH; attempt += 1) {
       const active = currentReady(bridge);
-      if (active?.recreateOnSave) {
-        // Nothing on disk to snapshot against, so leaving would lose the
-        // buffer: only a save (which recreates the File) or Close ends it.
-        bridge.setActiveEditor({ ...active, message: RECREATE_BEFORE_LEAVING });
-        throw new Error(RECREATE_BEFORE_LEAVING);
-      }
       if (!active || active.revision <= active.persistedRevision) {
         return;
       }
@@ -341,7 +327,6 @@ export function useFileEditorLifecycle(
   const editorResource = editor?.resource;
   const revision = editor?.revision ?? 0;
   const persistedRevision = editor?.persistedRevision ?? 0;
-  const recreateOnSave = editor?.recreateOnSave === true;
 
   useEffect(() => {
     if (resource) {
@@ -354,8 +339,7 @@ export function useFileEditorLifecycle(
       !resource ||
       editorPhase !== "ready" ||
       !sameResource(editorResource, resource) ||
-      revision <= persistedRevision ||
-      recreateOnSave
+      revision <= persistedRevision
     ) {
       return;
     }
@@ -366,7 +350,6 @@ export function useFileEditorLifecycle(
     editorResource,
     flushActiveEditor,
     persistedRevision,
-    recreateOnSave,
     resource,
     revision,
   ]);

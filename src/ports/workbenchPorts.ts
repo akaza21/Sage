@@ -1,6 +1,7 @@
 import type { QueuedChatPrompt } from "../domain/chatOwnership";
 import type {
   BootstrapSnapshot,
+  BufferRebaseRequest,
   BufferSnapshotAck,
   BufferSnapshotRequest,
   ChatLifecycleRequest,
@@ -146,6 +147,7 @@ export interface EditorPort {
   ): Promise<BufferSnapshotAck>;
   saveEditorDocument(resource: ResourceRef): Promise<EditorSaveResult>;
   discardEditorBuffer(resource: ResourceRef): Promise<EditorDocument>;
+  rebaseEditorBuffer(request: BufferRebaseRequest): Promise<EditorSaveResult>;
   watchEditorDocument(resource: ResourceRef): Promise<EditorWatchSubscription>;
 }
 
@@ -321,6 +323,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "discardEditorBuffer",
     "openEditorDocument",
     "readTextFile",
+    "rebaseEditorBuffer",
     "saveEditorDocument",
     "snapshotEditorBuffer",
     "watchEditorDocument",

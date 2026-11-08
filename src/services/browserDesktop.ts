@@ -139,6 +139,7 @@ export const browserDesktop = {
   snapshotEditorBuffer: browserEditor.snapshot,
   saveEditorDocument: browserEditor.save,
   discardEditorBuffer: browserEditor.discard,
+  rebaseEditorBuffer: browserEditor.rebase,
   async getFileDiff(resource: ResourceRef): Promise<FileDiff> {
     return { resource, binary: false, truncated: false, hunks: [] };
   },

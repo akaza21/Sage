@@ -8,7 +8,11 @@ import {
 } from "../../domain/editorWatch";
 import { errorMessage } from "../../domain/errors";
 import { sameResource } from "../../domain/resourceIdentity";
-import type { ResourceRef } from "../../domain/workbench";
+import {
+  ABSENT_FINGERPRINT,
+  type DocumentVersion,
+  type ResourceRef,
+} from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
 import type {
   ActiveEditorState,
@@ -228,7 +232,15 @@ export async function applyEditorExternalWatchNotice(
     bridge.setActiveEditor(
       {
         ...active,
-        document: { ...active.document, conflict: DELETION_CONFLICT },
+        document: {
+          ...active.document,
+          disk: {
+            fingerprint: ABSENT_FINGERPRINT,
+            byteLen: 0,
+            modifiedAt: null,
+          },
+          conflict: DELETION_CONFLICT,
+        },
         message: DELETION_CONFLICT.message,
       },
       { tabStatus: "failed" },
@@ -245,13 +257,11 @@ export async function applyEditorExternalWatchNotice(
           saving: active.saving,
         }
       : null;
-  const dirty =
-    active.phase === "ready" && active.revision > active.persistedRevision;
-  if (dirty && !active.saving) {
-    setExternalChangeConflict(bridge, active);
-    return;
-  }
-  const document = await editor.openEditorDocument(notice.resource);
+  // The banner's "Keep mine" goes on top of the disk version read here. A
+  // File that cannot be read now gets the banner too.
+  const document = await editor
+    .openEditorDocument(notice.resource)
+    .catch(() => null);
   const current = bridge.getActiveEditor();
   if (!current || !noticeMatchesWatch(notice, current.resource)) {
     return;
@@ -259,13 +269,15 @@ export async function applyEditorExternalWatchNotice(
   if (
     current.phase === "ready" &&
     snapshot !== null &&
-    (current.revision !== snapshot.revision ||
+    (!document ||
+      current.revision !== snapshot.revision ||
       current.persistedRevision !== snapshot.persistedRevision ||
       !sameContent(current.content, snapshot.content) ||
       current.document.buffer.fingerprint !== snapshot.fingerprint ||
       current.revision > current.persistedRevision)
   ) {
     const completedMatchingSave =
+      !!document &&
       snapshot.saving &&
       !current.saving &&
       !current.document.dirty &&
@@ -276,10 +288,11 @@ export async function applyEditorExternalWatchNotice(
       current.document.disk.fingerprint === document.disk.fingerprint &&
       current.document.lineEnding === document.lineEnding;
     if (!completedMatchingSave) {
-      setExternalChangeConflict(bridge, current);
+      setExternalChangeConflict(bridge, current, document?.disk);
       return;
     }
   }
+  if (!document) return;
   bridge.setActiveEditor(
     {
       phase: "ready",
@@ -302,12 +315,14 @@ export async function applyEditorExternalWatchNotice(
 function setExternalChangeConflict(
   bridge: EditorStateBridge,
   current: Extract<ActiveEditorState, { phase: "ready" }>,
+  disk: DocumentVersion | undefined,
 ): void {
   bridge.setActiveEditor(
     {
       ...current,
       document: {
         ...current.document,
+        disk: disk ?? current.document.disk,
         conflict: {
           kind: "external-change",
           message: "This file changed outside Sage.",

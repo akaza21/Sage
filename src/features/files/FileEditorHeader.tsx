@@ -49,8 +49,10 @@ export function FileEditorHeader({
         <FilePathChips path={path} projectName={projectName} />
       </span>
       <span className="file-header__metadata">
-        UTF-8 · {lineEnding.toUpperCase()} · {diskByteLen.toLocaleString()} disk
-        bytes
+        UTF-8 · {lineEnding.toUpperCase()}
+        <span className="file-header__disk">
+          {` · ${diskByteLen.toLocaleString()} disk bytes`}
+        </span>
       </span>
       {saveState || canPreview ? (
         <span className="file-header__actions">

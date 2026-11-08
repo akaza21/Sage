@@ -99,6 +99,7 @@ const editor: EditorPort = {
   snapshotEditorBuffer: requestCommand("snapshot_editor_buffer"),
   saveEditorDocument: resourceCommand("save_editor_document"),
   discardEditorBuffer: resourceCommand("discard_editor_buffer"),
+  rebaseEditorBuffer: requestCommand("rebase_editor_buffer"),
   async watchEditorDocument(
     resource: ResourceRef,
   ): Promise<EditorWatchSubscription> {

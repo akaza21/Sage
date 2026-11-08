@@ -86,7 +86,8 @@ for (const width of [1280, 720]) {
     await banner.getByRole("button", { name: "Keep mine" }).click();
     await expect(banner).toBeHidden();
     await expect(compare).toBeHidden();
-    await page.locator(".cm-content").click();
+    // Back in the editor, so the save is one keystroke away.
+    await expect(page.locator(".cm-content")).toBeFocused();
     await page.keyboard.press("ControlOrMeta+s");
     await expect.poll(() => diskText(page)).toContain("// mine");
     expect(await diskText(page)).not.toContain("// written elsewhere");
@@ -112,16 +113,19 @@ for (const width of [1280, 720]) {
     await expect(banner).toBeVisible();
     await expect(banner.getByRole("button", { name: "Reload" })).toHaveCount(0);
     await shot(page, "deleted");
+    await expect(page.locator(".file-header__disk")).toBeHidden();
     await banner.getByRole("button", { name: "Keep mine" }).click();
     await expect(banner).toBeHidden();
     const pending = page
       .getByRole("status")
-      .filter({ hasText: "Save it to create it again" });
+      .filter({ hasText: "Save to create it again, or close it." });
     await expect(pending).toBeVisible();
+    await expect(pending.getByRole("button", { name: "Close" })).toBeVisible();
     await shot(page, "deleted-kept");
-    await page.locator(".cm-content").click();
+    await expect(page.locator(".cm-content")).toBeFocused();
     await page.keyboard.press("ControlOrMeta+s");
     await expect(pending).toBeHidden();
+    await expect(page.locator(".file-header__disk")).toBeVisible();
     expect(await diskText(page)).toContain("// kept");
 
     // Close drops the edit and the tab.
@@ -133,3 +137,27 @@ for (const width of [1280, 720]) {
     ).toHaveCount(0);
   });
 }
+
+test("Revert File in the command palette drops unsaved edits", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openFile(page);
+  const onDisk = await diskText(page);
+  await typeAtEnd(page, "// to revert");
+  const dialog = page.getByRole("dialog", { name: "Quick Open" });
+  const box = dialog.getByRole("combobox", { name: "Run a command" });
+
+  await page.keyboard.press("ControlOrMeta+Shift+p");
+  await box.fill(">revert file");
+  await expect(dialog.getByRole("option")).toHaveCount(1);
+  await box.press("Enter");
+
+  await expect(dialog).toBeHidden();
+  await expect(page.locator(".cm-content")).not.toContainText("// to revert");
+  expect(await diskText(page)).toBe(onDisk);
+  // With nothing unsaved, there is nothing to revert.
+  await page.keyboard.press("ControlOrMeta+Shift+p");
+  await box.fill(">revert file");
+  await expect(dialog.getByRole("option")).toHaveCount(0);
+});

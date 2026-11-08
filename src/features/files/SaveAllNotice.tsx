@@ -1,5 +1,23 @@
 import { useWorkbenchStore } from "../../app/store";
+import type { ProjectRootSummary, ResourceRef } from "../../domain/workbench";
 import { AlertTriangle } from "../../ui/leanIcons";
+
+/**
+ * The path as the user can tell it apart: in a project with several roots it
+ * starts with its root's name, and with the root's position when two roots
+ * share a name.
+ */
+function saveAllPath(
+  resource: ResourceRef,
+  roots: readonly ProjectRootSummary[],
+): string {
+  if (roots.length < 2) return resource.relativePath;
+  const root = roots.find((candidate) => candidate.id === resource.rootId);
+  if (!root) return resource.relativePath;
+  const shared = roots.filter((other) => other.name === root.name).length > 1;
+  const label = shared ? `${root.name} (root ${root.ordinal + 1})` : root.name;
+  return `${label}/${resource.relativePath}`;
+}
 
 /** Names each File the last Save All could not save, and why. */
 export function SaveAllNotice() {
@@ -8,6 +26,7 @@ export function SaveAllNotice() {
       ? state.saveAllReport
       : null,
   );
+  const roots = useWorkbenchStore((state) => state.project?.roots);
   const dismiss = useWorkbenchStore((state) => state.dismissSaveAllReport);
   if (!report) return null;
   const count = report.failures.length;
@@ -21,7 +40,7 @@ export function SaveAllNotice() {
         <ul className="editor-notice__list">
           {report.failures.map(({ resource, message }) => (
             <li key={`${resource.rootId}:${resource.relativePath}`}>
-              {resource.relativePath}: {message}
+              {saveAllPath(resource, roots ?? [])}: {message}
             </li>
           ))}
         </ul>

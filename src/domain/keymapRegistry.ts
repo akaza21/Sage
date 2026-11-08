@@ -42,6 +42,8 @@ export interface KeymapChordEvent {
   ctrlKey: boolean;
   metaKey: boolean;
   shiftKey: boolean;
+  /** Reports AltGr, which Windows sends as Control+Alt. */
+  getModifierState?: (key: "AltGraph") => boolean;
 }
 
 export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
@@ -368,8 +370,11 @@ export function matchesPlatformChord(
   const primary = useControl ? event.ctrlKey : event.metaKey;
   const other = useControl ? event.metaKey : event.ctrlKey;
   const chord = platformChord(binding, apple);
+  // AltGr types characters (AltGr+S is "ś" on a Polish layout); on Windows it
+  // arrives as Control+Alt, which must not run a chord.
   return (
     !other &&
+    !(!apple && event.getModifierState?.("AltGraph")) &&
     admits(chord.ctrlOrMeta, primary) &&
     admits(chord.shift, event.shiftKey) &&
     admits(chord.alt, event.altKey) &&

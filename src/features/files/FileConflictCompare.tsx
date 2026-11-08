@@ -53,7 +53,7 @@ export function FileConflictCompare({
 
   return (
     <section
-      className="diff-surface"
+      className="diff-surface file-conflict-compare"
       aria-label={`Compare ${resource.relativePath} on disk with your version`}
     >
       <div className="diff-toolbar">

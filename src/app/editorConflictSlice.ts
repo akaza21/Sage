@@ -16,9 +16,13 @@ export interface SaveAllReport {
 
 export interface EditorConflictSlice {
   saveAllReport: SaveAllReport | null;
+  /** The File the banner's Compare is showing, as its disk version. */
+  editorCompareKey: string | null;
+  setEditorCompareKey: (key: string | null) => void;
   /**
-   * "Keep mine": keeps the active buffer over the File's change on disk, so
-   * the next save writes it; for a deleted File, the next save recreates it.
+   * "Keep mine": puts the active buffer on top of the File as the banner
+   * showed it on disk, so the next save writes it; for a deleted File, the
+   * next save creates it again.
    */
   keepActiveEditorBuffer: () => Promise<boolean>;
   /** Saves every dirty File tab, carrying on past the ones that fail. */
@@ -37,6 +41,8 @@ export const createEditorConflictSlice: StateCreator<
   EditorConflictSlice
 > = (set, get) => ({
   saveAllReport: null,
+  editorCompareKey: null,
+  setEditorCompareKey: (editorCompareKey) => set({ editorCompareKey }),
   dismissSaveAllReport: () => set({ saveAllReport: null }),
   keepActiveEditorBuffer: async () =>
     (await loadActions()).keepActiveEditorBuffer(set, get),

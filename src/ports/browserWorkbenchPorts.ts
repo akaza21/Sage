@@ -100,6 +100,8 @@ const editor: EditorPort = {
     Promise.resolve(browserDesktop.saveEditorDocument(resource)),
   discardEditorBuffer: (resource) =>
     Promise.resolve(browserDesktop.discardEditorBuffer(resource)),
+  rebaseEditorBuffer: (request) =>
+    Promise.resolve(browserEditor.rebase(request)),
   watchEditorDocument: async (
     resource: ResourceRef,
   ): Promise<EditorWatchSubscription> => browserEditor.watch(resource),

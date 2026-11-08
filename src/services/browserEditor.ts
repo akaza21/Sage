@@ -1,11 +1,14 @@
-import type {
-  BufferSnapshotAck,
-  BufferSnapshotRequest,
-  EditorDocument,
-  EditorSaveResult,
-  FileGitBase,
-  ResourceRef,
-  TextFile,
+import {
+  ABSENT_FINGERPRINT,
+  type BufferRebaseRequest,
+  type BufferSnapshotAck,
+  type BufferSnapshotRequest,
+  type EditorDocument,
+  type EditorSaveResult,
+  type FileGitBase,
+  type ResourceRef,
+  type TextFile,
+  type WorkspaceEntry,
 } from "../domain/workbench";
 import {
   createInjectedEditorWatchDelivery,
@@ -14,6 +17,12 @@ import {
 } from "../domain/editorWatch";
 import { parentResource, resourceKey } from "../domain/resourceIdentity";
 import { browserDirectories } from "./browserWorkspaceFixture";
+
+const ABSENT_VERSION = {
+  fingerprint: ABSENT_FINGERPRINT,
+  byteLen: 0,
+  modifiedAt: null,
+};
 
 const files = new Map<string, string>();
 const buffers = new Map<
@@ -82,12 +91,29 @@ function readTextFile(resource: ResourceRef): TextFile {
   };
 }
 
+/** The File's text, or `null` when a test deleted it. */
+function diskIfPresent(resource: ResourceRef): string | null {
+  return deletedFiles.has(resourceKey(resource)) ? null : diskContent(resource);
+}
+
+function diskVersion(resource: ResourceRef) {
+  const content = diskIfPresent(resource);
+  return content === null ? ABSENT_VERSION : version(content);
+}
+
+/** Mirrors the native open: a deleted File with a buffer opens as it. */
 function open(resource: ResourceRef): EditorDocument {
   const key = resourceKey(resource);
-  const currentDiskContent = diskContent(resource);
-  const disk = version(currentDiskContent);
   const persisted = buffers.get(key);
-  const content = persisted?.request.content ?? currentDiskContent;
+  // Without a buffer, a deleted File cannot be opened.
+  const currentDiskContent = persisted
+    ? diskIfPresent(resource)
+    : diskContent(resource);
+  const disk =
+    currentDiskContent === null ? ABSENT_VERSION : version(currentDiskContent);
+  const content = persisted?.request.content ?? currentDiskContent ?? "";
+  const moved =
+    persisted && persisted.request.base.fingerprint !== disk.fingerprint;
   return {
     resource,
     disk,
@@ -100,14 +126,32 @@ function open(resource: ResourceRef): EditorDocument {
     },
     lineEnding: persisted?.request.lineEnding ?? "lf",
     dirty: Boolean(persisted),
-    conflict:
-      persisted && persisted.request.base.fingerprint !== disk.fingerprint
-        ? {
+    conflict: !moved
+      ? null
+      : currentDiskContent === null
+        ? DELETED
+        : {
             kind: "external-change",
             message:
               "The browser fixture changed after this buffer was opened.",
-          }
-        : null,
+          },
+  };
+}
+
+const DELETED = {
+  kind: "deleted",
+  message: "This file was deleted outside Sage.",
+} as const;
+
+function deletedDocument(resource: ResourceRef): EditorDocument {
+  return {
+    resource,
+    disk: ABSENT_VERSION,
+    base: ABSENT_VERSION,
+    buffer: { ...ABSENT_VERSION, revision: 0, content: "" },
+    lineEnding: "none",
+    dirty: false,
+    conflict: DELETED,
   };
 }
 
@@ -128,7 +172,7 @@ function snapshot(request: BufferSnapshotRequest): BufferSnapshotAck {
   }
   const bufferFingerprint = fingerprint(request.content);
   const diskMatchesBase =
-    fingerprint(diskContent(request.resource)) === request.base.fingerprint;
+    diskVersion(request.resource).fingerprint === request.base.fingerprint;
   if (!persisted && !diskMatchesBase) {
     throw new Error(
       "snapshot base no longer matches disk and no durable buffer exists",
@@ -144,6 +188,7 @@ function snapshot(request: BufferSnapshotRequest): BufferSnapshotAck {
   return { revision: request.revision, persistedAt: Date.now(), dirty };
 }
 
+/** A buffer kept over a deletion creates its File, which must not exist. */
 function save(resource: ResourceRef): EditorSaveResult {
   const key = resourceKey(resource);
   const persisted = buffers.get(key);
@@ -151,18 +196,40 @@ function save(resource: ResourceRef): EditorSaveResult {
     return { outcome: "unchanged", document: open(resource) };
   }
   if (
-    fingerprint(diskContent(resource)) !== persisted.request.base.fingerprint
+    diskVersion(resource).fingerprint !== persisted.request.base.fingerprint
   ) {
     return { outcome: "conflict", document: open(resource) };
   }
+  if (deletedFiles.delete(key)) restoreListing(resource);
   files.set(key, persisted.request.content);
   buffers.delete(key);
   return { outcome: "saved", document: open(resource) };
 }
 
+/** Drops the buffer whether or not the File still exists, as native does. */
 function discard(resource: ResourceRef): EditorDocument {
   buffers.delete(resourceKey(resource));
-  return open(resource);
+  return diskIfPresent(resource) === null
+    ? deletedDocument(resource)
+    : open(resource);
+}
+
+function rebase(request: BufferRebaseRequest): EditorSaveResult {
+  const key = resourceKey(request.resource);
+  const disk = diskVersion(request.resource);
+  if (disk.fingerprint !== request.expectedDisk.fingerprint) {
+    return { outcome: "conflict", document: open(request.resource) };
+  }
+  const bufferFingerprint = fingerprint(request.content);
+  if (bufferFingerprint === disk.fingerprint) {
+    buffers.delete(key);
+  } else {
+    buffers.set(key, {
+      request: { ...request, base: disk },
+      fingerprint: bufferFingerprint,
+    });
+  }
+  return { outcome: "rebased", document: open(request.resource) };
 }
 
 function createEmpty(resource: ResourceRef) {
@@ -180,6 +247,7 @@ function resetCreatedFiles() {
   }
   fixtureCreatedFiles.clear();
   deletedFiles.clear();
+  removedEntries.clear();
 }
 
 /** One watch per open File, as the native watch keeps. */
@@ -200,6 +268,16 @@ function watch(resource: ResourceRef): EditorWatchSubscription {
   };
 }
 
+const removedEntries = new Map<string, WorkspaceEntry>();
+
+function restoreListing(resource: ResourceRef) {
+  const entry = removedEntries.get(resourceKey(resource));
+  const parent = browserDirectories.get(resourceKey(parentResource(resource)));
+  if (entry && parent && !parent.entries.includes(entry)) {
+    parent.entries = [...parent.entries, entry];
+  }
+}
+
 /**
  * Test fixture: another program writes the File (`content`) or deletes it
  * (`null`), and its watches hear about it as the native watch reports.
@@ -212,14 +290,16 @@ function changeOnDisk(resource: ResourceRef, content: string | null) {
     const parent = browserDirectories.get(
       resourceKey(parentResource(resource)),
     );
-    if (parent) {
-      parent.entries = parent.entries.filter(
-        (entry) => entry.resource.relativePath !== resource.relativePath,
-      );
+    const removed = parent?.entries.find(
+      (entry) => entry.resource.relativePath === resource.relativePath,
+    );
+    if (parent && removed) {
+      removedEntries.set(key, removed);
+      parent.entries = parent.entries.filter((entry) => entry !== removed);
     }
   } else {
     files.set(key, content);
-    deletedFiles.delete(key);
+    if (deletedFiles.delete(key)) restoreListing(resource);
   }
   watchGeneration += 1;
   for (const emit of watchers.get(key) ?? []) {
@@ -238,6 +318,7 @@ export const browserEditor = {
   snapshot,
   save,
   discard,
+  rebase,
   createEmpty,
   resetCreatedFiles,
   watch,

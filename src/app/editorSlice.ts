@@ -12,10 +12,10 @@ import {
 } from "../features/files/editorContent";
 import {
   getFileEditorController,
-  isDeletedOnDisk,
   type ActiveEditorState,
   type EditorStateBridge,
 } from "../features/files/fileEditorController";
+import type { SaveAllReport } from "./editorConflictSlice";
 import { enqueueEditorOperation } from "./editorOperations";
 import {
   issueRequestIntent,
@@ -26,8 +26,6 @@ import {
 import { type WorkbenchState } from "./store";
 
 export type { ActiveEditorState } from "../features/files/fileEditorController";
-
-const loadConflictActions = () => import("./editorConflictActions");
 
 export interface EditorSlice {
   activeEditor: ActiveEditorState | null;
@@ -168,11 +166,6 @@ export const createEditorSlice: StateCreator<
           ) {
             return null;
           }
-          const active = get().activeEditor;
-          if (active?.phase === "ready" && active.recreateOnSave) {
-            const { recreateDeletedFile } = await loadConflictActions();
-            await recreateDeletedFile(get(), editorState, active);
-          }
           const result = await editorController.save(
             editorState,
             (resource) =>
@@ -202,7 +195,11 @@ export const createEditorSlice: StateCreator<
           const diffs = { ...state.diffs };
           delete directoryListings[resourceKey(parent)];
           delete diffs[resourceKey(savedResource)];
-          return { directoryListings, diffs };
+          return {
+            directoryListings,
+            diffs,
+            saveAllReport: reportWithout(state.saveAllReport, savedResource),
+          };
         });
         await Promise.all([
           get().refreshRepository(),
@@ -230,12 +227,6 @@ export const createEditorSlice: StateCreator<
           ) {
             return false;
           }
-          const active = get().activeEditor;
-          if (active?.phase === "ready" && isDeletedOnDisk(active)) {
-            const { dropDeletedBuffer } = await loadConflictActions();
-            await dropDeletedBuffer(editorState, active);
-            return true;
-          }
           const document = await editorController.discard(
             editorState,
             (resource) =>
@@ -261,6 +252,19 @@ export const createEditorSlice: StateCreator<
     },
   };
 };
+
+/** The report without `resource`, which has since been saved. */
+function reportWithout(
+  report: SaveAllReport | null,
+  resource: ResourceRef,
+): SaveAllReport | null {
+  if (!report) return null;
+  const failures = report.failures.filter(
+    (failure) => !sameResource(failure.resource, resource),
+  );
+  if (failures.length === report.failures.length) return report;
+  return failures.length ? { ...report, failures } : null;
+}
 
 /** The active editor as the store holds it, with its tabs kept in step. */
 export function storeEditorBridge(
