@@ -1,4 +1,9 @@
 import { useEffect, useState, type RefObject } from "react";
+import {
+  chooseAccess,
+  grantFullAccess,
+  prepareFullAccess,
+} from "../../app/sessionAccessActions";
 import type {
   SessionAccessMode,
   SessionAccessModeCapability,
@@ -21,17 +26,17 @@ export default function ComposerAccessMenu({
   triggerRef,
   candidates,
   effective,
-  onSelect,
-  onPrepareFullAccess,
+  bindingId,
+  sessionId,
   onDismiss,
 }: {
   id: string;
   triggerRef: RefObject<HTMLButtonElement | null>;
   candidates: readonly SessionAccessModeCapability[];
   effective: SessionAccessMode | null;
-  /** `confirmToken` accompanies Full access, from `onPrepareFullAccess`. */
-  onSelect: (mode: SessionAccessMode, confirmToken?: string) => void;
-  onPrepareFullAccess: () => Promise<string | null>;
+  bindingId: string;
+  /** The live chat a Full access grant applies to. */
+  sessionId: string | null;
   onDismiss: () => void;
 }) {
   const [confirmation, setConfirmation] =
@@ -47,9 +52,9 @@ export default function ComposerAccessMenu({
   // The native side issues a single-use token when this dialog opens; only
   // the confirm below spends it, so a stale or replayed grant fails.
   useEffect(() => {
-    if (!fullAccess) return;
+    if (!fullAccess || !sessionId) return;
     let live = true;
-    void onPrepareFullAccess().then((issued) => {
+    void prepareFullAccess(sessionId).then((issued) => {
       if (!live) return;
       if (issued) setToken(issued);
       else setClosing(true);
@@ -57,7 +62,7 @@ export default function ComposerAccessMenu({
     return () => {
       live = false;
     };
-  }, [fullAccess, onPrepareFullAccess]);
+  }, [fullAccess, sessionId]);
   const close = () => setClosing(true);
   if (closing) return null;
   if (confirmation && !candidates.includes(confirmation)) setConfirmation(null);
@@ -95,7 +100,10 @@ export default function ComposerAccessMenu({
             type="button"
             disabled={fullAccess && token === null}
             onClick={() => {
-              onSelect(confirmation.id, fullAccess ? (token ?? "") : undefined);
+              if (!fullAccess)
+                void chooseAccess(bindingId, sessionId, confirmation.id);
+              else if (sessionId && token)
+                void grantFullAccess(sessionId, token);
               close();
             }}
           >
@@ -147,7 +155,8 @@ export default function ComposerAccessMenu({
               )
                 setConfirmation(candidate);
               else {
-                if (effective !== candidate.id) onSelect(candidate.id);
+                if (effective !== candidate.id)
+                  void chooseAccess(bindingId, sessionId, candidate.id);
                 close();
               }
             }}

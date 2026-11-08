@@ -38,16 +38,8 @@ export function ComposerAccessControl({
   const id = useId();
   const session = sessionAccessTarget(sessionConfig);
   const trigger = useRef<HTMLButtonElement>(null);
-  const {
-    ready,
-    error,
-    fullAccessError,
-    choose,
-    candidates,
-    effective,
-    prepareFullAccess,
-    grantFullAccess,
-  } = useSessionAccessSelection(bindingId, capabilities, session);
+  const { ready, error, fullAccessError, candidates, effective } =
+    useSessionAccessSelection(bindingId, capabilities, session);
   const selected = candidates.find((candidate) => candidate.id === effective);
   const Icon = ACCESS_ICONS[effective ?? "workspaceWrite"];
   if (candidates.length === 0) return null;
@@ -85,12 +77,8 @@ export function ComposerAccessControl({
             candidates={candidates}
             effective={effective}
             onDismiss={onDismiss}
-            onPrepareFullAccess={prepareFullAccess}
-            onSelect={(mode, confirmToken) => {
-              if (mode === FULL_ACCESS) {
-                if (confirmToken) void grantFullAccess(confirmToken);
-              } else void choose(mode);
-            }}
+            bindingId={bindingId}
+            sessionId={session?.sessionId ?? null}
           />
         </Suspense>
       ) : null}

@@ -101,8 +101,8 @@
       },
       {
         "entry": "src/features/chat/ComposerAccessMenu.tsx",
-        "maxGzipBytes": 959,
-        "reason": "Supported-access menu and workspace-write confirmation; loads on the first Access request."
+        "maxGzipBytes": 1633,
+        "reason": "Supported-access menu with the workspace-write and Full access confirmations; loads on the first Access request. Measured 1526 B, with the access changes only it makes, plus 7%."
       },
       {
         "entry": "src/features/chat/ComposerAddActions.tsx",

@@ -387,8 +387,10 @@ mod tests {
             assert!(
                 access_modes(binding, "0.146.0", true)
                     .iter()
-                    .all(|mode| !matches!(mode.id, AcceptEdits | Plan | Auto | FullAccess)
-                        && mode.session_mode_id.is_none())
+                    .all(
+                        |mode| !matches!(mode.id, AcceptEdits | Plan | Auto | FullAccess)
+                            && mode.session_mode_id.is_none()
+                    )
             );
             // A grant those harnesses cannot carry falls back to read-only.
             assert_eq!(

@@ -20,8 +20,11 @@ const port = vi.hoisted(() => ({
   grant: vi.fn(),
   revoke: vi.fn(),
 }));
-vi.mock("../../ports/sessionFullAccessPort", () => ({
+vi.mock("../../ports/fullAccessSessions", () => ({
   MAX_FULL_ACCESS_SESSIONS: 64,
+  listFullAccessSessions: () => port.list(),
+}));
+vi.mock("../../ports/sessionFullAccessPort", () => ({
   sessionFullAccessPort: () => port,
 }));
 

@@ -6,9 +6,9 @@ import {
   type SessionAccessModes,
 } from "../domain/sessionAccessMode";
 import {
+  listFullAccessSessions,
   MAX_FULL_ACCESS_SESSIONS,
-  sessionFullAccessPort,
-} from "../ports/sessionFullAccessPort";
+} from "../ports/fullAccessSessions";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { createSettingWriter } from "./settingWriteQueue";
 
@@ -24,10 +24,6 @@ interface SessionAccessModeStore {
   restore: () => Promise<void>;
   settle: () => Promise<boolean>;
   setMode: (bindingId: string, mode: SessionAccessMode) => void;
-  /** Opens a Full access confirmation; resolves to its token. */
-  prepareFullAccess: (sessionId: string) => Promise<string | null>;
-  grantFullAccess: (sessionId: string, confirmToken: string) => Promise<void>;
-  revokeFullAccess: (sessionId: string) => Promise<void>;
 }
 const writes = createSettingWriter<SessionAccessModes>({});
 let loading: Promise<void> | null = null;
@@ -50,7 +46,7 @@ export const useSessionAccessModeStore = create<SessionAccessModeStore>(
         try {
           const [stored, granted] = await Promise.all([
             getWorkbenchPorts().settings.getSessionAccessModes(),
-            sessionFullAccessPort().list(),
+            listFullAccessSessions(),
           ]);
           const modes = admitSessionAccessModes(stored);
           writes.persisted(modes);
@@ -89,48 +85,6 @@ export const useSessionAccessModeStore = create<SessionAccessModeStore>(
             error: "Permission mode could not be saved.",
           }),
       );
-    },
-    prepareFullAccess: async (sessionId) => {
-      try {
-        const { confirmToken } =
-          await sessionFullAccessPort().prepare(sessionId);
-        return confirmToken;
-      } catch {
-        set({
-          fullAccessError: "Full access could not be prepared. Try again.",
-        });
-        return null;
-      }
-    },
-    grantFullAccess: async (sessionId, confirmToken) => {
-      try {
-        await sessionFullAccessPort().grant(sessionId, confirmToken);
-        set({
-          fullAccessError: null,
-          fullAccessSessions: [
-            sessionId,
-            ...get().fullAccessSessions.filter((id) => id !== sessionId),
-          ].slice(0, MAX_FULL_ACCESS_SESSIONS),
-        });
-      } catch {
-        set({ fullAccessError: "Full access was not granted. Confirm again." });
-      }
-    },
-    revokeFullAccess: async (sessionId) => {
-      if (!get().fullAccessSessions.includes(sessionId)) return;
-      try {
-        await sessionFullAccessPort().revoke(sessionId);
-        set({
-          fullAccessError: null,
-          fullAccessSessions: get().fullAccessSessions.filter(
-            (id) => id !== sessionId,
-          ),
-        });
-      } catch {
-        set({
-          fullAccessError: "Full access could not be turned off. Try again.",
-        });
-      }
     },
   }),
 );
