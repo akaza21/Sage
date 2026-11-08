@@ -127,19 +127,19 @@ pub(super) fn text<'a>(
 }
 
 /// The Codex turn a `turn/started` names. An inline review starts a nested
-/// turn whose `rootTurnId` is the turn `review/start` answered, which is
-/// already the active Turn, so that root names it. Any other root, such as
-/// an earlier finished turn, leaves the started turn as its own.
-pub(super) fn started_turn_id<'a>(
-    turn: &'a Map<String, Value>,
-    active: Option<&str>,
-) -> Result<&'a str, IngressError> {
+/// turn whose `rootTurnId` is the turn `review/start` answers, so that root
+/// names the Sage Turn when `root_names_turn` admits it. Any other root, such
+/// as an earlier finished turn, leaves the started turn as its own.
+pub(super) fn started_turn_id(
+    turn: &Map<String, Value>,
+    root_names_turn: impl FnOnce(&str) -> bool,
+) -> Result<&str, IngressError> {
     let id = text(turn, "id", 512)?;
     match turn.get("rootTurnId") {
         None | Some(Value::Null) => Ok(id),
         Some(_) => {
             let root = text(turn, "rootTurnId", 512)?;
-            Ok(if active == Some(root) { root } else { id })
+            Ok(if root_names_turn(root) { root } else { id })
         }
     }
 }
@@ -283,8 +283,8 @@ fn append_command_output(output: &mut String, value: &str, maximum: usize) -> Op
     Some(())
 }
 
-/// In prose a POSIX path needs two segments, so a `/` command such as
-/// `/review` reads as itself; command output keeps every rooted token.
+/// In prose a session-action command such as `/review` reads as itself;
+/// command output keeps every rooted token private.
 fn contains_absolute_path(token: &str, prose: bool) -> bool {
     let lower = token.to_ascii_lowercase();
     if lower.contains("file:///") || lower.contains("file://\\\\") {
@@ -304,7 +304,11 @@ fn contains_absolute_path(token: &str, prose: bool) -> bool {
         if rest.starts_with(b"\\\\")
             || (rest.starts_with(b"/")
                 && !rest.starts_with(b"//")
-                && (!prose || crate::acp::redaction::text::paths::has_two_path_segments(rest)))
+                && !(prose
+                    && crate::acp::redaction::text::paths::is_session_action_command(
+                        rest,
+                        index.checked_sub(1).map(|previous| bytes[previous]),
+                    )))
             || (rest.len() >= 3
                 && rest[0].is_ascii_alphabetic()
                 && rest[1] == b':'

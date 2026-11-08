@@ -218,7 +218,7 @@ fn detect_absolute_path(value: &str, mode: PathMode) -> Option<PathKind> {
             }
             PathMode::Prose => {
                 plain_slash_path(rest)
-                    && has_two_path_segments(rest)
+                    && !is_session_action_command(rest, previous)
                     && (previous != Some(b'<') || last_slash.is_some_and(|last| last > index))
             }
         };
@@ -253,10 +253,11 @@ fn is_path_boundary(value: &[u8], index: usize) -> bool {
     })
 }
 
-/// A rooted prose token names a path only with two non-empty segments once
-/// trailing prose punctuation is trimmed, so `/review` or `(/review).` stays
-/// a `/` command while `/home/u` is a path.
-pub(crate) fn has_two_path_segments(rest: &[u8]) -> bool {
+/// A rooted prose token that is exactly one of Sage's own session-action
+/// commands, opening a word or a bracket or quote and allowing trailing prose
+/// punctuation, as in "re-run /review" or "(/review).". Any other rooted word,
+/// such as `/root` or `/alice`, may name a real directory and stays a path.
+pub(crate) fn is_session_action_command(rest: &[u8], previous: Option<u8>) -> bool {
     let end = rest
         .iter()
         .rposition(|byte| {
@@ -266,11 +267,12 @@ pub(crate) fn has_two_path_segments(rest: &[u8]) -> bool {
             )
         })
         .map_or(0, |last| last + 1);
-    rest[..end]
-        .split(|byte| *byte == b'/')
-        .filter(|segment| !segment.is_empty())
-        .nth(1)
-        .is_some()
+    matches!(previous, None | Some(b'(' | b'[' | b'"' | b'\'' | b'`'))
+        && rest[..end].strip_prefix(b"/").is_some_and(|name| {
+            crate::acp::session_action::COMMAND_NAMES
+                .iter()
+                .any(|command| command.as_bytes() == name)
+        })
 }
 
 fn plain_slash_path(rest: &[u8]) -> bool {

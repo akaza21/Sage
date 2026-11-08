@@ -172,11 +172,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       ? () => void acpActions.runSessionAction(action)
       : undefined;
   };
+  const retry = acpPage && latestRetryPrompt(acpPage);
   const retryLastTurn = () => {
-    if (!acpPage || actionBusy || activeAcpTurn) return;
-    const retry = latestRetryPrompt(acpPage);
-    if (retry?.action) void acpActions.runSessionAction(retry.action);
-    else if (retry)
+    if (!retry || actionBusy || activeAcpTurn) return;
+    if (retry.action) void acpActions.runSessionAction(retry.action);
+    else
       void acpActions.submit(retry.prompt, [], retry.bindingId, retry.modelId);
   };
 
@@ -304,7 +304,8 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
           !projectTransitioning &&
           !actionBusy &&
           !activeAcpTurn &&
-          !acpPage?.turns.at(-1)?.unrecognizedAction
+          retry &&
+          (!retry.action || sessionActionAvailable(acpPage, retry.action.kind))
             ? retryLastTurn
             : undefined
         }

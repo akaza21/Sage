@@ -91,6 +91,9 @@ fn a_slash_command_in_prose_is_not_a_path_but_command_output_keeps_it_private() 
         ("`/a/b`", "[path]"),
         ("C:\\x", "[path]"),
         ("file:///x", "[path]"),
+        ("/root", "[path]"),
+        ("/alice", "[path]"),
+        ("x=/review", "[path]"),
     ] {
         assert_eq!(sanitize(prose), shown);
     }

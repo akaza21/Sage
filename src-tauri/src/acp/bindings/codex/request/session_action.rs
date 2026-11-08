@@ -1,4 +1,4 @@
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::acp::{
     contract::RequiredText,
@@ -20,12 +20,14 @@ impl OutgoingRequest {
                 RequestKind::Compact,
                 json!({"threadId": thread_id.as_str()}),
             ),
-            SessionAction::Review { target } => Self::build(
+            SessionAction::Review {
+                target: ReviewTarget::UncommittedChanges {},
+            } => Self::build(
                 id,
                 RequestKind::Review,
                 json!({
                     "threadId": thread_id.as_str(),
-                    "target": review_target(target),
+                    "target": {"type": "uncommittedChanges"},
                     "delivery": "inline"
                 }),
             ),
@@ -33,21 +35,15 @@ impl OutgoingRequest {
     }
 }
 
-fn review_target(target: &ReviewTarget) -> Value {
-    match target {
-        ReviewTarget::UncommittedChanges {} => json!({"type": "uncommittedChanges"}),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn params(action: serde_json::Value) -> (String, Value) {
+    fn params(action: serde_json::Value) -> (String, serde_json::Value) {
         let thread = RequiredText::new("threadId", "thread-1").unwrap();
         let action: SessionAction = serde_json::from_value(action).unwrap();
         let request = OutgoingRequest::session_action(7, &thread, &action).unwrap();
-        let value: Value = serde_json::from_slice(&request.bytes).unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&request.bytes).unwrap();
         assert!(request.kind.starts_turn());
         (
             value["method"].as_str().unwrap().to_owned(),

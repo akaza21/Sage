@@ -13,21 +13,16 @@ export const sessionActions = {
   compact: { kind: "compact" },
 } as const satisfies Record<string, AcpSessionAction>;
 
-/**
- * The action a stored Turn ran, or null for one the chat does not offer,
- * which the host projects as `{ kind: "unrecognized" }`.
- */
+const sameShape = (value: unknown, shape: unknown): boolean =>
+  isRecord(value) && isRecord(shape)
+    ? Object.keys(value).length === Object.keys(shape).length &&
+      Object.keys(shape).every((key) => sameShape(value[key], shape[key]))
+    : value === shape;
+
+/** The action a stored Turn ran, or null for one the chat does not offer. */
 export function decodeSessionAction(value: unknown): AcpSessionAction | null {
-  if (!isRecord(value)) return null;
-  // Two keys with a record target can only be `kind` and `target`.
-  const size = Object.keys(value).length;
-  if (value.kind === "compact" && size === 1) return sessionActions.compact;
-  const { target } = value;
-  return value.kind === "review" &&
-    size === 2 &&
-    isRecord(target) &&
-    target.kind === "uncommittedChanges" &&
-    Object.keys(target).length === 1
-    ? sessionActions.reviewChanges
-    : null;
+  return (
+    Object.values(sessionActions).find((action) => sameShape(value, action)) ??
+    null
+  );
 }

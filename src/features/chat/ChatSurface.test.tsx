@@ -619,41 +619,57 @@ describe("ChatSurface ACP resource integration", () => {
     },
   );
 
-  it("retries a session-action Turn by running its action again", async () => {
-    matchConfiguredSession();
-    setTurnState("completed");
-    const action = {
-      kind: "review",
-      target: { kind: "uncommittedChanges" },
-    } as const;
-    const [turn] = hooks.page!.turns;
-    hooks.page = {
-      ...hooks.page!,
-      turns: [
-        {
-          ...turn,
-          sessionAction: action,
-          items: [
-            {
-              ...itemBase("action-prompt"),
-              kind: "text",
-              payload: { role: "user", text: "/review" },
-            } as AcpItem,
-            {
-              ...itemBase("action-findings"),
-              ordinal: 1,
-              kind: "text",
-              payload: { role: "assistant", text: "No issues found." },
-            } as AcpItem,
-          ],
-        },
-      ],
-    };
-    render(<ChatSurface />);
-    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
-    expect(hooks.actions.runSessionAction).toHaveBeenCalledWith(action);
-    expect(hooks.actions.submit).not.toHaveBeenCalled();
-  });
+  it.each([true, false])(
+    "retries a session-action Turn only while the session negotiates it (%s)",
+    async (negotiated) => {
+      matchConfiguredSession();
+      setTurnState("completed");
+      const [session] = hooks.page!.sessions;
+      const action = {
+        kind: "review",
+        target: { kind: "uncommittedChanges" },
+      } as const;
+      const [turn] = hooks.page!.turns;
+      hooks.page = {
+        ...hooks.page!,
+        sessions: [
+          {
+            ...session,
+            capabilities: { ...session.capabilities, nativeReview: negotiated },
+          },
+        ],
+        turns: [
+          {
+            ...turn,
+            sessionAction: action,
+            items: [
+              {
+                ...itemBase("action-prompt"),
+                kind: "text",
+                payload: { role: "user", text: "/review" },
+              } as AcpItem,
+              {
+                ...itemBase("action-findings"),
+                ordinal: 1,
+                kind: "text",
+                payload: { role: "assistant", text: "No issues found." },
+              } as AcpItem,
+            ],
+          },
+        ],
+      };
+      render(<ChatSurface />);
+      expect(await screen.findByText("No issues found.")).toBeInTheDocument();
+      const retry = screen.queryByRole("button", { name: "Retry" });
+      if (!negotiated) {
+        expect(retry).toBeNull();
+        return;
+      }
+      fireEvent.click(retry!);
+      expect(hooks.actions.runSessionAction).toHaveBeenCalledWith(action);
+      expect(hooks.actions.submit).not.toHaveBeenCalled();
+    },
+  );
 
   it("offers no Retry for a Turn whose session action it cannot run", async () => {
     matchConfiguredSession();

@@ -150,6 +150,20 @@ impl FileStages {
             .map(|b| b.resources.clone())
             .unwrap_or_default()
     }
+    /// What a prompt sends from the chat's staged files. A session action
+    /// sends none, so the staged files stay for the next prompt.
+    pub(crate) fn for_prompt(
+        &self,
+        project: &str,
+        chat: &str,
+        prompt: &crate::acp::intent::Prompt,
+    ) -> Resources {
+        if prompt.action.is_some() {
+            Resources::default()
+        } else {
+            self.get(project, chat)
+        }
+    }
     pub(crate) fn list(&self, project: &str, chat: &str) -> Option<StagedFiles> {
         self.batches
             .get(&(project.to_owned(), chat.to_owned()))

@@ -167,7 +167,7 @@ pub(super) fn notification<M: ResourceMapper>(
                 .get("turn")
                 .and_then(Value::as_object)
                 .ok_or(IngressError::Malformed)?;
-            let turn_id = started_turn_id(turn, adapter.active_turn_id())?;
+            let turn_id = started_turn_id(turn, |root| adapter.root_names_turn(root))?;
             let (id, binding) = match adapter.observe_turn_started(turn_id) {
                 Ok(value) => value,
                 Err(error) => return Err(turn_started_rejection(adapter, error)),

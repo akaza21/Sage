@@ -192,8 +192,19 @@ impl CodexAdapter {
         self.active_turn_id.is_some()
     }
 
-    pub(crate) fn active_turn_id(&self) -> Option<&str> {
-        self.active_turn_id.as_ref().map(ExternalId::as_str)
+    /// A nested turn's root names the active Turn, or, before any Turn is
+    /// named, the review whose `review/start` answer has not arrived yet.
+    pub(crate) fn root_names_turn(&self, root: &str) -> bool {
+        match &self.active_turn_id {
+            Some(active) => active.as_str() == root,
+            None => {
+                let mut starts = self.pending.iter().filter(|(_, kind)| kind.starts_turn());
+                matches!(
+                    (starts.next(), starts.next()),
+                    (Some((_, RequestKind::Review)), None)
+                )
+            }
+        }
     }
 
     pub(crate) fn mark_browser_mcp_failure_reported(&mut self) -> bool {

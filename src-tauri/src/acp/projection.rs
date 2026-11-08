@@ -319,10 +319,10 @@ pub struct ActivityProjection {
 pub struct TurnProjection {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub attached_context: Vec<super::attached_context::AttachedContext>,
-    /// The session action this Turn ran: Retry runs it again, and withholds
-    /// itself for one this build does not run.
+    /// The session action this Turn ran, as stored. The client decodes it to
+    /// run it again on Retry and offers no Retry for one it cannot run.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) session_action: Option<super::session_action::StoredSessionAction>,
+    pub(crate) session_action: Option<serde_json::Value>,
     pub id: SageTurnId,
     pub session_id: SageAgentSessionId,
     pub runtime_epoch: RuntimeEpoch,

@@ -29,29 +29,8 @@ pub(crate) enum ReviewTarget {
     UncommittedChanges {},
 }
 
-/// A Turn's stored action as its projection carries it. A stored action
-/// this build does not run still marks its Turn as an action Turn, so Retry
-/// is withheld instead of resending the action's `/` text as a prompt.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(untagged)]
-pub(crate) enum StoredSessionAction {
-    Runnable(SessionAction),
-    Unrecognized(UnrecognizedSessionAction),
-}
-
-/// Projects as `{"kind":"unrecognized"}`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "kind", rename = "unrecognized")]
-pub(crate) struct UnrecognizedSessionAction {}
-
-impl StoredSessionAction {
-    pub(crate) fn decode(value: &serde_json::Value) -> Self {
-        serde_json::from_value(value.clone()).map_or(
-            Self::Unrecognized(UnrecognizedSessionAction {}),
-            Self::Runnable,
-        )
-    }
-}
+/// The `/` commands that name session actions, as their prompts read.
+pub(crate) const COMMAND_NAMES: [&str; 2] = ["compact", "review"];
 
 impl SessionAction {
     pub(crate) fn admitted_by(&self, capabilities: &CapabilitySnapshotV1) -> bool {
@@ -83,6 +62,7 @@ mod tests {
             serde_json::from_value(json!({"kind":"review","target":{"kind":"uncommittedChanges"}}))
                 .unwrap();
         assert_eq!(review.prompt_text(), "/review");
+        assert!(COMMAND_NAMES.contains(&&review.prompt_text()[1..]));
         assert_eq!(
             serde_json::from_value::<SessionAction>(json!({"kind":"compact"}))
                 .unwrap()
@@ -124,7 +104,7 @@ mod tests {
             crate::acp::transcript_quote::load_prompt_metadata(&connection, "turn").unwrap();
         assert_eq!(
             metadata.session_action,
-            Some(StoredSessionAction::Runnable(action))
+            Some(serde_json::to_value(&action).unwrap())
         );
         assert!(crate::acp::store::parse_legacy_text(&payload).is_ok());
         let plain = crate::acp::intent::Prompt::new("prompt", "/review").unwrap();
@@ -132,7 +112,7 @@ mod tests {
     }
 
     #[test]
-    fn a_stored_action_this_build_does_not_run_still_loads_as_unrecognized() {
+    fn a_stored_action_this_build_does_not_run_still_loads_as_stored() {
         let connection = rusqlite::Connection::open_in_memory().unwrap();
         connection
             .execute_batch("CREATE TABLE items(turn_id TEXT,ordinal INTEGER,kind TEXT,payload_json TEXT,payload_bytes INTEGER)")
@@ -148,16 +128,11 @@ mod tests {
             .unwrap();
         let action = crate::acp::transcript_quote::load_prompt_metadata(&connection, "turn")
             .unwrap()
-            .session_action
-            .unwrap();
+            .session_action;
         assert_eq!(
-            serde_json::to_value(&action).unwrap(),
-            json!({"kind":"unrecognized"})
+            action,
+            Some(json!({"kind":"review","target":{"kind":"baseBranch","branch":"main"}}))
         );
         assert!(crate::acp::store::parse_legacy_text(&payload).is_ok());
-        assert_eq!(
-            serde_json::to_value(StoredSessionAction::decode(&json!({"kind":"compact"}))).unwrap(),
-            json!({"kind":"compact"})
-        );
     }
 }

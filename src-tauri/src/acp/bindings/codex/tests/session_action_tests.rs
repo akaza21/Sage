@@ -146,6 +146,43 @@ fn the_captured_inline_review_is_one_sage_turn_named_by_its_root() {
 }
 
 #[test]
+fn a_review_whose_nested_turn_starts_before_its_answer_is_still_one_turn() {
+    let mut frames = captured(
+        include_str!(
+            "../../../../../tests/fixtures/harness-traces/codex/review-inline/frames.jsonl"
+        ),
+        "01a1bbe6-7d8e-7c02-976b-784a01e72196",
+    );
+    let answer = frames
+        .iter()
+        .position(|(_, frame)| frame["result"]["reviewThreadId"].is_string())
+        .unwrap();
+    let started = frames
+        .iter()
+        .position(|(_, frame)| frame["method"] == "turn/started")
+        .unwrap();
+    frames.swap(answer, started);
+    let mut adapter = adapter();
+    ready(&mut adapter);
+    let events = replay(&mut adapter, &frames);
+    assert_eq!(
+        projected(&events),
+        [
+            "client-action: turn Running",
+            "client-action: Started tool Entered review mode",
+            "client-action: Completed tool Entered review mode",
+            &format!("error {PROVIDER_REFUSAL}"),
+            "client-action: Started text Reviewer failed to output a response.",
+            "client-action: Completed text Reviewer failed to output a response.",
+            "client-action: Started text Review was interrupted. Please re-run /review and wait for it to complete.",
+            "client-action: Completed text Review was interrupted. Please re-run /review and wait for it to complete.",
+            "client-action: turn Failed",
+        ]
+    );
+    assert!(!adapter.has_active_turn() && !adapter.has_pending_turn_start());
+}
+
+#[test]
 fn the_captured_compaction_binds_the_turn_that_follows_its_empty_answer() {
     let frames = captured(
         include_str!("../../../../../tests/fixtures/harness-traces/codex/compact/frames.jsonl"),

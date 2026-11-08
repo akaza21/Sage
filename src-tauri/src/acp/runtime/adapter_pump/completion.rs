@@ -25,9 +25,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 .validate(revision, prompt.as_str())
                 .map_err(|_| crate::acp::runtime::HostError::Intent)?;
         }
-        if !prompt.action_admitted(self.adapter.capabilities().as_ref()) {
-            return Err(crate::acp::runtime::HostError::Intent);
-        }
         Ok(())
     }
 
