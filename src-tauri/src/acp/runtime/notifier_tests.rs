@@ -14,6 +14,7 @@ use super::notifier::{
     NotificationError, NotificationRecovery, NotificationSink, NotificationSinkFuture,
     ProjectionNotifier, PublishOutcome,
 };
+use super::projection_publisher::TurnNotice;
 
 struct GateSink {
     committed: Arc<AtomicBool>,
@@ -447,4 +448,37 @@ fn interleaved_chats_keep_their_own_child_only_routing() {
         route_projection_notice(&mut routes, child("b", 9, 3)).is_ok(),
         "an evicted route reloads the parent page once"
     );
+}
+
+#[tokio::test]
+async fn only_possible_turn_notices_are_observed_even_when_projection_is_suppressed() {
+    struct Observer(AtomicUsize);
+    impl NotificationSink for Observer {
+        fn observe_turn_notice(&self, _: &ProjectionChangedV1) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+        fn publish<'a>(&'a self, _: ProjectionChangedV1) -> NotificationSinkFuture<'a> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+    let sink = Arc::new(Observer(AtomicUsize::new(0)));
+    let notifier = ProjectionNotifier::start(sink.clone());
+    notifier.set_active_project(SageProjectId::parse("foreground").unwrap());
+    assert_eq!(
+        notifier
+            .publish_committed(event("background", "chat", "session", 1))
+            .unwrap(),
+        PublishOutcome::SuppressedInactive
+    );
+    assert_eq!(sink.0.load(Ordering::SeqCst), 0, "streamed content");
+    assert_eq!(
+        notifier
+            .publish_committed_with(
+                event("background", "chat", "session", 2),
+                TurnNotice::Possible
+            )
+            .unwrap(),
+        PublishOutcome::SuppressedInactive
+    );
+    assert_eq!(sink.0.load(Ordering::SeqCst), 1);
 }

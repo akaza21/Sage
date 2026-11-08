@@ -15,6 +15,7 @@ const FINISHED_AT = 5_000;
 // The settings store holds Beta's read mark; it can refuse deletes.
 const store = vi.hoisted(() => ({
   marks: new Map<string, number>(),
+  sequence: 0,
   refuseUnread: false,
 }));
 vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
@@ -24,10 +25,13 @@ vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
     args?: { chatId?: string; mark?: { chatId: string; readThrough: number } },
   ) => {
     if (command === "chat_read_marks")
-      return [...store.marks].map(([chatId, readThrough]) => ({
-        chatId,
-        readThrough,
-      }));
+      return {
+        marks: [...store.marks].map(([chatId, readThrough]) => ({
+          chatId,
+          readThrough,
+        })),
+        capacity: 64,
+      };
     if (command === "chat_mark_unread") {
       if (store.refuseUnread) throw new Error("settings store is busy");
       store.marks.delete(args!.chatId!);
@@ -35,7 +39,13 @@ vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
     }
     if (command === "chat_mark_read") {
       store.marks.set(args!.mark!.chatId, args!.mark!.readThrough);
-      return args!.mark;
+      store.sequence += 1;
+      return {
+        ...args!.mark,
+        evicted: [],
+        sequence: store.sequence,
+        capacity: 64,
+      };
     }
     return null;
   },

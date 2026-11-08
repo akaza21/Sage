@@ -38,6 +38,13 @@ async fn archive_chat_inner(
         move |database| database.archive_chat(&request),
     )
     .await;
+    if result.committed {
+        // An archived chat is off the rail, so its read mark goes with it; a
+        // restored chat starts without one.
+        if let Err(error) = state.settings.mark_chat_unread(&chat_id) {
+            tracing::warn!(?error, "archived Chat keeps its read mark");
+        }
+    }
     if result.committed
         && let (Ok(project), Ok(chat)) = (
             crate::acp::contract::SageProjectId::parse(project_id),
@@ -117,6 +124,16 @@ mod tests {
                 },
             };
             let state = AppState::new(database);
+            state
+                .settings
+                .mark_chat_read(
+                    &crate::settings_store::ChatReadMark {
+                        chat_id: first_chat_id.clone(),
+                        read_through: 5_000,
+                    },
+                    &[],
+                )
+                .unwrap();
 
             let browser_project = SageProjectId::parse(project.id.clone()).unwrap();
             let browser_chat = SageChatId::parse(first_chat_id.clone()).unwrap();
@@ -172,6 +189,7 @@ mod tests {
                     .is_empty()
             );
             assert!(archived.committed);
+            assert!(state.settings.chat_read_marks().unwrap().marks.is_empty());
             assert!(!browser_lease.is_live());
             assert!(
                 state
