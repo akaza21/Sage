@@ -251,16 +251,19 @@ pub async fn list_directory(
     .map_err(|error| error.to_string())
 }
 
+/// Async so the disk read runs on the blocking pool: Tauri runs a synchronous
+/// command on the main thread, where a large or slow file would freeze the UI.
 #[tauri::command]
-pub fn read_text_file(
-    state: State<'_, AppState>,
-    resource: ResourceRef,
-) -> Result<TextFile, String> {
-    state
-        .database
-        .resolve_active_resource(&resource)
-        .and_then(|workspace| workspace.read_text_file(&resource))
-        .map_err(|error| error.to_string())
+pub async fn read_text_file(app: AppHandle, resource: ResourceRef) -> Result<TextFile, String> {
+    let database = app.state::<AppState>().database.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        database
+            .resolve_active_resource(&resource)
+            .and_then(|workspace| workspace.read_text_file(&resource))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
 }
 
 #[derive(Debug, serde::Serialize)]
