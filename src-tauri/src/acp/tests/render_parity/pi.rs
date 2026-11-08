@@ -53,7 +53,7 @@ impl Turn {
                 model: None,
             })
             .unwrap();
-        turn.reply(session, Value::Null);
+        turn.reply(session, json!({"sessionId":"parity-session"}));
         let prompt = turn
             .runtime
             .command(AdapterCommand::Prompt {

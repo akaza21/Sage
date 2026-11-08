@@ -13,7 +13,7 @@ pub(super) fn capabilities(model_count: u16, config_count: u16) -> CapabilitySna
         )
         .expect("fixed protocol version"),
         new_session: true,
-        resume_session: false,
+        resume_session: true,
         load_session: false,
         close_session: false,
         prompt: true,

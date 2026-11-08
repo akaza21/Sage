@@ -18,7 +18,7 @@ pub enum Operation {
     GetState,
     GetMessages,
     GetEntries { since: Option<String> },
-    Resume,
+    Resume { session_id: String, path: String },
     Load,
     Close,
     MultiRoot,
@@ -43,7 +43,9 @@ pub struct ModelSummary {
 pub struct StateSnapshot {
     pub model: Option<ModelSummary>,
     pub thinking_level: Option<String>,
-    pub has_session: bool,
+    /// Pi's id for its open session, and the file it keeps it in.
+    pub session_id: Option<String>,
+    pub session_file: Option<String>,
     pub is_streaming: bool,
 }
 
@@ -91,7 +93,8 @@ pub enum AdapterOutput {
     CommandAccepted {
         command: &'static str,
     },
-    SessionReset,
+    /// Pi's session, by its own id, is open for this chat.
+    SessionOpened(String),
     State(StateSnapshot),
     Models(Vec<ModelSummary>),
     ModelSelected(ModelSummary),

@@ -420,7 +420,15 @@ fn pending_session_reset_blocks_prompts_until_response_or_delivery_rollback() {
         );
         if resolution == EgressResolution::Written {
             let reset = deliver(&mut runtime, reset);
-            reply(&mut runtime, &reset, success);
+            runtime
+                .ingest(
+                    &frame(
+                        json!({"type":"response","id":reset["id"],"command":"get_state",
+                        "success":success,"data":if success { opened() } else { Value::Null }}),
+                    ),
+                    &Mapper,
+                )
+                .unwrap();
         } else {
             reject_delivery(&mut runtime, reset, resolution);
         }

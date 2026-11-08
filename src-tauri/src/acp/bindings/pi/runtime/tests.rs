@@ -8,6 +8,7 @@ mod pump_contract;
 mod questions;
 mod regressions;
 mod session_facts;
+mod sessions;
 mod slash_commands;
 mod steer;
 mod store_ingress;
@@ -82,6 +83,11 @@ fn deliver(runtime: &mut PiRuntime, egress: AdapterEgress) -> Value {
     value
 }
 
+/// Pi's `get_state` answer naming the session it opened at launch.
+fn opened() -> Value {
+    json!({"sessionId":"pi-session-1","sessionFile":"/sessions/1_pi-session-1.jsonl"})
+}
+
 fn response(request: &Value, data: Value) -> Frame {
     frame(json!({
         "type":"response",
@@ -93,19 +99,20 @@ fn response(request: &Value, data: Value) -> Frame {
 }
 
 fn initialize(runtime: &mut PiRuntime) {
+    initialize_with(
+        runtime,
+        json!({"model":{"provider":"openai","id":"gpt","name":"GPT"},"thinkingLevel":"high"}),
+    );
+}
+
+fn initialize_with(runtime: &mut PiRuntime, state_data: Value) {
     let state = runtime
         .command(AdapterCommand::Initialize)
         .expect("initialize");
     assert_eq!(request(&state)["type"], "get_state");
     let state = deliver(runtime, state);
     let batch = runtime
-        .ingest(
-            &response(
-                &state,
-                json!({"model":{"provider":"openai","id":"gpt","name":"GPT"},"thinkingLevel":"high"}),
-            ),
-            &Mapper,
-        )
+        .ingest(&response(&state, state_data), &Mapper)
         .expect("state response");
     assert!(batch.events().is_empty());
     assert_eq!(batch.egress().len(), 1);
@@ -166,7 +173,7 @@ fn ready_until_levels(runtime: &mut PiRuntime) -> Value {
         .expect("new session");
     let value = deliver(runtime, new_session);
     let batch = runtime
-        .ingest(&response(&value, Value::Null), &Mapper)
+        .ingest(&response(&value, opened()), &Mapper)
         .expect("session response");
     assert!(matches!(
         batch.events(),
@@ -1059,9 +1066,9 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
     initialize(&mut runtime);
     let capabilities = runtime.capabilities().expect("capabilities");
     assert!(capabilities.new_session && capabilities.prompt && capabilities.cancel);
-    assert!(
-        !capabilities.resume_session && !capabilities.load_session && !capabilities.close_session
-    );
+    assert!(capabilities.resume_session);
+    assert!(!capabilities.load_session && !capabilities.close_session);
+    // Pi reported no session file, so there is nothing to reopen.
     for command in [
         AdapterCommand::ResumeSession {
             external_session_id: ExternalId::new("id", "pi-session").expect("id"),
@@ -1094,7 +1101,7 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
     assert!(!String::from_utf8_lossy(session.frame().payload()).contains("private"));
     let value = deliver(&mut runtime, session);
     runtime
-        .ingest(&response(&value, Value::Null), &Mapper)
+        .ingest(&response(&value, opened()), &Mapper)
         .expect("session");
     running(&mut runtime);
 

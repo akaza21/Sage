@@ -105,3 +105,27 @@ fn turn_usage_counts_cached_prompt_tokens_against_the_model_context_window() {
         }
     )));
 }
+
+#[test]
+fn a_summary_retry_is_a_warning_and_its_progress_events_stay_quiet() {
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    running(&mut runtime);
+    assert_eq!(
+        notice(session_event(
+            &mut runtime,
+            json!({"type":"summarization_retry_scheduled","attempt":1,"maxAttempts":3,"delayMs":2000,"errorMessage":"terminated"})
+        )),
+        (
+            SessionNoticeLevel::Warning,
+            "Pi is retrying a summary (attempt 1 of 3): terminated".into(),
+            "Pi".into()
+        )
+    );
+    for event in [
+        json!({"type":"summarization_retry_attempt_start","source":"compaction","reason":"threshold"}),
+        json!({"type":"summarization_retry_finished"}),
+    ] {
+        assert_eq!(session_event(&mut runtime, event), None);
+    }
+}

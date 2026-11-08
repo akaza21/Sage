@@ -23,13 +23,10 @@ fn launch_is_read_only_by_construction() {
         &PI_READ_ONLY_ARGS[..4],
         ["--mode", "rpc", "--tools", "read"]
     );
-    for disabled in [
-        "--no-extensions",
-        "--no-skills",
-        "--no-prompt-templates",
-        "--no-session",
-    ] {
-        assert!(PI_READ_ONLY_ARGS.contains(&disabled));
+    assert!(PI_READ_ONLY_ARGS.contains(&"--no-extensions"));
+    // Templates, skills and saved sessions load as in Pi's own CLI.
+    for loaded in ["--no-skills", "--no-prompt-templates", "--no-session"] {
+        assert!(!PI_READ_ONLY_ARGS.contains(&loaded), "{loaded}");
     }
     assert!(
         !PI_READ_ONLY_ARGS
@@ -50,14 +47,11 @@ fn bridge_launch_registers_its_tools_without_enabling_builtin_writers() {
     // the bridge's write, edit and bash unregistered.
     assert!(!args.iter().any(|arg| arg == "--tools"));
     assert!(args.iter().any(|arg| arg == "--no-builtin-tools"));
-    for disabled in [
-        "--no-extensions",
-        "--no-skills",
-        "--no-prompt-templates",
-        "--no-themes",
-        "--no-session",
-    ] {
+    for disabled in ["--no-extensions", "--no-themes"] {
         assert!(args.iter().any(|arg| arg == disabled), "{disabled}");
+    }
+    for loaded in ["--no-skills", "--no-prompt-templates", "--no-session"] {
+        assert!(!args.iter().any(|arg| arg == loaded), "{loaded}");
     }
     assert_eq!(
         &args[args.len() - 2..],

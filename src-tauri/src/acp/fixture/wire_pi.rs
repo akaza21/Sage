@@ -33,7 +33,8 @@ pub(super) fn await_request(
     let expected = match kind {
         "piInitialize" => "get_state",
         "piModels" => "get_available_models",
-        "piNew" => "new_session",
+        // A new chat takes the session Pi opened at launch.
+        "piNew" => "get_state",
         "piPrompt" => "prompt",
         "piThinkingLevels" | "piThinkingLevelsUnsupported" => "get_available_thinking_levels",
         "piCommandsUnsupported" => "get_commands",
@@ -139,7 +140,7 @@ fn response_data(
 ) -> Result<Value, FixtureError> {
     Ok(match command {
         "get_state" => acp::substitute(
-            json!({"model":model(state.pi.model),"thinkingLevel":state.pi.thinking,"isStreaming":false,"sessionFile":"$ROOT/synthetic-session.jsonl"}),
+            json!({"model":model(state.pi.model),"thinkingLevel":state.pi.thinking,"isStreaming":false,"sessionId":"fixture-pi-session","sessionFile":"$ROOT/synthetic-session.jsonl"}),
             state,
             0,
         )?,
@@ -167,7 +168,6 @@ fn response_data(
             state.pi.thinking = level.into();
             json!({})
         }
-        "new_session" => json!({"cancelled":false}),
         "prompt" => {
             let message = request["message"]
                 .as_str()

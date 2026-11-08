@@ -39,6 +39,7 @@ enum PendingKind {
     Commands,
     SetThinkingLevel,
     NewSession,
+    Resume,
     Prompt,
     Steer,
     ClearQueue,
@@ -63,7 +64,10 @@ impl PendingKind {
             Self::Commands => "get_commands",
             Self::ThinkingLevels => "get_available_thinking_levels",
             Self::SetThinkingLevel => "set_thinking_level",
-            Self::NewSession => "new_session",
+            // Pi opens a fresh session at launch and Sage runs one session
+            // per process, so a new chat takes that session by its id.
+            Self::NewSession => "get_state",
+            Self::Resume => "switch_session",
             Self::Prompt => "prompt",
             Self::Steer => "steer",
             Self::ClearQueue => "clear_queue",
@@ -121,6 +125,7 @@ pub struct PiTranslator {
     initialization: Option<InitializationIntent>,
     pending_ui: Option<PendingUiRequest>,
     pending_thinking: Option<(String, String)>,
+    resuming: Option<String>,
     closed_config_requests: BTreeSet<String>,
 }
 
@@ -212,6 +217,7 @@ impl PiTranslator {
             initialization: None,
             pending_ui: None,
             pending_thinking: None,
+            resuming: None,
             closed_config_requests: BTreeSet::new(),
         }
     }
@@ -240,7 +246,7 @@ impl PiTranslator {
                 self.pending_thinking = Some((outbound.command_id.clone(), level));
                 Ok(vec![outbound])
             }
-            Operation::NewSession => {
+            Operation::NewSession | Operation::Resume { .. } => {
                 if !self.pending.is_empty()
                     || self
                         .active
@@ -249,7 +255,15 @@ impl PiTranslator {
                 {
                     return Err(AdapterError::SessionTransitionBusy);
                 }
-                self.one(PendingKind::NewSession, Map::new())
+                let Operation::Resume { session_id, path } = operation else {
+                    return self.one(PendingKind::NewSession, Map::new());
+                };
+                validate_id("session ID", &session_id)?;
+                let mut fields = Map::new();
+                fields.insert("sessionPath".into(), Value::String(path));
+                let outbound = self.one(PendingKind::Resume, fields)?;
+                self.resuming = Some(session_id);
+                Ok(outbound)
             }
             Operation::Prompt { turn_key, message } => self.begin_prompt(turn_key, message),
             Operation::Steer { message } => self.begin_steer(message),
@@ -285,7 +299,6 @@ impl PiTranslator {
                 }
                 self.one(PendingKind::Entries, fields)
             }
-            Operation::Resume => Err(AdapterError::UnsupportedOperation("resume")),
             Operation::Load => Err(AdapterError::UnsupportedOperation("load")),
             Operation::Close => Err(AdapterError::UnsupportedOperation("close")),
             Operation::MultiRoot => Err(AdapterError::UnsupportedOperation("multi-root")),

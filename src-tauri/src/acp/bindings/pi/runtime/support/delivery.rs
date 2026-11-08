@@ -34,6 +34,7 @@ impl PiRuntime {
             | RequestKind::SetModel
             | RequestKind::SetThinkingLevel
             | RequestKind::NewSession
+            | RequestKind::ResumeSession
             | RequestKind::ClearQueue
             | RequestKind::Cancel => {}
         }

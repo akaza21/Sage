@@ -43,6 +43,9 @@ impl PiTranslator {
             return Ok(vec![AdapterOutput::Commands(serde_json::json!([]))]);
         }
         if !response.success && !matches!(kind, PendingKind::Steer | PendingKind::ClearQueue) {
+            if kind == PendingKind::Resume {
+                self.resuming = None;
+            }
             if kind == PendingKind::SetThinkingLevel {
                 self.pending_thinking = None;
             }
@@ -110,8 +113,22 @@ impl PiTranslator {
                 Ok(vec![AdapterOutput::ThinkingSelected(level)])
             }
             PendingKind::NewSession => {
+                let id = parse_state(&response.data)?
+                    .session_id
+                    .ok_or(AdapterError::Malformed)?;
+                validate_id("session ID", &id)?;
                 self.active = None;
-                Ok(vec![AdapterOutput::SessionReset])
+                Ok(vec![AdapterOutput::SessionOpened(id)])
+            }
+            PendingKind::Resume => {
+                let id = self.resuming.take().ok_or(AdapterError::Correlation)?;
+                if response.data.get("cancelled").and_then(Value::as_bool) == Some(true) {
+                    return Ok(vec![AdapterOutput::Error {
+                        code: "session_switch_cancelled",
+                    }]);
+                }
+                self.active = None;
+                Ok(vec![AdapterOutput::SessionOpened(id)])
             }
             PendingKind::Prompt => {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;

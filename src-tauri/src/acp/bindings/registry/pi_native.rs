@@ -49,7 +49,7 @@ fn launch_factory(
     Box::new(PiNativeRuntimeFactory { binding, root, mcp })
 }
 
-/// The truthful ceiling: prompt, cancel and steer; no resume, load, close,
+/// The truthful ceiling: prompt, cancel, steer and resume; no load, close,
 /// fork, or child projection.
 fn capabilities(
     binding: &AdmittedBinding,
@@ -65,7 +65,7 @@ fn capabilities(
         protocol_version: RequiredText::new("protocolVersion", format!("pi-rpc-{PI_VERSION}"))
             .map_err(|_| RegistryAdmissionUnavailable::Drift)?,
         new_session: true,
-        resume_session: false,
+        resume_session: true,
         load_session: false,
         close_session: false,
         prompt: true,

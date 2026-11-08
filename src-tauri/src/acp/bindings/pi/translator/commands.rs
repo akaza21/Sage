@@ -71,6 +71,7 @@ impl PiTranslator {
             | PendingKind::ThinkingLevels
             | PendingKind::SetThinkingLevel
             | PendingKind::NewSession
+            | PendingKind::Resume
             | PendingKind::Steer
             | PendingKind::ClearQueue
             | PendingKind::Messages
@@ -92,7 +93,7 @@ impl PiTranslator {
         if self
             .pending
             .values()
-            .any(|request| request.kind == PendingKind::NewSession)
+            .any(|request| matches!(request.kind, PendingKind::NewSession | PendingKind::Resume))
         {
             return Err(AdapterError::SessionTransitionBusy);
         }

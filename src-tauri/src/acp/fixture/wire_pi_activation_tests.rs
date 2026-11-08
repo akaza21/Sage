@@ -60,7 +60,7 @@ fn pi_fixture_wire_activation_and_idless_idle_discovery_preserve_the_next_prompt
             for (index, (kind, command)) in [
                 ("piInitialize", "get_state"),
                 ("piModels", "get_available_models"),
-                ("piNew", "new_session"),
+                ("piNew", "get_state"),
             ]
             .into_iter()
             .enumerate()
@@ -98,7 +98,7 @@ fn pi_fixture_wire_activation_and_idless_idle_discovery_preserve_the_next_prompt
             let parts = pump.try_into_idle_parts().ok().unwrap();
             assert_eq!(
                 parts.session().external_session_id.as_str(),
-                "pi-session-7-1"
+                "fixture-pi-session"
             );
             assert_eq!(parts.session().models.len(), 2);
             assert_eq!(

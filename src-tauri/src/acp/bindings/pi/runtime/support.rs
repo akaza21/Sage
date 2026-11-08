@@ -27,6 +27,7 @@ mod identity;
 mod image;
 mod permission;
 mod requests;
+mod session;
 mod steer;
 pub(super) use steer::Steering;
 mod stream;
@@ -131,7 +132,7 @@ impl PiRuntime {
                 self.commands.replace(&value, true)?;
                 (Some(AdapterEvent::Absorbed), None)
             }
-            AdapterOutput::SessionReset => self.command_session_reset()?,
+            AdapterOutput::SessionOpened(id) => self.open_session(id)?,
 
             AdapterOutput::State(state) => self.state_reply(state)?,
             AdapterOutput::Models(models) => {

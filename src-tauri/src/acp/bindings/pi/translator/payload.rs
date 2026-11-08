@@ -72,11 +72,19 @@ pub(super) fn parse_state(value: &Value) -> Result<StateSnapshot, AdapterError> 
                 .or_else(|| value.get("thinking_level")),
             128,
         )?,
-        has_session: value
+        session_id: opaque_id(value.get("sessionId"), 128)?,
+        // A local path Sage hands back to Pi to reopen the chat; never shown.
+        session_file: value
             .get("sessionFile")
-            .or_else(|| value.get("session_file"))
             .and_then(Value::as_str)
-            .is_some(),
+            .filter(|file| {
+                file.len()
+                    <= crate::acp::limits::LIMITS
+                        .wire
+                        .absolute_path_bytes_native_only as usize
+                    && !file.contains('\0')
+            })
+            .map(str::to_owned),
         is_streaming: value
             .get("isStreaming")
             .or_else(|| value.get("is_streaming"))

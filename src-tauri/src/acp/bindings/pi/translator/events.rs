@@ -32,6 +32,7 @@ impl PiTranslator {
                         .map_or(AdapterOutput::LateIgnored, AdapterOutput::Title),
                 ]);
             }
+            "summarization_retry_scheduled" => return Ok(vec![turn::summary_retry(value)]),
             "extension_error" => {
                 return Ok(vec![notice(
                     SessionNoticeLevel::Error,

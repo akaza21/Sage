@@ -800,7 +800,6 @@ fn malformed_unknown_foreign_and_unsupported_inputs_are_deterministic() {
         Ok(vec![AdapterOutput::LateIgnored])
     );
     for operation in [
-        Operation::Resume,
         Operation::Load,
         Operation::Close,
         Operation::MultiRoot,
