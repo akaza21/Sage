@@ -22,6 +22,8 @@ mod paging;
 mod permission_item;
 mod projection_decode;
 pub(crate) use projection_decode::parse_legacy_text;
+#[cfg(test)]
+pub(crate) use projection_decode::tests::project_item_content;
 mod request_identity;
 mod request_terminal;
 mod requests;
