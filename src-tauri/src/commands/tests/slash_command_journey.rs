@@ -156,7 +156,7 @@ fn claude_slash_commands_run_through_the_command_route_with_the_live_revision() 
             state
                 .acp
                 .available_commands(&owner)
-                .is_some_and(|list| list.revision() > 0)
+                .is_some_and(|list| list.snapshot().revision > 0)
         });
         let list = state.acp.available_commands(&owner).unwrap().snapshot();
         let names: Vec<_> = list.commands.iter().map(|c| c.name.as_str()).collect();
