@@ -706,6 +706,7 @@ fn chat_page_projects_more_than_the_live_permission_window_from_history() {
     connection.execute("INSERT INTO session_runtime_epochs VALUES('project-one','chat-one',?1,1,'exited',NULL,0,1,'fixture')",[started.session_id.as_str()]).unwrap();
     connection.execute("INSERT INTO turns VALUES('turn-permissions','project-one','chat-one',?1,1,0,'turn-intent','completed','correlated',0,1,1,1)",[started.session_id.as_str()]).unwrap();
     let body = serde_json::to_string(&NormalizedPayload::PermissionRequest {
+        user_input: None,
         category: ToolCategory::Execute,
         summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
         offered_option_kinds: None,
@@ -743,6 +744,7 @@ fn chat_page_preserves_a_durable_failed_closed_permission_terminal() {
     connection.execute("INSERT INTO session_runtime_epochs VALUES('project-one','chat-one',?1,1,'failed',NULL,0,2,'protocolFailure')",[started.session_id.as_str()]).unwrap();
     connection.execute("INSERT INTO turns VALUES('turn-permission','project-one','chat-one',?1,1,0,'turn-intent','failed','correlated',0,1,2,2)",[started.session_id.as_str()]).unwrap();
     let body = serde_json::to_string(&NormalizedPayload::PermissionRequest {
+        user_input: None,
         category: ToolCategory::Execute,
         summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
         offered_option_kinds: None,
@@ -777,6 +779,7 @@ fn chat_page_preserves_a_durable_failed_closed_permission_terminal() {
 
 pub(super) fn permission(session: &SageAgentSessionId) -> PermissionIntent {
     let normalized_payload_json = serde_json::to_string(&NormalizedPayload::PermissionRequest {
+        user_input: None,
         category: ToolCategory::Execute,
         summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
         offered_option_kinds: None,
@@ -858,6 +861,7 @@ fn permission_receive_and_decline_are_durable_idempotent_and_write_ordered() {
     let mut changed = intent.clone();
     changed.normalized_payload_json =
         serde_json::to_string(&NormalizedPayload::PermissionRequest {
+            user_input: None,
             category: ToolCategory::Execute,
             summary: crate::acp::contract::SafeText::new("summary", "Different command").unwrap(),
             offered_option_kinds: None,

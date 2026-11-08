@@ -51,6 +51,7 @@ where
         self.settle_due_exit(self.clock.now_millis()).await?;
         let deadline = [
             self.pump.next_deferred_flush_deadline_millis(),
+            self.pump.next_auto_resolution_deadline_millis(),
             operation_deadline_millis,
             self.pending_exit_deadline_millis(),
         ]
@@ -68,7 +69,8 @@ where
             None => {
                 let now_millis = self.clock.now_millis();
                 self.settle_due_exit(now_millis).await?;
-                let progress = self.flush_due(now_millis).await?;
+                let mut progress = self.flush_due(now_millis).await?;
+                self.auto_resolve_due(now_millis, &mut progress).await?;
                 Ok(DriverStep::Progress(progress))
             }
         }

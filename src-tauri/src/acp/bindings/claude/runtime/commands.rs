@@ -109,7 +109,7 @@ impl ClaudeRuntime {
                 }
                 let reply = match decision {
                     PermissionDecision::Ask => {
-                        let _ = resolve_later_permission(&request_id, decision, None)
+                        let _ = resolve_later_permission(&request_id, &decision, None)
                             .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
                         return Err(AdapterRuntimeError::Operation);
                     }
@@ -125,6 +125,9 @@ impl ClaudeRuntime {
                         record.reply = PermissionReply::AllowAlways;
                         selected
                     }
+                    PermissionDecision::Answer(_) => {
+                        return Err(AdapterRuntimeError::UnsupportedCommand);
+                    }
                     PermissionDecision::Deny => {
                         record.reply = PermissionReply::Deny;
                         let external = crate::acp::intent::ExternalId::new(
@@ -135,7 +138,7 @@ impl ClaudeRuntime {
                         super::denial(&external, &record.wire_id, false)?
                     }
                 };
-                resolve_later_permission(&request_id, decision, Some(reply))
+                resolve_later_permission(&request_id, &decision, Some(reply))
                     .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
                     .ok_or(AdapterRuntimeError::LaterPermissionMiss)
             }

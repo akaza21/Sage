@@ -10,21 +10,19 @@ use crate::acp::{
 /// request correlation; this module owns the token semantics only.
 pub(crate) fn resolve_later_permission(
     request_id: &SageServerRequestId,
-    decision: PermissionDecision,
+    decision: &PermissionDecision,
     reply: Option<AdapterEgress>,
 ) -> Result<Option<AdapterEgress>, LaterPermissionError> {
-    if decision == PermissionDecision::Ask {
+    if *decision == PermissionDecision::Ask {
         return Ok(None);
     }
     let reply = reply.ok_or(LaterPermissionError::PendingRequestMiss)?;
     let external_request_id = ExternalId::new("permissionRequest", request_id.as_str().to_owned())
         .map_err(|_| LaterPermissionError::PendingRequestMiss)?;
-    let token = match decision {
-        PermissionDecision::Ask => unreachable!("Ask returns before a wire reply"),
-        PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => {
-            EgressToken::permission_allow(external_request_id)
-        }
-        PermissionDecision::Deny => EgressToken::mandatory_deny(external_request_id, false),
+    let token = if decision.resolves_allowed() {
+        EgressToken::permission_allow(external_request_id)
+    } else {
+        EgressToken::mandatory_deny(external_request_id, false)
     };
     Ok(Some(AdapterEgress::new(reply.into_frame(), token)))
 }

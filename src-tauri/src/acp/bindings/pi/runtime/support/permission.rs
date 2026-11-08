@@ -19,7 +19,7 @@ impl PiRuntime {
         request_id: &SageServerRequestId,
         decision: PermissionDecision,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        if let Some(reply) = self.bridge_permission(request_id, decision)? {
+        if let Some(reply) = self.bridge_permission(request_id, &decision)? {
             return Ok(reply);
         }
         let pending = self
@@ -32,7 +32,7 @@ impl PiRuntime {
         let reply = match decision {
             PermissionDecision::Ask => {
                 let _ = crate::acp::runtime::later_permission::resolve_later_permission(
-                    request_id, decision, None,
+                    request_id, &decision, None,
                 )
                 .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
                 return Err(AdapterRuntimeError::Operation);
@@ -73,7 +73,7 @@ impl PiRuntime {
                     .map_err(|_| AdapterRuntimeError::Frame)?;
                 AdapterEgress::new(frame, EgressToken::protocol_notification())
             }
-            PermissionDecision::AllowAlways => {
+            PermissionDecision::AllowAlways | PermissionDecision::Answer(_) => {
                 return Err(AdapterRuntimeError::UnsupportedCommand);
             }
             PermissionDecision::Deny => self
@@ -82,7 +82,7 @@ impl PiRuntime {
         };
         crate::acp::runtime::later_permission::resolve_later_permission(
             request_id,
-            decision,
+            &decision,
             Some(reply),
         )
         .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
@@ -119,6 +119,7 @@ impl PiRuntime {
             item_id,
             external_request_id: id,
             payload: NormalizedPayload::PermissionRequest {
+                user_input: None,
                 category: if self.bridge.as_ref().is_some_and(|b| b.pending.is_some()) {
                     ToolCategory::Edit
                 } else {

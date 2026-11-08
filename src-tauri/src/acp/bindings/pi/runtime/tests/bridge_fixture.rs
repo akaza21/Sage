@@ -52,7 +52,7 @@ impl Card {
                 turn_id: crate::acp::contract::SageTurnId::parse("turn-permission").unwrap(),
                 runtime_epoch: self.owner.runtime_epoch,
                 request_id: SageServerRequestId::parse(request_id).unwrap(),
-                decision,
+                decision: decision.clone(),
             })
             .unwrap_or_else(|error| panic!("the card cannot answer {decision:?}: {error:?}"));
         self.forwarded
@@ -113,9 +113,11 @@ impl Sage<'_> {
         });
         if let Some(payload) = requested {
             self.cards += 1;
-            let command = self
-                .card
-                .decide(value["id"].as_str().unwrap(), payload, self.decision);
+            let command = self.card.decide(
+                value["id"].as_str().unwrap(),
+                payload,
+                self.decision.clone(),
+            );
             let answer = runtime.command(command).unwrap();
             if self.decision == PermissionDecision::Deny {
                 runtime.commit_mandatory_egress(answer.token()).unwrap();

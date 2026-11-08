@@ -1,17 +1,18 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 
-use super::contract::{
-    BoundedVec, ContractError, ItemKind, RequiredText, SafeText, SageRootId, SchemaVersionV1,
-};
+use super::contract::{BoundedVec, ContractError, ItemKind, RequiredText, SafeText, SageRootId};
 pub use super::{ipc::*, limits::COMMAND_RESOURCE_LIMIT};
 
+mod activity_provenance;
 mod capability;
 mod error_kind;
 mod file_change;
 pub(crate) mod session_event;
 mod tool_category;
 mod tool_execution;
+pub mod user_input;
 
+pub use activity_provenance::{ActivityProvenanceV1, ActivitySourceKind};
 pub use capability::CapabilitySnapshotV1;
 pub(crate) use capability::offers_prompt_capability;
 pub use error_kind::ErrorKind;
@@ -293,6 +294,10 @@ pub enum NormalizedPayload {
         /// carries one. Absent means the harness gave none.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<SafeText<2048>>,
+        /// Present when the harness asks the user questions rather than for
+        /// approval; the request is then answered, not allowed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        user_input: Option<Box<user_input::UserInputRequest>>,
     },
     Error {
         #[serde(
@@ -388,57 +393,6 @@ impl NormalizedPayload {
             Self::Collaboration { .. } => ItemKind::Collaboration,
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ActivitySourceKind {
-    Tool,
-    Extension,
-    Collaboration,
-    Unknown,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ActivityProvenanceV1 {
-    pub schema_version: SchemaVersionV1,
-    pub source_kind: ActivitySourceKind,
-    pub external_kind: RequiredText<128>,
-    pub extension_schema_id: Option<RequiredText<128>>,
-    pub safe_label: Option<RequiredText<512>>,
-}
-
-impl ActivityProvenanceV1 {
-    pub(crate) fn validate_for_persistence(&self) -> Result<(), ContractError> {
-        let fields = [
-            self.external_kind.as_str(),
-            self.extension_schema_id
-                .as_ref()
-                .map_or("", RequiredText::as_str),
-            self.safe_label.as_ref().map_or("", RequiredText::as_str),
-        ];
-        if fields.into_iter().any(contains_absolute_path_authority) {
-            return Err(ContractError::ForbiddenContent {
-                field: "activityProvenance",
-            });
-        }
-        Ok(())
-    }
-}
-
-fn contains_absolute_path_authority(value: &str) -> bool {
-    value.starts_with('/')
-        || value.starts_with("\\\\")
-        || value.as_bytes().get(1) == Some(&b':')
-            && value
-                .as_bytes()
-                .first()
-                .is_some_and(u8::is_ascii_alphabetic)
-            && value
-                .as_bytes()
-                .get(2)
-                .is_some_and(|byte| matches!(byte, b'/' | b'\\'))
 }
 
 #[cfg(test)]
