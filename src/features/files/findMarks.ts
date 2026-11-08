@@ -6,13 +6,21 @@ import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 const setMarks = StateEffect.define<DecorationSet>();
 const marks = StateField.define<DecorationSet>({
   create: () => Decoration.none,
-  update: (value, transaction) =>
-    transaction.effects.reduce(
-      (current, effect) => (effect.is(setMarks) ? effect.value : current),
-      value.map(transaction.changes),
-    ),
+  update: (value, transaction) => {
+    // Marks set by this transaction replace the old ones unmapped: mapping
+    // walks the changes once per mark, so a Replace all that also clears
+    // the marks must not first map thousands of marks through thousands
+    // of changes.
+    let next: DecorationSet | null = null;
+    for (const effect of transaction.effects)
+      if (effect.is(setMarks)) next = effect.value;
+    return next ?? value.map(transaction.changes);
+  },
   provide: (field) => EditorView.decorations.from(field),
 });
+
+/** Drops every mark in the transaction that carries it, as Replace all does. */
+export const clearMatches = () => setMarks.of(Decoration.none);
 const MATCH = Decoration.mark({ class: "cm-findMatch" });
 const CURRENT = Decoration.mark({
   class: "cm-findMatch cm-findMatch--current",
