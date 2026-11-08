@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
-    acp::{intent::ImageMediaType, limits::IMAGE_PREVIEW_BYTES, migration},
+    acp::{intent::ImageMediaType, limits::IMAGE_UPLOAD_BYTES, migration},
     error::{AppError, AppResult},
     image_attachment::{ImageAttachedContext, ImageAttachmentKind, MAX_OUTGOING_IMAGE_BYTES},
 };
@@ -20,8 +20,8 @@ pub(crate) fn ingest_image(
     bytes: &[u8],
     label: &str,
 ) -> AppResult<ImageAttachedContext> {
-    if bytes.is_empty() || bytes.len() > MAX_OUTGOING_IMAGE_BYTES as usize {
-        return Err(invalid("image exceeds the 4 MiB bound"));
+    if bytes.is_empty() || bytes.len() > IMAGE_UPLOAD_BYTES {
+        return Err(invalid("image exceeds the 10 MiB upload bound"));
     }
     if label.is_empty()
         || label.len() > 80
@@ -38,6 +38,10 @@ pub(crate) fn ingest_image(
     {
         return Err(invalid("outgoing image type is unsupported or mismatched"));
     }
+    let normalized = normalize_upload(media_type, bytes)?;
+    let (media_type, bytes) = normalized.as_ref().map_or((media_type, bytes), |image| {
+        (image.media_type, image.bytes.as_slice())
+    });
     let (width, height, thumbnail) = match media_type {
         ImageMediaType::Png => admit_png(bytes)?,
         ImageMediaType::Jpeg => admit_jpeg(bytes)?,
@@ -95,6 +99,23 @@ pub(crate) fn ingest_image(
     })
 }
 
+/// An image past the stored bounds (a 4K screenshot, say) is normalised
+/// instead of refused; one within them is kept byte for byte for every
+/// harness, and an image prompt normalises it again when it is sent.
+pub(super) fn normalize_upload(
+    media_type: ImageMediaType,
+    bytes: &[u8],
+) -> AppResult<Option<super::normalize::Normalized>> {
+    if !matches!(media_type, ImageMediaType::Png | ImageMediaType::Jpeg) {
+        return Err(invalid("outgoing image type is unsupported or mismatched"));
+    }
+    let (width, height) = super::normalize::dimensions(media_type, bytes)?;
+    if bytes.len() <= MAX_OUTGOING_IMAGE_BYTES as usize && valid_dimensions(width, height) {
+        return Ok(None);
+    }
+    super::normalize::normalize_for_prompt(media_type, bytes).map(Some)
+}
+
 fn admit_png(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
     let mut decoder = png::Decoder::new(Cursor::new(bytes));
     decoder.set_ignore_text_chunk(true);
@@ -111,7 +132,7 @@ fn admit_png(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
     let frame = reader
         .next_frame(&mut decoded)
         .map_err(|_| invalid("image is malformed"))?;
-    let thumbnail = if bytes.len() <= IMAGE_PREVIEW_BYTES {
+    let thumbnail = if bytes.len() <= 262_144 {
         bytes.to_vec()
     } else {
         let thumb_width = width.min(128);
@@ -183,7 +204,7 @@ fn admit_jpeg(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
     let decoded = decoder
         .decode()
         .map_err(|_| invalid("image is malformed"))?;
-    let thumbnail = if bytes.len() <= IMAGE_PREVIEW_BYTES {
+    let thumbnail = if bytes.len() <= 262_144 {
         bytes.to_vec()
     } else {
         let stride = match info.pixel_format {

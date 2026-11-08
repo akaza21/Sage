@@ -98,3 +98,18 @@ fn images_over_the_prompt_bound_are_refused_even_when_advertised() {
     ));
     assert!(runtime.active.as_ref().unwrap().turn.is_none());
 }
+
+#[test]
+fn a_prompt_carrying_the_full_image_budget_fits_its_frame() {
+    let mut runtime = runtime_offering(json!({"image": true}));
+    let quarter = PROMPT_IMAGE_TOTAL_BYTES / 4;
+    let full = (0..4).map(|_| image(vec![0x89; quarter])).collect();
+
+    let egress = runtime.command(prompt_with(full)).unwrap();
+
+    let payload = egress.frame().payload();
+    assert!(payload.len() > crate::acp::limits::LIMITS.wire.frame_bytes as usize);
+    assert!(payload.len() <= crate::acp::limits::PROMPT_FRAME_BYTES);
+    let value: Value = serde_json::from_slice(payload).unwrap();
+    assert_eq!(value["params"]["prompt"].as_array().unwrap().len(), 5);
+}

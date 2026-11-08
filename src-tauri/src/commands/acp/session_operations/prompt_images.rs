@@ -9,11 +9,11 @@ use crate::{
     acp::{
         attached_context::{
             AttachedContext,
-            files::images::{ImagePreview, PromptImage, PromptImages, admit_sizes},
+            files::images::{ImagePreview, ImageRefusal, PromptImage, PromptImages, admit_sizes},
         },
         contract::SageAgentSessionId,
-        intent::{AcpUnavailableReason, Prompt},
-        limits::IMAGE_PREVIEW_BYTES,
+        intent::{AcpUnavailableReason, ImageMediaType, Prompt},
+        limits::{IMAGE_PREVIEW_BYTES, PROMPT_IMAGE_COUNT},
     },
     image_attachment::ImageAttachedContext,
 };
@@ -32,9 +32,7 @@ fn requested(contexts: &AttachedContexts) -> Vec<&ImageAttachedContext> {
 fn unsupported() -> AcpIpcError {
     AcpIpcError::Unavailable {
         reason: AcpUnavailableReason::ImageInputUnsupported,
-        message: safe_message(
-            crate::acp::attached_context::files::images::ImageRefusal::Unsupported.message(),
-        ),
+        message: safe_message(ImageRefusal::Unsupported.message()),
     }
 }
 
@@ -58,7 +56,7 @@ pub(super) fn image_input_block(contexts: &AttachedContexts) -> Result<(), AcpIp
 /// Admits the prompt's images against the session's negotiated capability and
 /// the `limits.rs` bounds, then reads their verified bytes into the prompt.
 /// Returns the artifact ids to retire once the prompt is handed over.
-pub(super) fn attach(
+pub(super) async fn attach(
     state: &AppState,
     prompt: &mut Prompt,
     contexts: &AttachedContexts,
@@ -82,70 +80,111 @@ pub(super) fn attach(
     {
         return Err(unsupported());
     }
-    admit_sizes(images.iter().map(|image| image.byte_length as usize)).map_err(|refusal| {
-        AcpIpcError::InvalidRequest {
-            message: safe_message(refusal.message()),
-        }
-    })?;
-    prompt.images = PromptImages(Arc::new(read(
+    if images.len() > PROMPT_IMAGE_COUNT {
+        return Err(refused(ImageRefusal::TooMany));
+    }
+    let stored = load(
         &state.database,
         project_id.as_str(),
         chat_id.as_str(),
         &images,
-    )?));
+    )?;
+    // Decoding and re-encoding take a blocking thread, not the async runtime.
+    let normalized = tauri::async_runtime::spawn_blocking(move || normalize(stored))
+        .await
+        .map_err(|_| internal_error())??;
+    admit_sizes(normalized.iter().map(|image| image.bytes.len())).map_err(refused)?;
+    prompt.images = PromptImages(Arc::new(normalized));
     Ok(images
         .iter()
         .map(|image| image.artifact_id.clone())
         .collect())
 }
 
-fn read(
+fn refused(refusal: ImageRefusal) -> AcpIpcError {
+    AcpIpcError::InvalidRequest {
+        message: safe_message(refusal.message()),
+    }
+}
+
+fn gone() -> AcpIpcError {
+    AcpIpcError::InvalidRequest {
+        message: safe_message(
+            "An attached image is no longer available. Remove it and attach it again.",
+        ),
+    }
+}
+
+/// The transcript copy of a sent image that is too large to keep whole.
+const PREVIEW_EDGE_PX: u32 = 768;
+
+/// The verified, owner-bound stored bytes of each image.
+fn load(
     database: &crate::persistence::Database,
     project_id: &str,
     chat_id: &str,
     images: &[&ImageAttachedContext],
-) -> Result<Vec<PromptImage>, AcpIpcError> {
-    let gone = || AcpIpcError::InvalidRequest {
-        message: safe_message(
-            "An attached image is no longer available. Remove it and attach it again.",
-        ),
-    };
+) -> Result<Vec<(ImageMediaType, Vec<u8>)>, AcpIpcError> {
     let root = database.image_artifact_root().map_err(|_| gone())?;
     let connection = database.connection();
     images
         .iter()
         .map(|image| {
-            let bytes = crate::image_artifacts::verify_image_reference(
+            crate::image_artifacts::verify_image_reference(
                 &connection,
                 root,
                 project_id,
                 chat_id,
                 image,
             )
-            .map_err(|_| gone())?;
-            let preview = if bytes.len() <= IMAGE_PREVIEW_BYTES {
+            .map(|bytes| (image.media_type, bytes))
+            .map_err(|_| gone())
+        })
+        .collect()
+}
+
+/// Each image as the prompt sends it: at most `PROMPT_IMAGE_EDGE_PX` on the
+/// long edge and `PROMPT_IMAGE_TOTAL_BYTES`, with a transcript preview.
+fn normalize(stored: Vec<(ImageMediaType, Vec<u8>)>) -> Result<Vec<PromptImage>, AcpIpcError> {
+    stored
+        .into_iter()
+        .map(|(media_type, bytes)| {
+            let normalized = crate::image_artifacts::normalize_for_prompt(media_type, &bytes)
+                .map_err(|error| match error {
+                    crate::error::AppError::ResourceLimit(_) => refused(ImageRefusal::TooLarge),
+                    _ => gone(),
+                })?;
+            drop(bytes);
+            let preview = if normalized.bytes.len() <= IMAGE_PREVIEW_BYTES {
                 ImagePreview::Full
             } else {
-                match crate::image_artifacts::read_thumbnail(
-                    &connection,
-                    root,
-                    project_id,
-                    chat_id,
-                    &image.artifact_id,
+                match crate::image_artifacts::image_preview(
+                    normalized.media_type,
+                    &normalized.bytes,
+                    PREVIEW_EDGE_PX,
+                    IMAGE_PREVIEW_BYTES,
                 ) {
-                    Ok((media_type, thumbnail)) if thumbnail.len() <= IMAGE_PREVIEW_BYTES => {
-                        ImagePreview::Thumbnail(media_type, thumbnail)
-                    }
-                    _ => ImagePreview::Unavailable,
+                    Ok(small) => ImagePreview::Thumbnail(small.media_type, small.bytes),
+                    Err(_) => ImagePreview::Unavailable,
                 }
             };
             Ok(PromptImage {
-                media_type: image.media_type,
-                bytes,
+                media_type: normalized.media_type,
+                bytes: normalized.bytes,
                 preview,
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+fn read(
+    database: &crate::persistence::Database,
+    project_id: &str,
+    chat_id: &str,
+    images: &[&ImageAttachedContext],
+) -> Result<Vec<PromptImage>, AcpIpcError> {
+    normalize(load(database, project_id, chat_id, images)?)
 }
 
 /// Best effort: a failed retirement only delays cleanup to the next start.

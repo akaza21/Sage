@@ -10,9 +10,10 @@ use crate::{
     state::AppState,
 };
 
-use super::store::{ingest_image, remove_pending_image};
+use super::store::{ingest_image, normalize_upload, remove_pending_image};
 
-const MAX_IMAGE_BASE64_BYTES: usize = 5_592_408;
+/// Base64 of `IMAGE_UPLOAD_BYTES`; an upload is normalised before it is stored.
+const MAX_IMAGE_BASE64_BYTES: usize = crate::acp::limits::IMAGE_UPLOAD_BYTES.div_ceil(3) * 4;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -104,13 +105,19 @@ pub(crate) fn upload_image_payload(
     let bytes = STANDARD
         .decode(&request.data_base64)
         .map_err(|_| AppError::InvalidRequest("image data is not valid base64".into()))?;
+    // Normalised before the write connection is taken, so a large upload
+    // never holds it while decoding.
+    let (media_type, bytes) = match normalize_upload(request.media_type, &bytes)? {
+        Some(normalized) => (normalized.media_type, normalized.bytes),
+        None => (request.media_type, bytes),
+    };
     let connection = database.write_connection()?;
     ingest_image(
         &connection,
         database.image_artifact_root()?,
         &request.project_id,
         &request.chat_id,
-        request.media_type,
+        media_type,
         &bytes,
         &request.label,
     )

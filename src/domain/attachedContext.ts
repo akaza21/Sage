@@ -28,8 +28,12 @@ export const MAX_ATTACHED_CONTEXT_NOTE_BYTES = 4 * 1024;
 export const MAX_OUTGOING_IMAGE_BYTES = 4 * 1024 * 1024;
 /** Mirrors `PROMPT_IMAGE_COUNT` in `src-tauri/src/acp/limits.rs`. */
 export const MAX_PROMPT_IMAGES = 4;
-/** Mirrors `PROMPT_IMAGE_TOTAL_BYTES`: every image one prompt sends, together. */
-export const MAX_PROMPT_IMAGE_TOTAL_BYTES = 512 * 1024;
+/**
+ * Mirrors `IMAGE_UPLOAD_BYTES`: an attached file before Sage normalises it to
+ * at most 1568 px on the long edge. The send then checks the normalised
+ * images against `PROMPT_IMAGE_TOTAL_BYTES` and names any that still exceed it.
+ */
+export const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 export type DiffLineSide = "old" | "new";
 

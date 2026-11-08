@@ -83,3 +83,35 @@ fn a_send_target_without_a_session_refuses_images_as_unsupported() {
     ));
     assert!(admit_elements(&contexts).is_ok());
 }
+
+#[test]
+fn a_4k_screenshot_is_accepted_and_sent_at_most_1568_px_wide() {
+    let store = Store::new();
+    let upload = |bytes: Vec<u8>| {
+        crate::image_artifacts::ingest_test_image(
+            &store.database.connection(),
+            store.database.image_artifact_root().unwrap(),
+            "p",
+            "c",
+            &bytes,
+        )
+        .unwrap()
+    };
+    // Normalised at upload; a 2000 px image within the store bounds is kept
+    // as uploaded and normalised when the prompt is sent.
+    let uhd = upload(crate::image_artifacts::screenshot_png(3840, 2160));
+    let wide = upload(crate::image_artifacts::screenshot_png(2000, 1000));
+    assert_eq!(wide.width, 2000);
+
+    let read = read(&store.database, "p", "c", &[&uhd, &wide]).unwrap();
+
+    for (image, expected) in read.iter().zip([(1568, 882), (1568, 784)]) {
+        assert_eq!(image.media_type, crate::acp::intent::ImageMediaType::Png);
+        assert_eq!(
+            crate::image_artifacts::png_dimensions(&image.bytes),
+            expected
+        );
+        assert!(image.preview().is_some());
+    }
+    assert!(admit_sizes(read.iter().map(|image| image.bytes.len())).is_ok());
+}

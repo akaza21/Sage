@@ -329,22 +329,25 @@ describe("composer image input", () => {
     );
   });
 
-  it("refuses pasted images over the per-message byte bound before upload", () => {
+  it("passes large screenshots on for native resizing and refuses files over 10 MiB", () => {
     const { onAddImages } = renderComposer({ imageInputAvailable: true });
-    const large = new File([new Uint8Array(300 * 1024)], "large.png", {
+    const screenshot = new File([new Uint8Array(6 * 1024 * 1024)], "4k.png", {
       type: "image/png",
     });
     fireEvent.paste(screen.getByRole("textbox", { name: "Message agent" }), {
-      clipboardData: { files: [large, large] },
+      clipboardData: { files: [screenshot, screenshot] },
     });
-    expect(onAddImages).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Images in one message can total at most 512 KiB.",
-    );
+    expect(onAddImages).toHaveBeenCalledWith([screenshot, screenshot]);
+    const huge = new File([new Uint8Array(10 * 1024 * 1024 + 1)], "huge.png", {
+      type: "image/png",
+    });
     fireEvent.paste(screen.getByRole("textbox", { name: "Message agent" }), {
-      clipboardData: { files: [large] },
+      clipboardData: { files: [huge] },
     });
-    expect(onAddImages).toHaveBeenCalledWith([large]);
+    expect(onAddImages).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Choose PNG or JPEG images no larger than 10 MiB each.",
+    );
   });
 
   it("opens the persistent chooser from Add and closes the only menu", async () => {

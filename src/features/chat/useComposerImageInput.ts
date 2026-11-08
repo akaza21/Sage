@@ -1,8 +1,7 @@
 import { useRef, useState, type DragEvent, type ClipboardEvent } from "react";
 import type { AgentSessionProjection } from "../../domain/acp";
 import {
-  MAX_OUTGOING_IMAGE_BYTES,
-  MAX_PROMPT_IMAGE_TOTAL_BYTES,
+  MAX_IMAGE_UPLOAD_BYTES,
   MAX_PROMPT_IMAGES,
   type AttachedContext,
 } from "../../domain/attachedContext";
@@ -65,17 +64,10 @@ export function useComposerImageInput({
         (file) =>
           !["image/png", "image/jpeg"].includes(file.type) ||
           file.size === 0 ||
-          file.size > MAX_OUTGOING_IMAGE_BYTES,
+          file.size > MAX_IMAGE_UPLOAD_BYTES,
       )
     )
-      return setError("Choose PNG or JPEG images no larger than 4 MiB each.");
-    const total =
-      images.reduce((sum, image) => sum + image.byteLength, 0) +
-      files.reduce((sum, file) => sum + file.size, 0);
-    if (total > MAX_PROMPT_IMAGE_TOTAL_BYTES)
-      return setError(
-        "Images in one message can total at most 512 KiB. Shrink or crop the image and try again.",
-      );
+      return setError("Choose PNG or JPEG images no larger than 10 MiB each.");
     setError(null);
     onAddImages?.(files);
   };

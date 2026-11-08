@@ -15,7 +15,7 @@ pub(crate) struct PromptImage {
     pub media_type: ImageMediaType,
     pub bytes: Vec<u8>,
     /// The transcript copy: `Full` when `bytes` fit one normalized item,
-    /// otherwise the stored thumbnail, or nothing when neither fits.
+    /// otherwise a smaller re-encoding, or nothing when neither fits.
     pub preview: ImagePreview,
 }
 
@@ -62,7 +62,7 @@ impl ImageRefusal {
             }
             Self::TooMany => "A message can include at most four images. Remove some images.",
             Self::TooLarge => {
-                "Images in one message can total at most 512 KiB. Remove or shrink some images."
+                "Images in one message can total at most 1 MiB after resizing to 1568 px. Remove some images or crop them."
             }
         }
     }

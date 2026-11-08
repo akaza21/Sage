@@ -1,55 +1,12 @@
-//! Image artifacts a native prompt has sent: the stored preview its transcript
-//! copy reuses, and retirement once the prompt is handed to the harness.
+//! Image artifacts a native prompt has sent are retired once the prompt is
+//! handed to the harness.
 use std::path::Path;
 
-use rusqlite::{Connection, OptionalExtension, params};
-use sha2::{Digest, Sha256};
+use rusqlite::{Connection, params};
 
-use crate::{
-    acp::{intent::ImageMediaType, migration},
-    error::{AppError, AppResult},
-};
+use crate::{acp::migration, error::AppResult};
 
-use super::store::{full_path, thumb_path, validate_root};
-
-const THUMBNAIL_LIMIT: u64 = 256 * 1024;
-
-/// The owner-bound stored preview, checked against its recorded digest.
-pub(crate) fn read_thumbnail(
-    connection: &Connection,
-    root: &Path,
-    project_id: &str,
-    chat_id: &str,
-    artifact_id: &str,
-) -> AppResult<(ImageMediaType, Vec<u8>)> {
-    validate_root(root)?;
-    let row: Option<(i64, String)> = connection
-        .query_row(
-            "SELECT thumbnail_bytes,thumbnail_sha256 FROM chat_image_artifacts
-             WHERE id=?1 AND project_id=?2 AND chat_id=?3",
-            params![artifact_id, project_id, chat_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()?;
-    let Some((length, hash)) = row else {
-        return Err(AppError::InvalidRequest(
-            "image artifact is unavailable".into(),
-        ));
-    };
-    let bytes = migration::read_image_file(&thumb_path(root, artifact_id), THUMBNAIL_LIMIT)?;
-    if bytes.len() as i64 != length || format!("{:x}", Sha256::digest(&bytes)) != hash {
-        return Err(AppError::InvalidRequest(
-            "image preview is missing or corrupt".into(),
-        ));
-    }
-    // A preview is the original bytes when small, else a PNG downscale.
-    let media_type = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-        ImageMediaType::Png
-    } else {
-        ImageMediaType::Jpeg
-    };
-    Ok((media_type, bytes))
-}
+use super::store::{full_path, validate_root};
 
 /// Composer images become retired once their prompt was handed over: the
 /// transcript keeps its own copy, reconciliation drops the row's full file,

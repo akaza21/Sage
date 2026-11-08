@@ -214,7 +214,7 @@ fn pending_image_can_be_removed_only_by_its_chat_owner() {
 }
 
 #[test]
-fn exact_four_mib_png_is_admitted_and_plus_one_is_rejected() {
+fn exact_four_mib_png_is_kept_as_uploaded_and_larger_ones_are_normalised() {
     let directory = std::env::temp_dir().join(format!("sage-image-limit-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
     let database = Database::open(&directory.join("sage.db")).unwrap();
@@ -254,6 +254,19 @@ fn exact_four_mib_png_is_admitted_and_plus_one_is_rejected() {
         bytes
     );
     bytes.push(0);
+    let normalized = ingest_image(
+        &connection,
+        root,
+        "p",
+        "c",
+        ImageMediaType::Png,
+        &bytes,
+        "large.png",
+    )
+    .unwrap();
+    assert_eq!((normalized.width, normalized.height), (1, 1));
+    assert!(normalized.byte_length < 1024);
+    bytes.resize(crate::acp::limits::IMAGE_UPLOAD_BYTES + 1, 0);
     assert!(
         ingest_image(
             &connection,
@@ -272,60 +285,35 @@ fn exact_four_mib_png_is_admitted_and_plus_one_is_rejected() {
 }
 
 #[test]
-fn a_sent_image_keeps_a_transcript_sized_preview_and_retires_its_full_bytes() {
-    use crate::acp::limits::IMAGE_PREVIEW_BYTES;
+fn a_4k_screenshot_is_normalised_at_upload_and_retired_once_sent() {
     let directory = std::env::temp_dir().join(format!("sage-image-sent-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
     let database = Database::open(&directory.join("sage.db")).unwrap();
     let connection = database.connection();
     connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
     connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
-    // Noise just above the inline preview bound still gets a downscaled one.
-    let mut pixels = vec![0_u8; 240 * 240 * 4];
-    for (index, byte) in pixels.iter_mut().enumerate() {
-        *byte = (index.wrapping_mul(2_654_435_761) >> 13) as u8;
-    }
-    let mut bytes = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(&mut bytes, 240, 240);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        encoder
-            .write_header()
-            .unwrap()
-            .write_image_data(&pixels)
-            .unwrap();
-    }
-    assert!(bytes.len() > IMAGE_PREVIEW_BYTES && bytes.len() <= 262_144);
     let root = database.image_artifact_root().unwrap();
-    let image = ingest_image(
-        &connection,
-        root,
-        "p",
-        "c",
-        ImageMediaType::Png,
-        &bytes,
-        "noise.png",
-    )
-    .unwrap();
 
-    let (media_type, preview) =
-        super::read_thumbnail(&connection, root, "p", "c", &image.artifact_id).unwrap();
-    assert_eq!(media_type, ImageMediaType::Png);
-    assert!(preview.len() <= IMAGE_PREVIEW_BYTES);
-    let decoded = png::Decoder::new(std::io::Cursor::new(&preview))
-        .read_info()
-        .unwrap();
-    assert_eq!((decoded.info().width, decoded.info().height), (128, 128));
-    assert!(super::read_thumbnail(&connection, root, "p", "other", &image.artifact_id).is_err());
+    // Past the 2048 px store bound, so it was refused before normalisation.
+    let screenshot = super::screenshot_png(3840, 2160);
+    let image = super::ingest_test_image(&connection, root, "p", "c", &screenshot).unwrap();
+    assert_eq!((image.width, image.height), (1568, 882));
+    assert_eq!(image.media_type, ImageMediaType::Png);
+    let stored = verify_image_reference(&connection, root, "p", "c", &image).unwrap();
+    assert_eq!(super::png_dimensions(&stored), (1568, 882));
+
+    // Noise that no encoding fits within 1 MiB is refused with its reason.
+    let noise = super::noise_png(2100, 1600);
+    let error = super::ingest_test_image(&connection, root, "p", "c", &noise).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("still larger than 1 MiB after resizing to 1568 px")
+    );
 
     super::retire_sent_images(&connection, root, "p", "c", &[&image.artifact_id]).unwrap();
     assert!(verify_image_reference(&connection, root, "p", "c", &image).is_err());
     assert!(!root.join(format!("{}.full", image.artifact_id)).exists());
-    assert_eq!(
-        super::read_thumbnail(&connection, root, "p", "c", &image.artifact_id).unwrap(),
-        (media_type, preview)
-    );
     drop(connection);
     drop(database);
     std::fs::remove_dir_all(directory).unwrap();

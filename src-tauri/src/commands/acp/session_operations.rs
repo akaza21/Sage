@@ -164,6 +164,7 @@ pub(crate) async fn send_acp_turn_inner(
         &chat_id,
         &session_id,
     )
+    .await
     .map_err(prompt_not_dispatched)?;
     let files = state
         .acp

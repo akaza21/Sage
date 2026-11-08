@@ -41,7 +41,12 @@ pub(super) fn request(
         "params": params,
     }))
     .map_err(|_| AdapterRuntimeError::Frame)?;
-    let frame = OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
+    let frame = if method == "session/prompt" {
+        OutboundFrame::new_prompt(bytes)
+    } else {
+        OutboundFrame::new(bytes)
+    }
+    .map_err(|_| AdapterRuntimeError::Frame)?;
     Ok(AdapterEgress::new(frame, EgressToken::request(id)))
 }
 
