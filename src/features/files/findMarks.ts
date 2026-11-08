@@ -1,8 +1,15 @@
 import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
-import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
+import {
+  Decoration,
+  ViewPlugin,
+  type DecorationSet,
+  type EditorView,
+  type ViewUpdate,
+} from "@codemirror/view";
 
-// Find and Replace marks. The field maps them through edits, so they
-// stay on their text while a new search waits for a typing pause.
+// Find and Replace marks. The field keeps every match and maps them through
+// edits, so they stay on their text while a new search waits for a typing
+// pause. Only the visible ones are drawn, as CodeMirror's own search does.
 const setMarks = StateEffect.define<DecorationSet>();
 const marks = StateField.define<DecorationSet>({
   create: () => Decoration.none,
@@ -16,8 +23,55 @@ const marks = StateField.define<DecorationSet>({
       if (effect.is(setMarks)) next = effect.value;
     return next ?? value.map(transaction.changes);
   },
-  provide: (field) => EditorView.decorations.from(field),
 });
+
+/** Characters drawn past each visible range, so a short scroll shows marks at once. */
+export const VISIBLE_MARK_MARGIN = 250;
+
+/** The marks within the visible ranges and their margins. */
+function visibleMarks(view: EditorView): DecorationSet {
+  const all = view.state.field(marks);
+  if (all.size === 0) return Decoration.none;
+  const builder = new RangeSetBuilder<Decoration>();
+  const ranges = view.visibleRanges;
+  let next = 0;
+  for (let index = 0; index < ranges.length; index += 1) {
+    const from = Math.max(ranges[index]!.from - VISIBLE_MARK_MARGIN, next);
+    let to = ranges[index]!.to;
+    // Ranges whose margins meet are drawn as one.
+    while (
+      index + 1 < ranges.length &&
+      to + 2 * VISIBLE_MARK_MARGIN > ranges[index + 1]!.from
+    )
+      to = ranges[++index]!.to;
+    to += VISIBLE_MARK_MARGIN;
+    all.between(from, to, (start, end, mark) => {
+      // A mark that straddles the last range's end was added already.
+      if (start < next) return;
+      builder.add(start, end, mark);
+      next = Math.max(end, start + 1);
+    });
+  }
+  return builder.finish();
+}
+
+const drawMarks = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = visibleMarks(view);
+    }
+    update(update: ViewUpdate) {
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        update.state.field(marks) !== update.startState.field(marks)
+      )
+        this.decorations = visibleMarks(update.view);
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
 
 /** Drops every mark in the transaction that carries it, as Replace all does. */
 export const clearMatches = () => setMarks.of(Decoration.none);
@@ -27,7 +81,7 @@ const CURRENT = Decoration.mark({
 });
 const marked = new WeakSet<EditorView>();
 
-/** Marks every match, the current one more strongly. CodeMirror draws only the visible ones. */
+/** Marks every match, the current one more strongly; only the visible ones are drawn. */
 export function showMatches(
   view: EditorView | null | undefined,
   ranges: readonly number[],
@@ -36,7 +90,7 @@ export function showMatches(
   if (!view) return;
   if (!marked.has(view)) {
     marked.add(view);
-    view.dispatch({ effects: StateEffect.appendConfig.of(marks) });
+    view.dispatch({ effects: StateEffect.appendConfig.of([marks, drawMarks]) });
   }
   const builder = new RangeSetBuilder<Decoration>();
   const length = view.state.doc.length;
