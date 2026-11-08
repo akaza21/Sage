@@ -189,6 +189,8 @@ impl AppState {
         if fixture_isolation {
             harnesses.apply_presence(Vec::new());
         }
+        // Chats deleted while Sage was not running keep no access choice.
+        crate::settings_store::forget_removed_chat_access(&database, &settings);
         Ok(Self {
             database,
             settings,

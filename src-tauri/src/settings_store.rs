@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 mod access;
-mod full_access;
+mod chat_access;
 mod notifications;
 pub use notifications::NotificationPreference;
 mod agent_rail_view;
@@ -26,11 +26,11 @@ pub use agent_rail_view::AgentRailView;
 pub use browser_download_folder::DownloadFolderRecord;
 pub use browser_preferences::BrowserPreferences;
 pub use browser_site_permissions::{MAX_SITE_ORIGIN_BYTES, MAX_SITE_PERMISSIONS};
+pub use chat_access::{ACCESS_CONFIRMATION_MILLIS, forget_removed_chat_access};
 #[cfg(test)]
 pub(crate) use chat_read_marks::MAX_CHAT_READ_MARKS;
 pub use chat_read_marks::{ChatReadMark, ChatReadMarkWrite, ChatReadMarks};
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
-pub use full_access::FULL_ACCESS_CONFIRMATION_MILLIS;
 pub use new_chat_defaults::NewChatDefaults;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,6 +54,12 @@ impl SessionAccessMode {
     /// Whether this mode can be a binding's stored default for new chats.
     pub(crate) fn is_default_eligible(self) -> bool {
         self != Self::FullAccess
+    }
+
+    /// Whether choosing this mode for a chat takes a confirmed token: the
+    /// modes that run actions without asking beyond file edits.
+    pub(crate) fn needs_confirmation(self) -> bool {
+        matches!(self, Self::FullAccess | Self::Auto)
     }
 }
 
@@ -116,7 +122,7 @@ impl SettingsStore {
                  ) STRICT;",
             )?;
             access::migrate(&migration)?;
-            full_access::migrate(&migration)?;
+            chat_access::migrate(&migration)?;
             migration.execute_batch(
                 "CREATE TABLE IF NOT EXISTS ui_appearance (
                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),

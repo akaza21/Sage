@@ -66,6 +66,7 @@ fn finish_close(
     database
         .remove_side_chat(project_id, chat_id)
         .map_err(|error| error.to_string())?;
+    crate::settings_store::forget_removed_chat_access(database, settings);
     if dont_ask_again {
         settings
             .set_confirm_close_side_chat(false)
