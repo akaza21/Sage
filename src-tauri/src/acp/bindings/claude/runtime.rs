@@ -53,9 +53,6 @@ const MAX_PENDING_REQUESTS: usize = 16;
 pub(crate) struct ClaudeRuntime {
     launch_binding: Option<Arc<AdmittedClaudeBinding>>,
     pending_project_root: Option<crate::project_registry::ProjectRootAuthority>,
-    /// The Sage access mode this session asked for; `None` uses the binding's
-    /// default. It decides the native mode a new session starts in.
-    requested_access_mode: Option<crate::settings_store::SessionAccessMode>,
     binding_digest: [u8; 32],
     runtime_epoch: RuntimeEpoch,
     session_id: SageAgentSessionId,
@@ -181,7 +178,6 @@ impl ClaudeRuntime {
         Self {
             launch_binding,
             pending_project_root: None,
-            requested_access_mode: None,
             binding_digest,
             runtime_epoch,
             session_id,

@@ -152,19 +152,14 @@ pub(crate) fn native_session_mode(binding: &str, mode: SessionAccessMode) -> Opt
 }
 
 /// The native mode a new session must start in: the native mode of the
-/// session's requested access mode, or of the binding's default (fallback)
-/// when none is requested or the request is not admitted. A harness may
-/// otherwise start a session in a laxer mode of its own choosing.
+/// binding's default (fallback) access mode. A harness may otherwise start a
+/// session in a laxer mode of its own choosing.
 pub(crate) fn starting_native_session_mode(
     binding: &str,
     version: &str,
-    requested: Option<SessionAccessMode>,
     characterised: bool,
 ) -> Option<&'static str> {
-    // A session must never keep the harness's own starting mode because its
-    // request is not admitted, so an unadmitted request starts in the default.
-    let mode = effective_mode(binding, version, requested, characterised)
-        .or_else(|| effective_mode(binding, version, None, characterised))?;
+    let mode = effective_mode(binding, version, None, characterised)?;
     native_session_mode(binding, mode)
 }
 
@@ -217,26 +212,7 @@ mod tests {
     fn claude_starts_new_sessions_in_the_native_mode_of_ask_each_time() {
         for version in ["0.76.0", "0.101.0"] {
             assert_eq!(
-                starting_native_session_mode("claude-agent-acp", version, None, true),
-                Some("default")
-            );
-            assert_eq!(
-                starting_native_session_mode(
-                    "claude-agent-acp",
-                    version,
-                    Some(SessionAccessMode::Ask),
-                    true
-                ),
-                Some("default")
-            );
-            // A request the binding does not admit falls back to its default.
-            assert_eq!(
-                starting_native_session_mode(
-                    "claude-agent-acp",
-                    version,
-                    Some(SessionAccessMode::WorkspaceWrite),
-                    true
-                ),
+                starting_native_session_mode("claude-agent-acp", version, true),
                 Some("default")
             );
         }
@@ -246,7 +222,7 @@ mod tests {
         );
         for binding in ["codex-app-server", "opencode-acp", "pi-rpc", "unknown"] {
             assert_eq!(
-                starting_native_session_mode(binding, "0.146.0", None, true),
+                starting_native_session_mode(binding, "0.146.0", true),
                 None
             );
         }

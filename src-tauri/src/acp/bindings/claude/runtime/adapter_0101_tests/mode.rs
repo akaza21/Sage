@@ -115,31 +115,6 @@ fn a_session_without_a_mode_catalog_fails_closed() {
 }
 
 #[test]
-fn the_starting_mode_follows_the_requested_access_mode() {
-    use crate::settings_store::SessionAccessMode;
-    // Claude admits only "Ask each time"; an unadmitted request still starts
-    // in its native mode rather than keeping the adapter's `auto`.
-    for requested in [
-        None,
-        Some(SessionAccessMode::Ask),
-        Some(SessionAccessMode::WorkspaceWrite),
-    ] {
-        let mut runtime = ClaudeRuntime::fixture();
-        runtime.requested_access_mode = requested;
-        initialize_0101(&mut runtime);
-        let batch = new_session(&mut runtime, frame(derived("newSessionInAuto")));
-        assert!(matches!(
-            batch.events(),
-            [SharedEvent::SessionPolicyPending]
-        ));
-        let [set_mode] = batch.egress() else {
-            panic!("one starting-mode request")
-        };
-        assert_eq!(payload(set_mode)["params"]["modeId"], "default");
-    }
-}
-
-#[test]
 fn activation_writes_the_starting_mode_and_commits_ready_only_after_it_is_accepted() {
     use super::resume_regression_tests::{Journal, Sink};
     let mut probe = ClaudeRuntime::fixture();

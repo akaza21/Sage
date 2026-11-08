@@ -12,8 +12,8 @@ use crate::acp::bindings::{
 };
 
 impl ClaudeRuntime {
-    /// The native mode for the session's requested access mode, falling back
-    /// to the binding's default when none is requested.
+    /// The native mode of the binding's default access mode. Activation does
+    /// not carry the session's requested access mode yet.
     fn starting_mode(&self) -> Option<&'static str> {
         let version = self
             .launch_binding
@@ -22,7 +22,6 @@ impl ClaudeRuntime {
         starting_native_session_mode(
             CLAUDE_BINDING_ID,
             version,
-            self.requested_access_mode,
             self.binding_is_characterised(),
         )
     }
