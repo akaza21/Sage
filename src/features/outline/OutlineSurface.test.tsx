@@ -254,9 +254,10 @@ describe("OutlineSurface", () => {
     ).toBeInTheDocument();
     // Counting skips the visibility check, which runs jsdom's style cascade
     // for each of the 500 rows and their ancestors: seconds under load.
-    expect(screen.getAllByRole("treeitem", { hidden: true })).toHaveLength(
-      MAX_OUTLINE_SYMBOLS,
-    );
+    const rows = screen.getAllByRole("treeitem", { hidden: true });
+    expect(rows).toHaveLength(MAX_OUTLINE_SYMBOLS);
+    expect(rows[0]).toBeVisible();
+    expect(rows.at(-1)).toBeVisible();
   });
 
   it("shows an honest empty state for a File type without an Outline", async () => {

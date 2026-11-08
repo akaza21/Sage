@@ -880,6 +880,10 @@ describe("FileSurface Find and Replace", () => {
     });
     expect(activeEditorText()).toBe("dog dog dog!");
     expect(screen.getByRole("status")).toHaveTextContent("No matches");
+    const marks = () => editor.querySelectorAll(".cm-findMatch").length;
+    expect(marks()).toBe(0);
+    // Undo searches again after the typing pause; step over it.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     // Typing right after it does not join the Replace all step either.
     act(() => {
       view.dispatch({
@@ -896,6 +900,9 @@ describe("FileSurface Find and Replace", () => {
       undo(view);
     });
     expect(activeEditorText()).toBe("dog cat cat!");
+    await act(() => vi.runOnlyPendingTimersAsync());
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
+    expect(marks()).toBe(2);
   });
 
   it("only selects the next match when Replace finds no match selected, as VS Code does", async () => {
