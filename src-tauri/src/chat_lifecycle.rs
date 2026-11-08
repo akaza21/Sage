@@ -1,7 +1,9 @@
 use rusqlite::{OptionalExtension, params};
 use uuid::Uuid;
 mod auto_title;
+mod title_source;
 pub(crate) use auto_title::auto_title_first_prompt_in;
+pub(crate) use title_source::{ChatTitleSource, apply_harness_title_in};
 
 use crate::{
     acp::limits::LIMITS,
@@ -266,9 +268,16 @@ pub(crate) fn insert_new_chat(
     let now = now_millis();
     transaction.execute(
         "INSERT INTO chats(
-           id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_is_default
-         ) VALUES (?1,?2,?3,?4,0,?5,?5,1)",
-        params![chat_id, project_id, ordinal, title, now],
+           id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_source
+         ) VALUES (?1,?2,?3,?4,0,?5,?5,?6)",
+        params![
+            chat_id,
+            project_id,
+            ordinal,
+            title,
+            now,
+            ChatTitleSource::Default.as_str()
+        ],
     )?;
     transaction.execute(
         "INSERT INTO workbench_tabs(
@@ -348,9 +357,14 @@ fn apply_chat_title(
     let now = now_millis();
     require_one(
         transaction.execute(
-            "UPDATE chats SET title=?3,title_is_default=0
+            "UPDATE chats SET title=?3,title_source=?4
              WHERE project_id=?1 AND id=?2",
-            params![request.project_id, request.chat_id, title],
+            params![
+                request.project_id,
+                request.chat_id,
+                title,
+                ChatTitleSource::User.as_str()
+            ],
         )?,
         "Chat disappeared during rename",
     )?;

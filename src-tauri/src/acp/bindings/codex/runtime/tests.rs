@@ -28,6 +28,7 @@ mod duplicate_terminal_probe;
 mod fork_tests;
 mod model_identity;
 mod saved_diff_tests;
+mod session_title_tests;
 
 struct Mapper;
 

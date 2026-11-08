@@ -39,6 +39,15 @@ pub(super) fn apply_in(
     let Some(change) = surface.apply(owner.runtime_epoch.get(), &command.event) else {
         return Ok(false);
     };
+    if let SessionScopedEvent::Title { title } = &command.event {
+        crate::chat_lifecycle::apply_harness_title_in(
+            transaction,
+            project,
+            chat,
+            title.as_str(),
+            command.now_millis,
+        )?;
+    }
     let json = bounded_json(&mut surface)?;
     let next = match revision {
         Some(revision) => revision.next().map_err(|_| StoreError::CounterExhausted)?,

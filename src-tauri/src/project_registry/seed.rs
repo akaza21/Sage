@@ -45,9 +45,14 @@ pub(super) fn seed_project(
         params![tab_id, project_id, now],
     )?;
     transaction.execute(
-        "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_is_default)
-         VALUES (?1,?2,0,'Chat: Chat',0,?3,?3,1)",
-        params![tab_id, project_id, now],
+        "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_source)
+         VALUES (?1,?2,0,'Chat: Chat',0,?3,?3,?4)",
+        params![
+            tab_id,
+            project_id,
+            now,
+            crate::chat_lifecycle::ChatTitleSource::Default.as_str()
+        ],
     )?;
     attach_chat_tab_in(transaction, project_id, tab_id, now)?;
     transaction.execute(

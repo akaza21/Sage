@@ -190,6 +190,11 @@ pub(crate) enum IncomingEvent {
         request_id: u64,
         accepted: bool,
     },
+    /// A fact about the bound thread rather than one of its Turns.
+    Session {
+        id: ScopedExternalId,
+        event: crate::acp::intent::session_event::SessionScopedEvent,
+    },
     Unsupported(NormalizedPayload),
     Error(NormalizedPayload),
 }

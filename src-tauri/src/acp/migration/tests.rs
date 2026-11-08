@@ -1218,6 +1218,7 @@ fn fresh_schema_equals_a_v6_schema_upgraded_in_place() {
     title_provenance::apply(&mut upgraded).unwrap();
     session_scope::apply(&mut upgraded).unwrap();
     notifications::apply(&mut upgraded).unwrap();
+    title_source::apply(&mut upgraded).unwrap();
     let upgraded_fingerprint = database_fingerprint(&upgraded).unwrap();
 
     assert_eq!(fresh_fingerprint.schema, SchemaClass::CurrentV22);

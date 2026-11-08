@@ -80,6 +80,11 @@ pub(super) fn setup() -> Connection {
         ))
         .unwrap();
     connection
+        .execute_batch(include_str!(
+            "../../../migrations/022_chat_title_source.sql"
+        ))
+        .unwrap();
+    connection
 }
 
 pub(super) fn capabilities() -> String {

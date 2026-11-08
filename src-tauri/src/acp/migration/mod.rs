@@ -23,6 +23,7 @@ mod stage_owner;
 #[cfg(test)]
 mod test_failpoint;
 mod title_provenance;
+mod title_source;
 mod tool_result_fold;
 #[cfg(test)]
 mod tool_result_fold_tests;
@@ -134,6 +135,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     title_provenance::apply(&mut opened.connection)?;
     session_scope::apply(&mut opened.connection)?;
     notifications::apply(&mut opened.connection)?;
+    title_source::apply(&mut opened.connection)?;
     Ok(opened)
 }
 

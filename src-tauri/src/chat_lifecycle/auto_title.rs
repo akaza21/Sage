@@ -1,7 +1,11 @@
 use rusqlite::{Transaction, params};
 
-fn first_line_title(prompt: &str) -> Option<String> {
-    let line = prompt
+use super::ChatTitleSource;
+
+/// The first line of `text` as a chat title: trimmed, control characters
+/// removed and cut at a character boundary within the title byte limit.
+pub(super) fn first_line_title(text: &str) -> Option<String> {
+    let line = text
         .lines()
         .next()?
         .trim_matches(super::is_chat_title_trim_character);
@@ -24,9 +28,9 @@ pub(crate) fn auto_title_first_prompt_in(
 ) -> rusqlite::Result<()> {
     let eligible: bool = transaction.query_row(
         "SELECT EXISTS(SELECT 1 FROM chats c
-         WHERE c.project_id=?1 AND c.id=?2 AND c.title_is_default=1
+         WHERE c.project_id=?1 AND c.id=?2 AND c.title_source=?3
          AND NOT EXISTS(SELECT 1 FROM turns WHERE project_id=?1 AND chat_id=?2 LIMIT 1))",
-        params![project_id, chat_id],
+        params![project_id, chat_id, ChatTitleSource::Default.as_str()],
         |row| row.get(0),
     )?;
     if !eligible {
@@ -36,8 +40,14 @@ pub(crate) fn auto_title_first_prompt_in(
         return Ok(());
     };
     transaction.execute(
-        "UPDATE chats SET title=?3,updated_at=?4,title_is_default=0 WHERE project_id=?1 AND id=?2",
-        params![project_id, chat_id, title, now],
+        "UPDATE chats SET title=?3,updated_at=?4,title_source=?5 WHERE project_id=?1 AND id=?2",
+        params![
+            project_id,
+            chat_id,
+            title,
+            now,
+            ChatTitleSource::Prompt.as_str()
+        ],
     )?;
     transaction.execute("UPDATE workbench_tabs SET title=?3,updated_at=?4 WHERE project_id=?1 AND id=?2 AND kind='chat'",
         params![project_id, chat_id, title, now])?;
@@ -71,10 +81,10 @@ mod tests {
     #[test]
     fn renames_only_an_untitled_first_prompt_and_rolls_back_with_the_turn() {
         let mut connection = rusqlite::Connection::open_in_memory().unwrap();
-        connection.execute_batch("CREATE TABLE chats(id TEXT,project_id TEXT,title TEXT,updated_at INTEGER,title_is_default INTEGER);
+        connection.execute_batch("CREATE TABLE chats(id TEXT,project_id TEXT,title TEXT,updated_at INTEGER,title_source TEXT);
             CREATE TABLE turns(project_id TEXT,chat_id TEXT);
             CREATE TABLE workbench_tabs(id TEXT,project_id TEXT,kind TEXT,title TEXT,updated_at INTEGER,metadata_json TEXT);
-            INSERT INTO chats VALUES('chat','project','Chat: Chat',0,1);
+            INSERT INTO chats VALUES('chat','project','Chat: Chat',0,'default');
             INSERT INTO workbench_tabs VALUES('chat','project','chat','Chat: Chat',0,'{}');").unwrap();
         {
             let transaction = connection.transaction().unwrap();
@@ -96,7 +106,10 @@ mod tests {
             .unwrap();
         assert_eq!(attached, "Chat: Fix sidebar");
         connection
-            .execute("UPDATE chats SET title='Chat: Custom'", [])
+            .execute(
+                "UPDATE chats SET title='Chat: Custom',title_source='user'",
+                [],
+            )
             .unwrap();
         let transaction = connection.transaction().unwrap();
         auto_title_first_prompt_in(&transaction, "project", "chat", "Do not rename", 2).unwrap();
@@ -108,7 +121,7 @@ mod tests {
             )
             .unwrap();
         connection
-            .execute("UPDATE chats SET title_is_default=1", [])
+            .execute("UPDATE chats SET title_source='default'", [])
             .unwrap();
         let transaction = connection.transaction().unwrap();
         auto_title_first_prompt_in(&transaction, "project", "chat", "Second prompt", 3).unwrap();

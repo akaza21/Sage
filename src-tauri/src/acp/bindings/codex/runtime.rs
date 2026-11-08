@@ -380,6 +380,13 @@ impl CodexRuntime {
                 },
                 None,
             ),
+            IncomingEvent::Session { id, event } => (
+                AdapterEvent::Session {
+                    id: identity(id),
+                    event,
+                },
+                None,
+            ),
             IncomingEvent::Unsupported(payload) => (AdapterEvent::Unsupported(payload), None),
             IncomingEvent::Error(payload) => (AdapterEvent::Error(payload), None),
         };
