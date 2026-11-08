@@ -300,6 +300,45 @@ describe("ACP projection request intents", () => {
     expect(store().page?.nextCursor).toBe("older");
   });
 
+  it("takes the newest page alone when its window moved past the page shown", () => {
+    const store = useAcpProjectionStore.getState;
+    const items = (from: number, to: number) =>
+      Array.from({ length: to - from }, (_, index) => item(0, from + index));
+    const shown = page("1", [turn(0, items(100, 356))]);
+    shown.nextCursor = "before-100" as AcpPageCursor;
+    store().completePageLoad(store().beginPageLoad(null), shown);
+    const jumped = page("2", [turn(0, items(400, 656))]);
+    jumped.nextCursor = "before-400" as AcpPageCursor;
+    store().completePageLoad(store().beginPageLoad(null), jumped);
+    expect(store().page?.turns[0].items[0].ordinal).toBe(400);
+    expect(store().page?.nextCursor).toBe("before-400");
+
+    const turns = page("3", [turn(30), turn(31)]);
+    turns.nextCursor = "before-30" as AcpPageCursor;
+    store().completePageLoad(store().beginPageLoad(null), turns);
+    expect(store().page?.turns.map((t) => t.ordinal)).toEqual([30, 31]);
+    expect(store().page?.nextCursor).toBe("before-30");
+  });
+
+  it("drops retained history rather than trim it behind a stale cursor", () => {
+    const store = useAcpProjectionStore.getState;
+    const many = Array.from({ length: MAX_RETAINED_TURNS }, (_, i) => turn(i));
+    const shown = page("1", many);
+    shown.nextCursor = "before-0" as AcpPageCursor;
+    store().completePageLoad(store().beginPageLoad(null), shown);
+    const grown = page("2", [
+      turn(MAX_RETAINED_TURNS - 1),
+      turn(MAX_RETAINED_TURNS),
+    ]);
+    grown.nextCursor = "before-99" as AcpPageCursor;
+    store().completePageLoad(store().beginPageLoad(null), grown);
+    expect(store().page?.turns.map((t) => t.ordinal)).toEqual([
+      MAX_RETAINED_TURNS - 1,
+      MAX_RETAINED_TURNS,
+    ]);
+    expect(store().page?.nextCursor).toBe("before-99");
+  });
+
   it("takes the newest page alone when nothing older is shown", () => {
     const store = useAcpProjectionStore.getState;
     const first = page("1", [turn(3)]);

@@ -199,6 +199,21 @@ function trimToByteLimit(page: AcpChatPage): {
   };
 }
 
+/**
+ * Lays a newest page over the page shown. When the loaded history it keeps
+ * would pass the retention caps, the newest page alone is shown instead, so
+ * trimming never leaves a gap behind a cursor that skips it.
+ */
+function retainNewest(current: AcpChatPage | null, page: AcpChatPage) {
+  const retained = trimToByteLimit(
+    preserveNewerConfig(current, mergeNewestPage(current, page)),
+  );
+  if (!retained.retentionIncomplete || !current) return retained;
+  return trimToByteLimit(
+    preserveNewerConfig(current, mergeNewestPage(null, page)),
+  );
+}
+
 const initialState = {
   scope: null,
   page: null,
@@ -291,8 +306,10 @@ export function createAcpProjectionStore() {
       const source =
         intent.cursor && state.page
           ? mergeHistoryPage(state.page, page, intent.cursor)
-          : mergeNewestPage(state.page, page);
-      const retained = trimToByteLimit(preserveNewerConfig(state.page, source));
+          : null;
+      const retained = source
+        ? trimToByteLimit(preserveNewerConfig(state.page, source))
+        : retainNewest(state.page, page);
       set({
         page: retainUnchangedTurns(state.page, retained.page),
         retainedBytes: retained.retainedBytes,
@@ -337,9 +354,7 @@ export function createAcpProjectionStore() {
         if (comparison < 0) return "ignoredStaleRevision";
       }
       if (!sameRevisionOwner(state.page, page)) return "ignoredStaleIntent";
-      const retained = trimToByteLimit(
-        preserveNewerConfig(state.page, mergeNewestPage(state.page, page)),
-      );
+      const retained = retainNewest(state.page, page);
       set({
         page: retainUnchangedTurns(state.page, retained.page),
         retainedBytes: retained.retainedBytes,

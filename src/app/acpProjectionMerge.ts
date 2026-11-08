@@ -119,6 +119,7 @@ export function mergeHistoryPage(
  * Lays a newest page over the page shown. Inside the newest page's window it
  * is authoritative; earlier Turns and Items the page shown already loaded stay,
  * with its cursor, so a refresh during a stream never drops loaded history.
+ * Retained entities outside the window are not refreshed by the newest page.
  */
 export function mergeNewestPage(
   current: AcpChatPage | null,
@@ -149,13 +150,17 @@ export function mergeNewestPage(
       (session === firstSession && ordinal < firstTurn)
     );
   });
+  // Retain only when the newest window overlaps the page shown: a window
+  // that moved past it would leave Turns or Items no cursor can reach.
+  const shown = current.turns.find((turn) => turn.id === first.id);
   const edge = first.items[0]?.ordinal;
+  if (
+    !shown ||
+    (edge !== undefined && !shown.items.some((item) => item.ordinal >= edge))
+  )
+    return next;
   const earlierItems =
-    edge === undefined
-      ? []
-      : (current.turns
-          .find((turn) => turn.id === first.id)
-          ?.items.filter((item) => item.ordinal < edge) ?? []);
+    edge === undefined ? [] : shown.items.filter((item) => item.ordinal < edge);
   if (older.length === 0 && earlierItems.length === 0) return next;
   return normalizeProjectionPage({
     ...next,
