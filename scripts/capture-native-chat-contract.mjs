@@ -184,9 +184,9 @@ function validateChatIdentity(probe) {
       probe.bindingId,
     ) ||
     !IDENTIFIER.test(probe.turnId) ||
-    !["standard-acp-1", "codex-app-server-0.146.0", "pi-rpc-1.5.0"].includes(
-      probe.protocol,
-    )
+    !Object.values(HARNESS)
+      .map(({ protocol }) => protocol)
+      .includes(probe.protocol)
   )
     fail("probe-identity");
   const harness = HARNESS[probe.caseId.split("-")[0]];

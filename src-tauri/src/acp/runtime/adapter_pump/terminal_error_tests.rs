@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use crate::{
     acp::{
         projection::ItemContent,
@@ -51,8 +52,8 @@ fn codex_terminal_only_error_survives_the_shared_pump_history_and_database_reope
         let init = codex.command(AdapterCommand::Initialize).unwrap();
         codex.resolve_egress(init.into_token(), EgressResolution::Queued).unwrap();
         let initialized = codex.ingest(&codex_frame(serde_json::json!({"id":1,"result":{
-            "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-            "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+            "userAgent":user_agent("sage", "unknown"),
+            "codexHome":MANAGED_CODEX_HOME,
             "platformFamily":"windows","platformOs":"windows"
         }})), &Mapper).unwrap();
         codex.resolve_egress(initialized.egress()[0].token().clone(), EgressResolution::Queued).unwrap();

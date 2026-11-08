@@ -279,9 +279,12 @@ fn admitted_codex_session_start_persists_the_exact_curated_identity() {
         assert_eq!(identity.0, "codex-app-server");
         assert_eq!(
             identity.1,
-            "3bba7d86d2357d8fccd81bdba3d7f3f4278c80014d7e65e085b9a874330d7df4"
+            crate::acp::bindings::codex::CODEX_BINDING_DIGEST_HEX
         );
-        assert_eq!(identity.2.as_deref(), Some("0.146.0"));
+        assert_eq!(
+            identity.2.as_deref(),
+            Some(crate::acp::bindings::codex::CODEX_PINNED_VERSION)
+        );
         service.shutdown_blocking().unwrap();
     });
 }

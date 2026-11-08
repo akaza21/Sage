@@ -10,7 +10,8 @@ use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId};
 impl CodexAdapter {
     #[cfg(test)]
     pub(crate) fn enable_observed_goal_for_test(&mut self) {
-        self.runtime_version = "codex-cli 0.146.0".into();
+        self.runtime_version =
+            format!("codex-cli {}", super::super::manifest::PINNED_CODEX_VERSION);
         self.codex_home.clear();
         self.observed_build_characterisation =
             Some(crate::acp::bindings::characterisation::Characterisation::Characterised);

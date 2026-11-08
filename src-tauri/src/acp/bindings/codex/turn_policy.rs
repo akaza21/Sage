@@ -1,19 +1,19 @@
 use crate::{acp::bindings::characterisation::Characterisation, settings_store::SessionAccessMode};
 
-use super::request::RequestError;
+use super::{manifest::PINNED_CODEX_VERSION, request::RequestError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TurnPolicySurface {
     Unsupported,
-    Supported0146,
+    Supported,
 }
 
 impl TurnPolicySurface {
     pub(super) fn from_identity(observed: Option<Characterisation>, runtime_version: &str) -> Self {
         if (observed == Some(Characterisation::Characterised) || observed.is_none())
-            && runtime_version == "0.146.0"
+            && runtime_version == PINNED_CODEX_VERSION
         {
-            Self::Supported0146
+            Self::Supported
         } else {
             Self::Unsupported
         }
@@ -49,8 +49,8 @@ pub(super) fn turn_policy(
 ) -> Result<TurnRequestPolicy, RequestError> {
     let policy = match (surface, mode) {
         (_, SessionAccessMode::ReadOnly) => READ_ONLY,
-        (TurnPolicySurface::Supported0146, SessionAccessMode::Ask) => ASK,
-        (TurnPolicySurface::Supported0146, SessionAccessMode::WorkspaceWrite) => WORKSPACE_WRITE,
+        (TurnPolicySurface::Supported, SessionAccessMode::Ask) => ASK,
+        (TurnPolicySurface::Supported, SessionAccessMode::WorkspaceWrite) => WORKSPACE_WRITE,
         _ => return Err(RequestError::UnsupportedAccessMode),
     };
     Ok(policy)
@@ -76,16 +76,18 @@ mod tests {
 
     #[test]
     fn advertised_codex_policies_emit_the_enforced_sandbox() {
-        for capability in
-            crate::acp::bindings::access_policy::access_modes("codex-app-server", "0.146.0", true)
-        {
+        for capability in crate::acp::bindings::access_policy::access_modes(
+            "codex-app-server",
+            PINNED_CODEX_VERSION,
+            true,
+        ) {
             let request = super::super::request::OutgoingRequest::turn_start_with_access_mode(
                 2,
                 &RequiredText::new("thread", "thread-1").unwrap(),
                 &Prompt::new("prompt", "inspect").unwrap(),
                 &RequiredText::new("client", "client-policy").unwrap(),
                 capability.id,
-                TurnPolicySurface::Supported0146,
+                TurnPolicySurface::Supported,
                 None,
             )
             .unwrap();
@@ -112,14 +114,14 @@ mod tests {
     }
 
     #[test]
-    fn observed_0146_ask_turn_uses_read_only_sandbox() {
+    fn pinned_ask_turn_uses_read_only_sandbox() {
         let request = super::super::request::OutgoingRequest::turn_start_with_access_mode(
             2,
             &RequiredText::new("thread", "thread-1").unwrap(),
             &Prompt::new("prompt", "inspect").unwrap(),
             &RequiredText::new("client", "client-ask").unwrap(),
             SessionAccessMode::Ask,
-            TurnPolicySurface::Supported0146,
+            TurnPolicySurface::Supported,
             None,
         )
         .unwrap();
@@ -131,10 +133,10 @@ mod tests {
     }
 
     #[test]
-    fn observed_0146_rejects_mixed_approval_and_write_sandbox() {
+    fn pinned_policy_rejects_mixed_approval_and_write_sandbox() {
         assert_eq!(
             validate_turn_policy(
-                TurnPolicySurface::Supported0146,
+                TurnPolicySurface::Supported,
                 SessionAccessMode::Ask,
                 TurnRequestPolicy {
                     approval: "on-request",

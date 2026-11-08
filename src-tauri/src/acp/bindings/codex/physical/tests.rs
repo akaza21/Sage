@@ -3,9 +3,11 @@ use std::io::{Seek, SeekFrom};
 use std::os::windows::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::*;
+use crate::acp::bindings::codex::manifest::PINNED_CODEX_VERSION;
 
 const FIXTURE_FILES: [(&str, &[u8], &str); 8] = [
     (
@@ -49,6 +51,37 @@ const FIXTURE_FILES: [(&str, &[u8], &str); 8] = [
         "aaa9402664f1a41f40ebbc52c9993eb66aeb366602958fdfaa283b71e64db123",
     ),
 ];
+
+/// Content of the files that pad the named fixtures out to the pinned
+/// package's file count.
+const PADDING_FILE_BYTES: &[u8] = b"x";
+
+fn padding_files() -> impl Iterator<Item = PathBuf> {
+    (FIXTURE_FILES.len()..EXPECTED_FILE_COUNT).map(|index| {
+        PathBuf::from(format!(
+            r"vendor\target\resources\voice\bin\padding-{index}.dll"
+        ))
+    })
+}
+
+/// Paths for exactly the pinned file count whose files and distinct parent
+/// directories together make `entries` traversal entries.
+fn paths_with_entry_count(entries: usize) -> Vec<PathBuf> {
+    let mut directories = entries - EXPECTED_FILE_COUNT;
+    let paths = (0..EXPECTED_FILE_COUNT)
+        .map(|index| {
+            let depth = directories.min(PACKAGE_DEPTH_MAX - 1);
+            directories -= depth;
+            let mut path = (0..depth)
+                .map(|level| format!("root-{index}-{level}"))
+                .collect::<PathBuf>();
+            path.push(format!("file-{index}"));
+            path
+        })
+        .collect();
+    assert_eq!(directories, 0, "{entries} entries fit the depth bound");
+    paths
+}
 
 struct TestPackage {
     base: PathBuf,
@@ -117,7 +150,11 @@ impl TestPackage {
     fn new() -> Self {
         let base = canonical_fixture_base("sage-codex-physical");
         let package = base.join("package");
-        for (relative, bytes, _) in FIXTURE_FILES {
+        let named = FIXTURE_FILES
+            .iter()
+            .map(|(relative, bytes, _)| (PathBuf::from(relative), *bytes));
+        let padding = padding_files().map(|relative| (relative, PADDING_FILE_BYTES));
+        for (relative, bytes) in named.chain(padding) {
             let path = package.join(relative);
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(path, bytes).unwrap();
@@ -141,8 +178,13 @@ impl TestPackage {
                     sha256: decode_digest(digest).unwrap(),
                     byte_len: 1,
                 })
+                .chain(padding_files().map(|relative_path| ExpectedPhysicalFile {
+                    relative_path,
+                    sha256: Sha256::digest(PADDING_FILE_BYTES).into(),
+                    byte_len: 1,
+                }))
                 .collect(),
-            aggregate_bytes: 8,
+            aggregate_bytes: EXPECTED_FILE_COUNT as u64,
         }
     }
 }
@@ -154,12 +196,12 @@ impl Drop for TestPackage {
 }
 
 #[test]
-fn exact_eight_file_closure_returns_a_non_launch_proof_without_creating_state() {
+fn exact_pinned_file_closure_returns_a_non_launch_proof_without_creating_state() {
     let fixture = TestPackage::new();
     let proof = inspect_claims(fixture.claims()).unwrap();
     assert_eq!(proof.package_root(), fixture.package.as_path());
     assert_eq!(proof.artifact_count(), EXPECTED_FILE_COUNT);
-    assert_eq!(proof.byte_len(), 8);
+    assert_eq!(proof.byte_len(), EXPECTED_FILE_COUNT as u64);
     assert!(!fixture.codex_home.exists());
 }
 
@@ -378,24 +420,30 @@ fn configured_package_root_and_packet_relative_spelling_must_match_exactly() {
         inspect_managed_package(&packet, &wrong).unwrap_err(),
         PhysicalInspectionError::PacketRootMismatch
     );
-    let wrong_component_case =
-        ConfiguredManagedPackageRoot::new(PathBuf::from(r"C:\sageHarnesses\Codex\0.146.0\package"))
-            .unwrap();
+    let wrong_component_case = ConfiguredManagedPackageRoot::new(PathBuf::from(format!(
+        r"C:\sageHarnesses\Codex\{PINNED_CODEX_VERSION}\package"
+    )))
+    .unwrap();
     assert_eq!(
         super::windows::claims_from_packet(&packet, &wrong_component_case).unwrap_err(),
         PhysicalInspectionError::PacketRootMismatch
     );
 
-    let exact_path = PathBuf::from(r"C:\SageHarnesses\Codex\0.146.0\package");
+    let exact_path = PathBuf::from(format!(
+        r"C:\SageHarnesses\Codex\{PINNED_CODEX_VERSION}\package"
+    ));
     let exact = ConfiguredManagedPackageRoot::new(exact_path.clone()).unwrap();
     let claims = super::windows::claims_from_packet(&packet, &exact).unwrap();
     assert_eq!(claims.package_root, exact_path);
     assert_eq!(claims.files.len(), EXPECTED_FILE_COUNT);
-    assert_eq!(claims.aggregate_bytes, 429_289_628);
+    assert_eq!(
+        claims.aggregate_bytes,
+        packet.metadata().package_unpacked_byte_len
+    );
 
-    let represented = ConfiguredManagedPackageRoot::new(PathBuf::from(
-        r"\\?\c:\SageHarnesses\Codex\0.146.0\package",
-    ))
+    let represented = ConfiguredManagedPackageRoot::new(PathBuf::from(format!(
+        r"\\?\c:\SageHarnesses\Codex\{PINNED_CODEX_VERSION}\package"
+    )))
     .unwrap();
     assert!(super::windows::claims_from_packet(&packet, &represented).is_ok());
 
@@ -415,13 +463,13 @@ fn configured_package_root_and_packet_relative_spelling_must_match_exactly() {
 #[test]
 fn traversal_entry_and_depth_limits_accept_exact_and_reject_plus_one() {
     let exact_depth_paths = std::iter::once(PathBuf::from(r"a\b\c\d\e\f\g\deep"))
-        .chain((0..7).map(|index| PathBuf::from(format!("root-{index}"))))
+        .chain((1..EXPECTED_FILE_COUNT).map(|index| PathBuf::from(format!("root-{index}"))))
         .collect();
     let exact_depth = CustomPackage::with_paths(exact_depth_paths);
     assert!(inspect_claims(exact_depth.claims()).is_ok());
 
     let plus_one_depth_paths = std::iter::once(PathBuf::from(r"a\b\c\d\e\f\g\h\too-deep"))
-        .chain((0..7).map(|index| PathBuf::from(format!("root-{index}"))))
+        .chain((1..EXPECTED_FILE_COUNT).map(|index| PathBuf::from(format!("root-{index}"))))
         .collect();
     let plus_one_depth = CustomPackage::with_paths(plus_one_depth_paths);
     assert_eq!(
@@ -429,17 +477,11 @@ fn traversal_entry_and_depth_limits_accept_exact_and_reject_plus_one() {
         PhysicalInspectionError::DepthLimit
     );
 
-    let exact_entry_paths = (0..EXPECTED_FILE_COUNT)
-        .map(|index| PathBuf::from(format!(r"root-{index}\a\b\c\d\e\f\file")))
-        .collect();
-    let exact_entries = CustomPackage::with_paths(exact_entry_paths);
+    let exact_entries = CustomPackage::with_paths(paths_with_entry_count(PACKAGE_ENTRY_MAX));
     assert!(inspect_claims(exact_entries.claims()).is_ok());
 
-    let plus_one_entries_paths = (0..EXPECTED_FILE_COUNT)
-        .map(|index| PathBuf::from(format!(r"root-{index}\a\b\c\d\e\f\file")))
-        .collect();
-    let plus_one_entries = CustomPackage::with_paths(plus_one_entries_paths);
-    fs::write(plus_one_entries.package.join("entry-65"), b"x").unwrap();
+    let plus_one_entries = CustomPackage::with_paths(paths_with_entry_count(PACKAGE_ENTRY_MAX));
+    fs::write(plus_one_entries.package.join("entry-plus-one"), b"x").unwrap();
     assert_eq!(
         inspect_claims(plus_one_entries.claims()).unwrap_err(),
         PhysicalInspectionError::EntryLimit

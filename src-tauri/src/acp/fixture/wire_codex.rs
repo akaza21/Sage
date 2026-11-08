@@ -12,10 +12,13 @@ const THREAD_ID: &str = "fixture-persisted-session-1";
 /// The restart journey's catalogue: its default model, then a second one.
 const CONFIG_MODELS: [&str; 2] = ["fixture-model", "fixture-model-deep"];
 /// The session a native capture's fork creates (Codex `thread/fork` per the
-/// pinned 0.146 schema; Claude `session/fork` per claude-agent-acp 0.76.0).
+/// pinned schema; Claude `session/fork` per claude-agent-acp 0.76.0).
 pub(super) const FORK_THREAD_ID: &str = "fixture-fork-session-1";
-const USER_AGENT: &str = "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)";
-const USER_AGENT_0146: &str = "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)";
+const USER_AGENT: &str = concat!(
+    "sage/",
+    crate::acp::bindings::codex::pinned_codex_version!(),
+    " (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"
+);
 
 pub(super) fn await_request(
     input: &mut impl Read,
@@ -158,9 +161,9 @@ pub(super) fn emit_response(
         );
     }
     let result = match shape {
-        "initialize" | "initialize0146" => json!({
-            "userAgent": if shape == "initialize0146" { USER_AGENT_0146 } else { USER_AGENT },
-            "codexHome": if shape == "initialize0146" {
+        "initialize" | "initializeObserved" => json!({
+            "userAgent": USER_AGENT,
+            "codexHome": if shape == "initializeObserved" {
                 std::env::temp_dir().to_string_lossy().into_owned()
             } else {
                 std::env::var("CODEX_HOME").map_err(|_| FixtureError::InvalidArguments)?
@@ -383,7 +386,7 @@ pub(super) fn emit_known(
     match shape {
         "codexError" => emit_notification("error", state, output),
         "codexInitializeResult" => emit_response("initialize", state, output),
-        "codexInitializeResult0146" => emit_response("initialize0146", state, output),
+        "codexInitializeResultObserved" => emit_response("initializeObserved", state, output),
         "codexThreadResult" => emit_response("thread", state, output),
         "codexThreadEffortResult" => emit_response("effortThread", state, output),
         "codexModelListResult" => emit_response("models", state, output),

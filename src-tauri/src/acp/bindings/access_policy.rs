@@ -1,4 +1,5 @@
 use super::pi::bridge::install::Unavailable;
+use crate::acp::bindings::codex::CODEX_PINNED_VERSION;
 use crate::settings_store::SessionAccessMode;
 
 pub(crate) const CODEX_ASK_NATIVE_APPROVAL_PROVEN: bool = false;
@@ -89,7 +90,7 @@ pub(crate) fn admitted_modes(
             .collect();
     }
     let rows: &[(SessionAccessMode, &str, &str)] = match binding {
-        "codex-app-server" if version == "0.146.0" && characterised => &[
+        "codex-app-server" if version == CODEX_PINNED_VERSION && characterised => &[
             (
                 ReadOnly,
                 "Read-only",
@@ -304,7 +305,7 @@ mod tests {
 
     #[test]
     fn uncharacterised_codex_cannot_offer_workspace_write() {
-        let modes = access_modes("codex-app-server", "0.146.0", false);
+        let modes = access_modes("codex-app-server", CODEX_PINNED_VERSION, false);
         assert_eq!(modes.len(), 1);
         assert_eq!(modes[0].id, SessionAccessMode::ReadOnly);
     }
@@ -320,7 +321,7 @@ mod tests {
             ("omp-native-acp", None),
         ] {
             assert_eq!(
-                effective_mode(binding, "0.146.0", None, true),
+                effective_mode(binding, CODEX_PINNED_VERSION, None, true),
                 expected,
                 "{binding}"
             );
@@ -331,7 +332,7 @@ mod tests {
     fn unsupported_saved_access_never_escalates() {
         use SessionAccessMode::{Ask, ReadOnly, WorkspaceWrite};
         assert_eq!(
-            effective_mode("codex-app-server", "0.146.0", Some(Ask), true),
+            effective_mode("codex-app-server", CODEX_PINNED_VERSION, Some(Ask), true),
             Some(ReadOnly)
         );
         assert_eq!(
@@ -357,7 +358,7 @@ mod tests {
         for (binding, version, modes) in [
             (
                 "codex-app-server",
-                "0.146.0",
+                CODEX_PINNED_VERSION,
                 vec!["readOnly", "workspaceWrite"],
             ),
             ("codex-app-server", "0.145.0", vec!["readOnly"]),
@@ -398,7 +399,8 @@ mod tests {
             }
         }
         let codex =
-            serde_json::to_value(access_modes("codex-app-server", "0.146.0", true)).unwrap();
+            serde_json::to_value(access_modes("codex-app-server", CODEX_PINNED_VERSION, true))
+                .unwrap();
         assert_eq!(
             codex[1]["description"],
             "Edits and commands run without asking inside the workspace and temp folders; no network access."
@@ -441,7 +443,7 @@ mod tests {
         for binding in ["codex-app-server", "opencode-acp", "pi-rpc"] {
             assert_eq!(session_mode(binding, FullAccess), None);
             assert!(
-                access_modes(binding, "0.146.0", true)
+                access_modes(binding, CODEX_PINNED_VERSION, true)
                     .iter()
                     .all(
                         |mode| !matches!(mode.id, AcceptEdits | Plan | Auto | FullAccess)
@@ -450,7 +452,7 @@ mod tests {
             );
             // A grant those harnesses cannot carry falls back to read-only.
             assert_eq!(
-                effective_mode(binding, "0.146.0", Some(FullAccess), true),
+                effective_mode(binding, CODEX_PINNED_VERSION, Some(FullAccess), true),
                 Some(ReadOnly)
             );
         }
@@ -486,7 +488,7 @@ mod tests {
         assert_eq!(
             turn_mode(
                 "codex-app-server",
-                "0.146.0",
+                CODEX_PINNED_VERSION,
                 true,
                 Some(FullAccess),
                 Some(WorkspaceWrite)

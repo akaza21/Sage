@@ -262,7 +262,7 @@ impl AdmittedBindingRecord<'_> {
         match &self.binding {
             AdmittedBinding::Codex(binding) => {
                 let supported = binding.capability_ceiling().is_ok_and(|ceiling| {
-                    crate::acp::bindings::codex::supports_native_0146_protocol(
+                    crate::acp::bindings::codex::speaks_pinned_protocol(
                         ceiling.protocol_version.as_str(),
                     )
                 });

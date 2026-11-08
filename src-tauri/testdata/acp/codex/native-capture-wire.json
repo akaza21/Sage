@@ -1,10 +1,10 @@
 {
-  "runtimeVersion": "0.146.0",
-  "sourceCommit": "e363b08c9175ac1cbe5893615dd2cb9ddf95043b",
-  "appServerSchemaSha256": "d3992fec1398afdbec658da2c720c6993fbf3c1ce4900785694d2196679eddfc",
+  "runtimeVersion": "0.167.0",
+  "sourceCommit": "086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a",
+  "appServerSchemaSha256": "486c7c8daa5dc7f3ab2a1fb56de5316804caf7a4210fda1dc28d3f0f4e90cfe1",
   "schemaFiles": {
-    "v2/ModelListResponse.json": "6e5e52922a2cd66123b074ac0ef197557a151120db815b3a6ca8402da5aec7a0",
-    "v2/ThreadTokenUsageUpdatedNotification.json": "a30830510723d95793880f2a629472f0142c3df936799e24c8c92afde8e24402"
+    "v2/ModelListResponse.json": "2fb387a2ed258fc74258828ea342d68f89ce4e8e22cd0329ca59d2b423f9108b",
+    "v2/ThreadTokenUsageUpdatedNotification.json": "aba4f6c7e4a19b2b842c08ee793b57000c07dafd57b922ad0d8e7c76609108c2"
   },
   "modelRequired": [
     "defaultReasoningEffort",

@@ -1,26 +1,31 @@
 use serde::Deserialize;
 
-use super::manifest::{MetadataValidatedPacket, Platform};
+use super::manifest::{
+    AUTHENTICODE_SIGNED_FILES, AUTHENTICODE_UNSIGNED_FILES, MetadataValidatedPacket, Platform,
+    pinned_codex_version,
+};
 use super::physical::PhysicallyInspectedPackage;
 
 pub(super) const REPRODUCTION_BYTES: usize = 32 * 1024;
 
-const TARBALL_URL: &str = "https://registry.npmjs.org/@openai/codex/-/codex-0.146.0-win32-x64.tgz";
-const TARBALL_SHA512_HEX: &str = "6f7971318791d3e221b2d368e098d7d4ff5c3dcd71c157025643ddd650f5c2958f2744818692243dccf06eedd946425c772977e36fab8327f80d4adb64b76b18";
-const NPM_SIGNATURE: &str = "MEYCIQCcun1yAozQQ1ANf7Mr3l5wav8BLAUWc457SCXLuLLnHgIhAN+MhQ4tkbofJx+JiYgblBEXWgdHa3oApaJnEttynEuo";
+const TARBALL_URL: &str = concat!(
+    "https://registry.npmjs.org/@openai/codex/-/codex-",
+    pinned_codex_version!(),
+    "-win32-x64.tgz"
+);
+const TARBALL_SHA512_HEX: &str = "76e3c20707e573caa141d2de91b2fc7c3605eb8ead5b8823d3f97d0439ec561133a2a9ba3b0c4c0095c317048e2d45093c29a305e33e787600c787cffe1c1f8e";
+const NPM_SIGNATURE: &str = "MEQCIBQPw3rcviPvLyJGEYjJ/zkwb4orLwRUhKk315KRztE/AiBjRD1eKIfzicLQ0TrqPCdkdKaL4esvjfiJWbSM4/15fg==";
 const NPM_KEY_ID: &str = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U";
-const ATTESTATION_URL: &str =
-    "https://registry.npmjs.org/-/npm/v1/attestations/@openai%2fcodex@0.146.0-win32-x64";
+const ATTESTATION_URL: &str = concat!(
+    "https://registry.npmjs.org/-/npm/v1/attestations/@openai%2fcodex@",
+    pinned_codex_version!(),
+    "-win32-x64"
+);
 const SLSA_PREDICATE: &str = "https://slsa.dev/provenance/v1";
 const OPENAI_PUBLISHER: &str = "OpenAI OpCo, LLC";
-const OPENAI_THUMBPRINT: &str = "0B7C30C11BF7250EC1ECD3254AC781D9E13D62F8";
-const SIGNED_FILES: [&str; 4] = [
-    r"vendor\x86_64-pc-windows-msvc\bin\codex.exe",
-    r"vendor\x86_64-pc-windows-msvc\bin\codex-code-mode-host.exe",
-    r"vendor\x86_64-pc-windows-msvc\codex-resources\codex-command-runner.exe",
-    r"vendor\x86_64-pc-windows-msvc\codex-resources\codex-windows-sandbox-setup.exe",
-];
-const UNSIGNED_FILES: [&str; 1] = [r"vendor\x86_64-pc-windows-msvc\codex-path\rg.exe"];
+/// SHA-1 thumbprint of the publisher certificate that signed the pinned
+/// release's files.
+const OPENAI_THUMBPRINT: &str = "DE62726DB667B59DB0FD14B38F858D16C96804A0";
 
 pub(super) fn authenticode_publisher_common_name() -> &'static str {
     OPENAI_PUBLISHER
@@ -31,11 +36,11 @@ pub(super) fn authenticode_certificate_thumbprint_sha1() -> &'static str {
 }
 
 pub(super) fn authenticode_signed_relative_paths() -> &'static [&'static str] {
-    &SIGNED_FILES
+    &AUTHENTICODE_SIGNED_FILES
 }
 
 pub(super) fn authenticode_unsigned_relative_paths() -> &'static [&'static str] {
-    &UNSIGNED_FILES
+    &AUTHENTICODE_UNSIGNED_FILES
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]
@@ -293,8 +298,8 @@ fn validate_requirements(
             .authenticode_observation
             .certificate_thumbprint_sha1
             != OPENAI_THUMBPRINT
-        || requirements.authenticode_observation.signed_files != SIGNED_FILES.map(str::to_owned)
-        || requirements.authenticode_observation.unsigned_files != UNSIGNED_FILES.map(str::to_owned)
+        || requirements.authenticode_observation.signed_files != AUTHENTICODE_SIGNED_FILES
+        || requirements.authenticode_observation.unsigned_files != AUTHENTICODE_UNSIGNED_FILES
         || requirements.package_metadata.declared_license != "Apache-2.0"
     {
         return Err(ReproductionError::Registry);

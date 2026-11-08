@@ -86,6 +86,17 @@ fn parse(params: &Map<String, Value>) -> Option<UserInputRequest> {
     if questions.is_empty() || repeats_an_id {
         return None;
     }
+    // `isBlocking` only tells Codex's own client whether the turn waits on
+    // the answer. Sage keeps every request open until the user answers or
+    // Codex resolves it (`serverRequest/resolved`), so it is checked, not used.
+    if !params
+        .get("isBlocking")
+        .is_none_or(|value| value.is_null() || value.is_boolean())
+    {
+        return None;
+    }
+    // `autoResolutionMs` is deprecated in the pinned schema; an explicit
+    // window is still honoured when Codex sends one.
     let auto_resolution_ms = match params.get("autoResolutionMs") {
         None | Some(Value::Null) => None,
         Some(value) => Some(value.as_u64()?),

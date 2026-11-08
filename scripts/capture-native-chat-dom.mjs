@@ -98,7 +98,7 @@ export const HARNESS = Object.freeze({
   codex: {
     id: "codex",
     binding: "codex-app-server",
-    protocol: "codex-app-server-0.146.0",
+    protocol: "codex-app-server-0.167.0",
   },
   claude: {
     id: "claude-code",

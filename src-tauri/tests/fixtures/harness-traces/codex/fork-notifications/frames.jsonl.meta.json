@@ -1,48 +1,42 @@
 {
-  "command": "codex.exe",
+  "command": "codex",
   "args": [
     "app-server"
   ],
-  "entrypoint": "C:\\fixture-workspace\\profiles\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe",
-  "version": "codex-cli 0.146.0",
+  "entrypoint": "/fixture-workspace/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+  "version": "codex-cli 0.167.0",
   "env": {
-    "CODEX_HOME": "C:\\fixture-workspace\\codex-home (copy of the user config.toml and model catalog; no sessions, no auth)"
+    "CODEX_HOME": "/fixture-workspace/codex-home (scratch home whose config.toml declares one stdio MCP server with no tools; no sessions, no auth)"
   },
-  "capturedAt": "2026-10-24",
+  "capturedAt": "2026-11-08",
   "reason": "complete",
   "promptsSent": 0,
   "sanitization": [
-    "Home, scratch and CODEX_HOME paths are rewritten under the fixture workspace root",
-    "remoteControl installationId and serverName, and any _auth/status_update account identity, are redacted.",
-    "availableCommands is truncated to its first two entries.",
-    "Raw originals are retained locally under ignored local-evidence/."
+    "Scratch CODEX_HOME and working-directory paths are rewritten under /fixture-workspace.",
+    "remoteControl installationId and serverName are redacted."
   ],
   "timeline": [
     "     0ms out initialize",
-    "   158ms in result#1",
-    "   158ms out initialized",
-    "   158ms out thread/start",
-    "   158ms in remoteControl/status/changed",
-    "   207ms in result#2 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
-    "   207ms in thread/started 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
-    "   207ms in mcpServer/startupStatus/updated 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
-    "   207ms in mcpServer/startupStatus/updated 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
-    "   221ms in mcpServer/startupStatus/updated 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
-    "  1460ms in mcpServer/startupStatus/updated 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
-    "  1715ms out thread/name/set 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
-    "  3593ms in result#3",
-    "  3593ms in thread/name/updated 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
-    "  4103ms out thread/fork 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
-    "  4196ms in mcpServer/startupStatus/updated 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
-    "  4196ms in mcpServer/startupStatus/updated 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
-    "  4196ms in mcpServer/startupStatus/updated 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
-    "  4198ms in result#4 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
-    "  4198ms in thread/started 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
-    "  5106ms in mcpServer/startupStatus/updated 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
-    "  9208ms out thread/unsubscribe 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
-    "  9208ms in result#5",
-    " 10721ms out thread/unsubscribe 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
-    " 10722ms in result#6"
+    "  1119ms in  result#1",
+    "  1119ms out initialized",
+    "  1119ms out thread/start",
+    "  1125ms in  remoteControl/status/changed",
+    "  1359ms in  result#2 01a1bb2a-cba4-7140-855e-860eb1db31cb",
+    "  1359ms in  thread/started 01a1bb2a-cba4-7140-855e-860eb1db31cb",
+    "  1359ms in  mcpServer/startupStatus/updated 01a1bb2a-cba4-7140-855e-860eb1db31cb",
+    "  1385ms in  mcpServer/startupStatus/updated 01a1bb2a-cba4-7140-855e-860eb1db31cb",
+    "  2891ms out thread/name/set 01a1bb2a-cba4-7140-855e-860eb1db31cb",
+    "  2919ms in  result#3",
+    "  2919ms in  thread/name/updated 01a1bb2a-cba4-7140-855e-860eb1db31cb",
+    "  3420ms out thread/fork 01a1bb2a-cba4-7140-855e-860eb1db31cb",
+    "  3481ms in  mcpServer/startupStatus/updated 01a1bb2a-d487-78d2-a0cb-f2db1a8799aa",
+    "  3482ms in  mcpServer/startupStatus/updated 01a1bb2a-d487-78d2-a0cb-f2db1a8799aa",
+    "  3482ms in  result#4 01a1bb2a-d487-78d2-a0cb-f2db1a8799aa",
+    "  3482ms in  thread/started 01a1bb2a-d487-78d2-a0cb-f2db1a8799aa",
+    "  8490ms out thread/unsubscribe 01a1bb2a-d487-78d2-a0cb-f2db1a8799aa",
+    "  8492ms in  result#5",
+    "  9996ms out thread/unsubscribe 01a1bb2a-cba4-7140-855e-860eb1db31cb",
+    "  9997ms in  result#6"
   ],
-  "stderr": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"C:\\fixture-workspace\\profiles\" (codex_home: AbsolutePathBuf(\"C:\\fixture-workspace\\profiles\"))\n"
+  "stderr": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"/fixture-workspace\" (codex_home: AbsolutePathBuf(\"/fixture-workspace/codex-home\"))\n"
 }

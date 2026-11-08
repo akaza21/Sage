@@ -12,7 +12,7 @@ use crate::acp::{
 
 use super::schema::{
     NoResources, api_key_account, json_request, managed_chatgpt, parse_cursor, parse_model,
-    request_frame, require_response_id, response_result,
+    request_frame, require_response_id, response_result, valid_account_read,
 };
 use super::types::{
     CodexAccountSnapshot, CodexDiscoveryContent, CodexDiscoveryError, CodexModelSnapshot,
@@ -196,10 +196,7 @@ impl CodexDiscoveryProtocol {
             _ => return Err(CodexDiscoveryError::Protocol),
         };
         let result = response_result(frame, expected)?;
-        if result.len() != 2
-            || !result.contains_key("account")
-            || !result.contains_key("requiresOpenaiAuth")
-        {
+        if !valid_account_read(&result) {
             return Err(CodexDiscoveryError::Protocol);
         }
         let requires_auth = result

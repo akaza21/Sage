@@ -1,6 +1,6 @@
 use crate::{
     acp::{
-        bindings::codex::{policy_0146::TurnPolicySurface, request::OutgoingRequest},
+        bindings::codex::{request::OutgoingRequest, turn_policy::TurnPolicySurface},
         contract::RequiredText,
         intent::Prompt,
     },

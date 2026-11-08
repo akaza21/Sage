@@ -196,7 +196,7 @@ pub(in crate::commands::acp) fn fixture(
                     schema_version: SchemaVersionV1,
                     protocol_version: RequiredText::new(
                         "protocol",
-                        "codex-app-server-observed-0.146.0",
+                        crate::acp::bindings::codex::CODEX_OBSERVED_PROTOCOL_IDENTITY,
                     )
                     .unwrap(),
                     new_session: true,

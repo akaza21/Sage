@@ -4,6 +4,7 @@
 //! without tearing the session down.
 
 use super::*;
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 
 const ANSWER: &str = "Changed files";
 
@@ -24,8 +25,8 @@ fn opened_codex(frames: &[serde_json::Value]) -> (CodexRuntime, u64) {
     let initialized = codex
         .ingest(
             &codex_frame(serde_json::json!({"id":1,"result":{
-                "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+                "userAgent":user_agent("sage", "unknown"),
+                "codexHome":MANAGED_CODEX_HOME,
                 "platformFamily":"windows","platformOs":"windows"
             }})),
             &Mapper,
@@ -49,7 +50,7 @@ fn opened_codex(frames: &[serde_json::Value]) -> (CodexRuntime, u64) {
     let goal = codex
         .goal_get()
         .unwrap()
-        .expect("Codex 0.146 probes for a goal");
+        .expect("pinned Codex probes for a goal");
     let goal_id = codex_request_id(&goal);
     codex
         .resolve_egress(goal.into_token(), EgressResolution::Queued)

@@ -151,7 +151,7 @@ function longTranscriptJourney() {
     id: "codex-long-transcript-stream",
     steps: [
       { op: "awaitClient", kind: "codexInitialize" },
-      { op: "emitKnownFrame", shape: "codexInitializeResult0146" },
+      { op: "emitKnownFrame", shape: "codexInitializeResultObserved" },
       { op: "awaitClient", kind: "codexStart" },
       { op: "emitKnownFrame", shape: "codexThreadResult" },
       { op: "awaitClient", kind: "codexGoalGetWithOptionalModelList" },
@@ -185,7 +185,7 @@ const journeyCases = [
     id: "codex-browse-preview",
     steps: [
       { op: "awaitClient", kind: "codexInitialize" },
-      { op: "emitKnownFrame", shape: "codexInitializeResult0146" },
+      { op: "emitKnownFrame", shape: "codexInitializeResultObserved" },
       { op: "awaitClient", kind: "codexStart" },
       { op: "emitKnownFrame", shape: "codexThreadResult" },
       { op: "awaitClient", kind: "codexGoalGetWithOptionalModelList" },
@@ -218,7 +218,7 @@ const journeyCases = [
     id: "codex-steer-lost-result",
     steps: [
       { op: "awaitClient", kind: "codexInitialize" },
-      { op: "emitKnownFrame", shape: "codexInitializeResult0146" },
+      { op: "emitKnownFrame", shape: "codexInitializeResultObserved" },
       { op: "awaitClient", kind: "codexStart" },
       { op: "emitKnownFrame", shape: "codexThreadResult" },
       { op: "awaitClient", kind: "codexGoalGetWithOptionalModelList" },

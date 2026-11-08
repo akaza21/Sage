@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use serde_json::json;
 use std::io::Cursor;
 
@@ -52,7 +53,7 @@ fn codex_menu_negotiates_confirmed_model_and_effort_with_complete_catalog() {
     assert_eq!(reply["result"]["nextCursor"], Value::Null);
     assert_eq!(model["defaultReasoningEffort"], "medium");
     let evidence: Value = serde_json::from_str(include_str!(
-        "../../../testdata/acp/codex/native-capture-wire-0146.json"
+        "../../../testdata/acp/codex/native-capture-wire.json"
     ))
     .unwrap();
     for field in evidence["modelRequired"].as_array().unwrap() {
@@ -109,8 +110,8 @@ fn codex_menu_negotiates_confirmed_model_and_effort_with_complete_catalog() {
     adapter
         .ingest(
             &serde_json::to_vec(&json!({"id":1,"result":{
-                "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+                "userAgent":user_agent("sage", "unknown"),
+                "codexHome":MANAGED_CODEX_HOME,
                 "platformFamily":"windows","platformOs":"windows"
             }}))
             .unwrap(),

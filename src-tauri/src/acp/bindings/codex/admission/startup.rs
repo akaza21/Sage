@@ -98,6 +98,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::acp::bindings::codex::{CODEX_PINNED_VERSION, test_identity::version_line};
 
     #[test]
     fn startup_promotes_a_runnable_discovered_codex_cli() {
@@ -112,10 +113,18 @@ mod tests {
         #[cfg(not(windows))]
         let executable = directory.join("codex");
         #[cfg(windows)]
-        fs::write(&executable, b"@echo off\r\necho codex-cli 0.146.0\r\n").unwrap();
+        fs::write(
+            &executable,
+            format!("@echo off\r\necho {}\r\n", version_line("codex-cli")),
+        )
+        .unwrap();
         #[cfg(not(windows))]
         {
-            fs::write(&executable, b"#!/bin/sh\necho codex-cli 0.146.0\n").unwrap();
+            fs::write(
+                &executable,
+                format!("#!/bin/sh\necho {}\n", version_line("codex-cli")),
+            )
+            .unwrap();
             use std::os::unix::fs::PermissionsExt;
             let mut permissions = fs::metadata(&executable).unwrap().permissions();
             permissions.set_mode(0o700);
@@ -128,7 +137,7 @@ mod tests {
             Some(crate::harness_discovery::InstalledHarness {
                 id: "codex",
                 executable: executable.clone(),
-                version: Some("0.146.0".into()),
+                version: Some(CODEX_PINNED_VERSION.into()),
             }),
             Arc::new(environment_tests::TestLaunchInputs::default()),
         ));
@@ -174,7 +183,7 @@ mod tests {
             Some(crate::harness_discovery::InstalledHarness {
                 id: "codex",
                 executable,
-                version: Some("0.146.0".into()),
+                version: Some(CODEX_PINNED_VERSION.into()),
             }),
             Arc::new(environment_tests::TestLaunchInputs::default()),
         ));

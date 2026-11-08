@@ -24,7 +24,7 @@ const seeded = {
   pinned: false,
   dirty: false,
 };
-const ui = createAcp04Ui("codex 0.146.0");
+const ui = createAcp04Ui("codex 0.167.0");
 const evaluate = (expression: string): unknown =>
   // The probe sends these strings to the page through CDP Runtime.evaluate.
   window.eval(expression);

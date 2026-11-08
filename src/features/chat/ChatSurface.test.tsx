@@ -2381,7 +2381,7 @@ describe("ChatSurface ACP resource integration", () => {
         {
           id: "codex",
           name: "Codex",
-          version: "codex 0.146.0",
+          version: "codex 0.167.0",
           description: "ACP",
           installState: "available",
           source: "builtIn",
@@ -2759,7 +2759,7 @@ describe("ChatSurface ACP resource integration", () => {
     ).toHaveTextContent("Read-only");
   });
 
-  it("keeps Ask unavailable for fresh characterised Codex 0.146 without native approval proof", async () => {
+  it("keeps Ask unavailable for fresh characterised Codex without native approval proof", async () => {
     hooks.page = {
       ...projection(),
       currentSessionId: null,
@@ -2782,7 +2782,7 @@ describe("ChatSurface ACP resource integration", () => {
           accountModelDiscovery: true,
           transport: "acp",
           bindingId: "codex-app-server",
-          boundVersion: "0.146.0",
+          boundVersion: "0.167.0",
           characterisation: "characterised",
           accessModes: nativeReadOnly,
         },
@@ -2826,7 +2826,7 @@ describe("ChatSurface ACP resource integration", () => {
           accountModelDiscovery: true,
           transport: "acp",
           bindingId: "codex-app-server",
-          boundVersion: "0.146.0",
+          boundVersion: "0.167.0",
           characterisation: "characterised",
         },
         {
@@ -2892,11 +2892,11 @@ describe("ChatSurface ACP resource integration", () => {
       },
     ],
     [
-      "uncharacterised Codex 0.146",
+      "uncharacterised Codex",
       {
         id: "codex",
         bindingId: "codex-app-server",
-        boundVersion: "0.146.0",
+        boundVersion: "0.167.0",
         characterisation: "uncharacterised",
       },
     ],
@@ -2905,7 +2905,7 @@ describe("ChatSurface ACP resource integration", () => {
       {
         id: "claude",
         bindingId: "claude-acp",
-        boundVersion: "0.146.0",
+        boundVersion: "0.167.0",
         characterisation: "characterised",
       },
     ],
@@ -2914,7 +2914,7 @@ describe("ChatSurface ACP resource integration", () => {
       {
         id: "opencode",
         bindingId: "opencode-acp",
-        boundVersion: "0.146.0",
+        boundVersion: "0.167.0",
         characterisation: "characterised",
       },
     ],

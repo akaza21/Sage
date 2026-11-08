@@ -1,3 +1,4 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use std::{collections::VecDeque, time::Duration};
 
 use serde_json::{Value, json};
@@ -117,7 +118,7 @@ fn api_key_login_sends_the_key_once_and_accepts_racing_account_notices() {
     let mut script = transport([
         initialize(1),
         json_frame(json!({"method":"account/login/completed","params":{
-            "loginId":null,"success":true,"error":null
+            "loginId":null,"success":true,"error":null,"onboardingEntrypoint":null
         }})),
         json_frame(
             json!({"method":"account/updated","params":{"authMode":"apikey","planType":null}}),
@@ -389,20 +390,22 @@ fn transport_vec(frames: Vec<Frame>) -> ScriptTransport {
 
 fn initialize(id: u64) -> Frame {
     json_frame(json!({"id":id,"result":{
-        "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) terminal (sage; 0.1.0)",
-        "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+        "userAgent":user_agent("sage", "terminal"),
+        "codexHome":MANAGED_CODEX_HOME,
         "platformFamily":"windows","platformOs":"windows"
     }}))
 }
 
 fn signed_out(id: u64) -> Frame {
-    json_frame(json!({"id":id,"result":{"account":null,"requiresOpenaiAuth":true}}))
+    json_frame(
+        json!({"id":id,"result":{"account":null,"requiresOpenaiAuth":true,"workspaceRouting":null}}),
+    )
 }
 
 fn signed_in(id: u64) -> Frame {
     json_frame(json!({"id":id,"result":{
-        "account":{"type":"chatgpt","email":"private@example.test","planType":"plus"},
-        "requiresOpenaiAuth":true
+        "account":{"type":"chatgpt","email":"private@example.test","planType":"plus","workspaceName":null},
+        "requiresOpenaiAuth":true,"workspaceRouting":null
     }}))
 }
 
@@ -419,7 +422,8 @@ fn started_with(id: u64, login: &str) -> Frame {
 
 fn completed(login: &str, success: bool) -> Frame {
     json_frame(json!({"method":"account/login/completed","params":{
-        "loginId":login,"success":success,"error":if success { Value::Null } else { json!("cancelled") }
+        "loginId":login,"success":success,"error":if success { Value::Null } else { json!("cancelled") },
+        "onboardingEntrypoint":null
     }}))
 }
 

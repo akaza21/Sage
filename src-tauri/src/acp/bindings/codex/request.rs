@@ -10,7 +10,7 @@ use crate::acp::{
 use super::CODEX_BROWSE_TOOL_NAME;
 use super::manifest::Platform;
 use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
-use super::policy_0146::{TurnPolicySurface, turn_policy, validate_turn_policy};
+use super::turn_policy::{TurnPolicySurface, turn_policy, validate_turn_policy};
 
 // The shared writer owns the single LF delimiter. Keeping the payload one
 // byte below the wire ceiling makes the eventual payload + LF write fit the
@@ -130,7 +130,7 @@ impl OutgoingRequest {
                     "title": client.title,
                     "version": client.version
                 },
-                // Codex 0.146 requires this initialize capability before it
+                // Codex requires this initialize capability before it
                 // accepts the documented thread/start.dynamicTools field.
                 "capabilities": {"experimentalApi": true}
             }),
@@ -156,6 +156,8 @@ impl OutgoingRequest {
         )
     }
 
+    /// `thread/resume` without the thread's Turns, which Sage does not
+    /// import; asking for them draws a `deprecationNotice`.
     pub(crate) fn resume(
         id: u64,
         thread_id: &RequiredText<512>,
@@ -170,7 +172,8 @@ impl OutgoingRequest {
                 "model": model.map(RequiredText::as_str),
                 "cwd": root.as_str(),
                 "approvalPolicy": APPROVAL_POLICY_NEVER,
-                "sandbox": SANDBOX_READ_ONLY
+                "sandbox": SANDBOX_READ_ONLY,
+                "excludeTurns": true
             }),
         )
     }
@@ -191,14 +194,16 @@ impl OutgoingRequest {
         )
     }
 
-    /// `thread/fork` through the latest Turn. The pinned 0.146 schema
+    /// `thread/fork` through the latest Turn. The pinned schema
     /// requires only `threadId`; omitted overrides inherit the source thread,
     /// and `lastTurnId` is left out because Sage forks only between Turns.
+    /// Sage imports no native history, so the forked Turns are excluded;
+    /// asking for them draws a `deprecationNotice` from the pinned server.
     pub(crate) fn fork(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
         Self::build(
             id,
             RequestKind::Fork,
-            json!({"threadId": thread_id.as_str()}),
+            json!({"threadId": thread_id.as_str(), "excludeTurns": true}),
         )
     }
 

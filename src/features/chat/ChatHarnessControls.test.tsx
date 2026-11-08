@@ -1979,7 +1979,7 @@ describe("composer permission mode picker", () => {
       id: "codex",
       brand: "codex" as const,
       name: "Codex",
-      version: "0.146.0",
+      version: "0.167.0",
       bindingId: "codex-app-server",
     };
     const opencode = {
@@ -2057,7 +2057,7 @@ describe("composer permission mode picker", () => {
     ).toHaveTextContent(/^Codex$/);
     expect(
       codexRow.querySelector(".searchable-picker__option-copy"),
-    ).not.toHaveTextContent("0.146.0");
+    ).not.toHaveTextContent("0.167.0");
     expect(codexRow).not.toHaveAccessibleName(/0\.146\.0/);
     expect(
       codexRow.querySelector('use[href="/harness-codex.svg#mark"]'),

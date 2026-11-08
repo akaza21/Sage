@@ -2,7 +2,7 @@ use serde_json::{Map, Value, json};
 
 use crate::acp::{
     bindings::codex::{
-        discovery::schema::{api_key_account, managed_chatgpt},
+        discovery::schema::{api_key_account, managed_chatgpt, valid_account_read},
         incoming::{IncomingEvent, IngressDisposition},
         manifest::MetadataValidatedPacket,
         state::CodexAdapter,
@@ -196,13 +196,7 @@ impl CodexAuthProtocol {
         expected_id: u64,
     ) -> Result<CodexAuthAccount, CodexAuthError> {
         let result = response_result(frame, expected_id)?;
-        if result.len() != 2
-            || !result.contains_key("account")
-            || result
-                .get("requiresOpenaiAuth")
-                .and_then(Value::as_bool)
-                .is_none()
-        {
+        if !valid_account_read(&result) {
             return Err(CodexAuthError::Protocol);
         }
         match result.get("account") {

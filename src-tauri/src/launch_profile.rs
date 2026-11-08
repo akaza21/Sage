@@ -803,7 +803,10 @@ mod tests {
         first.invalidate_drift();
         assert!(
             first
-                .authenticate_observed_for_test(artifact.clone(), "codex 0.146.0".into())
+                .authenticate_observed_for_test(
+                    artifact.clone(),
+                    crate::acp::bindings::codex::test_identity::version_line("codex"),
+                )
                 .is_err()
         );
         assert!(

@@ -1,3 +1,5 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent, version_line};
+use crate::acp::bindings::codex::{CODEX_OBSERVED_PROTOCOL_IDENTITY, CODEX_PROTOCOL_IDENTITY};
 use serde_json::{Value, json};
 
 use super::*;
@@ -174,8 +176,8 @@ fn initialize(runtime: &mut CodexRuntime) {
     let batch = runtime
         .ingest(
             &frame(json!({"id":id,"result":{
-                "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+                "userAgent":user_agent("sage", "unknown"),
+                "codexHome":MANAGED_CODEX_HOME,
                 "platformFamily":"windows",
                 "platformOs":"windows"
             }})),
@@ -869,7 +871,7 @@ fn codex_thinking_change_is_local_and_reaches_the_next_turn_start() {
     assert_eq!(request["method"], "turn/start");
     assert_eq!(request["params"]["effort"], "high");
     let schema: Value = serde_json::from_slice(include_bytes!(
-        "../../../../../testdata/acp/codex/observed-0146-effort-schema.json"
+        "../../../../../testdata/acp/codex/observed-effort-schema.json"
     ))
     .unwrap();
     let methods = schema["clientRequestMethods"].as_array().unwrap();
@@ -892,11 +894,11 @@ fn thread_started_notification_waits_for_the_pending_new_session_response() {
     let batch = runtime
         .ingest(
             &frame(json!({"method":"thread/started","params":{
-                "thread":{"id":"thread-0146"}
+                "thread":{"id":"thread-native"}
             }})),
             &Mapper,
         )
-        .expect("Codex 0.146 thread-started notification");
+        .expect("pinned Codex thread-started notification");
 
     assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
     assert!(
@@ -905,7 +907,7 @@ fn thread_started_notification_waits_for_the_pending_new_session_response() {
     );
     let ready = runtime
         .ingest(
-            &frame(json!({"id":request_id(&request),"result":{"thread":{"id":"thread-0146"}}})),
+            &frame(json!({"id":request_id(&request),"result":{"thread":{"id":"thread-native"}}})),
             &Mapper,
         )
         .unwrap();
@@ -928,7 +930,7 @@ fn thread_started_notification_after_start_response_is_ignored_late() {
     let id = request_id(&request);
     runtime
         .ingest(
-            &frame(json!({"id":id,"result":{"thread":{"id":"thread-0146"}}})),
+            &frame(json!({"id":id,"result":{"thread":{"id":"thread-native"}}})),
             &Mapper,
         )
         .expect("thread-start response");
@@ -936,11 +938,11 @@ fn thread_started_notification_after_start_response_is_ignored_late() {
     let late = runtime
         .ingest(
             &frame(json!({"method":"thread/started","params":{
-                "thread":{"id":"thread-0146"}
+                "thread":{"id":"thread-native"}
             }})),
             &Mapper,
         )
-        .expect("late Codex 0.146 thread-started notification");
+        .expect("late pinned Codex thread-started notification");
 
     assert!(matches!(late.events(), [AdapterEvent::IgnoredLate]));
 }
@@ -982,7 +984,7 @@ fn steer_targets_only_the_active_codex_turn() {
     fs::write(&path, "@echo off\r\n").unwrap();
     let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed_for_test(
         path.clone(),
-        "codex-cli 0.146.0".into(),
+        version_line("codex-cli"),
     )
     .unwrap();
     let mut runtime = CodexRuntime::from_admitted_binding(
@@ -1004,7 +1006,7 @@ fn steer_targets_only_the_active_codex_turn() {
     let initialized = runtime
         .ingest(
             &frame(json!({"id":init_id,"result":{
-                "userAgent":"Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)",
+                "userAgent":user_agent("Codex Desktop", "dumb"),
                 "codexHome":r"C:\Users\test\.codex",
                 "platformFamily":"windows","platformOs":"windows"
             }})),
@@ -1556,7 +1558,7 @@ fn observed_cli_binding_accepts_its_own_initialize_identity() {
     fs::write(&path, "@echo off\r\n").unwrap();
     let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed_for_test(
         path.clone(),
-        "codex 0.146.0".into(),
+        version_line("codex"),
     )
     .unwrap();
     assert_ne!(binding.binding_digest_hex(), binding.artifact_digest());
@@ -1579,7 +1581,7 @@ fn observed_cli_binding_accepts_its_own_initialize_identity() {
 
     let initialized = runtime.ingest(
         &frame(json!({"id": id, "result": {
-            "userAgent": "Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)",
+            "userAgent": user_agent("Codex Desktop", "dumb"),
             "codexHome": r"C:\Users\test\.codex",
             "platformFamily": "windows",
             "platformOs": "windows"
@@ -1596,7 +1598,7 @@ fn observed_cli_binding_accepts_its_own_initialize_identity() {
 
 #[cfg(windows)]
 #[test]
-fn an_observed_0146_binding_publishes_its_own_identity_not_the_pinned_package() {
+fn an_observed_pinned_binding_publishes_its_own_identity_not_the_pinned_package() {
     use std::{fs, sync::Arc};
 
     let path = std::env::temp_dir().join(format!(
@@ -1606,19 +1608,16 @@ fn an_observed_0146_binding_publishes_its_own_identity_not_the_pinned_package() 
     fs::write(&path, "@echo off\r\n").unwrap();
     let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed_for_test(
         path.clone(),
-        "codex-cli 0.146.0".into(),
+        version_line("codex-cli"),
     )
     .unwrap();
 
     let admitted = binding.capability_ceiling().unwrap();
     assert_eq!(
         admitted.protocol_version.as_str(),
-        "codex-app-server-observed-0.146.0"
+        CODEX_OBSERVED_PROTOCOL_IDENTITY
     );
-    assert_ne!(
-        admitted.protocol_version.as_str(),
-        "codex-app-server-0.146.0-d3992fec"
-    );
+    assert_ne!(admitted.protocol_version.as_str(), CODEX_PROTOCOL_IDENTITY);
 
     let mut runtime = CodexRuntime::from_admitted_binding(
         Arc::new(binding),
@@ -1640,7 +1639,7 @@ fn an_observed_0146_binding_publishes_its_own_identity_not_the_pinned_package() 
     let initialized = runtime
         .ingest(
             &frame(json!({"id": id, "result": {
-                "userAgent": "Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)",
+                "userAgent": user_agent("Codex Desktop", "dumb"),
                 "codexHome": r"C:\Users\test\.codex",
                 "platformFamily": "windows",
                 "platformOs": "windows"
@@ -1654,7 +1653,7 @@ fn an_observed_0146_binding_publishes_its_own_identity_not_the_pinned_package() 
     };
     assert_eq!(
         capabilities.protocol_version.as_str(),
-        "codex-app-server-observed-0.146.0"
+        CODEX_OBSERVED_PROTOCOL_IDENTITY
     );
     assert!(capabilities.new_session && capabilities.prompt && capabilities.cancel);
     assert!(!capabilities.load_session);
@@ -1825,7 +1824,7 @@ fn admitted_observed_codex_hydrates_goal_and_bounds_existing_mutations() {
     fs::write(&path, "@echo off\r\n").unwrap();
     let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed_for_test(
         path.clone(),
-        "codex-cli 0.146.0".into(),
+        version_line("codex-cli"),
     )
     .unwrap();
     let mut runtime = CodexRuntime::from_admitted_binding(
@@ -1844,7 +1843,7 @@ fn admitted_observed_codex_hydrates_goal_and_bounds_existing_mutations() {
     runtime
         .ingest(
             &frame(json!({"id":initialize_id,"result":{
-                "userAgent":"Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)",
+                "userAgent":user_agent("Codex Desktop", "dumb"),
                 "codexHome":r"C:\Users\test\.codex",
                 "platformFamily":"windows","platformOs":"windows"
             }})),
