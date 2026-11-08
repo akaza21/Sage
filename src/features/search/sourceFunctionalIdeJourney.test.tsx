@@ -109,6 +109,7 @@ describe("source-functional IDE journey", () => {
     );
     vi.spyOn(editor, "snapshotEditorBuffer").mockResolvedValue({
       revision: 1,
+      applied: true,
       persistedAt: 1,
       dirty: true,
     });

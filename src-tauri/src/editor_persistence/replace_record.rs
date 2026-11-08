@@ -2,11 +2,25 @@
 
 use rusqlite::params;
 
-use super::{PersistedEditorBuffer, limits::preflight_dirty_recovery};
+use super::{PersistedEditorBuffer, limits::preflight_dirty_recovery, set_matching_tab_dirty};
 use crate::{
+    domain::ResourceRef,
     error::{AppError, AppResult},
     persistence::{Database, now_millis},
 };
+
+/// Names one Replace's recovery record: its File, the temporary file it
+/// names and the replaced text's fingerprint. Each change below touches the
+/// record only while all three still match, so a buffer the editor wrote
+/// over it in the meantime is left alone.
+pub struct ReplaceRecord<'a> {
+    pub resource: &'a ResourceRef,
+    pub temp_path: &'a str,
+    pub fingerprint: &'a str,
+}
+
+const MATCHES_RECORD: &str = "project_id = ?1 AND root_id = ?2 AND relative_path = ?3
+     AND pending_temp_path = ?4 AND buffer_fingerprint = ?5";
 
 impl Database {
     /// Records a workspace Replace about to swap `buffer.resource` on disk,
@@ -59,6 +73,86 @@ impl Database {
                 ),
                 other => other,
             });
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Drops the record once nothing is left for recovery to do.
+    pub fn delete_replace_record(&self, project_id: &str, record: &ReplaceRecord) -> AppResult<()> {
+        self.write_connection()?.execute(
+            &format!("DELETE FROM editor_buffers WHERE {MATCHES_RECORD}"),
+            params![
+                project_id,
+                record.resource.root_id,
+                record.resource.relative_path,
+                record.temp_path,
+                record.fingerprint
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Turns the record into a buffer holding the File's own text, still
+    /// naming the temporary file: a Replace that could not remove its
+    /// temporary file leaves recovery that file to remove and nothing to
+    /// keep.
+    pub fn neutralize_replace_record(
+        &self,
+        project_id: &str,
+        record: &ReplaceRecord,
+        original: &str,
+        original_fingerprint: &str,
+    ) -> AppResult<()> {
+        self.write_connection()?.execute(
+            &format!(
+                "UPDATE editor_buffers
+                 SET buffer_content = ?6, buffer_byte_len = ?7,
+                     buffer_fingerprint = ?8, updated_at = ?9
+                 WHERE {MATCHES_RECORD}"
+            ),
+            params![
+                project_id,
+                record.resource.root_id,
+                record.resource.relative_path,
+                record.temp_path,
+                record.fingerprint,
+                original,
+                original.len() as i64,
+                original_fingerprint,
+                now_millis()
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Keeps the replaced text as the File's unsaved edits, with no
+    /// temporary file left to name, and marks its tab dirty: the File was
+    /// replaced but could not be proven durable or in place.
+    pub fn keep_replace_as_unsaved(
+        &self,
+        project_id: &str,
+        record: &ReplaceRecord,
+    ) -> AppResult<()> {
+        let mut connection = self.write_connection()?;
+        let transaction = connection.transaction()?;
+        let updated_at = now_millis();
+        let kept = transaction.execute(
+            &format!(
+                "UPDATE editor_buffers SET pending_temp_path = NULL, updated_at = ?6
+                 WHERE {MATCHES_RECORD}"
+            ),
+            params![
+                project_id,
+                record.resource.root_id,
+                record.resource.relative_path,
+                record.temp_path,
+                record.fingerprint,
+                updated_at
+            ],
+        )?;
+        if kept == 1 {
+            set_matching_tab_dirty(&transaction, project_id, record.resource, true, updated_at)?;
         }
         transaction.commit()?;
         Ok(())

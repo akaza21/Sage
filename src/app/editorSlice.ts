@@ -39,37 +39,7 @@ export interface EditorSlice {
   ) => void;
   flushActiveEditor: () => Promise<void>;
   saveActiveEditor: () => Promise<boolean>;
-  /**
-   * Reads the editor's File again, dropping unsaved edits. With `onlyIf`,
-   * only while the editor still shows that resource at that revision with
-   * nothing unsaved, checked when the queued operation runs.
-   */
-  discardActiveEditor: (onlyIf?: CleanEditorExpectation) => Promise<boolean>;
-}
-
-/** The editor state a guarded discard expects to find. */
-export interface CleanEditorExpectation {
-  resource: ResourceRef;
-  revision: number;
-}
-
-function stillClean(
-  state: WorkbenchState,
-  expected: CleanEditorExpectation,
-): boolean {
-  const editor = state.activeEditor;
-  if (
-    editor?.phase !== "ready" ||
-    !sameResource(editor.resource, expected.resource) ||
-    editor.revision !== expected.revision ||
-    editor.persisting ||
-    editor.saving
-  ) {
-    return false;
-  }
-  return !state.tabs.some(
-    (tab) => tab.dirty && sameResource(tab.resource, expected.resource),
-  );
+  discardActiveEditor: () => Promise<boolean>;
 }
 
 export const createEditorSlice: StateCreator<
@@ -248,7 +218,7 @@ export const createEditorSlice: StateCreator<
       }
     },
 
-    discardActiveEditor: async (onlyIf) => {
+    discardActiveEditor: async () => {
       const generation = get().projectGeneration;
       const projectId = get().project?.id;
       if (!projectId || get().projectTransitioning) return false;
@@ -256,8 +226,7 @@ export const createEditorSlice: StateCreator<
         return await enqueueEditorOperation(async () => {
           if (
             get().projectTransitioning ||
-            !matchesProjectIntent(get(), generation, projectId) ||
-            (onlyIf && !stillClean(get(), onlyIf))
+            !matchesProjectIntent(get(), generation, projectId)
           ) {
             return false;
           }

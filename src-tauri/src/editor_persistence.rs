@@ -1,6 +1,7 @@
 mod limits;
 mod p02_read;
 mod replace_record;
+mod snapshot_revision;
 
 use rusqlite::{OptionalExtension, params};
 
@@ -11,8 +12,9 @@ use crate::{
     workbench_restore::validate_resource_for_project,
 };
 
-use self::limits::preflight_dirty_recovery;
 pub use self::limits::{MAX_DIRTY_BUFFERS, MAX_TOTAL_DIRTY_BYTES, MAX_TOTAL_DIRTY_METADATA_BYTES};
+pub use self::replace_record::ReplaceRecord;
+use self::{limits::preflight_dirty_recovery, snapshot_revision::settled_by_stored};
 
 #[derive(Debug, Clone)]
 pub struct PersistedEditorBuffer {
@@ -114,38 +116,10 @@ impl Database {
         let byte_len = content.len() as i64;
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
-        let existing = transaction
-            .query_row(
-                "SELECT base_fingerprint, revision, updated_at
-                 FROM editor_buffers
-                 WHERE project_id = ?1 AND root_id = ?2 AND relative_path = ?3",
-                params![
-                    project_id,
-                    request.resource.root_id,
-                    request.resource.relative_path
-                ],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, i64>(1)?,
-                        row.get::<_, i64>(2)?,
-                    ))
-                },
-            )
-            .optional()?;
-        if let Some((base_fingerprint, revision, updated_at)) = &existing {
-            if base_fingerprint != &request.base.fingerprint {
-                return Err(AppError::InvalidRequest(
-                    "buffer base does not match the durable base".into(),
-                ));
-            }
-            if request.revision as i64 <= *revision {
-                return Ok(BufferSnapshotAck {
-                    revision: *revision as u64,
-                    persisted_at: *updated_at as u64,
-                    dirty: true,
-                });
-            }
+        let (stored, settled) =
+            settled_by_stored(&transaction, project_id, request, buffer_fingerprint)?;
+        if let Some(ack) = settled {
+            return Ok(ack);
         }
         let (other_count, other_bytes): (i64, i64) = transaction.query_row(
             "SELECT COUNT(*), COALESCE(SUM(buffer_byte_len), 0)
@@ -159,7 +133,7 @@ impl Database {
             ],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
-        if existing.is_none() && other_count >= MAX_DIRTY_BUFFERS {
+        if !stored && other_count >= MAX_DIRTY_BUFFERS {
             return Err(AppError::ResourceLimit(format!(
                 "project already has the {MAX_DIRTY_BUFFERS}-buffer limit"
             )));
@@ -215,6 +189,7 @@ impl Database {
             revision: request.revision,
             persisted_at: updated_at as u64,
             dirty: true,
+            applied: true,
         })
     }
 
@@ -225,38 +200,13 @@ impl Database {
     ) -> AppResult<BufferSnapshotAck> {
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
-        let existing = transaction
-            .query_row(
-                "SELECT base_fingerprint, revision, updated_at
-                 FROM editor_buffers
-                 WHERE project_id = ?1 AND root_id = ?2 AND relative_path = ?3",
-                params![
-                    project_id,
-                    request.resource.root_id,
-                    request.resource.relative_path
-                ],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, i64>(1)?,
-                        row.get::<_, i64>(2)?,
-                    ))
-                },
-            )
-            .optional()?;
-        if let Some((base_fingerprint, revision, updated_at)) = existing {
-            if base_fingerprint != request.base.fingerprint {
-                return Err(AppError::InvalidRequest(
-                    "buffer base does not match the durable base".into(),
-                ));
-            }
-            if request.revision as i64 <= revision {
-                return Ok(BufferSnapshotAck {
-                    revision: revision as u64,
-                    persisted_at: updated_at as u64,
-                    dirty: true,
-                });
-            }
+        // A clean snapshot's text is the base's.
+        let (stored, settled) =
+            settled_by_stored(&transaction, project_id, request, &request.base.fingerprint)?;
+        if let Some(ack) = settled {
+            return Ok(ack);
+        }
+        if stored {
             delete_buffer_in(&transaction, project_id, &request.resource, now_millis())?;
         }
         let persisted_at = now_millis();
@@ -265,6 +215,7 @@ impl Database {
             revision: request.revision,
             persisted_at: persisted_at as u64,
             dirty: false,
+            applied: true,
         })
     }
 

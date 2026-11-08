@@ -8,7 +8,8 @@ import type {
 } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import type { ReplaceSpec, WorkspaceReplaceGateway } from "./workspaceReplace";
-import { applyReplacePlan, planReplace } from "./workspaceReplacePlan";
+import { applyReplacePlan } from "./workspaceReplaceApply";
+import { planReplace, sameLine } from "./workspaceReplacePlan";
 
 type StoreState = ReturnType<typeof useWorkbenchStore.getState>;
 
@@ -154,6 +155,7 @@ describe("a File with unsaved edits in another tab", () => {
       .spyOn(editor, "snapshotEditorBuffer")
       .mockImplementation(async (request) => ({
         revision: request.revision,
+        applied: true,
         persistedAt: 1,
         dirty: true,
       }));
@@ -175,10 +177,11 @@ describe("a File with unsaved edits in another tab", () => {
     vi.spyOn(editor, "openEditorDocument").mockResolvedValue(
       document(beta, "old line\n", 3),
     );
-    // The buffer acknowledges the revision it already had: another write
-    // reached it first.
+    // The buffer reports the very revision asked for, but says another
+    // text holds it: the revision alone proves nothing.
     vi.spyOn(editor, "snapshotEditorBuffer").mockResolvedValue({
-      revision: 3,
+      revision: 4,
+      applied: false,
       persistedAt: 1,
       dirty: true,
     });
@@ -233,6 +236,7 @@ describe("applying a Replace", () => {
     vi.spyOn(editor, "snapshotEditorBuffer").mockImplementation(
       async (request) => ({
         revision: request.revision,
+        applied: true,
         persistedAt: 1,
         dirty: true,
       }),
@@ -251,42 +255,140 @@ describe("applying a Replace", () => {
     ]);
   });
 
-  it("reloads a clean editor only at the revision it had", async () => {
-    const discard = vi.fn().mockResolvedValue(true);
-    useWorkbenchStore.setState({ discardActiveEditor: discard });
+  it("shows a clean editor the replaced File, read again", async () => {
+    const reread = vi
+      .spyOn(getWorkbenchPorts().editor, "openEditorDocument")
+      .mockResolvedValue({ ...document(alpha, "new\n", 0), dirty: false });
     const replace = gateway();
 
     await applyReplacePlan(await plan(replace, [alpha]), replace);
 
-    expect(discard).toHaveBeenCalledWith({ resource: alpha, revision: 2 });
+    expect(reread).toHaveBeenCalledWith(alpha);
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      phase: "ready",
+      content: "new\n",
+    });
+  });
+
+  it("leaves an editor typed in while the Replace ran", async () => {
+    const reread = vi.spyOn(getWorkbenchPorts().editor, "openEditorDocument");
+    const replace = gateway();
+    const planned = await plan(replace, [alpha]);
+    vi.mocked(replace.apply).mockImplementation(async (request) => {
+      // A keystroke lands while the native Replace runs.
+      useWorkbenchStore.setState({
+        activeEditor: { ...readyEditor(alpha, 3), content: "typed\n" },
+      } as unknown as Partial<StoreState>);
+      return gateway().apply(request);
+    });
+
+    const outcome = await applyReplacePlan(planned, replace);
+
+    expect(outcome.fileCount).toBe(1);
+    expect(reread).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      content: "typed\n",
+      revision: 3,
+    });
+  });
+
+  it("shows the replaced text kept as unsaved edits when the write was not proven", async () => {
+    vi.spyOn(
+      getWorkbenchPorts().editor,
+      "openEditorDocument",
+    ).mockResolvedValue(document(alpha, "new\n", 1));
+    const replace = gateway();
+    const planned = await plan(replace, [alpha]);
+    vi.mocked(replace.apply).mockResolvedValue({
+      replaced: [],
+      problems: [
+        { resource: alpha, kind: "keptUnsaved", message: "kept as unsaved" },
+      ],
+    });
+
+    const outcome = await applyReplacePlan(planned, replace);
+
+    expect(outcome.problems).toEqual([
+      expect.objectContaining({ resource: alpha, kind: "keptUnsaved" }),
+    ]);
+    const state = useWorkbenchStore.getState();
+    expect(state.activeEditor).toMatchObject({ content: "new\n" });
+    expect(state.tabs.find((tab) => tab.id === "file:alpha.ts")?.dirty).toBe(
+      true,
+    );
+  });
+
+  it("stores what was typed since the preview first and leaves that File", async () => {
+    const replace = gateway();
+    const planned = await plan(replace, [alpha]);
+    const order: string[] = [];
+    // Typing since the preview: the flush stores it and the tab turns dirty.
+    useWorkbenchStore.setState({
+      flushActiveEditor: vi.fn().mockImplementation(async () => {
+        order.push("flush");
+        useWorkbenchStore.setState({
+          tabs: [fileTab(alpha, true), fileTab(beta, true)],
+        });
+      }),
+    });
+
+    const outcome = await applyReplacePlan(planned, replace);
+
+    expect(order).toEqual(["flush"]);
+    expect(replace.apply).not.toHaveBeenCalled();
+    expect(outcome.fileCount).toBe(0);
+    expect(outcome.problems).toEqual([
+      expect.objectContaining({ resource: alpha, kind: "stale" }),
+    ]);
   });
 });
 
-describe("a guarded discard", () => {
-  it("leaves an editor that changed while it waited", async () => {
-    const reread = vi
-      .spyOn(getWorkbenchPorts().editor, "discardEditorBuffer")
-      .mockResolvedValue({ ...document(alpha, "new\n", 0), dirty: false });
-    const store = useWorkbenchStore.getState();
-
-    // Typed since the reload was asked for.
-    await expect(
-      store.discardActiveEditor({ resource: alpha, revision: 1 }),
-    ).resolves.toBe(false);
-    useWorkbenchStore.setState({
-      tabs: [fileTab(alpha, true), fileTab(beta, true)],
+describe("replacing one match on disk", () => {
+  it("is refused when the previewed line is not the line Search showed", async () => {
+    const replace = gateway();
+    vi.mocked(replace.preview).mockResolvedValue({
+      files: [
+        {
+          resource: alpha,
+          fingerprint: "disk",
+          count: 1,
+          lines: [
+            { lineNumber: 2, columnNumber: 1, before: "old x", after: "new x" },
+          ],
+          linesTruncated: false,
+        },
+      ],
+      problems: [],
+      truncated: false,
     });
-    await expect(
-      store.discardActiveEditor({ resource: alpha, revision: 2 }),
-    ).resolves.toBe(false);
-    expect(reread).not.toHaveBeenCalled();
 
-    useWorkbenchStore.setState({
-      tabs: [fileTab(alpha, false), fileTab(beta, true)],
+    const changed = await plan(replace, [alpha], {
+      lineNumber: 2,
+      columnNumber: 1,
+      line: "old line",
     });
-    await expect(
-      store.discardActiveEditor({ resource: alpha, revision: 2 }),
-    ).resolves.toBe(true);
-    expect(reread).toHaveBeenCalledWith(alpha);
+    expect(changed.files).toEqual([]);
+    expect(changed.problems).toEqual([
+      expect.objectContaining({ resource: alpha, kind: "stale" }),
+    ]);
+
+    const same = await plan(replace, [alpha], {
+      lineNumber: 2,
+      columnNumber: 1,
+      line: "old x",
+    });
+    expect(same.files).toHaveLength(1);
+  });
+});
+
+describe("sameLine", () => {
+  it("trims as Search's Rust preview does", () => {
+    // Rust trims U+0085 but not U+FEFF; String.prototype.trim does the
+    // reverse.
+    expect(sameLine("\u0085old line\u0085", "old line")).toBe(true);
+    expect(sameLine("﻿old line", "old line")).toBe(false);
+    expect(sameLine("﻿old line", "﻿old line")).toBe(true);
+    expect(sameLine("  old line that goes on", "old line…")).toBe(true);
+    expect(sameLine("old other", "old line…")).toBe(false);
   });
 });

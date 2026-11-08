@@ -64,6 +64,9 @@ pub struct BufferSnapshotAck {
     pub revision: u64,
     pub persisted_at: u64,
     pub dirty: bool,
+    /// Whether the stored buffer is this snapshot's text; false when a
+    /// newer revision was already stored.
+    pub applied: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

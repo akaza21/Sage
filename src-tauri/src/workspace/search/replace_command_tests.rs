@@ -363,3 +363,27 @@ fn the_panel_shares_the_replace_limits() {
     }
     assert_eq!(MAX_REPLACE_FILES, MAX_SEARCH_RESULTS * MAX_SEARCH_PAGES);
 }
+
+#[test]
+fn preview_refuses_what_the_write_would_refuse_for_its_line_ends() {
+    let fixture = Fixture::new();
+    let resource = fixture.write("cr.txt", "a\rb\n");
+    let doubled = ReplaceSpec {
+        use_regex: true,
+        ..spec(r"(\r)", "$1$1")
+    };
+
+    let preview = fixture.preview(&doubled, std::slice::from_ref(&resource));
+    assert!(preview.files.is_empty());
+    assert_eq!(preview.problems[0].kind, ReplaceProblemKind::Refused);
+    assert!(
+        preview.problems[0].message.contains("line endings"),
+        "{}",
+        preview.problems[0].message
+    );
+
+    // A File with a carriage return of its own is still replaced in.
+    let applied = fixture.replace_all(&spec("b", "c"), &[resource]);
+    assert_eq!(applied.replaced.len(), 1);
+    assert_eq!(fixture.read("cr.txt"), "a\rc\n");
+}

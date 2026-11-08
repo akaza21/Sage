@@ -226,13 +226,14 @@ impl Replacer {
                 // The match found at `start` is the leftmost one from there.
                 match pattern.captures_at(line, start) {
                     Some(captures) if captures.get(0).map(|m| m.start()) == Some(start) => {
-                        // No group is longer than the line, so this bounds
+                        // Every group lies inside the match, so this bounds
                         // the expansion before it is built.
                         let references = self.replacement.matches('$').count();
+                        let matched_len = captures.get(0).map_or(0, |m| m.len());
                         let most = self
                             .replacement
                             .len()
-                            .saturating_add(references.saturating_mul(line.len()));
+                            .saturating_add(references.saturating_mul(matched_len));
                         if most > budget {
                             return Err(too_large());
                         }
@@ -556,5 +557,19 @@ mod tests {
         // Within budget the same Replace runs.
         let small = replace(&spec("x", "yy"), "xx\nx\n");
         assert_eq!(small.content, "yyyy\nyy\n");
+    }
+
+    #[test]
+    fn a_short_match_on_a_long_line_is_bounded_by_the_match() {
+        let replacer = Replacer::new(&ReplaceSpec {
+            use_regex: true,
+            ..spec("x", "$0$0")
+        })
+        .unwrap();
+        let content = format!("{}x\n", "a".repeat(100_000));
+        // Bounding each reference by the line would refuse this.
+        let done = replacer.replace(&content, None, 0, 200_000).unwrap();
+        assert_eq!(done.content, format!("{}xx\n", "a".repeat(100_000)));
+        assert_eq!(done.count, 1);
     }
 }

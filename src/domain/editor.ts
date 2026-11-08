@@ -48,6 +48,9 @@ export interface BufferSnapshotAck {
   revision: number;
   persistedAt: number;
   dirty: boolean;
+  /** Whether the stored buffer is this snapshot's text; false when a newer
+   * revision was already stored. */
+  applied: boolean;
 }
 
 export interface EditorSaveResult {

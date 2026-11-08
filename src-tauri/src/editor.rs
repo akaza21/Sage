@@ -1,7 +1,7 @@
 mod filesystem;
 mod replace;
 
-pub use self::replace::{DiskReplace, read_for_replace, replace_on_disk};
+pub use self::replace::{DiskReplace, read_for_replace, replace_on_disk, replaced_file_text};
 
 use self::filesystem::{
     DiskDocument, HeldParent, cleanup_failed_save, cleanup_recorded_temp, ensure_path_names,

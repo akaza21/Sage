@@ -16,12 +16,9 @@ import type {
   ReplacePlan,
   WorkspaceReplaceGateway,
 } from "./workspaceReplace";
-import { WorkspaceReplaceDialog } from "./WorkspaceReplaceDialog";
-import {
-  applyReplacePlan,
-  planReplace,
-  workspaceReplaceDesktop,
-} from "./workspaceReplacePlan";
+import type * as ApplyParts from "./workspaceReplaceApply";
+import { planReplace } from "./workspaceReplacePlan";
+import { workspaceReplaceDesktop } from "./workspaceReplaceDesktop";
 import type { WorkspaceSearchMatch } from "./workspaceSearchDomain";
 import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
 import "./workspace-replace.css";
@@ -93,6 +90,12 @@ function counted(count: number, word: string, plural: string) {
   return `${count} ${count === 1 ? word : plural}`;
 }
 
+// The confirm dialog and what applies a Replace load with its first
+// preview, so neither weighs on the Replace row.
+let applyParts: typeof ApplyParts | undefined;
+const loadApply = () =>
+  import("./workspaceReplaceApply").then((parts) => (applyParts = parts));
+
 /** Previews a Replace of `resources`, or of the one match at `only`. */
 async function start(
   context: ReplaceContext,
@@ -114,29 +117,32 @@ async function start(
   }
   update(context, { report: null, step: { kind: "planning" } });
   try {
-    const plan = await planReplace({
-      gateway: context.gateway ?? workspaceReplaceDesktop,
-      projectId: response.projectId,
-      transitionEpoch: response.transitionEpoch,
-      spec: {
-        query: response.query,
-        replacement,
-        caseSensitive: search.caseSensitive,
-        wholeWord: search.wholeWord,
-        useRegex: search.useRegex,
-        preserveCase,
-      },
-      resources,
-      ...(only
-        ? {
-            only: {
-              lineNumber: only.lineNumber,
-              columnNumber: only.columnNumber,
-            },
-            onlyLine: only.line,
-          }
-        : {}),
-    });
+    const [plan] = await Promise.all([
+      planReplace({
+        gateway: context.gateway ?? workspaceReplaceDesktop,
+        projectId: response.projectId,
+        transitionEpoch: response.transitionEpoch,
+        spec: {
+          query: response.query,
+          replacement,
+          caseSensitive: search.caseSensitive,
+          wholeWord: search.wholeWord,
+          useRegex: search.useRegex,
+          preserveCase,
+        },
+        resources,
+        ...(only
+          ? {
+              only: {
+                lineNumber: only.lineNumber,
+                columnNumber: only.columnNumber,
+              },
+              onlyLine: only.line,
+            }
+          : {}),
+      }),
+      loadApply(),
+    ]);
     update(context, { step: { kind: "confirming", plan } });
   } catch (error) {
     update(context, {
@@ -153,6 +159,7 @@ async function confirm(context: ReplaceContext, plan: ReplacePlan) {
   update(context, { step: { kind: "applying", plan } });
   let report: ReplaceReport;
   try {
+    const { applyReplacePlan } = await loadApply();
     const outcome = await applyReplacePlan(
       plan,
       context.gateway ?? workspaceReplaceDesktop,
@@ -290,6 +297,7 @@ export function ReplaceStatus({
   rootName: (rootId: string) => string;
 }) {
   const { step, report } = current(context);
+  const Dialog = applyParts?.WorkspaceReplaceDialog;
   return (
     <>
       {step.kind === "planning" ? (
@@ -314,8 +322,8 @@ export function ReplaceStatus({
           ) : null}
         </div>
       ) : null}
-      {step.kind === "confirming" || step.kind === "applying" ? (
-        <WorkspaceReplaceDialog
+      {Dialog && (step.kind === "confirming" || step.kind === "applying") ? (
+        <Dialog
           plan={step.plan}
           applying={step.kind === "applying"}
           rootName={rootName}

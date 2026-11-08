@@ -11,9 +11,10 @@ use super::{
 use crate::{
     domain::ResourceRef,
     editor_content::{
-        fingerprint, materialize_content, reject_oversized_materialized, reject_unsupported_content,
+        detect_line_ending, fingerprint, materialize_content, reject_oversized_materialized,
+        reject_unsupported_content,
     },
-    editor_persistence::PersistedEditorBuffer,
+    editor_persistence::{PersistedEditorBuffer, ReplaceRecord},
     error::{AppError, AppResult},
     persistence::Database,
     workspace::{Workspace, directory_skip::protected_workspace_name},
@@ -25,6 +26,7 @@ pub struct ReplaceSource {
     pub resource: ResourceRef,
     pub fingerprint: String,
     pub content: String,
+    pub line_ending: String,
 }
 
 /// What a Replace did to one File.
@@ -39,6 +41,28 @@ pub enum DiskReplace {
     Stale,
     /// Nothing in the File matches now; nothing was written.
     NoMatches,
+    /// The File was replaced, but could not be proven durable or still in
+    /// place, so the replaced text is also kept as its unsaved edits.
+    KeptUnsaved {
+        count: u64,
+    },
+}
+
+/// `replaced`, the `\n`-ended text a Replace made of `original`, as the
+/// File would hold it with `line_ending`: refused when that would not read
+/// back with the File's line ends, or would hold a carriage return the
+/// File did not.
+pub fn replaced_file_text(original: &str, replaced: &str, line_ending: &str) -> AppResult<String> {
+    reject_unsupported_content(replaced)?;
+    let materialized = materialize_content(replaced, line_ending);
+    let line_ends_kept = detect_line_ending(&materialized).is_ok_and(|kept| kept == line_ending);
+    if !line_ends_kept || replaced.matches('\r').count() > original.matches('\r').count() {
+        return Err(AppError::InvalidRequest(
+            "the replaced text would change the File's line endings".into(),
+        ));
+    }
+    reject_oversized_materialized(&materialized)?;
+    Ok(materialized)
 }
 
 /// Reads `resource` for a Replace, refusing what a Replace may not write.
@@ -53,6 +77,7 @@ pub fn read_for_replace(
         resource,
         fingerprint: disk.version.fingerprint,
         content: disk.canonical_content,
+        line_ending: disk.line_ending,
     })
 }
 
@@ -89,6 +114,8 @@ pub(super) enum ReplaceStage {
     BeforeStaleCheck,
     /// The stale check has passed and the swap is next.
     BeforeReplace,
+    /// The File is replaced and its folder's sync is next.
+    BeforeSync,
     /// The temporary file has replaced the File; nothing is verified yet.
     AfterReplace,
 }
@@ -114,16 +141,7 @@ pub(super) fn replace_on_disk_with(
     if count == 0 {
         return Ok(DiskReplace::NoMatches);
     }
-    reject_unsupported_content(&content)?;
-    // The text read has `\n` line ends and the replacement holds no line
-    // break, so a carriage return here would be a stray one.
-    if content.contains('\r') {
-        return Err(AppError::InvalidRequest(
-            "the replaced text would hold a stray carriage return".into(),
-        ));
-    }
-    let materialized = materialize_content(&content, &disk.line_ending);
-    reject_oversized_materialized(&materialized)?;
+    let materialized = replaced_file_text(&disk.canonical_content, &content, &disk.line_ending)?;
     let replaced_fingerprint = fingerprint(materialized.as_bytes());
 
     let (parent_path, file_name) = split_contract_path(&path);
@@ -148,16 +166,38 @@ pub(super) fn replace_on_disk_with(
             pending_temp_path: Some(temp_path.clone()),
         },
     )?;
-    // Removes the temporary file, and the record once nothing is left for
-    // recovery to remove.
-    let abandon = || match parent.remove(temp_name) {
-        Ok(()) => {
-            let _ = database.delete_editor_buffer(project_id, &resource);
+    let record = ReplaceRecord {
+        resource: &resource,
+        temp_path: &temp_path,
+        fingerprint: &replaced_fingerprint,
+    };
+    // Removes the temporary file, and then the record. A temporary file
+    // that stays leaves the record for recovery, holding the File's own
+    // text, so recovery removes the file and keeps nothing.
+    let abandon = || {
+        let settled = match parent.remove(temp_name) {
+            Ok(()) => database.delete_replace_record(project_id, &record),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                database.delete_replace_record(project_id, &record)
+            }
+            Err(_) => database.neutralize_replace_record(
+                project_id,
+                &record,
+                &disk.canonical_content,
+                &disk.version.fingerprint,
+            ),
+        };
+        if let Err(error) = settled {
+            tracing::warn!(%error, "abandoned replace record could not be settled");
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            let _ = database.delete_editor_buffer(project_id, &resource);
+    };
+    // Keeps the replaced text as unsaved edits once the File is replaced
+    // but not proven.
+    let keep_unsaved = || -> AppResult<DiskReplace> {
+        if let Err(error) = database.keep_replace_as_unsaved(project_id, &record) {
+            tracing::warn!(%error, "unproven replace could not be kept as unsaved edits");
         }
-        Err(_) => {}
+        Ok(DiskReplace::KeptUnsaved { count })
     };
     if let Err(error) = observe(ReplaceStage::Recorded) {
         abandon();
@@ -203,8 +243,12 @@ pub(super) fn replace_on_disk_with(
     }
     // The File is replaced from here on: what follows can only fail to
     // prove it, never undo it, so none of it reports the File as refused.
-    if let Err(error) = parent.sync() {
+    if let Err(error) = observe(ReplaceStage::BeforeSync)
+        .map_err(AppError::from)
+        .and_then(|()| parent.sync())
+    {
         tracing::warn!(%error, "replaced File's folder could not be synced");
+        return keep_unsaved();
     }
     // As a save does, the record is cleared only once the installed File is
     // proven, through the held folder (identity and bytes) and by path from
@@ -224,14 +268,10 @@ pub(super) fn replace_on_disk_with(
             Ok(handle)
         });
     let Ok(_verified_target) = verified else {
-        return Err(AppError::InvalidRequest(
-            "the replacement was written, but the File's location changed or could not be \
-             verified; it is kept as unsaved edits"
-                .into(),
-        ));
+        return keep_unsaved();
     };
     // A record left behind matches the File on disk, so recovery drops it.
-    if let Err(error) = database.delete_editor_buffer(project_id, &resource) {
+    if let Err(error) = database.delete_replace_record(project_id, &record) {
         tracing::warn!(%error, "replace recovery record could not be cleared");
     }
     Ok(DiskReplace::Written {

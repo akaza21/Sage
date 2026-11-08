@@ -181,6 +181,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   // Replace loads when opened, or while idle; the Search checks load with
   // the Search panel, after it shows.
   "src/features/search/WorkspaceReplaceParts.tsx",
+  "src/features/search/workspaceReplaceApply.ts",
   "src/features/search/workspaceSearchDomain.ts",
   "src/features/settings/AgentBrowserSettings.tsx",
   // The Harnesses page loads on its first open.

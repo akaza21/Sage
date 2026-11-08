@@ -103,10 +103,15 @@ function snapshot(request: BufferSnapshotRequest): BufferSnapshotAck {
       throw new Error("buffer base does not match the durable base");
     }
     if (request.revision <= persisted.request.revision) {
+      const same = request.revision === persisted.request.revision;
+      if (same && persisted.fingerprint !== fingerprint(request.content)) {
+        throw new Error("another buffer snapshot already holds this revision");
+      }
       return {
         revision: persisted.request.revision,
         persistedAt: Date.now(),
         dirty: true,
+        applied: same,
       };
     }
   }
@@ -125,7 +130,12 @@ function snapshot(request: BufferSnapshotRequest): BufferSnapshotAck {
   } else {
     buffers.delete(key);
   }
-  return { revision: request.revision, persistedAt: Date.now(), dirty };
+  return {
+    revision: request.revision,
+    persistedAt: Date.now(),
+    dirty,
+    applied: true,
+  };
 }
 
 function save(resource: ResourceRef): EditorSaveResult {

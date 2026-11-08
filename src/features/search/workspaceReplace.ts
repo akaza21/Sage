@@ -22,7 +22,12 @@ export interface ReplaceLinePreview extends MatchPosition {
   after: string;
 }
 
-export type ReplaceProblemKind = "stale" | "refused" | "noMatches";
+export type ReplaceProblemKind =
+  | "stale"
+  | "refused"
+  | "noMatches"
+  /** Replaced, but not proven on disk; also kept as unsaved edits. */
+  | "keptUnsaved";
 
 export interface ReplaceFileProblem {
   resource: ResourceRef;

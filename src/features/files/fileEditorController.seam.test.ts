@@ -56,6 +56,7 @@ describe("file editor controller seam", () => {
     vi.mocked(editor.openEditorDocument).mockResolvedValue(document);
     vi.mocked(editor.snapshotEditorBuffer).mockResolvedValue({
       revision: 1,
+      applied: true,
       persistedAt: 1,
       dirty: true,
     });
@@ -116,6 +117,7 @@ describe("file editor controller seam", () => {
     vi.mocked(editor.snapshotEditorBuffer).mockImplementation(
       async (request) => ({
         revision: request.revision,
+        applied: true,
         persistedAt: 1,
         dirty: true,
       }),

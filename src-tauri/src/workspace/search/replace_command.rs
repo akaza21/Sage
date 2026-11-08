@@ -14,7 +14,7 @@ use super::{
 };
 use crate::{
     domain::ResourceRef,
-    editor::{DiskReplace, read_for_replace, replace_on_disk},
+    editor::{DiskReplace, read_for_replace, replace_on_disk, replaced_file_text},
     editor_content::MAX_EDITABLE_BYTES,
     editor_coordination::EditorOperationKind,
     error::{AppError, AppResult},
@@ -84,6 +84,9 @@ pub enum ReplaceProblemKind {
     /// Not replaced: protected, too large, unreadable.
     Refused,
     NoMatches,
+    /// Replaced, but not proven durable or in place, so the replaced text
+    /// is also kept as the File's unsaved edits.
+    KeptUnsaved,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -274,12 +277,19 @@ pub(crate) fn preview(
             truncated = true;
             break;
         }
-        let done = match replacer.replace(
-            &source.content,
-            only,
-            lines_left.min(MAX_PREVIEW_LINES_PER_FILE),
-            MAX_EDITABLE_BYTES as usize,
-        ) {
+        let done = replacer
+            .replace(
+                &source.content,
+                only,
+                lines_left.min(MAX_PREVIEW_LINES_PER_FILE),
+                MAX_EDITABLE_BYTES as usize,
+            )
+            .and_then(|done| {
+                // Refused here as the write would refuse it.
+                replaced_file_text(&source.content, &done.content, &source.line_ending)?;
+                Ok(done)
+            });
+        let done = match done {
             Ok(done) => done,
             Err(error) => {
                 problems.push(problem(resource, ReplaceProblemKind::Refused, &error));
@@ -352,6 +362,13 @@ pub(crate) fn apply(
                 resource: target.resource.clone(),
                 kind: ReplaceProblemKind::NoMatches,
                 message: "nothing in it matches now".into(),
+            }),
+            Ok(DiskReplace::KeptUnsaved { .. }) => problems.push(ReplaceFileProblem {
+                resource: target.resource.clone(),
+                kind: ReplaceProblemKind::KeptUnsaved,
+                message: "it was replaced, but couldn't be confirmed on disk; the replaced text \
+                          is kept as unsaved edits, so save it to be sure"
+                    .into(),
             }),
             Err(error) => problems.push(problem(
                 &target.resource,

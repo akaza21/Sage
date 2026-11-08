@@ -93,8 +93,13 @@ function replaceGateway(): WorkspaceReplaceGateway {
               {
                 lineNumber: only?.lineNumber ?? 1,
                 columnNumber: only?.columnNumber ?? 7,
-                before: "const oldName = 1;",
-                after: "const newName = 1;",
+                // The line Search showed for that match.
+                ...(only?.lineNumber === 2
+                  ? { before: "oldName();", after: "newName();" }
+                  : {
+                      before: "const oldName = 1;",
+                      after: "const newName = 1;",
+                    }),
               },
             ],
             linesTruncated: false,

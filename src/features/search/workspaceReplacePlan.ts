@@ -6,129 +6,22 @@
 // Replace field and these Files' shapes.
 
 import { useWorkbenchStore } from "../../app/store";
-import { isRecord } from "../../domain/guards";
 import { resourceKey, sameResource } from "../../domain/resourceIdentity";
 import type { EditorDocument, ResourceRef } from "../../domain/workbench";
-import { invokeNative } from "../../ports/nativeInvoke";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { contentText } from "../files/editorContent";
 import type {
   MatchPosition,
   PlannedFile,
   ReplaceFileProblem,
-  ReplaceLinePreview,
-  ReplaceOutcome,
   ReplacePlan,
   ReplaceProblemKind,
   ReplaceSpec,
-  TextReplaceResult,
   WorkspaceReplaceGateway,
 } from "./workspaceReplace";
 
-const invalid = () => new Error("invalid workspace Replace response");
-
-function count(value: unknown): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0) throw invalid();
-  return value as number;
-}
-
-function text(value: unknown): string {
-  if (typeof value !== "string") throw invalid();
-  return value;
-}
-
-function resource(value: unknown): ResourceRef {
-  if (!isRecord(value)) throw invalid();
-  return {
-    rootId: text(value.rootId),
-    relativePath: text(value.relativePath),
-  };
-}
-
-function list<T>(value: unknown, item: (entry: unknown) => T): T[] {
-  if (!Array.isArray(value)) throw invalid();
-  return value.map(item);
-}
-
-function linePreview(value: unknown): ReplaceLinePreview {
-  if (!isRecord(value)) throw invalid();
-  return {
-    lineNumber: count(value.lineNumber),
-    columnNumber: count(value.columnNumber),
-    before: text(value.before),
-    after: text(value.after),
-  };
-}
-
-function problem(value: unknown): ReplaceFileProblem {
-  if (
-    !isRecord(value) ||
-    (value.kind !== "stale" &&
-      value.kind !== "refused" &&
-      value.kind !== "noMatches")
-  ) {
-    throw invalid();
-  }
-  return {
-    resource: resource(value.resource),
-    kind: value.kind,
-    message: text(value.message),
-  };
-}
-
-function textResult(value: unknown): TextReplaceResult {
-  if (!isRecord(value)) throw invalid();
-  return {
-    content: text(value.content),
-    count: count(value.count),
-    lines: list(value.lines, linePreview),
-    linesTruncated: value.linesTruncated === true,
-  };
-}
-
-export const workspaceReplaceDesktop: WorkspaceReplaceGateway = {
-  async preview(request) {
-    const value = await invokeNative("preview_workspace_replace", { request });
-    if (!isRecord(value)) throw invalid();
-    return {
-      files: list(value.files, (file) => {
-        if (!isRecord(file)) throw invalid();
-        return {
-          resource: resource(file.resource),
-          fingerprint: text(file.fingerprint),
-          count: count(file.count),
-          lines: list(file.lines, linePreview),
-          linesTruncated: file.linesTruncated === true,
-        };
-      }),
-      problems: list(value.problems, problem),
-      truncated: value.truncated === true,
-    };
-  },
-  async apply(request) {
-    const value = await invokeNative("apply_workspace_replace", { request });
-    if (!isRecord(value)) throw invalid();
-    return {
-      replaced: list(value.replaced, (file) => {
-        if (!isRecord(file)) throw invalid();
-        return {
-          resource: resource(file.resource),
-          count: count(file.count),
-          fingerprint: text(file.fingerprint),
-        };
-      }),
-      problems: list(value.problems, problem),
-    };
-  },
-  async replaceText(request) {
-    return textResult(
-      await invokeNative("replace_workspace_text", { request }),
-    );
-  },
-};
-
 /** Where the File's unsaved edits live, if it has any. */
-function unsavedEdits(file: ResourceRef): "editor" | "buffer" | null {
+export function unsavedEdits(file: ResourceRef): "editor" | "buffer" | null {
   const state = useWorkbenchStore.getState();
   const tab = state.tabs.find(
     (candidate) =>
@@ -143,7 +36,7 @@ function unsavedEdits(file: ResourceRef): "editor" | "buffer" | null {
     : "buffer";
 }
 
-function problemFrom(
+export function problemFrom(
   file: ResourceRef,
   kind: ReplaceProblemKind,
   error: unknown,
@@ -155,13 +48,22 @@ function problemFrom(
   };
 }
 
+// What Rust's `str::trim` removes, Unicode White_Space, which Search's
+// preview is trimmed by; `String.prototype.trim` differs (U+0085, U+FEFF).
+const RUST_WHITESPACE =
+  "\\t\\n\\v\\f\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
+const RUST_TRIM = new RegExp(
+  `^[${RUST_WHITESPACE}]+|[${RUST_WHITESPACE}]+$`,
+  "gu",
+);
+
 /**
  * Whether `line` is the line Search previewed as `preview`. Search trims a
  * line's preview and cuts a long one short with an ellipsis, so a long
  * line is compared only as far as its preview goes.
  */
-function sameLine(line: string, preview: string): boolean {
-  const trimmed = line.trim();
+export function sameLine(line: string, preview: string): boolean {
+  const trimmed = line.replace(RUST_TRIM, "");
   return preview.endsWith("\u2026")
     ? trimmed.startsWith(preview.slice(0, -1))
     : trimmed === preview;
@@ -250,6 +152,15 @@ export async function planReplace({
     truncated = preview.truncated;
     problems.push(...preview.problems);
     for (const file of preview.files) {
+      const before = file.lines[0]?.before;
+      if (only && onlyLine !== undefined && before !== onlyLine) {
+        problems.push({
+          resource: file.resource,
+          kind: "stale",
+          message: "it changed since the search; search again",
+        });
+        continue;
+      }
       files.push({
         ...file,
         target: { kind: "disk", fingerprint: file.fingerprint },
@@ -275,125 +186,4 @@ export async function planReplace({
     truncated,
     matchCount: files.reduce((total, file) => total + file.count, 0),
   };
-}
-
-/** Puts `content` in the editor showing `file`, if it still shows `text`. */
-async function replaceInEditor(
-  file: ResourceRef,
-  text: string,
-  content: string,
-) {
-  const { replaceEditorText } = await import("../files/editorTextReplace");
-  const result = replaceEditorText(resourceKey(file), text, content);
-  if (result === "missing") throw new Error("its editor is not showing");
-  if (result === "changed") {
-    throw new Error("it was edited since the preview; search again");
-  }
-}
-
-/** Writes `content` to the unsaved buffer of `file`, if it is as planned. */
-async function replaceInBuffer(
-  file: ResourceRef,
-  planned: EditorDocument,
-  content: string,
-) {
-  const editor = getWorkbenchPorts().editor;
-  const document = await editor.openEditorDocument(file);
-  if (
-    document.buffer.revision !== planned.buffer.revision ||
-    document.buffer.content !== planned.buffer.content
-  ) {
-    throw new Error("it was edited since the preview; search again");
-  }
-  const revision = document.buffer.revision + 1;
-  const ack = await editor.snapshotEditorBuffer({
-    resource: file,
-    base: document.base,
-    lineEnding: document.lineEnding,
-    content,
-    revision,
-  });
-  // An older revision back means another write got there first and the
-  // buffer kept it.
-  if (ack.revision !== revision) {
-    throw new Error("it was edited since the preview; search again");
-  }
-}
-
-/** Applies `plan`, File by File; what could not be done is reported. */
-export async function applyReplacePlan(
-  plan: ReplacePlan,
-  gateway: WorkspaceReplaceGateway,
-): Promise<ReplaceOutcome> {
-  const problems: ReplaceFileProblem[] = [];
-  let matchCount = 0;
-  let fileCount = 0;
-  const onDisk = plan.files.filter((file) => file.target.kind === "disk");
-  for (const file of plan.files) {
-    const { target } = file;
-    if (target.kind === "disk") continue;
-    try {
-      if (target.kind === "editor") {
-        await replaceInEditor(file.resource, target.text, target.content);
-      } else {
-        await replaceInBuffer(file.resource, target.document, target.content);
-      }
-      matchCount += file.count;
-      fileCount += 1;
-    } catch (error) {
-      problems.push(problemFrom(file.resource, "stale", error));
-    }
-  }
-  if (onDisk.length) {
-    let applied: Awaited<ReturnType<WorkspaceReplaceGateway["apply"]>>;
-    try {
-      applied = await gateway.apply({
-        projectId: plan.projectId,
-        expectedTransitionEpoch: plan.transitionEpoch,
-        spec: plan.spec,
-        files: onDisk.map((file) => ({
-          resource: file.resource,
-          fingerprint:
-            file.target.kind === "disk" ? file.target.fingerprint : "",
-          ...(plan.only ? { only: plan.only } : {}),
-        })),
-      });
-    } catch (error) {
-      // The editors' changes are made and stay counted; the Files on disk
-      // are reported, since none of them is known to be written.
-      for (const file of onDisk) {
-        problems.push(problemFrom(file.resource, "refused", error));
-      }
-      return { matchCount, fileCount, problems };
-    }
-    problems.push(...applied.problems);
-    for (const file of applied.replaced) {
-      matchCount += file.count;
-      fileCount += 1;
-      try {
-        await reloadIfClean(file.resource);
-      } catch {
-        // The File is replaced; a failed reload leaves the editor as it is.
-      }
-    }
-  }
-  return { matchCount, fileCount, problems };
-}
-
-/**
- * A clean File showing in the editor is read again after a disk Replace.
- * The editor's revision is taken now and checked again when the queued
- * reload runs, so an edit made in between is never dropped.
- */
-async function reloadIfClean(file: ResourceRef) {
-  const state = useWorkbenchStore.getState();
-  const editor = state.activeEditor;
-  if (editor?.phase !== "ready" || !sameResource(editor.resource, file)) {
-    return;
-  }
-  if (unsavedEdits(file)) return;
-  await state.discardActiveEditor({
-    resource: file,
-    revision: editor.revision,
-  });
 }
