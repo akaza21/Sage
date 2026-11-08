@@ -24,6 +24,10 @@ const { pickerOptionRender, pickerProps } = vi.hoisted(() => ({
 
 vi.mock("../ui/SearchablePicker", async (importOriginal) => {
   const actual = await importOriginal<typeof SearchablePickerModule>();
+  // The open list is loaded long before a person opens a picker.
+  await import("../ui/searchablePickerLoad").then((load) =>
+    load.preloadSearchablePicker(),
+  );
   function TrackedSearchablePicker(
     props: ComponentProps<typeof SearchablePicker>,
   ) {

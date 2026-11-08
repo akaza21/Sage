@@ -8,7 +8,16 @@ import {
   within,
 } from "@testing-library/react";
 import { readFile } from "node:fs/promises";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { preloadSearchablePicker } from "../../ui/searchablePickerLoad";
 
 import {
   harnessModelIdentity,
@@ -24,6 +33,9 @@ import {
 } from "../../ports/workbenchRuntime";
 import { PickerOption } from "../../ui/PickerOption";
 import { ChatHarnessControls } from "./ChatHarnessControls";
+
+// The picker list loads when the window first idles.
+beforeAll(() => preloadSearchablePicker());
 
 const noop = () => Promise.resolve();
 // The toolbar's compaction stylesheet decides which controls are laid out.

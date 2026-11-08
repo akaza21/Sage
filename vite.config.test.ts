@@ -202,6 +202,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/AgentRailArchiveNotice.tsx",
   "src/workbench/AgentRecentChats.tsx",
   "src/workbench/useAgentRailStatus.ts",
+  // The Agent header menu body loads before its first open.
+  "src/workbench/AgentHeaderMenu.tsx",
   "src/workbench/ProjectChatActionPopover.tsx",
   "src/workbench/ProjectChatRename.tsx",
   "src/workbench/SettingsSurface.tsx",
@@ -225,6 +227,9 @@ const ORDINARY_DYNAMIC_FACADES = [
   "src/features/chat/acp/InlineSavedDiff.tsx",
   "src/services/acpFileSnapshot.ts",
   "src/features/files/CodeMirrorEditorRuntime.ts",
+  // A searchable picker's open list loads before its first open; grouped,
+  // it lives in the menu-popover chunk, which has no single facade.
+  "src/ui/SearchablePickerPopover.tsx",
   "src/workbench/AgentWorkbenchBody.tsx",
   "src/workbench/Workbench.tsx",
 ].sort();
@@ -442,6 +447,19 @@ function closureForModule(
   return closure;
 }
 
+// The workbench-deps group pins shared page-layer state to the shell chunk,
+// whichever menu or dialog imports it first, so it joins every closure that
+// loads that chunk: the Workbench and the Editors, but not the Agent body.
+const SHELL_PAGE_LAYERS = "src/ui/nativePageLayers.ts";
+const SHELL_PAGE_LAYER_FACADES = new Set<string>([
+  "src/workbench/Workbench.tsx",
+  "src/features/files/CodeMirrorEditorRuntime.ts",
+  "src/features/files/FileSurface.tsx",
+  "src/features/diff/DiffSurface.tsx",
+  "src/features/search/SearchSurface.tsx",
+  ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
+]);
+
 function expectNoNewFeatureModules(
   graph: ReturnType<typeof graphInventory>,
   baseline: ReturnType<typeof graphInventory>,
@@ -452,6 +470,11 @@ function expectNoNewFeatureModules(
     ...closureForModule(baseline, facade),
     ...additionalBaseline,
   ]);
+  if (SHELL_PAGE_LAYER_FACADES.has(facade)) {
+    const pageLayers = graph.moduleFiles.get(SHELL_PAGE_LAYERS);
+    expect(graph.chunkNames.get(pageLayers ?? "")).toBe("workbench-deps");
+    allowed.add(path.join(root, SHELL_PAGE_LAYERS).split(path.sep).join("/"));
+  }
   expect(
     closureForModule(graph, facade).filter(
       (id) =>
@@ -796,6 +819,34 @@ describe("desktop-native chunk topology", () => {
     expect(
       groupedGraph.moduleFiles.get("src/features/chat/ChatHandoffControl.tsx"),
     ).toBe(agentFile);
+    // The shared menu and the searchable picker list built on it load as
+    // one chunk, outside the Agent body and the initial set. The Agent
+    // header menu body keeps a chunk of its own.
+    const menuModules = [
+      "src/ui/MenuPopover.tsx",
+      "src/ui/menuPopoverPosition.ts",
+      "src/ui/menuPopoverDialogFocus.ts",
+      "src/ui/SearchablePickerPopover.tsx",
+      "src/ui/PickerOption.tsx",
+    ];
+    const menuFile = groupedGraph.moduleFiles.get(menuModules[0]!);
+    expect(groupedGraph.chunkNames.get(menuFile!)).toBe("menu-popover");
+    expect(menuFile).not.toBe(agentFile);
+    expect(menuFile).not.toBe(sharedFile);
+    for (const module of menuModules) {
+      expect(groupedGraph.moduleFiles.get(module), module).toBe(menuFile);
+      expect(groupedGraph.initialModules, module).not.toContain(
+        path.join(root, module).split(path.sep).join("/"),
+      );
+    }
+    const headerMenuFile = groupedGraph.moduleFiles.get(
+      "src/workbench/AgentHeaderMenu.tsx",
+    );
+    expect(groupedGraph.chunkNames.get(headerMenuFile!)).toBe(
+      "AgentHeaderMenu",
+    );
+    expect(headerMenuFile).not.toBe(menuFile);
+    expect(headerMenuFile).not.toBe(agentFile);
     expect(groupedGraph.allModules).toEqual(baselineGraph.allModules);
     expect(groupedGraph.initialModules).toEqual(baselineGraph.initialModules);
     expect(new Set(groupedGraph.allModules).size).toBe(

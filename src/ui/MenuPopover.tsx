@@ -91,6 +91,7 @@ export function MenuPopover({
   className,
   focusKey,
   focusStrategy = "roving",
+  holdFocus = false,
   id,
   initialFocus = "first",
   keepMounted = false,
@@ -112,6 +113,11 @@ export function MenuPopover({
   className?: string;
   focusKey?: string | number | boolean;
   focusStrategy?: FocusStrategy;
+  /**
+   * Leaves focus where it is when the menu opens, for a body that arrived
+   * after its open and found that focus had moved on meanwhile.
+   */
+  holdFocus?: boolean;
   id: string;
   initialFocus?: InitialFocus;
   keepMounted?: boolean;
@@ -243,15 +249,16 @@ export function MenuPopover({
     setPortalRoot((current) => (current === nextRoot ? current : nextRoot));
   }, [open, portalTarget, triggerRef]);
 
+  const placeFocus = open && !holdFocus;
   useLayoutEffect(() => {
-    if (!open || portalTarget === "document") return;
+    if (!placeFocus || portalTarget === "document") return;
     popoverRef.current
       ?.querySelector<HTMLElement>('[role="combobox"]')
       ?.focus();
-  }, [open, portalRoot, portalTarget]);
+  }, [placeFocus, portalRoot, portalTarget]);
 
   useLayoutEffect(() => {
-    if (!open || focusStrategy === "none") return;
+    if (!placeFocus || focusStrategy === "none") return;
     const popover = popoverRef.current;
     if (!popover) return;
     if (role === "dialog") {
@@ -273,7 +280,7 @@ export function MenuPopover({
     });
     // portalRoot: a nested menu first renders into the body, then moves into
     // its parent popover; the move remounts it, so focus is placed again.
-  }, [focusKey, focusStrategy, initialFocus, open, role, portalRoot]);
+  }, [focusKey, focusStrategy, initialFocus, placeFocus, role, portalRoot]);
 
   useEffect(() => {
     if (!open) return;
