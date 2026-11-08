@@ -13,8 +13,9 @@ use super::{super::AcpService, CodexSessionError, DurableSession, load_durable_s
 impl AcpService {
     /// Continues a Chat whose parked head session was started by an earlier
     /// Codex release: a new head session on the pinned binding links to it,
-    /// and the activation is redirected to that session's first epoch. Any
-    /// other activation passes through unchanged.
+    /// and the activation is redirected to that session's first epoch, also
+    /// when a retry names the earlier session after a refused activation.
+    /// Any other activation passes through unchanged.
     pub(in crate::acp::service) fn resume_earlier_codex_session(
         &self,
         admitted: &crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
@@ -27,10 +28,24 @@ impl AcpService {
             &command.chat_id,
             &command.session_id,
         )?;
-        if !continues_on_pinned_codex(&session, admitted.binding_id(), identity.harness_version) {
-            return Ok(command);
-        }
-        let linked = {
+        let linked = if session.state == "closed" {
+            // A retry after a refused activation still names the earlier
+            // session; it continues in the linked head that has not started.
+            let head = crate::acp::store::unstarted_resume_link(
+                &self.database.connection(),
+                command.project_id.as_str(),
+                command.chat_id.as_str(),
+                command.session_id.as_str(),
+            );
+            match head.map_err(store_error)? {
+                Some(linked) => linked,
+                None => return Ok(command),
+            }
+        } else if continues_on_pinned_codex(
+            &session,
+            admitted.binding_id(),
+            identity.harness_version,
+        ) {
             let mut connection = self
                 .database
                 .write_connection()
@@ -48,11 +63,9 @@ impl AcpService {
                     now_millis: command.now_millis,
                 },
             )
-            .map_err(|error| {
-                crate::acp::runtime::SessionCoordinatorError::from(
-                    crate::acp::runtime::JournalError::Store(error),
-                )
-            })?
+            .map_err(store_error)?
+        } else {
+            return Ok(command);
         };
         let runtime_epoch = next_runtime_epoch(&self.database, &linked.session_id)?;
         Ok(ActivateSessionCommand {
@@ -62,6 +75,15 @@ impl AcpService {
             ..command
         })
     }
+}
+
+/// A store failure surfaces as the session coordination error it would be
+/// on the journal path.
+fn store_error(error: crate::acp::store::StoreError) -> CodexSessionError {
+    crate::acp::runtime::SessionCoordinatorError::from(crate::acp::runtime::JournalError::Store(
+        error,
+    ))
+    .into()
 }
 
 /// The first runtime epoch a session has not used yet.

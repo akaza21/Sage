@@ -744,23 +744,26 @@ fn earlier_codex_session_resumes_its_thread_in_a_linked_session() {
                 .resolve(crate::acp::bindings::codex::CODEX_BINDING_ID)
                 .unwrap()
         };
+        let request = ActivateSessionCommand {
+            project_id: project_id.clone(),
+            chat_id: chat_id.clone(),
+            expected_projection_revision: page.projection_revision,
+            client_intent_id: ClientIntentId::new(),
+            session_id: started.session_id.clone(),
+            runtime_epoch: RuntimeEpoch::new(2).unwrap(),
+            artifact_digest: "55".repeat(32),
+            now_millis: crate::persistence::now_millis(),
+        };
         let command = service
-            .resume_earlier_codex_session(
-                &resolve(),
-                ActivateSessionCommand {
-                    project_id: project_id.clone(),
-                    chat_id: chat_id.clone(),
-                    expected_projection_revision: page.projection_revision,
-                    client_intent_id: ClientIntentId::new(),
-                    session_id: started.session_id.clone(),
-                    runtime_epoch: RuntimeEpoch::new(2).unwrap(),
-                    artifact_digest: "55".repeat(32),
-                    now_millis: crate::persistence::now_millis(),
-                },
-            )
+            .resume_earlier_codex_session(&resolve(), request.clone())
             .unwrap();
         assert_ne!(command.session_id, started.session_id);
         assert_eq!(command.runtime_epoch, RuntimeEpoch::new(1).unwrap());
+        // A retry after a refused activation still names the earlier session.
+        let retried = service
+            .resume_earlier_codex_session(&resolve(), request)
+            .unwrap();
+        assert_eq!(retried.session_id, command.session_id);
         let (prepared_command, prepared) = service
             .prepare_session_activation(
                 resolve(),

@@ -54,7 +54,7 @@ pub(crate) fn link_resumed_session(
     let chat = command.chat_id.as_str();
     let earlier = command.earlier_session_id.as_str();
     let transaction = connection.transaction()?;
-    if let Some(linked) = installed_link(&transaction, project, chat, earlier)? {
+    if let Some(linked) = unstarted_resume_link(&transaction, project, chat, earlier)? {
         return Ok(linked);
     }
     validate_chat_revision(
@@ -208,13 +208,13 @@ fn close_parked(
 }
 
 /// The Chat's head when it already resumes `earlier` and has not started.
-fn installed_link(
-    transaction: &rusqlite::Transaction<'_>,
+pub(crate) fn unstarted_resume_link(
+    connection: &rusqlite::Connection,
     project: &str,
     chat: &str,
     earlier: &str,
 ) -> Result<Option<SessionMutation>, StoreError> {
-    let row: Option<(String, i64, i64)> = transaction
+    let row: Option<(String, i64, i64)> = connection
         .query_row(
             "SELECT s.id,s.revision,c.projection_revision FROM agent_sessions s
              JOIN chat_session_heads h ON h.session_id=s.id

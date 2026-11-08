@@ -21,7 +21,7 @@ impl AcpService {
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
     ) -> Result<(), CodexSessionError> {
         // Commits before the checks below; a refused activation leaves the
-        // linked head `created`, and its next activation resumes the thread.
+        // linked head `created`, and a retry naming either session resumes it.
         let command = self.resume_earlier_codex_session(&admitted, command)?;
         let owner = RuntimeOwner {
             project_id: command.project_id.clone(),

@@ -242,7 +242,7 @@ fn an_earlier_session_continues_in_a_linked_head_that_fills_the_same_thread() {
 }
 
 #[test]
-fn an_aborted_activation_keeps_the_link() {
+fn an_aborted_activation_keeps_the_link_for_a_retry_of_the_earlier_session() {
     let fixture = Fixture::new();
     let linked = fixture.link().unwrap();
     fixture.activate(&linked.session_id, 1);
@@ -271,7 +271,19 @@ fn an_aborted_activation_keeps_the_link() {
     );
     let retried = fixture.link().unwrap();
     assert_eq!(retried.session_id, linked.session_id);
+    let unstarted = || {
+        unstarted_resume_link(
+            &fixture.database.connection(),
+            fixture.project.as_str(),
+            fixture.chat.as_str(),
+            "session-earlier",
+        )
+        .unwrap()
+        .map(|head| head.session_id)
+    };
+    assert_eq!(unstarted(), Some(linked.session_id.clone()));
     fixture.activate(&linked.session_id, 2);
+    assert_eq!(unstarted(), None);
     fixture.earlier_keeps_its_identity();
 }
 
