@@ -117,7 +117,8 @@ fn goal_reply(
             | NativeRpcReply::TooLarge
             | NativeRpcReply::Rejected
             | NativeRpcReply::Forked(_)
-            | NativeRpcReply::Released,
+            | NativeRpcReply::Released
+            | NativeRpcReply::UsageRead,
         ) => Err(crate::acp::runtime::HostError::RecoveryRequired),
         Err(error) => Err(error),
     }
@@ -179,6 +180,7 @@ mod tests {
                     updated_at: None,
                 },
             },
+            usage: false,
             project_id: SageProjectId::parse("project-goal").unwrap(),
             chat_id: SageChatId::parse("chat-goal").unwrap(),
             title: SafeText::new("chatTitle", "History").unwrap(),

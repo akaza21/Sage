@@ -1,0 +1,56 @@
+.composer-usage {
+  display: grid;
+  font-size: var(--font-size-xs);
+}
+
+.composer-usage p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.composer-usage__heading,
+.composer-usage__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.composer-usage__heading span,
+.composer-usage__reset {
+  color: var(--color-text-muted);
+}
+
+.composer-usage .composer-usage__reached {
+  color: var(--color-danger);
+}
+
+.composer-usage__windows {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.composer-usage__window {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.composer-usage__bar {
+  height: 4px;
+  border-radius: var(--radius-circle);
+  background:
+    linear-gradient(var(--color-accent), var(--color-accent)) 0 / var(--usage)
+      100% no-repeat,
+    var(--color-border-strong);
+}
+
+@media (forced-colors: active) {
+  .composer-usage__bar {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+    background: linear-gradient(Highlight, Highlight) 0 / var(--usage) 100%
+      no-repeat Canvas;
+  }
+}

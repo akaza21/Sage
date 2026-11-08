@@ -5,6 +5,7 @@ import { errorMessage } from "../../domain/errors";
 import { harnessAvailability } from "../chat/harnessAvailability";
 import { LazyHarnessNotice } from "../chat/lazyParts";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { CodexAccountSettings } from "./CodexAccountSettings";
 import { SettingsRow } from "./SettingsRow";
 
 // The user-defined agent editor loads only when Harnesses is open, below
@@ -102,6 +103,11 @@ export function AgentHarnessSettings() {
                   {selected ? "Check models and sign-in" : "Select and check"}
                 </button>
               </SettingsRow>
+              {selected &&
+              harness.accountModelDiscovery &&
+              !availability.disabledReason ? (
+                <CodexAccountSettings disabled={disabled || !projectId} />
+              ) : null}
               {harness.signIn && !availability.disabledReason ? (
                 <p>
                   {harness.signIn.command ? (

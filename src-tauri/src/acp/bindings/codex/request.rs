@@ -69,6 +69,7 @@ pub(crate) enum RequestKind {
     GoalGet,
     GoalPause,
     GoalClear,
+    RateLimitsRead,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,6 +107,7 @@ impl OutgoingRequest {
             RequestKind::GoalGet => "thread/goal/get",
             RequestKind::GoalPause => "thread/goal/set",
             RequestKind::GoalClear => "thread/goal/clear",
+            RequestKind::RateLimitsRead => "account/rateLimits/read",
         };
         let bytes = serde_json::to_vec(&json!({"id": id, "method": method, "params": params}))
             .map_err(|_| RequestError::Encoding)?;
@@ -222,6 +224,10 @@ impl OutgoingRequest {
             RequestKind::GoalClear,
             json!({"threadId": thread_id.as_str()}),
         )
+    }
+
+    pub(crate) fn rate_limits_read(id: u64) -> Result<Self, RequestError> {
+        Self::build(id, RequestKind::RateLimitsRead, Value::Null)
     }
 
     pub(crate) fn models(

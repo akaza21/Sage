@@ -1,6 +1,11 @@
 use super::*;
 use crate::acp::bindings::codex::state::{TurnBinding, TurnStartFailure};
 
+/// Codex refuses a rate-limit read as an invalid request both when the
+/// account is signed out and when it signed in without ChatGPT (an API
+/// key); a backend failure is an internal error.
+const INVALID_REQUEST: i64 = -32600;
+
 pub(super) fn response(
     adapter: &mut CodexAdapter,
     object: &Map<String, Value>,
@@ -9,6 +14,9 @@ pub(super) fn response(
         .get("id")
         .and_then(Value::as_u64)
         .ok_or(IngressError::Malformed)?;
+    if adapter.take_rate_limits_tombstone(id) {
+        return Ok(IngressDisposition::IgnoredLate);
+    }
     let kind = adapter.pending_kind(id).ok_or(IngressError::Uncorrelated)?;
     if kind == RequestKind::Models {
         let removed = adapter.take_pending(id);
@@ -28,6 +36,24 @@ pub(super) fn response(
                 None => IngressDisposition::IgnoredLate,
             },
         );
+    }
+    if kind == RequestKind::RateLimitsRead {
+        adapter.take_pending(id);
+        if let Some(error) = object.get("error") {
+            return Ok(
+                if error.get("code").and_then(Value::as_i64) == Some(INVALID_REQUEST) {
+                    IngressDisposition::UsageRefused
+                } else {
+                    IngressDisposition::UsageRead(None)
+                },
+            );
+        }
+        return Ok(IngressDisposition::UsageRead(
+            object
+                .get("result")
+                .and_then(Value::as_object)
+                .and_then(super::rate_limits::RateLimits::read),
+        ));
     }
     if let Some(error) = object.get("error") {
         if matches!(
@@ -207,7 +233,8 @@ pub(super) fn response(
         | RequestKind::ChildRead
         | RequestKind::Fork
         | RequestKind::ForkRelease
-        | RequestKind::ForkDelete => {
+        | RequestKind::ForkDelete
+        | RequestKind::RateLimitsRead => {
             unreachable!("handled above")
         }
     };

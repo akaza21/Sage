@@ -6,19 +6,27 @@ use std::sync::{
 use crate::acp::{
     bindings::codex::{
         CodexAuthDeadline, CodexAuthOutcome, CodexAuthProtocol, CodexBindingRegistration,
-        CodexDiscoveryRunError, CodexProjectRootAuthority, NativeBrowser, ProductionAuthTransport,
-        run_account_protocol, run_login_protocol, run_logout_protocol,
+        CodexDiscoveryRunError, CodexProjectRootAuthority, NativeApiKey, NativeBrowser,
+        ProductionAuthTransport, run_account_protocol, run_api_key_protocol, run_login_protocol,
+        run_logout_protocol,
     },
     ipc::{CodexAuthPhase, CodexAuthResponse, CodexAuthScope},
 };
 
 use super::codex_operation::{CodexOperationGate, PreparedCodexOperation};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug)]
 pub(crate) enum CodexAuthAction {
     Observe,
     Login,
+    ApiKey(NativeApiKey),
     Logout,
+}
+
+impl CodexAuthAction {
+    pub(crate) fn changes_account(&self) -> bool {
+        !matches!(self, Self::Observe)
+    }
 }
 
 pub(crate) struct PreparedCodexAuth {
@@ -86,7 +94,7 @@ impl CodexAuthManager {
         {
             return Err(CodexDiscoveryRunError::InvalidScope);
         }
-        if action == CodexAuthAction::Login && !consent {
+        if matches!(action, CodexAuthAction::Login) && !consent {
             return Err(CodexDiscoveryRunError::InvalidScope);
         }
         let operation = self.gate.prepare()?;
@@ -103,7 +111,7 @@ impl CodexAuthManager {
         self: &Arc<Self>,
         prepared: PreparedCodexAuth,
     ) -> Result<CodexAuthResponse, CodexDiscoveryRunError> {
-        let action = prepared.action;
+        let changes_account = prepared.action.changes_account();
         let operation_epoch = CodexOperationGate::prepared_epoch(&prepared.operation);
         let active = self.gate.begin(&prepared.operation)?;
         let result = self.run_active(prepared, &active);
@@ -114,10 +122,7 @@ impl CodexAuthManager {
         };
         active.settle(settlement);
         self.clear_cancel();
-        if result.is_err()
-            && matches!(action, CodexAuthAction::Login | CodexAuthAction::Logout)
-            && self.gate.is_current(operation_epoch)
-        {
+        if result.is_err() && changes_account && self.gate.is_current(operation_epoch) {
             self.publish(CodexAuthPhase::Recovery);
         }
         result
@@ -152,7 +157,7 @@ impl CodexAuthManager {
             .map_err(|_| CodexDiscoveryRunError::Drift)?;
         let runtime_epoch = self.gate.allocate_runtime_epoch()?;
         let cancel = Arc::new(AtomicBool::new(false));
-        if prepared.action == CodexAuthAction::Login {
+        if matches!(prepared.action, CodexAuthAction::Login) {
             self.install_cancel(prepared.scope.clone(), Arc::clone(&cancel))?;
             self.publish(CodexAuthPhase::Waiting);
         }
@@ -176,6 +181,13 @@ impl CodexAuthManager {
                 &mut protocol,
                 &mut transport,
                 &NativeBrowser,
+                runtime_epoch.get(),
+                prepared.deadline,
+            ),
+            CodexAuthAction::ApiKey(key) => run_api_key_protocol(
+                &mut protocol,
+                &mut transport,
+                &key,
                 runtime_epoch.get(),
                 prepared.deadline,
             ),

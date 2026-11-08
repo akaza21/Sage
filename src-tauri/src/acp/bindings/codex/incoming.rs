@@ -38,6 +38,8 @@ use notifications::notification;
 mod response;
 use response::{browser_mcp_unavailable, response};
 
+pub(super) mod rate_limits;
+
 mod model_catalog;
 use model_catalog::parse_models;
 pub(in crate::acp::bindings::codex) use model_catalog::parse_reasoning_efforts;
@@ -207,6 +209,14 @@ pub(crate) enum IngressDisposition {
     DroppedRawReasoning,
     GoalMutationRejected,
     GoalMutationApplied,
+    /// A limit bucket Codex pushed.
+    UsageUpdated(rate_limits::RateLimitBucket),
+    /// The answer to a usage read; `None` when nothing usable was reported.
+    UsageRead(Option<rate_limits::RateLimits>),
+    /// Codex refused to report usage for this account.
+    UsageRefused,
+    /// The account signed in to ChatGPT, so usage may be reported again.
+    UsageReset,
     DuplicateTerminal,
     DuplicateServerRequest {
         denial: Option<Vec<u8>>,

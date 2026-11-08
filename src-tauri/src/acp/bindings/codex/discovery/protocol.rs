@@ -11,8 +11,8 @@ use crate::acp::{
 };
 
 use super::schema::{
-    NoResources, json_request, managed_chatgpt, parse_cursor, parse_model, request_frame,
-    require_response_id, response_result,
+    NoResources, api_key_account, json_request, managed_chatgpt, parse_cursor, parse_model,
+    request_frame, require_response_id, response_result,
 };
 use super::types::{
     CodexAccountSnapshot, CodexDiscoveryContent, CodexDiscoveryError, CodexModelSnapshot,
@@ -211,6 +211,9 @@ impl CodexDiscoveryProtocol {
             Some(Value::Null) => CodexAccountSnapshot::ProviderManaged,
             Some(Value::Object(account)) if managed_chatgpt(account)? => {
                 CodexAccountSnapshot::ManagedChatgpt
+            }
+            Some(Value::Object(account)) if api_key_account(account) => {
+                CodexAccountSnapshot::ApiKey
             }
             _ => return Err(CodexDiscoveryError::AccountPolicy),
         };

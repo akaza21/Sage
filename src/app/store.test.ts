@@ -3562,7 +3562,10 @@ describe("workbench resource and project navigation", () => {
       bindingId: "future-auth-binding",
     });
 
-    useWorkbenchStore.setState({ harnessDiscoveryPhase: "ready" });
+    useWorkbenchStore.setState({
+      harnessDiscoveryPhase: "ready",
+      harnessAccount: "apiKey",
+    });
     const logout = vi
       .spyOn(acpHarnessDesktop, "logoutCodexAuth")
       .mockResolvedValue({
@@ -3577,6 +3580,7 @@ describe("workbench resource and project navigation", () => {
     expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe(
       "signInRequired",
     );
+    expect(useWorkbenchStore.getState().harnessAccount).toBeNull();
   });
 
   it("ignores a completed auth request after the native project epoch changes", async () => {

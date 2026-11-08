@@ -96,7 +96,7 @@ fn completion_and_account_updates_project_only_sanitized_state() {
             }
         }))),
         Ok(CodexAuthNotification::LoginCompleted {
-            login_id: NativeLoginId::parse(LOGIN_ID).unwrap(),
+            login_id: Some(NativeLoginId::parse(LOGIN_ID).unwrap()),
             success: true,
         })
     );
@@ -104,13 +104,15 @@ fn completion_and_account_updates_project_only_sanitized_state() {
         protocol.accept_notification(&frame(json!({
             "method":"account/updated","params":{"authMode":"chatgpt","planType":"plus"}
         }))),
-        Ok(CodexAuthNotification::AccountUpdated { signed_in: true })
+        Ok(CodexAuthNotification::AccountUpdated {
+            mode: Some(CodexAuthMode::Chatgpt)
+        })
     );
     assert_eq!(
         protocol.accept_notification(&frame(json!({
             "method":"account/updated","params":{"authMode":null,"planType":null}
         }))),
-        Ok(CodexAuthNotification::AccountUpdated { signed_in: false })
+        Ok(CodexAuthNotification::AccountUpdated { mode: None })
     );
 }
 

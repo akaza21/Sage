@@ -83,6 +83,7 @@ mod session_config;
 pub(crate) use session_config::QueueError;
 mod session_error;
 mod slash_commands;
+mod usage;
 pub(crate) use session_error::{CodexSessionError, SessionDispatchError};
 mod shutdown;
 
@@ -396,6 +397,7 @@ impl AcpService {
         }
         self.fit_session_config_to_page_budget(&mut page)?;
         self.compose_goal(&mut page);
+        self.compose_usage(&mut page);
         self.fit_goal_to_page_budget(&mut page)?;
         Ok(page)
     }

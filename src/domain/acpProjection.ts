@@ -296,6 +296,8 @@ export interface AcpChatPage {
   /** A stored choice the current session could not take back. */
   sessionConfigNotice?: AcpSessionConfigNotice | null;
   goal?: AcpGoalState;
+  /** The current session's live runtime reports usage limits. */
+  usage?: true;
   projectId: SageProjectId;
   chatId: SageChatId;
   title: string;

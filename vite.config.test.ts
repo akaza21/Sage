@@ -93,6 +93,7 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/files/FileConflictCompare.tsx",
   "src/features/files/SaveAllNotice.tsx",
   "src/features/chat/ComposerUsageContext.tsx",
+  "src/features/chat/ComposerUsageLimits.tsx",
   "src/features/chat/composerDictationRuntime.ts",
   "src/workbench/DirtyTabDialog.tsx",
   "src/ports/editorWatchSession.ts",

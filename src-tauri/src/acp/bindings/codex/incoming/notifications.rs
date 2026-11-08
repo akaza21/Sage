@@ -49,13 +49,26 @@ pub(super) fn notification<M: ResourceMapper>(
                 _ => Err(IngressError::Malformed),
             }
         }
-        // Account state belongs to Codex and has no Sage-owned projection.
-        // The frame is bounded before reaching this matcher and its payload is
-        // discarded, so a known account update cannot become a transcript
+        // Account and skill changes belong to Codex and have no Sage-owned
+        // projection. The frame is bounded before reaching this matcher and
+        // its payload is discarded, so neither can become a transcript
         // artifact or alter a turn/session state.
-        "account/updated" | "account/rateLimits/updated" | "skills/changed" => {
-            Ok(IngressDisposition::IgnoredLate)
-        }
+        "skills/changed" => Ok(IngressDisposition::IgnoredLate),
+        // A ChatGPT sign-in may lift an earlier refusal to report usage.
+        "account/updated" => Ok(
+            if params.get("authMode").and_then(Value::as_str) == Some("chatgpt") {
+                IngressDisposition::UsageReset
+            } else {
+                IngressDisposition::IgnoredLate
+            },
+        ),
+        "account/rateLimits/updated" => Ok(match super::rate_limits::pushed_bucket(params) {
+            Some(bucket) => {
+                adapter.rate_limits_pushed();
+                IngressDisposition::UsageUpdated(bucket)
+            }
+            None => IngressDisposition::IgnoredLate,
+        }),
         "thread/status/changed" => {
             let thread = text(params, "threadId", 512)?;
             let status = params

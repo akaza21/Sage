@@ -194,6 +194,7 @@ pub(super) struct PendingHostConfig {
     pub(super) reply: mpsc::SyncSender<Result<HostReply, HostError>>,
     pub(super) deadline: Instant,
     pub(super) native_rpc: bool,
+    pub(super) passive: bool,
 }
 
 pub(super) struct PendingTerminal {
