@@ -106,6 +106,10 @@ impl AcpService {
             #[cfg(test)]
             codex_runtime_release_fail_once: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
+            lane_busy_refusals: Default::default(),
+            #[cfg(test)]
+            yield_lane_on_busy: Default::default(),
+            #[cfg(test)]
             codex_runtime_release_fail_always: std::sync::atomic::AtomicBool::new(false),
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization: configuration.characterization,

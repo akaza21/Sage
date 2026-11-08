@@ -4,6 +4,7 @@ import type {
   BufferRebaseRequest,
   BufferSnapshotAck,
   BufferSnapshotRequest,
+  ChatDeleteRequest,
   ChatLifecycleRequest,
   MoveChatRequest,
   PinChatRequest,
@@ -259,6 +260,11 @@ export interface ChatPort {
     request: ChatLifecycleRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
+  /** Permanently deletes an archived Chat and its history. */
+  deleteChat(
+    request: ChatDeleteRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult>;
   moveChat(
     request: MoveChatRequest,
     expectedTransitionEpoch: number,
@@ -362,6 +368,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "activateChat",
     "archiveChat",
     "createChat",
+    "deleteChat",
     "moveChat",
     "pinChat",
     "renameChat",

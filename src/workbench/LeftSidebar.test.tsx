@@ -388,7 +388,7 @@ it("restores a foreign-folder archived chat without switching first", () => {
   fireEvent.click(
     screen.getByRole("button", { name: "Restore chat Research" }),
   );
-  expect(restoreChat).toHaveBeenCalledWith("chat:old", "cross");
+  expect(restoreChat).toHaveBeenCalledWith("chat:old", "cross", "row");
   expect(switchProject).not.toHaveBeenCalled();
 });
 

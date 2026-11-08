@@ -23,8 +23,8 @@ pub(crate) mod user_input;
 pub(crate) use session_routes::{activate_acp_session_inner, start_acp_session_inner};
 
 use errors::{
-    binding_unavailable, codex_discovery_error, dispatch_error, intent_error, internal_error,
-    page_admission_error, safe_message, session_error, store_error,
+    archived_chat, binding_unavailable, codex_discovery_error, dispatch_error, intent_error,
+    internal_error, page_admission_error, safe_message, session_error, store_error,
 };
 
 use tauri::State;

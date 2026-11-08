@@ -206,6 +206,13 @@ pub(super) fn safe_message(message: &'static str) -> SafeText<8192> {
     SafeText::new("message", message).expect("static ACP message is bounded")
 }
 
+/// An archived Chat runs no agent: no prompt, session start or activation.
+pub(super) fn archived_chat() -> AcpIpcError {
+    AcpIpcError::InvalidRequest {
+        message: safe_message("This Chat is archived. Restore it to continue."),
+    }
+}
+
 pub(super) fn internal_error() -> AcpIpcError {
     AcpIpcError::Internal {
         message: safe_message("The ACP request failed safely."),

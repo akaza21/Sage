@@ -1,5 +1,6 @@
 import type {
   ArchivedChatSummary,
+  ChatDeleteRequest,
   ChatLifecycleRequest,
   ChatMessage,
   MoveChatRequest,
@@ -302,6 +303,32 @@ export const browserDesktop = {
       snapshot.project?.roots ?? [],
     );
     await this.persistProjectLayout(next, expectedTransitionEpoch);
+    snapshot.transitionEpoch += 1;
+    return {
+      committed: true,
+      transitionEpoch: snapshot.transitionEpoch,
+      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
+      recoveryError: null,
+    };
+  },
+  async deleteChat(
+    request: ChatDeleteRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult> {
+    if (expectedTransitionEpoch !== snapshot.transitionEpoch) {
+      throw new Error("project changed before the requested Chat delete");
+    }
+    if (
+      request.projectId !== snapshot.project?.id ||
+      !projectArchivedChats().some((chat) => chat.id === request.chatId)
+    ) {
+      throw new Error("Only an archived Chat can be deleted");
+    }
+    durableChatIds.delete(request.chatId);
+    chatTitles.delete(request.chatId);
+    messagesByChat.delete(request.chatId);
+    simulatorSessions.delete(request.chatId);
+    snapshot.archivedChats = projectArchivedChats();
     snapshot.transitionEpoch += 1;
     return {
       committed: true,

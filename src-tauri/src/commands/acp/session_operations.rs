@@ -21,6 +21,8 @@ pub(crate) async fn send_acp_turn_inner(
         snapshot_for(state, project_id.clone(), generation, chat_id.clone())
             .await
             .map_err(prompt_not_dispatched)?;
+    session_routes::refuse_archived_chat(state, project_id, chat_id)
+        .map_err(prompt_not_dispatched)?;
     validate_send(state, &request, &snapshot).map_err(prompt_not_dispatched)?;
     // A batch staged in a tab that has since closed must never be sent.
     crate::acp::attached_context::files::release_detached(&state.acp.file_stages, &state.database);
@@ -199,14 +201,15 @@ pub(crate) async fn send_acp_turn_inner(
     }
     super::turn_workspace::mark_before_prompt(state, transition, &client_intent_id, &session_id)
         .await;
-    // Capture can outlive a project switch. Reacquire authority before dispatch.
-    let _transition = match lock_acp_context(state, &project_id, project_generation).await {
-        Ok(transition) => transition,
-        Err(error) => {
-            super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
-            return Err(prompt_not_dispatched(error));
-        }
-    };
+    let _transition = super::turn_workspace::relock_after_capture(
+        state,
+        &project_id,
+        project_generation,
+        &session_id,
+        &client_intent_id,
+    )
+    .await
+    .map_err(prompt_not_dispatched)?;
     let current_files = state
         .acp
         .file_stages

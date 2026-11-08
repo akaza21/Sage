@@ -52,6 +52,8 @@ pub struct AppState {
     pub project_transitions: tokio::sync::Mutex<u64>,
     pub startup_recovery_notice: Option<String>,
     pub terminals: crate::user_terminal::TerminalSessionPort,
+    /// Archive runtime releases still running; exit waits for them.
+    pub archive_releases: crate::chat_archive_commands::ArchiveReleases,
 }
 
 impl AppState {
@@ -134,6 +136,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 
@@ -190,6 +193,7 @@ impl AppState {
             use tauri::Emitter;
             let _ = goal_app.emit("acp-goal-changed-v1", notice);
         }));
+        crate::chat_archive_commands::forget_read_marks_of_deleted_chats(&database, &settings);
         let harnesses = HarnessCatalog::with_registry(registry);
         if fixture_isolation {
             harnesses.apply_presence(Vec::new());
@@ -206,6 +210,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 
@@ -243,6 +248,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 
@@ -275,6 +281,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 

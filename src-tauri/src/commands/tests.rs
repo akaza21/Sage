@@ -100,6 +100,7 @@ fn state_with_unavailable_codex_project() -> (AppState, String, String, std::pat
         project_transitions: tokio::sync::Mutex::new(0),
         startup_recovery_notice: None,
         terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+        archive_releases: Default::default(),
     };
     (state, project.id, chat_id, root)
 }
@@ -155,6 +156,7 @@ fn state_with_internal_opencode_registry() -> (AppState, String, String, std::pa
         project_transitions: tokio::sync::Mutex::new(0),
         startup_recovery_notice: None,
         terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+        archive_releases: Default::default(),
     };
     (state, project.id, chat_id, root)
 }
@@ -227,6 +229,7 @@ fn state_with_admitted_codex_project() -> (AppState, String, String, std::path::
         project_transitions: tokio::sync::Mutex::new(0),
         startup_recovery_notice: None,
         terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+        archive_releases: Default::default(),
     };
     (state, project.id, chat_id, root)
 }
@@ -262,6 +265,7 @@ fn state_with_registry_test_binding_project() -> (AppState, String, String, std:
         project_transitions: tokio::sync::Mutex::new(0),
         startup_recovery_notice: None,
         terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+        archive_releases: Default::default(),
     };
     (state, project.id, chat_id, root)
 }

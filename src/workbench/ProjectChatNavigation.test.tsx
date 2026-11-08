@@ -409,7 +409,7 @@ it("pins and moves a chat that belongs to another project folder", async () => {
   expect(renameChat).toHaveBeenCalledWith("chat:a", "Research", "project-a");
   await openChatActions("Extra");
   fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
-  expect(archiveChat).toHaveBeenCalledWith("chat:extra", "project-a");
+  expect(archiveChat).toHaveBeenCalledWith("chat:extra", "project-a", "row");
 });
 
 it("labels the archived count separately and preserves disclosure semantics", () => {
@@ -452,7 +452,7 @@ it("restores an archived chat that belongs to another project folder", () => {
 
   fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
   fireEvent.click(screen.getByRole("button", { name: "Restore chat Extra" }));
-  expect(restoreChat).toHaveBeenCalledWith("chat:extra", "project-a");
+  expect(restoreChat).toHaveBeenCalledWith("chat:extra", "project-a", "row");
   expect(
     screen.queryByRole("button", { name: "Restore chat Local old" }),
   ).toBeNull();

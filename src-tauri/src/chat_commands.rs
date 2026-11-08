@@ -156,10 +156,13 @@ pub(crate) async fn execute_chat_transition(
     let database = state.database.clone();
     let mutation = tauri::async_runtime::spawn_blocking(move || operation(database))
         .await
-        .map_err(|error| AppError::InvalidRequest(error.to_string()))
+        .map_err(|error| AppError::TaskInterrupted(error.to_string()))
         .and_then(std::convert::identity);
     if let Err(error) = mutation {
-        return failed_transition(*transition_epoch, error);
+        if error.hides_detail() {
+            tracing::warn!(%error, "Chat transition failed");
+        }
+        return failed_transition(*transition_epoch, error.public_message());
     }
     *transition_epoch += 1;
     on_committed_project_transition_epoch(*transition_epoch);
@@ -179,7 +182,10 @@ pub(crate) async fn execute_chat_transition(
     }
 }
 
-fn failed_transition(transition_epoch: u64, error: impl ToString) -> ProjectTransitionResult {
+pub(crate) fn failed_transition(
+    transition_epoch: u64,
+    error: impl ToString,
+) -> ProjectTransitionResult {
     ProjectTransitionResult {
         committed: false,
         transition_epoch,
