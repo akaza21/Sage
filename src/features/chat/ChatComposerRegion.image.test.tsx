@@ -317,6 +317,41 @@ describe("composer image input", () => {
     expect(onAddImages).toHaveBeenCalledTimes(2);
   });
 
+  it("refuses a pasted image with the session's reason when it lacks the capability", () => {
+    const { onAddImages } = renderComposer({
+      imageInputAvailable: false,
+      imageInputDisabledReason: "This harness does not advertise image input.",
+    });
+    fireEvent.paste(screen.getByRole("textbox", { name: "Message agent" }), {
+      clipboardData: { files: [png()] },
+    });
+    expect(onAddImages).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "This harness does not advertise image input.",
+    );
+  });
+
+  it("passes large screenshots on for native resizing and refuses files over 10 MiB", () => {
+    const { onAddImages } = renderComposer({ imageInputAvailable: true });
+    const screenshot = new File([new Uint8Array(6 * 1024 * 1024)], "4k.png", {
+      type: "image/png",
+    });
+    fireEvent.paste(screen.getByRole("textbox", { name: "Message agent" }), {
+      clipboardData: { files: [screenshot, screenshot] },
+    });
+    expect(onAddImages).toHaveBeenCalledWith([screenshot, screenshot]);
+    const huge = new File([new Uint8Array(10 * 1024 * 1024 + 1)], "huge.png", {
+      type: "image/png",
+    });
+    fireEvent.paste(screen.getByRole("textbox", { name: "Message agent" }), {
+      clipboardData: { files: [huge] },
+    });
+    expect(onAddImages).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Choose PNG or JPEG images no larger than 10 MiB each.",
+    );
+  });
+
   it("opens the persistent chooser from Add and closes the only menu", async () => {
     renderComposer({ imageInputAvailable: true });
     const chooser = screen.getByLabelText("Choose images");
@@ -350,7 +385,7 @@ describe("composer image input", () => {
       dataTransfer: { files: [png()], types: ["Files"] },
     });
     expect(onAddImages).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent("four images");
+    expect(screen.getByRole("alert")).toHaveTextContent("at most 4 images");
     const options = screen.queryByRole("button", { name: "Composer options" });
     if (options) {
       fireEvent.click(options);

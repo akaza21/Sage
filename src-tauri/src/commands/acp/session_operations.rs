@@ -8,28 +8,9 @@ const _: () = assert!(
 );
 
 mod lifecycle;
+mod prompt_images;
 pub(crate) use lifecycle::{close_acp_session_inner, end_acp_session_inner};
-
-/// Context a prompt cannot carry yet: images, and page elements that
-/// fail admission.
-fn image_input_block(contexts: &AttachedContexts) -> Result<(), AcpIpcError> {
-    if contexts.as_slice().iter().any(|context| {
-        matches!(
-            context,
-            crate::acp::attached_context::AttachedContext::Image(_)
-        )
-    }) {
-        return Err(AcpIpcError::Unavailable {
-            reason: crate::acp::intent::AcpUnavailableReason::ImageInputUnsupported,
-            message: safe_message("This harness cannot accept image attachments yet."),
-        });
-    }
-    crate::acp::attached_context::admit_browser_elements(contexts).map_err(|refusal| {
-        AcpIpcError::InvalidRequest {
-            message: safe_message(refusal.message()),
-        }
-    })
-}
+use prompt_images::image_input_block;
 
 pub(crate) async fn send_acp_turn_inner(
     state: &AppState,
@@ -62,19 +43,24 @@ pub(crate) async fn send_acp_turn_inner(
     match &request {
         SendAcpTurnRequest::Session {
             attached_context, ..
-        }
-        | SendAcpTurnRequest::NewSession {
+        } => prompt_images::admit_elements(attached_context),
+        SendAcpTurnRequest::NewSession {
             attached_context, ..
-        } => {
-            image_input_block(attached_context).map_err(prompt_not_dispatched)?;
-        }
+        } => image_input_block(attached_context),
     }
+    .map_err(prompt_not_dispatched)?;
     #[cfg(all(windows, feature = "acp-fixture"))]
-    if let SendAcpTurnRequest::Session { session_id, .. } = &request {
+    if let SendAcpTurnRequest::Session {
+        session_id,
+        attached_context,
+        ..
+    } = &request
+    {
         let binding_id = session_routes::durable_binding_id(state, session_id)
             .map_err(store_error)
             .map_err(prompt_not_dispatched)?;
         if state.acp.accepts_characterization(&binding_id) {
+            image_input_block(attached_context).map_err(prompt_not_dispatched)?;
             if !state
                 .acp
                 .file_stages
@@ -176,6 +162,16 @@ pub(crate) async fn send_acp_turn_inner(
             message: safe_message("The prompt and attached context exceed the native byte limit."),
         })
         .map_err(prompt_not_dispatched)?;
+    let sent_images = prompt_images::attach(
+        state,
+        &mut prompt,
+        &attached_context,
+        &project_id,
+        &chat_id,
+        &session_id,
+    )
+    .await
+    .map_err(prompt_not_dispatched)?;
     let files = state
         .acp
         .file_stages
@@ -224,7 +220,7 @@ pub(crate) async fn send_acp_turn_inner(
         }));
     }
     if !files.0.is_empty()
-        && prompt.retained_bytes() + files.retained_bytes()
+        && prompt.retained_bytes() - prompt.images.retained_bytes() + files.retained_bytes()
             > crate::acp::attached_context::files::DISPATCH_BYTES
     {
         super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
@@ -283,6 +279,7 @@ pub(crate) async fn send_acp_turn_inner(
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .consume(project_id.as_str(), chat_id.as_str(), &files);
+        prompt_images::retire(state, &project_id, &chat_id, &sent_images);
     }
     if dispatch.is_err() {
         super::turn_workspace::forget_unprepared(state, &tracked_session, &tracked_intent);

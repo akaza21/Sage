@@ -147,6 +147,8 @@ export interface AcpCapabilitySet {
   prompt: boolean;
   /** Absent in older sessions; native admission treats absence as unsupported. */
   promptResources?: boolean;
+  /** Standard ACP `promptCapabilities.image`; absent means unsupported. */
+  promptImages?: boolean;
   cancel: boolean;
   nativeSessionFork: boolean;
   activeTurnSteer: boolean;

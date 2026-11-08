@@ -102,6 +102,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     queueAvailable,
     composerHotkeyEnabled,
     disabledReason,
+    imageInput,
     submit,
     closeSession,
     endSession,
@@ -311,6 +312,8 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         attachedContext={attachedContext}
         imagePreviews={imagePreviews}
         imageUploading={imageUploading}
+        imageInputAvailable={imageInput.available}
+        imageInputDisabledReason={imageInput.reason}
         onAddImages={addImages}
         enabled={composerEnabled}
         sendBlocked={sendBlocked}

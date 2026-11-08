@@ -240,6 +240,7 @@ async fn child_ipc_journey(
             multi_root_extension_schema_id: None,
             model_count: 1,
             prompt_resources: false,
+            prompt_images: false,
             config_count: 0,
         };
         complete_activation(

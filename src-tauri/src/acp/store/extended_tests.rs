@@ -100,6 +100,7 @@ pub(super) fn capabilities() -> String {
         multi_root_extension_schema_id: None,
         model_count: 1,
         prompt_resources: false,
+        prompt_images: false,
         config_count: 0,
     })
     .unwrap()

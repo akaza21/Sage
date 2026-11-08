@@ -57,10 +57,9 @@ impl OpenCodeRuntime {
             .accept_initialize(&value)
             .map_err(handshake_error)?;
         let mut capabilities = capabilities()?;
-        capabilities.prompt_resources = value
-            .pointer("/result/agentCapabilities/promptCapabilities/embeddedContext")
-            .and_then(Value::as_bool)
-            == Some(true);
+        capabilities.prompt_resources =
+            crate::acp::intent::offers_prompt_capability(&value, "embeddedContext");
+        capabilities.prompt_images = crate::acp::intent::offers_prompt_capability(&value, "image");
         self.capabilities = Some(capabilities.clone());
         AdapterBatch::new(vec![SharedEvent::Initialized { capabilities }], Vec::new())
     }
@@ -348,6 +347,7 @@ fn capabilities() -> Result<CapabilitySnapshotV1, AdapterRuntimeError> {
         multi_root_extension_schema_id: None,
         model_count: 0,
         prompt_resources: false,
+        prompt_images: false,
         config_count: 0,
     })
 }

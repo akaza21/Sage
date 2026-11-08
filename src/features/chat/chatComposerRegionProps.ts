@@ -68,6 +68,8 @@ export interface ChatComposerRegionProps {
   onTextChange: (text: string) => void;
   onRemoveContext: (context: AttachedContext) => void;
   imageInputAvailable?: boolean;
+  /** Why image input is unavailable, shown when an image is offered anyway. */
+  imageInputDisabledReason?: string | null;
   onAddImages?: (files: File[]) => void;
   onCancelTurn: (() => void) | null;
   onDeleteQueuedPrompt?: (id: string) => void;

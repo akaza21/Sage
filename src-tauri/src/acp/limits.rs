@@ -4,7 +4,9 @@ pub(crate) use preview::PREVIEW_LIMITS;
 mod browser;
 pub use browser::{BROWSER_LIMITS, BrowserLimits};
 mod fixture;
+mod images;
 pub use fixture::{FIXTURE_LIMITS, FixtureLimits};
+pub use images::*;
 
 pub(crate) const RETAINED_TOOL_OUTPUT_LINES: usize = 200;
 /// Raw UTF-8 bytes admitted per immutable file-diff side, before JSON escaping.

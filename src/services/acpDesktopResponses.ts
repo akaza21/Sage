@@ -65,6 +65,8 @@ function safeCapabilities(
     loadSession: value.loadSession,
     closeSession: value.closeSession,
     prompt: value.prompt,
+    ...(value.promptResources === true ? { promptResources: true } : {}),
+    ...(value.promptImages === true ? { promptImages: true } : {}),
     cancel: value.cancel,
     nativeSessionFork: value.nativeSessionFork,
     activeTurnSteer: value.activeTurnSteer,

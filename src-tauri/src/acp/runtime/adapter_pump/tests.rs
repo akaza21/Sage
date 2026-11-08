@@ -2536,3 +2536,40 @@ mod codex_user_input_journey_tests;
 
 #[path = "session_event_tests.rs"]
 mod session_event_tests;
+
+#[test]
+fn a_prompt_frame_takes_its_reserve_while_the_data_lane_is_full() {
+    let (mut pump, shared) = pump_with_queue(Vec::new(), super::egress::queue().unwrap());
+    let frame = |bytes: usize, prompt: bool| {
+        let mut payload = b"{\"x\":\"".to_vec();
+        payload.resize(bytes - 2, b'a');
+        payload.extend_from_slice(b"\"}");
+        let frame = if prompt {
+            OutboundFrame::new_prompt(payload)
+        } else {
+            OutboundFrame::new(payload)
+        };
+        AdapterEgress::new(frame.unwrap(), EgressToken::request(1))
+    };
+    let largest = LIMITS.wire.frame_bytes as usize;
+    let mut queued = 0;
+    while pump.enqueue(frame(largest, false)).is_ok() {
+        queued += 1;
+    }
+    assert!(queued >= 1);
+    assert!(matches!(
+        pump.enqueue(frame(largest, false)),
+        Err(AdapterPumpError::Backpressure)
+    ));
+
+    let prompt = crate::acp::limits::PROMPT_FRAME_BYTES;
+    assert_eq!(
+        pump.enqueue(frame(prompt, true)).unwrap(),
+        QueueDisposition::Queued
+    );
+    assert!(!pump.teardown_required());
+    assert_eq!(
+        shared.0.lock().unwrap().resolutions.last(),
+        Some(&EgressResolution::Queued)
+    );
+}

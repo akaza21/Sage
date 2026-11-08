@@ -236,6 +236,7 @@
         "src-tauri/src/acp/lifecycle.rs",
         "src-tauri/src/acp/limits.rs",
         "src-tauri/src/acp/limits/fixture.rs",
+        "src-tauri/src/acp/limits/images.rs",
         "src-tauri/src/acp/limits/preview.rs",
         "src-tauri/src/acp/package_manifest.rs",
         "src-tauri/src/acp/projection.rs",
