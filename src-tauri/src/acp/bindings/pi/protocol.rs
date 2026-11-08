@@ -6,19 +6,38 @@ pub(super) fn is_allow_option(option: &str) -> bool {
 pub enum Operation {
     Initialize,
     GetModels,
-    SetModel { provider: String, id: String },
+    SetModel {
+        provider: String,
+        id: String,
+    },
     GetThinkingLevels,
     GetCommands,
-    SetThinkingLevel { level: String },
+    SetThinkingLevel {
+        level: String,
+    },
     NewSession,
-    Prompt { turn_key: String, message: String },
-    Steer { message: String },
+    Prompt {
+        turn_key: String,
+        message: String,
+    },
+    Compact {
+        turn_key: String,
+        instructions: Option<String>,
+    },
+    Steer {
+        message: String,
+    },
     ClearQueue,
     Abort,
     GetState,
     GetMessages,
-    GetEntries { since: Option<String> },
-    Resume { session_id: String, path: String },
+    GetEntries {
+        since: Option<String>,
+    },
+    Resume {
+        session_id: String,
+        path: String,
+    },
     Load,
     Close,
     MultiRoot,

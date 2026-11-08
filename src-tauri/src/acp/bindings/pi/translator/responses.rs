@@ -55,7 +55,7 @@ impl PiTranslator {
             let mut output = vec![AdapterOutput::Error {
                 code: "command_failed",
             }];
-            if kind == PendingKind::Prompt {
+            if kind.starts_turn() {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
                 if active.lifecycle.acknowledged(false, false)? {
                     output.extend(self.finish_turn(TerminalOutcome::Failed)?);
@@ -130,10 +130,10 @@ impl PiTranslator {
                 self.active = None;
                 Ok(vec![AdapterOutput::SessionOpened(id)])
             }
-            PendingKind::Prompt => {
+            PendingKind::Prompt | PendingKind::Compact => {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-                let handled =
-                    response.data.get("disposition").and_then(Value::as_str) == Some("handled");
+                let handled = kind == PendingKind::Compact
+                    || response.data.get("disposition").and_then(Value::as_str) == Some("handled");
                 if active.lifecycle.acknowledged(true, handled)? {
                     return self.finish_turn(TerminalOutcome::Completed);
                 }

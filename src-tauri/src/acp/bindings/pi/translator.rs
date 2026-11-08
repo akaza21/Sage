@@ -41,6 +41,7 @@ enum PendingKind {
     NewSession,
     Resume,
     Prompt,
+    Compact,
     Steer,
     ClearQueue,
     Abort,
@@ -49,6 +50,11 @@ enum PendingKind {
 }
 
 impl PendingKind {
+    /// Requests that open a Turn the user sees.
+    const fn starts_turn(self) -> bool {
+        matches!(self, Self::Prompt | Self::Compact)
+    }
+
     const fn is_config(self) -> bool {
         matches!(
             self,
@@ -69,6 +75,7 @@ impl PendingKind {
             Self::NewSession => "get_state",
             Self::Resume => "switch_session",
             Self::Prompt => "prompt",
+            Self::Compact => "compact",
             Self::Steer => "steer",
             Self::ClearQueue => "clear_queue",
             Self::Abort => "abort",
@@ -266,6 +273,10 @@ impl PiTranslator {
                 Ok(outbound)
             }
             Operation::Prompt { turn_key, message } => self.begin_prompt(turn_key, message),
+            Operation::Compact {
+                turn_key,
+                instructions,
+            } => self.begin_compact(turn_key, instructions),
             Operation::Steer { message } => self.begin_steer(message),
             Operation::ClearQueue => self.one(PendingKind::ClearQueue, Map::new()),
             Operation::Abort => {

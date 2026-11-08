@@ -122,6 +122,11 @@ impl PiTranslator {
                 } else {
                     AdapterOutput::CompactionCompleted
                 });
+                // Pi's reason, such as nothing to compact yet, when the user asked.
+                if failed && !aborted && turn.lifecycle.is_command() {
+                    let reason = value.get("errorMessage");
+                    output.push(notice(SessionNoticeLevel::Warning, "Pi", reason));
+                }
                 Ok(output)
             }
             _ => self.unknown_event(kind),
