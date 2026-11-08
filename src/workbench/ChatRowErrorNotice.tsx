@@ -1,30 +1,13 @@
 import type { ChatRowAction, ChatRowError } from "../app/chatArchiveSlice";
 import { useWorkbenchStore } from "../app/store";
 import { X } from "../ui/leanIcons";
-
-/** The refused row action for this Chat's row, if any. */
-export function useChatRowError(
-  projectId: string,
-  chatId: string,
-): ChatRowError | null {
-  return useWorkbenchStore((state) =>
-    state.chatRowError?.projectId === projectId &&
-    state.chatRowError.chatId === chatId
-      ? state.chatRowError
-      : null,
-  );
-}
-
-/** The element id that describes a row's controls while it has an error. */
-export function chatRowErrorId(projectId: string, chatId: string) {
-  return `chat-row-error-${projectId}-${chatId}`;
-}
+import { chatRowErrorId } from "./chatRowError";
 
 /**
  * A refused archive, restore or delete, shown under the row it was started
  * from. Dismissing it returns focus to the control for that action.
  */
-export function ChatRowErrorNotice({
+export default function ChatRowErrorNotice({
   error,
   title,
   focusAfterDismiss,

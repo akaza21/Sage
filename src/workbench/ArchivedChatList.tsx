@@ -11,14 +11,11 @@ import {
   RotateCcw,
   Trash2,
 } from "../ui/leanIcons";
-import {
-  ChatRowErrorNotice,
-  chatRowErrorId,
-  useChatRowError,
-} from "./ChatRowErrorNotice";
+import { chatRowErrorId, useChatRowError } from "./chatRowError";
+import ChatRowErrorNotice from "./ChatRowErrorNotice";
 
 /** A Project's archived chats, each restorable or permanently deletable. */
-export function ArchivedChatList({
+export default function ArchivedChatList({
   projectId,
   chats,
 }: {

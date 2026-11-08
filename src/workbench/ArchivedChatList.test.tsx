@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
-import { ArchivedChatList } from "./ArchivedChatList";
+import ArchivedChatList from "./ArchivedChatList";
 
 const initialState = useWorkbenchStore.getState();
 

@@ -32,8 +32,8 @@ import {
   ProjectChatTrailingState,
 } from "./ProjectChatActionMenu";
 import type * as RenameChunk from "./ProjectChatRename";
-import { ArchivedChatList } from "./ArchivedChatList";
-import { ChatRowErrorNotice, chatRowErrorId } from "./ChatRowErrorNotice";
+import { chatRowErrorId } from "./chatRowError";
+import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import {
   isSideChatId,
   useParentChatStatus,
@@ -42,6 +42,11 @@ import {
 const RenamePart = lazyParts<typeof RenameChunk>(
   () => import("./ProjectChatRename"),
 );
+
+// Archived chats are rare; the row and its actions load with the first one.
+const loadArchivedChatList = () => import("./ArchivedChatList");
+// A refused row action is rare; its notice loads when one is shown.
+const loadChatRowErrorNotice = () => import("./ChatRowErrorNotice");
 
 export function ProjectChatNavigation({
   projectId,
@@ -338,12 +343,19 @@ export function ProjectChatNavigation({
               </div>
             </div>
             {archiveError ? (
-              <ChatRowErrorNotice
-                error={archiveError}
-                title={displayTitle}
-                focusAfterDismiss={() =>
-                  renameTriggerRefs.current.get(tab.id) ?? null
-                }
+              <LazyModuleBoundary
+                load={loadChatRowErrorNotice}
+                label="Chat error"
+                fallback={null}
+                render={(Notice) => (
+                  <Notice
+                    error={archiveError}
+                    title={displayTitle}
+                    focusAfterDismiss={() =>
+                      renameTriggerRefs.current.get(tab.id) ?? null
+                    }
+                  />
+                )}
               />
             ) : null}
           </Fragment>
@@ -361,7 +373,14 @@ export function ProjectChatNavigation({
       ) : null}
 
       {!hideArchived && archivedChats.length > 0 ? (
-        <ArchivedChatList projectId={projectId} chats={archivedChats} />
+        <LazyModuleBoundary
+          load={loadArchivedChatList}
+          label="Archived chats"
+          fallback={null}
+          render={(List) => (
+            <List projectId={projectId} chats={archivedChats} />
+          )}
+        />
       ) : null}
     </div>
   );

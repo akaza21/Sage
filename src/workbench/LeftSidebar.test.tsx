@@ -350,7 +350,7 @@ it("pins and moves a foreign-folder chat without switching first", async () => {
   expect(switchProject).not.toHaveBeenCalled();
 });
 
-it("restores a foreign-folder archived chat without switching first", () => {
+it("restores a foreign-folder archived chat without switching first", async () => {
   const restoreChat = vi.fn(async () => true);
   const switchProject = vi.fn(async () => undefined);
   useWorkbenchStore.setState({
@@ -384,7 +384,9 @@ it("restores a foreign-folder archived chat without switching first", () => {
     loadRepositoryInventory: vi.fn(async () => undefined),
   });
   render(<LeftSidebar />);
-  fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /^Archived chats:/ }),
+  );
   fireEvent.click(
     screen.getByRole("button", { name: "Restore chat Research" }),
   );
