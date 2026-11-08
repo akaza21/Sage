@@ -278,26 +278,28 @@ fn hex_nibble(value: u8) -> Result<u8, PhysicalInspectionError> {
     }
 }
 
-/// Files plus distinct directories of the pinned package below its root.
-#[cfg(test)]
-pub(super) fn pinned_package_entry_count() -> usize {
-    let directories = super::manifest::pinned_artifact_paths()
-        .flat_map(|relative| {
-            let mut prefixes = Vec::new();
-            let mut rest = relative;
-            while let Some((parent, _)) = rest.rsplit_once('\\') {
-                prefixes.push(parent);
-                rest = parent;
-            }
-            prefixes
-        })
-        .collect::<std::collections::BTreeSet<_>>();
-    EXPECTED_FILE_COUNT + directories.len()
-}
+#[cfg(all(test, windows))]
+mod tests;
 
 #[cfg(test)]
-mod bound_tests {
+pub(super) mod portable_tests {
     use super::*;
+
+    /// Files plus distinct directories of the pinned package below its root.
+    pub(in crate::acp::bindings::codex) fn pinned_package_entry_count() -> usize {
+        let directories = super::super::manifest::pinned_artifact_paths()
+            .flat_map(|relative| {
+                let mut prefixes = Vec::new();
+                let mut rest = relative;
+                while let Some((parent, _)) = rest.rsplit_once('\\') {
+                    prefixes.push(parent);
+                    rest = parent;
+                }
+                prefixes
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        EXPECTED_FILE_COUNT + directories.len()
+    }
 
     #[test]
     fn the_pinned_package_fits_the_traversal_bounds() {
@@ -308,15 +310,8 @@ mod bound_tests {
             .max();
         assert!(deepest.is_some_and(|depth| depth <= PACKAGE_DEPTH_MAX));
     }
-}
 
-#[cfg(all(test, windows))]
-mod tests;
-
-#[cfg(all(test, not(windows)))]
-mod portable_tests {
-    use super::*;
-
+    #[cfg(not(windows))]
     #[test]
     fn physical_package_inspection_is_unavailable_off_windows() {
         let packet = crate::acp::bindings::codex::parse_packet_metadata(include_bytes!(

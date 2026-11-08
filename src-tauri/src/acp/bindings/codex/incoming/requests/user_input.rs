@@ -18,10 +18,6 @@ use super::super::{
 };
 use super::{CodexAdapter, PendingServerRequest, USER_INPUT_METHOD, project_server_request, reply};
 
-/// Codex's own client resolves a non-blocking request with no answers after
-/// a 60 s hidden grace and a 60 s visible countdown.
-const NON_BLOCKING_AUTO_RESOLUTION_MS: u64 = 120_000;
-
 pub(super) fn request(
     adapter: &mut CodexAdapter,
     object: &Map<String, Value>,
@@ -90,14 +86,19 @@ fn parse(params: &Map<String, Value>) -> Option<UserInputRequest> {
     if questions.is_empty() || repeats_an_id {
         return None;
     }
-    // The pinned server no longer sends `autoResolutionMs`; it marks the
-    // requests Codex's own client lets resolve themselves `isBlocking: false`.
-    let blocking = match params.get("isBlocking") {
-        None | Some(Value::Null) => true,
-        Some(value) => value.as_bool()?,
-    };
+    // `isBlocking` only tells Codex's own client whether the turn waits on
+    // the answer. Sage keeps every request open until the user answers or
+    // Codex resolves it (`serverRequest/resolved`), so it is checked, not used.
+    if !params
+        .get("isBlocking")
+        .is_none_or(|value| value.is_null() || value.is_boolean())
+    {
+        return None;
+    }
+    // `autoResolutionMs` is deprecated in the pinned schema; an explicit
+    // window is still honoured when Codex sends one.
     let auto_resolution_ms = match params.get("autoResolutionMs") {
-        None | Some(Value::Null) => (!blocking).then_some(NON_BLOCKING_AUTO_RESOLUTION_MS),
+        None | Some(Value::Null) => None,
         Some(value) => Some(value.as_u64()?),
     };
     Some(UserInputRequest {

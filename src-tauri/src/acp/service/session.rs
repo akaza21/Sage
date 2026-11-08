@@ -312,7 +312,7 @@ mod version_tests {
                 validate_session_identity(
                     &session_at(earlier),
                     "codex-app-server",
-                    "cbb905885f1fa3ebce550010f3d672d7197b032bd45be3d9c3fa71044db99071",
+                    crate::acp::bindings::codex::CODEX_BINDING_DIGEST_HEX,
                     CODEX_PINNED_VERSION,
                 ),
                 Err(CodexSessionError::EarlierCodexVersion)

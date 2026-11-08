@@ -78,15 +78,18 @@ pub(super) fn response_result(
 }
 
 /// Whether an `account/read` result has the pinned closed shape: the
-/// account, the auth requirement, and the (unused) workspace routing.
+/// account, the auth requirement, and the optional (unused) workspace
+/// routing. Any other key is refused.
 pub(crate) fn valid_account_read(result: &Map<String, Value>) -> bool {
-    result.len() == 3
-        && result.contains_key("account")
+    only_keys(
+        result,
+        &["account", "requiresOpenaiAuth", "workspaceRouting"],
+    ) && result.contains_key("account")
         && result
             .get("requiresOpenaiAuth")
             .is_some_and(Value::is_boolean)
         && match result.get("workspaceRouting") {
-            Some(Value::Null) => true,
+            None | Some(Value::Null) => true,
             Some(Value::Object(routing)) => {
                 routing.len() == 3
                     && [
@@ -106,19 +109,24 @@ pub(crate) fn valid_account_read(result: &Map<String, Value>) -> bool {
         }
 }
 
+fn only_keys(object: &Map<String, Value>, allowed: &[&str]) -> bool {
+    object.keys().all(|key| allowed.contains(&key.as_str()))
+}
+
 pub(crate) fn managed_chatgpt(account: &Map<String, Value>) -> Result<bool, CodexDiscoveryError> {
     if account.get("type").and_then(Value::as_str) != Some("chatgpt") {
         return Ok(false);
     }
-    if account.len() != 4
-        || !["email", "planType", "workspaceName"]
+    if !only_keys(account, &["type", "email", "planType", "workspaceName"])
+        || !["email", "planType"]
             .iter()
             .all(|field| account.contains_key(*field))
     {
         return Err(CodexDiscoveryError::Protocol);
     }
+    // `workspaceName` is optional in the schema: absent reads as null.
     let nullable_text = |field: &str| {
-        matches!(account.get(field), Some(Value::Null))
+        matches!(account.get(field), None | Some(Value::Null))
             || account
                 .get(field)
                 .and_then(Value::as_str)

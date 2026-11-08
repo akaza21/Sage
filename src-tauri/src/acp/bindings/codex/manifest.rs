@@ -12,8 +12,15 @@ const ARTIFACTS_MAX: usize = 64;
 const ARTIFACT_BYTES_MAX: u64 = 1024 * 1024 * 1024;
 const PATH_BYTES_MAX: usize = 32 * 1024;
 /// The pinned Codex release. Every version-bearing identity in the binding is
-/// derived from this and the schema prefix below, so a version bump changes
-/// the pinned facts here and in `pinned_artifacts`, never names elsewhere.
+/// derived from this and the schema prefix below. A version bump still
+/// changes the pinned facts held in:
+/// - this module and `pinned_artifacts` (package metadata, commit, schema,
+///   artifact hashes and Authenticode classes);
+/// - `admission` (`BINDING_DIGEST` and `BINDING_DIGEST_HEX`);
+/// - `reproduction` (`TARBALL_SHA512_HEX`, `NPM_SIGNATURE`, `NPM_KEY_ID` and
+///   `OPENAI_THUMBPRINT`);
+/// - the Codex fixtures under `testdata/acp/codex` and the recorded harness
+///   traces under `tests/fixtures/harness-traces/codex`.
 macro_rules! pinned_codex_version {
     () => {
         "0.167.0"

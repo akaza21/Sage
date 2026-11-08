@@ -54,10 +54,13 @@ fn native_service_gates_admit_only_exact_managed_or_observed_identity() {
     assert!(super::speaks_pinned_protocol(
         super::manifest::OBSERVED_PROTOCOL_IDENTITY
     ));
+    let (major, rest) = PINNED_CODEX_VERSION.split_once('.').unwrap();
+    let minor: u64 = rest.split_once('.').unwrap().0.parse().unwrap();
+    let next_minor = format!("{major}.{}.0", minor + 1);
     for unknown in [
         "codex-app-server-0.146.0-d3992fec".to_owned(),
         "codex-app-server-observed-0.146.0".to_owned(),
-        "codex-app-server-observed-0.168.0".to_owned(),
+        format!("codex-app-server-observed-{next_minor}"),
         format!("codex-app-server-{PINNED_CODEX_VERSION}-unknown"),
     ] {
         assert!(!super::speaks_pinned_protocol(&unknown), "{unknown}");

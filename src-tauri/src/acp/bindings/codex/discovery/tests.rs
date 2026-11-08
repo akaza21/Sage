@@ -114,10 +114,8 @@ fn discovery_requests_follow_the_pinned_handshake_and_page_32_contract() {
     let account = protocol.account_request().unwrap();
     let account_value: Value = serde_json::from_slice(account.payload()).unwrap();
     assert_eq!(account_value["method"], "account/read");
-    // rust-v0.146.0 authority:
-    // app-server-protocol/src/protocol/v2/account.rs:484-491 defines the
-    // default-false flag, and protocol/common.rs:2942-2955 proves that false
-    // serializes as an empty params object rather than `refreshToken:false`.
+    // `refreshToken` defaults to false in the app-server protocol, and a
+    // false flag serializes as an empty params object.
     assert_eq!(account_value["params"], json!({}));
     protocol
         .accept_account(&frame(json!({"id":account.id(),"result":{

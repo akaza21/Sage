@@ -103,14 +103,16 @@ fn a_question_request_projects_bounded_questions_that_only_answers_or_cancel_res
 }
 
 #[test]
-fn a_non_blocking_request_without_a_window_resolves_on_codexs_client_window() {
+fn a_request_keeps_waiting_unless_codex_names_a_window() {
     for (timing, window) in [
-        (
-            json!({"isBlocking": false, "autoResolutionMs": null}),
-            Some(120_000),
-        ),
+        (json!({"isBlocking": false, "autoResolutionMs": null}), None),
+        (json!({"isBlocking": false}), None),
         (json!({"isBlocking": true, "autoResolutionMs": null}), None),
         (json!({}), None),
+        (
+            json!({"isBlocking": false, "autoResolutionMs": 5000}),
+            Some(5000),
+        ),
     ] {
         let mut adapter = live();
         let NormalizedPayload::PermissionRequest {

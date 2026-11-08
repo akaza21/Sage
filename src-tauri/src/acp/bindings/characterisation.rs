@@ -113,8 +113,11 @@ mod tests {
         else {
             panic!("the pinned version has three components");
         };
+        let previous_minor = minor
+            .checked_sub(1)
+            .expect("the pinned version has an earlier minor release");
         let neighbours = [
-            format!("{major}.{}.0", minor - 1),
+            format!("{major}.{previous_minor}.0"),
             format!("{major}.{minor}.{}", patch + 1),
             format!("{major}.{}.0", minor + 1),
             format!("{}.0.0", major + 1),

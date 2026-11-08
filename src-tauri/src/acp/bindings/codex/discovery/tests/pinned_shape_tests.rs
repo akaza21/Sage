@@ -1,4 +1,4 @@
-//! Account and model fields the pinned app-server always serializes.
+//! Account and model fields of the pinned app-server schema.
 
 use super::*;
 
@@ -15,31 +15,39 @@ fn ready() -> CodexDiscoveryProtocol {
 }
 
 #[test]
-fn account_read_admits_workspace_fields_and_rejects_the_previous_shape() {
-    let mut routed = protocol();
-    let account_id = advance_to_account(&mut routed);
-    assert_eq!(
-        routed
-            .accept_account(&frame(json!({"id":account_id,"result":{
-                "account":{
-                    "type":"chatgpt","email":null,"planType":"promax","workspaceName":"Research"
-                },
-                "requiresOpenaiAuth":true,
-                "workspaceRouting":{
-                    "chatgptAccountId":"account-1",
-                    "backendOrigin":"https://chatgpt.com",
-                    "accountRoutingOverride":"us"
-                }
-            }})))
-            .unwrap(),
-        CodexAccountSnapshot::ManagedChatgpt
-    );
+fn account_read_admits_workspace_fields_present_or_absent() {
+    let routed = json!({
+        "account":{"type":"chatgpt","email":null,"planType":"promax","workspaceName":"Research"},
+        "requiresOpenaiAuth":true,
+        "workspaceRouting":{
+            "chatgptAccountId":"account-1",
+            "backendOrigin":"https://chatgpt.com",
+            "accountRoutingOverride":"us"
+        }
+    });
+    let absent = json!({
+        "account":{"type":"chatgpt","email":null,"planType":"plus"},
+        "requiresOpenaiAuth":true
+    });
+    for result in [routed, absent] {
+        let mut protocol = protocol();
+        let account_id = advance_to_account(&mut protocol);
+        assert_eq!(
+            protocol
+                .accept_account(&frame(json!({"id":account_id,"result":result})))
+                .unwrap(),
+            CodexAccountSnapshot::ManagedChatgpt
+        );
+    }
+}
 
-    for previous in [
-        json!({"account":null,"requiresOpenaiAuth":true}),
+#[test]
+fn account_read_still_refuses_unknown_keys() {
+    for result in [
+        json!({"account":null,"requiresOpenaiAuth":true,"workspace":null}),
         json!({
-            "account":{"type":"chatgpt","email":null,"planType":"plus"},
-            "requiresOpenaiAuth":true,"workspaceRouting":null
+            "account":{"type":"chatgpt","email":null,"planType":"plus","workspace":null},
+            "requiresOpenaiAuth":true
         }),
         json!({"account":null,"requiresOpenaiAuth":true,"workspaceRouting":{"extra":true}}),
     ] {
@@ -47,7 +55,7 @@ fn account_read_admits_workspace_fields_and_rejects_the_previous_shape() {
         let account_id = advance_to_account(&mut candidate);
         assert_eq!(
             candidate
-                .accept_account(&frame(json!({"id":account_id,"result":previous})))
+                .accept_account(&frame(json!({"id":account_id,"result":result})))
                 .unwrap_err(),
             CodexDiscoveryError::Protocol
         );

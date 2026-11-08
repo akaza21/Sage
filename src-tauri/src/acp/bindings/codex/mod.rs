@@ -29,6 +29,8 @@ mod turn_policy;
 // `_sage/browse`.
 const CODEX_BROWSE_TOOL_NAME: &str = "sage_browse";
 
+#[cfg(test)]
+pub(crate) use admission::BINDING_DIGEST_HEX as CODEX_BINDING_DIGEST_HEX;
 pub(crate) use admission::BINDING_ID as CODEX_BINDING_ID;
 pub(crate) use admission::{
     AdmittedCodexBinding, CodexAdmissionUnavailable, CodexBindingRegistration,

@@ -384,7 +384,8 @@ mod tests {
 
     #[test]
     fn the_pinned_package_and_its_root_fit_the_node_bound() {
-        let nodes = 1 + crate::acp::bindings::codex::physical::pinned_package_entry_count();
+        let nodes =
+            1 + crate::acp::bindings::codex::physical::portable_tests::pinned_package_entry_count();
         assert!(nodes <= MANAGED_NODE_MAX, "{nodes} managed nodes");
     }
 

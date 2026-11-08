@@ -300,3 +300,47 @@ pub(in crate::acp::bindings::codex) const AUTHENTICODE_SIGNED_FILES: [&str; 30] 
 /// Files the pinned release ships without an Authenticode signature.
 pub(in crate::acp::bindings::codex) const AUTHENTICODE_UNSIGNED_FILES: [&str; 1] =
     [r"vendor\x86_64-pc-windows-msvc\codex-path\rg.exe"];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The one executable the release bundles with Microsoft's signature, as
+    /// documented on [`AUTHENTICODE_SIGNED_FILES`].
+    const MICROSOFT_SIGNED_FILES: [&str; 1] =
+        [r"vendor\x86_64-pc-windows-msvc\codex-resources\voice\bin\vcruntime140.dll"];
+
+    #[test]
+    fn every_pinned_executable_has_exactly_one_signature_class() {
+        let executables: Vec<&str> = PINNED_ARTIFACTS
+            .iter()
+            .map(|artifact| artifact.relative_path)
+            .filter(|path| {
+                let lower = path.to_ascii_lowercase();
+                lower.ends_with(".exe") || lower.ends_with(".dll")
+            })
+            .collect();
+        for path in &executables {
+            let classes = [
+                AUTHENTICODE_SIGNED_FILES.contains(path),
+                AUTHENTICODE_UNSIGNED_FILES.contains(path),
+                MICROSOFT_SIGNED_FILES.contains(path),
+            ];
+            assert_eq!(
+                classes.iter().filter(|member| **member).count(),
+                1,
+                "{path}"
+            );
+        }
+        for path in AUTHENTICODE_SIGNED_FILES
+            .iter()
+            .chain(&AUTHENTICODE_UNSIGNED_FILES)
+            .chain(&MICROSOFT_SIGNED_FILES)
+        {
+            assert!(
+                executables.contains(path),
+                "{path} is not a pinned executable"
+            );
+        }
+    }
+}

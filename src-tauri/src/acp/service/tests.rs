@@ -279,7 +279,7 @@ fn admitted_codex_session_start_persists_the_exact_curated_identity() {
         assert_eq!(identity.0, "codex-app-server");
         assert_eq!(
             identity.1,
-            "cbb905885f1fa3ebce550010f3d672d7197b032bd45be3d9c3fa71044db99071"
+            crate::acp::bindings::codex::CODEX_BINDING_DIGEST_HEX
         );
         assert_eq!(
             identity.2.as_deref(),
