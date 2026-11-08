@@ -1,7 +1,7 @@
 /**
- * Editing features of an editable File (EP-03), loaded on demand for editable
+ * Editing features of an editable File, loaded on demand for editable
  * Files only, so read-only views and Agent chat code blocks never load them.
- * Each has its own flag so large mode (EP-17) can turn costly ones off. Esc
+ * Each has its own flag so large mode can turn costly ones off. Esc
  * then Tab still leaves the editor: CodeMirror frees Tab for 2 s after Escape.
  *
  * Like VS Code, typing neither asks the syntax tree nor scans the visible
@@ -336,8 +336,8 @@ const occurrences: Extension = [
 
 /**
  * CodeMirror's drawn cursors cost about 3 ms a keystroke in a 1 MiB File, so
- * a single cursor stays the browser's own caret, as it was before EP-03, and
- * the drawn layer joins only while there are several cursors to show.
+ * a single cursor stays the browser's own caret and the drawn layer joins
+ * only while there are several cursors to show.
  */
 const cursorDrawing = new Compartment();
 const DRAWN_CURSORS = drawSelection();

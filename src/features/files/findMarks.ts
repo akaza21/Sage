@@ -1,7 +1,7 @@
 import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 
-// Find and Replace marks (EP-04). The field maps them through edits, so they
+// Find and Replace marks. The field maps them through edits, so they
 // stay on their text while a new search waits for a typing pause.
 const setMarks = StateEffect.define<DecorationSet>();
 const marks = StateField.define<DecorationSet>({

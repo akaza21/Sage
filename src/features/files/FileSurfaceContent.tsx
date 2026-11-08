@@ -58,7 +58,7 @@ interface FileSurfaceFindView {
   onClose: () => void;
 }
 
-// The Find bar, its matching and its worker load apart from the editor (EP-04).
+// The Find bar, its matching and its worker load apart from the editor.
 const loadFindBar = () =>
   import("./FileFindBar").then((module) => ({ default: module.FileFindBar }));
 

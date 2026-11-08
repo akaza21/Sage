@@ -237,7 +237,7 @@
 }
 
 /*
- * A File tab's Git mark (EP-13) has a fixed width, and the tab holds that room
+ * A File tab's Git mark has a fixed width, and the tab holds that room
  * while the decoration chunk loads, so the mark never shifts the strip.
  */
 .tab__activate .git-badge,

@@ -2,7 +2,7 @@ import { diffLines } from "./lineDiff";
 
 /**
  * The gutter worker's state machine, apart from `self` so tests drive it
- * directly (EP-14). Each editor sends its document once, then only the edits
+ * directly. Each editor sends its document once, then only the edits
  * made since its last message, so the main thread never builds the text again.
  */
 export type GutterRequest =

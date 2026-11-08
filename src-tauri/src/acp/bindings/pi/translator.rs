@@ -10,6 +10,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use serde_json::{Map, Value};
 
+use crate::acp::intent::PermissionOptionKind;
+
 use self::fingerprint::response_fingerprint;
 use self::initialization::InitializationIntent;
 use self::lifecycle::{TurnLifecycle, TurnPhase};
@@ -17,7 +19,10 @@ use self::payload::{parse_entries, parse_messages, parse_models, parse_state};
 use super::{
     decode::{EXTERNAL_ID_BYTES, Record, Response, decode_record, validate_opaque_text},
     manifest::LaunchAdmission,
-    protocol::{AdapterError, AdapterOutput, Operation, Outbound, TerminalOutcome, ToolOutcome},
+    protocol::{
+        AdapterError, AdapterOutput, Operation, Outbound, TerminalOutcome, ToolOutcome,
+        is_allow_option,
+    },
 };
 
 const PENDING_COMMANDS: usize = 16;
@@ -101,6 +106,7 @@ struct CompletedResponse {
 
 #[derive(Debug)]
 pub struct PiTranslator {
+    pub(crate) bridge_tools: bool,
     epoch: u64,
     next_command: u64,
     launch_admission: Option<LaunchAdmission>,
@@ -121,11 +127,37 @@ pub(crate) struct PendingUiRequest {
     pub options: Vec<String>,
 }
 
+impl PendingUiRequest {
+    /// The answers Sage can deliver for this dialog: a single approval where
+    /// the dialog has an allow answer, and always a denial. Pi has no standing
+    /// approval, so "always allow" is never offered.
+    pub(crate) fn offered_option_kinds(&self) -> Vec<PermissionOptionKind> {
+        use PermissionOptionKind::{AllowOnce, RejectOnce};
+        let allows = match self.method.as_str() {
+            BRIDGE_WRITE_METHOD | "confirm" => true,
+            "select" => self.options.iter().any(|option| is_allow_option(option)),
+            _ => false,
+        };
+        if allows {
+            vec![AllowOnce, RejectOnce]
+        } else {
+            vec![RejectOnce]
+        }
+    }
+}
+
+/// The pending dialog of a bridged workspace edit awaiting the user's decision.
+pub(crate) const BRIDGE_WRITE_METHOD: &str = "sage-write";
+
 impl PiTranslator {
     pub(crate) fn permission_waiting_for(&self, id: &str) -> bool {
         self.pending_ui
             .as_ref()
             .is_some_and(|request| request.id == id)
+    }
+
+    pub(crate) fn pending_ui(&self) -> Option<&PendingUiRequest> {
+        self.pending_ui.as_ref()
     }
 
     pub(crate) fn take_pending_ui(&mut self) -> Option<PendingUiRequest> {
@@ -158,6 +190,7 @@ impl PiTranslator {
 
     fn new(epoch: u64, launch_admission: Option<LaunchAdmission>) -> Self {
         Self {
+            bridge_tools: false,
             epoch,
             next_command: 0,
             launch_admission,

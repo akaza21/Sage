@@ -106,7 +106,7 @@ export function TabStrip({
   const decorate = useEditorSettingsStore(
     (store) => store.settings["git.decorations"],
   );
-  // EP-13: the marks load only while on and a repository root is open.
+  // The marks load only while on and a repository root is open.
   const wantGit = useWorkbenchStore(
     (state) =>
       decorate &&

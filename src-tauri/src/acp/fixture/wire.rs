@@ -27,6 +27,8 @@ mod parity_tests;
 #[cfg(test)]
 pub(crate) use child_opened_tests::child_opened_wire_for_test;
 #[cfg(test)]
+pub(crate) use pi_bridge::{pi_bridge_calls_for_test, run_pi_bridge_call_for_test};
+#[cfg(test)]
 pub(crate) use user_input::codex_user_input_wire_for_test;
 
 #[path = "wire_acp.rs"]
@@ -35,6 +37,8 @@ mod acp;
 mod codex;
 #[path = "wire_pi.rs"]
 mod pi;
+#[path = "wire_pi_bridge.rs"]
+mod pi_bridge;
 #[path = "wire_codex_user_input.rs"]
 mod user_input;
 
@@ -138,6 +142,9 @@ fn await_client_kind(
     state: &mut WireState,
 ) -> Result<(), FixtureError> {
     let kind = field_str(step, "kind")?;
+    if kind == "piBridgeTool" {
+        return pi_bridge::tool(step, input, output, state);
+    }
     if kind.starts_with("pi") {
         return pi::await_request(input, output, state, kind);
     }
@@ -210,45 +217,8 @@ fn emit_known(
     if shape.starts_with("acp") {
         return acp::emit(step, state, output);
     }
-    if shape == "codexNative" {
-        let mut params = acp::substitute(step["params"].clone(), state, 0)?;
-        params["threadId"] = serde_json::json!(acp::SESSION);
-        params["turnId"] = serde_json::json!(
-            state
-                .current_turn_id
-                .as_deref()
-                .ok_or(FixtureError::InvalidArguments)?
-        );
-        return codex::emit_json(
-            output,
-            state,
-            &serde_json::json!({"jsonrpc":"2.0","method":field_str(step,"method")?,"params":params}),
-        );
-    }
-    match shape {
-        "codexError" => return codex::emit_notification("error", state, output),
-        "codexInitializeResult" => return codex::emit_response("initialize", state, output),
-        "codexInitializeResult0146" => {
-            return codex::emit_response("initialize0146", state, output);
-        }
-        "codexThreadResult" => return codex::emit_response("thread", state, output),
-        "codexThreadEffortResult" => return codex::emit_response("effortThread", state, output),
-        "codexModelListResult" => return codex::emit_response("models", state, output),
-        "codexModelListEffortResult" => return codex::emit_response("effortModels", state, output),
-        "codexGoalMethodNotFound" => {
-            return codex::emit_response("goalMethodNotFound", state, output);
-        }
-        "codexTurnResult" => return codex::emit_response("turn", state, output),
-        "codexForkResult" => return codex::emit_response("fork", state, output),
-        "codexStarted" => return codex::emit_notification("started", state, output),
-        "codexAck" => return codex::emit_response("ack", state, output),
-        "codexDelta" => return codex::emit_notification("delta", state, output),
-        "codexItemCompleted" => return codex::emit_notification("itemCompleted", state, output),
-        "codexCompleted" => return codex::emit_notification("completed", state, output),
-        "codexInterrupted" => return codex::emit_notification("interrupted", state, output),
-        "codexUserInputRequest" => return user_input::emit_request(step, state, output),
-        "codexUserInputEcho" => return user_input::emit_echo(state, output),
-        _ => {}
+    if shape.starts_with("codex") {
+        return codex::emit_known(shape, step, state, output);
     }
     match shape {
         "childActivityDepth4"

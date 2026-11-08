@@ -38,6 +38,33 @@ fn launch_is_read_only_by_construction() {
     );
 }
 
+#[test]
+fn bridge_launch_registers_its_tools_without_enabling_builtin_writers() {
+    assert_eq!(
+        pi_launch_args(None),
+        PI_READ_ONLY_ARGS.map(OsString::from).to_vec()
+    );
+    let bridge = PathBuf::from("bridge").join("extension.mjs");
+    let args = pi_launch_args(Some(bridge.clone()));
+    // Pi's --tools allowlist also filters extension tools, which would leave
+    // the bridge's write, edit and bash unregistered.
+    assert!(!args.iter().any(|arg| arg == "--tools"));
+    assert!(args.iter().any(|arg| arg == "--no-builtin-tools"));
+    for disabled in [
+        "--no-extensions",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-session",
+    ] {
+        assert!(args.iter().any(|arg| arg == disabled), "{disabled}");
+    }
+    assert_eq!(
+        &args[args.len() - 2..],
+        [OsString::from("--extension"), bridge.into_os_string()]
+    );
+}
+
 fn discovered(version: &str) -> (PiLaunchDiscovery, PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-pi-admission-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();

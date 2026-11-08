@@ -233,11 +233,11 @@
   --doc-caret: #e1e7df;
   --doc-selection-background: #264f78;
   --doc-selection-foreground: #f4f7fb;
-  /* EP-03 editing marks, after VS Code's dark defaults. */
+  /* Editing marks, after VS Code's dark defaults. */
   --doc-bracket-match-border: #888888;
   --doc-bracket-match-background: rgb(0 100 0 / 0.1);
   --doc-occurrence-background: rgb(173 214 255 / 0.15);
-  /* EP-04 find matches, amber like Search results. */
+  /* Find matches, amber like Search results. */
   --doc-find-match-background: rgb(226 182 107 / 0.32);
   --doc-find-match-border: rgb(226 182 107 / 0.72);
   --doc-fold-placeholder-background: rgb(255 255 255 / 0.08);

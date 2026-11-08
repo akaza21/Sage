@@ -4,8 +4,14 @@ use crate::acp::{
     runtime::permissions::PermissionDecision,
 };
 
-use super::super::PiRuntime;
-use crate::acp::bindings::pi::protocol::is_allow_option;
+use super::super::{DenyIntent, DenyStage, PiRuntime};
+use super::identity::external;
+use crate::acp::bindings::pi::{protocol::is_allow_option, translator::PendingUiRequest};
+use crate::acp::{
+    bindings::adapter::AdapterEvent,
+    contract::{BoundedVec, SafeText},
+    intent::{NormalizedPayload, ToolCategory},
+};
 
 impl PiRuntime {
     pub(in crate::acp::bindings::pi::runtime) fn resolve_later_permission(
@@ -13,6 +19,9 @@ impl PiRuntime {
         request_id: &SageServerRequestId,
         decision: PermissionDecision,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if let Some(reply) = self.bridge_permission(request_id, &decision)? {
+            return Ok(reply);
+        }
         let pending = self
             .deny
             .as_ref()
@@ -78,5 +87,61 @@ impl PiRuntime {
         )
         .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
         .ok_or(AdapterRuntimeError::LaterPermissionMiss)
+    }
+}
+
+impl PiRuntime {
+    pub(super) fn permission_event(
+        &mut self,
+        external_id: String,
+        request_digest: [u8; 32],
+    ) -> Result<AdapterEvent, AdapterRuntimeError> {
+        let id = external("piPermissionId", external_id)?;
+        let offered = self
+            .translator
+            .pending_ui()
+            .filter(|pending| pending.id == id.as_str())
+            .map(PendingUiRequest::offered_option_kinds)
+            .ok_or(AdapterRuntimeError::Operation)?;
+        let turn_id = self.turn_identity()?;
+        let item_id = self.identity(
+            id.clone(),
+            Some(turn_id.external_id.clone()),
+            turn_id.turn_client_message_id.clone(),
+        );
+        self.deny = Some(DenyIntent {
+            request_id: id.clone(),
+            command_id: String::new(),
+            stage: DenyStage::Prepared,
+        });
+        Ok(AdapterEvent::PermissionRequest {
+            turn_id,
+            item_id,
+            external_request_id: id,
+            payload: NormalizedPayload::PermissionRequest {
+                user_input: None,
+                category: if self.bridge.as_ref().is_some_and(|b| b.pending.is_some()) {
+                    ToolCategory::Edit
+                } else {
+                    ToolCategory::Other
+                },
+                summary: SafeText::new(
+                    "permissionSummary",
+                    self.bridge
+                        .as_ref()
+                        .and_then(|b| b.pending.as_ref())
+                        // Prepare admits only paths that fit and show exactly.
+                        .map(|p| format!("Allow Pi to update {}?", p.edit.relative))
+                        .unwrap_or_else(|| "Pi extension gate is awaiting your decision".into()),
+                )
+                .map_err(|_| AdapterRuntimeError::Frame)?,
+                offered_option_kinds: Some(
+                    BoundedVec::new("permissionOptionKinds", offered)
+                        .map_err(|_| AdapterRuntimeError::Frame)?,
+                ),
+                reason: None,
+            },
+            request_payload_digest: request_digest,
+        })
     }
 }

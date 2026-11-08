@@ -1,5 +1,5 @@
 /**
- * The always-loaded part of Git decorations (EP-13): whether marks are wanted,
+ * The always-loaded part of Git decorations: whether marks are wanted,
  * which Files will carry one, and the loader for the lazy chunk that draws
  * them. The tab strip uses it to hold a mark's room while that chunk loads.
  */
@@ -13,7 +13,7 @@ import type {
 } from "../../domain/repository";
 import type { ResourceRef } from "../../domain/workbench";
 
-/** A change state that gets a Git decoration (EP-13). */
+/** A change state that gets a Git decoration. */
 export type MarkedGitState = Exclude<GitFileState, "unchanged" | "unknown">;
 
 /** The state a change is marked with, or null when it shows no mark. */
@@ -56,7 +56,7 @@ export type GitDecorationsUiModule = typeof GitDecorationsUi;
 let loaded: GitDecorationsUiModule | undefined;
 
 /**
- * The Git decoration chunk (EP-13), fetched the first time it is `wanted`:
+ * The Git decoration chunk, fetched the first time it is `wanted`:
  * `git.decorations` on and a repository root to mark. Until then, and while
  * it is not wanted, nothing renders marks.
  */

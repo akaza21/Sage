@@ -14,7 +14,7 @@ interface ExplorerRowProps {
   entry: VisibleWorkspaceEntry;
   selected: boolean;
   expanded: boolean;
-  /** Git status from the EP-12 store (EP-13); shared objects keep the memo. */
+  /** Git status from the repository store; shared objects keep the memo. */
   gitDecoration?: GitDecoration;
   /** The badge from the lazy decoration chunk, present with `gitDecoration`. */
   GitBadge?: typeof GitDecorationBadge;
