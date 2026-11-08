@@ -4,6 +4,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 mod attachment;
 pub(crate) mod commands;
+pub(crate) mod limits;
 mod read;
 mod secrets;
 #[cfg(test)]
@@ -390,42 +391,6 @@ impl FileStages {
             .map(|((project, chat), attached_at)| (project.clone(), chat.clone(), attached_at))
             .collect()
     }
-}
-
-/// Limit messages, worded from the caps they name in the units the WebView
-/// uses (KB of 1,024 bytes, as `formatSize` in composerPaste.ts).
-pub(crate) mod limits {
-    use super::{DISPATCH_BYTES, FILE_BYTES, FILE_COUNT, TOTAL_BYTES};
-    use std::sync::LazyLock;
-    type Message = LazyLock<String>;
-    const fn kb(bytes: usize) -> usize {
-        bytes / 1024
-    }
-    pub(crate) static PASTE_OVER_TOTAL: Message = LazyLock::new(|| {
-        format!(
-            "Pasted text exceeds the {} KB attachment limit.",
-            kb(TOTAL_BYTES)
-        )
-    });
-    pub(crate) static OVER_COUNT: Message =
-        LazyLock::new(|| format!("Attachments exceed the {FILE_COUNT}-file limit."));
-    pub(crate) static OVER_TOTAL: Message =
-        LazyLock::new(|| format!("Attachments exceed {} KB total.", kb(TOTAL_BYTES)));
-    pub(crate) static FILE_OVER: Message =
-        LazyLock::new(|| format!("A file exceeds the {} KB attachment limit.", kb(FILE_BYTES)));
-    pub(crate) static READ_OVER: Message = LazyLock::new(|| {
-        format!(
-            "Attachments exceed {} KB per file or {} KB total.",
-            kb(FILE_BYTES),
-            kb(TOTAL_BYTES)
-        )
-    });
-    pub(crate) static DISPATCH_OVER: Message = LazyLock::new(|| {
-        format!(
-            "Prompt text and file attachments exceed the {} KB native dispatch budget. Shorten the prompt or remove attachments.",
-            kb(DISPATCH_BYTES)
-        )
-    });
 }
 
 fn summary(batch: &Batch) -> StagedFiles {
