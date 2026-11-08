@@ -1,6 +1,7 @@
 //! A new or resumed Claude runtime driven in memory, for service tests that need
 //! the real binding's wire behaviour without a child process.
 use super::*;
+use crate::acp::bindings::runtime::NativeRuntime;
 use crate::acp::{
     scheduler::RuntimeOwner,
     session_config::{ConfigChannel, ConfigIntent},

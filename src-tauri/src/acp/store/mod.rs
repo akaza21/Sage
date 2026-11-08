@@ -15,6 +15,7 @@ mod history;
 mod history_activities;
 mod history_cursor;
 mod history_items;
+mod history_sessions;
 mod item_ingress;
 mod item_usage;
 mod mutations;

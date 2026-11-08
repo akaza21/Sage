@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::bindings::runtime::NativeRuntime;
 fn update(session: &str, list: Value) -> Frame {
     frame(
         json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":session,"update":{"sessionUpdate":"available_commands_update","availableCommands":list}}}),

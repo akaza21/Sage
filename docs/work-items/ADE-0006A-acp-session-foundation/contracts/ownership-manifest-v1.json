@@ -476,6 +476,7 @@
         "src-tauri/src/acp/bindings/registry/claude.rs",
         "src-tauri/src/acp/bindings/registry/claude_sdk.rs",
         "src-tauri/src/acp/bindings/registry/codex.rs",
+        "src-tauri/src/acp/bindings/registry/fixtures.rs",
         "src-tauri/src/acp/bindings/registry/pi.rs",
         "src-tauri/src/acp/bindings/registry/pi_native.rs",
         "src-tauri/src/acp/bindings/registry/record.rs",

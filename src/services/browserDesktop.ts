@@ -111,6 +111,16 @@ function projectArchivedChats(): ArchivedChatSummary[] {
     .map((id) => ({ id, title: chatTitles.get(id)! }));
 }
 
+function committedTransition(): ProjectTransitionResult {
+  snapshot.transitionEpoch += 1;
+  return {
+    committed: true,
+    transitionEpoch: snapshot.transitionEpoch,
+    snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
+    recoveryError: null,
+  };
+}
+
 export const browserDesktop = {
   async getBootstrapSnapshot() {
     return structuredClone({ ...snapshot, messages: activeMessages() });
@@ -188,13 +198,7 @@ export const browserDesktop = {
     durableChatIds.add(chat.id);
     chatTitles.set(chat.id, chat.title);
     messagesByChat.set(chat.id, []);
-    snapshot.transitionEpoch += 1;
-    return {
-      committed: true,
-      transitionEpoch: snapshot.transitionEpoch,
-      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
-      recoveryError: null,
-    };
+    return committedTransition();
   },
   async activateChat(
     currentLayout: ProjectLayoutRequest,
@@ -207,13 +211,7 @@ export const browserDesktop = {
       durableChatIds,
     );
     await this.persistProjectLayout(currentLayout, expectedTransitionEpoch);
-    snapshot.transitionEpoch += 1;
-    return {
-      committed: true,
-      transitionEpoch: snapshot.transitionEpoch,
-      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
-      recoveryError: null,
-    };
+    return committedTransition();
   },
   async renameChat(
     request: RenameChatRequest,
@@ -236,13 +234,7 @@ export const browserDesktop = {
     chatTitles.set(request.chatId, title);
     Object.assign(snapshot, renamedLayout);
     projectActiveChat();
-    snapshot.transitionEpoch += 1;
-    return {
-      committed: true,
-      transitionEpoch: snapshot.transitionEpoch,
-      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
-      recoveryError: null,
-    };
+    return committedTransition();
   },
   async archiveChat(
     request: ChatLifecycleRequest,
@@ -264,13 +256,7 @@ export const browserDesktop = {
     assertExactBrowserChatAttachments(request.currentLayout, snapshot.tabs);
     const next = archiveChatLayout(request.currentLayout, request.chatId);
     await this.persistProjectLayout(next, expectedTransitionEpoch);
-    snapshot.transitionEpoch += 1;
-    return {
-      committed: true,
-      transitionEpoch: snapshot.transitionEpoch,
-      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
-      recoveryError: null,
-    };
+    return committedTransition();
   },
   async restoreChat(
     request: ChatLifecycleRequest,
@@ -303,13 +289,7 @@ export const browserDesktop = {
       snapshot.project?.roots ?? [],
     );
     await this.persistProjectLayout(next, expectedTransitionEpoch);
-    snapshot.transitionEpoch += 1;
-    return {
-      committed: true,
-      transitionEpoch: snapshot.transitionEpoch,
-      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
-      recoveryError: null,
-    };
+    return committedTransition();
   },
   async deleteChat(
     request: ChatDeleteRequest,
@@ -329,13 +309,7 @@ export const browserDesktop = {
     messagesByChat.delete(request.chatId);
     simulatorSessions.delete(request.chatId);
     snapshot.archivedChats = projectArchivedChats();
-    snapshot.transitionEpoch += 1;
-    return {
-      committed: true,
-      transitionEpoch: snapshot.transitionEpoch,
-      snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
-      recoveryError: null,
-    };
+    return committedTransition();
   },
   async ensureLocalProject(expectedTransitionEpoch: number) {
     return ensureBrowserLocalProject({
