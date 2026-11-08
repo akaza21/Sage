@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 mod access;
+mod full_access;
 mod notifications;
 pub use notifications::NotificationPreference;
 mod agent_rail_view;
@@ -29,6 +30,7 @@ pub use browser_site_permissions::{MAX_SITE_ORIGIN_BYTES, MAX_SITE_PERMISSIONS};
 pub(crate) use chat_read_marks::MAX_CHAT_READ_MARKS;
 pub use chat_read_marks::{ChatReadMark, ChatReadMarkWrite, ChatReadMarks};
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
+pub use full_access::FULL_ACCESS_CONFIRMATION_MILLIS;
 pub use new_chat_defaults::NewChatDefaults;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +39,20 @@ pub enum SessionAccessMode {
     ReadOnly,
     Ask,
     WorkspaceWrite,
+    /// File edits are approved without asking; other tools still ask.
+    AcceptEdits,
+    /// The harness plans and does not change files.
+    Plan,
+    /// Every action runs without asking. Granted per chat session after an
+    /// explicit confirmation; never a stored default.
+    FullAccess,
+}
+
+impl SessionAccessMode {
+    /// Whether this mode can be a binding's stored default for new chats.
+    pub(crate) fn is_default_eligible(self) -> bool {
+        self != Self::FullAccess
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,7 +113,8 @@ impl SettingsStore {
                    mode TEXT NOT NULL CHECK (mode IN ('readOnly', 'ask', 'workspaceWrite'))
                  ) STRICT;",
             )?;
-            migration.execute_batch("CREATE TABLE IF NOT EXISTS binding_access_modes (binding_id TEXT PRIMARY KEY CHECK(length(binding_id) BETWEEN 1 AND 128), mode TEXT NOT NULL CHECK(mode IN ('readOnly','ask','workspaceWrite'))) STRICT;")?;
+            access::migrate(&migration)?;
+            full_access::migrate(&migration)?;
             migration.execute_batch(
                 "CREATE TABLE IF NOT EXISTS ui_appearance (
                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),

@@ -4,6 +4,7 @@ import {
   DEFAULT_SESSION_ACCESS_MODE,
   SESSION_ACCESS_MODES,
   admitSessionAccessMode,
+  admitSessionAccessModes,
 } from "./sessionAccessMode";
 
 describe("session access mode", () => {
@@ -12,12 +13,25 @@ describe("session access mode", () => {
     expect(SESSION_ACCESS_MODES[0]).toBe("readOnly");
   });
 
-  it("carries the three modes the backend accepts", () => {
+  it("carries the modes the backend accepts", () => {
     expect([...SESSION_ACCESS_MODES]).toEqual([
       "readOnly",
       "ask",
       "workspaceWrite",
+      "acceptEdits",
+      "plan",
+      "fullAccess",
     ]);
+  });
+
+  it("never admits Full access as a stored default", () => {
+    expect(
+      admitSessionAccessModes({
+        "claude-agent-acp": "fullAccess",
+        other: "acceptEdits",
+        third: "plan",
+      }),
+    ).toEqual({ other: "acceptEdits", third: "plan" });
   });
 
   it("admits each known mode unchanged", () => {

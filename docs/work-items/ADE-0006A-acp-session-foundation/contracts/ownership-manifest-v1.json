@@ -295,6 +295,7 @@
         "src-tauri/src/acp/service.rs",
         "src-tauri/src/acp/session_config/kind.rs",
         "src-tauri/src/acp/session_config/mod.rs",
+        "src-tauri/src/acp/session_config/mode_select.rs",
         "src-tauri/src/acp/session_config/overlay.rs",
         "src-tauri/src/acp/session_config/tests.rs",
         "src-tauri/src/side_chat.rs",

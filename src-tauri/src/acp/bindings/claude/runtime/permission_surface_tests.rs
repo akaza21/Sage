@@ -110,7 +110,12 @@ fn live_reject_only_permission_is_published_without_approval() {
 fn advertised_claude_ask_emits_prompt_then_requires_permission() {
     let capabilities =
         crate::acp::bindings::access_policy::access_modes("claude-agent-acp", "0.76.0", true);
-    assert_eq!(capabilities.len(), 1);
+    // A new Claude chat starts in Ask each time; other modes are opt-in.
+    assert_eq!(
+        capabilities[0].id,
+        crate::settings_store::SessionAccessMode::Ask
+    );
+    assert!(capabilities[0].fallback);
     let mut runtime = ClaudeRuntime::fixture();
     ready(&mut runtime);
     let egress = runtime

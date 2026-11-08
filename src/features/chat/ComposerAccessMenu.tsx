@@ -3,11 +3,18 @@ import type {
   SessionAccessMode,
   SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
-import { SESSION_ACCESS_MODE_SCOPE } from "../../domain/sessionAccessMode";
+import {
+  FULL_ACCESS,
+  FULL_ACCESS_SCOPE,
+  SESSION_ACCESS_MODE_SCOPE,
+} from "../../domain/sessionAccessMode";
 import { Check } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { ACCESS_ICONS } from "./composerAccessIcons";
+
+/** Modes that widen what runs without asking are confirmed first. */
+const CONFIRMED: readonly SessionAccessMode[] = ["workspaceWrite", FULL_ACCESS];
 
 export default function ComposerAccessMenu({
   id,
@@ -15,23 +22,42 @@ export default function ComposerAccessMenu({
   candidates,
   effective,
   onSelect,
+  onPrepareFullAccess,
   onDismiss,
 }: {
   id: string;
   triggerRef: RefObject<HTMLButtonElement | null>;
   candidates: readonly SessionAccessModeCapability[];
   effective: SessionAccessMode | null;
-  onSelect: (mode: SessionAccessMode) => void;
+  /** `confirmToken` accompanies Full access, from `onPrepareFullAccess`. */
+  onSelect: (mode: SessionAccessMode, confirmToken?: string) => void;
+  onPrepareFullAccess: () => Promise<string | null>;
   onDismiss: () => void;
 }) {
   const [confirmation, setConfirmation] =
     useState<SessionAccessModeCapability | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
+  const fullAccess = confirmation?.id === FULL_ACCESS;
   useEffect(() => {
     if (!closing) return;
     onDismiss();
     triggerRef.current?.focus();
   }, [closing, onDismiss, triggerRef]);
+  // The native side issues a single-use token when this dialog opens; only
+  // the confirm below spends it, so a stale or replayed grant fails.
+  useEffect(() => {
+    if (!fullAccess) return;
+    let live = true;
+    void onPrepareFullAccess().then((issued) => {
+      if (!live) return;
+      if (issued) setToken(issued);
+      else setClosing(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [fullAccess, onPrepareFullAccess]);
   const close = () => setClosing(true);
   if (closing) return null;
   if (confirmation && !candidates.includes(confirmation)) setConfirmation(null);
@@ -42,9 +68,19 @@ export default function ComposerAccessMenu({
         labelledBy={id + "-confirm"}
         onDismiss={close}
       >
-        <h2 id={id + "-confirm"}>Switch to {confirmation.label}?</h2>
+        <h2 id={id + "-confirm"}>
+          {fullAccess
+            ? "Allow full access in this chat?"
+            : `Switch to ${confirmation.label}?`}
+        </h2>
         <p>{confirmation.description}</p>
-        <p>{SESSION_ACCESS_MODE_SCOPE}</p>
+        {fullAccess ? (
+          <p className="composer-access-menu__warning">
+            The agent can change or delete files and run commands without
+            asking. Other chats and new chats keep their own access.
+          </p>
+        ) : null}
+        <p>{fullAccess ? FULL_ACCESS_SCOPE : SESSION_ACCESS_MODE_SCOPE}</p>
         <div className="dirty-dialog__actions">
           <button
             autoFocus
@@ -57,12 +93,13 @@ export default function ComposerAccessMenu({
           <button
             className="button--compact"
             type="button"
+            disabled={fullAccess && token === null}
             onClick={() => {
-              onSelect(confirmation.id);
+              onSelect(confirmation.id, fullAccess ? (token ?? "") : undefined);
               close();
             }}
           >
-            Switch access
+            {fullAccess ? "Allow full access" : "Switch access"}
           </button>
         </div>
       </ModalDialog>
@@ -97,7 +134,7 @@ export default function ComposerAccessMenu({
             key={candidate.id}
             type="button"
             role="menuitemradio"
-            className="menu-item composer-access-menu__option"
+            className={`menu-item composer-access-menu__option${candidate.id === FULL_ACCESS ? " composer-access-menu__option--full" : ""}`}
             aria-label={candidate.label}
             aria-checked={candidate.id === effective}
             data-option-id={candidate.id}
@@ -105,7 +142,7 @@ export default function ComposerAccessMenu({
             tabIndex={-1}
             onClick={() => {
               if (
-                candidate.id === "workspaceWrite" &&
+                CONFIRMED.includes(candidate.id) &&
                 effective !== candidate.id
               )
                 setConfirmation(candidate);

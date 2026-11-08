@@ -42,6 +42,13 @@ impl AcpService {
         }
         result.map(|_| ())
     }
+    /// The session config the live runtime last reported for `owner`.
+    pub(crate) fn live_session_config(
+        &self,
+        owner: &RuntimeOwner,
+    ) -> Option<crate::acp::session_config::SessionConfigOverlay> {
+        self.lane_for(owner)?.runtime.config.live_snapshot(owner)
+    }
     pub(super) fn compose_session_config(&self, page: &mut AcpChatPage) -> Result<(), StoreError> {
         page.session_config = None;
         let mut sessions = page.sessions.as_slice().to_vec();

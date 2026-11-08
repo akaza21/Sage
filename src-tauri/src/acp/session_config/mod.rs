@@ -8,8 +8,10 @@ use super::contract::{BoundedVec, RequiredText, SafeText};
 use super::limits::LIMITS;
 
 mod kind;
+mod mode_select;
 mod overlay;
 pub(crate) use kind::ConfigKind;
+pub(crate) use mode_select::ModeSelection;
 pub(crate) use overlay::{
     ConfigChannel, ConfigIntent, ConfigMutation, ConfigRevision, NoticeSink, SessionConfigOverlay,
 };

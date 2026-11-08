@@ -82,7 +82,12 @@ impl OpenCodeRuntime {
                 return false;
             }
             match access_mode {
-                Some(crate::settings_store::SessionAccessMode::ReadOnly) => true,
+                Some(
+                    crate::settings_store::SessionAccessMode::ReadOnly
+                    | crate::settings_store::SessionAccessMode::AcceptEdits
+                    | crate::settings_store::SessionAccessMode::Plan
+                    | crate::settings_store::SessionAccessMode::FullAccess,
+                ) => true,
                 Some(crate::settings_store::SessionAccessMode::WorkspaceWrite)
                 | Some(crate::settings_store::SessionAccessMode::Ask) => {
                     !self.permissions.values().any(|record| {

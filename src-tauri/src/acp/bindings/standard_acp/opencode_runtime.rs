@@ -279,6 +279,12 @@ impl OpenCodeRuntime {
             crate::settings_store::SessionAccessMode::ReadOnly
             | crate::settings_store::SessionAccessMode::WorkspaceWrite
             | crate::settings_store::SessionAccessMode::Ask => "build",
+            // OpenCode's access policy never admits these.
+            crate::settings_store::SessionAccessMode::AcceptEdits
+            | crate::settings_store::SessionAccessMode::Plan
+            | crate::settings_store::SessionAccessMode::FullAccess => {
+                return Err(AdapterRuntimeError::UnsupportedCommand);
+            }
         };
         if !self
             .available_modes

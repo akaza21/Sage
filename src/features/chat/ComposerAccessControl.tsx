@@ -1,16 +1,26 @@
 import { lazy, Suspense, useId, useRef } from "react";
 import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
+import type { AcpSessionConfig } from "../../domain/acpSessionConfig";
 import {
+  FULL_ACCESS,
+  FULL_ACCESS_SCOPE,
   SESSION_ACCESS_MODE_SCOPE,
   type SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
 import { ACCESS_ICONS } from "./composerAccessIcons";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
+import { sessionAccessTarget } from "./sessionAccessTarget";
 const AccessMenu = lazy(() => import("./ComposerAccessMenu"));
+
+const LABEL_TONE: Partial<Record<string, string>> = {
+  workspaceWrite: " composer__access-label--write",
+  [FULL_ACCESS]: " composer__access-label--full",
+};
 
 export function ComposerAccessControl({
   bindingId,
   capabilities,
+  sessionConfig,
   disabled,
   open,
   onToggle,
@@ -18,24 +28,36 @@ export function ComposerAccessControl({
 }: {
   bindingId: string;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
+  /** The live session Full access and session-mode availability apply to. */
+  sessionConfig?: AcpSessionConfig | null;
   disabled: boolean;
   open: boolean;
   onToggle: () => void;
   onDismiss: () => void;
 }) {
   const id = useId();
+  const session = sessionAccessTarget(sessionConfig);
   const trigger = useRef<HTMLButtonElement>(null);
-  const { ready, error, setMode, candidates, effective } =
-    useSessionAccessSelection(bindingId, capabilities);
+  const {
+    ready,
+    error,
+    fullAccessError,
+    choose,
+    candidates,
+    effective,
+    prepareFullAccess,
+    grantFullAccess,
+  } = useSessionAccessSelection(bindingId, capabilities, session);
   const selected = candidates.find((candidate) => candidate.id === effective);
   const Icon = ACCESS_ICONS[effective ?? "workspaceWrite"];
   if (candidates.length === 0) return null;
+  const problem = error ?? fullAccessError;
   return (
     <>
       <button
         ref={trigger}
         type="button"
-        className={`composer__control-trigger composer__access-label${effective === "workspaceWrite" ? " composer__access-label--write" : ""}`}
+        className={`composer__control-trigger composer__access-label${LABEL_TONE[effective ?? ""] ?? ""}`}
         aria-label="Access options"
         aria-describedby={`${id}-scope`}
         aria-haspopup="menu"
@@ -57,25 +79,33 @@ export function ComposerAccessControl({
           }
         >
           <AccessMenu
-            key={bindingId}
+            key={bindingId + ":" + (session?.sessionId ?? "")}
             id={id}
             triggerRef={trigger}
             candidates={candidates}
             effective={effective}
             onDismiss={onDismiss}
-            onSelect={(mode) => setMode(bindingId, mode)}
+            onPrepareFullAccess={prepareFullAccess}
+            onSelect={(mode, confirmToken) => {
+              if (mode === FULL_ACCESS) {
+                if (confirmToken) void grantFullAccess(confirmToken);
+              } else void choose(mode);
+            }}
           />
         </Suspense>
       ) : null}
       <span id={`${id}-scope`} className="sr-only">
-        {selected?.description} {SESSION_ACCESS_MODE_SCOPE}
+        {selected?.description}{" "}
+        {effective === FULL_ACCESS
+          ? FULL_ACCESS_SCOPE
+          : SESSION_ACCESS_MODE_SCOPE}
       </span>
-      {error ? (
+      {problem ? (
         <span
           className="select-control__reason composer-access-error"
           role="alert"
         >
-          {error}
+          {problem}
         </span>
       ) : null}
     </>

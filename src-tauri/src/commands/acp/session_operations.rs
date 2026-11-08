@@ -195,21 +195,9 @@ pub(crate) async fn send_acp_turn_inner(
             }));
         }
     }
-    let requested_access = state.settings.session_access_modes().map_err(|_| {
-        prompt_not_dispatched(AcpIpcError::RecoveryRequired {
-            message: safe_message("Session access mode could not be loaded; reload Sage."),
-        })
-    })?;
-    let access_mode = crate::acp::bindings::access_policy::effective_for_binding(
-        state.acp.binding_registry(),
-        binding_id.as_str(),
-        requested_access.get(binding_id.as_str()).copied(),
-    )
-    .ok_or_else(|| {
-        prompt_not_dispatched(AcpIpcError::InvalidRequest {
-            message: safe_message("Choose a supported access mode before sending."),
-        })
-    })?;
+    let access_mode =
+        super::session_access::turn_access_mode(state, binding_id.as_str(), &session_id)
+            .map_err(prompt_not_dispatched)?;
     super::turn_workspace::mark_before_prompt(state, transition, &client_intent_id, &session_id)
         .await;
     // Capture can outlive a project switch. Reacquire authority before dispatch.
@@ -242,6 +230,20 @@ pub(crate) async fn send_acp_turn_inner(
                 "Prompt text and file attachments exceed the 120 KiB native dispatch budget. Shorten the prompt or remove attachments.",
             ),
         }));
+    }
+    if let Err(error) = super::session_access::select_session_mode(
+        state,
+        RuntimeOwner {
+            project_id: project_id.clone(),
+            chat_id: chat_id.clone(),
+            session_id: session_id.clone(),
+            runtime_epoch,
+        },
+        binding_id.as_str(),
+        access_mode,
+    ) {
+        super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
+        return Err(prompt_not_dispatched(error));
     }
     prompt.resources = files.clone();
     let tracked_session = session_id.clone();

@@ -124,7 +124,7 @@ pub(crate) async fn configure(
     mutation_response(state, request.project_id, request.chat_id)
 }
 
-fn map_config_error(error: crate::acp::runtime::HostError) -> AcpIpcError {
+pub(super) fn map_config_error(error: crate::acp::runtime::HostError) -> AcpIpcError {
     match error {
         crate::acp::runtime::HostError::Intent => AcpIpcError::Conflict {
             resource: crate::acp::intent::AcpConflictResource::ConfigRevision,

@@ -38,6 +38,26 @@ function restatesModes(
   return choices.every((choice) => modeIds.has(choice.value));
 }
 
+/**
+ * The session's config without its modes, when the access control owns the
+ * harness's session modes (Claude Code's permission modes). The generic mode
+ * controls then step aside, so a mode is never chosen without the access
+ * menu's rules and confirmations.
+ */
+export function withoutGovernedModes(
+  config: AcpSessionConfig | null,
+  governed: boolean,
+): AcpSessionConfig | null {
+  if (!config || !governed) return config;
+  return {
+    ...config,
+    modes: null,
+    configOptions: config.configOptions.filter(
+      (option) => (option.category ?? option.id).toLocaleLowerCase() !== "mode",
+    ),
+  };
+}
+
 export function sessionConfigControls(
   config: AcpSessionConfig | null,
   group?: "model" | "other",
