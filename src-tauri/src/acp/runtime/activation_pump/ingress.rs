@@ -292,36 +292,6 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
         self.enqueue(value)
     }
 
-    fn accept_models(
-        &mut self,
-        values: Vec<AdapterModel>,
-        next_cursor: Option<PageCursor>,
-    ) -> Result<(), ActivationPumpError> {
-        if !matches!(self.phase, Phase::Initialized | Phase::AwaitingSession) {
-            return self.protocol_error();
-        }
-        let count = self
-            .models
-            .len()
-            .checked_add(values.len())
-            .ok_or(ActivationPumpError::Capacity)?;
-        if count > LIMITS.wire.models_or_config_entries as usize {
-            return self.capacity_error();
-        }
-        let mut candidate = Vec::new();
-        candidate
-            .try_reserve_exact(count)
-            .map_err(|_| ActivationPumpError::Capacity)?;
-        candidate.extend(self.models.iter().cloned());
-        candidate.extend(values);
-        if crate::acp::semantic_ingress::validate_models(&candidate).is_err() {
-            return self.capacity_error();
-        }
-        self.models = candidate;
-        self.next_model_cursor = next_cursor;
-        Ok(())
-    }
-
     fn validate_session_ready(
         &mut self,
         id: crate::acp::bindings::adapter::AdapterIdentity,
@@ -428,12 +398,12 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
         self.egress.data_usage().0 == 0 && self.egress.control_usage().0 == 0
     }
 
-    fn protocol_error<T>(&mut self) -> Result<T, ActivationPumpError> {
+    pub(super) fn protocol_error<T>(&mut self) -> Result<T, ActivationPumpError> {
         self.fail_closed();
         Err(ActivationPumpError::Intent)
     }
 
-    fn capacity_error<T>(&mut self) -> Result<T, ActivationPumpError> {
+    pub(super) fn capacity_error<T>(&mut self) -> Result<T, ActivationPumpError> {
         self.fail_closed();
         Err(ActivationPumpError::Capacity)
     }
