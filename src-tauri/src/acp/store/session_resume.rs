@@ -7,7 +7,9 @@
 use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
-    contract::{ProjectionRevision, SafeText, SageAgentSessionId, SageChatId, SageProjectId},
+    contract::{
+        EntityRevision, ProjectionRevision, SafeText, SageAgentSessionId, SageChatId, SageProjectId,
+    },
     lifecycle::SessionState,
 };
 
@@ -24,7 +26,6 @@ use super::{
     },
     terminal::append_entity_fact,
 };
-use crate::acp::contract::EntityRevision;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResumeEarlierSessionCommand {
@@ -39,7 +40,9 @@ pub(crate) struct ResumeEarlierSessionCommand {
 }
 
 /// Installs a `created` head session on the current binding that resumes
-/// the earlier head's native thread. Retrying returns the installed session.
+/// the earlier head's native thread. Repeating it while that session is
+/// still `created` returns it as a duplicate; once it has started, the
+/// earlier session is no longer the head and a repeat is a conflict.
 pub(crate) fn link_resumed_session(
     connection: &mut rusqlite::Connection,
     command: ResumeEarlierSessionCommand,

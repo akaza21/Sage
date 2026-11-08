@@ -61,7 +61,8 @@ fn only_an_earlier_parked_codex_session_continues_on_the_pinned_release() {
 
 #[test]
 fn a_later_codex_session_is_refused() {
-    let later = session_at(&next_minor());
+    let mut later = session_at(&next_minor());
+    later.binding_digest = crate::acp::bindings::codex::CODEX_BINDING_DIGEST_HEX.into();
     assert!(matches!(
         validate_session_identity(
             &later,

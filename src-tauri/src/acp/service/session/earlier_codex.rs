@@ -48,7 +48,11 @@ impl AcpService {
                     now_millis: command.now_millis,
                 },
             )
-            .map_err(|_| CodexSessionError::Intent)?
+            .map_err(|error| {
+                crate::acp::runtime::SessionCoordinatorError::from(
+                    crate::acp::runtime::JournalError::Store(error),
+                )
+            })?
         };
         let runtime_epoch = next_runtime_epoch(&self.database, &linked.session_id)?;
         Ok(ActivateSessionCommand {

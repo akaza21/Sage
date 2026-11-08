@@ -4,7 +4,7 @@ use super::*;
 use crate::{
     acp::{
         contract::{ClientIntentId, RuntimeEpoch},
-        intent::ExternalId,
+        intent::{ExternalId, NormalizedPayload, ToolCategory},
         store::{
             AbortActivationCommand, ActivateSessionCommand, ActivationAbortCategory,
             CompleteActivationCommand, abort_activation, activate_session, complete_activation,
@@ -278,6 +278,20 @@ fn an_aborted_activation_keeps_the_link() {
 #[test]
 fn history_spans_the_earlier_and_the_linked_session() {
     let fixture = Fixture::new();
+    let body = serde_json::to_string(&NormalizedPayload::PermissionRequest {
+        user_input: None,
+        category: ToolCategory::Execute,
+        summary: SafeText::new("summary", "Run command").unwrap(),
+        offered_option_kinds: None,
+        reason: None,
+    })
+    .unwrap();
+    let digest = super::super::facts::hex_digest(body.as_bytes());
+    let (project, chat) = (fixture.project.as_str(), fixture.chat.as_str());
+    let connection = fixture.database.connection();
+    connection.execute("INSERT INTO items VALUES('item-permission',?1,?2,'session-earlier','turn-earlier',1,0,'primary',NULL,'permissionRequest','completed','declined','external-permission',?3,?4,?5,0,2,2,2)",params![project,chat,body,body.len() as i64,digest]).unwrap();
+    connection.execute("INSERT INTO server_requests VALUES('request-earlier',?1,?2,'session-earlier','turn-earlier',1,?3,'external-permission','permission',1,?4,'resolvedDeclined',?5,0,2,2,2)",params![project,chat,EARLIER_DIGEST,digest,body]).unwrap();
+    drop(connection);
     let linked = fixture.link().unwrap();
     fixture.activate(&linked.session_id, 1);
     fixture
@@ -316,6 +330,16 @@ fn history_spans_the_earlier_and_the_linked_session() {
             ("turn-earlier", "session-earlier")
         ]
     );
+    assert!(matches!(
+        page.turns.as_slice()[1].items.as_slice(),
+        [item] if matches!(
+            item.content,
+            crate::acp::projection::ItemContent::PermissionRequest {
+                state: crate::acp::lifecycle::ServerRequestState::ResolvedDeclined,
+                ..
+            }
+        )
+    ));
 }
 
 #[test]

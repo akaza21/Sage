@@ -650,6 +650,34 @@ describe("ACP action controller", () => {
     );
   });
 
+  it("sends to the head session that activation linked in", async () => {
+    const test = harness(page("5", session("cold", null, "4")));
+    const linked = {
+      ...session("hot", "1", null),
+      id: "session-b" as SageAgentSessionId,
+    };
+    const earlier = {
+      ...session("cold", null, null),
+      state: "closed" as const,
+    };
+    const active = { ...page("6", linked), sessions: [earlier, linked] };
+    vi.mocked(test.commands.activateSession).mockResolvedValue({
+      projection: active,
+    });
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({ projection: active });
+
+    await expect(
+      test.controller.submit("continue", [], bindingId, modelId),
+    ).resolves.toBe("applied");
+
+    expect(test.commands.activateSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "session-a", runtimeEpoch: "4" }),
+    );
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "session-b", runtimeEpoch: "1" }),
+    );
+  });
+
   it("holds the prompt until the pending permission mode has settled", async () => {
     const settling = deferred<boolean>();
     const test = harness(
