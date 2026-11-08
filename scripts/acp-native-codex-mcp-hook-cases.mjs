@@ -5,7 +5,7 @@
 
 const opening = [
   { op: "awaitClient", kind: "codexInitialize" },
-  { op: "emitKnownFrame", shape: "codexInitializeResult0146" },
+  { op: "emitKnownFrame", shape: "codexInitializeResultObserved" },
   { op: "awaitClient", kind: "codexStart" },
   { op: "emitKnownFrame", shape: "codexThreadResult" },
   { op: "awaitClient", kind: "codexGoalGetWithOptionalModelList" },

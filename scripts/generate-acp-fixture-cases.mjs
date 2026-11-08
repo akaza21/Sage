@@ -306,7 +306,7 @@ journeyCases.push(
     id: "codex-config-resume",
     steps: [
       wait("codexInitialize"),
-      emit("codexInitializeResult0146"),
+      emit("codexInitializeResultObserved"),
       wait("codexStartOrResume"),
       // The thread runs the model it was opened or resumed with, at the
       // Medium default effort; naming them makes Sage read the catalogue
