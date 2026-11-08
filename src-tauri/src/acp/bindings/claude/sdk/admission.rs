@@ -70,6 +70,16 @@ impl From<ClaudeSdkAdmissionUnavailable> for HarnessUnavailableReason {
     }
 }
 
+/// The replay case a desktop fixture build launches instead of the CLI.
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+type Fixture = Option<crate::launch_profile::FixtureSelection>;
+#[cfg(not(all(windows, feature = "acp-fixture", debug_assertions)))]
+type Fixture = ();
+
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+#[path = "fixture_admission.rs"]
+mod fixture;
+
 #[derive(Debug)]
 pub(crate) struct AdmittedClaudeSdkBinding {
     executable: PathBuf,
@@ -79,6 +89,11 @@ pub(crate) struct AdmittedClaudeSdkBinding {
     byte_len: u64,
     binding_digest: [u8; 32],
     binding_digest_hex: String,
+    #[cfg_attr(
+        not(all(windows, feature = "acp-fixture", debug_assertions)),
+        expect(dead_code, reason = "only desktop fixture builds launch a replay case")
+    )]
+    fixture: Fixture,
 }
 
 /// The session a launch opens: a fresh one with a Sage-chosen id, or an
@@ -160,6 +175,7 @@ impl AdmittedClaudeSdkBinding {
             byte_len,
             binding_digest_hex: hex(&binding_digest),
             binding_digest,
+            fixture: Fixture::default(),
         })
     }
 
@@ -173,6 +189,7 @@ impl AdmittedClaudeSdkBinding {
             byte_len: 1,
             binding_digest: [7; 32],
             binding_digest_hex: hex(&[7; 32]),
+            fixture: Fixture::default(),
         }
     }
 
@@ -213,6 +230,10 @@ impl AdmittedClaudeSdkBinding {
             AdapterRuntimeError::LaunchUnavailable
         }
         self.revalidate().map_err(unavailable)?;
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if let Some(selection) = &self.fixture {
+            return self.fixture_launch(selection, epoch, root);
+        }
         root.revalidate().map_err(unavailable)?;
         let mut identity = [0_u8; 16];
         identity.copy_from_slice(&self.binding_digest[..16]);
@@ -267,16 +288,22 @@ enum RegistrationState {
 #[derive(Debug)]
 pub(crate) struct ClaudeSdkBindingRegistration {
     state: Mutex<RegistrationState>,
+    /// Fixture registrations never take discovery of the real CLI.
+    fixture_only: bool,
 }
 
 impl ClaudeSdkBindingRegistration {
     pub(crate) fn startup() -> Self {
         Self {
             state: Mutex::new(RegistrationState::Pending),
+            fixture_only: false,
         }
     }
 
     pub(crate) fn apply_discovery(&self, installed: Option<&InstalledHarness>) {
+        if self.fixture_only {
+            return;
+        }
         *self.lock_state() = match installed.map(AdmittedClaudeSdkBinding::admit) {
             None => RegistrationState::Unavailable(ClaudeSdkAdmissionUnavailable::Absent),
             Some(Ok(binding)) => RegistrationState::Admitted(Arc::new(binding)),

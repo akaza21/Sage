@@ -7,6 +7,8 @@
 mod admission;
 mod bridge;
 mod config;
+#[cfg(all(test, feature = "acp-fixture"))]
+mod fixture_tests;
 mod runtime;
 mod tools;
 

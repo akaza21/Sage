@@ -36,6 +36,18 @@ pub(super) fn record(registration: Arc<ClaudeSdkBindingRegistration>) -> Binding
     }
 }
 
+/// A desktop fixture record: the replay case stands in for Claude Code and
+/// no Claude sign-in is consulted.
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+pub(super) fn fixture_record(
+    selection: crate::launch_profile::FixtureSelection,
+) -> Result<BindingRecord, crate::acp::bindings::adapter::AdapterRuntimeError> {
+    let registration = ClaudeSdkBindingRegistration::desktop_fixture(selection)?;
+    let mut record = record(Arc::new(registration));
+    record.auth_provider = AuthProvider::None;
+    Ok(record)
+}
+
 fn launch_factory(
     binding: AdmittedBinding,
     root: BindingProjectRoot,

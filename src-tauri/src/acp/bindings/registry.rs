@@ -134,6 +134,17 @@ impl BindingRegistry {
     pub(crate) fn desktop_claude_fixture(
         selection: crate::launch_profile::FixtureSelection,
     ) -> Result<Self, ClaudeAdmissionUnavailable> {
+        if crate::acp::fixture::native_case_matches(&selection.case, "claude-sdk") {
+            let sdk = claude_sdk::fixture_record(selection)
+                .map_err(|_| ClaudeAdmissionUnavailable::Drift)?;
+            let mut registry = Self::new(
+                CodexBindingRegistration::fixture_disabled(),
+                ClaudeBindingRegistration::fixture_disabled(),
+            );
+            registry.isolate_fixture_records(sdk.harness_id);
+            registry.claude_sdk = sdk;
+            return Ok(registry);
+        }
         let claude = ClaudeBindingRegistration::desktop_fixture(selection)?;
         let mut registry = Self::new(CodexBindingRegistration::fixture_disabled(), claude);
         registry.claude.model_provider = ModelProvider::NoAccountModels;
@@ -146,7 +157,7 @@ impl BindingRegistry {
     fn isolate_fixture_records(&mut self, active_harness: &str) {
         // Fixtures drive their own records; the SDK binding never shadows them.
         self.claude_sdk = claude_sdk::record(Arc::new(
-            crate::acp::bindings::claude::sdk::ClaudeSdkBindingRegistration::startup(),
+            crate::acp::bindings::claude::sdk::ClaudeSdkBindingRegistration::fixture_disabled(),
         ));
         self.claude_sdk.session_operations_enabled = false;
         for record in [
@@ -414,9 +425,7 @@ impl BindingRegistry {
     pub(crate) fn test_registration(&self) -> Option<CodexBindingRegistration> {
         match self.test_binding.as_ref()?.admission {
             Admission::Codex(ref admission) => Some(admission.clone()),
-            Admission::Claude(_) | Admission::OpenCode(_) | Admission::PiNative(_) => None,
-            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-            Admission::Pi(_) => None,
+            _ => None,
         }
     }
 }
