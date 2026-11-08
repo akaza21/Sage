@@ -1,23 +1,23 @@
 use super::*;
 
-pub(super) const V22: &str = include_str!("../../../migrations/022_chat_title_source.sql");
+pub(super) const V23: &str = include_str!("../../../migrations/023_chat_title_source.sql");
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentV22 => return Ok(()),
-        SchemaClass::CurrentV21 => {}
-        _ => return invalid("chat title sources require exact schema v21"),
+        SchemaClass::CurrentV23 => return Ok(()),
+        SchemaClass::CurrentV22 => {}
+        _ => return invalid("chat title sources require exact schema v22"),
     }
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V22)?;
+    transaction.execute_batch(V23)?;
     transaction.execute(
-        "INSERT INTO schema_migrations(version,applied_at) VALUES (22,?1)",
+        "INSERT INTO schema_migrations(version,applied_at) VALUES (23,?1)",
         [now_millis()],
     )?;
-    transaction.pragma_update(None, "user_version", 22)?;
+    transaction.pragma_update(None, "user_version", 23)?;
     transaction.commit()?;
-    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV22 {
-        return invalid("database did not reach exact schema v22");
+    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV23 {
+        return invalid("database did not reach exact schema v23");
     }
     Ok(())
 }
@@ -26,12 +26,13 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
 mod tests {
     use super::*;
 
-    fn v21_with_chats() -> Connection {
+    fn v22_with_chats() -> Connection {
         let mut connection = Connection::open_in_memory().unwrap();
         schema_upgrade::build_fresh_v18(&mut connection).unwrap();
         workspace_changes::apply(&mut connection).unwrap();
         title_provenance::apply(&mut connection).unwrap();
         session_scope::apply(&mut connection).unwrap();
+        notifications::apply(&mut connection).unwrap();
         connection
             .execute_batch(
                 "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Project',1,1,1);
@@ -55,7 +56,7 @@ mod tests {
 
     #[test]
     fn upgrade_keeps_every_existing_title_and_only_frees_placeholders() {
-        let mut connection = v21_with_chats();
+        let mut connection = v22_with_chats();
         apply(&mut connection).unwrap();
         assert_eq!(source(&connection, "placeholder"), "default");
         assert_eq!(source(&connection, "named"), "user");
@@ -75,12 +76,12 @@ mod tests {
     }
 
     #[test]
-    fn upgrade_is_exact_idempotent_and_requires_v21() {
-        let mut connection = v21_with_chats();
+    fn upgrade_is_exact_idempotent_and_requires_v22() {
+        let mut connection = v22_with_chats();
         apply(&mut connection).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&connection).unwrap(),
-            SchemaClass::CurrentV22
+            SchemaClass::CurrentV23
         );
         let first = fingerprint::database_fingerprint(&connection).unwrap();
         apply(&mut connection).unwrap();
