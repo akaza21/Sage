@@ -1,6 +1,6 @@
 pub(crate) use crate::domain::HarnessCharacterisation as Characterisation;
 
-const CODEX_CHARACTERISED_VERSIONS: [&str; 1] = ["0.146.0"];
+const CODEX_CHARACTERISED_VERSIONS: [&str; 1] = [crate::acp::bindings::codex::CODEX_PINNED_VERSION];
 
 const CLAUDE_ADAPTER_CHARACTERISED_VERSIONS: [&str; 1] = ["0.76.0"];
 
@@ -90,23 +90,40 @@ pub(crate) fn node_satisfies_declared_engine(node_major: u32, declared_range: &s
 mod tests {
     use super::*;
 
+    use crate::acp::bindings::codex::CODEX_PINNED_VERSION;
+
     #[test]
     fn a_codex_version_is_read_from_either_the_bare_or_prefixed_form() {
         assert_eq!(
-            codex_characterisation("codex-cli 0.146.0"),
+            codex_characterisation(&format!("codex-cli {CODEX_PINNED_VERSION}")),
             Characterisation::Characterised
         );
         assert_eq!(
-            codex_characterisation("0.146.0"),
+            codex_characterisation(CODEX_PINNED_VERSION),
             Characterisation::Characterised
         );
     }
 
     #[test]
     fn characterisation_is_never_inferred_across_a_range() {
-        for version in ["0.145.0", "0.145.1", "0.146.1", "0.147.0", "0.144.9"] {
+        let [major, minor, patch] = CODEX_PINNED_VERSION
+            .split('.')
+            .map(|part| part.parse::<u32>().unwrap())
+            .collect::<Vec<_>>()[..]
+        else {
+            panic!("the pinned version has three components");
+        };
+        let neighbours = [
+            format!("{major}.{}.0", minor - 1),
+            format!("{major}.{minor}.{}", patch + 1),
+            format!("{major}.{}.0", minor + 1),
+            format!("{}.0.0", major + 1),
+            // The previous pin is no longer characterised.
+            "0.146.0".to_owned(),
+        ];
+        for version in neighbours {
             assert_eq!(
-                codex_characterisation(version),
+                codex_characterisation(&version),
                 Characterisation::Uncharacterised,
                 "{version} must not inherit a neighbouring characterisation"
             );
@@ -116,18 +133,20 @@ mod tests {
     #[test]
     fn a_prerelease_never_matches_a_released_characterisation() {
         assert_eq!(
-            codex_characterisation("0.146.0-rc.1"),
+            codex_characterisation(&format!("{CODEX_PINNED_VERSION}-rc.1")),
             Characterisation::Uncharacterised
         );
         assert_eq!(
-            codex_characterisation("0.146.0+build.5"),
+            codex_characterisation(&format!("{CODEX_PINNED_VERSION}+build.5")),
             Characterisation::Uncharacterised
         );
     }
 
     #[test]
     fn an_unreadable_or_empty_version_is_uncharacterised_rather_than_a_match() {
-        for reported in ["", "   ", "codex-cli", "0.146", "0.146.0.1", "latest"] {
+        let truncated = CODEX_PINNED_VERSION.rsplit_once('.').unwrap().0;
+        let extended = format!("{CODEX_PINNED_VERSION}.1");
+        for reported in ["", "   ", "codex-cli", truncated, &extended, "latest"] {
             assert_eq!(
                 codex_characterisation(reported),
                 Characterisation::Uncharacterised

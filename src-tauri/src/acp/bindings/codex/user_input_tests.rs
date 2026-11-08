@@ -16,7 +16,17 @@ use super::incoming::IngressDisposition;
 use super::state::CodexAdapter;
 
 fn ask(adapter: &mut CodexAdapter, id: u64, auto_resolution_ms: Option<u64>) -> NormalizedPayload {
-    let frame = json!({"id": id, "method": "item/tool/requestUserInput", "params": {
+    ask_timed(
+        adapter,
+        id,
+        json!({"isBlocking": auto_resolution_ms.is_none(), "autoResolutionMs": auto_resolution_ms}),
+    )
+}
+
+/// Asks the three standard questions with the given `isBlocking` and
+/// `autoResolutionMs` fields.
+fn ask_timed(adapter: &mut CodexAdapter, id: u64, timing: Value) -> NormalizedPayload {
+    let mut frame = json!({"id": id, "method": "item/tool/requestUserInput", "params": {
         "threadId": "thread-1", "turnId": "turn-1", "itemId": format!("call-{id}"),
         "questions": [
             {"id": "scope", "header": "Scope", "question": "Which files?", "isOther": false,
@@ -27,9 +37,11 @@ fn ask(adapter: &mut CodexAdapter, id: u64, auto_resolution_ms: Option<u64>) -> 
              "isSecret": false, "options": [{"label": "main", "description": "Default"}]},
             {"id": "token", "header": "Token", "question": "API token?", "isOther": false,
              "isSecret": true, "options": null}
-        ],
-        "autoResolutionMs": auto_resolution_ms
+        ]
     }});
+    for (field, value) in timing.as_object().expect("timing fields") {
+        frame["params"][field] = value.clone();
+    }
     let IngressDisposition::Events(events) = ingest(adapter, &frame) else {
         panic!("a question request must wait for the user");
     };
@@ -87,6 +99,28 @@ fn a_question_request_projects_bounded_questions_that_only_answers_or_cancel_res
                 .is_err(),
             "a question is answered, never allowed"
         );
+    }
+}
+
+#[test]
+fn a_non_blocking_request_without_a_window_resolves_on_codexs_client_window() {
+    for (timing, window) in [
+        (
+            json!({"isBlocking": false, "autoResolutionMs": null}),
+            Some(120_000),
+        ),
+        (json!({"isBlocking": true, "autoResolutionMs": null}), None),
+        (json!({}), None),
+    ] {
+        let mut adapter = live();
+        let NormalizedPayload::PermissionRequest {
+            user_input: Some(request),
+            ..
+        } = ask_timed(&mut adapter, 79, timing.clone())
+        else {
+            panic!("the request must carry its questions");
+        };
+        assert_eq!(request.auto_resolution_window_ms(), window, "{timing}");
     }
 }
 

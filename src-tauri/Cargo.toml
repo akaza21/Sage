@@ -128,7 +128,7 @@ path = "src/bin/acp_adversarial_fixture.rs"
 required-features = ["acp-fixture"]
 
 [[bin]]
-name = "sage-codex-0146-elevated-helper"
+name = "sage-codex-elevated-helper"
 path = "src/bin/codex_provisioning_helper.rs"
 required-features = ["codex-provisioning-helper"]
 

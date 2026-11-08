@@ -89,7 +89,7 @@ mod tests {
     fn completed(error: &str) -> Frame {
         frame(json!({"method":"account/login/completed","params":{
             "loginId":"7be3f527-7a5a-41e5-9e5f-a1a74b42f86b",
-            "success":false,"error":error
+            "success":false,"error":error,"onboardingEntrypoint":null
         }}))
     }
 

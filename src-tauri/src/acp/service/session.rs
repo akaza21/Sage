@@ -10,6 +10,7 @@ use crate::acp::{
 };
 
 use super::{AcpService, CodexSessionError};
+use crate::acp::bindings::codex::CODEX_PINNED_VERSION;
 
 pub(super) struct PreparedActivation {
     pub(super) owner: RuntimeOwner,
@@ -254,8 +255,11 @@ fn validate_session_identity(
 ) -> Result<(), CodexSessionError> {
     if session.binding_id == "codex-app-server"
         && binding_id == "codex-app-server"
-        && session.harness_version.as_deref() == Some("0.145.0")
-        && harness_version == "0.146.0"
+        && harness_version == CODEX_PINNED_VERSION
+        && session
+            .harness_version
+            .as_deref()
+            .is_some_and(|stored| precedes(stored, harness_version))
         && session.state == "ready"
         && session.external_session_id.is_some()
     {
@@ -270,31 +274,51 @@ fn validate_session_identity(
     Ok(())
 }
 
+/// Whether `earlier` is a strictly lower `major.minor.patch` release than
+/// `later`. Unreadable versions are never ordered.
+fn precedes(earlier: &str, later: &str) -> bool {
+    let parse = |version: &str| {
+        let parts = version
+            .split('.')
+            .map(|part| part.parse::<u64>().ok())
+            .collect::<Option<Vec<_>>>()?;
+        (parts.len() == 3).then_some(parts)
+    };
+    matches!((parse(earlier), parse(later)), (Some(earlier), Some(later)) if earlier < later)
+}
+
 #[cfg(test)]
 mod version_tests {
     use super::*;
 
-    #[test]
-    fn earlier_codex_thread_has_a_distinct_resume_refusal() {
-        let session = DurableSession {
+    fn session_at(version: &str) -> DurableSession {
+        DurableSession {
             binding_id: "codex-app-server".into(),
             binding_digest: "f8c2b995be263fe4bf00974043312673378081734ca8c98155d2a33887444b9e"
                 .into(),
-            harness_version: Some("0.145.0".into()),
+            harness_version: Some(version.into()),
             model_id: None,
             external_session_id: Some("thread-before-upgrade".into()),
             state: "ready".into(),
             residency: "cold".into(),
-        };
-        assert!(matches!(
-            validate_session_identity(
-                &session,
-                "codex-app-server",
-                "3bba7d86d2357d8fccd81bdba3d7f3f4278c80014d7e65e085b9a874330d7df4",
-                "0.146.0",
-            ),
-            Err(CodexSessionError::EarlierCodexVersion)
-        ));
+        }
+    }
+
+    #[test]
+    fn earlier_codex_thread_has_a_distinct_resume_refusal() {
+        // Threads from both earlier pins refuse native resume distinctly.
+        for earlier in ["0.145.0", "0.146.0"] {
+            assert!(matches!(
+                validate_session_identity(
+                    &session_at(earlier),
+                    "codex-app-server",
+                    "cbb905885f1fa3ebce550010f3d672d7197b032bd45be3d9c3fa71044db99071",
+                    CODEX_PINNED_VERSION,
+                ),
+                Err(CodexSessionError::EarlierCodexVersion)
+            ));
+        }
+        let session = session_at("0.145.0");
         assert!(matches!(
             validate_session_identity(&session, "codex-app-server", "foreign-digest", "0.147.0",),
             Err(CodexSessionError::Intent)

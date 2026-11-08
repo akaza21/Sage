@@ -212,7 +212,7 @@ describe("composer image input", () => {
             id: "session-a" as never,
             runtimeEpoch: "1" as never,
             capabilities: capabilitySetFixture({
-              protocolVersion: "codex-app-server-observed-0.146.0",
+              protocolVersion: "codex-app-server-observed-0.167.0",
             }),
           }),
         ],

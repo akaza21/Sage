@@ -77,30 +77,74 @@ pub(super) fn response_result(
         .ok_or(CodexDiscoveryError::Protocol)
 }
 
+/// Whether an `account/read` result has the pinned closed shape: the
+/// account, the auth requirement, and the (unused) workspace routing.
+pub(crate) fn valid_account_read(result: &Map<String, Value>) -> bool {
+    result.len() == 3
+        && result.contains_key("account")
+        && result
+            .get("requiresOpenaiAuth")
+            .is_some_and(Value::is_boolean)
+        && match result.get("workspaceRouting") {
+            Some(Value::Null) => true,
+            Some(Value::Object(routing)) => {
+                routing.len() == 3
+                    && [
+                        "chatgptAccountId",
+                        "backendOrigin",
+                        "accountRoutingOverride",
+                    ]
+                    .iter()
+                    .all(|field| {
+                        routing
+                            .get(*field)
+                            .and_then(Value::as_str)
+                            .is_some_and(|text| text.len() <= 8_192 && !text.contains('\0'))
+                    })
+            }
+            _ => false,
+        }
+}
+
 pub(crate) fn managed_chatgpt(account: &Map<String, Value>) -> Result<bool, CodexDiscoveryError> {
     if account.get("type").and_then(Value::as_str) != Some("chatgpt") {
         return Ok(false);
     }
-    if account.len() != 3 || !account.contains_key("email") || !account.contains_key("planType") {
+    if account.len() != 4
+        || !["email", "planType", "workspaceName"]
+            .iter()
+            .all(|field| account.contains_key(*field))
+    {
         return Err(CodexDiscoveryError::Protocol);
     }
-    let email_valid = matches!(account.get("email"), Some(Value::Null))
-        || account
-            .get("email")
-            .and_then(Value::as_str)
-            .is_some_and(|email| email.len() <= 8_192 && !email.contains('\0'));
-    const PLANS: [&str; 12] = [
+    let nullable_text = |field: &str| {
+        matches!(account.get(field), Some(Value::Null))
+            || account
+                .get(field)
+                .and_then(Value::as_str)
+                .is_some_and(|text| text.len() <= 8_192 && !text.contains('\0'))
+    };
+    let email_valid = nullable_text("email") && nullable_text("workspaceName");
+    const PLANS: [&str; 20] = [
         "free",
         "go",
         "plus",
         "pro",
         "prolite",
+        "promax",
         "team",
+        "self_serve_business_prolite",
         "self_serve_business_usage_based",
         "business",
+        "ent26",
+        "enterprise_cbp_automation",
         "enterprise_cbp_usage_based",
         "enterprise",
         "edu",
+        "edu_plus",
+        "edu_pro",
+        "sci",
+        "sci_plus",
         "unknown",
     ];
     let plan_valid = account
@@ -115,7 +159,7 @@ pub(crate) fn managed_chatgpt(account: &Map<String, Value>) -> Result<bool, Code
 
 pub(super) fn parse_model(value: &Value) -> Result<CodexModelSnapshot, CodexDiscoveryError> {
     let model = value.as_object().ok_or(CodexDiscoveryError::ModelCatalog)?;
-    const MODEL_FIELDS: [&str; 16] = [
+    const MODEL_FIELDS: [&str; 19] = [
         "id",
         "model",
         "upgrade",
@@ -123,14 +167,17 @@ pub(super) fn parse_model(value: &Value) -> Result<CodexModelSnapshot, CodexDisc
         "availabilityNux",
         "displayName",
         "description",
+        "modelSpecialty",
         "hidden",
         "supportedReasoningEfforts",
         "defaultReasoningEffort",
         "inputModalities",
         "supportsPersonality",
+        "multiAgentVersion",
         "additionalSpeedTiers",
         "serviceTiers",
         "defaultServiceTier",
+        "availableAccessPrograms",
         "isDefault",
     ];
     if model.len() != MODEL_FIELDS.len()
@@ -144,6 +191,9 @@ pub(super) fn parse_model(value: &Value) -> Result<CodexModelSnapshot, CodexDisc
     model_text(model, "description", 8_192)?;
     optional_model_text(model.get("upgrade"), 512)?;
     optional_model_text(model.get("defaultServiceTier"), 512)?;
+    optional_model_text(model.get("modelSpecialty"), 512)?;
+    validate_multi_agent_version(model.get("multiAgentVersion"))?;
+    validate_access_programs(model.get("availableAccessPrograms"))?;
     validate_upgrade_info(model.get("upgradeInfo"))?;
     validate_availability_nux(model.get("availabilityNux"))?;
     model_text(model, "defaultReasoningEffort", 512)?;
@@ -244,10 +294,16 @@ fn validate_upgrade_info(value: Option<&Value>) -> Result<(), CodexDiscoveryErro
         return Ok(());
     }
     let object = value.as_object().ok_or(CodexDiscoveryError::ModelCatalog)?;
-    if object.len() != 4
-        || !["model", "upgradeCopy", "modelLink", "migrationMarkdown"]
-            .iter()
-            .all(|field| object.contains_key(*field))
+    if object.len() != 5
+        || ![
+            "model",
+            "upgradeCopy",
+            "modelLink",
+            "migrationMarkdown",
+            "retirementAt",
+        ]
+        .iter()
+        .all(|field| object.contains_key(*field))
     {
         return Err(CodexDiscoveryError::ModelCatalog);
     }
@@ -255,7 +311,31 @@ fn validate_upgrade_info(value: Option<&Value>) -> Result<(), CodexDiscoveryErro
     for field in ["upgradeCopy", "modelLink", "migrationMarkdown"] {
         optional_model_text(object.get(field), 8_192)?;
     }
-    Ok(())
+    match object.get("retirementAt") {
+        Some(Value::Null) => Ok(()),
+        Some(value) if value.is_i64() => Ok(()),
+        _ => Err(CodexDiscoveryError::ModelCatalog),
+    }
+}
+
+fn validate_multi_agent_version(value: Option<&Value>) -> Result<(), CodexDiscoveryError> {
+    match value {
+        Some(Value::Null) => Ok(()),
+        Some(Value::String(version)) if matches!(version.as_str(), "disabled" | "v1" | "v2") => {
+            Ok(())
+        }
+        _ => Err(CodexDiscoveryError::ModelCatalog),
+    }
+}
+
+fn validate_access_programs(value: Option<&Value>) -> Result<(), CodexDiscoveryError> {
+    match value {
+        Some(Value::Null) => Ok(()),
+        Some(Value::Object(programs)) if programs.len() == 1 => {
+            bounded_text_array(programs.get("cyber"), 8, 512)
+        }
+        _ => Err(CodexDiscoveryError::ModelCatalog),
+    }
 }
 
 fn validate_availability_nux(value: Option<&Value>) -> Result<(), CodexDiscoveryError> {

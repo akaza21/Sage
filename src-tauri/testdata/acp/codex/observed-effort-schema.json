@@ -1,10 +1,11 @@
 {
-  "codexRuntimeVersion": "0.146.0",
-  "entrypointSha256": "bc343ba420dc2e2e9f59e6fc5e5bf0aae1cd8c771fc319665241fc9c0271fddb",
+  "codexRuntimeVersion": "0.167.0",
+  "entrypointSha256": "cdcb45aaa01d0f14e298985e09465aebccd47f64ecd298aea44814af7b62bbda",
   "command": "codex app-server generate-json-schema --out <temporary-directory>",
+  "generatorTarget": "x86_64-unknown-linux-musl",
   "schemaFiles": {
-    "ClientRequest.json": "08aa31f99d1ff7dac7fceb1c6cdd2c1298e24b2ed6be4c9f8d9399887075550a",
-    "v2/TurnStartParams.json": "57807218a89b8d1e6932b86746a60382ea1c731f4c4a3a84a86a438eb07e89a4"
+    "ClientRequest.json": "94074a415950787a25e09ae3b4d9de312cc264eb0f021633dfca921d300cd42a",
+    "v2/TurnStartParams.json": "4e25cd48986f73e600d9949a055ddb994a75b4a38790e935274646f0fece00ad"
   },
   "clientRequestMethods": [
     "initialize",
@@ -19,14 +20,25 @@
     "thread/goal/get",
     "thread/goal/clear",
     "thread/metadata/update",
+    "thread/attachment/add",
+    "thread/attachment/list",
+    "thread/attachmentOwner/list",
+    "thread/attachment/remove",
+    "thread/section/move",
     "thread/unarchive",
     "thread/compact/start",
     "thread/shellCommand",
     "thread/approveGuardianDeniedAction",
-    "thread/rollback",
+    "thread/revert",
     "thread/list",
+    "threadSection/list",
+    "threadSection/create",
+    "threadSection/update",
+    "threadSection/delete",
     "thread/loaded/list",
     "thread/read",
+    "thread/turns/list",
+    "thread/items/list",
     "thread/inject_items",
     "skills/list",
     "skills/extraRoots/set",
@@ -36,6 +48,7 @@
     "marketplace/upgrade",
     "plugin/list",
     "plugin/installed",
+    "plugin/reconcile",
     "plugin/read",
     "plugin/skill/read",
     "plugin/share/save",
@@ -63,6 +76,9 @@
     "turn/interrupt",
     "review/start",
     "model/list",
+    "account/gatewayOAuth/read",
+    "account/gatewayOAuth/login",
+    "account/gatewayOAuth/cancel",
     "modelProvider/capabilities/read",
     "experimentalFeature/list",
     "permissionProfile/list",
@@ -83,6 +99,7 @@
     "account/workspaceMessages/read",
     "account/sendAddCreditsNudgeEmail",
     "feedback/upload",
+    "feedback/save",
     "command/exec",
     "command/exec/write",
     "command/exec/terminate",
@@ -99,7 +116,6 @@
     "fuzzyFileSearch"
   ],
   "turnStartEffort": {
-    "description": "Override the reasoning effort for this turn and subsequent turns.",
     "anyOf": [
       {
         "$ref": "#/definitions/ReasoningEffort"
@@ -107,11 +123,12 @@
       {
         "type": "null"
       }
-    ]
+    ],
+    "description": "Override the reasoning effort for this turn and subsequent turns."
   },
   "reasoningEffort": {
     "description": "A non-empty reasoning effort value advertised by the model.",
-    "type": "string",
-    "minLength": 1
+    "minLength": 1,
+    "type": "string"
   }
 }

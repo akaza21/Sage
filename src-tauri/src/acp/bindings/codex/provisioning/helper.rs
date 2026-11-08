@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::{AclPlan, SealedHandoff, hex};
+use super::{AclPlan, STAGE_NAME, SealedHandoff, hex};
 use crate::acp::bindings::codex::{
-    managed::ManagedStagingPrerequisite, manifest::MetadataValidatedPacket,
+    managed::ManagedStagingPrerequisite,
+    manifest::{MetadataValidatedPacket, PINNED_CODEX_VERSION},
 };
 
 mod transaction;
@@ -24,7 +25,7 @@ pub(crate) use boundary::{
 
 const REQUEST_BYTES_MAX: usize = 128 * 1024;
 const HELPER_EXECUTABLE_BYTES_MAX: u64 = 32 * 1024 * 1024;
-const HELPER_PRODUCT: &str = "sage-codex-0146-elevated-helper";
+const HELPER_PRODUCT: &str = "sage-codex-elevated-helper";
 const HELPER_PROTOCOL_VERSION: u8 = 1;
 const REQUEST_SCHEMA_VERSION: u8 = 1;
 const PACKAGE_OWNER: &str = "builtinAdministrators";
@@ -332,20 +333,19 @@ fn validate_handoff(
         .managed_package_root()
         .parent()
         .ok_or(ElevatedHelperError::HandoffIdentity)?
-        .join(".sage-codex-0.146.0-stage");
+        .join(STAGE_NAME);
     let expected_files = packet.physical_artifact_claims().collect::<Vec<_>>();
     if request.schema_version != REQUEST_SCHEMA_VERSION
         || request.stage_root != expected_stage
         || payload.schema_version != 1
         || payload.binding_id != "codex-app-server"
-        || payload.runtime_version != "0.146.0"
+        || payload.runtime_version != PINNED_CODEX_VERSION
         || !lower_hex(&payload.creation_nonce, 32)
         || !lower_hex(&payload.source_proof_sha256, 64)
         || !lower_even_hex(&payload.current_user_sid_hex, 16, 136)
         || payload.aggregate_byte_len != packet.metadata().package_unpacked_byte_len
         || payload.package_target != packet.managed_package_root()
         || payload.state_target != packet.codex_home()
-        || payload.files.len() != 8
         || payload.files.len() != expected_files.len()
         || payload
             .files

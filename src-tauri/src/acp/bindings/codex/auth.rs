@@ -2,7 +2,7 @@ use serde_json::{Map, Value, json};
 
 use crate::acp::{
     bindings::codex::{
-        discovery::schema::managed_chatgpt,
+        discovery::schema::{managed_chatgpt, valid_account_read},
         incoming::{IncomingEvent, IngressDisposition},
         manifest::MetadataValidatedPacket,
         state::CodexAdapter,
@@ -203,13 +203,7 @@ impl CodexAuthProtocol {
         expected_id: u64,
     ) -> Result<CodexAuthAccount, CodexAuthError> {
         let result = response_result(frame, expected_id)?;
-        if result.len() != 2
-            || !result.contains_key("account")
-            || result
-                .get("requiresOpenaiAuth")
-                .and_then(Value::as_bool)
-                .is_none()
-        {
+        if !valid_account_read(&result) {
             return Err(CodexAuthError::Protocol);
         }
         match result.get("account") {
@@ -372,7 +366,12 @@ fn require_response_id(frame: &Frame, expected: u64) -> Result<(), CodexAuthErro
 }
 
 fn parse_completed(params: &Map<String, Value>) -> Result<CodexAuthNotification, CodexAuthError> {
-    if params.len() != 3 || !params.contains_key("error") {
+    let entrypoint_valid = match params.get("onboardingEntrypoint") {
+        Some(Value::Null) => true,
+        Some(Value::String(entrypoint)) => entrypoint.len() <= 512 && !entrypoint.contains('\0'),
+        _ => false,
+    };
+    if params.len() != 4 || !params.contains_key("error") || !entrypoint_valid {
         return Err(CodexAuthError::Protocol);
     }
     let login_id = params

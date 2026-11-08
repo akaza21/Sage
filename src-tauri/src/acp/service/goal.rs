@@ -74,7 +74,7 @@ impl AcpService {
         else {
             return;
         };
-        if !crate::acp::bindings::codex::supports_native_0146_protocol(
+        if !crate::acp::bindings::codex::speaks_pinned_protocol(
             session.capabilities.protocol_version.as_str(),
         ) {
             return;

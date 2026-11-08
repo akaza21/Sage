@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use super::*;
+use crate::acp::bindings::codex::manifest::PINNED_CODEX_VERSION;
 
-const FILES: [&str; 8] = [
+const NAMED_FILES: [&str; 8] = [
     r"vendor\target\bin\codex.exe",
     r"vendor\target\bin\codex-code-mode-host.exe",
     r"vendor\target\resources\command-runner.exe",
@@ -15,6 +16,19 @@ const FILES: [&str; 8] = [
     "package.json",
     "README.md",
 ];
+
+/// The named fixtures padded out to the pinned package's file count.
+fn fixture_files() -> Vec<PathBuf> {
+    NAMED_FILES
+        .iter()
+        .map(PathBuf::from)
+        .chain((NAMED_FILES.len()..SOURCE_FILE_COUNT).map(|index| {
+            PathBuf::from(format!(
+                r"vendor\target\resources\voice\padding-{index}.dll"
+            ))
+        }))
+        .collect()
+}
 
 struct TestProvisioning {
     base: PathBuf,
@@ -33,10 +47,10 @@ impl TestProvisioning {
         let state_target = base.join("state").join("codex-app-server-fixture");
         fs::create_dir_all(package_target.parent().unwrap()).unwrap();
         fs::create_dir_all(state_target.parent().unwrap()).unwrap();
-        for (index, relative) in FILES.iter().enumerate() {
+        for (index, relative) in fixture_files().iter().enumerate() {
             let path = source.join(relative);
             fs::create_dir_all(path.parent().unwrap()).unwrap();
-            fs::write(path, [b'a' + index as u8]).unwrap();
+            fs::write(path, [b'a'.wrapping_add(index as u8)]).unwrap();
         }
         Self {
             base,
@@ -55,19 +69,16 @@ impl TestProvisioning {
             self.source.clone(),
             self.package_target.clone(),
             self.state_target.clone(),
-            FILES
-                .iter()
+            fixture_files()
+                .into_iter()
                 .enumerate()
-                .map(|(index, relative)| (PathBuf::from(relative), vec![b'a' + index as u8]))
+                .map(|(index, relative)| (relative, vec![b'a'.wrapping_add(index as u8)]))
                 .collect(),
         )
     }
 
     fn stage_root(&self) -> PathBuf {
-        self.package_target
-            .parent()
-            .unwrap()
-            .join(".sage-codex-0.146.0-stage")
+        self.package_target.parent().unwrap().join(STAGE_NAME)
     }
 }
 
@@ -111,10 +122,10 @@ fn sealed_handoff_binds_exact_files_targets_acl_plan_and_source_proof() {
 
     assert_eq!(receipt.payload.schema_version, 1);
     assert_eq!(receipt.payload.binding_id, "codex-app-server");
-    assert_eq!(receipt.payload.runtime_version, "0.146.0");
+    assert_eq!(receipt.payload.runtime_version, PINNED_CODEX_VERSION);
     assert_eq!(receipt.payload.source_proof_sha256, expected_proof);
-    assert_eq!(receipt.payload.files.len(), 8);
-    assert_eq!(receipt.payload.aggregate_byte_len, 8);
+    assert_eq!(receipt.payload.files.len(), SOURCE_FILE_COUNT);
+    assert_eq!(receipt.payload.aggregate_byte_len, SOURCE_FILE_COUNT as u64);
     assert_eq!(receipt.payload.package_target, fixture.package_target);
     assert_eq!(receipt.payload.state_target, fixture.state_target);
     assert!(!receipt.payload.creation_nonce.is_empty());
@@ -200,7 +211,7 @@ fn receipt_drift_fails_revalidation_and_is_cleaned_on_drop() {
 fn hardlinked_offline_source_is_rejected_before_staging() {
     let fixture = TestProvisioning::new();
     fs::hard_link(
-        fixture.source.join(FILES[0]),
+        fixture.source.join(NAMED_FILES[0]),
         fixture.base.join("foreign-hard-link.exe"),
     )
     .unwrap();
@@ -232,7 +243,7 @@ fn source_path_bound_rejects_exact_plus_one_before_inspection() {
 }
 
 #[test]
-#[ignore = "requires exact SAGE_CODEX_0146_OFFLINE_SOURCE_ROOT, explicit stage-only authorization, and absent canonical targets"]
+#[ignore = "requires exact SAGE_CODEX_OFFLINE_SOURCE_ROOT, explicit stage-only authorization, and absent canonical targets"]
 fn exact_production_source_prepares_and_revalidates_helper_handoff() {
     let packet = crate::acp::bindings::codex::parse_packet_metadata(include_bytes!(
         "../../../../../testdata/acp/codex/candidate-windows.json"
@@ -244,8 +255,8 @@ fn exact_production_source_prepares_and_revalidates_helper_handoff() {
     )
     .unwrap();
     let source_root = PathBuf::from(
-        std::env::var("SAGE_CODEX_0146_OFFLINE_SOURCE_ROOT")
-            .expect("set the exact eight-file offline source root"),
+        std::env::var("SAGE_CODEX_OFFLINE_SOURCE_ROOT")
+            .expect("set the exact pinned offline source root"),
     );
     let authorization = authorize_offline_staging_from_environment().unwrap();
     let source = verify_codex_source(requirements, &packet, source_root).unwrap();

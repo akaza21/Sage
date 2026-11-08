@@ -294,10 +294,13 @@ pub(super) fn validate_provisioned_package_acl(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::acp::bindings::codex::manifest::{PINNED_CODEX_VERSION, PINNED_PROTOCOL_IDENTITY};
 
     fn package_node(index: usize) -> NodeSecurityClaims {
         NodeSecurityClaims {
-            path: PathBuf::from(format!(r"C:\SageHarnesses\Codex\0.146.0\package\{index}")),
+            path: PathBuf::from(format!(
+                r"C:\SageHarnesses\Codex\{PINNED_CODEX_VERSION}\package\{index}"
+            )),
             directory: index == 0,
             owner: OwnerClass::BuiltinAdministrators,
             dacl_present: true,
@@ -311,7 +314,9 @@ mod tests {
 
     fn state_root() -> NodeSecurityClaims {
         NodeSecurityClaims {
-            path: PathBuf::from(r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec"),
+            path: PathBuf::from(format!(
+                r"C:\SageHarnesses\CodexState\{PINNED_PROTOCOL_IDENTITY}"
+            )),
             directory: true,
             owner: OwnerClass::CurrentUser,
             dacl_present: true,
@@ -375,6 +380,12 @@ mod tests {
                 Err(ManagedStagingError::StateAcl)
             );
         }
+    }
+
+    #[test]
+    fn the_pinned_package_and_its_root_fit_the_node_bound() {
+        let nodes = 1 + crate::acp::bindings::codex::physical::pinned_package_entry_count();
+        assert!(nodes <= MANAGED_NODE_MAX, "{nodes} managed nodes");
     }
 
     #[test]

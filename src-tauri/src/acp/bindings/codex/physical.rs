@@ -1,14 +1,14 @@
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
-use super::manifest::{MetadataValidatedPacket, Platform};
+use super::manifest::{MetadataValidatedPacket, PINNED_ARTIFACT_COUNT, Platform};
 
 #[cfg(windows)]
 mod windows;
 
 const PACKAGE_ENTRY_MAX: usize = 64;
 const PACKAGE_DEPTH_MAX: usize = 8;
-const EXPECTED_FILE_COUNT: usize = 8;
+const EXPECTED_FILE_COUNT: usize = PINNED_ARTIFACT_COUNT;
 const CONFIGURED_PATH_BYTES_MAX: usize = 32 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,11 +101,12 @@ impl PhysicallyInspectedPackage {
     pub(super) fn mismatched_fixture() -> Self {
         Self {
             package_root: PathBuf::from(r"C:\Foreign\Codex\package"),
-            codex_home: PathBuf::from(
-                r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec",
-            ),
+            codex_home: PathBuf::from(format!(
+                r"C:\SageHarnesses\CodexState\{}",
+                super::manifest::PINNED_PROTOCOL_IDENTITY
+            )),
             artifact_count: EXPECTED_FILE_COUNT,
-            byte_len: 429_289_628,
+            byte_len: super::manifest::PINNED_PACKAGE_UNPACKED_BYTES,
             held_nodes: Vec::new(),
         }
     }
@@ -277,6 +278,38 @@ fn hex_nibble(value: u8) -> Result<u8, PhysicalInspectionError> {
     }
 }
 
+/// Files plus distinct directories of the pinned package below its root.
+#[cfg(test)]
+pub(super) fn pinned_package_entry_count() -> usize {
+    let directories = super::manifest::pinned_artifact_paths()
+        .flat_map(|relative| {
+            let mut prefixes = Vec::new();
+            let mut rest = relative;
+            while let Some((parent, _)) = rest.rsplit_once('\\') {
+                prefixes.push(parent);
+                rest = parent;
+            }
+            prefixes
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    EXPECTED_FILE_COUNT + directories.len()
+}
+
+#[cfg(test)]
+mod bound_tests {
+    use super::*;
+
+    #[test]
+    fn the_pinned_package_fits_the_traversal_bounds() {
+        let entries = pinned_package_entry_count();
+        assert!(entries <= PACKAGE_ENTRY_MAX, "{entries} entries");
+        let deepest = super::super::manifest::pinned_artifact_paths()
+            .map(|relative| relative.split('\\').count())
+            .max();
+        assert!(deepest.is_some_and(|depth| depth <= PACKAGE_DEPTH_MAX));
+    }
+}
+
 #[cfg(all(test, windows))]
 mod tests;
 
@@ -290,9 +323,10 @@ mod portable_tests {
             "../../../../testdata/acp/codex/candidate-windows.json"
         ))
         .unwrap();
-        let root = ConfiguredManagedPackageRoot::new(PathBuf::from(
-            r"C:\SageHarnesses\Codex\0.146.0\package",
-        ))
+        let root = ConfiguredManagedPackageRoot::new(PathBuf::from(format!(
+            r"C:\SageHarnesses\Codex\{}\package",
+            crate::acp::bindings::codex::manifest::PINNED_CODEX_VERSION
+        )))
         .unwrap();
         assert_eq!(
             inspect_managed_package(&packet, &root).unwrap_err(),

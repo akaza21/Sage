@@ -130,7 +130,7 @@ fn desktop_codex_model_listing_is_enabled_only_for_model_and_effort_cases() {
             SageAgentSessionId::parse("fixture-session").unwrap(),
         );
         let initialize = serde_json::json!({
-            "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
+            "userAgent":crate::acp::bindings::codex::test_identity::user_agent("sage", "unknown"),
             "codexHome":proof.to_str().unwrap(),"platformFamily":"windows","platformOs":"windows"
         });
         adapter
