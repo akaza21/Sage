@@ -1,5 +1,5 @@
-import { createInjectedEditorWatchDelivery } from "../domain/editorWatchDelivery";
 import { browserDesktop } from "../services/browserDesktop";
+import { browserEditor } from "../services/browserEditor";
 import type {
   ChatLifecycleRequest,
   MoveChatRequest,
@@ -102,16 +102,7 @@ const editor: EditorPort = {
     Promise.resolve(browserDesktop.discardEditorBuffer(resource)),
   watchEditorDocument: async (
     resource: ResourceRef,
-  ): Promise<EditorWatchSubscription> => {
-    const injected = createInjectedEditorWatchDelivery();
-    return {
-      resource,
-      delivery: injected.delivery,
-      cancel: async () => {
-        injected.close();
-      },
-    };
-  },
+  ): Promise<EditorWatchSubscription> => browserEditor.watch(resource),
 };
 
 const repository: RepositoryPort = {

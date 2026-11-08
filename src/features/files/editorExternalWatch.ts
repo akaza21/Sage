@@ -31,7 +31,7 @@ export const WATCH_UNAVAILABLE_MESSAGE =
 export type EditorFocusBoundary = () => Element | null;
 
 const DELETION_CONFLICT = {
-  kind: "external-change" as const,
+  kind: "deleted" as const,
   message: "This file was deleted outside Sage.",
 };
 

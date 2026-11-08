@@ -79,6 +79,10 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
 const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/chat/acp/ChatMarkdown.tsx",
   "src/features/files/FileMarkdownPreview.tsx",
+  "src/features/files/FileConflictButtons.tsx",
+  "src/app/editorConflictActions.ts",
+  "src/features/files/FileConflictCompare.tsx",
+  "src/features/files/SaveAllNotice.tsx",
   "src/features/chat/ComposerUsageContext.tsx",
   "src/features/chat/composerDictationRuntime.ts",
   "src/workbench/DirtyTabDialog.tsx",

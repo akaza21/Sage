@@ -36,6 +36,7 @@ import {
 import { canPreviewMarkdown } from "./filePreviewKind";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
 import { useGitGutter, type GitGutterEditor } from "./useGitGutter";
+import { isDeletedOnDisk } from "./fileEditorController";
 
 const MixedEolFileView = lazy(() =>
   import("./MixedEolFileView").then((module) => ({
@@ -75,6 +76,16 @@ export function FileSurface({
   const [sourceSessionKey, setSourceSessionKey] = useState("");
   const [goToSessionKey, setGoToSessionKey] = useState("");
   const [goToQuery, setGoToQuery] = useState("");
+  const [compareSessionKey, setCompareSessionKey] = useState("");
+  const discardActiveEditor = useWorkbenchStore(
+    (state) => state.discardActiveEditor,
+  );
+  const keepActiveEditorBuffer = useWorkbenchStore(
+    (state) => state.keepActiveEditorBuffer,
+  );
+  const closeEditorWithoutSaving = useWorkbenchStore(
+    (state) => state.closeEditorWithoutSaving,
+  );
   const agentMarkdown = readOnly && canPreviewMarkdown(path);
   const previewing = agentMarkdown
     ? sourceSessionKey !== activeResourceKey
@@ -210,10 +221,14 @@ export function FileSurface({
     // Availability is queried during command-palette rendering, so it reads
     // the last committed editor state rather than invoking an Effect Event.
     availableCommand.current = (command) =>
-      editor?.phase === "ready" && (command === "save" || !previewing);
+      editor?.phase === "ready" &&
+      (command === "revert"
+        ? tab.dirty && !readOnly && !isDeletedOnDisk(editor)
+        : command === "save" || !previewing);
   });
   const runCommand = useEffectEvent<FileSurfaceCommands["run"]>((command) => {
     if (command === "save") void saveActiveEditor();
+    else if (command === "revert") void discardActiveEditor();
     else if (command === "find") openFindFromSurface();
     else if (command === "replace") openFindFromSurface(true);
     else if (command === "goToLine") openGoToLine();
@@ -263,8 +278,38 @@ export function FileSurface({
     return <FileSurfaceResourceState path={path} error={editor.message} />;
   }
 
+  // The banner's actions resolve a change on disk; Compare lasts while the
+  // conflict does, for this File only.
+  const conflict = editor.document.conflict;
+  const conflictActions =
+    conflict && !readOnly
+      ? {
+          busy: editor.saving || projectTransitioning,
+          comparing:
+            conflict.kind === "external-change" &&
+            compareSessionKey === activeResourceKey,
+          onReload: () => {
+            setCompareSessionKey("");
+            void discardActiveEditor();
+          },
+          onKeepMine: () => {
+            setCompareSessionKey("");
+            void keepActiveEditorBuffer();
+          },
+          onClose: () => void closeEditorWithoutSaving(tab.id),
+          onCompare: () => {
+            hideFind();
+            setGoToSessionKey("");
+            setCompareSessionKey((current) =>
+              current === activeResourceKey ? "" : activeResourceKey,
+            );
+          },
+        }
+      : null;
+
   return (
     <FileSurfaceContent
+      conflictActions={conflictActions}
       activeResourceKey={activeResourceKey}
       dirty={tab.dirty}
       editor={editor}

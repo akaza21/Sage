@@ -7,7 +7,13 @@ import type {
   ResourceRef,
   TextFile,
 } from "../domain/workbench";
-import { resourceKey } from "../domain/resourceIdentity";
+import {
+  createInjectedEditorWatchDelivery,
+  type EditorExternalWatchNotice,
+  type EditorWatchSubscription,
+} from "../domain/editorWatch";
+import { parentResource, resourceKey } from "../domain/resourceIdentity";
+import { browserDirectories } from "./browserWorkspaceFixture";
 
 const files = new Map<string, string>();
 const buffers = new Map<
@@ -15,8 +21,18 @@ const buffers = new Map<
   { request: BufferSnapshotRequest; fingerprint: string }
 >();
 const fixtureCreatedFiles = new Set<string>();
+// Files deleted "outside Sage" by a test, and the open Files' watches.
+const deletedFiles = new Set<string>();
+const watchers = new Map<
+  string,
+  Set<(notice: EditorExternalWatchNotice) => void>
+>();
+let watchGeneration = 0;
 
 function diskContent(resource: ResourceRef): string {
+  if (deletedFiles.has(resourceKey(resource))) {
+    throw new Error("The file does not exist.");
+  }
   return (
     files.get(resourceKey(resource)) ??
     `// Browser projection for ${resource.relativePath}\n`
@@ -153,6 +169,7 @@ function createEmpty(resource: ResourceRef) {
   const key = resourceKey(resource);
   if (files.has(key)) throw new Error("file already exists");
   files.set(key, "");
+  deletedFiles.delete(key);
   fixtureCreatedFiles.add(key);
 }
 
@@ -162,6 +179,56 @@ function resetCreatedFiles() {
     buffers.delete(key);
   }
   fixtureCreatedFiles.clear();
+  deletedFiles.clear();
+}
+
+/** One watch per open File, as the native watch keeps. */
+function watch(resource: ResourceRef): EditorWatchSubscription {
+  const key = resourceKey(resource);
+  const injected = createInjectedEditorWatchDelivery();
+  const listeners = watchers.get(key) ?? new Set();
+  listeners.add(injected.emit);
+  watchers.set(key, listeners);
+  return {
+    resource,
+    delivery: injected.delivery,
+    cancel: async () => {
+      listeners.delete(injected.emit);
+      if (listeners.size === 0) watchers.delete(key);
+      injected.close();
+    },
+  };
+}
+
+/**
+ * Test fixture: another program writes the File (`content`) or deletes it
+ * (`null`), and its watches hear about it as the native watch reports.
+ */
+function changeOnDisk(resource: ResourceRef, content: string | null) {
+  const key = resourceKey(resource);
+  if (content === null) {
+    files.delete(key);
+    deletedFiles.add(key);
+    const parent = browserDirectories.get(
+      resourceKey(parentResource(resource)),
+    );
+    if (parent) {
+      parent.entries = parent.entries.filter(
+        (entry) => entry.resource.relativePath !== resource.relativePath,
+      );
+    }
+  } else {
+    files.set(key, content);
+    deletedFiles.delete(key);
+  }
+  watchGeneration += 1;
+  for (const emit of watchers.get(key) ?? []) {
+    emit({
+      resource,
+      generation: watchGeneration,
+      kind: content === null ? "deleted" : "changed",
+    });
+  }
 }
 
 export const browserEditor = {
@@ -173,5 +240,7 @@ export const browserEditor = {
   discard,
   createEmpty,
   resetCreatedFiles,
+  watch,
+  changeOnDisk,
 };
 import { utf8ByteLength, utf8Bytes } from "../domain/text";

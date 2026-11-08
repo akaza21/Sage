@@ -22,7 +22,11 @@ export interface EditorBufferVersion {
 }
 
 export interface EditorConflict {
-  kind: "external-change";
+  /**
+   * The native side reports only "external-change"; "deleted" comes from the
+   * WebView's watch, which sees the File go away while it is open.
+   */
+  kind: "external-change" | "deleted";
   message: string;
 }
 

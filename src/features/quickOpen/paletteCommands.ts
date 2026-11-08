@@ -33,12 +33,14 @@ function shortcutOf(id: string, apple: boolean) {
   return formatKeymapChords(keymapBinding(id), apple)[0] ?? null;
 }
 
-const FILE_COMMANDS: Array<[FileSurfaceCommand, string]> = [
-  ["goToLine", "Go to Line…"],
-  ["goToSymbol", "Go to Symbol in File…"],
-  ["find", "Find"],
-  ["replace", "Replace"],
-  ["save", "Save File"],
+// The keymap id of each command's shortcut, where it has one.
+const FILE_COMMANDS: Array<[FileSurfaceCommand, string, string | null]> = [
+  ["goToLine", "Go to Line…", "goToLine"],
+  ["goToSymbol", "Go to Symbol in File…", "goToSymbol"],
+  ["find", "Find", "find"],
+  ["replace", "Replace", "replace"],
+  ["save", "Save File", "save"],
+  ["revert", "Revert File", null],
 ];
 
 const VIEWS: Array<[SidebarView, string]> = [
@@ -60,13 +62,21 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
       run: "files",
     },
   ];
-  for (const [command, label] of FILE_COMMANDS) {
+  for (const [command, label, binding] of FILE_COMMANDS) {
     if (!fileSurfaceCommandAvailable(command)) continue;
     commands.push({
       id: command,
       label,
-      shortcut: shortcutOf(command, apple),
+      shortcut: binding && shortcutOf(binding, apple),
       run: () => void runFileSurfaceCommand(command),
+    });
+  }
+  if (store.tabs.some((tab) => tab.kind === "file" && tab.dirty)) {
+    commands.push({
+      id: "saveAll",
+      label: "Save All",
+      shortcut: shortcutOf("saveAll", apple),
+      run: () => void useWorkbenchStore.getState().saveAllEditors(),
     });
   }
   if (canGoBack()) {

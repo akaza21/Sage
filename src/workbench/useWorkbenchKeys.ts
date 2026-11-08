@@ -66,6 +66,13 @@ export function useWorkbenchKeys({
         event.preventDefault();
         openCommandPalette();
       }
+      if (
+        windowMode === "editor" &&
+        matchesPlatformChord(keymapBinding("saveAll"), event, apple)
+      ) {
+        event.preventDefault();
+        void useWorkbenchStore.getState().saveAllEditors();
+      }
       if (matchesPlatformChord(keymapBinding("newTask"), event, apple)) {
         event.preventDefault();
         useAgentSettingsState.getState().close();

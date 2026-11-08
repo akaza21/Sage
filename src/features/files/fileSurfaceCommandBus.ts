@@ -1,6 +1,6 @@
 /** Commands the File editor runs on request, as from the command palette. */
 export type FileSurfaceCommand =
-  "find" | "replace" | "goToLine" | "goToSymbol" | "save";
+  "find" | "replace" | "goToLine" | "goToSymbol" | "save" | "revert";
 
 export interface FileSurfaceCommands {
   /** Whether `command` would do something now. */

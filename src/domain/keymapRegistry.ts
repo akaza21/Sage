@@ -163,6 +163,18 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     alt: "forbidden",
   },
   {
+    // VS Code's Save All is the two-step Ctrl+K S; this keymap has no
+    // two-step chords, so it takes VS Code's macOS chord on every platform.
+    id: "saveAll",
+    label: "Save all files",
+    description: "Saves every open file with unsaved changes.",
+    scope: "Editor",
+    key: "s",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "required",
+  },
+  {
     id: "find",
     label: "Find in file",
     description: "Opens the find bar for the active file.",

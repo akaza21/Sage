@@ -151,6 +151,35 @@
   background: var(--color-warning-muted);
 }
 
+/* With actions, the text takes the line and the buttons wrap under it when
+   the File is too narrow for both. */
+.editor-notice:has(.editor-notice__actions) {
+  flex-wrap: wrap;
+}
+
+.editor-notice__text {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.editor-notice__actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.editor-notice__list {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.editor-notice__actions .button[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-surface-active);
+}
+
 .editor-notice--error {
   color: var(--color-danger);
   background: var(--color-danger-muted);

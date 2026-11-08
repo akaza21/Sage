@@ -1,4 +1,4 @@
-import { type StateCreator } from "zustand";
+import { type StateCreator, type StoreApi } from "zustand";
 import { errorMessage } from "../domain/errors";
 import {
   parentResource,
@@ -12,6 +12,7 @@ import {
 } from "../features/files/editorContent";
 import {
   getFileEditorController,
+  isDeletedOnDisk,
   type ActiveEditorState,
   type EditorStateBridge,
 } from "../features/files/fileEditorController";
@@ -25,6 +26,8 @@ import {
 import { type WorkbenchState } from "./store";
 
 export type { ActiveEditorState } from "../features/files/fileEditorController";
+
+const loadConflictActions = () => import("./editorConflictActions");
 
 export interface EditorSlice {
   activeEditor: ActiveEditorState | null;
@@ -49,15 +52,7 @@ export const createEditorSlice: StateCreator<
   EditorSlice
 > = (set, get) => {
   const editorController = getFileEditorController();
-  const editorState: EditorStateBridge = {
-    getActiveEditor: () => get().activeEditor,
-    setActiveEditor: (editor, update) => {
-      set((state) => ({
-        activeEditor: editor,
-        tabs: tabsWithEditorUpdate(state.tabs, editor.resource, update),
-      }));
-    },
-  };
+  const editorState = storeEditorBridge(set, get);
 
   const closePending = async (discard: boolean) => {
     const tabId = get().pendingCloseTabId;
@@ -173,6 +168,11 @@ export const createEditorSlice: StateCreator<
           ) {
             return null;
           }
+          const active = get().activeEditor;
+          if (active?.phase === "ready" && active.recreateOnSave) {
+            const { recreateDeletedFile } = await loadConflictActions();
+            await recreateDeletedFile(get(), editorState, active);
+          }
           const result = await editorController.save(
             editorState,
             (resource) =>
@@ -230,6 +230,12 @@ export const createEditorSlice: StateCreator<
           ) {
             return false;
           }
+          const active = get().activeEditor;
+          if (active?.phase === "ready" && isDeletedOnDisk(active)) {
+            const { dropDeletedBuffer } = await loadConflictActions();
+            await dropDeletedBuffer(editorState, active);
+            return true;
+          }
           const document = await editorController.discard(
             editorState,
             (resource) =>
@@ -247,6 +253,7 @@ export const createEditorSlice: StateCreator<
         });
       } catch (error) {
         if (matchesProjectIntent(get(), generation, projectId)) {
+          editorController.saveError(editorState, error);
           set({ error: errorMessage(error) });
         }
         return false;
@@ -254,6 +261,22 @@ export const createEditorSlice: StateCreator<
     },
   };
 };
+
+/** The active editor as the store holds it, with its tabs kept in step. */
+export function storeEditorBridge(
+  set: StoreApi<WorkbenchState>["setState"],
+  get: StoreApi<WorkbenchState>["getState"],
+): EditorStateBridge {
+  return {
+    getActiveEditor: () => get().activeEditor,
+    setActiveEditor: (editor, update) => {
+      set((state) => ({
+        activeEditor: editor,
+        tabs: tabsWithEditorUpdate(state.tabs, editor.resource, update),
+      }));
+    },
+  };
+}
 
 /**
  * Applies a dirty or status change to the editor's tab. The tabs array keeps

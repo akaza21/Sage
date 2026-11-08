@@ -13,7 +13,10 @@ import {
 } from "./editorContent";
 import { type ActiveEditorState } from "./fileEditorController";
 import { FileEditorHeader } from "./FileEditorHeader";
-import { FileEditorNotices } from "./FileEditorNotices";
+import {
+  FileEditorNotices,
+  type FileConflictActions,
+} from "./FileEditorNotices";
 import { type FindControl, type FindOpenRequest } from "./FileFindBar";
 import { FileGoToLine, type FileGoToLineProps } from "./FileGoToLine";
 import { canPreviewDiagram, canPreviewMarkdown } from "./filePreviewKind";
@@ -21,6 +24,11 @@ import { canPreviewDiagram, canPreviewMarkdown } from "./filePreviewKind";
 const loadMarkdownPreview = () =>
   import("./FileMarkdownPreview").then(({ FileMarkdownPreview }) => ({
     default: FileMarkdownPreview,
+  }));
+
+const loadConflictCompare = () =>
+  import("./FileConflictCompare").then(({ FileConflictCompare }) => ({
+    default: FileConflictCompare,
   }));
 
 type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
@@ -85,6 +93,7 @@ export function FileSurfaceContent({
   onEditorChange,
   onSurfaceKeyDown,
   onTogglePreview,
+  conflictActions = null,
 }: {
   activeResourceKey: string;
   dirty: boolean;
@@ -110,7 +119,10 @@ export function FileSurfaceContent({
   ) => void;
   onSurfaceKeyDown: KeyboardEventHandler<HTMLElement>;
   onTogglePreview: () => void;
+  /** The banner's actions, for a File the user can edit. */
+  conflictActions?: FileConflictActions | null;
 }) {
+  const comparing = !!conflictActions?.comparing && !previewing;
   // Loads the Find bar while idle, so the first Ctrl+F types straight into it.
   useEffect(() => {
     const timer = setTimeout(() => void loadFindBar(), 1000);
@@ -140,6 +152,8 @@ export function FileSurfaceContent({
       <FileEditorNotices
         conflict={editor.document.conflict}
         message={editor.message}
+        recreateOnSave={!!editor.recreateOnSave}
+        actions={conflictActions}
       />
       {languageNavigationStatus ? (
         <p role="status" className="file-language-navigation-status">
@@ -149,7 +163,19 @@ export function FileSurfaceContent({
       {goTo && !previewing ? (
         <FileGoToLine {...goTo} content={editor.content} />
       ) : null}
-      {previewing ? (
+      {comparing ? (
+        <LazyModuleBoundary
+          load={loadConflictCompare}
+          label="Compare"
+          render={(FileConflictCompare) => (
+            <FileConflictCompare
+              key={`${activeResourceKey}\0${editor.revision}`}
+              resource={editor.resource}
+              text={contentText(editor.content)}
+            />
+          )}
+        />
+      ) : previewing ? (
         <LazyModuleBoundary
           load={loadMarkdownPreview}
           label="Markdown preview"

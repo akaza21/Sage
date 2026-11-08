@@ -407,7 +407,7 @@ describe("IDE-2 editor external watch seam", () => {
     expect(activeEditor.phase).toBe("ready");
     if (activeEditor.phase === "ready") {
       expect(activeEditor.content).toBe(dirtyContent);
-      expect(activeEditor.document.conflict?.kind).toBe("external-change");
+      expect(activeEditor.document.conflict?.kind).toBe("deleted");
     }
   });
 
