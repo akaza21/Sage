@@ -16,6 +16,9 @@ pub const MAX_REQUEST_ID_BYTES: usize = 128;
 pub const MAX_PROJECT_ID_BYTES: usize = 512;
 pub const MAX_PROJECT_ROOTS: usize = 8;
 pub const MAX_SEARCH_RESULTS: usize = 500;
+/// How many pages of results one Search may show, its first included; the
+/// panel's `continuationPages` limit.
+pub const MAX_SEARCH_PAGES: usize = 4;
 pub const MAX_SEARCH_FILES: u64 = MAX_WORKSPACE_FILES;
 pub const MAX_SEARCH_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_SEARCH_FILE_BYTES: u64 = 2 * 1024 * 1024;

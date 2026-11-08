@@ -6,6 +6,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 
+import { utf8ByteLength } from "../../domain/text";
 import type { ResourceRef } from "../../domain/workbench";
 import { LoaderCircle, Replace, ReplaceAll } from "../../ui/leanIcons";
 import type { WorkspaceSearchState } from "./useWorkspaceSearch";
@@ -22,6 +23,7 @@ import {
   workspaceReplaceDesktop,
 } from "./workspaceReplacePlan";
 import type { WorkspaceSearchMatch } from "./workspaceSearchDomain";
+import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
 import "./workspace-replace.css";
 
 export type ReplaceStep =
@@ -77,6 +79,16 @@ function errorText(error: unknown) {
   return message.replace(/^invalid request: /, "");
 }
 
+/** Why the replacement can't be used, if it can't. */
+function replacementProblem(replacement: string): string | null {
+  return utf8ByteLength(replacement) > WORKSPACE_SEARCH_LIMITS.replacementBytes
+    ? `The replacement is longer than ${WORKSPACE_SEARCH_LIMITS.replacementBytes} bytes.`
+    : null;
+}
+
+const MAX_REPLACE_FILES =
+  WORKSPACE_SEARCH_LIMITS.results * WORKSPACE_SEARCH_LIMITS.continuationPages;
+
 function counted(count: number, word: string, plural: string) {
   return `${count} ${count === 1 ? word : plural}`;
 }
@@ -85,12 +97,21 @@ function counted(count: number, word: string, plural: string) {
 async function start(
   context: ReplaceContext,
   resources: ResourceRef[],
-  only?: MatchPosition,
+  only?: MatchPosition & { line: string },
 ) {
   const { search } = context;
   const { replacement, preserveCase, step } = current(context);
   const response = search.response;
   if (!response || !resources.length || step.kind !== "idle") return;
+  const refused =
+    replacementProblem(replacement) ??
+    (resources.length > MAX_REPLACE_FILES
+      ? `Replace changes at most ${MAX_REPLACE_FILES} files at once.`
+      : null);
+  if (refused) {
+    update(context, { report: { message: refused, problems: [] } });
+    return;
+  }
   update(context, { report: null, step: { kind: "planning" } });
   try {
     const plan = await planReplace({
@@ -106,7 +127,15 @@ async function start(
         preserveCase,
       },
       resources,
-      only,
+      ...(only
+        ? {
+            only: {
+              lineNumber: only.lineNumber,
+              columnNumber: only.columnNumber,
+            },
+            onlyLine: only.line,
+          }
+        : {}),
     });
     update(context, { step: { kind: "confirming", plan } });
   } catch (error) {
@@ -144,6 +173,7 @@ export function ReplaceRow({ context }: { context: ReplaceContext }) {
   const { replacement, preserveCase, step } = current(context);
   const { search, projectId, files } = context;
   const searching = search.phase === "searching";
+  const problem = replacementProblem(replacement);
   return (
     <div className="workspace-search__query-row">
       <span aria-hidden="true" />
@@ -153,6 +183,12 @@ export function ReplaceRow({ context }: { context: ReplaceContext }) {
           aria-label="Replace text"
           maxLength={2048}
           placeholder={search.useRegex ? "Replace ($1 for a group)" : "Replace"}
+          title={
+            search.useRegex
+              ? "$1 or ${name} puts in a group. \\n and \\t stay as typed, and a pattern that matches empty text replaces nothing."
+              : undefined
+          }
+          aria-invalid={problem ? true : undefined}
           value={replacement}
           disabled={!projectId}
           autoFocus
@@ -180,6 +216,7 @@ export function ReplaceRow({ context }: { context: ReplaceContext }) {
               searching ||
               search.phase !== "results" ||
               !files.length ||
+              !!problem ||
               step.kind !== "idle"
             }
             onClick={() => void start(context, files)}
@@ -222,7 +259,7 @@ export function ReplaceMatchAction({
   context: ReplaceContext;
   match: WorkspaceSearchMatch;
 }) {
-  const { resource, lineNumber, columnNumber } = match;
+  const { resource, lineNumber, columnNumber, preview } = match;
   return (
     <button
       className="workspace-replace__action"
@@ -231,7 +268,11 @@ export function ReplaceMatchAction({
       title="Replace this match"
       disabled={current(context).step.kind !== "idle"}
       onClick={() =>
-        void start(context, [resource], { lineNumber, columnNumber })
+        void start(context, [resource], {
+          lineNumber,
+          columnNumber,
+          line: preview,
+        })
       }
     >
       <Replace size={14} aria-hidden="true" />

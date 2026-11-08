@@ -89,10 +89,21 @@ impl Replacer {
                 "the replacement exceeds the {MAX_REPLACEMENT_BYTES}-byte limit or holds a NUL"
             )));
         }
+        // A carriage return would leave a stray line end in a File whose
+        // line endings Sage keeps as they are.
+        if spec.replacement.contains(['\r', '\n']) {
+            return Err(AppError::InvalidRequest(
+                "the replacement can't hold a line break".into(),
+            ));
+        }
         Ok(Self {
             query: search_query(query, spec.case_sensitive, spec.use_regex)?,
             whole_word: spec.whole_word,
-            replacement: spec.replacement.clone(),
+            replacement: if spec.use_regex {
+                braced_group_numbers(&spec.replacement)
+            } else {
+                spec.replacement.clone()
+            },
             use_regex: spec.use_regex,
             preserve_case: spec.preserve_case,
         })
@@ -100,14 +111,17 @@ impl Replacer {
 
     /// Replaces the matches in `content`, whose lines end in `\n`: every one,
     /// or with `only` the one Search reported there. Previews are kept for
-    /// at most `preview_lines` changed lines.
+    /// at most `preview_lines` changed lines. The replaced text may hold at
+    /// most `max_bytes`: past that it stops, before building any more, with
+    /// a resource limit error.
     pub fn replace(
         &self,
         content: &str,
         only: Option<MatchPosition>,
         preview_lines: usize,
-    ) -> ReplacedText {
-        let mut output = String::with_capacity(content.len());
+        max_bytes: usize,
+    ) -> AppResult<ReplacedText> {
+        let mut output = String::with_capacity(content.len().min(max_bytes));
         let mut count = 0_u64;
         let mut lines = Vec::new();
         let mut lines_truncated = false;
@@ -120,11 +134,14 @@ impl Replacer {
             let ending = &raw_line[line.len()..];
             if only.is_some_and(|position| position.line_number != line_number) {
                 output.push_str(raw_line);
+                over_budget(&output, max_bytes)?;
                 continue;
             }
-            let (replaced, first_column, found) = self.replace_line(line, only);
+            let budget = max_bytes.saturating_sub(output.len());
+            let (replaced, first_column, found) = self.replace_line(line, only, budget)?;
             if found == 0 {
                 output.push_str(raw_line);
+                over_budget(&output, max_bytes)?;
                 continue;
             }
             count += found;
@@ -140,18 +157,24 @@ impl Replacer {
             }
             output.push_str(&replaced);
             output.push_str(ending);
+            over_budget(&output, max_bytes)?;
         }
-        ReplacedText {
+        Ok(ReplacedText {
             content: output,
             count,
             lines,
             lines_truncated,
-        }
+        })
     }
 
     /// The line with its matches replaced, the column of the first and how
-    /// many there were.
-    fn replace_line(&self, line: &str, only: Option<MatchPosition>) -> (String, u32, u64) {
+    /// many there were; a resource limit error once it outgrows `budget`.
+    fn replace_line(
+        &self,
+        line: &str,
+        only: Option<MatchPosition>,
+        budget: usize,
+    ) -> AppResult<(String, u32, u64)> {
         let mut ranges = Vec::new();
         let mut columns = LineMatches::new(line, 1);
         self.query
@@ -172,21 +195,30 @@ impl Replacer {
                 }
             });
         let Some(&(_, _, first_column)) = ranges.first() else {
-            return (line.into(), 0, 0);
+            return Ok((line.into(), 0, 0));
         };
-        let mut replaced = String::with_capacity(line.len());
+        let mut replaced = String::with_capacity(line.len().min(budget));
         let mut copied = 0;
         for &(start, end, _) in &ranges {
             replaced.push_str(&line[copied..start]);
-            let text = self.replacement_for(line, start, end);
+            let text =
+                self.replacement_for(line, start, end, budget - replaced.len().min(budget))?;
             replaced.push_str(&text);
+            over_budget(&replaced, budget)?;
             copied = end;
         }
         replaced.push_str(&line[copied..]);
-        (replaced, first_column, ranges.len() as u64)
+        over_budget(&replaced, budget)?;
+        Ok((replaced, first_column, ranges.len() as u64))
     }
 
-    fn replacement_for(&self, line: &str, start: usize, end: usize) -> String {
+    fn replacement_for(
+        &self,
+        line: &str,
+        start: usize,
+        end: usize,
+        budget: usize,
+    ) -> AppResult<String> {
         let matched = &line[start..end];
         let mut text = String::new();
         match self.query.pattern() {
@@ -194,6 +226,16 @@ impl Replacer {
                 // The match found at `start` is the leftmost one from there.
                 match pattern.captures_at(line, start) {
                     Some(captures) if captures.get(0).map(|m| m.start()) == Some(start) => {
+                        // No group is longer than the line, so this bounds
+                        // the expansion before it is built.
+                        let references = self.replacement.matches('$').count();
+                        let most = self
+                            .replacement
+                            .len()
+                            .saturating_add(references.saturating_mul(line.len()));
+                        if most > budget {
+                            return Err(too_large());
+                        }
                         captures.expand(&self.replacement, &mut text);
                     }
                     _ => text.push_str(&self.replacement),
@@ -201,12 +243,52 @@ impl Replacer {
             }
             _ => text.push_str(&self.replacement),
         }
-        if self.preserve_case {
+        Ok(if self.preserve_case {
             preserve_case(matched, &text)
         } else {
             text
-        }
+        })
     }
+}
+
+fn too_large() -> AppError {
+    AppError::ResourceLimit("the replaced text would exceed the editor's size limit".into())
+}
+
+fn over_budget(text: &str, budget: usize) -> AppResult<()> {
+    if text.len() > budget {
+        return Err(too_large());
+    }
+    Ok(())
+}
+
+/// `$1a` reads as the group named `1a`, which never exists; the field's
+/// hint promises `$1` is the first group, so a number after `$` ends where
+/// its digits do: `$1a` becomes `${1}a`. `$$`, `${…}` and `$name` stay.
+fn braced_group_numbers(replacement: &str) -> String {
+    let mut output = String::with_capacity(replacement.len() + 8);
+    let mut rest = replacement;
+    while let Some(dollar) = rest.find('$') {
+        output.push_str(&rest[..dollar]);
+        let after = &rest[dollar + 1..];
+        if let Some(stripped) = after.strip_prefix('$') {
+            output.push_str("$$");
+            rest = stripped;
+            continue;
+        }
+        let digits = after.bytes().take_while(u8::is_ascii_digit).count();
+        if digits == 0 {
+            output.push('$');
+            rest = after;
+            continue;
+        }
+        output.push_str("${");
+        output.push_str(&after[..digits]);
+        output.push('}');
+        rest = &after[digits..];
+    }
+    output.push_str(rest);
+    output
 }
 
 /// `replacement` in the case of `matched`: all upper, all lower or
@@ -264,7 +346,8 @@ mod tests {
     fn replace(spec: &ReplaceSpec, content: &str) -> ReplacedText {
         Replacer::new(spec)
             .unwrap()
-            .replace(content, None, MAX_PREVIEW_LINES_PER_FILE)
+            .replace(content, None, MAX_PREVIEW_LINES_PER_FILE, usize::MAX)
+            .unwrap()
     }
 
     #[test]
@@ -374,25 +457,31 @@ mod tests {
     fn only_replaces_the_match_search_reported_there() {
         let replacer = Replacer::new(&spec("é", "e")).unwrap();
         let content = "é é\né\n";
-        let done = replacer.replace(
-            content,
-            Some(MatchPosition {
-                line_number: 1,
-                column_number: 3,
-            }),
-            MAX_PREVIEW_LINES_PER_FILE,
-        );
+        let done = replacer
+            .replace(
+                content,
+                Some(MatchPosition {
+                    line_number: 1,
+                    column_number: 3,
+                }),
+                MAX_PREVIEW_LINES_PER_FILE,
+                usize::MAX,
+            )
+            .unwrap();
         assert_eq!(done.content, "é e\né\n");
         assert_eq!(done.count, 1);
         assert_eq!(done.lines[0].column_number, 3);
-        let gone = replacer.replace(
-            content,
-            Some(MatchPosition {
-                line_number: 1,
-                column_number: 2,
-            }),
-            MAX_PREVIEW_LINES_PER_FILE,
-        );
+        let gone = replacer
+            .replace(
+                content,
+                Some(MatchPosition {
+                    line_number: 1,
+                    column_number: 2,
+                }),
+                MAX_PREVIEW_LINES_PER_FILE,
+                usize::MAX,
+            )
+            .unwrap();
         assert_eq!(gone.count, 0);
         assert_eq!(gone.content, content);
     }
@@ -411,5 +500,61 @@ mod tests {
     fn a_replacement_past_its_bound_is_refused() {
         assert!(Replacer::new(&spec("a", &"b".repeat(MAX_REPLACEMENT_BYTES + 1))).is_err());
         assert!(Replacer::new(&spec("  ", "b")).is_err());
+    }
+
+    #[test]
+    fn a_line_break_in_the_replacement_is_refused() {
+        for replacement in ["a\rb", "a\nb", "\r\n"] {
+            assert!(
+                matches!(
+                    Replacer::new(&spec("a", replacement)),
+                    Err(AppError::InvalidRequest(_))
+                ),
+                "{replacement:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_numbered_group_ends_with_its_digits() {
+        let done = replace(
+            &ReplaceSpec {
+                use_regex: true,
+                ..spec("(o)(l)d", "$1a$2_$$1${1}x$name")
+            },
+            "old\n",
+        );
+        assert_eq!(done.content, "oal_$1ox\n");
+        assert_eq!(braced_group_numbers("$12b$$3$"), "${12}b$$3$");
+    }
+
+    /// Every character becomes 2 KB, so 1 MB would build about 2 GB: the
+    /// Replace stops as soon as the output passes its budget instead.
+    #[test]
+    fn output_growth_stops_at_the_byte_budget() {
+        let replacer = Replacer::new(&ReplaceSpec {
+            use_regex: true,
+            ..spec(".", &"r".repeat(MAX_REPLACEMENT_BYTES))
+        })
+        .unwrap();
+        let content = "x".repeat(1024 * 1024);
+        let budget = 64 * 1024;
+        let Err(error) = replacer.replace(&content, None, 0, budget) else {
+            panic!("the output must stop at its budget");
+        };
+        assert!(matches!(error, AppError::ResourceLimit(_)), "{error}");
+        // Many lines each within budget are refused once their total is not.
+        let lines = "x\n".repeat(budget);
+        assert!(replacer.replace(&lines, None, 0, budget).is_err());
+        // A `$0`-heavy replacement is bounded before it expands.
+        let echo = Replacer::new(&ReplaceSpec {
+            use_regex: true,
+            ..spec(".+", &"$0".repeat(1000))
+        })
+        .unwrap();
+        assert!(echo.replace(&content, None, 0, budget).is_err());
+        // Within budget the same Replace runs.
+        let small = replace(&spec("x", "yy"), "xx\nx\n");
+        assert_eq!(small.content, "yyyy\nyy\n");
     }
 }

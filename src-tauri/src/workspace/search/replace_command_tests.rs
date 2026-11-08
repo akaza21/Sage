@@ -349,3 +349,17 @@ fn text_replace_is_bounded_and_matches_the_disk_rules() {
     assert!(validate_files("project", MAX_REPLACE_FILES + 1).is_err());
     assert!(validate_files("project", 0).is_err());
 }
+
+#[test]
+fn the_panel_shares_the_replace_limits() {
+    use super::super::{replace::MAX_REPLACEMENT_BYTES, types::MAX_SEARCH_PAGES};
+    let limits = include_str!("../../../../src/features/search/workspaceSearchLimits.ts");
+    for expected in [
+        format!("results: {MAX_SEARCH_RESULTS},"),
+        format!("continuationPages: {MAX_SEARCH_PAGES},"),
+        format!("replacementBytes: {MAX_REPLACEMENT_BYTES},"),
+    ] {
+        assert!(limits.contains(&expected), "{expected}");
+    }
+    assert_eq!(MAX_REPLACE_FILES, MAX_SEARCH_RESULTS * MAX_SEARCH_PAGES);
+}

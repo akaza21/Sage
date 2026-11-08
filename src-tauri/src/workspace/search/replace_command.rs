@@ -10,7 +10,7 @@ use super::{
         MAX_PREVIEW_LINES, MAX_PREVIEW_LINES_PER_FILE, MatchPosition, ReplaceLinePreview,
         ReplaceSpec, Replacer,
     },
-    types::{MAX_PROJECT_ID_BYTES, MAX_SEARCH_RESULTS, MAX_SEARCH_TOTAL_BYTES},
+    types::{MAX_PROJECT_ID_BYTES, MAX_SEARCH_PAGES, MAX_SEARCH_RESULTS, MAX_SEARCH_TOTAL_BYTES},
 };
 use crate::{
     domain::ResourceRef,
@@ -23,7 +23,7 @@ use crate::{
 };
 
 /// The Files one Replace may name: every File a Search's pages can show.
-pub const MAX_REPLACE_FILES: usize = MAX_SEARCH_RESULTS * 4;
+pub const MAX_REPLACE_FILES: usize = MAX_SEARCH_RESULTS * MAX_SEARCH_PAGES;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -138,6 +138,8 @@ pub async fn preview_workspace_replace(
         &state,
         &request.project_id,
         request.expected_transition_epoch,
+        // A preview only reads, so it never supersedes an editor snapshot.
+        EditorOperationKind::Read,
         move |database| {
             Ok(preview(
                 database,
@@ -162,6 +164,10 @@ pub async fn apply_workspace_replace(
         &state,
         &request.project_id,
         request.expected_transition_epoch,
+        // An apply rewrites Files as a save does, so like a save it
+        // supersedes any older editor snapshot still queued: one taken before
+        // the Replace must not become a buffer against the old text.
+        EditorOperationKind::Terminal,
         move |database| Ok(apply(database, &replacer, &request.files)),
     )
     .await
@@ -169,11 +175,15 @@ pub async fn apply_workspace_replace(
 }
 
 /// What a Replace makes of text the editor holds, such as unsaved edits.
+/// It runs off the async runtime: a large text takes real work.
 #[tauri::command]
 pub async fn replace_workspace_text(
     request: TextReplaceRequest,
 ) -> Result<TextReplaceResponse, String> {
-    replace_text(&request).map_err(|error| error.to_string())
+    tauri::async_runtime::spawn_blocking(move || replace_text(&request))
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())
 }
 
 pub fn replace_text(request: &TextReplaceRequest) -> AppResult<TextReplaceResponse> {
@@ -186,12 +196,8 @@ pub fn replace_text(request: &TextReplaceRequest) -> AppResult<TextReplaceRespon
         &request.text,
         request.only,
         MAX_PREVIEW_LINES_PER_FILE,
-    );
-    if done.content.len() as u64 > MAX_EDITABLE_BYTES {
-        return Err(AppError::ResourceLimit(
-            "the replaced text would exceed the editor's size limit".into(),
-        ));
-    }
+        MAX_EDITABLE_BYTES as usize,
+    )?;
     Ok(TextReplaceResponse {
         content: done.content,
         count: done.count,
@@ -218,6 +224,7 @@ async fn run_in_project<T: Send + 'static>(
     state: &AppState,
     project_id: &str,
     expected_epoch: u64,
+    kind: EditorOperationKind,
     operation: impl FnOnce(&Database) -> AppResult<T> + Send + 'static,
 ) -> AppResult<T> {
     let epoch = state.project_transitions.lock().await;
@@ -232,9 +239,7 @@ async fn run_in_project<T: Send + 'static>(
     let operations = state.editor_operations.clone();
     let ticket = operations.issue_ticket()?;
     let result = tauri::async_runtime::spawn_blocking(move || {
-        operations.execute(ticket, EditorOperationKind::Terminal, || {
-            operation(&database)
-        })
+        operations.execute(ticket, kind, || operation(&database))
     })
     .await
     .map_err(|error| AppError::InvalidRequest(error.to_string()))?;
@@ -269,11 +274,18 @@ pub(crate) fn preview(
             truncated = true;
             break;
         }
-        let done = replacer.replace(
+        let done = match replacer.replace(
             &source.content,
             only,
             lines_left.min(MAX_PREVIEW_LINES_PER_FILE),
-        );
+            MAX_EDITABLE_BYTES as usize,
+        ) {
+            Ok(done) => done,
+            Err(error) => {
+                problems.push(problem(resource, ReplaceProblemKind::Refused, &error));
+                continue;
+            }
+        };
         if done.count == 0 {
             problems.push(ReplaceFileProblem {
                 resource: source.resource,
@@ -315,8 +327,13 @@ pub(crate) fn apply(
                     &target.resource,
                     &target.fingerprint,
                     |content| {
-                        let done = replacer.replace(content, target.only, 0);
-                        (done.content, done.count)
+                        let done = replacer.replace(
+                            content,
+                            target.only,
+                            0,
+                            MAX_EDITABLE_BYTES as usize,
+                        )?;
+                        Ok((done.content, done.count))
                     },
                 )
             });

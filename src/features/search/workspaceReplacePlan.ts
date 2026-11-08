@@ -156,6 +156,18 @@ function problemFrom(
 }
 
 /**
+ * Whether `line` is the line Search previewed as `preview`. Search trims a
+ * line's preview and cuts a long one short with an ellipsis, so a long
+ * line is compared only as far as its preview goes.
+ */
+function sameLine(line: string, preview: string): boolean {
+  const trimmed = line.trim();
+  return preview.endsWith("\u2026")
+    ? trimmed.startsWith(preview.slice(0, -1))
+    : trimmed === preview;
+}
+
+/**
  * Works out what a Replace of `resources` would change, without changing
  * anything: from disk for most Files, and from the unsaved text for a File
  * with unsaved edits.
@@ -167,6 +179,7 @@ export async function planReplace({
   spec,
   resources,
   only,
+  onlyLine,
 }: {
   gateway: WorkspaceReplaceGateway;
   projectId: string;
@@ -174,6 +187,8 @@ export async function planReplace({
   spec: ReplaceSpec;
   resources: ResourceRef[];
   only?: MatchPosition;
+  /** The text Search showed for the line of `only`. */
+  onlyLine?: string;
 }): Promise<ReplacePlan> {
   const files: PlannedFile[] = [];
   const problems: ReplaceFileProblem[] = [];
@@ -194,6 +209,12 @@ export async function planReplace({
       } else {
         document = await getWorkbenchPorts().editor.openEditorDocument(file);
         source = document.buffer.content;
+      }
+      if (only && onlyLine !== undefined) {
+        const line = source.split("\n")[only.lineNumber - 1];
+        if (line === undefined || !sameLine(line, onlyLine)) {
+          throw new Error("it was edited since the search; search again");
+        }
       }
       const result = await gateway.replaceText({ spec, text: source, only });
       if (!result.count) {
@@ -284,13 +305,19 @@ async function replaceInBuffer(
   ) {
     throw new Error("it was edited since the preview; search again");
   }
-  await editor.snapshotEditorBuffer({
+  const revision = document.buffer.revision + 1;
+  const ack = await editor.snapshotEditorBuffer({
     resource: file,
     base: document.base,
     lineEnding: document.lineEnding,
     content,
-    revision: document.buffer.revision + 1,
+    revision,
   });
+  // An older revision back means another write got there first and the
+  // buffer kept it.
+  if (ack.revision !== revision) {
+    throw new Error("it was edited since the preview; search again");
+  }
 }
 
 /** Applies `plan`, File by File; what could not be done is reported. */
@@ -318,27 +345,46 @@ export async function applyReplacePlan(
     }
   }
   if (onDisk.length) {
-    const applied = await gateway.apply({
-      projectId: plan.projectId,
-      expectedTransitionEpoch: plan.transitionEpoch,
-      spec: plan.spec,
-      files: onDisk.map((file) => ({
-        resource: file.resource,
-        fingerprint: file.target.kind === "disk" ? file.target.fingerprint : "",
-        ...(plan.only ? { only: plan.only } : {}),
-      })),
-    });
+    let applied: Awaited<ReturnType<WorkspaceReplaceGateway["apply"]>>;
+    try {
+      applied = await gateway.apply({
+        projectId: plan.projectId,
+        expectedTransitionEpoch: plan.transitionEpoch,
+        spec: plan.spec,
+        files: onDisk.map((file) => ({
+          resource: file.resource,
+          fingerprint:
+            file.target.kind === "disk" ? file.target.fingerprint : "",
+          ...(plan.only ? { only: plan.only } : {}),
+        })),
+      });
+    } catch (error) {
+      // The editors' changes are made and stay counted; the Files on disk
+      // are reported, since none of them is known to be written.
+      for (const file of onDisk) {
+        problems.push(problemFrom(file.resource, "refused", error));
+      }
+      return { matchCount, fileCount, problems };
+    }
     problems.push(...applied.problems);
     for (const file of applied.replaced) {
       matchCount += file.count;
       fileCount += 1;
-      await reloadIfClean(file.resource);
+      try {
+        await reloadIfClean(file.resource);
+      } catch {
+        // The File is replaced; a failed reload leaves the editor as it is.
+      }
     }
   }
   return { matchCount, fileCount, problems };
 }
 
-/** A clean File showing in the editor is read again after a disk Replace. */
+/**
+ * A clean File showing in the editor is read again after a disk Replace.
+ * The editor's revision is taken now and checked again when the queued
+ * reload runs, so an edit made in between is never dropped.
+ */
 async function reloadIfClean(file: ResourceRef) {
   const state = useWorkbenchStore.getState();
   const editor = state.activeEditor;
@@ -346,5 +392,8 @@ async function reloadIfClean(file: ResourceRef) {
     return;
   }
   if (unsavedEdits(file)) return;
-  await state.discardActiveEditor();
+  await state.discardActiveEditor({
+    resource: file,
+    revision: editor.revision,
+  });
 }

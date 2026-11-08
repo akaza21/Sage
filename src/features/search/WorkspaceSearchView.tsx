@@ -28,27 +28,14 @@ import { useWorkspaceSearch } from "./useWorkspaceSearch";
 import { WorkspaceSearchCommandBar } from "./WorkspaceSearchCommandBar";
 import { FileKindIcon } from "../files/FileKindIcon";
 import type { WorkspaceReplaceGateway } from "./workspaceReplace";
-import type * as ReplaceParts from "./WorkspaceReplaceParts";
+import {
+  loadReplace,
+  loadedReplaceParts,
+  preloadReplace,
+  preloadReplaceWhenIdle,
+} from "./workspaceReplaceLoader";
 import type { ReplaceState } from "./WorkspaceReplaceParts";
 import { highlightPreview } from "./workspaceSearchHighlight";
-
-// Replace loads when the user opens it, or earlier when they reach for its
-// toggle or the window is idle, so Search alone carries none of it.
-let replaceParts: typeof ReplaceParts | undefined;
-const loadReplace = () =>
-  import("./WorkspaceReplaceParts").then((parts) => (replaceParts = parts));
-const preloadReplace = () => void loadReplace().catch(() => undefined);
-
-function preloadReplaceWhenIdle() {
-  if (typeof window.requestIdleCallback === "function") {
-    const handle = window.requestIdleCallback(preloadReplace, {
-      timeout: 2000,
-    });
-    return () => window.cancelIdleCallback(handle);
-  }
-  const timer = setTimeout(preloadReplace, 2000);
-  return () => clearTimeout(timer);
-}
 
 interface WorkspaceSearchViewProps {
   projectId: string | null;
@@ -98,7 +85,7 @@ export function WorkspaceSearchView({
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const [parts, setParts] = useState(replaceParts);
+  const [parts, setParts] = useState(loadedReplaceParts);
   const [replaceOpen, setReplaceOpen] = useState(false);
   // Kept here, not in the Replace chunk, so a closed Replace keeps its text.
   const [replaceState, setReplaceState] = useState<ReplaceState>();

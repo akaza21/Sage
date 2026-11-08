@@ -369,9 +369,14 @@
       },
       {
         "entry": "src/features/search/WorkspaceReplaceParts.tsx",
-        "maxGzipBytes": 3523,
+        "maxGzipBytes": 3924,
         "maxCssGzipBytes": 820,
         "reason": "Workspace Replace: field, row actions, preview and planning; loads when the user opens Replace or reaches for its toggle, never with Search alone."
+      },
+      {
+        "entry": "src/features/search/workspaceSearchDomain.ts",
+        "maxGzipBytes": 2002,
+        "reason": "Workspace Search response checks; preloaded when the Search panel mounts and awaited before a result shows."
       },
       {
         "entry": "src/features/settings/openEditorSettings.ts",

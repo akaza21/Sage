@@ -387,6 +387,24 @@ describe("Workspace Replace", () => {
     expect(replace.apply).not.toHaveBeenCalled();
   });
 
+  it("holds a replacement to the native limit in UTF-8 bytes", async () => {
+    const replace = replaceGateway();
+    await searchAndOpenReplace(replace);
+    const field = screen.getByLabelText("Replace text");
+    // 1,025 characters, under the field's length, but 2,050 bytes.
+    fireEvent.change(field, { target: { value: "é".repeat(1025) } });
+
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("button", { name: "Replace all" })).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Replace all in src/alpha.ts" }),
+    );
+    expect(
+      await screen.findByText("The replacement is longer than 2048 bytes."),
+    ).toBeVisible();
+    expect(replace.preview).not.toHaveBeenCalled();
+  });
+
   it("changes a File with unsaved edits in its editor, not on disk", async () => {
     useWorkbenchStore.setState({
       tabs: [
