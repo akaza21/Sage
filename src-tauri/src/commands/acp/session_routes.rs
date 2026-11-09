@@ -156,3 +156,142 @@ pub(super) fn refuse_archived_chat(
         Err(_) => Err(internal_error()),
     }
 }
+
+/// A session's stored capabilities, read without loading a chat page. A
+/// session outside the chat answers `None`, as when it was absent from the
+/// chat's page.
+pub(super) fn session_capabilities(
+    state: &AppState,
+    project_id: &crate::acp::contract::SageProjectId,
+    chat_id: &crate::acp::contract::SageChatId,
+    session_id: &crate::acp::contract::SageAgentSessionId,
+) -> Result<Option<crate::acp::intent::CapabilitySnapshotV1>, crate::acp::store::StoreError> {
+    use rusqlite::OptionalExtension;
+    let capabilities: Option<String> = state
+        .database
+        .connection()
+        .query_row(
+            "SELECT capabilities_json FROM agent_sessions WHERE id=?1 AND project_id=?2 AND chat_id=?3",
+            [session_id.as_str(), project_id.as_str(), chat_id.as_str()],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(crate::acp::store::StoreError::Database)?;
+    capabilities
+        .map(|capabilities| serde_json::from_str(&capabilities))
+        .transpose()
+        .map_err(|_| crate::acp::store::StoreError::Corrupt("capabilities"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::acp::{
+        contract::{ClientIntentId, RequiredText, RuntimeEpoch, SageChatId, SageProjectId},
+        intent::{BindingId, CapabilitySnapshotV1, ExternalId},
+        store::{
+            ActivateSessionCommand, CompleteActivationCommand, StartSessionCommand,
+            activate_session, complete_activation, start_session,
+        },
+    };
+
+    #[test]
+    fn prompt_resources_come_from_the_session_row_of_that_chat() {
+        let root = std::env::temp_dir().join(format!("sage-resources-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let database =
+            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let chat = database
+            .bootstrap_snapshot()
+            .unwrap()
+            .active_tab_id
+            .unwrap();
+        let state = AppState::new(database);
+        let project_id = SageProjectId::parse(&project.id).unwrap();
+        let chat_id = SageChatId::parse(&chat).unwrap();
+        let revision = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+        let session = start_session(
+            &mut state.database.connection(),
+            StartSessionCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                expected_projection_revision: revision,
+                client_intent_id: ClientIntentId::parse("resources-start").unwrap(),
+                binding_id: BindingId::new("binding", "sage-simulator").unwrap(),
+                binding_digest: "a".repeat(64),
+                harness_version: None,
+                model_id: None,
+                now_millis: 1,
+            },
+        )
+        .unwrap()
+        .session_id;
+        let accepts = |chat: &SageChatId| {
+            session_capabilities(&state, &project_id, chat, &session)
+                .unwrap()
+                .is_some_and(|capabilities| capabilities.prompt_resources)
+        };
+        assert!(!accepts(&chat_id), "a pending session advertises nothing");
+
+        let revision = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+        let epoch = RuntimeEpoch::new(1).unwrap();
+        let mut connection = state.database.connection();
+        activate_session(
+            &mut connection,
+            ActivateSessionCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                expected_projection_revision: revision,
+                client_intent_id: ClientIntentId::parse("resources-activate").unwrap(),
+                session_id: session.clone(),
+                runtime_epoch: epoch,
+                artifact_digest: "a".repeat(64),
+                now_millis: 2,
+            },
+        )
+        .unwrap();
+        let mut capabilities: CapabilitySnapshotV1 = serde_json::from_str(
+            &connection
+                .query_row(
+                    "SELECT capabilities_json FROM agent_sessions WHERE id=?1",
+                    [session.as_str()],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap(),
+        )
+        .unwrap();
+        capabilities.protocol_version = RequiredText::new("protocol", "1").unwrap();
+        capabilities.prompt_resources = true;
+        complete_activation(
+            &mut connection,
+            CompleteActivationCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                session_id: session.clone(),
+                runtime_epoch: epoch,
+                binding_digest: "a".repeat(64),
+                artifact_digest: "a".repeat(64),
+                external_session_id: ExternalId::new("session", "adapter-session").unwrap(),
+                capabilities_json: serde_json::to_string(&capabilities).unwrap(),
+                now_millis: 3,
+            },
+        )
+        .unwrap();
+        drop(connection);
+        assert!(accepts(&chat_id));
+        let other_chat = SageChatId::parse("chat-elsewhere").unwrap();
+        assert!(
+            !accepts(&other_chat),
+            "a session of another chat never qualifies"
+        );
+    }
+}

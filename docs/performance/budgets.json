@@ -228,9 +228,9 @@
       },
       {
         "entry": "src/features/chat/acp/SessionNoticeStrip.tsx",
-        "maxGzipBytes": 621,
-        "maxCssGzipBytes": 447,
-        "reason": "Dismissible strip of the current session's harness notices, dismissals scoped per session; loads only when the session has a notice. Measured JS 580 B and CSS 417 B plus 7%."
+        "maxGzipBytes": 1845,
+        "maxCssGzipBytes": 737,
+        "reason": "Session strip: dismissible harness notices, background activities with Stop, and the latest turn's Undo; loads only when one exists. Measured JS 1724 B and CSS 689 B plus 7%."
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",

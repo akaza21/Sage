@@ -35,6 +35,7 @@ pub(crate) mod semantic_ingress;
 pub(crate) mod service;
 pub(crate) mod session_action;
 pub(crate) mod session_config;
+pub(crate) mod session_control;
 pub(crate) use bindings::adapter::slash_commands;
 pub(crate) mod store;
 pub(crate) mod transcript_quote;

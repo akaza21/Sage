@@ -29,6 +29,8 @@ import type * as ComposerOptionsChunk from "./ComposerAddActions";
 import type * as GoalChunk from "./BoundChatGoalControl";
 import type * as AttachmentsChunk from "./ComposerAttachments";
 import type * as HarnessSignInChunk from "../harness/HarnessSignInStatus";
+import type * as GoalChunk from "./BoundChatGoalControl";
+import type * as AttachmentsChunk from "./ComposerAttachments";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- keyed re-export of components
 type AnyComponent = ComponentType<any>;
@@ -64,19 +66,32 @@ class PartLoadBoundary extends Component<
 /** One loader per chunk; all named parts render synchronously once loaded. */
 export function lazyParts<Chunk extends Components>(
   load: () => Promise<Chunk>,
+  /**
+   * Stands in for the chunk when it fails to load, for the mounts that were
+   * waiting on it; the failure is not kept, so a later mount loads again.
+   * Without it, those mounts render their fallback.
+   */
+  unavailable?: Chunk,
 ) {
   let parts: Partial<
     Record<keyof Chunk, () => Promise<{ default: AnyComponent }>>
   > = {};
   let loaded: Chunk | null = null;
   let pending: Promise<Chunk> | null = null;
+  // A load that fell back to `unavailable`: the mounts showing it keep their
+  // loaders across renders, and the next mount starts afresh.
+  let fellBack = false;
   const loadOnce = () =>
     (pending ??= load().then(
       (chunk) => (loaded = chunk),
       (error: unknown) => {
         pending = null;
-        parts = {};
-        throw error;
+        if (!unavailable) {
+          parts = {};
+          throw error;
+        }
+        fellBack = true;
+        return unavailable;
       },
     ));
   function Part<K extends keyof Chunk & string>({
@@ -91,7 +106,13 @@ export function lazyParts<Chunk extends Components>(
   } & ComponentProps<Chunk[K]>) {
     const part: K = props.part;
     // Fix the subtree per mount.
-    const [Ready] = useState<AnyComponent | undefined>(() => loaded?.[part]);
+    const [Ready] = useState<AnyComponent | undefined>(() => {
+      if (fellBack) {
+        fellBack = false;
+        parts = {};
+      }
+      return loaded?.[part];
+    });
     if (Ready) return <Ready {...props} />;
     const loadPart = (parts[part] ??= () =>
       loadOnce().then(
@@ -131,7 +152,8 @@ export const ApprovalPart = lazyParts<typeof PermissionPromptChunk>(
 export const QuestionPart = lazyParts<typeof UserInputChunk>(
   () => import("./acp/UserInputPrompt"),
 );
-/** Harness notices are rare, so the strip loads with the first one. */
+/** Harness notices, background activities and Undo are rare, so the
+ * session strip loads with the first of them. */
 export const NoticePart = lazyParts<typeof SessionNoticeChunk>(
   () => import("./acp/SessionNoticeStrip"),
 );
@@ -248,3 +270,14 @@ export function ChatHandoffControl(
 export const LegacyTranscriptPart = lazyParts<typeof LegacyTranscriptChunk>(
   () => import("./ChatLegacyTranscript"),
 );
+/**
+ * A native Goal's control and its mutations load with the first chat that
+ * shows one.
+ */
+export const GoalPart = lazyParts<typeof GoalChunk>(
+  () => import("./BoundChatGoalControl"),
+);
+/** Attachment chips load with the first context attached to a draft. */
+export const AttachmentsPart = lazyParts<
+  Pick<typeof AttachmentsChunk, "ComposerAttachments">
+>(() => import("./ComposerAttachments"));

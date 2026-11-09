@@ -343,6 +343,9 @@ pub(crate) fn parse_legacy_text(
         text: SafeText<262144>,
         #[serde(default, rename = "attachedContext")]
         _attached_context: crate::acp::attached_context::AttachedContexts,
+        /// How many staged resources the prompt carried; never their bytes.
+        #[serde(default, rename = "attachments")]
+        _attachments: u8,
         #[serde(default, rename = "sessionAction")]
         _session_action: Option<serde::de::IgnoredAny>,
     }

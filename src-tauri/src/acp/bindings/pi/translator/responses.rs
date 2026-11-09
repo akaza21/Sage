@@ -52,10 +52,20 @@ impl PiTranslator {
             if matches!(kind, PendingKind::SetModel | PendingKind::SetThinkingLevel) {
                 return Err(AdapterError::ConfigMutationRejected);
             }
-            let mut output = vec![AdapterOutput::Error {
-                code: "command_failed",
-            }];
-            if kind == PendingKind::Prompt {
+            // A compaction whose `compaction_end` gave Pi's reason needs no
+            // second, generic failure.
+            let explained = kind == PendingKind::Compact
+                && self
+                    .active
+                    .as_ref()
+                    .is_some_and(|turn| turn.compaction_failure_shown);
+            let mut output = Vec::new();
+            if !explained {
+                output.push(AdapterOutput::Error {
+                    code: "command_failed",
+                });
+            }
+            if kind.starts_turn() {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
                 if active.lifecycle.acknowledged(false, false)? {
                     output.extend(self.finish_turn(TerminalOutcome::Failed)?);
@@ -114,7 +124,7 @@ impl PiTranslator {
             }
             PendingKind::NewSession => {
                 let id = parse_state(&response.data)?
-                    .session_id
+                    .session_key()
                     .ok_or(AdapterError::Malformed)?;
                 validate_id("session ID", &id)?;
                 self.active = None;
@@ -130,10 +140,10 @@ impl PiTranslator {
                 self.active = None;
                 Ok(vec![AdapterOutput::SessionOpened(id)])
             }
-            PendingKind::Prompt => {
+            PendingKind::Prompt | PendingKind::Compact => {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-                let handled =
-                    response.data.get("disposition").and_then(Value::as_str) == Some("handled");
+                let handled = kind == PendingKind::Compact
+                    || response.data.get("disposition").and_then(Value::as_str) == Some("handled");
                 if active.lifecycle.acknowledged(true, handled)? {
                     return self.finish_turn(TerminalOutcome::Completed);
                 }

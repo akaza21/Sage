@@ -163,6 +163,13 @@ pub(crate) trait HarnessAdapter {
     fn skips_oversize_frames(&self) -> bool {
         false
     }
+    /// The frame for a session control; harnesses without one refuse it.
+    fn session_control(
+        &mut self,
+        _control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         None
     }

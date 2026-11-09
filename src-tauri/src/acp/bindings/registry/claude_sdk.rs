@@ -63,8 +63,8 @@ fn launch_factory(
 }
 
 /// What the SDK protocol carries today: new and resumed sessions, prompts
-/// with attachments, and cancel. Closing ends the process; fork and child
-/// transcripts arrive with their own stages.
+/// with attachments, cancel, and subagent transcripts. Closing ends the
+/// process; fork arrives with its own stage.
 fn capabilities(
     binding: &AdmittedBinding,
 ) -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
@@ -93,7 +93,7 @@ fn ceiling() -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
         native_review: false,
         active_turn_steer: false,
         child_conversation_projection: false,
-        child_transcript_read: false,
+        child_transcript_read: true,
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 0,

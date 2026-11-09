@@ -87,7 +87,8 @@ fn idle_idless_command_discovery_rejection_keeps_the_next_prompt_usable() {
     assert!(batch.egress().is_empty());
     let catalog = runtime.available_commands().snapshot();
     assert_eq!(catalog.revision, 1);
-    assert!(catalog.commands.is_empty());
+    // Only Pi's built-in commands remain.
+    assert_eq!(names(&catalog.commands), ["compact"]);
     assert!(runtime.discover_commands().unwrap().is_none());
 
     running(&mut runtime);
@@ -237,7 +238,10 @@ fn pi_discovers_only_advertised_commands_and_replaces_the_catalog() {
     let query = runtime.discover_commands().unwrap().unwrap();
     let query = deliver(&mut runtime, query);
     runtime.ingest(&frame(json!({"type":"response","id":query["id"],"command":"get_commands","success":false,"error":"unsupported"})), &Mapper).unwrap();
-    assert!(runtime.available_commands().snapshot().commands.is_empty());
+    assert_eq!(
+        names(&runtime.available_commands().snapshot().commands),
+        ["compact"]
+    );
 }
 #[test]
 fn pi_rejects_uncorrelated_command_advertisements() {
@@ -306,4 +310,11 @@ fn extension_model_events_before_ack_are_owned_and_late_ack_does_not_complete_tw
             .iter()
             .any(|e| matches!(e, AdapterEvent::Turn { state, .. } if state.is_terminal()))
     );
+}
+
+fn names(commands: &[crate::acp::slash_commands::AvailableCommand]) -> Vec<&str> {
+    commands
+        .iter()
+        .map(|command| command.name.as_str())
+        .collect()
 }

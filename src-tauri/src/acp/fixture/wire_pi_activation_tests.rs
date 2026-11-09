@@ -98,7 +98,7 @@ fn pi_fixture_wire_activation_and_idless_idle_discovery_preserve_the_next_prompt
             let parts = pump.try_into_idle_parts().ok().unwrap();
             assert_eq!(
                 parts.session().external_session_id.as_str(),
-                "fixture-pi-session"
+                "2026-01-01T00-00-00-000Z_fixture-pi-session"
             );
             assert_eq!(parts.session().models.len(), 2);
             assert_eq!(
@@ -122,7 +122,9 @@ fn pi_fixture_wire_activation_and_idless_idle_discovery_preserve_the_next_prompt
             wire_reply(&mut adapter, &mut wire, query, "piCommandsUnsupported");
             let catalog = adapter.available_commands().snapshot();
             assert_eq!(catalog.revision, 1);
-            assert!(catalog.commands.is_empty());
+            // Only Pi's built-in commands remain.
+            assert_eq!(catalog.commands.len(), 1);
+            assert_eq!(catalog.commands[0].name, "compact");
 
             let prompt = adapter
                 .command(AdapterCommand::Prompt {

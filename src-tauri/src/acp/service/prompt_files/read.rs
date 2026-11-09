@@ -170,7 +170,7 @@ impl Reader {
             return Err("Only regular files can be attached.");
         }
         if meta.len() > FILE_BYTES as u64 {
-            return Err("A file exceeds the 64 KiB attachment limit.");
+            return Err(super::limits::FILE_OVER.as_str());
         }
         let mut data = Vec::new();
         file.take(FILE_BYTES as u64 + 1)
@@ -178,7 +178,7 @@ impl Reader {
             .map_err(|_| "Cannot read attachment.")?;
         self.bytes += data.len();
         if data.len() > FILE_BYTES || self.bytes > TOTAL_BYTES {
-            return Err("Attachments exceed 64 KiB per file or 96 KiB total.");
+            return Err(super::limits::READ_OVER.as_str());
         }
         data.shrink_to_fit();
         let name = path

@@ -118,6 +118,7 @@ pub(super) fn hook_run(
         // A run of the Turn that already ended belongs to that Turn's row,
         // not to the Turn now running.
         in_previous_turn: turn.is_some_and(|turn| adapter.turn_is_terminal(turn)),
+        stoppable: false,
     };
     let in_active_turn = turn
         .is_some_and(|turn| adapter.expect_turn(turn).is_ok() && !adapter.turn_is_terminal(turn));

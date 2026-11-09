@@ -218,3 +218,34 @@ fn a_foreign_owner_cannot_write_the_session_surface() {
         .unwrap();
     assert_eq!(rows, 0);
 }
+
+#[test]
+fn only_the_latest_finished_turn_of_its_session_can_be_undone() {
+    let mut fixture = fixture();
+    let undoable = |fixture: &Fixture, session: &str, turn: &str| {
+        super::super::session_surface::is_undoable_turn(
+            &fixture.connection,
+            fixture.owner.project_id.as_str(),
+            fixture.owner.chat_id.as_str(),
+            session,
+            turn,
+        )
+        .unwrap()
+    };
+    let session = fixture.owner.session_id.as_str().to_owned();
+    let turn_id = fixture.owner.turn_id.as_str().to_owned();
+    apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        batch(&fixture.owner, vec![turn(TurnState::Running, 6)]),
+    )
+    .unwrap();
+    assert!(!undoable(&fixture, &session, &turn_id), "still running");
+    apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        batch(&fixture.owner, vec![turn(TurnState::Completed, 7)]),
+    )
+    .unwrap();
+    assert!(undoable(&fixture, &session, &turn_id));
+    assert!(!undoable(&fixture, "session-other", &turn_id));
+    assert!(!undoable(&fixture, &session, "turn-other"));
+}

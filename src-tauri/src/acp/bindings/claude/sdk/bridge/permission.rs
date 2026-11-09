@@ -12,14 +12,15 @@ use super::{BridgeError, Inbound, MAX_TRACKED_TOOLS, OPEN_APPROVALS, Permission,
 use crate::acp::bindings::claude::sdk::tools::tool_fields;
 
 const ALLOW_ONCE: &str = "allow_once";
+const ANSWER: &str = "answer";
 const ALLOW_ALWAYS: &str = "allow_always";
 const REJECT: &str = "reject";
 const DECLINED: &str = "The user declined this tool use.";
 const TOO_MANY: &str = "Too many approvals are already waiting for the user.";
 const NO_TURN: &str = "The user's turn has ended, so no one can approve this now.";
-/// Claude's multiple-choice questions have no Sage card yet; declining with
-/// this reason makes Claude ask in its reply instead.
-const QUESTIONS_UNSUPPORTED: &str = "Sage cannot show multiple-choice questions yet. \
+/// Questions beyond what a Sage card shows; declining with this reason makes
+/// Claude ask in its reply instead.
+const QUESTIONS_UNSUPPORTED: &str = "Sage cannot show these questions. \
 Ask the user the question in your reply instead.";
 
 impl SdkBridge {
@@ -33,12 +34,6 @@ impl SdkBridge {
             .get("tool_name")
             .and_then(Value::as_str)
             .ok_or(BridgeError::Frame)?;
-        if name == "AskUserQuestion" {
-            inbound
-                .replies
-                .push(decision(request_id, deny(QUESTIONS_UNSUPPORTED)));
-            return Ok(());
-        }
         if self.prompt.is_none() {
             inbound.replies.push(decision(request_id, deny(NO_TURN)));
             return Ok(());
@@ -48,6 +43,17 @@ impl SdkBridge {
             return Ok(());
         }
         let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
+        let questions = match name {
+            "AskUserQuestion" => match super::questions::questions(&input) {
+                Some((request, texts)) => Some((request, texts)),
+                None => {
+                    let reply = decision(request_id, deny(QUESTIONS_UNSUPPORTED));
+                    inbound.replies.push(reply);
+                    return Ok(());
+                }
+            },
+            _ => None,
+        };
         let suggestions = request
             .get("permission_suggestions")
             .filter(|value| value.as_array().is_some_and(|rules| !rules.is_empty()))
@@ -76,7 +82,12 @@ impl SdkBridge {
         }
         let mut options =
             vec![json!({"optionId": ALLOW_ONCE, "name": "Yes", "kind": "allow_once"})];
-        if suggestions.is_some() {
+        let questions = questions.map(|(request, texts)| {
+            inbound.questions = Some(request);
+            options = vec![json!({"optionId": ANSWER, "name": "Answer", "kind": "allow_once"})];
+            texts
+        });
+        if suggestions.is_some() && questions.is_none() {
             options.push(json!({"optionId": ALLOW_ALWAYS, "name": "Yes, and don't ask again", "kind": "allow_always"}));
         }
         options.push(json!({"optionId": REJECT, "name": "No", "kind": "reject_once"}));
@@ -87,6 +98,7 @@ impl SdkBridge {
                 request_id: request_id.to_owned(),
                 input,
                 suggestions,
+                questions,
             },
         );
         inbound.acp.push(json!({
@@ -134,6 +146,18 @@ impl SdkBridge {
         let selected = (outcome.get("outcome").and_then(Value::as_str) == Some("selected"))
             .then(|| outcome.get("optionId").and_then(Value::as_str))
             .flatten();
+        if let Some(texts) = &permission.questions {
+            let cancelled = outcome.get("outcome").and_then(Value::as_str) == Some("cancelled");
+            let answers = (selected == Some(ANSWER)).then(|| result.and_then(|r| r.get("answers")));
+            let response = if cancelled {
+                deny(DECLINED)
+            } else {
+                let input = super::questions::answered(&permission.input, texts, answers.flatten());
+                json!({"behavior": "allow", "updatedInput": input})
+            };
+            self.answering.insert(permission.request_id.clone());
+            return Ok(decision(&permission.request_id, response));
+        }
         let response = match selected {
             Some(ALLOW_ONCE) => json!({"behavior": "allow", "updatedInput": permission.input}),
             Some(ALLOW_ALWAYS) => json!({
