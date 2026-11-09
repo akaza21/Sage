@@ -35,6 +35,8 @@ mod notice_journey_tests;
 mod notice_tests;
 mod saved_diff_tests;
 mod session_title_tests;
+#[cfg(feature = "acp-fixture")]
+mod steer_journey_tests;
 mod usage_tests;
 
 struct Mapper;

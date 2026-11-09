@@ -7,6 +7,7 @@ import {
 } from "./acp-native-pi-cases.mjs";
 import { codexUserInputJourneys } from "./acp-native-codex-user-input-cases.mjs";
 import { codexNoticeJourneys } from "./acp-native-codex-notice-cases.mjs";
+import { codexSteerJourneys } from "./acp-native-codex-steer-cases.mjs";
 import { customAcpJourneys } from "./acp-native-custom-acp-cases.mjs";
 import { claudeSdkJourneys } from "./acp-native-claude-sdk-cases.mjs";
 import { codexMcpHookJourneys } from "./acp-native-codex-mcp-hook-cases.mjs";
@@ -335,6 +336,7 @@ journeyCases.push(
 );
 journeyCases.push(...codexUserInputJourneys());
 journeyCases.push(...codexNoticeJourneys());
+journeyCases.push(...codexSteerJourneys());
 journeyCases.push(...customAcpJourneys());
 journeyCases.push(...claudeSdkJourneys());
 journeyCases.push(...codexMcpHookJourneys());

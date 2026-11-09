@@ -207,6 +207,10 @@ pub enum ItemContent {
         role: TextRole,
         text: SafeText<262144>,
     },
+    /// A message the user steered into the running Turn, at its place.
+    UserPrompt {
+        text: SafeText<262144>,
+    },
     ThoughtSummary {
         summary: SafeText<262144>,
     },
