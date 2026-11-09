@@ -37,16 +37,19 @@ class PartLoadFailed extends Error {}
 
 /**
  * Renders the part's fallback in place of a chunk that failed to load, so
- * the surface around it stays up; a later mount imports again. Any other
- * error goes on to the boundary above.
+ * the surface around it stays up, and tells its owner; a later mount
+ * imports again. Any other error goes on to the boundary above.
  */
 class PartLoadBoundary extends Component<
-  { fallback: ReactNode; children: ReactNode },
+  { fallback: ReactNode; onLoadFailed?: () => void; children: ReactNode },
   { error?: unknown }
 > {
   state: { error?: unknown } = {};
   static getDerivedStateFromError(error: unknown) {
     return { error };
+  }
+  componentDidCatch(error: unknown) {
+    if (error instanceof PartLoadFailed) this.props.onLoadFailed?.();
   }
   render() {
     const { error } = this.state;
@@ -76,8 +79,14 @@ export function lazyParts<Chunk extends Components>(
     ));
   function Part<K extends keyof Chunk & string>({
     fallback = null,
+    onLoadFailed,
     ...props
-  }: { part: K; fallback?: ReactNode } & ComponentProps<Chunk[K]>) {
+  }: {
+    part: K;
+    fallback?: ReactNode;
+    /** Called when the chunk fails to load, for an owner that gives way. */
+    onLoadFailed?: () => void;
+  } & ComponentProps<Chunk[K]>) {
     const part: K = props.part;
     // Fix the subtree per mount.
     const [Ready] = useState<AnyComponent | undefined>(() => loaded?.[part]);
@@ -92,7 +101,7 @@ export function lazyParts<Chunk extends Components>(
         },
       ));
     return (
-      <PartLoadBoundary fallback={fallback}>
+      <PartLoadBoundary fallback={fallback} onLoadFailed={onLoadFailed}>
         <Suspense fallback={fallback}>
           <DeferredModuleSurface
             load={loadPart}
