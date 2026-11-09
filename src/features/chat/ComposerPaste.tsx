@@ -10,6 +10,7 @@ import { ComposerPasteNotices } from "./ComposerPasteNotices";
 import { PastedTextChips } from "./PastedTextChips";
 import {
   pasteOver,
+  pickFiles,
   reconcile,
   removeStaged,
   type StagedOwner,
@@ -23,11 +24,13 @@ import type {
 const EMPTY: PastedTextState = { revision: null, items: [], busy: false };
 
 /**
- * Lazy: loads with a native chat's composer or with over-cap input. Owns the
- * chat's staged pasted text: attaching a paste too long for the composer,
- * refusing one that cannot attach, the announcements, the chips and their
- * preview. The composer keeps only its synchronous size check and hands
- * over what it held back, a paste made before this part loaded included.
+ * Lazy: loads with a native chat's composer or with held input. The one
+ * owner of the chat's staged batch: attaching a paste too long for the
+ * composer, refusing one that cannot attach, files picked with the attach
+ * button, the announcements, the chips and their preview. The composer
+ * keeps only its synchronous size check and hands over what it held back,
+ * a paste or pick made before this part loaded included. Mounted once per
+ * chat, so another chat starts empty and reads its own batch back.
  */
 export function ComposerPaste({
   chatId,
@@ -61,6 +64,9 @@ export function ComposerPaste({
   const [notice, setNotice] = useState<{ text: string; message: string }>();
   const ref = useRef(state);
   const settled = useRef(false);
+  // A result for a chat left meanwhile is dropped; that chat reads its
+  // batch back when shown again.
+  const live = useRef(true);
   const handled = useRef(0);
   // Held input is answered in order, a paste only once the one before it
   // was staged or refused.
@@ -81,29 +87,39 @@ export function ComposerPaste({
       chatId,
       ref,
       set(next) {
+        if (!live.current) return;
         ref.current = next;
         setState(next);
         publish(next);
       },
       settle() {
+        if (!live.current) return;
         settled.current = true;
         publish(ref.current);
       },
     };
   }, [chatId, onStaged]);
-  // On load, on a chat change and after each send, which may consume it.
-  // Until the first read settles, a send could miss a batch staged before
-  // a reload, so the composer holds sends until then.
+  // Nothing staged here may outlive this chat's composer, and a send waits
+  // for this chat's batch, not the one the composer showed before.
+  useEffect(() => {
+    live.current = true;
+    onStaged({ revision: null, busy: false, settled: settled.current });
+    return () => {
+      live.current = false;
+      onStaged({ revision: null, busy: false, settled: true });
+    };
+  }, [onStaged]);
+  // On load and after each send, which may consume it. Until the first read
+  // settles, a send could miss a batch staged before a reload, so the
+  // composer holds sends until then. Queued behind any staging, so a pick
+  // or paste names the revision it replaces.
   useEffect(() => {
     if (disabled) return;
     if (!isTauriRuntime()) return owner.settle();
-    void reconcile(owner).finally(() => owner.settle());
+    const read = chain.current.then(() => reconcile(owner));
+    chain.current = read;
+    void read.finally(() => owner.settle());
   }, [owner, disabled]);
-  // Nothing staged here may outlive this chat's composer.
-  useEffect(
-    () => () => onStaged({ revision: null, busy: false, settled: true }),
-    [onStaged],
-  );
   const attachability = useMemo(
     () => ({ nativeAcp, session }),
     [nativeAcp, session],
@@ -122,6 +138,8 @@ export function ComposerPaste({
       for (const held of inputs) {
         if (held.kind === "paste")
           await pasteOver(owner, attachability, held.paste, announce, disabled);
+        else if (held.kind === "pick")
+          await pickFiles(owner, announce, disabled);
         else announce(heldInputMessage(held, refusal));
       }
     });

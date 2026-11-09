@@ -1,5 +1,4 @@
 import type { RefObject } from "react";
-import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { IconButton } from "../../ui/IconButton";
 import { Paperclip } from "../../ui/leanIcons";
 import type * as AttachChunk from "./ComposerAttach";
@@ -47,9 +46,9 @@ export function ComposerFileParts({
   fieldId,
   text,
   imageAction,
+  onPickFiles,
   hidden,
   disabled,
-  busy,
 }: {
   files: FileContext;
   chatId: string;
@@ -57,11 +56,11 @@ export function ComposerFileParts({
   fieldId: string;
   text: string;
   imageAction?: { disabled: boolean; onChoose: () => void };
+  /** Hands a pick to the chat's staged batch, which the paste part owns. */
+  onPickFiles: () => void;
   hidden: boolean;
   /** The field cannot be edited. */
   disabled: boolean;
-  /** A send is in flight and may consume the staged files. */
-  busy: boolean;
 }) {
   return (
     <>
@@ -74,17 +73,16 @@ export function ComposerFileParts({
           text={text}
         />
       ) : null}
-      {/* In the desktop app it mounts with the chat, so a batch native
-          already holds (staged before a reload) shows its chips; elsewhere
-          only a press can explain why attaching is unavailable. */}
-      {chatId && (files.attachPresses > 0 || isTauriRuntime()) ? (
+      {/* Only the button and its menu: the staged batch and its chips
+          belong to the paste part, so this loads with the first press. */}
+      {chatId && files.attachPresses > 0 ? (
         <AttachPart
           part="ComposerAttach"
           chatId={chatId}
           presses={files.attachPresses}
           triggerId={`${fieldId}-attach`}
           imageAction={imageAction}
-          disabled={busy}
+          onPick={onPickFiles}
         />
       ) : null}
     </>

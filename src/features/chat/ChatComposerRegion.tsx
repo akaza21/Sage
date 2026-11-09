@@ -111,7 +111,8 @@ export function ChatComposerRegion({
     onAddImages,
   });
   // The paste part loads with the composer of a native chat, or with
-  // held-back input, and reports the batch it staged.
+  // held-back input, and reports the batch it staged: pasted text and files
+  // picked with the attach button alike.
   const paste = useComposerPaste(
     availableBinding,
     activeTurn,
@@ -133,9 +134,9 @@ export function ChatComposerRegion({
     fieldRef: composerRef,
     fieldId,
     imageAction: imageInput.action,
+    onPickFiles: paste.pickFiles,
     hidden,
     disabled: composerDisabled,
-    busy: actionBusy || projectTransitioning,
     attachable: availableBinding,
   });
   const shortcutDescriptionId = `${descriptionId}-shortcut`;

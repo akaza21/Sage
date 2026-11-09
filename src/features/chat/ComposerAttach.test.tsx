@@ -28,6 +28,8 @@ vi.mock("../../ports/nativeInvoke", async (importOriginal) => ({
 }));
 
 const initial = useWorkbenchStore.getState();
+/** The batch's owner loads lazily, so a pick may take a moment to land. */
+const LAZY = { timeout: 5000 };
 const owner = {
   projectId: "project-a",
   chatId: "chat-a",
@@ -135,8 +137,13 @@ describe("composer attach button", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
     });
-    const chips = await screen.findByRole("list", {
-      name: "Files for the next message",
+    // Picked files join the chat's one batch, beside any pasted text. Its
+    // owner loads lazily, so the pick lands after the batch read back.
+    expect(
+      await screen.findByText("notes.txt · 2 KB", undefined, LAZY),
+    ).toBeInTheDocument();
+    const chips = screen.getByRole("list", {
+      name: "Attachments for the next message",
     });
     // The picker replaces the batch read back first, never a stale one.
     expect(native.mock.calls.map(([command]) => command)).toEqual([
@@ -147,9 +154,10 @@ describe("composer attach button", () => {
       request: { owner, pick: "files", expectedRevision: "r1" },
     });
     expect(within(chips).getAllByRole("listitem")).toHaveLength(2);
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "2 files attached to the next message.",
-    );
+    // The batch's owner announces it, in the notices the field names.
+    expect(
+      document.querySelector("#disabled-reason-paste [aria-live=polite]"),
+    ).toHaveTextContent("2 files attached to the next message.");
     await act(async () => {
       fireEvent.click(
         screen.getByRole("button", { name: "Remove old.md · 2 KB" }),
@@ -159,6 +167,25 @@ describe("composer attach button", () => {
       request: { owner, revision: "r2", id: "f0" },
     });
     expect(within(chips).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("sends picked files by the batch revision the send names", async () => {
+    withSession(true);
+    native.mockImplementation(async (command: string) =>
+      command === "stage_prompt_files" ? staged("r1", ["a.md"]) : null,
+    );
+    const onSubmit = vi.fn((event: { preventDefault(): void }) =>
+      event.preventDefault(),
+    );
+    renderComposer({ onSubmit });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
+    });
+    expect(
+      await screen.findByText("a.md · 2 KB", undefined, LAZY),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.anything(), "r1");
   });
 
   it("shows the batch native already holds for the chat without a press", async () => {

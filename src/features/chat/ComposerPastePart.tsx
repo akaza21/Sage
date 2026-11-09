@@ -4,8 +4,9 @@ import type * as PasteChunk from "./ComposerPaste";
 import { lazyParts } from "./lazyParts";
 import type { ComposerPasteWiring } from "./useComposerPaste";
 
-// Paste staging, chips and messages load with a native chat's composer or
-// with input over the cap; only the synchronous size check stays eager.
+// The staged batch (pasted text and picked files), its chips and messages
+// load with a native chat's composer or with held input; only the
+// synchronous size check stays eager.
 const PastePart = lazyParts<typeof PasteChunk>(
   () => import("./ComposerPaste"),
   { ComposerPaste: PasteUnavailable },
@@ -50,6 +51,8 @@ export function ComposerPasteSlot({
 }) {
   return paste.armed ? (
     <PastePart
+      // One batch per chat: another chat's part starts empty.
+      key={props.chatId}
       part="ComposerPaste"
       {...props}
       nativeAcp={paste.nativeAcp}

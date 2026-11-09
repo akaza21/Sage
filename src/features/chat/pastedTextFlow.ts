@@ -1,4 +1,5 @@
-/** Lazy: staging, its IPC and paste decisions load with ComposerPaste. */
+/** Lazy: staging, its IPC and paste decisions load with ComposerPaste. The
+ * chat's one staged batch: pasted text and picked files alike. */
 import type { RefObject } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
@@ -135,6 +136,45 @@ export async function pasteOver(
     announce(
       `${failure(error, "Could not attach the pasted text.")} Nothing was pasted.`,
     );
+  } finally {
+    setBusy(staged, false);
+  }
+}
+
+/**
+ * Adds the files picked in native's dialog, which stages them in Rust: the
+ * WebView never sees a path or the bytes. A cancelled pick keeps the batch.
+ */
+export async function pickFiles(
+  staged: StagedOwner,
+  announce: Announce,
+  /** A send is in flight and may consume the batch. */
+  sending: boolean,
+) {
+  if (sending)
+    return announce(
+      "Wait for the message to finish sending, then attach again. Nothing was attached.",
+    );
+  const target = owner(staged.chatId);
+  if (!target) return announce("This chat is not ready for attachments.");
+  if (staged.ref.current.busy)
+    return announce("Wait for the previous attachment to finish.");
+  setBusy(staged, true);
+  try {
+    const result = await port.stagePromptFiles({
+      owner: target,
+      pick: "files",
+      expectedRevision: staged.ref.current.revision,
+    });
+    if (!result) return;
+    apply(staged, result);
+    const count = result.files.length;
+    announce(
+      `${count} ${count === 1 ? "file" : "files"} attached to the next message.`,
+    );
+  } catch (error) {
+    await reconcile(staged);
+    announce(failure(error, "The attachments could not be updated."));
   } finally {
     setBusy(staged, false);
   }
