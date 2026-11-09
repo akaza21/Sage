@@ -283,6 +283,33 @@ fn attachments_become_text_image_and_document_content() {
 }
 
 #[test]
+fn a_linked_file_becomes_a_mention_claude_code_reads() {
+    let mut bridge = initialized();
+    let (uri, path) = if cfg!(windows) {
+        ("file:///C:/work/my%20notes.md", "@C:\\work\\my notes.md")
+    } else {
+        ("file:///work/my%20notes.md", "@/work/my notes.md")
+    };
+    let user = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"prompt":[
+                {"type":"text","text":"see"},
+                {"type":"resource_link","uri":uri,"name":"my notes.md"},
+            ]}}),
+        )
+        .unwrap();
+    assert_eq!(user["message"]["content"][1]["text"], path);
+    assert_eq!(
+        bridge.outbound(
+            &json!({"jsonrpc":"2.0","id":4,"method":"session/prompt","params":{"prompt":[
+                {"type":"resource_link","uri":"https://example.com/x","name":"x"},
+            ]}})
+        ),
+        Err(BridgeError::Unsupported)
+    );
+}
+
+#[test]
 fn resume_must_name_the_launched_session() {
     let mut bridge = SdkBridge::new(SESSION.into(), None);
     assert_eq!(

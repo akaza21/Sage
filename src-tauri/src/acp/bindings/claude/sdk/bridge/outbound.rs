@@ -111,7 +111,8 @@ fn text(value: Option<&Value>) -> Result<&str, BridgeError> {
 }
 
 /// ACP prompt blocks as Messages API content: text and images pass through;
-/// an attached text file becomes a text block that names its source. Sage
+/// an attached text file becomes a text block that names its source, and a
+/// linked file becomes an `@path` mention. Sage
 /// attaches other files as opaque blobs, so their type is read from their
 /// leading bytes: images and PDFs go as such, anything else is named but
 /// not sent, since Claude Code accepts no other binary content.
@@ -147,6 +148,17 @@ fn prompt_content(blocks: Option<&Value>) -> Result<Vec<Value>, BridgeError> {
                         "<context ref=\"{uri}\">\n(Binary file not shown: only images and PDFs can be sent to Claude Code.)\n</context>"
                     )}),
                 })
+            }
+            // A file named but not attached: Claude Code reads an `@path`
+            // mention itself.
+            Some("resource_link") => {
+                let uri = text(block.get("uri"))?;
+                let path = url::Url::parse(uri)
+                    .ok()
+                    .filter(|url| url.scheme() == "file")
+                    .and_then(|url| url.to_file_path().ok())
+                    .ok_or(BridgeError::Unsupported)?;
+                Ok(json!({"type": "text", "text": format!("@{}", path.display())}))
             }
             _ => Err(BridgeError::Unsupported),
         })
