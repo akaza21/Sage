@@ -249,6 +249,27 @@
         "reason": "Hand off this Chat dialog (target picker, prompt review, placement); loads on the first Hand off."
       },
       {
+        "entry": "src/features/chat/ChatHandoffControl.tsx",
+        "maxGzipBytes": 1041,
+        "reason": "Hand off trigger and intent for the Editor chat header and a chat row menu; Agent chrome renders neither on first paint. Measured 972 B, plus 7%."
+      },
+      {
+        "entry": "src/features/chat/BoundChatGoalControl.tsx",
+        "maxGzipBytes": 1971,
+        "maxCssGzipBytes": 764,
+        "reason": "Native Goal details, Pause and Delete with their mutations; loads with the first chat that shows a Goal. Measured 1842 B JS and 714 B CSS, plus 7%."
+      },
+      {
+        "entry": "src/features/chat/ComposerAttachments.tsx",
+        "maxGzipBytes": 711,
+        "reason": "Composer attachment chips (page, image, comment and element) with their remove buttons; loads with the first context attached to a draft. Measured 664 B, plus 7%."
+      },
+      {
+        "entry": "src/features/chat/ChatLegacyTranscript.tsx",
+        "maxGzipBytes": 483,
+        "reason": "Transcript of a chat without a native session, such as the development simulator's; native chats never load it. Measured 451 B, plus 7%."
+      },
+      {
         "entry": "src/features/chat/ComposerQueuedPrompts.tsx",
         "maxGzipBytes": 1405,
         "reason": "Queued-message rows above the composer (status, Steer, delete and More options); loads with the first queued message."

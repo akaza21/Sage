@@ -2,7 +2,7 @@ import { MoreHorizontal, X } from "../../ui/leanIcons";
 import { useId, useRef, useState, type RefObject } from "react";
 import { MenuPopover } from "../../ui/MenuPopover";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
-import { QueuedAttachmentPreview } from "./ComposerAttachments";
+import { QueuedAttachmentPreview } from "./QueuedAttachmentPreview";
 
 export function ComposerQueuedPrompts({
   composerRef,

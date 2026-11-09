@@ -15,7 +15,6 @@ import {
 import { ArrowDown } from "../../ui/leanIcons";
 import { isSideChatId } from "../../workbench/sideChatState";
 import { ChatHome } from "./ChatHome";
-import { ChatLegacyTranscript } from "./ChatLegacyTranscript";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
 import {
   AcpChatProjection,
@@ -30,7 +29,7 @@ import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import "./chat-home.css";
 import "./chat-transcript-polish.css";
 import { composerWorkspaceName } from "./composerChrome";
-import { ForkPart, NoticePart } from "./lazyParts";
+import { ForkPart, LegacyTranscriptPart, NoticePart } from "./lazyParts";
 import { isNewProjectChat } from "./newProjectChat";
 import { TranscriptInteractionsGate, TranscriptPart } from "./transcriptLazy";
 
@@ -50,6 +49,7 @@ export function ChatTranscript({
   onOpenResource,
   hasEarlier,
   historyLoading = false,
+  pageExpected = false,
   loadingEarlier,
   historyError,
   onLoadEarlier,
@@ -83,6 +83,8 @@ export function ChatTranscript({
   ) => void;
   hasEarlier: boolean;
   historyLoading?: boolean;
+  /** A native chat is resolved, so a page without one is still loading. */
+  pageExpected?: boolean;
   loadingEarlier: boolean;
   historyError: string | null;
   onLoadEarlier: () => void;
@@ -181,7 +183,11 @@ export function ChatTranscript({
             <div className="composer__notice" role="status">
               Loading the authoritative project…
             </div>
-          ) : useNativeAcp && !page && (historyLoading || historyError) ? (
+          ) : useNativeAcp &&
+            !page &&
+            (historyLoading || historyError || pageExpected) ? (
+            // A native chat never falls through to the legacy transcript
+            // while its first page is on the way.
             historyNotice
           ) : useNativeAcp && page ? (
             <>
@@ -232,7 +238,8 @@ export function ChatTranscript({
               />
             </>
           ) : (
-            <ChatLegacyTranscript
+            <LegacyTranscriptPart
+              part="ChatLegacyTranscript"
               messages={messages}
               developmentSimulator={developmentSimulator}
             />

@@ -9,7 +9,10 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { AgentSessionChrome } from "../app/agentChatOwner";
-import { lazyParts } from "../features/chat/lazyParts";
+import {
+  lazyParts,
+  preloadChatHandoffControl,
+} from "../features/chat/lazyParts";
 import { useColdOpen } from "../ui/coldOpen";
 import { Folder, MoreHorizontal } from "../ui/leanIcons";
 import type { MenuDismissReason } from "../ui/MenuPopover";
@@ -24,8 +27,13 @@ import {
   preloadAgentHeaderMenu,
   subscribeAgentHeaderMenu,
 } from "./agentTaskHeaderLazy";
-const ActionsPart = lazyParts<typeof ActionsChunk>(
-  () => import("./ProjectChatActionPopover"),
+// The menu's Hand off item loads with it, so it renders in the menu's
+// first commit.
+const ActionsPart = lazyParts<typeof ActionsChunk>(() =>
+  Promise.all([
+    import("./ProjectChatActionPopover"),
+    preloadChatHandoffControl(),
+  ]).then(([chunk]) => chunk),
 );
 const preloadMenu = () => void preloadAgentHeaderMenu().catch(() => undefined);
 export interface ProjectChatMenuProps {
