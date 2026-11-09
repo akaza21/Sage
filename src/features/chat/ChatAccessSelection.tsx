@@ -118,7 +118,8 @@ export default function ChatAccessSelection({
         ) : null}
       </>
     ) : null;
-  return session ? (
+  // A removed session is past; its chat drafts like one not yet started.
+  return session && !session.removed ? (
     <LiveChatAccess session={session} {...props}>
       {withMenu}
     </LiveChatAccess>

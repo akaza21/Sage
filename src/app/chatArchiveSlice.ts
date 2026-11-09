@@ -53,16 +53,19 @@ export const createChatArchiveSlice: StateCreator<
     (actions ??= import("./chatArchiveActions").then((module) =>
       module.createChatArchiveActions(set, get),
     ));
-  const run = async (
+  const run = (
     action: (loaded: Awaited<ReturnType<typeof load>>) => Promise<boolean>,
   ) => {
-    try {
-      return await action(await load());
-    } catch (error) {
-      actions = null;
-      set({ error: errorMessage(error) });
-      return false;
-    }
+    // An action started in one Project is dropped if the Project switches
+    // while the actions load: it would run against the next Project.
+    const projectId = get().project?.id;
+    return load()
+      .then((loaded) => get().project?.id === projectId && action(loaded))
+      .catch((error: unknown) => {
+        actions = null;
+        set({ error: errorMessage(error) });
+        return false;
+      });
   };
 
   return {

@@ -88,7 +88,7 @@ export function ComposerAccessControl({
       <ChatAccess
         bindingId={bindingId}
         capabilities={capabilities}
-        session={sessionConfig?.removed ? null : sessionConfig}
+        session={sessionConfig}
         chatId={chatId}
         error={base.error}
         anchor={{
