@@ -149,6 +149,13 @@ pub(super) fn notification<M: ResourceMapper>(
                 "starting" | "ready" | "cancelled"
                     if params.get("error").is_some_and(Value::is_null)
                         && params.get("failureReason").is_some_and(Value::is_null) => {}
+                "failed"
+                    if name != "sage-browser"
+                        || params.get("failureReason").and_then(Value::as_str)
+                            == Some(notices::REAUTHENTICATION_REQUIRED) =>
+                {
+                    return notices::mcp_startup_failed(adapter, params, name, thread);
+                }
                 "failed" if name == "sage-browser" => {
                     text(
                         params,
