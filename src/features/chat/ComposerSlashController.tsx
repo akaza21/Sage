@@ -10,7 +10,8 @@ import "../../styles/composer-slash.css";
 import { isImeComposing } from "../../ui/imeComposition";
 import type { SuggestionKeyEvent } from "../../ui/textFieldSuggestionNavigation";
 import { ComposerCommandHint } from "./ComposerCommandHint";
-import { ComposerSlashMenu } from "./ComposerSlashMenu";
+import type * as MenuChunk from "./ComposerSlashMenu";
+import { lazyParts } from "./lazyParts";
 import {
   pendingSlashCommandHint,
   slashCommandName,
@@ -19,6 +20,12 @@ import {
   type PickedSlashCommand,
 } from "./composerSlashCommand";
 import { setPickedCommand } from "./slashCommandPicks";
+
+// The menu, its list and the command port load with the first `/`, so a
+// focus that never types one carries only the key guard and the hint.
+const MenuPart = lazyParts<typeof MenuChunk>(
+  () => import("./ComposerSlashMenu"),
+);
 
 /**
  * Replaces the leading `/token` with `/name ` through the editing commands,
@@ -203,7 +210,8 @@ export function ComposerSlashController({
     <>
       <ComposerCommandHint hint={hint} hintId={hintId} text={text} />
       {open ? (
-        <ComposerSlashMenu
+        <MenuPart
+          part="ComposerSlashMenu"
           anchorRef={anchorRef}
           boundChatId={boundChatId}
           keyHandlerRef={keyHandlerRef}
