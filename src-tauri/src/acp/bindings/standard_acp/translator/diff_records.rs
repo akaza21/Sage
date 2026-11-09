@@ -9,7 +9,6 @@ use crate::acp::{
 };
 
 use super::decode::unsupported_event;
-use super::tools::FILE_CHANGE_SUMMARY;
 use super::{
     AdapterEvent, MAX_EVENTS_PER_FRAME, ResourceMapper, StandardAcpTranslator, TranslationError,
 };
@@ -336,29 +335,31 @@ impl StandardAcpTranslator {
             return Ok(());
         };
         let external_key: ExternalId = RequiredText::new("externalItemId", key)?;
-        let facts = FileChangeFacts {
-            resource: match &settlement.resolved {
-                Some(resource) => SafeResourceLocation::Resource {
-                    resource: resource.clone(),
-                },
-                None => match &settlement.deleted_display {
-                    Some(display) => SafeResourceLocation::unavailable_with_display(
-                        UnavailableResourceReason::Missing,
-                        display.clone(),
-                    ),
-                    None => SafeResourceLocation::unavailable(
-                        record.frozen_reason().unwrap_or(record.reason),
-                    ),
-                },
+        let operation = if settlement.missing_deletion {
+            FileChangeOperation::Deleted
+        } else {
+            record.facts.operation
+        };
+        let resource = match &settlement.resolved {
+            Some(resource) => SafeResourceLocation::Resource {
+                resource: resource.clone(),
             },
-            summary: SafeText::new("fileSummary", FILE_CHANGE_SUMMARY)?,
+            None => match &settlement.deleted_display {
+                Some(display) => SafeResourceLocation::unavailable_with_display(
+                    UnavailableResourceReason::Missing,
+                    display.clone(),
+                ),
+                None => SafeResourceLocation::unavailable(
+                    record.frozen_reason().unwrap_or(record.reason),
+                ),
+            },
+        };
+        let facts = FileChangeFacts {
+            summary: SafeText::new("fileSummary", operation.describe(&resource))?,
+            resource,
             additions: record.facts.additions,
             deletions: record.facts.deletions,
-            operation: if settlement.missing_deletion {
-                FileChangeOperation::Deleted
-            } else {
-                record.facts.operation
-            },
+            operation,
         };
         match settlement.pair {
             Some((old_bytes, new_bytes, digest)) => {

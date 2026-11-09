@@ -378,7 +378,7 @@ test("CP-30d the selected chat keeps edit zones and queued trays free of resize 
       });
       const pill = summary.getByRole("button", { name: /files? changed/ });
       await pill.click();
-      const input = composer.getByRole("textbox", { name: "Message agent" });
+      const input = composer.getByRole("combobox", { name: "Message agent" });
       await input.fill("A retained draft. ".repeat(cycle % 2 ? 80 : 1));
       const tray = await box(queue);
       expect(tray.height).toBeGreaterThan(0);

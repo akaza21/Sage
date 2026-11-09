@@ -56,6 +56,25 @@
   font-size: var(--font-size-xs);
 }
 
+.acp-user-input__message,
+.acp-user-input__link {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.acp-user-input__link code {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+textarea.acp-user-input__text {
+  height: auto;
+  padding-block: var(--space-1);
+  resize: vertical;
+}
+
 .acp-user-input__text {
   min-width: 0;
   height: var(--control-height-compact);

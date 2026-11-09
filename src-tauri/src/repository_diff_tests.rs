@@ -1,4 +1,4 @@
-use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path};
 
 use super::{GitDiffScope, scoped_file_diff};
 use crate::{domain::FileDiff, error::AppError, workspace::Workspace};
@@ -13,7 +13,7 @@ impl Drop for Repository {
 
 fn git(root: &Path, args: &[&str]) {
     assert!(
-        Command::new("git")
+        crate::git_process::fixture_git()
             .arg("-C")
             .arg(root)
             .args(args)

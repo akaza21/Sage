@@ -1,0 +1,29 @@
+{
+  "runtimeVersion": "0.167.0",
+  "sourceCommit": "086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a",
+  "appServerSchemaSha256": "486c7c8daa5dc7f3ab2a1fb56de5316804caf7a4210fda1dc28d3f0f4e90cfe1",
+  "schemaFiles": {
+    "v2/ModelListResponse.json": "2fb387a2ed258fc74258828ea342d68f89ce4e8e22cd0329ca59d2b423f9108b",
+    "v2/ThreadTokenUsageUpdatedNotification.json": "aba4f6c7e4a19b2b842c08ee793b57000c07dafd57b922ad0d8e7c76609108c2"
+  },
+  "modelRequired": [
+    "defaultReasoningEffort",
+    "description",
+    "displayName",
+    "hidden",
+    "id",
+    "isDefault",
+    "model",
+    "supportedReasoningEfforts"
+  ],
+  "effortOptionRequired": ["description", "reasoningEffort"],
+  "usageNotificationRequired": ["threadId", "tokenUsage", "turnId"],
+  "threadTokenUsageRequired": ["last", "total"],
+  "usageBreakdownRequired": [
+    "cachedInputTokens",
+    "inputTokens",
+    "outputTokens",
+    "reasoningOutputTokens",
+    "totalTokens"
+  ]
+}

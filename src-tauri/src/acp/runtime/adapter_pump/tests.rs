@@ -1,3 +1,4 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use std::{collections::VecDeque, future::Future, pin::Pin, sync::Mutex};
 
 use crate::acp::{
@@ -70,8 +71,8 @@ fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, 
     let initialized = codex
         .ingest(
             &codex_frame(serde_json::json!({"id":1,"result":{
-                "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+                "userAgent":user_agent("sage", "unknown"),
+                "codexHome":MANAGED_CODEX_HOME,
                 "platformFamily":"windows","platformOs":"windows"
             }})),
             &Mapper,
@@ -525,6 +526,7 @@ struct FakeState {
     turn_notices: Vec<TurnNotice>,
     ingest_error: Option<AdapterRuntimeError>,
     refusal_detail: Option<RefusalDetail>,
+    turn_unnamed: bool,
 }
 
 #[derive(Clone)]
@@ -542,6 +544,10 @@ impl HarnessAdapter for FakeAdapter {
 
     fn refusal_detail(&self) -> Option<RefusalDetail> {
         self.shared.0.lock().unwrap().refusal_detail.clone()
+    }
+
+    fn defer_cancel(&mut self) -> bool {
+        self.shared.0.lock().unwrap().turn_unnamed
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -1428,6 +1434,28 @@ fn cancellation_requires_the_exact_live_turn_tuple() {
         QueueDisposition::Queued
     );
     assert_eq!(shared.0.lock().unwrap().commands, ["cancel"]);
+}
+
+#[test]
+fn a_cancel_for_a_turn_the_harness_has_not_named_is_held_by_the_adapter() {
+    let (mut pump, shared) = build_pump(Vec::new());
+    shared.0.lock().unwrap().turn_unnamed = true;
+    assert_eq!(
+        pump.queue_cancel_notification(
+            &session("one"),
+            RuntimeEpoch::new(1).unwrap(),
+            &turn("one"),
+            &message()
+        )
+        .unwrap(),
+        QueueDisposition::Deferred
+    );
+    assert!(shared.0.lock().unwrap().commands.is_empty());
+    let mut transport = CountingTransport::default();
+    assert_eq!(
+        pump.flush_one(&mut transport).unwrap(),
+        FlushDisposition::Idle
+    );
 }
 
 #[test]
@@ -2536,3 +2564,40 @@ mod codex_user_input_journey_tests;
 
 #[path = "session_event_tests.rs"]
 mod session_event_tests;
+
+#[test]
+fn a_prompt_frame_takes_its_reserve_while_the_data_lane_is_full() {
+    let (mut pump, shared) = pump_with_queue(Vec::new(), super::egress::queue().unwrap());
+    let frame = |bytes: usize, prompt: bool| {
+        let mut payload = b"{\"x\":\"".to_vec();
+        payload.resize(bytes - 2, b'a');
+        payload.extend_from_slice(b"\"}");
+        let frame = if prompt {
+            OutboundFrame::new_prompt(payload)
+        } else {
+            OutboundFrame::new(payload)
+        };
+        AdapterEgress::new(frame.unwrap(), EgressToken::request(1))
+    };
+    let largest = LIMITS.wire.frame_bytes as usize;
+    let mut queued = 0;
+    while pump.enqueue(frame(largest, false)).is_ok() {
+        queued += 1;
+    }
+    assert!(queued >= 1);
+    assert!(matches!(
+        pump.enqueue(frame(largest, false)),
+        Err(AdapterPumpError::Backpressure)
+    ));
+
+    let prompt = crate::acp::limits::PROMPT_FRAME_BYTES;
+    assert_eq!(
+        pump.enqueue(frame(prompt, true)).unwrap(),
+        QueueDisposition::Queued
+    );
+    assert!(!pump.teardown_required());
+    assert_eq!(
+        shared.0.lock().unwrap().resolutions.last(),
+        Some(&EgressResolution::Queued)
+    );
+}

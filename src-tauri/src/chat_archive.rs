@@ -76,6 +76,23 @@ impl Database {
             &request.project_id,
             &request.chat_id,
         )?;
+        // An archived Chat holds no harness process and starts no Turn. A
+        // running Turn keeps a process, and a queued prompt would start one,
+        // so the user stops the Turn and sends or removes queued prompts
+        // first. Send, session start and activation refuse an archived Chat
+        // while holding the project transition lock this archive also takes,
+        // and archive advances the transition epoch, so a send that dropped
+        // the lock for its workspace capture fails its relock as stale.
+        if delete::has_running_turn(&transaction, &request.project_id, &request.chat_id)? {
+            return Err(AppError::InvalidRequest(
+                crate::acp::service::ChatRuntimeRelease::TurnRunning.message("archiving"),
+            ));
+        }
+        if delete::has_queued_prompts(&transaction, &request.project_id, &request.chat_id)? {
+            return Err(AppError::InvalidRequest(
+                "Send or remove this Chat's queued prompts before archiving it".into(),
+            ));
+        }
         if source_is_active(&transaction, &request.project_id)? {
             validate_request(request)?;
             let attached = require_exact_attached_chats(&transaction, &request.current_layout)?;
@@ -358,6 +375,9 @@ fn archived_layout(
     }
     Ok(next)
 }
+
+mod delete;
+pub(crate) use delete::is_archived_chat;
 
 #[cfg(test)]
 mod tests;

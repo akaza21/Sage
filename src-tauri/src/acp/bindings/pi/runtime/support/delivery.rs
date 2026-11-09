@@ -25,6 +25,7 @@ impl PiRuntime {
             }
             RequestKind::Commands => self.commands_pending = false,
             RequestKind::Prompt => self.active_turn = None,
+            RequestKind::Steer => self.rollback_steer(id),
             RequestKind::ThinkingLevels => {
                 self.clear_thinking_request();
             }
@@ -33,6 +34,8 @@ impl PiRuntime {
             | RequestKind::SetModel
             | RequestKind::SetThinkingLevel
             | RequestKind::NewSession
+            | RequestKind::ResumeSession
+            | RequestKind::ClearQueue
             | RequestKind::Cancel => {}
         }
         Ok(())
@@ -128,6 +131,7 @@ impl PiRuntime {
         }
         match (deny.stage, resolution) {
             (DenyStage::Committed, EgressResolution::Queued) => deny.stage = DenyStage::Queued,
+            (DenyStage::Queued, EgressResolution::Written) if deny.releases => self.deny = None,
             (DenyStage::Queued, EgressResolution::Written) => deny.stage = DenyStage::Written,
             (DenyStage::Queued, EgressResolution::Queued)
             | (DenyStage::Written, EgressResolution::Written) => {}

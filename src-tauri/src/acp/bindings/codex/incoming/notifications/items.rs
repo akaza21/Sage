@@ -6,7 +6,7 @@ use super::super::{
     support::{expect_thread_and_turn, identity, text},
 };
 use super::{child_thread, provisional};
-use crate::acp::lifecycle::{ItemLifecycle, TerminalUpdate};
+use crate::acp::lifecycle::{ItemLifecycle, TerminalUpdate, ToolState};
 use serde_json::{Map, Value};
 
 pub(super) fn item_event<M: ResourceMapper>(
@@ -94,6 +94,15 @@ pub(super) fn item_event<M: ResourceMapper>(
     }
     adapter.enrich_subagent_payload(&mut payload);
     adapter.learn_child_threads(&payload);
+    if item.get("type").and_then(Value::as_str) == Some("mcpToolCall") {
+        // A later progress report restates this call, so remember it while
+        // it runs and forget it once it is terminal.
+        if lifecycle.is_terminal() || tool_state != Some(ToolState::InProgress) {
+            adapter.forget_running_mcp_tool(external);
+        } else if child_thread_id.is_none() {
+            adapter.track_running_mcp_tool(turn, external, &payload);
+        }
+    }
     let id = adapter
         .scoped_in_turn(ExternalKind::Item, turn, external)
         .map_err(identity)?;

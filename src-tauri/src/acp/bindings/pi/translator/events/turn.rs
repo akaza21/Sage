@@ -43,9 +43,15 @@ impl PiTranslator {
         };
         Ok(message
             .and_then(|message| message.get("usage"))
-            .map(|usage| AdapterOutput::Usage {
-                input_tokens: usage.get("input").and_then(Value::as_u64).unwrap_or(0),
-                output_tokens: usage.get("output").and_then(Value::as_u64).unwrap_or(0),
+            .map(|usage| {
+                let tokens = |key| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
+                // Cached prompt tokens still occupy the context window.
+                AdapterOutput::Usage {
+                    input_tokens: tokens("input")
+                        .saturating_add(tokens("cacheRead"))
+                        .saturating_add(tokens("cacheWrite")),
+                    output_tokens: tokens("output"),
+                }
             })
             .into_iter()
             .collect())
@@ -135,4 +141,18 @@ pub(super) fn failure_detail(value: Option<&Value>) -> Option<String> {
         return None;
     }
     crate::acp::runtime::terminal_detail::protocol_error(detail.trim())
+}
+
+/// Pi retrying a compaction or branch summary is shown as a notice; the
+/// compaction itself already has its own item.
+pub(super) fn summary_retry(value: &Value) -> AdapterOutput {
+    let attempt = |key| value.get(key).and_then(Value::as_u64).unwrap_or(1);
+    let reason = super::display_text(value.get("errorMessage"), 512)
+        .map_or_else(String::new, |reason| format!(": {reason}"));
+    let text = Value::String(format!(
+        "Pi is retrying a summary (attempt {} of {}){reason}",
+        attempt("attempt"),
+        attempt("maxAttempts"),
+    ));
+    super::notice(super::SessionNoticeLevel::Warning, "Pi", Some(&text))
 }

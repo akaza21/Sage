@@ -10,10 +10,13 @@ use super::{WireState, acp, user_input, write_stdout};
 
 const THREAD_ID: &str = "fixture-persisted-session-1";
 /// The session a native capture's fork creates (Codex `thread/fork` per the
-/// pinned 0.146 schema; Claude `session/fork` per claude-agent-acp 0.76.0).
+/// pinned schema; Claude `session/fork` per claude-agent-acp 0.76.0).
 pub(super) const FORK_THREAD_ID: &str = "fixture-fork-session-1";
-const USER_AGENT: &str = "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)";
-const USER_AGENT_0146: &str = "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)";
+const USER_AGENT: &str = concat!(
+    "sage/",
+    crate::acp::bindings::codex::pinned_codex_version!(),
+    " (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"
+);
 
 pub(super) fn await_request(
     input: &mut impl Read,
@@ -52,7 +55,7 @@ fn await_request_inner(
             .get("method")
             .and_then(Value::as_str)
             .ok_or(FixtureError::InvalidArguments)?;
-        if object.get("id").is_none() && expected_method != method {
+        if object.get("id").is_none() && !expected(expected_method, method) {
             continue;
         }
         if method == "thread/read" {
@@ -78,11 +81,17 @@ fn await_request_inner(
                 continue;
             }
         }
-        if method != expected_method {
+        if !expected(expected_method, method) {
             return Err(FixtureError::InvalidArguments);
         }
         if let Some(id) = object.get("id").and_then(Value::as_u64) {
             state.last_request_id = Some(id);
+            if matches!(method, "thread/start" | "thread/resume") {
+                state.codex_thread_model = request
+                    .pointer("/params/model")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+            }
             return Ok(());
         }
         if expected_method == "initialized" {
@@ -91,6 +100,11 @@ fn await_request_inner(
         return Err(FixtureError::InvalidArguments);
     }
     Err(FixtureError::ExpandedLimit)
+}
+
+/// `expected` names one method, or alternatives separated by `|`.
+fn expected(expected: &str, method: &str) -> bool {
+    expected.split('|').any(|candidate| candidate == method)
 }
 
 fn emit_child_read(
@@ -145,9 +159,9 @@ pub(super) fn emit_response(
         );
     }
     let result = match shape {
-        "initialize" | "initialize0146" => json!({
-            "userAgent": if shape == "initialize0146" { USER_AGENT_0146 } else { USER_AGENT },
-            "codexHome": if shape == "initialize0146" {
+        "initialize" | "initializeObserved" => json!({
+            "userAgent": USER_AGENT,
+            "codexHome": if shape == "initializeObserved" {
                 std::env::temp_dir().to_string_lossy().into_owned()
             } else {
                 std::env::var("CODEX_HOME").map_err(|_| FixtureError::InvalidArguments)?
@@ -160,29 +174,8 @@ pub(super) fn emit_response(
             "thread":{"id": THREAD_ID},
             "model":"fixture-model-fast","reasoningEffort":"high"
         }),
-        "models" | "effortModels" => {
-            let mut catalog = json!({"data":[{
-            "id":"fixture-model","model":"fixture-model","displayName":"Synthetic replay",
-            "description":"Synthetic native replay model","isDefault":true,"hidden":false,
-            "supportedReasoningEfforts":[]
-        }],"nextCursor":null});
-            if shape == "effortModels" {
-                catalog["data"][0]["defaultReasoningEffort"] = json!("medium");
-                catalog["data"][0]["supportedReasoningEfforts"] = json!([
-                    {"reasoningEffort":"low","description":"Quick synthetic replay"},
-                    {"reasoningEffort":"medium","description":"Balanced synthetic replay"},
-                    {"reasoningEffort":"high","description":"Thorough synthetic replay"}
-                ]);
-                let mut alternate = catalog["data"][0].clone();
-                alternate["id"] = json!("fixture-model-fast");
-                alternate["model"] = json!("fixture-model-fast");
-                alternate["displayName"] = json!("Synthetic replay fast");
-                alternate["isDefault"] = json!(false);
-                alternate["defaultReasoningEffort"] = json!("low");
-                catalog["data"].as_array_mut().unwrap().push(alternate);
-            }
-            catalog
-        }
+        "configThread" => super::codex_catalog::config_thread(state, THREAD_ID),
+        "models" | "effortModels" | "configModels" => super::codex_catalog::models(shape),
         "turn" => {
             state.turn_count = state
                 .turn_count
@@ -347,11 +340,13 @@ pub(super) fn emit_known(
     match shape {
         "codexError" => emit_notification("error", state, output),
         "codexInitializeResult" => emit_response("initialize", state, output),
-        "codexInitializeResult0146" => emit_response("initialize0146", state, output),
+        "codexInitializeResultObserved" => emit_response("initializeObserved", state, output),
         "codexThreadResult" => emit_response("thread", state, output),
         "codexThreadEffortResult" => emit_response("effortThread", state, output),
         "codexModelListResult" => emit_response("models", state, output),
         "codexModelListEffortResult" => emit_response("effortModels", state, output),
+        "codexThreadConfigResult" => emit_response("configThread", state, output),
+        "codexModelListConfigResult" => emit_response("configModels", state, output),
         "codexGoalMethodNotFound" => emit_response("goalMethodNotFound", state, output),
         "codexTurnResult" => emit_response("turn", state, output),
         "codexForkResult" => emit_response("fork", state, output),

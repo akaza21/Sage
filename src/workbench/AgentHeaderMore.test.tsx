@@ -1,9 +1,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import { AgentHeaderMore } from "./ProjectChatActionMenu";
+import { preloadAgentHeaderMenu } from "./agentTaskHeaderLazy";
 import { MenuPopover } from "../ui/MenuPopover";
 import { useRef, useState } from "react";
 
+beforeAll(() => preloadAgentHeaderMenu());
 afterEach(cleanup);
 function NestedActions() {
   const trigger = useRef<HTMLButtonElement>(null);

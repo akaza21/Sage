@@ -169,7 +169,7 @@ export function TerminalDockShell({
         INITIAL_COLUMNS,
         INITIAL_ROWS,
       );
-      if (owner.disposed || owner.lifecycle !== lifecycle) {
+      if (owner.lifecycle !== lifecycle) {
         await closeUserTerminal(scope, session).catch(() => undefined);
         return;
       }
@@ -180,16 +180,12 @@ export function TerminalDockShell({
       setActiveId(session.sessionId);
       setCollapsed(false);
     } catch (error) {
-      if (!owner.disposed && owner.lifecycle === lifecycle)
-        setMessage(terminalErrorLabel(error));
+      if (owner.lifecycle === lifecycle) setMessage(terminalErrorLabel(error));
     } finally {
       if (owner.lifecycle === lifecycle) {
         owner.creating = false;
-        if (!owner.disposed) {
-          setCreating(false);
-          if (owner.dismissWhenCreateSettles && !owner.entries.length)
-            onClose();
-        }
+        setCreating(false);
+        if (owner.dismissWhenCreateSettles && !owner.entries.length) onClose();
       }
     }
   }, [scope, onClose]);
@@ -213,12 +209,7 @@ export function TerminalDockShell({
     const lifecycle = owner.lifecycle;
     if (!visible || entries.length) return;
     void Promise.resolve().then(() => {
-      if (
-        !owner.disposed &&
-        owner.lifecycle === lifecycle &&
-        !owner.entries.length
-      )
-        void create();
+      if (owner.lifecycle === lifecycle && !owner.entries.length) void create();
     });
   }, [create, visible, entries.length]);
 

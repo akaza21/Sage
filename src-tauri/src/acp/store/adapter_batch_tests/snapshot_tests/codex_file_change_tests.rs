@@ -1,5 +1,6 @@
 #![cfg(windows)]
 
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use std::{fs, path::PathBuf};
 
 use serde_json::json;
@@ -79,8 +80,8 @@ fn adapter(owner: &AdapterStoreOwner, mapper: &Mapper) -> CodexAdapter {
     adapter
         .ingest(
             &serde_json::to_vec(&json!({"id":900,"result":{
-                "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+                "userAgent":user_agent("sage", "unknown"),
+                "codexHome":MANAGED_CODEX_HOME,
                 "platformFamily":"windows","platformOs":"windows"
             }}))
             .unwrap(),

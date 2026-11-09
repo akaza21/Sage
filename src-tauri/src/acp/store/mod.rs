@@ -15,12 +15,14 @@ mod history;
 mod history_activities;
 mod history_cursor;
 mod history_items;
+mod history_sessions;
 mod item_ingress;
 mod item_usage;
 mod mutations;
 mod paging;
 mod permission_item;
 mod projection_decode;
+mod prompt_images;
 pub(crate) use projection_decode::parse_legacy_text;
 mod request_identity;
 mod request_terminal;
@@ -29,6 +31,8 @@ mod residency;
 mod send;
 mod session_close;
 mod session_duplicates;
+mod session_head;
+mod session_resume;
 mod session_surface;
 mod sessions;
 mod snapshots;
@@ -36,6 +40,7 @@ mod state;
 mod terminal;
 mod terminal_reason;
 mod terminalize;
+mod turn_activity_facts;
 
 use serde::{Deserialize, Serialize};
 
@@ -82,7 +87,16 @@ pub(crate) use commands::{lookup_active_turn, lookup_prepared_turn};
 #[cfg(test)]
 pub(crate) use facts::hex_digest;
 pub(crate) use facts::next_projection_revision;
-pub(crate) use history::load_chat_page;
+pub(crate) use history::load_chat_page_reserving;
+
+pub(crate) fn load_chat_page(
+    connection: &rusqlite::Connection,
+    project_id: crate::acp::contract::SageProjectId,
+    chat_id: crate::acp::contract::SageChatId,
+    cursor: Option<crate::acp::intent::PageCursor>,
+) -> Result<crate::acp::projection::AcpChatPage, StoreError> {
+    load_chat_page_reserving(connection, project_id, chat_id, cursor, 0)
+}
 pub(crate) use item_ingress::{ItemIngressCommand, ItemIngressMutation, apply_item_ingress};
 pub(crate) use mutations::{StoreMutation, StoreMutationResult};
 pub(crate) use paging::{RecoveryCandidate, load_recovery_candidates};
@@ -96,6 +110,9 @@ pub(crate) use send::parse_turn_state;
 pub(crate) use send::{begin_send, record_send_observation};
 pub(crate) use session_close::{
     FinalizeCloseCommand, close_session, finalize_close_after_zero_process,
+};
+pub(crate) use session_resume::{
+    ResumeEarlierSessionCommand, link_resumed_session, unstarted_resume_link,
 };
 pub(crate) use session_surface::SessionEventCommand;
 pub(crate) use sessions::{

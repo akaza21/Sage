@@ -25,6 +25,13 @@
       "outputTokens": 4,
       "contextWindow": 1000000
     },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "completed",
+      "text": "ok"
+    },
     { "event": "turn", "state": "completed" }
   ],
   "notes": [
@@ -33,6 +40,7 @@
     "The capture tool redacts the account identity carried by _auth/status_update. Only authStatus.kind survives, which is the behavioural signal this fixture depends on.",
     "The three _auth/status_update events are consecutive apart from the running transition because the two available_commands_update frames interleaved between them are absorbed, not surfaced.",
     "The running transition lands on the first session/update of the turn, which is the first usage_update. Without it the turn never leaves Sending and the adapter journal rejects the terminal batch as an invalid transition.",
-    "usage_update carries the context window but no token split, so it is absorbed rather than surfaced. The split arrives on the prompt result; combining the two stated facts yields one turn-scoped usage snapshot and infers nothing."
+    "usage_update carries the context window but no token split, so it is absorbed rather than surfaced. The split arrives on the prompt result; combining the two stated facts yields one turn-scoped usage snapshot and infers nothing.",
+    "ACP has no message end, so the translator closes output itself: answer text after an untagged thought completes that thought block (a later thought opens the next block's item), and the completed prompt response completes the turn's still-open text, thought and plan items before the turn terminal."
   ]
 }

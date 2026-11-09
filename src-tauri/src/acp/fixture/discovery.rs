@@ -1,0 +1,127 @@
+//! What a desktop Codex replay case answers to Sage's model discovery.
+//!
+//! Real Codex discovery is a short-lived app-server run of its own:
+//! `initialize`, `account/read` and `model/list`. A replay case is one scripted
+//! session, so its discovery is answered from the case itself: the same
+//! `initialize` and `model/list` frames its session steps send, and an
+//! account that needs no sign-in. Sage reads them with its real discovery
+//! protocol, so the composer's model menu is the catalogue the session sees.
+use std::{collections::HashMap, sync::OnceLock};
+
+use serde_json::{Value, json};
+
+use super::generated_cases::JOURNEY_CASES;
+
+/// A Codex case whose thread runs the model it is opened or resumed with, so
+/// a model picked in the composer is one the session really uses. Only such a
+/// case offers a model choice.
+pub(crate) fn native_case_offers_models(case: &str) -> bool {
+    case.starts_with("codex-")
+        && steps(case).is_some_and(|steps| {
+            steps.iter().any(|step| {
+                step["op"] == "emitKnownFrame" && step["shape"] == "codexThreadConfigResult"
+            })
+        })
+        && reply_shape(case, "codexModelList").is_some()
+}
+
+/// The reply to one discovery request, or `None` for a request discovery
+/// does not make. Like the Codex app server, a reply carries only its `id`
+/// and `result`, which discovery requires.
+pub(crate) fn native_case_discovery_reply(case: &str, request: &Value) -> Option<Value> {
+    let id = request.get("id")?.as_u64()?;
+    let result = match request.get("method")?.as_str()? {
+        "account/read" => json!({"account": null, "requiresOpenaiAuth": false}),
+        "initialize" => {
+            super::wire::codex_reply(&reply_shape(case, "codexInitialize")?, id)?["result"].take()
+        }
+        "model/list" => {
+            super::wire::codex_reply(&reply_shape(case, "codexModelList")?, id)?["result"].take()
+        }
+        _ => return None,
+    };
+    result
+        .is_object()
+        .then(|| json!({"id": id, "result": result}))
+}
+
+/// Each journey case's steps, parsed once.
+fn steps(case: &str) -> Option<&'static [Value]> {
+    static STEPS: OnceLock<HashMap<&'static str, Vec<Value>>> = OnceLock::new();
+    STEPS
+        .get_or_init(|| {
+            JOURNEY_CASES
+                .iter()
+                .filter_map(|entry| Some((entry.id, serde_json::from_str(entry.steps_json).ok()?)))
+                .collect()
+        })
+        .get(case)
+        .map(Vec::as_slice)
+}
+
+/// The frame the case emits right after it waits for `kind`.
+fn reply_shape(case: &str, kind: &str) -> Option<String> {
+    let steps = steps(case)?;
+    let wait = steps
+        .iter()
+        .position(|step| step["op"] == "awaitClient" && step["kind"] == kind)?;
+    let reply = steps.get(wait + 1)?;
+    (reply["op"] == "emitKnownFrame")
+        .then(|| reply["shape"].as_str().map(str::to_owned))
+        .flatten()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_restart_case_offers_both_models_its_session_lists() {
+        assert!(native_case_offers_models("codex-config-resume"));
+        // The effort menu case's thread runs its own model whatever is asked.
+        assert!(!native_case_offers_models("codex-model-menu"));
+        assert!(!native_case_offers_models("claude-config-resume"));
+        let models = native_case_discovery_reply(
+            "codex-config-resume",
+            &json!({"id": 3, "method": "model/list", "params": {"cursor": null}}),
+        )
+        .unwrap();
+        assert_eq!(models["id"], 3);
+        let ids: Vec<_> = models["result"]["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| (model["id"].clone(), model["hidden"].clone()))
+            .collect();
+        assert_eq!(
+            ids,
+            [
+                (json!("fixture-model"), json!(false)),
+                (json!("fixture-model-deep"), json!(false))
+            ]
+        );
+        let account = native_case_discovery_reply(
+            "codex-config-resume",
+            &json!({"id": 2, "method": "account/read", "params": {}}),
+        )
+        .unwrap();
+        assert_eq!(
+            account["result"],
+            json!({"account": null, "requiresOpenaiAuth": false})
+        );
+        let initialize = native_case_discovery_reply(
+            "codex-config-resume",
+            &json!({"id": 1, "method": "initialize", "params": {}}),
+        )
+        .unwrap();
+        assert_eq!(initialize["id"], 1);
+        assert!(initialize["result"]["userAgent"].is_string());
+        assert!(
+            native_case_discovery_reply(
+                "codex-config-resume",
+                &json!({"id": 4, "method": "thread/start"})
+            )
+            .is_none()
+        );
+    }
+}

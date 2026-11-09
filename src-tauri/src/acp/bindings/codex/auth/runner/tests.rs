@@ -1,3 +1,4 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use std::{collections::VecDeque, time::Duration};
 
 use serde_json::{Value, json};
@@ -109,6 +110,57 @@ fn response_then_paired_notifications_completes_signed_in() {
         Ok(CodexAuthOutcome::SignedIn)
     );
     assert_settled(&transport, false);
+}
+
+#[test]
+fn api_key_login_sends_the_key_once_and_accepts_racing_account_notices() {
+    let key = NativeApiKey::try_from("sk-test-secret".to_owned()).unwrap();
+    let mut script = transport([
+        initialize(1),
+        json_frame(json!({"method":"account/login/completed","params":{
+            "loginId":null,"success":true,"error":null,"onboardingEntrypoint":null
+        }})),
+        json_frame(
+            json!({"method":"account/updated","params":{"authMode":"apikey","planType":null}}),
+        ),
+        json_frame(json!({"id":2,"result":{"type":"apiKey"}})),
+    ]);
+    assert_eq!(
+        run_api_key_protocol(
+            &mut protocol(),
+            &mut script,
+            &key,
+            73,
+            CodexAuthDeadline::test()
+        ),
+        Ok(CodexAuthOutcome::SignedIn)
+    );
+    assert_settled(&script, false);
+    assert_eq!(
+        script.writes[2],
+        json!({"id":2,"method":"account/login/start","params":{"type":"apiKey","apiKey":"sk-test-secret"}})
+    );
+    let carrying = script
+        .writes
+        .iter()
+        .filter(|write| write.to_string().contains("sk-test-secret"))
+        .count();
+    assert_eq!(carrying, 1);
+
+    let mut refused = transport([
+        initialize(1),
+        json_frame(json!({"id":2,"result":{"type":"chatgpt"}})),
+    ]);
+    assert_eq!(
+        run_api_key_protocol(
+            &mut protocol(),
+            &mut refused,
+            &key,
+            73,
+            CodexAuthDeadline::test()
+        ),
+        Err(CodexDiscoveryRunError::Protocol)
+    );
 }
 
 #[test]
@@ -249,6 +301,15 @@ fn wrong_ids_login_identity_methods_eof_timeout_and_cleanup_fail_closed() {
             completed(FOREIGN, true),
         ],
         vec![initialize(1), signed_out(2), started(3), updated(false)],
+        vec![
+            initialize(1),
+            signed_out(2),
+            started(3),
+            completed(LOGIN, true),
+            json_frame(
+                json!({"method":"account/updated","params":{"authMode":"apikey","planType":null}}),
+            ),
+        ],
     ];
     for frames in cases {
         let mut transport = transport_vec(frames);
@@ -329,20 +390,22 @@ fn transport_vec(frames: Vec<Frame>) -> ScriptTransport {
 
 fn initialize(id: u64) -> Frame {
     json_frame(json!({"id":id,"result":{
-        "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) terminal (sage; 0.1.0)",
-        "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+        "userAgent":user_agent("sage", "terminal"),
+        "codexHome":MANAGED_CODEX_HOME,
         "platformFamily":"windows","platformOs":"windows"
     }}))
 }
 
 fn signed_out(id: u64) -> Frame {
-    json_frame(json!({"id":id,"result":{"account":null,"requiresOpenaiAuth":true}}))
+    json_frame(
+        json!({"id":id,"result":{"account":null,"requiresOpenaiAuth":true,"workspaceRouting":null}}),
+    )
 }
 
 fn signed_in(id: u64) -> Frame {
     json_frame(json!({"id":id,"result":{
-        "account":{"type":"chatgpt","email":"private@example.test","planType":"plus"},
-        "requiresOpenaiAuth":true
+        "account":{"type":"chatgpt","email":"private@example.test","planType":"plus","workspaceName":null},
+        "requiresOpenaiAuth":true,"workspaceRouting":null
     }}))
 }
 
@@ -359,7 +422,8 @@ fn started_with(id: u64, login: &str) -> Frame {
 
 fn completed(login: &str, success: bool) -> Frame {
     json_frame(json!({"method":"account/login/completed","params":{
-        "loginId":login,"success":success,"error":if success { Value::Null } else { json!("cancelled") }
+        "loginId":login,"success":success,"error":if success { Value::Null } else { json!("cancelled") },
+        "onboardingEntrypoint":null
     }}))
 }
 

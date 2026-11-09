@@ -591,6 +591,17 @@ test("Pi capture and probe protocols agree with the binding version constant", (
   };
   assert.equal(validateProbe(value), value);
 });
+test("Codex capture protocol agrees with the pinned Codex version", () => {
+  const manifest = readFileSync(
+    new URL("../src-tauri/src/acp/bindings/codex/manifest.rs", import.meta.url),
+    "utf8",
+  );
+  const version = manifest.match(
+    /macro_rules! pinned_codex_version \{\s*\(\) => \{\s*"([^"]+)"/u,
+  );
+  assert.ok(version);
+  assert.equal(HARNESS.codex.protocol, `codex-app-server-${version[1]}`);
+});
 test("probe JSON records boolean rendered and lazy-fallback witnesses and fails closed", () => {
   const value = JSON.parse(JSON.stringify(probe()));
   assert.equal(validateProbe(value).assistantRendered, true);

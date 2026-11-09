@@ -148,6 +148,7 @@ impl CodexAdapter {
         }
         match self.turn_start_correlations.observe(&id)? {
             CorrelationMatch::Pending(client_message_id) => {
+                self.retire_action_handoff()?;
                 self.active_turn_client_message_id = Some(client_message_id);
                 self.active_item_terminals.clear();
                 self.active_unretried_error_fingerprints.clear();
@@ -175,7 +176,12 @@ impl CodexAdapter {
         let correlation = self
             .turn_start_correlations
             .response(request_id, &turn_id)?;
-        if let Some(result) = self.provision_response_turn(request_id, &turn_id, &correlation)? {
+        // Only a prompt Turn echoes the client message a provisional Turn
+        // waits for.
+        if self.pending_kind(request_id) == Some(RequestKind::TurnStart)
+            && let Some(result) =
+                self.provision_response_turn(request_id, &turn_id, &correlation)?
+        {
             return Ok(result);
         }
         let result = match correlation {
@@ -319,6 +325,7 @@ impl CodexAdapter {
         self.active_turn_id = None;
         self.active_turn_user_stop = false;
         self.active_turn_plan = None;
+        self.deferred_interrupt = false;
         Ok(TerminalUpdate::Apply)
     }
 

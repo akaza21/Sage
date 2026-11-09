@@ -103,6 +103,36 @@ fn storage_is_one_bounded_row_per_session() {
 }
 
 #[test]
+fn the_chat_page_carries_the_current_sessions_newest_notices() {
+    let mut fixture = fixture();
+    let page = |fixture: &Fixture| {
+        crate::acp::store::load_chat_page(
+            &fixture.connection,
+            fixture.owner.project_id.clone(),
+            fixture.owner.chat_id.clone(),
+            None,
+        )
+        .unwrap()
+    };
+    assert!(page(&fixture).session_notices.is_empty());
+    for index in 0..20 {
+        apply_adapter_inbound_batch(
+            &mut fixture.connection,
+            batch(
+                &fixture.owner,
+                vec![session(notice(&format!("notice {index}")), 6 + index)],
+            ),
+        )
+        .unwrap();
+    }
+    let notices = page(&fixture).session_notices;
+    assert_eq!(notices.len(), SESSION_NOTICES_MAX);
+    assert_eq!(notices[0].text.as_str(), "notice 4");
+    assert_eq!(notices[SESSION_NOTICES_MAX - 1].text.as_str(), "notice 19");
+    assert_eq!(notices[0].level, SessionNoticeLevel::Warning);
+}
+
+#[test]
 fn escape_heavy_notices_evict_old_rows_instead_of_failing_the_batch() {
     let mut fixture = fixture();
     // Each control byte serializes as six JSON bytes, so sixteen full

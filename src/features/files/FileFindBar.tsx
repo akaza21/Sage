@@ -22,7 +22,7 @@ import {
 } from "../../ui/leanIcons";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
 import type { EditorAdapterHandle } from "./EditorAdapter";
-import { showMatches } from "./findMarks";
+import { clearMatches, showMatches } from "./findMarks";
 import {
   MAX_EDITABLE_CONTENT_BYTES,
   MAX_FIND_QUERY_LENGTH,
@@ -266,9 +266,11 @@ export function FileFindBar({
       });
     }
     if (changes.length === 0) return;
-    // One transaction, so Replace all is a single undo step.
+    // One transaction, so Replace all is a single undo step. It replaces
+    // every match, so it drops their marks until the next search.
     view.dispatch({
       changes,
+      effects: all ? clearMatches() : [],
       annotations: isolateHistory.of("full"),
       userEvent: all ? "input.replace.all" : "input.replace",
     });

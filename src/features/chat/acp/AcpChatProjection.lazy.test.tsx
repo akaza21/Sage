@@ -1,7 +1,11 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { settleLazyModules } from "../../../test/settleLazyModules";
 import { page } from "./acpProjection.fixture";
+// Transformed once with the file. Each test resets modules, so the chunk the
+// mock holds is still loaded anew, but not compiled inside the test's time.
+import "./AcpChatPresentation";
 
 afterEach(() => {
   cleanup();
@@ -18,9 +22,18 @@ it.each([1888, 720, 480])(
     const pending = new Promise<void>((resolve) => {
       release = resolve;
     });
-    vi.doMock("./AcpChatPresentation", async (importOriginal) => {
-      await pending;
-      return importOriginal();
+    // dynamicImportSettled does not see a mock factory, so the test holds the
+    // boundary's load itself: requested once its import reaches the factory.
+    let requested!: (request: { load: Promise<unknown> }) => void;
+    const boundaryRequest = new Promise<{ load: Promise<unknown> }>(
+      (resolve) => {
+        requested = resolve;
+      },
+    );
+    vi.doMock("./AcpChatPresentation", (importOriginal) => {
+      const load = pending.then(() => importOriginal());
+      requested({ load });
+      return load;
     });
     const { AcpChatProjection } = await import("./AcpChatProjection");
     const view = render(<AcpChatProjection page={page("running")} active />);
@@ -32,11 +45,16 @@ it.each([1888, 720, 480])(
     view.rerender(<AcpChatProjection page={completed} active={false} />);
     view.rerender(<AcpChatProjection page={completed} active />);
     expect(screen.getByText(/Loading Chat history/)).toBeVisible();
+    // Wait for the boundary's held load rather than race a cold load against
+    // findByText's clock.
+    const { load } = await boundaryRequest;
     await act(async () => {
       release();
-      await vi.dynamicImportSettled();
+      await load;
     });
-    expect(await screen.findByText("Normalized answer")).toBeVisible();
+    // Then the chunks it loads in turn to render the answer.
+    await settleLazyModules();
+    expect(screen.getByText("Normalized answer")).toBeVisible();
     expect(screen.queryByText(/Loading Chat history/)).not.toBeInTheDocument();
     view.rerender(<AcpChatProjection page={completed} active={false} />);
     view.rerender(<AcpChatProjection page={completed} active />);

@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::{collections::BTreeMap, sync::Arc};
 
 pub(crate) mod commands;
+pub(crate) mod images;
 mod read;
 mod secrets;
 #[cfg(test)]
@@ -77,6 +78,27 @@ impl Resources {
     }
 }
 
+/// The standard ACP `session/prompt` content: text, then images, then files.
+/// Each kind is sent only when the session's negotiated capabilities admit it.
+pub(crate) fn prompt_blocks(
+    prompt: &crate::acp::intent::Prompt,
+    capabilities: Option<&crate::acp::intent::CapabilitySnapshotV1>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut blocks = prompt
+        .resources
+        .wire(
+            prompt.as_str(),
+            capabilities.is_some_and(|value| value.prompt_resources),
+        )
+        .map_err(str::to_owned)?;
+    let images = prompt
+        .images
+        .wire(capabilities)
+        .map_err(images::ImageRefusal::message)?;
+    blocks.splice(1..1, images);
+    Ok(blocks)
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct StagedFiles {
@@ -149,6 +171,20 @@ impl FileStages {
             .get(&(project.to_owned(), chat.to_owned()))
             .map(|b| b.resources.clone())
             .unwrap_or_default()
+    }
+    /// What a prompt sends from the chat's staged files. A session action
+    /// sends none, so the staged files stay for the next prompt.
+    pub(crate) fn for_prompt(
+        &self,
+        project: &str,
+        chat: &str,
+        prompt: &crate::acp::intent::Prompt,
+    ) -> Resources {
+        if prompt.action.is_some() {
+            Resources::default()
+        } else {
+            self.get(project, chat)
+        }
     }
     pub(crate) fn list(&self, project: &str, chat: &str) -> Option<StagedFiles> {
         self.batches

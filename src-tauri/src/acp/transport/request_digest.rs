@@ -12,6 +12,18 @@ pub(crate) fn request_payload_digest(frame: &Frame) -> Result<[u8; 32], Structur
     Ok(digest_parts(method.as_deref(), params))
 }
 
+/// The same identity for a request Sage holds as a value, such as one a
+/// binding derived from its harness's own wire frame.
+pub(crate) fn request_value_digest(value: &serde_json::Value) -> [u8; 32] {
+    let params = value
+        .get("params")
+        .and_then(|params| serde_json::to_vec(params).ok());
+    digest_parts(
+        value.get("method").and_then(serde_json::Value::as_str),
+        params.as_deref(),
+    )
+}
+
 fn digest_parts(method: Option<&str>, params: Option<&[u8]>) -> [u8; 32] {
     let mut digest = Sha256::new();
     digest.update(DOMAIN);

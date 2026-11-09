@@ -1,7 +1,12 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use super::*;
-use crate::acp::bindings::codex::provisioning::{AclPlan, HandoffPayload, SealedHandoff};
+use crate::acp::bindings::codex::manifest::{
+    PINNED_CODEX_VERSION, PINNED_PACKAGE_UNPACKED_BYTES, PINNED_PROTOCOL_IDENTITY,
+};
+use crate::acp::bindings::codex::provisioning::{
+    AclPlan, HandoffPayload, STAGE_NAME, SealedHandoff,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CrashPoint {
@@ -258,19 +263,21 @@ impl HelperTransactionPlatform for FakePlatform {
 }
 
 fn request(nonce: &str) -> AuthenticatedHelperRequest {
-    let package_target = PathBuf::from(r"C:\SageHarnesses\Codex\0.146.0\package");
+    let package_target = PathBuf::from(format!(
+        r"C:\SageHarnesses\Codex\{PINNED_CODEX_VERSION}\package"
+    ));
     let payload = HandoffPayload {
         schema_version: 1,
         binding_id: "codex-app-server".into(),
-        runtime_version: "0.146.0".into(),
+        runtime_version: PINNED_CODEX_VERSION.into(),
         creation_nonce: nonce.into(),
         source_proof_sha256: "11".repeat(32),
-        aggregate_byte_len: 429_289_628,
+        aggregate_byte_len: PINNED_PACKAGE_UNPACKED_BYTES,
         files: vec![],
         package_target: package_target.clone(),
-        state_target: PathBuf::from(
-            r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec",
-        ),
+        state_target: PathBuf::from(format!(
+            r"C:\SageHarnesses\CodexState\{PINNED_PROTOCOL_IDENTITY}"
+        )),
         current_user_sid_hex: "010100000000000512000000".into(),
         package_acl: acl("builtinAdministrators", 0x0012_00a9),
         state_acl: acl("currentUser", 0x001f_01ff),
@@ -281,12 +288,9 @@ fn request(nonce: &str) -> AuthenticatedHelperRequest {
         payload: super::super::HelperRequestPayload {
             schema_version: 1,
             operation: super::super::HelperOperation::Publish,
-            stage_root: package_target
-                .parent()
-                .unwrap()
-                .join(".sage-codex-0.146.0-stage"),
+            stage_root: package_target.parent().unwrap().join(STAGE_NAME),
             helper: super::super::HelperExecutableIdentity {
-                product: "sage-codex-0146-elevated-helper".into(),
+                product: "sage-codex-elevated-helper".into(),
                 protocol_version: 1,
                 sage_version: "0.1.0".into(),
                 executable_sha256: "22".repeat(32),

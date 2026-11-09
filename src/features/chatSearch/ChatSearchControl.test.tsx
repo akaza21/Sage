@@ -8,16 +8,28 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
 import type { ProjectChatSearchResponse } from "./chatSearchDomain";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
 import { ChatSearchControl } from "./ChatSearchControl";
+import { preloadSearchablePicker } from "../../ui/searchablePickerLoad";
 import {
   clearChatSearchFolderRequest,
   requestChatSearchInFolder,
 } from "./chatSearchScope";
+
+// The picker list loads when the window first idles.
+beforeAll(() => preloadSearchablePicker());
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

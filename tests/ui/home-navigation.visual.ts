@@ -21,7 +21,7 @@ for (const collapsed of [false, true]) {
   }) => {
     await page.setViewportSize({ width: 720, height: 1000 });
     await page.goto("/");
-    const composer = page.getByRole("textbox", { name: "Message agent" });
+    const composer = page.getByRole("combobox", { name: "Message agent" });
     await expect(composer).toBeVisible();
     const before = await savedChats(page);
     if (collapsed)
@@ -49,7 +49,7 @@ for (const collapsed of [false, true]) {
   }) => {
     await page.setViewportSize({ width: 1800, height: 1000 });
     await page.goto("/");
-    const composer = page.getByRole("textbox", { name: "Message agent" });
+    const composer = page.getByRole("combobox", { name: "Message agent" });
     await expect(composer).toBeVisible();
     const before = await savedChats(page);
     expect(before.chats).toHaveLength(1);
@@ -101,7 +101,7 @@ for (const owner of ["single", "parent", "side"] as const) {
     await page.setViewportSize({ width: 2400, height: 1000 });
     await page.goto("/");
     await expect(
-      page.getByRole("textbox", { name: "Message agent" }),
+      page.getByRole("combobox", { name: "Message agent" }),
     ).toBeVisible();
     const focusedId = await page.evaluate(async (owner) => {
       const { useWorkbenchStore } = await import("/src/app/store.ts");
@@ -164,13 +164,13 @@ for (const owner of ["single", "parent", "side"] as const) {
     await expect(panes).toHaveCount(owner === "single" ? 1 : 2);
     const focused = page.locator(".agent-chat-pane--focused");
     await expect(
-      focused.getByRole("textbox", { name: "Message agent" }),
+      focused.getByRole("combobox", { name: "Message agent" }),
     ).toBeDisabled();
     if (owner !== "single")
       await expect(
         page
           .locator(".agent-chat-pane:not(.agent-chat-pane--focused)")
-          .getByRole("textbox"),
+          .getByRole("combobox", { name: "Message agent" }),
       ).toBeEnabled();
     const home = page.getByRole("button", { name: "Home", exact: true });
     if (owner === "single") {
@@ -182,7 +182,9 @@ for (const owner of ["single", "parent", "side"] as const) {
       await expect(focused).toHaveCSS("outline-style", "solid");
     await expect(focused).toHaveAttribute("data-chat-id", focusedId);
     await expect(focused).toHaveAccessibleName(/^Chat pane /);
-    await expect(focused.getByRole("textbox")).toHaveValue("Focused draft");
+    await expect(
+      focused.getByRole("combobox", { name: "Message agent" }),
+    ).toHaveValue("Focused draft");
     expect(await savedChats(page)).toEqual(before);
   });
 }

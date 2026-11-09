@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { BrowserOperationProjection } from "../../domain/browserOperation";
 import type { BrowserAgentControl } from "../../ports/nativeBrowserPort";
+import { settleLazyModules } from "../../test/settleLazyModules";
 import { BrowserToolbarPageActions } from "./BrowserAttachmentControls";
 
 const native = vi.hoisted(() => ({
@@ -79,6 +80,10 @@ it("shows a new developer grant and its revocation while the first elevated comm
     updatedAt: 1,
   };
   const view = render(tree(true, "1", evaluation));
+  // The controls read approval once their listener registers, which first
+  // imports the event module: cold in this file's first test, so wait for
+  // the import rather than race it against a one-second query.
+  await settleLazyModules();
   await screen.findByRole("button", { name: "Take over" });
   await waitFor(() => expect(native.listeners.size).toBe(1));
   expect(screen.queryByText("Developer mode")).toBeNull();

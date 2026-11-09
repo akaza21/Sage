@@ -74,6 +74,16 @@ export function liveToolItem(
     .find((item) => !terminalToolStates.has(item.toolState));
 }
 
+/** A running MCP call's status line; the line drops once the call settles. */
+export function liveToolProgress(
+  item: ToolProjectionItem | undefined,
+): string | null {
+  const presentation = item?.payload.presentation;
+  return presentation?.kind === "mcp" && item?.toolState === "inProgress"
+    ? (presentation.progress ?? null)
+    : null;
+}
+
 export function toolItemLabel(
   item: ToolProjectionItem,
   live = Boolean(liveToolItem([item])),

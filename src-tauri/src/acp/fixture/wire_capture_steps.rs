@@ -22,6 +22,10 @@ pub(in crate::acp::fixture) fn replay_native_before(
         if !before_kind.is_empty() && step["kind"] == before_kind {
             break;
         }
+        // A pause only paces a live replay; the frames are the same without it.
+        if step["op"] == "pauseMs" {
+            continue;
+        }
         execute_with_io(step, &mut state, &mut input, &mut output, &mut error).unwrap();
     }
     assert_eq!(input.position(), requests.len() as u64);

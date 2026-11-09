@@ -54,6 +54,14 @@ pub struct ChatLifecycleRequest {
     pub current_layout: ProjectLayoutRequest,
 }
 
+/// Permanently deletes an archived Chat; no attached layout changes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatDeleteRequest {
+    pub project_id: String,
+    pub chat_id: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PinChatRequest {

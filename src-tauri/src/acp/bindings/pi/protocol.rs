@@ -12,11 +12,13 @@ pub enum Operation {
     SetThinkingLevel { level: String },
     NewSession,
     Prompt { turn_key: String, message: String },
+    Steer { message: String },
+    ClearQueue,
     Abort,
     GetState,
     GetMessages,
     GetEntries { since: Option<String> },
-    Resume,
+    Resume { session_id: String, path: String },
     Load,
     Close,
     MultiRoot,
@@ -34,13 +36,16 @@ pub struct ModelSummary {
     pub provider: String,
     pub id: String,
     pub name: String,
+    pub context_window: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateSnapshot {
     pub model: Option<ModelSummary>,
     pub thinking_level: Option<String>,
-    pub has_session: bool,
+    /// Pi's id for its open session, and the file it keeps it in.
+    pub session_id: Option<String>,
+    pub session_file: Option<String>,
     pub is_streaming: bool,
 }
 
@@ -66,6 +71,9 @@ pub struct EntrySummary {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalOutcome {
     Completed,
+    /// Sage's user asked Pi to stop.
+    Cancelled,
+    /// Pi, or Sage's authority policy, stopped the Turn on its own.
     Interrupted,
     Failed,
 }
@@ -85,7 +93,8 @@ pub enum AdapterOutput {
     CommandAccepted {
         command: &'static str,
     },
-    SessionReset,
+    /// Pi's session, by its own id, is open for this chat.
+    SessionOpened(String),
     State(StateSnapshot),
     Models(Vec<ModelSummary>),
     ModelSelected(ModelSummary),
@@ -157,7 +166,21 @@ pub enum AdapterOutput {
     PermissionRequested {
         external_id: String,
     },
+    SteerResolved {
+        command_id: String,
+        accepted: bool,
+    },
+    Notice {
+        level: crate::acp::intent::session_event::SessionNoticeLevel,
+        source: &'static str,
+        text: String,
+    },
+    Title(String),
     DialogCancelled {
+        external_id: String,
+    },
+    /// A dialog Pi timed out on its own, replaced by a newer one.
+    DialogExpired {
         external_id: String,
     },
     AuthorityBlocked {

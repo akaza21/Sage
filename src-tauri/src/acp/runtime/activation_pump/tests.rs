@@ -956,6 +956,8 @@ fn capabilities(prompt: bool, cancel: bool) -> CapabilitySnapshotV1 {
         prompt,
         cancel,
         native_session_fork: false,
+        native_session_compact: false,
+        native_review: false,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,
@@ -963,6 +965,7 @@ fn capabilities(prompt: bool, cancel: bool) -> CapabilitySnapshotV1 {
         multi_root_extension_schema_id: None,
         model_count: 128,
         prompt_resources: false,
+        prompt_images: false,
         config_count: 0,
     }
 }

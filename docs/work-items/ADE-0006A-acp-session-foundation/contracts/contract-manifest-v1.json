@@ -5,7 +5,7 @@
   "selfIncluded": false,
   "ordering": "relativePath ascending by UTF-8 byte order",
   "fileCount": 16,
-  "logicalBytes": 239341,
+  "logicalBytes": 240514,
   "files": [
     {
       "relativePath": "README.md",
@@ -49,8 +49,8 @@
     },
     {
       "relativePath": "ownership-manifest-v1.json",
-      "bytes": 22902,
-      "sha256": "150a36a84e43a9a0d673f0a3cff037df71db27400773ab2a9c218f3afe67e42f"
+      "bytes": 23673,
+      "sha256": "1313a43a703e223fd63ff3415cb940081f4acf7beadbe2a8fb5cc95c3dd0137b"
     },
     {
       "relativePath": "package-contract-v1.json",
@@ -69,8 +69,8 @@
     },
     {
       "relativePath": "protocol-contract-v1.json",
-      "bytes": 11664,
-      "sha256": "4b427d6a5fb8593845b1d0796cc056672d354ca9b75861255cc77d1606e192a4"
+      "bytes": 12066,
+      "sha256": "9751c1cb925ff6928bf1cbc2c4e8be48a8a51397e51cb7e8a55c4965c5c0dc33"
     },
     {
       "relativePath": "request-digest-vectors-v1.json",

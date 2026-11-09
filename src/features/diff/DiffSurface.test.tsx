@@ -59,13 +59,17 @@ describe("DiffSurface resource states", () => {
       },
     });
     const { container } = render(<DiffSurface tab={tab} />);
-    expect(container.querySelectorAll(".diff-line")).toHaveLength(1200);
+    // Text queries without a selector read every element's text: thousands
+    // here. Check the rendered lines directly and look up the notice by tag.
+    const lines = container.querySelectorAll(".diff-line");
+    expect(lines).toHaveLength(1200);
+    expect(lines[lines.length - 1]).toHaveTextContent(/bounded line 1200$/);
     expect(
       screen.getByText(
         "Diff capped at 1,200 lines to protect UI responsiveness.",
+        { selector: "p" },
       ),
     ).toBeVisible();
-    expect(screen.queryByText("+bounded line 1201")).toBeNull();
   });
   it("refreshes the current diff and opens its file from the review toolbar", () => {
     const loadDiff = vi.fn(async () => undefined);

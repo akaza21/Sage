@@ -3,26 +3,28 @@ import {
   useCallback,
   useId,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
+  useSyncExternalStore,
+  type ComponentProps,
   type ReactNode,
 } from "react";
-import { flushSync } from "react-dom";
 import type { HarnessBrand } from "../domain/harness";
 import "../styles/searchable-picker.css";
+import { useColdOpen } from "./coldOpen";
 import { ChevronDown } from "./leanIcons";
-import { PickerOption, PickerLogo } from "./PickerOption";
-
-import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
+import type { MenuDismissReason } from "./MenuPopover";
 import type { MenuPlacement } from "./menuPopoverPosition";
+import { PickerLogo } from "./PickerLogo";
 import { ResourceStateNotice } from "./ResourceStateNotice";
-
-export const SEARCHABLE_PICKER_MAX_CANDIDATES = 500;
-export const SEARCHABLE_PICKER_MAX_RENDERED = 200;
-export const SEARCHABLE_PICKER_DEBOUNCE_MS = 50;
-export const SEARCHABLE_PICKER_PAGE_SIZE = 10;
+import {
+  loadedSearchablePickerPopover,
+  preloadSearchablePicker,
+  SEARCHABLE_PICKER_MAX_CANDIDATES,
+  subscribeSearchablePicker,
+} from "./searchablePickerLoad";
+import type * as PopoverChunk from "./SearchablePickerPopover";
+import { whenIdle } from "./whenIdle";
 
 export interface SearchablePickerOption {
   id: string;
@@ -37,10 +39,43 @@ export interface SearchablePickerOption {
   action?: { label: string; accessibleLabel?: string; onAction: () => void };
 }
 
-const EMPTY_CANDIDATES: readonly SearchablePickerOption[] = [];
+const preload = () => void preloadSearchablePicker().catch(() => undefined);
 
-function optionId(prefix: string, id: string) {
-  return `${prefix}-option-${encodeURIComponent(id)}`;
+type PopoverProps = ComponentProps<typeof PopoverChunk.SearchablePickerPopover>;
+const renderPopover = (
+  Loaded: typeof PopoverChunk.SearchablePickerPopover,
+  props: PopoverProps,
+) => <Loaded {...props} />;
+
+/** Renders the open list; its picker mounts it once the chunk is in. */
+function PopoverSlot(props: PopoverProps) {
+  const Loaded = loadedSearchablePickerPopover();
+  return Loaded ? renderPopover(Loaded, props) : null;
+}
+
+/**
+ * The open list once its chunk has arrived, whichever picker asked for it.
+ * It is fetched when the window is idle; a picker opened before then asks
+ * again, and closes if that fails so the next open retries.
+ */
+function usePopoverLoad(wanted: boolean, onFailure: () => void) {
+  const Loaded = useSyncExternalStore(
+    subscribeSearchablePicker,
+    loadedSearchablePickerPopover,
+  );
+  useEffect(
+    () => (loadedSearchablePickerPopover() ? undefined : whenIdle(preload)),
+    [],
+  );
+  useEffect(() => {
+    if (!wanted || Loaded) return;
+    let live = true;
+    void preloadSearchablePicker().catch(() => live && onFailure());
+    return () => {
+      live = false;
+    };
+  }, [Loaded, onFailure, wanted]);
+  return Loaded;
 }
 
 export function SearchablePicker({
@@ -95,129 +130,48 @@ export function SearchablePicker({
 }) {
   const id = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
   const expanded = open && !disabled;
+  // Once opened, the list stays mounted; the typed query lives here, so it
+  // also outlives a close and the too-many-candidates notice.
+  const [opened, setOpened] = useState(expanded);
+  if (expanded && !opened) setOpened(true);
   const [draft, setDraft] = useState("");
-  const [query, setQuery] = useState("");
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  if (expanded && loadFailed) setLoadFailed(false);
   const invalid = candidates.length > SEARCHABLE_PICKER_MAX_CANDIDATES;
-  const admittedCandidates = invalid ? EMPTY_CANDIDATES : candidates;
-  const selected = admittedCandidates.find(
-    (candidate) => candidate.id === selectedId,
-  );
+  const selected = invalid
+    ? undefined
+    : candidates.find((candidate) => candidate.id === selectedId);
   const selectedLabel = selected?.triggerLabel ?? selected?.label;
-  const visible = useMemo(() => {
-    if (!expanded) return EMPTY_CANDIDATES;
-    const normalized = query.trim().toLocaleLowerCase();
-    return admittedCandidates.filter((candidate) =>
-      candidate.label.toLocaleLowerCase().includes(normalized),
-    );
-  }, [admittedCandidates, query, expanded]);
-  const rendered = useMemo(
-    () => visible.slice(0, SEARCHABLE_PICKER_MAX_RENDERED),
-    [visible],
-  );
-  const selectable = useMemo(
-    () => rendered.filter((candidate) => !candidate.disabledReason),
-    [rendered],
-  );
-  const active =
-    selectable.find((candidate) => candidate.id === activeId) ?? null;
-
-  useEffect(() => {
-    if (!open || disabled) return;
-    const timer = window.setTimeout(
-      () => setQuery(draft),
-      SEARCHABLE_PICKER_DEBOUNCE_MS,
-    );
-    return () => window.clearTimeout(timer);
-  }, [disabled, draft, open]);
-
-  useLayoutEffect(() => {
-    if (!open || disabled || !searchable) return;
-    inputRef.current?.focus();
-  }, [disabled, open, searchable]);
-  useLayoutEffect(() => {
-    if (!active) return;
-    triggerRef.current?.ownerDocument
-      .getElementById(optionId(id, active.id))
-      ?.scrollIntoView?.({ block: "nearest" });
-  }, [active, id]);
 
   const close = useCallback(
     (reason?: MenuDismissReason) => {
       setOpen(false);
-      setActiveId(null);
       if (reason === "escape" || (!searchable && reason === "tab"))
         triggerRef.current?.focus();
     },
     [searchable, setOpen],
   );
+  const failLoad = useCallback(() => {
+    setLoadFailed(true);
+    close();
+  }, [close]);
+  const Loaded = usePopoverLoad(expanded, failLoad);
+  const coldOpen = useColdOpen({
+    dismiss: close,
+    loaded: Boolean(Loaded),
+    onType: searchable
+      ? (text) => setDraft((current) => current + text)
+      : undefined,
+    open: expanded,
+    triggerRef,
+  });
   useLayoutEffect(() => {
     if (disabled || invalid) queueMicrotask(() => close());
   }, [close, disabled, invalid]);
-  const moveActive = (direction: number, page = false) => {
-    if (selectable.length === 0) return;
-    const found = selectable.findIndex(
-      (candidate) => candidate.id === activeId,
-    );
-    const current = found < 0 ? (direction > 0 ? -1 : 0) : found;
-    const offset = page ? SEARCHABLE_PICKER_PAGE_SIZE : 1;
-    const next = page
-      ? Math.max(
-          0,
-          Math.min(selectable.length - 1, current + direction * offset),
-        )
-      : (current + direction * offset + selectable.length) % selectable.length;
-    setActiveId(selectable[next]?.id ?? null);
-  };
-  const selectCandidate = useCallback(
-    (next: string) => {
-      if (disabled) return;
-      onSelect(next);
-      close();
-      triggerRef.current?.focus();
-    },
-    [close, disabled, onSelect],
-  );
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (invalid || disabled) return;
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      if (!open) setOpen(true);
-      moveActive(event.key === "ArrowDown" ? 1 : -1);
-    } else if (event.key === "Home" || event.key === "End") {
-      if (selectable.length === 0) return;
-      event.preventDefault();
-      setActiveId(
-        selectable[event.key === "Home" ? 0 : selectable.length - 1]?.id ??
-          null,
-      );
-    } else if (event.key === "PageDown" || event.key === "PageUp") {
-      event.preventDefault();
-      moveActive(event.key === "PageDown" ? 1 : -1, true);
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      if (active) selectCandidate(active.id);
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      close("escape");
-    } else if (event.key === "Tab") {
-      if (portalTarget !== "document") {
-        flushSync(() => close("tab"));
-        triggerRef.current?.focus();
-        return;
-      }
-      triggerRef.current?.focus();
-      close("tab");
-    }
-  };
-
-  const listed = expanded ? rendered : EMPTY_CANDIDATES;
 
   if (invalid) {
     return (
@@ -242,13 +196,17 @@ export function SearchablePicker({
         title={stateTitle ?? selectedLabel}
         aria-expanded={expanded}
         aria-haspopup="listbox"
-        aria-controls={`${id}-listbox`}
+        aria-controls={Loaded && expanded ? `${id}-listbox` : undefined}
         role={triggerRole}
         data-selected-id={selectedId ?? ""}
         disabled={disabled}
         onClick={() => (open ? close() : setOpen(true))}
+        onPointerEnter={preload}
+        onPointerDown={preload}
+        onFocus={preload}
+        onKeyUp={coldOpen.onKeyUp}
         onKeyDown={(event) => {
-          if (searchable || !open) return;
+          if (coldOpen.onKeyDown(event) || searchable || !open) return;
           if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
@@ -270,93 +228,43 @@ export function SearchablePicker({
           aria-hidden="true"
         />
       </button>
-      <MenuPopover
-        ariaLabel={ariaLabel}
-        className={[
-          "searchable-picker__popover",
-          "menu-popover--editor",
-          popoverClassName,
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        focusStrategy={searchable ? "none" : "roving"}
-        focusKey={
-          searchable
-            ? undefined
-            : selectable.map((candidate) => candidate.id).join("\0")
-        }
-        initialFocus="selected"
-        id={`${id}-popover`}
-        matchTriggerWidth
-        gap={popoverGap}
-        placement={popoverPlacement}
-        onDismiss={close}
-        open={expanded}
-        portalTarget={portalTarget}
-        role="none"
-        triggerRef={triggerRef}
-      >
-        {searchable ? (
-          <input
-            ref={inputRef}
-            className="searchable-picker__input"
-            role="combobox"
-            aria-label={ariaLabel}
-            aria-activedescendant={active ? optionId(id, active.id) : undefined}
-            aria-autocomplete="list"
-            aria-controls={`${id}-listbox`}
-            aria-expanded={expanded}
-            value={draft}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              setActiveId(null);
-            }}
-            onKeyDown={onKeyDown}
-          />
-        ) : null}
-        {selected ? (
-          <p className="searchable-picker__current">
-            Current: {selected.label}
-          </p>
-        ) : null}
-        {sectionLabel ? (
-          <p className="searchable-picker__section-label">{sectionLabel}</p>
-        ) : null}
-        {state ? (
-          <ResourceStateNotice
-            detail={stateDetail}
-            state={state}
-            title={stateTitle ?? ariaLabel}
-          />
-        ) : null}
-        {!state && visible.length === 0 ? (
-          <ResourceStateNotice
-            state="idle"
-            title={`No ${ariaLabel.toLocaleLowerCase()} found.`}
-          />
-        ) : null}
-        <div id={`${id}-listbox`} role="listbox" aria-label={ariaLabel}>
-          {listed.map((candidate) => (
-            <PickerOption
-              key={candidate.id}
-              active={candidate.id === active?.id}
-              candidate={candidate}
-              id={optionId(id, candidate.id)}
-              onActivate={searchable ? setActiveId : undefined}
-              onRender={onOptionRender}
-              onSelect={selectCandidate}
-              selected={candidate.id === selectedId}
-              disabled={disabled}
-            />
-          ))}
-          {visible.length > rendered.length ? (
-            <p className="searchable-picker__limit">
-              {visible.length - rendered.length} more — refine
-            </p>
-          ) : null}
-        </div>
-        {footer ? <p className="searchable-picker__footer">{footer}</p> : null}
-      </MenuPopover>
+      {loadFailed ? (
+        <ResourceStateNotice
+          state="error"
+          title={`${ariaLabel} could not be loaded.`}
+          detail="Open it again to retry."
+        />
+      ) : null}
+      {opened && Loaded ? (
+        <PopoverSlot
+          ariaLabel={ariaLabel}
+          candidates={candidates}
+          close={close}
+          disabled={disabled}
+          draft={draft}
+          expanded={expanded}
+          focusMoved={coldOpen.focusMoved}
+          footer={footer}
+          id={id}
+          onOptionRender={onOptionRender}
+          onSelect={onSelect}
+          open={open}
+          popoverClassName={popoverClassName}
+          popoverGap={popoverGap}
+          popoverPlacement={popoverPlacement}
+          portalTarget={portalTarget}
+          searchable={searchable}
+          sectionLabel={sectionLabel}
+          selected={selected}
+          selectedId={selectedId}
+          setDraft={setDraft}
+          setOpen={setOpen}
+          state={state}
+          stateDetail={stateDetail}
+          stateTitle={stateTitle}
+          triggerRef={triggerRef}
+        />
+      ) : null}
     </div>
   );
 }

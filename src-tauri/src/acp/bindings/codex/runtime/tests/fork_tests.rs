@@ -1,11 +1,12 @@
-//! `thread/fork` replay against the pinned Codex 0.146 generated schema.
+//! `thread/fork` replay against the pinned Codex generated schema.
 
 use super::*;
+use crate::acp::bindings::codex::CODEX_PINNED_VERSION;
 use crate::acp::goal::NativeRpcReply;
 
 fn pinned_fork_schema() -> Value {
     serde_json::from_slice(include_bytes!(
-        "../../../../../../testdata/acp/codex/observed-0146-fork-schema.json"
+        "../../../../../../testdata/acp/codex/observed-fork-schema.json"
     ))
     .unwrap()
 }
@@ -30,12 +31,12 @@ fn forked_thread(id: u64, thread: Value) -> Frame {
 }
 
 #[test]
-fn the_fork_request_is_the_pinned_0146_thread_fork_shape() {
+fn the_fork_request_is_the_pinned_thread_fork_shape() {
     let schema = pinned_fork_schema();
-    assert_eq!(schema["codexRuntimeVersion"], "0.146.0");
+    assert_eq!(schema["codexRuntimeVersion"], CODEX_PINNED_VERSION);
     assert_eq!(schema["clientRequestDeclaresMethod"], true);
     let effort: Value = serde_json::from_slice(include_bytes!(
-        "../../../../../../testdata/acp/codex/observed-0146-effort-schema.json"
+        "../../../../../../testdata/acp/codex/observed-effort-schema.json"
     ))
     .unwrap();
     // Both pins come from the same generated schema of the same entrypoint.
@@ -70,6 +71,9 @@ fn the_fork_request_is_the_pinned_0146_thread_fork_shape() {
     assert_eq!(params["threadId"], "thread-1");
     // Sage forks only between Turns, so it never names an inclusive anchor.
     assert!(!params.contains_key("lastTurnId"));
+    // Sage imports no native history, and asking for it draws a
+    // `deprecationNotice` from the pinned server.
+    assert_eq!(params["excludeTurns"], true);
 }
 
 #[test]
@@ -173,10 +177,10 @@ fn a_fork_is_refused_before_negotiation_during_a_turn_and_while_one_is_pending()
     assert!(pending.fork_session().is_err());
 }
 
-const CAPTURED_PARENT: &str = "01a16b24-2c2c-7cc0-8f64-09d61ef125e6";
-const CAPTURED_FORK: &str = "01a16b24-3b97-7dc3-8cc6-bf79c587a204";
+const CAPTURED_PARENT: &str = "01a1bb2a-cba4-7140-855e-860eb1db31cb";
+const CAPTURED_FORK: &str = "01a1bb2a-d487-78d2-a0cb-f2db1a8799aa";
 
-/// The live codex 0.146 app-server frames recorded around a `thread/fork`
+/// The live pinned Codex app-server frames recorded around a `thread/fork`
 /// with no prompt sent (`harness-traces/codex/fork-notifications`), with the
 /// captured parent thread renamed to the fixture's bound `thread-1`.
 fn captured_fork_frames() -> Vec<(String, Value)> {

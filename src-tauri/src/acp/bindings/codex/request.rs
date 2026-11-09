@@ -10,12 +10,19 @@ use crate::acp::{
 use super::CODEX_BROWSE_TOOL_NAME;
 use super::manifest::Platform;
 use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
-use super::policy_0146::{TurnPolicySurface, turn_policy, validate_turn_policy};
+use super::turn_policy::{TurnPolicySurface, turn_policy, validate_turn_policy};
+
+mod session_action;
 
 // The shared writer owns the single LF delimiter. Keeping the payload one
 // byte below the wire ceiling makes the eventual payload + LF write fit the
 // existing bounded stdin endpoint without adapter-specific framing.
 const JSON_PAYLOAD_BYTES: usize = LIMITS.wire.frame_bytes as usize - 1;
+
+/// High-volume notifications Sage never projects, suppressed by Codex at the
+/// source: the whole-turn unified diff (Sage reads each file change from its
+/// own item) and the deprecated apply_patch output stream.
+const OPTED_OUT_NOTIFICATIONS: [&str; 2] = ["turn/diff/updated", "item/fileChange/outputDelta"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AppServerClientIdentity {
@@ -63,12 +70,23 @@ pub(crate) enum RequestKind {
     ForkDelete,
     Models,
     TurnStart,
+    /// `review/start`: an inline review that runs as the correlated Turn.
+    Review,
+    /// `thread/compact/start`: a compaction that runs as the correlated Turn.
+    Compact,
     Steer,
     Interrupt,
     Unsubscribe,
     GoalGet,
     GoalPause,
     GoalClear,
+    RateLimitsRead,
+}
+
+impl RequestKind {
+    pub(crate) fn starts_turn(self) -> bool {
+        matches!(self, Self::TurnStart | Self::Review | Self::Compact)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,6 +117,8 @@ impl OutgoingRequest {
             RequestKind::Fork => "thread/fork",
             RequestKind::Models => "model/list",
             RequestKind::TurnStart => "turn/start",
+            RequestKind::Review => "review/start",
+            RequestKind::Compact => "thread/compact/start",
             RequestKind::Steer => "turn/steer",
             RequestKind::Interrupt => "turn/interrupt",
             RequestKind::Unsubscribe | RequestKind::ForkRelease => "thread/unsubscribe",
@@ -106,6 +126,7 @@ impl OutgoingRequest {
             RequestKind::GoalGet => "thread/goal/get",
             RequestKind::GoalPause => "thread/goal/set",
             RequestKind::GoalClear => "thread/goal/clear",
+            RequestKind::RateLimitsRead => "account/rateLimits/read",
         };
         let bytes = serde_json::to_vec(&json!({"id": id, "method": method, "params": params}))
             .map_err(|_| RequestError::Encoding)?;
@@ -128,9 +149,12 @@ impl OutgoingRequest {
                     "title": client.title,
                     "version": client.version
                 },
-                // Codex 0.146 requires this initialize capability before it
+                // Codex requires this initialize capability before it
                 // accepts the documented thread/start.dynamicTools field.
-                "capabilities": {"experimentalApi": true}
+                "capabilities": {
+                    "experimentalApi": true,
+                    "optOutNotificationMethods": OPTED_OUT_NOTIFICATIONS
+                }
             }),
         )
     }
@@ -154,6 +178,8 @@ impl OutgoingRequest {
         )
     }
 
+    /// `thread/resume` without the thread's Turns, which Sage does not
+    /// import; asking for them draws a `deprecationNotice`.
     pub(crate) fn resume(
         id: u64,
         thread_id: &RequiredText<512>,
@@ -168,7 +194,8 @@ impl OutgoingRequest {
                 "model": model.map(RequiredText::as_str),
                 "cwd": root.as_str(),
                 "approvalPolicy": APPROVAL_POLICY_NEVER,
-                "sandbox": SANDBOX_READ_ONLY
+                "sandbox": SANDBOX_READ_ONLY,
+                "excludeTurns": true
             }),
         )
     }
@@ -189,14 +216,16 @@ impl OutgoingRequest {
         )
     }
 
-    /// `thread/fork` through the latest Turn. The pinned 0.146 schema
+    /// `thread/fork` through the latest Turn. The pinned schema
     /// requires only `threadId`; omitted overrides inherit the source thread,
     /// and `lastTurnId` is left out because Sage forks only between Turns.
+    /// Sage imports no native history, so the forked Turns are excluded;
+    /// asking for them draws a `deprecationNotice` from the pinned server.
     pub(crate) fn fork(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
         Self::build(
             id,
             RequestKind::Fork,
-            json!({"threadId": thread_id.as_str()}),
+            json!({"threadId": thread_id.as_str(), "excludeTurns": true}),
         )
     }
 
@@ -222,6 +251,10 @@ impl OutgoingRequest {
             RequestKind::GoalClear,
             json!({"threadId": thread_id.as_str()}),
         )
+    }
+
+    pub(crate) fn rate_limits_read(id: u64) -> Result<Self, RequestError> {
+        Self::build(id, RequestKind::RateLimitsRead, Value::Null)
     }
 
     pub(crate) fn models(

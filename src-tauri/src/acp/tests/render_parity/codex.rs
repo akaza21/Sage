@@ -166,8 +166,8 @@ pub(super) fn run(scenario: Scenario) -> Option<Vec<Fact>> {
         &mut runtime,
         initialize,
         json!({
-            "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-            "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+            "userAgent":"sage/0.167.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
+            "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.167.0-486c7c8d",
             "platformFamily":"windows","platformOs":"windows"
         }),
     );

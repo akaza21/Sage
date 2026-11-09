@@ -58,7 +58,7 @@ test("Pi curated catalogue derives transport from the same registry that admits 
   assert.doesNotMatch(metadata, /CuratedProtocol::acp\(None\)/u);
 });
 
-test("Pi snapshots retain streamed blocks and terminal messages match their final partial", () => {
+test("Pi streams deltas only and terminal messages match the assembled deltas", () => {
   const cases = [
     ...nativeCases().filter(({ id }) => id.startsWith("pi-")),
     piIdleConfigJourney(),
@@ -77,8 +77,8 @@ test("Pi snapshots retain streamed blocks and terminal messages match their fina
           assert.equal(content[index].type, type, entry.id);
           content[index][type] += event.delta;
         }
-        assert.deepEqual(frame.message.content, content, entry.id);
-        assert.deepEqual(event.partial, frame.message, entry.id);
+        assert.equal(frame.message, undefined, entry.id);
+        assert.equal(event.partial, undefined, entry.id);
       }
       if (["message_end", "turn_end"].includes(frame?.type))
         assert.deepEqual(frame.message.content, content, entry.id);
@@ -151,7 +151,7 @@ test("Pi compaction waits through agent_end and replays continuation before sett
   const evidence = JSON.parse(
     readFileSync(
       new URL(
-        "../src-tauri/testdata/acp/pi/native-capture-wire-0830.json",
+        "../src-tauri/testdata/acp/pi/native-capture-wire-150.json",
         import.meta.url,
       ),
       "utf8",
@@ -159,7 +159,7 @@ test("Pi compaction waits through agent_end and replays continuation before sett
   );
   assert.equal(
     evidence.sourceCommit,
-    "845d6ff1f6643aba440341cce877ce1c43ebbc39",
+    "f9a26365568127461c47a07a37dcb42c140a3ac5",
   );
   const cases = nativeCases().filter(({ id }) => id.startsWith("pi-"));
   for (const entry of cases) {

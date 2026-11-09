@@ -1,4 +1,4 @@
-use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path};
 
 use uuid::Uuid;
 
@@ -45,7 +45,7 @@ impl Drop for TwoRootProject {
 
 fn git(root: &Path, args: &[&str]) {
     assert!(
-        Command::new("git")
+        crate::git_process::fixture_git()
             .arg("-C")
             .arg(root)
             .args(args)
@@ -56,7 +56,7 @@ fn git(root: &Path, args: &[&str]) {
 }
 
 fn subject(root: &Path) -> String {
-    let output = Command::new("git")
+    let output = crate::git_process::fixture_git()
         .arg("-C")
         .arg(root)
         .args(["log", "-1", "--format=%s"])
@@ -188,7 +188,7 @@ fn commit_and_post_commit_projection_never_launch_content_filters() {
 #[test]
 fn post_commit_projection_preserves_a_staged_type_change() {
     let fixture = TwoRootProject::new();
-    let linked_commit = Command::new("git")
+    let linked_commit = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&fixture.root_b)
         .args(["rev-parse", "HEAD"])
@@ -302,7 +302,7 @@ fn ordinary_git_failure_never_exposes_an_absolute_repository_path() {
     let alternates = fixture.root_a.join(".git/objects/info/alternates");
     fs::create_dir_all(alternates.parent().unwrap()).unwrap();
     fs::write(alternates, format!("{}\n", missing_object_store.display())).unwrap();
-    let head = Command::new("git")
+    let head = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&fixture.root_a)
         .args(["rev-parse", "HEAD"])
@@ -370,7 +370,7 @@ fn post_commit_index_projection_never_exposes_oversized_absolute_git_diagnostics
     let hook_root = fixture.root_a.clone();
     let policy = repository::GitProcessPolicy::mutation(Duration::from_secs(3))
         .with_after_process_hook(move || {
-            let head = Command::new("git")
+            let head = crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&hook_root)
                 .args(["rev-parse", "HEAD"])
@@ -409,7 +409,7 @@ fn post_commit_index_projection_never_exposes_oversized_absolute_git_diagnostics
         ))
         .unwrap();
 
-    let raw = Command::new("git")
+    let raw = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&fixture.root_a)
         .args(["diff", "--cached", "--name-status", "HEAD", "--"])

@@ -63,8 +63,50 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
   }
   return { revision: value.revision as number, commands };
 }
-// Separate native port: the composer follow-up can import this without adding UI here.
+/** Native says one live owner's command list has a new revision; no data. */
+export interface AcpCommandsChangedV1 {
+  sageProjectId: string;
+  sageChatId: string;
+  sageAgentSessionId: string;
+  runtimeEpoch: string;
+  revision: number;
+}
+export function decodeCommandsNotice(
+  value: unknown,
+): AcpCommandsChangedV1 | null {
+  if (!isRecord(value) || value.schemaVersion !== 1) return null;
+  for (const key of ["sageProjectId", "sageChatId", "sageAgentSessionId"]) {
+    const id = value[key];
+    if (typeof id !== "string" || !id || utf8ByteLength(id) > 512) return null;
+  }
+  if (
+    typeof value.runtimeEpoch !== "string" ||
+    !/^[1-9][0-9]{0,19}$/u.test(value.runtimeEpoch) ||
+    !Number.isSafeInteger(value.revision) ||
+    (value.revision as number) < 1
+  )
+    return null;
+  return {
+    sageProjectId: value.sageProjectId as string,
+    sageChatId: value.sageChatId as string,
+    sageAgentSessionId: value.sageAgentSessionId as string,
+    runtimeEpoch: value.runtimeEpoch,
+    revision: value.revision as number,
+  };
+}
+// Separate native port, loaded only with the composer's command menu.
 export const acpCommandsDesktop = {
+  async subscribeCommandChanges(
+    onChange: (event: AcpCommandsChangedV1) => void,
+  ): Promise<() => void> {
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window))
+      return () => undefined;
+    const { listen } = await import("@tauri-apps/api/event");
+    return listen<unknown>("acp-commands-changed-v1", (event) => {
+      const notice = decodeCommandsNotice(event.payload);
+      if (notice) onChange(notice);
+    });
+  },
   async listCommands(
     request: AcpSessionMutationIntent,
   ): Promise<AcpCommandList> {

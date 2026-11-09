@@ -8,11 +8,12 @@ use sha2::{Digest, Sha256};
 use windows_sys::Win32::Storage::FileSystem::{FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ};
 
 use super::{
-    AclPlan, HandoffFile, HandoffPayload, ProvisioningError, RECEIPT_BYTES_MAX, SealedHandoff,
-    SourceFile, StagingOperation, VerifiedCodexSource, hex,
+    AclPlan, HandoffFile, HandoffPayload, ProvisioningError, RECEIPT_BYTES_MAX, STAGE_NAME,
+    SealedHandoff, SourceFile, StagingOperation, VerifiedCodexSource, hex,
 };
 use crate::acp::bindings::codex::{
     managed::current_process_user_sid,
+    manifest::PINNED_CODEX_VERSION,
     physical::{
         InspectionClaims, PhysicallyInspectedPackage, inspect_claims, open_exact_state_root,
     },
@@ -25,7 +26,6 @@ use targets::{require_absent, require_present, target_exists, validate_root_clos
 #[cfg(test)]
 mod test_failpoint;
 
-const STAGE_NAME: &str = ".sage-codex-0.146.0-stage";
 const HANDOFF_NAME: &str = "handoff.json";
 const PACKAGE_NAME: &str = "package";
 const STATE_NAME: &str = "state";
@@ -330,7 +330,7 @@ fn build_receipt(source: &VerifiedCodexSource) -> Result<SealedHandoff, Provisio
     let payload = HandoffPayload {
         schema_version: 1,
         binding_id: "codex-app-server".into(),
-        runtime_version: "0.146.0".into(),
+        runtime_version: PINNED_CODEX_VERSION.into(),
         creation_nonce: uuid::Uuid::new_v4().simple().to_string(),
         source_proof_sha256: source.source_proof_sha256.clone(),
         aggregate_byte_len: source.inspection.byte_len(),

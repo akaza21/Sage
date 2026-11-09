@@ -35,6 +35,7 @@ struct LaunchParts {
     manifest: Option<ManifestExpectation>,
     environment: BoundedEnvironment,
     artifact_identity: [u8; 32],
+    extra_args: Vec<String>,
 }
 
 pub(crate) struct AcpLaunchAuthority {
@@ -48,6 +49,7 @@ pub(crate) struct AcpLaunchAuthority {
     entrypoint: Option<PathBuf>,
     manifest: Option<ManifestExpectation>,
     environment: BoundedEnvironment,
+    extra_args: Vec<String>,
 }
 
 impl AcpLaunchAuthority {
@@ -64,6 +66,7 @@ impl AcpLaunchAuthority {
                 manifest: None,
                 environment: launch.environment,
                 artifact_identity: launch.binding_digest,
+                extra_args: Vec::new(),
             },
         )
     }
@@ -82,6 +85,7 @@ impl AcpLaunchAuthority {
             manifest,
             environment,
             artifact_identity,
+            extra_args,
         } = parts;
         if !matches!(
             (profile.launch, entrypoint.is_some()),
@@ -104,6 +108,7 @@ impl AcpLaunchAuthority {
             entrypoint,
             manifest,
             environment,
+            extra_args,
         })
     }
 
@@ -142,6 +147,7 @@ impl AcpLaunchAuthority {
                 manifest,
                 environment,
                 artifact_identity: parse_digest(&candidate.runtime.sha256)?,
+                extra_args: binding.extension().args.clone(),
             },
         )
     }
@@ -184,11 +190,18 @@ impl AcpLaunchAuthority {
     }
 
     fn fixed_args(&self) -> Vec<OsString> {
-        let mut fixed_args = Vec::with_capacity(self.profile.fixed_args.len().saturating_add(1));
+        let mut fixed_args = Vec::with_capacity(
+            self.profile
+                .fixed_args
+                .len()
+                .saturating_add(self.extra_args.len())
+                .saturating_add(1),
+        );
         if let Some(entrypoint) = &self.entrypoint {
             fixed_args.push(OsString::from(entrypoint));
         }
         fixed_args.extend(self.profile.fixed_args.iter().map(OsString::from));
+        fixed_args.extend(self.extra_args.iter().map(OsString::from));
         fixed_args
     }
 }

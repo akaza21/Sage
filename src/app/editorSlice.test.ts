@@ -89,6 +89,7 @@ describe("typing in the active editor", () => {
       "snapshotEditorBuffer",
     ).mockImplementation(async (request) => ({
       revision: request.revision,
+      applied: true,
       persistedAt: 1,
       dirty: true,
     }));
