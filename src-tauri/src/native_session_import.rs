@@ -7,17 +7,16 @@ use tauri::{Manager, State};
 
 use crate::{
     acp::{
-        bindings::codex::NativeSessionsPage,
         contract::{SageChatId, SageProjectId},
         intent::ExternalId,
         scheduler::RuntimeOwner,
-        service::ImportedHistory,
+        service::{ImportLister, ImportedHistory, ListedSessions},
         store::{
             StoreError,
-            native_import::{imported_history, install_import},
+            native_import::{imported_session, install_import},
         },
     },
-    chat_fork::{CHAT_TITLE_PREFIX, committed_transition, insert_layout_chat, stale},
+    chat_fork::{committed_transition, insert_layout_chat, stale},
     chat_lifecycle::MAX_CHAT_TITLE_BYTES,
     domain::{ProjectLayoutRequest, ProjectTransitionResult},
     error::{AppError, AppResult},
@@ -28,12 +27,12 @@ use crate::{
 const MAX_CURSOR_BYTES: usize = 1024;
 const IMPORT_UNFINISHED: &str = "The session did not open; try again";
 
-/// `Chat: <title>`, with whitespace collapsed and shortened at a character
+/// The session's title with whitespace collapsed, shortened at a word
 /// boundary to the Chat title byte limit.
 fn import_title(title: &str) -> String {
-    let mut chat = CHAT_TITLE_PREFIX.to_owned();
+    let mut chat = String::new();
     for word in title.split_whitespace() {
-        let separator = usize::from(chat.len() > CHAT_TITLE_PREFIX.len());
+        let separator = usize::from(!chat.is_empty());
         if chat.len() + separator + word.len() > MAX_CHAT_TITLE_BYTES {
             break;
         }
@@ -42,7 +41,7 @@ fn import_title(title: &str) -> String {
         }
         chat.push_str(word);
     }
-    if chat.len() == CHAT_TITLE_PREFIX.len() {
+    if chat.is_empty() {
         chat.push_str("Imported session");
     }
     chat
@@ -110,7 +109,8 @@ pub async fn list_native_sessions(
     app: tauri::AppHandle,
     project_id: String,
     cursor: Option<String>,
-) -> Result<NativeSessionsPage, String> {
+    lister: Option<ImportLister>,
+) -> Result<ListedSessions, String> {
     let project = SageProjectId::parse(project_id).map_err(|error| error.to_string())?;
     if cursor
         .as_ref()
@@ -121,21 +121,24 @@ pub async fn list_native_sessions(
     tauri::async_runtime::spawn_blocking(move || {
         app.state::<AppState>()
             .acp
-            .list_importable_sessions(&project, cursor)
+            .list_importable_sessions(&project, cursor, lister.as_ref())
     })
     .await
     .map_err(|_| IMPORT_UNFINISHED.to_owned())?
     .map_err(|error| error.to_string())
 }
 
-/// Opens a listed session as a new Chat. The history is read on a blocking
-/// thread outside the Project transition lock; the lock is retaken and the
-/// epoch re-validated before the Chat is committed.
+const STALE_IMPORT: &str = "opening the session";
+
+/// Opens a session `lister` listed as a new Chat. The history is read on a
+/// blocking thread outside the Project transition lock; the lock is retaken
+/// and the epoch re-validated before the Chat is committed.
 #[tauri::command]
 pub async fn import_native_session(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     current_layout: ProjectLayoutRequest,
+    lister: ImportLister,
     thread_id: String,
     title: String,
     expected_transition_epoch: u64,
@@ -147,6 +150,7 @@ pub async fn import_native_session(
     stale(
         *state.project_transitions.lock().await,
         expected_transition_epoch,
+        STALE_IMPORT,
     )?;
     let handle = app.clone();
     let native = thread.clone();
@@ -154,13 +158,13 @@ pub async fn import_native_session(
         handle
             .state::<AppState>()
             .acp
-            .read_import_history(&project, native.as_str())
+            .read_import_history(&project, &lister, native.as_str())
     })
     .await
     .map_err(|_| IMPORT_UNFINISHED.to_owned())?
     .map_err(|error| error.to_string())?;
     let mut epoch = state.project_transitions.lock().await;
-    stale(*epoch, expected_transition_epoch)?;
+    stale(*epoch, expected_transition_epoch, STALE_IMPORT)?;
     let database = state.database.clone();
     let layout = current_layout.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -172,21 +176,38 @@ pub async fn import_native_session(
     Ok(committed_transition(&state, &mut epoch).await)
 }
 
-/// The history an imported Chat continues from, oldest Turn first.
+/// The history an imported Chat continues from, oldest Turn first, with
+/// the session and runtime epoch it is shown under.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ImportedHistoryView {
+    session_id: String,
+    runtime_epoch: String,
+    #[serde(flatten)]
+    history: ImportedHistory,
+}
+
 #[tauri::command]
 pub async fn read_imported_history(
     state: State<'_, AppState>,
     project_id: String,
     chat_id: String,
-) -> Result<Option<ImportedHistory>, String> {
+) -> Result<Option<ImportedHistoryView>, String> {
     let project = SageProjectId::parse(project_id).map_err(|error| error.to_string())?;
     let chat = SageChatId::parse(chat_id).map_err(|error| error.to_string())?;
     let database = state.database.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        imported_history(&database.connection(), &project, &chat)
+        let Some(imported) = imported_session(&database.connection(), &project, &chat, true)
             .map_err(|error| error.to_string())?
-            .map(|json| serde_json::from_str(&json).map_err(|error| error.to_string()))
-            .transpose()
+        else {
+            return Ok(None);
+        };
+        let json = imported.history_json.unwrap_or_default();
+        Ok(Some(ImportedHistoryView {
+            session_id: imported.session_id,
+            runtime_epoch: imported.runtime_epoch.to_string(),
+            history: serde_json::from_str(&json).map_err(|error| error.to_string())?,
+        }))
     })
     .await
     .map_err(|_| "The imported history could not be read".to_owned())?
@@ -198,8 +219,8 @@ mod tests {
 
     #[test]
     fn import_titles_collapse_whitespace_and_stay_within_the_title_limit() {
-        assert_eq!(import_title("  Fix\n the   build "), "Chat: Fix the build");
-        assert_eq!(import_title(" \t"), "Chat: Imported session");
+        assert_eq!(import_title("  Fix\n the   build "), "Fix the build");
+        assert_eq!(import_title(" \t"), "Imported session");
         let long = import_title(&"word ".repeat(MAX_CHAT_TITLE_BYTES));
         assert!(long.len() <= MAX_CHAT_TITLE_BYTES && long.ends_with("word"));
     }

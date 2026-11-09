@@ -1,11 +1,8 @@
+import type { AcpItem, TurnProjection } from "../domain/acp";
 import type { ProjectLayoutRequest } from "../domain/chat";
 import type { ProjectTransitionResult } from "../domain/project";
 import { invokeNative } from "../ports/nativeInvoke";
-import {
-  turnsForView,
-  type TranscriptOwner,
-  type TranscriptTurn,
-} from "./acpChildTranscript";
+import { turnsForView } from "./acpChildTranscript";
 import { isRecord, safeIdentifier } from "./acpDesktopGuards";
 
 /** A native session started outside Sage that a new Chat can continue. */
@@ -16,9 +13,16 @@ export interface NativeSessionSummary {
   updatedAt: number;
 }
 
+/** The runtime that listed a page; only it reads one of its sessions. */
+export interface ImportLister {
+  sessionId: string;
+  runtimeEpoch: string;
+}
+
 export interface NativeSessionsPage {
   sessions: NativeSessionSummary[];
   nextCursor: string | null;
+  lister: ImportLister;
 }
 
 const PAGE_SIZE = 25;
@@ -27,17 +31,23 @@ function invalid(): never {
   throw new Error("Invalid native session response");
 }
 
-/** One page of the Project's importable sessions, newest activity first. */
+/** One page of the Project's importable sessions, newest activity first, on the runtime that listed earlier pages. */
 export async function listNativeSessions(
   projectId: string,
   cursor: string | null,
+  lister: ImportLister | null,
 ): Promise<NativeSessionsPage> {
   const value = await invokeNative<unknown>("list_native_sessions", {
     projectId,
     cursor,
+    lister,
   });
+  const listed = isRecord(value) && value.lister;
   if (
     !isRecord(value) ||
+    !isRecord(listed) ||
+    !safeIdentifier(listed.sessionId) ||
+    typeof listed.runtimeEpoch !== "string" ||
     !Array.isArray(value.sessions) ||
     value.sessions.length > PAGE_SIZE ||
     (value.nextCursor !== null && typeof value.nextCursor !== "string")
@@ -60,11 +70,16 @@ export async function listNativeSessions(
       };
     }),
     nextCursor: value.nextCursor,
+    lister: {
+      sessionId: listed.sessionId,
+      runtimeEpoch: listed.runtimeEpoch,
+    } as ImportLister,
   };
 }
 
 export function importNativeSession(request: {
   currentLayout: ProjectLayoutRequest;
+  lister: ImportLister;
   threadId: string;
   title: string;
   expectedTransitionEpoch: number;
@@ -73,21 +88,62 @@ export function importNativeSession(request: {
 }
 
 export interface ImportedHistory {
-  turns: TranscriptTurn[];
+  turns: TurnProjection[];
   retentionLimited: boolean;
 }
 
-/** The history an imported Chat continues from, in the shared item shapes. */
+// History never runs again here: unfinished work shows as stopped.
+const unfinished = new Set(["started", "streaming", "pending", "inProgress"]);
+
+/** The history an imported Chat continues from, as the imported session's Turns. */
 export async function readImportedHistory(
-  owner: TranscriptOwner,
+  projectId: string,
+  chatId: string,
 ): Promise<ImportedHistory | null> {
   const value = await invokeNative<unknown>("read_imported_history", {
-    projectId: owner.projectId,
-    chatId: owner.chatId,
+    projectId,
+    chatId,
   });
   if (value === null) return null;
-  const turns = isRecord(value) ? turnsForView(value.turns, owner) : null;
-  if (!isRecord(value) || !turns || typeof value.retentionLimited !== "boolean")
-    invalid();
-  return { turns, retentionLimited: value.retentionLimited };
+  if (!isRecord(value)) invalid();
+  const owner = {
+    projectId,
+    chatId,
+    sessionId: value.sessionId as string,
+    runtimeEpoch: value.runtimeEpoch as string,
+  };
+  const turns = turnsForView(value.turns, owner);
+  if (!turns || typeof value.retentionLimited !== "boolean") invalid();
+  return {
+    retentionLimited: value.retentionLimited,
+    turns: turns.map((turn, index) => ({
+      id: turn.id as TurnProjection["id"],
+      sessionId: owner.sessionId as TurnProjection["sessionId"],
+      runtimeEpoch: owner.runtimeEpoch as TurnProjection["runtimeEpoch"],
+      ordinal: index + 1,
+      state:
+        turn.status === "inProgress"
+          ? "interrupted"
+          : (turn.status as TurnProjection["state"]),
+      revision: "0" as TurnProjection["revision"],
+      createdAt: 0,
+      updatedAt: 0,
+      terminalAt: null,
+      items: turn.items.map(
+        (item) =>
+          ({
+            ...item,
+            lifecycle: unfinished.has(item.lifecycle)
+              ? "cancelled"
+              : item.lifecycle,
+            toolState: unfinished.has(item.toolState!)
+              ? "cancelled"
+              : item.toolState,
+          }) as AcpItem,
+      ),
+      activities: [],
+      browserOperations: [],
+      browserOperationsCollapsed: 0,
+    })),
+  };
 }

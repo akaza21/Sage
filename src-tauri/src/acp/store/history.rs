@@ -78,7 +78,7 @@ pub(crate) fn load_chat_page_reserving(
     let (forked_from, forked_from_turn_id) =
         super::chat_fork::forked_from(connection, &project_id, &chat_id)?.unzip();
     let imported_history =
-        super::native_import::has_imported_history(connection, &project_id, &chat_id)?;
+        super::native_import::imported_session(connection, &project_id, &chat_id, false)?.is_some();
     let child_projection_epoch = super::child_transcript::child_projection_epoch(
         connection,
         project_id.as_str(),

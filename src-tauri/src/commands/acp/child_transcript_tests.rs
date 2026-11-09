@@ -15,7 +15,7 @@ use std::{
 
 use crate::{
     acp::{
-        bindings::codex::{NativeTurnsPage, child_read_for_test},
+        bindings::codex::{NativeTurnsPage, test_transcript::child_read as child_read_for_test},
         contract::{ClientIntentId, RequiredText, SafeText, SageTurnId, SchemaVersionV1},
         goal::{GoalState, NativeRead, NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
         intent::{BindingId, CapabilitySnapshotV1},

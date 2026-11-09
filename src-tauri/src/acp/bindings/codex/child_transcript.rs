@@ -87,38 +87,6 @@ pub(crate) struct NativeTurnsPage {
     pub(crate) next_cursor: Option<String>,
 }
 
-#[cfg(test)]
-impl NativeTurnsPage {
-    pub(crate) fn into_snapshot_for_test(
-        self,
-        child: &str,
-        parent: &str,
-    ) -> ChildTranscriptSnapshot {
-        ChildTranscriptSnapshot {
-            child_thread_id: child.into(),
-            parent_thread_id: parent.into(),
-            turns: self.turns,
-            retention_limited: false,
-        }
-    }
-}
-
-/// Normalizes a captured `thread/read` child transcript as the single
-/// `thread/turns/list` page holding its Turns.
-#[cfg(test)]
-pub(crate) fn child_read_for_test<M: ResourceMapper + ?Sized>(
-    wire: &[u8],
-    request_id: u64,
-    child: &str,
-    parent: &str,
-    mapper: &M,
-) -> Result<ChildTranscriptSnapshot, ChildTranscriptError> {
-    let read: Value = serde_json::from_slice(wire).map_err(|_| ChildTranscriptError::Malformed)?;
-    let page = serde_json::json!({"id": read["id"], "result": {"data": read["result"]["thread"]["turns"]}});
-    let page = serde_json::to_vec(&page).map_err(|_| ChildTranscriptError::Malformed)?;
-    Ok(normalize_turns_page(&page, request_id, mapper)?.into_snapshot_for_test(child, parent))
-}
-
 /// A native session started outside Sage, as the import picker lists it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -137,8 +105,9 @@ pub(crate) struct NativeSessionsPage {
     pub(crate) next_cursor: Option<String>,
 }
 
-/// Turns asked for per `thread/turns/list` page.
-pub(crate) const TURN_PAGE: usize = 16;
+/// Turns asked for per `thread/turns/list` page. Small pages keep one long
+/// Turn from making a page too large; 32 pages still hold `MAX_TURNS`.
+pub(crate) const TURN_PAGE: usize = 4;
 /// Sessions asked for per `thread/list` page.
 pub(crate) const SESSION_PAGE: usize = 25;
 const MAX_CURSOR_BYTES: usize = 1024;

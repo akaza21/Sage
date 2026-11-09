@@ -283,23 +283,11 @@ export function ForkDivider({
   return (
     <>
       {inherited ? (
-        // Parent Turns are read-only except answer actions; the fork owns the sole navigator, find and virtual list.
-        <div
-          className="chat-fork-inherited"
-          aria-label="History from the parent chat"
-          role="group"
-        >
-          {inherited.earlier ? (
-            <p className="acp-history-notice">
-              Earlier history isn&apos;t shown.
-            </p>
-          ) : null}
-          <LazyModuleBoundary
-            label="Inherited history"
-            load={loadInheritedTurns}
-            render={(InheritedTurns) => <InheritedTurns page={inherited} />}
-          />
-        </div>
+        <InheritedHistory
+          page={inherited}
+          earlier={inherited.earlier}
+          label="History from the parent chat"
+        />
       ) : null}
       <div className="chat-fork-divider">
         <GitBranch size={14} />
@@ -316,6 +304,30 @@ export function ForkDivider({
         )}
       </div>
     </>
+  );
+}
+
+/** Read-only Turns from before this Chat (a fork's parent, an imported session) except answer actions; the Chat owns the sole navigator, find and virtual list. */
+export function InheritedHistory({
+  page,
+  earlier,
+  label,
+}: {
+  page: AcpChatPage;
+  earlier: boolean;
+  label: string;
+}) {
+  return (
+    <div className="chat-fork-inherited" aria-label={label} role="group">
+      {earlier ? (
+        <p className="acp-history-notice">Earlier history isn&apos;t shown.</p>
+      ) : null}
+      <LazyModuleBoundary
+        label="Inherited history"
+        load={loadInheritedTurns}
+        render={(InheritedTurns) => <InheritedTurns page={page} />}
+      />
+    </div>
   );
 }
 

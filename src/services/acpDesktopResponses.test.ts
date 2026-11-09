@@ -409,7 +409,7 @@ describe("safeAcpMutationResponse", () => {
     ).toBeNull();
   });
 
-  it("carries native compact and review only when the wire grants them", () => {
+  it("carries native compact, import and review only when the wire grants them", () => {
     const capabilities = (extra: object) =>
       safeAcpMutationResponse(
         mutation({
@@ -423,15 +423,19 @@ describe("safeAcpMutationResponse", () => {
           ],
         }),
       )?.projection.sessions[0]?.capabilities;
-    expect(
-      capabilities({ nativeSessionCompact: true, nativeReview: true }),
-    ).toMatchObject({ nativeSessionCompact: true, nativeReview: true });
+    const granted = {
+      nativeSessionCompact: true,
+      nativeSessionImport: true,
+      nativeReview: true,
+    };
+    expect(capabilities(granted)).toMatchObject(granted);
     for (const granted of [
       {},
-      { nativeSessionCompact: "true", nativeReview: 1 },
+      { nativeSessionCompact: "true", nativeSessionImport: 1, nativeReview: 1 },
     ]) {
       const decoded = capabilities(granted);
       expect(decoded).not.toHaveProperty("nativeSessionCompact");
+      expect(decoded).not.toHaveProperty("nativeSessionImport");
       expect(decoded).not.toHaveProperty("nativeReview");
     }
   });

@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::acp::{
     bindings::codex::{ChildTurn, MAX_SNAPSHOT_BYTES, NativeSessionsPage},
-    contract::SageProjectId,
+    contract::{RuntimeEpoch, SageAgentSessionId, SageProjectId},
     goal::{NativeRead, NativeRpcReply},
     runtime::RuntimeHost,
     scheduler::RuntimeOwner,
-    store::native_import::import_lister,
+    store::native_import::{import_lister, imported_threads},
 };
 
 use super::{AcpService, native_read::NativeReadError};
@@ -56,12 +56,31 @@ impl ImportedHistory {
     }
 }
 
+/// The runtime that listed a page of sessions: only it reads one of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ImportLister {
+    pub(crate) session_id: SageAgentSessionId,
+    pub(crate) runtime_epoch: RuntimeEpoch,
+}
+
+/// One page of importable sessions and the runtime that listed it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ListedSessions {
+    #[serde(flatten)]
+    pub(crate) page: NativeSessionsPage,
+    pub(crate) lister: ImportLister,
+}
+
 impl AcpService {
     fn import_runtime(
         &self,
         project: &SageProjectId,
+        pinned: Option<&ImportLister>,
     ) -> Result<(RuntimeOwner, Arc<RuntimeHost>), NativeReadError> {
-        let owner = import_lister(&self.database.connection(), project)
+        let pinned = pinned.map(|lister| (&lister.session_id, lister.runtime_epoch));
+        let owner = import_lister(&self.database.connection(), project, pinned)
             .map_err(|_| NativeReadError::RecoveryRequired)?
             .ok_or(NativeReadError::Unavailable)?;
         let host = self
@@ -70,27 +89,39 @@ impl AcpService {
         Ok((owner, host))
     }
 
-    /// One page of the Project's importable sessions.
+    /// One page of the Project's importable sessions not yet imported, on
+    /// the runtime that listed the earlier pages, if any.
     pub(crate) fn list_importable_sessions(
         &self,
         project: &SageProjectId,
         cursor: Option<String>,
-    ) -> Result<NativeSessionsPage, NativeReadError> {
-        let (owner, host) = self.import_runtime(project)?;
-        match self.native_page(&owner, &host, NativeRead::ImportableSessions { cursor })? {
-            NativeRpcReply::SessionsPage(page) => Ok(page),
+        lister: Option<&ImportLister>,
+    ) -> Result<ListedSessions, NativeReadError> {
+        let (owner, host) = self.import_runtime(project, lister)?;
+        let excluded = imported_threads(&self.database.connection(), project)
+            .map_err(|_| NativeReadError::RecoveryRequired)?;
+        let read = NativeRead::ImportableSessions { cursor, excluded };
+        match self.native_page(&owner, &host, read)? {
+            NativeRpcReply::SessionsPage(page) => Ok(ListedSessions {
+                page,
+                lister: ImportLister {
+                    session_id: owner.session_id,
+                    runtime_epoch: owner.runtime_epoch,
+                },
+            }),
             _ => Err(NativeReadError::RecoveryRequired),
         }
     }
 
-    /// Reads a listed session's history for import, and returns it encoded
-    /// with the lister whose binding will resume the session.
+    /// Reads a session `lister` listed for import, and returns its history
+    /// encoded with the lister whose binding will resume the session.
     pub(crate) fn read_import_history(
         &self,
         project: &SageProjectId,
+        lister: &ImportLister,
         thread_id: &str,
     ) -> Result<(RuntimeOwner, String), NativeReadError> {
-        let (owner, host) = self.import_runtime(project)?;
+        let (owner, host) = self.import_runtime(project, Some(lister))?;
         let paged = self.read_turn_pages(
             &owner,
             &host,

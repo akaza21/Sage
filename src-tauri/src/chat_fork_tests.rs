@@ -425,11 +425,11 @@ fn a_fork_starts_with_the_config_choices_of_its_parent() {
 
 #[test]
 fn an_imported_session_becomes_a_resumable_chat_once_per_thread() {
-    use crate::acp::store::native_import::{import_lister, imported_history};
+    use crate::acp::store::native_import::{import_lister, imported_session, imported_threads};
     let fixture = Fixture::new(&forkable());
     let (project, _) = fixture.ids();
     assert!(
-        import_lister(&fixture.database.connection(), &project)
+        import_lister(&fixture.database.connection(), &project, None)
             .unwrap()
             .is_none(),
         "a runtime without the capability does not list sessions"
@@ -440,7 +440,7 @@ fn an_imported_session_becomes_a_resumable_chat_once_per_thread() {
     );
     let fixture = Fixture::new(&importable);
     let (project, parent) = fixture.ids();
-    let lister = import_lister(&fixture.database.connection(), &project)
+    let lister = import_lister(&fixture.database.connection(), &project, None)
         .unwrap()
         .expect("the hot Codex chat lists sessions");
     assert_eq!(lister.chat_id, parent);
@@ -476,7 +476,7 @@ fn an_imported_session_becomes_a_resumable_chat_once_per_thread() {
     assert_eq!(
         row,
         (
-            "Chat: Fix the build".into(),
+            "Fix the build".into(),
             "ready".into(),
             "cold".into(),
             "thread-cli".into(),
@@ -495,11 +495,14 @@ fn an_imported_session_becomes_a_resumable_chat_once_per_thread() {
             .unwrap()
             .imported_history
     );
+    let imported = imported_session(&connection, &project, &chat_id, true)
+        .unwrap()
+        .unwrap();
+    assert_eq!(imported.history_json.as_deref(), Some(history));
+    assert_eq!(imported.runtime_epoch, 1, "shown under its first runtime");
     assert_eq!(
-        imported_history(&connection, &project, &chat_id)
-            .unwrap()
-            .as_deref(),
-        Some(history)
+        imported_threads(&connection, &project).unwrap(),
+        ["thread-cli"]
     );
     drop(connection);
     for held in ["thread-cli", "thread-parent"] {
@@ -508,4 +511,45 @@ fn an_imported_session_becomes_a_resumable_chat_once_per_thread() {
             "{held} is already held by a Sage session"
         );
     }
+}
+
+#[test]
+fn an_import_reads_only_on_the_runtime_that_listed_it() {
+    use crate::acp::{
+        contract::{RuntimeEpoch, SageAgentSessionId},
+        store::native_import::import_lister,
+    };
+    let importable = forkable().replace(
+        r#""nativeSessionFork":true"#,
+        r#""nativeSessionFork":true,"nativeSessionImport":true"#,
+    );
+    let fixture = Fixture::new(&importable);
+    let (project, parent) = fixture.ids();
+    // A second hot runtime, more recently active than the parent's.
+    let other = fixture.fork("thread-other").expect("fork chat");
+    fixture
+        .database
+        .connection()
+        .execute_batch(&format!(
+            "UPDATE agent_sessions SET residency='hot',updated_at=9 WHERE chat_id='{other}';
+             INSERT INTO session_runtime_epochs SELECT project_id,chat_id,id,1,'running',
+               NULL,1,NULL,NULL FROM agent_sessions WHERE chat_id='{other}';"
+        ))
+        .unwrap();
+    let connection = fixture.database.connection();
+    let newest = import_lister(&connection, &project, None).unwrap().unwrap();
+    assert_eq!(newest.chat_id.as_str(), other);
+    let session = SageAgentSessionId::parse("session-parent").unwrap();
+    let epoch = RuntimeEpoch::new(1).unwrap();
+    let pinned = import_lister(&connection, &project, Some((&session, epoch)))
+        .unwrap()
+        .expect("the listing runtime still reads");
+    assert_eq!(pinned.chat_id, parent);
+    let restarted = RuntimeEpoch::new(2).unwrap();
+    assert!(
+        import_lister(&connection, &project, Some((&session, restarted)))
+            .unwrap()
+            .is_none(),
+        "a restarted runtime never listed the session"
+    );
 }

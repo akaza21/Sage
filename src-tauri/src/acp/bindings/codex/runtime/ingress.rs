@@ -82,9 +82,10 @@ impl CodexRuntime {
                     let reply = match reply {
                         Ok(reply) => reply,
                         Err(ChildTranscriptError::Capacity) => NativeRpcReply::TooLarge,
-                        Err(ChildTranscriptError::Rejected) => NativeRpcReply::Rejected,
-                        Err(ChildTranscriptError::Malformed) => {
-                            return Err(AdapterRuntimeError::Frame);
+                        // The reply answered the read: a bad history ends
+                        // only the read, never this runtime's chat.
+                        Err(ChildTranscriptError::Rejected | ChildTranscriptError::Malformed) => {
+                            NativeRpcReply::Rejected
                         }
                     };
                     self.inner.complete_native_read(id).map_err(map_adapter)?;

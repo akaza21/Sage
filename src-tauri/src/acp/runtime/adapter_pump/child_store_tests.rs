@@ -55,7 +55,7 @@ fn observed_wire_pump_snapshot_survives_reopen_without_mutating_parent_turn() {
         let (mut pump, _, _) = goal_active_codex_pump();
         pump.adapter.learn_child_for_test("child-one");
         let mut output = CaptureTransport(Vec::new());
-        pump.write_child(&mut output, &crate::acp::goal::NativeRead::child_for_test("child-one", "thread-1")).unwrap();
+        pump.write_child(&mut output, &child_turns_read("child-one", "thread-1")).unwrap();
         let request_id = serde_json::from_slice::<serde_json::Value>(&output.0).unwrap()["id"]
             .as_u64()
             .unwrap();
@@ -63,7 +63,7 @@ fn observed_wire_pump_snapshot_survives_reopen_without_mutating_parent_turn() {
         let Some(NativeRpcReply::TurnsPage(page)) = pump.take_native_rpc_reply() else {
             panic!("the observed wire did not yield a typed child transcript");
         };
-        let snapshot = page.into_snapshot_for_test("child-one", "thread-1");
+        let snapshot = crate::acp::bindings::codex::test_transcript::child_snapshot(page, "child-one", "thread-1");
         assert_eq!(snapshot.turns.len(), 1);
         assert_eq!(snapshot.turns[0].items.len(), 1);
         assert!(matches!(snapshot.turns[0].items[0].payload, NormalizedPayload::Text { .. }));

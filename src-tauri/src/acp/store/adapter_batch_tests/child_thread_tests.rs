@@ -299,7 +299,7 @@ fn native_child_identity_reopens_without_enabling_transcript_capability() {
 #[test]
 fn child_transcript_write_rechecks_binding_and_current_epoch() {
     use crate::acp::{
-        bindings::codex::child_read_for_test,
+        bindings::codex::test_transcript::child_read as child_read_for_test,
         scheduler::RuntimeOwner,
         store::child_transcript::{
             ChildTranscriptScope, load_earlier_snapshot, load_snapshot, persist_snapshot,

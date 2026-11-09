@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   commitIdentityChatResult,
   createChatTransitionContext,
@@ -10,12 +10,16 @@ import { dayTimeLabel } from "../features/chat/chatTimestamp";
 import {
   importNativeSession,
   listNativeSessions,
+  type ImportLister,
   type NativeSessionSummary,
 } from "../services/nativeSessionImport";
 import { ModalDialog } from "../ui/ModalDialog";
 
 /** Opens a session from the active Project's own Codex CLI history as a new Chat. */
-async function openSession(session: NativeSessionSummary) {
+async function openSession(
+  session: NativeSessionSummary,
+  lister: ImportLister,
+) {
   const { setState: set, getState: get } = useWorkbenchStore;
   const layout = currentProjectLayout(get());
   if (!layout || get().projectTransitioning)
@@ -31,6 +35,7 @@ async function openSession(session: NativeSessionSummary) {
     invoke: () =>
       importNativeSession({
         currentLayout: layout,
+        lister,
         threadId: session.threadId,
         title: session.title,
         expectedTransitionEpoch: get().nativeTransitionEpoch,
@@ -42,40 +47,55 @@ async function openSession(session: NativeSessionSummary) {
   return reason || "Try again.";
 }
 
-/** The active Project's Codex CLI sessions; closing unmounts nothing else. */
+/** The active Project's Codex CLI sessions; closing unmounts nothing else. A
+ * dismissal while busy leaves the open running and ignores its result. */
 export function ImportSessionDialog() {
   const [projectId] = useState(
     () => useWorkbenchStore.getState().project?.id ?? "",
   );
   const [closed, setClosed] = useState(false);
+  const live = useRef(true);
   const onClose = () => setClosed(true);
   const title = useId();
   const [sessions, setSessions] = useState<NativeSessionSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [lister, setLister] = useState<ImportLister | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // The dialog lists one Project's sessions; it is mounted per opening.
   const fetchPage = (after: string | null) =>
-    listNativeSessions(projectId, after)
+    listNativeSessions(projectId, after, lister)
       .then((page) => {
+        if (!live.current) return;
         setSessions((shown) => (after ? shown : []).concat(page.sessions));
         setCursor(page.nextCursor);
+        setLister(page.lister);
         setError(null);
       })
-      .catch((reason: unknown) =>
-        setError(
-          `${errorMessage(reason)} Sessions are listed through a running Codex chat in this project.`,
-        ),
-      )
-      .finally(() => setBusy(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- first page once per mount
-  useEffect(() => void fetchPage(null), []);
+      .catch((reason: unknown) => {
+        if (live.current)
+          setError(
+            `${errorMessage(reason)} Sessions are listed through a running Codex chat in this project.`,
+          );
+      })
+      .finally(() => live.current && setBusy(false));
+  useEffect(() => {
+    live.current = true;
+    void fetchPage(null);
+    return () => {
+      live.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- first page once per mount
+  }, []);
   if (closed) return null;
   return (
     <ModalDialog
       className="dirty-dialog dialog--scrim"
       labelledBy={title}
-      onDismiss={() => !busy && onClose()}
+      onDismiss={() => {
+        live.current = false;
+        onClose();
+      }}
     >
       <h2 id={title}>Open a Codex CLI session</h2>
       <div aria-busy={busy}>
@@ -87,7 +107,9 @@ export function ImportSessionDialog() {
             disabled={busy}
             onClick={async () => {
               setBusy(true);
-              const reason = await openSession(session);
+              // Sessions show only once a page named its lister.
+              const reason = await openSession(session, lister!);
+              if (!live.current) return;
               setBusy(false);
               if (reason === null) onClose();
               else setError(reason);

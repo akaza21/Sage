@@ -21,12 +21,16 @@ use super::{
 const ADMITS_IMPORT: &str = "json_extract(s.capabilities_json,'$.nativeSessionImport')=1";
 
 /// The live runtime that lists and reads sessions to import for a Project:
-/// the most recently active hot head session whose own capabilities admit
-/// `nativeSessionImport`.
+/// a hot head session whose own capabilities admit `nativeSessionImport`.
+/// `pinned` names the runtime that listed earlier pages, which alone may
+/// read a session it listed; without it, the most recently active one.
 pub(crate) fn import_lister(
     connection: &Connection,
     project_id: &SageProjectId,
+    pinned: Option<(&SageAgentSessionId, RuntimeEpoch)>,
 ) -> Result<Option<RuntimeOwner>, StoreError> {
+    let (session, epoch) = pinned.unzip();
+    let epoch = epoch.map(|epoch| epoch.get() as i64);
     let row: Option<(String, String, i64)> = connection
         .query_row(
             &format!(
@@ -35,10 +39,10 @@ pub(crate) fn import_lister(
                    AND s.chat_id=h.chat_id
                  JOIN session_runtime_epochs e ON e.session_id=s.id AND e.state='running'
                  WHERE h.project_id=?1 AND s.residency='hot' AND s.state IN ('ready','active')
-                   AND {ADMITS_IMPORT}
+                   AND {ADMITS_IMPORT} AND (?2 IS NULL OR (s.id=?2 AND e.runtime_epoch=?3))
                  ORDER BY s.updated_at DESC LIMIT 1"
             ),
-            [project_id.as_str()],
+            params![project_id.as_str(), session.map(|id| id.as_str()), epoch],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()?;
@@ -151,33 +155,53 @@ pub(crate) fn install_import(
     Ok(session_id)
 }
 
-/// The history kept for the imported session of a Chat, if it has one.
-pub(crate) fn imported_history(
+/// A Chat's imported session: its id, the runtime epoch its history is
+/// shown under (its first runtime's, which is 1 until it runs) and, when
+/// asked for, the history kept at import.
+pub(crate) struct ImportedSession {
+    pub(crate) session_id: String,
+    pub(crate) runtime_epoch: i64,
+    pub(crate) history_json: Option<String>,
+}
+
+pub(crate) fn imported_session(
     connection: &Connection,
     project_id: &SageProjectId,
     chat_id: &SageChatId,
-) -> Result<Option<String>, StoreError> {
+    with_history: bool,
+) -> Result<Option<ImportedSession>, StoreError> {
     Ok(connection
         .query_row(
-            "SELECT i.history_json FROM acp_imported_histories i
-             JOIN agent_sessions s ON s.id=i.session_id
+            "SELECT s.id,COALESCE((SELECT MIN(runtime_epoch) FROM session_runtime_epochs
+               WHERE session_id=s.id),1),CASE WHEN ?3 THEN i.history_json END
+             FROM acp_imported_histories i JOIN agent_sessions s ON s.id=i.session_id
              WHERE s.project_id=?1 AND s.chat_id=?2 ORDER BY s.ordinal LIMIT 1",
-            params![project_id.as_str(), chat_id.as_str()],
-            |row| row.get(0),
+            params![project_id.as_str(), chat_id.as_str(), with_history],
+            |row| {
+                Ok(ImportedSession {
+                    session_id: row.get(0)?,
+                    runtime_epoch: row.get(1)?,
+                    history_json: row.get(2)?,
+                })
+            },
         )
         .optional()?)
 }
 
-pub(super) fn has_imported_history(
+/// The native threads the Project has imported, newest first, at most the
+/// 100 a listing can leave out.
+pub(crate) fn imported_threads(
     connection: &Connection,
     project_id: &SageProjectId,
-    chat_id: &SageChatId,
-) -> Result<bool, StoreError> {
-    Ok(connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM acp_imported_histories i
-           JOIN agent_sessions s ON s.id=i.session_id
-           WHERE s.project_id=?1 AND s.chat_id=?2)",
-        params![project_id.as_str(), chat_id.as_str()],
-        |row| row.get(0),
-    )?)
+) -> Result<Vec<String>, StoreError> {
+    let mut statement = connection.prepare(
+        "SELECT s.external_session_id FROM acp_imported_histories i
+         JOIN agent_sessions s ON s.id=i.session_id
+         WHERE s.project_id=?1 AND s.external_session_id IS NOT NULL
+         ORDER BY i.created_at DESC LIMIT 100",
+    )?;
+    let threads = statement
+        .query_map([project_id.as_str()], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(threads)
 }

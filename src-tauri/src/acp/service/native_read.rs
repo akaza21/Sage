@@ -43,26 +43,28 @@ impl AcpService {
         host: &Arc<RuntimeHost>,
         read: NativeRead,
     ) -> Result<NativeRpcReply, NativeReadError> {
+        // An import read only borrows the lister: its failure never puts the
+        // lister's own chat into config recovery.
+        let child = matches!(read, NativeRead::ChildTurns { .. });
         let result = host.native_rpc(NativeRpcIntent {
             owner: owner.clone(),
             request: NativeRpcRequest::Read(read),
         });
-        if matches!(
-            result,
-            Err(HostError::Unavailable
-                | HostError::Closed
-                | HostError::Deadline
-                | HostError::DeliveryUnknown
-                | HostError::RecoveryRequired)
-        ) {
+        if child
+            && matches!(
+                result,
+                Err(HostError::Unavailable
+                    | HostError::Closed
+                    | HostError::Deadline
+                    | HostError::DeliveryUnknown
+                    | HostError::RecoveryRequired)
+            )
+        {
             self.retain_config_effect_recovery(owner.clone(), Arc::clone(host));
         }
         page_reply(result)
     }
 
-    /// Follows a Turn read's pages. A newest-first read keeps the newest
-    /// Turns within the bounds and marks the rest truncated; an oldest-first
-    /// read past the bounds is too large.
     pub(super) fn read_turn_pages(
         &self,
         owner: &RuntimeOwner,
@@ -70,32 +72,48 @@ impl AcpService {
         read: impl Fn(Option<String>) -> NativeRead,
         newest_first: bool,
     ) -> Result<PagedTurns, NativeReadError> {
-        let mut turns = Vec::new();
-        let mut items = 0usize;
-        let mut cursor = None;
-        let mut truncated = true;
-        for _ in 0..MAX_PAGES {
-            let NativeRpcReply::TurnsPage(page) = self.native_page(owner, host, read(cursor))?
-            else {
-                return Err(NativeReadError::RecoveryRequired);
-            };
-            if collect_turns(&mut turns, &mut items, page.turns) {
-                break;
-            }
-            cursor = page.next_cursor;
-            if cursor.is_none() {
-                truncated = false;
-                break;
-            }
-        }
-        if truncated && !newest_first {
-            return Err(NativeReadError::TooLarge);
-        }
-        if newest_first {
-            turns.reverse();
-        }
-        Ok(PagedTurns { turns, truncated })
+        follow_turn_pages(
+            |cursor| self.native_page(owner, host, read(cursor)),
+            newest_first,
+        )
     }
+}
+
+/// Follows a Turn read's pages. A newest-first read keeps the newest Turns
+/// within the bounds, or read before a page too large to take, and marks
+/// the rest truncated; an oldest-first read past the bounds is too large.
+fn follow_turn_pages(
+    mut page: impl FnMut(Option<String>) -> Result<NativeRpcReply, NativeReadError>,
+    newest_first: bool,
+) -> Result<PagedTurns, NativeReadError> {
+    let mut turns = Vec::new();
+    let mut items = 0usize;
+    let mut cursor = None;
+    let mut truncated = true;
+    for index in 0..MAX_PAGES {
+        let page = match page(cursor) {
+            Err(NativeReadError::TooLarge) if newest_first && index > 0 => break,
+            reply => match reply? {
+                NativeRpcReply::TurnsPage(page) => page,
+                _ => return Err(NativeReadError::RecoveryRequired),
+            },
+        };
+        if collect_turns(&mut turns, &mut items, page.turns) {
+            break;
+        }
+        cursor = page.next_cursor;
+        if cursor.is_none() {
+            truncated = false;
+            break;
+        }
+    }
+    if truncated && !newest_first {
+        return Err(NativeReadError::TooLarge);
+    }
+    if newest_first {
+        turns.reverse();
+    }
+    Ok(PagedTurns { turns, truncated })
 }
 
 /// Appends a page's Turns while they fit; true once one did not.
@@ -131,7 +149,10 @@ fn page_reply(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::{bindings::codex::ChildItem, lifecycle::ItemLifecycle};
+    use crate::acp::{
+        bindings::codex::{ChildItem, NativeTurnsPage},
+        lifecycle::ItemLifecycle,
+    };
 
     fn turn(id: usize, items: usize) -> ChildTurn {
         let item = ChildItem {
@@ -171,6 +192,42 @@ mod tests {
             vec![turn(0, MAX_ITEMS), turn(1, 1)]
         ));
         assert_eq!(turns.len(), 1);
+    }
+
+    #[test]
+    fn a_newest_first_read_keeps_its_pages_before_one_too_large() {
+        let mut pages = vec![
+            Ok(NativeRpcReply::TurnsPage(NativeTurnsPage {
+                turns: vec![turn(2, 1), turn(1, 1)],
+                next_cursor: Some("older".into()),
+            })),
+            Err(NativeReadError::TooLarge),
+        ]
+        .into_iter();
+        let paged = follow_turn_pages(|_| pages.next().unwrap(), true).unwrap();
+        let ids: Vec<_> = paged.turns.iter().map(|turn| turn.id.as_str()).collect();
+        assert_eq!((ids, paged.truncated), (vec!["turn-1", "turn-2"], true));
+
+        let too_large = || Err(NativeReadError::TooLarge);
+        for newest_first in [true, false] {
+            assert_eq!(
+                follow_turn_pages(|_| too_large(), newest_first).unwrap_err(),
+                NativeReadError::TooLarge,
+                "a first page too large is never a history"
+            );
+        }
+        let mut pages = vec![
+            Ok(NativeRpcReply::TurnsPage(NativeTurnsPage {
+                turns: vec![turn(1, 1)],
+                next_cursor: Some("next".into()),
+            })),
+            Err(NativeReadError::TooLarge),
+        ]
+        .into_iter();
+        assert_eq!(
+            follow_turn_pages(|_| pages.next().unwrap(), false).unwrap_err(),
+            NativeReadError::TooLarge
+        );
     }
 
     #[test]

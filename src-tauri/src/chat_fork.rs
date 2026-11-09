@@ -20,7 +20,7 @@ use crate::{
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
 };
 
-pub(crate) const CHAT_TITLE_PREFIX: &str = "Chat: ";
+const CHAT_TITLE_PREFIX: &str = "Chat: ";
 /// Fork numbers are searched in a bounded window; a Project holds far fewer
 /// Chats than this, so a free number always exists.
 const MAX_FORK_NUMBER: u32 = 10_000;
@@ -208,9 +208,9 @@ fn place_above_parent(
     Ok(())
 }
 
-pub(crate) fn stale(epoch: u64, expected: u64) -> Result<(), String> {
+pub(crate) fn stale(epoch: u64, expected: u64, action: &str) -> Result<(), String> {
     if epoch != expected || epoch >= 9_007_199_254_740_991 {
-        return Err("Project changed before forking the chat".into());
+        return Err(format!("Project changed before {action}"));
     }
     Ok(())
 }
@@ -251,7 +251,7 @@ pub async fn fork_chat(
     let turn = SageTurnId::parse(turn_id).map_err(|error| error.to_string())?;
     let source = {
         let epoch = state.project_transitions.lock().await;
-        stale(*epoch, expected_transition_epoch)?;
+        stale(*epoch, expected_transition_epoch, "forking the chat")?;
         fork_source(&state.database.connection(), &project, &chat, &turn)
             .map_err(|_| "This chat can't be forked from this answer".to_owned())?
     };
@@ -267,7 +267,7 @@ pub async fn fork_chat(
     .map_err(|_| "The fork did not finish; try again".to_owned())?
     .map_err(|error| error.to_string())?;
     let mut epoch = state.project_transitions.lock().await;
-    let committed = match stale(*epoch, expected_transition_epoch) {
+    let committed = match stale(*epoch, expected_transition_epoch, "forking the chat") {
         Err(error) => ForkCommit::Refused(error),
         Ok(()) => {
             let database = state.database.clone();

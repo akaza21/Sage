@@ -21,6 +21,9 @@ import {
 import { withoutGovernedModes } from "../../domain/governedSessionModes";
 import type { SessionAccessModeCapability } from "../../domain/sessionAccessMode";
 import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
+import { useStore } from "zustand";
+import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
+import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 
 /** The "+" menu's own actions; each is offered only while present. */
 export type ComposerMenuActions = Pick<
@@ -127,6 +130,16 @@ export function ComposerAddActions({
 }) {
   const modes = sessionModeActions(sessionConfig);
   const { launch, chatAvailable } = useContext(AgentToolsContext);
+  // The picker lists through the launching Chat's own session.
+  const importable = useStore(
+    acpProjectionStoreFor(usePinnedAgentChatOwner()),
+    ({ page }) =>
+      page?.sessions.some(
+        (session) =>
+          session.id === page.currentSessionId &&
+          session.capabilities.nativeSessionImport,
+      ),
+  );
   return (
     <>
       <p className="menu-group-label composer__add-heading" aria-hidden="true">
@@ -187,7 +200,7 @@ export function ComposerAddActions({
           </span>
         </button>
       ) : null}
-      {chatAvailable ? (
+      {chatAvailable && importable ? (
         <button
           type="button"
           role="menuitem"

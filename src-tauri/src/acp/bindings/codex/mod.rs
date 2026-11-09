@@ -47,8 +47,6 @@ pub(crate) use authority::{
     StateAuthorityError, build_codex_launch_environment, classify_codex_state_path,
     inspect_codex_authority, verify_codex_config,
 };
-#[cfg(test)]
-pub(crate) use child_transcript::child_read_for_test;
 pub(crate) use child_transcript::{
     ChildItem, ChildTextRole, ChildTranscriptSnapshot, ChildTurn, MAX_ITEMS, MAX_SNAPSHOT_BYTES,
     MAX_TURNS, NativeSessionSummary, NativeSessionsPage, NativeTurnsPage,
@@ -98,6 +96,9 @@ pub(crate) use state::CodexAdapter;
 
 #[cfg(test)]
 pub(crate) mod test_identity;
+
+#[cfg(test)]
+pub(crate) mod test_transcript;
 
 #[cfg(test)]
 mod tests;

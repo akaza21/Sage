@@ -50,8 +50,12 @@ pub(crate) enum NativeRead {
         cursor: Option<String>,
     },
     /// Native sessions of the runtime's project started outside Sage, most
-    /// recently active first. Requires `nativeSessionImport`.
-    ImportableSessions { cursor: Option<String> },
+    /// recently active first, leaving out `excluded` (threads already
+    /// imported). Requires `nativeSessionImport`.
+    ImportableSessions {
+        cursor: Option<String>,
+        excluded: Vec<String>,
+    },
     /// Turns of a session the runtime listed for import, newest first.
     ImportTurns {
         thread_id: String,
@@ -60,19 +64,10 @@ pub(crate) enum NativeRead {
 }
 
 impl NativeRead {
-    #[cfg(test)]
-    pub(crate) fn child_for_test(child: &str, parent: &str) -> Self {
-        Self::ChildTurns {
-            child_thread_id: child.into(),
-            parent_thread_id: parent.into(),
-            cursor: None,
-        }
-    }
-
     pub(crate) fn cursor(&self) -> Option<&str> {
         match self {
             Self::ChildTurns { cursor, .. }
-            | Self::ImportableSessions { cursor }
+            | Self::ImportableSessions { cursor, .. }
             | Self::ImportTurns { cursor, .. } => cursor.as_deref(),
         }
     }
@@ -85,7 +80,7 @@ impl NativeRead {
                     parent_thread_id,
                     ..
                 } => child_thread_id.len() + parent_thread_id.len(),
-                Self::ImportableSessions { .. } => 0,
+                Self::ImportableSessions { excluded, .. } => excluded.iter().map(String::len).sum(),
                 Self::ImportTurns { thread_id, .. } => thread_id.len(),
             }
     }

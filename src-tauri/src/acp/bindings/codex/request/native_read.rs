@@ -26,12 +26,14 @@ impl OutgoingRequest {
         )
     }
 
-    /// One page of the unarchived CLI sessions started in `root`, most
-    /// recently active first.
+    /// One page of the unarchived CLI sessions started in `root` but not
+    /// `excluded`, most recently active first, from the state DB alone: a
+    /// listing never scans and repairs the user's rollouts.
     pub(crate) fn session_list(
         id: u64,
         root: &NativeProjectRoot,
         cursor: Option<&str>,
+        excluded: &[String],
     ) -> Result<Self, RequestError> {
         Self::build(
             id,
@@ -40,6 +42,8 @@ impl OutgoingRequest {
                 "cwd": root.as_str(),
                 "sourceKinds": ["cli"],
                 "archived": false,
+                "useStateDbOnly": true,
+                "excludedThreadIds": excluded,
                 "cursor": cursor,
                 "limit": super::super::child_transcript::SESSION_PAGE,
                 "sortKey": "updated_at",

@@ -113,13 +113,22 @@ fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, 
 
 struct CaptureTransport(Vec<u8>);
 
+/// The first page of `child`'s Turns under `parent`.
+fn child_turns_read(child: &str, parent: &str) -> crate::acp::goal::NativeRead {
+    crate::acp::goal::NativeRead::ChildTurns {
+        child_thread_id: child.into(),
+        parent_thread_id: parent.into(),
+        cursor: None,
+    }
+}
+
 #[test]
 fn correlated_in_frame_child_capacity_settles_without_poisoning_the_parent() {
     runtime().block_on(async {
         let (mut pump, shared, _) = goal_active_codex_pump();
         pump.adapter.learn_child_for_test("child-1");
         let mut output = CaptureTransport(Vec::new());
-        pump.write_child(&mut output, &crate::acp::goal::NativeRead::child_for_test("child-1", "thread-1"))
+        pump.write_child(&mut output, &child_turns_read("child-1", "thread-1"))
             .unwrap();
         let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
         let items = (0..1025)
@@ -148,7 +157,7 @@ fn correlated_in_frame_child_capacity_settles_without_poisoning_the_parent() {
             Some(crate::acp::goal::NativeRpcReply::TooLarge)
         ));
         assert!(!pump.adapter.child_read_pending());
-        pump.write_child(&mut output, &crate::acp::goal::NativeRead::child_for_test("child-1", "thread-1"))
+        pump.write_child(&mut output, &child_turns_read("child-1", "thread-1"))
             .unwrap();
         assert!(shared.0.lock().unwrap().durable_batches.is_empty());
     });
@@ -160,11 +169,8 @@ fn correlated_child_rejection_is_bounded_and_does_not_poison_the_parent() {
         let (mut pump, shared, _) = goal_active_codex_pump();
         pump.adapter.learn_child_for_test("child-1");
         let mut output = CaptureTransport(Vec::new());
-        pump.write_child(
-            &mut output,
-            &crate::acp::goal::NativeRead::child_for_test("child-1", "thread-1"),
-        )
-        .unwrap();
+        pump.write_child(&mut output, &child_turns_read("child-1", "thread-1"))
+            .unwrap();
         let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
         let reply = codex_line(serde_json::json!({"id":request["id"],"error":{
             "code":-32000,"message":"private rejection details"
@@ -175,11 +181,8 @@ fn correlated_child_rejection_is_bounded_and_does_not_poison_the_parent() {
             Some(crate::acp::goal::NativeRpcReply::Rejected)
         ));
         assert!(!pump.adapter.child_read_pending());
-        pump.write_child(
-            &mut output,
-            &crate::acp::goal::NativeRead::child_for_test("child-1", "thread-1"),
-        )
-        .unwrap();
+        pump.write_child(&mut output, &child_turns_read("child-1", "thread-1"))
+            .unwrap();
         let next: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
         let reply =
             codex_line(serde_json::json!({"id":next["id"],"result":{"data":[],"nextCursor":null}}));
@@ -198,11 +201,8 @@ fn late_and_duplicate_same_id_replies_after_rejection_do_not_settle_the_next_chi
         let (mut pump, shared, prompt_id) = goal_active_codex_pump();
         pump.adapter.learn_child_for_test("child-1");
         let mut output = CaptureTransport(Vec::new());
-        pump.write_child(
-            &mut output,
-            &crate::acp::goal::NativeRead::child_for_test("child-1", "thread-1"),
-        )
-        .unwrap();
+        pump.write_child(&mut output, &child_turns_read("child-1", "thread-1"))
+            .unwrap();
         let rejected_id = serde_json::from_slice::<serde_json::Value>(&output.0).unwrap()["id"]
             .as_u64()
             .unwrap();
@@ -222,11 +222,8 @@ fn late_and_duplicate_same_id_replies_after_rejection_do_not_settle_the_next_chi
             assert!(pump.push_stdout_chunk(reply, 12).await.unwrap());
             assert!(pump.take_native_rpc_reply().is_none());
         }
-        pump.write_child(
-            &mut output,
-            &crate::acp::goal::NativeRead::child_for_test("child-1", "thread-1"),
-        )
-        .unwrap();
+        pump.write_child(&mut output, &child_turns_read("child-1", "thread-1"))
+            .unwrap();
         let next_id = serde_json::from_slice::<serde_json::Value>(&output.0).unwrap()["id"]
             .as_u64()
             .unwrap();
@@ -279,7 +276,7 @@ fn foreign_oversize_keeps_child_read_pending_until_actual_reply() {
         let (mut pump, shared, prompt_id) = goal_active_codex_pump();
         pump.adapter.learn_child_for_test("child-1");
         let mut output = CaptureTransport(Vec::new());
-        pump.write_child(&mut output, &crate::acp::goal::NativeRead::child_for_test("child-1", "thread-1")).unwrap();
+        pump.write_child(&mut output, &child_turns_read("child-1", "thread-1")).unwrap();
         let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
         let child_id = request["id"].as_u64().unwrap();
         assert_eq!(request["method"], "thread/turns/list");
@@ -308,11 +305,8 @@ fn correlated_oversize_settles_too_large_and_tombstones_late_reply() {
         let (mut pump, shared, prompt_id) = goal_active_codex_pump();
         pump.adapter.learn_child_for_test("child-1");
         let mut output = CaptureTransport(Vec::new());
-        pump.write_child(
-            &mut output,
-            &crate::acp::goal::NativeRead::child_for_test("child-1", "thread-1"),
-        )
-        .unwrap();
+        pump.write_child(&mut output, &child_turns_read("child-1", "thread-1"))
+            .unwrap();
         let id = serde_json::from_slice::<serde_json::Value>(&output.0).unwrap()["id"]
             .as_u64()
             .unwrap();
@@ -2631,13 +2625,21 @@ fn import_lists_the_project_cli_sessions_and_reads_only_listed_ones() {
         };
         let mut output = CaptureTransport(Vec::new());
         assert!(pump.write_child(&mut output, &import("thread-cli")).is_err());
-        pump.write_child(&mut output, &NativeRead::ImportableSessions { cursor: None })
-            .unwrap();
+        let listing = NativeRead::ImportableSessions {
+            cursor: None,
+            excluded: vec!["thread-imported".into()],
+        };
+        pump.write_child(&mut output, &listing).unwrap();
         let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
         assert_eq!(request["method"], "thread/list");
         assert_eq!(request["params"]["cwd"], r"C:\repo");
         assert_eq!(request["params"]["sourceKinds"], serde_json::json!(["cli"]));
         assert_eq!(request["params"]["archived"], false);
+        assert_eq!(request["params"]["useStateDbOnly"], true);
+        assert_eq!(
+            request["params"]["excludedThreadIds"],
+            serde_json::json!(["thread-imported"])
+        );
         let reply = codex_line(serde_json::json!({"id":request["id"],"result":{"nextCursor":"next","data":[
             {"id":"thread-cli","name":null,"preview":"  Fix\nthe build ","updatedAt":1700,"ephemeral":false},
             {"id":"thread-sub","preview":"child","updatedAt":1700,"parentThreadId":"thread-cli"}
@@ -2658,6 +2660,28 @@ fn import_lists_the_project_cli_sessions_and_reads_only_listed_ones() {
         assert_eq!(request["method"], "thread/turns/list");
         assert_eq!(request["params"]["threadId"], "thread-cli");
         assert_eq!(request["params"]["sortDirection"], "desc");
+        assert_eq!(request["params"]["limit"], 4);
+        // A malformed history answers the read; the lister's chat runs on.
+        let malformed = codex_line(serde_json::json!({"id":request["id"],"result":{
+            "data":[{"id":"turn-1","status":"completed","itemsView":"full","items":"bad"}]
+        }}));
+        assert!(pump.push_stdout_chunk(&malformed, 12).await.unwrap());
+        assert_eq!(
+            pump.take_native_rpc_reply(),
+            Some(NativeRpcReply::Rejected)
+        );
+        assert!(!pump.adapter.child_read_pending());
+        let mut output = CaptureTransport(Vec::new());
+        pump.write_child(&mut output, &import("thread-cli")).unwrap();
+        let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
+        let empty = codex_line(
+            serde_json::json!({"id":request["id"],"result":{"data":[],"nextCursor":null}}),
+        );
+        assert!(pump.push_stdout_chunk(&empty, 13).await.unwrap());
+        assert!(matches!(
+            pump.take_native_rpc_reply(),
+            Some(NativeRpcReply::TurnsPage(_))
+        ));
         assert!(shared.0.lock().unwrap().durable_batches.is_empty());
     });
 }

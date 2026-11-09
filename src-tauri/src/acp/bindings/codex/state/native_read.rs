@@ -49,13 +49,13 @@ impl CodexAdapter {
                 let child = RequiredText::<512>::new("childThreadId", child.clone())?;
                 OutgoingRequest::turns_list(id, &child, cursor, false)?
             }
-            NativeRead::ImportableSessions { .. } => {
+            NativeRead::ImportableSessions { excluded, .. } => {
                 self.require_method(|methods| methods.snapshot.native_session_import)?;
                 let root = self
                     .native_root
                     .as_ref()
                     .ok_or(AdapterError::CapabilityUnavailable)?;
-                OutgoingRequest::session_list(id, root, cursor)?
+                OutgoingRequest::session_list(id, root, cursor, excluded)?
             }
             NativeRead::ImportTurns { thread_id, .. } => {
                 self.require_method(|methods| methods.snapshot.native_session_import)?;
