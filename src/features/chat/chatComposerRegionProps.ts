@@ -9,7 +9,7 @@ import type { AttachedContext } from "../../domain/attachedContext";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import type { HarnessDefinition } from "../../domain/harness";
 import type { ChatUsage } from "./acp/chatUsage";
-import type { PasteAttachability } from "./composerPaste";
+import type { PasteAttachability } from "./composerPasteText";
 import type { AcpUsageRequest } from "../../domain/acpUsage";
 
 export interface ChatComposerRegionProps {
