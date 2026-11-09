@@ -93,6 +93,8 @@ struct ActiveTurn {
     authority_denied: bool,
     tools: BTreeMap<String, Option<ToolOutcome>>,
     compaction_active: bool,
+    /// Pi's reason for a failed compaction has reached the user.
+    compaction_failure_shown: bool,
     thought_active: bool,
     settlement_outcome: TerminalOutcome,
     settlement_message: Option<String>,

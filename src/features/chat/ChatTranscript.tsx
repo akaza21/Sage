@@ -52,6 +52,7 @@ export function ChatTranscript({
   pageExpected = false,
   loadingEarlier,
   historyError,
+  firstPageError = null,
   onLoadEarlier,
   messages,
   developmentSimulator,
@@ -87,6 +88,8 @@ export function ChatTranscript({
   pageExpected?: boolean;
   loadingEarlier: boolean;
   historyError: string | null;
+  /** Why a native chat's first page failed; it then has nothing to wait for. */
+  firstPageError?: string | null;
   onLoadEarlier: () => void;
   messages: readonly ChatMessage[];
   developmentSimulator: boolean;
@@ -162,9 +165,10 @@ export function ChatTranscript({
       hasEarlier,
       retentionIncomplete,
     });
-  const historyNotice = historyError ? (
+  const historyFailure = historyError ?? firstPageError;
+  const historyNotice = historyFailure ? (
     <div className="composer__notice" role="alert">
-      Chat history could not be loaded: {historyError}
+      Chat history could not be loaded: {historyFailure}
     </div>
   ) : (
     <div className="composer__notice" role="status">
@@ -185,7 +189,7 @@ export function ChatTranscript({
             </div>
           ) : useNativeAcp &&
             !page &&
-            (historyLoading || historyError || pageExpected) ? (
+            (historyLoading || historyFailure || pageExpected) ? (
             // A native chat never falls through to the legacy transcript
             // while its first page is on the way.
             historyNotice

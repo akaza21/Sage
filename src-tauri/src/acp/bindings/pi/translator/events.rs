@@ -126,6 +126,7 @@ impl PiTranslator {
                 if failed && !aborted && turn.lifecycle.is_command() {
                     let reason = value.get("errorMessage");
                     output.push(notice(SessionNoticeLevel::Warning, "Pi", reason));
+                    turn.compaction_failure_shown = true;
                 }
                 Ok(output)
             }

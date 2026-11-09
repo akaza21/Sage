@@ -273,10 +273,20 @@ impl HarnessAdapter for ClaudeSdkRuntime {
             .bridge()?
             .session_control(control)
             .map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
-        Ok(AdapterEgress::new(
-            sdk_frame(&sdk)?,
-            EgressToken::protocol_notification(),
-        ))
+        let sent = SdkBridge::sent(&sdk).ok_or(AdapterRuntimeError::Frame)?;
+        let frame = match sdk_frame(&sdk) {
+            Ok(frame) => frame,
+            Err(error) => {
+                self.bridge()?.undo(&sent);
+                return Err(error);
+            }
+        };
+        // One control at a time, so its token finds it if the write fails.
+        let token = EgressToken::protocol_notification();
+        if self.sent.len() < MAX_OPEN_DELIVERIES {
+            self.sent.push((token.clone(), sent));
+        }
+        Ok(AdapterEgress::new(frame, token))
     }
     fn native_rpc_pending(&self) -> bool {
         self.native.is_some()

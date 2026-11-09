@@ -489,8 +489,8 @@ fn claudes_questions_become_a_question_card_and_the_answers_return_as_its_input(
     let input = json!({"questions":[
         {"question":"Which test runner?","header":"Runner","multiSelect":false,
          "options":[{"label":"Vitest","description":"Fast"},{"label":"Jest","description":"Familiar"}]},
-        {"question":"Anything else?","header":"Notes","multiSelect":false,
-         "options":[{"label":"No","description":""},{"label":"Yes","description":""}]}]});
+        {"question":"Which checks?","header":"Checks","multiSelect":true,
+         "options":[{"label":"Lint","description":""},{"label":"Tests","description":""}]}]});
     let events = feed(
         &mut runtime,
         json!({"type":"control_request","request_id":"cli-q","request":{
@@ -512,9 +512,10 @@ fn claudes_questions_become_a_question_card_and_the_answers_return_as_its_input(
         questions.questions.as_slice()[0].question.as_str(),
         "Which test runner?"
     );
+    assert!(questions.questions.as_slice()[1].multi_select);
     let answers: UserInputAnswers = serde_json::from_value(json!([
         {"questionId":"q0","selectedOption":"Vitest"},
-        {"questionId":"q1","text":"Keep the old config"}]))
+        {"questionId":"q1","selectedOptions":["Lint","Tests"],"text":"Types"}]))
     .unwrap();
     let egress = runtime
         .command(AdapterCommand::ResolvePermission {
@@ -527,7 +528,7 @@ fn claudes_questions_become_a_question_card_and_the_answers_return_as_its_input(
     assert_eq!(response["behavior"], "allow");
     assert_eq!(
         response["updatedInput"]["answers"],
-        json!({"Which test runner?":"Vitest","Anything else?":"Keep the old config"})
+        json!({"Which test runner?":"Vitest","Which checks?":"Lint, Tests, Types"})
     );
     assert_eq!(response["updatedInput"]["questions"], input["questions"]);
 }

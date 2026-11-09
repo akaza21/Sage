@@ -70,6 +70,28 @@ describe("useAcpChatHistory", () => {
     expect(result.current.historyError).toBe("Unavailable");
   });
 
+  it("reports a failed first page so the chat stops waiting for it", () => {
+    const store = useAcpProjectionStore.getState();
+    store.clear();
+    store.activateScope({
+      projectId: page.projectId,
+      projectGeneration: "7" as never,
+      chatId: page.chatId,
+    });
+    const { result } = renderHook(() => useAcpChatHistory());
+    let intent: ReturnType<typeof useAcpProjectionStore.getState>["activeLoad"];
+    act(() => {
+      intent = useAcpProjectionStore.getState().beginPageLoad(null);
+    });
+    expect(result.current.firstPageError).toBeNull();
+    act(() => {
+      useAcpProjectionStore.getState().failPageLoad(intent!, "Unavailable");
+    });
+    expect(result.current.historyLoading).toBe(false);
+    expect(result.current.firstPageError).toBe("Unavailable");
+    expect(result.current.historyError).toBeNull();
+  });
+
   it("loads only the user-selected bounded continuation cursor", async () => {
     const load = vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue({
       ...page,

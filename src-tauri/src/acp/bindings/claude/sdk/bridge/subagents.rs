@@ -4,7 +4,7 @@
 use serde_json::{Value, json};
 
 use super::{Inbound, MAX_TRACKED_TOOLS, SdkBridge, notices::prose};
-use crate::acp::bindings::claude::runtime::{ChildEvent, ChildOutcome};
+use crate::acp::bindings::claude::runtime::{ChildEvent, ChildOutcome, OPEN_CHILDREN};
 use crate::acp::bindings::claude::sdk::tools::{result_text, text_content, tool_fields};
 
 /// Claude Code's subagent tool, under its current and earlier name.
@@ -21,7 +21,8 @@ impl SdkBridge {
         input: &Value,
         inbound: &mut Inbound,
     ) -> bool {
-        if !spawns(name) || self.subagents.len() >= MAX_TRACKED_TOOLS {
+        // Past the runtime's open transcripts, a subagent stays a tool row.
+        if !spawns(name) || self.subagents.len() >= OPEN_CHILDREN {
             return false;
         }
         let text = |key: &str, max| {

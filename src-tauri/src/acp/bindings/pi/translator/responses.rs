@@ -52,10 +52,15 @@ impl PiTranslator {
             if matches!(kind, PendingKind::SetModel | PendingKind::SetThinkingLevel) {
                 return Err(AdapterError::ConfigMutationRejected);
             }
-            // A failed compaction has already told the user why, through
-            // `compaction_end`, so only other commands report the failure.
+            // A compaction whose `compaction_end` gave Pi's reason needs no
+            // second, generic failure.
+            let explained = kind == PendingKind::Compact
+                && self
+                    .active
+                    .as_ref()
+                    .is_some_and(|turn| turn.compaction_failure_shown);
             let mut output = Vec::new();
-            if kind != PendingKind::Compact {
+            if !explained {
                 output.push(AdapterOutput::Error {
                     code: "command_failed",
                 });

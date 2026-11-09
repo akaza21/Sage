@@ -184,6 +184,9 @@ fn answered(
             json!({
                 "questionId": answer.question_id.as_str(),
                 "selectedOption": answer.selected_option.as_ref().map(|label| label.as_str()),
+                "selectedOptions": answer.selected_options.as_ref().map(|labels| {
+                    labels.as_slice().iter().map(|label| label.as_str()).collect::<Vec<_>>()
+                }),
                 "text": answer.text.as_ref().map(|text| text.as_str()),
             })
         })

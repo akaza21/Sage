@@ -206,7 +206,15 @@ async fn child_ipc_journey(
                 chat_id: chat_id.clone(),
                 expected_projection_revision: revision,
                 client_intent_id: ClientIntentId::parse("child-start").unwrap(),
-                binding_id: BindingId::new("binding", "sage-simulator").unwrap(),
+                binding_id: BindingId::new(
+                    "binding",
+                    if protocol == STORED_ONLY {
+                        STORED_ONLY
+                    } else {
+                        "sage-simulator"
+                    },
+                )
+                .unwrap(),
                 binding_digest: "a".repeat(64),
                 harness_version: None,
                 model_id: None,

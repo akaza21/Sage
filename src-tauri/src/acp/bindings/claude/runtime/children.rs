@@ -11,8 +11,8 @@ use crate::acp::{
 
 use super::*;
 
-/// Subagents one session follows at once; more run without a transcript.
-const OPEN_CHILDREN: usize = 16;
+/// Subagents one session follows at once; more show as ordinary tool rows.
+pub(crate) const OPEN_CHILDREN: usize = 16;
 
 /// What the SDK bridge saw of a subagent, keyed by its `Task` tool use.
 #[derive(Debug, Clone, PartialEq)]

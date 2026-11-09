@@ -79,7 +79,22 @@ pub(crate) async fn control_acp_session(
         return Err(intent_error(IntentError::StaleRuntimeEpoch));
     }
     let control = match request.control {
-        ControlIntent::UndoTurn { turn_id } => SessionControl::UndoTurn { turn_id },
+        ControlIntent::UndoTurn { turn_id } => {
+            // Rewinding also undoes every later turn, so only the latest,
+            // finished turn of this session is undone.
+            let undoable = crate::acp::store::session_surface::is_undoable_turn(
+                &state.database.connection(),
+                request.project_id.as_str(),
+                request.chat_id.as_str(),
+                request.session_id.as_str(),
+                turn_id.as_str(),
+            )
+            .map_err(|_| control_error(SessionControlError::RecoveryRequired))?;
+            if !undoable {
+                return Err(control_error(SessionControlError::Unavailable));
+            }
+            SessionControl::UndoTurn { turn_id }
+        }
         ControlIntent::StopActivity { activity_key } => {
             let activity_id = crate::acp::store::session_surface::activity_id(
                 &state.database.connection(),

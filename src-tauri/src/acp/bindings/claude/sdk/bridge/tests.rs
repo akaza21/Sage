@@ -286,9 +286,12 @@ fn attachments_become_text_image_and_document_content() {
 fn a_linked_file_becomes_a_mention_claude_code_reads() {
     let mut bridge = initialized();
     let (uri, path) = if cfg!(windows) {
-        ("file:///C:/work/my%20notes.md", "@C:\\work\\my notes.md")
+        (
+            "file:///C:/work/my%20notes.md",
+            "@\"C:\\work\\my notes.md\"",
+        )
     } else {
-        ("file:///work/my%20notes.md", "@/work/my notes.md")
+        ("file:///work/my%20notes.md", "@\"/work/my notes.md\"")
     };
     let user = bridge
         .outbound(
