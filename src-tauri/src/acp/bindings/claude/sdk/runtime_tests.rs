@@ -222,6 +222,58 @@ fn a_tool_approval_round_trips_to_claude_code() {
 }
 
 #[test]
+fn approving_a_plan_leaves_plan_mode_for_the_mode_the_user_picked() {
+    use crate::acp::runtime::permissions::PermissionDecision;
+    for (decision, mode) in [
+        (PermissionDecision::AllowOnce, "default"),
+        (PermissionDecision::AllowAlways, "acceptEdits"),
+    ] {
+        let mut runtime = ready();
+        send(
+            &mut runtime,
+            AdapterCommand::Prompt {
+                prompt: Prompt::new("prompt", "Plan the fix").unwrap(),
+                client_message_id: RequiredText::new("client", "client-1").unwrap(),
+                access_mode: crate::settings_store::SessionAccessMode::Ask,
+            },
+        );
+        let input = json!({"plan":"1. Fix the bug"});
+        feed(
+            &mut runtime,
+            json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[
+            {"type":"tool_use","id":"p1","name":"ExitPlanMode","input":input}]}}),
+        );
+        let events = feed(
+            &mut runtime,
+            json!({"type":"control_request","request_id":"cli-p","request":{
+            "subtype":"can_use_tool","tool_name":"ExitPlanMode","tool_use_id":"p1","input":input}}),
+        );
+        let request_id = events
+            .iter()
+            .find_map(|event| match event {
+                AdapterEvent::PermissionRequest {
+                    external_request_id,
+                    ..
+                } => Some(external_request_id.clone()),
+                _ => None,
+            })
+            .expect("plan card");
+        let egress = runtime
+            .command(AdapterCommand::ResolvePermission {
+                request_id: SageServerRequestId::parse(request_id.as_str()).unwrap(),
+                decision,
+            })
+            .unwrap();
+        let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+        assert_eq!(
+            sdk["response"]["response"],
+            json!({"behavior":"allow","updatedInput":input,
+                "updatedPermissions":[{"type":"setMode","mode":mode,"destination":"session"}]})
+        );
+    }
+}
+
+#[test]
 fn a_new_launch_names_its_session_and_a_resume_names_the_stored_one() {
     let runtime = runtime();
     let launch = runtime.launch.as_ref().unwrap();

@@ -15,6 +15,22 @@ const ALLOW_ONCE: &str = "allow_once";
 const ANSWER: &str = "answer";
 const ALLOW_ALWAYS: &str = "allow_always";
 const REJECT: &str = "reject";
+/// Leaving plan mode, as the plan-exit options Sage's mode guard admits:
+/// back to asking before edits, or into accepting them.
+const EXIT_PLAN: [(&str, &str, &str, &str); 2] = [
+    (
+        "exit-plan-default",
+        "allow_once",
+        "Yes, and ask before edits",
+        "default",
+    ),
+    (
+        "exit-plan-accept-edits",
+        "allow_always",
+        "Yes, and accept edits",
+        "acceptEdits",
+    ),
+];
 const DECLINED: &str = "The user declined this tool use.";
 const TOO_MANY: &str = "Too many approvals are already waiting for the user.";
 const NO_TURN: &str = "The user's turn has ended, so no one can approve this now.";
@@ -80,14 +96,20 @@ impl SdkBridge {
         if let Some(title) = request.get("title").and_then(Value::as_str) {
             tool_call.insert("title".into(), title.into());
         }
-        let mut options =
-            vec![json!({"optionId": ALLOW_ONCE, "name": "Yes", "kind": "allow_once"})];
+        let mut options = if name == "ExitPlanMode" {
+            EXIT_PLAN
+                .iter()
+                .map(|(id, kind, label, _)| json!({"optionId": id, "name": label, "kind": kind}))
+                .collect()
+        } else {
+            vec![json!({"optionId": ALLOW_ONCE, "name": "Yes", "kind": "allow_once"})]
+        };
         let questions = questions.map(|(request, texts)| {
             inbound.questions = Some(request);
             options = vec![json!({"optionId": ANSWER, "name": "Answer", "kind": "allow_once"})];
             texts
         });
-        if suggestions.is_some() && questions.is_none() {
+        if suggestions.is_some() && questions.is_none() && name != "ExitPlanMode" {
             options.push(json!({"optionId": ALLOW_ALWAYS, "name": "Yes, and don't ask again", "kind": "allow_always"}));
         }
         options.push(json!({"optionId": REJECT, "name": "No", "kind": "reject_once"}));
@@ -165,7 +187,16 @@ impl SdkBridge {
                 "updatedInput": permission.input,
                 "updatedPermissions": permission.suggestions.unwrap_or_else(|| json!([])),
             }),
-            _ => deny(DECLINED),
+            // Approving the plan leaves plan mode for the mode the user chose.
+            Some(option) => match EXIT_PLAN.iter().find(|(id, ..)| *id == option) {
+                Some((.., mode)) => json!({
+                    "behavior": "allow",
+                    "updatedInput": permission.input,
+                    "updatedPermissions": [{"type": "setMode", "mode": mode, "destination": "session"}],
+                }),
+                None => deny(DECLINED),
+            },
+            None => deny(DECLINED),
         };
         self.answering.insert(permission.request_id.clone());
         Ok(decision(&permission.request_id, response))
