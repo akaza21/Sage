@@ -27,6 +27,8 @@ fn a_confirmed_choice_persists_for_its_chat_only() {
     assert!(store.clear_chat_access("session-a").unwrap());
     assert!(!store.clear_chat_access("session-a").unwrap());
     assert_eq!(store.chat_access("session-a").unwrap(), None);
+    // Windows refuses to delete a database that is still open.
+    drop(store);
     std::fs::remove_dir_all(directory).unwrap();
 }
 

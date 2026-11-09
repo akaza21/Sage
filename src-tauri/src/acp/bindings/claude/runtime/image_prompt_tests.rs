@@ -41,7 +41,8 @@ fn prompt_with(images: Vec<PromptImage>) -> AdapterCommand {
     AdapterCommand::Prompt {
         prompt,
         client_message_id: RequiredText::new("client", "image-prompt").unwrap(),
-        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        // Ask is the access mode that selects the session's "default" mode.
+        access_mode: crate::settings_store::SessionAccessMode::Ask,
     }
 }
 

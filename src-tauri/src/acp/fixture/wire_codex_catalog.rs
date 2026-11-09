@@ -19,7 +19,7 @@ pub(super) fn config_thread(state: &WireState, thread_id: &str) -> Value {
 }
 
 /// The `model/list` result for `shape`: one model (`models`), a second one
-/// with efforts (`effortModels`), or the restart journey's full Codex 0.146
+/// with efforts (`effortModels`), or the restart journey's full pinned Codex
 /// entries (`configModels`).
 pub(super) fn models(shape: &str) -> Value {
     let mut catalog = json!({"data":[{
@@ -35,9 +35,9 @@ pub(super) fn models(shape: &str) -> Value {
             {"reasoningEffort":"high","description":"Thorough synthetic replay"}
         ]);
         if shape == "configModels" {
-            // Every field a Codex 0.146 `model/list` entry carries, as
+            // Every field a pinned Codex `model/list` entry carries, as
             // account discovery requires.
-            let full = json!({"upgrade":null,"upgradeInfo":null,"availabilityNux":null,"inputModalities":["text"],"supportsPersonality":false,"additionalSpeedTiers":[],"serviceTiers":[],"defaultServiceTier":null});
+            let full = json!({"upgrade":null,"upgradeInfo":null,"availabilityNux":null,"inputModalities":["text"],"supportsPersonality":false,"additionalSpeedTiers":[],"serviceTiers":[],"defaultServiceTier":null,"modelSpecialty":null,"multiAgentVersion":null,"availableAccessPrograms":null});
             catalog["data"][0]
                 .as_object_mut()
                 .unwrap()
