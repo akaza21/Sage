@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import type { AcpGoalState } from "../../domain/acpGoal";
-import { canMutateGoal } from "./acp/useGoalMutation";
+import { canMutateGoal } from "./acp/goalMutability";
 import { currentContext } from "./acp/useAcpChatActions";
 
 export function useBoundGoalDetails(

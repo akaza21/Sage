@@ -2864,7 +2864,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(options[1]).toBeDisabled();
   });
 
-  it("marks the development simulator as test-only without policy claims", () => {
+  it("marks the development simulator as test-only without policy claims", async () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -2884,7 +2884,10 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
 
     expect(screen.getByText("Test simulator")).toBeInTheDocument();
-    expect(screen.getByText("Development simulator")).toBeInTheDocument();
+    // A chat without a native session loads its transcript on demand.
+    expect(
+      await screen.findByText("Development simulator"),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         "This test-only harness exercises the workbench without connecting a production agent.",
@@ -4072,7 +4075,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeVisible();
   });
 
-  it("does not let a stale ACP page mask simulator messages", () => {
+  it("does not let a stale ACP page mask simulator messages", async () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -4100,7 +4103,9 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
-    expect(screen.getByText("Visible simulator result")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Visible simulator result"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Open file src/main.ts" }),
     ).toBeNull();
@@ -4344,7 +4349,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(openDiff).not.toHaveBeenCalled();
   });
 
-  it("keeps the bounded global edit summary for the development simulator", () => {
+  it("keeps the bounded global edit summary for the development simulator", async () => {
     const resource: ResourceRef = {
       rootId: "root-c",
       relativePath: "legacy/change.ts",
@@ -4378,7 +4383,7 @@ describe("ChatSurface ACP resource integration", () => {
 
     render(<ChatSurface />);
     fireEvent.click(
-      screen.getByRole("button", {
+      await screen.findByRole("button", {
         name: "Open diff for legacy/change.ts",
       }),
     );
@@ -5255,7 +5260,7 @@ describe("ChatSurface composer focus hotkey", () => {
 });
 
 describe("ChatSurface attached context", () => {
-  it("renders a removable diff comment chip for the bound Chat", () => {
+  it("renders a removable diff comment chip for the bound Chat", async () => {
     const chatId = "chat-context";
     hooks.page = { ...projection(), chatId: chatId as never };
     useWorkbenchStore.setState({
@@ -5310,7 +5315,9 @@ describe("ChatSurface attached context", () => {
     const attachmentRow = document.querySelector(".composer__attachment-row");
     expect(attachmentRow).not.toBeNull();
     expect(
-      within(attachmentRow as HTMLElement).getByLabelText("Attached context"),
+      await within(attachmentRow as HTMLElement).findByLabelText(
+        "Attached context",
+      ),
     ).toHaveTextContent("Comment · src/AgentView.tsx:27-31");
     fireEvent.click(
       screen.getByRole("button", {

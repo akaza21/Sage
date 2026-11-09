@@ -7,7 +7,6 @@ import {
 import { useWorkbenchStore } from "../../app/store";
 import type { TurnProjection } from "../../domain/acp";
 import { ChatComposerRegion } from "./ChatComposerRegion";
-import { ChatHandoffControl } from "./ChatHandoffControl";
 import { ChatTranscript } from "./ChatTranscript";
 import { useUsageRequest } from "./acp/useUsageRequest";
 import { SessionWorkingPill } from "./SessionWorkingPill";
@@ -23,7 +22,7 @@ import {
   useRendererRecreationFocus,
 } from "./acp";
 import { useComposerFocusHotkey } from "./composerChrome";
-import { LazyHarnessNotice } from "./lazyParts";
+import { ChatHandoffControl, LazyHarnessNotice } from "./lazyParts";
 import { isSideChatId } from "../../workbench/sideChatState";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
 import { useApprovalSlot } from "./useApprovalSlot";

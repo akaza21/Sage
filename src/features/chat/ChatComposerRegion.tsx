@@ -4,10 +4,8 @@ import { isImeComposing } from "../../ui/imeComposition";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
 import "../../styles/queued-messages.css";
-import { BoundChatGoalControl } from "./BoundChatGoalControl";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import type * as ClaudeAuthChunk from "./ClaudeAuthActions";
-import { ComposerAttachments } from "./ComposerAttachments";
 import {
   composerPromptPlaceholder,
   composerShortcutLabel,
@@ -16,7 +14,7 @@ import {
 } from "./composerChrome";
 import { ComposerImageInput } from "./ComposerImageInput";
 import { ComposerTurnControl } from "./ComposerTurnControl";
-import { QueuedRows, lazyParts } from "./lazyParts";
+import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
@@ -185,7 +183,8 @@ export function ChatComposerRegion({
         </div>
         <div className="composer__body">
           {goal.kind === "goal" ? (
-            <BoundChatGoalControl
+            <GoalPart
+              part="BoundChatGoalControl"
               state={goal}
               chatId={dictationScope}
               detailsRef={goalDetails.detailsRef}
@@ -337,7 +336,8 @@ export function ChatComposerRegion({
           ) : null}
           {otherContext.length > 0 ? (
             <div className="composer__attachment-row">
-              <ComposerAttachments
+              <AttachmentsPart
+                part="ComposerAttachments"
                 contexts={otherContext}
                 imagePreviews={imagePreviews}
                 disabled={actionBusy || projectTransitioning}

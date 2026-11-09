@@ -19,10 +19,14 @@ import type * as TranscriptChunk from "./TranscriptInteractions";
 import type * as ChatSearchChunk from "../chatSearch/ChatSearchControl";
 import type * as ForkChunk from "./ForkChat";
 import type * as HandoffChunk from "./ChatHandoffDialog";
+import type * as HandoffControlChunk from "./ChatHandoffControl";
+import type * as LegacyTranscriptChunk from "./ChatLegacyTranscript";
 import type * as QueuedChunk from "./ComposerQueuedPrompts";
 import type * as EditSummaryChunk from "./acp/TurnEditSummary";
 import type * as ComposerOptionsChunk from "./ComposerAddActions";
 import type * as HarnessSignInChunk from "../harness/HarnessSignInStatus";
+import type * as GoalChunk from "./BoundChatGoalControl";
+import type * as AttachmentsChunk from "./ComposerAttachments";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- keyed re-export of components
 type AnyComponent = ComponentType<any>;
@@ -166,3 +170,35 @@ export function LazyHarnessNotice(
 export const ComposerOptionsPart = lazyParts<
   Pick<typeof ComposerOptionsChunk, "ComposerOptionsMenu">
 >(() => import("./ComposerAddActions"));
+
+const HandoffControlPart = lazyParts<typeof HandoffControlChunk>(
+  () => import("./ChatHandoffControl"),
+);
+/**
+ * The Editor chat header's Hand off trigger. Agent chrome offers Hand off
+ * from the chat menu instead, so its first paint never needs this code.
+ */
+export function ChatHandoffControl(
+  props: ComponentProps<typeof HandoffControlChunk.ChatHandoffControl>,
+) {
+  return <HandoffControlPart part="ChatHandoffControl" {...props} />;
+}
+
+/**
+ * The transcript of a chat without a native session, such as the
+ * development simulator's; native chats never load it.
+ */
+export const LegacyTranscriptPart = lazyParts<typeof LegacyTranscriptChunk>(
+  () => import("./ChatLegacyTranscript"),
+);
+/**
+ * A native Goal's control and its mutations load with the first chat that
+ * shows one.
+ */
+export const GoalPart = lazyParts<typeof GoalChunk>(
+  () => import("./BoundChatGoalControl"),
+);
+/** Attachment chips load with the first context attached to a draft. */
+export const AttachmentsPart = lazyParts<
+  Pick<typeof AttachmentsChunk, "ComposerAttachments">
+>(() => import("./ComposerAttachments"));

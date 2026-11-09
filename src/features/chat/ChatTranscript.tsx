@@ -15,7 +15,6 @@ import {
 import { ArrowDown } from "../../ui/leanIcons";
 import { isSideChatId } from "../../workbench/sideChatState";
 import { ChatHome } from "./ChatHome";
-import { ChatLegacyTranscript } from "./ChatLegacyTranscript";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
 import {
   AcpChatProjection,
@@ -30,7 +29,7 @@ import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import "./chat-home.css";
 import "./chat-transcript-polish.css";
 import { composerWorkspaceName } from "./composerChrome";
-import { ForkPart, NoticePart } from "./lazyParts";
+import { ForkPart, LegacyTranscriptPart, NoticePart } from "./lazyParts";
 import { isNewProjectChat } from "./newProjectChat";
 import { TranscriptInteractionsGate, TranscriptPart } from "./transcriptLazy";
 
@@ -232,7 +231,8 @@ export function ChatTranscript({
               />
             </>
           ) : (
-            <ChatLegacyTranscript
+            <LegacyTranscriptPart
+              part="ChatLegacyTranscript"
               messages={messages}
               developmentSimulator={developmentSimulator}
             />
