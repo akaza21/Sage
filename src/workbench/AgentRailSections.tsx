@@ -8,7 +8,7 @@ import {
 
 import { useState, type ReactNode } from "react";
 
-import { lazyParts } from "../features/chat/lazyParts";
+import { ImportPart, lazyParts } from "../features/chat/lazyParts";
 import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
 import type { AgentRailChat } from "../domain/workbench";
@@ -109,6 +109,7 @@ function ProjectEntry({
 }) {
   const expanded = !agentRailSectionCollapsed(`project:${group.id}`);
   const [showAll, setShowAll] = useState(false);
+  const [importing, setImporting] = useState(false);
   const chats = visibleProjectChats(
     group.chats,
     selected ? currentChatId : null,
@@ -152,7 +153,15 @@ function ProjectEntry({
               name={group.name}
               onCreateChat={() => void createChat(group.id)}
               onOpenProject={() => void switchProject(group.id)}
+              onImportSession={selected ? () => setImporting(true) : undefined}
             />
+            {importing ? (
+              <ImportPart
+                part="ImportSessionDialog"
+                projectId={group.id}
+                onClose={() => setImporting(false)}
+              />
+            ) : null}
             <button
               className="project-entry__new-chat"
               type="button"

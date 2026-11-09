@@ -443,6 +443,30 @@ it("creates a chat from a foreign project menu without switching first", async (
   expect(switchProject).not.toHaveBeenCalled();
 });
 
+it("offers Codex CLI sessions only in the active project's menu", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "sage", name: "Sage", roots: [] },
+    projects: [
+      { id: "cross", name: "Cross", rootCount: 1, lastOpenedAt: 2 },
+      { id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 1 },
+    ],
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+  render(<LeftSidebar />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Project actions for Cross" }),
+  );
+  expect(
+    screen.queryByRole("menuitem", { name: "Open a Codex CLI session" }),
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Project actions for Sage" }),
+  );
+  expect(
+    await screen.findByRole("menuitem", { name: "Open a Codex CLI session" }),
+  ).toBeInTheDocument();
+});
+
 it("opens Chat search on a truncated foreign folder without switching", async () => {
   const switchProject = vi.fn(async () => undefined);
   useWorkbenchStore.setState({
