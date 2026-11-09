@@ -8,6 +8,7 @@ pub(crate) use fork::{MAX_UNRELEASED_FORKS, fork_reply};
 pub(crate) mod command_explore;
 pub(crate) mod command_output_stream;
 mod command_snapshots;
+mod compactions;
 mod construction;
 mod errors;
 mod goal;
@@ -187,6 +188,7 @@ pub(crate) struct CodexAdapter {
     command_item_snapshots: CommandItemSnapshots,
     running_mcp_tools: mcp_tools::RunningMcpTools,
     running_hooks: hook_runs::RunningHooks,
+    compactions: compactions::Compactions,
     subagent_labels: SubagentLabels,
     child_threads: Vec<SafeText<512>>,
     bound_child_threads: Vec<SafeText<512>>,
