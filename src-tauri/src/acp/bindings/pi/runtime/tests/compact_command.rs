@@ -182,3 +182,30 @@ fn a_full_catalog_keeps_its_size_and_still_lists_compact() {
     assert_eq!(listed[max - 2].name, format!("t{}", max - 2));
     assert_eq!(listed[max - 1].name, "compact");
 }
+
+#[test]
+fn a_compact_pi_rejects_outright_still_reports_the_failure() {
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    let revision = discovered(&mut runtime, json!([]));
+    let request = slash(&mut runtime, "/compact", revision);
+    let failed = runtime
+        .ingest(
+            &frame(
+                json!({"type":"response","id":request["id"],"command":"compact",
+                "success":false,"error":"No model selected"}),
+            ),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(
+        failed
+            .events()
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::Error(_)))
+    );
+    assert_eq!(
+        turn_states(&failed),
+        [crate::acp::lifecycle::TurnState::Failed]
+    );
+}

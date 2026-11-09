@@ -140,6 +140,7 @@ impl PiTranslator {
             authority_denied: false,
             tools: BTreeMap::new(),
             compaction_active: false,
+            compaction_failure_shown: false,
             thought_active: false,
             settlement_outcome: super::TerminalOutcome::Completed,
             settlement_message: None,
