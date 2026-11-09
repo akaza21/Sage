@@ -43,6 +43,29 @@ impl CodexRuntime {
         self.model_pages_seen = 0;
     }
 
+    /// Adopts the model and effort Codex reports for the thread, on start or
+    /// resume and whenever its settings change. A different model drops the
+    /// old model's descriptor so its efforts are not offered for the new
+    /// one; an absent effort keeps the selected one.
+    pub(super) fn adopt_reported_settings(
+        &mut self,
+        model: Option<ModelId>,
+        effort: Option<crate::acp::contract::RequiredText<512>>,
+    ) {
+        self.reported_model_id = model.clone();
+        if let Some(model) = model {
+            if self.selected_model_id.as_ref() != Some(&model) {
+                self.selected_model = None;
+                self.session_config = None;
+            }
+            self.selected_model_id = Some(model);
+        }
+        if effort.is_some() {
+            self.selected_effort = effort;
+        }
+        self.refresh_model_config();
+    }
+
     pub(super) fn refresh_model_config(&mut self) {
         let model = self
             .selected_model

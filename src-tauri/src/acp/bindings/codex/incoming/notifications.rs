@@ -12,9 +12,11 @@ use super::{
     },
 };
 
+mod approval_review;
 mod child_thread;
 pub(super) use child_thread::item_event as child_item_event;
 pub(super) use child_thread::turn_completed as child_turn_completed;
+mod compaction;
 mod deltas;
 mod hooks;
 use hooks::{HookPhase, cancelled_hooks, hook_run};
@@ -26,6 +28,7 @@ mod notices;
 mod plan;
 mod provisional;
 mod session;
+mod settings;
 mod status_line;
 use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};
 use plan::structured_plan;
@@ -306,6 +309,18 @@ pub(super) fn notification<M: ResourceMapper>(
         "model/rerouted" => notices::model_rerouted(adapter, params),
         "model/verification" => notices::model_verification(adapter, params),
         "model/safetyBuffering/updated" => notices::model_safety_buffering(adapter, params),
+        "turn/moderationMetadata" => notices::moderation_metadata(adapter, params),
+        "modelProvider/authRecoveryStarted" => notices::auth_recovery(adapter, params, true),
+        "modelProvider/authRecoveryCompleted" => notices::auth_recovery(adapter, params, false),
+        "windows/worldWritableWarning" => notices::world_writable_warning(adapter, params),
+        "item/autoApprovalReview/started" => {
+            approval_review::approval_review(adapter, params, false)
+        }
+        "item/autoApprovalReview/completed" => {
+            approval_review::approval_review(adapter, params, true)
+        }
+        "thread/compacted" => compaction::thread_compacted(adapter, params),
+        "thread/settings/updated" => settings::thread_settings_updated(adapter, params),
         other => {
             record_unprojected(other);
             Ok(IngressDisposition::IgnoredLate)

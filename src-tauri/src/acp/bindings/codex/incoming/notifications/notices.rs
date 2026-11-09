@@ -35,6 +35,8 @@ const MODEL_BYTES: usize = 512;
 /// summary cannot crowd the details out of the notice.
 const PART_BYTES: usize = 448;
 const FILE_NAME_BYTES: usize = 96;
+/// World-writable folders named in a sandbox warning.
+const SAMPLE_FOLDERS: usize = 3;
 
 /// `warning`: a harness warning, optionally aimed at one thread.
 pub(super) fn warning(
@@ -233,6 +235,86 @@ pub(super) fn model_safety_buffering(
     Ok(IngressDisposition::IgnoredLate)
 }
 
+/// `modelProvider/authRecoveryStarted` and `.../authRecoveryCompleted`:
+/// Codex is renewing, or has renewed, the model provider's sign-in during
+/// a turn. The harness message says how it went.
+pub(super) fn auth_recovery(
+    adapter: &CodexAdapter,
+    params: &Map<String, Value>,
+    started: bool,
+) -> Result<IngressDisposition, IngressError> {
+    let provider = clean(text(params, "provider", MODEL_BYTES)?, MODEL_BYTES);
+    let message = human(params, "message")?;
+    let Some(session) = turn_session(adapter, params)? else {
+        return Ok(IngressDisposition::IgnoredLate);
+    };
+    let lead = if started { "is renewing" } else { "renewed" };
+    single(
+        session,
+        notice(
+            SessionNoticeLevel::Info,
+            "codex sign-in",
+            format!("Codex {lead} its sign-in to {provider}: {message}"),
+        )?,
+    )
+}
+
+/// `turn/moderationMetadata`: identity-checked and deliberately not
+/// projected. The metadata is an opaque, unversioned value with no
+/// user-facing text, so a notice could say nothing true about it.
+pub(super) fn moderation_metadata(
+    adapter: &CodexAdapter,
+    params: &Map<String, Value>,
+) -> Result<IngressDisposition, IngressError> {
+    params.get("metadata").ok_or(IngressError::Malformed)?;
+    turn_session(adapter, params)?;
+    Ok(IngressDisposition::IgnoredLate)
+}
+
+/// `windows/worldWritableWarning`: folders other users can write to, which
+/// the Windows sandbox cannot protect. All are counted and a few named by
+/// their last path segment, as config paths are.
+pub(super) fn world_writable_warning(
+    adapter: &mut CodexAdapter,
+    params: &Map<String, Value>,
+) -> Result<IngressDisposition, IngressError> {
+    let samples = params
+        .get("samplePaths")
+        .and_then(Value::as_array)
+        .ok_or(IngressError::Malformed)?;
+    let extra = params
+        .get("extraCount")
+        .and_then(Value::as_u64)
+        .ok_or(IngressError::Malformed)?;
+    let failed_scan = params
+        .get("failedScan")
+        .and_then(Value::as_bool)
+        .ok_or(IngressError::Malformed)?;
+    let mut message = String::from(
+        "Codex's Windows sandbox cannot protect folders that other users can write to.",
+    );
+    if !samples.is_empty() || extra > 0 {
+        let total = extra.saturating_add(samples.len() as u64);
+        let _ = write!(message, " It found {total}");
+        let mut separator = ", including ";
+        for path in samples.iter().take(SAMPLE_FOLDERS) {
+            let path = path.as_str().ok_or(IngressError::Malformed)?;
+            if let Some(name) = file_name(path) {
+                let _ = write!(message, "{separator}{name}");
+                separator = ", ";
+            }
+        }
+        message.push('.');
+    }
+    if failed_scan {
+        message.push_str("\nCodex could not finish checking for them.");
+    }
+    thread_less(
+        adapter,
+        notice(SessionNoticeLevel::Warning, "codex sandbox", message)?,
+    )
+}
+
 /// A thread-less notice comes from the app-server process, which serves
 /// exactly one bound thread, so it belongs to that thread's session. Before
 /// a thread is bound it is held (bounded) and delivered when one binds.
@@ -253,7 +335,7 @@ fn thread_less(
 /// bound thread and the active or the just-finished Turn. With no active
 /// Turn an unknown Turn is replayed history (as on resume) and is ignored;
 /// while a Turn is active a different Turn is a foreign identity.
-fn turn_session(
+pub(super) fn turn_session(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
 ) -> Result<Option<ScopedExternalId>, IngressError> {
@@ -272,14 +354,14 @@ fn turn_session(
     }
 }
 
-fn single(
+pub(super) fn single(
     session: ScopedExternalId,
     event: SessionScopedEvent,
 ) -> Result<IngressDisposition, IngressError> {
     Ok(IncomingEvent::Session { id: session, event }.into())
 }
 
-fn notice(
+pub(super) fn notice(
     level: SessionNoticeLevel,
     source: &'static str,
     message: String,
@@ -306,7 +388,7 @@ fn optional_text<'a>(
 
 /// Human-readable harness text: redacted, neutralized and clipped to
 /// `PART_BYTES`. The raw value is already bounded by the frame limit.
-fn human(params: &Map<String, Value>, key: &str) -> Result<String, IngressError> {
+pub(super) fn human(params: &Map<String, Value>, key: &str) -> Result<String, IngressError> {
     let value = params
         .get(key)
         .and_then(Value::as_str)
