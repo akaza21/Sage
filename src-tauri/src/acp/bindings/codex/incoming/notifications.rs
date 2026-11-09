@@ -379,7 +379,10 @@ fn turn_completed(
     } else {
         None
     };
-    let plan = adapter.take_turn_plan(external);
+    // Only a completed Turn closes its plan; the turn sweep cancels it otherwise.
+    let plan = (state == TurnState::Completed)
+        .then(|| adapter.turn_plan(external))
+        .flatten();
     match adapter
         .accept_turn_terminal(external, state)
         .map_err(identity)?

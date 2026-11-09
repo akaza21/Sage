@@ -319,6 +319,16 @@ fn command_execution_uses_only_typed_output_and_a_single_read_action() {
         matches!(locations.as_slice(), [crate::acp::intent::SafeResourceLocation::Resource { resource }]
             if resource.relative_path.as_str() == "package.json")
     );
+
+    let (unresolved, _, _) = normalize_item(&command, ItemLifecycle::Completed, &UnusedMapper)
+        .expect("typed command")
+        .expect("item");
+    assert!(
+        matches!(unresolved, NormalizedPayload::ToolCall {
+            category: ToolCategory::Read, label, input_summary: Some(command_line), ..
+        } if label.as_str() == "Read read package" && command_line.as_str() == "cat [path]"),
+        "a read with no workspace path keeps its command line"
+    );
 }
 
 #[test]
@@ -346,6 +356,35 @@ fn command_execution_never_derives_a_location_from_nonread_or_multiple_actions()
                 if locations.as_slice().is_empty())
         );
     }
+}
+
+#[test]
+fn command_execution_maps_its_cwd_to_a_workspace_resource() {
+    struct CwdMapper;
+    impl ResourceMapper for CwdMapper {
+        fn map_existing(&self, path: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
+            assert_eq!(path, "C:\\fixture\\src");
+            SafeResourceRef::new(
+                crate::acp::contract::SageRootId::parse("fixture-root").expect("root"),
+                "src",
+            )
+            .map_err(|_| UnavailableResourceReason::Unsupported)
+        }
+    }
+    let command = item(json!({
+        "type": "commandExecution", "status": "completed",
+        "command": "cargo test", "cwd": "C:\\fixture\\src"
+    }));
+    let (payload, _, _) = normalize_item(&command, ItemLifecycle::Completed, &CwdMapper)
+        .expect("command")
+        .expect("item");
+    let NormalizedPayload::ToolCall { execution, .. } = payload else {
+        panic!("expected command row");
+    };
+    assert_eq!(
+        serde_json::to_value(&execution.cwd).unwrap(),
+        json!({"kind": "resource", "resource": {"rootId": "fixture-root", "relativePath": "src"}})
+    );
 }
 
 #[test]

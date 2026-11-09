@@ -50,23 +50,24 @@ pub(super) fn item_event<M: ResourceMapper>(
         }
         None => (normalize_item(item, requested, mapper)?, None),
     };
-    // A settled file change is also an Edit tool row, ordered before its diff.
+    // A settled file change is also an Edit tool row, ordered before its diff;
+    // the row is skipped when its id would not fit an `ExternalId`.
     let edit = file_change
         .then(|| file_change_edit_tool(item, mapper))
         .transpose()?
         .flatten()
-        .map(|(payload, tool_state, terminal)| {
-            Ok::<_, IngressError>(IncomingEvent::Item {
-                id: adapter
-                    .scoped_in_turn(ExternalKind::Item, turn, &format!("{external}:edit"))
-                    .map_err(identity)?,
+        .and_then(|(payload, tool_state, terminal)| {
+            let id = adapter
+                .scoped_in_turn(ExternalKind::Item, turn, &format!("{external}:edit"))
+                .ok()?;
+            Some(IncomingEvent::Item {
+                id,
                 lifecycle: terminal.unwrap_or(requested),
                 tool_state,
                 payload,
                 update_mode: ItemUpdateMode::Replace,
             })
-        })
-        .transpose()?;
+        });
     let Some((mut payload, tool_state, terminal)) = normalized else {
         return Ok(IngressDisposition::Events(vec![]));
     };
