@@ -211,7 +211,7 @@ impl PiRuntime {
                                 format!("Allow Pi to update {}?", edit.relative)
                             }
                             Some(Prepared::Shell(shell)) => {
-                                format!("Allow Pi to run this command?\n{}", shell.command)
+                                format!("Allow Pi to run this command?\n{}", shell.shown)
                             }
                             None => "Pi extension gate is awaiting your decision".into(),
                         },

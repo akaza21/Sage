@@ -16,6 +16,9 @@ pub(crate) struct Bridge {
     pub pending: Option<Pending>,
     pub writes: u8,
     pub used: std::collections::BTreeSet<String>,
+    /// The last command whose approval reached Pi. Pi may have expired the
+    /// dialog first and ask again by withdrawing; the approval still stands.
+    pub approved_shell: Option<String>,
 }
 pub(crate) struct Pending {
     pub request_id: String,
@@ -31,6 +34,7 @@ impl Bridge {
             pending: None,
             writes: 0,
             used: std::collections::BTreeSet::new(),
+            approved_shell: None,
         }
     }
     pub(crate) fn begin_turn(&mut self, mode: SessionAccessMode) {
@@ -38,6 +42,7 @@ impl Bridge {
         self.pending = None;
         self.writes = 0;
         self.used.clear();
+        self.approved_shell = None;
     }
 }
 

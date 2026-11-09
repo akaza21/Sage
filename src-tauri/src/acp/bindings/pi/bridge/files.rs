@@ -28,7 +28,8 @@ pub(crate) struct Edit {
 /// shell authority: approval is the only thing it grants.
 pub(crate) struct Shell {
     pub tool_id: String,
-    pub command: String,
+    /// The card's text: the command on one line with credentials redacted.
+    pub shown: String,
 }
 
 /// What one approval request asks the user to allow.
@@ -74,12 +75,20 @@ fn shell(request: Request) -> Result<Shell, Refusal> {
     if command.len() > MAX_COMMAND_BYTES {
         return Err(Refusal::TooLarge);
     }
-    if command.contains('\0') {
-        return Err(Refusal::Unsupported);
+    // The card must show what runs: no invisible or reordering characters,
+    // and no blank lines that push the rest of a command out of view.
+    if command
+        .chars()
+        .any(crate::acp::bindings::command_summary::is_hidden_format)
+        || command.lines().any(|line| line.trim().is_empty())
+    {
+        return Err(Refusal::Undisplayable);
     }
+    let shown = crate::acp::bindings::command_summary::sanitize_command_summary(command)
+        .map_err(|_| Refusal::Undisplayable)?;
     Ok(Shell {
         tool_id: request.tool_call_id,
-        command: command.to_owned(),
+        shown: shown.as_str().to_owned(),
     })
 }
 

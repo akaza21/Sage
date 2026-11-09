@@ -12,10 +12,13 @@ pub(crate) enum Refusal {
     Inactive,
     /// The Turn runs with read-only access.
     ReadOnly,
-    /// The Turn already wrote its bounded number of files.
+    /// The Turn already asked for its bounded number of approvals.
     WriteLimit,
-    /// Another edit in this Turn is still awaiting its decision.
+    /// Another request in this Turn is still awaiting its decision.
     Busy,
+    /// The command has hidden characters or blank lines, so a card could
+    /// not show exactly what runs.
+    Undisplayable,
     /// The request is not a well-formed write, edit or command of a known tool call.
     Unsupported,
     /// This tool call already had its one approval request.
@@ -45,8 +48,9 @@ impl Refusal {
             Self::Withdrawn => "Sage withdrew the unanswered approval request",
             Self::Inactive => "Sage refused: this session is not taking edits",
             Self::ReadOnly => "Sage refused: this chat has read-only access",
-            Self::WriteLimit => "Sage refused: this Turn reached its write limit",
-            Self::Busy => "Sage refused: another edit is awaiting approval",
+            Self::WriteLimit => "Sage refused: this Turn reached its approval limit",
+            Self::Busy => "Sage refused: another request is awaiting approval",
+            Self::Undisplayable => "Sage refused: the command cannot be shown as it runs",
             Self::Unsupported => "Sage refused: not a supported edit or command",
             Self::Replayed => "Sage refused: this tool call was already handled",
             Self::NotApproved => "Sage refused: the edit was not approved",
@@ -82,6 +86,7 @@ mod tests {
             WriteLimit,
             Busy,
             Unsupported,
+            Undisplayable,
             Replayed,
             NotApproved,
             OutsideWorkspace,

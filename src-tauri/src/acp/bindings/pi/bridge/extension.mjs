@@ -41,6 +41,8 @@ export default function sageBridge(pi) {
     pi.registerTool({
       name,
       label: name,
+      // One approval is pending at a time, so calls must not overlap.
+      executionMode: "sequential",
       description:
         "Sage-managed operation, subject to workspace policy and approval.",
       parameters: {
@@ -63,13 +65,16 @@ export default function sageBridge(pi) {
       },
     });
   }
-  // Pi's bash, unchanged except that each command first needs approval.
+  // Pi's bash, except that each command first needs approval. Pi's shell
+  // path and command prefix settings are not applied, so the command that
+  // runs is exactly the one the user approved.
   const shell = createBashToolDefinition(process.cwd());
   pi.registerTool({
     ...shell,
+    executionMode: "sequential",
     async execute(toolCallId, args, signal, update, ctx) {
       await approve(toolCallId, "bash", args, signal, ctx);
-      return createBashToolDefinition(ctx.cwd).execute(
+      return shell.execute(
         toolCallId,
         args,
         signal,

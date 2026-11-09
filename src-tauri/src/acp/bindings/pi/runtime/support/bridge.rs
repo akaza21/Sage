@@ -259,6 +259,13 @@ impl PiRuntime {
                 vec![reply(id, value, EgressToken::protocol_notification())?],
             )
         };
+        if self
+            .bridge
+            .as_ref()
+            .is_some_and(|bridge| bridge.approved_shell.as_deref() == Some(tool_id))
+        {
+            return answer("approved");
+        }
         let Some(pending) = self
             .bridge
             .as_ref()
@@ -353,7 +360,8 @@ impl PiRuntime {
                 pending.written = true;
                 // Pi runs an approved command without a commit, so the
                 // approval reaching Pi frees the Turn's single pending slot.
-                if matches!(pending.prepared, files::Prepared::Shell(_)) {
+                if let files::Prepared::Shell(shell) = &pending.prepared {
+                    bridge.approved_shell = Some(shell.tool_id.clone());
                     bridge.pending = None;
                     return Ok(());
                 }
