@@ -3,8 +3,8 @@
 
 use crate::acp::{encoded_len::encoded_len, intent::AcpChatPage, store::StoreError};
 
-/// `[]`, the encoding of the empty turn list a page is measured with.
-const EMPTY_TURNS: usize = 2;
+/// The encoding of the empty turn list a page shell is measured with.
+const EMPTY_TURNS: usize = "[]".len();
 
 /// A page's transcript measured once. Fitting the session config and goal
 /// to the budget only changes the fields around it, so each check encodes

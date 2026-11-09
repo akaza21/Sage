@@ -1,5 +1,6 @@
 use rusqlite::{OptionalExtension, params};
 
+use crate::acp::encoded_len::encoded_len;
 use crate::acp::{
     contract::{
         BoundedVec, ProjectionRevision, SafeText, SageAgentSessionId, SageChatId, SageProjectId,
@@ -110,7 +111,7 @@ pub(crate) fn load_chat_page_reserving(
         child_projection_epoch,
         session_notices: session_notices.clone(),
     };
-    let base_page_bytes = crate::acp::encoded_len::encoded_len(&empty_page)
+    let base_page_bytes = encoded_len(&empty_page)
         .map_err(|_| StoreError::Corrupt("chat page serialization"))?
         .saturating_add(reserve);
     let slice = super::history_items::load(super::history_items::HistoryLoad {
@@ -146,8 +147,8 @@ pub(crate) fn load_chat_page_reserving(
     };
     page.validate_page_bounds()
         .map_err(|_| StoreError::Corrupt("chat page ownership"))?;
-    let page_bytes = crate::acp::encoded_len::encoded_len(&page)
-        .map_err(|_| StoreError::Corrupt("chat page serialization"))?;
+    let page_bytes =
+        encoded_len(&page).map_err(|_| StoreError::Corrupt("chat page serialization"))?;
     if page_bytes > LIMITS.durable.history_page_bytes as usize {
         return Err(StoreError::Capacity {
             resource: "historyPage",
