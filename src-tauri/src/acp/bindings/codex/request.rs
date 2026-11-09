@@ -10,7 +10,7 @@ use crate::acp::{
 use super::CODEX_BROWSE_TOOL_NAME;
 use super::manifest::Platform;
 use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
-use super::turn_policy::{TurnPolicySurface, TurnSettings, turn_policy, validate_turn_policy};
+use super::turn_policy::{TurnPolicySurface, turn_policy, validate_turn_policy};
 
 mod session_action;
 
@@ -285,7 +285,7 @@ impl OutgoingRequest {
             client_message_id,
             crate::settings_store::SessionAccessMode::ReadOnly,
             TurnPolicySurface::Unsupported,
-            TurnSettings::default(),
+            None,
         )
     }
 
@@ -296,7 +296,7 @@ impl OutgoingRequest {
         client_message_id: &RequiredText<512>,
         access_mode: crate::settings_store::SessionAccessMode,
         surface: TurnPolicySurface,
-        settings: TurnSettings<'_>,
+        effort: Option<&RequiredText<512>>,
     ) -> Result<Self, RequestError> {
         let policy = turn_policy(surface, access_mode)?;
         validate_turn_policy(surface, access_mode, policy)?;
@@ -310,10 +310,7 @@ impl OutgoingRequest {
                 "networkAccess": policy.network_access
             }
         });
-        if let Some(model) = settings.model {
-            params["model"] = json!(model.as_str());
-        }
-        if let Some(effort) = settings.effort {
+        if let Some(effort) = effort {
             params["effort"] = json!(effort.as_str());
         }
         Self::build(id, RequestKind::TurnStart, params)

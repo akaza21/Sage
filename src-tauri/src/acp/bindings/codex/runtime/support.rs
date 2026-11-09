@@ -105,7 +105,7 @@ pub(super) fn one(event: AdapterEvent) -> Result<AdapterBatch, AdapterRuntimeErr
 }
 
 pub(super) fn model_values(
-    models: &[ModelDescriptor],
+    models: Vec<ModelDescriptor>,
 ) -> Result<Vec<AdapterModel>, AdapterRuntimeError> {
     if models.len() > LIMITS.wire.models_or_config_entries as usize {
         return Err(AdapterRuntimeError::BatchCount);
@@ -125,16 +125,18 @@ pub(super) fn model_values(
     output
         .try_reserve_exact(models.len())
         .map_err(|_| AdapterRuntimeError::BatchBytes)?;
-    output.extend(models.iter().map(|model| AdapterModel {
-        id: model.id.clone(),
-        name: model.name.clone(),
+    output.extend(models.into_iter().map(|model| AdapterModel {
+        id: model.id,
+        name: model.name,
         is_default: model.is_default,
     }));
     Ok(output)
 }
 
-/// The thinking level `model` takes, at `current`, when it advertises any.
-pub(super) fn effort_option(model: &ModelDescriptor, current: &str) -> Option<serde_json::Value> {
+pub(super) fn config_for_model(
+    model: &ModelDescriptor,
+    current: &str,
+) -> Option<crate::acp::session_config::SessionConfig> {
     if model.supported_efforts.is_empty() {
         return None;
     }
@@ -168,46 +170,14 @@ pub(super) fn effort_option(model: &ModelDescriptor, current: &str) -> Option<se
     if let Some(default) = default {
         option["defaultValue"] = serde_json::json!(default);
     }
-    Some(option)
-}
-
-/// The thread's model among the listed ones, when the thread runs one of
-/// them: a model Codex did not list is never offered, nor replaced.
-pub(super) fn model_option(
-    catalog: &[ModelDescriptor],
-    current: &crate::acp::intent::ModelId,
-) -> Option<serde_json::Value> {
-    catalog.iter().find(|model| model.id == *current)?;
-    let options: Vec<_> = catalog
-        .iter()
-        .map(|model| serde_json::json!({"value":model.id.as_str(),"name":model.name.as_str()}))
-        .collect();
-    Some(serde_json::json!({
-        "id":"model", "name":"Model", "category":"model", "type":"select",
-        "currentValue":current.as_str(), "options":options
-    }))
-}
-
-/// The config of those `options` that are each valid on their own, or
-/// `None` when there are none.
-pub(super) fn thread_config(
-    options: impl IntoIterator<Item = serde_json::Value>,
-) -> Option<crate::acp::session_config::SessionConfig> {
-    let config = |options: &[serde_json::Value]| {
-        let config: crate::acp::session_config::SessionConfig =
-            serde_json::from_value(serde_json::json!({"modes":null,"configOptions":options}))
-                .ok()?;
-        config.validate().ok()?;
-        Some(config)
-    };
-    let valid: Vec<_> = options
-        .into_iter()
-        .filter(|option| config(std::slice::from_ref(option)).is_some())
-        .collect();
-    if valid.is_empty() {
-        return None;
-    }
-    config(&valid)
+    let config: crate::acp::session_config::SessionConfig =
+        serde_json::from_value(serde_json::json!({
+            "modes":null,
+            "configOptions":[option]
+        }))
+        .ok()?;
+    config.validate().ok()?;
+    Some(config)
 }
 
 pub(super) fn map_adapter(error: AdapterError) -> AdapterRuntimeError {

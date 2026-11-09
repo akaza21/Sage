@@ -117,11 +117,9 @@ async fn run_catalog_page_crossing_turn(
         let config = serde_json::to_value(&overlay.config).unwrap();
         assert_eq!(config["confirmedModel"]["id"], "selected");
         assert_eq!(config["confirmedEffort"], "high");
-        // A first page listing the thread's model offers its effort and the
-        // model itself.
         assert_eq!(
             config["configOptions"].as_array().unwrap().len(),
-            2 * usize::from(!cold_prompt && failure.is_some())
+            usize::from(!cold_prompt && failure.is_some())
         );
     }
     let _ = channel.take_notice();

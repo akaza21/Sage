@@ -36,7 +36,7 @@ impl HarnessAdapter for CodexRuntime {
         &mut self,
         intent: &crate::acp::session_config::ConfigIntent,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
-        self.configure_thread(intent).map(|()| None)
+        self.configure_effort(intent).map(|()| None)
     }
     fn provisional_turn_pending(&self) -> bool {
         self.inner.has_provisional_turn() || self.inner.has_action_handoff()
@@ -217,7 +217,16 @@ impl HarnessAdapter for CodexRuntime {
                 client_message_id,
                 access_mode,
             } => {
-                let egress = self.prompt_request(&prompt, &client_message_id, access_mode)?;
+                let effort = self.selected_effort.clone();
+                let egress = self.request(|adapter, id| {
+                    adapter.prompt_with_effort(
+                        id,
+                        &prompt,
+                        &client_message_id,
+                        access_mode,
+                        effort.as_ref(),
+                    )
+                })?;
                 self.finish_model_config_hydration();
                 Ok(egress)
             }

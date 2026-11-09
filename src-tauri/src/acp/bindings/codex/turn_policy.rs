@@ -2,14 +2,6 @@ use crate::{acp::bindings::characterisation::Characterisation, settings_store::S
 
 use super::{manifest::PINNED_CODEX_VERSION, request::RequestError};
 
-/// The thread settings a `turn/start` changes. Codex applies each one given to
-/// that Turn and the Turns after it; one left out keeps the thread's own.
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct TurnSettings<'a> {
-    pub(crate) model: Option<&'a crate::acp::intent::ModelId>,
-    pub(crate) effort: Option<&'a crate::acp::contract::RequiredText<512>>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TurnPolicySurface {
     Unsupported,
@@ -96,7 +88,7 @@ mod tests {
                 &RequiredText::new("client", "client-policy").unwrap(),
                 capability.id,
                 TurnPolicySurface::Supported,
-                TurnSettings::default(),
+                None,
             )
             .unwrap();
             let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
@@ -130,7 +122,7 @@ mod tests {
             &RequiredText::new("client", "client-ask").unwrap(),
             SessionAccessMode::Ask,
             TurnPolicySurface::Supported,
-            TurnSettings::default(),
+            None,
         )
         .unwrap();
         let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
