@@ -2,6 +2,7 @@ use super::*;
 
 mod permission;
 mod read_text_file;
+mod session_info;
 
 const MAX_CANCELLED_PROMPT_ERRORS: usize = 16;
 
@@ -233,6 +234,9 @@ impl ClaudeRuntime {
             return AdapterBatch::new(vec![SharedEvent::Absorbed], Vec::new());
         }
         if let Some(batch) = self.config_notification(&value)? {
+            return Ok(batch);
+        }
+        if let Some(batch) = self.session_info_notification(&value)? {
             return Ok(batch);
         }
         let active = self.active.as_mut().ok_or(AdapterRuntimeError::Frame)?;

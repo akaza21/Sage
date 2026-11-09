@@ -37,7 +37,7 @@ fn owned_side_chat(
     if epoch != expected_transition_epoch || epoch >= 9_007_199_254_740_991 {
         return Err("Project changed before closing side chat".into());
     }
-    if !chat_id.starts_with("side-") {
+    if !chat_id.starts_with(crate::chat_lifecycle::SIDE_CHAT_ID_PREFIX) {
         return Err("not a temporary Chat".into());
     }
     let active: Option<String> = state

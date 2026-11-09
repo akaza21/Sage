@@ -25,6 +25,7 @@ mod stage_owner;
 #[cfg(test)]
 mod test_failpoint;
 mod title_provenance;
+mod title_source;
 mod tool_result_fold;
 #[cfg(test)]
 mod tool_result_fold_tests;
@@ -140,6 +141,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     notifications::apply(&mut opened.connection)?;
     config_choices::apply(&mut opened.connection)?;
     session_resume_link::apply(&mut opened.connection)?;
+    title_source::apply(&mut opened.connection)?;
     Ok(opened)
 }
 
@@ -196,7 +198,8 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
         | SchemaClass::CurrentV21
         | SchemaClass::CurrentV22
         | SchemaClass::CurrentV23
-        | SchemaClass::CurrentResumeLink => {
+        | SchemaClass::CurrentResumeLink
+        | SchemaClass::CurrentTitleSource => {
             let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
             if probe::classify_live(&paths)? != source_schema {
@@ -361,6 +364,7 @@ fn verify_current(connection: &Connection) -> AppResult<()> {
             | SchemaClass::CurrentV22
             | SchemaClass::CurrentV23
             | SchemaClass::CurrentResumeLink
+            | SchemaClass::CurrentTitleSource
     ) {
         return invalid("database did not reach an exact current schema");
     }
