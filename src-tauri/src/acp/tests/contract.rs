@@ -871,6 +871,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         session_config_notice: None,
         goal: crate::acp::goal::GoalState::Unsupported,
         usage: false,
+        session_surface: None,
         project_id,
         chat_id,
         title: SafeText::new("title", "Wire fixture").unwrap(),

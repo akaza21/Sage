@@ -283,6 +283,33 @@ fn attachments_become_text_image_and_document_content() {
 }
 
 #[test]
+fn a_linked_file_becomes_a_mention_claude_code_reads() {
+    let mut bridge = initialized();
+    let (uri, path) = if cfg!(windows) {
+        ("file:///C:/work/my%20notes.md", "@C:\\work\\my notes.md")
+    } else {
+        ("file:///work/my%20notes.md", "@/work/my notes.md")
+    };
+    let user = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"prompt":[
+                {"type":"text","text":"see"},
+                {"type":"resource_link","uri":uri,"name":"my notes.md"},
+            ]}}),
+        )
+        .unwrap();
+    assert_eq!(user["message"]["content"][1]["text"], path);
+    assert_eq!(
+        bridge.outbound(
+            &json!({"jsonrpc":"2.0","id":4,"method":"session/prompt","params":{"prompt":[
+                {"type":"resource_link","uri":"https://example.com/x","name":"x"},
+            ]}})
+        ),
+        Err(BridgeError::Unsupported)
+    );
+}
+
+#[test]
 fn resume_must_name_the_launched_session() {
     let mut bridge = SdkBridge::new(SESSION.into(), None);
     assert_eq!(
@@ -436,5 +463,152 @@ fn a_cli_that_starts_outside_the_picker_modes_fails_initialize() {
             .as_str()
             .unwrap()
             .contains("permission mode")
+    );
+}
+
+#[test]
+fn claude_codes_status_messages_become_notices_and_activities() {
+    use crate::acp::intent::session_event::{SessionActivityState, SessionScopedEvent};
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let state = |inbound: &Inbound| match &inbound.session[..] {
+        [SessionScopedEvent::Activity(activity)] => {
+            (activity.kind.as_str().to_owned(), activity.state)
+        }
+        other => panic!("one activity: {other:?}"),
+    };
+    let compacting = bridge
+        .inbound(json!({"type":"system","subtype":"status","status":"compacting"}))
+        .unwrap();
+    assert_eq!(
+        state(&compacting),
+        ("compaction".into(), SessionActivityState::Running)
+    );
+    let done = bridge
+        .inbound(
+            json!({"type":"system","subtype":"status","status":null,"compact_result":"success"}),
+        )
+        .unwrap();
+    assert_eq!(
+        state(&done),
+        ("compaction".into(), SessionActivityState::Completed)
+    );
+    let boundary = bridge.inbound(json!({"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":9000,"post_tokens":1200}})).unwrap();
+    let [SessionScopedEvent::Notice(notice)] = &boundary.session[..] else {
+        panic!("notice")
+    };
+    assert!(notice.text.as_str().contains("9000 to 1200"));
+
+    let task = bridge.inbound(json!({"type":"system","subtype":"task_started","task_id":"b1","description":"Run the test suite"})).unwrap();
+    assert_eq!(state(&task), ("task".into(), SessionActivityState::Running));
+    let finished = bridge.inbound(json!({"type":"system","subtype":"task_notification","task_id":"b1","status":"completed","output_file":"/tmp/x","summary":"All tests passed"})).unwrap();
+    assert_eq!(
+        state(&finished),
+        ("task".into(), SessionActivityState::Completed)
+    );
+
+    let limit = bridge.inbound(json!({"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","rateLimitType":"five_hour","utilization":0.91}})).unwrap();
+    let [SessionScopedEvent::Notice(notice)] = &limit.session[..] else {
+        panic!("notice")
+    };
+    assert!(notice.text.as_str().contains("5-hour limit (91% used)"));
+    let quiet = bridge
+        .inbound(json!({"type":"rate_limit_event","rate_limit_info":{"status":"allowed"}}))
+        .unwrap();
+    assert!(quiet.session.is_empty());
+
+    bridge.inbound(json!({"type":"system","subtype":"api_retry","attempt":2,"max_retries":10,"retry_delay_ms":500,"error_status":529,"error":"overloaded"})).unwrap();
+    let ended = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false}))
+        .unwrap();
+    assert_eq!(
+        state(&ended),
+        ("retry".into(), SessionActivityState::Completed)
+    );
+}
+
+#[test]
+fn local_command_output_and_new_commands_reach_the_chat() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let output = bridge
+        .inbound(
+            json!({"type":"system","subtype":"local_command_output","content":"Total cost: $0.12"}),
+        )
+        .unwrap();
+    assert_eq!(updates(&output)[0]["content"]["text"], "Total cost: $0.12");
+    let commands = bridge.inbound(json!({"type":"system","subtype":"commands_changed","commands":[{"name":"deploy","description":"Ship it","argumentHint":""}]})).unwrap();
+    assert_eq!(
+        updates(&commands)[0]["availableCommands"][0]["name"],
+        "deploy"
+    );
+}
+
+#[test]
+fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
+    use crate::acp::{goal::NativeRpcReply, session_control::SessionControl};
+    let mut bridge = initialized();
+    const TURN: &str = "turn-6f9619ff-8b86-4011-b42d-00cf4fc964ff";
+    let user = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{
+            "sessionId":SESSION,"messageId":TURN,"prompt":[{"type":"text","text":"hi"}]}}),
+        )
+        .unwrap();
+    assert_eq!(user["uuid"], "6f9619ff-8b86-4011-b42d-00cf4fc964ff");
+    let undo = SessionControl::UndoTurn {
+        turn_id: crate::acp::contract::SageTurnId::parse(TURN).unwrap(),
+    };
+    let rewind = bridge.session_control(&undo).unwrap();
+    assert_eq!(rewind["request"]["subtype"], "rewind_files");
+    assert_eq!(
+        rewind["request"]["user_message_id"],
+        "6f9619ff-8b86-4011-b42d-00cf4fc964ff"
+    );
+    assert!(bridge.controlling());
+    assert_eq!(bridge.session_control(&undo), Err(BridgeError::Capacity));
+    let done = bridge
+        .inbound(success(
+            &rewind,
+            json!({"canRewind":true,"filesChanged":["a.rs","b.rs"]}),
+        ))
+        .unwrap();
+    assert!(
+        matches!(&done.native, Some(NativeRpcReply::Controlled(Some(text))) if text.as_str() == "Restored 2 files")
+    );
+    assert!(!bridge.controlling());
+    let rewind = bridge.session_control(&undo).unwrap();
+    let refused = bridge
+        .inbound(success(
+            &rewind,
+            json!({"canRewind":false,"error":"No file checkpoint found for this message."}),
+        ))
+        .unwrap();
+    assert!(
+        matches!(&refused.native, Some(NativeRpcReply::ControlRefused(Some(text)))
+        if text.as_str() == "No file checkpoint found for this message.")
+    );
+    let stop = bridge
+        .session_control(&SessionControl::StopActivity {
+            activity_id: crate::acp::intent::ExternalId::new("activityId", "task:task-7").unwrap(),
+        })
+        .unwrap();
+    assert_eq!(
+        stop["request"],
+        json!({"subtype":"stop_task","task_id":"task-7"})
+    );
+    let failed = bridge
+        .inbound(json!({"type":"control_response","response":{"subtype":"error","request_id":stop["request_id"],"error":"No task with that id"}}))
+        .unwrap();
+    assert!(failed.acp.is_empty());
+    assert!(
+        matches!(&failed.native, Some(NativeRpcReply::ControlRefused(Some(text))) if text.as_str() == "No task with that id")
+    );
+    // A turn id that names no SDK message cannot be undone.
+    assert_eq!(
+        bridge.session_control(&SessionControl::UndoTurn {
+            turn_id: crate::acp::contract::SageTurnId::parse("turn-legacy").unwrap(),
+        }),
+        Err(BridgeError::Unsupported)
     );
 }

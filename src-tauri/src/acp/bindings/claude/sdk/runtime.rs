@@ -19,7 +19,10 @@ use crate::acp::{
             AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, RefusalDetail,
             ResourceMapper,
         },
-        claude::{runtime::ClaudeRuntime, wire::decode_frame},
+        claude::{
+            runtime::{Children, ClaudeRuntime},
+            wire::decode_frame,
+        },
         runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
     },
     contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
@@ -50,6 +53,8 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
                 session_id,
             ),
             bridge: None,
+            children: Children::default(),
+            native: None,
             sent: Vec::new(),
             launch: None,
             binding: self.binding,
@@ -62,6 +67,9 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
 struct ClaudeSdkRuntime {
     session: ClaudeRuntime,
     bridge: Option<SdkBridge>,
+    children: Children,
+    /// The reply to a session control, until the host takes it.
+    native: Option<crate::acp::goal::NativeRpcReply>,
     /// Written frames whose delivery is still open, with what they started.
     sent: Vec<(EgressToken, Sent)>,
     launch: Option<SessionLaunch>,
@@ -128,6 +136,27 @@ impl ClaudeSdkRuntime {
             for event in events
                 .into_iter()
                 .filter(|event| !matches!(event, AdapterEvent::Absorbed))
+            {
+                observed = true;
+                batch.push_event(event)?;
+            }
+        }
+        if let Some(reply) = inbound.native {
+            self.native = Some(reply);
+        }
+        if let Some(questions) = inbound.questions {
+            self.session.offer_user_input(questions);
+        }
+        for event in inbound.session {
+            if let Some(event) = self.session.session_event(event) {
+                observed = true;
+                batch.push_event(event)?;
+            }
+        }
+        for child in inbound.children {
+            for event in self
+                .session
+                .child_event(&mut self.children, child, resources)?
             {
                 observed = true;
                 batch.push_event(event)?;
@@ -235,6 +264,29 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.session.capabilities()
+    }
+    fn session_control(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let sdk = self
+            .bridge()?
+            .session_control(control)
+            .map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
+        Ok(AdapterEgress::new(
+            sdk_frame(&sdk)?,
+            EgressToken::protocol_notification(),
+        ))
+    }
+    fn native_rpc_pending(&self) -> bool {
+        self.native.is_some()
+            || self.bridge.as_ref().is_some_and(SdkBridge::controlling)
+            || self.session.native_rpc_pending()
+    }
+    fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
+        self.native
+            .take()
+            .or_else(|| self.session.take_native_rpc_reply())
     }
     /// A large tool result or file write is dropped rather than ending the
     /// session; its tool row ends as failed when the turn completes.

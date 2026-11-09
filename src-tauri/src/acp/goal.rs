@@ -39,6 +39,8 @@ pub(crate) enum NativeRpcRequest {
     },
     /// Refreshes the runtime's usage-limit snapshot from the harness.
     UsageRead,
+    /// Acts on the running session without starting a turn.
+    Control(crate::acp::session_control::SessionControl),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +55,10 @@ pub(crate) enum NativeRpcReply {
     Released,
     /// The harness answered a usage read; the snapshot is in the usage cell.
     UsageRead,
+    /// The harness carried out a session control; the text says what it did.
+    Controlled(Option<crate::acp::contract::SafeText<512>>),
+    /// The harness declined a session control, with its reason if it gave one.
+    ControlRefused(Option<crate::acp::contract::SafeText<512>>),
 }
 
 impl NativeRpcIntent {
@@ -75,6 +81,7 @@ impl NativeRpcIntent {
                 } => child_thread_id.len() + parent_thread_id.len() + 1,
                 NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,
                 NativeRpcRequest::ReleaseFork { fork, .. } => fork.as_str().len() + 1,
+                NativeRpcRequest::Control(control) => control.actual_bytes() + 1,
             }
     }
 }

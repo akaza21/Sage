@@ -15,6 +15,7 @@ pub(crate) mod runtime_identity;
 pub(crate) mod session_access;
 pub(crate) mod session_action;
 pub(crate) mod session_config;
+pub(crate) mod session_control;
 mod session_operations;
 mod session_routes;
 pub(crate) mod slash_commands;

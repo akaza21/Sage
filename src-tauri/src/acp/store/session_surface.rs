@@ -7,7 +7,12 @@ use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::acp::{
     contract::EntityRevision,
-    intent::session_event::{SessionNotice, SessionScopedEvent, SessionSurface, SurfaceChange},
+    intent::{
+        ExternalId,
+        session_event::{
+            SessionNotice, SessionScopedEvent, SessionSurface, SessionSurfaceView, SurfaceChange,
+        },
+    },
 };
 
 use super::{AdapterStoreOwner, StoreError, facts};
@@ -113,6 +118,29 @@ fn bounded_json(surface: &mut SessionSurface) -> Result<String, StoreError> {
             return Err(StoreError::PayloadTooLarge);
         }
     }
+}
+
+/// What the chat shows of a session's surface while `runtime_epoch` runs.
+pub(crate) fn view(
+    connection: &rusqlite::Connection,
+    project: &str,
+    chat: &str,
+    session: &str,
+    runtime_epoch: Option<u64>,
+) -> Result<Option<SessionSurfaceView>, StoreError> {
+    Ok(read(connection, project, chat, session)?.map(|(surface, _)| surface.view(runtime_epoch)))
+}
+
+/// The harness id of a live activity, named by its view key.
+pub(crate) fn activity_id(
+    connection: &rusqlite::Connection,
+    project: &str,
+    chat: &str,
+    session: &str,
+    key: &str,
+) -> Result<Option<ExternalId>, StoreError> {
+    Ok(read(connection, project, chat, session)?
+        .and_then(|(surface, _)| surface.activity_id(key).cloned()))
 }
 
 /// Reads one session's stored surface and its row revision.

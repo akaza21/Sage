@@ -150,7 +150,8 @@ export const ApprovalPart = lazyParts<typeof PermissionPromptChunk>(
 export const QuestionPart = lazyParts<typeof UserInputChunk>(
   () => import("./acp/UserInputPrompt"),
 );
-/** Harness notices are rare, so the strip loads with the first one. */
+/** Harness notices, background activities and Undo are rare, so the
+ * session strip loads with the first of them. */
 export const NoticePart = lazyParts<typeof SessionNoticeChunk>(
   () => import("./acp/SessionNoticeStrip"),
 );

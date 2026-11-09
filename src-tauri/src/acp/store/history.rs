@@ -95,6 +95,7 @@ pub(crate) fn load_chat_page_reserving(
         goal: crate::acp::goal::GoalState::Unsupported,
         // Counted as set: the service sets it after the history is sized.
         usage: true,
+        session_surface: None,
         project_id: project_id.clone(),
         chat_id: chat_id.clone(),
         title: title.clone(),
@@ -129,6 +130,7 @@ pub(crate) fn load_chat_page_reserving(
         session_config_notice: None,
         goal: crate::acp::goal::GoalState::Unsupported,
         usage: false,
+        session_surface: None,
         project_id,
         chat_id,
         title,
