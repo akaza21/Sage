@@ -1,10 +1,43 @@
-use super::{CodexRuntime, support::config_for_model};
+use super::{
+    CodexRuntime,
+    support::{effort_option, model_option, thread_config},
+};
 use crate::acp::{
     bindings::adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError},
     intent::{ModelId, PageCursor},
     limits::LIMITS,
     session_config::{ConfigIntent, ConfigMutation, ConfigValue},
 };
+
+use super::super::incoming::ModelDescriptor;
+
+/// The models the thread's `model/list` pages named, which its model can be
+/// changed to, and the one Sage set for the next `turn/start`. Codex applies
+/// a `turn/start` model to that Turn and the ones after it, so the thread's
+/// model is a session choice like its effort. Holds at most one listing's
+/// bounded entries.
+#[derive(Debug, Default)]
+pub(super) struct ModelCatalog {
+    models: Vec<ModelDescriptor>,
+    pub(super) choice: Option<ModelId>,
+}
+
+impl ModelCatalog {
+    fn extend(&mut self, page: &[ModelDescriptor]) {
+        for model in page {
+            if self.models.len() >= LIMITS.wire.models_or_config_entries as usize {
+                return;
+            }
+            if !self.models.iter().any(|known| known.id == model.id) {
+                self.models.push(model.clone());
+            }
+        }
+    }
+
+    fn find(&self, id: &str) -> Option<&ModelDescriptor> {
+        self.models.iter().find(|model| model.id.as_str() == id)
+    }
+}
 
 impl CodexRuntime {
     pub(super) fn discard_invalid_model_page(
@@ -35,6 +68,7 @@ impl CodexRuntime {
         self.selected_model = None;
         self.session_config = None;
         self.selected_effort = None;
+        self.model_catalog = ModelCatalog::default();
         self.model_list_requested = false;
         self.model_catalog_idle_only = false;
         self.model_catalog_entries = 0;
@@ -49,9 +83,17 @@ impl CodexRuntime {
             .as_ref()
             .filter(|model| self.reported_model_id.as_ref() == Some(&model.id));
         let effort = self.selected_effort.as_ref();
-        let config = model
-            .zip(effort)
-            .and_then(|(model, effort)| config_for_model(model, effort.as_str()));
+        let config = thread_config(
+            model
+                .zip(effort)
+                .and_then(|(model, effort)| effort_option(model, effort.as_str()))
+                .into_iter()
+                .chain(
+                    self.reported_model_id
+                        .as_ref()
+                        .and_then(|id| model_option(&self.model_catalog.models, id)),
+                ),
+        );
         let confirmed_model =
             self.reported_model_id
                 .as_ref()
@@ -79,7 +121,9 @@ impl CodexRuntime {
         self.refresh_model_config();
     }
 
-    pub(super) fn configure_effort(
+    /// Changes the thread's model or effort for the next `turn/start`, between
+    /// Turns, to a value the session's config offers.
+    pub(super) fn configure_thread(
         &mut self,
         intent: &ConfigIntent,
     ) -> Result<(), AdapterRuntimeError> {
@@ -96,7 +140,7 @@ impl CodexRuntime {
         else {
             return Err(AdapterRuntimeError::Operation);
         };
-        if config_id.as_str() != "effort" {
+        if !matches!(config_id.as_str(), "effort" | "model") {
             return Err(AdapterRuntimeError::Operation);
         }
         self.session_config
@@ -104,6 +148,9 @@ impl CodexRuntime {
             .ok_or(AdapterRuntimeError::Operation)?
             .validate_value(config_id.as_str(), config_value)
             .map_err(|_| AdapterRuntimeError::Operation)?;
+        if config_id.as_str() == "model" {
+            return self.apply_model(selected.as_str());
+        }
         let effort = self
             .selected_model
             .as_ref()
@@ -118,6 +165,53 @@ impl CodexRuntime {
             .clone();
         self.apply_effort(effort);
         Ok(())
+    }
+
+    /// Runs the thread on the listed model `id` from the next `turn/start`.
+    /// The effort stays when the model offers it; otherwise it becomes the
+    /// model's own default, and an effort Codex never reported stays unset.
+    fn apply_model(&mut self, id: &str) -> Result<(), AdapterRuntimeError> {
+        let model = self
+            .model_catalog
+            .find(id)
+            .cloned()
+            .ok_or(AdapterRuntimeError::Operation)?;
+        let offers = |effort: &crate::acp::contract::RequiredText<512>| {
+            model
+                .supported_efforts
+                .iter()
+                .any(|supported| supported.id == *effort)
+        };
+        self.selected_effort = match self.selected_effort.take() {
+            Some(effort) if offers(&effort) => Some(effort),
+            Some(_) => model.default_effort.clone().filter(|effort| offers(effort)),
+            None => None,
+        };
+        self.model_catalog.choice = Some(model.id.clone());
+        self.reported_model_id = Some(model.id.clone());
+        self.selected_model_id = Some(model.id.clone());
+        self.selected_model = Some(model);
+        self.refresh_model_config();
+        Ok(())
+    }
+
+    /// The `turn/start` for `prompt`, carrying the model and effort chosen
+    /// for the thread.
+    pub(super) fn prompt_request(
+        &mut self,
+        prompt: &crate::acp::intent::Prompt,
+        client_message_id: &crate::acp::contract::RequiredText<512>,
+        access_mode: crate::settings_store::SessionAccessMode,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let model = self.model_catalog.choice.clone();
+        let effort = self.selected_effort.clone();
+        let settings = super::super::turn_policy::TurnSettings {
+            model: model.as_ref(),
+            effort: effort.as_ref(),
+        };
+        self.request(|adapter, id| {
+            adapter.prompt_with_settings(id, prompt, client_message_id, access_mode, settings)
+        })
     }
 
     pub(super) fn request_model_config(&mut self) -> Option<AdapterEgress> {
@@ -148,15 +242,8 @@ impl CodexRuntime {
         models: Vec<super::super::incoming::ModelDescriptor>,
         next_cursor: Option<PageCursor>,
     ) -> (AdapterEvent, Option<AdapterEgress>) {
-        let selected = models
-            .iter()
-            .find(|model| {
-                self.selected_model_id
-                    .as_ref()
-                    .is_some_and(|id| id.as_str() == model.id.as_str())
-            })
-            .cloned();
-        let Ok(models) = super::support::model_values(models) else {
+        let page = models;
+        let Ok(models) = super::support::model_values(&page) else {
             return self.reject_model_page();
         };
         let entries = self.model_catalog_entries.saturating_add(models.len());
@@ -177,10 +264,15 @@ impl CodexRuntime {
         self.model_catalog_bytes = bytes;
         self.next_model_cursor = next_cursor.clone();
         self.model_pages_seen += 1;
-        if let Some(model) = selected {
-            self.selected_model = Some(model);
-            self.refresh_model_config();
+        self.model_catalog.extend(&page);
+        if let Some(model) = self
+            .selected_model_id
+            .as_ref()
+            .and_then(|id| self.model_catalog.find(id.as_str()))
+        {
+            self.selected_model = Some(model.clone());
         }
+        self.refresh_model_config();
         if self.model_catalog_idle_only {
             (AdapterEvent::IgnoredLate, None)
         } else {

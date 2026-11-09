@@ -48,6 +48,7 @@ pub(crate) struct CodexRuntime {
     reported_model_id: Option<crate::acp::intent::ModelId>,
     selected_model: Option<super::incoming::ModelDescriptor>,
     selected_effort: Option<crate::acp::contract::RequiredText<512>>,
+    model_catalog: model_config::ModelCatalog,
     model_list_requested: bool,
     model_catalog_idle_only: bool,
     model_catalog_entries: usize,
