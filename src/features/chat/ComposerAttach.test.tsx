@@ -161,6 +161,17 @@ describe("composer attach button", () => {
     expect(within(chips).getAllByRole("listitem")).toHaveLength(1);
   });
 
+  it("shows the batch native already holds for the chat without a press", async () => {
+    withSession(true);
+    // As after a reload: native kept the batch the WebView forgot.
+    native.mockImplementation(async (command: string) =>
+      command === "list_prompt_files" ? staged("r1", ["kept.md"]) : null,
+    );
+    renderComposer();
+    expect(await screen.findByText("kept.md · 2 KB")).toBeInTheDocument();
+    expect(native.mock.calls).toEqual([["list_prompt_files", { owner }]]);
+  });
+
   it("starts another chat from its own batch without reopening the picker", async () => {
     withSession(true);
     native.mockImplementation(async (command: string) =>

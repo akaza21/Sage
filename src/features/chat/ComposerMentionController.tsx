@@ -6,39 +6,36 @@ import {
   useState,
   type RefObject,
 } from "react";
+import { useOwnedFieldAttributes } from "../../ui/ownedFieldAttributes";
 import type { SuggestionKeyEvent } from "../../ui/textFieldSuggestionNavigation";
 import { ComposerMentionMenu } from "./ComposerMentionMenu";
-import { mentionQuery, mentionToken } from "./composerMention";
+import { mentionQuery } from "./composerMention";
 
 /**
  * Replaces the `@` token at [start, end) with the picked file's token
  * through the editing commands, so Undo restores what was typed, and leaves
- * the caret after the whitespace that follows it.
+ * the caret after it. What follows the token (a space, or the closing
+ * parenthesis of `(@a.rs)`) stays; at the end of the text a space is added.
  */
 function insertMention(
   field: HTMLTextAreaElement,
   start: number,
   end: number,
-  relativePath: string,
+  token: string,
 ) {
-  const value = field.value;
-  // Keep the whitespace that already follows the token, or add a space.
-  const through = end < value.length ? end + 1 : end;
-  const replacement = `${mentionToken(relativePath)}${value.charAt(end) || " "}`;
+  const replacement = end < field.value.length ? token : `${token} `;
   field.focus();
-  field.setSelectionRange(start, through);
+  field.setSelectionRange(start, end);
   const inserted =
     typeof document.execCommand === "function" &&
     document.execCommand("insertText", false, replacement);
   if (!inserted) {
-    field.setRangeText(replacement, start, through, "end");
+    field.setRangeText(replacement, start, end, "end");
     field.dispatchEvent(new Event("input", { bubbles: true }));
   }
 }
 
 const CARET_EVENTS = ["input", "change", "select", "keyup", "mouseup"] as const;
-/** The combobox attributes this controller sets while a token is edited. */
-const OWNED = ["aria-autocomplete", "aria-controls", "aria-activedescendant"];
 
 /**
  * The composer's `@` file picker. It loads with the first `@` in the draft,
@@ -52,13 +49,11 @@ export function ComposerMentionController({
   fieldRef,
   disabled,
   fieldId,
-  onTextChange,
   text,
 }: {
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   disabled: boolean;
   fieldId: string;
-  onTextChange: (text: string) => void;
   text: string;
 }) {
   const keyHandlerRef = useRef<((event: SuggestionKeyEvent) => boolean) | null>(
@@ -87,17 +82,13 @@ export function ComposerMentionController({
     [],
   );
   const pick = useCallback(
-    (relativePath: string) => {
+    // The list only opens on a field this listens to, so one is there.
+    (token: string) => {
       const at = tokenRef.current;
       const field = fieldRef.current;
-      if (!at) return;
-      if (field) insertMention(field, at.start, at.end, relativePath);
-      else
-        onTextChange(
-          `${text.slice(0, at.start)}${mentionToken(relativePath)} ${text.slice(at.end)}`,
-        );
+      if (at && field) insertMention(field, at.start, at.end, token);
     },
-    [fieldRef, onTextChange, text],
+    [fieldRef],
   );
   useEffect(() => {
     const field = fieldRef.current;
@@ -133,33 +124,16 @@ export function ComposerMentionController({
   }, [fieldRef]);
   // Only while the caret is in an `@` token: the rest of the time the
   // field's other owners (such as the `/` menu) keep these attributes.
-  const owning = useRef(false);
-  useLayoutEffect(() => {
-    const field = fieldRef.current;
-    if (!field || (!token && !owning.current)) return;
-    owning.current = token !== null;
-    const set = (name: string, value: string | null) =>
-      value === null
-        ? field.removeAttribute(name)
-        : field.setAttribute(name, value);
-    set("aria-autocomplete", token ? "list" : null);
+  useOwnedFieldAttributes(fieldRef, token !== null, (field) => ({
+    "aria-autocomplete": "list",
     // aria-expanded belongs to a combobox field; a plain textbox points at
     // the list through aria-controls and aria-activedescendant alone.
-    if (field.getAttribute("role") === "combobox")
-      set("aria-expanded", String(open));
-    set("aria-controls", open ? listboxId : null);
-    set("aria-activedescendant", open ? activeOptionId : null);
-  });
-  useLayoutEffect(
-    () => () => {
-      const field = fieldRef.current;
-      if (!field || !owning.current) return;
-      for (const name of OWNED) field.removeAttribute(name);
-      if (field.getAttribute("role") === "combobox")
-        field.setAttribute("aria-expanded", "false");
-    },
-    [fieldRef],
-  );
+    ...(field.getAttribute("role") === "combobox"
+      ? { "aria-expanded": String(open) }
+      : {}),
+    "aria-controls": open ? listboxId : null,
+    "aria-activedescendant": open ? activeOptionId : null,
+  }));
   return (
     <>
       {open && token ? (

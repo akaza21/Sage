@@ -220,13 +220,12 @@ pub(crate) async fn send_acp_turn_inner(
     })?;
     super::turn_workspace::mark_before_prompt(state, transition, &client_intent_id, &session_id)
         .await;
-    // Mentioned files are read without the transition guard, like staged
-    // ones; authority is reacquired below before dispatch.
-    let budget = crate::acp::attached_context::files::DISPATCH_BYTES
-        .saturating_sub(prompt.retained_bytes() + files.retained_bytes());
+    // Mentioned files are read after the transition guard is released, so a
+    // slow disk cannot hold it; authority is reacquired below before dispatch.
+    let budget = prompt.mention_budget(&files);
+    let owner = (&binding_id, &session_id);
     let mentioned =
-        mentions::resolve_mentions(state, &project_id, &chat_id, &session_id, mentioned, budget)
-            .await;
+        mentions::resolve_mentions(state, &project_id, &chat_id, owner, mentioned, budget).await;
     prompt.mentions = match mentioned {
         Ok(mentioned) => mentioned,
         Err(failure) => {
@@ -254,10 +253,7 @@ pub(crate) async fn send_acp_turn_inner(
             message: safe_message("Attachments changed while preparing the prompt; send again."),
         }));
     }
-    if !files.0.is_empty()
-        && prompt.retained_bytes() + files.retained_bytes()
-            > crate::acp::attached_context::files::DISPATCH_BYTES
-    {
+    if !files.0.is_empty() && !prompt.fits_dispatch(&files) {
         super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
         return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
             message: safe_message(
@@ -376,6 +372,7 @@ pub(crate) async fn steer_acp_turn_inner(
     .await?;
     validate_steer_intent(&request, &snapshot).map_err(intent_error)?;
     image_input_block(&request.attached_context)?;
+    // Steer sends no `@` mentions; `session_operations/mentions.rs` says why.
     let binding_id =
         session_routes::durable_binding_id(state, &request.session_id).map_err(store_error)?;
     let prompt = effective_prompt(&request.prompt, &request.attached_context).map_err(|_| {

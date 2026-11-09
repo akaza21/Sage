@@ -22,6 +22,11 @@ import {
   type TextFieldSuggestion,
   type TextFieldSuggestionsState,
 } from "../../ui/textFieldSuggestionNavigation";
+import {
+  mentionRootQualifier,
+  mentionToken,
+  type MentionRoot,
+} from "./composerMention";
 
 /** Files asked of the path index per query; a short list to pick from. */
 export const MENTION_RESULT_LIMIT = 20;
@@ -111,14 +116,25 @@ function useMentionMatches(query: string): Load | null {
   return load ?? { kind: "loading", key };
 }
 
-function suggestion(match: QuickOpenMatch): TextFieldSuggestion {
-  const slash = match.relativePath.lastIndexOf("/");
-  const name = match.relativePath.slice(slash + 1);
+const NO_ROOTS: readonly MentionRoot[] = [];
+
+/** The file as a pick, keyed by the token it writes; null when none can name it. */
+function suggestion(
+  match: QuickOpenMatch,
+  roots: readonly MentionRoot[],
+): TextFieldSuggestion | null {
+  const qualifier = mentionRootQualifier(roots, match.rootId);
+  const token = mentionToken(match.relativePath, qualifier);
+  if (!token) return null;
+  // A file outside the first root shows under that root's name.
+  const root = qualifier && roots.find((r) => r.id === match.rootId)?.name;
+  const shown = root ? `${root}/${match.relativePath}` : match.relativePath;
+  const slash = shown.lastIndexOf("/");
   return {
-    id: JSON.stringify([match.rootId, match.relativePath]),
-    label: name,
-    description: slash > 0 ? match.relativePath.slice(0, slash) : undefined,
-    accessibleLabel: match.relativePath,
+    id: token,
+    label: shown.slice(slash + 1),
+    description: slash > 0 ? shown.slice(0, slash) : undefined,
+    accessibleLabel: shown,
   };
 }
 
@@ -150,8 +166,8 @@ export function ComposerMentionMenu({
   listboxId: string;
   onActiveOptionChange: (optionId: string | null) => void;
   onDismiss: () => void;
-  /** The picked file's path, relative to its project root. */
-  onPick: (relativePath: string) => void;
+  /** The token that names the picked file. */
+  onPick: (token: string) => void;
   /** What the list holds, for the field's polite status region. */
   onStatusChange: (status: string) => void;
   query: string;
@@ -161,11 +177,16 @@ export function ComposerMentionMenu({
     () => (load?.kind === "ready" ? load.results : []),
     [load],
   );
-  const items = useMemo(() => results.map(suggestion), [results]);
-  const pick = (item: TextFieldSuggestion) => {
-    const [, relativePath] = JSON.parse(item.id) as [string, string];
-    onPick(relativePath);
-  };
+  const roots = useWorkbenchStore((state) => state.project?.roots ?? NO_ROOTS);
+  const items = useMemo(
+    () =>
+      results.flatMap((match) => {
+        const item = suggestion(match, roots);
+        return item ? [item] : [];
+      }),
+    [results, roots],
+  );
+  const pick = (item: TextFieldSuggestion) => onPick(item.id);
   const navigation = useSuggestionNavigation(items, pick, onDismiss);
   const activeId = navigation.active?.id ?? null;
   const loading = load?.kind === "loading";

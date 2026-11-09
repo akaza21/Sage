@@ -17,6 +17,7 @@ mod path_filter;
 mod speed_bench;
 mod types;
 
+pub(crate) use contained_file::handle_contract_relative;
 pub use helper_protocol::run_stdio_helper_if_requested;
 pub(crate) use types::MAX_SEARCH_DEPTH;
 

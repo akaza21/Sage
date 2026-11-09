@@ -285,7 +285,6 @@ export function ChatComposerRegion({
             fieldRef={composerRef}
             fieldId={fieldId}
             text={text}
-            onTextChange={onTextChange}
             imageAction={imageInput.action}
             hidden={hidden}
             disabled={composerDisabled}

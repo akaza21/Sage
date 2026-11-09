@@ -104,6 +104,15 @@ impl BindingRecord {
         }
     }
 
+    /// Whether this binding's prompts carry ACP content blocks beyond their
+    /// text (`resource_link`, embedded `resource`), which `@` mentions need.
+    pub(crate) fn sends_prompt_blocks(&self) -> bool {
+        matches!(
+            self.admission,
+            Admission::Claude(_) | Admission::OpenCode(_)
+        )
+    }
+
     pub(crate) fn session_operations_enabled(&self) -> bool {
         self.session_operations_enabled
     }

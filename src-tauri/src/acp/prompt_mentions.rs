@@ -1,19 +1,27 @@
 //! Workspace files a prompt names with `@path` (or `@"path with spaces"`),
 //! as the composer's `@` picker writes them and as Claude Code users type
-//! them. The token stays in the prompt text; each one that names a file in
-//! one of the project's roots also goes to the harness as a content block:
-//! an embedded `resource` with the file's text when the session advertises
-//! embedded context and the file fits the dispatch budget, otherwise a
-//! `resource_link` (the ACP baseline every agent accepts). Nothing is
-//! persisted: the durable prompt keeps only its text.
-use super::attached_context::files::{FILE_BYTES, secrets::path_is_secret};
-use crate::workspace::{Workspace, open_workspace_text_file, validate_contract_path};
-use std::{io::Read, path::Path, sync::Arc};
+//! them. A file in a root other than the first is written `@root:path`,
+//! where `root` is that root's id or, when no other root shares it, its
+//! display name; a bare `@path` takes the first root that holds the file.
+//! The token stays in the prompt text; each one that names a file also goes
+//! to the harness as a content block: an embedded `resource` with the file's
+//! text when the session advertises embedded context and the file fits the
+//! dispatch budget, otherwise a `resource_link` (the ACP baseline every agent
+//! accepts). Nothing is persisted: the durable prompt keeps only its text.
+use super::attached_context::files::{
+    DISPATCH_BYTES, FILE_BYTES, Resources, file_is_excluded, secrets::path_is_secret,
+};
+use crate::workspace::{
+    RootIdentity, Workspace, decode_text_bytes, leaf_identity, open_workspace_text_file,
+    search::handle_contract_relative, validate_contract_path,
+};
+use std::{fs::File, io::Read, path::Path, sync::Arc};
 
 /// Distinct files one prompt sends; later mentions stay text only.
 pub(crate) const MENTION_COUNT: usize = 16;
-/// `@` tokens looked up per prompt, so a prompt full of `@` words never
-/// costs more than this many path probes per root.
+/// Spellings looked up per prompt (a token, and its form without trailing
+/// punctuation when that differs), so a prompt full of `@` words never costs
+/// more than this many lookups in each root.
 const PROBE_COUNT: usize = 4 * MENTION_COUNT;
 /// The longest token that can name a file; the path index holds no longer
 /// relative path.
@@ -36,14 +44,19 @@ pub(crate) struct Mention {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Mentions(Option<Arc<[Mention]>>);
 
+impl Mention {
+    /// What holding this mention costs, link fields first, then any text.
+    fn link_bytes(&self) -> usize {
+        std::mem::size_of::<Self>() + self.uri.len() + self.name.len()
+    }
+}
+
 impl Mentions {
     pub(crate) fn retained_bytes(&self) -> usize {
         self.0.as_ref().map_or(0, |all| {
-            std::mem::size_of_val(&**all)
-                + all
-                    .iter()
-                    .map(|m| m.uri.len() + m.name.len() + m.text.as_ref().map_or(0, String::len))
-                    .sum::<usize>()
+            all.iter()
+                .map(|m| m.link_bytes() + m.text.as_ref().map_or(0, String::len))
+                .sum()
         })
     }
     /// The content blocks, embedded only while `embedded` is still offered.
@@ -75,17 +88,28 @@ impl super::intent::Prompt {
         blocks.extend(self.mentions.blocks(embedded));
         Ok(blocks)
     }
+    /// The dispatch bytes this prompt and its staged `files` leave for
+    /// mentions; mentions resolved within it keep [`Self::fits_dispatch`].
+    pub(crate) fn mention_budget(&self, files: &Resources) -> usize {
+        DISPATCH_BYTES.saturating_sub(self.retained_bytes() + files.retained_bytes())
+    }
+    pub(crate) fn fits_dispatch(&self, files: &Resources) -> bool {
+        self.retained_bytes() + files.retained_bytes() <= DISPATCH_BYTES
+    }
 }
 
 /// The `@` tokens of `text` that could name a file, in order and without
-/// repeats: each starts the text or follows whitespace, and is either quoted
-/// (`@"a b.txt"`) or runs to the next whitespace.
+/// repeats: each starts the text or follows whitespace or an opening
+/// parenthesis that does, and is either quoted (`@"a b.txt"`) or runs to the
+/// next whitespace.
 pub(crate) fn mention_tokens(text: &str) -> Vec<&str> {
     let mut tokens: Vec<&str> = Vec::new();
-    let mut previous = None;
+    let (mut previous, mut before) = (None, None);
     for (index, character) in text.char_indices() {
-        let starts = character == '@' && previous.is_none_or(char::is_whitespace);
-        previous = Some(character);
+        let opens = |c: Option<char>| c.is_none_or(char::is_whitespace);
+        let starts =
+            character == '@' && (opens(previous) || previous == Some('(') && opens(before));
+        (before, previous) = (previous, Some(character));
         if !starts {
             continue;
         }
@@ -108,72 +132,132 @@ pub(crate) fn mention_tokens(text: &str) -> Vec<&str> {
     tokens
 }
 
-/// Resolves `tokens` against `roots` in root order; a token that names no
-/// regular file inside a root stays text. Embedded text is read only when
-/// `embed` is set, for files no larger than the per-file cap and while
-/// `budget` bytes remain; credential files are only ever linked.
+/// A project root a mention may name, with the display name the composer
+/// shows for it.
+pub(crate) struct MentionRoot {
+    pub(crate) workspace: Workspace,
+    pub(crate) name: String,
+}
+
+/// Resolves `tokens` against `roots`: a root-qualified token in its root
+/// only, a bare one in root order. A token that names no regular file inside
+/// a root stays text, as does a file the attachment ignore rules exclude.
+/// Each mention is charged to `budget`; its text is read only when `embed`
+/// is set, the file is no larger than the per-file cap, still fits, and is
+/// not a credential file, which is only ever linked.
 pub(crate) fn resolve(
     tokens: &[String],
-    roots: &[Workspace],
+    roots: &[MentionRoot],
     embed: bool,
     budget: usize,
 ) -> Mentions {
     let mut budget = budget;
+    let mut probes = 0;
+    let mut seen: Vec<RootIdentity> = Vec::new();
     let mut found: Vec<Mention> = Vec::new();
     for token in tokens {
-        if found.len() == MENTION_COUNT {
+        if found.len() == MENTION_COUNT || probes == PROBE_COUNT {
             break;
         }
         let trimmed = token.trim_end_matches(TRAILING);
-        let candidates = [token.as_str(), trimmed];
-        let mention = candidates
-            .iter()
-            .filter(|path| !path.is_empty())
-            .find_map(|path| {
-                roots
-                    .iter()
-                    .find_map(|root| mention(root, path, embed, &mut budget))
-            });
-        if let Some(mention) = mention
-            && !found.iter().any(|seen| seen.uri == mention.uri)
-        {
+        let spellings = std::iter::once(token.as_str())
+            .chain((trimmed != token && !trimmed.is_empty()).then_some(trimmed));
+        let opened = spellings.take(PROBE_COUNT - probes).find_map(|spelling| {
+            probes += 1;
+            let (roots, relative) = target(spelling, roots)?;
+            roots
+                .iter()
+                .find_map(|root| open(&root.workspace, relative))
+        });
+        let Some((root, file, size, identity, relative)) = opened else {
+            continue;
+        };
+        if seen.contains(&identity) {
+            continue;
+        }
+        seen.push(identity);
+        if let Some(mention) = mention(root, file, size, &relative, embed, &mut budget) {
             found.push(mention);
         }
     }
     Mentions((!found.is_empty()).then(|| found.into()))
 }
 
-fn mention(root: &Workspace, relative: &str, embed: bool, budget: &mut usize) -> Option<Mention> {
-    validate_contract_path(relative, false).ok()?;
-    // Opened once beneath the held root, no-follow: a link cannot lead out.
-    let file = open_workspace_text_file(root.root(), root.root_identity(), relative, None).ok()?;
-    let size = file.metadata().ok()?.len();
-    let path = root.root().join(relative);
-    let uri = url::Url::from_file_path(&path).ok()?.to_string();
-    let name = relative.rsplit('/').next().unwrap_or(relative).to_owned();
-    let cap = FILE_BYTES.min(*budget);
-    let text = (embed && size <= cap as u64 && !path_is_secret(Path::new(relative), false))
-        .then(|| read_text(file, cap))
-        .flatten();
-    if let Some(text) = &text {
-        *budget -= text.len();
-    }
-    Some(Mention {
-        uri,
-        name,
-        size,
-        text,
-    })
+/// The roots `spelling` may name and its path: `root:path` names the one
+/// root with that id, or the one root with that display name; any other
+/// `:` (a Windows stream or drive) names nothing.
+fn target<'a>(spelling: &'a str, roots: &'a [MentionRoot]) -> Option<(&'a [MentionRoot], &'a str)> {
+    let Some((qualifier, relative)) = spelling.split_once(':') else {
+        return Some((roots, spelling));
+    };
+    let by_id = roots
+        .iter()
+        .position(|r| r.workspace.root_id() == qualifier);
+    let mut named = roots
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.name == qualifier);
+    let index = by_id.or_else(|| match (named.next(), named.next()) {
+        (Some((index, _)), None) => Some(index),
+        _ => None,
+    })?;
+    Some((std::slice::from_ref(&roots[index]), relative))
 }
 
-/// The file's text when it is UTF-8 and still within `cap` as read.
-fn read_text(file: std::fs::File, cap: usize) -> Option<String> {
+type Opened<'a> = (&'a Workspace, File, u64, RootIdentity, String);
+
+/// Opens `relative` beneath the held root, no-follow, so a link cannot lead
+/// out; the result carries the file's identity and the path the filesystem
+/// itself names it by (never a short name, stream or other alias as typed).
+fn open<'a>(root: &'a Workspace, relative: &str) -> Option<Opened<'a>> {
+    if relative.contains([':', '\0']) {
+        return None;
+    }
+    validate_contract_path(relative, false).ok()?;
+    let file = open_workspace_text_file(root.root(), root.root_identity(), relative, None).ok()?;
+    let metadata = file.metadata().ok()?;
+    let identity = leaf_identity(&file, &metadata).ok()?;
+    let canonical = handle_contract_relative(root, &file).ok()?;
+    Some((root, file, metadata.len(), identity, canonical))
+}
+
+fn mention(
+    root: &Workspace,
+    file: File,
+    size: u64,
+    relative: &str,
+    embed: bool,
+    budget: &mut usize,
+) -> Option<Mention> {
+    let path = root.root().join(relative);
+    // The staged-file rules apply, failing closed: an excluded file is not sent.
+    if file_is_excluded(&path).unwrap_or(true) {
+        return None;
+    }
+    let mut mention = Mention {
+        uri: url::Url::from_file_path(&path).ok()?.to_string(),
+        name: relative.rsplit('/').next().unwrap_or(relative).to_owned(),
+        size,
+        text: None,
+    };
+    *budget = budget.checked_sub(mention.link_bytes())?;
+    let cap = FILE_BYTES.min(*budget);
+    if embed && size <= cap as u64 && !path_is_secret(Path::new(relative), false) {
+        mention.text = read_text(file, cap);
+    }
+    *budget -= mention.text.as_ref().map_or(0, String::len);
+    Some(mention)
+}
+
+/// The file's text when it is text by the text view's rule (UTF-8, no NUL)
+/// and still within `cap` as read.
+fn read_text(file: File, cap: usize) -> Option<String> {
     let mut bytes = Vec::new();
     file.take(cap as u64 + 1).read_to_end(&mut bytes).ok()?;
     if bytes.len() > cap {
         return None;
     }
-    String::from_utf8(bytes).ok()
+    decode_text_bytes(bytes).ok()
 }
 
 #[cfg(test)]

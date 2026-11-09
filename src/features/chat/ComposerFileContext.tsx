@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { IconButton } from "../../ui/IconButton";
 import { Paperclip } from "../../ui/leanIcons";
 import type * as AttachChunk from "./ComposerAttach";
@@ -45,7 +46,6 @@ export function ComposerFileParts({
   fieldRef,
   fieldId,
   text,
-  onTextChange,
   imageAction,
   hidden,
   disabled,
@@ -56,7 +56,6 @@ export function ComposerFileParts({
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   fieldId: string;
   text: string;
-  onTextChange: (text: string) => void;
   imageAction?: { disabled: boolean; onChoose: () => void };
   hidden: boolean;
   /** The field cannot be edited. */
@@ -73,10 +72,12 @@ export function ComposerFileParts({
           disabled={disabled}
           fieldId={fieldId}
           text={text}
-          onTextChange={onTextChange}
         />
       ) : null}
-      {files.attachPresses > 0 && chatId ? (
+      {/* In the desktop app it mounts with the chat, so a batch native
+          already holds (staged before a reload) shows its chips; elsewhere
+          only a press can explain why attaching is unavailable. */}
+      {chatId && (files.attachPresses > 0 || isTauriRuntime()) ? (
         <AttachPart
           part="ComposerAttach"
           chatId={chatId}

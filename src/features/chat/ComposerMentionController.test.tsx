@@ -15,8 +15,12 @@ import { ComposerMentionController } from "./ComposerMentionController";
 const initial = useWorkbenchStore.getState();
 const invoke = vi.fn();
 
-function match(relativePath: string) {
-  return { rootId: "root-a", relativePath, positions: [] };
+function match(path: string) {
+  // "root:path" names another root's file.
+  const [rootId, relativePath] = path.includes(":")
+    ? path.split(":")
+    : ["root-a", path];
+  return { rootId, relativePath, positions: [] };
 }
 
 function answer(paths: string[]) {
@@ -29,7 +33,7 @@ function answer(paths: string[]) {
   };
 }
 
-function Composer({ start = "" }: { start?: string }) {
+function Composer({ start = "", role }: { start?: string; role?: "combobox" }) {
   const [text, setText] = useState(start);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   return (
@@ -38,6 +42,8 @@ function Composer({ start = "" }: { start?: string }) {
         <textarea
           ref={fieldRef}
           aria-label="Message agent"
+          role={role}
+          aria-expanded={role ? false : undefined}
           value={text}
           onChange={(event) => setText(event.target.value)}
         />
@@ -47,7 +53,6 @@ function Composer({ start = "" }: { start?: string }) {
         disabled={false}
         fieldId="message"
         text={text}
-        onTextChange={setText}
       />
     </form>
   );
@@ -136,6 +141,77 @@ describe("composer @ file picker", () => {
     });
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(field.value).toBe("@sr");
+  });
+
+  it("names another root's file by that root and skips paths no token can hold", async () => {
+    useWorkbenchStore.setState({
+      project: {
+        id: "project-a",
+        name: "Project",
+        roots: [
+          { id: "root-a", name: "app" },
+          { id: "root-b", name: "lib" },
+        ],
+      } as never,
+    });
+    invoke.mockResolvedValue(
+      answer(["src/a.rs", "root-b:src/b.rs", 'say "hi".md', 'odd"name.md']),
+    );
+    render(<Composer />);
+    const field = screen.getByRole<HTMLTextAreaElement>("textbox");
+    field.focus();
+    await type(field, "(@sr");
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.getAttribute("aria-label"))).toEqual([
+      "src/a.rs",
+      "lib/src/b.rs",
+      'odd"name.md',
+    ]);
+    await act(async () => {
+      fireEvent.click(options[1]!);
+    });
+    expect(field.value).toBe("(@lib:src/b.rs ");
+  });
+
+  it("stays open while a quoted path with spaces is typed", async () => {
+    invoke.mockResolvedValue(answer(["docs/my notes.md"]));
+    render(<Composer />);
+    const field = screen.getByRole<HTMLTextAreaElement>("textbox");
+    field.focus();
+    await type(field, 'Read @"docs/my no');
+    expect(await screen.findByRole("option")).toHaveAccessibleName(
+      "docs/my notes.md",
+    );
+    expect(invoke).toHaveBeenLastCalledWith(
+      "quick_open_query",
+      expect.objectContaining({
+        request: expect.objectContaining({ query: "docs/my no" }),
+      }),
+    );
+    await act(async () => {
+      fireEvent.keyDown(field, { key: "Enter" });
+    });
+    expect(field.value).toBe('Read @"docs/my notes.md" ');
+  });
+
+  it("gives a combobox field back its own attributes once the caret leaves the token", async () => {
+    invoke.mockResolvedValue(answer(["src/main.rs"]));
+    render(<Composer role="combobox" />);
+    const field = screen.getByRole<HTMLTextAreaElement>("combobox");
+    field.focus();
+    await type(field, "@ma");
+    await screen.findByRole("option");
+    expect(field).toHaveAttribute("aria-expanded", "true");
+    expect(field).toHaveAttribute("aria-autocomplete", "list");
+    await type(field, "@ma then");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(field).toHaveAttribute("aria-expanded", "false");
+    for (const name of [
+      "aria-autocomplete",
+      "aria-controls",
+      "aria-activedescendant",
+    ])
+      expect(field).not.toHaveAttribute(name);
   });
 
   it("does not open for an @ inside a word", async () => {

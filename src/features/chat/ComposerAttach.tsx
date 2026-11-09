@@ -60,7 +60,8 @@ function refusal(chatId: string): string | null {
 }
 
 /**
- * Lazy: loads with the composer's first attach. Picks files in the native
+ * Lazy: loads with a desktop chat's composer, so a batch native already
+ * holds shows its chips, or elsewhere with the first attach. Picks files in the native
  * dialog, which stages them in Rust (the WebView never sees a path or the
  * bytes), shows the chat's staged files as chips and removes them. Images
  * go through the composer's image path when the harness takes images.
@@ -114,7 +115,8 @@ export function ComposerAttach({
     ) => {
       chain.current = chain.current.then(async () => {
         const target = owner(chatId);
-        if (!target) return setNotice(refusal(chatId) ?? "");
+        // Only an action the person took says why it could not run.
+        if (!target) return done && setNotice(refusal(chatId) ?? "");
         setBusy(true);
         try {
           const next = await change(target);
