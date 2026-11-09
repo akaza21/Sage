@@ -281,8 +281,10 @@ fn project_turn(
 ) -> Result<TurnProjection, StoreError> {
     let (browser_operations, browser_operations_collapsed) =
         super::browser_operations::load(connection, row)?;
+    let prompt = super::super::transcript_quote::load_prompt_metadata(connection, &row.id)?;
     Ok(TurnProjection {
-        attached_context: super::super::transcript_quote::load_context(connection, &row.id)?,
+        attached_context: prompt.attached_context,
+        session_action: prompt.session_action,
         id: SageTurnId::parse(row.id.clone()).map_err(|_| StoreError::Corrupt("turn id"))?,
         session_id: SageAgentSessionId::parse(row.session_id.clone())
             .map_err(|_| StoreError::Corrupt("session id"))?,
@@ -308,6 +310,7 @@ fn project_turn(
         browser_operations: BoundedVec::new("browserOperations", browser_operations)
             .map_err(|_| StoreError::Corrupt("browser operations bound"))?,
         browser_operations_collapsed,
+        session_activities: super::turn_activity_facts::load(connection, row)?,
     })
 }
 

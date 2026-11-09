@@ -97,6 +97,13 @@
     },
     {
       "event": "item",
+      "externalItemId": "thought:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "completed",
+      "text": "Let me follow the steps. Step 1: read notes.txt. Step 2: run node command. Step 3: create result.txt with PONG. Step 4: reply PONG.\n\nLet me do steps 1 and 2 in parallel since they're independent."
+    },
+    {
+      "event": "item",
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
@@ -108,6 +115,13 @@
       "outputTokens": 4,
       "contextWindow": 200000
     },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "completed",
+      "text": "PONG"
+    },
     { "event": "turn", "state": "completed" }
   ],
   "notes": [
@@ -115,6 +129,7 @@
     "opencode omits kind on the completing tool_call_update for all three tools. The category asserted on every completed event therefore proves the translator retains the category recorded when the tool started, rather than defaulting a kind-less completion to Other.",
     "The tools interleave. The execute tool starts before the read completes, so the translator must track concurrent tool identities rather than assuming one open tool at a time.",
     "Tool labels are rewritten on completion from the tool name to the target path. The asserted labels keep a real captured path and show the drive-qualified prefix removed at projection time, so this trace also covers redaction on a genuine absolute path.",
-    "opencode states the context window on usage_update and the input and output token split on the prompt result. Neither frame states both, so the turn-scoped usage snapshot joins the two stated facts and infers nothing; had the split never arrived, no usage would be recorded."
+    "opencode states the context window on usage_update and the input and output token split on the prompt result. Neither frame states both, so the turn-scoped usage snapshot joins the two stated facts and infers nothing; had the split never arrived, no usage would be recorded.",
+    "ACP has no message end, so the translator closes output itself: answer text after an untagged thought completes that thought block (a later thought opens the next block's item), and the completed prompt response completes the turn's still-open text, thought and plan items before the turn terminal."
   ]
 }

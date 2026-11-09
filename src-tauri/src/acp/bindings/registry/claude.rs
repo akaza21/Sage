@@ -35,6 +35,8 @@ pub(super) fn capabilities(
         // (testdata/acp/claude/observed-0760-fork.json); the live offer and
         // the characterised-binding gate still intersect it.
         native_session_fork: true,
+        native_session_compact: false,
+        native_review: false,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,
@@ -42,6 +44,7 @@ pub(super) fn capabilities(
         multi_root_extension_schema_id: None,
         model_count: 0,
         prompt_resources: true,
+        prompt_images: true,
         config_count: 0,
     })
 }

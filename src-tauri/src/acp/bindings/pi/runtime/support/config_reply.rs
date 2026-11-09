@@ -10,7 +10,12 @@ impl PiRuntime {
     ) -> Result<ConfigReply, AdapterRuntimeError> {
         self.current_model = state.model.as_ref().map(model_key).transpose()?;
         self.current_thinking = state.thinking_level;
-        let _ = (state.has_session, state.is_streaming);
+        let _ = state.is_streaming;
+        self.session_dir = state
+            .session_file
+            .as_deref()
+            .and_then(|file| std::path::Path::new(file).parent())
+            .map(std::path::Path::to_path_buf);
         if (self.refresh_thinking_after_model || self.available_thinking.is_empty())
             && self.active_turn.is_some()
             && self.thinking_request_command.is_none()
@@ -71,37 +76,5 @@ impl PiRuntime {
         }
         self.current_thinking = Some(level);
         Ok((Some(AdapterEvent::IgnoredDuplicate), None))
-    }
-}
-
-impl PiRuntime {
-    pub(super) fn command_session_reset(&mut self) -> Result<ConfigReply, AdapterRuntimeError> {
-        self.commands = std::sync::Arc::default();
-        self.commands_pending = false;
-        self.commands_discovered = false;
-        self.next_session = self
-            .next_session
-            .checked_add(1)
-            .filter(|value| *value <= i64::MAX as u64)
-            .ok_or(AdapterRuntimeError::Operation)?;
-        let external = crate::acp::intent::ExternalId::new(
-            "piSessionId",
-            format!(
-                "pi-session-{}-{}",
-                self.runtime_epoch.get(),
-                self.next_session
-            ),
-        )
-        .map_err(|_| AdapterRuntimeError::Operation)?;
-        self.external_session = Some(external.clone());
-        self.recent_cancelled_dialogs.clear();
-        self.available_thinking.clear();
-        Ok((
-            Some(AdapterEvent::SessionReady {
-                id: self.identity(external, None, None),
-                loaded: false,
-            }),
-            None,
-        ))
     }
 }

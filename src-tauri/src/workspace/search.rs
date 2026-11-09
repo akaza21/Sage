@@ -13,6 +13,8 @@ mod literal_match;
 #[cfg(test)]
 mod parallel_tests;
 mod path_filter;
+mod replace;
+pub(crate) mod replace_command;
 #[cfg(test)]
 mod speed_bench;
 mod types;
@@ -72,6 +74,7 @@ mod tests {
             query: query.into(),
             case_sensitive: false,
             whole_word: false,
+            use_regex: false,
             include_patterns: Vec::new(),
             exclude_patterns: Vec::new(),
             use_ignore_files: true,
@@ -265,6 +268,49 @@ mod tests {
             .map(|match_value| match_value.column_number)
             .collect::<Vec<_>>();
         assert_eq!(matches, vec![1, 29, 37]);
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn regex_search_finds_each_match_and_refuses_an_invalid_expression() {
+        let (path, root) = fixture_root();
+        fs::write(path.join("regex.txt"), "width: 4px; height: 12PX;\nnone\n").unwrap();
+        let result = SearchEngine::new(test_limits())
+            .search(
+                WorkspaceSearchRequest {
+                    use_regex: true,
+                    ..request(r"\d+px")
+                },
+                vec![root],
+            )
+            .unwrap();
+        let columns = result
+            .matches
+            .iter()
+            .filter(|found| found.resource.relative_path == "regex.txt")
+            .map(|found| found.column_number)
+            .collect::<Vec<_>>();
+        // Case folds unless Match case is on.
+        assert_eq!(columns, vec![8, 21]);
+
+        let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
+        let error = SearchEngine::new(test_limits())
+            .search(
+                WorkspaceSearchRequest {
+                    use_regex: true,
+                    ..request("(open")
+                },
+                vec![SearchRoot {
+                    root_id: "root-test".into(),
+                    root_name: "fixture".into(),
+                    source: SearchRootSource::Available(workspace),
+                }],
+            )
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("regular expression is invalid"),
+            "{error}"
+        );
         fs::remove_dir_all(path).unwrap();
     }
 

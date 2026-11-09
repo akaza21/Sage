@@ -33,11 +33,13 @@ pub(crate) mod runtime;
 pub(crate) mod scheduler;
 pub(crate) mod semantic_ingress;
 pub(crate) mod service;
+pub(crate) mod session_action;
 pub(crate) mod session_config;
 pub(crate) use bindings::adapter::slash_commands;
 pub(crate) mod store;
 pub(crate) mod transcript_quote;
 pub(crate) mod transport;
+pub(crate) mod usage;
 
 #[cfg(all(test, feature = "acp-fixture"))]
 mod fixture_protocol;
@@ -46,4 +48,5 @@ mod fixture_protocol;
 mod tests {
     mod contract;
     mod limits;
+    mod render_parity;
 }

@@ -16,7 +16,10 @@ fn non_admitted_browser_version_prepares_a_normal_session_and_releases_guard() {
 
 #[test]
 fn admitted_browser_version_keeps_mcp_and_guard() {
-    browser_activation("codex-cli 0.146.0", true);
+    browser_activation(
+        &crate::acp::bindings::codex::test_identity::version_line("codex-cli"),
+        true,
+    );
 }
 
 fn browser_activation(version: &str, browser_admitted: bool) {

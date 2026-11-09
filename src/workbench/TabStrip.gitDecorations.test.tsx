@@ -5,6 +5,7 @@ import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useWorkbenchStore } from "../app/store";
 import type { GitFileState } from "../domain/repository";
 import type { WorkbenchTab } from "../domain/workbench";
+import { settleLazyModules } from "../test/settleLazyModules";
 import { TabStrip } from "./TabStrip";
 
 const initialState = useWorkbenchStore.getState();
@@ -67,8 +68,10 @@ it("marks File tabs with their Git status and follows refreshes (EP-13)", async 
   });
 
   render(<TabStrip showNewChat={false} />);
+  // The decorations load lazily: wait for the import, not a one-second clock.
+  await settleLazyModules();
 
-  const edited = await screen.findByRole("tab", { name: "a.ts, Modified" });
+  const edited = screen.getByRole("tab", { name: "a.ts, Modified" });
   expect(edited).toHaveAttribute("title", "src/a.ts");
   expect(edited.querySelector(".git-badge")).toHaveTextContent("M");
   expect(

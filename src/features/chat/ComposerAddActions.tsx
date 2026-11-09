@@ -17,6 +17,14 @@ import {
   sessionModeActions,
   flattenChoices,
 } from "../../domain/acpSessionConfigControls";
+import { withoutGovernedModes } from "../../domain/governedSessionModes";
+import type { SessionAccessModeCapability } from "../../domain/sessionAccessMode";
+
+/** The "+" menu's own actions; each is offered only while present. */
+export type ComposerMenuActions = Pick<
+  ComponentProps<typeof ComposerAddActions>,
+  "imageAction" | "onOpenGoal" | "onCompact"
+>;
 
 export function ComposerOptionsMenu({
   id,
@@ -26,8 +34,11 @@ export function ComposerOptionsMenu({
   canSelectEffort,
   focused,
   onModeRemoved,
-  ...actions
+  accessModes,
+  ...given
 }: ComponentProps<typeof ComposerAddActions> & {
+  /** The harness's access modes; those carrying session modes own them. */
+  accessModes?: readonly SessionAccessModeCapability[];
   id: string;
   selectionKey: string;
   canSelectEffort: boolean;
@@ -36,11 +47,16 @@ export function ComposerOptionsMenu({
   triggerRef: RefObject<HTMLButtonElement | null>;
   onDismiss: () => void;
 }) {
+  const actions = {
+    ...given,
+    sessionConfig: withoutGovernedModes(given.sessionConfig, accessModes),
+  };
   const actionsKey = JSON.stringify([
     selectionKey,
     actions.sessionConfig?.sageAgentSessionId,
     Boolean(actions.imageAction),
     Boolean(actions.onOpenGoal),
+    Boolean(actions.onCompact),
     canSelectEffort,
     sessionModeActions(actions.sessionConfig).map((mode) => mode.id),
     sessionConfigControls(actions.sessionConfig, "other").map((option) => [
@@ -85,6 +101,7 @@ export function ComposerAddActions({
   disabled,
   imageAction,
   onOpenGoal,
+  onCompact,
   onOpenEffort,
   onClose,
   onSetSessionMode,
@@ -96,6 +113,8 @@ export function ComposerAddActions({
   disabled: boolean;
   imageAction?: { disabled: boolean; onChoose: () => void };
   onOpenGoal?: () => void;
+  /** Present only while the session can compact its context. */
+  onCompact?: () => void;
   onOpenEffort?: () => void;
   onClose: () => void;
   onSetSessionMode: (id: string) => Promise<unknown>;
@@ -146,6 +165,25 @@ export function ComposerAddActions({
           </span>
         </button>
       ) : null}
+      {onCompact ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-item composer__add-action"
+          aria-label="Compact context"
+          aria-description="Summarize earlier turns to free context"
+          tabIndex={-1}
+          onClick={() => {
+            onClose();
+            onCompact();
+          }}
+        >
+          <span>Compact context</span>
+          <span className="composer__action-description">
+            Summarize earlier turns to free context
+          </span>
+        </button>
+      ) : null}
       {onOpenEffort ? (
         <button
           type="button"
@@ -169,7 +207,13 @@ export function ComposerAddActions({
         }}
       />
       {modes.length ? (
-        <div role="group" aria-label="Session mode">
+        <div
+          role="group"
+          aria-label="Session mode"
+          aria-description={sessionConfig?.restored}
+          title={sessionConfig?.restored}
+          data-restored={sessionConfig?.restored ? true : undefined}
+        >
           {modes.map((mode) => {
             const plan = mode.name.toLocaleLowerCase() === "plan";
             const label = plan ? "Plan mode" : mode.name || mode.id;

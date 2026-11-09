@@ -184,13 +184,11 @@ fn real_opencode_survives_its_production_launch_spec_environment() {
         super::opencode::OpenCodeBindingRegistration::admitted_for_test(&shim, &reported_version),
     );
     let binding = registration.admitted().expect("admitted binding");
-    let mut runtime = Box::new(
-        super::opencode::OpenCodeRuntimeFactory::from_admitted_binding(
-            registration,
-            binding,
-            project_root,
-        ),
-    )
+    let mut runtime = Box::new(super::StandardAcpRuntimeFactory::from_admitted_binding(
+        registration,
+        binding,
+        project_root,
+    ))
     .construct(
         crate::acp::contract::RuntimeEpoch::new(23).expect("epoch"),
         crate::acp::contract::SageAgentSessionId::parse("session-opencode-launch")

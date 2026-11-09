@@ -45,6 +45,7 @@ impl CodexAdapter {
         self.provisional_turn
             .as_ref()
             .is_some_and(|pending| std::time::Instant::now() >= pending.deadline)
+            || self.action_handoff_expired()
     }
 
     pub(crate) fn has_provisional_turn(&self) -> bool {

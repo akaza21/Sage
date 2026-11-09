@@ -4,7 +4,13 @@ import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { errorMessage } from "../../domain/errors";
 import { harnessAvailability } from "../chat/harnessAvailability";
 import { LazyHarnessNotice } from "../chat/lazyParts";
+import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { CodexAccountSettings } from "./CodexAccountSettings";
 import { SettingsRow } from "./SettingsRow";
+
+// The user-defined agent editor loads only when Harnesses is open, below
+// the harness list, so it arrives without a loading notice.
+const loadCustomAgentSettings = () => import("./CustomAgentSettings");
 
 export function AgentHarnessSettings() {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
@@ -97,9 +103,19 @@ export function AgentHarnessSettings() {
                   {selected ? "Check models and sign-in" : "Select and check"}
                 </button>
               </SettingsRow>
+              {selected &&
+              harness.accountModelDiscovery &&
+              !availability.disabledReason ? (
+                <CodexAccountSettings disabled={disabled || !projectId} />
+              ) : null}
               {harness.signIn && !availability.disabledReason ? (
                 <p>
-                  Run <code>{harness.signIn.command}</code> in a terminal.{" "}
+                  {harness.signIn.command ? (
+                    <>
+                      Run <code>{harness.signIn.command}</code> in a
+                      terminal.{" "}
+                    </>
+                  ) : null}
                   {harness.signIn.hint}
                 </p>
               ) : null}
@@ -108,6 +124,12 @@ export function AgentHarnessSettings() {
         })}
       </div>
       {!harnesses.length ? <p role="status">No harnesses discovered.</p> : null}
+      <LazyModuleBoundary
+        label="Your ACP agents"
+        fallback={null}
+        load={loadCustomAgentSettings}
+        render={(CustomAgentSettings) => <CustomAgentSettings />}
+      />
       <LazyHarnessNotice />
     </>
   );

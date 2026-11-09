@@ -294,6 +294,96 @@ describe("per-Chat disposable ownership", () => {
     });
   });
 
+  it("reports a refused row archive, restore or delete on that row, not in the active Chat", async () => {
+    const archiveRefusal = "Stop this Chat's running turn before archiving it";
+    vi.spyOn(getWorkbenchPorts().chat, "archiveChat").mockImplementationOnce(
+      async (_request, expectedTransitionEpoch) => ({
+        committed: false,
+        transitionEpoch: expectedTransitionEpoch,
+        snapshot: null,
+        recoveryError: archiveRefusal,
+      }),
+    );
+    expect(
+      await useWorkbenchStore
+        .getState()
+        .archiveChat(chatB.id, undefined, "row"),
+    ).toBe(false);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      error: null,
+      chatRowError: {
+        projectId: "project-a",
+        chatId: chatB.id,
+        action: "archive",
+        message: archiveRefusal,
+      },
+    });
+
+    vi.spyOn(getWorkbenchPorts().chat, "archiveChat").mockImplementation(
+      async (_request, expectedTransitionEpoch) => ({
+        committed: true,
+        transitionEpoch: expectedTransitionEpoch + 1,
+        snapshot: projection([chatA], chatA.id, expectedTransitionEpoch + 1, [
+          { id: chatB.id, title: chatB.title },
+        ]),
+        recoveryError: null,
+      }),
+    );
+    expect(await useWorkbenchStore.getState().archiveChat(chatB.id)).toBe(true);
+    const refusal = "Stop this Chat's running turn before deleting it";
+    vi.spyOn(getWorkbenchPorts().chat, "deleteChat").mockImplementation(
+      async (_request, expectedTransitionEpoch) => ({
+        committed: false,
+        transitionEpoch: expectedTransitionEpoch,
+        snapshot: null,
+        recoveryError: refusal,
+      }),
+    );
+
+    expect(await useWorkbenchStore.getState().deleteChat(chatB.id)).toBe(false);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      error: null,
+      projectTransitioning: false,
+      chatRowError: {
+        projectId: "project-a",
+        chatId: chatB.id,
+        action: "delete",
+        message: refusal,
+      },
+    });
+
+    vi.spyOn(getWorkbenchPorts().chat, "restoreChat").mockImplementation(
+      async (_request, expectedTransitionEpoch) => ({
+        committed: false,
+        transitionEpoch: expectedTransitionEpoch,
+        snapshot: null,
+        recoveryError: "Restore refused",
+      }),
+    );
+    expect(
+      await useWorkbenchStore
+        .getState()
+        .restoreChat(chatB.id, undefined, "row"),
+    ).toBe(false);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      error: null,
+      chatRowError: {
+        chatId: chatB.id,
+        action: "restore",
+        message: "Restore refused",
+      },
+    });
+
+    // Other restore entry points keep reporting in the workbench.
+    expect(await useWorkbenchStore.getState().restoreChat(chatB.id)).toBe(
+      false,
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      error: "Restore refused",
+      chatRowError: null,
+    });
+  });
+
   it("preserves ownership through archive/restore and lets Handoff replace only the target draft", async () => {
     useWorkbenchStore.getState().setComposerText("Draft A");
     await useWorkbenchStore.getState().activateChat(chatB.id);

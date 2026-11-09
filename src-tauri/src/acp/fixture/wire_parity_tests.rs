@@ -342,7 +342,7 @@ fn pi_second_turn_cases_answer_a_bare_second_prompt() {
             &lines(&[
                 json!({"type":"get_state","id":"pi-1"}),
                 json!({"type":"get_available_models","id":"pi-2"}),
-                json!({"type":"new_session","id":"pi-3"}),
+                json!({"type":"get_state","id":"pi-3"}),
                 json!({"type":"prompt","id":"pi-4","message":"Inspect"}),
                 json!({"type":"get_available_thinking_levels","id":"pi-5"}),
                 json!({"type":"prompt","id":"pi-6","message":"Again"}),

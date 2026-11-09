@@ -13,7 +13,7 @@ import { ChatHarnessControls } from "./ChatHarnessControls";
 
 // The ACP-04 journey reads the composer's Model control in the packaged app;
 // this drives the real control through a fresh Chat's first confirmed Turn.
-const CODEX_VERSION = "codex 0.146.0";
+const CODEX_VERSION = "codex 0.167.0";
 const MODEL_ID = "gpt-5.6";
 const ECHO = "SAGE_ACP04_A_TURN_1";
 const initialState = useWorkbenchStore.getState();

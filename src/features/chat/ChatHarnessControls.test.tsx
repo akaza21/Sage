@@ -8,12 +8,22 @@ import {
   within,
 } from "@testing-library/react";
 import { readFile } from "node:fs/promises";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { preloadSearchablePicker } from "../../ui/searchablePickerLoad";
 
 import {
   harnessModelIdentity,
   rememberHarnessModels,
 } from "../../app/harnessModelCache";
+import { useChatAccessStore } from "../../app/sessionAccessActions";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import { useWorkbenchStore } from "../../app/store";
 import { decodeSessionConfig } from "../../domain/acpSessionConfig";
@@ -24,6 +34,25 @@ import {
 } from "../../ports/workbenchRuntime";
 import { PickerOption } from "../../ui/PickerOption";
 import { ChatHarnessControls } from "./ChatHarnessControls";
+
+// The picker list loads when the window first idles.
+beforeAll(() => preloadSearchablePicker());
+const chatAccess = vi.hoisted(() => ({
+  get: vi.fn(() => Promise.resolve(null)),
+  set: vi.fn(),
+  prepare: vi.fn(),
+  grant: vi.fn(),
+}));
+vi.mock("../../ports/chatAccessChanges", () => ({
+  chatAccessChanges: () => chatAccess,
+}));
+const liveSession = decodeSessionConfig({
+  sageAgentSessionId: "session-1",
+  runtimeEpoch: "1",
+  configRevision: "1",
+  modes: null,
+  configOptions: [],
+});
 
 const noop = () => Promise.resolve();
 // The toolbar's compaction stylesheet decides which controls are laid out.
@@ -108,6 +137,7 @@ beforeEach(async () => {
     ready: true,
     error: null,
   });
+  useChatAccessStore.setState({ modes: {}, error: null });
 });
 
 afterEach(() => {
@@ -602,7 +632,7 @@ describe("last confirmed model label", () => {
       );
       const props = {
         sessionConfig: confirmedModelConfig(),
-        imageAction: { disabled, onChoose: () => {} },
+        addActions: { imageAction: { disabled, onChoose: () => {} } },
       };
       const view = renderControls(props);
       fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
@@ -1484,7 +1514,9 @@ describe("composer permission mode picker", () => {
     useWorkbenchStore.setState({
       projects: [{ id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 }],
     });
-    renderControls({ imageAction: { disabled: false, onChoose: vi.fn() } });
+    renderControls({
+      addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
+    });
     const trigger = screen.getByRole("button", { name: "Composer options" });
     fireEvent.click(trigger);
     expect(
@@ -1505,7 +1537,7 @@ describe("composer permission mode picker", () => {
     async (name) => {
       renderControls({
         projectName: "Alpha",
-        imageAction: { disabled: false, onChoose: vi.fn() },
+        addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
       });
       const opener = screen.getByRole("button", { name });
       const other = screen.getByRole("button", {
@@ -1542,7 +1574,9 @@ describe("composer permission mode picker", () => {
           { id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 },
         ],
       });
-      renderControls({ imageAction: { disabled: false, onChoose: vi.fn() } });
+      renderControls({
+        addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
+      });
       const trigger = screen.getByRole("button", { name: "Composer options" });
       fireEvent.click(trigger);
       const control = screen.getByRole("menuitem", { name: "Add images" });
@@ -1791,7 +1825,7 @@ describe("composer permission mode picker", () => {
 
   it("closes an already open menu when a turn starts", async () => {
     const { rerenderControls } = renderControls({
-      imageAction: { disabled: false, onChoose: vi.fn() },
+      addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
     });
     await openOptions();
     expect(
@@ -1949,7 +1983,7 @@ describe("composer permission mode picker", () => {
       id: "codex",
       brand: "codex" as const,
       name: "Codex",
-      version: "0.146.0",
+      version: "0.167.0",
       bindingId: "codex-app-server",
     };
     const opencode = {
@@ -2027,7 +2061,7 @@ describe("composer permission mode picker", () => {
     ).toHaveTextContent(/^Codex$/);
     expect(
       codexRow.querySelector(".searchable-picker__option-copy"),
-    ).not.toHaveTextContent("0.146.0");
+    ).not.toHaveTextContent("0.167.0");
     expect(codexRow).not.toHaveAccessibleName(/0\.146\.0/);
     expect(
       codexRow.querySelector('use[href="/harness-codex.svg#mark"]'),
@@ -2289,32 +2323,42 @@ describe("composer permission mode picker", () => {
     ).toHaveTextContent("Workspace edits");
   });
 
-  it("persists a chosen mode through the settings port", async () => {
+  it("applies a chosen mode to this chat, leaving the harness default", async () => {
+    chatAccess.set.mockResolvedValue(undefined);
     const save = vi.spyOn(
       getWorkbenchPorts().settings,
       "setSessionAccessModes",
     );
-    renderControls();
+    renderControls({ sessionConfig: liveSession });
     await openOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     fireEvent.click(
       await screen.findByRole("menuitemradio", { name: "Workspace edits" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Switch access" }));
-    expect(save).toHaveBeenCalledWith({ fixture: "workspaceWrite" });
     await waitFor(() =>
-      expect(useSessionAccessModeStore.getState().modes["fixture"]).toBe(
+      expect(chatAccess.set).toHaveBeenCalledWith(
+        "session-1",
         "workspaceWrite",
       ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Access options" }),
+      ).toHaveTextContent("Workspace edits"),
+    );
+    expect(save).not.toHaveBeenCalled();
+    expect(useSessionAccessModeStore.getState().modes["fixture"]).toBe(
+      DEFAULT_SESSION_ACCESS_MODE,
     );
   });
 
   it("states when the chosen mode takes effect", async () => {
-    renderControls();
+    renderControls({ sessionConfig: liveSession });
     await openOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     expect(
-      screen.getByText(/Applies from your next message with this harness./),
+      screen.getByText(/Applies to this chat from your next message./),
     ).toBeInTheDocument();
   });
 
@@ -2370,11 +2414,8 @@ describe("composer permission mode picker", () => {
   });
 
   it("surfaces a save failure instead of silently reverting", async () => {
-    vi.spyOn(
-      getWorkbenchPorts().settings,
-      "setSessionAccessModes",
-    ).mockRejectedValue(new Error("nope"));
-    renderControls();
+    chatAccess.set.mockRejectedValue(new Error("nope"));
+    renderControls({ sessionConfig: liveSession });
     await openOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     fireEvent.click(
@@ -2384,9 +2425,12 @@ describe("composer permission mode picker", () => {
 
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "Permission mode could not be saved.",
+        "This chat's access could not be changed. Try again.",
       ),
     );
+    expect(
+      screen.getByRole("button", { name: "Access options" }),
+    ).toHaveTextContent("Read-only");
   });
 });
 
@@ -2418,7 +2462,7 @@ it("keeps the send binding's access modes when switching between Access and Add"
   renderControls({
     selectedHarnessId: "other",
     accessBindingId: "fixture",
-    imageAction: { disabled: false, onChoose },
+    addActions: { imageAction: { disabled: false, onChoose } },
   });
   const access = screen.getByRole("button", { name: "Access options" });
   const add = screen.getByRole("button", { name: "Composer options" });

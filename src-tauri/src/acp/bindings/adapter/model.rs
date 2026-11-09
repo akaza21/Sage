@@ -92,6 +92,12 @@ pub(crate) trait HarnessAdapter {
     fn provisional_turn_pending(&self) -> bool {
         false
     }
+    /// The active Turn is admitted but the harness has not named it, so a
+    /// cancel cannot address it yet: hold the cancel and send it once the
+    /// Turn binds. False when the harness has nothing to hold it for.
+    fn defer_cancel(&mut self) -> bool {
+        false
+    }
     fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(None)
     }
@@ -152,9 +158,23 @@ pub(crate) trait HarnessAdapter {
     fn accept_oversized_response(&mut self, _id: u64) -> Result<(), AdapterRuntimeError> {
         Err(AdapterRuntimeError::Frame)
     }
+    /// Whether an oversized frame without a request id (such as a large
+    /// tool result) is skipped rather than failing the session.
+    fn skips_oversize_frames(&self) -> bool {
+        false
+    }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         None
     }
+    /// The usage-limit snapshot this binding keeps; `None` when it reports none.
+    fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
+        None
+    }
+    fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
+    /// Stops waiting for a usage read whose caller gave up.
+    fn abandon_usage_read(&mut self) {}
     fn mutate_goal(
         &mut self,
         _action: crate::acp::goal::GoalAction,

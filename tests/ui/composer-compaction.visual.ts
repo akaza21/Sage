@@ -97,7 +97,7 @@ for (const width of [1888, 720, 480]) {
             capabilities: {
               ...session.capabilities,
               protocolVersion: profile.goal
-                ? "codex-app-server-observed-0.146.0"
+                ? "codex-app-server-observed-0.167.0"
                 : "1.0",
             },
           })),

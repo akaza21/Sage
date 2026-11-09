@@ -2,6 +2,7 @@ use serde_json::{Map, Value};
 
 use crate::acp::{
     contract::{RequiredText, SafeText},
+    file_diff::line_change_counts,
     intent::{
         ExternalId, FileChangeFacts, FileChangeOperation, NormalizedPayload, SafeResourceLocation,
         UnavailableResourceReason,
@@ -11,9 +12,7 @@ use crate::acp::{
 
 use super::super::sanitize::sanitized_command_output;
 use super::super::surface::ToolCallContentKind;
-use super::decode::line_count;
 use super::diff_records::{DiffFacts, DiffObservation, DiffRecord, FrameState};
-use super::tools::FILE_CHANGE_SUMMARY;
 use super::{
     AdapterEvent, MAX_EVENTS_PER_FRAME, ResourceMapper, StandardAcpTranslator, TranslationError,
 };
@@ -96,10 +95,12 @@ impl StandardAcpTranslator {
         } else {
             resources.map_absolute(path)
         };
+        // Unknown when the pair is too different to count within the bound.
+        let counts = line_change_counts(old_text, new_text);
         let facts = DiffFacts {
             native_path: path.to_owned(),
-            additions: Some(line_count(new_text)),
-            deletions: Some(line_count(old_text)),
+            additions: counts.map(|(additions, _)| additions),
+            deletions: counts.map(|(_, deletions)| deletions),
             operation,
             unavailable: mapped.as_ref().err().copied(),
         };
@@ -135,8 +136,8 @@ impl StandardAcpTranslator {
                 tool_state: None,
                 payload: NormalizedPayload::file_summary_only(
                     FileChangeFacts {
+                        summary: SafeText::new("fileSummary", operation.describe(&resource))?,
                         resource,
-                        summary: SafeText::new("fileSummary", FILE_CHANGE_SUMMARY)?,
                         additions: facts.additions,
                         deletions: facts.deletions,
                         operation,

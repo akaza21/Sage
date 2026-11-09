@@ -1,5 +1,12 @@
-import type { CSSProperties } from "react";
+import { useId, useRef, useState, type CSSProperties } from "react";
+import type { AcpUsageRequest } from "../../domain/acpUsage";
 import type { ChatUsage } from "./acp/chatUsage";
+import type * as LimitsChunk from "./ComposerUsageLimits";
+import { lazyParts } from "./lazyParts";
+
+const UsageLimits = lazyParts<typeof LimitsChunk>(
+  () => import("./ComposerUsageLimits"),
+);
 
 type UsagePayload = ChatUsage;
 type UsageStyle = CSSProperties & { "--composer-context-usage": string };
@@ -11,7 +18,16 @@ function compactTokenCount(tokens: number): string {
   return tokens.toLocaleString();
 }
 
-export default function UsageContext({ usage }: { usage: UsagePayload }) {
+export default function UsageContext({
+  usage,
+  usageRequest = null,
+}: {
+  usage: UsagePayload;
+  usageRequest?: AcpUsageRequest | null;
+}) {
+  const [limitsOpen, setLimitsOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const limitsId = useId();
   const total = usage.totalTokens;
   const formattedTotal = total.toLocaleString();
   const capacity = usage.contextWindow;
@@ -34,19 +50,43 @@ export default function UsageContext({ usage }: { usage: UsagePayload }) {
         <span className="composer__context-usage-label">
           {compactTokenCount(total)} context
         </span>
-        <span
-          className="composer__context-usage"
-          title={tooltip}
-          role="progressbar"
-          aria-label={`${formattedTotal} used / ${formattedCapacity} total tokens`}
-          tabIndex={0}
-          aria-valuemin={0}
-          aria-valuemax={capacity}
-          aria-valuenow={progress}
-          aria-valuetext={`${formattedTotal} / ${formattedCapacity} tokens used`}
-          style={{ "--composer-context-usage": fill } as UsageStyle}
-        />
+        {usageRequest ? (
+          <button
+            ref={triggerRef}
+            type="button"
+            className="composer__context-usage"
+            title={`${tooltip} · Usage limits`}
+            aria-label={`${formattedTotal} / ${formattedCapacity} context tokens used. Show usage limits`}
+            aria-haspopup="dialog"
+            aria-expanded={limitsOpen}
+            aria-controls={limitsOpen ? limitsId : undefined}
+            onClick={() => setLimitsOpen((open) => !open)}
+            style={{ "--composer-context-usage": fill } as UsageStyle}
+          />
+        ) : (
+          <span
+            className="composer__context-usage"
+            title={tooltip}
+            role="progressbar"
+            aria-label={`${formattedTotal} used / ${formattedCapacity} total tokens`}
+            tabIndex={0}
+            aria-valuemin={0}
+            aria-valuemax={capacity}
+            aria-valuenow={progress}
+            aria-valuetext={`${formattedTotal} / ${formattedCapacity} tokens used`}
+            style={{ "--composer-context-usage": fill } as UsageStyle}
+          />
+        )}
       </span>
+      {limitsOpen && usageRequest ? (
+        <UsageLimits
+          part="default"
+          id={limitsId}
+          request={usageRequest}
+          triggerRef={triggerRef}
+          onDismiss={() => setLimitsOpen(false)}
+        />
+      ) : null}
     </p>
   );
 }

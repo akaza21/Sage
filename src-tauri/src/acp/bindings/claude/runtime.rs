@@ -13,17 +13,13 @@ use crate::acp::{
             EgressResolution, EgressToken, HarnessAdapter, RefusalDetail,
             ResourceMapper as SharedResourceMapper,
         },
-        runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
-        standard_acp::{
-            AcpLaunchAuthority, ClaudeLaunch, profile_for, surface::auth_refusal_detail,
-        },
+        standard_acp::{profile_for, surface::auth_refusal_detail},
     },
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId},
     lifecycle::TurnState,
     limits::LIMITS,
     mcp::{McpAdmission, McpCapabilities},
-    process::LaunchSpec,
     runtime::{later_permission::resolve_later_permission, permissions::PermissionDecision},
     transport::{Frame, OutboundFrame, request_payload_digest},
 };
@@ -39,9 +35,12 @@ mod commands;
 mod egress;
 mod fork;
 mod ingress;
+mod launch;
+mod mode_guard;
 mod session_config;
 mod slash_commands;
 mod support;
+pub(crate) use launch::ClaudeRuntimeFactory;
 use support::*;
 
 const MAX_PENDING_REQUESTS: usize = 16;
@@ -87,6 +86,10 @@ struct TurnIntent {
     client_message_id: RequiredText<512>,
     request_id: u64,
     cancel_written: bool,
+    /// The permission mode Sage selected for this turn.
+    native_mode: Option<&'static str>,
+    /// A mode the user's answer to a permission request moves the turn into.
+    sanctioned_mode: Option<&'static str>,
 }
 
 enum PendingRequest {
@@ -151,6 +154,16 @@ impl ClaudeRuntime {
         ))
     }
 
+    /// The session state machine alone, for a binding that owns the launch
+    /// and speaks to Claude Code itself.
+    pub(crate) fn for_session(
+        binding_digest: [u8; 32],
+        runtime_epoch: RuntimeEpoch,
+        session_id: SageAgentSessionId,
+    ) -> Self {
+        Self::new(None, binding_digest, runtime_epoch, session_id)
+    }
+
     #[cfg(test)]
     pub(super) fn fixture() -> Self {
         Self::new(
@@ -209,7 +222,8 @@ impl ClaudeRuntime {
             .checked_add(1)
             .filter(|id| *id <= i64::MAX as u64)
             .ok_or(AdapterRuntimeError::Operation)?;
-        let egress = request(id, method, params)?;
+        let prompt = matches!(pending, PendingRequest::Prompt);
+        let egress = request(id, method, params, prompt)?;
         self.pending.insert(id, pending);
         self.next_request_id = id;
         Ok(egress)
@@ -232,98 +246,6 @@ impl ClaudeRuntime {
                 .as_ref()
                 .is_some_and(|default| default == model)
         })
-    }
-
-    fn launch_spec(
-        &mut self,
-        project_root: crate::project_registry::ProjectRootAuthority,
-    ) -> Result<LaunchSpec, AdapterRuntimeError> {
-        let binding = self
-            .launch_binding
-            .as_deref()
-            .ok_or(AdapterRuntimeError::LaunchUnavailable)?;
-        binding
-            .revalidate()
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-        if binding.is_fixture() {
-            return binding.fixture_launch(self.runtime_epoch.get(), project_root, &self.mcp);
-        }
-        let candidate = binding.candidate();
-        let environment = crate::acp::process::BoundedEnvironment::new(
-            binding
-                .launch_environment()
-                .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?,
-        )
-        .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        AcpLaunchAuthority::for_claude(ClaudeLaunch {
-            binding_digest: self.binding_digest,
-            runtime_epoch: self.runtime_epoch.get(),
-            runtime_path: candidate.runtime_path.clone(),
-            runtime_sha256: candidate.runtime_sha256.clone(),
-            runtime_byte_len: std::fs::metadata(&candidate.runtime_path)
-                .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?
-                .len(),
-            entrypoint: candidate.artifact_path.clone(),
-            environment,
-        })?
-        .into_launch_spec(project_root)
-    }
-}
-
-pub(crate) struct ClaudeRuntimeFactory {
-    binding: Arc<AdmittedClaudeBinding>,
-    project_root: crate::project_registry::ProjectRootAuthority,
-    mcp: McpAdmission,
-}
-
-impl ClaudeRuntimeFactory {
-    #[cfg(test)]
-    pub(crate) fn from_admitted_binding(
-        binding: Arc<AdmittedClaudeBinding>,
-        project_root: crate::project_registry::ProjectRootAuthority,
-    ) -> Self {
-        Self::with_mcp(binding, project_root, McpAdmission::default())
-    }
-
-    pub(crate) fn with_mcp(
-        binding: Arc<AdmittedClaudeBinding>,
-        project_root: crate::project_registry::ProjectRootAuthority,
-        mcp: McpAdmission,
-    ) -> Self {
-        Self {
-            binding,
-            project_root,
-            mcp,
-        }
-    }
-}
-
-impl RuntimeFactory for ClaudeRuntimeFactory {
-    fn construct(
-        self: Box<Self>,
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Result<NativeRuntime, AdapterRuntimeError> {
-        let Self {
-            binding,
-            project_root,
-            mcp,
-        } = *self;
-        let mut runtime = ClaudeRuntime::from_admitted_binding(binding, runtime_epoch, session_id)?;
-        runtime.mcp = mcp;
-        runtime.pending_project_root = Some(project_root);
-        Ok(NativeRuntime::new(runtime))
-    }
-}
-
-impl LaunchableRuntime for ClaudeRuntime {
-    fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {
-        let project_root = self
-            .pending_project_root
-            .take()
-            .ok_or(AdapterRuntimeError::LaunchUnavailable)?;
-        ClaudeRuntime::launch_spec(self, project_root)
     }
 }
 
@@ -422,5 +344,9 @@ mod config_tests;
 mod durable_turn_tests;
 #[cfg(test)]
 mod fork_tests;
+#[cfg(test)]
+mod in_memory;
+#[cfg(test)]
+pub(crate) use in_memory::InMemoryClaude;
 #[cfg(test)]
 mod tests;

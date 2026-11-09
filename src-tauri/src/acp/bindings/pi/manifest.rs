@@ -1,7 +1,7 @@
 use std::path::{Component, Path};
 
-pub const PI_VERSION: &str = "0.83.0";
-pub const PI_SOURCE_COMMIT: &str = "845d6ff1f6643aba440341cce877ce1c43ebbc39";
+pub const PI_VERSION: &str = "1.5.0";
+pub const PI_SOURCE_COMMIT: &str = "f9a26365568127461c47a07a37dcb42c140a3ac5";
 pub const PI_PACKAGE: &str = "@earendil-works/pi-coding-agent";
 pub const PI_LICENSE: &str = "MIT";
 pub const PI_NODE_MINIMUM: &str = "22.19.0";

@@ -175,6 +175,12 @@ impl TurnStartCorrelations {
             .any(|entry| matches!(entry.state, CorrelationState::Pending))
     }
 
+    pub(super) fn is_pending(&self, request_id: u64) -> bool {
+        self.entries.iter().any(|entry| {
+            entry.request_id == request_id && matches!(entry.state, CorrelationState::Pending)
+        })
+    }
+
     pub(super) fn register(&mut self, request_id: u64, client_message_id: RequiredText<512>) {
         debug_assert!(self.entries.len() < LIMITS.queues.outstanding_rpc_per_session as usize);
         debug_assert!(

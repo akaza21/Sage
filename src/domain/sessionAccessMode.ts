@@ -2,6 +2,10 @@ export const SESSION_ACCESS_MODES = [
   "readOnly",
   "ask",
   "workspaceWrite",
+  "acceptEdits",
+  "plan",
+  "auto",
+  "fullAccess",
 ] as const;
 
 export type SessionAccessMode = (typeof SESSION_ACCESS_MODES)[number];
@@ -16,6 +20,7 @@ export function admitSessionAccessMode(value: unknown): SessionAccessMode {
 }
 
 export type SessionAccessModes = Readonly<Record<string, SessionAccessMode>>;
+/** Stored per-binding defaults; the native store never holds Full access. */
 export function admitSessionAccessModes(value: unknown): SessionAccessModes {
   return Object.fromEntries(
     Object.entries(value && typeof value === "object" ? value : {})
@@ -29,7 +34,7 @@ export function admitSessionAccessModes(value: unknown): SessionAccessModes {
   );
 }
 export const SESSION_ACCESS_MODE_SCOPE =
-  "Applies from your next message with this harness.";
+  "Applies to this chat from your next message.";
 
 export interface SessionAccessModeAvailability {
   effective: SessionAccessMode | null;
@@ -41,6 +46,8 @@ export interface SessionAccessModeCapability {
   label: string;
   description: string;
   fallback?: boolean;
+  /** The harness session mode this access mode selects. */
+  sessionModeId?: string;
 }
 
 export function sessionAccessModeAvailability(
@@ -64,8 +71,13 @@ export function sessionAccessModeAvailability(
   return { effective: requested ?? null, unavailableReason: null };
 }
 
+/**
+ * The modes to offer. Auto and Full access are never a default: only a live
+ * chat's access menu (`ChatAccessSelection.tsx`) offers them, confirmed.
+ */
 export function sessionAccessModeCandidates(
   capabilities: readonly SessionAccessModeCapability[] | undefined,
+  liveChat?: boolean,
 ) {
   return (
     capabilities?.filter(
@@ -76,7 +88,9 @@ export function sessionAccessModeCandidates(
         capability.label.length <= 128 &&
         typeof capability.description === "string" &&
         capability.description.trim().length > 0 &&
-        capability.description.length <= 512,
+        capability.description.length <= 512 &&
+        // Modes confirmed per chat are never a default.
+        (liveChat || !["auto", "fullAccess"].includes(capability.id)),
     ) ?? []
   );
 }

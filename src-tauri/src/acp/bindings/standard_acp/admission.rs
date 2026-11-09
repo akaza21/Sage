@@ -19,7 +19,7 @@ pub(crate) struct StandardAcpArtifact {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum StandardAcpArtifactProvenance {
-    #[allow(dead_code, reason = "only tests construct this variant so far")]
+    /// A file the user named directly (a user-defined agent).
     Direct,
     NpmGlobal {
         root: PathBuf,
@@ -35,10 +35,22 @@ pub(crate) struct StandardAcpCandidate {
     pub(crate) reported_version: String,
 }
 
+/// Launch inputs a user-defined agent adds to its profile: its own
+/// arguments and the names (never values) of variables passed through.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct StandardAcpLaunchExtension {
+    pub(crate) args: Vec<String>,
+    pub(crate) passthrough_env: Vec<String>,
+}
+
 #[derive(Debug)]
 pub(crate) struct AdmittedStandardAcpBinding {
     profile: &'static StandardAcpProfile,
+    /// The id sessions bind to: the profile's for a curated agent, the
+    /// agent's own `custom-acp-<n>` for a user-defined one.
+    binding_id: String,
     candidate: StandardAcpCandidate,
+    extension: StandardAcpLaunchExtension,
     binding_digest: [u8; 32],
     binding_digest_hex: String,
 }
@@ -48,8 +60,16 @@ impl AdmittedStandardAcpBinding {
         self.profile
     }
 
+    pub(crate) fn binding_id(&self) -> &str {
+        &self.binding_id
+    }
+
     pub(crate) fn candidate(&self) -> &StandardAcpCandidate {
         &self.candidate
+    }
+
+    pub(crate) fn extension(&self) -> &StandardAcpLaunchExtension {
+        &self.extension
     }
 
     pub(crate) fn binding_digest(&self) -> [u8; 32] {
@@ -69,6 +89,7 @@ impl AdmittedStandardAcpBinding {
     }
 
     pub(crate) fn revalidate(&self) -> Result<(), StandardAcpAdmissionError> {
+        validate_direct_launch(self.profile, &self.candidate.runtime)?;
         validate_artifact(&self.candidate.runtime)?;
         if let Some(entrypoint) = &self.candidate.entrypoint {
             validate_artifact(entrypoint)?;
@@ -87,10 +108,27 @@ pub(crate) fn admit(
     profile: &'static StandardAcpProfile,
     candidate: StandardAcpCandidate,
 ) -> Result<Arc<AdmittedStandardAcpBinding>, StandardAcpAdmissionError> {
+    admit_extended(
+        profile,
+        profile.binding_id,
+        candidate,
+        StandardAcpLaunchExtension::default(),
+    )
+}
+
+/// Admits `candidate` under `binding_id` with launch inputs beyond its
+/// profile. The profile's own id and an empty extension yield exactly the
+/// digest [`admit`] gives.
+pub(crate) fn admit_extended(
+    profile: &'static StandardAcpProfile,
+    binding_id: &str,
+    candidate: StandardAcpCandidate,
+    extension: StandardAcpLaunchExtension,
+) -> Result<Arc<AdmittedStandardAcpBinding>, StandardAcpAdmissionError> {
     validate_candidate(profile, &candidate)?;
-    let binding_digest: [u8; 32] = Sha256::new()
+    let mut digest = Sha256::new()
         .chain_update(BINDING_DIGEST_DOMAIN)
-        .chain_update(profile.binding_id.as_bytes())
+        .chain_update(binding_id.as_bytes())
         .chain_update(candidate.reported_version.as_bytes())
         .chain_update(candidate.runtime.sha256.as_bytes())
         .chain_update(
@@ -106,12 +144,22 @@ pub(crate) fn admit(
                 .as_ref()
                 .map(|artifact| artifact.sha256.as_bytes())
                 .unwrap_or_default(),
-        )
-        .finalize()
-        .into();
+        );
+    if extension != StandardAcpLaunchExtension::default() {
+        for (tag, values) in [(b'a', &extension.args), (b'e', &extension.passthrough_env)] {
+            for value in values {
+                digest.update([tag]);
+                digest.update((value.len() as u64).to_le_bytes());
+                digest.update(value.as_bytes());
+            }
+        }
+    }
+    let binding_digest: [u8; 32] = digest.finalize().into();
     Ok(Arc::new(AdmittedStandardAcpBinding {
         profile,
+        binding_id: binding_id.to_owned(),
         candidate,
+        extension,
         binding_digest_hex: binding_digest
             .iter()
             .map(|byte| format!("{byte:02x}"))
@@ -127,6 +175,7 @@ fn validate_candidate(
     if !profile.version_shape.accepts(&candidate.reported_version) {
         return Err(StandardAcpAdmissionError::Version);
     }
+    validate_direct_launch(profile, &candidate.runtime)?;
     validate_artifact(&candidate.runtime)?;
     match (profile.launch, candidate.entrypoint.as_ref()) {
         (StandardAcpLaunch::NodeEntrypoint, Some(entrypoint)) => validate_artifact(entrypoint),
@@ -142,6 +191,24 @@ fn validate_candidate(
         &candidate.reported_version,
     )?;
     validate_package_runtime_link(profile, candidate)
+}
+
+/// A file the user named and Sage launches directly (a user-defined
+/// agent) must be one the platform runs without a shell: on Windows a
+/// `.cmd` or `.bat` would run through `cmd.exe`, which interprets the
+/// arguments. Node runtimes, their script entrypoints and curated
+/// executables found under their package are outside this rule.
+fn validate_direct_launch(
+    profile: &StandardAcpProfile,
+    runtime: &StandardAcpArtifact,
+) -> Result<(), StandardAcpAdmissionError> {
+    let user_named = profile.launch == StandardAcpLaunch::DirectExecutable
+        && runtime.provenance == StandardAcpArtifactProvenance::Direct;
+    if user_named && !super::custom_executable::native_executable_name(&runtime.path, cfg!(windows))
+    {
+        return Err(StandardAcpAdmissionError::Path);
+    }
+    Ok(())
 }
 
 fn validate_package_manifest(

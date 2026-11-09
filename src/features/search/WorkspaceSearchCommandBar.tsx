@@ -3,10 +3,11 @@ import {
   Square,
   ChevronDown,
   ChevronRight,
+  Regex,
   X,
 } from "../../ui/leanIcons";
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 
 interface WorkspaceSearchCommandBarProps {
   projectId: string | null;
@@ -14,11 +15,15 @@ interface WorkspaceSearchCommandBarProps {
   query: string;
   caseSensitive: boolean;
   wholeWord: boolean;
+  useRegex: boolean;
   includePatternText: string;
   excludePatternText: string;
   onQueryChange: (value: string) => void;
   onCaseSensitiveChange: (value: boolean) => void;
   onWholeWordChange: (value: boolean) => void;
+  onUseRegexChange: (value: boolean) => void;
+  /** The Replace row, shown once the user opens Replace. */
+  replaceRow?: ReactNode;
   onIncludePatternTextChange: (value: string) => void;
   onExcludePatternTextChange: (value: string) => void;
   onSearch: () => void;
@@ -31,11 +36,14 @@ export function WorkspaceSearchCommandBar({
   query,
   caseSensitive,
   wholeWord,
+  useRegex,
   includePatternText,
   excludePatternText,
   onQueryChange,
   onCaseSensitiveChange,
   onWholeWordChange,
+  onUseRegexChange,
+  replaceRow,
   onIncludePatternTextChange,
   onExcludePatternTextChange,
   onSearch,
@@ -98,6 +106,16 @@ export function WorkspaceSearchCommandBar({
             >
               <span aria-hidden="true">ab</span>
             </button>
+            <button
+              type="button"
+              aria-label="Use regular expression"
+              title="Use regular expression"
+              aria-pressed={useRegex}
+              disabled={!projectId || searching}
+              onClick={() => onUseRegexChange(!useRegex)}
+            >
+              <Regex size={16} aria-hidden="true" />
+            </button>
             {searching ? (
               <button
                 type="button"
@@ -120,6 +138,7 @@ export function WorkspaceSearchCommandBar({
           </span>
         </div>
       </div>
+      {replaceRow}
       {detailsOpen ? (
         <div className="workspace-search__filters">
           <label>

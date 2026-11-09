@@ -8,6 +8,8 @@ import {
   assertWorkspaceSearchContinuationMatchesRequest,
   continuationTokenMatchesResponse,
   coordinateWorkspaceSearchIndex,
+  relativePath as validRelativePath,
+  safeCounter as safeCount,
   validWorkspaceSearchContinuationToken,
   type WorkspaceSearchIndexStamp,
 } from "./workspaceSearchContinuation";
@@ -38,6 +40,8 @@ export interface WorkspaceSearchRequest {
   query: string;
   caseSensitive: boolean;
   wholeWord: boolean;
+  /** The query is a regular expression; sent only when true. */
+  useRegex?: boolean;
   includePatterns: string[];
   excludePatterns: string[];
   /** `search.useIgnoreFiles`; the native default is true. */
@@ -63,14 +67,7 @@ export interface WorkspaceSearchNavigationRequest {
   caseSensitive: boolean;
 }
 
-export function searchResultFileName(relativePath: string): string {
-  const normalized = relativePath.replaceAll("\\", "/").trim();
-  if (!normalized) {
-    return "";
-  }
-  const slash = normalized.lastIndexOf("/");
-  return slash < 0 ? normalized : normalized.slice(slash + 1);
-}
+export { searchResultFileName } from "./searchResultFileName";
 
 export interface WorkspaceSearchRootReport {
   rootId: string;
@@ -118,10 +115,6 @@ function boundedString(
   );
 }
 
-function safeCount(value: unknown, minimum = 0): value is number {
-  return Number.isSafeInteger(value) && (value as number) >= minimum;
-}
-
 function validFilterPatterns(value: unknown): value is string[] {
   return (
     Array.isArray(value) &&
@@ -132,23 +125,10 @@ function validFilterPatterns(value: unknown): value is string[] {
 }
 
 function canonicalResource(value: unknown): value is ResourceRef {
-  if (!isRecord(value)) return false;
-  if (!boundedString(value.rootId, MAX_IDENTIFIER_BYTES)) return false;
-  if (
-    !boundedString(
-      value.relativePath,
-      WORKSPACE_SEARCH_LIMITS.resourcePathBytes,
-    )
-  )
-    return false;
-  const path = value.relativePath;
   return (
-    !path.includes("\\") &&
-    !path.startsWith("/") &&
-    !path.endsWith("/") &&
-    path
-      .split("/")
-      .every((segment) => segment !== "" && segment !== "." && segment !== "..")
+    isRecord(value) &&
+    boundedString(value.rootId, MAX_IDENTIFIER_BYTES) &&
+    validRelativePath(value.relativePath)
   );
 }
 
@@ -223,6 +203,11 @@ export function validateWorkspaceSearchRequest(
   }
   if (typeof request.wholeWord !== "boolean") {
     throw new Error("workspace Search whole-word mode must be a boolean");
+  }
+  if (request.useRegex !== undefined && typeof request.useRegex !== "boolean") {
+    throw new Error(
+      "workspace Search regular-expression mode must be a boolean",
+    );
   }
   if (
     request.useIgnoreFiles !== undefined &&

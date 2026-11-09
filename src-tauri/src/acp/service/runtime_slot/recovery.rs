@@ -18,6 +18,7 @@ impl RuntimeSlot {
                     self.config.clear(owner);
                     self.goal.clear(owner);
                     self.commands.clear(owner);
+                    self.usage.clear(owner);
                     *state = State::Empty;
                     return Ok(());
                 }
@@ -42,6 +43,7 @@ impl RuntimeSlot {
                 self.config.clear(owner);
                 self.goal.clear(owner);
                 self.commands.clear(owner);
+                self.usage.clear(owner);
                 *state = State::Empty;
                 Ok(())
             }

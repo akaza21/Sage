@@ -20,6 +20,9 @@ impl AcpService {
         command: ActivateSessionCommand,
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
     ) -> Result<(), CodexSessionError> {
+        // Commits before the checks below; a refused activation leaves the
+        // linked head `created`, and a retry naming either session resumes it.
+        let command = self.resume_earlier_codex_session(&admitted, command)?;
         let owner = RuntimeOwner {
             project_id: command.project_id.clone(),
             chat_id: command.chat_id.clone(),
@@ -27,15 +30,27 @@ impl AcpService {
             runtime_epoch: command.runtime_epoch,
         };
         let deadlines = super::codex_live::deadlines()?;
-        let (lane, _claim) = self.claim_activation_lane(&owner, deadlines.1)?;
-        lane.activate_session(admitted, command, project_root, deadlines)
-            .await
+        {
+            let (lane, _claim) = self.claim_activation_lane(&owner, deadlines.1)?;
+            lane.activate_session(admitted, command, project_root, deadlines)
+                .await?;
+        }
+        // A resumed session reports the adapter's defaults; the choices this
+        // chat made are reapplied before the activation answers, so before
+        // its next prompt can be sent. A change that left the runtime needing
+        // recovery is reported here rather than left silent.
+        self.restore_session_config(&owner)
+            .map_err(|_| CodexSessionError::Recovery)
     }
 
     pub(crate) fn send_session_turn(
         &self,
         intent: HostPromptIntent,
     ) -> Result<HostOutcome, PromptSendError<CodexSessionError>> {
+        // A harness that reported its options only after activation is
+        // restored here, before the prompt is dispatched. A no-op otherwise.
+        self.restore_session_config(&intent.owner())
+            .map_err(|_| PromptSendError::not_started(CodexSessionError::Recovery))?;
         self.lane_for(&intent.owner())
             .ok_or_else(|| PromptSendError::not_started(CodexSessionError::Intent))?
             .send_session_turn(intent)

@@ -1,6 +1,6 @@
 use super::*;
 use crate::acp::{
-    attached_context::files::{Resource, Resources},
+    attached_context::files::{Resource, Resources, prompt_blocks},
     intent::Prompt,
 };
 use std::{fs, path::PathBuf};
@@ -257,7 +257,11 @@ fn prompts_send_text_then_staged_files_then_mentions() {
         FILE_BYTES,
     );
     assert!(prompt.retained_bytes() > plain);
-    let wire = prompt.wire_blocks(true).unwrap();
+    let capabilities: crate::acp::intent::CapabilitySnapshotV1 = serde_json::from_str(
+        r#"{"schemaVersion":1,"protocolVersion":"1","newSession":true,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":true,"promptResources":true,"cancel":true,"nativeSessionFork":false,"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#,
+    )
+    .unwrap();
+    let wire = prompt_blocks(&prompt, Some(&capabilities)).unwrap();
     assert_eq!(
         wire[0],
         serde_json::json!({"type":"text","text":"Read @a.txt"})

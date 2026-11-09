@@ -37,6 +37,8 @@ pub(crate) enum NativeRpcRequest {
         fork: crate::acp::intent::ExternalId,
         committed: bool,
     },
+    /// Refreshes the runtime's usage-limit snapshot from the harness.
+    UsageRead,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,9 +51,17 @@ pub(crate) enum NativeRpcReply {
     Forked(crate::acp::intent::ExternalId),
     /// The harness let go of a fork this runtime created.
     Released,
+    /// The harness answered a usage read; the snapshot is in the usage cell.
+    UsageRead,
 }
 
 impl NativeRpcIntent {
+    /// A read nothing waits on beyond its caller: it gets a short deadline,
+    /// and missing it abandons the read instead of recovering the runtime.
+    pub(crate) fn passive(&self) -> bool {
+        matches!(self.request, NativeRpcRequest::UsageRead)
+    }
+
     pub(crate) fn actual_bytes(&self) -> usize {
         self.owner.project_id.as_str().len()
             + self.owner.chat_id.as_str().len()
@@ -63,7 +73,7 @@ impl NativeRpcIntent {
                     child_thread_id,
                     parent_thread_id,
                 } => child_thread_id.len() + parent_thread_id.len() + 1,
-                NativeRpcRequest::ForkSession => 1,
+                NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,
                 NativeRpcRequest::ReleaseFork { fork, .. } => fork.as_str().len() + 1,
             }
     }

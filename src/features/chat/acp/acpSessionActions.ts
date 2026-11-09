@@ -50,6 +50,7 @@ interface SessionActionDependencies {
   endSession: (request: EndAcpSessionRequest) => Promise<AcpMutationResult>;
   setSessionMode?: typeof acpDesktop.setSessionMode;
   setSessionConfigOption?: typeof acpDesktop.setSessionConfigOption;
+  queueSessionConfigChoice?: typeof acpDesktop.queueSessionConfigChoice;
 }
 
 export function typedError(error: unknown): AcpDesktopError {
@@ -256,17 +257,50 @@ export function createAcpSessionActions(
     });
   };
 
-  const configure = (
-    mutation:
-      | { modeId: string }
-      | {
-          configId: string;
-          value: AcpConfigValue;
-        },
-  ): Promise<AcpActionOutcome> => {
+  type Mutation =
+    { modeId: string } | { configId: string; value: AcpConfigValue };
+  /**
+   * A session with no live config (no runtime, or a live runtime that has
+   * not reported yet) shows its restored config. A choice on it is stored,
+   * not sent: the restore applies it before the session's next prompt, as
+   * it does every stored choice, so no runtime starts for it.
+   */
+  const queue = (
+    captured: AcpActionContext,
+    sessionId: string,
+    choice: Mutation,
+  ): Promise<AcpActionOutcome> =>
+    dependencies.enqueue(captured, "mode", async (updateState) => {
+      const context = dependencies.getContext();
+      if (!dependencies.sameScope(context, captured)) return "ignoredStale";
+      const session = currentSession(context.page);
+      if (!session || session.id !== sessionId || context.page.sessionConfig)
+        return "ignoredStale";
+      try {
+        const result = await dependencies.queueSessionConfigChoice?.({
+          ...captured.scope,
+          projectGeneration: captured.commandProjectGeneration,
+          expectedProjectionRevision: context.page.projectionRevision,
+          sessionId: session.id,
+          choice,
+        });
+        if (!result) return "rejected";
+        return dependencies.apply(captured, result)
+          ? "applied"
+          : "ignoredStale";
+      } catch (error) {
+        updateState({ error: typedError(error) });
+        return "rejected";
+      }
+    });
+
+  const configure = (mutation: Mutation): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const config = captured?.page.sessionConfig;
     const modeId = "modeId" in mutation ? mutation.modeId : null;
+    const restored = captured?.page.restoredSessionConfig;
+    if (captured && !config && restored)
+      return queue(captured, restored.sageAgentSessionId, mutation);
     if (!captured || !config) return Promise.resolve("rejected");
     if (
       modeId !== null &&

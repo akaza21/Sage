@@ -79,22 +79,18 @@ impl Mentions {
 }
 
 impl super::intent::Prompt {
-    /// The prompt's ACP content: its text, staged files, then mentions.
-    pub(crate) fn wire_blocks(
-        &self,
-        embedded: bool,
-    ) -> Result<Vec<serde_json::Value>, &'static str> {
-        let mut blocks = self.resources.wire(self.as_str(), embedded)?;
-        blocks.extend(self.mentions.blocks(embedded));
-        Ok(blocks)
+    /// The bytes the dispatch budget counts: everything the prompt holds
+    /// but its images, which have a budget of their own, plus `files`.
+    fn dispatch_bytes(&self, files: &Resources) -> usize {
+        self.retained_bytes() - self.images.retained_bytes() + files.retained_bytes()
     }
     /// The dispatch bytes this prompt and its staged `files` leave for
     /// mentions; mentions resolved within it keep [`Self::fits_dispatch`].
     pub(crate) fn mention_budget(&self, files: &Resources) -> usize {
-        DISPATCH_BYTES.saturating_sub(self.retained_bytes() + files.retained_bytes())
+        DISPATCH_BYTES.saturating_sub(self.dispatch_bytes(files))
     }
     pub(crate) fn fits_dispatch(&self, files: &Resources) -> bool {
-        self.retained_bytes() + files.retained_bytes() <= DISPATCH_BYTES
+        self.dispatch_bytes(files) <= DISPATCH_BYTES
     }
 }
 

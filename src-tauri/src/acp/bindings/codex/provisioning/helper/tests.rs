@@ -19,7 +19,7 @@ fn handoff() -> SealedHandoff {
     let payload = HandoffPayload {
         schema_version: 1,
         binding_id: "codex-app-server".into(),
-        runtime_version: "0.146.0".into(),
+        runtime_version: PINNED_CODEX_VERSION.into(),
         creation_nonce: "0123456789abcdef0123456789abcdef".into(),
         source_proof_sha256: "11".repeat(32),
         aggregate_byte_len: packet.metadata().package_unpacked_byte_len,
@@ -71,7 +71,7 @@ fn exact_authenticated_request_still_cannot_cross_unproven_elevation_boundary() 
             .managed_package_root()
             .parent()
             .unwrap()
-            .join(".sage-codex-0.146.0-stage"),
+            .join(STAGE_NAME),
         &helper,
         &secret,
     )
@@ -108,7 +108,7 @@ fn boundary_secret_and_observed_image_authenticate_the_core_request() {
             .managed_package_root()
             .parent()
             .unwrap()
-            .join(".sage-codex-0.146.0-stage"),
+            .join(STAGE_NAME),
         helper,
         &secret,
     )
@@ -159,7 +159,7 @@ fn boundary_sealer_emits_the_requested_lifecycle_operation() {
                 .managed_package_root()
                 .parent()
                 .unwrap()
-                .join(".sage-codex-0.146.0-stage"),
+                .join(STAGE_NAME),
             helper,
             &secret,
             operation,
@@ -178,7 +178,7 @@ fn exact_request(helper: &VerifiedHelperExecutable, secret: &OneTimeHelperSecret
             .managed_package_root()
             .parent()
             .unwrap()
-            .join(".sage-codex-0.146.0-stage"),
+            .join(STAGE_NAME),
         helper,
         secret,
     )
@@ -291,7 +291,7 @@ fn exact_manifest_source_target_nonce_and_acl_bindings_reject_drift() {
                 .managed_package_root()
                 .parent()
                 .unwrap()
-                .join(".sage-codex-0.146.0-stage"),
+                .join(STAGE_NAME),
             &helper,
             &secret,
         )
@@ -315,7 +315,7 @@ fn unsigned_or_observation_only_cannot_update_or_remove() {
                 .managed_package_root()
                 .parent()
                 .unwrap()
-                .join(".sage-codex-0.146.0-stage"),
+                .join(STAGE_NAME),
             &helper,
             &secret.0,
             operation,

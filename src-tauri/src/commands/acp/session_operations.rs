@@ -8,28 +8,9 @@ const _: () = assert!(
 );
 
 mod lifecycle;
+mod prompt_images;
 pub(crate) use lifecycle::{close_acp_session_inner, end_acp_session_inner};
-
-/// Context a prompt cannot carry yet: images, and page elements that
-/// fail admission.
-fn image_input_block(contexts: &AttachedContexts) -> Result<(), AcpIpcError> {
-    if contexts.as_slice().iter().any(|context| {
-        matches!(
-            context,
-            crate::acp::attached_context::AttachedContext::Image(_)
-        )
-    }) {
-        return Err(AcpIpcError::Unavailable {
-            reason: crate::acp::intent::AcpUnavailableReason::ImageInputUnsupported,
-            message: safe_message("This harness cannot accept image attachments yet."),
-        });
-    }
-    crate::acp::attached_context::admit_browser_elements(contexts).map_err(|refusal| {
-        AcpIpcError::InvalidRequest {
-            message: safe_message(refusal.message()),
-        }
-    })
-}
+use prompt_images::image_input_block;
 
 pub(crate) async fn send_acp_turn_inner(
     state: &AppState,
@@ -40,6 +21,8 @@ pub(crate) async fn send_acp_turn_inner(
         snapshot_for(state, project_id.clone(), generation, chat_id.clone())
             .await
             .map_err(prompt_not_dispatched)?;
+    session_routes::refuse_archived_chat(state, project_id, chat_id)
+        .map_err(prompt_not_dispatched)?;
     validate_send(state, &request, &snapshot).map_err(prompt_not_dispatched)?;
     // A batch staged in a tab that has since closed must never be sent.
     crate::acp::attached_context::files::release_detached(&state.acp.file_stages, &state.database);
@@ -62,19 +45,24 @@ pub(crate) async fn send_acp_turn_inner(
     match &request {
         SendAcpTurnRequest::Session {
             attached_context, ..
-        }
-        | SendAcpTurnRequest::NewSession {
+        } => prompt_images::admit_elements(attached_context),
+        SendAcpTurnRequest::NewSession {
             attached_context, ..
-        } => {
-            image_input_block(attached_context).map_err(prompt_not_dispatched)?;
-        }
+        } => image_input_block(attached_context),
     }
+    .map_err(prompt_not_dispatched)?;
     #[cfg(all(windows, feature = "acp-fixture"))]
-    if let SendAcpTurnRequest::Session { session_id, .. } = &request {
+    if let SendAcpTurnRequest::Session {
+        session_id,
+        attached_context,
+        ..
+    } = &request
+    {
         let binding_id = session_routes::durable_binding_id(state, session_id)
             .map_err(store_error)
             .map_err(prompt_not_dispatched)?;
         if state.acp.accepts_characterization(&binding_id) {
+            image_input_block(attached_context).map_err(prompt_not_dispatched)?;
             if !state
                 .acp
                 .file_stages
@@ -178,46 +166,47 @@ pub(crate) async fn send_acp_turn_inner(
             message: safe_message("The prompt and attached context exceed the native byte limit."),
         })
         .map_err(prompt_not_dispatched)?;
+    let sent_images = prompt_images::attach(
+        state,
+        &mut prompt,
+        &attached_context,
+        &project_id,
+        &chat_id,
+        &session_id,
+    )
+    .await
+    .map_err(prompt_not_dispatched)?;
     let files = state
         .acp
         .file_stages
         .lock()
         .map_err(|_| prompt_not_dispatched(internal_error()))?
-        .get(project_id.as_str(), chat_id.as_str());
-    if !files.0.is_empty() {
+        .for_prompt(project_id.as_str(), chat_id.as_str(), &prompt);
+    if !files.0.is_empty() || prompt.action.is_some() {
         let page = state
             .acp
             .load_chat_page(project_id.clone(), chat_id.clone(), None)
             .map_err(store_error)
             .map_err(prompt_not_dispatched)?;
-        if !page
+        let capabilities = page
             .sessions
             .as_slice()
             .iter()
-            .any(|s| s.id == session_id && s.capabilities.prompt_resources)
-        {
+            .find(|s| s.id == session_id)
+            .map(|s| &s.capabilities);
+        if !files.0.is_empty() && !capabilities.is_some_and(|c| c.prompt_resources) {
             return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
                 message: safe_message(
                     "This harness does not advertise embedded-resource prompt support. Remove the file attachments or choose another harness.",
                 ),
             }));
         }
+        if !prompt.action_admitted(capabilities) {
+            return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
+                message: safe_message("This session did not negotiate that action."),
+            }));
+        }
     }
-    let requested_access = state.settings.session_access_modes().map_err(|_| {
-        prompt_not_dispatched(AcpIpcError::RecoveryRequired {
-            message: safe_message("Session access mode could not be loaded; reload Sage."),
-        })
-    })?;
-    let access_mode = crate::acp::bindings::access_policy::effective_for_binding(
-        state.acp.binding_registry(),
-        binding_id.as_str(),
-        requested_access.get(binding_id.as_str()).copied(),
-    )
-    .ok_or_else(|| {
-        prompt_not_dispatched(AcpIpcError::InvalidRequest {
-            message: safe_message("Choose a supported access mode before sending."),
-        })
-    })?;
     super::turn_workspace::mark_before_prompt(state, transition, &client_intent_id, &session_id)
         .await;
     // Mentioned files are read after the transition guard is released, so a
@@ -233,20 +222,21 @@ pub(crate) async fn send_acp_turn_inner(
             return Err(failure);
         }
     };
-    // Capture can outlive a project switch. Reacquire authority before dispatch.
-    let _transition = match lock_acp_context(state, &project_id, project_generation).await {
-        Ok(transition) => transition,
-        Err(error) => {
-            super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
-            return Err(prompt_not_dispatched(error));
-        }
-    };
+    let _transition = super::turn_workspace::relock_after_capture(
+        state,
+        &project_id,
+        project_generation,
+        &session_id,
+        &client_intent_id,
+    )
+    .await
+    .map_err(prompt_not_dispatched)?;
     let current_files = state
         .acp
         .file_stages
         .lock()
         .map_err(|_| prompt_not_dispatched(internal_error()))?
-        .get(project_id.as_str(), chat_id.as_str());
+        .for_prompt(project_id.as_str(), chat_id.as_str(), &prompt);
     if !files.same_selection(&current_files) {
         super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
         return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
@@ -261,6 +251,19 @@ pub(crate) async fn send_acp_turn_inner(
             ),
         }));
     }
+    // Read the access only now, under the reacquired authority, so a
+    // choice made while the prompt was being prepared is the one it runs in.
+    let owner = RuntimeOwner {
+        project_id: project_id.clone(),
+        chat_id: chat_id.clone(),
+        session_id: session_id.clone(),
+        runtime_epoch,
+    };
+    let access_mode = super::session_access::select_turn_access(state, binding_id.as_str(), owner)
+        .map_err(|error| {
+            super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
+            prompt_not_dispatched(error)
+        })?;
     prompt.resources = files.clone();
     let tracked_session = session_id.clone();
     let tracked_intent = client_intent_id.clone();
@@ -297,6 +300,7 @@ pub(crate) async fn send_acp_turn_inner(
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .consume(project_id.as_str(), chat_id.as_str(), &files);
+        prompt_images::retire(state, &project_id, &chat_id, &sent_images);
     }
     if dispatch.is_err() {
         super::turn_workspace::forget_unprepared(state, &tracked_session, &tracked_intent);

@@ -18,18 +18,20 @@ impl<E: RuntimeEngine> Actor<E> {
             reply,
             deadline,
         } = envelope;
-        let (owner, native_rpc) = match &command {
+        let (owner, native_rpc, passive) = match &command {
             super::super::types::HostCommand::ConfigureSession(intent) => {
-                (intent.owner.clone(), false)
+                (intent.owner.clone(), false, false)
             }
-            super::super::types::HostCommand::NativeRpc(intent) => (intent.owner.clone(), true),
+            super::super::types::HostCommand::NativeRpc(intent) => {
+                (intent.owner.clone(), true, intent.passive())
+            }
             _ => {
                 let _ = reply.send(Err(HostError::State));
                 return;
             }
         };
         if std::time::Instant::now() >= deadline {
-            let _ = reply.send(Err(HostError::Deadline));
+            let _ = reply.send(Err(HostError::NotDispatched));
             return;
         }
         if self.pending_config.is_some() {
@@ -53,6 +55,7 @@ impl<E: RuntimeEngine> Actor<E> {
             reply,
             deadline,
             native_rpc,
+            passive,
         });
         let begin = match command {
             super::super::types::HostCommand::ConfigureSession(intent) => {
@@ -82,8 +85,10 @@ impl<E: RuntimeEngine> Actor<E> {
             }
             _ => unreachable!(),
         };
-        if let Err(error) = begin {
-            self.fail_pending_config(error);
+        match begin {
+            Ok(()) => {}
+            Err(HostError::Deadline) if passive => self.expire_pending_config(),
+            Err(error) => self.fail_pending_config(error),
         }
     }
 
@@ -124,7 +129,9 @@ impl<E: RuntimeEngine> Actor<E> {
         let pending = self.pending_config.take().expect("matched native RPC");
         if std::time::Instant::now() >= pending.deadline {
             self.engine.abandon_configuration(pending.deadline);
-            self.apply_config_error(&HostError::Deadline);
+            if !pending.passive {
+                self.apply_config_error(&HostError::Deadline);
+            }
             let _ = pending.reply.send(Err(HostError::Deadline));
             return;
         }
@@ -139,6 +146,20 @@ impl<E: RuntimeEngine> Actor<E> {
     pub(super) fn fail_pending_config(&mut self, error: HostError) {
         self.apply_config_error(&error);
         self.settle_pending_config(error);
+    }
+
+    /// A passive read that misses its deadline is abandoned; the runtime
+    /// keeps serving.
+    pub(super) fn expire_pending_config(&mut self) {
+        let Some(pending) = self.pending_config.as_ref() else {
+            return;
+        };
+        self.engine.abandon_configuration(pending.deadline);
+        if pending.passive {
+            self.settle_pending_config(HostError::Deadline);
+        } else {
+            self.fail_pending_config(HostError::Deadline);
+        }
     }
 
     pub(super) fn settle_pending_config(&mut self, error: HostError) {

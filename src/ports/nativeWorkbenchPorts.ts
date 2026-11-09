@@ -98,7 +98,9 @@ const editor: EditorPort = {
   openEditorDocument: resourceCommand("open_editor_document"),
   snapshotEditorBuffer: requestCommand("snapshot_editor_buffer"),
   saveEditorDocument: resourceCommand("save_editor_document"),
-  discardEditorBuffer: resourceCommand("discard_editor_buffer"),
+  discardEditorBuffer: (resource, keepIfAbsent) =>
+    invokeNative("discard_editor_buffer", { resource, keepIfAbsent }),
+  rebaseEditorBuffer: requestCommand("rebase_editor_buffer"),
   async watchEditorDocument(
     resource: ResourceRef,
   ): Promise<EditorWatchSubscription> {
@@ -159,6 +161,7 @@ const chat: ChatPort = {
   renameChat: epochCommand("rename_chat"),
   archiveChat: epochCommand("archive_chat"),
   restoreChat: epochCommand("restore_chat"),
+  deleteChat: epochCommand("delete_chat"),
   moveChat: epochCommand("move_chat"),
   pinChat: epochCommand("pin_chat"),
 };

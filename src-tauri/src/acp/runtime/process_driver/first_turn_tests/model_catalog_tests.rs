@@ -1,3 +1,4 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use crate::acp::{contract::SageAgentSessionId, runtime::AdapterPumpError};
 use serde_json::{Value, json};
 
@@ -59,8 +60,8 @@ pub(super) fn ready_adapter<Adapter: HarnessAdapter>(
     adapter
         .ingest(
             &frame(json!({"id":request_id(&initialize),"result":{
-                "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+                "userAgent":user_agent("sage", "unknown"),
+                "codexHome":MANAGED_CODEX_HOME,
                 "platformFamily":"windows","platformOs":"windows"
             }})),
             &Mapper,

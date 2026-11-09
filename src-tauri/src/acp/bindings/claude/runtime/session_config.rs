@@ -13,6 +13,11 @@ impl ClaudeRuntime {
             return Err(AdapterRuntimeError::Operation);
         }
         let active = self.active.as_ref().ok_or(AdapterRuntimeError::Operation)?;
+        // A turn runs in the mode selected before its prompt; nothing moves
+        // it while it runs.
+        if active.turn.is_some() && active.config.changes_mode(&intent.mutation) {
+            return Err(AdapterRuntimeError::Operation);
+        }
         let session_id = active.external_id.clone();
         match &intent.mutation {
             ConfigMutation::Mode(mode) => {
@@ -65,7 +70,15 @@ impl ClaudeRuntime {
             let options = result
                 .get("configOptions")
                 .ok_or(AdapterRuntimeError::Frame)?;
+            let before = self.reported_mode();
             self.replace_config_options(options)?;
+            if let Some(next) = self
+                .reported_mode()
+                .filter(|next| before.as_ref() != Some(next))
+                && !self.mode_change_allowed(&next)
+            {
+                return self.mode_violation(&next);
+            }
         }
         // set_mode's metadata-only acknowledgement must never echo the request.
         AdapterBatch::new(vec![SharedEvent::IgnoredDuplicate], Vec::new())
@@ -78,37 +91,64 @@ impl ClaudeRuntime {
         )
         .map_err(|_| AdapterRuntimeError::Frame)?;
         active.config = candidate;
+        // Options reported alone still move the mode they restate.
+        active.config.follow_mode_option();
         Ok(())
     }
+    fn reported_mode(&self) -> Option<String> {
+        self.active
+            .as_ref()
+            .and_then(|active| active.config.current_mode())
+            .map(str::to_owned)
+    }
+    /// Applies a mode or config update. A mode change the running turn was
+    /// not given cancels that turn (`mode_guard.rs`).
     pub(super) fn config_notification(
         &mut self,
         value: &Value,
-    ) -> Result<bool, AdapterRuntimeError> {
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
         let update = &value["params"]["update"];
         let kind = update["sessionUpdate"].as_str().unwrap_or_default();
         if !matches!(kind, "current_mode_update" | "config_option_update") {
-            return Ok(false);
+            return Ok(None);
         }
         let active = self.active.as_mut().ok_or(AdapterRuntimeError::Frame)?;
         if value["params"]["sessionId"].as_str() != Some(active.external_id.as_str()) {
             return Err(AdapterRuntimeError::Frame);
         }
-        match kind {
+        let before = active.config.current_mode().map(str::to_owned);
+        // The mode Claude now reports: the restated mode itself, or the
+        // `mode` option's value when an option update moved it.
+        let reported = match kind {
             "current_mode_update" => {
                 let id: ConfigId = serde_json::from_value(update["currentModeId"].clone())
                     .map_err(|_| AdapterRuntimeError::Frame)?;
                 active
                     .config
-                    .set_current_mode(id)
+                    .set_current_mode(id.clone())
                     .map_err(|_| AdapterRuntimeError::Frame)?;
+                Some(id.as_str().to_owned())
             }
-            _ => self.replace_config_options(
-                update
-                    .get("configOptions")
-                    .ok_or(AdapterRuntimeError::Frame)?,
-            )?,
+            _ => {
+                self.replace_config_options(
+                    update
+                        .get("configOptions")
+                        .ok_or(AdapterRuntimeError::Frame)?,
+                )?;
+                let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
+                active
+                    .config
+                    .current_mode()
+                    .filter(|mode| before.as_deref() != Some(*mode))
+                    .map(str::to_owned)
+            }
+        };
+        if let Some(next) = reported
+            && !self.mode_change_allowed(&next)
+        {
+            return self.mode_violation(&next).map(Some);
         }
-        Ok(true)
+        AdapterBatch::new(vec![SharedEvent::IgnoredDuplicate], Vec::new()).map(Some)
     }
 }
 

@@ -12,17 +12,16 @@ import { currentContext } from "./useAcpChatActions";
 import type { AcpActionContext } from "./acpActionController";
 import { sameScope } from "./acpActionProjection";
 
-const GOAL_PROTOCOL = "codex-app-server-observed-0.146.0";
-
+/**
+ * The backend composes a Goal only for a current session whose binding
+ * supports native Goals, so a Goal on the page is that capability; the
+ * session must also be live to take a mutation.
+ */
 export function canMutateGoal(page: AcpChatPage | null | undefined): boolean {
   const session = page?.sessions.find(
     (item) => item.id === page.currentSessionId,
   );
-  return (
-    page?.goal?.kind === "goal" &&
-    !!session?.runtimeEpoch &&
-    session.capabilities.protocolVersion === GOAL_PROTOCOL
-  );
+  return page?.goal?.kind === "goal" && !!session?.runtimeEpoch;
 }
 
 type Action = "pause" | "clear";

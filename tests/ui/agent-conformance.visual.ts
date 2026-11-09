@@ -87,7 +87,7 @@ async function anchorScenario(page: Page, scenario: PendingScenario) {
   ).toBeVisible();
   await expect(composer(page)).toHaveCount(1);
   await expect(
-    page.getByRole("textbox", { name: "Message agent" }),
+    page.getByRole("combobox", { name: "Message agent" }),
   ).toBeVisible();
   await expect(
     composer(page).getByRole("button", { name: "Send message" }),
@@ -930,7 +930,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
   test("frames the composer and pins its placeholder", async ({ page }) => {
     await openScenario(page, "agent-single", "agent");
     await expect(composer(page)).toHaveCount(1);
-    const input = page.getByRole("textbox", { name: "Message agent" });
+    const input = page.getByRole("combobox", { name: "Message agent" });
     await expect(input).toHaveAttribute("placeholder", "Do anything");
     await expect(input).toHaveAccessibleDescription(/Ctrl\+L|⌘L/);
   });
@@ -967,7 +967,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     );
     await expect(toolbar.getByRole("button")).toHaveCount(6);
     const [inputBox, toolbarBox] = await Promise.all([
-      boundsOf(form.getByRole("textbox", { name: "Message agent" })),
+      boundsOf(form.getByRole("combobox", { name: "Message agent" })),
       boundsOf(toolbar),
     ]);
     expect(toolbarBox.y).toBeGreaterThanOrEqual(
@@ -1139,7 +1139,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       ),
     ).toBe(true);
     const [inputBox, contextBox, micBox, sendBox] = await Promise.all([
-      boundsOf(composer(page).getByRole("textbox", { name: "Message agent" })),
+      boundsOf(composer(page).getByRole("combobox", { name: "Message agent" })),
       boundsOf(context),
       boundsOf(
         composer(page).getByRole("button", {
@@ -1166,7 +1166,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
   }) => {
     await openScenario(page, "agent-composer-context-unknown", "agent");
     await expect(
-      composer(page).getByRole("textbox", { name: "Message agent" }),
+      composer(page).getByRole("combobox", { name: "Message agent" }),
     ).toBeVisible();
     await expect(
       composer(page).getByLabel("Composer context", { exact: true }),
@@ -1316,7 +1316,7 @@ test.describe("Agent Panel V1 conformance — right tab region", () => {
     ).toBe(true);
     const [chipBox, inputBox, toolbarBox, formBox] = await Promise.all([
       boundsOf(attachments),
-      boundsOf(page.getByRole("textbox", { name: "Message agent" })),
+      boundsOf(page.getByRole("combobox", { name: "Message agent" })),
       boundsOf(composer(page).locator(".composer__toolbar")),
       boundsOf(composer(page)),
     ]);
