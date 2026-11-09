@@ -28,7 +28,7 @@ jpeg-encoder = { version = "=0.7.1", default-features = false, features = ["std"
 # regex, ignore and serde_json, so it adds no new code to the build.
 memchr = "=2.8.3"
 agent-client-protocol-schema = { version = "=1.4.0", optional = true, default-features = false }
-rusqlite = { version = "=0.40.1", features = ["backup", "bundled", "hooks", "modern_sqlite"] }
+rusqlite = { version = "=0.41.0", features = ["backup", "bundled", "hooks", "modern_sqlite"] }
 regex = "=1.13.1"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
