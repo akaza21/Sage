@@ -66,6 +66,20 @@ it("shows a native chat's loading state, never the legacy transcript, before its
   expect(legacy.imports).toBe(0);
 });
 
+it("shows why a native chat's first page failed instead of waiting for it", async () => {
+  render(
+    <ChatTranscript
+      {...props({ pageExpected: true, firstPageError: "Store unavailable" })}
+    />,
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Chat history could not be loaded: Store unavailable",
+  );
+  expect(screen.queryByText("Loading chat history…")).toBeNull();
+  await settleLazyModules();
+  expect(legacy.imports).toBe(0);
+});
+
 it("loads the legacy transcript for a chat without a native session", async () => {
   render(<ChatTranscript {...props({ useNativeAcp: false })} />);
   expect(await screen.findByText("legacy transcript")).toBeVisible();

@@ -14,6 +14,10 @@ export function useAcpChatHistory(boundChatId?: string | null) {
   const activeLoad = useStore(store, (state) => state.activeLoad);
   const historyLoad = useStore(store, (state) => state.historyLoad);
   const historyError = useStore(store, (state) => state.historyError);
+  // A failed newest-page load settles a chat that has no page to show.
+  const firstPageError = useStore(store, (state) =>
+    state.page ? null : state.error,
+  );
   // A chat is resolved in a settled project, so its first page is on the
   // way even before the projection's effect has begun loading it.
   const pageExpected = useWorkbenchStore((state) => {
@@ -70,6 +74,7 @@ export function useAcpChatHistory(boundChatId?: string | null) {
     hasEarlier: Boolean(page?.nextCursor && scope),
     loadingEarlier: historyLoad !== null,
     historyError,
+    firstPageError,
     onLoadEarlier: loadEarlier,
   };
 }

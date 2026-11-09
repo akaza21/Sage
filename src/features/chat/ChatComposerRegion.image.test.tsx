@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 
 import { ChatComposerRegion } from "./ChatComposerRegion";
+import { settleLazyModules } from "../../test/settleLazyModules";
 import { useWorkbenchStore } from "../../app/store";
 import {
   acpProjectionStoreFor,
@@ -223,7 +224,8 @@ describe("composer image input", () => {
       imageInputAvailable: true,
     });
     // The Goal control loads with the first chat that shows one.
-    await screen.findByLabelText("Goal details");
+    await settleLazyModules();
+    screen.getByLabelText("Goal details");
     const options = screen.queryByRole("button", { name: "Composer options" });
     if (options) {
       fireEvent.click(options);
@@ -269,7 +271,8 @@ describe("composer image input", () => {
         },
       },
     });
-    expect(await screen.findByLabelText("Goal details")).toBeVisible();
+    await settleLazyModules();
+    expect(screen.getByLabelText("Goal details")).toBeVisible();
     fireEvent.click(screen.getByLabelText("Goal details"));
     expect(
       screen.getByText(/Native Goal actions are unavailable/),
@@ -415,7 +418,8 @@ describe("composer image input", () => {
       onRemoveContext,
     });
     // The chips load with the first context attached to the draft.
-    await screen.findByLabelText("Attached context");
+    await settleLazyModules();
+    screen.getByLabelText("Attached context");
     expect(document.querySelector(".composer__image-preview")).toHaveAttribute(
       "src",
       "blob:preview",
