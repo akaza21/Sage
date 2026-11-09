@@ -52,6 +52,7 @@ export function currentSession(
 }
 
 export function latestRetryPrompt(page: AcpChatPage): {
+  turnId: SageTurnId;
   prompt: string;
   /** Present when the Turn ran a session action: Retry runs it again. */
   action?: AcpSessionAction;
@@ -73,6 +74,7 @@ export function latestRetryPrompt(page: AcpChatPage): {
     !turn.unrecognizedAction &&
     item?.kind === "text"
     ? {
+        turnId: turn.id,
         prompt: item.payload.text,
         ...(turn.sessionAction ? { action: turn.sessionAction } : {}),
         bindingId: session.bindingId,

@@ -135,7 +135,16 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/browser/BrowserSurface.tsx",
   // A live chat's own access loads beside its composer.
   "src/features/chat/ChatAccessSelection.tsx",
+  // A native Goal's control and mutations load with the first chat that
+  // shows one.
+  "src/features/chat/BoundChatGoalControl.tsx",
+  // The Hand off trigger loads with the Editor chat header or a row menu.
+  "src/features/chat/ChatHandoffControl.tsx",
   "src/features/chat/ChatHandoffDialog.tsx",
+  // Only a chat without a native session loads the legacy transcript.
+  "src/features/chat/ChatLegacyTranscript.tsx",
+  // Attachment chips load with the first context attached to a draft.
+  "src/features/chat/ComposerAttachments.tsx",
   "src/features/chat/ChatNavigation.tsx",
   "src/features/chat/ChatQueueExecution.tsx",
   "src/features/chat/ChatQueueRuntime.tsx",
@@ -145,6 +154,9 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/ClaudeAuthActions.tsx",
   // Queued-message rows load with the first queued message.
   "src/features/chat/ComposerQueuedPrompts.tsx",
+  // Pasted-text staging, chips and messages load with a native chat's
+  // composer or over-cap input; only the size check stays eager.
+  "src/features/chat/ComposerPaste.tsx",
   "src/features/chat/ForkChat.tsx",
   "src/features/chat/TranscriptInteractions.tsx",
   "src/features/chat/acp/MermaidFigure.tsx",
@@ -839,16 +851,21 @@ describe("desktop-native chunk topology", () => {
     }
     expect(searchFile).not.toBe(agentFile);
     expect(searchFile).not.toBe(sharedFile);
-    // The Hand off dialog loads on the first Hand off; the trigger stays eager.
+    // The Hand off dialog loads on the first Hand off. Its trigger loads
+    // with the Editor chat header or the row menu; Agent chrome renders
+    // neither on a chat's first paint.
     const handoffFile = groupedGraph.moduleFiles.get(
       "src/features/chat/ChatHandoffDialog.tsx",
     );
     expect(handoffFile).toBeDefined();
     expect(handoffFile).not.toBe(agentFile);
     expect(handoffFile).not.toBe(sharedFile);
-    expect(
-      groupedGraph.moduleFiles.get("src/features/chat/ChatHandoffControl.tsx"),
-    ).toBe(agentFile);
+    const handoffControlFile = groupedGraph.moduleFiles.get(
+      "src/features/chat/ChatHandoffControl.tsx",
+    );
+    expect(handoffControlFile).toBeDefined();
+    expect(handoffControlFile).not.toBe(agentFile);
+    expect(handoffControlFile).not.toBe(sharedFile);
     // The shared menu and the searchable picker list built on it load as
     // one chunk, outside the Agent body and the initial set. The Agent
     // header menu body keeps a chunk of its own.

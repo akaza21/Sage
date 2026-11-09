@@ -911,7 +911,43 @@ describe("ChatSurface ACP resource integration", () => {
         null,
       ),
     );
+    // A queued message names no staged files, so a paste staged for the
+    // message being written stays staged for it.
+    expect(hooks.actions.submit.mock.calls[0]).toHaveLength(4);
     await waitFor(() => expect(screen.queryByText("Follow up")).toBeNull());
+  });
+
+  it("retries the latest message with the files it carried, not a staged paste", async () => {
+    hooks.actions.submit.mockResolvedValue("applied");
+    const base = projection();
+    hooks.page = {
+      ...base,
+      turns: [
+        {
+          ...base.turns[0],
+          state: "failed",
+          terminalAt: 2,
+          items: [
+            {
+              ...itemBase("user-prompt"),
+              kind: "text",
+              payload: { role: "user", text: "Summarise the pasted log" },
+            } as AcpItem,
+          ],
+        },
+      ],
+    } as AcpChatPage;
+    matchConfiguredSession();
+    render(<ChatSurface chatId="chat-a" />);
+    await settleLazyModules();
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    expect(hooks.actions.submit).toHaveBeenCalledWith(
+      "Summarise the pasted log",
+      [],
+      "codex-app-server",
+      null,
+      { retryOf: base.turns[0].id },
+    );
   });
 
   it("starts a queued prompt after the active turn finishes with Chat hidden by a maximized artifact", async () => {
@@ -2828,7 +2864,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(options[1]).toBeDisabled();
   });
 
-  it("marks the development simulator as test-only without policy claims", () => {
+  it("marks the development simulator as test-only without policy claims", async () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -2848,7 +2884,10 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
 
     expect(screen.getByText("Test simulator")).toBeInTheDocument();
-    expect(screen.getByText("Development simulator")).toBeInTheDocument();
+    // A chat without a native session loads its transcript on demand.
+    expect(
+      await screen.findByText("Development simulator"),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         "This test-only harness exercises the workbench without connecting a production agent.",
@@ -3135,7 +3174,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.queryByText("Live")).toBeNull();
   });
 
-  it("announces the active Chat failure and exposes the bounded composer", () => {
+  it("announces the active Chat failure and exposes the bounded composer", async () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
       tabs: [
@@ -3168,9 +3207,19 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
 
     expect(screen.getByRole("alert")).toHaveTextContent("Only Chat A failed");
+    // The byte cap is enforced with an announced notice, never a silent
+    // UTF-16 maxlength truncation.
+    const field = screen.getByRole("combobox", { name: "Message agent" });
+    expect(field).not.toHaveAttribute("maxlength");
+    fireEvent.change(field, { target: { value: "\u00e9".repeat(8193) } });
+    expect(field).toHaveValue("");
     expect(
-      screen.getByRole("combobox", { name: "Message agent" }),
-    ).toHaveAttribute("maxlength", "16384");
+      await screen.findByText(
+        /^Messages hold up to 16 KB of typed text/,
+        {},
+        { timeout: 5000 },
+      ),
+    ).toBeInTheDocument();
   });
 
   it("previews edits cancels and confirms a bounded unsent Chat Handoff", async () => {
@@ -4026,7 +4075,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeVisible();
   });
 
-  it("does not let a stale ACP page mask simulator messages", () => {
+  it("does not let a stale ACP page mask simulator messages", async () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -4054,7 +4103,9 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
-    expect(screen.getByText("Visible simulator result")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Visible simulator result"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Open file src/main.ts" }),
     ).toBeNull();
@@ -4298,7 +4349,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(openDiff).not.toHaveBeenCalled();
   });
 
-  it("keeps the bounded global edit summary for the development simulator", () => {
+  it("keeps the bounded global edit summary for the development simulator", async () => {
     const resource: ResourceRef = {
       rootId: "root-c",
       relativePath: "legacy/change.ts",
@@ -4332,7 +4383,7 @@ describe("ChatSurface ACP resource integration", () => {
 
     render(<ChatSurface />);
     fireEvent.click(
-      screen.getByRole("button", {
+      await screen.findByRole("button", {
         name: "Open diff for legacy/change.ts",
       }),
     );
@@ -5209,7 +5260,7 @@ describe("ChatSurface composer focus hotkey", () => {
 });
 
 describe("ChatSurface attached context", () => {
-  it("renders a removable diff comment chip for the bound Chat", () => {
+  it("renders a removable diff comment chip for the bound Chat", async () => {
     const chatId = "chat-context";
     hooks.page = { ...projection(), chatId: chatId as never };
     useWorkbenchStore.setState({
@@ -5264,7 +5315,9 @@ describe("ChatSurface attached context", () => {
     const attachmentRow = document.querySelector(".composer__attachment-row");
     expect(attachmentRow).not.toBeNull();
     expect(
-      within(attachmentRow as HTMLElement).getByLabelText("Attached context"),
+      await within(attachmentRow as HTMLElement).findByLabelText(
+        "Attached context",
+      ),
     ).toHaveTextContent("Comment · src/AgentView.tsx:27-31");
     fireEvent.click(
       screen.getByRole("button", {

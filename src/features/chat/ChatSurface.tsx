@@ -7,7 +7,6 @@ import {
 import { useWorkbenchStore } from "../../app/store";
 import type { TurnProjection } from "../../domain/acp";
 import { ChatComposerRegion } from "./ChatComposerRegion";
-import { ChatHandoffControl } from "./ChatHandoffControl";
 import { ChatTranscript } from "./ChatTranscript";
 import { useUsageRequest } from "./acp/useUsageRequest";
 import { SessionWorkingPill } from "./SessionWorkingPill";
@@ -23,7 +22,7 @@ import {
   useRendererRecreationFocus,
 } from "./acp";
 import { useComposerFocusHotkey } from "./composerChrome";
-import { LazyHarnessNotice } from "./lazyParts";
+import { ChatHandoffControl, LazyHarnessNotice } from "./lazyParts";
 import { isSideChatId } from "../../workbench/sideChatState";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
 import { useApprovalSlot } from "./useApprovalSlot";
@@ -87,6 +86,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const focused = chatId == null || focusedChatId === chatId;
   const {
     selectedHarness,
+    selectedSession,
     useNativeAcp,
     availableBinding,
     harnessStatus,
@@ -183,9 +183,10 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const retry = acpPage && latestRetryPrompt(acpPage);
   const retryLastTurn = () => {
     if (!retry || actionBusy || activeAcpTurn) return;
-    if (retry.action) void acpActions.runSessionAction(retry.action);
-    else
-      void acpActions.submit(retry.prompt, [], retry.bindingId, retry.modelId);
+    if (retry.action) return void acpActions.runSessionAction(retry.action);
+    // Retry resends what that turn carried, never the next one's paste.
+    const { prompt, bindingId, modelId, turnId } = retry;
+    void acpActions.submit(prompt, [], bindingId, modelId, { retryOf: turnId });
   };
 
   useEffect(() => {
@@ -335,6 +336,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         disabledReasonId={`${composerFieldId}-disabled-reason`}
         text={composerText}
         attachedContext={attachedContext}
+        pasteSession={selectedSession}
         imagePreviews={imagePreviews}
         imageUploading={imageUploading}
         imageInputAvailable={imageInput.available}

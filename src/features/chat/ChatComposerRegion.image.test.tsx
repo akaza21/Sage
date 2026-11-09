@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 
@@ -222,6 +228,8 @@ describe("composer image input", () => {
       goal,
       imageInputAvailable: true,
     });
+    // The Goal control loads with the first chat that shows one.
+    await screen.findByLabelText("Goal details");
     const options = screen.queryByRole("button", { name: "Composer options" });
     if (options) {
       fireEvent.click(options);
@@ -251,7 +259,7 @@ describe("composer image input", () => {
       expect(screen.getByRole("button", { name: "Delete goal" })).toBeEnabled();
     }
   });
-  it("keeps an existing goal visible with an unavailable explanation while reloading", () => {
+  it("keeps an existing goal visible with an unavailable explanation while reloading", async () => {
     renderComposer({
       availableBinding: false,
       goal: {
@@ -267,7 +275,7 @@ describe("composer image input", () => {
         },
       },
     });
-    expect(screen.getByLabelText("Goal details")).toBeVisible();
+    expect(await screen.findByLabelText("Goal details")).toBeVisible();
     fireEvent.click(screen.getByLabelText("Goal details"));
     expect(
       screen.getByText(/Native Goal actions are unavailable/),
@@ -394,7 +402,7 @@ describe("composer image input", () => {
     expect(screen.getByRole("menuitem", { name: "Add images" })).toBeDisabled();
   });
 
-  it("shows an uploaded image thumbnail and removes its context", () => {
+  it("shows an uploaded image thumbnail and removes its context", async () => {
     const onRemoveContext = vi.fn();
     const image = {
       kind: "image" as const,
@@ -412,6 +420,8 @@ describe("composer image input", () => {
       imagePreviews: { [image.artifactId]: "blob:preview" },
       onRemoveContext,
     });
+    // The chips load with the first context attached to the draft.
+    await screen.findByLabelText("Attached context");
     expect(document.querySelector(".composer__image-preview")).toHaveAttribute(
       "src",
       "blob:preview",
@@ -427,7 +437,7 @@ describe("composer image input", () => {
     expect(onRemoveContext).toHaveBeenCalledWith(image);
   });
 
-  it("enables Send with only an attachment and no text (Codex s2/f0095)", () => {
+  it("enables Send with only an attachment and no text (Codex s2/f0095)", async () => {
     const image = {
       kind: "image" as const,
       artifactId: "00000000-0000-4000-8000-000000000000",
@@ -450,10 +460,11 @@ describe("composer image input", () => {
       imageInputAvailable: true,
       attachedContext: [image],
     });
-    expect(send).toBeEnabled();
+    // A native chat's send waits for its staged batch to be read back.
+    await waitFor(() => expect(send).toBeEnabled(), { timeout: 5_000 });
   });
 
-  it("keeps attachment-only Send paired with a visible page chip, then disables it on removal", () => {
+  it("keeps attachment-only Send paired with a visible page chip, then disables it on removal", async () => {
     const page = {
       kind: "browserPage" as const,
       tabId: "browser-1",
@@ -465,8 +476,14 @@ describe("composer image input", () => {
       text: "  ",
       attachedContext: [page],
     });
-    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
-    expect(screen.getByText("Page · Example page")).toBeVisible();
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole("button", { name: "Send message" }),
+        ).toBeEnabled(),
+      { timeout: 5_000 },
+    );
+    expect(await screen.findByText("Page · Example page")).toBeVisible();
     rerenderComposer({ text: "  ", attachedContext: [] });
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
   });
