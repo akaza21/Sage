@@ -1,6 +1,9 @@
 use crate::acp::{
-    bindings::standard_acp::elicitation::accepted, intent::user_input::UserInputAnswers,
-    lifecycle::ServerRequestState, limits::LIMITS, runtime::permissions::PermissionDecision,
+    bindings::standard_acp::elicitation::{accepted, refused},
+    intent::user_input::UserInputAnswers,
+    lifecycle::ServerRequestState,
+    limits::LIMITS,
+    runtime::permissions::PermissionDecision,
 };
 
 /// The Codex server request that asks the user questions.
@@ -142,6 +145,18 @@ impl CodexAdapter {
             ServerRequestState::Received | ServerRequestState::Asked
         ) {
             return Err(AdapterError::PermissionTeardownRequired);
+        }
+        // The retained elicitation reply is the user's `decline`; a cancel
+        // or teardown answers MCP `cancel` instead.
+        if entry.form.is_some() {
+            let mut value: serde_json::Value = serde_json::from_slice(&entry.response)
+                .map_err(|_| AdapterError::PermissionTeardownRequired)?;
+            value
+                .as_object_mut()
+                .ok_or(AdapterError::PermissionTeardownRequired)?
+                .insert("result".into(), refused(false));
+            return serde_json::to_vec(&value)
+                .map_err(|_| AdapterError::PermissionTeardownRequired);
         }
         Ok(entry.response.clone())
     }
