@@ -175,7 +175,7 @@ function paste(text: string, files: File[] = []) {
  * `/` menu keeps a live region of its own. */
 const status = () =>
   document.querySelector<HTMLElement>(
-    "#disabled-reason-paste[aria-live=polite]",
+    "#disabled-reason-paste [aria-live=polite]",
   );
 const announced = (text: string) =>
   waitFor(() => expect(status()!).toHaveTextContent(text), LAZY);
@@ -511,8 +511,8 @@ describe(
         LAZY,
       );
       expect(notice).toBeVisible();
-      expect(describesField(notice)).toBe(true);
       await waitFor(() => expect(send).toBeEnabled(), LAZY);
+      expect(describesField(notice)).toBe(true);
       expect(native.calls).toEqual([]);
       // A later long paste is still never inserted.
       expect(paste(log)).toBe(false);
@@ -554,11 +554,14 @@ describe(
       render(<Composer />);
       const named = () =>
         field().getAttribute("aria-describedby")!.split(" ").filter(Boolean);
-      expect(named()).toContain("disabled-reason-paste");
-      for (const id of named())
-        expect(document.getElementById(id), id).not.toBeNull();
+      // Until the part is in place, the field names no paste notices.
+      expect(named()).not.toContain("disabled-reason-paste");
       release();
       await focusField();
+      await waitFor(
+        () => expect(named()).toContain("disabled-reason-paste"),
+        LAZY,
+      );
       for (const id of named())
         expect(document.getElementById(id), id).not.toBeNull();
     });

@@ -6,10 +6,7 @@ import {
   pasteAttachmentRefusal,
   type PasteAttachability,
 } from "./composerPaste";
-import {
-  ComposerPasteNotices,
-  type PasteNoticeIds,
-} from "./ComposerPasteNotices";
+import { ComposerPasteNotices } from "./ComposerPasteNotices";
 import { PastedTextChips } from "./PastedTextChips";
 import {
   pasteOver,
@@ -40,7 +37,7 @@ export function ComposerPaste({
   input: { seq, take },
   text,
   disabled,
-  noticeIds,
+  noticeId,
   onStaged,
 }: {
   chatId: string | undefined;
@@ -56,7 +53,8 @@ export function ComposerPaste({
   text: string;
   /** Busy while a send is in flight; a send may consume the batch. */
   disabled: boolean;
-  noticeIds: PasteNoticeIds;
+  /** The id the field names in aria-describedby once the part reports. */
+  noticeId: string;
   onStaged(next: StagedSummary): void;
 }) {
   const [state, setState] = useState(EMPTY);
@@ -135,11 +133,7 @@ export function ComposerPaste({
       : "";
   return (
     <>
-      <ComposerPasteNotices
-        ids={noticeIds}
-        notice={transient}
-        reason={reason}
-      />
+      <ComposerPasteNotices id={noticeId} notice={transient} reason={reason} />
       {state.items.length > 0 ? (
         <PastedTextChips
           items={state.items}
