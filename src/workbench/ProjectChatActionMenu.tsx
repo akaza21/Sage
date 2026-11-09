@@ -28,11 +28,11 @@ import {
   subscribeAgentHeaderMenu,
 } from "./agentTaskHeaderLazy";
 // The menu's Hand off item loads with it, so it renders in the menu's
-// first commit.
+// first commit. A failed Hand off chunk leaves the rest of the menu working.
 const ActionsPart = lazyParts<typeof ActionsChunk>(() =>
   Promise.all([
     import("./ProjectChatActionPopover"),
-    preloadChatHandoffControl(),
+    preloadChatHandoffControl().catch(() => undefined),
   ]).then(([chunk]) => chunk),
 );
 const preloadMenu = () => void preloadAgentHeaderMenu().catch(() => undefined);
