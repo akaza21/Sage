@@ -2461,7 +2461,7 @@ it("keeps the send binding's access modes when switching between Access and Add"
   const onChoose = vi.fn();
   renderControls({
     selectedHarnessId: "other",
-    accessBindingId: "fixture",
+    accessTarget: { bindingId: "fixture" },
     addActions: { imageAction: { disabled: false, onChoose } },
   });
   const access = screen.getByRole("button", { name: "Access options" });

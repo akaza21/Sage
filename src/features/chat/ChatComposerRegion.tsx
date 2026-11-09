@@ -59,8 +59,7 @@ export function ChatComposerRegion({
   signInHarness = null,
   claudeSignInRequired,
   claudeAuthScope,
-  accessBindingId,
-  accessDraftChatId,
+  accessTarget,
   availableBinding,
   canPrompt,
   discoveryPhase,
@@ -358,8 +357,7 @@ export function ChatComposerRegion({
             <ChatHarnessControls
               modelLabelScope={JSON.stringify([dictationScope, sessionId])}
               inheritScope={dictationScope}
-              accessBindingId={accessBindingId}
-              accessDraftChatId={accessDraftChatId}
+              accessTarget={accessTarget}
               addActions={{
                 imageAction: imageInput.action,
                 onOpenGoal: goalDetails.onOpen,

@@ -359,9 +359,11 @@ export function useChatSurfaceModel({
   );
   return {
     ...model,
-    accessBindingId,
     // A chat with no session at all drafts its access for its first one.
-    accessDraftChatId: page?.sessions.length === 0 ? page.chatId : undefined,
+    accessTarget: {
+      bindingId: accessBindingId,
+      draftChatId: page?.sessions.length === 0 ? page.chatId : undefined,
+    },
     foregroundError: acpActions.error ?? chatError,
     // The sign-in sentence renders lazily in the composer, off the chat path.
     signInHarness:

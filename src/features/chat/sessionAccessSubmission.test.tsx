@@ -79,7 +79,7 @@ it("disables send and explains unsupported access before any dispatch", () => {
 it("uses the same binding for access and the next session when selection differs from the old session", () => {
   const input = args();
   const { result } = renderHook(() => useChatSurfaceModel(input));
-  expect(result.current.accessBindingId).toBe("binding-a");
+  expect(result.current.accessTarget.bindingId).toBe("binding-a");
   act(() => result.current.submit({ preventDefault() {} } as FormEvent));
   expect(input.acpActions.submit).toHaveBeenCalledWith(
     "inspect",
@@ -131,7 +131,7 @@ it("switches access by next-send binding and preserves each explicit preference"
     initialProps: input,
   });
   rerender({ ...input, selectedHarnessId: "claude" });
-  expect(result.current.accessBindingId).toBe("claude-binding");
+  expect(result.current.accessTarget.bindingId).toBe("claude-binding");
   expect(result.current.composerEnabled).toBe(true);
   act(() => result.current.submit({ preventDefault() {} } as FormEvent));
   expect(input.acpActions.submit).toHaveBeenLastCalledWith(
@@ -141,7 +141,7 @@ it("switches access by next-send binding and preserves each explicit preference"
     null,
   );
   rerender({ ...input, selectedHarnessId: "opencode" });
-  expect(result.current.accessBindingId).toBe("opencode-binding");
+  expect(result.current.accessTarget.bindingId).toBe("opencode-binding");
   expect(result.current.composerEnabled).toBe(true);
   rerender(input);
   expect(useSessionAccessModeStore.getState().modes).toEqual({
