@@ -7,23 +7,25 @@ import {
   type SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
 import { ACCESS_ICONS } from "./composerAccessIcons";
-import { ComposerMenuLoading } from "./ComposerMenuLoading";
-const AccessMenu = lazy(() => import("./ComposerAccessMenu"));
-// A live chat's own access, its modes and their icons load off the chat path.
+// A chat's own access (live or drafted), its menu, errors, modes and icons
+// load off the chat path; until then the trigger shows the default.
 const ChatAccess = lazy(() => import("./ChatAccessSelection"));
 
-/** What the access trigger shows, for the chat's defaults or its own mode. */
+/** What the access trigger and menu show, for the chat's defaults or its own mode. */
 export interface AccessView {
   candidates: readonly SessionAccessModeCapability[];
   effective: SessionAccessMode | null;
   error: string | null;
   sessionId?: string;
+  /** Holds a choice for a chat whose session has not started. */
+  onDraft?: (mode: SessionAccessMode) => void;
   icon?: (typeof ACCESS_ICONS)["ask"];
   tone?: string;
 }
 
 export function ComposerAccessControl({
   bindingId,
+  chatId,
   capabilities,
   sessionConfig,
   disabled,
@@ -32,6 +34,8 @@ export function ComposerAccessControl({
   onDismiss,
 }: {
   bindingId: string;
+  /** The chat whose access is drafted until its session starts. */
+  chatId?: string;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
   /** The live chat a choice applies to; without one nothing can change. */
   sessionConfig?: AcpSessionConfig | null;
@@ -44,14 +48,8 @@ export function ComposerAccessControl({
   const trigger = useRef<HTMLButtonElement>(null);
   const base = useSessionAccessSelection(bindingId, capabilities);
   const ready = base.ready;
-  const view = ({
-    candidates,
-    effective,
-    error,
-    sessionId,
-    icon,
-    tone,
-  }: AccessView) => {
+  const shown = open && !disabled && ready;
+  const view = ({ candidates, effective, icon, tone }: AccessView) => {
     const selected = candidates.find((candidate) => candidate.id === effective);
     const Icon =
       icon ??
@@ -69,7 +67,7 @@ export function ComposerAccessControl({
           aria-describedby={`${id}-scope`}
           aria-haspopup="menu"
           aria-controls={id}
-          aria-expanded={open && !disabled && ready}
+          aria-expanded={shown}
           data-selected-id={effective}
           disabled={disabled || !ready}
           onClick={onToggle}
@@ -79,49 +77,29 @@ export function ComposerAccessControl({
             {selected?.label ?? "Choose access"}
           </span>
         </button>
-        {open && !disabled && ready ? (
-          <Suspense
-            fallback={
-              <ComposerMenuLoading triggerRef={trigger} onDismiss={onDismiss} />
-            }
-          >
-            <AccessMenu
-              key={bindingId + sessionId}
-              id={id}
-              triggerRef={trigger}
-              candidates={candidates}
-              effective={effective}
-              onDismiss={onDismiss}
-              sessionId={sessionId}
-            />
-          </Suspense>
-        ) : null}
         <span id={`${id}-scope`} className="sr-only">
           {selected?.description} {SESSION_ACCESS_MODE_SCOPE}
         </span>
-        {error ? (
-          <span
-            className="select-control__reason composer-access-error"
-            role="alert"
-          >
-            {error}
-          </span>
-        ) : null}
       </>
     );
   };
-  return sessionConfig && !sessionConfig.removed ? (
+  return (
     <Suspense fallback={view(base)}>
       <ChatAccess
         bindingId={bindingId}
         capabilities={capabilities}
-        session={sessionConfig}
+        session={sessionConfig?.removed ? null : sessionConfig}
+        chatId={chatId}
         error={base.error}
+        anchor={{
+          id,
+          triggerRef: trigger,
+          open: shown,
+          onDismiss,
+        }}
       >
         {view}
       </ChatAccess>
     </Suspense>
-  ) : (
-    view(base)
   );
 }

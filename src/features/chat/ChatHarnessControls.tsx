@@ -258,6 +258,7 @@ export function ChatHarnessControls({
         {availableBinding && accessHarness?.bindingId ? (
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
+            chatId={inheritScope}
             capabilities={accessHarness.accessModes}
             sessionConfig={sessionConfig}
             disabled={turnBusy || projectTransitioning}
