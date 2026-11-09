@@ -102,6 +102,8 @@ struct PermissionRequestEntry {
     item_id: String,
     response: Vec<u8>,
     state: ServerRequestState,
+    /// The form an MCP elicitation asked; its answers are typed against it.
+    form: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
 }
 
 pub(crate) struct PermissionRequestParams<'a> {
@@ -112,6 +114,7 @@ pub(crate) struct PermissionRequestParams<'a> {
     pub(crate) turn_id: &'a str,
     pub(crate) item_id: &'a str,
     pub(crate) response: &'a [u8],
+    pub(crate) form: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
