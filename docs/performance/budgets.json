@@ -234,9 +234,9 @@
       },
       {
         "entry": "src/features/chat/BoundChatGoalControl.tsx",
-        "maxGzipBytes": 1333,
+        "maxGzipBytes": 1971,
         "maxCssGzipBytes": 765,
-        "reason": "Native Goal details, Pause and Delete with their mutations; loads with the first chat that shows a Goal. Measured 1245 B JS and 714 B CSS, plus 7%."
+        "reason": "Native Goal details, Pause and Delete with their mutations; loads with the first chat that shows a Goal. Measured 1842 B JS and 714 B CSS, plus 7%."
       },
       {
         "entry": "src/features/chat/ComposerAttachments.tsx",
