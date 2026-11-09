@@ -75,6 +75,75 @@ pub enum AppError {
         state: GitContainmentState,
         message: String,
     },
+
+    /// The background task running an operation ended before reporting an
+    /// outcome (it panicked or was cancelled). The detail is for logs only.
+    #[error("background task ended before finishing: {0}")]
+    TaskInterrupted(String),
+}
+
+impl AppError {
+    /// The text a person reads in the UI. A typed refusal already carries a
+    /// sentence written for them, so it surfaces without the category prefix
+    /// that `Display` keeps for logs. An interrupted task or a failed database
+    /// operation gets a retry sentence of its own instead of its detail (see
+    /// `hides_detail`); every other error reads as `Display` does.
+    pub fn public_message(&self) -> String {
+        match self {
+            Self::InvalidRequest(message) => message.clone(),
+            Self::TaskInterrupted(_) => "Sage could not finish this change; try again.".into(),
+            Self::Database(_) => "Sage could not save this change; try again.".into(),
+            other => other.to_string(),
+        }
+    }
+
+    /// Whether `public_message` leaves out the error's detail, which the
+    /// caller then logs.
+    pub fn hides_detail(&self) -> bool {
+        matches!(self, Self::TaskInterrupted(_) | Self::Database(_))
+    }
 }
 
 pub type AppResult<T> = Result<T, AppError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_messages_drop_the_refusal_prefix_and_hide_task_detail() {
+        let refusal = AppError::InvalidRequest("Only an archived Chat can be deleted".into());
+        assert_eq!(
+            refusal.to_string(),
+            "invalid request: Only an archived Chat can be deleted"
+        );
+        assert_eq!(
+            refusal.public_message(),
+            "Only an archived Chat can be deleted"
+        );
+        let interrupted = AppError::TaskInterrupted("task 7 panicked".into());
+        assert_eq!(
+            interrupted.public_message(),
+            "Sage could not finish this change; try again."
+        );
+        assert!(!interrupted.public_message().contains("panicked"));
+        let database = AppError::Database(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+            Some("database is locked in chat_tabs".into()),
+        ));
+        assert_eq!(
+            database.public_message(),
+            "Sage could not save this change; try again."
+        );
+        assert!(!database.public_message().contains("chat_tabs"));
+        assert!(database.hides_detail() && interrupted.hides_detail());
+        let limit = AppError::ResourceLimit("too many Chats".into());
+        assert_eq!(limit.public_message(), limit.to_string());
+        assert!(!limit.hides_detail() && !refusal.hides_detail());
+        let layout = AppError::RepositoryOutsideRoot(RepositoryLayout::NestedRoot);
+        assert_eq!(
+            layout.public_message(),
+            RepositoryLayout::NestedRoot.public_message()
+        );
+    }
+}

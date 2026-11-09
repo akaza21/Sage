@@ -51,6 +51,9 @@ pub(crate) struct IncrementalFrameDecoder {
     pending_cr: bool,
     eof_seen: bool,
     recoverable_oversize: bool,
+    /// Oversized frames that carry no request id are skipped, not fatal.
+    skip_oversize: bool,
+    skipped_oversize: bool,
     discarding: Option<Box<Discarding>>,
     oversize_id: Option<u64>,
 }
@@ -64,6 +67,8 @@ impl IncrementalFrameDecoder {
             pending_cr: false,
             eof_seen: false,
             recoverable_oversize: false,
+            skip_oversize: false,
+            skipped_oversize: false,
             discarding: None,
             oversize_id: None,
         }
@@ -79,6 +84,14 @@ impl IncrementalFrameDecoder {
 
     pub(crate) fn take_oversize_id(&mut self) -> Option<u64> {
         self.oversize_id.take()
+    }
+
+    pub(crate) fn set_oversize_skip(&mut self, skip: bool) {
+        self.skip_oversize = skip;
+    }
+
+    pub(crate) fn take_skipped_oversize(&mut self) -> bool {
+        std::mem::take(&mut self.skipped_oversize)
     }
 
     pub(crate) fn push_chunk(&mut self, chunk: &[u8]) -> Result<Option<Frame>, FrameError> {
@@ -159,6 +172,8 @@ impl IncrementalFrameDecoder {
         self.discarding = None;
         self.oversize_id = None;
         self.recoverable_oversize = false;
+        self.skip_oversize = false;
+        self.skipped_oversize = false;
     }
 
     fn accept_byte(&mut self, byte: u8) -> Result<Option<Frame>, FrameError> {
@@ -169,11 +184,13 @@ impl IncrementalFrameDecoder {
         if byte == b'\n' {
             self.pending_cr = false;
             if let Some(discarding) = self.discarding.take() {
-                let id = discarding
-                    .scanner
-                    .finish()
-                    .map_err(|()| FrameError::Oversize)?;
-                self.oversize_id = Some(id);
+                match discarding.scanner.finish() {
+                    Ok(id) => self.oversize_id = Some(id),
+                    Err(()) if self.skip_oversize && discarding.scanner.is_complete() => {
+                        self.skipped_oversize = true;
+                    }
+                    Err(()) => return Err(FrameError::Oversize),
+                }
                 return Ok(None);
             }
             if std::str::from_utf8(&self.assembly).is_err() {
@@ -200,7 +217,7 @@ impl IncrementalFrameDecoder {
         }
         let maximum = frame_limit();
         if self.assembly.len() >= maximum {
-            if !self.recoverable_oversize {
+            if !self.recoverable_oversize && !self.skip_oversize {
                 self.reset_frame();
                 return Err(FrameError::Oversize);
             }
@@ -445,6 +462,38 @@ mod tests {
             }
         }
         assert_eq!(outputs, vec![b"next".to_vec()]);
+    }
+
+    #[test]
+    fn skipped_oversize_drops_one_complete_idless_frame_and_keeps_reading() {
+        let raw = format!(
+            "{{\"type\":\"user\",\"content\":\"{}\"}}\nnext\n",
+            "x".repeat(frame_limit())
+        );
+        let mut decoder = IncrementalFrameDecoder::new();
+        decoder.set_oversize_skip(true);
+        let (mut frames, mut skipped) = (Vec::new(), 0);
+        for chunk in raw.as_bytes().chunks(READ_CHUNK_BYTES) {
+            let mut frame = decoder.push_chunk(chunk).unwrap();
+            loop {
+                skipped += usize::from(decoder.take_skipped_oversize());
+                frames.extend(frame.map(|frame| frame.as_bytes().to_vec()));
+                if !decoder.has_pending_input() {
+                    break;
+                }
+                frame = decoder.drain_pending().unwrap();
+            }
+        }
+        assert_eq!((frames, skipped), (vec![b"next".to_vec()], 1));
+        let mut truncated = IncrementalFrameDecoder::new();
+        truncated.set_oversize_skip(true);
+        let broken = format!("{{\"type\":\"{}\n", "x".repeat(frame_limit()));
+        let failed = broken
+            .as_bytes()
+            .chunks(READ_CHUNK_BYTES)
+            .map(|chunk| truncated.push_chunk(chunk))
+            .any(|result| matches!(result, Err(FrameError::Oversize)));
+        assert!(failed);
     }
 
     fn decode_oversize(raw: &[u8]) -> Result<Option<u64>, FrameError> {

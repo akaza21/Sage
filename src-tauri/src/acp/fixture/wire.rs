@@ -27,14 +27,20 @@ mod parity_tests;
 #[cfg(test)]
 pub(crate) use child_opened_tests::child_opened_wire_for_test;
 #[cfg(test)]
-pub(crate) use pi_bridge::{pi_bridge_calls_for_test, run_pi_bridge_call_for_test};
+pub(crate) use claude_sdk::claude_sdk_wire_for_test;
+#[cfg(test)]
+pub(crate) use pi_bridge::{pi_journey_steps_for_test, run_pi_step_for_test};
 #[cfg(test)]
 pub(crate) use user_input::codex_user_input_wire_for_test;
 
 #[path = "wire_acp.rs"]
 mod acp;
+#[path = "wire_claude_sdk.rs"]
+mod claude_sdk;
 #[path = "wire_codex.rs"]
 mod codex;
+#[path = "wire_codex_catalog.rs"]
+mod codex_catalog;
 #[path = "wire_pi.rs"]
 mod pi;
 #[path = "wire_pi_bridge.rs"]
@@ -57,6 +63,9 @@ pub(super) struct WireState {
     pending_user_input: Option<u64>,
     user_input_echo: Option<String>,
     pi: pi::PiWireState,
+    acp_config: Option<acp::AcpConfig>,
+    /// The model the client opened or resumed the Codex thread with.
+    codex_thread_model: Option<String>,
 }
 
 impl WireState {
@@ -73,6 +82,8 @@ impl WireState {
             pending_user_input: None,
             user_input_echo: None,
             pi: pi::PiWireState::new(),
+            acp_config: None,
+            codex_thread_model: None,
         }
     }
 
@@ -145,11 +156,15 @@ fn await_client_kind(
     if kind == "piBridgeTool" {
         return pi_bridge::tool(step, input, output, state);
     }
+    if kind.starts_with("claudeSdk") {
+        return claude_sdk::await_request(input, output, state, kind);
+    }
     if kind.starts_with("pi") {
         return pi::await_request(input, output, state, kind);
     }
     if kind.starts_with("acp") {
-        return acp::await_request(input, output, state, kind);
+        let prompt_text = step.get("promptText").and_then(Value::as_str);
+        return acp::await_request(input, output, state, kind, prompt_text);
     }
     if kind == "codexUserInputAnswer" {
         return user_input::await_answer(input, state);
@@ -160,6 +175,9 @@ fn await_client_kind(
     let expected_method = match kind {
         "codexInitialize" => Some("initialize"),
         "codexStart" => Some("thread/start"),
+        // A journey that runs across an app restart: a new thread first,
+        // the same thread resumed after.
+        "codexStartOrResume" => Some("thread/start|thread/resume"),
         "codexResume" => Some("thread/resume"),
         "codexModelList" => Some("model/list"),
         "codexGoalGet" => Some("thread/goal/get"),
@@ -205,6 +223,17 @@ fn await_client(
     }
 }
 
+/// The frame a Codex journey step named `shape` answers request `id` with,
+/// outside a running journey.
+#[cfg(any(test, all(windows, debug_assertions)))]
+pub(super) fn codex_reply(shape: &str, id: u64) -> Option<Value> {
+    let mut state = WireState::new();
+    state.last_request_id = Some(id);
+    let mut output = Vec::new();
+    codex::emit_known(shape, &Value::Null, &mut state, &mut output).ok()?;
+    serde_json::from_slice(&output).ok()
+}
+
 fn emit_known(
     step: &Value,
     state: &mut WireState,
@@ -213,6 +242,9 @@ fn emit_known(
     let shape = field_str(step, "shape")?;
     if shape == "piNative" {
         return pi::emit(step, state, output);
+    }
+    if shape == "claudeSdkNative" {
+        return claude_sdk::emit(step, state, output);
     }
     if shape.starts_with("acp") {
         return acp::emit(step, state, output);

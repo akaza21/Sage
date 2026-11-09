@@ -41,6 +41,7 @@ function fakeEditorPort(): EditorPort {
     snapshotEditorBuffer: vi.fn(),
     saveEditorDocument: vi.fn(),
     discardEditorBuffer: vi.fn(),
+    rebaseEditorBuffer: vi.fn(),
     watchEditorDocument: vi.fn(),
   } as EditorPort;
 }
@@ -56,6 +57,7 @@ describe("file editor controller seam", () => {
     vi.mocked(editor.openEditorDocument).mockResolvedValue(document);
     vi.mocked(editor.snapshotEditorBuffer).mockResolvedValue({
       revision: 1,
+      applied: true,
       persistedAt: 1,
       dirty: true,
     });
@@ -102,10 +104,13 @@ describe("file editor controller seam", () => {
       rootId: "root-notes",
       relativePath: "journal/today.md",
     });
-    expect(editor.discardEditorBuffer).toHaveBeenCalledWith({
-      rootId: "root-scratch",
-      relativePath: "drafts/idea.txt",
-    });
+    expect(editor.discardEditorBuffer).toHaveBeenCalledWith(
+      {
+        rootId: "root-scratch",
+        relativePath: "drafts/idea.txt",
+      },
+      undefined,
+    );
     await vi.advanceTimersByTimeAsync(750);
     expect(editor.snapshotEditorBuffer).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
@@ -116,6 +121,7 @@ describe("file editor controller seam", () => {
     vi.mocked(editor.snapshotEditorBuffer).mockImplementation(
       async (request) => ({
         revision: request.revision,
+        applied: true,
         persistedAt: 1,
         dirty: true,
       }),

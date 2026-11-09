@@ -32,6 +32,22 @@ impl HeldParent {
         Err(unavailable())
     }
 
+    pub(super) fn create_new_document(&self, _name: &str) -> AppResult<File> {
+        Err(unavailable())
+    }
+
+    pub(in crate::editor) fn rename_new(&self, _temp: &str, _target: &str) -> AppResult<bool> {
+        Err(unavailable())
+    }
+
+    pub(in crate::editor) fn create_folder(&self, _name: &str) -> std::io::Result<()> {
+        Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
+    }
+
+    pub(in crate::editor) fn remove_folder(&self, _name: &str) -> std::io::Result<()> {
+        Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
+    }
+
     pub(in crate::editor) fn remove(&self, _name: &str) -> std::io::Result<()> {
         Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
     }

@@ -21,6 +21,7 @@ import {
   mergeNewestPage,
   retainUnchangedTurns,
 } from "./acpProjectionMerge";
+import { pageByteLength } from "./acpProjectionBytes";
 import { errorField, loadSlot, rejectedRevision } from "./acpProjectionLoads";
 
 export const MAX_RETAINED_TURNS = 100;
@@ -94,12 +95,6 @@ interface AcpProjectionState {
   clear: () => void;
 }
 
-import { utf8ByteLength } from "../domain/text";
-
-function byteLength(value: unknown): number {
-  return utf8ByteLength(JSON.stringify(value));
-}
-
 function sameScope(
   left: AcpProjectionScope | null,
   right: AcpProjectionScope,
@@ -155,14 +150,14 @@ function trimToByteLimit(page: AcpChatPage): {
   const sourceActivityCount = countActivities(page.turns);
   let turns = capTurnAndItemCounts(page.turns);
   let candidate = { ...page, turns };
-  let retainedBytes = byteLength(candidate);
+  let retainedBytes = pageByteLength(candidate);
 
   while (retainedBytes > MAX_RETAINED_BYTES && turns.length > 1) {
     const excessRatio = (retainedBytes - MAX_RETAINED_BYTES) / retainedBytes;
     const remove = Math.max(1, Math.floor(turns.length * excessRatio));
     turns = turns.slice(remove);
     candidate = { ...candidate, turns };
-    retainedBytes = byteLength(candidate);
+    retainedBytes = pageByteLength(candidate);
   }
 
   while (
@@ -175,7 +170,7 @@ function trimToByteLimit(page: AcpChatPage): {
     const remove = Math.max(1, Math.floor(turn.items.length * excessRatio));
     turns = [{ ...turn, items: turn.items.slice(remove) }];
     candidate = { ...candidate, turns };
-    retainedBytes = byteLength(candidate);
+    retainedBytes = pageByteLength(candidate);
   }
 
   while (
@@ -186,7 +181,7 @@ function trimToByteLimit(page: AcpChatPage): {
     const turn = turns[0];
     turns = [{ ...turn, activities: turn.activities.slice(1) }];
     candidate = { ...candidate, turns };
-    retainedBytes = byteLength(candidate);
+    retainedBytes = pageByteLength(candidate);
   }
 
   return {

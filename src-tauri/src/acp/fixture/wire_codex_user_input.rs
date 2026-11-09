@@ -29,6 +29,8 @@ pub(super) fn emit_request(
         .filter(|questions| questions.is_array())
         .ok_or(FixtureError::InvalidArguments)?;
     let auto_resolution = step.get("autoResolutionMs").cloned().unwrap_or(Value::Null);
+    // A request with a window is one Codex lets resolve itself.
+    let blocking = auto_resolution.is_null();
     if state.pending_user_input.is_some() {
         return Err(FixtureError::InvalidArguments);
     }
@@ -42,7 +44,7 @@ pub(super) fn emit_request(
         state,
         &json!({"jsonrpc":"2.0","id":request_id,"method":"item/tool/requestUserInput","params":{
             "threadId":acp::SESSION,"turnId":turn,"itemId":format!("fixture-user-input-{turn}"),
-            "questions":questions,"autoResolutionMs":auto_resolution
+            "questions":questions,"isBlocking":blocking,"autoResolutionMs":auto_resolution
         }}),
     )
 }
@@ -199,6 +201,7 @@ mod tests {
         assert_eq!(request["method"], "item/tool/requestUserInput");
         assert_eq!(request["params"]["turnId"], "turn-1");
         assert_eq!(request["params"]["autoResolutionMs"], 5000);
+        assert_eq!(request["params"]["isBlocking"], false);
         let text = echo["params"]["delta"].as_str().unwrap();
         assert_eq!(
             text,

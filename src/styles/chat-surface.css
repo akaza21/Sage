@@ -328,6 +328,10 @@ button.composer__control-trigger[aria-expanded="true"] {
   color: var(--composer-access-write);
 }
 
+.composer__access-label--full {
+  color: var(--composer-access-full);
+}
+
 .composer__plus:hover,
 .composer__model-trigger:hover {
   color: var(--color-status-foreground);

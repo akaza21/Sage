@@ -1,3 +1,4 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use serde_json::{Value, json};
 
 use crate::acp::{
@@ -26,7 +27,7 @@ const UNIMPLEMENTED_SERVER_REQUESTS: [&str; 6] = [
 
 const UNPROJECTED_NOTIFICATIONS: [&str; 5] = [
     "fs/changed",
-    "hook/started",
+    "item/fileChange/outputDelta",
     "item/fileChange/patchUpdated",
     "thread/realtime/started",
     "turn/diff/updated",
@@ -54,8 +55,8 @@ fn initialize_result(id: u64) -> Vec<u8> {
     serde_json::to_vec(&json!({
         "id": id,
         "result": {
-            "userAgent": "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-            "codexHome": "C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+            "userAgent": user_agent("sage", "unknown"),
+            "codexHome": MANAGED_CODEX_HOME,
             "platformFamily": "windows",
             "platformOs": "windows"
         }

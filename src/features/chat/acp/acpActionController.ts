@@ -21,6 +21,8 @@ import { currentSession } from "./acpTurnState";
 import { createActionProjectionCommit, sameScope } from "./acpActionProjection";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
+import type { SlashCommandPort } from "../slashCommandTurn";
+import { createSessionActionRunner } from "./sessionAction";
 
 export { cancellableTurnId } from "./acpTurnState";
 
@@ -56,10 +58,14 @@ export interface AcpActionCommands {
   endSession: typeof acpDesktop.endSession;
   setSessionMode?: typeof acpDesktop.setSessionMode;
   setSessionConfigOption?: typeof acpDesktop.setSessionConfigOption;
+  queueSessionConfigChoice?: typeof acpDesktop.queueSessionConfigChoice;
+  runSessionAction?: typeof acpDesktop.runSessionAction;
 }
 
 interface AcpActionDependencies {
   commands?: AcpActionCommands;
+  /** The typed slash-command route; loaded on demand when omitted. */
+  slashCommands?: SlashCommandPort;
   getContext: () => AcpActionContext | null;
   onUnscopedRefusal?: (message: string) => void;
   settleAccessMode?: () => Promise<boolean>;
@@ -113,11 +119,9 @@ function scopeKey(context: AcpActionContext): string {
   ]);
 }
 
-function sessionById(
-  page: AcpChatPage,
-  sessionId: AgentSessionProjection["id"],
-): AgentSessionProjection {
-  const session = page.sessions.find((candidate) => candidate.id === sessionId);
+/** The page's head session, which activation may have replaced. */
+function headSession(page: AcpChatPage): AgentSessionProjection {
+  const session = currentSession(page);
   if (!session) throw localFailure("The authoritative session is unavailable.");
   return session;
 }
@@ -320,7 +324,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           if (!applied) return "ignoredStale";
           page = applied;
           session = requireSelectedSession(
-            sessionById(page, session.id),
+            headSession(page),
             bindingId,
             modelId,
           );
@@ -349,13 +353,23 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
             : {}),
           ...(staged ? { staged } : {}),
         };
+        // `/name …` may be an advertised command; its route loads on demand.
+        const runCommand = normalizedPrompt.startsWith("/")
+          ? await (
+              await import("../slashCommandTurn")
+            ).slashCommandTurn(
+              request,
+              nextIntentId,
+              dependencies.slashCommands,
+            )
+          : null;
         dependencies.clearComposer?.(
           captured,
           normalizedPrompt,
           boundedContext,
         );
         promptCallStarted = true;
-        const sent = await commands.sendTurn(request);
+        const sent = await (runCommand?.() ?? commands.sendTurn(request));
         return apply(captured, sent) ? "applied" : "ignoredStale";
       } catch (value) {
         const error = typedError(value);
@@ -385,10 +399,20 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       endSession: commands.endSession,
       setSessionMode: commands.setSessionMode,
       setSessionConfigOption: commands.setSessionConfigOption,
+      queueSessionConfigChoice: commands.queueSessionConfigChoice,
     });
+
+  const runSessionAction = createSessionActionRunner({
+    getContext: dependencies.getContext,
+    enqueue,
+    apply,
+    nextIntentId,
+    run: commands.runSessionAction ?? acpDesktop.runSessionAction,
+  });
 
   return {
     submit,
+    runSessionAction,
     steer,
     cancel,
     close,

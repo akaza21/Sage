@@ -1,5 +1,5 @@
 use super::*;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::io::Cursor;
 
 #[path = "wire_native_projection_tests.rs"]
@@ -71,4 +71,362 @@ fn acp_replay_rejects_unmatched_permission_and_wrong_method() {
             .is_err()
         );
     }
+}
+
+#[test]
+fn acp_prompt_text_must_match_the_single_text_block_exactly() {
+    let step = json!({"op":"awaitClient","kind":"acpPrompt","promptText":"/review 42"});
+    for (prompt, accepted) in [
+        (json!([{"type":"text","text":"/review 42"}]), true),
+        (json!([{"type":"text","text":"/review 42 "}]), false),
+        (json!([{"type":"text","text":"/compact"}]), false),
+        (
+            json!([{"type":"text","text":"/review 42"},{"type":"text","text":"more"}]),
+            false,
+        ),
+    ] {
+        let mut state = WireState::new();
+        let request = json!({"jsonrpc":"2.0","id":7,"method":"session/prompt","params":{"sessionId":"s","prompt":prompt}});
+        let mut input = Cursor::new(format!("{request}\n").into_bytes());
+        let result = execute_with_io(
+            &step,
+            &mut state,
+            &mut input,
+            &mut Vec::new(),
+            &mut Vec::new(),
+        );
+        assert_eq!(result.is_ok(), accepted, "{prompt}");
+    }
+    let wrong_kind = json!({"op":"awaitClient","kind":"acpNew","promptText":"/compact"});
+    let mut input =
+        Cursor::new(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"session/new\"}\n".to_vec());
+    assert!(
+        execute_with_io(
+            &wrong_kind,
+            &mut WireState::new(),
+            &mut input,
+            &mut Vec::new(),
+            &mut Vec::new()
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn claude_slash_commands_case_advertises_three_commands_and_checks_each_prompt() {
+    let prompt = |id: u64, text: &str| json!({"jsonrpc":"2.0","id":id,"method":"session/prompt","params":{"sessionId":"fixture-persisted-session-1","prompt":[{"type":"text","text":text}]}});
+    let requests = [
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}),
+        json!({"jsonrpc":"2.0","id":2,"method":"session/new","params":{}}),
+        prompt(3, "/review 42"),
+        prompt(4, "/compact"),
+        prompt(5, "Summarize the example"),
+        json!({"jsonrpc":"2.0","id":6,"method":"session/close","params":{}}),
+    ]
+    .iter()
+    .map(|request| format!("{request}\n"))
+    .collect::<String>();
+    let frames = super::capture::replay_native("claude-slash-commands", &requests);
+    let update = &frames[2]["params"]["update"];
+    assert_eq!(update["sessionUpdate"], "available_commands_update");
+    let commands = update["availableCommands"].as_array().unwrap();
+    let names: Vec<_> = commands
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["compact", "review", "init"]);
+    assert_eq!(commands[1]["input"]["hint"], "PR number");
+    let finished: Vec<_> = frames
+        .iter()
+        .filter(|frame| frame["result"]["stopReason"] == "end_turn")
+        .map(|frame| frame["id"].as_u64().unwrap())
+        .collect();
+    assert_eq!(finished, [3, 4, 5]);
+
+    // A prompt in the wrong order, or freehand text, is refused.
+    let case = super::super::generated_cases::JOURNEY_CASES
+        .iter()
+        .find(|case| case.id == "claude-slash-commands")
+        .unwrap();
+    let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
+    let swapped = requests.replacen("/review 42", "/compact", 1);
+    let mut input = Cursor::new(swapped.into_bytes());
+    let mut state = WireState::new();
+    let outcome = steps.iter().try_for_each(|step| {
+        execute_with_io(
+            step,
+            &mut state,
+            &mut input,
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+    });
+    assert!(outcome.is_err());
+}
+
+fn journey(id: &str) -> Vec<Value> {
+    let case = super::super::generated_cases::JOURNEY_CASES
+        .iter()
+        .find(|case| case.id == id)
+        .unwrap_or_else(|| panic!("missing {id}"));
+    serde_json::from_str(case.steps_json).unwrap()
+}
+
+fn replay(id: &str, requests: &[Value]) -> Vec<Value> {
+    let mut state = WireState::new();
+    let mut output = Vec::new();
+    let lines: String = requests
+        .iter()
+        .map(|request| format!("{request}\n"))
+        .collect();
+    let mut input = Cursor::new(lines.into_bytes());
+    for step in journey(id) {
+        execute_with_io(&step, &mut state, &mut input, &mut output, &mut Vec::new()).unwrap();
+    }
+    String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+#[test]
+fn the_claude_config_journey_resumes_in_the_defaults_and_answers_each_change() {
+    let session = super::acp::SESSION;
+    let frames = replay(
+        "claude-config-resume",
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}),
+            json!({"jsonrpc":"2.0","id":2,"method":"session/resume","params":{"sessionId":session}}),
+            json!({"jsonrpc":"2.0","id":3,"method":"session/set_config_option","params":{"sessionId":session,"configId":"model","value":"fixture-model-deep"}}),
+            json!({"jsonrpc":"2.0","id":4,"method":"session/set_config_option","params":{"sessionId":session,"configId":"effort","value":"max"}}),
+            json!({"jsonrpc":"2.0","id":5,"method":"session/set_mode","params":{"sessionId":session,"modeId":"plan"}}),
+            json!({"jsonrpc":"2.0","id":6,"method":"session/prompt","params":{"sessionId":session}}),
+            json!({"jsonrpc":"2.0","id":"fixture-permission-1","result":{"outcome":{"outcome":"selected","optionId":"fixture-allow-once"}}}),
+            json!({"jsonrpc":"2.0","id":7,"method":"session/close","params":{"sessionId":session}}),
+        ],
+    );
+    let reply = |id: u64| frames.iter().find(|frame| frame["id"] == id).unwrap();
+    let initialize = &reply(1)["result"];
+    assert!(initialize["agentCapabilities"]["sessionCapabilities"]["resume"].is_object());
+    assert_eq!(initialize["models"].as_array().unwrap().len(), 2);
+    // A resumed session reports the adapter's defaults again.
+    let resumed = &reply(2)["result"];
+    assert_eq!(resumed["sessionId"], session);
+    assert_eq!(resumed["modes"]["currentModeId"], "default");
+    assert_eq!(resumed["configOptions"][0]["currentValue"], "fixture-model");
+    assert_eq!(resumed["configOptions"][1]["currentValue"], "medium");
+    assert_eq!(
+        reply(3)["result"]["configOptions"][0]["currentValue"],
+        "fixture-model-deep"
+    );
+    assert_eq!(reply(4)["error"]["code"], -32602);
+    let mode = frames
+        .iter()
+        .position(|frame| frame["params"]["update"]["sessionUpdate"] == "current_mode_update")
+        .unwrap();
+    assert_eq!(frames[mode]["params"]["update"]["currentModeId"], "plan");
+    assert_eq!(frames[mode + 1]["id"], 5);
+    assert!(
+        frames
+            .iter()
+            .any(|frame| frame["method"] == "session/request_permission")
+    );
+    assert_eq!(reply(6)["result"]["stopReason"], "end_turn");
+}
+
+#[test]
+fn the_claude_config_journey_also_opens_a_new_session_and_refuses_a_foreign_resume() {
+    let frames = replay(
+        "claude-config-resume",
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}),
+            json!({"jsonrpc":"2.0","id":2,"method":"session/new","params":{}}),
+            json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{}}),
+            json!({"jsonrpc":"2.0","id":"fixture-permission-1","result":{"outcome":{"outcome":"cancelled"}}}),
+        ],
+    );
+    assert_eq!(frames[1]["result"]["modes"]["currentModeId"], "default");
+    let mut state = WireState::new();
+    let foreign = format!(
+        "{}\n",
+        json!({"jsonrpc":"2.0","id":2,"method":"session/resume","params":{"sessionId":"other"}})
+    );
+    assert!(
+        execute_with_io(
+            &json!({"op":"awaitClient","kind":"acpOpen"}),
+            &mut state,
+            &mut Cursor::new(foreign.into_bytes()),
+            &mut Vec::new(),
+            &mut Vec::new()
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn the_codex_config_journey_starts_or_resumes_the_same_thread() {
+    // Opened without a model the thread runs the default; resumed with the
+    // second model it runs that one. Either way at the Medium default effort.
+    for (open, model, runs) in [
+        ("thread/start", Value::Null, "fixture-model"),
+        (
+            "thread/resume",
+            json!("fixture-model-deep"),
+            "fixture-model-deep",
+        ),
+        ("thread/resume", json!("retired-model"), "fixture-model"),
+    ] {
+        let frames = replay(
+            "codex-config-resume",
+            &[
+                json!({"id":1,"method":"initialize","params":{}}),
+                json!({"id":2,"method":open,"params":{"model":model}}),
+                json!({"id":3,"method":"model/list","params":{"cursor":null}}),
+                json!({"id":4,"method":"thread/goal/get","params":{}}),
+                json!({"id":5,"method":"turn/start","params":{}}),
+                json!({"id":6,"method":"thread/unsubscribe","params":{}}),
+            ],
+        );
+        let thread = frames.iter().find(|frame| frame["id"] == 2).unwrap();
+        assert_eq!(thread["result"]["thread"]["id"], super::acp::SESSION);
+        assert_eq!(thread["result"]["model"], runs);
+        assert_eq!(thread["result"]["reasoningEffort"], "medium");
+        let models = frames.iter().find(|frame| frame["id"] == 3).unwrap();
+        let catalog = models["result"]["data"].as_array().unwrap();
+        assert_eq!(
+            catalog
+                .iter()
+                .map(|model| (model["id"].clone(), model["defaultReasoningEffort"].clone()))
+                .collect::<Vec<_>>(),
+            [
+                (json!("fixture-model"), json!("medium")),
+                (json!("fixture-model-deep"), json!("medium"))
+            ]
+        );
+        assert_eq!(
+            catalog[1]["supportedReasoningEfforts"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+    }
+}
+
+#[test]
+fn launch_rules_follow_what_each_case_waits_for() {
+    use crate::acp::fixture::{native_case_lists_models, native_case_spans_restart};
+    for case in [
+        "codex-config-resume",
+        "codex-model-menu",
+        "codex-effort-menu",
+    ] {
+        assert!(native_case_lists_models(case), "{case}");
+    }
+    for case in [
+        "codex-turn-completed",
+        "codex-browse-preview",
+        "codex-steer-lost-result",
+        "claude-config-resume",
+    ] {
+        assert!(!native_case_lists_models(case), "{case}");
+    }
+    for case in ["claude-config-resume", "codex-config-resume"] {
+        assert!(native_case_spans_restart(case), "{case}");
+    }
+    for case in [
+        "claude-turn-completed",
+        "claude-approval-approved",
+        "codex-turn-completed",
+        "codex-steer-lost-result",
+        "pi-turn-completed",
+    ] {
+        assert!(!native_case_spans_restart(case), "{case}");
+    }
+}
+
+fn replay_steps(requests: &str, steps: &[Value]) -> Result<Vec<Value>, FixtureError> {
+    let mut state = WireState::new();
+    let mut output = Vec::new();
+    let mut input = Cursor::new(requests.as_bytes().to_vec());
+    for step in steps {
+        execute_with_io(step, &mut state, &mut input, &mut output, &mut Vec::new())?;
+    }
+    Ok(String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect())
+}
+
+fn elicitation_steps() -> Vec<Value> {
+    vec![
+        json!({"op":"emitKnownFrame","shape":"acpElicitation","params":{"mode":"form","message":"Pick","requestedSchema":{"type":"object","properties":{"branch":{"type":"string"}}}}}),
+        json!({"op":"awaitClient","kind":"acpElicitationReply"}),
+        json!({"op":"emitKnownFrame","shape":"acpElicitationEcho"}),
+    ]
+}
+
+#[test]
+fn an_answered_elicitation_echoes_the_fields_and_never_the_values() {
+    let frames = replay_steps(
+        "{\"jsonrpc\":\"2.0\",\"id\":\"fixture-elicitation-1\",\"result\":{\"action\":\"accept\",\"content\":{\"branch\":\"secret-value\"}}}\n",
+        &elicitation_steps(),
+    )
+    .unwrap();
+    assert_eq!(frames[0]["method"], "elicitation/create");
+    assert_eq!(
+        frames[0]["params"]["sessionId"],
+        "fixture-persisted-session-1"
+    );
+    assert_eq!(
+        frames[1]["params"]["update"]["content"]["text"],
+        "Synthetic replay: the form came back with branch."
+    );
+    assert!(!frames[1].to_string().contains("secret-value"));
+    let declined = replay_steps(
+        "{\"jsonrpc\":\"2.0\",\"id\":\"fixture-elicitation-1\",\"result\":{\"action\":\"decline\"}}\n",
+        &elicitation_steps(),
+    )
+    .unwrap();
+    assert_eq!(
+        declined[1]["params"]["update"]["content"]["text"],
+        "Synthetic replay: the request was declined."
+    );
+    assert!(
+        replay_steps(
+            "{\"jsonrpc\":\"2.0\",\"id\":\"another\",\"result\":{\"action\":\"accept\"}}\n",
+            &elicitation_steps(),
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn an_auth_required_session_is_opened_after_authenticate() {
+    let frames = replay_steps(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{}}\n{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"authenticate\",\"params\":{\"methodId\":\"fixture-browser\"}}\n{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"session/new\",\"params\":{}}\n",
+        &[
+            json!({"op":"awaitClient","kind":"acpInitialize"}),
+            json!({"op":"emitKnownFrame","shape":"acpInitialize","authMethods":[{"id":"fixture-browser","name":"Synthetic sign-in"}]}),
+            json!({"op":"awaitClient","kind":"acpNew"}),
+            json!({"op":"emitKnownFrame","shape":"acpAuthRequired"}),
+            json!({"op":"awaitClient","kind":"acpAuthenticate"}),
+            json!({"op":"emitKnownFrame","shape":"acpAck"}),
+            json!({"op":"awaitClient","kind":"acpNew"}),
+            json!({"op":"emitKnownFrame","shape":"acpSession"}),
+        ],
+    )
+    .unwrap();
+    assert_eq!(
+        frames[0]["result"]["authMethods"][0]["id"],
+        "fixture-browser"
+    );
+    assert_eq!(
+        frames[1],
+        json!({"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"Authentication required"}})
+    );
+    assert_eq!(frames[2], json!({"jsonrpc":"2.0","id":3,"result":{}}));
+    assert_eq!(frames[3]["id"], 4);
 }

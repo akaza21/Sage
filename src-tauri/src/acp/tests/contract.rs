@@ -811,6 +811,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
     };
     let turn = TurnProjection {
         attached_context: Vec::new(),
+        session_action: None,
         id: turn_id,
         session_id: session_id.clone(),
         runtime_epoch: RuntimeEpoch::new(2).unwrap(),
@@ -826,6 +827,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         activities: BoundedVec::new("activities", vec![]).unwrap(),
         browser_operations: BoundedVec::new("browserOperations", vec![]).unwrap(),
         browser_operations_collapsed: 0,
+        session_activities: Vec::new(),
     };
     let session = SessionProjection {
         id: session_id.clone(),
@@ -847,6 +849,8 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
             prompt: true,
             cancel: true,
             native_session_fork: false,
+            native_session_compact: false,
+            native_review: false,
             active_turn_steer: false,
             child_conversation_projection: false,
             child_transcript_read: false,
@@ -854,6 +858,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
             multi_root_extension_schema_id: None,
             model_count: 1,
             prompt_resources: false,
+            prompt_images: false,
             config_count: 0,
         },
         revision: EntityRevision::new(3).unwrap(),
@@ -862,7 +867,10 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
     };
     let page = AcpChatPage {
         session_config: None,
+        restored_session_config: None,
+        session_config_notice: None,
         goal: crate::acp::goal::GoalState::Unsupported,
+        usage: false,
         project_id,
         chat_id,
         title: SafeText::new("title", "Wire fixture").unwrap(),
@@ -874,6 +882,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         forked_from: None,
         forked_from_turn_id: None,
         child_projection_epoch: 0,
+        session_notices: Vec::new(),
     };
     assert_eq!(page.validate_page_bounds(), Ok(()));
 

@@ -31,12 +31,8 @@ impl Drop for TempRoot {
 #[test]
 fn direct_probe_honours_caller_elevation_without_residue() {
     let root = TempRoot::new();
-    let helper = root.0.join("sage-codex-0146-elevated-helper.exe");
-    fs::copy(
-        env!("CARGO_BIN_EXE_sage-codex-0146-elevated-helper"),
-        &helper,
-    )
-    .unwrap();
+    let helper = root.0.join("sage-codex-elevated-helper.exe");
+    fs::copy(env!("CARGO_BIN_EXE_sage-codex-elevated-helper"), &helper).unwrap();
     let before = fs::read_dir(&root.0).unwrap().count();
 
     let result = direct_non_elevated_probe(
@@ -62,21 +58,17 @@ fn direct_probe_honours_caller_elevation_without_residue() {
     assert_eq!(fs::read_dir(&root.0).unwrap().count(), before);
     assert_eq!(
         fs::read(&helper).unwrap(),
-        fs::read(env!("CARGO_BIN_EXE_sage-codex-0146-elevated-helper")).unwrap()
+        fs::read(env!("CARGO_BIN_EXE_sage-codex-elevated-helper")).unwrap()
     );
 }
 
 #[test]
 fn unconnected_helper_exits_at_its_deadline_without_residue() {
     let root = TempRoot::new();
-    let helper = root.0.join("sage-codex-0146-elevated-helper.exe");
-    fs::copy(
-        env!("CARGO_BIN_EXE_sage-codex-0146-elevated-helper"),
-        &helper,
-    )
-    .unwrap();
+    let helper = root.0.join("sage-codex-elevated-helper.exe");
+    fs::copy(env!("CARGO_BIN_EXE_sage-codex-elevated-helper"), &helper).unwrap();
     assert!(fs::metadata(&helper).unwrap().len() <= 32 * 1024 * 1024);
-    let pipe = format!(r"\\.\pipe\sage-codex-0146-{}", Uuid::new_v4().simple());
+    let pipe = format!(r"\\.\pipe\sage-codex-helper-{}", Uuid::new_v4().simple());
     let mut child = Command::new(&helper)
         .arg("--sage-codex-helper-boundary-v1")
         .arg(&pipe)

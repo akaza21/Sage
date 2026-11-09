@@ -4,6 +4,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 mod attachment;
 pub(crate) mod commands;
+pub(crate) mod images;
 pub(crate) mod limits;
 mod read;
 mod secrets;
@@ -82,6 +83,27 @@ impl Resources {
         }
         Ok(blocks)
     }
+}
+
+/// The standard ACP `session/prompt` content: text, then images, then files.
+/// Each kind is sent only when the session's negotiated capabilities admit it.
+pub(crate) fn prompt_blocks(
+    prompt: &crate::acp::intent::Prompt,
+    capabilities: Option<&crate::acp::intent::CapabilitySnapshotV1>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut blocks = prompt
+        .resources
+        .wire(
+            prompt.as_str(),
+            capabilities.is_some_and(|value| value.prompt_resources),
+        )
+        .map_err(str::to_owned)?;
+    let images = prompt
+        .images
+        .wire(capabilities)
+        .map_err(images::ImageRefusal::message)?;
+    blocks.splice(1..1, images);
+    Ok(blocks)
 }
 
 #[derive(Serialize)]

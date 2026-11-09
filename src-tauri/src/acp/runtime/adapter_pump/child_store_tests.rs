@@ -9,7 +9,7 @@ use crate::acp::{
 
 fn observed_child_wire(request_id: u64) -> Vec<u8> {
     let mut value: serde_json::Value =
-        serde_json::from_str(include_str!("fixtures/cp18d_child_read_0146.json")).unwrap();
+        serde_json::from_str(include_str!("fixtures/cp18d_child_read.json")).unwrap();
     value["id"] = request_id.into();
     value["result"]["thread"]["parentThreadId"] = "thread-1".into();
     codex_line(value)

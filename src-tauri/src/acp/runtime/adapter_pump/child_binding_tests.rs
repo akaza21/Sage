@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use crate::acp::{
     bindings::codex::{CodexRuntime, Platform},
     runtime::{JournalHandle, ProjectionMailbox, SqliteAdapterBatchJournal},
@@ -206,7 +207,7 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
         assert!(matches!(snapshot.turns[0].items[0].payload,
             crate::acp::intent::NormalizedPayload::ToolCall { .. }));
         let mut read_wire: serde_json::Value = serde_json::from_str(include_str!(
-            "fixtures/cp18d_child_read_0146.json"
+            "fixtures/cp18d_child_read.json"
         )).unwrap();
         read_wire["id"] = 41.into();
         read_wire["result"]["thread"]["id"] = "child-native".into();
@@ -377,8 +378,8 @@ fn ready_codex_parent_for_thread(parent: &str) -> CodexRuntime {
         .ingest(
             &codex_frame(serde_json::json!({
                 "id":initialize_id,"result":{
-                    "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-                    "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+                    "userAgent":user_agent("sage", "unknown"),
+                    "codexHome":MANAGED_CODEX_HOME,
                     "platformFamily":"windows","platformOs":"windows"
                 }
             })),

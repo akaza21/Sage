@@ -311,16 +311,13 @@ pub(crate) fn effective_prompt(
     prompt: &Prompt,
     contexts: &AttachedContexts,
 ) -> Result<Prompt, ContractError> {
+    // Images never become prompt text: they travel as their own content
+    // blocks and transcript items, so the text and durable context skip them.
     if contexts
         .as_slice()
         .iter()
-        .any(|context| matches!(context, AttachedContext::Image(_)))
+        .all(|context| matches!(context, AttachedContext::Image(_)))
     {
-        return Err(ContractError::ForbiddenContent {
-            field: "imageAttachment",
-        });
-    }
-    if contexts.as_slice().is_empty() {
         return Ok(prompt.clone());
     }
     let elements = browser_elements(contexts);
@@ -410,7 +407,7 @@ pub(crate) fn effective_prompt(
                 rendered_elements = true;
                 crate::browser::annotate::element::render_prompt(&mut rendered, &elements);
             }
-            AttachedContext::Image(_) => unreachable!(),
+            AttachedContext::Image(_) => {}
         }
     }
     let effective = Prompt::new("promptWithAttachedContext", rendered)?;
@@ -418,7 +415,13 @@ pub(crate) fn effective_prompt(
     // and project the contexts as chips; other context keeps the durable text
     // equal to the dispatched one.
     Ok(if annotation > 0 || rendered_elements {
-        effective.with_context(prompt, contexts)
+        let chips = contexts
+            .as_slice()
+            .iter()
+            .filter(|context| !matches!(context, AttachedContext::Image(_)))
+            .cloned()
+            .collect();
+        effective.with_context(prompt, &AttachedContexts::new("attachedContext", chips)?)
     } else {
         effective
     })
@@ -469,9 +472,10 @@ mod tests {
         });
         let context: AttachedContext = serde_json::from_value(image.clone()).unwrap();
         let contexts = AttachedContexts::new("attachedContext", vec![context]).unwrap();
-        assert!(
-            effective_prompt(&Prompt::new("prompt", "Inspect this").unwrap(), &contexts).is_err()
-        );
+        let effective =
+            effective_prompt(&Prompt::new("prompt", "Inspect this").unwrap(), &contexts).unwrap();
+        assert_eq!(effective.as_str(), "Inspect this");
+        assert!(effective.user_payload().get("attachedContext").is_none());
         let mut forged = image;
         forged["path"] = serde_json::json!("C:\\secret.png");
         assert!(serde_json::from_value::<AttachedContext>(forged).is_err());

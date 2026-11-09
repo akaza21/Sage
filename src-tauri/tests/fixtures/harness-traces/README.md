@@ -36,7 +36,8 @@ Required keys:
 | opencode | `tool-kinds` | captured, authenticated; projects from a profile row with no bespoke translator |
 | claude-code | `smoke`, `file-creation-permission`, `fork` | captured, authenticated; `fork` sends no prompt and records session/fork of a fresh (refused) and a stored session, then session/close; `smoke` is a full turn through `end_turn`, `file-creation-permission` stops at `session/request_permission` and pins the nullable `oldText` a created file carries; both have the `_auth/status_update` account identity redacted |
 | gemini-cli | `smoke` | handshake captured; `session/new` fails with `This account requires setting the GOOGLE_CLOUD_PROJECT env var`, so the contract asserts the refusal and an empty event stream |
-| codex | `fork-notifications` | captured from the pinned 0.146.0 app-server with no prompt (initialize, thread/start, thread/name/set, thread/fork, five seconds of frames, thread/unsubscribe); app-server is not ACP, so the contract declares a blocker and `codex/runtime/tests/fork_tests.rs` replays the frames |
+| codex | `fork-notifications` | captured from the Linux build of the pinned 0.167.0 app-server with no prompt (initialize, thread/start, thread/name/set, thread/fork without turns, five seconds of frames, thread/unsubscribe); app-server is not ACP, so the contract declares a blocker and `codex/runtime/tests/fork_tests.rs` replays the frames |
+| codex | `review-inline`, `compact` | captured from the same build against a local model provider that refuses every request, so no credentials are involved: an inline `review/start` of uncommitted changes, and a prompt followed by `thread/compact/start`; both contracts declare a blocker and `codex/tests/session_action_tests.rs` replays the frames |
 | pi | — | pending, native rpc protocol needs its own capture driver |
 | omp | — | pending |
 

@@ -53,6 +53,12 @@ export interface ChatLifecycleRequest {
   currentLayout: ProjectLayoutRequest;
 }
 
+/** Permanently deletes an archived Chat; the attached layout is unchanged. */
+export interface ChatDeleteRequest {
+  projectId: string;
+  chatId: string;
+}
+
 export interface PinChatRequest {
   projectId: string;
   chatId: string;

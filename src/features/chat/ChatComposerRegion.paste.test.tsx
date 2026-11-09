@@ -145,7 +145,7 @@ function Composer({
   return <Region {...props} />;
 }
 
-const field = () => screen.getByRole("textbox", { name: "Message agent" });
+const field = () => screen.getByRole("combobox", { name: "Message agent" });
 
 /** Waits for the paste part to load and read the staged batch. */
 async function focusField() {
@@ -171,8 +171,12 @@ function paste(text: string, files: File[] = []) {
   return !event.defaultPrevented;
 }
 
-/** The paste part's polite live region for paste and length notices. */
-const status = () => document.querySelector<HTMLElement>("[aria-live=polite]");
+/** The paste part's polite live region for paste and length notices; the
+ * `/` menu keeps a live region of its own. */
+const status = () =>
+  document.querySelector<HTMLElement>(
+    "#disabled-reason-paste[aria-live=polite]",
+  );
 const announced = (text: string) =>
   waitFor(() => expect(status()!).toHaveTextContent(text), LAZY);
 // 2,431 lines of 31 bytes: a log over the composer cap, inside the batch.
@@ -352,7 +356,7 @@ describe("composer large paste", { timeout: 15_000 }, () => {
       "Pasted text is at least 97 KB, over the 96 KB attachment limit. Nothing was pasted.",
     );
     expect(onTextChange).not.toHaveBeenCalled();
-    expect(screen.getByRole("textbox", { name: "Message agent" })).toHaveValue(
+    expect(screen.getByRole("combobox", { name: "Message agent" })).toHaveValue(
       "Keep me",
     );
     expect(native.calls).not.toContain("stage_prompt_text");
@@ -394,7 +398,7 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     const onTextChange = vi.fn();
     const full = "a".repeat(MAX_CHAT_COMPOSER_BYTES);
     const view = render(<Composer text={full} onTextChange={onTextChange} />);
-    const field = screen.getByRole("textbox", { name: "Message agent" });
+    const field = screen.getByRole("combobox", { name: "Message agent" });
     expect(field).not.toHaveAttribute("maxlength");
     act(() => {
       fireEvent.change(field, { target: { value: `${full}é` } });

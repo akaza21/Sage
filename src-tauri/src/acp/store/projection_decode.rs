@@ -54,7 +54,7 @@ pub(super) fn decode_item(
     {
         return Err(StoreError::Corrupt("item payload integrity"));
     }
-    let (normalized, legacy_role) =
+    let (mut normalized, legacy_role) =
         match serde_json::from_str::<NormalizedPayload>(&row.payload_json) {
             Ok(value) => (value, None),
             Err(_) => parse_legacy_text(&row.payload_json)
@@ -86,6 +86,7 @@ pub(super) fn decode_item(
         .as_deref()
         .map(super::state::parse_tool_state)
         .transpose()?;
+    retain_live_progress(&mut normalized, lifecycle, tool_state);
     let content = content(
         normalized,
         lifecycle,
@@ -330,7 +331,7 @@ fn projected_line_count(value: Option<u64>) -> Option<u32> {
 mod file_pair;
 mod tool_presentation;
 use file_pair::admitted_pair_view;
-use tool_presentation::presentation;
+use tool_presentation::{presentation, retain_live_progress};
 
 pub(crate) fn parse_legacy_text(
     value: &str,
@@ -345,6 +346,8 @@ pub(crate) fn parse_legacy_text(
         /// How many staged resources the prompt carried; never their bytes.
         #[serde(default, rename = "attachments")]
         _attachments: u8,
+        #[serde(default, rename = "sessionAction")]
+        _session_action: Option<serde::de::IgnoredAny>,
     }
     #[derive(Debug, serde::Deserialize)]
     #[serde(deny_unknown_fields)]

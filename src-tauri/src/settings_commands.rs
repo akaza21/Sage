@@ -5,6 +5,7 @@ pub(crate) mod browser_developer;
 pub(crate) mod browser_download_folder;
 pub(crate) mod browser_preferences;
 pub(crate) mod chat_read_marks;
+pub(crate) mod custom_acp_agents;
 pub(crate) mod new_chat_defaults;
 
 use crate::{

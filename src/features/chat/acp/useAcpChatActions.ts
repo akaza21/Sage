@@ -209,6 +209,7 @@ export function useAcpChatActions(boundChatId?: string | null) {
       modelId: CuratedModelId | null,
       staged?: StagedSelection,
     ) => controller.submit(prompt, attachedContext, bindingId, modelId, staged),
+    runSessionAction: controller.runSessionAction,
     steer: (
       prompt: string,
       attachedContext: readonly AttachedContext[],
@@ -243,6 +244,7 @@ export function useAcpChatActions(boundChatId?: string | null) {
     modeChanging: boolean;
     cancellableTurnId: SageTurnId | null;
     submit: typeof controller.submit;
+    runSessionAction: typeof controller.runSessionAction;
     steer: typeof controller.steer;
     cancel: typeof controller.cancel;
     close: typeof controller.close;

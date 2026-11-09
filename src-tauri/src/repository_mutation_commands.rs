@@ -146,7 +146,7 @@ async fn mutate_git_file_inner_with_policy_override(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path, process::Command, sync::Arc};
+    use std::{fs, path::Path, sync::Arc};
 
     use uuid::Uuid;
 
@@ -159,7 +159,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            Command::new("git")
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -327,7 +327,7 @@ mod tests {
             .unwrap_err();
 
             assert!(error.to_string().contains("Project changed"));
-            let output = Command::new("git")
+            let output = crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["status", "--porcelain=v2", "--", "new.txt"])

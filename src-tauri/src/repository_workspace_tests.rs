@@ -1,7 +1,6 @@
 use std::{
     fs,
     path::Path,
-    process::Command,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -14,7 +13,7 @@ use uuid::Uuid;
 use super::*;
 
 fn git(root: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
+    let output = crate::git_process::fixture_git()
         .arg("-C")
         .arg(root)
         .args(args)
@@ -216,7 +215,7 @@ fn moving_a_linked_worktree_never_reaches_a_neighbouring_git_dir() {
     if !swapped.load(Ordering::SeqCst) {
         fs::rename(&linked, &moved).unwrap();
     }
-    let control = Command::new("git")
+    let control = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&moved)
         .args([

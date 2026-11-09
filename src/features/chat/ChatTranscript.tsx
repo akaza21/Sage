@@ -30,7 +30,7 @@ import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import "./chat-home.css";
 import "./chat-transcript-polish.css";
 import { composerWorkspaceName } from "./composerChrome";
-import { ForkPart } from "./lazyParts";
+import { ForkPart, NoticePart } from "./lazyParts";
 import { isNewProjectChat } from "./newProjectChat";
 import { TranscriptInteractionsGate, TranscriptPart } from "./transcriptLazy";
 
@@ -56,6 +56,7 @@ export function ChatTranscript({
   messages,
   developmentSimulator,
   onRetry,
+  onReviewChanges,
   showJumpToLatest,
   onJumpToLatest,
 }: {
@@ -88,6 +89,7 @@ export function ChatTranscript({
   messages: readonly ChatMessage[];
   developmentSimulator: boolean;
   onRetry?: () => void;
+  onReviewChanges?: () => void;
   /** "activity": follow is paused and a running turn grew below. */
   showJumpToLatest: boolean | "activity";
   onJumpToLatest: () => void;
@@ -190,6 +192,13 @@ export function ChatTranscript({
                   forkTurnId={page.forkedFromTurnId}
                 />
               ) : null}
+              {page.sessionNotices?.length ? (
+                <NoticePart
+                  part="SessionNoticeStrip"
+                  session={page.chatId + page.currentSessionId}
+                  notices={page.sessionNotices}
+                />
+              ) : null}
               <AcpChatProjection
                 page={page}
                 editSummaryContainer={editSummaryContainer}
@@ -203,6 +212,7 @@ export function ChatTranscript({
                 historyError={historyError}
                 onLoadEarlier={onLoadEarlier}
                 onRetry={retryAction}
+                onReviewChanges={onReviewChanges}
                 feedback={feedback}
                 onFeedbackQueued={forgetCopyFeedback}
                 emptyState={

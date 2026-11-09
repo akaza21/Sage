@@ -12,7 +12,10 @@ import { useWorkbenchStore } from "../../app/store";
 import { resourceKey, sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
 import { MAX_FIND_QUERY_LENGTH, contentText } from "./editorContent";
-import { useEditorExternalWatch } from "./editorExternalWatch";
+import {
+  useEditorExternalWatch,
+  WATCH_MISSING_MESSAGE,
+} from "./editorExternalWatch";
 import type { EditorAdapterHandle } from "./EditorAdapter";
 import type { FindControl, FindOpenRequest } from "./FileFindBar";
 import { fileNavigationSelection } from "./fileNavigation";
@@ -97,11 +100,17 @@ export function useFileSurfaceModel(
   );
   // An operation message (a failed save, say) shows first; the not-watched
   // notice returns once it clears, for as long as the File has no watch.
+  // A missing File's, or one under a conflict banner, shows quietly in the
+  // header instead.
   const shownEditor = useMemo(
     () =>
-      unwatchedMessage && editor?.phase === "ready" && !editor.message
-        ? { ...editor, message: unwatchedMessage }
-        : editor,
+      editor?.phase !== "ready" || !unwatchedMessage
+        ? editor
+        : unwatchedMessage === WATCH_MISSING_MESSAGE || editor.document.conflict
+          ? { ...editor, unwatched: unwatchedMessage }
+          : editor.message
+            ? editor
+            : { ...editor, message: unwatchedMessage },
     [editor, unwatchedMessage],
   );
   const [findRequest, setFindRequest] = useState<FindOpenRequest | null>(null);

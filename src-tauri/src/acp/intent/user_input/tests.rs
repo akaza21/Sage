@@ -70,7 +70,7 @@ fn answers_must_match_the_questions_that_were_asked() {
 fn caps_are_enforced_when_a_request_or_answer_is_decoded() {
     let question = json!({"id": "q", "header": "", "question": "?"});
     assert!(
-        serde_json::from_value::<UserInputRequest>(json!({"questions": vec![question; 5]}))
+        serde_json::from_value::<UserInputRequest>(json!({"questions": vec![question; 9]}))
             .is_err()
     );
     let option = json!({"label": "a", "description": ""});
@@ -82,7 +82,7 @@ fn caps_are_enforced_when_a_request_or_answer_is_decoded() {
     );
     assert!(
         serde_json::from_value::<UserInputAnswers>(json!([{
-            "questionId": "q", "text": "x".repeat(4097)
+            "questionId": "q", "text": "x".repeat(16_385)
         }]))
         .is_err()
     );
@@ -102,4 +102,15 @@ fn debug_output_never_contains_answer_text() {
     assert!(rendered.contains("token"));
     assert!(!rendered.contains("s3cret-value"));
     assert!(!rendered.contains("Changed"));
+}
+
+#[test]
+fn stored_requests_without_limits_round_trip_unchanged() {
+    let stored = json!({"questions": [
+        {"id": "scope", "header": "Scope", "question": "Which files?", "allowsOther": false,
+         "secret": false, "options": [{"label": "All", "description": ""}]}
+    ]});
+    let request: UserInputRequest = serde_json::from_value(stored.clone()).unwrap();
+    assert!(request.questions.as_slice()[0].limits.is_unset());
+    assert_eq!(serde_json::to_value(&request).unwrap(), stored);
 }

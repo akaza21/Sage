@@ -546,7 +546,7 @@ export function buildAgentPages(
               ...session(),
               capabilities: {
                 ...session().capabilities,
-                protocolVersion: "codex-app-server-observed-0.146.0",
+                protocolVersion: "codex-app-server-observed-0.167.0",
               },
             },
           ],

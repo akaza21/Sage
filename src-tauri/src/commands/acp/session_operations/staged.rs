@@ -3,13 +3,19 @@ use super::*;
 use crate::acp::attached_context::files::{Resources, Selection, attachment, retry_origin};
 
 /// A Retry names a turn; its durable record says what the prompt carried.
+/// A session action carries no files, so the staged ones stay for the next
+/// prompt.
 pub(super) fn resolve(
     state: &AppState,
     project: &SageProjectId,
     chat: &SageChatId,
     staged: Option<crate::acp::intent::StagedSelection>,
+    prompt: &crate::acp::intent::Prompt,
 ) -> Result<Selection, AcpIpcError> {
     use crate::acp::intent::StagedSelection;
+    if prompt.action.is_some() {
+        return Ok(Selection::None);
+    }
     Ok(match staged {
         None => Selection::None,
         Some(StagedSelection::Revision(revision)) => Selection::Revision(revision),
@@ -151,5 +157,38 @@ mod tests {
             drop(stages);
             let _ = std::fs::remove_dir_all(root);
         }
+    }
+
+    #[test]
+    fn a_session_action_leaves_the_staged_files_for_the_next_prompt() {
+        use crate::acp::intent::{Prompt, StagedSelection};
+        let (state, project, chat, files, root) = sent_batch();
+        let revision = state
+            .acp
+            .file_stages
+            .lock()
+            .unwrap()
+            .list(project.as_str(), chat.as_str())
+            .unwrap()
+            .revision;
+        let named = || Some(StagedSelection::Revision(revision.clone()));
+        let mut action = Prompt::new("prompt", "/compact").unwrap();
+        action.action =
+            Some(serde_json::from_value(serde_json::json!({"kind": "compact"})).unwrap());
+        // Even naming the batch, an action carries none and leaves it staged.
+        let selection = resolve(&state, &project, &chat, named(), &action).unwrap();
+        assert!(matches!(selection, Selection::None));
+        let intent = ClientIntentId::parse("intent-action").unwrap();
+        record_sent(&state, &project, &chat, &intent, &Resources::default());
+        // The next prompt that names the batch still carries it.
+        let prompt = Prompt::new("prompt", "next").unwrap();
+        let selection = resolve(&state, &project, &chat, named(), &prompt).unwrap();
+        let stages = state.acp.file_stages.lock().unwrap();
+        let next = stages
+            .selected(project.as_str(), chat.as_str(), &selection)
+            .unwrap();
+        assert!(next.same_selection(&files));
+        drop(stages);
+        let _ = std::fs::remove_dir_all(root);
     }
 }

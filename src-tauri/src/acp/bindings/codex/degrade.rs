@@ -4,12 +4,14 @@ use crate::acp::{
     intent::CapabilitySnapshotV1,
 };
 
-use super::manifest::CuratedCapabilityCeiling;
+use super::manifest::{CuratedCapabilityCeiling, PINNED_CODEX_VERSION, pinned_codex_version};
 
 const VERSION_TOKEN_BYTES_MAX: usize = 32;
-/// The debug desktop fixture's identity. It replays the observed 0.146 wire,
-/// so its sessions carry the 0.146 capability evidence under their own name.
-const DESKTOP_FIXTURE_PROTOCOL_IDENTITY: &str = "codex-app-server-desktop-fixture-0.146.0";
+/// The debug desktop fixture's identity. It replays the observed pinned
+/// wire, so its sessions carry the pinned capability evidence under their
+/// own name.
+const DESKTOP_FIXTURE_PROTOCOL_IDENTITY: &str =
+    concat!("codex-app-server-desktop-fixture-", pinned_codex_version!());
 
 /// Whether a stored session identity is the debug desktop fixture's. Always
 /// false outside a Windows debug `acp-fixture` build, where no such session
@@ -31,6 +33,8 @@ struct OptionalCapabilities {
     child_transcript_read: bool,
     collaboration_event_projection: bool,
     native_session_fork: bool,
+    native_session_compact: bool,
+    native_review: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -41,7 +45,7 @@ struct ObservedCapabilityEvidence {
 
 const OBSERVED_CAPABILITY_EVIDENCE: [ObservedCapabilityEvidence; 1] =
     [ObservedCapabilityEvidence {
-        version: "0.146.0",
+        version: PINNED_CODEX_VERSION,
         optional: OptionalCapabilities {
             resume_session: true,
             load_session: false,
@@ -52,9 +56,13 @@ const OBSERVED_CAPABILITY_EVIDENCE: [ObservedCapabilityEvidence; 1] =
             child_conversation_projection: false,
             child_transcript_read: true,
             collaboration_event_projection: false,
-            // `thread/fork` params and response are pinned from the 0.146
-            // generated schema (testdata/acp/codex/observed-0146-fork-schema.json).
+            // `thread/fork` params and response are pinned from the generated
+            // schema (testdata/acp/codex/observed-fork-schema.json).
             native_session_fork: true,
+            // `thread/compact/start` and `review/start` are pinned from the
+            // same generated schema.
+            native_session_compact: true,
+            native_review: true,
         },
     }];
 
@@ -93,6 +101,7 @@ fn observed_capability_evidence(build: ObservedBuild<'_>) -> OptionalCapabilitie
 }
 
 fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCapabilities {
+    let pinned = ceiling.protocol_identity == super::manifest::PINNED_PROTOCOL_IDENTITY;
     OptionalCapabilities {
         resume_session: ceiling.resume_session,
         load_session: ceiling.load_session,
@@ -103,7 +112,9 @@ fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCa
         child_conversation_projection: ceiling.child_conversation_projection,
         child_transcript_read: true,
         collaboration_event_projection: ceiling.collaboration_event_projection,
-        native_session_fork: ceiling.protocol_identity == super::manifest::PINNED_PROTOCOL_IDENTITY,
+        native_session_fork: pinned,
+        native_session_compact: pinned,
+        native_review: pinned,
     }
 }
 
@@ -137,11 +148,14 @@ pub(crate) fn projected_capabilities(
         child_conversation_projection: optional.child_conversation_projection,
         collaboration_event_projection: optional.collaboration_event_projection,
         native_session_fork: optional.native_session_fork,
+        native_session_compact: optional.native_session_compact,
+        native_review: optional.native_review,
         active_turn_steer: optional.active_turn_steer,
         child_transcript_read: optional.child_transcript_read,
         multi_root_extension_schema_id: None,
         model_count: 0,
         prompt_resources: false,
+        prompt_images: false,
         config_count: 0,
     };
     Ok((snapshot, optional.model_list))
@@ -154,7 +168,7 @@ pub(crate) fn projected_desktop_fixture_capabilities(
     let (mut snapshot, _) = projected_capabilities(
         ceiling,
         Some(ObservedBuild {
-            reported_version: "0.146.0",
+            reported_version: PINNED_CODEX_VERSION,
             characterisation: Characterisation::Characterised,
         }),
     )?;
@@ -175,6 +189,11 @@ pub(crate) enum ProjectionUnavailable {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::acp::bindings::codex::manifest::OBSERVED_PROTOCOL_IDENTITY;
+
+    fn observed_pinned_version() -> String {
+        format!("codex-cli {PINNED_CODEX_VERSION}")
+    }
 
     fn pinned() -> CuratedCapabilityCeiling {
         CuratedCapabilityCeiling {
@@ -196,14 +215,14 @@ mod tests {
         let (snapshot, _) = projected_capabilities(
             &pinned(),
             Some(ObservedBuild {
-                reported_version: "codex-cli 0.146.0",
+                reported_version: &observed_pinned_version(),
                 characterisation: Characterisation::Characterised,
             }),
         )
         .unwrap();
         assert_eq!(
             snapshot.protocol_version.as_str(),
-            "codex-app-server-observed-0.146.0"
+            OBSERVED_PROTOCOL_IDENTITY
         );
         assert_ne!(
             snapshot.protocol_version.as_str(),
@@ -212,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn managed_0146_admits_steer_and_child_transcript_after_exact_pin_admission() {
+    fn managed_pin_admits_steer_and_child_transcript_after_exact_pin_admission() {
         let (snapshot, models) = projected_capabilities(&pinned(), None).unwrap();
         assert_eq!(
             snapshot.protocol_version.as_str(),
@@ -260,11 +279,11 @@ mod tests {
     }
 
     #[test]
-    fn observed_0146_projects_only_its_live_evidence() {
+    fn observed_pinned_build_projects_only_its_live_evidence() {
         let (snapshot, models) = projected_capabilities(
             &pinned(),
             Some(ObservedBuild {
-                reported_version: "codex-cli 0.146.0",
+                reported_version: &observed_pinned_version(),
                 characterisation: Characterisation::Characterised,
             }),
         )
@@ -283,7 +302,7 @@ mod tests {
     }
 
     #[test]
-    fn native_fork_is_admitted_only_for_the_pinned_or_characterised_0146_build() {
+    fn native_fork_is_admitted_only_for_the_pinned_or_characterised_pinned_build() {
         let (managed, _) = projected_capabilities(&pinned(), None).unwrap();
         assert!(managed.native_session_fork);
         let mut other = pinned();
@@ -291,13 +310,16 @@ mod tests {
         let (unpinned, _) = projected_capabilities(&other, None).unwrap();
         assert!(!unpinned.native_session_fork);
         for (reported, characterisation) in [
-            ("codex-cli 0.146.0", Characterisation::Uncharacterised),
-            ("codex-cli 0.147.0", Characterisation::Characterised),
+            (observed_pinned_version(), Characterisation::Uncharacterised),
+            (
+                "codex-cli 0.147.0".to_owned(),
+                Characterisation::Characterised,
+            ),
         ] {
             let (observed, _) = projected_capabilities(
                 &pinned(),
                 Some(ObservedBuild {
-                    reported_version: reported,
+                    reported_version: &reported,
                     characterisation,
                 }),
             )
@@ -331,9 +353,7 @@ mod tests {
 
     #[test]
     fn only_the_debug_desktop_fixture_identity_counts_as_the_fixture_protocol() {
-        assert!(!is_desktop_fixture_protocol(
-            "codex-app-server-observed-0.146.0"
-        ));
+        assert!(!is_desktop_fixture_protocol(OBSERVED_PROTOCOL_IDENTITY));
         assert!(!is_desktop_fixture_protocol(
             "codex-app-server-desktop-fixture-0.147.0"
         ));
@@ -345,7 +365,8 @@ mod tests {
 
     #[test]
     fn an_unreadable_version_is_named_as_unreadable_rather_than_guessed() {
-        for reported in ["", "   ", "0.146.0\u{7}", &"9".repeat(64)] {
+        let with_control = format!("{PINNED_CODEX_VERSION}\u{7}");
+        for reported in ["", "   ", &with_control, &"9".repeat(64)] {
             let (snapshot, _) = projected_capabilities(
                 &pinned(),
                 Some(ObservedBuild {

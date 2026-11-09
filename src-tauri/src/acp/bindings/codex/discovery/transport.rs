@@ -29,6 +29,8 @@ use super::{
 };
 
 mod reader;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+mod replay;
 #[cfg(test)]
 use reader::{ReaderCompletion, enqueue_reader_event};
 use reader::{ReaderEvent, ReaderThread};
@@ -74,6 +76,10 @@ pub(crate) fn discover_admitted(
     deadline: CodexDiscoveryDeadline,
     on_launch: impl FnOnce(TreeControl) -> Result<(), CodexDiscoveryRunError>,
 ) -> Result<AdmittedDiscovery, CodexDiscoveryRunError> {
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    if binding.is_desktop_fixture() {
+        return replay::discover(binding, project_root, runtime_epoch, deadline);
+    }
     let mut protocol = CodexDiscoveryProtocol::from_admitted_binding(&binding, runtime_epoch);
     let spawn_timeout = deadline.operation_remaining(Duration::from_millis(
         crate::acp::limits::LIMITS.deadlines_ms.spawn,

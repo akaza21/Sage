@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use super::{AuthenticatedHelperRequest, ElevatedHelperError, constant_time_equal};
 use serde::{Deserialize, Serialize};
 
+use crate::acp::bindings::codex::manifest::pinned_codex_version;
+
 mod remove;
 mod update;
 
@@ -12,7 +14,11 @@ pub(super) use update::execute_boundary_update;
 const JOURNAL_SCHEMA_VERSION: u8 = 2;
 const JOURNAL_BYTES_MAX: usize = 64 * 1024;
 const RECOVERY_STEPS_MAX: usize = 4;
-const JOURNAL_NAME: &str = ".sage-codex-0.146.0-provisioning-journal.json";
+const JOURNAL_NAME: &str = concat!(
+    ".sage-codex-",
+    pinned_codex_version!(),
+    "-provisioning-journal.json"
+);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

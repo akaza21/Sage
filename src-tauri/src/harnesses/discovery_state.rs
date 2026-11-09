@@ -41,6 +41,20 @@ impl DiscoveryState {
             let _ = registry.codex_admission().refresh();
         }
         registry.claude_admission().apply_discovery(claude);
+        registry.claude_sdk_admission().apply_discovery(
+            discovered
+                .iter()
+                .find(|candidate| candidate.id == "claude-code")
+                .and_then(|candidate| {
+                    Some(InstalledHarness {
+                        executable: super::claude_auth::native_claude_executable(
+                            &candidate.executable,
+                        )?,
+                        ..candidate.clone()
+                    })
+                })
+                .as_ref(),
+        );
         registry.opencode_admission().apply_discovery(
             discovered
                 .iter()

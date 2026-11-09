@@ -69,7 +69,7 @@ pub(crate) async fn run_acp_command(
 ) -> Result<AcpMutationResponse, SendAcpTurnFailure> {
     run(&state, request).await
 }
-pub(super) async fn run(
+pub(crate) async fn run(
     state: &AppState,
     request: RunCommandRequest,
 ) -> Result<AcpMutationResponse, SendAcpTurnFailure> {

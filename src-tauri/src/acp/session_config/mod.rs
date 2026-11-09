@@ -1,4 +1,5 @@
-//! Bounded ACP v1 session configuration. This state is never journaled.
+//! Bounded ACP v1 session configuration. The live state is never journaled;
+//! only the last confirmed choice per option is stored (see `choices`).
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
@@ -7,11 +8,17 @@ use serde_json::Value;
 use super::contract::{BoundedVec, RequiredText, SafeText};
 use super::limits::LIMITS;
 
+pub(crate) mod choices;
 mod kind;
+mod mode_select;
+pub(crate) mod notices;
 mod overlay;
+pub(crate) mod reported;
 pub(crate) use kind::ConfigKind;
+pub(crate) use mode_select::ModeSelection;
 pub(crate) use overlay::{
-    ConfigChannel, ConfigIntent, ConfigMutation, ConfigRevision, NoticeSink, SessionConfigOverlay,
+    ChoiceRecorder, ConfigChannel, ConfigIntent, ConfigMutation, ConfigRevision, NoticeSink,
+    SessionConfigOverlay, SnapshotRecorder,
 };
 
 pub(crate) type ConfigId = RequiredText<1024>;
@@ -241,6 +248,9 @@ impl SessionConfig {
     pub(crate) fn set_current_mode(&mut self, mode: ConfigId) -> Result<(), String> {
         self.validate_mode(mode.as_str())?;
         let mut candidate = self.clone();
+        // The option restating the modes moves with them, so the two
+        // sources a mode is read from never disagree.
+        candidate.set_mode_option(&mode);
         if let Some(modes) = &mut candidate.modes {
             modes.current_mode_id = mode;
         }

@@ -135,7 +135,7 @@ mod tests {
     use crate::{
         acp::{
             contract::{SageChatId, SageProjectId},
-            store::{facts::hex_digest, history::load_chat_page},
+            store::{facts::hex_digest, load_chat_page},
         },
         persistence::Database,
     };

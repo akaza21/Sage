@@ -46,7 +46,7 @@ test("grows and shrinks the composer within its scroll bound", async ({
   await page.setViewportSize({ width: 1380, height: 880 });
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
-  const input = page.getByRole("textbox", { name: "Message agent" }).first();
+  const input = page.getByRole("combobox", { name: "Message agent" }).first();
   await expect(input).toBeEnabled();
   await input.fill("One line");
   const short = (await input.boundingBox())!.height;

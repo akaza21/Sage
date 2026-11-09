@@ -1,6 +1,6 @@
 use super::*;
 use crate::acp::{
-    lifecycle::{ItemLifecycle, ToolState},
+    lifecycle::{ItemLifecycle, ServerRequestState, ToolState},
     runtime::permissions::PermissionDecision,
 };
 
@@ -75,9 +75,11 @@ fn pi_second_extension_gate_after_timeout_can_receive_a_reply() {
         .ingest(&frame(gate("gate-expired")), &Mapper)
         .unwrap();
     let batch = runtime.ingest(&frame(gate("gate-next")), &Mapper).unwrap();
-    assert!(matches!(batch.events(), [AdapterEvent::PermissionRequest {
-        external_request_id, ..
-    }] if external_request_id.as_str() == "gate-next"));
+    // Pi dropped the timed gate on its own, so its card goes with it.
+    assert!(matches!(batch.events(), [
+        AdapterEvent::PermissionResolved { external_request_id: expired, state: ServerRequestState::Cancelled, .. },
+        AdapterEvent::PermissionRequest { external_request_id, .. },
+    ] if expired.as_str() == "gate-expired" && external_request_id.as_str() == "gate-next"));
     assert!(matches!(
         runtime.command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("gate-expired").unwrap(),

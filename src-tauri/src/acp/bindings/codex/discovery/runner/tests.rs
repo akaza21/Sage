@@ -1,3 +1,4 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use std::{
     collections::VecDeque,
     time::{Duration, Instant},
@@ -30,8 +31,8 @@ impl ScriptTransport {
             reads: VecDeque::from([
                 Ok(Some(frame(json!({"id":1,"result":initialize_result()})))),
                 Ok(Some(frame(json!({"id":2,"result":{
-                    "account":{"type":"chatgpt","email":"secret@example.test","planType":"plus"},
-                    "requiresOpenaiAuth":false
+                    "account":{"type":"chatgpt","email":"secret@example.test","planType":"plus","workspaceName":null},
+                    "requiresOpenaiAuth":false,"workspaceRouting":null
                 }})))),
                 Ok(Some(frame(json!({"id":3,"result":{
                     "data":[model("gpt-a", "GPT A", true)],"nextCursor":null
@@ -113,7 +114,7 @@ fn success_is_returned_only_after_stdin_close_and_matching_zero_process_proof() 
 }
 
 #[test]
-fn codex_0146_notification_between_initialize_and_account_response_is_ignored() {
+fn pinned_codex_notification_between_initialize_and_account_response_is_ignored() {
     let mut protocol = protocol();
     let mut transport = ScriptTransport::happy();
     transport.reads.insert(
@@ -158,7 +159,7 @@ fn recognized_codex_notifications_are_skipped_before_the_model_response() {
 }
 
 #[test]
-fn codex_0146_model_response_before_account_response_is_correlated_by_id() {
+fn pinned_codex_model_response_before_account_response_is_correlated_by_id() {
     let mut protocol = protocol();
     let mut transport = ScriptTransport::happy();
     transport.reads.swap(1, 2);
@@ -351,8 +352,8 @@ fn frame(value: Value) -> Frame {
 
 fn initialize_result() -> Value {
     json!({
-        "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) terminal (sage; 0.1.0)",
-        "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+        "userAgent":user_agent("sage", "terminal"),
+        "codexHome":MANAGED_CODEX_HOME,
         "platformFamily":"windows",
         "platformOs":"windows"
     })
@@ -367,6 +368,6 @@ fn model(id: &str, name: &str, is_default: bool) -> Value {
         }],
         "defaultReasoningEffort":"medium","inputModalities":["text"],
         "supportsPersonality":false,"additionalSpeedTiers":[],"serviceTiers":[],
-        "defaultServiceTier":null,"isDefault":is_default
+        "defaultServiceTier":null,"modelSpecialty":null,"multiAgentVersion":null,"availableAccessPrograms":null,"isDefault":is_default
     })
 }

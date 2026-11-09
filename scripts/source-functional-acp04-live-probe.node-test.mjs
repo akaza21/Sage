@@ -49,7 +49,7 @@ import {
 const SHA = "a".repeat(64);
 const GIT = "b".repeat(40);
 const ECHOES = ["SAGE_ACP04_A_TURN_1", "SAGE_ACP04_A_TURN_2"];
-const CODEX_VERSION = "codex 0.146.0";
+const CODEX_VERSION = "codex 0.167.0";
 
 function argumentsFor(overrides = {}) {
   const values = {
@@ -1342,7 +1342,7 @@ test("browser DOM contract selects the Codex option by its id and exposes exact 
       status.nextElementSibling.remove();
 
       harness.querySelector(".searchable-picker__trigger-label").textContent =
-        "Codex — codex 0.146.0";
+        "Codex — codex 0.167.0";
       assert.equal(eval(ui.codexReady), false);
       assert.equal(eval(ui.codexReadyState), "harness-not-codex");
       harness.querySelector(".searchable-picker__trigger-label").textContent =
@@ -1720,7 +1720,7 @@ test("Codex cmd preflight waits for its captured-owner acknowledgement before st
       codex: {
         path: "C:\\Tools\\codex.cmd",
         version: CODEX_VERSION,
-        semanticVersion: "0.146.0",
+        semanticVersion: "0.167.0",
       },
       output: "C:\\Sage\\local-evidence\\ACP04-live-test",
     },
@@ -1871,7 +1871,7 @@ test("collector-owned Codex preflight records the exact bounded version", async 
     },
   });
   assert.equal(observed.codex.version, CODEX_VERSION);
-  assert.equal(observed.codex.semanticVersion, "0.146.0");
+  assert.equal(observed.codex.semanticVersion, "0.167.0");
   assert.deepEqual(invocation[1].slice(0, 3), ["/d", "/s", "/c"]);
   assert.equal(invocation[4].commandRole, "codex-version-preflight");
   assert.equal(invocation[4].maxOutputBytes, 4096);
@@ -1953,7 +1953,7 @@ test("pending validation rejects nested receipt mutation before finalization", (
       codex: {
         ...parseAcp04ProbeArguments(argumentsFor()).codex,
         version: CODEX_VERSION,
-        semanticVersion: "0.146.0",
+        semanticVersion: "0.167.0",
       },
     };
     const candidate = createAcp04Receipt(

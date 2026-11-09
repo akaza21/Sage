@@ -24,7 +24,6 @@ use super::{
     AdapterEvent, MAX_TRACKED_TOOLS, ResourceMapper, StandardAcpTranslator, TranslationError,
 };
 
-pub(super) const FILE_CHANGE_SUMMARY: &str = "File change reported over ACP";
 pub(super) const POST_TERMINAL_TOOL_MUTATION: &str =
     "ACP harness mutated a settled tool call after it reached a terminal state";
 
@@ -83,32 +82,39 @@ impl StandardAcpTranslator {
         self.tool_categories
             .insert(id.as_str().to_owned(), category);
         self.store_command_snapshot(id.as_str(), retained);
-        let label = self.resolve_tool_label(id.as_str(), update, category)?;
         let (output_summary, _) = self.command_snapshot(id.as_str());
-        let input_summary = command_input_patch(self.profile, category, update)
+        let input_summary = command_input_patch(category, update)
             .flatten()
             .or_else(|| browse_tool_summary("toolInput", update));
         if let Some(summary) = input_summary.as_ref() {
             self.tool_inputs
                 .insert(id.as_str().to_owned(), summary.clone());
         }
+        let label = self.resolve_tool_label(id.as_str(), update, category)?;
         let frame = FrameState {
             settling: state.is_terminal(),
             late: false,
         };
         let mut outcome = self.content_events(&id, update, resources, frame)?;
-        let label = file_action_label(update, category, &locations, &outcome.observed, resources)?
-            .unwrap_or(label);
-        self.tool_labels
-            .insert(id.as_str().to_owned(), label.clone());
+        // Only a stated label persists; a fallback is derived again each
+        // frame so a command line reported later can replace it.
+        let label =
+            match file_action_label(update, category, &locations, &outcome.observed, resources)? {
+                Some(file) => {
+                    self.tool_labels
+                        .insert(id.as_str().to_owned(), file.clone());
+                    file
+                }
+                None => label,
+            };
         self.record_diffs(id.as_str(), std::mem::take(&mut outcome.observed));
-        let execution = self.tool_execution(
+        self.record_command_outcome(
+            id.as_str(),
             category,
-            outcome
-                .terminal_output
-                .as_deref()
-                .or_else(|| output_summary.as_ref().map(SafeText::as_str)),
+            update,
+            outcome.terminal_output.as_deref(),
         )?;
+        let execution = self.tool_execution(id.as_str(), category)?;
         let mut events = Vec::with_capacity(outcome.events.len().saturating_add(1));
         events.push(AdapterEvent::Item {
             external_key: id.clone(),
@@ -155,10 +161,11 @@ impl StandardAcpTranslator {
         let command = category == ToolCategory::Execute;
         let protocol_locations = path_locations(category, update, resources)?;
         let patch = output_payload(category, update, protocol_locations.clone())?;
-        let input_summary = command_input_patch(self.profile, category, update);
+        let input_summary = command_input_patch(category, update);
         let input_changed = input_summary
             .as_ref()
             .is_some_and(|input| self.tool_inputs.get(id.as_str()) != input.as_ref());
+        let exit_reported = self.reports_new_exit_code(id.as_str(), category, update);
         let frame = FrameState {
             settling: next.is_terminal(),
             late: current.is_terminal(),
@@ -197,6 +204,7 @@ impl StandardAcpTranslator {
             }
             let mutating = !patch.retains_output(&self.command_snapshot(id.as_str()))
                 || input_changed
+                || exit_reported
                 || protocol_locations.is_some()
                 || outcome.terminal_output.is_some()
                 || update.get("title").is_some();
@@ -215,6 +223,7 @@ impl StandardAcpTranslator {
         }
         if next == current
             && !input_changed
+            && !exit_reported
             && patch.retains_output(&self.command_snapshot(id.as_str()))
             && protocol_locations.is_none()
             && outcome.events.is_empty()
@@ -234,13 +243,13 @@ impl StandardAcpTranslator {
         if let Some(input) = input_summary {
             self.set_command_input(id.as_str(), input);
         }
-        let execution = self.tool_execution(
+        self.record_command_outcome(
+            id.as_str(),
             category,
-            outcome
-                .terminal_output
-                .as_deref()
-                .or_else(|| retained_output.as_ref().map(SafeText::as_str)),
+            update,
+            outcome.terminal_output.as_deref(),
         )?;
+        let execution = self.tool_execution(id.as_str(), category)?;
         let label = match file_label {
             Some(label) => {
                 self.tool_labels
@@ -316,42 +325,26 @@ fn file_action_label(
     if category == ToolCategory::Execute {
         return Ok(None);
     }
-    let (verb, location) = if observed.len() == 1 {
+    let (operation, location) = if observed.len() == 1 {
         let facts = &observed[0].1.facts;
-        let verb = match facts.operation {
-            FileChangeOperation::Created => "Created",
-            FileChangeOperation::Updated => "Edited",
-            FileChangeOperation::Deleted => "Deleted",
-        };
         let location = match resources.map_absolute(&facts.native_path) {
             Ok(resource) => SafeResourceLocation::Resource { resource },
             Err(reason) => SafeResourceLocation::unavailable(reason),
         };
-        (verb, location)
+        (facts.operation, location)
     } else if observed.is_empty() && locations.as_slice().len() == 1 {
-        let verb = match update.get("kind").and_then(serde_json::Value::as_str) {
-            Some("write") => "Created",
-            Some("edit") if category == ToolCategory::Edit => "Edited",
+        let operation = match update.get("kind").and_then(serde_json::Value::as_str) {
+            Some("write") => FileChangeOperation::Created,
+            Some("edit") if category == ToolCategory::Edit => FileChangeOperation::Updated,
             _ => return Ok(None),
         };
-        (verb, locations.as_slice()[0].clone())
+        (operation, locations.as_slice()[0].clone())
     } else {
         return Ok(None);
     };
-    let display = match location {
-        SafeResourceLocation::Resource { resource } => {
-            let path = resource.relative_path.as_str();
-            if path.len() <= 480 && !path.chars().any(char::is_control) {
-                path.to_owned()
-            } else {
-                "file".to_owned()
-            }
-        }
-        SafeResourceLocation::Unavailable { .. } => "file".to_owned(),
-    };
     Ok(Some(SafeText::new(
         "toolLabel",
-        format!("{verb} {display}"),
+        operation.describe(&location),
     )?))
 }
 
@@ -371,8 +364,24 @@ impl StandardAcpTranslator {
             self.tool_labels.insert(id.to_owned(), label.clone());
             return Ok(label);
         }
+        self.stated_or_fallback_label(id, category)
+    }
+
+    /// The label the harness stated, else the command line of an untitled
+    /// command, else the category's plain name. Fallbacks are never stored.
+    pub(super) fn stated_or_fallback_label(
+        &self,
+        id: &str,
+        category: ToolCategory,
+    ) -> Result<SafeText<512>, TranslationError> {
         if let Some(label) = self.tool_labels.get(id) {
             return Ok(label.clone());
+        }
+        if category == ToolCategory::Execute
+            && let Some(command) = self.tool_inputs.get(id)
+            && let Ok(label) = normalized_label_text::<512>("toolLabel", command.as_str())
+        {
+            return Ok(label);
         }
         SafeText::new("toolLabel", category_label(self.profile, category)).map_err(Into::into)
     }

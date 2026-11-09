@@ -1,3 +1,5 @@
+use serde_json::json;
+
 use crate::acp::{
     bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressToken},
     contract::SageServerRequestId,
@@ -6,7 +8,11 @@ use crate::acp::{
 
 use super::super::{DenyIntent, DenyStage, PiRuntime};
 use super::identity::external;
-use crate::acp::bindings::pi::{protocol::is_allow_option, translator::PendingUiRequest};
+use crate::acp::bindings::pi::{
+    protocol::is_allow_option,
+    translator::{ANSWER_ID, PendingUiRequest},
+};
+use crate::acp::intent::user_input::form;
 use crate::acp::{
     bindings::adapter::AdapterEvent,
     contract::{BoundedVec, SafeText},
@@ -28,6 +34,15 @@ impl PiRuntime {
             .is_some_and(|intent| intent.request_id.as_str() == request_id.as_str());
         if !pending || !self.translator.permission_waiting_for(request_id.as_str()) {
             return Err(AdapterRuntimeError::LaterPermissionMiss);
+        }
+        if let Some(reply) = self.answer_question(&decision)? {
+            return crate::acp::runtime::later_permission::resolve_later_permission(
+                request_id,
+                &decision,
+                Some(reply),
+            )
+            .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
+            .ok_or(AdapterRuntimeError::LaterPermissionMiss);
         }
         let reply = match decision {
             PermissionDecision::Ask => {
@@ -91,18 +106,67 @@ impl PiRuntime {
 }
 
 impl PiRuntime {
+    /// The reply to a pending extension question: its answer, or a cancelled
+    /// dialog when the user declines. `None` when no question is pending.
+    fn answer_question(
+        &mut self,
+        decision: &PermissionDecision,
+    ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        let Some(pending) = self.translator.take_pending_ui() else {
+            return Ok(None);
+        };
+        let Some(form) = pending.form.as_deref() else {
+            self.translator.remember_pending_ui(pending);
+            return Ok(None);
+        };
+        let body = match decision {
+            PermissionDecision::Answer(answers) => {
+                let mut content = form.content(answers);
+                let Some(value) = content.remove(ANSWER_ID) else {
+                    self.translator.remember_pending_ui(pending);
+                    return Err(AdapterRuntimeError::UnsupportedCommand);
+                };
+                json!({"type": "extension_ui_response", "id": pending.id, "value": value})
+            }
+            PermissionDecision::Deny => {
+                json!({"type": "extension_ui_response", "id": pending.id, "cancelled": true})
+            }
+            PermissionDecision::Ask
+            | PermissionDecision::AllowOnce
+            | PermissionDecision::AllowAlways => {
+                self.translator.remember_pending_ui(pending);
+                return Err(AdapterRuntimeError::UnsupportedCommand);
+            }
+        };
+        let bytes = serde_json::to_vec(&body).map_err(|_| AdapterRuntimeError::Frame)?;
+        let frame = crate::acp::transport::OutboundFrame::new(bytes)
+            .map_err(|_| AdapterRuntimeError::Frame)?;
+        Ok(Some(AdapterEgress::new(
+            frame,
+            EgressToken::protocol_notification(),
+        )))
+    }
+
     pub(super) fn permission_event(
         &mut self,
         external_id: String,
         request_digest: [u8; 32],
     ) -> Result<AdapterEvent, AdapterRuntimeError> {
         let id = external("piPermissionId", external_id)?;
-        let offered = self
+        let pending = self
             .translator
             .pending_ui()
             .filter(|pending| pending.id == id.as_str())
-            .map(PendingUiRequest::offered_option_kinds)
             .ok_or(AdapterRuntimeError::Operation)?;
+        let offered = pending.offered_option_kinds();
+        let question = pending
+            .form
+            .as_deref()
+            .map(|form| {
+                form::question_payload("Answer the Pi extension's question", None, form.clone())
+                    .ok_or(AdapterRuntimeError::Frame)
+            })
+            .transpose()?;
         let turn_id = self.turn_identity()?;
         let item_id = self.identity(
             id.clone(),
@@ -113,33 +177,39 @@ impl PiRuntime {
             request_id: id.clone(),
             command_id: String::new(),
             stage: DenyStage::Prepared,
+            releases: question.is_some(),
         });
         Ok(AdapterEvent::PermissionRequest {
             turn_id,
             item_id,
             external_request_id: id,
-            payload: NormalizedPayload::PermissionRequest {
-                user_input: None,
-                category: if self.bridge.as_ref().is_some_and(|b| b.pending.is_some()) {
-                    ToolCategory::Edit
-                } else {
-                    ToolCategory::Other
+            payload: match question {
+                Some(question) => question,
+                None => NormalizedPayload::PermissionRequest {
+                    user_input: None,
+                    category: if self.bridge.as_ref().is_some_and(|b| b.pending.is_some()) {
+                        ToolCategory::Edit
+                    } else {
+                        ToolCategory::Other
+                    },
+                    summary: SafeText::new(
+                        "permissionSummary",
+                        self.bridge
+                            .as_ref()
+                            .and_then(|b| b.pending.as_ref())
+                            // Prepare admits only paths that fit and show exactly.
+                            .map(|p| format!("Allow Pi to update {}?", p.edit.relative))
+                            .unwrap_or_else(|| {
+                                "Pi extension gate is awaiting your decision".into()
+                            }),
+                    )
+                    .map_err(|_| AdapterRuntimeError::Frame)?,
+                    offered_option_kinds: Some(
+                        BoundedVec::new("permissionOptionKinds", offered)
+                            .map_err(|_| AdapterRuntimeError::Frame)?,
+                    ),
+                    reason: None,
                 },
-                summary: SafeText::new(
-                    "permissionSummary",
-                    self.bridge
-                        .as_ref()
-                        .and_then(|b| b.pending.as_ref())
-                        // Prepare admits only paths that fit and show exactly.
-                        .map(|p| format!("Allow Pi to update {}?", p.edit.relative))
-                        .unwrap_or_else(|| "Pi extension gate is awaiting your decision".into()),
-                )
-                .map_err(|_| AdapterRuntimeError::Frame)?,
-                offered_option_kinds: Some(
-                    BoundedVec::new("permissionOptionKinds", offered)
-                        .map_err(|_| AdapterRuntimeError::Frame)?,
-                ),
-                reason: None,
             },
             request_payload_digest: request_digest,
         })

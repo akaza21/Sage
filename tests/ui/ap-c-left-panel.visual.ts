@@ -69,7 +69,12 @@ test("AP-C project disclosure, context actions, and honest project menu", async 
   await expect(disclosure).toHaveAttribute("aria-expanded", "false");
   await expect(projects.locator(".project-chat-row")).toHaveCount(0);
   await disclosure.click();
-  const row = projects.locator(".project-chat-row").first();
+  // Mark unread is offered only on a chat whose last Turn finished. The
+  // project's own chat is still working, so the menu opens on the finished
+  // chat, which is pinned.
+  const row = sidebar
+    .getByRole("region", { name: "Pinned" })
+    .locator(".project-chat-row", { hasText: "Agent navigation polish" });
   await row.click({ button: "right" });
   const menu = page.getByRole("menu", { name: /^Actions for / });
   await expect(
@@ -356,6 +361,102 @@ test("AP-C hover Pin and Archive take a real pointer click without opening the c
     sidebar.getByRole("button", { name: "Undo archive" }),
   ).toBeVisible();
   expect(await activeChat()).toBe(before);
+});
+
+test("AP-C a refused archived-chat delete shows on that row, not in the open chat", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-dual", "agent");
+  await installRailBrowseFixture(page);
+  const refusal = "Stop this Chat's running turn before deleting it";
+  await page.evaluate(async (message) => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { getWorkbenchPorts } =
+      await import("/src/ports/workbenchRuntime.ts");
+    useWorkbenchStore.setState((state) => ({
+      archivedChats: [{ id: "rail-fixture-6", title: "Agent rail task 6" }],
+      tabs: state.tabs.filter((tab) => tab.id !== "rail-fixture-6"),
+    }));
+    getWorkbenchPorts().chat.deleteChat = async (
+      _request,
+      expectedTransitionEpoch,
+    ) => ({
+      committed: false,
+      transitionEpoch: expectedTransitionEpoch,
+      snapshot: null,
+      recoveryError: message,
+    });
+  }, refusal);
+  const sidebar = page.getByRole("complementary", {
+    name: "Projects and chats",
+  });
+  await sidebar.getByRole("button", { name: "Archived chats: 1" }).click();
+  const archived = sidebar.getByRole("region", { name: "Archived chats" });
+  await archived
+    .getByRole("button", { name: "Delete chat Agent rail task 6" })
+    .click();
+  await page.getByRole("button", { name: "Delete chat", exact: true }).click();
+
+  const alert = archived.getByRole("alert");
+  await expect(alert).toHaveText(refusal);
+  await expect(page.getByText(refusal)).toHaveCount(1);
+  await expect(page.getByText(/invalid request/i)).toHaveCount(0);
+  await expect(
+    archived.getByRole("button", { name: "Delete chat Agent rail task 6" }),
+  ).toHaveAccessibleDescription(refusal);
+  await archived
+    .getByRole("button", { name: "Dismiss error for Agent rail task 6" })
+    .click();
+  await expect(archived.getByRole("alert")).toHaveCount(0);
+  await expect(
+    archived.getByRole("button", { name: "Delete chat Agent rail task 6" }),
+  ).toBeFocused();
+});
+
+test("AP-C a refused archive from the rail shows on that chat's row", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-dual", "agent");
+  await installRailBrowseFixture(page);
+  const refusal = "Stop this Chat's running turn before archiving it";
+  await page.evaluate(async (message) => {
+    const { getWorkbenchPorts } =
+      await import("/src/ports/workbenchRuntime.ts");
+    getWorkbenchPorts().chat.archiveChat = async (
+      _request,
+      expectedTransitionEpoch,
+    ) => ({
+      committed: false,
+      transitionEpoch: expectedTransitionEpoch,
+      snapshot: null,
+      recoveryError: message,
+    });
+  }, refusal);
+  const projects = page
+    .getByRole("complementary", { name: "Projects and chats" })
+    .getByRole("region", { name: "Projects" });
+  const archive = projects.getByRole("button", {
+    name: "Archive Agent rail task 6",
+    exact: true,
+  });
+  await archive
+    .locator("xpath=ancestor::*[contains(@class,'project-chat-row')][1]")
+    .hover();
+  await archive.click();
+
+  const alert = projects.getByRole("alert");
+  await expect(alert).toHaveText(refusal);
+  await expect(page.getByText(refusal)).toHaveCount(1);
+  await expect(archive).toHaveAccessibleDescription(refusal);
+  await projects
+    .getByRole("button", { name: "Dismiss error for Agent rail task 6" })
+    .click();
+  await expect(projects.getByRole("alert")).toHaveCount(0);
+  await expect(
+    projects.getByRole("button", {
+      name: "Chat actions for Agent rail task 6",
+    }),
+  ).toBeFocused();
 });
 
 test("AP-C resting on a chat row shows its title, age and project beside the rail", async ({

@@ -1,3 +1,4 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use serde_json::{Value, json};
 
 use super::*;
@@ -18,7 +19,7 @@ fn protocol() -> CodexAuthProtocol {
 }
 
 #[test]
-fn requests_match_the_pinned_codex_0146_wire_contract() {
+fn requests_match_the_pinned_codex_wire_contract() {
     let mut protocol = protocol();
     let initialize = protocol.initialize_request().unwrap();
     let initialized = protocol
@@ -92,11 +93,11 @@ fn completion_and_account_updates_project_only_sanitized_state() {
     assert_eq!(
         protocol.accept_notification(&frame(json!({
             "method":"account/login/completed","params":{
-                "loginId":LOGIN_ID,"success":true,"error":null
+                "loginId":LOGIN_ID,"success":true,"error":null,"onboardingEntrypoint":null
             }
         }))),
         Ok(CodexAuthNotification::LoginCompleted {
-            login_id: NativeLoginId::parse(LOGIN_ID).unwrap(),
+            login_id: Some(NativeLoginId::parse(LOGIN_ID).unwrap()),
             success: true,
         })
     );
@@ -104,13 +105,15 @@ fn completion_and_account_updates_project_only_sanitized_state() {
         protocol.accept_notification(&frame(json!({
             "method":"account/updated","params":{"authMode":"chatgpt","planType":"plus"}
         }))),
-        Ok(CodexAuthNotification::AccountUpdated { signed_in: true })
+        Ok(CodexAuthNotification::AccountUpdated {
+            mode: Some(CodexAuthMode::Chatgpt)
+        })
     );
     assert_eq!(
         protocol.accept_notification(&frame(json!({
             "method":"account/updated","params":{"authMode":null,"planType":null}
         }))),
-        Ok(CodexAuthNotification::AccountUpdated { signed_in: false })
+        Ok(CodexAuthNotification::AccountUpdated { mode: None })
     );
 }
 
@@ -133,7 +136,8 @@ fn response_and_notification_shapes_are_closed_and_bounded() {
         protocol
             .accept_notification(&frame(json!({
                 "method":"account/login/completed","params":{
-                    "loginId":LOGIN_ID,"success":false,"error":"x".repeat(AUTH_ERROR_BYTES + 1)
+                    "loginId":LOGIN_ID,"success":false,"error":"x".repeat(AUTH_ERROR_BYTES + 1),
+                    "onboardingEntrypoint":null
                 }
             })))
             .is_err()
@@ -167,8 +171,8 @@ fn request_payload(payload: &[u8]) -> Value {
 
 fn initialize_result(id: u64) -> Frame {
     frame(json!({"id":id,"result":{
-        "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) terminal (sage; 0.1.0)",
-        "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+        "userAgent":user_agent("sage", "terminal"),
+        "codexHome":MANAGED_CODEX_HOME,
         "platformFamily":"windows","platformOs":"windows"
     }}))
 }

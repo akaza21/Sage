@@ -75,13 +75,25 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerAddActions.tsx",
   "src/features/chat/ComposerEffortMenu.tsx",
   "src/features/chat/ComposerModelMenu.tsx",
+  // The `/` command controller and menu load with the field's first focus.
+  "src/features/chat/ComposerSlashController.tsx",
+];
+const COMMAND_DYNAMIC_FACADES = [
+  // The typed command route loads with the first `/name` sent.
+  "src/features/chat/slashCommandTurn.ts",
 ];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
   // Only the question card sends answers.
   "src/services/acpDesktopUserInputAnswer.ts",
   "src/features/chat/acp/ChatMarkdown.tsx",
   "src/features/files/FileMarkdownPreview.tsx",
+  "src/features/files/FileConflictNotice.tsx",
+  "src/app/editorConflictActions.ts",
+  "src/features/files/editorNoticeState.ts",
+  "src/features/files/FileConflictCompare.tsx",
+  "src/features/files/SaveAllNotice.tsx",
   "src/features/chat/ComposerUsageContext.tsx",
+  "src/features/chat/ComposerUsageLimits.tsx",
   "src/features/chat/composerDictationRuntime.ts",
   "src/workbench/DirtyTabDialog.tsx",
   "src/ports/editorWatchSession.ts",
@@ -102,6 +114,7 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
 const REQUIRED_DYNAMIC_FACADES = [
   ...REQUEST_ONLY_DYNAMIC_FACADES,
   ...COMPOSER_MENU_DYNAMIC_FACADES,
+  ...COMMAND_DYNAMIC_FACADES,
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
@@ -120,11 +133,14 @@ const REQUIRED_DYNAMIC_FACADES = [
   // The Agent New tab page and its chat resource picker load on first use.
   "src/features/browser/BrowserNewTab.tsx",
   "src/features/browser/BrowserSurface.tsx",
+  // A live chat's own access loads beside its composer.
+  "src/features/chat/ChatAccessSelection.tsx",
   "src/features/chat/ChatHandoffDialog.tsx",
   "src/features/chat/ChatNavigation.tsx",
   "src/features/chat/ChatQueueExecution.tsx",
   "src/features/chat/ChatQueueRuntime.tsx",
-  // Recovery notices and sign-in actions stay off the ready Chat path.
+  // Recovery notices, sign-in actions and the sign-in sentence stay off the
+  // ready Chat path.
   "src/features/chat/HarnessDiscoveryNotice.tsx",
   "src/features/chat/ClaudeAuthActions.tsx",
   // Queued-message rows load with the first queued message.
@@ -139,6 +155,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/acp/PermissionPrompt.tsx",
   // The question card loads only when a harness asks the user questions.
   "src/features/chat/acp/UserInputPrompt.tsx",
+  // Harness session notices load with the first notice.
+  "src/features/chat/acp/SessionNoticeStrip.tsx",
   "src/features/chat/acp/TurnFileActivity.tsx",
   // The stream-fade run tracker loads beside the transcript, off its path.
   "src/features/chat/acp/streamTail.ts",
@@ -162,6 +180,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/files/MixedEolFileView.tsx",
   // New File hands focus to the editor through this, off the startup path.
   "src/features/files/editorFocusRequest.ts",
+  // Workspace Replace reaches an open File's editor through this.
+  "src/features/files/editorTextReplace.ts",
   // The editing features (EP-03) load with the first editable File.
   "src/features/files/editorEditing.ts",
   // Git marks (EP-13) load only while on and a repository is open.
@@ -179,9 +199,16 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/quickOpen/QuickOpen.tsx",
   "src/features/quickOpen/QuickOpenHost.tsx",
   "src/features/search/SearchSurface.tsx",
+  // Replace loads when opened, or while idle; the Search checks load with
+  // the Search panel, after it shows.
+  "src/features/search/WorkspaceReplaceParts.tsx",
+  "src/features/search/workspaceReplaceApply.ts",
+  "src/features/search/workspaceSearchDomain.ts",
   "src/features/settings/AgentBrowserSettings.tsx",
   // The Harnesses page loads on its first open.
   "src/features/settings/AgentHarnessSettings.tsx",
+  // The Your ACP agents editor loads with the Harnesses page, below its list.
+  "src/features/settings/CustomAgentSettings.tsx",
   "src/features/settings/AgentKeyboardSettings.tsx",
   // The native turn-notice preference loads with the Chats page.
   "src/features/settings/AgentNotificationSettings.tsx",
@@ -204,7 +231,12 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/AgentProjectMenu.tsx",
   "src/workbench/AgentRailArchiveNotice.tsx",
   "src/workbench/AgentRecentChats.tsx",
+  "src/app/chatArchiveActions.ts",
+  "src/workbench/ArchivedChatList.tsx",
+  "src/workbench/ChatRowErrorNotice.tsx",
   "src/workbench/useAgentRailStatus.ts",
+  // The Agent header menu body loads before its first open.
+  "src/workbench/AgentHeaderMenu.tsx",
   "src/workbench/ProjectChatActionPopover.tsx",
   "src/workbench/ProjectChatRename.tsx",
   "src/workbench/SettingsSurface.tsx",
@@ -228,6 +260,9 @@ const ORDINARY_DYNAMIC_FACADES = [
   "src/features/chat/acp/InlineSavedDiff.tsx",
   "src/services/acpFileSnapshot.ts",
   "src/features/files/CodeMirrorEditorRuntime.ts",
+  // A searchable picker's open list loads before its first open; grouped,
+  // it lives in the menu-popover chunk, which has no single facade.
+  "src/ui/SearchablePickerPopover.tsx",
   "src/workbench/AgentWorkbenchBody.tsx",
   "src/workbench/Workbench.tsx",
 ].sort();
@@ -445,6 +480,19 @@ function closureForModule(
   return closure;
 }
 
+// The workbench-deps group pins shared page-layer state to the shell chunk,
+// whichever menu or dialog imports it first, so it joins every closure that
+// loads that chunk: the Workbench and the Editors, but not the Agent body.
+const SHELL_PAGE_LAYERS = "src/ui/nativePageLayers.ts";
+const SHELL_PAGE_LAYER_FACADES = new Set<string>([
+  "src/workbench/Workbench.tsx",
+  "src/features/files/CodeMirrorEditorRuntime.ts",
+  "src/features/files/FileSurface.tsx",
+  "src/features/diff/DiffSurface.tsx",
+  "src/features/search/SearchSurface.tsx",
+  ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
+]);
+
 function expectNoNewFeatureModules(
   graph: ReturnType<typeof graphInventory>,
   baseline: ReturnType<typeof graphInventory>,
@@ -455,6 +503,11 @@ function expectNoNewFeatureModules(
     ...closureForModule(baseline, facade),
     ...additionalBaseline,
   ]);
+  if (SHELL_PAGE_LAYER_FACADES.has(facade)) {
+    const pageLayers = graph.moduleFiles.get(SHELL_PAGE_LAYERS);
+    expect(graph.chunkNames.get(pageLayers ?? "")).toBe("workbench-deps");
+    allowed.add(path.join(root, SHELL_PAGE_LAYERS).split(path.sep).join("/"));
+  }
   expect(
     closureForModule(graph, facade).filter(
       (id) =>
@@ -799,6 +852,34 @@ describe("desktop-native chunk topology", () => {
     expect(
       groupedGraph.moduleFiles.get("src/features/chat/ChatHandoffControl.tsx"),
     ).toBe(agentFile);
+    // The shared menu and the searchable picker list built on it load as
+    // one chunk, outside the Agent body and the initial set. The Agent
+    // header menu body keeps a chunk of its own.
+    const menuModules = [
+      "src/ui/MenuPopover.tsx",
+      "src/ui/menuPopoverPosition.ts",
+      "src/ui/menuPopoverDialogFocus.ts",
+      "src/ui/SearchablePickerPopover.tsx",
+      "src/ui/PickerOption.tsx",
+    ];
+    const menuFile = groupedGraph.moduleFiles.get(menuModules[0]!);
+    expect(groupedGraph.chunkNames.get(menuFile!)).toBe("menu-popover");
+    expect(menuFile).not.toBe(agentFile);
+    expect(menuFile).not.toBe(sharedFile);
+    for (const module of menuModules) {
+      expect(groupedGraph.moduleFiles.get(module), module).toBe(menuFile);
+      expect(groupedGraph.initialModules, module).not.toContain(
+        path.join(root, module).split(path.sep).join("/"),
+      );
+    }
+    const headerMenuFile = groupedGraph.moduleFiles.get(
+      "src/workbench/AgentHeaderMenu.tsx",
+    );
+    expect(groupedGraph.chunkNames.get(headerMenuFile!)).toBe(
+      "AgentHeaderMenu",
+    );
+    expect(headerMenuFile).not.toBe(menuFile);
+    expect(headerMenuFile).not.toBe(agentFile);
     expect(groupedGraph.allModules).toEqual(baselineGraph.allModules);
     expect(groupedGraph.initialModules).toEqual(baselineGraph.initialModules);
     expect(new Set(groupedGraph.allModules).size).toBe(

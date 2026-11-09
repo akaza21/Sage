@@ -94,7 +94,7 @@ for (const width of [1888, 720, 480]) {
       await expect(accessReason).toHaveCount(0);
       if (profile.name === "Claude") {
         await composer
-          .getByRole("textbox", { name: "Message agent", exact: true })
+          .getByRole("combobox", { name: "Message agent", exact: true })
           .fill("Default access sends");
         await expect(send).toBeEnabled();
       }

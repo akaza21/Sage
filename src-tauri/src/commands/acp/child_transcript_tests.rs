@@ -1,4 +1,7 @@
 use super::*;
+use crate::acp::bindings::codex::CODEX_OBSERVED_PROTOCOL_IDENTITY;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+use crate::acp::bindings::codex::CODEX_PINNED_VERSION;
 use sha2::Digest;
 use std::{
     collections::VecDeque,
@@ -119,12 +122,12 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
         ProjectGeneration::ZERO,
         ProjectGeneration::ZERO,
         true,
-        OBSERVED_0146,
+        CODEX_OBSERVED_PROTOCOL_IDENTITY,
     )
     .await;
 }
 
-/// The native capture's desktop fixture replays the 0.146 `thread/read` wire
+/// The native capture's desktop fixture replays the pinned `thread/read` wire
 /// under its own identity; its child view reads that replay (wave 9 C1).
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 #[tokio::test]
@@ -133,12 +136,10 @@ async fn native_child_ipc_reads_the_desktop_fixture_replay() {
         ProjectGeneration::ZERO,
         ProjectGeneration::ZERO,
         false,
-        "codex-app-server-desktop-fixture-0.146.0",
+        &format!("codex-app-server-desktop-fixture-{CODEX_PINNED_VERSION}"),
     )
     .await;
 }
-
-const OBSERVED_0146: &str = "codex-app-server-observed-0.146.0";
 
 #[tokio::test]
 async fn native_child_ipc_rejects_drifted_projection_generation_but_accepts_live_generation() {
@@ -146,7 +147,7 @@ async fn native_child_ipc_rejects_drifted_projection_generation_but_accepts_live
         ProjectGeneration::new(3).unwrap(),
         ProjectGeneration::new(2).unwrap(),
         false,
-        OBSERVED_0146,
+        CODEX_OBSERVED_PROTOCOL_IDENTITY,
     )
     .await;
 }
@@ -233,6 +234,8 @@ async fn child_ipc_journey(
             prompt: true,
             cancel: true,
             native_session_fork: false,
+            native_session_compact: false,
+            native_review: false,
             active_turn_steer: false,
             child_conversation_projection: false,
             child_transcript_read: true,
@@ -240,6 +243,7 @@ async fn child_ipc_journey(
             multi_root_extension_schema_id: None,
             model_count: 1,
             prompt_resources: false,
+            prompt_images: false,
             config_count: 0,
         };
         complete_activation(
@@ -296,7 +300,7 @@ async fn child_ipc_journey(
             )
             .unwrap();
     }
-    let wire = include_bytes!("../../acp/runtime/adapter_pump/fixtures/cp18d_child_read_0146.json");
+    let wire = include_bytes!("../../acp/runtime/adapter_pump/fixtures/cp18d_child_read.json");
     let mapper = crate::acp::resource_mapper::NativeResourceMapper::new([]).unwrap();
     let snapshot =
         normalize_read_response(wire, 17, "child-one", "adapter-session", &mapper).unwrap();

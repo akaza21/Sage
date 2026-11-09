@@ -32,34 +32,30 @@ use super::manifest::parse_version;
 
 pub(crate) const PI_BINDING_ID: &str = "pi-rpc";
 /// Oldest Pi release whose RPC commands and events the translator covers.
-pub(crate) const PI_SUPPORTED_MINIMUM: (u64, u64, u64) = (0, 74, 0);
+pub(crate) const PI_SUPPORTED_MINIMUM: (u64, u64, u64) = (1, 5, 0);
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:pi-rpc:native:v1:";
-/// Read-only launch arguments after the entrypoint.
-pub(crate) const PI_READ_ONLY_ARGS: [&str; 9] = [
+/// Read-only launch arguments after the entrypoint. Prompt templates, skills
+/// and saved sessions load as they do in Pi's own CLI; user extensions stay
+/// off, because their tools would act outside Sage's approvals.
+pub(crate) const PI_READ_ONLY_ARGS: [&str; 6] = [
     "--mode",
     "rpc",
     "--tools",
     "read",
     "--no-extensions",
-    "--no-skills",
-    "--no-prompt-templates",
     "--no-themes",
-    "--no-session",
 ];
 /// Launch arguments with the pinned bridge. Pi's `--tools` allowlist also
 /// filters extension tools, so the bridge's managed write, edit and bash would
 /// never register under `--tools read`. Built-in tools instead start disabled;
 /// the bridge then activates only built-in `read` beside its own tools, and a
 /// bridge that fails to load leaves Pi with no tools at all.
-const PI_BRIDGE_ARGS: [&str; 8] = [
+const PI_BRIDGE_ARGS: [&str; 5] = [
     "--mode",
     "rpc",
     "--no-builtin-tools",
     "--no-extensions",
-    "--no-skills",
-    "--no-prompt-templates",
     "--no-themes",
-    "--no-session",
 ];
 
 pub(crate) fn pi_launch_args(bridge: Option<PathBuf>) -> Vec<OsString> {

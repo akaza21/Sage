@@ -53,10 +53,25 @@ impl Lane<'_> {
         &self,
         deadline: std::time::Instant,
     ) -> Result<bool, CodexSessionError> {
+        if !self.can_park_idle_runtime() {
+            return Ok(false);
+        }
+        self.park_idle_runtime(deadline)
+    }
+
+    /// Parks this lane's runtime through the graceful explicit close a
+    /// replacement uses: the host drains, parks its session durably and
+    /// exits, and a later activation resumes it. Ok(false) leaves the
+    /// runtime as it was: no runtime, a reserved Turn, a host without
+    /// shutdown recovery, or a refused idle drain.
+    pub(crate) fn park_idle_runtime(
+        &self,
+        deadline: std::time::Instant,
+    ) -> Result<bool, CodexSessionError> {
         let Some(allocation) = self.scheduler.active() else {
             return Ok(false);
         };
-        if !self.can_park_idle_runtime() {
+        if allocation.turn_reserved {
             return Ok(false);
         }
         let owner = allocation.tree;

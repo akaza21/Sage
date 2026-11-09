@@ -1,8 +1,10 @@
 import type { QueuedChatPrompt } from "../domain/chatOwnership";
 import type {
   BootstrapSnapshot,
+  BufferRebaseRequest,
   BufferSnapshotAck,
   BufferSnapshotRequest,
+  ChatDeleteRequest,
   ChatLifecycleRequest,
   MoveChatRequest,
   PinChatRequest,
@@ -145,7 +147,15 @@ export interface EditorPort {
     request: BufferSnapshotRequest,
   ): Promise<BufferSnapshotAck>;
   saveEditorDocument(resource: ResourceRef): Promise<EditorSaveResult>;
-  discardEditorBuffer(resource: ResourceRef): Promise<EditorDocument>;
+  /**
+   * Drops the buffer for the File on disk. With `keepIfAbsent` (Reload), a
+   * File that is gone keeps its buffer and comes back deleted.
+   */
+  discardEditorBuffer(
+    resource: ResourceRef,
+    keepIfAbsent?: boolean,
+  ): Promise<EditorDocument>;
+  rebaseEditorBuffer(request: BufferRebaseRequest): Promise<EditorSaveResult>;
   watchEditorDocument(resource: ResourceRef): Promise<EditorWatchSubscription>;
 }
 
@@ -250,6 +260,11 @@ export interface ChatPort {
     request: ChatLifecycleRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
+  /** Permanently deletes an archived Chat and its history. */
+  deleteChat(
+    request: ChatDeleteRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult>;
   moveChat(
     request: MoveChatRequest,
     expectedTransitionEpoch: number,
@@ -321,6 +336,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "discardEditorBuffer",
     "openEditorDocument",
     "readTextFile",
+    "rebaseEditorBuffer",
     "saveEditorDocument",
     "snapshotEditorBuffer",
     "watchEditorDocument",
@@ -352,6 +368,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "activateChat",
     "archiveChat",
     "createChat",
+    "deleteChat",
     "moveChat",
     "pinChat",
     "renameChat",

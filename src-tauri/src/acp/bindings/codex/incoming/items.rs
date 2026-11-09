@@ -24,6 +24,7 @@ type ItemNormalization = (NormalizedPayload, Option<ToolState>, Option<ItemLifec
 
 mod file_change;
 mod presentation;
+mod runtime_rows;
 
 pub(super) use file_change::normalize as normalize_file_change;
 mod tool_kinds;
@@ -98,8 +99,11 @@ pub(super) fn normalize_item<M: ResourceMapper>(
         "fileChange" => normalize_file_change(item, mapper, false).map(|(item, _)| Some(item)),
         "imageGeneration" => image_generation(item, lifecycle),
         "imageView" => image_view(item, mapper, lifecycle).map(Some),
-        "enteredReviewMode" => review_mode(item, "Entered review mode", lifecycle).map(Some),
-        "exitedReviewMode" => review_mode(item, "Exited review mode", lifecycle).map(Some),
+        "enteredReviewMode" => runtime_rows::entered_review(item, lifecycle).map(Some),
+        "exitedReviewMode" => runtime_rows::exited_review(item),
+        "sleep" => runtime_rows::sleep(item, lifecycle).map(Some),
+        "functionCallOutput" => runtime_rows::function_call_output(item, lifecycle).map(Some),
+        "hookPrompt" => runtime_rows::hook_prompt(item, lifecycle).map(Some),
         other => other_item(item, other, lifecycle).map(Some),
     }
 }
@@ -125,26 +129,6 @@ fn image_view<M: ResourceMapper>(
         input_summary: None,
         output_summary: None,
         locations,
-        command_activity: CommandActivity::Ordinary,
-        execution: ToolExecution::default(),
-    })
-}
-
-fn review_mode(
-    item: &Map<String, Value>,
-    label: &str,
-    lifecycle: ItemLifecycle,
-) -> Result<ItemNormalization, IngressError> {
-    tool_with_summary_status(ToolPresentationInput {
-        category: ToolCategory::SwitchMode,
-        label,
-        tool_state: lenient_tool_state(item, lifecycle),
-        input_summary: item
-            .get("review")
-            .and_then(Value::as_str)
-            .and_then(bounded_summary),
-        output_summary: None,
-        locations: BoundedVec::default(),
         command_activity: CommandActivity::Ordinary,
         execution: ToolExecution::default(),
     })

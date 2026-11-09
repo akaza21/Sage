@@ -7,15 +7,28 @@ import {
   goBack,
   goForward,
 } from "../../app/editorHistory";
+import type * as ConflictActions from "../../app/editorConflictActions";
 import { useWorkbenchStore } from "../../app/store";
 import type { SidebarView } from "../../app/store";
 import { formatKeymapChords, keymapBinding } from "../../domain/keymapRegistry";
 import type { TabKind } from "../../domain/chat";
+import { errorMessage } from "../../domain/errors";
+import { isDeletedOnDisk } from "../files/editorDisk";
 import {
   fileSurfaceCommandAvailable,
   runFileSurfaceCommand,
   type FileSurfaceCommand,
 } from "../files/fileSurfaceCommandBus";
+
+/** Runs a conflict or Save All action, which loads on first use. */
+const runConflictAction = (
+  action: (actions: typeof ConflictActions) => Promise<unknown>,
+) =>
+  void import("../../app/editorConflictActions")
+    .then(action)
+    .catch((error: unknown) =>
+      useWorkbenchStore.setState({ error: errorMessage(error) }),
+    );
 
 const isEditorTab = (kind: TabKind) =>
   kind === "file" || kind === "diff" || kind === "settings";
@@ -67,6 +80,33 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
       label,
       shortcut: shortcutOf(command, apple),
       run: () => void runFileSurfaceCommand(command),
+    });
+  }
+  // Revert File drops the active File's unsaved edits, as Reload does; a
+  // deleted File has nothing to revert to.
+  const editor = store.activeEditor;
+  if (
+    fileSurfaceCommandAvailable("save") &&
+    activeTab?.kind === "file" &&
+    activeTab.dirty &&
+    editor?.phase === "ready" &&
+    !isDeletedOnDisk(editor)
+  ) {
+    commands.push({
+      id: "revert",
+      label: "Revert File",
+      shortcut: null,
+      // The File shown now, even if another is active once the action runs.
+      run: () =>
+        runConflictAction((a) => a.reloadActiveEditor(editor.resource)),
+    });
+  }
+  if (store.tabs.some((tab) => tab.kind === "file" && tab.dirty)) {
+    commands.push({
+      id: "saveAll",
+      label: "Save All",
+      shortcut: shortcutOf("saveAll", apple),
+      run: () => runConflictAction((a) => a.saveAllEditors()),
     });
   }
   if (canGoBack()) {

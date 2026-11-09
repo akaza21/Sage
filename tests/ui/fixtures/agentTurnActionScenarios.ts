@@ -27,10 +27,12 @@ export function registerAgentTurnActionScenarios() {
     await openJourney(page);
     const evidence = screenshotEvidence(testInfo, page);
     const alpha = pane(page, "Alpha");
-    const alphaComposer = alpha.getByRole("textbox", { name: "Message agent" });
+    const alphaComposer = alpha.getByRole("combobox", {
+      name: "Message agent",
+    });
     const alphaSend = alpha.getByRole("button", { name: "Send message" });
     const beta = await focusPane(page, "Beta");
-    const betaComposer = beta.getByRole("textbox", { name: "Message agent" });
+    const betaComposer = beta.getByRole("combobox", { name: "Message agent" });
     await betaComposer.fill("Preserve this Beta draft");
     await focusPane(page, "Alpha");
     // AP-A1: one Chat in the centre; Beta's draft is proven on return.
@@ -137,7 +139,7 @@ export function registerAgentTurnActionScenarios() {
     await openJourney(page);
     const evidence = screenshotEvidence(testInfo, page);
     const alpha = pane(page, "Alpha");
-    const composer = alpha.getByRole("textbox", { name: "Message agent" });
+    const composer = alpha.getByRole("combobox", { name: "Message agent" });
 
     await composer.fill("Restore this exact prompt");
     await alpha.getByRole("button", { name: "Send message" }).click();

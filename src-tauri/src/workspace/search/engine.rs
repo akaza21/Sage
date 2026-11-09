@@ -13,7 +13,7 @@ use crate::{
 use super::{
     engine_continue::ContinuationSeek,
     file_scan::ScanQuery,
-    literal_match::LiteralQuery,
+    literal_match::search_query,
     types::{
         ContinuationCursor, SearchLimitReason, SearchLimits, SearchRoot, SearchRootSource,
         SearchRootState, WorkspaceSearchRequest, WorkspaceSearchResponse,
@@ -134,7 +134,7 @@ impl SearchEngine {
     ) -> AppResult<WorkspaceSearchResponse> {
         validate_search_request(&request)?;
         let query = request.query.trim();
-        let literal = LiteralQuery::new(query, request.case_sensitive);
+        let literal = search_query(query, request.case_sensitive, request.use_regex)?;
         let mut seek = request
             .continuation_token
             .as_deref()

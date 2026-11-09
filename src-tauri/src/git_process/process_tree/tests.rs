@@ -1,10 +1,10 @@
-use std::{fs, path::Path, process::Command, time::Duration};
+use std::{fs, path::Path, time::Duration};
 
 use super::super::{GitProcessPolicy, repository_config, run};
 use super::MAX_PARALLEL_JOBS;
 
 fn git(root: &Path, args: &[&str]) {
-    let status = Command::new("git")
+    let status = crate::git_process::fixture_git()
         .arg("-C")
         .arg(root)
         .args([

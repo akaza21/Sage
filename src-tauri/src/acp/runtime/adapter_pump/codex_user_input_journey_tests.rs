@@ -4,6 +4,7 @@
 //! without tearing the session down.
 
 use super::*;
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 
 const ANSWER: &str = "Changed files";
 
@@ -15,7 +16,7 @@ fn fixture_frames() -> Vec<serde_json::Value> {
 
 /// Codex initialized with the fixture's thread and its goal probe refused,
 /// as the native journey opens, holding the first prompt.
-fn opened_codex(frames: &[serde_json::Value]) -> (CodexRuntime, u64) {
+fn opened_codex(frames: &[serde_json::Value], prompt: Prompt) -> (CodexRuntime, u64) {
     let mut codex = CodexRuntime::fixture(Platform::WindowsX86_64);
     let init = codex.command(AdapterCommand::Initialize).unwrap();
     codex
@@ -24,8 +25,8 @@ fn opened_codex(frames: &[serde_json::Value]) -> (CodexRuntime, u64) {
     let initialized = codex
         .ingest(
             &codex_frame(serde_json::json!({"id":1,"result":{
-                "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+                "userAgent":user_agent("sage", "unknown"),
+                "codexHome":MANAGED_CODEX_HOME,
                 "platformFamily":"windows","platformOs":"windows"
             }})),
             &Mapper,
@@ -49,7 +50,7 @@ fn opened_codex(frames: &[serde_json::Value]) -> (CodexRuntime, u64) {
     let goal = codex
         .goal_get()
         .unwrap()
-        .expect("Codex 0.146 probes for a goal");
+        .expect("pinned Codex probes for a goal");
     let goal_id = codex_request_id(&goal);
     codex
         .resolve_egress(goal.into_token(), EgressResolution::Queued)
@@ -59,7 +60,7 @@ fn opened_codex(frames: &[serde_json::Value]) -> (CodexRuntime, u64) {
     codex.ingest(&codex_frame(refused), &Mapper).unwrap();
     let prompt = codex
         .command(AdapterCommand::Prompt {
-            prompt: Prompt::new("prompt", "Ask me.").unwrap(),
+            prompt,
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
             access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
@@ -159,7 +160,7 @@ fn the_codex_user_input_journey_asks_and_is_answered_on_both_turns() {
         let [first, second] = turn_starts.as_slice() else {
             panic!("the journey runs two turns");
         };
-        let (codex, prompt_id) = opened_codex(&frames);
+        let (codex, prompt_id) = opened_codex(&frames, Prompt::new("prompt", "Ask me.").unwrap());
         let (pump, shared) = codex_pump(codex);
         let parts = play_turn(pump, &shared, &frames[*first..*second], prompt_id).await;
 
@@ -192,5 +193,71 @@ fn the_codex_user_input_journey_asks_and_is_answered_on_both_turns() {
             .position(|frame| frame["method"] == "turn/completed")
             .expect("the second turn completes");
         play_turn(pump, &shared, &rest[..=end], prompt_id).await;
+    });
+}
+
+#[test]
+fn a_cancel_held_for_an_unnamed_compaction_is_written_once_codex_names_it() {
+    runtime().block_on(async {
+        let frames = fixture_frames();
+        let thread = frames[1]["result"]["thread"]["id"].clone();
+        let mut compact = Prompt::new("sessionAction", "/compact").unwrap();
+        compact.action =
+            Some(serde_json::from_value(serde_json::json!({"kind":"compact"})).unwrap());
+        let (codex, compact_id) = opened_codex(&frames, compact);
+        let (mut pump, _shared) = codex_pump(codex);
+        pump.push_stdout_chunk(
+            &codex_line(serde_json::json!({"id":compact_id,"result":{}})),
+            2,
+        )
+        .await
+        .unwrap();
+        let session = pump.intent.session_id.clone();
+        let epoch = pump.intent.runtime_epoch;
+        let active = pump.intent.active_turn.clone();
+        assert_eq!(
+            pump.queue_cancel_notification(
+                &session,
+                epoch,
+                &active.turn_id,
+                &active.client_message_id
+            )
+            .unwrap(),
+            QueueDisposition::Deferred
+        );
+        let mut transport = CaptureTransport(Vec::new());
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Idle
+        );
+
+        pump.push_stdout_chunk(
+            &codex_line(
+                serde_json::json!({"method":"turn/started","params":{"threadId":thread,
+                "turn":{"id":"turn-compact","rootTurnId":"turn-compact","status":"inProgress"}}}),
+            ),
+            3,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Written
+        );
+        let interrupt: serde_json::Value = serde_json::from_slice(&transport.0).unwrap();
+        assert_eq!(
+            (&interrupt["method"], &interrupt["params"]["turnId"]),
+            (
+                &serde_json::json!("turn/interrupt"),
+                &serde_json::json!("turn-compact")
+            )
+        );
+        pump.push_stdout_chunk(
+            &codex_line(serde_json::json!({"id":interrupt["id"],"result":{}})),
+            4,
+        )
+        .await
+        .expect("Codex's answer correlates with the written interrupt");
+        assert!(!pump.teardown_required());
     });
 }
