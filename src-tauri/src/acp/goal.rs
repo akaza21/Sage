@@ -39,6 +39,10 @@ pub(crate) enum NativeRpcRequest {
     },
     /// Refreshes the runtime's usage-limit snapshot from the harness.
     UsageRead,
+    /// Lists or stops the commands the harness left running. Only a runtime
+    /// whose negotiated capabilities admit `nativeBackgroundTerminals`
+    /// accepts it.
+    BackgroundTerminals(crate::acp::background_terminals::TerminalAction),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +57,11 @@ pub(crate) enum NativeRpcReply {
     Released,
     /// The harness answered a usage read; the snapshot is in the usage cell.
     UsageRead,
+    /// The terminals the harness still runs, at most
+    /// `MAX_BACKGROUND_TERMINALS` of them.
+    BackgroundTerminals(Vec<crate::acp::background_terminals::BackgroundTerminal>),
+    /// The harness took a stop request.
+    TerminalsStopped,
 }
 
 impl NativeRpcIntent {
@@ -75,6 +84,7 @@ impl NativeRpcIntent {
                 } => child_thread_id.len() + parent_thread_id.len() + 1,
                 NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,
                 NativeRpcRequest::ReleaseFork { fork, .. } => fork.as_str().len() + 1,
+                NativeRpcRequest::BackgroundTerminals(action) => action.bytes(),
             }
     }
 }

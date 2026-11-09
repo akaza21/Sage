@@ -1,4 +1,5 @@
 mod action_handoff;
+mod background_terminals;
 pub(crate) mod capabilities;
 mod child_read;
 mod fork;

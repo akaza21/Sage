@@ -6,9 +6,10 @@ use crate::acp::bindings::codex::state::{TurnBinding, TurnStartFailure};
 /// key); a backend failure is an internal error.
 const INVALID_REQUEST: i64 = -32600;
 
-pub(super) fn response(
+pub(super) fn response<M: ResourceMapper>(
     adapter: &mut CodexAdapter,
     object: &Map<String, Value>,
+    mapper: &M,
 ) -> Result<IngressDisposition, IngressError> {
     let id = object
         .get("id")
@@ -53,6 +54,15 @@ pub(super) fn response(
                 .get("result")
                 .and_then(Value::as_object)
                 .and_then(super::rate_limits::RateLimits::read),
+        ));
+    }
+    if kind.is_terminals() {
+        adapter.take_pending(id);
+        return Ok(IngressDisposition::Terminals(
+            object
+                .get("result")
+                .filter(|_| !object.contains_key("error"))
+                .and_then(|result| super::background_terminals::reply(kind, result, mapper)),
         ));
     }
     if let Some(error) = object.get("error") {
@@ -244,7 +254,10 @@ pub(super) fn response(
         | RequestKind::Fork
         | RequestKind::ForkRelease
         | RequestKind::ForkDelete
-        | RequestKind::RateLimitsRead => {
+        | RequestKind::RateLimitsRead
+        | RequestKind::TerminalsList
+        | RequestKind::TerminalsStop
+        | RequestKind::TerminalsStopAll => {
             unreachable!("handled above")
         }
     };

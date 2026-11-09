@@ -95,6 +95,7 @@ pub(super) fn capabilities() -> String {
         native_session_fork: false,
         native_session_compact: false,
         native_review: false,
+        native_background_terminals: false,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,

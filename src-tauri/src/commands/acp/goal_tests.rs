@@ -10,6 +10,7 @@ use std::{
 
 use crate::{
     acp::{
+        background_terminals::{BackgroundTerminal, TerminalAction},
         contract::{RequiredText, SageTurnId, SchemaVersionV1},
         goal::{GoalSnapshot, GoalState, GoalStatus, NativeRpcIntent, NativeRpcReply},
         intent::{BindingId, CapabilitySnapshotV1, ExternalId},
@@ -56,6 +57,21 @@ impl RuntimeEngine for GoalEngine {
                 }
                 crate::acp::goal::NativeRpcRequest::Goal(GoalAction::ClearExisting) => {
                     GoalState::NoGoal
+                }
+                crate::acp::goal::NativeRpcRequest::BackgroundTerminals(action) => {
+                    completion.complete(Ok(match action {
+                        TerminalAction::List => {
+                            NativeRpcReply::BackgroundTerminals(vec![BackgroundTerminal {
+                                handle: "7".into(),
+                                command: "npm run dev".into(),
+                                cwd: None,
+                            }])
+                        }
+                        TerminalAction::Stop(_) | TerminalAction::StopAll => {
+                            NativeRpcReply::TerminalsStopped
+                        }
+                    }));
+                    return Ok(());
                 }
                 crate::acp::goal::NativeRpcRequest::ChildThreadRead { .. }
                 | crate::acp::goal::NativeRpcRequest::ForkSession
@@ -208,6 +224,7 @@ pub(in crate::commands::acp) fn fixture(
                     native_session_fork: false,
                     native_session_compact: false,
                     native_review: false,
+                    native_background_terminals: false,
                     active_turn_steer: false,
                     child_conversation_projection: false,
                     child_transcript_read: false,

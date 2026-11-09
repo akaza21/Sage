@@ -53,6 +53,9 @@ where
             crate::acp::goal::NativeRpcRequest::UsageRead => {
                 self.pump.write_usage_read(&mut self.transport)
             }
+            crate::acp::goal::NativeRpcRequest::BackgroundTerminals(action) => {
+                self.pump.write_terminals(&mut self.transport, action)
+            }
             crate::acp::goal::NativeRpcRequest::ChildThreadRead {
                 child_thread_id,
                 parent_thread_id,

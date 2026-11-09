@@ -1,0 +1,40 @@
+/* Commands the harness left running: a collapsed strip above the composer. */
+.acp-background-terminals {
+  margin-block-end: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+}
+
+.acp-background-terminals summary {
+  cursor: pointer;
+}
+
+.acp-background-terminals ul {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-1) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acp-background-terminals li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.acp-background-terminals code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acp-background-terminals span {
+  flex: none;
+  color: var(--color-text-muted);
+}

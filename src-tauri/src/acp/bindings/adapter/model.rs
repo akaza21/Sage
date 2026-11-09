@@ -175,6 +175,13 @@ pub(crate) trait HarnessAdapter {
     }
     /// Stops waiting for a usage read whose caller gave up.
     fn abandon_usage_read(&mut self) {}
+    /// Lists or stops the commands the harness left running.
+    fn background_terminals(
+        &mut self,
+        _action: &crate::acp::background_terminals::TerminalAction,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
     fn mutate_goal(
         &mut self,
         _action: crate::acp::goal::GoalAction,

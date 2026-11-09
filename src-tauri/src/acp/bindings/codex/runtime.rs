@@ -168,6 +168,11 @@ impl CodexRuntime {
                 self.apply_usage(usage);
                 one(AdapterEvent::IgnoredLate)
             }
+            IngressDisposition::Terminals(reply) => {
+                self.native_rpc_reply =
+                    Some(reply.unwrap_or(crate::acp::goal::NativeRpcReply::Rejected));
+                one(AdapterEvent::IgnoredLate)
+            }
             IngressDisposition::DuplicateTerminal => one(AdapterEvent::IgnoredDuplicate),
             IngressDisposition::DuplicateServerRequest { denial: None } => {
                 one(AdapterEvent::IgnoredDuplicate)

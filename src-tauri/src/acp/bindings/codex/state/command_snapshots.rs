@@ -234,6 +234,10 @@ impl CommandItemSnapshots {
         Ok(())
     }
 
+    pub(super) fn contains(&self, item_id: &str) -> bool {
+        self.values.contains_key(item_id)
+    }
+
     pub(super) fn remove(&mut self, item_id: &str) {
         if let Some(snapshot) = self.values.remove(item_id) {
             self.bytes = self.bytes.saturating_sub(snapshot.retained_bytes());
@@ -302,6 +306,10 @@ impl CodexAdapter {
             return Err(IngressError::Identity);
         }
         self.command_item_snapshots.append_delta(item_id, delta)
+    }
+
+    pub(crate) fn has_command_item(&self, item_id: &str) -> bool {
+        self.command_item_snapshots.contains(item_id)
     }
 
     pub(crate) fn remove_command_item(&mut self, item_id: &str) {

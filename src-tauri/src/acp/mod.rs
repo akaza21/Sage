@@ -1,4 +1,5 @@
 pub(crate) mod attached_context;
+pub(crate) mod background_terminals;
 pub(crate) mod bindings;
 #[cfg_attr(
     not(windows),

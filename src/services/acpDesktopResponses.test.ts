@@ -423,16 +423,23 @@ describe("safeAcpMutationResponse", () => {
           ],
         }),
       )?.projection.sessions[0]?.capabilities;
-    expect(
-      capabilities({ nativeSessionCompact: true, nativeReview: true }),
-    ).toMatchObject({ nativeSessionCompact: true, nativeReview: true });
-    for (const granted of [
+    const granted = {
+      nativeSessionCompact: true,
+      nativeReview: true,
+      nativeBackgroundTerminals: true,
+    };
+    expect(capabilities(granted)).toMatchObject(granted);
+    for (const refused of [
       {},
-      { nativeSessionCompact: "true", nativeReview: 1 },
+      {
+        nativeSessionCompact: "true",
+        nativeReview: 1,
+        nativeBackgroundTerminals: "yes",
+      },
     ]) {
-      const decoded = capabilities(granted);
-      expect(decoded).not.toHaveProperty("nativeSessionCompact");
-      expect(decoded).not.toHaveProperty("nativeReview");
+      const decoded = capabilities(refused);
+      for (const flag of Object.keys(granted))
+        expect(decoded).not.toHaveProperty(flag);
     }
   });
 

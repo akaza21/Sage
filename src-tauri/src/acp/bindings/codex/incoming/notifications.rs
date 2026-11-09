@@ -26,7 +26,9 @@ mod notices;
 mod plan;
 mod provisional;
 mod status_line;
-use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};
+use deltas::{
+    DeltaKind, command_output_delta, delta_event, summary_part_added, terminal_interaction,
+};
 use plan::structured_plan;
 
 pub(super) fn notification<M: ResourceMapper>(
@@ -221,6 +223,7 @@ pub(super) fn notification<M: ResourceMapper>(
             declarations,
         ),
         "item/commandExecution/outputDelta" => command_output_delta(adapter, params),
+        "item/commandExecution/terminalInteraction" => terminal_interaction(adapter, params),
         "item/mcpToolCall/progress" => mcp_tool_progress(adapter, params),
         "hook/started" => hook_run(adapter, params, HookPhase::Started),
         "hook/completed" => hook_run(adapter, params, HookPhase::Completed),

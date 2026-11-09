@@ -71,6 +71,7 @@ impl HarnessAdapter for CodexRuntime {
             || self.inner.child_read_pending()
             || self.inner.fork_rpc_pending()
             || self.inner.rate_limits_read_pending()
+            || self.inner.terminals_pending()
     }
 
     fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
@@ -84,6 +85,14 @@ impl HarnessAdapter for CodexRuntime {
 
     fn abandon_usage_read(&mut self) {
         self.inner.abandon_rate_limits_read();
+    }
+
+    fn background_terminals(
+        &mut self,
+        action: &crate::acp::background_terminals::TerminalAction,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.native_rpc_reply = None;
+        self.request(|adapter, id| adapter.background_terminals(id, action))
     }
 
     /// A child read or a fork may answer with an oversize frame (both carry

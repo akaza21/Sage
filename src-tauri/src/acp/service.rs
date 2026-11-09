@@ -31,6 +31,7 @@ use crate::acp::{
     contract::{RuntimeEpoch, SageAgentSessionId},
 };
 
+pub(crate) mod background_terminals;
 mod bootstrap;
 mod browser_attachment;
 #[cfg(windows)]

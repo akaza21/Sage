@@ -1,3 +1,4 @@
+pub(crate) mod background_terminals;
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
 pub(crate) mod chat_status;

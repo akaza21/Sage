@@ -40,6 +40,8 @@ use response::{browser_mcp_unavailable, response};
 
 pub(super) mod rate_limits;
 
+mod background_terminals;
+
 mod model_catalog;
 use model_catalog::parse_models;
 pub(in crate::acp::bindings::codex) use model_catalog::parse_reasoning_efforts;
@@ -218,6 +220,9 @@ pub(crate) enum IngressDisposition {
     UsageRefused,
     /// The account signed in to ChatGPT, so usage may be reported again.
     UsageReset,
+    /// The answer to a background-terminal request; `None` when Codex
+    /// refused it or answered outside the pinned shape.
+    Terminals(Option<crate::acp::goal::NativeRpcReply>),
     DuplicateTerminal,
     DuplicateServerRequest {
         denial: Option<Vec<u8>>,
@@ -286,7 +291,7 @@ fn ingest_inner<M: ResourceMapper>(
     }
     let object = value.as_object().ok_or(IngressError::Malformed)?;
     if object.contains_key("result") || object.contains_key("error") {
-        return response(adapter, object);
+        return response(adapter, object, mapper);
     }
     let method = text(object, "method", LIMITS.wire.method_bytes as usize)?;
     let params = object

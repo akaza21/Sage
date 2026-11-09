@@ -193,6 +193,12 @@ impl HarnessAdapter for NativeRuntime {
     fn abandon_usage_read(&mut self) {
         self.0.abandon_usage_read()
     }
+    fn background_terminals(
+        &mut self,
+        action: &crate::acp::background_terminals::TerminalAction,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.0.background_terminals(action)
+    }
     fn mutate_goal(
         &mut self,
         action: crate::acp::goal::GoalAction,
