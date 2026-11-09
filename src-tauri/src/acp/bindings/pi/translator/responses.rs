@@ -114,7 +114,7 @@ impl PiTranslator {
             }
             PendingKind::NewSession => {
                 let id = parse_state(&response.data)?
-                    .session_id
+                    .session_key()
                     .ok_or(AdapterError::Malformed)?;
                 validate_id("session ID", &id)?;
                 self.active = None;

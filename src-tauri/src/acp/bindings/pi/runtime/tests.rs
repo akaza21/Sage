@@ -85,7 +85,7 @@ fn deliver(runtime: &mut PiRuntime, egress: AdapterEgress) -> Value {
 
 /// Pi's `get_state` answer naming the session it opened at launch.
 fn opened() -> Value {
-    json!({"sessionId":"pi-session-1","sessionFile":"/sessions/1_pi-session-1.jsonl"})
+    json!({"sessionId":"pi-session-1"})
 }
 
 fn response(request: &Value, data: Value) -> Frame {

@@ -68,6 +68,28 @@ pub struct StateSnapshot {
     pub is_streaming: bool,
 }
 
+impl StateSnapshot {
+    /// The chat's key for Pi's session: its file's name, `<timestamp>_<id>`,
+    /// so reopening the chat opens that file directly. Pi's bare id stands in
+    /// when it keeps no file.
+    pub fn session_key(&self) -> Option<String> {
+        let file = self.session_file.as_deref().map(std::path::Path::new);
+        file.and_then(|file| file.file_name()?.to_str()?.strip_suffix(".jsonl"))
+            .filter(|stem| is_session_key(stem))
+            .map(str::to_owned)
+            .or_else(|| self.session_id.clone())
+    }
+}
+
+/// Pi's session ids and file names use only these characters, so a key can
+/// never name a path outside Pi's session folder.
+pub fn is_session_key(key: &str) -> bool {
+    (1..=128).contains(&key.len())
+        && key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HistoryMessage {
     pub role: HistoryRole,
