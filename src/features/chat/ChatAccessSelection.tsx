@@ -2,6 +2,8 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useLayoutEffect,
+  useRef,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -18,7 +20,10 @@ import {
   type SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
 import { CHAT_ACCESS_ICONS } from "./chatAccessIcons";
-import type { AccessView } from "./ComposerAccessControl";
+import type {
+  AccessView,
+  ComposerAccessControlProps,
+} from "./ComposerAccessControl";
 import { ChatAccessDraftSelection } from "./ChatAccessDraftSelection";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 const AccessMenu = lazy(() => import("./ComposerAccessMenu"));
@@ -68,63 +73,93 @@ export interface AccessMenuAnchor {
 }
 
 /**
+ * Hands the composer's trigger what it shows, when that changes. The trigger
+ * stays the composer's own, so it is never remounted as this chunk loads.
+ */
+function ReportView({
+  view,
+  onView,
+}: {
+  view: AccessView;
+  onView: (view: AccessView | null) => void;
+}) {
+  const latest = useRef(view);
+  const shown = [view.effective, view.tone]
+    .concat(view.candidates.map(({ id, label }) => id + label))
+    .join("\n");
+  // The newest view is kept first, so a report always hands it over; a
+  // report is made only when what the trigger shows has changed.
+  useLayoutEffect(() => {
+    latest.current = view;
+  });
+  useLayoutEffect(() => onView(latest.current), [shown, onView]);
+  useLayoutEffect(() => () => onView(null), [onView]);
+  return null;
+}
+
+/**
  * A chat's own access, and its menu: its live session's, or before the
  * session exists the access drafted for it. Loaded on demand, so the chat
  * path carries none of it.
  */
 export default function ChatAccessSelection({
-  session,
+  bindingId,
+  capabilities,
+  sessionConfig: session,
   chatId,
-  anchor,
-  children,
-  ...props
-}: AccessSelectionProps & {
-  session?: AcpSessionConfig | null;
-  chatId?: string;
-  anchor: AccessMenuAnchor;
-}) {
-  const withMenu = (view: AccessView) =>
-    view.candidates.length > 0 ? (
-      <>
-        {children(view)}
-        {view.error ? (
-          <span
-            className="select-control__reason composer-access-error"
-            role="alert"
-          >
-            {view.error}
-          </span>
-        ) : null}
-        {anchor.open ? (
-          <Suspense
-            fallback={
-              <ComposerMenuLoading
-                triggerRef={anchor.triggerRef}
-                onDismiss={anchor.onDismiss}
-              />
-            }
-          >
-            <AccessMenu
-              key={props.bindingId + view.sessionId}
-              id={anchor.id}
-              triggerRef={anchor.triggerRef}
-              candidates={view.candidates}
-              effective={view.effective}
-              onDismiss={anchor.onDismiss}
-              sessionId={view.sessionId}
-              onDraft={view.onDraft}
+  id,
+  triggerRef,
+  open,
+  onDismiss,
+  onView,
+}: ComposerAccessControlProps &
+  AccessMenuAnchor & {
+    onView: (view: AccessView | null) => void;
+  }) {
+  const props = { bindingId, capabilities };
+  // The harness defaults' own load error shows with the chat's access.
+  const error = useSessionAccessModeStore((state) => state.error);
+  const withMenu = (view: AccessView) => (
+    <>
+      <ReportView view={view} onView={onView} />
+      {view.candidates.length > 0 && view.error ? (
+        <span
+          className="select-control__reason composer-access-error"
+          role="alert"
+        >
+          {view.error}
+        </span>
+      ) : null}
+      {view.candidates.length > 0 && open ? (
+        <Suspense
+          fallback={
+            <ComposerMenuLoading
+              triggerRef={triggerRef}
+              onDismiss={onDismiss}
             />
-          </Suspense>
-        ) : null}
-      </>
-    ) : null;
+          }
+        >
+          <AccessMenu
+            key={bindingId + view.sessionId}
+            id={id}
+            triggerRef={triggerRef}
+            candidates={view.candidates}
+            effective={view.effective}
+            onDismiss={onDismiss}
+            sessionId={view.sessionId}
+            onDraft={view.onDraft}
+          />
+        </Suspense>
+      ) : null}
+    </>
+  );
   // A removed session is past; its chat drafts like one not yet started.
   return session && !session.removed ? (
-    <LiveChatAccess session={session} {...props}>
+    <LiveChatAccess session={session} error={error} {...props}>
       {withMenu}
     </LiveChatAccess>
   ) : (
-    <ChatAccessDraftSelection chatId={chatId} {...props}>
+    <ChatAccessDraftSelection chatId={chatId} error={error} {...props}>
       {withMenu}
     </ChatAccessDraftSelection>
   );

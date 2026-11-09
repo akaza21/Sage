@@ -53,18 +53,17 @@ function takeChatAccessDraft(
 }
 
 /**
- * Gives `sessionId` its chat's draft for `bindingId` before a prompt is
- * dispatched, and throws when it was not given, so nothing is sent. The
- * draft is spent either way: once the session exists, its access menu shows
- * and changes what it holds.
+ * Gives the chat's new `session` the chat's draft for its binding before a
+ * prompt is dispatched, and throws when it was not given, so nothing is
+ * sent. The draft is spent either way: once the session exists, its access
+ * menu shows and changes what it holds.
  */
 export async function spendChatAccessDraft(
   chatId: string,
-  bindingId: string,
-  sessionId: string,
+  session: { id: string; bindingId: string },
 ): Promise<void> {
-  const mode = takeChatAccessDraft(chatId, bindingId);
-  if (!mode || (await applyChatAccessDraft(sessionId, mode))) return;
+  const mode = takeChatAccessDraft(chatId, session.bindingId);
+  if (!mode || (await applyChatAccessDraft(session.id, mode))) return;
   throw new AcpDesktopError({
     kind: "invalidRequest",
     message:

@@ -85,7 +85,7 @@ describe("Compact chat controls", () => {
         onModeRemoved={() => {}}
       />,
     );
-    let trigger = screen.getByRole("button", { name: "Access options" });
+    const trigger = screen.getByRole("button", { name: "Access options" });
     expect(trigger).toHaveAccessibleDescription(
       "Read workspace files; no writes or network. Applies to this chat from your next message.",
     );
@@ -95,8 +95,6 @@ describe("Compact chat controls", () => {
       name: "Access mode",
     });
     expect(dialog.parentElement).toBe(document.body);
-    // The trigger is rendered again once the chat's access has loaded.
-    trigger = screen.getByRole("button", { name: "Access options" });
     expect(
       screen.getByRole("menuitemradio", { name: "Read-only" }),
     ).toHaveFocus();

@@ -160,8 +160,7 @@ it("keeps Harness and Access mutually exclusive without pointer events", async (
   fireEvent.keyDown(await screen.findByRole("menu", { name: "Access mode" }), {
     key: "Escape",
   });
-  // The trigger is rendered again once the chat's access has loaded.
-  expect(screen.getByRole("button", { name: "Access options" })).toHaveFocus();
+  expect(access).toHaveFocus();
 });
 
 async function openOptions() {

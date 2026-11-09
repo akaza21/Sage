@@ -44,6 +44,8 @@ interface Props {
   contextUsage?: ChatUsage | null;
   usageRequest?: ComponentProps<typeof ComposerContext>["usageRequest"];
   accessBindingId?: string | null;
+  /** The chat, while it has no session at all: its access is drafted. */
+  accessDraftChatId?: string;
   addActions?: ComposerMenuActions;
   availableBinding: boolean;
   canPrompt: boolean;
@@ -75,6 +77,7 @@ export function ChatHarnessControls({
   contextUsage,
   usageRequest,
   accessBindingId,
+  accessDraftChatId,
   addActions = {},
   availableBinding,
   canPrompt,
@@ -258,7 +261,7 @@ export function ChatHarnessControls({
         {availableBinding && accessHarness?.bindingId ? (
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
-            chatId={inheritScope}
+            chatId={accessDraftChatId}
             capabilities={accessHarness.accessModes}
             sessionConfig={sessionConfig}
             disabled={turnBusy || projectTransitioning}

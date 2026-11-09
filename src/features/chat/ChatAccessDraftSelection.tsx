@@ -4,17 +4,20 @@ import {
   useChatAccessDrafts,
 } from "../../app/chatAccessDrafts";
 import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
-import type {
-  SessionAccessMode,
-  SessionAccessModeCapability,
+import {
+  sessionAccessModeCandidates,
+  type SessionAccessMode,
+  type SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
+import { CHAT_ACCESS_ICONS } from "./chatAccessIcons";
 import type { AccessView } from "./ComposerAccessControl";
 
 /**
  * A chat's access before its session exists: the access drafted for this
- * chat and harness, else the harness default. A choice is held as the
- * chat's draft and given to its session before the first prompt is sent;
- * without a chat to hold it, nothing can be chosen.
+ * chat and harness, else the harness default. Every mode the harness
+ * offers a chat can be drafted; the draft is given to the session as soon as
+ * it starts, before the first prompt is sent, and Auto and Full access are
+ * confirmed natively then. Without a chat to hold it, nothing can be chosen.
  */
 export function ChatAccessDraftSelection({
   bindingId,
@@ -29,10 +32,9 @@ export function ChatAccessDraftSelection({
   error: string | null;
   children: (view: AccessView) => ReactNode;
 }) {
-  const { candidates, effective } = useSessionAccessSelection(
-    bindingId,
-    capabilities,
-  );
+  const { effective } = useSessionAccessSelection(bindingId, capabilities);
+  // Per-chat modes are offered only where they can be drafted.
+  const candidates = sessionAccessModeCandidates(capabilities, !!chatId);
   const draft = useChatAccessDrafts((state) =>
     chatId ? state.drafts[chatId] : undefined,
   );
@@ -40,10 +42,13 @@ export function ChatAccessDraftSelection({
     (candidate) =>
       draft?.bindingId === bindingId && candidate.id === draft.mode,
   )?.id;
+  const shown = drafted ?? effective;
   return children({
     candidates,
-    effective: drafted ?? effective,
+    effective: shown,
     error,
+    icon: shown ? CHAT_ACCESS_ICONS[shown] : undefined,
+    tone: shown === "fullAccess" ? " composer__access-label--full" : undefined,
     // The harness default needs no draft.
     onDraft: !chatId
       ? undefined

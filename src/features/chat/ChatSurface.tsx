@@ -102,6 +102,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     canPrompt,
     sessionHarnessId,
     accessBindingId,
+    accessDraftChatId,
     sessionModelId,
     sessionPromptUnavailable,
     usage,
@@ -357,6 +358,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         }
         claudeAuthScope={`${project?.id ?? ""}:${epoch}:${chatId ?? activeTabId ?? ""}`}
         accessBindingId={accessBindingId}
+        accessDraftChatId={accessDraftChatId}
         availableBinding={availableBinding}
         canPrompt={canPrompt}
         discoveryPhase={discoveryPhase}

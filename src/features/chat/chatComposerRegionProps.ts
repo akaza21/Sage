@@ -43,6 +43,8 @@ export interface ChatComposerRegionProps {
   claudeSignInRequired?: boolean;
   claudeAuthScope?: string;
   accessBindingId?: string | null;
+  /** The chat, while it has no session at all: its access is drafted. */
+  accessDraftChatId?: string;
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;

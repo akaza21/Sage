@@ -85,16 +85,11 @@ export default function ComposerAccessMenu({
     if (sessionId) void chooseChatAccess(sessionId, mode);
     else onDraft?.(mode);
   };
-  // Permissive modes need a session to bind their native confirmation to.
-  const selectable = (mode: SessionAccessMode) =>
-    !!sessionId || (!!onDraft && !PERMISSIVE.includes(mode));
+  // Without a session or a draft to hold it, a choice has nowhere to go.
+  const selectable = !!sessionId || !!onDraft;
   if (closing) return null;
   if (confirmation && !candidates.includes(confirmation)) setConfirmation(null);
-  if (
-    confirmation &&
-    selectable(confirmation.id) &&
-    candidates.includes(confirmation)
-  ) {
+  if (confirmation && selectable && candidates.includes(confirmation)) {
     const warning = WARNING[confirmation.id];
     return (
       <ModalDialog
@@ -126,10 +121,12 @@ export default function ComposerAccessMenu({
           <button
             className="button--compact"
             type="button"
-            disabled={permissive !== null && token === null}
+            disabled={permissive !== null && !!sessionId && token === null}
             onClick={() => {
-              if (!permissive) choose(confirmation.id);
-              else if (token && sessionId)
+              // A drafted permissive mode is confirmed natively once the
+              // session it is given to has started.
+              if (!permissive || !sessionId) choose(confirmation.id);
+              else if (token)
                 void grantChatAccess(sessionId, permissive, token);
               close();
             }}
@@ -177,12 +174,12 @@ export default function ComposerAccessMenu({
             className={`menu-item composer-access-menu__option${candidate.id === FULL_ACCESS ? " composer-access-menu__option--full" : ""}`}
             aria-label={candidate.label}
             aria-checked={candidate.id === effective}
-            aria-disabled={!selectable(candidate.id)}
+            aria-disabled={!selectable}
             data-option-id={candidate.id}
             aria-describedby={id + "-" + candidate.id}
             tabIndex={-1}
             onClick={() => {
-              if (!selectable(candidate.id)) return;
+              if (!selectable) return;
               if (effective === candidate.id) close();
               else if (CONFIRMED.includes(candidate.id))
                 setConfirmation(candidate);

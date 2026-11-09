@@ -60,6 +60,7 @@ export function ChatComposerRegion({
   claudeSignInRequired,
   claudeAuthScope,
   accessBindingId,
+  accessDraftChatId,
   availableBinding,
   canPrompt,
   discoveryPhase,
@@ -342,6 +343,7 @@ export function ChatComposerRegion({
               modelLabelScope={JSON.stringify([dictationScope, sessionId])}
               inheritScope={dictationScope}
               accessBindingId={accessBindingId}
+              accessDraftChatId={accessDraftChatId}
               addActions={{
                 imageAction: imageInput.action,
                 onOpenGoal: goalDetails.onOpen,

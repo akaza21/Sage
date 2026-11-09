@@ -54,13 +54,19 @@ export const createChatArchiveSlice: StateCreator<
       module.createChatArchiveActions(set, get),
     ));
   const run = (
+    projectId: string | undefined,
     action: (loaded: Awaited<ReturnType<typeof load>>) => Promise<boolean>,
   ) => {
-    // An action started in one Project is dropped if the Project switches
-    // while the actions load: it would run against the next Project.
-    const projectId = get().project?.id;
+    // An action with no Project of its own runs against the current one, so
+    // it is dropped if the Project changes while the actions load: it would
+    // run against the next Project. An action naming its Project runs there.
+    const startedIn = get().projectGeneration;
     return load()
-      .then((loaded) => get().project?.id === projectId && action(loaded))
+      .then(
+        (loaded) =>
+          (!!projectId || get().projectGeneration === startedIn) &&
+          action(loaded),
+      )
       .catch((error: unknown) => {
         actions = null;
         set({ error: errorMessage(error) });
@@ -72,10 +78,10 @@ export const createChatArchiveSlice: StateCreator<
     chatRowError: null,
     dismissChatRowError: () => set({ chatRowError: null }),
     archiveChat: (chatId, projectId, report) =>
-      run((loaded) => loaded.archiveChat(chatId, projectId, report)),
+      run(projectId, (loaded) => loaded.archiveChat(chatId, projectId, report)),
     restoreChat: (chatId, projectId, report) =>
-      run((loaded) => loaded.restoreChat(chatId, projectId, report)),
+      run(projectId, (loaded) => loaded.restoreChat(chatId, projectId, report)),
     deleteChat: (chatId, projectId) =>
-      run((loaded) => loaded.deleteChat(chatId, projectId)),
+      run(projectId, (loaded) => loaded.deleteChat(chatId, projectId)),
   };
 };

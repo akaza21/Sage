@@ -7,7 +7,6 @@
 export const chatAccessDraftPort: {
   spend?: (
     chatId: string,
-    bindingId: string,
-    sessionId: string,
+    session: { id: string; bindingId: string },
   ) => Promise<void>;
 } = {};

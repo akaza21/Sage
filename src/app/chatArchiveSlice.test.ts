@@ -40,10 +40,34 @@ const project = (id: string) => ({
 });
 const initial = useWorkbenchStore.getState();
 
+const railChat = (id: string, position: number) => ({
+  id,
+  title: id,
+  pinned: false,
+  position,
+});
+// Switching Project takes a new projection generation.
+const switchToProjectB = () =>
+  useWorkbenchStore.setState((state) => ({
+    project: project("project-b"),
+    projectGeneration: state.projectGeneration + 1,
+    tabs: [tab("chat:b1", 0)],
+    activeTabId: "chat:b1",
+  }));
+
 beforeEach(() => {
   useWorkbenchStore.setState({
     phase: "ready",
     project: project("project-a"),
+    projects: [
+      {
+        id: "project-x",
+        name: "X",
+        rootCount: 1,
+        lastOpenedAt: 1,
+        railChats: [railChat("chat:x1", 0), railChat("chat:x2", 1)],
+      },
+    ],
     tabs: [tab("chat:a1", 0), tab("chat:a2", 1)],
     activeTabId: "chat:a1",
     archivedChats: [],
@@ -60,11 +84,7 @@ it("drops an archive started before a Project switch that finished while its act
   const archive = vi.spyOn(getWorkbenchPorts().chat, "archiveChat");
   const archiving = useWorkbenchStore.getState().archiveChat("chat:a1");
   // The next Project has one attached Chat, which could not be archived.
-  useWorkbenchStore.setState({
-    project: project("project-b"),
-    tabs: [tab("chat:b1", 0)],
-    activeTabId: "chat:b1",
-  });
+  switchToProjectB();
   chunk.release();
 
   await expect(archiving).resolves.toBe(false);
@@ -72,6 +92,25 @@ it("drops an archive started before a Project switch that finished while its act
   expect(useWorkbenchStore.getState().error).toBeNull();
   expect(useWorkbenchStore.getState().chatRowError).toBeNull();
   expect(useWorkbenchStore.getState().tabs).toEqual([tab("chat:b1", 0)]);
+});
+
+it("still runs an archive that names its Project after a Project switch", async () => {
+  const archive = vi
+    .spyOn(getWorkbenchPorts().chat, "archiveChat")
+    .mockRejectedValue(new Error("refused by the test"));
+  // A rail row archives a Chat of another Project by naming it.
+  const archiving = useWorkbenchStore
+    .getState()
+    .archiveChat("chat:x1", "project-x", "row");
+  switchToProjectB();
+  chunk.release();
+
+  await archiving;
+  expect(archive).toHaveBeenCalledTimes(1);
+  expect(archive.mock.calls[0][0]).toMatchObject({
+    projectId: "project-x",
+    chatId: "chat:x1",
+  });
 });
 
 it("still reports the last attached Chat in the Project it was started in", async () => {
