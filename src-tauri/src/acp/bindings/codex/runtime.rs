@@ -47,6 +47,8 @@ pub(crate) struct CodexRuntime {
     selected_model_id: Option<crate::acp::intent::ModelId>,
     reported_model_id: Option<crate::acp::intent::ModelId>,
     selected_model: Option<super::incoming::ModelDescriptor>,
+    /// The catalog pages read so far, bounded as `apply_model_page` admits them.
+    model_catalog: Vec<super::incoming::ModelDescriptor>,
     selected_effort: Option<crate::acp::contract::RequiredText<512>>,
     model_list_requested: bool,
     model_catalog_idle_only: bool,
@@ -170,7 +172,16 @@ impl CodexRuntime {
             }
             IngressDisposition::SettingsUpdated { model, effort } => {
                 self.adopt_reported_settings(Some(model), effort);
-                one(AdapterEvent::IgnoredLate)
+                // A model the loaded catalog lacks re-runs hydration: its
+                // first page if never requested, else any page still unread.
+                let egress = self
+                    .selected_model
+                    .is_none()
+                    .then(|| self.request_model_config());
+                AdapterBatch::new(
+                    vec![AdapterEvent::IgnoredLate],
+                    egress.flatten().into_iter().collect(),
+                )
             }
             IngressDisposition::DuplicateTerminal => one(AdapterEvent::IgnoredDuplicate),
             IngressDisposition::DuplicateServerRequest { denial: None } => {

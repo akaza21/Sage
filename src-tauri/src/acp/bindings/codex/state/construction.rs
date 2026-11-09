@@ -59,6 +59,7 @@ impl CodexAdapter {
             running_mcp_tools: Default::default(),
             running_hooks: Default::default(),
             compactions: Default::default(),
+            last_approval_review: String::new(),
             subagent_labels: SubagentLabels::default(),
             child_threads: Vec::new(),
             bound_child_threads: Vec::new(),

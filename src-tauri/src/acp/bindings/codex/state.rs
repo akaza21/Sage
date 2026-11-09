@@ -181,6 +181,7 @@ pub(crate) struct CodexAdapter {
     running_mcp_tools: mcp_tools::RunningMcpTools,
     running_hooks: hook_runs::RunningHooks,
     compactions: compactions::Compactions,
+    last_approval_review: String,
     subagent_labels: SubagentLabels,
     child_threads: Vec<SafeText<512>>,
     bound_child_threads: Vec<SafeText<512>>,
@@ -198,6 +199,14 @@ pub(crate) struct CodexAdapter {
 }
 
 impl CodexAdapter {
+    /// Records a completed approval review, or returns false when it is the
+    /// last one recorded, so a repeated completion posts once.
+    pub(crate) fn complete_approval_review(&mut self, review: &str) -> bool {
+        let new = self.last_approval_review != review;
+        review.clone_into(&mut self.last_approval_review);
+        new
+    }
+
     pub(crate) fn has_active_turn(&self) -> bool {
         self.active_turn_id.is_some()
     }

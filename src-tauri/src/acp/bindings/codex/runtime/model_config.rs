@@ -35,6 +35,7 @@ impl CodexRuntime {
         self.selected_model = None;
         self.session_config = None;
         self.selected_effort = None;
+        self.model_catalog.clear();
         self.model_list_requested = false;
         self.model_catalog_idle_only = false;
         self.model_catalog_entries = 0;
@@ -44,26 +45,33 @@ impl CodexRuntime {
     }
 
     /// Adopts the model and effort Codex reports for the thread, on start or
-    /// resume and whenever its settings change. A different model drops the
-    /// old model's descriptor so its efforts are not offered for the new
-    /// one; an absent effort keeps the selected one.
+    /// resume and whenever its settings change. A different model takes its
+    /// descriptor from the loaded catalog (a pending catalog finds it when it
+    /// arrives) and keeps only an effort reported with it, so the old
+    /// model's effort is never sent for the new one.
     pub(super) fn adopt_reported_settings(
         &mut self,
         model: Option<ModelId>,
         effort: Option<crate::acp::contract::RequiredText<512>>,
     ) {
         self.reported_model_id = model.clone();
-        if let Some(model) = model {
-            if self.selected_model_id.as_ref() != Some(&model) {
-                self.selected_model = None;
-                self.session_config = None;
-            }
-            self.selected_model_id = Some(model);
+        if model.is_some() && self.selected_model_id != model {
+            self.selected_effort = None;
+            self.selected_model_id = model;
+            self.selected_model = self.catalog_model();
         }
         if effort.is_some() {
             self.selected_effort = effort;
         }
         self.refresh_model_config();
+    }
+
+    fn catalog_model(&self) -> Option<super::super::incoming::ModelDescriptor> {
+        let id = self.selected_model_id.as_ref()?;
+        self.model_catalog
+            .iter()
+            .find(|model| model.id == *id)
+            .cloned()
     }
 
     pub(super) fn refresh_model_config(&mut self) {
@@ -171,14 +179,7 @@ impl CodexRuntime {
         models: Vec<super::super::incoming::ModelDescriptor>,
         next_cursor: Option<PageCursor>,
     ) -> (AdapterEvent, Option<AdapterEgress>) {
-        let selected = models
-            .iter()
-            .find(|model| {
-                self.selected_model_id
-                    .as_ref()
-                    .is_some_and(|id| id.as_str() == model.id.as_str())
-            })
-            .cloned();
+        let descriptors = models.clone();
         let Ok(models) = super::support::model_values(models) else {
             return self.reject_model_page();
         };
@@ -200,7 +201,8 @@ impl CodexRuntime {
         self.model_catalog_bytes = bytes;
         self.next_model_cursor = next_cursor.clone();
         self.model_pages_seen += 1;
-        if let Some(model) = selected {
+        self.model_catalog.extend(descriptors);
+        if let Some(model) = self.catalog_model() {
             self.selected_model = Some(model);
             self.refresh_model_config();
         }

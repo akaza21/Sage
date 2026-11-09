@@ -70,7 +70,7 @@ pub(super) fn item_event<M: ResourceMapper>(
     if matches!(payload, NormalizedPayload::CompactionNotice)
         && adapter.record_compaction(turn, false).is_none()
     {
-        return Ok(IngressDisposition::Events(vec![]));
+        return Ok(IngressDisposition::IgnoredLate);
     }
     if let Some(command) = command {
         if lifecycle.is_terminal() {

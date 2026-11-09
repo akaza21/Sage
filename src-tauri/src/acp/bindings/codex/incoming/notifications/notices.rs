@@ -201,39 +201,38 @@ pub(super) fn model_safety_buffering(
 }
 
 /// `modelProvider/authRecoveryStarted` and `.../authRecoveryCompleted`:
-/// Codex is renewing, or has renewed, the model provider's sign-in during
-/// a turn. The harness message says how it went.
+/// Codex is renewing, or has finished renewing, the model provider's
+/// sign-in during a turn. The completion carries no success flag, so its
+/// wording stays neutral; the harness message, when there is one, says how
+/// it went. A payload Sage cannot read is ignored.
 pub(super) fn auth_recovery(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
     started: bool,
 ) -> Result<IngressDisposition, IngressError> {
-    let provider = clean(text(params, "provider", MODEL_BYTES)?, MODEL_BYTES);
-    let message = human(params, "message")?;
-    let Some(session) = turn_session(adapter, params)? else {
+    let Some(session) = informational_session(adapter, params)? else {
         return Ok(IngressDisposition::IgnoredLate);
     };
-    let lead = if started { "is renewing" } else { "renewed" };
+    let Ok(provider) = text(params, "provider", MODEL_BYTES) else {
+        return Ok(IngressDisposition::IgnoredLate);
+    };
+    let lead = if started {
+        "is renewing"
+    } else {
+        "finished renewing"
+    };
+    let mut message = format!(
+        "Codex {lead} its sign-in to {}",
+        clean(provider, MODEL_BYTES)
+    );
+    match human(params, "message") {
+        Ok(detail) => _ = write!(message, ": {detail}"),
+        Err(_) => message.push('.'),
+    }
     single(
         session,
-        notice(
-            SessionNoticeLevel::Info,
-            "codex sign-in",
-            format!("Codex {lead} its sign-in to {provider}: {message}"),
-        )?,
+        notice(SessionNoticeLevel::Info, "codex sign-in", message)?,
     )
-}
-
-/// `turn/moderationMetadata`: identity-checked and deliberately not
-/// projected. The metadata is an opaque, unversioned value with no
-/// user-facing text, so a notice could say nothing true about it.
-pub(super) fn moderation_metadata(
-    adapter: &CodexAdapter,
-    params: &Map<String, Value>,
-) -> Result<IngressDisposition, IngressError> {
-    params.get("metadata").ok_or(IngressError::Malformed)?;
-    turn_session(adapter, params)?;
-    Ok(IngressDisposition::IgnoredLate)
 }
 
 /// `windows/worldWritableWarning`: folders other users can write to, which
@@ -296,10 +295,10 @@ fn thread_less(
     }
 }
 
-/// The session of a turn-scoped `model/*` notification. It must name the
-/// bound thread and the active or the just-finished Turn. With no active
-/// Turn an unknown Turn is replayed history (as on resume) and is ignored;
-/// while a Turn is active a different Turn is a foreign identity.
+/// The session of a turn-scoped notice. It must name the bound thread and
+/// the active or the just-finished Turn. With no active Turn an unknown Turn
+/// is replayed history (as on resume) and is ignored; while a Turn is active
+/// a different Turn is a foreign identity.
 pub(super) fn turn_session(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
@@ -316,6 +315,18 @@ pub(super) fn turn_session(
         Err(IngressError::Identity)
     } else {
         Ok(None)
+    }
+}
+
+/// `turn_session` for an informational notice, whose unreadable identity is
+/// ignored rather than ending the session. A foreign one still fails.
+pub(super) fn informational_session(
+    adapter: &CodexAdapter,
+    params: &Map<String, Value>,
+) -> Result<Option<ScopedExternalId>, IngressError> {
+    match turn_session(adapter, params) {
+        Err(IngressError::Malformed) => Ok(None),
+        session => session,
     }
 }
 
