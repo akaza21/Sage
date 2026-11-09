@@ -385,7 +385,8 @@ fn a_restored_config_that_does_not_fit_the_page_shows_only_the_stored_choices() 
     // A page this close to its budget has no room for the labels: it shows
     // the stored choice on its own, and keeps the notice.
     let near_bound = bytes(&page) - 1;
-    fit_config_to_page_budget(&mut page, near_bound, stored_only).unwrap();
+    let size = PageBytes::measure(&page).unwrap();
+    fit_config_to_page_budget(&mut page, &size, near_bound, stored_only).unwrap();
     let only = page.restored_session_config.clone().unwrap();
     assert_eq!(only.config.config_options.as_slice().len(), 1);
     assert_eq!(
@@ -401,12 +402,13 @@ fn a_restored_config_that_does_not_fit_the_page_shows_only_the_stored_choices() 
     bare.session_config_notice = None;
     let bare = bytes(&bare);
     let mut page = load();
-    fit_config_to_page_budget(&mut page, bare, stored_only).unwrap();
+    let size = PageBytes::measure(&page).unwrap();
+    fit_config_to_page_budget(&mut page, &size, bare, stored_only).unwrap();
     assert!(page.restored_session_config.is_none());
     assert!(page.session_config_notice.is_none());
     // And a page whose history alone is over budget is still refused.
     assert!(matches!(
-        fit_config_to_page_budget(&mut page, bare - 1, |_| None),
+        fit_config_to_page_budget(&mut page, &size, bare - 1, |_| None),
         Err(StoreError::Capacity { .. })
     ));
 }
