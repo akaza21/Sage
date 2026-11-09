@@ -140,7 +140,7 @@ fn response_data(
 ) -> Result<Value, FixtureError> {
     Ok(match command {
         "get_state" => acp::substitute(
-            json!({"model":model(state.pi.model),"thinkingLevel":state.pi.thinking,"isStreaming":false,"sessionId":"fixture-pi-session","sessionFile":"$ROOT/synthetic-session.jsonl"}),
+            json!({"model":model(state.pi.model),"thinkingLevel":state.pi.thinking,"isStreaming":false,"sessionId":"fixture-pi-session","sessionFile":"$ROOT/2026-01-01T00-00-00-000Z_fixture-pi-session.jsonl"}),
             state,
             0,
         )?,

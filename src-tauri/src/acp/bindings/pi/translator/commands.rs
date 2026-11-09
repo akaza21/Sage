@@ -12,9 +12,9 @@ use crate::acp::bindings::pi::{
 };
 
 impl PiTranslator {
-    pub(crate) fn mark_extension_command(&mut self) -> Result<(), AdapterError> {
+    pub(crate) fn mark_command_turn(&mut self) -> Result<(), AdapterError> {
         let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-        active.lifecycle.mark_extension()
+        active.lifecycle.mark_command()
     }
 
     pub(crate) fn mark_prompt_written(&mut self, command_id: &str) -> Result<(), AdapterError> {
@@ -31,7 +31,7 @@ impl PiTranslator {
             .get(command_id)
             .ok_or(AdapterError::Correlation)?;
         let kind = request.kind;
-        if kind == PendingKind::Prompt {
+        if kind.starts_turn() {
             let active = self.active.as_ref().ok_or(AdapterError::Correlation)?;
             if active.prompt_command_id != command_id
                 || active.lifecycle.phase != TurnPhase::Reserved
@@ -53,7 +53,7 @@ impl PiTranslator {
             self.pending_thinking = None;
         }
         match kind {
-            PendingKind::Prompt => {
+            PendingKind::Prompt | PendingKind::Compact => {
                 self.active = None;
             }
             PendingKind::Abort => {
@@ -85,11 +85,39 @@ impl PiTranslator {
         turn_key: String,
         message: String,
     ) -> Result<Vec<Outbound>, AdapterError> {
+        validate_message(&message)?;
+        let mut fields = Map::new();
+        fields.insert("message".into(), Value::String(message));
+        self.begin_turn(turn_key, PendingKind::Prompt, fields)
+    }
+
+    /// Pi's own compaction, run as a command turn: it compacts, emitting
+    /// its compaction events, before it answers the request.
+    pub(super) fn begin_compact(
+        &mut self,
+        turn_key: String,
+        instructions: Option<String>,
+    ) -> Result<Vec<Outbound>, AdapterError> {
+        let mut fields = Map::new();
+        if let Some(instructions) = instructions {
+            validate_message(&instructions)?;
+            fields.insert("customInstructions".into(), Value::String(instructions));
+        }
+        let outbound = self.begin_turn(turn_key, PendingKind::Compact, fields)?;
+        self.mark_command_turn()?;
+        Ok(outbound)
+    }
+
+    fn begin_turn(
+        &mut self,
+        turn_key: String,
+        kind: PendingKind,
+        fields: Map<String, Value>,
+    ) -> Result<Vec<Outbound>, AdapterError> {
         if self.launch_admission.is_none() {
             return Err(AdapterError::LaunchNotAdmitted);
         }
         validate_id("Turn key", &turn_key)?;
-        validate_message(&message)?;
         if self
             .pending
             .values()
@@ -104,9 +132,7 @@ impl PiTranslator {
         {
             return Err(AdapterError::PromptAlreadyActive);
         }
-        let mut fields = Map::new();
-        fields.insert("message".into(), Value::String(message));
-        let outbound = self.issue(PendingKind::Prompt, fields)?;
+        let outbound = self.issue(kind, fields)?;
         self.active = Some(ActiveTurn {
             turn_key,
             prompt_command_id: outbound.command_id.clone(),
@@ -114,6 +140,7 @@ impl PiTranslator {
             authority_denied: false,
             tools: BTreeMap::new(),
             compaction_active: false,
+            compaction_failure_shown: false,
             thought_active: false,
             settlement_outcome: super::TerminalOutcome::Completed,
             settlement_message: None,
@@ -177,7 +204,7 @@ impl PiTranslator {
             return Err(AdapterError::Limit("outbound frame bytes"));
         }
         let owner = match kind {
-            PendingKind::Prompt => Some(self.next_command),
+            PendingKind::Prompt | PendingKind::Compact => Some(self.next_command),
             PendingKind::Abort | PendingKind::Steer => {
                 self.active.as_ref().map(|turn| turn.lifecycle.owner)
             }
