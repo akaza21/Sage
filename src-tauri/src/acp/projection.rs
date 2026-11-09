@@ -407,6 +407,9 @@ pub struct AcpChatPage {
     /// The current session's live runtime reports usage limits.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) usage: bool,
+    /// Notices and live activities of the current session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) session_surface: Option<super::intent::session_event::SessionSurfaceView>,
     pub project_id: SageProjectId,
     pub chat_id: SageChatId,
     pub title: SafeText<8192>,

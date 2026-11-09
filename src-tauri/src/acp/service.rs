@@ -81,6 +81,9 @@ pub(crate) mod runtime_identity;
 mod runtime_slot;
 mod session_config;
 pub(crate) use session_config::QueueError;
+mod session_control;
+mod session_surface;
+pub(crate) use session_control::SessionControlError;
 mod session_error;
 mod slash_commands;
 mod usage;
@@ -399,6 +402,7 @@ impl AcpService {
         self.compose_goal(&mut page);
         self.compose_usage(&mut page);
         self.fit_goal_to_page_budget(&mut page)?;
+        self.compose_session_surface(&mut page)?;
         Ok(page)
     }
 

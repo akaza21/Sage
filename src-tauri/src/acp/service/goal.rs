@@ -118,7 +118,9 @@ fn goal_reply(
             | NativeRpcReply::Rejected
             | NativeRpcReply::Forked(_)
             | NativeRpcReply::Released
-            | NativeRpcReply::UsageRead,
+            | NativeRpcReply::UsageRead
+            | NativeRpcReply::Controlled(_)
+            | NativeRpcReply::ControlRefused(_),
         ) => Err(crate::acp::runtime::HostError::RecoveryRequired),
         Err(error) => Err(error),
     }
@@ -169,6 +171,7 @@ mod tests {
             session_config: None,
             restored_session_config: None,
             session_config_notice: None,
+            session_surface: None,
             goal: GoalState::Goal {
                 snapshot: GoalSnapshot {
                     objective: "x".repeat(4_000),

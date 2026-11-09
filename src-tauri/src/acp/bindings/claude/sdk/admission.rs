@@ -261,12 +261,19 @@ impl AdmittedClaudeSdkBinding {
             self.sha256,
             self.byte_len,
         );
+        // Claude Code checkpoints the files each turn changes, so a turn
+        // can be undone.
+        let mut environment = launch_environment();
+        environment.push((
+            "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING".into(),
+            "true".into(),
+        ));
         Ok(LaunchSpec {
             binding_id: identity,
             runtime_epoch: epoch,
             artifact: artifact.map_err(unavailable)?,
             fixed_args: BoundedOsArgs::new(session.args()).map_err(unavailable)?,
-            environment: BoundedEnvironment::new(launch_environment()).map_err(unavailable)?,
+            environment: BoundedEnvironment::new(environment).map_err(unavailable)?,
             project_root: root,
             required_guarantee: if cfg!(windows) {
                 RequiredContainment::EnforcedTree
