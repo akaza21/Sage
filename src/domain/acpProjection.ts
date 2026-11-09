@@ -323,6 +323,9 @@ export interface AcpChatPage {
   goal?: AcpGoalState;
   /** The current session's live runtime reports usage limits. */
   usage?: true;
+  /** The session's activities and Undo, still undecoded: the panel that
+   * shows them decodes them (`decodeSessionSurface`). */
+  sessionSurface?: unknown;
   projectId: SageProjectId;
   chatId: SageChatId;
   title: string;

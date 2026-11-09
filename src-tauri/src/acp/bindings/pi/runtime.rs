@@ -265,30 +265,10 @@ impl HarnessAdapter for PiRuntime {
                 if self.external_session.is_none() || self.active_turn.is_some() {
                     return Err(AdapterRuntimeError::Operation);
                 }
-                let extension_command = prompt.command_revision.is_some()
-                    && self.commands.snapshot().commands.iter().any(|c| {
-                        c.extension
-                            && prompt
-                                .as_str()
-                                .strip_prefix('/')
-                                .and_then(|s| s.split_whitespace().next())
-                                == Some(c.name.as_str())
-                    });
                 let external_id =
                     ExternalId::new("piTurnId", client_message_id.as_str().to_owned())
                         .map_err(|_| AdapterRuntimeError::Operation)?;
-                let egress = self.begin_one(
-                    Operation::Prompt {
-                        turn_key: external_id.as_str().to_owned(),
-                        message: prompt.as_str().to_owned(),
-                    },
-                    RequestKind::Prompt,
-                )?;
-                if extension_command {
-                    self.translator
-                        .mark_extension_command()
-                        .map_err(support::map_pi)?;
-                }
+                let egress = self.begin_prompt(&prompt, external_id.as_str())?;
                 self.commands_discovered = false;
                 self.active_turn = Some(TurnIntent {
                     external_id,

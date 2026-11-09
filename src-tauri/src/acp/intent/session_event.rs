@@ -68,6 +68,9 @@ pub struct SessionActivity {
     /// Routing only: the session surface never stores it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub in_previous_turn: bool,
+    /// The harness can stop this activity on request while it runs.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stoppable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -274,6 +277,70 @@ fn replace<T: Clone + PartialEq>(slot: &mut Option<T>, value: &T) -> bool {
     }
     *slot = Some(value.clone());
     true
+}
+
+/// What a chat's controls show of its current session: the activities of
+/// the epoch that is running now. Notices reach the page on their own.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSurfaceView {
+    pub activities: Vec<SessionActivityView>,
+    /// The latest turn, when the running session can undo its file changes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub undo_turn: Option<crate::acp::contract::SageTurnId>,
+}
+
+/// One activity as the chat shows it. Its key is a digest of the harness's
+/// id, which stays in native code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionActivityView {
+    pub key: String,
+    pub kind: RequiredText<SESSION_ACTIVITY_KIND_BYTES>,
+    pub label: RequiredText<SESSION_ACTIVITY_LABEL_BYTES>,
+    pub state: SessionActivityState,
+    pub progress: Option<RequiredText<SESSION_ACTIVITY_PROGRESS_BYTES>>,
+    pub stoppable: bool,
+}
+
+impl SessionSurface {
+    /// The view for a chat whose session runs `runtime_epoch` now, if any.
+    pub(crate) fn view(&self, runtime_epoch: Option<u64>) -> SessionSurfaceView {
+        let live = runtime_epoch == Some(self.live_epoch);
+        SessionSurfaceView {
+            activities: self
+                .activities
+                .iter()
+                .filter(|_| live)
+                .map(|activity| SessionActivityView {
+                    key: activity_key(&activity.id),
+                    kind: activity.kind.clone(),
+                    label: activity.label.clone(),
+                    state: activity.state,
+                    progress: activity.progress.clone(),
+                    stoppable: activity.stoppable && !activity.state.is_terminal(),
+                })
+                .collect(),
+            undo_turn: None,
+        }
+    }
+
+    /// The harness id of the live activity a view key names.
+    pub(crate) fn activity_id(&self, key: &str) -> Option<&ExternalId> {
+        self.activities
+            .iter()
+            .map(|activity| &activity.id)
+            .find(|id| activity_key(id) == key)
+    }
+}
+
+fn activity_key(id: &ExternalId) -> String {
+    use sha2::Digest;
+    let digest = sha2::Sha256::digest(id.as_str().as_bytes());
+    digest[..12]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[cfg(test)]

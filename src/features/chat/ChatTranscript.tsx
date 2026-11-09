@@ -202,12 +202,8 @@ export function ChatTranscript({
                   forkTurnId={page.forkedFromTurnId}
                 />
               ) : null}
-              {page.sessionNotices?.length ? (
-                <NoticePart
-                  part="SessionNoticeStrip"
-                  session={page.chatId + page.currentSessionId}
-                  notices={page.sessionNotices}
-                />
+              {page.sessionNotices?.length || page.sessionSurface ? (
+                <NoticePart part="SessionStrip" page={page} />
               ) : null}
               <AcpChatProjection
                 page={page}

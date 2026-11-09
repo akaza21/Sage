@@ -212,3 +212,30 @@ pub(super) fn map_translation(error: TranslationError) -> AdapterRuntimeError {
 pub(super) fn map_capability(_error: CapabilityError) -> AdapterRuntimeError {
     AdapterRuntimeError::Frame
 }
+
+/// Where a permission reply stands, from card to written reply.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum DenialState {
+    Pending,
+    Committed,
+    Queued,
+    Written,
+}
+
+pub(super) struct DenialRecord {
+    pub(super) state: DenialState,
+    pub(super) sequence: u64,
+    pub(super) translator_id: String,
+    pub(super) wire_id: Value,
+    pub(super) allow_once_option_id: Option<String>,
+    pub(super) allow_always_option_id: Option<String>,
+    pub(super) reply: PermissionReply,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PermissionReply {
+    AllowOnce,
+    AllowAlways,
+    Deny,
+    Cancelled,
+}

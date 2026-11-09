@@ -153,6 +153,17 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
             transport,
         )
     }
+    pub(crate) fn write_control(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        crate::acp::runtime::adapter_pump::session_config::write_control(
+            &mut self.adapter,
+            transport,
+            control,
+        )
+    }
     pub(crate) fn write_child(
         &mut self,
         transport: &mut impl crate::acp::runtime::EgressTransport,

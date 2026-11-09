@@ -27,6 +27,15 @@ pub(crate) struct StageFilesRequest {
     pick: PickKind,
     expected_revision: Option<String>,
 }
+/// Composer text too long to type inline. The WebView supplies the text the
+/// person pasted, never a path, so nothing outside the paste is read.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct StageTextRequest {
+    owner: FileOwner,
+    expected_revision: Option<String>,
+    text: String,
+}
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct RemoveFileRequest {
@@ -38,7 +47,10 @@ pub(crate) struct RemoveFileRequest {
 /// Checks the owner under the transition guard and returns the attachment
 /// identity (`chat_tabs.attached_at`) of its chat tab.
 fn validate(state: &AppState, owner: &FileOwner, generation: u64) -> Result<i64, String> {
-    if owner.project_id.len() > 512
+    // An owner always names its chat; nothing falls back to another tab.
+    if owner.project_id.is_empty()
+        || owner.chat_id.is_empty()
+        || owner.project_id.len() > 512
         || owner.chat_id.len() > 512
         || owner.project_generation != generation
     {
@@ -144,6 +156,34 @@ where
             resources,
         )
         .map(Some)
+        .map_err(str::to_owned)
+}
+#[tauri::command]
+pub(crate) async fn stage_prompt_text(
+    state: State<'_, AppState>,
+    request: StageTextRequest,
+) -> Result<StagedFiles, String> {
+    stage_text(&state, request).await
+}
+pub(super) async fn stage_text(
+    state: &AppState,
+    request: StageTextRequest,
+) -> Result<StagedFiles, String> {
+    let transition = state.project_transitions.lock().await;
+    let attached = validate(state, &request.owner, *transition)?;
+    release_detached(&state.acp.file_stages, &state.database);
+    state
+        .acp
+        .file_stages
+        .lock()
+        .map_err(|_| "Attachment state is unavailable.")?
+        .append_text(
+            &request.owner.project_id,
+            &request.owner.chat_id,
+            attached,
+            request.expected_revision.as_deref(),
+            request.text,
+        )
         .map_err(str::to_owned)
 }
 #[tauri::command]

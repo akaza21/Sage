@@ -1824,6 +1824,7 @@ fn test_binding_session_operations_dispatch_by_durable_binding_id() {
                 runtime_epoch: owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "dispatch by durable binding").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await;
@@ -1980,6 +1981,7 @@ fn admitted_codex_send_command_routes_only_to_the_exact_owned_host() {
                 runtime_epoch: owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "route this prompt").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await
@@ -2006,6 +2008,7 @@ fn admitted_codex_send_command_routes_only_to_the_exact_owned_host() {
                 runtime_epoch: RuntimeEpoch::new(2).unwrap(),
                 prompt: Prompt::new("prompt", "must reject").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await;
@@ -2223,6 +2226,7 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
                 runtime_epoch: owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "must not run").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await;
@@ -2357,6 +2361,7 @@ fn admitted_codex_cancel_command_accepts_a_turn_advanced_by_ingress() {
                 runtime_epoch: owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "cancel after ingress").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await

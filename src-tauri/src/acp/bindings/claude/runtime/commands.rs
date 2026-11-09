@@ -86,7 +86,8 @@ impl ClaudeRuntime {
                     sanctioned_mode: None,
                 });
                 let external_session_id = active.external_id.clone();
-                match self.reserve(PendingRequest::Prompt, "session/prompt", json!({"sessionId":external_session_id.as_str(),"prompt":blocks})) {
+                let message_id = active.turn.as_ref().map(|turn| turn.client_message_id.as_str().to_owned());
+                match self.reserve(PendingRequest::Prompt, "session/prompt", json!({"sessionId":external_session_id.as_str(),"prompt":blocks,"messageId":message_id})) {
                     Ok(egress) => Ok(egress),
                     Err(error) => {
                         let active = self
@@ -142,8 +143,12 @@ impl ClaudeRuntime {
                         chosen = Some(option_id);
                         selected
                     }
-                    PermissionDecision::Answer(_) => {
-                        return Err(AdapterRuntimeError::UnsupportedCommand);
+                    PermissionDecision::Answer(ref answers) => {
+                        if record.allow_once_option_id.as_deref() != Some("answer") {
+                            return Err(AdapterRuntimeError::UnsupportedCommand);
+                        }
+                        record.reply = PermissionReply::AllowOnce;
+                        answered(&record.wire_id, answers)?
                     }
                     PermissionDecision::Deny => {
                         record.reply = PermissionReply::Deny;
@@ -164,6 +169,39 @@ impl ClaudeRuntime {
             }
         }
     }
+}
+
+/// Answers ride on the `answer` option, as `{questionId, selectedOption?,
+/// text?}` entries the harness binding reads back.
+fn answered(
+    wire_id: &Value,
+    answers: &crate::acp::intent::user_input::UserInputAnswers,
+) -> Result<AdapterEgress, AdapterRuntimeError> {
+    let answers: Vec<Value> = answers
+        .as_slice()
+        .iter()
+        .map(|answer| {
+            json!({
+                "questionId": answer.question_id.as_str(),
+                "selectedOption": answer.selected_option.as_ref().map(|label| label.as_str()),
+                "selectedOptions": answer.selected_options.as_ref().map(|labels| {
+                    labels.as_slice().iter().map(|label| label.as_str()).collect::<Vec<_>>()
+                }),
+                "text": answer.text.as_ref().map(|text| text.as_str()),
+            })
+        })
+        .collect();
+    let bytes = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": wire_id,
+        "result": {"outcome": {"outcome": "selected", "optionId": "answer"}, "answers": answers},
+    }))
+    .map_err(|_| AdapterRuntimeError::Frame)?;
+    let frame = OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
+    Ok(AdapterEgress::new(
+        frame,
+        EgressToken::protocol_notification(),
+    ))
 }
 
 fn permission_selected(

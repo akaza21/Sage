@@ -270,7 +270,7 @@ fn assert_native_activation(
     assert!(parts.journal().0.is_some());
     assert_eq!(
         parts.session().external_session_id.as_str(),
-        "fixture-pi-session"
+        "1_fixture-pi-session"
     );
     assert_eq!(parts.session().models.len(), 2);
     assert_eq!(parts.session().capabilities.model_count, 2);

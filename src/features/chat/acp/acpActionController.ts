@@ -9,6 +9,7 @@ import type {
   ProjectGeneration,
   SageTurnId,
   SendAcpTurnRequest,
+  StagedSelection,
 } from "../../../domain/acp";
 import type {
   AcpProjectionScope,
@@ -223,6 +224,8 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     attachedContext: readonly AttachedContext[],
     bindingId: CuratedBindingId,
     modelId: CuratedModelId | null,
+    /** Staged prompt files that go with this send; none unless named. */
+    staged?: StagedSelection,
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();
@@ -249,7 +252,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       );
       return Promise.resolve("rejected");
     }
-    if (!normalizedPrompt && !boundedContext.length) {
+    if (!normalizedPrompt && !boundedContext.length && !staged) {
       emitState(captured, "chat", {
         busy: false,
         cancellingTurnId: null,
@@ -351,6 +354,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           ...(boundedContext.length > 0
             ? { attachedContext: boundedContext }
             : {}),
+          ...(staged ? { staged } : {}),
         };
         // `/name …` may be an advertised command; its route loads on demand.
         const runCommand = normalizedPrompt.startsWith("/")

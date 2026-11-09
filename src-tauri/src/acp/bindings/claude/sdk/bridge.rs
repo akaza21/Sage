@@ -16,9 +16,13 @@ use serde_json::{Value, json};
 
 use super::config::SessionSettings;
 
+mod controls;
 mod inbound;
+mod notices;
 mod outbound;
 mod permission;
+mod questions;
+mod subagents;
 
 /// Bounds on per-turn bookkeeping; the inner session caps pending requests.
 const MAX_PENDING: usize = 32;
@@ -51,6 +55,14 @@ pub(super) struct Inbound {
     /// Approval cards to cancel, by wire id, before the ACP frames: Claude
     /// Code no longer waits on them.
     pub(super) withdrawn: Vec<u64>,
+    /// Session-scoped facts: notices, activities, the effective model.
+    pub(super) session: Vec<crate::acp::intent::session_event::SessionScopedEvent>,
+    /// Questions the permission request in `acp` asks instead.
+    pub(super) questions: Option<crate::acp::intent::user_input::UserInputRequest>,
+    /// The reply to a session control.
+    pub(super) native: Option<crate::acp::goal::NativeRpcReply>,
+    /// Subagent facts, applied before the ACP frames.
+    pub(super) children: Vec<crate::acp::bindings::claude::runtime::ChildEvent>,
 }
 
 #[derive(Debug)]
@@ -67,6 +79,8 @@ enum Pending {
         value: String,
     },
     Interrupt,
+    /// A session control; its reply completes the native request.
+    Control,
 }
 
 #[derive(Debug)]
@@ -74,6 +88,8 @@ struct Permission {
     request_id: String,
     input: Value,
     suggestions: Option<Value>,
+    /// An `AskUserQuestion` card: its questions' texts, in order.
+    questions: Option<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -92,7 +108,13 @@ pub(super) struct SdkBridge {
     answering: BTreeSet<String>,
     next_permission: u64,
     tools: BTreeMap<String, String>,
+    /// Open subagents, by their `Task` tool use id.
+    subagents: BTreeSet<String>,
+    /// A subagent's own tool rows: subagent and tool name, by tool use id.
+    child_tools: BTreeMap<String, (String, String)>,
     streamed: VecDeque<String>,
+    retrying: bool,
+    compacting: bool,
 }
 
 /// What a written SDK frame changed, so an undelivered one can be undone.
@@ -121,7 +143,11 @@ impl SdkBridge {
             answering: BTreeSet::new(),
             next_permission: 0,
             tools: BTreeMap::new(),
+            subagents: BTreeSet::new(),
+            child_tools: BTreeMap::new(),
             streamed: VecDeque::new(),
+            retrying: false,
+            compacting: false,
         }
     }
 
