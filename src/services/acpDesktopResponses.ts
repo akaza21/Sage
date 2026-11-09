@@ -286,6 +286,7 @@ export function safeAcpMutationResponse(
       ...(forkedFromTurnId && {
         forkedFromTurnId: forkedFromTurnId as AcpChatPage["forkedFromTurnId"],
       }),
+      ...(projection.importedHistory === true && { importedHistory: true }),
       ...(Number.isSafeInteger(epoch) &&
         epoch > 0 && { childProjectionEpoch: epoch }),
       ...(sessionNotices.length > 0 && { sessionNotices }),

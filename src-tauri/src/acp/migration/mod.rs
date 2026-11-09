@@ -5,6 +5,7 @@ mod file_artifact;
 mod fingerprint;
 mod identity;
 mod image_files;
+mod imported_history;
 mod legacy;
 mod legacy_events;
 mod legacy_project;
@@ -140,6 +141,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     notifications::apply(&mut opened.connection)?;
     config_choices::apply(&mut opened.connection)?;
     session_resume_link::apply(&mut opened.connection)?;
+    imported_history::apply(&mut opened.connection)?;
     Ok(opened)
 }
 
@@ -196,7 +198,8 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
         | SchemaClass::CurrentV21
         | SchemaClass::CurrentV22
         | SchemaClass::CurrentV23
-        | SchemaClass::CurrentResumeLink => {
+        | SchemaClass::CurrentResumeLink
+        | SchemaClass::CurrentImportedHistory => {
             let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
             if probe::classify_live(&paths)? != source_schema {
@@ -361,6 +364,7 @@ fn verify_current(connection: &Connection) -> AppResult<()> {
             | SchemaClass::CurrentV22
             | SchemaClass::CurrentV23
             | SchemaClass::CurrentResumeLink
+            | SchemaClass::CurrentImportedHistory
     ) {
         return invalid("database did not reach an exact current schema");
     }

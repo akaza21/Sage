@@ -18,11 +18,13 @@ use super::{
 };
 
 const FORK_CAPABILITY: &str = "nativeSessionFork";
+pub(crate) const IMPORT_CAPABILITY: &str = "nativeSessionImport";
 
-/// A session negotiated before its harness's fork method was characterised
-/// stored `nativeSessionFork: false`; the same harness now negotiates `true`.
-/// That single upgrade still resumes the session. Its stored snapshot stays
-/// immutable, so such a session keeps reporting no fork (fail closed).
+/// A session negotiated before its harness's fork or import methods were
+/// characterised stored `nativeSessionFork: false` (or no
+/// `nativeSessionImport`); the same harness now negotiates `true`. Those
+/// upgrades still resume the session. Its stored snapshot stays immutable,
+/// so such a session keeps reporting neither (fail closed).
 pub(crate) fn resumable_capabilities(stored: &str, negotiated: &str) -> bool {
     if stored == negotiated {
         return true;
@@ -33,9 +35,20 @@ pub(crate) fn resumable_capabilities(stored: &str, negotiated: &str) -> bool {
     ) else {
         return false;
     };
-    stored.remove(FORK_CAPABILITY) == Some(Value::Bool(false))
-        && negotiated.remove(FORK_CAPABILITY) == Some(Value::Bool(true))
-        && stored == negotiated
+    let fork = (
+        stored.remove(FORK_CAPABILITY),
+        negotiated.remove(FORK_CAPABILITY),
+    );
+    let import = (
+        stored.remove(IMPORT_CAPABILITY),
+        negotiated.remove(IMPORT_CAPABILITY),
+    );
+    let upgraded = |(before, after): (Option<Value>, Option<Value>), absent_ok: bool| {
+        before == after
+            || (after == Some(Value::Bool(true))
+                && (before == Some(Value::Bool(false)) || (absent_ok && before.is_none())))
+    };
+    upgraded(fork, false) && upgraded(import, true) && stored == negotiated
 }
 
 /// The Turn a fork is taken through: the latest completed Turn of the Chat's
@@ -293,5 +306,19 @@ mod tests {
             r#"{"schemaVersion":1,"protocolVersion":"p","prompt":false,"nativeSessionFork":true}"#
         ));
         assert!(!resumable_capabilities(STORED, "not json"));
+    }
+
+    #[test]
+    fn the_import_upgrade_also_resumes_but_never_a_downgrade() {
+        let imported = STORED.replace('}', r#","nativeSessionImport":true}"#);
+        assert!(resumable_capabilities(STORED, &imported));
+        let both = imported.replace(
+            r#""nativeSessionFork":false"#,
+            r#""nativeSessionFork":true"#,
+        );
+        assert!(resumable_capabilities(STORED, &both));
+        assert!(!resumable_capabilities(&imported, STORED));
+        let other = imported.replace(r#""prompt":true"#, r#""prompt":false"#);
+        assert!(!resumable_capabilities(STORED, &other));
     }
 }

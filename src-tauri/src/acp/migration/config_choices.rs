@@ -4,7 +4,9 @@ pub(super) const V23: &str = include_str!("../../../migrations/023_session_confi
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentV23 | SchemaClass::CurrentResumeLink => return Ok(()),
+        SchemaClass::CurrentV23
+        | SchemaClass::CurrentResumeLink
+        | SchemaClass::CurrentImportedHistory => return Ok(()),
         SchemaClass::CurrentV22 => {}
         _ => return invalid("session config choices require exact schema v22"),
     }

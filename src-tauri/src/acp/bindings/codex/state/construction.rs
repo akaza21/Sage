@@ -17,6 +17,8 @@ impl CodexAdapter {
             Some(crate::acp::bindings::characterisation::Characterisation::Characterised);
         if let Some(methods) = self.negotiated.as_mut() {
             methods.snapshot.active_turn_steer = true;
+            // An observed build reads the user's own Codex home.
+            methods.snapshot.native_session_import = true;
         }
     }
 
@@ -67,8 +69,10 @@ impl CodexAdapter {
             goal_notification_generation: 0,
             goal_get_fence: None,
             goal_mutation_fence: None,
-            pending_child_read: None,
+            pending_read: None,
             child_read_tombstone: None,
+            native_root: None,
+            listed_sessions: Vec::new(),
             rate_limits_abandoned: super::rate_limits::AbandonedReads::default(),
             pending_fork: None,
             forks: super::fork::ForkLedger::default(),

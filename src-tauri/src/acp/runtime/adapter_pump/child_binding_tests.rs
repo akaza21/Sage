@@ -66,15 +66,16 @@ fn generated_child_opened_journey_admits_owner_and_reads_after_parent_completion
         crate::acp::store::child_transcript::verify_current_binding(&database.connection(), &scope).unwrap();
         let mut idle = pump.try_into_completed_parts().ok().expect("completed parent handoff");
         let mut output = CaptureTransport(Vec::new());
-        idle.write_child(&mut output, "fixture-child-1", parent).unwrap();
+        idle.write_child(&mut output, &crate::acp::goal::NativeRead::child_for_test("fixture-child-1", parent)).unwrap();
         let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
-        assert_eq!(request["method"], "thread/read");
-        assert_eq!(request["params"]["includeTurns"], true);
+        assert_eq!(request["method"], "thread/turns/list");
+        assert_eq!(request["params"]["itemsView"], "full");
         let replies = crate::acp::fixture::child_opened_wire_for_test(request["id"].as_u64().unwrap());
-        let reply = replies.iter().find(|frame| frame.pointer("/result/thread/id")
-            == Some(&serde_json::json!("fixture-child-1"))).unwrap();
+        let reply = replies.iter().find(|frame| frame.get("id") == Some(&request["id"])
+            && frame.pointer("/result/data").is_some()).unwrap();
         idle.accept_idle_stdout_chunk(&codex_line(reply.clone()), 10, &mut output).await.unwrap();
-        let Some(crate::acp::goal::NativeRpcReply::ChildTranscript(snapshot)) = idle.take_native_rpc_reply() else { panic!("child read did not settle") };
+        let Some(crate::acp::goal::NativeRpcReply::TurnsPage(page)) = idle.take_native_rpc_reply() else { panic!("child read did not settle") };
+        let snapshot = page.into_snapshot_for_test("fixture-child-1", parent);
         crate::acp::store::child_transcript::persist_snapshot(&mut database.connection(), &scope, &snapshot, 10).unwrap();
         assert_eq!(crate::acp::store::child_transcript::load_snapshot(&database.connection(), &scope).unwrap(), Some(snapshot));
         drop(idle);
@@ -212,7 +213,7 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
         read_wire["id"] = 41.into();
         read_wire["result"]["thread"]["id"] = "child-native".into();
         read_wire["result"]["thread"]["parentThreadId"] = "external-session".into();
-        let mut read = crate::acp::bindings::codex::normalize_read_response(
+        let mut read = crate::acp::bindings::codex::child_read_for_test(
             &serde_json::to_vec(&read_wire).unwrap(), 41, "child-native", "external-session", &Mapper
         ).unwrap();
         assert_eq!(read.turns[0].items.len(), 1);
@@ -237,7 +238,7 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
             serde_json::json!({"id":"command-one","type":"commandExecution",
                 "status":"inProgress","command":"rg TODO src"})
         );
-        let overlapping_read = crate::acp::bindings::codex::normalize_read_response(
+        let overlapping_read = crate::acp::bindings::codex::child_read_for_test(
             &serde_json::to_vec(&read_wire).unwrap(), 41, "child-native", "external-session", &Mapper
         ).unwrap();
         crate::acp::store::child_transcript::persist_snapshot(&mut reopened, &scope, &overlapping_read, 12).unwrap();

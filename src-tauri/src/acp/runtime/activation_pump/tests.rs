@@ -957,6 +957,7 @@ fn capabilities(prompt: bool, cancel: bool) -> CapabilitySnapshotV1 {
         cancel,
         native_session_fork: false,
         native_session_compact: false,
+        native_session_import: false,
         native_review: false,
         active_turn_steer: false,
         child_conversation_projection: false,

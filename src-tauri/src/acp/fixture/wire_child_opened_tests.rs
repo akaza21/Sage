@@ -15,7 +15,7 @@ pub(crate) fn child_opened_wire_for_test(read_id: u64) -> Vec<Value> {
         serde_json::json!({"id":2,"method":"thread/start"}),
         serde_json::json!({"id":3,"method":"thread/goal/get"}),
         serde_json::json!({"id":4,"method":"turn/start"}),
-        serde_json::json!({"id":read_id,"method":"thread/read","params":{"threadId":"fixture-child-1","includeTurns":true}}),
+        serde_json::json!({"id":read_id,"method":"thread/turns/list","params":{"threadId":"fixture-child-1","itemsView":"full"}}),
         serde_json::json!({"id":99,"method":"thread/unsubscribe"}),
     ].iter().map(|request| format!("{request}\n")).collect::<String>();
     let mut input = std::io::Cursor::new(requests);

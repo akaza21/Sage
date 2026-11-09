@@ -1,6 +1,5 @@
 mod action_handoff;
 pub(crate) mod capabilities;
-mod child_read;
 mod fork;
 #[cfg(test)]
 pub(crate) use fork::MAX_FORK_RELEASE_ATTEMPTS;
@@ -13,6 +12,7 @@ mod errors;
 mod goal;
 mod hook_runs;
 mod mcp_tools;
+mod native_read;
 #[cfg(test)]
 pub(crate) use mcp_tools::RUNNING_MCP_TOOLS_MAX;
 mod permission_resolution;
@@ -188,8 +188,11 @@ pub(crate) struct CodexAdapter {
     goal_notification_generation: u64,
     goal_get_fence: Option<(u64, u64)>,
     goal_mutation_fence: Option<(u64, u64)>,
-    pending_child_read: Option<(u64, String, String)>,
+    pending_read: Option<(u64, crate::acp::goal::NativeRead)>,
     child_read_tombstone: Option<u64>,
+    /// The project root the bound thread was started or resumed in.
+    native_root: Option<super::request::NativeProjectRoot>,
+    listed_sessions: Vec<String>,
     rate_limits_abandoned: rate_limits::AbandonedReads,
     pending_fork: Option<u64>,
     forks: fork::ForkLedger,
@@ -254,8 +257,8 @@ impl CodexAdapter {
         if matches!(kind, RequestKind::GoalPause | RequestKind::GoalClear) {
             self.goal_mutation_fence = None;
         }
-        if kind == RequestKind::ChildRead {
-            self.pending_child_read = None;
+        if kind.is_native_read() {
+            self.pending_read = None;
         }
         if kind == RequestKind::Fork {
             self.pending_fork = None;

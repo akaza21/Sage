@@ -15,9 +15,9 @@ use std::{
 
 use crate::{
     acp::{
-        bindings::codex::normalize_read_response,
+        bindings::codex::{NativeTurnsPage, child_read_for_test},
         contract::{ClientIntentId, RequiredText, SafeText, SageTurnId, SchemaVersionV1},
-        goal::{GoalState, NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
+        goal::{GoalState, NativeRead, NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
         intent::{BindingId, CapabilitySnapshotV1},
         runtime::{
             HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent,
@@ -44,10 +44,11 @@ impl RuntimeEngine for ChildEngine {
         _: Instant,
         completion: NativeRpcCompletionSink,
     ) -> Result<(), HostError> {
-        let NativeRpcRequest::ChildThreadRead {
+        let NativeRpcRequest::Read(NativeRead::ChildTurns {
             child_thread_id,
             parent_thread_id,
-        } = &intent.request
+            cursor: None,
+        }) = &intent.request
         else {
             return Err(HostError::Intent);
         };
@@ -57,10 +58,12 @@ impl RuntimeEngine for ChildEngine {
         {
             return Err(HostError::Intent);
         }
-        completion
-            .complete(Ok(self.replies.pop_front().unwrap_or_else(|| {
-                NativeRpcReply::ChildTranscript(self.snapshot.clone())
-            })));
+        completion.complete(Ok(self.replies.pop_front().unwrap_or_else(|| {
+            NativeRpcReply::TurnsPage(NativeTurnsPage {
+                turns: self.snapshot.turns.clone(),
+                next_cursor: None,
+            })
+        })));
         Ok(())
     }
     fn activate(&mut self, _: &RuntimeOwner) -> Result<(), HostError> {
@@ -235,6 +238,7 @@ async fn child_ipc_journey(
             cancel: true,
             native_session_fork: false,
             native_session_compact: false,
+            native_session_import: false,
             native_review: false,
             active_turn_steer: false,
             child_conversation_projection: false,
@@ -302,8 +306,7 @@ async fn child_ipc_journey(
     }
     let wire = include_bytes!("../../acp/runtime/adapter_pump/fixtures/cp18d_child_read.json");
     let mapper = crate::acp::resource_mapper::NativeResourceMapper::new([]).unwrap();
-    let snapshot =
-        normalize_read_response(wire, 17, "child-one", "adapter-session", &mapper).unwrap();
+    let snapshot = child_read_for_test(wire, 17, "child-one", "adapter-session", &mapper).unwrap();
     let owner = RuntimeOwner {
         project_id: project_id.clone(),
         chat_id: chat_id.clone(),

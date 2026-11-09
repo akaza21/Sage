@@ -72,6 +72,7 @@ fn capabilities(
         cancel: true,
         native_session_fork: false,
         native_session_compact: false,
+        native_session_import: false,
         native_review: false,
         active_turn_steer: true,
         child_conversation_projection: false,

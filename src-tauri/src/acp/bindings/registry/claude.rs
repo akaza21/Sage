@@ -36,6 +36,7 @@ pub(super) fn capabilities(
         // the characterised-binding gate still intersect it.
         native_session_fork: true,
         native_session_compact: false,
+        native_session_import: false,
         native_review: false,
         active_turn_steer: false,
         child_conversation_projection: false,

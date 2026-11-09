@@ -72,7 +72,10 @@ pub(crate) use read_text_file::{
 mod chat_fork;
 mod child_transcript;
 mod goal;
+mod native_import;
+mod native_read;
 pub(crate) use child_transcript::{ChildTranscriptRead, ChildTranscriptReadError};
+pub(crate) use native_import::ImportedHistory;
 mod renderer_recreation;
 mod renderer_recreation_orchestrator;
 mod renderer_recreation_packet;

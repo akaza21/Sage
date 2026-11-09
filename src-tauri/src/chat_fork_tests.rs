@@ -422,3 +422,90 @@ fn a_fork_starts_with_the_config_choices_of_its_parent() {
         [mode, effort]
     );
 }
+
+#[test]
+fn an_imported_session_becomes_a_resumable_chat_once_per_thread() {
+    use crate::acp::store::native_import::{import_lister, imported_history};
+    let fixture = Fixture::new(&forkable());
+    let (project, _) = fixture.ids();
+    assert!(
+        import_lister(&fixture.database.connection(), &project)
+            .unwrap()
+            .is_none(),
+        "a runtime without the capability does not list sessions"
+    );
+    let importable = forkable().replace(
+        r#""nativeSessionFork":true"#,
+        r#""nativeSessionFork":true,"nativeSessionImport":true"#,
+    );
+    let fixture = Fixture::new(&importable);
+    let (project, parent) = fixture.ids();
+    let lister = import_lister(&fixture.database.connection(), &project)
+        .unwrap()
+        .expect("the hot Codex chat lists sessions");
+    assert_eq!(lister.chat_id, parent);
+    let history = r#"{"turns":[],"retentionLimited":false}"#;
+    let import = |thread: &str| {
+        let thread = ExternalId::new("externalSessionId", thread.to_owned()).unwrap();
+        fixture.database.create_import_chat(
+            &fixture.layout(),
+            &lister,
+            &thread,
+            "  Fix the\n build ",
+            history,
+        )
+    };
+    let chat = import("thread-cli").expect("import");
+    let connection = fixture.database.connection();
+    let row: (String, String, String, String, String) = connection
+        .query_row(
+            "SELECT c.title,s.state,s.residency,s.external_session_id,s.capabilities_json
+             FROM chats c JOIN agent_sessions s ON s.chat_id=c.id WHERE c.id=?1",
+            [&chat],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        row,
+        (
+            "Chat: Fix the build".into(),
+            "ready".into(),
+            "cold".into(),
+            "thread-cli".into(),
+            importable.clone()
+        )
+    );
+    let chat_id = SageChatId::parse(chat).unwrap();
+    let page = load_chat_page(&connection, project.clone(), chat_id.clone(), None).unwrap();
+    assert!(page.imported_history && page.turns.as_slice().is_empty());
+    assert_eq!(
+        serde_json::to_value(&page).unwrap()["importedHistory"],
+        true
+    );
+    assert!(
+        !load_chat_page(&connection, project.clone(), parent, None)
+            .unwrap()
+            .imported_history
+    );
+    assert_eq!(
+        imported_history(&connection, &project, &chat_id)
+            .unwrap()
+            .as_deref(),
+        Some(history)
+    );
+    drop(connection);
+    for held in ["thread-cli", "thread-parent"] {
+        assert!(
+            import(held).is_err(),
+            "{held} is already held by a Sage session"
+        );
+    }
+}

@@ -45,7 +45,9 @@ impl CodexAdapter {
         model: Option<&ModelId>,
     ) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.new_session)?;
-        self.reserve(OutgoingRequest::start(id, root, model)?)
+        let request = self.reserve(OutgoingRequest::start(id, root, model)?)?;
+        self.native_root = Some(root.clone());
+        Ok(request)
     }
 
     pub(crate) fn resume(
@@ -56,12 +58,14 @@ impl CodexAdapter {
         model: Option<&ModelId>,
     ) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.resume_session)?;
-        self.reserve(OutgoingRequest::resume(
+        let request = self.reserve(OutgoingRequest::resume(
             id,
             external_thread_id,
             root,
             model,
-        )?)
+        )?)?;
+        self.native_root = Some(root.clone());
+        Ok(request)
     }
 
     pub(crate) fn read(

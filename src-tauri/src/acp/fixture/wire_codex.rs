@@ -58,7 +58,7 @@ fn await_request_inner(
         if object.get("id").is_none() && !expected(expected_method, method) {
             continue;
         }
-        if method == "thread/read" {
+        if method == "thread/turns/list" {
             emit_child_read(&request, output, state)?;
             continue;
         }
@@ -119,23 +119,21 @@ fn emit_child_read(
     let params = request
         .get("params")
         .ok_or(FixtureError::InvalidArguments)?;
-    let child = params
+    params
         .get("threadId")
         .and_then(Value::as_str)
         .filter(|child| matches!(*child, "fixture-child-1" | "fixture-child-2"))
         .ok_or(FixtureError::InvalidArguments)?;
-    if params.get("includeTurns").and_then(Value::as_bool) != Some(true) {
+    if params.get("itemsView").and_then(Value::as_str) != Some("full") {
         return Err(FixtureError::InvalidArguments);
     }
     emit_json(
         output,
         state,
-        &json!({"jsonrpc":"2.0","id":id,"result":{"thread":{
-            "id":child,"parentThreadId":THREAD_ID,"turns":[{
-                "id":"fixture-child-turn","itemsView":"full","status":"completed",
-                "items":[{"id":"fixture-child-answer","type":"agentMessage","text":"Synthetic child summary"}]
-            }]
-        }}}),
+        &json!({"jsonrpc":"2.0","id":id,"result":{"nextCursor":null,"data":[{
+            "id":"fixture-child-turn","itemsView":"full","status":"completed",
+            "items":[{"id":"fixture-child-answer","type":"agentMessage","text":"Synthetic child summary"}]
+        }]}}),
     )
 }
 

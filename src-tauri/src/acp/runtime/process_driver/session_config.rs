@@ -53,12 +53,9 @@ where
             crate::acp::goal::NativeRpcRequest::UsageRead => {
                 self.pump.write_usage_read(&mut self.transport)
             }
-            crate::acp::goal::NativeRpcRequest::ChildThreadRead {
-                child_thread_id,
-                parent_thread_id,
-            } => self
-                .pump
-                .write_child(&mut self.transport, child_thread_id, parent_thread_id),
+            crate::acp::goal::NativeRpcRequest::Read(read) => {
+                self.pump.write_child(&mut self.transport, read)
+            }
             // A fork is taken only between Turns, so the forked history ends
             // at the latest completed Turn and never at a moving one.
             crate::acp::goal::NativeRpcRequest::ForkSession => Err(HostError::State),

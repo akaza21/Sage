@@ -23,10 +23,8 @@ pub(crate) struct NativeRpcIntent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NativeRpcRequest {
     Goal(GoalAction),
-    ChildThreadRead {
-        child_thread_id: String,
-        parent_thread_id: String,
-    },
+    /// One page of a native read; see `NativeRead`.
+    Read(NativeRead),
     /// Forks the runtime's own native session through its latest turn. Only
     /// an idle runtime whose negotiated capabilities admit
     /// `nativeSessionFork` accepts it.
@@ -41,10 +39,63 @@ pub(crate) enum NativeRpcRequest {
     UsageRead,
 }
 
+/// A paged native read. Each RPC reads one page; the caller follows the
+/// cursor and bounds how many pages it reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum NativeRead {
+    /// Turns of a child thread this runtime spawned, oldest first.
+    ChildTurns {
+        child_thread_id: String,
+        parent_thread_id: String,
+        cursor: Option<String>,
+    },
+    /// Native sessions of the runtime's project started outside Sage, most
+    /// recently active first. Requires `nativeSessionImport`.
+    ImportableSessions { cursor: Option<String> },
+    /// Turns of a session the runtime listed for import, newest first.
+    ImportTurns {
+        thread_id: String,
+        cursor: Option<String>,
+    },
+}
+
+impl NativeRead {
+    #[cfg(test)]
+    pub(crate) fn child_for_test(child: &str, parent: &str) -> Self {
+        Self::ChildTurns {
+            child_thread_id: child.into(),
+            parent_thread_id: parent.into(),
+            cursor: None,
+        }
+    }
+
+    pub(crate) fn cursor(&self) -> Option<&str> {
+        match self {
+            Self::ChildTurns { cursor, .. }
+            | Self::ImportableSessions { cursor }
+            | Self::ImportTurns { cursor, .. } => cursor.as_deref(),
+        }
+    }
+
+    fn bytes(&self) -> usize {
+        self.cursor().map_or(0, str::len)
+            + match self {
+                Self::ChildTurns {
+                    child_thread_id,
+                    parent_thread_id,
+                    ..
+                } => child_thread_id.len() + parent_thread_id.len(),
+                Self::ImportableSessions { .. } => 0,
+                Self::ImportTurns { thread_id, .. } => thread_id.len(),
+            }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NativeRpcReply {
     GoalApplied,
-    ChildTranscript(crate::acp::bindings::codex::ChildTranscriptSnapshot),
+    TurnsPage(crate::acp::bindings::codex::NativeTurnsPage),
+    SessionsPage(crate::acp::bindings::codex::NativeSessionsPage),
     TooLarge,
     Rejected,
     /// The harness created a new native session holding the forked history.
@@ -69,10 +120,7 @@ impl NativeRpcIntent {
             + std::mem::size_of::<RuntimeEpoch>()
             + match &self.request {
                 NativeRpcRequest::Goal(_) => 1,
-                NativeRpcRequest::ChildThreadRead {
-                    child_thread_id,
-                    parent_thread_id,
-                } => child_thread_id.len() + parent_thread_id.len() + 1,
+                NativeRpcRequest::Read(read) => read.bytes() + 1,
                 NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,
                 NativeRpcRequest::ReleaseFork { fork, .. } => fork.as_str().len() + 1,
             }

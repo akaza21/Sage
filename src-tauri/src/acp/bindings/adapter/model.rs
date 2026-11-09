@@ -113,10 +113,10 @@ pub(crate) trait HarnessAdapter {
     fn child_read_pending(&self) -> bool {
         false
     }
-    fn read_child(
+    /// Writes one page of a paged native read.
+    fn native_read(
         &mut self,
-        _child_thread_id: &str,
-        _parent_thread_id: &str,
+        _read: &crate::acp::goal::NativeRead,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }

@@ -47,9 +47,12 @@ pub(crate) use authority::{
     StateAuthorityError, build_codex_launch_environment, classify_codex_state_path,
     inspect_codex_authority, verify_codex_config,
 };
+#[cfg(test)]
+pub(crate) use child_transcript::child_read_for_test;
 pub(crate) use child_transcript::{
     ChildItem, ChildTextRole, ChildTranscriptSnapshot, ChildTurn, MAX_ITEMS, MAX_SNAPSHOT_BYTES,
-    MAX_TURNS, normalize_child_user_message, normalize_read_response,
+    MAX_TURNS, NativeSessionSummary, NativeSessionsPage, NativeTurnsPage,
+    normalize_child_user_message, normalize_sessions_page, normalize_turns_page,
 };
 pub(crate) use degrade::is_desktop_fixture_protocol;
 pub(crate) use discovery::{

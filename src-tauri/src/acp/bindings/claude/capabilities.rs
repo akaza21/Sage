@@ -139,6 +139,7 @@ pub(crate) fn negotiate_capabilities(
         cancel: offer.cancel,
         native_session_fork: offer.fork_session,
         native_session_compact: false,
+        native_session_import: false,
         native_review: false,
         active_turn_steer: false,
         child_conversation_projection: false,

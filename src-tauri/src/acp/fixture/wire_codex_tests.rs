@@ -255,7 +255,7 @@ fn codex_model_hydration_is_scoped_single_page_and_strict() {
 fn codex_child_read_is_correlated_without_consuming_parent_request() {
     let mut state = WireState::new();
     let mut output = Vec::new();
-    let requests = br#"{"id":91,"method":"thread/read","params":{"threadId":"fixture-child-1","includeTurns":true}}
+    let requests = br#"{"id":91,"method":"thread/turns/list","params":{"threadId":"fixture-child-1","itemsView":"full"}}
 {"id":92,"method":"thread/unsubscribe"}
 "#;
     execute_with_io(
@@ -280,23 +280,16 @@ fn codex_child_read_is_correlated_without_consuming_parent_request() {
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
     assert_eq!(frames[0]["id"], 91);
-    assert_eq!(frames[0]["result"]["thread"]["id"], "fixture-child-1");
-    assert_eq!(
-        frames[0]["result"]["thread"]["parentThreadId"],
-        "fixture-persisted-session-1"
-    );
-    assert_eq!(
-        frames[0]["result"]["thread"]["turns"][0]["itemsView"],
-        "full"
-    );
+    assert_eq!(frames[0]["result"]["data"][0]["itemsView"], "full");
+    assert_eq!(frames[0]["result"]["nextCursor"], Value::Null);
     assert_eq!(frames[1]["id"], 92);
 }
 
 #[test]
 fn codex_child_read_rejects_foreign_identity_and_bounds_waits() {
     for request in [
-        json!({"id":1,"method":"thread/read","params":{"threadId":"foreign","includeTurns":true}}),
-        json!({"id":1,"method":"thread/read","params":{"threadId":"fixture-child-1","includeTurns":false}}),
+        json!({"id":1,"method":"thread/turns/list","params":{"threadId":"foreign","itemsView":"full"}}),
+        json!({"id":1,"method":"thread/turns/list","params":{"threadId":"fixture-child-1","itemsView":"summary"}}),
     ] {
         let bytes = format!("{request}\n");
         assert!(
