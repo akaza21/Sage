@@ -26,8 +26,6 @@ import type * as LegacyTranscriptChunk from "./ChatLegacyTranscript";
 import type * as QueuedChunk from "./ComposerQueuedPrompts";
 import type * as EditSummaryChunk from "./acp/TurnEditSummary";
 import type * as ComposerOptionsChunk from "./ComposerAddActions";
-import type * as GoalChunk from "./BoundChatGoalControl";
-import type * as AttachmentsChunk from "./ComposerAttachments";
 import type * as HarnessSignInChunk from "../harness/HarnessSignInStatus";
 import type * as GoalChunk from "./BoundChatGoalControl";
 import type * as AttachmentsChunk from "./ComposerAttachments";
@@ -217,15 +215,6 @@ export function LazyHarnessNotice(
 export const ComposerOptionsPart = lazyParts<
   Pick<typeof ComposerOptionsChunk, "ComposerOptionsMenu">
 >(() => import("./ComposerAddActions"));
-// A native Goal's control and its mutations load with the first chat that
-// shows one.
-export const GoalPart = lazyParts<typeof GoalChunk>(
-  () => import("./BoundChatGoalControl"),
-);
-// Attachment chips load with the first context attached to the draft.
-export const AttachmentsPart = lazyParts<
-  Pick<typeof AttachmentsChunk, "ComposerAttachments">
->(() => import("./ComposerAttachments"));
 
 const HandoffControlPart = lazyParts<typeof HandoffControlChunk>(
   () => import("./ChatHandoffControl"),

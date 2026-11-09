@@ -5,7 +5,6 @@ import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
 import "../../styles/queued-messages.css";
 import { ChatHarnessControls } from "./ChatHarnessControls";
-import type * as ClaudeAuthChunk from "./ClaudeAuthActions";
 import {
   composerPromptPlaceholder,
   composerShortcutLabel,
@@ -13,6 +12,7 @@ import {
   useComposerDictation,
 } from "./composerChrome";
 import { ComposerImageInput } from "./ComposerImageInput";
+import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
@@ -23,9 +23,6 @@ import { ComposerPasteSlot } from "./ComposerPastePart";
 import { useComposerPaste } from "./useComposerPaste";
 import type * as SlashChunk from "./ComposerSlashController";
 
-const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
-  () => import("./ClaudeAuthActions"),
-);
 // The `/` command menu loads with the field's first focus.
 const SlashPart = lazyParts<typeof SlashChunk>(
   () => import("./ComposerSlashController"),
@@ -57,7 +54,7 @@ export function ChatComposerRegion({
   projectTransitioning,
   workbenchError,
   chatError,
-  signInHarness = null,
+  signInHarness,
   claudeSignInRequired,
   claudeAuthScope,
   accessBindingId,
@@ -202,44 +199,16 @@ export function ChatComposerRegion({
               details={goalDetails}
             />
           ) : null}
-          {workbenchError ? (
-            <div className="composer__error" role="alert">
-              {workbenchError}
-            </div>
-          ) : null}
-          {chatError || signInHarness ? (
-            <div className="composer__error" role="alert">
-              {signInHarness ? (
-                <AuthPart
-                  part="SignInRequiredMessage"
-                  harness={signInHarness}
-                  fallback={chatError}
-                />
-              ) : (
-                chatError
-              )}
-              {claudeSignInRequired ? (
-                <AuthPart part="ClaudeAuthActions" key={claudeAuthScope} />
-              ) : null}
-            </div>
-          ) : null}
-          {imageInput.status ? (
-            <div className="composer__error" role="alert">
-              {imageInput.status}
-            </div>
-          ) : null}
-          {missingBindingNotice &&
-          ![
-            "checking",
-            "signInRequired",
-            "consent",
-            "waiting",
-            "error",
-          ].includes(discoveryPhase) ? (
-            <div className="composer__notice">
-              No reviewed local binding is available for this harness.
-            </div>
-          ) : null}
+          <ComposerStatusNotices
+            workbenchError={workbenchError}
+            chatError={chatError}
+            signInHarness={signInHarness}
+            claudeSignInRequired={claudeSignInRequired}
+            claudeAuthScope={claudeAuthScope}
+            imageStatus={imageInput.status}
+            missingBindingNotice={missingBindingNotice}
+            discoveryPhase={discoveryPhase}
+          />
           <label className="sr-only" htmlFor={fieldId}>
             Message agent
           </label>
