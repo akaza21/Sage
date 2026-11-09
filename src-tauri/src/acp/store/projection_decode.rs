@@ -137,6 +137,7 @@ fn content(
             role: legacy_role.unwrap_or(TextRole::Assistant),
             text,
         },
+        NormalizedPayload::UserPrompt { text } => ItemContent::UserPrompt { text },
         NormalizedPayload::ThoughtSummary { summary } => ItemContent::ThoughtSummary { summary },
         NormalizedPayload::Plan { summary } => ItemContent::Plan {
             entries: BoundedVec::new(

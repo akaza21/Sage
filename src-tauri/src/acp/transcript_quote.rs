@@ -215,6 +215,12 @@ impl Prompt {
         self.context = Some(Box::new((original.as_str().to_owned(), context.clone())));
         self
     }
+    /// The text the user wrote, before Sage attached any quoted context.
+    pub(crate) fn display_text(&self) -> &str {
+        self.context
+            .as_ref()
+            .map_or(self.as_str(), |context| context.0.as_str())
+    }
     pub(crate) fn user_payload(&self) -> serde_json::Value {
         let mut payload = match &self.context {
             Some(context) => {

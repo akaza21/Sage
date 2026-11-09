@@ -178,6 +178,25 @@ pub(super) fn run(scenario: Scenario) -> Option<Vec<Fact>> {
             assert!(turn.reply(abort, Value::Null).is_none());
             turn.settle("aborted")
         }
+        Scenario::SteeredMessage => {
+            let mut turn = Turn::new(Mapper::repo(), None);
+            message(&mut turn, &[("text_delta", "Starting on lib.rs.")]);
+            // The user steers: Pi accepts `steer`, then echoes the message as
+            // its own user message before answering it.
+            let steer = turn
+                .runtime
+                .command(AdapterCommand::Steer {
+                    prompt: Prompt::new("prompt", super::STEER).unwrap(),
+                    client_message_id: RequiredText::new("client", super::STEER_CLIENT_ID).unwrap(),
+                })
+                .unwrap();
+            assert!(turn.reply(steer, json!({"disposition":"queued"})).is_none());
+            let user = json!({"role":"user","content":[{"type":"text","text":super::STEER}],"timestamp":0});
+            turn.send(json!({"type":"message_start","message":user}));
+            turn.send(json!({"type":"message_end","message":user}));
+            message(&mut turn, &[("text_delta", "Switching to main.rs.")]);
+            turn.settle("stop")
+        }
         // Sage's Pi bridge refuses every shell command, and Pi has no plan.
         Scenario::CommandWithOutput | Scenario::PlanUpdate => return None,
     })

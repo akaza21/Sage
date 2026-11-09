@@ -358,6 +358,55 @@
         "status \"Cancelled\"",
         "  Cancelled"
       ]
+    },
+    "steeredMessage": {
+      "title": "A message the user steers into the running turn",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "text",
+            "payload": {
+              "role": "assistant",
+              "text": "Starting on lib.rs."
+            }
+          },
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "userPrompt",
+            "payload": {
+              "text": "Use main.rs instead."
+            }
+          },
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "text",
+            "payload": {
+              "role": "assistant",
+              "text": "Switching to main.rs."
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "summary",
+        "  Worked for 0s",
+        "article",
+        "  Agent",
+        "  Starting on lib.rs.",
+        "article",
+        "  You",
+        "  Use main.rs instead.",
+        "article",
+        "  Agent",
+        "  Switching to main.rs."
+      ]
     }
   },
   "notApplicable": [
@@ -370,6 +419,16 @@
       "scenario": "planUpdate",
       "harness": "pi",
       "reason": "Pi has no plan or todo tool."
+    },
+    {
+      "scenario": "steeredMessage",
+      "harness": "claude",
+      "reason": "ACP has no way to add a message to a running prompt; the binding refuses a steer, so the composer waits for the turn to end."
+    },
+    {
+      "scenario": "steeredMessage",
+      "harness": "acp",
+      "reason": "ACP has no way to add a message to a running prompt; the binding refuses a steer, so the composer waits for the turn to end."
     }
   ],
   "gaps": [
