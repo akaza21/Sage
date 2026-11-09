@@ -217,6 +217,7 @@
         "src-tauri/src/acp/command_output.rs",
         "src-tauri/src/acp/contract.rs",
         "src-tauri/src/acp/declared_test.rs",
+        "src-tauri/src/acp/encoded_len.rs",
         "src-tauri/src/acp/file_diff.rs",
         "src-tauri/src/acp/file_diff/line_counts.rs",
         "src-tauri/src/acp/fixture_protocol.rs",
