@@ -18,6 +18,7 @@ import {
   agentSessionFixture,
   capabilitySetFixture,
 } from "../../domain/acpProjection.fixture";
+import { settleLazyModules } from "../../test/settleLazyModules";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 
 const native = vi.hoisted(() => vi.fn());
@@ -29,7 +30,6 @@ vi.mock("../../ports/nativeInvoke", async (importOriginal) => ({
 
 const initial = useWorkbenchStore.getState();
 /** The batch's owner loads lazily, so a pick may take a moment to land. */
-const LAZY = { timeout: 5000 };
 const owner = {
   projectId: "project-a",
   chatId: "chat-a",
@@ -139,9 +139,8 @@ describe("composer attach button", () => {
     });
     // Picked files join the chat's one batch, beside any pasted text. Its
     // owner loads lazily, so the pick lands after the batch read back.
-    expect(
-      await screen.findByText("notes.txt · 2 KB", undefined, LAZY),
-    ).toBeInTheDocument();
+    await settleLazyModules();
+    expect(await screen.findByText("notes.txt · 2 KB")).toBeInTheDocument();
     const chips = screen.getByRole("list", {
       name: "Attachments for the next message",
     });
@@ -181,9 +180,8 @@ describe("composer attach button", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
     });
-    expect(
-      await screen.findByText("a.md · 2 KB", undefined, LAZY),
-    ).toBeInTheDocument();
+    await settleLazyModules();
+    expect(await screen.findByText("a.md · 2 KB")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     expect(onSubmit).toHaveBeenCalledWith(expect.anything(), "r1");
   });
