@@ -1,6 +1,9 @@
 use crate::{
     acp::{
-        bindings::codex::{request::OutgoingRequest, turn_policy::TurnPolicySurface},
+        bindings::codex::{
+            request::OutgoingRequest,
+            turn_policy::{TurnPolicySurface, TurnSettings},
+        },
         contract::RequiredText,
         intent::Prompt,
     },
@@ -50,16 +53,22 @@ impl CodexAdapter {
         client_message_id: &RequiredText<512>,
         access_mode: SessionAccessMode,
     ) -> Result<OutgoingRequest, AdapterError> {
-        self.prompt_with_effort(id, prompt, client_message_id, access_mode, None)
+        self.prompt_with_settings(
+            id,
+            prompt,
+            client_message_id,
+            access_mode,
+            TurnSettings::default(),
+        )
     }
 
-    pub(crate) fn prompt_with_effort(
+    pub(crate) fn prompt_with_settings(
         &mut self,
         id: u64,
         prompt: &Prompt,
         client_message_id: &RequiredText<512>,
         access_mode: SessionAccessMode,
-        effort: Option<&RequiredText<512>>,
+        settings: TurnSettings<'_>,
     ) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.prompt)?;
         if self.turn_start_correlations.has_pending()
@@ -87,7 +96,7 @@ impl CodexAdapter {
                     self.observed_build_characterisation,
                     &self.runtime_version,
                 ),
-                effort,
+                settings,
             )?,
         };
         let request = self.reserve(request)?;
