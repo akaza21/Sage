@@ -68,7 +68,7 @@ impl PiRuntime {
             },
             _ => Operation::Prompt {
                 turn_key,
-                message: prompt.as_str().to_owned(),
+                message: prompt.resources.inline(prompt.as_str()),
             },
         };
         let egress = self.begin_one(operation, RequestKind::Prompt)?;
