@@ -116,7 +116,9 @@ where
                 .await;
             match progress {
                 Ok(progress)
-                    if progress.written_frames == progress.cancelled_permission_frames + 1
+                    if progress.written_frames
+                        == progress.cancelled_permission_frames
+                            + usize::from(!progress.cancel_deferred)
                         && progress.zero_byte_failures == 0 =>
                 {
                     self.cancel_wire = CancelWireState::Complete;

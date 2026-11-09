@@ -35,9 +35,17 @@ export type ActiveEditorState =
       persisting: boolean;
       saving: boolean;
       message: string | null;
+      /**
+       * Why the edits could not be written, set by a failed save or a
+       * failed recovery snapshot; kept through further edits until a save,
+       * a reload or Keep mine.
+       */
+      unstored?: string;
+      /** Set for display only: why the File is quietly not watched now. */
+      unwatched?: string;
     };
 
-type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
+export type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
 
 export interface EditorStateBridge {
   getActiveEditor(): ActiveEditorState | null;
@@ -86,9 +94,15 @@ export interface FileEditorController {
     bridge: EditorStateBridge,
     canCommit: (resource: ResourceRef) => boolean,
   ): Promise<EditorSaveResult | null>;
+  /**
+   * Drops the edits for the File on disk; null if nothing was loaded. With
+   * `reload`, a File that is gone keeps its edits, and the document is
+   * returned for the caller to show rather than shown.
+   */
   discard(
     bridge: EditorStateBridge,
     canCommit: (resource: ResourceRef) => boolean,
+    reload?: boolean,
   ): Promise<EditorDocument | null>;
   saveError(bridge: EditorStateBridge, error: unknown): void;
 }
@@ -258,20 +272,25 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
       });
       return result;
     },
-    discard: async (bridge, canCommit) => {
+    discard: async (bridge, canCommit, reload) => {
       cancelScheduledSnapshot();
       const active = currentReady(bridge);
       if (!active || !canCommit(active.resource)) {
         return null;
       }
-      const document = await editor.discardEditorBuffer(active.resource);
+      const document = await editor.discardEditorBuffer(
+        active.resource,
+        reload,
+      );
       if (!canCommit(active.resource)) {
         return null;
       }
-      bridge.setActiveEditor(ready(document), {
-        dirty: document.dirty,
-        tabStatus: null,
-      });
+      if (!reload) {
+        bridge.setActiveEditor(ready(document), {
+          dirty: document.dirty,
+          tabStatus: null,
+        });
+      }
       return document;
     },
     saveError: (bridge, error) => {

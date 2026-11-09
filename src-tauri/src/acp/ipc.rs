@@ -96,6 +96,7 @@ pub struct GetCodexDiscoveryRequest {
 #[serde(rename_all = "camelCase")]
 pub enum CodexDiscoveryAccount {
     ManagedChatgpt,
+    ApiKey,
     ProviderManaged,
     SignedOut,
 }

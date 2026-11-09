@@ -1,11 +1,12 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use crate::acp::bindings::codex::{CodexRuntime, Platform};
 use serde_json::{Value, json};
 
 use super::*;
 
 fn initialize_result() -> Value {
-    json!({"userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-        "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+    json!({"userAgent":user_agent("sage", "unknown"),
+        "codexHome":MANAGED_CODEX_HOME,
         "platformFamily":"windows","platformOs":"windows"})
 }
 

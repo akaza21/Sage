@@ -7,7 +7,7 @@ use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::acp::{
     contract::EntityRevision,
-    intent::session_event::{SessionScopedEvent, SessionSurface, SurfaceChange},
+    intent::session_event::{SessionNotice, SessionScopedEvent, SessionSurface, SurfaceChange},
 };
 
 use super::{AdapterStoreOwner, StoreError, facts};
@@ -33,18 +33,41 @@ pub(super) fn apply_in(
         owner.chat_id.as_str(),
         owner.session_id.as_str(),
     );
+    let projection = facts::next_projection_revision(transaction, project, chat)?;
+    // The Turn's own record of an activity outlives this live surface.
+    let recorded = match &command.event {
+        SessionScopedEvent::Activity(row) => super::turn_activity_facts::record(
+            transaction,
+            owner,
+            row,
+            projection,
+            command.now_millis,
+        )?,
+        _ => false,
+    };
     let stored = read(transaction, project, chat, session)?;
     let revision = stored.as_ref().map(|(_, revision)| *revision);
     let mut surface = stored.map(|(surface, _)| surface).unwrap_or_default();
-    let Some(change) = surface.apply(owner.runtime_epoch.get(), &command.event) else {
-        return Ok(false);
+    let change = match surface.apply(owner.runtime_epoch.get(), &command.event) {
+        Some(change) => change,
+        None if recorded => {
+            facts::publish_send_neutral_projection(
+                transaction,
+                project,
+                chat,
+                session,
+                projection,
+                command.now_millis,
+            )?;
+            return Ok(true);
+        }
+        None => return Ok(false),
     };
     let json = bounded_json(&mut surface)?;
     let next = match revision {
         Some(revision) => revision.next().map_err(|_| StoreError::CounterExhausted)?,
         None => EntityRevision::ZERO,
     };
-    let projection = facts::next_projection_revision(transaction, project, chat)?;
     transaction.execute(
         "INSERT INTO acp_session_surfaces
            (session_id,project_id,chat_id,surface_json,revision,updated_at)
@@ -119,4 +142,19 @@ pub(super) fn read(
         .and_then(|revision| EntityRevision::new(revision).ok())
         .ok_or(StoreError::Corrupt("session surface revision"))?;
     Ok(Some((surface, revision)))
+}
+
+/// The current session's notices for the chat page; none without a session.
+pub(super) fn notices(
+    connection: &rusqlite::Connection,
+    project: &str,
+    chat: &str,
+    session: Option<&str>,
+) -> Result<Vec<SessionNotice>, StoreError> {
+    let Some(session) = session else {
+        return Ok(Vec::new());
+    };
+    Ok(read(connection, project, chat, session)?
+        .map(|(surface, _)| surface.notices)
+        .unwrap_or_default())
 }

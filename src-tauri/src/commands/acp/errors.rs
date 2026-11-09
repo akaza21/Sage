@@ -26,12 +26,6 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
             resource: AcpConflictResource::Session,
             message: safe_message("The native session identity is stale or foreign."),
         },
-        crate::acp::service::CodexSessionError::EarlierCodexVersion => AcpIpcError::Conflict {
-            resource: AcpConflictResource::Session,
-            message: safe_message(
-                "This native thread started on an earlier Codex version. Its Chat history is still available here; start a new Codex session to continue.",
-            ),
-        },
         crate::acp::service::CodexSessionError::SteerOutcomeUnknown => AcpIpcError::Conflict {
             resource: AcpConflictResource::SteerOutcomeUnknown,
             message: safe_message(
@@ -206,6 +200,13 @@ pub(super) fn safe_message(message: &'static str) -> SafeText<8192> {
     SafeText::new("message", message).expect("static ACP message is bounded")
 }
 
+/// An archived Chat runs no agent: no prompt, session start or activation.
+pub(super) fn archived_chat() -> AcpIpcError {
+    AcpIpcError::InvalidRequest {
+        message: safe_message("This Chat is archived. Restore it to continue."),
+    }
+}
+
 pub(super) fn internal_error() -> AcpIpcError {
     AcpIpcError::Internal {
         message: safe_message("The ACP request failed safely."),
@@ -315,17 +316,6 @@ mod tests {
                 "message": "The harness requires sign-in before it can continue."
             })
         );
-    }
-
-    #[test]
-    fn earlier_codex_thread_has_a_readable_session_conflict() {
-        let error = session_error(crate::acp::service::CodexSessionError::EarlierCodexVersion);
-        assert!(matches!(
-            error,
-            AcpIpcError::Conflict { resource: AcpConflictResource::Session, message }
-                if message.as_str().contains("started on an earlier Codex version")
-                    && message.as_str().contains("Chat history is still available")
-        ));
     }
 
     #[test]

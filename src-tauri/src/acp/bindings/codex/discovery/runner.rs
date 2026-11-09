@@ -174,7 +174,7 @@ impl DiscoveryZeroProcess {
         self.runtime_epoch
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
     pub(crate) fn fixture(runtime_epoch: u64) -> Self {
         Self { runtime_epoch }
     }

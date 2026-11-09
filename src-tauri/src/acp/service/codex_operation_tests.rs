@@ -1,6 +1,11 @@
 use super::*;
 use std::{sync::mpsc, thread};
 
+/// How long the test waits for a second admission to answer while the
+/// first is held. Far above thread start-up under any load: the passing
+/// case answers at once, and only an admission that waits reaches it.
+const ADMISSION_ANSWER_BOUND: Duration = Duration::from_secs(30);
+
 struct TestCancellation {
     requested: AtomicBool,
 }
@@ -22,10 +27,13 @@ fn admission_is_shared_non_waiting_and_transferable() {
     let concurrent = Arc::clone(&gate);
     let (send, receive) = mpsc::sync_channel(1);
     let worker = thread::spawn(move || send.send(concurrent.prepare().map(drop)).unwrap());
-    assert_eq!(
-        receive.recv_timeout(Duration::from_millis(100)),
-        Ok(Err(CodexDiscoveryRunError::Busy))
-    );
+    // The other thread answers while `held` is still alive, which a waiting
+    // admission could never do. The bound only turns such a regression into
+    // a failure instead of a hang.
+    let answer = receive
+        .recv_timeout(ADMISSION_ANSWER_BOUND)
+        .expect("admission waited");
+    assert_eq!(answer, Err(CodexDiscoveryRunError::Busy));
     drop(held);
     worker.join().unwrap();
     let transferable = gate.prepare().unwrap();

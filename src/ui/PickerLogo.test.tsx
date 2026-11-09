@@ -1,6 +1,6 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
-import { PickerLogo } from "./PickerOption";
+import { PickerLogo } from "./PickerLogo";
 import { SageMark } from "./leanIconCore";
 
 afterEach(cleanup);

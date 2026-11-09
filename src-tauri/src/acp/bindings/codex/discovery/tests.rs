@@ -1,3 +1,4 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use serde_json::{Value, json};
 
 use super::{CodexAccountSnapshot, CodexDiscoveryError, CodexDiscoveryProtocol, ProtocolProgress};
@@ -6,6 +7,8 @@ use crate::acp::{
     contract::RuntimeEpoch,
     transport::{Frame, IncrementalFrameDecoder},
 };
+
+mod pinned_shape_tests;
 
 fn protocol() -> CodexDiscoveryProtocol {
     let packet = parse_packet_metadata(include_bytes!(
@@ -30,8 +33,8 @@ fn frame(value: Value) -> Frame {
 
 fn initialize_result(id: u64) -> Frame {
     frame(json!({"id":id,"result":{
-        "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) terminal (sage; 0.1.0)",
-        "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+        "userAgent":user_agent("sage", "terminal"),
+        "codexHome":MANAGED_CODEX_HOME,
         "platformFamily":"windows",
         "platformOs":"windows"
     }}))
@@ -54,6 +57,9 @@ fn model(id: &str, name: &str, is_default: bool) -> Value {
         "additionalSpeedTiers": [],
         "serviceTiers": [],
         "defaultServiceTier": null,
+        "modelSpecialty": null,
+        "multiAgentVersion": null,
+        "availableAccessPrograms": null,
         "isDefault": is_default
     })
 }
@@ -79,7 +85,7 @@ fn discovery_model_efforts_keep_strict_fields_and_collection_limit() {
         let mut protocol = protocol();
         let account_id = advance_to_account(&mut protocol);
         protocol.accept_account(&frame(json!({"id":account_id,"result":{
-            "account":{"type":"chatgpt","email":null,"planType":"plus"},"requiresOpenaiAuth":true
+            "account":{"type":"chatgpt","email":null,"planType":"plus","workspaceName":null},"requiresOpenaiAuth":true,"workspaceRouting":null
         }}))).unwrap();
         let request = protocol.model_request().unwrap();
         let mut entry = model("model", "Model", true);
@@ -108,15 +114,13 @@ fn discovery_requests_follow_the_pinned_handshake_and_page_32_contract() {
     let account = protocol.account_request().unwrap();
     let account_value: Value = serde_json::from_slice(account.payload()).unwrap();
     assert_eq!(account_value["method"], "account/read");
-    // rust-v0.146.0 authority:
-    // app-server-protocol/src/protocol/v2/account.rs:484-491 defines the
-    // default-false flag, and protocol/common.rs:2942-2955 proves that false
-    // serializes as an empty params object rather than `refreshToken:false`.
+    // `refreshToken` defaults to false in the app-server protocol, and a
+    // false flag serializes as an empty params object.
     assert_eq!(account_value["params"], json!({}));
     protocol
         .accept_account(&frame(json!({"id":account.id(),"result":{
-            "account":{"type":"chatgpt","email":"private@example.test","planType":"plus"},
-            "requiresOpenaiAuth":true
+            "account":{"type":"chatgpt","email":"private@example.test","planType":"plus","workspaceName":null},
+            "requiresOpenaiAuth":true,"workspaceRouting":null
         }})))
         .unwrap();
 
@@ -136,8 +140,8 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
     let account_id = advance_to_account(&mut signed_in);
     let account = signed_in
         .accept_account(&frame(json!({"id":account_id,"result":{
-            "account":{"type":"chatgpt","email":"private@example.test","planType":"enterprise"},
-            "requiresOpenaiAuth":true
+            "account":{"type":"chatgpt","email":"private@example.test","planType":"enterprise","workspaceName":null},
+            "requiresOpenaiAuth":true,"workspaceRouting":null
         }})))
         .unwrap();
     assert_eq!(account, CodexAccountSnapshot::ManagedChatgpt);
@@ -150,7 +154,7 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
     assert_eq!(
         signed_out
             .accept_account(&frame(json!({"id":account_id,"result":{
-                "account":null,"requiresOpenaiAuth":true
+                "account":null,"requiresOpenaiAuth":true,"workspaceRouting":null
             }})))
             .unwrap(),
         CodexAccountSnapshot::SignedOut
@@ -161,7 +165,7 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
     assert_eq!(
         provider_managed
             .accept_account(&frame(json!({"id":account_id,"result":{
-                "account":null,"requiresOpenaiAuth":false
+                "account":null,"requiresOpenaiAuth":false,"workspaceRouting":null
             }})))
             .unwrap(),
         CodexAccountSnapshot::ProviderManaged
@@ -170,9 +174,21 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
     let model_request: Value = serde_json::from_slice(model_request.payload()).unwrap();
     assert_eq!(model_request["method"], "model/list");
 
+    let mut api_key = protocol();
+    let account_id = advance_to_account(&mut api_key);
+    assert_eq!(
+        api_key
+            .accept_account(&frame(json!({"id":account_id,"result":{
+                "account":{"type":"apiKey"},"requiresOpenaiAuth":true
+            }})))
+            .unwrap(),
+        CodexAccountSnapshot::ApiKey
+    );
+
     for rejected in [
-        json!({"account":{"type":"apiKey"},"requiresOpenaiAuth":true}),
+        json!({"account":{"type":"apiKey","key":"never-retain"},"requiresOpenaiAuth":true}),
         json!({"account":{"type":"amazonBedrock"},"requiresOpenaiAuth":true}),
+        json!({"account":{"type":"amazonBedrock"},"requiresOpenaiAuth":true,"workspaceRouting":null}),
     ] {
         let mut candidate = protocol();
         let account_id = advance_to_account(&mut candidate);
@@ -189,8 +205,8 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
     assert_eq!(
         extended
             .accept_account(&frame(json!({"id":account_id,"result":{
-                "account":{"type":"chatgpt","email":"private@example.test","planType":"plus","token":"never-retain"},
-                "requiresOpenaiAuth":true
+                "account":{"type":"chatgpt","email":"private@example.test","planType":"plus","workspaceName":null,"token":"never-retain"},
+                "requiresOpenaiAuth":true,"workspaceRouting":null
             }})))
             .unwrap_err(),
         CodexDiscoveryError::Protocol
@@ -203,8 +219,8 @@ fn model_pages_preserve_observed_order_and_default_only_after_a_complete_catalog
     let account_id = advance_to_account(&mut protocol);
     protocol
         .accept_account(&frame(json!({"id":account_id,"result":{
-            "account":{"type":"chatgpt","email":null,"planType":"plus"},
-            "requiresOpenaiAuth":true
+            "account":{"type":"chatgpt","email":null,"planType":"plus","workspaceName":null},
+            "requiresOpenaiAuth":true,"workspaceRouting":null
         }})))
         .unwrap();
     let first = protocol.model_request().unwrap();
@@ -249,8 +265,8 @@ fn model_catalog_rejects_modalities_outside_the_pinned_enum() {
     let account_id = advance_to_account(&mut protocol);
     protocol
         .accept_account(&frame(json!({"id":account_id,"result":{
-            "account":{"type":"chatgpt","email":null,"planType":"plus"},
-            "requiresOpenaiAuth":true
+            "account":{"type":"chatgpt","email":null,"planType":"plus","workspaceName":null},
+            "requiresOpenaiAuth":true,"workspaceRouting":null
         }})))
         .unwrap();
     let request = protocol.model_request().unwrap();
@@ -274,8 +290,8 @@ fn model_catalog_rejects_page_count_identity_default_hidden_and_empty_violations
         let account_id = advance_to_account(&mut protocol);
         protocol
             .accept_account(&frame(json!({"id":account_id,"result":{
-                "account":{"type":"chatgpt","email":null,"planType":"plus"},
-                "requiresOpenaiAuth":true
+                "account":{"type":"chatgpt","email":null,"planType":"plus","workspaceName":null},
+                "requiresOpenaiAuth":true,"workspaceRouting":null
             }})))
             .unwrap();
         protocol
@@ -451,4 +467,60 @@ fn exact_pinned_binary_discovery_hook_proves_bounded_zero_process_cleanup() {
 
     assert!(!discovery.content.models.is_empty());
     discovery.revalidate().expect("authority remains current");
+}
+
+/// What the composer's model menu shows for the desktop restart replay: Sage
+/// reads the case's own `model/list` frame with its real discovery protocol
+/// and keeps every model the session lists.
+#[cfg(feature = "acp-fixture")]
+#[test]
+fn a_replay_case_offers_every_model_its_session_lists() {
+    let case = "codex-config-resume";
+    let reply = |payload: &[u8]| {
+        let request: Value = serde_json::from_slice(payload).unwrap();
+        frame(crate::acp::fixture::native_case_discovery_reply(case, &request).unwrap())
+    };
+    let mut protocol = protocol();
+    let initialize = protocol.initialize_request().unwrap();
+    // The desktop replay is checked as an observed build, which accepts any
+    // absolute Codex home; this protocol is the pinned packet's, which
+    // expects its own.
+    let mut initialized = crate::acp::fixture::native_case_discovery_reply(
+        case,
+        &serde_json::from_slice(initialize.payload()).unwrap(),
+    )
+    .unwrap();
+    initialized["result"]["codexHome"] = parse_packet_metadata(include_bytes!(
+        "../../../../../testdata/acp/codex/candidate-windows.json"
+    ))
+    .unwrap()
+    .codex_home()
+    .to_string_lossy()
+    .into_owned()
+    .into();
+    protocol.accept_initialize(&frame(initialized)).unwrap();
+    let account = protocol.account_request().unwrap();
+    let models = protocol.model_request().unwrap();
+    assert_eq!(
+        protocol.accept_account(&reply(account.payload())).unwrap(),
+        CodexAccountSnapshot::ProviderManaged
+    );
+    let ProtocolProgress::Complete(content) = protocol
+        .accept_model_page(&reply(models.payload()))
+        .unwrap()
+    else {
+        panic!("one page lists the whole catalogue");
+    };
+    let listed: Vec<_> = content
+        .models
+        .iter()
+        .map(|model| (model.id.as_str(), model.name.as_str(), model.is_default))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            ("fixture-model", "Synthetic replay", true),
+            ("fixture-model-deep", "Synthetic replay deep", false)
+        ]
+    );
 }

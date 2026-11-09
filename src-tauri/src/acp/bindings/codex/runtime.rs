@@ -28,6 +28,7 @@ use snapshots::ItemSnapshots;
 mod harness;
 mod ingress;
 mod model_config;
+mod usage;
 
 mod factory;
 pub(crate) use factory::CodexRuntimeFactory;
@@ -54,6 +55,8 @@ pub(crate) struct CodexRuntime {
     next_model_cursor: Option<crate::acp::intent::PageCursor>,
     model_pages_seen: u64,
     session_config: Option<crate::acp::session_config::SessionConfig>,
+    usage: std::sync::Arc<crate::acp::usage::UsageCell>,
+    rate_limits: super::incoming::rate_limits::RateLimits,
 }
 
 impl CodexRuntime {
@@ -156,6 +159,13 @@ impl CodexRuntime {
             }
             IngressDisposition::GoalMutationApplied => {
                 self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::GoalApplied);
+                one(AdapterEvent::IgnoredLate)
+            }
+            usage @ (IngressDisposition::UsageUpdated(_)
+            | IngressDisposition::UsageRead(_)
+            | IngressDisposition::UsageRefused
+            | IngressDisposition::UsageReset) => {
+                self.apply_usage(usage);
                 one(AdapterEvent::IgnoredLate)
             }
             IngressDisposition::DuplicateTerminal => one(AdapterEvent::IgnoredDuplicate),

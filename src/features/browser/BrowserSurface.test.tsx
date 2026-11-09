@@ -18,6 +18,10 @@ import { recordBrowserAgentOperation } from "../../app/browserAgentActivityStore
 import { useWorkbenchStore } from "../../app/store";
 import { pinAgentChatOwner } from "../../app/agentChatOwner";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
+// The new-tab page, with its New page button, loads lazily. Load it with the
+// file, so its first render does not race a cold import against a one-second
+// query.
+import "./BrowserNewTab";
 
 const browserStatus = vi.fn();
 const openBrowser = vi.fn(async (_url?: string) => "browser-new");

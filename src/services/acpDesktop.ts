@@ -10,6 +10,7 @@ import type {
   EndAcpSessionRequest,
   GetAcpChatPageRequest,
   AnswerUserInputRequest,
+  RunAcpSessionActionRequest,
   ResolvePermissionDecisionRequest,
   SendAcpTurnRequest,
   StartAcpSessionRequest,
@@ -55,6 +56,11 @@ async function invokeAcpMutation<Request extends object>(
 export const acpDesktop = {
   getChatStatus,
   ...sessionConfigDesktop(invokeAcpMutation, isTauriRuntime),
+  runSessionAction(
+    request: RunAcpSessionActionRequest,
+  ): Promise<AcpMutationResult> {
+    return invokeAcpMutation("run_session_action", request);
+  },
   pauseExistingGoal(
     request: AcpSessionMutationIntent,
   ): Promise<AcpMutationResult> {

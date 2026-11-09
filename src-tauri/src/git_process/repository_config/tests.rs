@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
-    process::Command,
     sync::{Arc, LazyLock, Mutex, PoisonError},
 };
 
@@ -68,7 +67,7 @@ impl Drop for Scratch {
 // Keep clone/worktree operands relative: Git for Windows accepts canonical
 // verbatim paths for `-C`, but rejects them in these operands.
 fn git(root: &Path, args: &[&str]) {
-    let status = Command::new("git")
+    let status = crate::git_process::fixture_git()
         .arg("-C")
         .arg(root)
         .args(args)
@@ -352,7 +351,7 @@ fn a_non_utf8_filter_subsection_is_refused() {
     let mut key = b"filter.".to_vec();
     key.extend_from_slice(driver);
     key.extend_from_slice(b".clean");
-    let status = Command::new("git")
+    let status = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&root)
         .arg("config")
@@ -422,7 +421,7 @@ fn an_admitted_repository_cannot_drift_to_a_hostile_ancestor() {
     assert!(!sentinel.exists(), "the ancestor's filter ran");
 
     // Control: unpinned discovery does reach the hostile ancestor.
-    let _ = Command::new("git")
+    let _ = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&inner)
         .args(["status", "--porcelain"])
@@ -596,7 +595,7 @@ fn a_commondir_alias_of_the_own_git_dir_is_refused() {
     )
     .unwrap();
     // Control: Git resolves the alias to the root's own git dir.
-    let output = Command::new("git")
+    let output = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&root)
         .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
@@ -772,10 +771,16 @@ struct ReadDenied {
     _exclusive: fs::File,
     #[cfg(unix)]
     path: PathBuf,
+    /// Where the file waits while `path` is a link to itself.
+    #[cfg(unix)]
+    held: Option<PathBuf>,
 }
 
 impl ReadDenied {
-    fn new(path: &Path) -> Self {
+    /// Its metadata still reads; opening it fails. On Unix the permission
+    /// bits deny any process that does not override them, as root does, so
+    /// this is `None` when this process can still read the file.
+    fn on_open(path: &Path) -> Option<Self> {
         #[cfg(windows)]
         let denied = {
             use std::os::windows::fs::OpenOptionsExt;
@@ -794,23 +799,58 @@ impl ReadDenied {
             fs::set_permissions(path, fs::Permissions::from_mode(0o000)).unwrap();
             Self {
                 path: path.to_path_buf(),
+                held: None,
             }
         };
-        assert!(fs::read(path).is_err(), "fixture config is still readable");
-        denied
+        assert!(fs::metadata(path).is_ok());
+        fs::read(path).is_err().then_some(denied)
+    }
+
+    /// Even its metadata fails, whatever this process's uid: `path` becomes a
+    /// symbolic link to itself, which no opener can resolve.
+    #[cfg(unix)]
+    fn on_metadata(path: &Path) -> Self {
+        let held = path.with_extension("held");
+        fs::rename(path, &held).unwrap();
+        std::os::unix::fs::symlink(path.file_name().unwrap(), path).unwrap();
+        assert!(fs::metadata(path).is_err(), "fixture config still resolves");
+        Self {
+            path: path.to_path_buf(),
+            held: Some(held),
+        }
     }
 }
 
 #[cfg(unix)]
 impl Drop for ReadDenied {
     fn drop(&mut self) {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&self.path, fs::Permissions::from_mode(0o644));
+        match &self.held {
+            Some(held) => {
+                let _ = fs::remove_file(&self.path);
+                let _ = fs::rename(held, &self.path);
+            }
+            None => {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&self.path, fs::Permissions::from_mode(0o644));
+            }
+        }
     }
 }
 
 #[test]
 fn an_unreadable_repository_config_fails_closed_until_it_can_be_checked() {
+    // A process that reads through permission bits cannot be denied this way;
+    // the unresolvable case below still runs for it.
+    unreadable_config_fails_closed(ReadDenied::on_open);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unresolvable_repository_config_fails_closed_until_it_can_be_checked() {
+    unreadable_config_fails_closed(|config| Some(ReadDenied::on_metadata(config)));
+}
+
+fn unreadable_config_fails_closed(deny: impl FnOnce(&Path) -> Option<ReadDenied>) {
     let scratch = Scratch::new();
     let root = scratch.repository("repo");
     git(
@@ -819,7 +859,9 @@ fn an_unreadable_repository_config_fails_closed_until_it_can_be_checked() {
     );
     let config = root.join(".git").join("config");
 
-    let denied = ReadDenied::new(&config);
+    let Some(denied) = deny(&config) else {
+        return;
+    };
     for _ in 0..2 {
         let message = refusal(sage_git(&root, &["status", "--porcelain"]));
         assert_eq!(message, UNREADABLE);
@@ -889,7 +931,7 @@ fn directory_link(link: &Path, target: &Path) {
                 .trim_start_matches(r"\\?\")
                 .to_owned()
         };
-        let status = Command::new("cmd")
+        let status = std::process::Command::new("cmd")
             .args(["/C", "mklink", "/J", &plain(link), &plain(target)])
             .stdout(std::process::Stdio::null())
             .status()
@@ -955,7 +997,7 @@ fn a_switched_off_path_protection_is_refused_until_restored() {
 fn a_gitlink_win32_would_rename_cannot_reach_a_hostile_submodule() {
     let scratch = Scratch::new();
     let root = submodule_fixture(&scratch);
-    let gitlink = Command::new("git")
+    let gitlink = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&root)
         .args(["rev-parse", "HEAD:sub"])

@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 
 import type { AgentSessionChrome } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
@@ -7,6 +7,7 @@ import { settleLazyModules } from "../test/settleLazyModules";
 import type { WorkbenchTab } from "../domain/workbench";
 import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
 import { AgentChatCenterHeader } from "./AgentChatCenterHeader";
+import { preloadAgentHeaderMenu } from "./agentTaskHeaderLazy";
 
 vi.mock("../features/chat/transcriptLazy", () => ({
   TranscriptPart: ({ chatId }: { chatId: string }) => (
@@ -27,6 +28,9 @@ const snapshot = (chatId: string, working: boolean): ChatLiveSnapshot => ({
 vi.mock("../features/chat/acp/useAcpChatLiveSnapshot", () => ({
   useAcpChatLiveSnapshot: (chatId: string) => snapshot(chatId, true),
 }));
+
+// The header menu body loads when the window first idles.
+beforeAll(() => preloadAgentHeaderMenu());
 
 const initialState = useWorkbenchStore.getState();
 const parent: WorkbenchTab = {

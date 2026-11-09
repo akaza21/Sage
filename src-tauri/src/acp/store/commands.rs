@@ -121,13 +121,16 @@ pub(super) fn prepare_turn_in(
         command.project_id.as_str(),
         command.chat_id.as_str(),
     )?;
-    crate::chat_lifecycle::auto_title_first_prompt_in(
-        transaction,
-        command.project_id.as_str(),
-        command.chat_id.as_str(),
-        user_payload["text"].as_str().unwrap_or_default(),
-        command.now_millis,
-    )?;
+    // A session action's `/` text names no topic, so it never titles a chat.
+    if command.prompt.action.is_none() {
+        crate::chat_lifecycle::auto_title_first_prompt_in(
+            transaction,
+            command.project_id.as_str(),
+            command.chat_id.as_str(),
+            user_payload["text"].as_str().unwrap_or_default(),
+            command.now_millis,
+        )?;
+    }
     transaction.execute(
         "INSERT INTO turns (id,project_id,chat_id,session_id,runtime_epoch,ordinal,
          client_intent_id,state,delivery_state,revision,created_at,updated_at)
@@ -150,6 +153,7 @@ pub(super) fn prepare_turn_in(
          VALUES (?1,?2,?3,?4,?5,?6,0,'primary',NULL,'text','completed',NULL,NULL,?7,?8,?9,0,?10,?10,?10)",
         params![item_id.as_str(),command.project_id.as_str(),command.chat_id.as_str(),command.session_id.as_str(),turn_id.as_str(),command.runtime_epoch.get() as i64,item_payload,item_bytes,item_digest,command.now_millis],
     )?;
+    super::prompt_images::insert_user_images(transaction, &command, &turn_id)?;
     ensure_one(transaction.execute(
         "UPDATE acp_session_usage SET turn_count=turn_count+1,item_count=item_count+1,
          item_bytes=item_bytes+?2,payload_bytes=payload_bytes+?2,revision=revision+1 WHERE session_id=?1",

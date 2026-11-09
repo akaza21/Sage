@@ -96,7 +96,10 @@ impl AcpService {
             Ok(NativeRpcReply::TooLarge) => Ok(ChildTranscriptRead::TooLarge),
             Ok(NativeRpcReply::Rejected) => Err(ChildTranscriptReadError::Rejected),
             Ok(
-                NativeRpcReply::GoalApplied | NativeRpcReply::Forked(_) | NativeRpcReply::Released,
+                NativeRpcReply::GoalApplied
+                | NativeRpcReply::Forked(_)
+                | NativeRpcReply::Released
+                | NativeRpcReply::UsageRead,
             ) => Err(ChildTranscriptReadError::RecoveryRequired),
             Err(crate::acp::runtime::HostError::Intent | crate::acp::runtime::HostError::State) => {
                 Err(ChildTranscriptReadError::Unavailable)
@@ -120,13 +123,13 @@ fn observed_protocol(
     };
     let value: serde_json::Value =
         serde_json::from_str(&encoded).map_err(|_| ChildTranscriptReadError::RecoveryRequired)?;
-    // The debug desktop fixture replays the same 0.146 `thread/read` wire
+    // The debug desktop fixture replays the same pinned `thread/read` wire
     // under its own identity, so native captures can read its children.
     Ok(value
         .get("protocolVersion")
         .and_then(serde_json::Value::as_str)
         .is_some_and(|identity| {
-            crate::acp::bindings::codex::supports_native_0146_protocol(identity)
+            crate::acp::bindings::codex::speaks_pinned_protocol(identity)
                 || crate::acp::bindings::codex::is_desktop_fixture_protocol(identity)
         }))
 }

@@ -4,7 +4,6 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 use uuid::Uuid;
@@ -110,7 +109,7 @@ impl Drop for Fixture {
 }
 
 fn git(root: &Path, args: &[&str]) {
-    let status = Command::new("git")
+    let status = crate::git_process::fixture_git()
         .arg("-C")
         .arg(root)
         .args(args)

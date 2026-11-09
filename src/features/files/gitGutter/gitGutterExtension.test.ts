@@ -56,6 +56,15 @@ function mount(doc: string, readOnly = false) {
   });
 }
 
+/**
+ * Fakes only the gutter's idle timer. Faking animation frames too would run
+ * CodeMirror's layout measure, a full jsdom style pass, on every simulated
+ * pause, which is most of this file's run time.
+ */
+function fakeGutterTimers() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+}
+
 async function settle() {
   await vi.advanceTimersByTimeAsync(GUTTER_IDLE_MS);
 }
@@ -64,7 +73,7 @@ const kinds = (view: EditorView) =>
   view.state.field(gutterField).hunks.map((hunk) => hunk.kind);
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  fakeGutterTimers();
 });
 
 afterEach(() => {
@@ -224,7 +233,7 @@ describe("git gutter", () => {
 
 describe("git gutter opening", () => {
   it("opens with the text the caller holds instead of building it", async () => {
-    vi.useFakeTimers();
+    fakeGutterTimers();
     const view = mount("held\n");
     const { pool, posts } = fakePool();
     const toString = vi.spyOn(Text.prototype, "toString");
@@ -238,7 +247,7 @@ describe("git gutter opening", () => {
 
 describe("git gutter consistency", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    fakeGutterTimers();
   });
 
   it("never reverts against an old staged text after a stage outside Sage", async () => {
@@ -309,7 +318,7 @@ describe("git gutter consistency", () => {
 
 describe("git gutter peek and reloads", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    fakeGutterTimers();
   });
 
   it("keeps an open peek on its change when new results renumber the hunks", async () => {

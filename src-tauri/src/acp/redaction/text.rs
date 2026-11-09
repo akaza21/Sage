@@ -64,6 +64,20 @@ pub(crate) fn redact(
     }
 }
 
+/// Clips display text to `max` bytes at a character boundary, ending a clipped
+/// value with an ellipsis.
+pub(crate) fn clip_display(value: &str, max: usize) -> String {
+    const CLIPPED: &str = "\u{2026}";
+    if value.len() <= max {
+        return value.to_owned();
+    }
+    let mut end = max.saturating_sub(CLIPPED.len());
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{CLIPPED}", &value[..end])
+}
+
 /// Replaces control characters (other than tab and line breaks) with a
 /// space and, when `strip_format` is set, drops bidi, zero-width and other
 /// invisible format characters, so harness text cannot reorder or hide

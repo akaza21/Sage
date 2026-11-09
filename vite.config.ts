@@ -51,6 +51,16 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     test: /src[\\/]ui[\\/]ModalDialog\.tsx$/,
   },
   {
+    name: "menu-popover",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    // The shared menu loads with an Editor's own menus and with an Agent
+    // menu's first open, never with the Agent UI behind that menu. A
+    // searchable picker's open list and its rows join it: they load only
+    // where a MenuPopover opens, so one chunk saves a request.
+    test: /src[\\/]ui[\\/](?:(?:MenuPopover|SearchablePickerPopover|PickerOption)\.tsx|menuPopover(?:Position|DialogFocus)\.ts)$/,
+  },
+  {
     name: "file-kind-icons",
     priority: 2,
     includeDependenciesRecursively: false,
@@ -60,7 +70,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "agent-workbench",
     priority: 1,
-    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:ChatMarkdown|MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|UserInputPrompt|approvalCard|TurnFileActivity|streamTail|turnWorkspace|TurnEditSummary|chatEditSummary))[^\\/]+\.(?:tsx|ts)$)/,
+    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:ChatMarkdown|MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|UserInputPrompt|UserInputField|SessionNoticeStrip|approvalCard|TurnFileActivity|streamTail|turnWorkspace|TurnEditSummary|chatEditSummary))[^\\/]+\.(?:tsx|ts)$)/,
   },
   {
     name: "codemirror-deps",

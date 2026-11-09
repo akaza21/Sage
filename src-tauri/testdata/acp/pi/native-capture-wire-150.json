@@ -1,0 +1,23 @@
+{
+  "runtimeVersion": "1.5.0",
+  "sourceCommit": "f9a26365568127461c47a07a37dcb42c140a3ac5",
+  "sourceFiles": [
+    "packages/coding-agent/src/modes/rpc/rpc-types.ts",
+    "packages/coding-agent/src/modes/rpc/rpc-mode.ts",
+    "packages/coding-agent/src/modes/json-event.ts",
+    "packages/coding-agent/src/core/agent-session.ts"
+  ],
+  "reviewedFixtures": [
+    "read_only_turn.jsonl",
+    "compaction_continuation.jsonl",
+    "compaction_outcomes.jsonl",
+    "retry_continuation.jsonl",
+    "captured_session_150.jsonl"
+  ],
+  "responseRequired": ["type", "id", "command", "success"],
+  "messageUpdateRequired": ["type", "usage", "assistantMessageEvent"],
+  "toolStartRequired": ["type", "toolCallId", "toolName", "args"],
+  "toolEndRequired": ["type", "toolCallId", "toolName", "result", "isError"],
+  "settlementEvent": "agent_settled",
+  "content": "captured_session_150.jsonl is Pi 1.5.0's own RPC output against a local mock model, with IDs, timestamps and the system prompt shortened; the other fixtures are synthetic replays in the same wire shape. No model call or command runs."
+}

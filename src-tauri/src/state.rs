@@ -52,13 +52,16 @@ pub struct AppState {
     pub project_transitions: tokio::sync::Mutex<u64>,
     pub startup_recovery_notice: Option<String>,
     pub terminals: crate::user_terminal::TerminalSessionPort,
+    /// Archive runtime releases still running; exit waits for them.
+    pub archive_releases: crate::chat_archive_commands::ArchiveReleases,
 }
 
 impl AppState {
     pub(crate) fn refresh_harnesses_after_window_shown(app: tauri::AppHandle) {
         tauri::async_runtime::spawn_blocking(move || {
-            let presence = crate::harness_discovery::discover_installed_harness_presence();
             let state = app.state::<AppState>();
+            crate::settings_commands::custom_acp_agents::apply_saved(&state);
+            let presence = crate::harness_discovery::discover_installed_harness_presence();
             state.harnesses.apply_presence(presence.clone());
             use tauri::Emitter;
             let _ = app.emit(
@@ -134,6 +137,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 
@@ -177,6 +181,11 @@ impl AppState {
             acp.set_browser_app(app.clone());
         }
         let goal_app = app.clone();
+        let commands_app = app.clone();
+        acp.set_commands_notice_sink(std::sync::Arc::new(move |notice| {
+            use tauri::Emitter;
+            let _ = commands_app.emit("acp-commands-changed-v1", notice);
+        }));
         acp.set_session_config_notice_sink(std::sync::Arc::new(move |notice| {
             use tauri::Emitter;
             let _ = app.emit("acp-session-config-changed-v1", notice);
@@ -185,10 +194,13 @@ impl AppState {
             use tauri::Emitter;
             let _ = goal_app.emit("acp-goal-changed-v1", notice);
         }));
+        crate::chat_archive_commands::forget_read_marks_of_deleted_chats(&database, &settings);
         let harnesses = HarnessCatalog::with_registry(registry);
         if fixture_isolation {
             harnesses.apply_presence(Vec::new());
         }
+        // Chats deleted while Sage was not running keep no access choice.
+        crate::settings_store::forget_removed_chat_access(&database, &settings);
         Ok(Self {
             database,
             settings,
@@ -199,6 +211,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 
@@ -236,6 +249,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 
@@ -268,6 +282,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 

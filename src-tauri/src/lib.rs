@@ -13,6 +13,7 @@ mod chat_fork;
 mod chat_lifecycle;
 mod chat_move;
 mod chat_pin;
+mod chat_purge;
 mod chat_queue;
 mod chat_queue_commands;
 mod chat_read_state;

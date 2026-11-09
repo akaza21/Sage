@@ -118,7 +118,7 @@ async fn current_listed_named_branch(workspace: &Workspace, action: &str) -> App
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path, process::Command};
+    use std::{fs, path::Path};
 
     use uuid::Uuid;
 
@@ -127,7 +127,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            Command::new("git")
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -138,7 +138,7 @@ mod tests {
     }
 
     fn git_stdout(root: &Path, args: &[&str]) -> String {
-        let output = Command::new("git")
+        let output = crate::git_process::fixture_git()
             .arg("-C")
             .arg(root)
             .args(args)

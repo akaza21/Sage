@@ -178,7 +178,10 @@ pub(crate) fn normalize_read_response<M: ResourceMapper + ?Sized>(
                 | "imageGeneration"
                 | "imageView"
                 | "enteredReviewMode"
-                | "exitedReviewMode" => {
+                | "exitedReviewMode"
+                | "sleep"
+                | "functionCallOutput"
+                | "hookPrompt" => {
                     let object = item.as_object().ok_or(ChildTranscriptError::Malformed)?;
                     normalize_transcript_item(object, lifecycle, &TranscriptMapper(mapper))
                         .map_err(|_| ChildTranscriptError::Malformed)?

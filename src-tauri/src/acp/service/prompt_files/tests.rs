@@ -258,3 +258,21 @@ fn unix_backslashes_in_names_do_not_select_a_different_file() {
     f.file("a/b", b"different");
     assert_eq!(f.read("a\\b").0[0].bytes, b"selected");
 }
+
+#[test]
+fn a_session_action_leaves_the_staged_files_for_the_next_prompt() {
+    let f = Fixture::new();
+    f.file("one", b"one");
+    let mut stages = FileStages::default();
+    stages.stage("p", "c", 0, None, f.read("one")).unwrap();
+    let mut action = crate::acp::intent::Prompt::new("prompt", "/compact").unwrap();
+    action.action = Some(serde_json::from_value(serde_json::json!({"kind": "compact"})).unwrap());
+    let sent = stages.for_prompt("p", "c", &action);
+    assert!(sent.0.is_empty());
+    stages.consume("p", "c", &sent);
+    let prompt = crate::acp::intent::Prompt::new("prompt", "next").unwrap();
+    let next = stages.for_prompt("p", "c", &prompt);
+    assert_eq!(next.0.len(), 1);
+    stages.consume("p", "c", &next);
+    assert!(stages.for_prompt("p", "c", &prompt).0.is_empty());
+}

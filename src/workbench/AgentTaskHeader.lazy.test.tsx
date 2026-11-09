@@ -5,7 +5,11 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { preloadAgentHeaderMenu } from "./agentTaskHeaderLazy";
+
+// The header menu body loads when the window first idles.
+beforeAll(() => preloadAgentHeaderMenu());
 import { useWorkbenchStore } from "../app/store";
 import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
 import type { WorkbenchTab } from "../domain/workbench";
@@ -180,5 +184,5 @@ it("keeps header mutations scoped and refreshes the open move destinations", asy
   expect(moveChat).toHaveBeenCalledWith(tab.id, "destination", "project-lazy");
   await openActions();
   fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
-  expect(archiveChat).toHaveBeenCalledWith(tab.id, "project-lazy");
+  expect(archiveChat).toHaveBeenCalledWith(tab.id, "project-lazy", "row");
 });

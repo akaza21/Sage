@@ -2069,7 +2069,7 @@ test("Windows bounded tool handshake preserves quoted cmd arguments after exact 
   const fixture = path.join(root, "Codex Fixture.cmd");
   const command = path.join(process.env.SystemRoot, "System32", "cmd.exe");
   try {
-    writeFileSync(fixture, "@echo off\r\necho codex-cli 0.146.0\r\n", "utf8");
+    writeFileSync(fixture, "@echo off\r\necho codex-cli 0.167.0\r\n", "utf8");
     const output = await runBoundedTool(
       command,
       [
@@ -2088,7 +2088,7 @@ test("Windows bounded tool handshake preserves quoted cmd arguments after exact 
         windowsVerbatimArguments: true,
       },
     );
-    assert.equal(output.trim(), "codex-cli 0.146.0");
+    assert.equal(output.trim(), "codex-cli 0.167.0");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -60,7 +60,7 @@ function FileEditorNotices({
 afterEach(cleanup);
 
 describe("FileEditorNotices", () => {
-  it("lets an external-change conflict own the error surface", () => {
+  it("lets an external-change conflict own the error surface", async () => {
     render(
       <FileEditorNotices
         conflict={{
@@ -71,8 +71,9 @@ describe("FileEditorNotices", () => {
       />,
     );
 
+    // The banner loads with the first conflict.
+    expect(await screen.findByText(/External change detected/)).toBeVisible();
     expect(screen.getAllByRole("alert")).toHaveLength(1);
-    expect(screen.getByText(/External change detected/)).toBeVisible();
     expect(screen.queryByText(/invalid request/)).toBeNull();
   });
 

@@ -24,7 +24,7 @@ for (const control of ["effort", "project"]) {
       control === "effort"
         ? composer.getByRole("button", { name: "Thinking level: Medium" })
         : composer.locator(".project-scope button");
-    await composer.getByRole("textbox", { name: "Message agent" }).focus();
+    await composer.getByRole("combobox", { name: "Message agent" }).focus();
     for (
       let index = 0;
       index < 10 &&

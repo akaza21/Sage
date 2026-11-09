@@ -20,6 +20,13 @@ impl Lane<'_> {
         self.runtime
             .reserve_start(prepared.owner.clone())
             .map_err(map_slot_error)?;
+        if matches!(
+            prepared.intent.mode,
+            crate::acp::runtime::ActivationMode::New { .. }
+        ) {
+            self.runtime.config.mark_new_session(&prepared.owner);
+        }
+        prepared.runtime.bind_activation(&prepared.intent.mode);
         let mut spec = match prepared.runtime.launch_spec() {
             Ok(spec) => spec,
             Err(_) => {
@@ -139,6 +146,9 @@ impl Lane<'_> {
         prepared
             .runtime
             .attach_goal(abort.owner.clone(), Arc::clone(&self.runtime.goal));
+        prepared
+            .runtime
+            .attach_usage(abort.owner.clone(), Arc::clone(&self.runtime.usage));
         let pump = match ActivationPump::new_retained(
             prepared.runtime,
             CoordinatorActivationJournal::new(session_lease),

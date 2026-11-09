@@ -4,6 +4,7 @@ use crate::acp::{
     contract::{BoundedVec, RequiredText, SafeText},
     intent::{
         COMMAND_RESOURCE_LIMIT, ExternalId, NormalizedPayload, SafeResourceLocation, ToolCategory,
+        session_event::SessionScopedEvent,
     },
     lifecycle::{ItemLifecycle, ToolState},
     limits::LIMITS,
@@ -28,6 +29,25 @@ impl PiRuntime {
             turn_id,
             turn_client_message_id: client,
         }
+    }
+
+    /// A session-scoped fact; dropped before Pi's session is ready.
+    pub(super) fn session_event(&self, event: SessionScopedEvent) -> AdapterEvent {
+        match self.external_session.clone() {
+            Some(session) => AdapterEvent::Session {
+                id: self.identity(session, None, None),
+                event,
+            },
+            None => AdapterEvent::IgnoredLate,
+        }
+    }
+
+    pub(super) fn current_context_window(&self) -> Option<u32> {
+        let current = self.current_model.as_deref()?;
+        self.available_models
+            .iter()
+            .find(|model| model_key(model).is_ok_and(|key| key == current))?
+            .context_window
     }
 
     pub(super) fn turn_identity(&self) -> Result<AdapterIdentity, AdapterRuntimeError> {
@@ -196,6 +216,21 @@ impl PiRuntime {
         Ok((id, snapshot))
     }
 
+    pub(super) fn is_edit_tool(&self, external_id: &str) -> bool {
+        self.active_turn
+            .as_ref()
+            .and_then(|turn| turn.tools.get(external_id))
+            .is_some_and(|payload| {
+                matches!(
+                    payload,
+                    NormalizedPayload::ToolCall {
+                        category: ToolCategory::Edit,
+                        ..
+                    }
+                )
+            })
+    }
+
     pub(super) fn update_tool(
         &mut self,
         external_id: &str,
@@ -293,13 +328,19 @@ pub(super) fn tool_start_payload(
     let category = match name.as_str() {
         "read" => ToolCategory::Read,
         "edit" | "write" => ToolCategory::Edit,
-        "bash" => ToolCategory::Execute,
+        "bash" | "powershell" => ToolCategory::Execute,
         "grep" | "find" | "ls" => ToolCategory::Search,
         _ => ToolCategory::Other,
     };
-    let locations = match path {
-        Some(path) => {
-            let location = match resources.map_existing(path) {
+    let mapped = path.map(|path| resources.map_existing(path));
+    let relative = mapped
+        .as_ref()
+        .and_then(|mapped| mapped.as_ref().ok())
+        .map(|resource| resource.relative_path.as_str());
+    let label = tool_label(&name, relative);
+    let locations = match mapped {
+        Some(mapped) => {
+            let location = match mapped {
                 Ok(resource) => SafeResourceLocation::Resource { resource },
                 Err(reason) => SafeResourceLocation::unavailable(reason),
             };
@@ -314,12 +355,27 @@ pub(super) fn tool_start_payload(
     Ok(NormalizedPayload::ToolCall {
         execution: Default::default(),
         category,
-        label: SafeText::new("toolLabel", name).map_err(|_| AdapterRuntimeError::Frame)?,
+        label: SafeText::new("toolLabel", label).map_err(|_| AdapterRuntimeError::Frame)?,
         input_summary: None,
         output_summary: None,
         locations,
         command_activity: Default::default(),
     })
+}
+
+/// Pi's built-in tools read as verb plus workspace path, like every harness;
+/// extension tools keep the name their author gave them.
+fn tool_label(name: &str, path: Option<&str>) -> String {
+    let (verb, target) = match name {
+        "read" => ("Read", "a file"),
+        "edit" => ("Edited", "a file"),
+        "write" => ("Wrote", "a file"),
+        "grep" | "find" => ("Searched", "files"),
+        "ls" => ("Listed", "a folder"),
+        "bash" | "powershell" => return "Shell command".into(),
+        _ => return name.into(),
+    };
+    format!("{verb} {}", path.unwrap_or(target))
 }
 
 pub(in crate::acp::bindings::pi::runtime) fn unsupported(

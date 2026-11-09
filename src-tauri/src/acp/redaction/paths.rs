@@ -218,6 +218,7 @@ fn detect_absolute_path(value: &str, mode: PathMode) -> Option<PathKind> {
             }
             PathMode::Prose => {
                 plain_slash_path(rest)
+                    && !is_session_action_command(rest, previous)
                     && (previous != Some(b'<') || last_slash.is_some_and(|last| last > index))
             }
         };
@@ -250,6 +251,28 @@ fn is_path_boundary(value: &[u8], index: usize) -> bool {
                 | b'@'
         )
     })
+}
+
+/// A rooted prose token that is exactly one of Sage's own session-action
+/// commands, opening a word or a bracket or quote and allowing trailing prose
+/// punctuation, as in "re-run /review" or "(/review).". Any other rooted word,
+/// such as `/root` or `/alice`, may name a real directory and stays a path.
+pub(crate) fn is_session_action_command(rest: &[u8], previous: Option<u8>) -> bool {
+    let end = rest
+        .iter()
+        .rposition(|byte| {
+            !matches!(
+                byte,
+                b'.' | b',' | b';' | b':' | b'!' | b'?' | b')' | b']' | b'}' | b'"' | b'\'' | b'`'
+            )
+        })
+        .map_or(0, |last| last + 1);
+    matches!(previous, None | Some(b'(' | b'[' | b'"' | b'\'' | b'`'))
+        && rest[..end].strip_prefix(b"/").is_some_and(|name| {
+            crate::acp::session_action::COMMAND_NAMES
+                .iter()
+                .any(|command| command.as_bytes() == name)
+        })
 }
 
 fn plain_slash_path(rest: &[u8]) -> bool {

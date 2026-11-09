@@ -275,12 +275,12 @@ mod tests {
     #[tokio::test]
     async fn status_keeps_working_with_non_utf8_tracked_and_untracked_paths() {
         use super::*;
-        use std::{ffi::OsStr, fs, os::unix::ffi::OsStrExt, process::Command};
+        use std::{ffi::OsStr, fs, os::unix::ffi::OsStrExt};
 
         let root = std::env::temp_dir().join(format!("sage-status-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let git = |args: &[&str]| {
-            let output = Command::new("git")
+            let output = crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(args)

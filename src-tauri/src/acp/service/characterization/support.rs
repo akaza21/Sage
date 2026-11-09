@@ -181,6 +181,10 @@ fn classify_host_error(error: HostError) -> CharacterizationError {
         | HostError::RetryExhausted
         | HostError::RecoveryRequired
         | HostError::Deadline
+        // The probe's deadline covers the whole characterization, so a request
+        // left unsent past it means the probe cannot finish: recover the slot,
+        // as for a request that was sent and timed out.
+        | HostError::NotDispatched
         | HostError::Closed => CharacterizationError::Recovery,
     }
 }

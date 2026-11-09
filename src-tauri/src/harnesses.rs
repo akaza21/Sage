@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 mod catalog_definition;
 mod claude_auth;
+mod custom_acp;
 mod discovery_state;
 mod install_state;
 mod persisted_binding;
@@ -206,7 +207,7 @@ impl HarnessCatalog {
             definition(
                 "claude-code",
                 "Claude Code",
-                "Launches the discovered local Claude ACP adapter through Node.",
+                "Launches the discovered local Claude Code CLI over its Agent SDK protocol.",
                 self.install_state("claude-code").as_str(),
                 "builtIn",
                 self.registered_protocol("claude-code"),
@@ -220,6 +221,7 @@ impl HarnessCatalog {
                 CuratedProtocol::acp(None),
             ),
         ];
+        definitions.extend(self.custom_acp_definitions());
         if let Some(install_state) = simulator_admission(simulator_in_catalog) {
             definitions.push(definition(
                 SIMULATOR_ID,
@@ -283,6 +285,7 @@ impl HarnessCatalog {
                 definition.sign_in = None;
             }
             catalog_definition::annotate_binding(definition, record);
+            self.annotate_custom_sign_in(definition);
         }
         definitions
     }

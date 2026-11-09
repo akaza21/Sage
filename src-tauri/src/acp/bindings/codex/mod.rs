@@ -16,28 +16,31 @@ mod managed;
 mod manifest;
 mod physical;
 mod policy;
-mod policy_0146;
 mod provisioning;
 mod reproduction;
 mod request;
 mod runtime;
 mod state;
 mod trust_root;
+mod turn_policy;
 
 // Codex Responses dynamic function names cannot contain dots. This alias is
 // confined to the Codex adapter; shared consumers use the ACP extension method
 // `_sage/browse`.
 const CODEX_BROWSE_TOOL_NAME: &str = "sage_browse";
 
+#[cfg(test)]
+pub(crate) use admission::BINDING_DIGEST_HEX as CODEX_BINDING_DIGEST_HEX;
 pub(crate) use admission::BINDING_ID as CODEX_BINDING_ID;
 pub(crate) use admission::{
     AdmittedCodexBinding, CodexAdmissionUnavailable, CodexBindingRegistration,
     admit_discovered_codex, startup_codex_binding_registration,
 };
 pub(crate) use auth::{
-    AuthBrowser, AuthTransport, CodexAuthDeadline, CodexAuthError, CodexAuthNotification,
-    CodexAuthOutcome, CodexAuthProtocol, NativeAuthUrl, NativeBrowser, NativeLoginId,
-    ProductionAuthTransport, run_account_protocol, run_login_protocol, run_logout_protocol,
+    AuthBrowser, AuthTransport, CodexAuthDeadline, CodexAuthError, CodexAuthMode,
+    CodexAuthNotification, CodexAuthOutcome, CodexAuthProtocol, NativeApiKey, NativeAuthUrl,
+    NativeBrowser, NativeLoginId, ProductionAuthTransport, run_account_protocol,
+    run_api_key_protocol, run_login_protocol, run_logout_protocol,
 };
 pub(crate) use authority::{
     ConfigAuthorityError, EnvironmentAuthorityError, ResidueMarker, RetentionDecision,
@@ -63,12 +66,16 @@ pub(crate) use incoming::{IncomingEvent, IngressDisposition, ResourceMapper};
 pub(crate) use managed::{
     ManagedStagingError, ManagedStagingPrerequisite, inspect_managed_staging,
 };
+#[cfg(any(test, feature = "acp-fixture"))]
+pub(crate) use manifest::pinned_codex_version;
 pub(crate) use manifest::{
+    OBSERVED_PROTOCOL_IDENTITY as CODEX_OBSERVED_PROTOCOL_IDENTITY,
+    PINNED_CODEX_VERSION as CODEX_PINNED_VERSION,
     PINNED_PROTOCOL_IDENTITY as CODEX_PROTOCOL_IDENTITY,
     PINNED_SCHEMA_SHA256 as CODEX_SCHEMA_SHA256,
 };
 pub(crate) use manifest::{
-    PhysicalAdmissionUnavailable, Platform, parse_packet_metadata, supports_native_0146_protocol,
+    PhysicalAdmissionUnavailable, Platform, parse_packet_metadata, speaks_pinned_protocol,
 };
 pub(crate) use physical::{
     ConfiguredManagedPackageRoot, PhysicalInspectionError, PhysicallyInspectedPackage,
@@ -85,6 +92,9 @@ pub(crate) use reproduction::{
 };
 pub(crate) use runtime::{CodexRuntime, CodexRuntimeFactory, authority::CodexProjectRootAuthority};
 pub(crate) use state::CodexAdapter;
+
+#[cfg(test)]
+pub(crate) mod test_identity;
 
 #[cfg(test)]
 mod tests;

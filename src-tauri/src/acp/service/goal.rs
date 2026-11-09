@@ -74,7 +74,7 @@ impl AcpService {
         else {
             return;
         };
-        if !crate::acp::bindings::codex::supports_native_0146_protocol(
+        if !crate::acp::bindings::codex::speaks_pinned_protocol(
             session.capabilities.protocol_version.as_str(),
         ) {
             return;
@@ -117,7 +117,8 @@ fn goal_reply(
             | NativeRpcReply::TooLarge
             | NativeRpcReply::Rejected
             | NativeRpcReply::Forked(_)
-            | NativeRpcReply::Released,
+            | NativeRpcReply::Released
+            | NativeRpcReply::UsageRead,
         ) => Err(crate::acp::runtime::HostError::RecoveryRequired),
         Err(error) => Err(error),
     }
@@ -166,6 +167,8 @@ mod tests {
     fn max_goal_degrades_when_history_page_has_no_spare_bytes() {
         let mut page = AcpChatPage {
             session_config: None,
+            restored_session_config: None,
+            session_config_notice: None,
             goal: GoalState::Goal {
                 snapshot: GoalSnapshot {
                     objective: "x".repeat(4_000),
@@ -177,6 +180,7 @@ mod tests {
                     updated_at: None,
                 },
             },
+            usage: false,
             project_id: SageProjectId::parse("project-goal").unwrap(),
             chat_id: SageChatId::parse("chat-goal").unwrap(),
             title: SafeText::new("chatTitle", "History").unwrap(),
@@ -188,6 +192,7 @@ mod tests {
             forked_from: None,
             forked_from_turn_id: None,
             child_projection_epoch: 0,
+            session_notices: Vec::new(),
         };
         let existing_turns = page.turns.clone();
         let full_goal = page.goal.clone();

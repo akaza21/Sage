@@ -1,9 +1,12 @@
 use super::*;
 
+const PASSIVE_RPC_DEADLINE_MS: u64 = 5_000;
+
 impl HostCommand {
     pub(in crate::acp::runtime::runtime_host) fn deadline_millis(&self) -> u64 {
         use crate::acp::limits::LIMITS;
         match self {
+            Self::NativeRpc(intent) if intent.passive() => PASSIVE_RPC_DEADLINE_MS,
             Self::ConfigureSession(_) | Self::NativeRpc(_) | Self::ResolvePermission { .. } => {
                 LIMITS.deadlines_ms.ordinary_rpc
             }

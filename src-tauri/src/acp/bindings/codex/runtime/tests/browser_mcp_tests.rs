@@ -88,6 +88,7 @@ fn new_and_resumed_codex_sessions_receive_browser_descriptor_without_token_value
         .unwrap();
     let resume: Value = serde_json::from_slice(request.frame().payload()).unwrap();
     assert_eq!(resume["method"], "thread/resume");
+    assert_eq!(resume["params"]["excludeTurns"], true);
     assert_eq!(
         resume["params"]["config"]["mcp_servers"]["sage-browser"],
         start["params"]["config"]["mcp_servers"]["sage-browser"]

@@ -65,6 +65,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         client_message_id: &RequiredText<512>,
     ) -> Result<QueueDisposition, AdapterPumpError> {
         self.validate_cancel_owner(session_id, epoch, turn_id, client_message_id)?;
+        if self.adapter.defer_cancel() {
+            return Ok(QueueDisposition::Deferred);
+        }
         let egress = self.adapter.command(AdapterCommand::Cancel)?;
         self.enqueue(egress)
     }

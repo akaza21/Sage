@@ -6,11 +6,15 @@ import {
   within,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { decodeSessionConfig } from "../../domain/acpSessionConfig";
 import { ChatHarnessControls } from "./ChatHarnessControls";
+import { preloadSearchablePicker } from "../../ui/searchablePickerLoad";
+
+// The picker list loads when the window first idles.
+beforeAll(() => preloadSearchablePicker());
 
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
@@ -304,7 +308,7 @@ it.each([false, true])(
 
 it("gives Add a header and icon rows with truthful one-line Plan and Goal descriptions", async () => {
   const onOpenGoal = vi.fn();
-  await renderActions(true, { onOpenGoal });
+  await renderActions(true, { addActions: { onOpenGoal } });
   const menu = screen.getByRole("menu", { name: "Composer options menu" });
   expect(within(menu).getByText("Add", { exact: true })).toBeVisible();
   expect(within(menu).queryByText("Session mode")).toBeNull();
@@ -412,15 +416,16 @@ it.each(["image", "goal", "config"])(
     const { rerenderActions } = await renderActions(false, {
       onModeRemoved,
       ...(kind === "image"
-        ? { imageAction: { disabled: false, onChoose: vi.fn() } }
+        ? {
+            addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
+          }
         : kind === "goal"
-          ? { onOpenGoal: vi.fn() }
+          ? { addActions: { onOpenGoal: vi.fn() } }
           : { sessionConfig: config }),
     });
     expect(document.activeElement).not.toBe(document.body);
     rerenderActions({
-      imageAction: undefined,
-      onOpenGoal: undefined,
+      addActions: {},
       sessionConfig: null,
     });
     expect(screen.queryByRole("menu")).toBeNull();

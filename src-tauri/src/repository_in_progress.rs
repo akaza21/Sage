@@ -131,7 +131,7 @@ mod tests {
         };
         let root = std::env::temp_dir().join(format!("sage-in-progress-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let status = std::process::Command::new("git")
+        let status = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["init", "-q"])

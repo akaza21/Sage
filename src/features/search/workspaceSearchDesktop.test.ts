@@ -91,6 +91,8 @@ describe("workspace Search desktop adapter", () => {
       controller.signal,
     );
 
+    // The request checks load first; cancel once the native call is out.
+    await vi.waitFor(() => expect(requestId).not.toBe(""));
     controller.abort();
     resolve({ ...response, requestId });
 

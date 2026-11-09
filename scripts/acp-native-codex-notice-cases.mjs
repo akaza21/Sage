@@ -1,4 +1,4 @@
-// Codex app-server 0.146.0 notice replay journey. A `configWarning` lands
+// Codex app-server notice replay journey. A `configWarning` lands
 // right after initialize, before any thread is bound, so Sage holds it and
 // delivers it when thread/start responds; a `model/rerouted` then arrives
 // during the turn.
@@ -19,7 +19,7 @@ export function codexNoticeJourneys() {
       id: "codex-startup-notices",
       steps: [
         { op: "awaitClient", kind: "codexInitialize" },
-        { op: "emitKnownFrame", shape: "codexInitializeResult0146" },
+        { op: "emitKnownFrame", shape: "codexInitializeResultObserved" },
         native("codexNativeThreadless", "configWarning", {
           summary: "Invalid synthetic configuration; using defaults.",
           details: "unknown variant `turbo` for key `model_reasoning_effort`",

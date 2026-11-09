@@ -1,6 +1,6 @@
 use crate::{
     acp::{
-        bindings::codex::{policy_0146::TurnPolicySurface, request::OutgoingRequest},
+        bindings::codex::{request::OutgoingRequest, turn_policy::TurnPolicySurface},
         contract::RequiredText,
         intent::Prompt,
     },
@@ -72,18 +72,25 @@ impl CodexAdapter {
             .external_thread_id
             .clone()
             .ok_or(AdapterError::SessionUnavailable)?;
-        let request = self.reserve(OutgoingRequest::turn_start_with_access_mode(
-            id,
-            &thread,
-            prompt,
-            client_message_id,
-            access_mode,
-            TurnPolicySurface::from_identity(
-                self.observed_build_characterisation,
-                &self.runtime_version,
-            ),
-            effort,
-        )?)?;
+        let request = match &prompt.action {
+            Some(action) => {
+                self.require_method(|methods| action.admitted_by(&methods.snapshot))?;
+                OutgoingRequest::session_action(id, &thread, action)?
+            }
+            None => OutgoingRequest::turn_start_with_access_mode(
+                id,
+                &thread,
+                prompt,
+                client_message_id,
+                access_mode,
+                TurnPolicySurface::from_identity(
+                    self.observed_build_characterisation,
+                    &self.runtime_version,
+                ),
+                effort,
+            )?,
+        };
+        let request = self.reserve(request)?;
         self.turn_start_correlations
             .register(id, client_message_id.clone());
         Ok(request)

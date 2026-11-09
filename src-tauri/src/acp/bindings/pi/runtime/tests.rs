@@ -5,8 +5,12 @@ mod config_delivery;
 mod extension_lifecycle;
 mod followups;
 mod pump_contract;
+mod questions;
 mod regressions;
+mod session_facts;
+mod sessions;
 mod slash_commands;
+mod steer;
 mod store_ingress;
 
 use super::*;
@@ -79,6 +83,11 @@ fn deliver(runtime: &mut PiRuntime, egress: AdapterEgress) -> Value {
     value
 }
 
+/// Pi's `get_state` answer naming the session it opened at launch.
+fn opened() -> Value {
+    json!({"sessionId":"pi-session-1","sessionFile":"/sessions/1_pi-session-1.jsonl"})
+}
+
 fn response(request: &Value, data: Value) -> Frame {
     frame(json!({
         "type":"response",
@@ -90,19 +99,20 @@ fn response(request: &Value, data: Value) -> Frame {
 }
 
 fn initialize(runtime: &mut PiRuntime) {
+    initialize_with(
+        runtime,
+        json!({"model":{"provider":"openai","id":"gpt","name":"GPT"},"thinkingLevel":"high"}),
+    );
+}
+
+fn initialize_with(runtime: &mut PiRuntime, state_data: Value) {
     let state = runtime
         .command(AdapterCommand::Initialize)
         .expect("initialize");
     assert_eq!(request(&state)["type"], "get_state");
     let state = deliver(runtime, state);
     let batch = runtime
-        .ingest(
-            &response(
-                &state,
-                json!({"model":{"provider":"openai","id":"gpt","name":"GPT"},"thinkingLevel":"high"}),
-            ),
-            &Mapper,
-        )
+        .ingest(&response(&state, state_data), &Mapper)
         .expect("state response");
     assert!(batch.events().is_empty());
     assert_eq!(batch.egress().len(), 1);
@@ -118,7 +128,7 @@ fn initialize(runtime: &mut PiRuntime) {
         .ingest(
             &response(
                 &models,
-                json!({"models":[{"provider":"openai","id":"gpt","name":"GPT"}]}),
+                json!({"models":[{"provider":"openai","id":"gpt","name":"GPT","contextWindow":200000}]}),
             ),
             &Mapper,
         )
@@ -163,7 +173,7 @@ fn ready_until_levels(runtime: &mut PiRuntime) -> Value {
         .expect("new session");
     let value = deliver(runtime, new_session);
     let batch = runtime
-        .ingest(&response(&value, Value::Null), &Mapper)
+        .ingest(&response(&value, opened()), &Mapper)
         .expect("session response");
     assert!(matches!(
         batch.events(),
@@ -201,7 +211,7 @@ fn advertised_pi_read_only_policy_emits_only_admitted_prompt() {
     // Without its bridge Pi is read-only, whatever this build's resources hold.
     let capabilities = crate::acp::bindings::access_policy::admitted_modes(
         "pi-rpc",
-        "0.83.0",
+        crate::acp::bindings::pi::PI_VERSION,
         true,
         Err(crate::acp::bindings::pi::bridge::install::Unavailable::Missing),
     );
@@ -978,15 +988,7 @@ fn exact_candidate_remains_launch_unavailable() {
     let binding = curated
         .validate_candidate(&candidate)
         .expect("research binding");
-    assert!(matches!(
-        PiRuntime::from_binding(
-            &binding,
-            [1; 32],
-            RuntimeEpoch::new(1).expect("epoch"),
-            SageAgentSessionId::parse("session-pi-launch").expect("session")
-        ),
-        Err(AdapterRuntimeError::LaunchUnavailable)
-    ));
+    assert!(binding.require_launch_admission().is_err());
 }
 
 #[test]
@@ -1064,9 +1066,9 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
     initialize(&mut runtime);
     let capabilities = runtime.capabilities().expect("capabilities");
     assert!(capabilities.new_session && capabilities.prompt && capabilities.cancel);
-    assert!(
-        !capabilities.resume_session && !capabilities.load_session && !capabilities.close_session
-    );
+    assert!(capabilities.resume_session);
+    assert!(!capabilities.load_session && !capabilities.close_session);
+    // Pi reported no session file, so there is nothing to reopen.
     for command in [
         AdapterCommand::ResumeSession {
             external_session_id: ExternalId::new("id", "pi-session").expect("id"),
@@ -1099,33 +1101,34 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
     assert!(!String::from_utf8_lossy(session.frame().payload()).contains("private"));
     let value = deliver(&mut runtime, session);
     runtime
-        .ingest(&response(&value, Value::Null), &Mapper)
+        .ingest(&response(&value, opened()), &Mapper)
         .expect("session");
     running(&mut runtime);
 
     let start = runtime
         .ingest(&frame(json!({"type":"message_start"})), &Mapper)
         .expect("text start");
-    let AdapterEvent::Item { id, .. } = &start.events()[0] else {
-        panic!("item")
+    assert!(matches!(start.events(), [AdapterEvent::Absorbed]));
+    let first = runtime
+        .ingest(
+            &frame(json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"hello"}})),
+            &Mapper,
+        )
+        .expect("delta");
+    let [
+        AdapterEvent::Item {
+            id,
+            payload: NormalizedPayload::Text { .. },
+            ..
+        },
+    ] = first.events()
+    else {
+        panic!("text item")
     };
     assert_eq!(
         id.turn_client_message_id.as_ref().expect("client").as_str(),
         "client-pi-1"
     );
-    assert!(matches!(
-        runtime
-            .ingest(
-                &frame(json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"hello"}})),
-                &Mapper
-            )
-            .expect("delta")
-            .events(),
-        [AdapterEvent::Item {
-            payload: NormalizedPayload::Text { .. },
-            ..
-        }]
-    ));
     let second = runtime
         .ingest(
             &frame(json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":" world"}})),
@@ -1186,7 +1189,13 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
     let terminal = runtime
         .ingest(&frame(json!({"type":"agent_settled"})), &Mapper)
         .expect("settled");
-    assert!(matches!(terminal.events(), [AdapterEvent::Turn { .. }]));
+    assert!(matches!(
+        terminal.events(),
+        [AdapterEvent::Turn {
+            state: crate::acp::lifecycle::TurnState::Cancelled,
+            ..
+        }]
+    ));
 }
 
 #[test]
@@ -1251,7 +1260,7 @@ fn allow_once_on_pi_rejects_an_ambiguous_select_option() {
         .ingest(
             &frame(json!({
                 "type":"extension_ui_request","id":"disallow-1","method":"select",
-                "options":["Disallow","Block"]
+                "title":"Allow tool?","options":["Disallow","Block"]
             })),
             &Mapper,
         )
@@ -1261,7 +1270,8 @@ fn allow_once_on_pi_rejects_an_ambiguous_select_option() {
             request_id: SageServerRequestId::parse("disallow-1").expect("request"),
             decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
         }),
-        Err(AdapterRuntimeError::LaterPermissionMiss)
+        // Without an allow option the select is a question: only an answer resolves it.
+        Err(AdapterRuntimeError::UnsupportedCommand)
     ));
 }
 

@@ -1,4 +1,12 @@
 use memchr::memmem::Finder;
+use regex::{Regex, RegexBuilder};
+
+use crate::error::{AppError, AppResult};
+
+/// Compiled-program and lazy-DFA caps for a regular-expression query. The
+/// regex crate matches in time linear in the text, so these bound memory.
+const REGEX_SIZE_LIMIT: usize = 1024 * 1024;
+const REGEX_DFA_SIZE_LIMIT: usize = 2 * 1024 * 1024;
 
 /// Characters outside ASCII whose lowercase form contains ASCII letters:
 /// LATIN CAPITAL LETTER I WITH DOT ABOVE (U+0130) folds to `i` plus a
@@ -21,6 +29,43 @@ pub(super) struct LiteralQuery {
     /// The query lowercased as a whole, which for ASCII is ASCII folding.
     folded: Finder<'static>,
     specials: [Finder<'static>; 2],
+    /// Set in regular-expression mode, where it decides every match.
+    pattern: Option<Regex>,
+}
+
+/// The search's query: the text as typed or, with `use_regex`, a regular
+/// expression. An invalid or oversized expression is refused here.
+pub(super) fn search_query(
+    text: &str,
+    case_sensitive: bool,
+    use_regex: bool,
+) -> AppResult<LiteralQuery> {
+    let mut query = LiteralQuery::new(text, case_sensitive);
+    if use_regex {
+        let pattern = RegexBuilder::new(text)
+            .case_insensitive(!case_sensitive)
+            .multi_line(true)
+            .size_limit(REGEX_SIZE_LIMIT)
+            .dfa_size_limit(REGEX_DFA_SIZE_LIMIT)
+            .build()
+            .map_err(|error| {
+                AppError::InvalidRequest(format!(
+                    "the regular expression is invalid: {}",
+                    first_line(&error.to_string())
+                ))
+            })?;
+        query.pattern = Some(pattern);
+    }
+    Ok(query)
+}
+
+fn first_line(message: &str) -> &str {
+    message
+        .lines()
+        .rev()
+        .find(|line| line.trim_start().starts_with("error:"))
+        .map(|line| line.trim_start().trim_start_matches("error:").trim())
+        .unwrap_or_else(|| message.lines().next().unwrap_or(message))
 }
 
 impl LiteralQuery {
@@ -31,7 +76,13 @@ impl LiteralQuery {
             exact: Finder::new(text).into_owned(),
             folded: Finder::new(&text.to_lowercase()).into_owned(),
             specials: ASCII_FOLDING_SPECIALS.map(|special| Finder::new(special).into_owned()),
+            pattern: None,
         }
+    }
+
+    /// The regular expression, in regular-expression mode.
+    pub(super) fn pattern(&self) -> Option<&Regex> {
+        self.pattern.as_ref()
     }
 
     /// Hands `visit` the byte range of each of the line's matches until it
@@ -51,7 +102,17 @@ impl LiteralQuery {
             }
             visit((start, end))
         };
-        if self.case_sensitive {
+        if let Some(pattern) = &self.pattern {
+            // An empty match replaces nothing and finds nothing.
+            for found in pattern.find_iter(line) {
+                if found.is_empty() {
+                    continue;
+                }
+                if !report((found.start(), found.end())) {
+                    return;
+                }
+            }
+        } else if self.case_sensitive {
             let mut offset = 0;
             while let Some(start) = self.exact.find(&line.as_bytes()[offset..]) {
                 let start = offset + start;
@@ -83,6 +144,9 @@ impl LiteralQuery {
     /// be passed over without splitting it into lines. True is only a maybe.
     pub(super) fn file_may_match(&self, content: &str) -> bool {
         let bytes = content.as_bytes();
+        if let Some(pattern) = &self.pattern {
+            return pattern.is_match(content);
+        }
         if self.case_sensitive {
             return self.exact.find(bytes).is_some();
         }

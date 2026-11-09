@@ -39,7 +39,10 @@ impl HarnessAdapter for CodexRuntime {
         self.configure_effort(intent).map(|()| None)
     }
     fn provisional_turn_pending(&self) -> bool {
-        self.inner.has_provisional_turn()
+        self.inner.has_provisional_turn() || self.inner.has_action_handoff()
+    }
+    fn defer_cancel(&mut self) -> bool {
+        self.inner.defer_cancel()
     }
     fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         if self.inner.goal_supported() {
@@ -67,6 +70,20 @@ impl HarnessAdapter for CodexRuntime {
         self.inner.goal_mutation_pending()
             || self.inner.child_read_pending()
             || self.inner.fork_rpc_pending()
+            || self.inner.rate_limits_read_pending()
+    }
+
+    fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
+        Some(std::sync::Arc::clone(&self.usage))
+    }
+
+    fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.native_rpc_reply = None;
+        self.request(CodexAdapter::rate_limits_read)
+    }
+
+    fn abandon_usage_read(&mut self) {
+        self.inner.abandon_rate_limits_read();
     }
 
     /// A child read or a fork may answer with an oversize frame (both carry
@@ -316,7 +333,10 @@ impl HarnessAdapter for CodexRuntime {
                 resolution,
                 EgressResolution::QueueRejected | EgressResolution::WriteZeroBytes
             ) {
-                let clear = self.inner.pending_kind(request_id) == Some(RequestKind::TurnStart);
+                let clear = self
+                    .inner
+                    .pending_kind(request_id)
+                    .is_some_and(RequestKind::starts_turn);
                 self.inner
                     .reject_before_write(request_id)
                     .map_err(map_adapter)?;

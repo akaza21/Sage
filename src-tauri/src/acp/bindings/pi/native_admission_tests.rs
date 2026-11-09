@@ -2,10 +2,10 @@ use super::*;
 
 #[test]
 fn the_curated_version_range_spans_the_minimum_to_the_pinned_minor() {
-    for admitted in ["0.74.0", "0.74.2", "0.80.1", "0.83.0", "0.83.9"] {
+    for admitted in ["1.5.0", "1.5.9"] {
         assert!(version_admitted(admitted), "{admitted}");
     }
-    for refused in ["0.73.9", "0.84.0", "1.0.0", "0.74", "garbage"] {
+    for refused in ["0.83.0", "1.4.9", "1.6.0", "2.0.0", "1.5", "garbage"] {
         assert!(!version_admitted(refused), "{refused}");
     }
 }
@@ -23,13 +23,10 @@ fn launch_is_read_only_by_construction() {
         &PI_READ_ONLY_ARGS[..4],
         ["--mode", "rpc", "--tools", "read"]
     );
-    for disabled in [
-        "--no-extensions",
-        "--no-skills",
-        "--no-prompt-templates",
-        "--no-session",
-    ] {
-        assert!(PI_READ_ONLY_ARGS.contains(&disabled));
+    assert!(PI_READ_ONLY_ARGS.contains(&"--no-extensions"));
+    // Templates, skills and saved sessions load as in Pi's own CLI.
+    for loaded in ["--no-skills", "--no-prompt-templates", "--no-session"] {
+        assert!(!PI_READ_ONLY_ARGS.contains(&loaded), "{loaded}");
     }
     assert!(
         !PI_READ_ONLY_ARGS
@@ -50,14 +47,11 @@ fn bridge_launch_registers_its_tools_without_enabling_builtin_writers() {
     // the bridge's write, edit and bash unregistered.
     assert!(!args.iter().any(|arg| arg == "--tools"));
     assert!(args.iter().any(|arg| arg == "--no-builtin-tools"));
-    for disabled in [
-        "--no-extensions",
-        "--no-skills",
-        "--no-prompt-templates",
-        "--no-themes",
-        "--no-session",
-    ] {
+    for disabled in ["--no-extensions", "--no-themes"] {
         assert!(args.iter().any(|arg| arg == disabled), "{disabled}");
+    }
+    for loaded in ["--no-skills", "--no-prompt-templates", "--no-session"] {
+        assert!(!args.iter().any(|arg| arg == loaded), "{loaded}");
     }
     assert_eq!(
         &args[args.len() - 2..],
@@ -89,10 +83,10 @@ fn discovered(version: &str) -> (PiLaunchDiscovery, PathBuf) {
 
 #[test]
 fn an_installed_pi_in_range_is_admitted_and_drift_revokes_it() {
-    let (discovery, root) = discovered("0.74.2");
+    let (discovery, root) = discovered("1.5.2");
     let registration = PiBindingRegistration::from_discovery_for_test(discovery);
     let binding = registration.refresh().expect("in-range Pi is admitted");
-    assert_eq!(binding.harness_version(), "0.74.2");
+    assert_eq!(binding.harness_version(), "1.5.2");
     assert_eq!(
         binding.characterisation(),
         HarnessCharacterisation::Uncharacterised
@@ -109,7 +103,7 @@ fn an_installed_pi_in_range_is_admitted_and_drift_revokes_it() {
 
 #[test]
 fn an_out_of_range_pi_is_unavailable_with_a_reason() {
-    let (discovery, root) = discovered("0.90.0");
+    let (discovery, root) = discovered("1.6.0");
     let registration = PiBindingRegistration::from_discovery_for_test(discovery);
     assert_eq!(
         registration.unavailable(),
@@ -120,7 +114,7 @@ fn an_out_of_range_pi_is_unavailable_with_a_reason() {
 
 #[test]
 fn installation_admission_does_not_invent_session_model_or_config_counts() {
-    let (discovery, root) = discovered("0.74.2");
+    let (discovery, root) = discovered("1.5.2");
     let registry = crate::acp::bindings::registry::BindingRegistry::default();
     registry.pi_admission().apply_discovery(discovery);
     let record = registry.resolve(PI_BINDING_ID).unwrap();
