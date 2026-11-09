@@ -227,6 +227,7 @@ fn approving_a_plan_leaves_plan_mode_for_the_mode_the_user_picked() {
     for (decision, mode) in [
         (PermissionDecision::AllowOnce, "default"),
         (PermissionDecision::AllowAlways, "acceptEdits"),
+        (PermissionDecision::Deny, "plan"),
     ] {
         let mut runtime = ready();
         send(
@@ -265,11 +266,13 @@ fn approving_a_plan_leaves_plan_mode_for_the_mode_the_user_picked() {
             })
             .unwrap();
         let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
-        assert_eq!(
-            sdk["response"]["response"],
+        let expected = if mode == "plan" {
+            json!({"behavior":"deny","message":"The user chose to keep planning.","interrupt":true})
+        } else {
             json!({"behavior":"allow","updatedInput":input,
                 "updatedPermissions":[{"type":"setMode","mode":mode,"destination":"session"}]})
-        );
+        };
+        assert_eq!(sdk["response"]["response"], expected);
     }
 }
 

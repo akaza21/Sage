@@ -32,6 +32,7 @@ const EXIT_PLAN: [(&str, &str, &str, &str); 2] = [
     ),
 ];
 const DECLINED: &str = "The user declined this tool use.";
+const KEEP_PLANNING: &str = "The user chose to keep planning.";
 const TOO_MANY: &str = "Too many approvals are already waiting for the user.";
 const NO_TURN: &str = "The user's turn has ended, so no one can approve this now.";
 /// Questions beyond what a Sage card shows; declining with this reason makes
@@ -121,6 +122,7 @@ impl SdkBridge {
                 input,
                 suggestions,
                 questions,
+                plan_exit: name == "ExitPlanMode",
             },
         );
         inbound.acp.push(json!({
@@ -196,6 +198,11 @@ impl SdkBridge {
                 }),
                 None => deny(DECLINED),
             },
+            // Declining a plan stops the turn so the user can say what to
+            // change, rather than Claude guessing and asking again.
+            None if permission.plan_exit => json!({
+                "behavior": "deny", "message": KEEP_PLANNING, "interrupt": true,
+            }),
             None => deny(DECLINED),
         };
         self.answering.insert(permission.request_id.clone());
