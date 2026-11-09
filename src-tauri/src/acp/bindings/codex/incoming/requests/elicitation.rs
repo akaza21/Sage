@@ -9,7 +9,7 @@ use crate::acp::{bindings::standard_acp::elicitation::refused, intent::user_inpu
 
 use super::super::{
     IncomingEvent, IngressDisposition, IngressError, record_unprojected,
-    support::{identity, request_id_text, text},
+    support::{request_id_text, text},
 };
 use super::{CodexAdapter, PendingServerRequest, project_server_request, reply};
 
@@ -22,9 +22,14 @@ pub(super) fn request(
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
     let id = object.get("id").ok_or(IngressError::Malformed)?;
-    adapter
+    // A subagent's MCP server asks on its own thread, which has no card here;
+    // that is a refusal for that server, not a broken session.
+    if adapter
         .expect_thread(text(params, "threadId", 512)?)
-        .map_err(identity)?;
+        .is_err()
+    {
+        return answer_now(id, refused(false));
+    }
     let server = text(params, "serverName", 512)?;
     // The turn is Codex's correlation, not part of the request: without a
     // running Turn to hold the card nothing can ask, so it is cancelled.
