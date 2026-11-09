@@ -25,6 +25,10 @@ pub(crate) trait RuntimeFactory {
 }
 
 pub(crate) trait LaunchableRuntime: HarnessAdapter + Send {
+    /// Learns which session the launch opens, before `launch_spec`. A harness
+    /// that names its session on the command line needs it; one that opens
+    /// sessions over its protocol ignores it.
+    fn bind_activation(&mut self, _mode: &crate::acp::runtime::ActivationMode) {}
     fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError>;
 }
 
@@ -45,11 +49,15 @@ pub(crate) struct NativeRuntime(
         crate::acp::scheduler::RuntimeOwner,
         std::sync::Arc<crate::acp::slash_commands::CommandChannel>,
     )>,
+    Option<(
+        crate::acp::scheduler::RuntimeOwner,
+        std::sync::Arc<crate::acp::usage::UsageChannel>,
+    )>,
 );
 
 impl NativeRuntime {
     pub(crate) fn new(runtime: impl LaunchableRuntime + 'static) -> Self {
-        Self(Box::new(runtime), None, None, None)
+        Self(Box::new(runtime), None, None, None, None)
     }
 
     pub(crate) fn attach_commands(
@@ -58,6 +66,18 @@ impl NativeRuntime {
         channel: std::sync::Arc<crate::acp::slash_commands::CommandChannel>,
     ) {
         self.3 = Some((owner, channel));
+    }
+    /// Lends the binding's usage cell to the lane once; a binding without
+    /// one leaves the lane empty, which reads as unsupported.
+    pub(crate) fn attach_usage(
+        &mut self,
+        owner: crate::acp::scheduler::RuntimeOwner,
+        channel: std::sync::Arc<crate::acp::usage::UsageChannel>,
+    ) {
+        if let Some(cell) = self.0.usage() {
+            channel.attach(owner.clone(), cell);
+            self.4 = Some((owner, channel));
+        }
     }
     pub(crate) fn attach_config(
         &mut self,
@@ -73,6 +93,10 @@ impl NativeRuntime {
         channel: std::sync::Arc<crate::acp::goal::GoalChannel>,
     ) {
         self.2 = Some((owner, channel));
+    }
+
+    pub(crate) fn bind_activation(&mut self, mode: &crate::acp::runtime::ActivationMode) {
+        self.0.bind_activation(mode);
     }
 
     pub(crate) fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {
@@ -154,8 +178,20 @@ impl HarnessAdapter for NativeRuntime {
     fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
         self.0.accept_oversized_response(id)
     }
+    fn skips_oversize_frames(&self) -> bool {
+        self.0.skips_oversize_frames()
+    }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.0.take_native_rpc_reply()
+    }
+    fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
+        self.0.usage()
+    }
+    fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.0.read_usage()
+    }
+    fn abandon_usage_read(&mut self) {
+        self.0.abandon_usage_read()
     }
     fn mutate_goal(
         &mut self,
@@ -198,8 +234,15 @@ impl HarnessAdapter for NativeRuntime {
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
         if let AdapterCommand::Prompt { prompt, .. } | AdapterCommand::Steer { prompt, .. } =
             &command
-            && !prompt.resources.0.is_empty()
-            && !self.capabilities().is_some_and(|c| c.prompt_resources)
+            && ((!prompt.resources.0.is_empty()
+                && !self.capabilities().is_some_and(|c| c.prompt_resources))
+                || (!prompt.images.is_empty()
+                    && !self.capabilities().is_some_and(|c| c.prompt_images)))
+        {
+            return Err(AdapterRuntimeError::UnsupportedCommand);
+        }
+        if let AdapterCommand::Prompt { prompt, .. } = &command
+            && !prompt.action_admitted(self.capabilities().as_ref())
         {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }
@@ -278,6 +321,9 @@ impl NativeRuntime {
 impl Drop for NativeRuntime {
     fn drop(&mut self) {
         if let Some((owner, channel)) = &self.3 {
+            channel.clear(owner);
+        }
+        if let Some((owner, channel)) = &self.4 {
             channel.clear(owner);
         }
     }

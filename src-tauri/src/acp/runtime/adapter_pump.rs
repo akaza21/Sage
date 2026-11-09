@@ -23,6 +23,7 @@ use crate::acp::{
 };
 
 mod activity;
+mod auto_resolution;
 mod batch_journal;
 mod cancel;
 mod coalescer;
@@ -139,6 +140,8 @@ pub(crate) trait EgressTransport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum QueueDisposition {
     Queued,
+    /// The adapter holds the frame until its Turn is named.
+    Deferred,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -168,6 +171,8 @@ pub(crate) struct AdapterPump<A, J, R> {
     teardown: bool,
     projection_recovery_required: bool,
     pending_permissions: Vec<PendingPermission>,
+    /// Recent requests the harness withdrew before the user answered.
+    withdrawn_permissions: std::collections::VecDeque<SageServerRequestId>,
     pending_steer_request: Option<u64>,
     steer_response: Option<bool>,
 }
@@ -185,7 +190,11 @@ struct StdoutPreambleWindow {
 struct PendingPermission {
     intent: PermissionIntent,
     written: bool,
-    decision: Option<crate::acp::runtime::permissions::PermissionDecision>,
+    /// The terminal state this request settles in once its reply is
+    /// written; `None` until the user (or auto-resolution) decides.
+    settles_as: Option<ServerRequestState>,
+    /// When a question request resolves itself without answers.
+    auto_resolve_at_millis: Option<i64>,
 }
 
 pub(crate) struct AdapterPumpAdmission {
@@ -246,6 +255,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             teardown: false,
             projection_recovery_required: false,
             pending_permissions: admission.pending_permissions,
+            withdrawn_permissions: std::collections::VecDeque::new(),
             pending_steer_request: None,
             steer_response: None,
         }

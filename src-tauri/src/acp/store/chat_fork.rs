@@ -13,7 +13,8 @@ use crate::acp::{
 use super::{
     StoreError,
     facts::{append_fact_payload, next_projection_revision},
-    sessions::{ensure_one, ensure_session_capacity, increment_session_usage, update_chat},
+    session_head::{HeadSession, install_head_session},
+    sessions::{ensure_one, ensure_session_capacity, update_chat},
 };
 
 const FORK_CAPABILITY: &str = "nativeSessionFork";
@@ -178,38 +179,27 @@ pub(crate) fn install_fork(
     let project = source.project_id.as_str();
     let child = child_chat_id.as_str();
     let projection = next_projection_revision(transaction, project, child)?;
-    let session_id = SageAgentSessionId::new();
-    transaction.execute(
-        "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,
-           harness_version,model_id,external_session_id,capabilities_json,state,residency,
-           legacy,revision,projection_revision,created_at,updated_at,terminal_at)
-         VALUES(?1,?2,?3,0,?4,?5,?6,?7,?8,?9,'ready','cold',0,0,?10,?11,?11,NULL)",
-        params![
-            session_id.as_str(),
+    let session_id = install_head_session(
+        transaction,
+        HeadSession {
             project,
-            child,
-            binding_id,
-            binding_digest,
-            harness_version,
-            model_id,
-            external_session_id.as_str(),
-            capabilities,
-            projection.get() as i64,
-            now_millis
-        ],
+            chat: child,
+            ordinal: 0,
+            binding_id: &binding_id,
+            binding_digest: &binding_digest,
+            harness_version: harness_version.as_deref(),
+            model_id: model_id.as_deref(),
+            external_session_id: Some(external_session_id.as_str()),
+            resumes_session_id: None,
+            capabilities_json: &capabilities,
+            state: "ready",
+        },
+        projection,
+        now_millis,
     )?;
-    transaction.execute(
-        "INSERT INTO acp_session_usage(project_id,chat_id,session_id,turn_count,item_count,
-           item_bytes,fact_count,fact_bytes,payload_bytes,revision)
-         VALUES(?1,?2,?3,0,0,0,0,0,0,0)",
-        params![project, child, session_id.as_str()],
-    )?;
-    increment_session_usage(transaction, project)?;
-    transaction.execute(
-        "INSERT INTO chat_session_heads(project_id,chat_id,session_id,installed_revision,installed_at)
-         VALUES(?1,?2,?3,?4,?5)",
-        params![project, child, session_id.as_str(), projection.get() as i64, now_millis],
-    )?;
+    // The fork continues the parent's session, so it keeps the parent's
+    // confirmed config choices.
+    crate::acp::session_config::choices::copy(transaction, &source.session_id, &session_id)?;
     let payload = serde_json::json!({
         "kind": "sessionForked",
         "entityId": session_id.as_str(),

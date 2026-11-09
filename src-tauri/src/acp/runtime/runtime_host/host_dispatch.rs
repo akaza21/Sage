@@ -96,6 +96,10 @@ impl RuntimeHost {
             _ => return Err(HostError::RecoveryRequired),
         }
         if Instant::now() >= deadline {
+            // The actor refuses these unsent past their deadline too.
+            if actor_settles_deadline && !steer {
+                return Err(HostError::NotDispatched);
+            }
             self.fail_deadline();
             return Err(HostError::Deadline);
         }

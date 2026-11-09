@@ -9,15 +9,23 @@ export type {
   SafeResourceLocation,
   ToolPresentation,
   TurnProjection,
+  TurnSessionActivity,
 } from "./acpProjection";
 import type { AcpChatPage } from "./acpProjection";
+import type { AcpSessionAction } from "./acpSessionAction";
 import type { AttachedContext } from "./attachedContext";
+export type { AcpReviewTarget, AcpSessionAction } from "./acpSessionAction";
 
 export type {
+  AnswerUserInputRequest,
+  AnswerUserInputResponse,
   PermissionDecision,
   PermissionState,
   ResolvePermissionDecisionRequest,
   ResolvePermissionDecisionResponse,
+  UserInputAnswer,
+  UserInputQuestion,
+  UserInputRequest,
 } from "./acpPermission";
 
 type Brand<Value, Name extends string> = Value & {
@@ -55,6 +63,18 @@ export interface SetAcpSessionConfigOptionRequest extends AcpSessionMutationInte
   expectedConfigRevision: string;
   configId: string;
   value: AcpConfigValue;
+}
+/**
+ * A choice for a session with no live runtime: stored, shown as restored,
+ * and applied before the session's next prompt.
+ */
+export interface QueueAcpSessionConfigChoiceRequest {
+  projectId: SageProjectId;
+  projectGeneration: ProjectGeneration;
+  chatId: SageChatId;
+  expectedProjectionRevision: ProjectionRevision;
+  sessionId: SageAgentSessionId;
+  choice: { modeId: string } | { configId: string; value: AcpConfigValue };
 }
 export type EntityRevision = Brand<string, "EntityRevision">;
 
@@ -142,8 +162,14 @@ export interface AcpCapabilitySet {
   prompt: boolean;
   /** Absent in older sessions; native admission treats absence as unsupported. */
   promptResources?: boolean;
+  /** Standard ACP `promptCapabilities.image`; absent means unsupported. */
+  promptImages?: boolean;
   cancel: boolean;
   nativeSessionFork: boolean;
+  /** Absent unless the harness negotiated it. */
+  nativeSessionCompact?: boolean;
+  /** Absent unless the harness negotiated it. */
+  nativeReview?: boolean;
   activeTurnSteer: boolean;
   childConversationProjection: boolean;
   childTranscriptRead: boolean;
@@ -172,13 +198,16 @@ export interface CodexDiscoveryModel {
   isDefault: boolean;
 }
 
+export type CodexAccount =
+  "managedChatgpt" | "apiKey" | "providerManaged" | "signedOut";
+
 export interface CodexDiscoveryResponse {
   projectId: SageProjectId;
   projectGeneration: ProjectGeneration;
   rootId: string;
   bindingId: CuratedBindingId;
   runtimeEpoch: RuntimeEpoch;
-  account: "managedChatgpt" | "providerManaged" | "signedOut";
+  account: CodexAccount;
   models: readonly CodexDiscoveryModel[];
   defaultModelId: CuratedModelId | null;
 }
@@ -207,6 +236,10 @@ export interface AcpMutationIntent {
 export interface AcpSessionMutationIntent extends AcpMutationIntent {
   sessionId: SageAgentSessionId;
   runtimeEpoch: RuntimeEpoch;
+}
+
+export interface RunAcpSessionActionRequest extends AcpSessionMutationIntent {
+  action: AcpSessionAction;
 }
 
 export interface StartAcpSessionRequest extends AcpMutationIntent {

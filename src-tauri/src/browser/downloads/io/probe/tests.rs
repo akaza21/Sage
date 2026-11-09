@@ -96,7 +96,6 @@ async fn distinct_case_directories_do_not_share_a_pending_probe() {
 #[cfg(any(unix, windows))]
 #[tokio::test]
 async fn non_unicode_paths_do_not_share_a_pending_probe() {
-    let folder = scratch();
     #[cfg(windows)]
     let names = {
         use std::os::windows::ffi::OsStringExt;
@@ -107,15 +106,11 @@ async fn non_unicode_paths_do_not_share_a_pending_probe() {
         use std::os::unix::ffi::OsStringExt;
         [0xfe, 0xff].map(|byte| std::ffi::OsString::from_vec(vec![byte]))
     };
-    let [first, second] = names.map(|name| folder.join(name));
-    std::fs::create_dir(&first).unwrap();
-    std::fs::create_dir(&second).unwrap();
-    independent_probes(
-        std::fs::canonicalize(first).unwrap(),
-        std::fs::canonicalize(second).unwrap(),
-    )
-    .await;
-    std::fs::remove_dir_all(folder).unwrap();
+    // Lanes are keyed by the supplied OS spelling without touching the
+    // filesystem, so the folders need not exist. macOS volumes cannot hold
+    // them: APFS rejects names that are not UTF-8.
+    let [first, second] = names.map(|name| std::env::temp_dir().join(name));
+    independent_probes(first, second).await;
 }
 
 #[tokio::test]

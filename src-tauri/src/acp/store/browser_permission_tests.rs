@@ -25,6 +25,7 @@ fn browser_local_permission_is_durable_and_projects_as_the_existing_card() {
     connection.execute("INSERT INTO session_runtime_epochs VALUES('project-one','chat-one',?1,1,'running',NULL,1,NULL,NULL)",[started.session_id.as_str()]).unwrap();
     connection.execute("INSERT INTO turns VALUES('turn-browser','project-one','chat-one',?1,1,0,'turn-intent','running','completeBytes',0,1,1,NULL)",[started.session_id.as_str()]).unwrap();
     let body = serde_json::to_string(&NormalizedPayload::PermissionRequest {
+        user_input: None,
         category: ToolCategory::Mcp,
         summary: SafeText::new("summary", "Browser snapshotPage on https://example.com").unwrap(),
         offered_option_kinds: None,

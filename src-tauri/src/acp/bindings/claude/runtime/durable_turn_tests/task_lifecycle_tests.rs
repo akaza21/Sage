@@ -55,7 +55,7 @@ fn claude_task_metadata_and_tool_lifecycle_survive_pump_and_reopen_without_child
             Mapper, Arc::new(ProjectionMailbox::default()), intent).unwrap();
         pump.queue_prompt(Prompt::new("prompt", "Review accessibility.").unwrap(),
             &RequiredText::new("clientMessageId", "turn-one").unwrap(),
-            crate::settings_store::SessionAccessMode::ReadOnly).unwrap();
+            crate::settings_store::SessionAccessMode::Ask).unwrap();
         let mut sink = Sink::default();
         pump.flush_one(&mut sink).unwrap();
         let request = sink.last_request_id.unwrap();

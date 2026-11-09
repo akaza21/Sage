@@ -175,12 +175,30 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
         expected.pragma_update(None, "user_version", 22)?;
     }
     if version >= 23 {
-        expected.execute_batch(super::super::title_source::V23)?;
+        expected.execute_batch(super::super::config_choices::V23)?;
         expected.execute(
             "INSERT INTO schema_migrations(version, applied_at) VALUES (23, 0)",
             [],
         )?;
         expected.pragma_update(None, "user_version", 23)?;
+    }
+    let resume_link = super::super::session_resume_link::VERSION;
+    if version >= resume_link {
+        expected.execute_batch(super::super::session_resume_link::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [resume_link],
+        )?;
+        expected.pragma_update(None, "user_version", resume_link)?;
+    }
+    let title_source = super::super::title_source::VERSION;
+    if version >= title_source {
+        expected.execute_batch(super::super::title_source::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [title_source],
+        )?;
+        expected.pragma_update(None, "user_version", title_source)?;
     }
     Ok(expected)
 }

@@ -62,7 +62,7 @@ test("AP-A1/A2: resize, resource collapse, and a new Chat never add an unsolicit
   await expect(panes).toHaveCount(1);
   await expect(panes.first()).toHaveAttribute("data-chat-id", "ap-a-chat-1");
   await expect(
-    panes.getByRole("textbox", { name: "Message agent" }),
+    panes.getByRole("combobox", { name: "Message agent" }),
   ).toBeVisible();
   await expect(panes.getByRole("alert")).toHaveCount(0);
   await page.setViewportSize({ width: 1888, height: 1000 });

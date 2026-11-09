@@ -357,7 +357,7 @@ button.agent-task-header__resource-row:hover {
 .archived-chat-row {
   display: grid;
   min-height: 28px;
-  grid-template-columns: auto minmax(0, 1fr) 26px;
+  grid-template-columns: auto minmax(0, 1fr) repeat(2, 26px);
   align-items: center;
   gap: var(--space-2);
   padding-left: 28px;
@@ -392,4 +392,42 @@ button.agent-task-header__resource-row:hover {
 .archived-chat-row button:disabled {
   cursor: default;
   opacity: 0.4;
+}
+
+/* A refused archive, restore or delete, under the row it was started from. */
+.chat-row-error {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px;
+  align-items: start;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.archived-chat-row > .chat-row-error {
+  grid-column: 2 / -1;
+}
+
+.project-chat-row + .chat-row-error {
+  padding: 0 var(--space-2) var(--space-1) 28px;
+}
+
+.chat-row-error button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.chat-row-error button:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }

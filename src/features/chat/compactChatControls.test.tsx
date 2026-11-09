@@ -87,7 +87,7 @@ describe("Compact chat controls", () => {
     );
     const trigger = screen.getByRole("button", { name: "Access options" });
     expect(trigger).toHaveAccessibleDescription(
-      "Read workspace files; no writes or network. Applies from your next message with this harness.",
+      "Read workspace files; no writes or network. Applies to this chat from your next message.",
     );
     expect(trigger.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     fireEvent.click(trigger);

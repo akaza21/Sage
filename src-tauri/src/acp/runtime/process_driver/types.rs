@@ -85,6 +85,8 @@ pub(crate) struct DriverProgress {
     pub(crate) cancelled_permission_frames: usize,
     pub(crate) zero_byte_failures: usize,
     pub(crate) rejected_controls: usize,
+    /// The adapter holds the cancel until the harness names the Turn.
+    pub(crate) cancel_deferred: bool,
 }
 
 pub(crate) trait DriverClock: Send + Sync {

@@ -26,7 +26,7 @@ for (const width of [480, 1280]) {
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(
       surface.y + surface.height,
     );
-    const input = page.getByRole("textbox", { name: "Message agent" });
+    const input = page.getByRole("combobox", { name: "Message agent" });
     await input.fill("Review these edits");
     for (const control of [
       input,

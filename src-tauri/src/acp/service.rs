@@ -50,7 +50,7 @@ mod debug;
 mod intent_snapshot;
 mod live_lanes;
 mod live_routes;
-pub(crate) use live_lanes::LIVE_RUNTIME_LANES;
+pub(crate) use live_lanes::{ChatRuntimeRelease, LIVE_RUNTIME_LANES, explicit_close_deadline};
 mod permission;
 // Only the Pi bridge fixture replay drives decisions through the service from outside it.
 #[cfg(all(test, feature = "acp-fixture"))]
@@ -80,8 +80,10 @@ mod renderer_recreation_packet;
 pub(crate) mod runtime_identity;
 mod runtime_slot;
 mod session_config;
+pub(crate) use session_config::QueueError;
 mod session_error;
 mod slash_commands;
+mod usage;
 pub(crate) use session_error::{CodexSessionError, SessionDispatchError};
 mod shutdown;
 
@@ -96,8 +98,9 @@ use codex_discovery::CodexDiscoveryManager;
 pub(crate) use codex_launch_failure::CodexLaunchSetupError;
 use configuration::ServiceConfiguration;
 use intent_snapshot::load_intent_snapshot;
-use renderer_recreation::RendererRecreationNativeSnapshot;
+pub(crate) use renderer_recreation::RendererRecreationUsage;
 pub(crate) use renderer_recreation_orchestrator::RendererRecreationReloadLifecycle;
+
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 use runtime_identity::CodexRuntimeIdentityLedger;
 use runtime_slot::RuntimeSlot;
@@ -162,6 +165,13 @@ pub(crate) struct AcpService {
     codex_runtime_identity: Arc<CodexRuntimeIdentityLedger>,
     #[cfg(test)]
     codex_runtime_release_fail_once: AtomicBool,
+    /// Chat releases refused because another holder had the lane.
+    #[cfg(test)]
+    lane_busy_refusals: std::sync::atomic::AtomicUsize,
+    /// When set, the next lane-busy refusal lets go of the lane's claim, as
+    /// the holder finishing would.
+    #[cfg(test)]
+    yield_lane_on_busy: AtomicBool,
     #[cfg(test)]
     codex_runtime_release_fail_always: AtomicBool,
     #[cfg(all(windows, feature = "acp-fixture"))]
@@ -367,9 +377,27 @@ impl AcpService {
         chat_id: SageChatId,
         cursor: Option<PageCursor>,
     ) -> Result<AcpChatPage, StoreError> {
-        let mut page = load_chat_page(&self.database.connection(), project_id, chat_id, cursor)?;
+        let mut page = load_chat_page(
+            &self.database.connection(),
+            project_id.clone(),
+            chat_id.clone(),
+            cursor.clone(),
+        )?;
         self.compose_session_config(&mut page)?;
+        // History yields room for the session config that does not fit.
+        if let Some(reserve) = session_config::config_reserve(&mut page)? {
+            page = crate::acp::store::load_chat_page_reserving(
+                &self.database.connection(),
+                project_id,
+                chat_id,
+                cursor,
+                reserve,
+            )?;
+            self.compose_session_config(&mut page)?;
+        }
+        self.fit_session_config_to_page_budget(&mut page)?;
         self.compose_goal(&mut page);
+        self.compose_usage(&mut page);
         self.fit_goal_to_page_budget(&mut page)?;
         Ok(page)
     }
@@ -387,23 +415,6 @@ impl AcpService {
         if let Some(notifier) = &self.notifier {
             let _ = notifier.acknowledge_authoritative_bootstrap();
         }
-    }
-
-    pub(crate) fn renderer_recreation_native_snapshot(
-        &self,
-        project_id: &SageProjectId,
-        chat_id: &SageChatId,
-    ) -> Result<RendererRecreationNativeSnapshot, StoreError> {
-        let (live_trees, live_descendants) =
-            crate::acp::process::TreeCapacityPool::global().observation_usage();
-        RendererRecreationNativeSnapshot::capture(
-            &self.database.connection(),
-            project_id,
-            chat_id,
-            u8::try_from(self.live_runtime_count()).unwrap_or(u8::MAX),
-            live_trees,
-            live_descendants,
-        )
     }
 
     #[cfg(test)]

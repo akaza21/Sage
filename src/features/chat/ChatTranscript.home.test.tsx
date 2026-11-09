@@ -7,7 +7,8 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
+import { preloadSearchablePicker } from "../../ui/searchablePickerLoad";
 import { readFile } from "node:fs/promises";
 
 import type { AcpChatPage } from "../../domain/acp";
@@ -21,6 +22,9 @@ import { useAcpProjectionStore } from "../../app/acpProjectionStore";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { page } from "./acp/acpProjection.fixture";
 import { ChatTranscript } from "./ChatTranscript";
+
+// The picker list loads when the window first idles.
+beforeAll(() => preloadSearchablePicker());
 
 const initialState = useWorkbenchStore.getState();
 afterEach(() => {

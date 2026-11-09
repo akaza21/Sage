@@ -247,8 +247,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     # A cold-cache run builds and runs the parallel test phase in about 20
     # minutes on ubuntu-latest, before Clippy, the serial phases and the
-    # release check.
-    timeout-minutes: 60
+    # release check. The macOS runner is the slowest lane: its parallel phase
+    # alone takes 30 to 43 minutes, and its serial phases about 6 more.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:

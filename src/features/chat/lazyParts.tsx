@@ -13,6 +13,8 @@ import {
 } from "react";
 import type * as ChatNavigationChunk from "./ChatNavigation";
 import type * as PermissionPromptChunk from "./acp/PermissionPrompt";
+import type * as UserInputChunk from "./acp/UserInputPrompt";
+import type * as SessionNoticeChunk from "./acp/SessionNoticeStrip";
 import type * as TranscriptChunk from "./TranscriptInteractions";
 import type * as ChatSearchChunk from "../chatSearch/ChatSearchControl";
 import type * as ForkChunk from "./ForkChat";
@@ -76,6 +78,14 @@ export const NavigationPart = lazyParts<typeof ChatNavigationChunk>(
 );
 export const ApprovalPart = lazyParts<typeof PermissionPromptChunk>(
   () => import("./acp/PermissionPrompt"),
+);
+/** Most requests are approvals, so the question card loads on its first use. */
+export const QuestionPart = lazyParts<typeof UserInputChunk>(
+  () => import("./acp/UserInputPrompt"),
+);
+/** Harness notices are rare, so the strip loads with the first one. */
+export const NoticePart = lazyParts<typeof SessionNoticeChunk>(
+  () => import("./acp/SessionNoticeStrip"),
 );
 export const ChatSearchPart = lazyParts<typeof ChatSearchChunk>(
   () => import("../chatSearch/ChatSearchControl"),

@@ -187,13 +187,14 @@ mod tests {
     fn a_windows_version_requires_nonempty_numeric_components() {
         let client = APP_SERVER_CLIENT_IDENTITY;
         for version in ["10..0", "...", ".10.0", "10.0."] {
+            let pinned = crate::acp::bindings::codex::manifest::PINNED_CODEX_VERSION;
             let user_agent = format!(
-                "Codex Desktop/0.146.0 (Windows {version}; x86_64) dumb ({}; {})",
+                "Codex Desktop/{pinned} (Windows {version}; x86_64) dumb ({}; {})",
                 client.name, client.version
             );
             assert!(!valid_user_agent(
                 &user_agent,
-                "codex 0.146.0",
+                &format!("codex {pinned}"),
                 InitializeIdentity::Observed,
             ));
         }

@@ -69,6 +69,7 @@ struct Adapter {
     cancel_count: Arc<AtomicUsize>,
     final_stdout: Option<AdapterIdentity>,
     config_pending: bool,
+    usage_read_pending: bool,
 }
 
 struct ConfigThenLateAdapter {
@@ -172,6 +173,22 @@ impl HarnessAdapter for Adapter {
 
     fn config_pending(&self) -> bool {
         self.config_pending
+    }
+
+    fn native_rpc_pending(&self) -> bool {
+        self.usage_read_pending
+    }
+
+    fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.usage_read_pending = true;
+        Ok(AdapterEgress::new(
+            OutboundFrame::new(b"{}".to_vec()).unwrap(),
+            EgressToken::request(2),
+        ))
+    }
+
+    fn abandon_usage_read(&mut self) {
+        self.usage_read_pending = false;
     }
 
     fn configure(
@@ -389,6 +406,7 @@ enum CloseBeforeWriteCase {
     IdleReaderEofThenProcessExitDeadline,
     IdleReaderEofDeadline,
     IdlePendingConfigReaderEofDeadline,
+    IdleExpiredUsageRead,
     PreparedReaderEofDispatch,
     PreparedEarlyStdout,
     PreparedEarlyFailedStdout,
@@ -417,6 +435,7 @@ impl CloseBeforeWriteCase {
                 | Self::IdleReaderEofThenProcessExitDeadline
                 | Self::IdleReaderEofDeadline
                 | Self::IdlePendingConfigReaderEofDeadline
+                | Self::IdleExpiredUsageRead
         )
     }
 
@@ -432,6 +451,7 @@ impl CloseBeforeWriteCase {
             | Self::IdleReaderEofThenProcessExitDeadline
             | Self::IdleReaderEofDeadline
             | Self::IdlePendingConfigReaderEofDeadline
+            | Self::IdleExpiredUsageRead
             | Self::PreparedReaderEofDispatch
             | Self::PreparedEarlyStdout
             | Self::PreparedEarlyFailedStdout
@@ -985,6 +1005,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
                         cancel_count: Arc::clone(&cancel_count),
                         final_stdout: None,
                         config_pending: false,
+                        usage_read_pending: false,
                     },
                     activation_journal,
                     Mapper,
@@ -1170,11 +1191,11 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             state = FirstTurnWorkerState::Active(active)
                 .handle(&context, envelope)
                 .await;
+            // The caller measures its own elapsed time; this wait only guards
+            // against a hang, so scheduling on a loaded machine cannot fail it.
             let (dispatch, elapsed) = caller_result_receiver
-                .recv_timeout(Duration::from_millis(
-                    crate::acp::limits::LIMITS.deadlines_ms.cancel_dispatch,
-                ))
-                .expect("cancel result before dispatch deadline");
+                .recv_timeout(crate::test_wait::BUDGET)
+                .expect("cancel dispatch returned");
             caller.wait();
             assert_eq!(dispatch, Ok(()));
             assert!(elapsed <= Duration::from_millis(deadline_ms));
@@ -1213,10 +1234,8 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             wait_for_queued_control(mailbox.as_ref());
             let queued = mailbox.submit_worker(WorkerCommand::Shutdown).unwrap();
             let (timeout_result, timeout_elapsed) = timeout_result_receiver
-                .recv_timeout(Duration::from_millis(
-                    crate::acp::limits::LIMITS.deadlines_ms.cancel_dispatch,
-                ))
-                .expect("deadline result before cancel dispatch deadline");
+                .recv_timeout(crate::test_wait::BUDGET)
+                .expect("timed-out cancel dispatch returned");
             timeout.wait();
             assert_eq!(timeout_result, Err(HostError::Deadline));
             assert!(timeout_elapsed < Duration::from_secs(1));
@@ -1294,6 +1313,7 @@ async fn first_turn_retry_cancel_and_close_recovery_scenario(whole_test_deadline
                 cancel_count: Arc::clone(&cancel_count),
                 final_stdout: None,
                 config_pending: false,
+                usage_read_pending: false,
             },
             activation_journal,
             Mapper,
@@ -2025,6 +2045,11 @@ fn idle_pending_config_reader_eof_fails_at_its_deadline() {
 }
 
 #[test]
+fn an_expired_usage_read_is_abandoned_and_admits_the_next_read() {
+    close_before_first_write(CloseBeforeWriteCase::IdleExpiredUsageRead);
+}
+
+#[test]
 fn prepared_reader_eof_blocks_a_queued_prompt_dispatch_without_writing() {
     close_before_first_write(CloseBeforeWriteCase::PreparedReaderEofDispatch);
 }
@@ -2246,6 +2271,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                             turn_client_message_id: None,
                         }),
                     config_pending: false,
+                    usage_read_pending: false,
                 },
                 activation_journal,
                 Mapper,
@@ -2482,6 +2508,60 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                 Ok(Ok(WorkerReply::Unit))
             ));
             assert!(matches!(state, FirstTurnWorkerState::Closed));
+            drop(context);
+            drop(sessions);
+            drop(scheduler);
+            drop(journal);
+            journal_task.finish();
+            drop(database);
+            return;
+        }
+        if case == CloseBeforeWriteCase::IdleExpiredUsageRead {
+            let host = std::thread::spawn({
+                let mailbox = Arc::clone(&mailbox);
+                let owner = owner.clone();
+                move || {
+                    let read = |deadline: Duration| {
+                        let (sender, completion) = mpsc::sync_channel(1);
+                        let response = mailbox
+                            .submit_worker_until(
+                                WorkerCommand::NativeRpc {
+                                    intent: crate::acp::goal::NativeRpcIntent {
+                                        owner: owner.clone(),
+                                        request: crate::acp::goal::NativeRpcRequest::UsageRead,
+                                    },
+                                    completion: crate::acp::runtime::NativeRpcCompletionSink::new(
+                                        move |result| drop(sender.send(result)),
+                                    ),
+                                },
+                                Instant::now() + deadline,
+                            )
+                            .unwrap();
+                        (response, completion)
+                    };
+                    let (first, expired) = read(Duration::from_millis(250));
+                    assert!(matches!(
+                        first.recv_timeout(tree_termination_deadline()),
+                        Ok(Ok(WorkerReply::Unit))
+                    ));
+                    assert_eq!(
+                        expired.recv_timeout(tree_termination_deadline()),
+                        Ok(Err(HostError::Deadline))
+                    );
+                    let (second, _pending) = read(tree_termination_deadline());
+                    let admitted = second.recv_timeout(tree_termination_deadline());
+                    drop(mailbox.submit_worker(WorkerCommand::Shutdown).unwrap());
+                    admitted
+                }
+            });
+            let (_, reason) = tokio::time::timeout(
+                tree_termination_deadline(),
+                super::live_runner::drive_for_test(state, &context),
+            )
+            .await
+            .expect("idle runner settles the expired read before shutdown");
+            assert!(matches!(host.join().unwrap(), Ok(Ok(WorkerReply::Unit))));
+            assert_eq!(reason, TreeExit::ParentShutdown);
             drop(context);
             drop(sessions);
             drop(scheduler);
@@ -3361,6 +3441,7 @@ fn activation_idle_available_commands_update_does_not_reject_the_session() {
                     cancel_count: Arc::new(AtomicUsize::new(0)),
                     final_stdout: None,
                     config_pending: false,
+                    usage_read_pending: false,
                 },
                 activation_journal,
                 Mapper,
@@ -3463,6 +3544,8 @@ fn capabilities() -> CapabilitySnapshotV1 {
         prompt: true,
         cancel: true,
         native_session_fork: false,
+        native_session_compact: false,
+        native_review: false,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,
@@ -3470,6 +3553,7 @@ fn capabilities() -> CapabilitySnapshotV1 {
         multi_root_extension_schema_id: None,
         model_count: 0,
         prompt_resources: false,
+        prompt_images: false,
         config_count: 0,
     }
 }

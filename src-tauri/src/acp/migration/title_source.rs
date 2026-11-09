@@ -1,23 +1,26 @@
 use super::*;
 
-pub(super) const V23: &str = include_str!("../../../migrations/023_chat_title_source.sql");
+/// The schema version that records each chat title's source. The migration's
+/// file name carries the same number; nothing else names it.
+pub(super) const VERSION: u32 = 25;
+pub(super) const SQL: &str = include_str!("../../../migrations/025_chat_title_source.sql");
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentV23 => return Ok(()),
-        SchemaClass::CurrentV22 => {}
-        _ => return invalid("chat title sources require exact schema v22"),
+        SchemaClass::CurrentTitleSource => return Ok(()),
+        SchemaClass::CurrentResumeLink => {}
+        _ => return invalid("chat title sources require the exact session resume link schema"),
     }
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V23)?;
+    transaction.execute_batch(SQL)?;
     transaction.execute(
-        "INSERT INTO schema_migrations(version,applied_at) VALUES (23,?1)",
-        [now_millis()],
+        "INSERT INTO schema_migrations(version,applied_at) VALUES (?1,?2)",
+        rusqlite::params![VERSION, now_millis()],
     )?;
-    transaction.pragma_update(None, "user_version", 23)?;
+    transaction.pragma_update(None, "user_version", VERSION)?;
     transaction.commit()?;
-    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV23 {
-        return invalid("database did not reach exact schema v23");
+    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentTitleSource {
+        return invalid("database did not reach the exact chat title source schema");
     }
     Ok(())
 }
@@ -26,13 +29,15 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
 mod tests {
     use super::*;
 
-    fn v22_with_chats() -> Connection {
+    fn resume_link_with_chats() -> Connection {
         let mut connection = Connection::open_in_memory().unwrap();
         schema_upgrade::build_fresh_v18(&mut connection).unwrap();
         workspace_changes::apply(&mut connection).unwrap();
         title_provenance::apply(&mut connection).unwrap();
         session_scope::apply(&mut connection).unwrap();
         notifications::apply(&mut connection).unwrap();
+        config_choices::apply(&mut connection).unwrap();
+        session_resume_link::apply(&mut connection).unwrap();
         connection
             .execute_batch(
                 "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Project',1,1,1);
@@ -56,7 +61,7 @@ mod tests {
 
     #[test]
     fn upgrade_keeps_every_existing_title_and_only_frees_placeholders() {
-        let mut connection = v22_with_chats();
+        let mut connection = resume_link_with_chats();
         apply(&mut connection).unwrap();
         assert_eq!(source(&connection, "placeholder"), "default");
         assert_eq!(source(&connection, "named"), "user");
@@ -76,12 +81,18 @@ mod tests {
     }
 
     #[test]
-    fn upgrade_is_exact_idempotent_and_requires_v22() {
-        let mut connection = v22_with_chats();
+    fn upgrade_is_exact_idempotent_and_requires_the_resume_link_schema() {
+        let mut connection = resume_link_with_chats();
         apply(&mut connection).unwrap();
         assert_eq!(
             fingerprint::classify_connection(&connection).unwrap(),
-            SchemaClass::CurrentV23
+            SchemaClass::CurrentTitleSource
+        );
+        assert_eq!(
+            connection
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))
+                .unwrap(),
+            VERSION
         );
         let first = fingerprint::database_fingerprint(&connection).unwrap();
         apply(&mut connection).unwrap();
@@ -95,5 +106,14 @@ mod tests {
         workspace_changes::apply(&mut v20).unwrap();
         title_provenance::apply(&mut v20).unwrap();
         assert!(apply(&mut v20).is_err());
+
+        let mut v23 = Connection::open_in_memory().unwrap();
+        schema_upgrade::build_fresh_v18(&mut v23).unwrap();
+        workspace_changes::apply(&mut v23).unwrap();
+        title_provenance::apply(&mut v23).unwrap();
+        session_scope::apply(&mut v23).unwrap();
+        notifications::apply(&mut v23).unwrap();
+        config_choices::apply(&mut v23).unwrap();
+        assert!(apply(&mut v23).is_err());
     }
 }

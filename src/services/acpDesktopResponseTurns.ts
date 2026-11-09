@@ -2,7 +2,9 @@ import type {
   AcpItem,
   HarnessActivityProjection,
   TurnProjection,
+  TurnSessionActivity,
 } from "../domain/acp";
+import { SESSION_ACTIVITIES_MAX } from "../domain/acpProjection";
 import type { BrowserOperationProjection } from "../domain/browserOperation";
 import {
   isOneOf,
@@ -17,6 +19,35 @@ import {
 } from "./acpDesktopGuards";
 import { safeItem } from "./acpDesktopResponseItems";
 import { validateAttachedContexts } from "../domain/attachedContext";
+import { decodeSessionAction } from "../domain/acpSessionAction";
+
+/** Native caps: kind 64, label 256 and progress 512 bytes, none empty. */
+function safeSessionActivity(value: unknown): TurnSessionActivity | null {
+  if (!isRecord(value)) return null;
+  const kind = safeText(value.kind, 64);
+  const label = safeText(value.label, 256);
+  const progress =
+    value.progress === undefined ? undefined : safeText(value.progress, 512);
+  if (
+    !kind ||
+    !label ||
+    progress === null ||
+    progress === "" ||
+    !isOneOf(value.state, [
+      "running",
+      "completed",
+      "failed",
+      "cancelled",
+    ] as const)
+  )
+    return null;
+  return {
+    kind,
+    label,
+    state: value.state,
+    ...(progress === undefined ? {} : { progress }),
+  };
+}
 
 function safeBrowserOperation(
   value: unknown,
@@ -233,6 +264,10 @@ export function safeTurn(value: unknown): TurnProjection | null {
   } catch {
     return null;
   }
+  const sessionAction =
+    value.sessionAction === undefined
+      ? undefined
+      : decodeSessionAction(value.sessionAction);
   const sessionId = safeIdentifier(value.sessionId);
   const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
   const revision = safeCounter(value.revision, true);
@@ -280,13 +315,26 @@ export function safeTurn(value: unknown): TurnProjection | null {
   const browserOperationsCollapsed = safeOrdinal(
     value.browserOperationsCollapsed ?? 0,
   );
+  // Absent or an array; null is malformed.
+  const rawSessionActivities =
+    value.sessionActivities === undefined ? [] : value.sessionActivities;
+  if (
+    !Array.isArray(rawSessionActivities) ||
+    rawSessionActivities.length > SESSION_ACTIVITIES_MAX
+  )
+    return null;
+  const sessionActivities = rawSessionActivities.map(safeSessionActivity);
   return items.some((item) => !item) ||
     activities.some((activity) => !activity) ||
     browserOperations.some((operation) => !operation) ||
+    sessionActivities.some((activity) => !activity) ||
     browserOperationsCollapsed === null
     ? null
     : {
         ...(attachedContext.length ? { attachedContext } : {}),
+        ...(sessionAction === null
+          ? { unrecognizedAction: true }
+          : sessionAction && { sessionAction }),
         id: id as TurnProjection["id"],
         sessionId: sessionId as TurnProjection["sessionId"],
         runtimeEpoch: runtimeEpoch as TurnProjection["runtimeEpoch"],
@@ -302,5 +350,8 @@ export function safeTurn(value: unknown): TurnProjection | null {
         activities: activities as HarnessActivityProjection[],
         browserOperations: browserOperations as BrowserOperationProjection[],
         browserOperationsCollapsed,
+        ...(sessionActivities.length
+          ? { sessionActivities: sessionActivities as TurnSessionActivity[] }
+          : {}),
       };
 }

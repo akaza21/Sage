@@ -194,6 +194,13 @@ pub(crate) async fn browser_open_external(
     open_external(url.as_str())
 }
 
+/// Opens a link an agent asked the user to open (a sign-in), in the system
+/// browser, after the same admission as a browser tab's URL.
+pub(crate) fn open_external_link(url: &str) -> Result<(), String> {
+    let url = admit_url(url).map_err(str::to_owned)?;
+    open_external(url.as_str())
+}
+
 #[tauri::command]
 pub(crate) async fn browser_find(
     state: State<'_, BrowserState>,

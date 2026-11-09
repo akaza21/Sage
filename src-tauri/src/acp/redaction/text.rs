@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::acp::contract::ContractError;
 
 #[path = "command.rs"]
@@ -60,6 +62,63 @@ pub(crate) fn redact(
             Ok(bounded)
         }
     }
+}
+
+/// Clips display text to `max` bytes at a character boundary, ending a clipped
+/// value with an ellipsis.
+pub(crate) fn clip_display(value: &str, max: usize) -> String {
+    const CLIPPED: &str = "\u{2026}";
+    if value.len() <= max {
+        return value.to_owned();
+    }
+    let mut end = max.saturating_sub(CLIPPED.len());
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{CLIPPED}", &value[..end])
+}
+
+/// Replaces control characters (other than tab and line breaks) with a
+/// space and, when `strip_format` is set, drops bidi, zero-width and other
+/// invisible format characters, so harness text cannot reorder or hide
+/// what the user sees.
+pub(crate) fn neutralized(input: &str, strip_format: bool) -> Cow<'_, str> {
+    if !input.chars().any(|character| {
+        (strip_format && is_stripped_format(character)) || is_neutralized_control(character)
+    }) {
+        return Cow::Borrowed(input);
+    }
+    let mut output = String::with_capacity(input.len());
+    for character in input.chars() {
+        if strip_format && is_stripped_format(character) {
+            continue;
+        }
+        output.push(if is_neutralized_control(character) {
+            ' '
+        } else {
+            character
+        });
+    }
+    Cow::Owned(output)
+}
+
+fn is_neutralized_control(character: char) -> bool {
+    matches!(character, '\u{1}'..='\u{1f}' | '\u{7f}'..='\u{9f}')
+        && !matches!(character, '\t' | '\n' | '\r')
+}
+
+fn is_stripped_format(character: char) -> bool {
+    matches!(
+        character,
+        '\u{ad}'
+            | '\u{61c}'
+            | '\u{180e}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{2069}'
+            | '\u{feff}'
+    )
 }
 
 #[cfg(test)]

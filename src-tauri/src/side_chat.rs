@@ -66,6 +66,7 @@ fn finish_close(
     database
         .remove_side_chat(project_id, chat_id)
         .map_err(|error| error.to_string())?;
+    crate::settings_store::forget_removed_chat_access(database, settings);
     if dont_ask_again {
         settings
             .set_confirm_close_side_chat(false)
@@ -338,6 +339,52 @@ mod tests {
         database.connection().execute_batch(&restore).unwrap();
         finish_close(&database, &settings, &project, &side, true).unwrap();
         assert!(!settings.confirm_close_side_chat().unwrap());
+        drop((database, settings));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn closing_a_side_chat_drops_its_sessions_access_grants() {
+        use crate::settings_store::SessionAccessMode::FullAccess;
+        let root = std::env::temp_dir().join(format!("sage-side-grant-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let database = crate::persistence::Database::open(&root.join("sage.db")).unwrap();
+        let settings = crate::settings_store::SettingsStore::in_memory().unwrap();
+        let project = database.create_project_from_root(&root).unwrap().id;
+        let parent = database
+            .bootstrap_snapshot()
+            .unwrap()
+            .active_tab_id
+            .unwrap();
+        let side = {
+            let mut connection = database.connection();
+            let transaction = connection.transaction().unwrap();
+            let id =
+                crate::chat_lifecycle::insert_new_chat(&transaction, &project, true, Some(&parent))
+                    .unwrap();
+            transaction.commit().unwrap();
+            id
+        };
+        for (session, chat) in [("side-session", &side), ("parent-session", &parent)] {
+            database.connection().execute(
+                "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,
+                 capabilities_json,state,residency,legacy,revision,projection_revision,created_at,updated_at)
+                 VALUES(?1,?2,?3,0,'claude-agent-acp',?4,'{}','active','hot',0,0,0,1,1)",
+                rusqlite::params![session, project, chat, "a".repeat(64)],
+            ).unwrap();
+            let token = settings
+                .prepare_chat_access(session, FullAccess, 1)
+                .unwrap();
+            settings
+                .grant_chat_access(session, FullAccess, &token, 2)
+                .unwrap();
+        }
+        finish_close(&database, &settings, &project, &side, false).unwrap();
+        assert_eq!(settings.chat_access("side-session").unwrap(), None);
+        assert_eq!(
+            settings.chat_access("parent-session").unwrap(),
+            Some(FullAccess)
+        );
         drop((database, settings));
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -81,7 +81,7 @@ fn pi_0742_unknown_discovery_command_fixture_omits_the_id() {
 fn pi_replay_correlates_string_ids_and_handles_config_before_events() {
     let mut state = WireState::new();
     let mut output = Vec::new();
-    let mut input = Cursor::new(b"{\"type\":\"get_state\",\"id\":\"pi-7-1\"}\n{\"type\":\"get_available_models\",\"id\":\"pi-7-2\"}\n{\"type\":\"new_session\",\"id\":\"pi-7-3\"}\n{\"type\":\"prompt\",\"id\":\"pi-7-4\",\"message\":\"Inspect\"}\n{\"type\":\"get_state\",\"id\":\"pi-7-5\"}\n{\"type\":\"get_available_thinking_levels\",\"id\":\"pi-7-6\"}\n");
+    let mut input = Cursor::new(b"{\"type\":\"get_state\",\"id\":\"pi-7-1\"}\n{\"type\":\"get_available_models\",\"id\":\"pi-7-2\"}\n{\"type\":\"get_state\",\"id\":\"pi-7-3\"}\n{\"type\":\"prompt\",\"id\":\"pi-7-4\",\"message\":\"Inspect\"}\n{\"type\":\"get_state\",\"id\":\"pi-7-5\"}\n{\"type\":\"get_available_thinking_levels\",\"id\":\"pi-7-6\"}\n");
     for kind in [
         "piInitialize",
         "piModels",

@@ -63,6 +63,11 @@ pub struct SessionActivity {
     pub label: RequiredText<SESSION_ACTIVITY_LABEL_BYTES>,
     pub state: SessionActivityState,
     pub progress: Option<RequiredText<SESSION_ACTIVITY_PROGRESS_BYTES>>,
+    /// The harness names the Turn before the batch's own (a hook that
+    /// settles after its Turn ended), so the store records the row there.
+    /// Routing only: the session surface never stores it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub in_previous_turn: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -242,6 +247,10 @@ impl SessionSurface {
     }
 
     fn upsert_activity(&mut self, activity: &SessionActivity) -> bool {
+        let activity = &SessionActivity {
+            in_previous_turn: false,
+            ..activity.clone()
+        };
         if let Some(existing) = self.activities.iter_mut().find(|row| row.id == activity.id) {
             if existing == activity {
                 return false;

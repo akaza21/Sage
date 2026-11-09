@@ -409,15 +409,17 @@ it("pins and moves a chat that belongs to another project folder", async () => {
   expect(renameChat).toHaveBeenCalledWith("chat:a", "Research", "project-a");
   await openChatActions("Extra");
   fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
-  expect(archiveChat).toHaveBeenCalledWith("chat:extra", "project-a");
+  expect(archiveChat).toHaveBeenCalledWith("chat:extra", "project-a", "row");
 });
 
-it("labels the archived count separately and preserves disclosure semantics", () => {
+it("labels the archived count separately and preserves disclosure semantics", async () => {
   useWorkbenchStore.setState({
     archivedChats: [{ id: "chat:old", title: "Research" }],
   });
   render(<ProjectChatNavigation projectId="project-a" chats={[]} selected />);
-  const disclosure = screen.getByRole("button", { name: /^Archived chats:/ });
+  const disclosure = await screen.findByRole("button", {
+    name: /^Archived chats:/,
+  });
   expect(disclosure).toHaveTextContent("Archived 1");
   expect(disclosure).toHaveAttribute("aria-expanded", "false");
   fireEvent.click(disclosure);
@@ -427,7 +429,7 @@ it("labels the archived count separately and preserves disclosure semantics", ()
   ).toHaveAttribute("id", disclosure.getAttribute("aria-controls"));
 });
 
-it("restores an archived chat that belongs to another project folder", () => {
+it("restores an archived chat that belongs to another project folder", async () => {
   const restoreChat = vi.fn(async () => true);
   useWorkbenchStore.setState({
     project: { id: "project-sage", name: "Sage", roots: [] },
@@ -450,9 +452,11 @@ it("restores an archived chat that belongs to another project folder", () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /^Archived chats:/ }),
+  );
   fireEvent.click(screen.getByRole("button", { name: "Restore chat Extra" }));
-  expect(restoreChat).toHaveBeenCalledWith("chat:extra", "project-a");
+  expect(restoreChat).toHaveBeenCalledWith("chat:extra", "project-a", "row");
   expect(
     screen.queryByRole("button", { name: "Restore chat Local old" }),
   ).toBeNull();

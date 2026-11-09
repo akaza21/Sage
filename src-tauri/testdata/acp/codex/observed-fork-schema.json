@@ -1,0 +1,74 @@
+{
+  "codexRuntimeVersion": "0.167.0",
+  "entrypointSha256": "cdcb45aaa01d0f14e298985e09465aebccd47f64ecd298aea44814af7b62bbda",
+  "command": "codex app-server generate-json-schema --out <temporary-directory>",
+  "generatorTarget": "x86_64-unknown-linux-musl",
+  "schemaFiles": {
+    "ClientRequest.json": "94074a415950787a25e09ae3b4d9de312cc264eb0f021633dfca921d300cd42a",
+    "v2/ThreadForkParams.json": "60540b97d453ddbc5e12bfaa007a3718f31847d18dec0da59a5e4b89be4717ad",
+    "v2/ThreadForkResponse.json": "0683787777b74c158f6c9044f1eea805426c16022cea6fcdef60438ce5954bcf"
+  },
+  "method": "thread/fork",
+  "clientRequestDeclaresMethod": true,
+  "params": {
+    "required": ["threadId"],
+    "properties": [
+      "approvalPolicy",
+      "approvalsReviewer",
+      "baseInstructions",
+      "config",
+      "cwd",
+      "developerInstructions",
+      "ephemeral",
+      "excludeTurns",
+      "lastTurnId",
+      "model",
+      "modelProvider",
+      "sandbox",
+      "serviceTier",
+      "threadId",
+      "threadSource"
+    ],
+    "lastTurnId": {
+      "description": "Optional last turn id to fork through, inclusive.\n\nWhen specified, turns after `last_turn_id` are omitted from the fork. The referenced turn cannot be in progress.",
+      "type": ["string", "null"]
+    }
+  },
+  "response": {
+    "required": [
+      "approvalPolicy",
+      "approvalsReviewer",
+      "cwd",
+      "model",
+      "modelProvider",
+      "sandbox",
+      "thread"
+    ],
+    "thread": {
+      "required": [
+        "cliVersion",
+        "createdAt",
+        "cwd",
+        "ephemeral",
+        "id",
+        "modelProvider",
+        "preview",
+        "projectId",
+        "sessionId",
+        "source",
+        "status",
+        "turns",
+        "updatedAt"
+      ],
+      "id": {
+        "description": "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
+        "type": "string"
+      },
+      "forkedFromId": {
+        "description": "Source thread id when this thread was created by forking another thread.",
+        "type": ["string", "null"]
+      },
+      "turnsDescription": "Only populated on `thread/resume`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list."
+    }
+  }
+}

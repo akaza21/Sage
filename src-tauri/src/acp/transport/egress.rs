@@ -15,11 +15,16 @@ pub(crate) enum QueueError {
     SequenceCapacity,
 }
 
+/// FIFO entries with an optional reserve: one large item (a prompt frame)
+/// that has its own byte allowance beside `byte_limit`, so ordinary items can
+/// never crowd it out and it never crowds them out.
 pub(crate) struct BoundedQueue<T> {
-    entries: VecDeque<(T, usize)>,
+    entries: VecDeque<(T, usize, bool)>,
     count_limit: usize,
     byte_limit: usize,
     retained_bytes: usize,
+    reserve_limit: usize,
+    reserved_bytes: usize,
 }
 
 impl<T> BoundedQueue<T> {
@@ -29,7 +34,13 @@ impl<T> BoundedQueue<T> {
             count_limit,
             byte_limit,
             retained_bytes: 0,
+            reserve_limit: 0,
+            reserved_bytes: 0,
         }
+    }
+
+    fn reserved_count(&self) -> usize {
+        usize::from(self.reserved_bytes > 0)
     }
 
     pub(crate) fn try_push_with(
@@ -37,35 +48,64 @@ impl<T> BoundedQueue<T> {
         bytes: usize,
         build: impl FnOnce() -> T,
     ) -> Result<(), QueueError> {
-        if self.entries.len() >= self.count_limit {
+        if self.entries.len() - self.reserved_count() >= self.count_limit {
             return Err(QueueError::CountCapacity);
         }
-        let next_bytes = self
-            .retained_bytes
+        let next_bytes = (self.retained_bytes - self.reserved_bytes)
             .checked_add(bytes)
             .ok_or(QueueError::ByteCapacity)?;
         if next_bytes > self.byte_limit {
             return Err(QueueError::ByteCapacity);
         }
+        self.push(bytes, false, build)
+    }
+
+    /// Queues the one reserved item, in FIFO order with ordinary items.
+    pub(crate) fn try_push_reserved_with(
+        &mut self,
+        bytes: usize,
+        build: impl FnOnce() -> T,
+    ) -> Result<(), QueueError> {
+        if self.reserved_bytes > 0 || bytes == 0 {
+            return Err(QueueError::CountCapacity);
+        }
+        if bytes > self.reserve_limit {
+            return Err(QueueError::ByteCapacity);
+        }
+        self.push(bytes, true, build)
+    }
+
+    fn push(
+        &mut self,
+        bytes: usize,
+        reserved: bool,
+        build: impl FnOnce() -> T,
+    ) -> Result<(), QueueError> {
         // Reserve storage before constructing the retained item. `reserve_exact`
         // prevents an eager allocation proportional to the configured limit.
         self.entries
             .try_reserve_exact(1)
             .map_err(|_| QueueError::ByteCapacity)?;
         let item = build();
-        self.entries.push_back((item, bytes));
-        self.retained_bytes = next_bytes;
+        self.entries.push_back((item, bytes, reserved));
+        self.retained_bytes += bytes;
+        if reserved {
+            self.reserved_bytes = bytes;
+        }
         Ok(())
     }
 
     pub(crate) fn pop(&mut self) -> Option<T> {
-        let (item, bytes) = self.entries.pop_front()?;
+        let (item, bytes, reserved) = self.entries.pop_front()?;
         self.retained_bytes -= bytes;
+        if reserved {
+            self.reserved_bytes = 0;
+        }
         Some(item)
     }
 
     fn front(&self) -> Option<&T> {
-        self.entries.front().map(|(item, _)| item)
+        self.entries.front().map(|(item, _, _)| item)
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -129,6 +169,22 @@ impl<T> ReservedQueue<T> {
         build: impl FnOnce() -> T,
     ) -> Result<(), QueueError> {
         self.data.try_push_with(bytes, build)
+    }
+
+    /// Adds a reserve for one prompt frame beside the data lane.
+    pub(crate) fn with_prompt_reserve(mut self, bytes: usize) -> Self {
+        self.data.reserve_limit = bytes;
+        self
+    }
+
+    /// A prompt frame queues in data order but against its own reserve, so
+    /// queued data never refuses it and it never refuses queued data.
+    pub(crate) fn try_push_prompt_with(
+        &mut self,
+        bytes: usize,
+        build: impl FnOnce() -> T,
+    ) -> Result<(), QueueError> {
+        self.data.try_push_reserved_with(bytes, build)
     }
 
     pub(crate) fn try_push_control_with(
@@ -222,7 +278,7 @@ impl<T> ReservedQueue<T> {
     }
 
     pub(crate) fn all_items_match(&self, mut predicate: impl FnMut(&T) -> bool) -> bool {
-        self.data.entries.iter().all(|(item, _)| predicate(item))
+        self.data.entries.iter().all(|(item, _, _)| predicate(item))
             && self.control.iter().all(|entry| predicate(&entry.item))
     }
 

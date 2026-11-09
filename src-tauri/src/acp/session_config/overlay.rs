@@ -91,6 +91,16 @@ struct Entry {
     live: bool,
     overlay: Option<SessionConfigOverlay>,
     tombstone: Option<SessionConfigOverlay>,
+    /// Stored choices have not been reapplied to this runtime yet.
+    restore_pending: bool,
+    /// The runtime started a new harness session rather than resuming one.
+    new_session: bool,
+    /// The restore has started, so what the harness reports is a choice.
+    restoring: bool,
+    /// Stored choices the restore has not reached yet. What the harness
+    /// reports for them is not recorded, so a value it resets on its own
+    /// (an effort a model change resets) does not replace the stored one.
+    held: Vec<ConfigMutation>,
 }
 #[derive(Default)]
 struct State {
@@ -98,10 +108,16 @@ struct State {
     pending: Option<SessionConfigChangedV1>,
 }
 pub(crate) type NoticeSink = Arc<dyn Fn(SessionConfigChangedV1) + Send + Sync>;
+/// Stores the values a session reported itself once its runtime is restored.
+pub(crate) type ChoiceRecorder = Arc<dyn Fn(&RuntimeOwner, &[ConfigMutation]) + Send + Sync>;
+/// Keeps what a live session reports, shown while it has no runtime.
+pub(crate) type SnapshotRecorder = Arc<dyn Fn(&RuntimeOwner, &SessionConfig) + Send + Sync>;
 #[derive(Default)]
 pub(crate) struct ConfigChannel {
     state: Arc<Mutex<State>>,
     sink: Mutex<Option<NoticeSink>>,
+    recorder: Mutex<Option<ChoiceRecorder>>,
+    snapshot: Mutex<Option<SnapshotRecorder>>,
     notice_scheduled: Arc<std::sync::atomic::AtomicBool>,
 }
 impl ConfigChannel {
@@ -111,6 +127,28 @@ impl ConfigChannel {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(sink);
     }
+    pub(crate) fn set_recorder(&self, recorder: ChoiceRecorder) {
+        *self
+            .recorder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(recorder);
+    }
+    pub(crate) fn set_snapshot_recorder(&self, recorder: SnapshotRecorder) {
+        *self
+            .snapshot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(recorder);
+    }
+    fn keep_snapshot(&self, owner: &RuntimeOwner, config: Option<SessionConfig>) {
+        let recorder = self
+            .snapshot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Some((recorder, config)) = recorder.zip(config) {
+            recorder(owner, &config);
+        }
+    }
     pub(crate) fn reserve(&self, owner: RuntimeOwner) {
         let mut state = self.lock();
         state.entry = Some(Entry {
@@ -118,19 +156,26 @@ impl ConfigChannel {
             live: false,
             overlay: None,
             tombstone: None,
+            restore_pending: true,
+            new_session: false,
+            restoring: false,
+            held: Vec::new(),
         });
         state.pending = None;
     }
     pub(crate) fn publish(&self, owner: &RuntimeOwner) {
         let mut state = self.lock();
+        let mut snapshot = None;
         if let Some(entry) = &mut state.entry
             && &entry.owner == owner
         {
             entry.live = true;
+            snapshot = entry.overlay.as_ref().map(|overlay| overlay.config.clone());
         }
         Self::queue_notice(&mut state);
         drop(state);
         self.flush_notice();
+        self.keep_snapshot(owner, snapshot);
     }
     pub(crate) fn update(&self, owner: &RuntimeOwner, config: SessionConfig) -> Result<(), String> {
         config.validate()?;
@@ -154,6 +199,22 @@ impl ConfigChannel {
             .map_or(Ok(ConfigRevision::first()), |old| {
                 old.config_revision.next()
             })?;
+        // Once restored, what the harness reports itself (a mode it switched
+        // to, an effort a model change reset) is the session's choice too,
+        // except for a stored choice the restore has yet to reapply.
+        let mut reported = entry
+            .overlay
+            .as_ref()
+            .filter(|_| entry.live && entry.restoring)
+            .map(|old| super::reported::changes(&old.config, &config))
+            .unwrap_or_default();
+        let snapshot = entry.live.then(|| config.clone());
+        reported.retain(|value| {
+            !entry
+                .held
+                .iter()
+                .any(|held| super::reported::same_target(held, value))
+        });
         entry.overlay = Some(SessionConfigOverlay {
             sage_agent_session_id: owner.session_id.clone(),
             runtime_epoch: owner.runtime_epoch,
@@ -165,7 +226,50 @@ impl ConfigChannel {
         Self::queue_notice(&mut state);
         drop(state);
         self.flush_notice();
+        self.record(owner, &reported);
+        self.keep_snapshot(owner, snapshot);
         Ok(())
+    }
+    fn record(&self, owner: &RuntimeOwner, choices: &[ConfigMutation]) {
+        if choices.is_empty() {
+            return;
+        }
+        let recorder = self
+            .recorder
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Some(recorder) = recorder {
+            recorder(owner, choices);
+        }
+    }
+    /// Marks the reserved runtime as one that started a new harness session.
+    pub(crate) fn mark_new_session(&self, owner: &RuntimeOwner) {
+        if let Some(entry) = self.lock().entry.as_mut().filter(|e| &e.owner == owner) {
+            entry.new_session = true;
+        }
+    }
+    /// The restore has reached `choice`: what the harness reports for it is
+    /// recorded again.
+    pub(crate) fn release(&self, owner: &RuntimeOwner, choice: &ConfigMutation) {
+        if let Some(entry) = self.lock().entry.as_mut().filter(|e| &e.owner == owner) {
+            entry
+                .held
+                .retain(|held| !super::reported::same_target(held, choice));
+        }
+    }
+    /// Makes a partly restored runtime finish its restore before its next
+    /// prompt. The choices it has not reached stay held, and so do `hold`
+    /// (choices stored since it began), so a report does not replace them.
+    pub(crate) fn rearm_restore(&self, owner: &RuntimeOwner, hold: &[ConfigMutation]) {
+        if let Some(entry) = self.lock().entry.as_mut().filter(|e| &e.owner == owner) {
+            entry.restore_pending = true;
+            for choice in hold {
+                let same = |held: &ConfigMutation| super::reported::same_target(held, choice);
+                entry.held.retain(|held| !same(held));
+                entry.held.push(choice.clone());
+            }
+        }
     }
     pub(crate) fn snapshot(&self, owner: &RuntimeOwner) -> Option<SessionConfigOverlay> {
         self.lock()
@@ -180,6 +284,29 @@ impl ConfigChannel {
             .as_ref()
             .filter(|e| e.live && &e.owner == owner)
             .and_then(|e| e.overlay.clone())
+    }
+    /// Hands out, exactly once, the live overlay of a runtime whose stored
+    /// choices have not been reapplied, with whether it started a new
+    /// session. It stays pending until `ready` accepts what the session
+    /// reports, so a harness that reports its options after activation is
+    /// restored before its next prompt instead. `held` are the stored
+    /// choices it is about to reapply; see `release`.
+    pub(crate) fn take_restore(
+        &self,
+        owner: &RuntimeOwner,
+        held: &[ConfigMutation],
+        ready: impl FnOnce(&SessionConfig) -> bool,
+    ) -> Option<(SessionConfigOverlay, bool)> {
+        let mut state = self.lock();
+        let entry = state
+            .entry
+            .as_mut()
+            .filter(|e| e.live && e.restore_pending && &e.owner == owner)?;
+        let overlay = entry.overlay.as_ref().filter(|o| ready(&o.config))?.clone();
+        entry.restore_pending = false;
+        entry.restoring = true;
+        entry.held = held.to_vec();
+        Some((overlay, entry.new_session))
     }
     pub(crate) fn remove(&self, owner: &RuntimeOwner) -> Result<(), String> {
         let mut state = self.lock();

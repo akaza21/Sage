@@ -2,7 +2,7 @@ use crate::{
     error::{AppError, AppResult},
     persistence::Database,
 };
-use rusqlite::{OptionalExtension, params};
+use rusqlite::params;
 
 pub(crate) fn validate_parent(
     transaction: &rusqlite::Transaction<'_>,
@@ -88,37 +88,6 @@ pub(crate) fn validate_layout(
     Ok(())
 }
 
-/// The immutable-history guards a temporary Chat purge lifts and restores.
-const HISTORY_GUARDS: [&str; 8] = [
-    "deny_activity_delete",
-    "deny_agent_session_delete",
-    "deny_chat_delete",
-    "deny_fact_delete",
-    "deny_item_delete",
-    "deny_runtime_epoch_delete",
-    "deny_server_request_delete",
-    "deny_turn_delete",
-];
-/// Rows keyed by (project_id, chat_id), deleted while the guards are lifted.
-const CHAT_ROWS: [&str; 14] = [
-    "acp_child_thread_transcripts",
-    "acp_child_thread_bindings",
-    "acp_child_thread_owners",
-    "acp_turn_usage_snapshots",
-    "acp_turn_terminal_reasons",
-    "chat_image_artifacts",
-    "chat_queued_prompts",
-    "server_requests",
-    "session_facts",
-    "session_activities",
-    "items",
-    "turns",
-    "session_runtime_epochs",
-    "chat_session_heads",
-];
-/// Image artifacts leave in bounded batches, each its own short transaction.
-const IMAGE_BATCH: usize = 500;
-
 impl Database {
     /// Removes every temporary Chat. One failed purge does not stop the
     /// others; the first error is returned after all were attempted.
@@ -141,48 +110,6 @@ impl Database {
         failure.map_or(Ok(()), Err)
     }
 
-    /// Deletes a temporary Chat's image artifacts `batch` rows at a time and
-    /// then their files. Nothing references these rows, and a crash between
-    /// a batch and its files leaves only orphans that startup reconciles.
-    pub(crate) fn remove_side_chat_images(
-        &self,
-        project: &str,
-        chat: &str,
-        batch: usize,
-    ) -> AppResult<usize> {
-        let mut removed = 0;
-        loop {
-            let ids = {
-                let mut connection = self.write_connection()?;
-                let transaction = connection.transaction()?;
-                let ids = transaction
-                    .prepare("SELECT id FROM chat_image_artifacts WHERE project_id=?1 AND chat_id=?2 ORDER BY id LIMIT ?3")?
-                    .query_map(params![project, chat, batch as i64], |row| row.get::<_, String>(0))?
-                    .collect::<Result<Vec<_>, _>>()?;
-                for id in &ids {
-                    transaction.execute("DELETE FROM chat_image_artifacts WHERE id=?1", [id])?;
-                }
-                transaction.commit()?;
-                ids
-            };
-            if ids.is_empty() {
-                return Ok(removed);
-            }
-            removed += ids.len();
-            if let Ok(root) = self.image_artifact_root() {
-                for id in ids {
-                    if uuid::Uuid::parse_str(&id).is_ok_and(|uuid| uuid.to_string() == id) {
-                        for extension in ["full", "thumb"] {
-                            let _ = crate::acp::migration::remove_image_file(
-                                &root.join(format!("{id}.{extension}")),
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     pub(crate) fn remove_side_chat(&self, project: &str, chat: &str) -> AppResult<()> {
         let exists: bool = self.connection().query_row(
             "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1 AND id=?2)",
@@ -192,88 +119,14 @@ impl Database {
         if !exists {
             return Ok(());
         }
-        if !is_temporary(&self.connection(), chat)? {
-            return Err(AppError::InvalidRequest("not a temporary Chat".into()));
-        }
-        // Refuse before touching anything when a guard is already missing.
-        history_guards(&self.connection())?;
-        self.remove_side_chat_images(project, chat, IMAGE_BATCH)?;
-        // An image row inserted after the batches is deleted with the Chat
-        // below; its files become orphans that startup reconciliation
-        // (image_artifacts::reconcile_image_artifacts) removes.
-        let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
-        transaction.pragma_update(None, "defer_foreign_keys", true)?;
-        let guards = history_guards(&transaction)?;
-        for (name, _) in &guards {
-            transaction.execute_batch(&format!("DROP TRIGGER \"{name}\""))?;
-        }
-        for table in CHAT_ROWS {
-            transaction.execute(
-                &format!("DELETE FROM {table} WHERE project_id=?1 AND chat_id=?2"),
-                params![project, chat],
-            )?;
-        }
-        let (sessions, turns, facts, bytes): (i64,i64,i64,i64) = transaction.query_row("SELECT COUNT(*),COALESCE(SUM(turn_count),0),COALESCE(SUM(fact_count),0),COALESCE(SUM(fact_bytes),0) FROM acp_session_usage WHERE project_id=?1 AND chat_id=?2", params![project,chat], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)))?;
-        transaction.execute(
-            "DELETE FROM acp_session_usage WHERE project_id=?1 AND chat_id=?2",
-            params![project, chat],
-        )?;
-        transaction.execute(
-            "DELETE FROM agent_sessions WHERE project_id=?1 AND chat_id=?2",
-            params![project, chat],
-        )?;
-        transaction.execute(
-            "DELETE FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
-            params![project, chat],
-        )?;
-        transaction.execute(
-            "DELETE FROM workbench_tabs WHERE project_id=?1 AND id=?2",
-            params![project, chat],
-        )?;
-        transaction.execute(
-            "DELETE FROM chats WHERE project_id=?1 AND id=?2",
-            params![project, chat],
-        )?;
-        transaction.execute("UPDATE acp_project_usage SET chat_count=chat_count-1,session_count=session_count-?2,turn_count=turn_count-?3,fact_count=fact_count-?4,payload_bytes=payload_bytes-?5,revision=revision+1 WHERE project_id=?1", params![project,sessions,turns,facts,bytes])?;
-        transaction.execute("UPDATE acp_store_usage SET chat_count=chat_count-1,session_count=session_count-?1,turn_count=turn_count-?2,fact_count=fact_count-?3,fact_bytes=fact_bytes-?4,shared_payload_bytes=shared_payload_bytes-?4,revision=revision+1 WHERE singleton=1", params![sessions,turns,facts,bytes])?;
-        let fallback: Option<String> = transaction.query_row("SELECT id FROM workbench_tabs WHERE project_id=?1 AND kind='chat' AND id NOT IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1) ORDER BY position LIMIT 1", [project], |row| row.get(0)).optional()?;
-        transaction.execute(
-            "UPDATE project_layouts SET active_tab_id=?3 WHERE project_id=?1 AND active_tab_id=?2",
-            params![project, chat, fallback],
-        )?;
-        for (_, sql) in guards {
-            transaction.execute_batch(&sql)?;
-        }
-        // foreign_keys is ON and checks are deferred, so COMMIT itself refuses
-        // a purge that would leave a dangling reference, without a table scan:
-        // AppError::Database(SqliteFailure, extended code 787 FOREIGNKEY). The
-        // dropped transaction then rolls back, restoring the lifted guards.
-        transaction.commit()?;
-        Ok(())
-    }
-}
-
-/// Each guard by name, with the SQL that restores it; a missing one names itself.
-fn history_guards(connection: &rusqlite::Connection) -> AppResult<Vec<(&'static str, String)>> {
-    HISTORY_GUARDS
-        .into_iter()
-        .map(|name| {
-            connection
-                .query_row(
-                    "SELECT sql FROM sqlite_schema WHERE type='trigger' AND name=?1",
-                    [name],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()?
-                .map(|sql| (name, sql))
-                .ok_or_else(|| {
-                    AppError::InvalidRequest(format!(
-                        "immutable history guard {name} is missing; temporary Chat cleanup refused"
-                    ))
-                })
+        self.purge_chat(project, chat, |connection| {
+            if is_temporary(connection, chat)? {
+                Ok(())
+            } else {
+                Err(AppError::InvalidRequest("not a temporary Chat".into()))
+            }
         })
-        .collect()
+    }
 }
 
 #[cfg(test)]

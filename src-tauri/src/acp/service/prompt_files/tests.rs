@@ -5,6 +5,11 @@ impl Fixture {
     fn new() -> Self {
         let p = std::env::temp_dir().join(format!("sage-files-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&p).unwrap();
+        // Attachments refuse linked ancestors, and macOS reaches its temporary
+        // directory through the /var link. Windows canonical paths are verbatim
+        // (`\\?\`) and keep `..` literal, so Windows keeps the plain path.
+        #[cfg(unix)]
+        let p = p.canonicalize().unwrap();
         Self(p)
     }
     fn file(&self, name: &str, bytes: &[u8]) -> String {
@@ -237,9 +242,12 @@ fn symlinks_and_nonregular_files_are_refused() {
     assert!(read::read_paths(&[f.0.join("link").to_str().unwrap().into()]).is_err());
     symlink(&f.0, f.0.join("loop")).unwrap();
     assert!(f.read("").0.iter().all(|r| r.name != "loop"));
-    let socket = std::os::unix::net::UnixListener::bind(f.0.join("socket")).unwrap();
-    assert!(read::read_paths(&[f.0.join("socket").to_str().unwrap().into()]).is_err());
-    drop(socket);
+    // A device file: a socket under a macOS temporary directory would exceed
+    // the platform's socket path limit.
+    assert_eq!(
+        read::read_paths(&["/dev/null".into()]),
+        Err("Only regular files can be attached.")
+    );
 }
 
 #[cfg(unix)]
@@ -249,4 +257,22 @@ fn unix_backslashes_in_names_do_not_select_a_different_file() {
     f.file("a\\b", b"selected");
     f.file("a/b", b"different");
     assert_eq!(f.read("a\\b").0[0].bytes, b"selected");
+}
+
+#[test]
+fn a_session_action_leaves_the_staged_files_for_the_next_prompt() {
+    let f = Fixture::new();
+    f.file("one", b"one");
+    let mut stages = FileStages::default();
+    stages.stage("p", "c", 0, None, f.read("one")).unwrap();
+    let mut action = crate::acp::intent::Prompt::new("prompt", "/compact").unwrap();
+    action.action = Some(serde_json::from_value(serde_json::json!({"kind": "compact"})).unwrap());
+    let sent = stages.for_prompt("p", "c", &action);
+    assert!(sent.0.is_empty());
+    stages.consume("p", "c", &sent);
+    let prompt = crate::acp::intent::Prompt::new("prompt", "next").unwrap();
+    let next = stages.for_prompt("p", "c", &prompt);
+    assert_eq!(next.0.len(), 1);
+    stages.consume("p", "c", &next);
+    assert!(stages.for_prompt("p", "c", &prompt).0.is_empty());
 }

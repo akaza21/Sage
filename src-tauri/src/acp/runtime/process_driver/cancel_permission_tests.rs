@@ -6,6 +6,7 @@ fn permission(id: &str) -> AdapterEvent {
         item_id: identity_one(&format!("item-{id}")),
         external_request_id: ExternalId::new("permissionRequest", id).expect("request"),
         payload: NormalizedPayload::PermissionRequest {
+            user_input: None,
             category: crate::acp::intent::ToolCategory::Other,
             summary: SafeText::new("summary", "permission").expect("summary"),
             offered_option_kinds: None,
@@ -36,6 +37,23 @@ fn zero_pending_permissions_writes_only_the_ordinary_cancel_notification() {
         assert_eq!(progress.cancelled_permission_frames, 0);
         assert_eq!(progress.written_frames, 1);
         assert_eq!(shared.0.lock().expect("shared").commands, ["cancel"]);
+    });
+}
+
+#[test]
+fn a_cancel_the_adapter_holds_for_an_unnamed_turn_writes_nothing_yet() {
+    runtime().block_on(async {
+        let (mut driver, shared, _, _) = build_driver(Vec::new(), VecDeque::new());
+        shared.0.lock().expect("shared").turn_unnamed = true;
+
+        let progress = driver
+            .dispatch_cancel(cancel("one", "message-one"))
+            .await
+            .expect("cancel");
+
+        assert!(progress.cancel_deferred);
+        assert_eq!(progress.written_frames, 0);
+        assert!(shared.0.lock().expect("shared").commands.is_empty());
     });
 }
 

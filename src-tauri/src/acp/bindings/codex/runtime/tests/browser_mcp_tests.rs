@@ -88,6 +88,7 @@ fn new_and_resumed_codex_sessions_receive_browser_descriptor_without_token_value
         .unwrap();
     let resume: Value = serde_json::from_slice(request.frame().payload()).unwrap();
     assert_eq!(resume["method"], "thread/resume");
+    assert_eq!(resume["params"]["excludeTurns"], true);
     assert_eq!(
         resume["params"]["config"]["mcp_servers"]["sage-browser"],
         start["params"]["config"]["mcp_servers"]["sage-browser"]
@@ -187,18 +188,17 @@ fn browser_failure_before_first_prompt_is_reported_once_after_turn_bind() {
             "threadId": "thread-1"
         }
     }));
-    let (_, diagnostics) =
-        crate::acp::bindings::codex::hard_failure_tests::with_captured_diagnostics(|| {
-            for _ in 0..2 {
-                let early = runtime.ingest(&failed, &Mapper).unwrap();
-                assert!(matches!(early.events(), [AdapterEvent::IgnoredLate]));
-            }
-            let started = start_first_turn(&mut runtime);
-            assert!(matches!(started.events(), [
+    let (_, diagnostics) = crate::test_diagnostics::capture_diagnostics(|| {
+        for _ in 0..2 {
+            let early = runtime.ingest(&failed, &Mapper).unwrap();
+            assert!(matches!(early.events(), [AdapterEvent::IgnoredLate]));
+        }
+        let started = start_first_turn(&mut runtime);
+        assert!(matches!(started.events(), [
                 AdapterEvent::Turn { state: crate::acp::lifecycle::TurnState::Running, .. },
                 AdapterEvent::Error(NormalizedPayload::Error { code, .. })
             ] if code.as_str() == "browserMcpUnavailable"));
-        });
+    });
     assert_eq!(
         diagnostics
             .matches("Codex browser MCP startup failed")
@@ -239,13 +239,12 @@ fn browser_startup_warning_is_emitted_once_for_accepted_failure() {
             }
         }))
     };
-    let (_, diagnostics) =
-        crate::acp::bindings::codex::hard_failure_tests::with_captured_diagnostics(|| {
-            assert!(runtime.ingest(&failure("foreign-thread"), &Mapper).is_err());
-            runtime.ingest(&failure("thread-1"), &Mapper).unwrap();
-            runtime.ingest(&failure("thread-1"), &Mapper).unwrap();
-            start_first_turn(&mut runtime);
-        });
+    let (_, diagnostics) = crate::test_diagnostics::capture_diagnostics(|| {
+        assert!(runtime.ingest(&failure("foreign-thread"), &Mapper).is_err());
+        runtime.ingest(&failure("thread-1"), &Mapper).unwrap();
+        runtime.ingest(&failure("thread-1"), &Mapper).unwrap();
+        start_first_turn(&mut runtime);
+    });
     assert_eq!(
         diagnostics
             .matches("Codex browser MCP startup failed")

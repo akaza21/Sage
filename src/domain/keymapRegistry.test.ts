@@ -100,3 +100,20 @@ it("names Option on macOS and follows a binding's macOS modifiers", () => {
   expect(formatKeymapChords(cursorAbove, false)).toEqual(["Ctrl+Alt+Up"]);
   expect(formatKeymapChords(cursorAbove, true)).toEqual(["Cmd+Option+Up"]);
 });
+
+it("leaves Save All's Control+Alt+S to AltGr when AltGr is down", () => {
+  const saveAll = keymapBinding("saveAll");
+  const event = {
+    key: "s",
+    ctrlKey: true,
+    metaKey: false,
+    shiftKey: false,
+    altKey: true,
+  };
+  expect(matchesPlatformChord(saveAll, event, false)).toBe(true);
+  const altGraph = {
+    ...event,
+    getModifierState: (key: string) => key === "AltGraph",
+  };
+  expect(matchesPlatformChord(saveAll, altGraph, false)).toBe(false);
+});

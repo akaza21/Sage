@@ -121,7 +121,7 @@ fn native_claude_subprocess_binding_pump_sqlite_stream_cancel_and_permissions() 
                     .service
                     .send_session_turn(HostPromptIntent {
                         command: setup.turn_command(&owner),
-                        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                        access_mode: crate::settings_store::SessionAccessMode::Ask,
                     })
                     .unwrap();
                 setup.wait_for_completed_after(&owner, &previous);

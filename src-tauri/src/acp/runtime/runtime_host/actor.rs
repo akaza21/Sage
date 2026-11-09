@@ -80,9 +80,7 @@ impl<E: RuntimeEngine> Actor<E> {
                         .as_ref()
                         .is_some_and(|pending| Instant::now() >= pending.deadline)
                     {
-                        let deadline = self.pending_config.as_ref().unwrap().deadline;
-                        self.engine.abandon_configuration(deadline);
-                        self.fail_pending_config(HostError::Deadline);
+                        self.expire_pending_config();
                     }
                     if self
                         .pending_steer

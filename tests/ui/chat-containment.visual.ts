@@ -43,7 +43,10 @@ async function prepare(
     `,
   });
   await expect(
-    page.locator("form.composer").first().getByRole("textbox"),
+    page
+      .locator("form.composer")
+      .first()
+      .getByRole("combobox", { name: "Message agent" }),
   ).toHaveValue("Draft survives resizing");
   // The queued rows are a lazy chunk that loads with the first queued
   // message (lazyParts.tsx), so geometry waits for the live queue to mount.
@@ -730,9 +733,9 @@ for (const profile of profiles) {
             await page.setViewportSize(viewport);
             await expectOverlay(panel, viewport);
           }
-          await expect(composer.getByRole("textbox")).toHaveValue(
-            "Draft survives resizing",
-          );
+          await expect(
+            composer.getByRole("combobox", { name: "Message agent" }),
+          ).toHaveValue("Draft survives resizing");
           await page.keyboard.press("Escape");
           await expect(
             composer.getByRole("button", {

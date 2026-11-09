@@ -1,6 +1,6 @@
 use super::*;
 
-pub(in crate::acp::fixture) fn replay_native(case_id: &str, requests: &str) -> Vec<Value> {
+pub(crate) fn replay_native(case_id: &str, requests: &str) -> Vec<Value> {
     replay_native_before(case_id, requests, "")
 }
 
@@ -21,6 +21,10 @@ pub(in crate::acp::fixture) fn replay_native_before(
     for step in &steps {
         if !before_kind.is_empty() && step["kind"] == before_kind {
             break;
+        }
+        // A pause only paces a live replay; the frames are the same without it.
+        if step["op"] == "pauseMs" {
+            continue;
         }
         execute_with_io(step, &mut state, &mut input, &mut output, &mut error).unwrap();
     }

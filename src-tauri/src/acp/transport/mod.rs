@@ -15,7 +15,7 @@ pub(crate) use ingress::{StructuralError, validate_structure};
 pub(crate) use p02_egress::{
     DeadlineAsyncWriter, P02Cancellation, P02Egress, P02EgressOutcome, write_p02_response_until,
 };
-pub(crate) use request_digest::request_payload_digest;
+pub(crate) use request_digest::{request_payload_digest, request_value_digest};
 #[allow(
     unused_imports,
     reason = "ordinary transport writer remains an admitted adapter seam"

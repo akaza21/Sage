@@ -5,14 +5,18 @@ use serde_json::{Value, json};
 use crate::acp::limits::LIMITS;
 
 use super::super::FixtureError;
-use super::{WireState, write_stdout};
+use super::super::interpreter::{field_str, field_u64};
+use super::{WireState, acp, user_input, write_stdout};
 
 const THREAD_ID: &str = "fixture-persisted-session-1";
 /// The session a native capture's fork creates (Codex `thread/fork` per the
-/// pinned 0.146 schema; Claude `session/fork` per claude-agent-acp 0.76.0).
+/// pinned schema; Claude `session/fork` per claude-agent-acp 0.76.0).
 pub(super) const FORK_THREAD_ID: &str = "fixture-fork-session-1";
-const USER_AGENT: &str = "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)";
-const USER_AGENT_0146: &str = "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)";
+const USER_AGENT: &str = concat!(
+    "sage/",
+    crate::acp::bindings::codex::pinned_codex_version!(),
+    " (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"
+);
 
 pub(super) fn await_request(
     input: &mut impl Read,
@@ -51,7 +55,7 @@ fn await_request_inner(
             .get("method")
             .and_then(Value::as_str)
             .ok_or(FixtureError::InvalidArguments)?;
-        if object.get("id").is_none() && expected_method != method {
+        if object.get("id").is_none() && !expected(expected_method, method) {
             continue;
         }
         if method == "thread/read" {
@@ -77,11 +81,17 @@ fn await_request_inner(
                 continue;
             }
         }
-        if method != expected_method {
+        if !expected(expected_method, method) {
             return Err(FixtureError::InvalidArguments);
         }
         if let Some(id) = object.get("id").and_then(Value::as_u64) {
             state.last_request_id = Some(id);
+            if matches!(method, "thread/start" | "thread/resume") {
+                state.codex_thread_model = request
+                    .pointer("/params/model")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+            }
             return Ok(());
         }
         if expected_method == "initialized" {
@@ -90,6 +100,11 @@ fn await_request_inner(
         return Err(FixtureError::InvalidArguments);
     }
     Err(FixtureError::ExpandedLimit)
+}
+
+/// `expected` names one method, or alternatives separated by `|`.
+fn expected(expected: &str, method: &str) -> bool {
+    expected.split('|').any(|candidate| candidate == method)
 }
 
 fn emit_child_read(
@@ -144,9 +159,9 @@ pub(super) fn emit_response(
         );
     }
     let result = match shape {
-        "initialize" | "initialize0146" => json!({
-            "userAgent": if shape == "initialize0146" { USER_AGENT_0146 } else { USER_AGENT },
-            "codexHome": if shape == "initialize0146" {
+        "initialize" | "initializeObserved" => json!({
+            "userAgent": USER_AGENT,
+            "codexHome": if shape == "initializeObserved" {
                 std::env::temp_dir().to_string_lossy().into_owned()
             } else {
                 std::env::var("CODEX_HOME").map_err(|_| FixtureError::InvalidArguments)?
@@ -159,29 +174,8 @@ pub(super) fn emit_response(
             "thread":{"id": THREAD_ID},
             "model":"fixture-model-fast","reasoningEffort":"high"
         }),
-        "models" | "effortModels" => {
-            let mut catalog = json!({"data":[{
-            "id":"fixture-model","model":"fixture-model","displayName":"Synthetic replay",
-            "description":"Synthetic native replay model","isDefault":true,"hidden":false,
-            "supportedReasoningEfforts":[]
-        }],"nextCursor":null});
-            if shape == "effortModels" {
-                catalog["data"][0]["defaultReasoningEffort"] = json!("medium");
-                catalog["data"][0]["supportedReasoningEfforts"] = json!([
-                    {"reasoningEffort":"low","description":"Quick synthetic replay"},
-                    {"reasoningEffort":"medium","description":"Balanced synthetic replay"},
-                    {"reasoningEffort":"high","description":"Thorough synthetic replay"}
-                ]);
-                let mut alternate = catalog["data"][0].clone();
-                alternate["id"] = json!("fixture-model-fast");
-                alternate["model"] = json!("fixture-model-fast");
-                alternate["displayName"] = json!("Synthetic replay fast");
-                alternate["isDefault"] = json!(false);
-                alternate["defaultReasoningEffort"] = json!("low");
-                catalog["data"].as_array_mut().unwrap().push(alternate);
-            }
-            catalog
-        }
+        "configThread" => super::codex_catalog::config_thread(state, THREAD_ID),
+        "models" | "effortModels" | "configModels" => super::codex_catalog::models(shape),
         "turn" => {
             state.turn_count = state
                 .turn_count
@@ -245,6 +239,41 @@ pub(super) fn emit_notification(
     emit_json(output, state, &notification)
 }
 
+/// Most messages one `codexTranscript` step may write: enough to fill more
+/// than one history page (256 Items) without flooding the driver.
+pub(super) const TRANSCRIPT_MESSAGES: u64 = 600;
+
+/// Writes `count` completed assistant messages into the current turn, so a
+/// journey can open on a long transcript before it streams.
+pub(super) fn emit_transcript(
+    count: u64,
+    state: &mut WireState,
+    output: &mut impl Write,
+) -> Result<(), FixtureError> {
+    if count == 0 || count > TRANSCRIPT_MESSAGES {
+        return Err(FixtureError::InvalidArguments);
+    }
+    let turn_id = state
+        .current_turn_id
+        .clone()
+        .ok_or(FixtureError::InvalidArguments)?;
+    for index in 1..=count {
+        let item = json!({
+            "type": "agentMessage",
+            "id": format!("fixture-transcript-{index}"),
+            "text": format!(
+                "Earlier message {index} of {count}. It is synthetic history, there so the chat has more than one page to scroll back through."
+            ),
+        });
+        emit_json(
+            output,
+            state,
+            &json!({"jsonrpc":"2.0","method":"item/completed","params":{"threadId":THREAD_ID,"turnId":turn_id,"item":item}}),
+        )?;
+    }
+    Ok(())
+}
+
 pub(super) fn read_json_line(
     input: &mut impl Read,
     state: &WireState,
@@ -280,6 +309,58 @@ pub(super) fn emit_json(
     bytes.push(b'\n');
     write_stdout(output, state, &bytes, false)?;
     output.flush().map_err(|_| FixtureError::Io)
+}
+
+/// Emits one of the Codex frame shapes a journey step names.
+pub(super) fn emit_known(
+    shape: &str,
+    step: &Value,
+    state: &mut WireState,
+    output: &mut impl Write,
+) -> Result<(), FixtureError> {
+    if shape == "codexNative" || shape == "codexNativeThreadless" {
+        let mut params = acp::substitute(step["params"].clone(), state, 0)?;
+        // A thread-less app-server notice (such as `configWarning`) may
+        // arrive before any thread or Turn exists, so it names neither.
+        if shape == "codexNative" {
+            params["threadId"] = json!(acp::SESSION);
+            params["turnId"] = json!(
+                state
+                    .current_turn_id
+                    .as_deref()
+                    .ok_or(FixtureError::InvalidArguments)?
+            );
+        }
+        return emit_json(
+            output,
+            state,
+            &json!({"jsonrpc":"2.0","method":field_str(step, "method")?,"params":params}),
+        );
+    }
+    match shape {
+        "codexError" => emit_notification("error", state, output),
+        "codexInitializeResult" => emit_response("initialize", state, output),
+        "codexInitializeResultObserved" => emit_response("initializeObserved", state, output),
+        "codexThreadResult" => emit_response("thread", state, output),
+        "codexThreadEffortResult" => emit_response("effortThread", state, output),
+        "codexModelListResult" => emit_response("models", state, output),
+        "codexModelListEffortResult" => emit_response("effortModels", state, output),
+        "codexThreadConfigResult" => emit_response("configThread", state, output),
+        "codexModelListConfigResult" => emit_response("configModels", state, output),
+        "codexGoalMethodNotFound" => emit_response("goalMethodNotFound", state, output),
+        "codexTurnResult" => emit_response("turn", state, output),
+        "codexForkResult" => emit_response("fork", state, output),
+        "codexStarted" => emit_notification("started", state, output),
+        "codexAck" => emit_response("ack", state, output),
+        "codexDelta" => emit_notification("delta", state, output),
+        "codexItemCompleted" => emit_notification("itemCompleted", state, output),
+        "codexCompleted" => emit_notification("completed", state, output),
+        "codexInterrupted" => emit_notification("interrupted", state, output),
+        "codexUserInputRequest" => user_input::emit_request(step, state, output),
+        "codexUserInputEcho" => user_input::emit_echo(state, output),
+        "codexTranscript" => emit_transcript(field_u64(step, "count")?, state, output),
+        _ => Err(FixtureError::InvalidArguments),
+    }
 }
 
 #[cfg(test)]

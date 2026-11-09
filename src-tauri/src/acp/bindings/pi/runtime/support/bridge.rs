@@ -152,6 +152,8 @@ impl PiRuntime {
                 id: id.into(),
                 method: BRIDGE_WRITE_METHOD.into(),
                 options: Vec::new(),
+                form: None,
+                expires: false,
             });
             return self.translate_outputs(
                 vec![AdapterOutput::PermissionRequested {
@@ -201,12 +203,14 @@ impl PiRuntime {
         };
         let external = ExternalId::new("piFileId", format!("file-{}", edit.tool_id))
             .map_err(|_| AdapterRuntimeError::Frame)?;
+        let (additions, deletions) = crate::acp::intent::line_delta(&edit.old, &edit.new);
+        let verb = if edit.created { "Created" } else { "Edited" };
         let facts = FileChangeFacts {
             resource: SafeResourceLocation::Resource { resource },
-            summary: SafeText::new("fileSummary", "Pi updated a workspace file")
+            summary: SafeText::new("fileSummary", format!("{verb} {}", edit.relative))
                 .map_err(|_| AdapterRuntimeError::Frame)?,
-            additions: None,
-            deletions: None,
+            additions: Some(additions),
+            deletions: Some(deletions),
             operation: if edit.created {
                 FileChangeOperation::Created
             } else {
@@ -292,7 +296,7 @@ impl PiRuntime {
     pub(in crate::acp::bindings::pi::runtime) fn bridge_permission(
         &mut self,
         request_id: &SageServerRequestId,
-        decision: PermissionDecision,
+        decision: &PermissionDecision,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         let Some(pending) = self
             .bridge
@@ -311,7 +315,7 @@ impl PiRuntime {
         ) {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }
-        let allowed = decision == PermissionDecision::AllowOnce;
+        let allowed = *decision == PermissionDecision::AllowOnce;
         pending.approved = allowed;
         self.translator.take_pending_ui();
         let response = reply(

@@ -104,6 +104,7 @@ export function snapshotProjection(snapshot: BootstrapSnapshot) {
     models: [],
     harnessDiscoveryPhase: "idle" as const,
     harnessDiscoveryError: null,
+    harnessAccount: null,
     composerText: "",
     sending: false,
   };

@@ -16,10 +16,12 @@ use crate::acp::{
 mod child_thread_tests;
 mod harness_title_tests;
 mod lifecycle_tests;
+mod mcp_progress_tests;
 mod session_surface_tests;
 mod settlement_tests;
 mod snapshot_reopen_tests;
 mod snapshot_tests;
+mod turn_activity_tests;
 mod workspace_tests;
 
 struct Fixture {
@@ -612,6 +614,7 @@ fn terminal_item(
 
 fn permission(owner: &AdapterStoreOwner) -> PermissionIntent {
     let payload = NormalizedPayload::PermissionRequest {
+        user_input: None,
         category: ToolCategory::Execute,
         summary: SafeText::new("summary", "Run command?").unwrap(),
         offered_option_kinds: None,

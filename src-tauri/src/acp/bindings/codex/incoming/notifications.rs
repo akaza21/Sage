@@ -7,7 +7,8 @@ use super::{
     CodexAdapter, IncomingEvent, IngressDisposition, IngressError, ResourceMapper, normalize_item,
     record_unprojected,
     support::{
-        error_payload, expect_thread_and_turn, identity, parse_usage, request_id_text, text,
+        error_payload, expect_thread_and_turn, identity, parse_usage, request_id_text,
+        started_turn_id, text,
     },
 };
 
@@ -15,11 +16,17 @@ mod child_thread;
 pub(super) use child_thread::item_event as child_item_event;
 pub(super) use child_thread::turn_completed as child_turn_completed;
 mod deltas;
+mod hooks;
+use hooks::{HookPhase, cancelled_hooks, hook_run};
 mod items;
 use items::item_event;
+mod mcp_progress;
+use mcp_progress::mcp_tool_progress;
+mod notices;
 mod plan;
 mod provisional;
 mod session;
+mod status_line;
 use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};
 use plan::structured_plan;
 
@@ -49,13 +56,26 @@ pub(super) fn notification<M: ResourceMapper>(
                 _ => Err(IngressError::Malformed),
             }
         }
-        // Account state belongs to Codex and has no Sage-owned projection.
-        // The frame is bounded before reaching this matcher and its payload is
-        // discarded, so a known account update cannot become a transcript
+        // Account and skill changes belong to Codex and have no Sage-owned
+        // projection. The frame is bounded before reaching this matcher and
+        // its payload is discarded, so neither can become a transcript
         // artifact or alter a turn/session state.
-        "account/updated" | "account/rateLimits/updated" | "skills/changed" => {
-            Ok(IngressDisposition::IgnoredLate)
-        }
+        "skills/changed" => Ok(IngressDisposition::IgnoredLate),
+        // A ChatGPT sign-in may lift an earlier refusal to report usage.
+        "account/updated" => Ok(
+            if params.get("authMode").and_then(Value::as_str) == Some("chatgpt") {
+                IngressDisposition::UsageReset
+            } else {
+                IngressDisposition::IgnoredLate
+            },
+        ),
+        "account/rateLimits/updated" => Ok(match super::rate_limits::pushed_bucket(params) {
+            Some(bucket) => {
+                adapter.rate_limits_pushed();
+                IngressDisposition::UsageUpdated(bucket)
+            }
+            None => IngressDisposition::IgnoredLate,
+        }),
         "thread/status/changed" => {
             let thread = text(params, "threadId", 512)?;
             let status = params
@@ -86,6 +106,10 @@ pub(super) fn notification<M: ResourceMapper>(
                 }
                 "systemError" => {
                     adapter.expect_thread(thread).map_err(identity)?;
+                    // A named Turn reports its own error and terminal next.
+                    if adapter.has_active_turn() {
+                        return Ok(IngressDisposition::IgnoredLate);
+                    }
                     let payload = error_payload(
                         "codex",
                         "Codex reported a system error while starting the turn. Check the selected model or harness connection, then retry.",
@@ -162,7 +186,7 @@ pub(super) fn notification<M: ResourceMapper>(
                 .get("turn")
                 .and_then(Value::as_object)
                 .ok_or(IngressError::Malformed)?;
-            let turn_id = text(turn, "id", 512)?;
+            let turn_id = started_turn_id(turn, |root| adapter.root_names_turn(root))?;
             let (id, binding) = match adapter.observe_turn_started(turn_id) {
                 Ok(value) => value,
                 Err(error) => return Err(turn_started_rejection(adapter, error)),
@@ -198,6 +222,9 @@ pub(super) fn notification<M: ResourceMapper>(
             declarations,
         ),
         "item/commandExecution/outputDelta" => command_output_delta(adapter, params),
+        "item/mcpToolCall/progress" => mcp_tool_progress(adapter, params),
+        "hook/started" => hook_run(adapter, params, HookPhase::Started),
+        "hook/completed" => hook_run(adapter, params, HookPhase::Completed),
         "item/agentMessage/delta" => delta_event(adapter, params, DeltaKind::Text, None),
         "item/reasoning/summaryTextDelta" => delta_event(adapter, params, DeltaKind::Thought, None),
         // Codex shows the reasoning summary only; raw reasoning text is
@@ -237,9 +264,7 @@ pub(super) fn notification<M: ResourceMapper>(
                 return Err(IngressError::Identity);
             }
             Ok(IncomingEvent::Usage {
-                turn_id: adapter
-                    .scoped_in_turn(ExternalKind::Turn, turn, turn)
-                    .map_err(identity)?,
+                turn_id: adapter.scoped_turn(turn).map_err(identity)?,
                 payload: parse_usage(params)?,
             }
             .into())
@@ -267,6 +292,13 @@ pub(super) fn notification<M: ResourceMapper>(
             }
             Ok(IncomingEvent::Error(payload).into())
         }
+        "warning" => notices::warning(adapter, params),
+        "guardianWarning" => notices::guardian_warning(adapter, params),
+        "configWarning" => notices::config_warning(adapter, params),
+        "deprecationNotice" => notices::deprecation_notice(adapter, params),
+        "model/rerouted" => notices::model_rerouted(adapter, params),
+        "model/verification" => notices::model_verification(adapter, params),
+        "model/safetyBuffering/updated" => notices::model_safety_buffering(adapter, params),
         other => {
             record_unprojected(other);
             Ok(IngressDisposition::IgnoredLate)
@@ -354,10 +386,9 @@ fn turn_completed(
     {
         TerminalUpdate::Apply => {
             adapter.clear_command_items();
-            let id = adapter
-                .scoped_in_turn(ExternalKind::Turn, external, external)
-                .map_err(identity)?;
-            let mut events = Vec::with_capacity(2);
+            adapter.clear_running_mcp_tools();
+            let id = adapter.scoped_turn(external).map_err(identity)?;
+            let mut events = cancelled_hooks(adapter, thread_id)?;
             if let Some(payload) = terminal_error {
                 events.push(IncomingEvent::Error(payload));
             }

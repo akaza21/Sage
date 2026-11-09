@@ -116,7 +116,7 @@ it("only offers Undo after a committed archive, and restores the exact project/c
   );
   fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
   fireEvent.click(await screen.findByRole("button", { name: "Undo archive" }));
-  expect(archiveChat).toHaveBeenCalledWith("Beta", "project-a");
+  expect(archiveChat).toHaveBeenCalledWith("Beta", "project-a", "row");
   expect(restoreChat).toHaveBeenCalledWith("Beta", "project-a");
   await act(async () => undefined);
 });

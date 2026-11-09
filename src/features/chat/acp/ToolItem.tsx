@@ -20,7 +20,7 @@ import {
 import { extractAdmittedBrowseUrl } from "../../preview/harnessBrowse";
 import { CompactToolItem } from "./CompactToolItem";
 import { terminalToolStates, toolStateLabels } from "./statusSemantics";
-import { toolDurationLabel } from "./toolActivityRollup";
+import { liveToolProgress, toolDurationLabel } from "./toolActivityRollup";
 import { compactToolLabels, toolCommandContent } from "./toolCommandContent";
 import { ToolCommandFrame } from "./ToolCommandFrame";
 import { ToolItemDetails } from "./ToolItemDetails";
@@ -85,6 +85,7 @@ export function ToolItem({
         ? presentation.toolLabel
         : `${presentation.serverLabel} · ${presentation.toolLabel}`
       : presentation.label;
+  const progress = liveToolProgress(item);
   const status = toolStateLabels[visualState];
   const terminal = terminalToolStates.has(visualState);
   const toolOutput =
@@ -141,6 +142,7 @@ export function ToolItem({
           </span>
         ) : null}
       </header>
+      {progress ? <p className="acp-tool-card__progress">{progress}</p> : null}
       {kind === "execute" && (commandLine || outputSummary !== null) ? (
         <ToolCommandFrame
           label="Shell"

@@ -11,17 +11,18 @@ import type {
   AcpPageCursor,
   AcpProjectionChangedEvent,
   ProjectGeneration,
-  ProjectionRevision,
   SageChatId,
   SageProjectId,
   TurnProjection,
 } from "../domain/acp";
 import {
   compareDecimalRevision,
-  mergeProjectionPage,
-  normalizeProjectionPage,
+  mergeHistoryPage,
+  mergeNewestPage,
   retainUnchangedTurns,
 } from "./acpProjectionMerge";
+import { pageByteLength } from "./acpProjectionBytes";
+import { errorField, loadSlot, rejectedRevision } from "./acpProjectionLoads";
 
 export const MAX_RETAINED_TURNS = 100;
 export const MAX_RETAINED_ITEMS = 1_000;
@@ -38,7 +39,6 @@ export interface AcpProjectionScope {
 export interface AcpPageLoadIntent extends AcpProjectionScope {
   requestSequence: number;
   cursor: AcpPageCursor | null;
-  expectedProjectionRevision: ProjectionRevision | null;
 }
 
 export type ProjectionCommitDisposition =
@@ -55,7 +55,11 @@ interface AcpProjectionState {
   page: AcpChatPage | null;
   retainedBytes: number;
   retentionIncomplete: boolean;
+  /** The newest-page load in flight; a later one supersedes it. */
   activeLoad: AcpPageLoadIntent | null;
+  /** The earlier-history load in flight, tracked apart so a refresh of the
+   * newest page never drops it. */
+  historyLoad: AcpPageLoadIntent | null;
   requestSequence: number;
   pendingChange: AcpProjectionChangedEvent | null;
   pendingConfigChange: AcpSessionConfigChangedV1 | null;
@@ -64,7 +68,11 @@ interface AcpProjectionState {
     event: AcpSessionConfigChangedV1,
   ) => ProjectionNoticeDisposition;
   takeSessionConfigChange: () => AcpSessionConfigChangedV1 | null;
+  /** Why the newest page could not be loaded. */
   error: string | null;
+  /** Why an earlier-history page could not be loaded, kept apart from
+   * `error` so a refresh and a history load never clear each other's. */
+  historyError: string | null;
   loadNonce: number;
   activateScope: (scope: AcpProjectionScope) => void;
   requestReload: () => void;
@@ -74,6 +82,8 @@ interface AcpProjectionState {
     page: AcpChatPage,
   ) => ProjectionCommitDisposition;
   failPageLoad: (intent: AcpPageLoadIntent, message: string) => boolean;
+  /** Records a refresh that failed before it could take a load slot. */
+  failRefresh: (message: string) => void;
   applyAuthoritativePage: (
     scope: AcpProjectionScope,
     page: AcpChatPage,
@@ -83,12 +93,6 @@ interface AcpProjectionState {
   ) => ProjectionNoticeDisposition;
   takeProjectionChange: () => AcpProjectionChangedEvent | null;
   clear: () => void;
-}
-
-import { utf8ByteLength } from "../domain/text";
-
-function byteLength(value: unknown): number {
-  return utf8ByteLength(JSON.stringify(value));
 }
 
 function sameScope(
@@ -146,14 +150,14 @@ function trimToByteLimit(page: AcpChatPage): {
   const sourceActivityCount = countActivities(page.turns);
   let turns = capTurnAndItemCounts(page.turns);
   let candidate = { ...page, turns };
-  let retainedBytes = byteLength(candidate);
+  let retainedBytes = pageByteLength(candidate);
 
   while (retainedBytes > MAX_RETAINED_BYTES && turns.length > 1) {
     const excessRatio = (retainedBytes - MAX_RETAINED_BYTES) / retainedBytes;
     const remove = Math.max(1, Math.floor(turns.length * excessRatio));
     turns = turns.slice(remove);
     candidate = { ...candidate, turns };
-    retainedBytes = byteLength(candidate);
+    retainedBytes = pageByteLength(candidate);
   }
 
   while (
@@ -166,7 +170,7 @@ function trimToByteLimit(page: AcpChatPage): {
     const remove = Math.max(1, Math.floor(turn.items.length * excessRatio));
     turns = [{ ...turn, items: turn.items.slice(remove) }];
     candidate = { ...candidate, turns };
-    retainedBytes = byteLength(candidate);
+    retainedBytes = pageByteLength(candidate);
   }
 
   while (
@@ -177,7 +181,7 @@ function trimToByteLimit(page: AcpChatPage): {
     const turn = turns[0];
     turns = [{ ...turn, activities: turn.activities.slice(1) }];
     candidate = { ...candidate, turns };
-    retainedBytes = byteLength(candidate);
+    retainedBytes = pageByteLength(candidate);
   }
 
   return {
@@ -190,16 +194,33 @@ function trimToByteLimit(page: AcpChatPage): {
   };
 }
 
+/**
+ * Lays a newest page over the page shown. When the loaded history it keeps
+ * would pass the retention caps, the newest page alone is shown instead, so
+ * trimming never leaves a gap behind a cursor that skips it.
+ */
+function retainNewest(current: AcpChatPage | null, page: AcpChatPage) {
+  const retained = trimToByteLimit(
+    preserveNewerConfig(current, mergeNewestPage(current, page)),
+  );
+  if (!retained.retentionIncomplete || !current) return retained;
+  return trimToByteLimit(
+    preserveNewerConfig(current, mergeNewestPage(null, page)),
+  );
+}
+
 const initialState = {
   scope: null,
   page: null,
   retainedBytes: 0,
   retentionIncomplete: false,
   activeLoad: null,
+  historyLoad: null,
   requestSequence: 0,
   pendingChange: null,
   pendingConfigChange: null,
   error: null,
+  historyError: null,
   loadNonce: 0,
 } satisfies Pick<
   AcpProjectionState,
@@ -208,10 +229,12 @@ const initialState = {
   | "retainedBytes"
   | "retentionIncomplete"
   | "activeLoad"
+  | "historyLoad"
   | "requestSequence"
   | "pendingChange"
   | "pendingConfigChange"
   | "error"
+  | "historyError"
   | "loadNonce"
 >;
 
@@ -244,20 +267,20 @@ export function createAcpProjectionStore() {
         ...scope,
         requestSequence: sequence + 1,
         cursor,
-        expectedProjectionRevision: get().page?.projectionRevision ?? null,
       };
       set({
-        activeLoad: intent,
+        [loadSlot(intent)]: intent,
         requestSequence: intent.requestSequence,
-        error: null,
+        [errorField(intent)]: null,
       });
       return intent;
     },
 
     completePageLoad: (intent, page) => {
       const state = get();
+      const settled = { [loadSlot(intent)]: null, [errorField(intent)]: null };
       if (
-        state.activeLoad?.requestSequence !== intent.requestSequence ||
+        state[loadSlot(intent)]?.requestSequence !== intent.requestSequence ||
         !sameScope(state.scope, intent) ||
         page.projectId !== intent.projectId ||
         page.chatId !== intent.chatId
@@ -265,53 +288,29 @@ export function createAcpProjectionStore() {
         return "ignoredStaleIntent";
       }
 
-      const currentRevision = state.page?.projectionRevision ?? null;
-      if (currentRevision) {
-        const comparison = compareDecimalRevision(
-          page.projectionRevision,
-          currentRevision,
-        );
-        if (comparison === null) {
-          set({ activeLoad: null, error: null });
-          return "ignoredInvalidRevision";
-        }
-        if (comparison < 0) {
-          set({ activeLoad: null, error: null });
-          return "ignoredStaleRevision";
-        }
+      const rejected = rejectedRevision(state.page, intent, page);
+      if (rejected) {
+        set(settled);
+        return rejected;
       }
 
-      if (intent.cursor && intent.expectedProjectionRevision) {
-        const comparison = compareDecimalRevision(
-          page.projectionRevision,
-          intent.expectedProjectionRevision,
-        );
-        if (comparison === null) {
-          set({ activeLoad: null, error: null });
-          return "ignoredInvalidRevision";
-        }
-        if (comparison !== 0) {
-          set({ activeLoad: null, error: null });
-          return "ignoredStaleRevision";
-        }
-      }
-
-      if (!sameRevisionOwner(state.page, page)) {
-        set({ activeLoad: null });
+      if (!intent.cursor && !sameRevisionOwner(state.page, page)) {
+        set(settled);
         return "ignoredStaleIntent";
       }
       const source =
         intent.cursor && state.page
-          ? mergeProjectionPage(state.page, page)
-          : normalizeProjectionPage(page);
-      const retained = trimToByteLimit(preserveNewerConfig(state.page, source));
+          ? mergeHistoryPage(state.page, page, intent.cursor)
+          : null;
+      const retained = source
+        ? trimToByteLimit(preserveNewerConfig(state.page, source))
+        : retainNewest(state.page, page);
       set({
         page: retainUnchangedTurns(state.page, retained.page),
         retainedBytes: retained.retainedBytes,
         retentionIncomplete:
           state.retentionIncomplete || retained.retentionIncomplete,
-        activeLoad: null,
-        error: null,
+        ...settled,
       });
       return "accepted";
     },
@@ -319,13 +318,17 @@ export function createAcpProjectionStore() {
     failPageLoad: (intent, message) => {
       const state = get();
       if (
-        state.activeLoad?.requestSequence !== intent.requestSequence ||
+        state[loadSlot(intent)]?.requestSequence !== intent.requestSequence ||
         !sameScope(state.scope, intent)
       ) {
         return false;
       }
-      set({ activeLoad: null, error: message });
+      set({ [loadSlot(intent)]: null, [errorField(intent)]: message });
       return true;
+    },
+
+    failRefresh: (message) => {
+      set({ error: message });
     },
 
     applyAuthoritativePage: (scope, page) => {
@@ -346,9 +349,7 @@ export function createAcpProjectionStore() {
         if (comparison < 0) return "ignoredStaleRevision";
       }
       if (!sameRevisionOwner(state.page, page)) return "ignoredStaleIntent";
-      const retained = trimToByteLimit(
-        preserveNewerConfig(state.page, normalizeProjectionPage(page)),
-      );
+      const retained = retainNewest(state.page, page);
       set({
         page: retainUnchangedTurns(state.page, retained.page),
         retainedBytes: retained.retainedBytes,

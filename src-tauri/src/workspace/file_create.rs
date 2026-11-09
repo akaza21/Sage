@@ -310,6 +310,22 @@ pub(crate) fn validate_new_file_basename(basename: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// The rules for a path Sage creates on the user's behalf, folders and all:
+/// every name passes `validate_new_file_path`, and none names protected
+/// workspace metadata such as `.git` or `node_modules`.
+pub(crate) fn admit_created_path(relative_path: &str) -> AppResult<()> {
+    let mut parent = String::new();
+    for name in relative_path.split('/') {
+        if super::directory_skip::protected_workspace_name(name) {
+            return Err(AppError::InvalidRequest(format!(
+                "files cannot be created inside {name}"
+            )));
+        }
+        parent = validate_new_file_path(&parent, name)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_new_file_path(parent: &str, basename: &str) -> AppResult<String> {
     validate_new_file_basename(basename)?;
     if parent.len() > MAX_NEW_FILE_PATH_BYTES {

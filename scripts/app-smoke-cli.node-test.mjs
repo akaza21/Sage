@@ -284,7 +284,7 @@ test(
   async (t) => {
     const site = await servePage(
       t,
-      `${inertControls(["Editor", ...requiredControls])}<section aria-label="Chat pane Existing" class="agent-chat-pane--focused"><textarea aria-label="Message agent"></textarea></section>`,
+      `${inertControls(["Editor", ...requiredControls])}<section aria-label="Chat pane Existing" class="agent-chat-pane--focused"><textarea role="combobox" aria-expanded="false" aria-label="Message agent"></textarea></section>`,
     );
     const run = await runSmoke(t, [`--url=http://127.0.0.1:${site.port}/`]);
 
@@ -306,8 +306,8 @@ test(
       t,
       `${inertControls(["Editor", ...requiredControls.filter((label) => label !== "New chat")])}
       <button onclick="document.getElementById('existing').className = ''; document.getElementById('old-composer').readOnly = true; document.getElementById('next').hidden = false">New chat</button>
-      <section id="existing" aria-label="Chat pane Existing" class="agent-chat-pane--focused"><textarea id="old-composer" aria-label="Message agent"></textarea></section>
-      <section id="next" aria-label="Chat pane New chat" class="agent-chat-pane--focused" hidden><textarea aria-label="Message agent"></textarea></section>`,
+      <section id="existing" aria-label="Chat pane Existing" class="agent-chat-pane--focused"><textarea id="old-composer" role="combobox" aria-expanded="false" aria-label="Message agent"></textarea></section>
+      <section id="next" aria-label="Chat pane New chat" class="agent-chat-pane--focused" hidden><textarea role="combobox" aria-expanded="false" aria-label="Message agent"></textarea></section>`,
     );
     const run = await runSmoke(t, [`--url=http://127.0.0.1:${site.port}/`]);
 
@@ -325,7 +325,7 @@ test(
   { timeout: 180_000 },
   async (t) => {
     const decoys =
-      '<textarea aria-label="Message agent" style="display:none"></textarea>'.repeat(
+      '<textarea role="combobox" aria-expanded="false" aria-label="Message agent" style="display:none"></textarea>'.repeat(
         3_000,
       );
     const site = await servePage(

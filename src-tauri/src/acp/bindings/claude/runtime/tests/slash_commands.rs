@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::bindings::runtime::NativeRuntime;
 fn update(session: &str, list: Value) -> Frame {
     frame(
         json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":session,"update":{"sessionUpdate":"available_commands_update","availableCommands":list}}}),
@@ -10,7 +11,7 @@ fn command(revision: u64) -> AdapterCommand {
     AdapterCommand::Prompt {
         prompt,
         client_message_id: RequiredText::new("client", "slash-client").unwrap(),
-        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        access_mode: crate::settings_store::SessionAccessMode::Ask,
     }
 }
 #[test]

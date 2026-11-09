@@ -1,0 +1,12 @@
+{
+  "scenario": "compact",
+  "harness": "codex",
+  "handshake": "noInitializeResponse",
+  "events": [],
+  "blocker": "codex app-server speaks its own JSON-RPC, not ACP, so the standard translator cannot replay it; codex/tests/session_action_tests.rs replays these frames through the Codex binding and asserts the projected compaction Turn.",
+  "notes": [
+    "Live capture against the Linux build of the pinned codex-cli 0.167.0 app-server. The model provider is a local server that refuses every request, so both the prompt Turn and the compaction fail and no credentials are involved.",
+    "thread/compact/start answers {} with no Turn. turn/started for a new Turn (rootTurnId equal to its own id) follows the answer, then contextCompaction item/started, a systemError status, the error and turn/completed failed.",
+    "The failed compaction emits no item/completed for its contextCompaction item."
+  ]
+}

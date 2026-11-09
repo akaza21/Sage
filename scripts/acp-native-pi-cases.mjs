@@ -86,29 +86,29 @@ const live = new Set([
 ]);
 const frame = (type, fields = {}) =>
   emit("piNative", { frame: { type, ...fields } });
-const message = (content = [], stopReason = "stop") => ({
+const SMALL_USAGE = { input: 12, output: 7, cacheRead: 0, cacheWrite: 0 };
+const message = (content = [], stopReason = "stop", usage = SMALL_USAGE) => ({
   role: "assistant",
   content,
   api: "openai-responses",
   provider: "openai",
   model: "fixture-model",
   usage: {
-    input: 12,
-    output: 7,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 19,
+    ...usage,
+    totalTokens:
+      usage.input + usage.output + usage.cacheRead + usage.cacheWrite,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   },
   stopReason,
   timestamp: 1,
 });
-function assistantStream() {
+function assistantStream(usage) {
   let content = [];
   const snapshot = (stopReason = "stop") =>
     message(
       content.map((block) => ({ ...block })),
       stopReason,
+      usage,
     );
   const update = (type, delta) => {
     const kind = type.startsWith("thinking") ? "thinking" : "text";
@@ -116,10 +116,9 @@ function assistantStream() {
       content.push({ type: kind, [kind]: "" });
     const contentIndex = content.length - 1;
     if (type.endsWith("delta")) content[contentIndex][kind] += delta;
-    const partial = snapshot();
     return frame("message_update", {
-      message: partial,
-      assistantMessageEvent: { type, contentIndex, delta, partial },
+      usage: snapshot().usage,
+      assistantMessageEvent: { type, contentIndex, delta },
     });
   };
   return {
@@ -259,13 +258,14 @@ function events(state, { update, finish }) {
       }),
       wait("piAbort"),
     );
+  // A select with nothing to choose cannot be shown, so Sage cancels it.
   if (state === "cancelled-dialog")
     steps.push(
       frame("extension_ui_request", {
         id: "fixture-dialog-1",
-        method: "input",
-        title: "Synthetic input",
-        placeholder: "Never submitted",
+        method: "select",
+        title: "Synthetic choice",
+        options: [],
       }),
       wait("piDialogCancelled"),
     );
@@ -451,4 +451,96 @@ export function piBridgeJourneys() {
       ],
     };
   });
+}
+
+/**
+ * One Pi 1.5 Turn through every surface the real app should show: thinking,
+ * a read tool, a bridge write approval, an extension notice, a session
+ * title, an extension question answered on the question card, a steer that Pi delivers at the next model turn, and usage large
+ * enough to move the context meter. The child holds the Turn open until
+ * Sage sends the steer, and the ended Turn must clear Pi's queue.
+ */
+export function piFullTurnJourney() {
+  const first = assistantStream();
+  const second = assistantStream({
+    input: 9000,
+    output: 600,
+    cacheRead: 3000,
+    cacheWrite: 400,
+  });
+  const steered = {
+    role: "user",
+    content: [{ type: "text", text: "Synthetic steer." }],
+    timestamp: 2,
+  };
+  return {
+    id: "pi-150-full-turn",
+    steps: [
+      wait("piInitialize"),
+      wait("piModels"),
+      wait("piNew"),
+      wait("piPrompt"),
+      wait("piThinkingLevels"),
+      ...first.start(),
+      first.update("thinking_start", ""),
+      first.update("thinking_delta", "Checking the synthetic example first."),
+      first.update("text_delta", "Reading the example, then adding a note."),
+      frame("tool_execution_start", {
+        toolCallId: "fixture-read-1",
+        toolName: "read",
+        args: { path: "$ROOT/src/example.ts" },
+      }),
+      frame("tool_execution_end", {
+        toolCallId: "fixture-read-1",
+        toolName: "read",
+        result: {
+          content: [{ type: "text", text: "export const example = 1;" }],
+        },
+        isError: false,
+      }),
+      {
+        op: "awaitClient",
+        kind: "piBridgeTool",
+        toolCallId: "fixture-bridge-1",
+        tool: "write",
+        args: {
+          path: "src/pi-note.txt",
+          content: "Created through the Sage bridge on Pi 1.5.\n",
+        },
+        prepareId: "fixture-prepare-1",
+        commitId: "fixture-commit-1",
+      },
+      frame("extension_ui_request", {
+        id: "fixture-notify-1",
+        method: "notify",
+        message: "Synthetic extension notice.",
+        notifyType: "info",
+      }),
+      frame("session_info_changed", { name: "Synthetic Pi session" }),
+      frame("extension_ui_request", {
+        id: "fixture-question-1",
+        method: "editor",
+        title: "Describe the note",
+        prefill: "A short note",
+      }),
+      wait("piDialogAnswered"),
+      first.update("text_delta", " Waiting for a steer."),
+      wait("piSteer"),
+      frame("queue_update", { steering: ["Synthetic steer."], followUp: [] }),
+      ...first
+        .finish(
+          "toolUse",
+          "Reading the example, then adding a note. Waiting for a steer.",
+        )
+        .slice(0, 2),
+      frame("queue_update", { steering: [], followUp: [] }),
+      frame("message_start", { message: steered }),
+      frame("message_end", { message: steered }),
+      ...second.start().slice(1),
+      second.update("text_delta", "Adjusted after your steer."),
+      ...second.finish("stop", "Adjusted after your steer."),
+      wait("piClearQueue"),
+      wait("piIdle"),
+    ],
+  };
 }

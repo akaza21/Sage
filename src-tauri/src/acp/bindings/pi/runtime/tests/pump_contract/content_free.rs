@@ -22,7 +22,6 @@ pub(super) fn updates() -> Vec<Value> {
 pub(super) fn notifications() -> Vec<Value> {
     vec![
         json!({"type":"extension_ui_request","id":"status","method":"setStatus","statusKey":"loop","statusText":"Reading"}),
-        json!({"type":"extension_ui_request","id":"notify","method":"notify","message":"Reading","notifyType":"info"}),
         json!({"type":"extension_ui_request","id":"widget","method":"setWidget","widgetKey":"loop","widgetLines":["Reading"]}),
         json!({"type":"extension_ui_request","id":"title","method":"setTitle","title":"Reading"}),
         json!({"type":"extension_ui_request","id":"editor","method":"set_editor_text","text":"Reading"}),
@@ -33,9 +32,8 @@ fn assistant(content: Value, timestamp: u64, stop: &str) -> Value {
     json!({"role":"assistant","content":content,"api":"openai-responses","provider":"openai","model":"fixture-model","usage":{"input":12,"output":7,"cacheRead":0,"cacheWrite":0,"totalTokens":19,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":stop,"timestamp":timestamp})
 }
 
-fn update(mut event: Value, message: Value) -> Value {
-    event["partial"] = message.clone();
-    json!({"type":"message_update","message":message,"assistantMessageEvent":event})
+fn update(event: Value, message: Value) -> Value {
+    json!({"type":"message_update","usage":message["usage"],"assistantMessageEvent":event})
 }
 
 pub(super) fn tool_step(step: u64) -> Vec<Value> {
@@ -181,7 +179,7 @@ async fn pi_pump_content_free_frames_remain_absorbed_until_settlement() {
             pump.push_stdout_chunk(&line(value), 4).await.unwrap();
         }
         let events = fixture.observed.lock().unwrap().clone();
-        assert_eq!(events.len(), 10);
+        assert_eq!(events.len(), 9);
         assert!(
             events
                 .iter()

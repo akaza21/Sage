@@ -26,6 +26,7 @@ export function safeCodexDiscovery(
     !runtimeEpoch ||
     !isOneOf(value.account, [
       "managedChatgpt",
+      "apiKey",
       "providerManaged",
       "signedOut",
     ] as const) ||

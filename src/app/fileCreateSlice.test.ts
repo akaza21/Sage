@@ -149,6 +149,7 @@ describe("file creation store transaction", () => {
       .spyOn(editorPort, "snapshotEditorBuffer")
       .mockResolvedValue({
         revision: 2,
+        applied: true,
         persistedAt: 1,
         dirty: true,
       });

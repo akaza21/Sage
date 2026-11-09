@@ -14,8 +14,15 @@ pub struct CapabilitySnapshotV1 {
     pub prompt: bool,
     #[serde(skip_serializing_if = "is_false")]
     pub prompt_resources: bool,
+    /// ACP `promptCapabilities.image`: the prompt may carry image blocks.
+    #[serde(skip_serializing_if = "is_false")]
+    pub prompt_images: bool,
     pub cancel: bool,
     pub native_session_fork: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    pub native_session_compact: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    pub native_review: bool,
     pub active_turn_steer: bool,
     pub child_conversation_projection: bool,
     pub child_transcript_read: bool,
@@ -37,8 +44,14 @@ struct CapabilitySnapshotWire {
     prompt: bool,
     #[serde(default)]
     prompt_resources: bool,
+    #[serde(default)]
+    prompt_images: bool,
     cancel: bool,
     native_session_fork: bool,
+    #[serde(default)]
+    native_session_compact: bool,
+    #[serde(default)]
+    native_review: bool,
     active_turn_steer: bool,
     child_conversation_projection: bool,
     child_transcript_read: bool,
@@ -68,8 +81,11 @@ impl<'de> Deserialize<'de> for CapabilitySnapshotV1 {
             close_session: wire.close_session,
             prompt: wire.prompt,
             prompt_resources: wire.prompt_resources,
+            prompt_images: wire.prompt_images,
             cancel: wire.cancel,
             native_session_fork: wire.native_session_fork,
+            native_session_compact: wire.native_session_compact,
+            native_review: wire.native_review,
             active_turn_steer: wire.active_turn_steer,
             child_conversation_projection: wire.child_conversation_projection,
             child_transcript_read: wire.child_transcript_read,
@@ -83,4 +99,17 @@ impl<'de> Deserialize<'de> for CapabilitySnapshotV1 {
 
 fn is_false(value: &bool) -> bool {
     !value
+}
+
+/// One standard ACP `agentCapabilities.promptCapabilities` flag from an
+/// `initialize` response. Only an explicit boolean `true` admits it, so an
+/// absent, malformed or downgraded offer fails closed.
+pub(crate) fn offers_prompt_capability(initialize: &serde_json::Value, name: &str) -> bool {
+    initialize
+        .get("result")
+        .and_then(|result| result.get("agentCapabilities"))
+        .and_then(|capabilities| capabilities.get("promptCapabilities"))
+        .and_then(|prompt| prompt.get(name))
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
 }

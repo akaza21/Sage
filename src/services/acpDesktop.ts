@@ -9,6 +9,8 @@ import type {
   CloseAcpSessionRequest,
   EndAcpSessionRequest,
   GetAcpChatPageRequest,
+  AnswerUserInputRequest,
+  RunAcpSessionActionRequest,
   ResolvePermissionDecisionRequest,
   SendAcpTurnRequest,
   StartAcpSessionRequest,
@@ -54,6 +56,11 @@ async function invokeAcpMutation<Request extends object>(
 export const acpDesktop = {
   getChatStatus,
   ...sessionConfigDesktop(invokeAcpMutation, isTauriRuntime),
+  runSessionAction(
+    request: RunAcpSessionActionRequest,
+  ): Promise<AcpMutationResult> {
+    return invokeAcpMutation("run_session_action", request);
+  },
   pauseExistingGoal(
     request: AcpSessionMutationIntent,
   ): Promise<AcpMutationResult> {
@@ -169,6 +176,19 @@ export const acpDesktop = {
           message: "Permission decision returned an invalid bounded response.",
         }),
     ),
+
+  async answerUserInput(request: AnswerUserInputRequest) {
+    const { answerUserInput } = await import("./acpDesktopUserInputAnswer");
+    return answerUserInput(
+      request,
+      invokeAcp,
+      () =>
+        new AcpDesktopError({
+          kind: "internal",
+          message: "Question answer returned an invalid bounded response.",
+        }),
+    );
+  },
 
   async recordAgentEditDisposition(
     request: AgentEditDisposition,

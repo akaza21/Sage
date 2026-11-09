@@ -5,11 +5,18 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
+import { preloadAgentHeaderMenu } from "./agentTaskHeaderLazy";
+
+// The header menu body loads when the window first idles.
+beforeAll(() => preloadAgentHeaderMenu());
 import { useWorkbenchStore } from "../app/store";
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentTaskHeader } from "./AgentTaskHeader";
 import type * as ResourcesChunk from "./AgentTaskResources";
+// Only the resources chunk is held cold here. The rename menu's chunk loads
+// with the file, so opening it never races a cold import against findByRole.
+import "./ProjectChatActionPopover";
 
 const gate = vi.hoisted(() => {
   let finish!: () => void;

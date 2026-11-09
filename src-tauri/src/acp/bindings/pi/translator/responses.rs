@@ -42,7 +42,10 @@ impl PiTranslator {
         if !response.success && kind == PendingKind::Commands {
             return Ok(vec![AdapterOutput::Commands(serde_json::json!([]))]);
         }
-        if !response.success {
+        if !response.success && !matches!(kind, PendingKind::Steer | PendingKind::ClearQueue) {
+            if kind == PendingKind::Resume {
+                self.resuming = None;
+            }
             if kind == PendingKind::SetThinkingLevel {
                 self.pending_thinking = None;
             }
@@ -110,8 +113,22 @@ impl PiTranslator {
                 Ok(vec![AdapterOutput::ThinkingSelected(level)])
             }
             PendingKind::NewSession => {
+                let id = parse_state(&response.data)?
+                    .session_id
+                    .ok_or(AdapterError::Malformed)?;
+                validate_id("session ID", &id)?;
                 self.active = None;
-                Ok(vec![AdapterOutput::SessionReset])
+                Ok(vec![AdapterOutput::SessionOpened(id)])
+            }
+            PendingKind::Resume => {
+                let id = self.resuming.take().ok_or(AdapterError::Correlation)?;
+                if response.data.get("cancelled").and_then(Value::as_bool) == Some(true) {
+                    return Ok(vec![AdapterOutput::Error {
+                        code: "session_switch_cancelled",
+                    }]);
+                }
+                self.active = None;
+                Ok(vec![AdapterOutput::SessionOpened(id)])
             }
             PendingKind::Prompt => {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
@@ -122,6 +139,16 @@ impl PiTranslator {
                 }
                 Ok(vec![AdapterOutput::CommandAccepted { command: "prompt" }])
             }
+            PendingKind::Steer => Ok(vec![AdapterOutput::SteerResolved {
+                accepted: response.success
+                    && self
+                        .active
+                        .as_ref()
+                        .is_some_and(|turn| !turn.authority_denied),
+                command_id: response.id,
+            }]),
+            // Clearing only guards the next prompt; there is nothing to show.
+            PendingKind::ClearQueue => Ok(vec![AdapterOutput::Absorbed]),
             PendingKind::Abort => {
                 self.active
                     .as_mut()

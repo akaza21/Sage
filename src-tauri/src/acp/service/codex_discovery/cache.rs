@@ -183,7 +183,9 @@ impl CachedDiscovery {
         if &self.response.binding_id != binding_id
             || !matches!(
                 self.response.account,
-                CodexDiscoveryAccount::ManagedChatgpt | CodexDiscoveryAccount::ProviderManaged
+                CodexDiscoveryAccount::ManagedChatgpt
+                    | CodexDiscoveryAccount::ApiKey
+                    | CodexDiscoveryAccount::ProviderManaged
             )
         {
             return Err(CodexDiscoveryRunError::InvalidScope);
@@ -231,6 +233,7 @@ pub(super) fn response_from(
         runtime_epoch,
         account: match content.account {
             CodexAccountSnapshot::ManagedChatgpt => CodexDiscoveryAccount::ManagedChatgpt,
+            CodexAccountSnapshot::ApiKey => CodexDiscoveryAccount::ApiKey,
             CodexAccountSnapshot::ProviderManaged => CodexDiscoveryAccount::ProviderManaged,
             CodexAccountSnapshot::SignedOut => CodexDiscoveryAccount::SignedOut,
         },

@@ -2,7 +2,7 @@ use serde_json::Value;
 
 use crate::acp::{
     contract::{BoundedVec, ContractError, RequiredText, SafeText, SchemaVersionV1},
-    intent::CapabilitySnapshotV1,
+    intent::{CapabilitySnapshotV1, offers_prompt_capability},
 };
 
 #[cfg(test)]
@@ -24,6 +24,8 @@ pub(crate) struct ClaudeCapabilityOffer {
     pub fork_session: bool,
     pub prompt: bool,
     pub prompt_resources: bool,
+    /// Standard ACP `promptCapabilities.image`.
+    pub prompt_images: bool,
     pub cancel: bool,
     pub models: Vec<ClaudeModel>,
 }
@@ -109,10 +111,8 @@ impl ClaudeCapabilityOffer {
             // new_session, prompt, and cancel are the admitted ACP core surface.
             // Separate booleans make a future schema downgrade fail closed.
             prompt: true,
-            prompt_resources: value
-                .pointer("/result/agentCapabilities/promptCapabilities/embeddedContext")
-                .and_then(Value::as_bool)
-                == Some(true),
+            prompt_resources: offers_prompt_capability(value, "embeddedContext"),
+            prompt_images: offers_prompt_capability(value, "image"),
             cancel: true,
             models,
         })
@@ -138,6 +138,8 @@ pub(crate) fn negotiate_capabilities(
         prompt: offer.prompt,
         cancel: offer.cancel,
         native_session_fork: offer.fork_session,
+        native_session_compact: false,
+        native_review: false,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,
@@ -145,6 +147,7 @@ pub(crate) fn negotiate_capabilities(
         multi_root_extension_schema_id: None,
         model_count,
         prompt_resources: offer.prompt_resources,
+        prompt_images: offer.prompt_images,
         config_count: 0,
     })
 }
@@ -182,6 +185,23 @@ mod prompt_resource_tests {
                 negotiate_capabilities(&offer).unwrap().prompt_resources,
                 expected
             );
+        }
+    }
+
+    #[test]
+    fn image_prompts_require_an_explicit_boolean_offer() {
+        for (value, expected) in [
+            (Value::Null, false),
+            (Value::Bool(false), false),
+            (Value::String("true".into()), false),
+            (serde_json::json!({}), false),
+            (Value::Bool(true), true),
+        ] {
+            let wire = serde_json::json!({"result":{"protocolVersion":1,"agentCapabilities":{"promptCapabilities":{"image":value,"embeddedContext":true}}}});
+            let offer = ClaudeCapabilityOffer::from_initialize_value(&wire).unwrap();
+            let negotiated = negotiate_capabilities(&offer).unwrap();
+            assert_eq!(negotiated.prompt_images, expected);
+            assert!(negotiated.prompt_resources);
         }
     }
 }

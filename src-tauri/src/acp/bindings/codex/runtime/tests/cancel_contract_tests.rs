@@ -79,3 +79,43 @@ fn granular_permission_cancel_returns_the_native_empty_permission_set() {
     );
     assert!(body.get("jsonrpc").is_none());
 }
+
+#[test]
+fn a_cancel_held_for_an_unnamed_turn_goes_out_with_the_frame_that_names_it() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let mut prompt = Prompt::new("sessionAction", "/compact").expect("prompt");
+    prompt.action = Some(serde_json::from_value(json!({"kind":"compact"})).expect("action"));
+    let compact = runtime
+        .command(AdapterCommand::Prompt {
+            prompt,
+            client_message_id: RequiredText::new("client", "client-compact").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .expect("compaction request");
+    let id = request_id(&compact);
+    runtime
+        .ingest(&frame(json!({"id":id,"result":{}})), &Mapper)
+        .expect("empty answer");
+    assert!(runtime.provisional_turn_pending());
+    assert!(runtime.defer_cancel());
+    let started = runtime
+        .ingest(
+            &frame(
+                json!({"method":"turn/started","params":{"threadId":"thread-1",
+                "turn":{"id":"turn-compact","rootTurnId":"turn-compact","status":"inProgress"}}}),
+            ),
+            &Mapper,
+        )
+        .expect("turn started");
+    let [interrupt] = started.egress() else {
+        panic!("the held cancel goes out once");
+    };
+    assert!(interrupt.token().is_cancel());
+    let body: Value = serde_json::from_slice(interrupt.frame().payload()).expect("json");
+    assert_eq!(
+        (&body["method"], &body["params"]["turnId"]),
+        (&json!("turn/interrupt"), &json!("turn-compact"))
+    );
+    assert!(!runtime.provisional_turn_pending());
+}

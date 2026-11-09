@@ -53,7 +53,7 @@ pub struct Database {
     connection: Arc<Mutex<Connection>>,
     search_reader: Option<Arc<Mutex<Connection>>>,
     physical_storage: Arc<PhysicalStorage>,
-    _live_path_anchor: Arc<migration::LivePathAnchor>,
+    live_path_anchor: Arc<migration::LivePathAnchor>,
     image_artifact_root: Option<Arc<PathBuf>>,
 }
 
@@ -97,7 +97,7 @@ impl Database {
                 Some(Arc::new(Mutex::new(reader)))
             },
             physical_storage,
-            _live_path_anchor: Arc::new(live_path_anchor),
+            live_path_anchor: Arc::new(live_path_anchor),
             image_artifact_root,
         };
         // Like the exit path: a failed purge never blocks startup; the
@@ -118,6 +118,24 @@ impl Database {
             .ok_or_else(|| {
                 crate::error::AppError::Unsupported("image artifacts need a disk database".into())
             })
+    }
+
+    /// A read-only connection holding an open read transaction, so it keeps
+    /// seeing the store as it was at this call while writers go on. Cheap: it
+    /// only fixes the WAL snapshot. `None` for an in-memory store.
+    pub(crate) fn pinned_reader(&self) -> AppResult<Option<Connection>> {
+        let Some(path) = self.physical_storage.path() else {
+            return Ok(None);
+        };
+        self.live_path_anchor.verify_path(path)?;
+        let reader = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        self.live_path_anchor.verify_path(path)?;
+        // A deferred transaction takes its snapshot at the first read.
+        reader.execute_batch("BEGIN; SELECT count(*) FROM sqlite_schema;")?;
+        Ok(Some(reader))
     }
 
     pub(crate) fn connection(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -210,7 +228,10 @@ mod tests {
         let project_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(migration_count, 23);
+        assert_eq!(
+            migration_count,
+            i64::from(crate::acp::migration::CURRENT_SCHEMA_VERSION)
+        );
         assert_eq!(project_count, 0);
     }
 
@@ -226,6 +247,35 @@ mod tests {
             .unwrap();
         assert_eq!(auto_checkpoint, 256);
         assert_eq!(journal_size_limit, 8 * 1024 * 1024);
+    }
+
+    #[test]
+    fn a_pinned_reader_keeps_seeing_the_store_as_it_was_when_pinned() {
+        let directory =
+            std::env::temp_dir().join(format!("sage-pinned-reader-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let database = Database::open(&directory.join("sage.db")).unwrap();
+        let projects = |connection: &Connection| -> i64 {
+            connection
+                .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
+                .unwrap()
+        };
+        let reader = database.pinned_reader().unwrap().unwrap();
+
+        database.create_project_from_root(&directory).unwrap();
+
+        assert_eq!(projects(&database.connection()), 1);
+        assert_eq!(projects(&reader), 0);
+        drop(reader);
+        assert!(
+            Database::open(Path::new(":memory:"))
+                .unwrap()
+                .pinned_reader()
+                .unwrap()
+                .is_none()
+        );
+        drop(database);
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]

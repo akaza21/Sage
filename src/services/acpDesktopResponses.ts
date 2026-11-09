@@ -15,6 +15,7 @@ import type {
 } from "../domain/acp";
 import type { AcpGoalState } from "../domain/acpGoal";
 import { safeTurn } from "./acpDesktopResponseTurns";
+import { safeSessionNotices } from "./acpSessionNotices";
 
 const ACP_PAGE_LIMITS = {
   sessions: 32,
@@ -65,8 +66,12 @@ function safeCapabilities(
     loadSession: value.loadSession,
     closeSession: value.closeSession,
     prompt: value.prompt,
+    ...(value.promptResources === true ? { promptResources: true } : {}),
+    ...(value.promptImages === true ? { promptImages: true } : {}),
     cancel: value.cancel,
     nativeSessionFork: value.nativeSessionFork,
+    ...(value.nativeSessionCompact === true && { nativeSessionCompact: true }),
+    ...(value.nativeReview === true && { nativeReview: true }),
     activeTurnSteer: value.activeTurnSteer,
     childConversationProjection: value.childConversationProjection,
     childTranscriptRead: value.childTranscriptRead,
@@ -78,6 +83,10 @@ function safeCapabilities(
 }
 
 import { decodeSessionConfig } from "../domain/acpSessionConfig";
+import {
+  decodeRestoredSessionConfig,
+  decodeSavedChoiceNotice,
+} from "../domain/acpRestoredSessionConfig";
 
 function safeSession(value: unknown): AgentSessionProjection | null {
   if (!isRecord(value)) return null;
@@ -160,6 +169,7 @@ export function safeAcpMutationResponse(
   // Display-only extras: an unsafe value is dropped, never trusted.
   const forkedFromTurnId = safeIdentifier(projection.forkedFromTurnId);
   const epoch = projection.childProjectionEpoch as number;
+  const sessionNotices = safeSessionNotices(projection.sessionNotices);
   if (
     forkedFrom === null ||
     !projectId ||
@@ -184,6 +194,20 @@ export function safeAcpMutationResponse(
       ? null
       : decodeSessionConfig(projection.sessionConfig);
   if (projection.sessionConfig != null && !sessionConfig) return null;
+  // Restored config belongs to the current session and never sits beside a
+  // live one; anything else is dropped rather than shown.
+  const restoredConfig =
+    projection.restoredSessionConfig == null || sessionConfig
+      ? null
+      : decodeRestoredSessionConfig(projection.restoredSessionConfig);
+  const restoredSessionConfig =
+    restoredConfig?.sageAgentSessionId === currentSessionId
+      ? restoredConfig
+      : null;
+  const sessionConfigNotice =
+    projection.sessionConfigNotice == null
+      ? null
+      : decodeSavedChoiceNotice(projection.sessionConfigNotice);
   const goal =
     projection.goal === undefined || !decodeGoal
       ? undefined
@@ -250,7 +274,10 @@ export function safeAcpMutationResponse(
       currentSessionId: currentSessionId as AcpChatPage["currentSessionId"],
       sessions: safeSessions,
       sessionConfig,
+      ...(restoredSessionConfig ? { restoredSessionConfig } : {}),
+      ...(sessionConfigNotice ? { sessionConfigNotice } : {}),
       ...(goal ? { goal } : {}),
+      ...(projection.usage === true && { usage: true }),
       turns: safeTurns,
       nextCursor: nextCursor as AcpChatPage["nextCursor"],
       ...(forkedFrom
@@ -261,6 +288,7 @@ export function safeAcpMutationResponse(
       }),
       ...(Number.isSafeInteger(epoch) &&
         epoch > 0 && { childProjectionEpoch: epoch }),
+      ...(sessionNotices.length > 0 && { sessionNotices }),
     },
   };
 }

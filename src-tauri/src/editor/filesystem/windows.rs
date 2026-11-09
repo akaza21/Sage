@@ -9,7 +9,12 @@ use std::{
     ptr,
 };
 
-use windows_sys::Win32::Storage::FileSystem::{REPLACEFILE_WRITE_THROUGH, ReplaceFileW};
+use windows_sys::Win32::{
+    Foundation::{ERROR_ALREADY_EXISTS, ERROR_FILE_EXISTS},
+    Storage::FileSystem::{
+        MOVEFILE_WRITE_THROUGH, MoveFileExW, REPLACEFILE_WRITE_THROUGH, ReplaceFileW,
+    },
+};
 
 use crate::{
     error::{AppError, AppResult},
@@ -102,6 +107,50 @@ impl HeldParent {
             return Err(std::io::Error::last_os_error().into());
         }
         Ok(())
+    }
+
+    /// A new File inherits its folder's permissions, as any new file does.
+    pub(super) fn create_new_document(&self, name: &str) -> AppResult<File> {
+        self.create_new(name)
+    }
+
+    /// Moves `temp` to `target` only if nothing has that name: `false` when
+    /// something does, and then `temp` is left where it is.
+    pub(in crate::editor) fn rename_new(&self, temp: &str, target: &str) -> AppResult<bool> {
+        let target_wide = wide(&self.entry(target)?);
+        let temp_wide = wide(&self.entry(temp)?);
+        // Without MOVEFILE_REPLACE_EXISTING the move fails on an existing name.
+        // SAFETY: both path buffers are valid, NUL-terminated UTF-16 and live for the call.
+        let moved = unsafe {
+            MoveFileExW(
+                temp_wide.as_ptr(),
+                target_wide.as_ptr(),
+                MOVEFILE_WRITE_THROUGH,
+            )
+        };
+        if moved != 0 {
+            return Ok(true);
+        }
+        let error = std::io::Error::last_os_error();
+        match error.raw_os_error() {
+            Some(code)
+                if code == ERROR_ALREADY_EXISTS as i32 || code == ERROR_FILE_EXISTS as i32 =>
+            {
+                Ok(false)
+            }
+            _ => Err(error.into()),
+        }
+    }
+
+    /// Creates the folder `name` inside the held parent; one that exists, or
+    /// a link or junction, fails with `AlreadyExists` and is never followed.
+    pub(in crate::editor) fn create_folder(&self, name: &str) -> std::io::Result<()> {
+        std::fs::create_dir(self.entry(name).map_err(std::io::Error::other)?)
+    }
+
+    /// Removes the empty folder `name`; one that is not empty stays.
+    pub(in crate::editor) fn remove_folder(&self, name: &str) -> std::io::Result<()> {
+        std::fs::remove_dir(self.entry(name).map_err(std::io::Error::other)?)
     }
 
     pub(in crate::editor) fn remove(&self, name: &str) -> std::io::Result<()> {

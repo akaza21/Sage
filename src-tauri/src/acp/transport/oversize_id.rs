@@ -277,14 +277,18 @@ impl OversizeIdScanner {
     }
 
     pub(super) fn finish(&self) -> Result<u64, ()> {
-        if !matches!(self.token, Token::None)
-            || !matches!(self.expect, Expect::Done)
-            || !self.stack.is_empty()
-            || !self.utf8.is_complete()
-        {
+        if !self.is_complete() {
             return Err(());
         }
         self.id.ok_or(())
+    }
+
+    /// The frame was one complete JSON value, whether or not it had an id.
+    pub(super) fn is_complete(&self) -> bool {
+        matches!(self.token, Token::None)
+            && matches!(self.expect, Expect::Done)
+            && self.stack.is_empty()
+            && self.utf8.is_complete()
     }
 }
 

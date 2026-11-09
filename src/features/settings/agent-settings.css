@@ -175,6 +175,10 @@
 .agent-settings__control .input {
   width: 100%;
 }
+.agent-settings__inline-form {
+  display: flex;
+  gap: var(--space-2);
+}
 .agent-settings__page button:disabled {
   cursor: not-allowed;
 }

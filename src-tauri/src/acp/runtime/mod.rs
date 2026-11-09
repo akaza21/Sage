@@ -36,7 +36,8 @@ pub(crate) use activation_pump::{ActivationJournalError, ActivationReceipt};
 pub(crate) use adapter_pump::normalized_payload_bytes;
 pub(crate) use adapter_pump::{
     ActiveTurnIntent, AdapterBatchJournal, AdapterPump, AdapterPumpError, CompletedPumpParts,
-    EgressTransport, FlushDisposition, NonfatalRefusal, PumpJournalError, SessionPumpIntent,
+    EgressTransport, FlushDisposition, NonfatalRefusal, PumpJournalError, QueueDisposition,
+    SessionPumpIntent,
 };
 #[cfg(test)]
 pub(crate) use adapter_pump::{DurableAdapterEvent, JournalReceipt, PumpIntent, TurnScope};

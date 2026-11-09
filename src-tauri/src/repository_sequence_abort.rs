@@ -91,7 +91,7 @@ pub(crate) async fn abort_in_progress_with_policy(
 mod tests {
     use super::*;
     use crate::workspace::Workspace;
-    use std::{fs, path::Path, process::Command};
+    use std::{fs, path::Path};
     use uuid::Uuid;
 
     #[test]
@@ -118,7 +118,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            Command::new("git")
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -144,7 +144,7 @@ mod tests {
         git(&root, &["checkout", "-q", "-"]);
         fs::write(root.join("conflict.txt"), "ours\n").unwrap();
         git(&root, &["commit", "-q", "-am", "ours"]);
-        let merge = Command::new("git")
+        let merge = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["merge", "other"])
@@ -156,7 +156,7 @@ mod tests {
     }
 
     fn current_branch(root: &Path) -> String {
-        let output = Command::new("git")
+        let output = crate::git_process::fixture_git()
             .arg("-C")
             .arg(root)
             .args(["branch", "--show-current"])
@@ -171,7 +171,7 @@ mod tests {
         git(&root, &["merge", "--abort"]);
         let onto = current_branch(&root);
         git(&root, &["checkout", "-q", "other"]);
-        let rebase = Command::new("git")
+        let rebase = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["rebase", &onto])

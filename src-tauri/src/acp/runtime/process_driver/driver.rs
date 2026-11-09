@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+mod auto_resolution;
 mod exit;
 mod ingress;
 mod teardown;
@@ -7,7 +8,10 @@ mod teardown;
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
     contract::RuntimeEpoch,
-    runtime::{AdapterBatchJournal, AdapterPump, AdapterPumpError, FlushDisposition, HostError},
+    runtime::{
+        AdapterBatchJournal, AdapterPump, AdapterPumpError, FlushDisposition, HostError,
+        QueueDisposition,
+    },
     scheduler::RuntimeOwner,
 };
 
@@ -352,7 +356,7 @@ where
             &intent.turn_id,
             &intent.client_message_id,
         ) {
-            Ok(_) => {}
+            Ok(disposition) => progress.cancel_deferred = disposition == QueueDisposition::Deferred,
             Err(AdapterPumpError::NoActiveTurn | AdapterPumpError::Intent) => {
                 return Err(DriverError::RejectedIntent);
             }
