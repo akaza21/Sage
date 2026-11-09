@@ -214,6 +214,33 @@ describe("composer @ file picker", () => {
       expect(field).not.toHaveAttribute(name);
   });
 
+  it("leaves the caret where typing goes on after the picked token", async () => {
+    invoke.mockResolvedValue(answer(["src/main.rs"]));
+    render(<Composer />);
+    const field = screen.getByRole<HTMLTextAreaElement>("textbox");
+    field.focus();
+    const pickInto = async (text: string, caret: number) => {
+      await act(async () => {
+        fireEvent.change(field, { target: { value: text } });
+        field.setSelectionRange(caret, caret);
+        fireEvent.keyUp(field);
+      });
+      await screen.findByRole("option");
+      await act(async () => {
+        fireEvent.keyDown(field, { key: "Enter" });
+      });
+      // Type one character where the caret is.
+      const at = field.selectionStart;
+      await type(field, `${field.value.slice(0, at)}x${field.value.slice(at)}`);
+      return field.value;
+    };
+    expect(await pickInto("Read @ma", 8)).toBe("Read @src/main.rs x");
+    expect(await pickInto("see @ma then", 7)).toBe("see @src/main.rs xthen");
+    expect(await pickInto("see (@ma) then", 8)).toBe(
+      "see (@src/main.rs)x then",
+    );
+  });
+
   it("does not open for an @ inside a word", async () => {
     render(<Composer />);
     const field = screen.getByRole<HTMLTextAreaElement>("textbox");

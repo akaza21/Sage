@@ -13,9 +13,10 @@ import { mentionQuery } from "./composerMention";
 
 /**
  * Replaces the `@` token at [start, end) with the picked file's token
- * through the editing commands, so Undo restores what was typed, and leaves
- * the caret after it. What follows the token (a space, or the closing
- * parenthesis of `(@a.rs)`) stays; at the end of the text a space is added.
+ * through the editing commands, so Undo restores what was typed in one
+ * step. The caret lands past the character that ends the token (the space
+ * after it, or the closing parenthesis of `(@a.rs)`), and a space is added
+ * at the end of the text, so what is typed next never joins the token.
  */
 function insertMention(
   field: HTMLTextAreaElement,
@@ -23,14 +24,17 @@ function insertMention(
   end: number,
   token: string,
 ) {
-  const replacement = end < field.value.length ? token : `${token} `;
+  // The character after the token is rewritten as itself to step over it.
+  const follows = field.value.charAt(end);
+  const through = follows ? end + 1 : end;
+  const replacement = `${token}${follows || " "}`;
   field.focus();
-  field.setSelectionRange(start, end);
+  field.setSelectionRange(start, through);
   const inserted =
     typeof document.execCommand === "function" &&
     document.execCommand("insertText", false, replacement);
   if (!inserted) {
-    field.setRangeText(replacement, start, end, "end");
+    field.setRangeText(replacement, start, through, "end");
     field.dispatchEvent(new Event("input", { bubbles: true }));
   }
 }

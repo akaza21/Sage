@@ -33,9 +33,9 @@
       },
       {
         "entry": "src/features/chat/ComposerMentionController.tsx",
-        "maxGzipBytes": 3300,
+        "maxGzipBytes": 3550,
         "maxCssGzipBytes": 560,
-        "reason": "Composer `@` file picker: controller, menu, suggestion listbox and its path-index queries. Loads with the draft's first `@`, keeping the first-Chat path to a mount. Measured 3055 B JS, 507 B CSS."
+        "reason": "Composer `@` file picker: controller, menu, suggestion listbox and its path-index queries. Loads with the draft's first `@`, keeping the first-Chat path to a mount. Measured 3313 B JS, 507 B CSS."
       },
       {
         "entry": "src/features/chat/ComposerAttach.tsx",
