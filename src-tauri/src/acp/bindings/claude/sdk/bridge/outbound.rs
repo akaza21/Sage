@@ -158,7 +158,13 @@ fn prompt_content(blocks: Option<&Value>) -> Result<Vec<Value>, BridgeError> {
                     .filter(|url| url.scheme() == "file")
                     .and_then(|url| url.to_file_path().ok())
                     .ok_or(BridgeError::Unsupported)?;
-                Ok(json!({"type": "text", "text": format!("@{}", path.display())}))
+                let path = path.display().to_string();
+                let mention = if path.contains(char::is_whitespace) {
+                    format!("@\"{path}\"")
+                } else {
+                    format!("@{path}")
+                };
+                Ok(json!({"type": "text", "text": mention}))
             }
             _ => Err(BridgeError::Unsupported),
         })

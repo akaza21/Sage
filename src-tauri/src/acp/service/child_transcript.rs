@@ -36,24 +36,25 @@ impl AcpService {
         &self,
         scope: ChildTranscriptScope,
     ) -> Result<ChildTranscriptRead, ChildTranscriptReadError> {
-        let (native, running) = {
+        let (native, stored, running) = {
             let connection = self.database.connection();
             let native = observed_protocol(&connection, &scope)?;
+            let stored = stores_children(&connection, &scope)?;
             let running = match verify_current_binding(&connection, &scope) {
                 Ok(()) => true,
                 Err(ChildTranscriptStoreError::Stale) => false,
                 Err(error) => return Err(error.into()),
             };
-            (native, running)
+            (native, stored, running)
         };
         if !running {
             return load_earlier_snapshot(&self.database.connection(), &scope)?
                 .map(ChildTranscriptRead::FromEarlierSession)
                 .ok_or(ChildTranscriptReadError::Unavailable);
         }
-        // A harness without a native child read streams every child item
-        // to the store as it happens, so the stored transcript is current.
-        if !native {
+        // Claude Code on its SDK has no child read but streams every child
+        // item to the store as it happens, so the stored transcript is current.
+        if stored && !native {
             return load_snapshot(&self.database.connection(), &scope)?
                 .map(ChildTranscriptRead::Current)
                 .ok_or(ChildTranscriptReadError::Unavailable);
@@ -115,6 +116,27 @@ impl AcpService {
             Err(_) => Err(ChildTranscriptReadError::RecoveryRequired),
         }
     }
+}
+
+/// The session runs on a binding that keeps its children's transcripts in
+/// the store as they run.
+fn stores_children(
+    connection: &rusqlite::Connection,
+    scope: &ChildTranscriptScope,
+) -> Result<bool, ChildTranscriptReadError> {
+    let binding: Option<String> = connection
+        .query_row(
+            "SELECT binding_id FROM agent_sessions WHERE id=?1 AND project_id=?2 AND chat_id=?3",
+            params![
+                scope.owner.session_id.as_str(),
+                scope.owner.project_id.as_str(),
+                scope.owner.chat_id.as_str()
+            ],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(ChildTranscriptStoreError::Storage)?;
+    Ok(binding.as_deref() == Some(crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID))
 }
 
 fn observed_protocol(

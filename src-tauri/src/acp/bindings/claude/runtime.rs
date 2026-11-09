@@ -41,7 +41,7 @@ mod mode_guard;
 mod session_config;
 mod slash_commands;
 mod support;
-pub(crate) use children::{ChildEvent, ChildOutcome, Children};
+pub(crate) use children::{ChildEvent, ChildOutcome, Children, OPEN_CHILDREN};
 pub(crate) use launch::ClaudeRuntimeFactory;
 use support::*;
 

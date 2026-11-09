@@ -309,7 +309,8 @@ fn activity(
     state: SessionActivityState,
     progress: Option<&str>,
 ) {
-    let id_is_task = id.starts_with(TASK_PREFIX);
+    // A clipped id would name another task, so only a whole one is stopped.
+    let id_is_task = id.starts_with(TASK_PREFIX) && id.len() <= ID_BYTES;
     let (Ok(id), Ok(kind), Some(Ok(label))) = (
         crate::acp::intent::ExternalId::new("activityId", clip(id, ID_BYTES)),
         RequiredText::new("activityKind", kind.to_owned()),
