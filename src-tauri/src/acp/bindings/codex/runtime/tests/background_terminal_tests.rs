@@ -1,4 +1,4 @@
-//! `thread/backgroundTerminals/*` and terminal input on the command row.
+//! `thread/backgroundTerminals/*` requests and their replies.
 
 use super::*;
 use crate::acp::{
@@ -75,7 +75,7 @@ fn a_listing_maps_each_terminal_to_a_handle_a_safe_command_and_a_mapped_cwd() {
 }
 
 #[test]
-fn a_listing_is_capped_and_an_off_schema_or_refused_answer_is_rejected() {
+fn a_listing_is_capped_skips_a_bad_entry_and_an_off_schema_or_refused_answer_is_rejected() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     let many: Vec<Value> = (0..40)
@@ -89,9 +89,22 @@ fn a_listing_is_capped_and_an_off_schema_or_refused_answer_is_rejected() {
     };
     assert_eq!(terminals.len(), 32);
 
+    let (id, _) = send(&mut runtime, TerminalAction::List);
+    let Some(NativeRpcReply::BackgroundTerminals(terminals)) = answer(
+        &mut runtime,
+        id,
+        json!({"result": {"data": [
+            {"processId": "", "command": "x", "cwd": "C:\\repo"},
+            {"processId": "8", "command": "sleep 9", "cwd": "C:\\repo"}
+        ]}}),
+    ) else {
+        panic!("listing with an unreadable entry");
+    };
+    assert_eq!(terminals.len(), 1);
+    assert_eq!(terminals[0].handle, "8");
+
     for body in [
         json!({"result": {"data": "none"}}),
-        json!({"result": {"data": [{"processId": "", "command": "x", "cwd": "C:\\repo"}]}}),
         json!({"error": {"code": -32600, "message": "unknown thread"}}),
     ] {
         let (id, _) = send(&mut runtime, TerminalAction::List);
@@ -134,48 +147,19 @@ fn no_terminal_request_is_sent_before_a_thread_is_bound() {
 }
 
 #[test]
-fn terminal_input_joins_the_running_command_output() {
+fn an_abandoned_listing_is_discarded_and_blocks_a_new_request_until_it_answers() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
-    running_turn(&mut runtime);
-    runtime
-        .ingest(
-            &frame(json!({"method":"item/started","params":{
-                "threadId":"thread-1","turnId":"turn-1","item":{
-                    "id":"command-1","type":"commandExecution","status":"inProgress",
-                    "command":"python -i","cwd":"C:\\repo","commandActions":[],
-                    "processId":"7","source":"unifiedExecStartup"
-                }
-            }})),
-            &Mapper,
-        )
-        .expect("command start");
-    let interaction = |item: &str, stdin: &str| {
-        frame(
-            json!({"method":"item/commandExecution/terminalInteraction","params":{
-                "threadId":"thread-1","turnId":"turn-1","itemId":item,"processId":"7","stdin":stdin
-            }}),
-        )
-    };
-    let typed = runtime
-        .ingest(&interaction("command-1", "print(42)\n"), &Mapper)
-        .expect("terminal input");
-    assert!(matches!(
-        typed.events(),
-        [AdapterEvent::Item {
-            payload: NormalizedPayload::ToolCall { output_summary: Some(output), .. },
-            ..
-        }] if output.as_str().contains("print(42)")
-    ));
-    // Input to a command no open row holds is not projected.
-    let earlier = runtime
-        .ingest(&interaction("command-from-earlier-turn", "q\n"), &Mapper)
-        .expect("earlier command input");
-    assert!(matches!(earlier.events(), [AdapterEvent::IgnoredLate]));
-    let unnamed = frame(
-        json!({"method":"item/commandExecution/terminalInteraction","params":{
-            "threadId":"thread-1","turnId":"turn-1","itemId":"command-1","stdin":"x"
-        }}),
+    let (abandoned, _) = send(&mut runtime, TerminalAction::List);
+    runtime.abandon_passive_read();
+    assert!(!runtime.native_rpc_pending());
+    assert!(runtime.background_terminals(&TerminalAction::List).is_err());
+
+    let late = json!({"result": {"data": [{"processId": "7", "command": "x"}]}});
+    assert_eq!(answer(&mut runtime, abandoned, late), None);
+    let (id, _) = send(&mut runtime, TerminalAction::List);
+    assert_eq!(
+        answer(&mut runtime, id, json!({"result": {"data": []}})),
+        Some(NativeRpcReply::BackgroundTerminals(Vec::new()))
     );
-    assert!(runtime.ingest(&unnamed, &Mapper).is_err());
 }

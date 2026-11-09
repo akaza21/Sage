@@ -24,13 +24,13 @@ pub(crate) struct StopTerminalsRequest {
     handle: Option<String>,
 }
 
-/// Stops the named terminals and answers with the ones still running.
+/// Stops the named terminals; the caller lists again for what still runs.
 #[tauri::command]
 pub(crate) async fn stop_background_terminals(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: StopTerminalsRequest,
-) -> Result<Vec<BackgroundTerminal>, AcpIpcError> {
+) -> Result<(), AcpIpcError> {
     let action = match request.handle {
         Some(handle) if valid_handle(&handle) => TerminalAction::Stop(handle),
         Some(_) => {
@@ -40,7 +40,7 @@ pub(crate) async fn stop_background_terminals(
         }
         None => TerminalAction::StopAll,
     };
-    run(app, &state, request.runtime, action).await
+    run(app, &state, request.runtime, action).await.map(drop)
 }
 
 async fn run(
@@ -80,7 +80,7 @@ mod tests {
     use std::sync::atomic::Ordering;
 
     #[tokio::test]
-    async fn a_stop_reaches_the_current_runtime_then_relists_and_a_stale_one_runs_none() {
+    async fn a_listing_and_a_stop_reach_only_the_current_runtime() {
         let (state, goal, calls) = fixture(Ok(()));
         let request = |epoch| AcpUsageRequest {
             project_id: goal.project_id.clone(),
@@ -93,10 +93,16 @@ mod tests {
         let owner = current_owner(&state, request(1)).await.unwrap().unwrap();
         let listed = state
             .acp
-            .background_terminals(owner.clone(), TerminalAction::StopAll)
+            .background_terminals(owner.clone(), TerminalAction::List)
             .unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].command, "npm run dev");
+        assert_eq!(
+            state
+                .acp
+                .background_terminals(owner.clone(), TerminalAction::StopAll),
+            Ok(Vec::new())
+        );
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         let foreign = RuntimeOwner {
             session_id: SageAgentSessionId::parse("foreign-session").unwrap(),

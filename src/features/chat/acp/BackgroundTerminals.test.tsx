@@ -86,14 +86,14 @@ it("lists nothing for a session without background terminals", () => {
   expect(container).toBeEmptyDOMElement();
 });
 
-it("lists on mount and when the latest turn ends, and stops one or all", async () => {
+it("lists on mount, when the latest turn ends and after each stop", async () => {
   const list = vi
     .spyOn(acpBackgroundTerminals, "list")
-    .mockResolvedValue([server, watcher]);
-  const stop = vi
-    .spyOn(acpBackgroundTerminals, "stop")
+    .mockResolvedValueOnce([server, watcher])
+    .mockResolvedValueOnce([server, watcher])
     .mockResolvedValueOnce([watcher])
     .mockResolvedValueOnce([]);
+  const stop = vi.spyOn(acpBackgroundTerminals, "stop").mockResolvedValue();
   const { container, rerender } = render(<Dock page={page(true)} />);
   expect(
     await screen.findByText("Background terminals (2)"),
@@ -105,8 +105,8 @@ it("lists on mount and when the latest turn ends, and stops one or all", async (
     sessionId: "session-a",
     runtimeEpoch: "1",
   });
-  expect(screen.getByText("Sage/web")).toBeInTheDocument();
-  expect(screen.getByText("outside")).toBeInTheDocument();
+  expect(screen.getByText("Sage / web")).toBeInTheDocument();
+  expect(screen.getByText("outside · unavailable")).toBeInTheDocument();
 
   // A running turn does not list again; its end does.
   rerender(<Dock page={page(true, "running")} />);
@@ -123,4 +123,33 @@ it("lists on mount and when the latest turn ends, and stops one or all", async (
   fireEvent.click(screen.getByRole("button", { name: "Stop all" }));
   expect(stop).toHaveBeenLastCalledWith(list.mock.calls[0][0], null);
   await waitFor(() => expect(container).toBeEmptyDOMElement());
+});
+
+it("reports a refused stop but not a failed relisting after one", async () => {
+  let late: (terminals: BackgroundTerminal[]) => void = () => {};
+  vi.spyOn(acpBackgroundTerminals, "list")
+    .mockResolvedValueOnce([server])
+    .mockReturnValueOnce(new Promise((resolve) => (late = resolve)))
+    .mockResolvedValueOnce([server])
+    .mockRejectedValueOnce(new Error("relist failed"));
+  const stop = vi
+    .spyOn(acpBackgroundTerminals, "stop")
+    .mockRejectedValueOnce(new Error("The harness did not take it."))
+    .mockResolvedValueOnce();
+  const { container, rerender } = render(<Dock page={page(true)} />);
+  await screen.findByText("Background terminals (1)");
+
+  // A listing that started before the stop never lands.
+  rerender(<Dock page={page(true, "completed")} />);
+  fireEvent.click(screen.getByRole("button", { name: "Stop all" }));
+  late([server, watcher]);
+  expect(
+    await screen.findByText("The harness did not take it."),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Background terminals (1)")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Stop all" }));
+  await waitFor(() => expect(stop).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(container).toBeEmptyDOMElement());
+  expect(screen.queryByRole("alert")).toBeNull();
 });

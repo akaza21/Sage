@@ -2,7 +2,7 @@ use super::*;
 use crate::acp::{
     background_terminals::{BackgroundTerminal, TerminalAction},
     goal::{NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
-    runtime::{HostError, RuntimeHost},
+    runtime::HostError,
     scheduler::RuntimeOwner,
 };
 
@@ -15,9 +15,9 @@ pub(crate) enum TerminalsError {
 }
 
 impl AcpService {
-    /// Runs `action` against the runtime's harness, then answers with the
-    /// terminals it still runs. A runtime that is gone, or that never
-    /// negotiated background terminals, runs none.
+    /// Runs `action` against the runtime's harness. A listing answers with
+    /// the terminals it still runs: none when the runtime is gone or never
+    /// negotiated them. A stop answers with none; the caller lists again.
     pub(crate) fn background_terminals(
         &self,
         owner: RuntimeOwner,
@@ -29,21 +29,7 @@ impl AcpService {
         else {
             return Ok(Vec::new());
         };
-        if action != TerminalAction::List && self.terminals_rpc(&owner, &host, action)?.is_none() {
-            return Ok(Vec::new());
-        }
-        Ok(self
-            .terminals_rpc(&owner, &host, TerminalAction::List)?
-            .unwrap_or_default())
-    }
-
-    /// `None` when the runtime cannot serve terminals at all.
-    fn terminals_rpc(
-        &self,
-        owner: &RuntimeOwner,
-        host: &Arc<RuntimeHost>,
-        action: TerminalAction,
-    ) -> Result<Option<Vec<BackgroundTerminal>>, TerminalsError> {
+        let list = action == TerminalAction::List;
         let result = host.native_rpc(NativeRpcIntent {
             owner: owner.clone(),
             request: NativeRpcRequest::BackgroundTerminals(action),
@@ -52,26 +38,29 @@ impl AcpService {
             result,
             Err(HostError::Unavailable
                 | HostError::Closed
-                | HostError::Deadline
                 | HostError::DeliveryUnknown
                 | HostError::RecoveryRequired)
         ) {
-            self.retain_config_effect_recovery(owner.clone(), Arc::clone(host));
+            self.retain_config_effect_recovery(owner, host);
         }
-        terminals_reply(result)
+        terminals_reply(list, result)
     }
 }
 
+/// A listing that misses its deadline was abandoned, so nothing changed; a
+/// stop that misses it may still land.
 fn terminals_reply(
+    list: bool,
     result: Result<NativeRpcReply, HostError>,
-) -> Result<Option<Vec<BackgroundTerminal>>, TerminalsError> {
+) -> Result<Vec<BackgroundTerminal>, TerminalsError> {
     match result {
-        Ok(NativeRpcReply::BackgroundTerminals(terminals)) => Ok(Some(terminals)),
-        Ok(NativeRpcReply::TerminalsStopped) => Ok(Some(Vec::new())),
-        Ok(NativeRpcReply::Rejected) | Err(HostError::State | HostError::NotDispatched) => {
+        Ok(NativeRpcReply::BackgroundTerminals(terminals)) => Ok(terminals),
+        Ok(NativeRpcReply::TerminalsStopped) => Ok(Vec::new()),
+        Err(HostError::Intent) if list => Ok(Vec::new()),
+        Ok(NativeRpcReply::Rejected) | Err(HostError::State | HostError::Intent) => {
             Err(TerminalsError::Rejected)
         }
-        Err(HostError::Intent) => Ok(None),
+        Err(HostError::Deadline) if list => Err(TerminalsError::Rejected),
         Ok(_) | Err(_) => Err(TerminalsError::RecoveryRequired),
     }
 }
@@ -81,37 +70,48 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_terminal_replies_answer_and_an_unsupported_runtime_runs_none() {
+    fn only_terminal_replies_answer_and_only_a_listing_finds_no_terminals_on_an_unsupported_runtime()
+     {
         let terminal = BackgroundTerminal {
             handle: "7".into(),
             command: "npm run dev".into(),
             cwd: None,
         };
         assert_eq!(
-            terminals_reply(Ok(NativeRpcReply::BackgroundTerminals(vec![
-                terminal.clone()
-            ]))),
-            Ok(Some(vec![terminal]))
+            terminals_reply(
+                true,
+                Ok(NativeRpcReply::BackgroundTerminals(vec![terminal.clone()]))
+            ),
+            Ok(vec![terminal])
         );
         assert_eq!(
-            terminals_reply(Ok(NativeRpcReply::TerminalsStopped)),
-            Ok(Some(Vec::new()))
+            terminals_reply(false, Ok(NativeRpcReply::TerminalsStopped)),
+            Ok(Vec::new())
         );
-        assert_eq!(terminals_reply(Err(HostError::Intent)), Ok(None));
-        for refused in [
-            Ok(NativeRpcReply::Rejected),
-            Err(HostError::State),
-            Err(HostError::NotDispatched),
+        assert_eq!(
+            terminals_reply(true, Err(HostError::Intent)),
+            Ok(Vec::new())
+        );
+        // A refused stop must not look like one that worked.
+        for (list, refused) in [
+            (true, Ok(NativeRpcReply::Rejected)),
+            (false, Err(HostError::State)),
+            (false, Err(HostError::Intent)),
+            (true, Err(HostError::Deadline)),
         ] {
-            assert_eq!(terminals_reply(refused), Err(TerminalsError::Rejected));
+            assert_eq!(
+                terminals_reply(list, refused),
+                Err(TerminalsError::Rejected)
+            );
         }
         for unknown in [
             Ok(NativeRpcReply::UsageRead),
             Err(HostError::DeliveryUnknown),
             Err(HostError::Closed),
+            Err(HostError::Deadline),
         ] {
             assert_eq!(
-                terminals_reply(unknown),
+                terminals_reply(false, unknown),
                 Err(TerminalsError::RecoveryRequired)
             );
         }

@@ -21,12 +21,7 @@ import { rootDisplayName } from "./rootDisplayName";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { editDiffAction } from "./chatEditSummary";
-import { lazyParts } from "../lazyParts";
-import type * as TerminalsChunk from "./BackgroundTerminalSlot";
-
-const Terminals = lazyParts<typeof TerminalsChunk>(
-  () => import("./BackgroundTerminalSlot"),
-);
+import { BackgroundTerminalSlot } from "./BackgroundTerminalSlot";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;
@@ -43,21 +38,13 @@ interface TurnEditSummaryProps {
 }
 
 /** The dock above the composer: the commands the session left running,
- * when it negotiated them, then the chat's edited files. */
+ * then the chat's edited files. */
 export const TurnEditSummary = memo(function TurnEditSummary(
   props: TurnEditSummaryProps,
 ) {
-  const { page } = props;
   return (
     <>
-      {page.sessions.find(({ id }) => id === page.currentSessionId)
-        ?.capabilities?.nativeBackgroundTerminals ? (
-        <Terminals
-          part="BackgroundTerminalSlot"
-          page={page}
-          rootLabels={props.rootLabels}
-        />
-      ) : null}
+      <BackgroundTerminalSlot page={props.page} rootLabels={props.rootLabels} />
       <EditSummary {...props} />
     </>
   );

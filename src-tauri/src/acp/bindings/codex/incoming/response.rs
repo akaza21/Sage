@@ -15,7 +15,7 @@ pub(super) fn response<M: ResourceMapper>(
         .get("id")
         .and_then(Value::as_u64)
         .ok_or(IngressError::Malformed)?;
-    if adapter.take_rate_limits_tombstone(id) {
+    if adapter.take_rate_limits_tombstone(id) || adapter.take_terminals_tombstone(id) {
         return Ok(IngressDisposition::IgnoredLate);
     }
     let kind = adapter.pending_kind(id).ok_or(IngressError::Uncorrelated)?;

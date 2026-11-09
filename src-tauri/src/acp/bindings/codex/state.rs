@@ -192,6 +192,7 @@ pub(crate) struct CodexAdapter {
     pending_child_read: Option<(u64, String, String)>,
     child_read_tombstone: Option<u64>,
     rate_limits_abandoned: rate_limits::AbandonedReads,
+    terminals_tombstone: Option<u64>,
     pending_fork: Option<u64>,
     forks: fork::ForkLedger,
 }

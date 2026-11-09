@@ -134,7 +134,7 @@ where
             return (RunnerAction::Continue(state), None);
         }
         let mut state = state;
-        state.abandon_usage_read();
+        state.abandon_passive_read();
         let Some(config) = pending_config.take() else {
             envelope.reject(HostError::State);
             return (RunnerAction::Continue(state), None);

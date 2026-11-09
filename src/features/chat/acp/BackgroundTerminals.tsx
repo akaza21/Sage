@@ -1,11 +1,8 @@
 import { useState } from "react";
-import type { AcpUsageRequest } from "../../../domain/acpUsage";
 import type { SafeResourceLocation } from "../../../domain/acpProjection";
 import { errorMessage } from "../../../domain/errors";
-import {
-  acpBackgroundTerminals,
-  type BackgroundTerminal,
-} from "../../../services/acpBackgroundTerminals";
+import type { BackgroundTerminal } from "../../../services/acpBackgroundTerminals";
+import { rootDisplayName } from "./rootDisplayName";
 import "./background-terminals.css";
 
 function place(
@@ -13,34 +10,30 @@ function place(
   rootLabels: Readonly<Record<string, string>>,
 ): string | null {
   if (!cwd) return null;
-  if (cwd.kind === "unavailable") return cwd.label;
+  if (cwd.kind === "unavailable") return `${cwd.label} · unavailable`;
   const { rootId, relativePath } = cwd.resource;
-  return (
-    [rootLabels[rootId], relativePath].filter(Boolean).join("/") ||
-    "Project root"
-  );
+  return [rootDisplayName(rootLabels, rootId), relativePath]
+    .filter(Boolean)
+    .join(" / ");
 }
 
 /** The session's running background terminals, each with its own Stop. */
 export function BackgroundTerminals({
-  request,
   terminals,
   rootLabels,
-  onChange,
+  onStop,
 }: {
-  request: AcpUsageRequest;
   terminals: readonly BackgroundTerminal[];
   rootLabels: Readonly<Record<string, string>>;
-  onChange: (terminals: readonly BackgroundTerminal[]) => void;
+  onStop: (handle: string | null) => Promise<void>;
 }) {
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const stop = (handle: string | null) => {
     setStopping(true);
     setError(null);
-    acpBackgroundTerminals
-      .stop(request, handle)
-      .then(onChange, (cause: unknown) => setError(errorMessage(cause)))
+    onStop(handle)
+      .catch((cause: unknown) => setError(errorMessage(cause)))
       .finally(() => setStopping(false));
   };
   return (
@@ -53,7 +46,6 @@ export function BackgroundTerminals({
             <li key={terminal.handle}>
               <code title={terminal.command}>{terminal.command}</code>
               {where ? <span>{where}</span> : null}
-              <span>Running</span>
               <button
                 className="button button--compact"
                 type="button"

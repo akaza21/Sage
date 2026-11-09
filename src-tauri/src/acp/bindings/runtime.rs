@@ -190,8 +190,8 @@ impl HarnessAdapter for NativeRuntime {
     fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.0.read_usage()
     }
-    fn abandon_usage_read(&mut self) {
-        self.0.abandon_usage_read()
+    fn abandon_passive_read(&mut self) {
+        self.0.abandon_passive_read()
     }
     fn background_terminals(
         &mut self,

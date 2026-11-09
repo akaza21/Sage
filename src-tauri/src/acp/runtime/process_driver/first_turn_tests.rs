@@ -187,7 +187,7 @@ impl HarnessAdapter for Adapter {
         ))
     }
 
-    fn abandon_usage_read(&mut self) {
+    fn abandon_passive_read(&mut self) {
         self.usage_read_pending = false;
     }
 

@@ -68,7 +68,13 @@ impl NativeRpcIntent {
     /// A read nothing waits on beyond its caller: it gets a short deadline,
     /// and missing it abandons the read instead of recovering the runtime.
     pub(crate) fn passive(&self) -> bool {
-        matches!(self.request, NativeRpcRequest::UsageRead)
+        matches!(
+            self.request,
+            NativeRpcRequest::UsageRead
+                | NativeRpcRequest::BackgroundTerminals(
+                    crate::acp::background_terminals::TerminalAction::List
+                )
+        )
     }
 
     pub(crate) fn actual_bytes(&self) -> usize {

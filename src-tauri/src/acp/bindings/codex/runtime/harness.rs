@@ -83,8 +83,9 @@ impl HarnessAdapter for CodexRuntime {
         self.request(CodexAdapter::rate_limits_read)
     }
 
-    fn abandon_usage_read(&mut self) {
+    fn abandon_passive_read(&mut self) {
         self.inner.abandon_rate_limits_read();
+        self.inner.abandon_terminals_list();
     }
 
     fn background_terminals(

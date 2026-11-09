@@ -130,8 +130,8 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.adapter.take_native_rpc_reply()
     }
-    pub(crate) fn abandon_usage_read(&mut self) {
-        self.adapter.abandon_usage_read();
+    pub(crate) fn abandon_passive_read(&mut self) {
+        self.adapter.abandon_passive_read();
     }
     pub(crate) fn write_goal(
         &mut self,

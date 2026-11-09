@@ -13,7 +13,8 @@ use crate::acp::{
 };
 
 /// The reply for one answered request; `None` for a shape outside the
-/// pinned schema. A listing past the cap keeps its first terminals.
+/// pinned schema. A listing skips an entry it cannot read and keeps its
+/// first terminals past the cap.
 pub(super) fn reply<M: ResourceMapper>(
     kind: RequestKind,
     result: &Value,
@@ -21,14 +22,15 @@ pub(super) fn reply<M: ResourceMapper>(
 ) -> Option<NativeRpcReply> {
     let result = result.as_object()?;
     match kind {
-        RequestKind::TerminalsList => result
-            .get("data")?
-            .as_array()?
-            .iter()
-            .take(MAX_BACKGROUND_TERMINALS)
-            .map(|terminal| listed(terminal, mapper))
-            .collect::<Option<Vec<_>>>()
-            .map(NativeRpcReply::BackgroundTerminals),
+        RequestKind::TerminalsList => Some(NativeRpcReply::BackgroundTerminals(
+            result
+                .get("data")?
+                .as_array()?
+                .iter()
+                .filter_map(|terminal| listed(terminal, mapper))
+                .take(MAX_BACKGROUND_TERMINALS)
+                .collect(),
+        )),
         // A terminal that already exited reports `terminated: false`; the
         // next listing shows either way.
         RequestKind::TerminalsStop => result

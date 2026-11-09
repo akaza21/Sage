@@ -31,8 +31,10 @@ export function decodeBackgroundTerminals(
   return terminals;
 }
 
-async function terminals(command: string, request: object) {
-  const decoded = decodeBackgroundTerminals(await invokeAcp(command, request));
+async function list(runtime: AcpUsageRequest) {
+  const decoded = decodeBackgroundTerminals(
+    await invokeAcp("get_background_terminals", runtime),
+  );
   if (!decoded)
     throw new AcpDesktopError({
       kind: "internal",
@@ -41,11 +43,11 @@ async function terminals(command: string, request: object) {
   return decoded;
 }
 
-/** Each call answers with the terminals the harness still runs. */
 export const acpBackgroundTerminals = {
-  list: (runtime: AcpUsageRequest) =>
-    terminals("get_background_terminals", runtime),
+  /** The terminals the harness still runs. */
+  list,
   /** Stops one terminal, or every one when `handle` is null. */
-  stop: (runtime: AcpUsageRequest, handle: string | null) =>
-    terminals("stop_background_terminals", { runtime, handle }),
+  stop: async (runtime: AcpUsageRequest, handle: string | null) => {
+    await invokeAcp("stop_background_terminals", { runtime, handle });
+  },
 };

@@ -36,29 +36,6 @@ pub(super) fn command_output_delta(
     adapter: &mut CodexAdapter,
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
-    command_output(adapter, params, "delta")
-}
-
-/// Input Codex wrote to a running command joins that command's output, so
-/// the row shows the exchange in order.
-pub(super) fn terminal_interaction(
-    adapter: &mut CodexAdapter,
-    params: &Map<String, Value>,
-) -> Result<IngressDisposition, IngressError> {
-    text(params, "processId", 512)?;
-    expect_thread_and_turn(adapter, params)?;
-    // A command an earlier Turn started has no open row left to extend.
-    if !adapter.has_command_item(text(params, "itemId", 512)?) {
-        return Ok(IngressDisposition::IgnoredLate);
-    }
-    command_output(adapter, params, "stdin")
-}
-
-fn command_output(
-    adapter: &mut CodexAdapter,
-    params: &Map<String, Value>,
-    key: &str,
-) -> Result<IngressDisposition, IngressError> {
     let turn = expect_thread_and_turn(adapter, params)?;
     if adapter.turn_is_terminal(turn) {
         return Ok(IngressDisposition::IgnoredLate);
@@ -68,7 +45,7 @@ fn command_output(
         return Ok(IngressDisposition::IgnoredLate);
     }
     let delta = params
-        .get(key)
+        .get("delta")
         .and_then(Value::as_str)
         .filter(|value| value.len() <= LIMITS.wire.frame_bytes as usize && !value.contains('\0'))
         .ok_or(IngressError::Malformed)?;
