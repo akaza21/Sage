@@ -15,7 +15,9 @@ import type {
 } from "../../domain/acp";
 import {
   acpCommandsDesktop,
+  commandSourceGroups,
   type AcpCommandList,
+  type AcpCommandSource,
   type AvailableAcpCommand,
 } from "../../services/acpCommandsDesktop";
 import { AcpDesktopError } from "../../services/acpDesktop";
@@ -33,6 +35,7 @@ import { currentContext } from "./acp/useAcpChatActions";
 import type { PickedSlashCommand } from "./composerSlashCommand";
 
 const nextIntentId = createClientIntentFactory();
+
 const LOADING: Load = { kind: "loading" };
 
 type Load =
@@ -53,13 +56,18 @@ function liveOwnerKey(page: AcpChatPage | null): string {
 }
 
 /**
- * The exact name first, then prefix matches, then other name matches, each
- * in advertised order.
+ * With no query, every command in sections by source, each in advertised
+ * order. While typing, the exact name first, then prefix matches, then
+ * other name matches, each in advertised order.
  */
 function filterSlashCommands(
   commands: readonly AvailableAcpCommand[],
   query: string,
 ): AvailableAcpCommand[] {
+  if (!query)
+    return (Object.keys(commandSourceGroups) as AcpCommandSource[]).flatMap(
+      (source) => commands.filter((command) => command.source === source),
+    );
   const needle = query.toLocaleLowerCase();
   const exact: AvailableAcpCommand[] = [];
   const prefix: AvailableAcpCommand[] = [];
@@ -73,9 +81,13 @@ function filterSlashCommands(
   return [...exact, ...prefix, ...inner];
 }
 
-function suggestion(command: AvailableAcpCommand): TextFieldSuggestion {
+function suggestion(
+  command: AvailableAcpCommand,
+  grouped: boolean,
+): TextFieldSuggestion {
   return {
     id: command.name,
+    group: grouped ? commandSourceGroups[command.source] : undefined,
     label: `/${command.name}`,
     hint: command.inputHint ?? undefined,
     description: command.description || undefined,
@@ -236,7 +248,10 @@ export function ComposerSlashMenu({
     [load],
   );
   const items = useMemo(
-    () => filterSlashCommands(commands, query).map(suggestion),
+    () =>
+      filterSlashCommands(commands, query).map((command) =>
+        suggestion(command, !query),
+      ),
     [commands, query],
   );
   const pick = (item: TextFieldSuggestion) => {

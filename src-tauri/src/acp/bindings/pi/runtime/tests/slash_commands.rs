@@ -318,3 +318,53 @@ fn names(commands: &[crate::acp::slash_commands::AvailableCommand]) -> Vec<&str>
         .map(|command| command.name.as_str())
         .collect()
 }
+
+#[test]
+fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
+    use crate::acp::slash_commands::{CommandDispatch, CommandSource};
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    let query = runtime.discover_commands().unwrap().unwrap();
+    let query = deliver(&mut runtime, query);
+    runtime
+        .ingest(
+            &response(
+                &query,
+                json!({"commands":[
+                    {"name":"review","description":"Review","source":"extension"},
+                    {"name":"fix","description":"Fix it","source":"prompt","location":"project"},
+                    {"name":"skill:lint","description":"Lint","source":"skill","path":"/s/SKILL.md"},
+                ]}),
+            ),
+            &Mapper,
+        )
+        .unwrap();
+    let listed: Vec<_> = runtime
+        .available_commands()
+        .snapshot()
+        .commands
+        .into_iter()
+        .map(|c| (c.name, c.source, c.dispatch))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            (
+                "review".into(),
+                CommandSource::Extension,
+                CommandDispatch::CommandTurn
+            ),
+            ("fix".into(), CommandSource::Prompt, CommandDispatch::Prompt),
+            (
+                "skill:lint".into(),
+                CommandSource::Skill,
+                CommandDispatch::Prompt
+            ),
+            (
+                "compact".into(),
+                CommandSource::Builtin,
+                CommandDispatch::Builtin
+            ),
+        ]
+    );
+}

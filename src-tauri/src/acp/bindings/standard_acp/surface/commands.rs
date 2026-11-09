@@ -18,6 +18,8 @@ pub(crate) fn update_commands(
     {
         return Err(AdapterRuntimeError::Frame);
     }
-    commands.replace(&value["params"]["update"]["availableCommands"], false)?;
+    commands.replace(super::command_list::parse_acp(
+        &value["params"]["update"]["availableCommands"],
+    ))?;
     Ok(true)
 }

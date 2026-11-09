@@ -14,19 +14,18 @@ fn latest_list_replaces_and_revokes_prior_command_authority() {
     let mut list = CommandList::default();
     assert!(list.commands.is_empty());
     assert!(list.validate(0, "/invented").is_err());
-    list.replace(
+    list.replace(parse_acp(
         &json!([{"name":"plan","description":"Plan work","input":{"hint":"task"}}]),
-        false,
-    )
+    ))
     .unwrap();
     assert_eq!(list.commands[0].input_hint.as_deref(), Some("task"));
     assert!(list.validate(1, "/plan something").is_ok());
-    list.replace(&json!([{"name":"test","description":"Test"}]), false)
+    list.replace(parse_acp(&json!([{"name":"test","description":"Test"}])))
         .unwrap();
     assert!(list.validate(1, "/plan something").is_err());
     assert!(list.validate(1, "/test").is_err());
     assert!(list.validate(2, "/test").is_ok());
-    list.replace(&json!([]), false).unwrap();
+    list.replace(parse_acp(&json!([]))).unwrap();
     assert!(list.commands.is_empty());
     assert!(list.validate(3, "/test").is_err());
 }
@@ -37,14 +36,17 @@ fn malformed_duplicate_and_over_cap_lists_fail_closed() {
         json!([{"name":"x","description":"d"},{"name":"x","description":"d"}]),
         json!([{"name":"/x","description":"d"}]),
         json!([{"name":"x","description":"d","input":{}}]),
-        json!([{"name":"x","description":"x".repeat(1025)}]),
-        json!(vec![json!({"name":"x","description":"d"}); 129]),
+        json!([{"name":"x","description":"d","input":{"hint":"h".repeat(257)}}]),
+        json!(vec![
+            json!({"name":"x","description":"d"});
+            MAX_COMMANDS + 1
+        ]),
         json!(null),
     ] {
         let mut list = CommandList::default();
-        list.replace(&json!([{"name":"old","description":"old"}]), false)
+        list.replace(parse_acp(&json!([{"name":"old","description":"old"}])))
             .unwrap();
-        assert!(list.replace(&value, false).is_err());
+        assert!(list.replace(parse_acp(&value)).is_err());
         assert!(list.commands.is_empty());
         assert!(list.validate(1, "/old").is_err());
     }
@@ -56,12 +58,10 @@ fn channel_retains_only_latest_exact_owner_and_clears_after_release() {
     let next = owner(2);
     channel.reserve(old.clone());
     let mut list = CommandList::default();
-    list.replace(&json!([{"name":"plan","description":"d"}]), false)
+    list.replace(parse_acp(&json!([{"name":"plan","description":"d"}])))
         .unwrap();
     let state = CommandState::default();
-    state
-        .replace(&serde_json::to_value(&list.commands).unwrap(), true)
-        .unwrap();
+    state.replace(Ok(list.commands.clone())).unwrap();
     let list = Arc::new(state);
     let weak = Arc::downgrade(&list);
     channel.update(&old, list);
@@ -107,17 +107,17 @@ fn command_catalog_memory_peak_settled_and_release() {
                 })
                 .sum::<usize>()
     }
-    let values: Vec<_> = (0..128).map(|i| json!({"name":format!("cmd{i:03}"),"description":"d".repeat(1000),"input":{"hint":"hint"}})).collect();
+    let values: Vec<_> = (0..MAX_COMMANDS).map(|i| json!({"name":format!("cmd{i:03}"),"description":"d".repeat(400),"input":{"hint":"hint"}})).collect();
     let mut list = CommandList::default();
-    list.replace(&json!(values), false).unwrap();
+    list.replace(parse_acp(&json!(values))).unwrap();
     let settled = retained(&list);
     let mut replacement = list.clone();
-    replacement.replace(&json!(values), false).unwrap();
+    replacement.replace(parse_acp(&json!(values))).unwrap();
     let peak = retained(&list) + retained(&replacement);
     assert!(
         settled
             <= MAX_COMMAND_BYTES
-                + 128 * std::mem::size_of::<AvailableCommand>()
+                + MAX_COMMANDS * std::mem::size_of::<AvailableCommand>()
                 + std::mem::size_of::<CommandList>()
     );
     drop(list);
@@ -134,7 +134,7 @@ fn teardown_revokes_and_frees_catalog_even_when_driver_is_retained() {
     channel.reserve(owner.clone());
     let driver = Arc::new(CommandState::default());
     driver
-        .replace(&json!([{"name":"plan","description":"d"}]), false)
+        .replace(parse_acp(&json!([{"name":"plan","description":"d"}])))
         .unwrap();
     channel.update(&owner, driver.clone());
     channel.clear(&owner);
@@ -142,7 +142,7 @@ fn teardown_revokes_and_frees_catalog_even_when_driver_is_retained() {
     assert!(driver.validate(1, "/plan").is_err());
     assert!(
         driver
-            .replace(&json!([{"name":"late","description":"d"}]), false)
+            .replace(parse_acp(&json!([{"name":"late","description":"d"}])))
             .is_err()
     );
 }
@@ -162,13 +162,13 @@ fn channel_announces_each_new_revision_once_for_the_exact_owner() {
     channel.update(&live, Arc::clone(&state));
     assert!(seen.lock().unwrap().is_empty());
     state
-        .replace(&json!([{"name":"plan","description":"d"}]), false)
+        .replace(parse_acp(&json!([{"name":"plan","description":"d"}])))
         .unwrap();
     channel.update(&live, Arc::clone(&state));
     // Every ingested frame calls update; one revision is announced once.
     channel.update(&live, Arc::clone(&state));
     channel.update(&owner(2), Arc::clone(&state));
-    state.replace(&json!([]), false).unwrap();
+    state.replace(parse_acp(&json!([]))).unwrap();
     channel.update(&live, Arc::clone(&state));
     let seen = seen.lock().unwrap();
     assert_eq!(
@@ -195,7 +195,7 @@ fn channel_announces_a_swapped_list_from_its_own_revisions() {
     channel.reserve(live.clone());
     let first = Arc::new(CommandState::default());
     first
-        .replace(&json!([{"name":"plan","description":"d"}]), false)
+        .replace(parse_acp(&json!([{"name":"plan","description":"d"}])))
         .unwrap();
     channel.update(&live, Arc::clone(&first));
     // A fresh empty state at revision 0 replaces it: nothing to announce.
@@ -203,7 +203,7 @@ fn channel_announces_a_swapped_list_from_its_own_revisions() {
     channel.update(&live, Arc::clone(&second));
     // Its first list is revision 1 again and must still be announced.
     second
-        .replace(&json!([{"name":"init","description":"d"}]), false)
+        .replace(parse_acp(&json!([{"name":"init","description":"d"}])))
         .unwrap();
     channel.update(&live, Arc::clone(&second));
     assert_eq!(*seen.lock().unwrap(), vec![1, 1]);
@@ -212,4 +212,45 @@ fn channel_announces_a_swapped_list_from_its_own_revisions() {
         channel.snapshot(&live).unwrap().snapshot().commands[0].name,
         "init"
     );
+}
+
+#[test]
+fn acp_commands_carry_the_source_an_adapter_names_and_list_as_prompts() {
+    let mut list = CommandList::default();
+    list.replace(parse_acp(&json!([
+        {"name":"review","description":"Review","_meta":{"source":"skill"}},
+        {"name":"mcp__docs__search","description":"Search","_meta":{"source":"mcp"}},
+        {"name":"init","description":"Init","_meta":{"source":"invented"}},
+        {"name":"plan","description":"Plan","_meta":null},
+    ])))
+    .unwrap();
+    let sources: Vec<_> = list.commands.iter().map(|c| c.source).collect();
+    assert_eq!(
+        sources,
+        [
+            CommandSource::Skill,
+            CommandSource::Mcp,
+            CommandSource::Harness,
+            CommandSource::Harness
+        ]
+    );
+    assert!(
+        list.commands
+            .iter()
+            .all(|c| c.dispatch == CommandDispatch::Prompt)
+    );
+    let wire = serde_json::to_value(&list.commands[0]).unwrap();
+    assert_eq!(
+        wire,
+        json!({"name":"review","description":"Review","inputHint":null,"source":"skill"})
+    );
+}
+
+#[test]
+fn a_long_description_is_clipped_and_the_list_still_admitted() {
+    let mut list = CommandList::default();
+    let long = format!("{}é", "d".repeat(1023));
+    list.replace(parse_acp(&json!([{"name":"skill","description":long}])))
+        .unwrap();
+    assert_eq!(list.commands[0].description, "d".repeat(1023));
 }

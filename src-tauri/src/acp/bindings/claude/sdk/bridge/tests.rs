@@ -548,6 +548,29 @@ fn local_command_output_and_new_commands_reach_the_chat() {
 }
 
 #[test]
+fn commands_sharing_a_name_list_the_row_that_runs() {
+    let mut bridge = initialized();
+    let commands = bridge
+        .inbound(
+            json!({"type":"system","subtype":"commands_changed","commands":[
+                {"name":"review","description":"Project review","argumentHint":""},
+                {"name":"review","description":"Review a PR","argumentHint":"<pr>","builtin":true},
+                {"name":"deploy","description":"Ship it","argumentHint":""},
+                {"name":"deploy","description":"Other deploy","argumentHint":""},
+            ]}),
+        )
+        .unwrap();
+    let listed = &updates(&commands)[0]["availableCommands"];
+    assert_eq!(
+        listed,
+        &json!([
+            {"name":"review","description":"Review a PR","input":{"hint":"<pr>"},"_meta":{"source":"builtin"}},
+            {"name":"deploy","description":"Ship it","input":null},
+        ])
+    );
+}
+
+#[test]
 fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
     use crate::acp::{goal::NativeRpcReply, session_control::SessionControl};
     let mut bridge = initialized();

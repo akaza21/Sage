@@ -24,6 +24,7 @@ import { agentSessionFixture } from "../../domain/acpProjection.fixture";
 import type {
   AcpCommandList,
   AcpCommandsChangedV1,
+  AvailableAcpCommand,
 } from "../../services/acpCommandsDesktop";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { pickedCommandFor } from "./slashCommandPicks";
@@ -61,10 +62,25 @@ vi.mock("./acp/useAcpChatActions", async (original) => ({
   }),
 }));
 
-const commands = [
-  { name: "compact", description: "Compact the conversation", inputHint: null },
-  { name: "review", description: "Review a pull request", inputHint: "PR" },
-  { name: "mcp:docs:search", description: "Search docs", inputHint: "query" },
+const commands: AvailableAcpCommand[] = [
+  {
+    name: "compact",
+    description: "Compact the conversation",
+    inputHint: null,
+    source: "harness",
+  },
+  {
+    name: "review",
+    description: "Review a pull request",
+    inputHint: "PR",
+    source: "harness",
+  },
+  {
+    name: "mcp:docs:search",
+    description: "Search docs",
+    inputHint: "query",
+    source: "harness",
+  },
 ];
 
 function livePage(runtimeEpoch: string | null = "3"): AcpChatPage {
@@ -308,9 +324,24 @@ describe("composer slash commands", () => {
       {
         revision: 1,
         commands: [
-          { name: "pr-review", description: "Inner", inputHint: null },
-          { name: "review-all", description: "Prefix", inputHint: null },
-          { name: "review", description: "Exact", inputHint: null },
+          {
+            name: "pr-review",
+            description: "Inner",
+            inputHint: null,
+            source: "harness",
+          },
+          {
+            name: "review-all",
+            description: "Prefix",
+            inputHint: null,
+            source: "harness",
+          },
+          {
+            name: "review",
+            description: "Exact",
+            inputHint: null,
+            source: "harness",
+          },
         ],
       },
     ];
@@ -319,6 +350,59 @@ describe("composer slash commands", () => {
     await waitFor(() =>
       expect(names(listbox)).toEqual(["/review", "/review-all", "/pr-review"]),
     );
+  });
+
+  it("sections an unfiltered list by source and flattens it while typing", async () => {
+    native.lists = [
+      {
+        revision: 1,
+        commands: [
+          {
+            name: "ship",
+            description: "Ship",
+            inputHint: null,
+            source: "harness",
+          },
+          {
+            name: "lint",
+            description: "Lint",
+            inputHint: null,
+            source: "skill",
+          },
+          {
+            name: "compact",
+            description: "Compact",
+            inputHint: null,
+            source: "builtin",
+          },
+          {
+            name: "learn",
+            description: "Learn",
+            inputHint: null,
+            source: "skill",
+          },
+        ],
+      },
+    ];
+    render(<Composer />);
+    const { field, listbox } = await openMenu("/");
+    await waitFor(() =>
+      expect(
+        within(listbox)
+          .getAllByRole("group")
+          .map((group) => [group.getAttribute("aria-label"), names(group)]),
+      ).toEqual([
+        ["Commands", ["/compact"]],
+        ["Skills", ["/lint", "/learn"]],
+        ["Other commands", ["/ship"]],
+      ]),
+    );
+    type("/l");
+    await waitFor(() =>
+      expect(names(screen.getByRole("listbox"))).toEqual(["/lint", "/learn"]),
+    );
+    expect(within(screen.getByRole("listbox")).queryByRole("group")).toBeNull();
+    expect(field).toHaveAttribute("aria-expanded", "true");
   });
 
   it("opens again after Escape once the focus leaves and returns", async () => {
@@ -407,7 +491,14 @@ describe("composer slash commands", () => {
     native.lists = [
       {
         revision: 2,
-        commands: [{ name: "init", description: "Set up", inputHint: null }],
+        commands: [
+          {
+            name: "init",
+            description: "Set up",
+            inputHint: null,
+            source: "harness",
+          },
+        ],
       },
     ];
     // Another session's notice is ignored.
@@ -427,7 +518,14 @@ describe("composer slash commands", () => {
     native.lists = [
       {
         revision: 2,
-        commands: [{ name: "init", description: "Set up", inputHint: null }],
+        commands: [
+          {
+            name: "init",
+            description: "Set up",
+            inputHint: null,
+            source: "harness",
+          },
+        ],
       },
     ];
     announce();
@@ -444,7 +542,14 @@ describe("composer slash commands", () => {
     native.lists = [
       {
         revision: 1,
-        commands: [{ name: "init", description: "Set up", inputHint: null }],
+        commands: [
+          {
+            name: "init",
+            description: "Set up",
+            inputHint: null,
+            source: "harness",
+          },
+        ],
       },
     ];
     const page = livePage();
