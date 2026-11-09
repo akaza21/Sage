@@ -1,18 +1,49 @@
+use std::sync::OnceLock;
+
 use rusqlite::Connection;
 
 use crate::{error::AppResult, project_migration};
 
 use super::super::{INITIAL, V2, V3, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15, V16, legacy};
-use super::{V10_LEGACY_SESSION_EVENTS, schema_fingerprint};
+use super::{MAX_SCHEMA_VERSION, V10_LEGACY_SESSION_EVENTS, schema_fingerprint};
+
+// An expected fingerprint depends only on the SQL built into this binary, so
+// each one is replayed once per process. Every migration step classifies its
+// source, and replaying the whole chain each time made opening a fresh
+// database quadratic in the schema version.
+static EXPECTED: [OnceLock<String>; MAX_SCHEMA_VERSION + 1] =
+    [const { OnceLock::new() }; MAX_SCHEMA_VERSION + 1];
+static EXPECTED_LEGACY_V10_SESSION_EVENTS: OnceLock<String> = OnceLock::new();
 
 pub(super) fn expected_schema_fingerprint(version: u32) -> AppResult<String> {
-    schema_fingerprint(&expected_schema_connection(version)?)
+    let replay = || schema_fingerprint(&expected_schema_connection(version)?);
+    match usize::try_from(version)
+        .ok()
+        .and_then(|index| EXPECTED.get(index))
+    {
+        Some(slot) => memoized(slot, replay),
+        None => replay(),
+    }
 }
 
 pub(super) fn expected_legacy_v10_session_events_fingerprint() -> AppResult<String> {
-    let expected = expected_schema_connection(10)?;
-    expected.execute_batch(V10_LEGACY_SESSION_EVENTS)?;
-    schema_fingerprint(&expected)
+    memoized(&EXPECTED_LEGACY_V10_SESSION_EVENTS, || {
+        let expected = expected_schema_connection(10)?;
+        expected.execute_batch(V10_LEGACY_SESSION_EVENTS)?;
+        schema_fingerprint(&expected)
+    })
+}
+
+/// A failed replay is returned and not cached, so the next call retries it.
+fn memoized(
+    slot: &OnceLock<String>,
+    replay: impl FnOnce() -> AppResult<String>,
+) -> AppResult<String> {
+    if let Some(fingerprint) = slot.get() {
+        return Ok(fingerprint.clone());
+    }
+    let fingerprint = replay()?;
+    Ok(slot.get_or_init(|| fingerprint).clone())
 }
 
 fn expected_schema_connection(version: u32) -> AppResult<Connection> {
