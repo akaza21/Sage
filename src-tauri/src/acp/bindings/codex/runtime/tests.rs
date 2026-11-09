@@ -2491,13 +2491,16 @@ fn initialize_session_prompt_stream_tool_usage_cancel_and_terminal_are_normalize
             &Mapper,
         )
         .expect("terminal");
-    assert!(matches!(
-        terminal.events(),
-        [AdapterEvent::Turn {
-            state: crate::acp::lifecycle::TurnState::Interrupted,
-            ..
-        }]
-    ));
+    assert!(
+        matches!(
+            terminal.events(),
+            [AdapterEvent::Turn {
+                state: crate::acp::lifecycle::TurnState::Cancelled,
+                ..
+            }]
+        ),
+        "Sage asked for this stop, so it is a user cancel"
+    );
 }
 
 #[test]
