@@ -17,8 +17,7 @@ import {
 } from "./composerChrome";
 import { ComposerImageInput } from "./ComposerImageInput";
 import { ComposerTurnControl } from "./ComposerTurnControl";
-import { ComposerAttachButton, ComposerFileParts } from "./ComposerFileContext";
-import { useComposerFileContext } from "./useComposerFileContext";
+import { useComposerFiles } from "./useComposerFiles";
 import { QueuedRows, lazyParts } from "./lazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
@@ -122,7 +121,17 @@ export function ChatComposerRegion({
     imageUploading ||
     imageInput.sendBlocked;
   const queueing = activeTurn && queueAvailable && !composerDisabled;
-  const files = useComposerFileContext(text);
+  const files = useComposerFiles({
+    text,
+    chatId: dictationScope,
+    fieldRef: composerRef,
+    fieldId,
+    imageAction: imageInput.action,
+    hidden,
+    disabled: composerDisabled,
+    busy: actionBusy || projectTransitioning,
+    attachable: availableBinding,
+  });
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
   const dictation = useComposerDictation(
     text,
@@ -331,17 +340,7 @@ export function ChatComposerRegion({
               />
             </div>
           ) : null}
-          <ComposerFileParts
-            files={files}
-            chatId={dictationScope}
-            fieldRef={composerRef}
-            fieldId={fieldId}
-            text={text}
-            imageAction={imageInput.action}
-            hidden={hidden}
-            disabled={composerDisabled}
-            busy={actionBusy || projectTransitioning}
-          />
+          {files.parts}
         </div>
         <div className="composer__toolbar">
           {imageInputAvailable ? (
@@ -361,15 +360,7 @@ export function ChatComposerRegion({
                 onOpenGoal: goalDetails.onOpen,
                 onCompact,
               }}
-              attachSlot={
-                availableBinding ? (
-                  <ComposerAttachButton
-                    files={files}
-                    fieldId={fieldId}
-                    disabled={composerDisabled}
-                  />
-                ) : null
-              }
+              attachSlot={files.attachButton}
               availableBinding={availableBinding}
               canPrompt={canPrompt}
               discoveryPhase={discoveryPhase}

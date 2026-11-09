@@ -14,7 +14,7 @@ import {
 import { queryQuickOpen } from "../quickOpen/quickOpenGateway";
 import { recentFiles } from "../quickOpen/quickOpenState";
 import { isImeComposing } from "../../ui/imeComposition";
-import { TextFieldSuggestions } from "../../ui/TextFieldSuggestions";
+import { SuggestionsPart } from "./composerSuggestionsPart";
 import {
   suggestionOptionId,
   useSuggestionNavigation,
@@ -227,7 +227,8 @@ export function ComposerMentionMenu({
       : state.title;
   useEffect(() => onStatusChange(status), [onStatusChange, status]);
   return (
-    <TextFieldSuggestions
+    <SuggestionsPart
+      part="TextFieldSuggestions"
       anchorRef={anchorRef}
       ariaLabel="Mention a file"
       className="composer-mention-menu"

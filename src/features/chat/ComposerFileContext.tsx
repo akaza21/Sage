@@ -5,7 +5,7 @@ import { Paperclip } from "../../ui/leanIcons";
 import type * as AttachChunk from "./ComposerAttach";
 import type * as MentionChunk from "./ComposerMentionController";
 import { lazyParts } from "./lazyParts";
-import type { useComposerFileContext } from "./useComposerFileContext";
+import type { useComposerFileContext } from "./useComposerFiles";
 
 type FileContext = ReturnType<typeof useComposerFileContext>;
 

@@ -81,6 +81,8 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerModelMenu.tsx",
   // The `/` command controller and menu load with the field's first focus.
   "src/features/chat/ComposerSlashController.tsx",
+  // The suggestion listbox both menus share loads with either controller.
+  "src/ui/TextFieldSuggestions.tsx",
 ];
 const COMMAND_DYNAMIC_FACADES = [
   // The typed command route loads with the first `/name` sent.

@@ -39,14 +39,19 @@
       },
       {
         "entry": "src/features/chat/ComposerMentionController.tsx",
-        "maxGzipBytes": 3550,
-        "maxCssGzipBytes": 560,
-        "reason": "Composer `@` file picker: controller, menu, suggestion listbox and its path-index queries. Loads with the draft's first `@`, keeping the first-Chat path to a mount. Measured 3313 B JS, 507 B CSS."
+        "maxGzipBytes": 2650,
+        "reason": "Composer `@` file picker: controller, menu and its path-index queries; the shared listbox has its own entry. Loads with the draft's first `@`. Measured 2457 B JS."
+      },
+      {
+        "entry": "src/ui/TextFieldSuggestions.tsx",
+        "maxGzipBytes": 850,
+        "maxCssGzipBytes": 550,
+        "reason": "Suggestion listbox shared by the composer `/` and `@` menus; loads with either controller. Measured 783 B JS, 507 B CSS."
       },
       {
         "entry": "src/features/chat/ComposerAttach.tsx",
         "maxGzipBytes": 1650,
-        "reason": "Composer attach flow: native file picker staging, staged-file chips and the files/images menu. Loads with the first press of the attach button. Measured 1540 B."
+        "reason": "Composer attach flow: native file picker staging, staged-file chips and the files/images menu. Loads with a desktop chat's composer, elsewhere on the first press. Measured 1545 B."
       },
       {
         "entry": "src/features/harness/HarnessSignInStatus.tsx",
