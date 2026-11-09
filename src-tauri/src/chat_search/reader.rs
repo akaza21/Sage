@@ -9,21 +9,23 @@ pub(super) fn with_snapshot<ResultValue>(
     deadline: Instant,
     search: impl FnOnce(&Connection) -> AppResult<ResultValue>,
 ) -> AppResult<ResultValue> {
-    let reader = database.chat_search_reader()?;
-    let locked;
-    let connection = if let Some(reader) = reader.as_ref() {
-        &**reader
+    let mut reader = database.chat_search_reader()?;
+    let mut locked;
+    let connection: &mut Connection = if let Some(reader) = reader.as_mut() {
+        reader
     } else {
         locked = database.connection();
-        &locked
+        &mut locked
     };
     connection.progress_handler(1_000, Some(move || Instant::now() >= deadline))?;
-    let _reset = ResetProgress(connection);
-    let _snapshot = connection.unchecked_transaction()?;
-    search(connection)
+    let reset = ResetProgress(connection);
+    let _snapshot = reset.0.unchecked_transaction()?;
+    search(reset.0)
 }
 
-struct ResetProgress<'connection>(&'connection Connection);
+/// Clears the deadline handler when the search ends, so the connection
+/// goes back to its pool without one.
+struct ResetProgress<'connection>(&'connection mut Connection);
 
 impl Drop for ResetProgress<'_> {
     fn drop(&mut self) {
