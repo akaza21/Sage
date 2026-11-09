@@ -7,7 +7,7 @@ vi.mock("./TranscriptInteractions", () => ({
 }));
 
 import { Component, type ReactNode } from "react";
-import { lazyParts, TranscriptPart } from "./lazyParts";
+import { ChatHandoffControl, lazyParts, TranscriptPart } from "./lazyParts";
 
 afterEach(cleanup);
 
@@ -127,7 +127,7 @@ class Catch extends Component<{ children: ReactNode }, { failed: boolean }> {
   }
 }
 
-it("imports again on the next mount after a chunk fails to load", async () => {
+it("keeps the surface up when a chunk fails to load, then imports again on the next mount", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   const load = vi
     .fn<() => Promise<{ Card: () => ReactNode }>>()
@@ -136,10 +136,17 @@ it("imports again on the next mount after a chunk fails to load", async () => {
   const Part = lazyParts(load);
   const first = render(
     <Catch>
-      <Part part="Card" />
+      <p>chat surface</p>
+      <Part part="Card" fallback={<p>card unavailable</p>} />
     </Catch>,
   );
-  expect(await screen.findByText("load failed")).toBeVisible();
+  await act(async () => {
+    await expect(Part.preload()).rejects.toThrow("offline");
+  });
+  // Only the part gives way: the boundary above never sees the failure.
+  expect(await screen.findByText("card unavailable")).toBeVisible();
+  expect(screen.getByText("chat surface")).toBeVisible();
+  expect(screen.queryByText("load failed")).toBeNull();
   first.unmount();
   render(
     <Catch>
@@ -148,4 +155,59 @@ it("imports again on the next mount after a chunk fails to load", async () => {
   );
   expect(await screen.findByText("card")).toBeVisible();
   expect(load).toHaveBeenCalledTimes(2);
+});
+
+it("renders nothing for a part without a fallback whose chunk failed", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const Part = lazyParts<{ Card: () => ReactNode }>(() =>
+    Promise.reject(new Error("offline")),
+  );
+  render(
+    <Catch>
+      <p>chat surface</p>
+      <Part part="Card" />
+    </Catch>,
+  );
+  await act(async () => {
+    await expect(Part.preload()).rejects.toThrow("offline");
+  });
+  await act(async () => undefined);
+  expect(screen.getByText("chat surface")).toBeVisible();
+  expect(screen.queryByText("load failed")).toBeNull();
+});
+
+it("leaves an error a loaded part throws to the boundary above", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const Part = lazyParts(async () => ({
+    Card: (): ReactNode => {
+      throw new Error("render bug");
+    },
+  }));
+  render(
+    <Catch>
+      <Part part="Card" fallback={<p>card unavailable</p>} />
+    </Catch>,
+  );
+  expect(await screen.findByText("load failed")).toBeVisible();
+  expect(screen.queryByText("card unavailable")).toBeNull();
+});
+
+it("holds the Hand off trigger's place until it loads, so the header never shifts", async () => {
+  const { container } = render(
+    <ChatHandoffControl
+      acpPage={null}
+      messages={[]}
+      busy={false}
+      onCommitted={() => undefined}
+    />,
+  );
+  const placeholder = container.querySelector<HTMLElement>(".handoff-control");
+  expect(placeholder).not.toBeNull();
+  expect(placeholder!.style.visibility).toBe("hidden");
+  expect(placeholder!.querySelector("button")).toHaveTextContent("Hand off");
+  expect(screen.queryByRole("button", { name: "Hand off chat" })).toBeNull();
+  expect(
+    await screen.findByRole("button", { name: "Hand off chat" }),
+  ).toBeInTheDocument();
+  expect(container.querySelectorAll(".handoff-control")).toHaveLength(1);
 });

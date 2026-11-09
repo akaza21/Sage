@@ -14,7 +14,7 @@ import { MenuPopover } from "../ui/MenuPopover";
 import { AgentHeaderMenuContext } from "./AgentToolsProvider";
 import { useWorkbenchStore } from "../app/store";
 import { agentChatMoveDestinations } from "./agentChatRail";
-import { ChatHandoffControl } from "../features/chat/ChatHandoffControl";
+import { ChatHandoffControl } from "../features/chat/lazyParts";
 import type { ProjectChatMenuProps } from "./ProjectChatActionMenu";
 export function ProjectChatActionPopover({
   chatId,

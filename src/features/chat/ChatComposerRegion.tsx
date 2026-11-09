@@ -5,10 +5,10 @@ import { isImeComposing } from "../../ui/imeComposition";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
 import "../../styles/queued-messages.css";
-import { BoundChatGoalControl } from "./BoundChatGoalControl";
+import type * as GoalChunk from "./BoundChatGoalControl";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import type * as ClaudeAuthChunk from "./ClaudeAuthActions";
-import { ComposerAttachments } from "./ComposerAttachments";
+import type * as AttachmentsChunk from "./ComposerAttachments";
 import {
   composerPromptPlaceholder,
   composerShortcutLabel,
@@ -30,6 +30,15 @@ const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
 const SlashPart = lazyParts<typeof SlashChunk>(
   () => import("./ComposerSlashController"),
 );
+// A native Goal's control and its mutations load with the first chat that
+// shows one.
+const GoalPart = lazyParts<typeof GoalChunk>(
+  () => import("./BoundChatGoalControl"),
+);
+// Attachment chips load with the first context attached to the draft.
+const AttachmentsPart = lazyParts<
+  Pick<typeof AttachmentsChunk, "ComposerAttachments">
+>(() => import("./ComposerAttachments"));
 
 export function ChatComposerRegion({
   hidden = false,
@@ -175,11 +184,11 @@ export function ChatComposerRegion({
         </div>
         <div className="composer__body">
           {goal.kind === "goal" ? (
-            <BoundChatGoalControl
+            <GoalPart
+              part="BoundChatGoalControl"
               state={goal}
               chatId={dictationScope}
-              detailsRef={goalDetails.detailsRef}
-              canMutate={goalDetails.canMutate}
+              details={goalDetails}
             />
           ) : null}
           {workbenchError ? (
@@ -321,7 +330,8 @@ export function ChatComposerRegion({
           ) : null}
           {otherContext.length > 0 ? (
             <div className="composer__attachment-row">
-              <ComposerAttachments
+              <AttachmentsPart
+                part="ComposerAttachments"
                 contexts={otherContext}
                 imagePreviews={imagePreviews}
                 disabled={actionBusy || projectTransitioning}
