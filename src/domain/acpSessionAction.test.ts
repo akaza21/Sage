@@ -19,26 +19,15 @@ describe("decodeSessionAction", () => {
       expect(decodeSessionAction(structuredClone(action))).toEqual(action);
   });
 
-  it("rejects unknown, extra-field and malformed actions", () => {
+  it("rejects unknown actions and targets", () => {
     for (const value of [
       undefined,
       null,
       "compact",
       { kind: "revert" },
-      { kind: "compact", extra: 1 },
       { kind: "review" },
-      { kind: "review", target: { kind: "uncommittedChanges", extra: 1 } },
-      { kind: "review", target: { kind: "baseBranch" } },
-      { kind: "review", target: { kind: "baseBranch", branch: "" } },
-      { kind: "review", target: { kind: "commit", sha: 7 } },
-      { kind: "review", target: { kind: "commit", sha: "abc", title: null } },
-      {
-        kind: "review",
-        target: { kind: "custom", instructions: "x", sha: "a" },
-      },
       { kind: "review", target: { kind: "pullRequest", number: 42 } },
       { kind: "review", target: { kind: "toString" } },
-      { kind: "review", target: { kind: "uncommittedChanges" }, extra: 1 },
       { kind: "unrecognized" },
       { kind: "review", target: "uncommittedChanges" },
     ])

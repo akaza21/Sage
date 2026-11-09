@@ -17,27 +17,18 @@ export const sessionActions = {
   compact: { kind: "compact" },
 } as const satisfies Record<string, AcpSessionAction>;
 
-const review = (target: AcpReviewTarget) => ({ kind: "review", target });
-/** Every action the host runs; "" stands for any non-empty text. */
-const shapes = [
-  ...Object.values(sessionActions),
-  review({ kind: "baseBranch", branch: "" }),
-  review({ kind: "commit", sha: "" }),
-  review({ kind: "commit", sha: "", title: "" }),
-  review({ kind: "custom", instructions: "" }),
-];
+const TARGETS = ["uncommittedChanges", "baseBranch", "commit", "custom"];
 
-const sameShape = (value: unknown, shape: unknown): boolean =>
-  isRecord(value) && isRecord(shape)
-    ? Object.keys(value).length === Object.keys(shape).length &&
-      Object.keys(shape).every((key) => sameShape(value[key], shape[key]))
-    : shape === ""
-      ? typeof value === "string" && value !== ""
-      : value === shape;
-
-/** The action a stored Turn ran, or null for one this build does not run. */
+/**
+ * The action a stored Turn ran, or null for one this build does not run.
+ * The host validates each target's fields when it stores the action.
+ */
 export function decodeSessionAction(value: unknown): AcpSessionAction | null {
-  return shapes.some((shape) => sameShape(value, shape))
+  return isRecord(value) &&
+    (value.kind === "compact" ||
+      (value.kind === "review" &&
+        isRecord(value.target) &&
+        TARGETS.includes(value.target.kind as string)))
     ? (value as AcpSessionAction)
     : null;
 }

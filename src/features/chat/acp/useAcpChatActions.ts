@@ -60,6 +60,87 @@ function ownershipIntent(context: AcpActionContext): ChatOwnershipIntent {
   };
 }
 
+/** One Chat's action controller, wired to the stores. */
+export function chatActionController(boundChatId?: string | null) {
+  return createAcpActionController({
+    getContext: () => currentContext(boundChatId),
+    onUnscopedRefusal: (message) => {
+      const workbench = useWorkbenchStore.getState();
+      const ownership = workbench.captureChatOwnership(
+        boundChatId ?? undefined,
+      );
+      if (!ownership) return;
+      const entry = workbench.chatUiById[ownership.chatId];
+      workbench.setChatActionState(ownership, {
+        sending: entry?.sending ?? false,
+        error: message,
+        errorKind: "invalidRequest",
+      });
+    },
+    settleAccessMode: () => useSessionAccessModeStore.getState().settle(),
+    applyAuthoritativePage: (scope, authoritativePage) => {
+      return acpProjectionStoreFor(boundChatId)
+        .getState()
+        .applyAuthoritativePage(scope, authoritativePage);
+    },
+    onStateChange: (state: AcpActionState) => {
+      if (
+        !state.scope ||
+        state.ownershipEpoch === null ||
+        state.transitionEpoch === null
+      )
+        return;
+      const workbench = useWorkbenchStore.getState();
+      workbench.setChatActionState(
+        {
+          projectId: state.scope.projectId,
+          ownershipEpoch: state.ownershipEpoch,
+          chatId: state.scope.chatId,
+          projectGeneration: Number(state.scope.projectGeneration),
+          transitionEpoch: state.transitionEpoch,
+        },
+        state.origin === "mode"
+          ? {
+              sending:
+                workbench.chatUiById[state.scope.chatId]?.sending ?? false,
+              error: workbench.chatUiById[state.scope.chatId]?.error ?? null,
+              modeError: state.error?.message ?? null,
+              modeErrorOwner: state.configOwner,
+              modeChanging: state.busy,
+            }
+          : {
+              sending: state.busy,
+              error: state.error?.message ?? null,
+              errorKind: state.error?.failure.kind ?? null,
+              modeError:
+                workbench.chatUiById[state.scope.chatId]?.modeError ?? null,
+              modeErrorOwner:
+                workbench.chatUiById[state.scope.chatId]?.modeErrorOwner ??
+                null,
+              modeChanging:
+                workbench.chatUiById[state.scope.chatId]?.modeChanging ?? false,
+            },
+      );
+    },
+    clearComposer: (context, prompt, attachedContext) => {
+      const workbench = useWorkbenchStore.getState();
+      workbench.clearChatComposer(
+        ownershipIntent(context),
+        prompt,
+        attachedContext,
+      );
+    },
+    restoreComposer: (context, prompt, attachedContext) => {
+      const workbench = useWorkbenchStore.getState();
+      workbench.restoreChatComposer(
+        ownershipIntent(context),
+        prompt,
+        attachedContext,
+      );
+    },
+  });
+}
+
 export function useAcpChatActions(boundChatId?: string | null) {
   const store = acpProjectionStoreFor(boundChatId);
   const projectionRevision = useStore(
@@ -110,86 +191,7 @@ export function useAcpChatActions(boundChatId?: string | null) {
   );
 
   const controller = useMemo(
-    () =>
-      createAcpActionController({
-        getContext: () => currentContext(boundChatId),
-        onUnscopedRefusal: (message) => {
-          const workbench = useWorkbenchStore.getState();
-          const ownership = workbench.captureChatOwnership(
-            boundChatId ?? undefined,
-          );
-          if (!ownership) return;
-          const entry = workbench.chatUiById[ownership.chatId];
-          workbench.setChatActionState(ownership, {
-            sending: entry?.sending ?? false,
-            error: message,
-            errorKind: "invalidRequest",
-          });
-        },
-        settleAccessMode: () => useSessionAccessModeStore.getState().settle(),
-        applyAuthoritativePage: (scope, authoritativePage) => {
-          return acpProjectionStoreFor(boundChatId)
-            .getState()
-            .applyAuthoritativePage(scope, authoritativePage);
-        },
-        onStateChange: (state: AcpActionState) => {
-          if (
-            !state.scope ||
-            state.ownershipEpoch === null ||
-            state.transitionEpoch === null
-          )
-            return;
-          const workbench = useWorkbenchStore.getState();
-          workbench.setChatActionState(
-            {
-              projectId: state.scope.projectId,
-              ownershipEpoch: state.ownershipEpoch,
-              chatId: state.scope.chatId,
-              projectGeneration: Number(state.scope.projectGeneration),
-              transitionEpoch: state.transitionEpoch,
-            },
-            state.origin === "mode"
-              ? {
-                  sending:
-                    workbench.chatUiById[state.scope.chatId]?.sending ?? false,
-                  error:
-                    workbench.chatUiById[state.scope.chatId]?.error ?? null,
-                  modeError: state.error?.message ?? null,
-                  modeErrorOwner: state.configOwner,
-                  modeChanging: state.busy,
-                }
-              : {
-                  sending: state.busy,
-                  error: state.error?.message ?? null,
-                  errorKind: state.error?.failure.kind ?? null,
-                  modeError:
-                    workbench.chatUiById[state.scope.chatId]?.modeError ?? null,
-                  modeErrorOwner:
-                    workbench.chatUiById[state.scope.chatId]?.modeErrorOwner ??
-                    null,
-                  modeChanging:
-                    workbench.chatUiById[state.scope.chatId]?.modeChanging ??
-                    false,
-                },
-          );
-        },
-        clearComposer: (context, prompt, attachedContext) => {
-          const workbench = useWorkbenchStore.getState();
-          workbench.clearChatComposer(
-            ownershipIntent(context),
-            prompt,
-            attachedContext,
-          );
-        },
-        restoreComposer: (context, prompt, attachedContext) => {
-          const workbench = useWorkbenchStore.getState();
-          workbench.restoreChatComposer(
-            ownershipIntent(context),
-            prompt,
-            attachedContext,
-          );
-        },
-      }),
+    () => chatActionController(boundChatId),
     [boundChatId],
   );
 

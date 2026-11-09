@@ -37,6 +37,7 @@ const native = vi.hoisted(() => ({
   requests: [] as unknown[],
   hold: null as Promise<AcpCommandList> | null,
   listeners: new Set<(event: AcpCommandsChangedV1) => void>(),
+  run: vi.fn(),
 }));
 vi.mock("../../services/acpCommandsDesktop", async (original) => ({
   ...(await original<object>()),
@@ -57,6 +58,7 @@ vi.mock("../../services/acpCommandsDesktop", async (original) => ({
 }));
 vi.mock("./acp/useAcpChatActions", async (original) => ({
   ...(await original<object>()),
+  chatActionController: () => ({ runSessionAction: native.run }),
   currentContext: () => ({
     scope: { projectId: "project-a", chatId: "chat-a" },
     ownershipEpoch: 1,
@@ -93,9 +95,7 @@ const onSubmit = vi.fn((event: { preventDefault: () => void }) =>
   event.preventDefault(),
 );
 
-function Composer({
-  onRunSessionAction,
-}: Pick<ComponentProps<typeof ChatComposerRegion>, "onRunSessionAction"> = {}) {
+function Composer() {
   const [text, setText] = useState("");
   const props = {
     composerRef: { current: null },
@@ -137,7 +137,6 @@ function Composer({
     onTextChange: setText,
     onRemoveContext: vi.fn(),
     onCancelTurn: null,
-    onRunSessionAction,
   } satisfies ComponentProps<typeof ChatComposerRegion>;
   return <ChatComposerRegion {...props} />;
 }
@@ -505,7 +504,7 @@ describe("composer slash commands", () => {
 });
 
 describe("composer session commands", () => {
-  const run = vi.fn();
+  const run = native.run;
   function negotiate(page = livePage()) {
     const session = page.sessions[0]!;
     acpProjectionStoreFor("chat-a").setState({
@@ -531,7 +530,7 @@ describe("composer session commands", () => {
   afterEach(() => useWorkbenchStore.setState({ harnesses, repositories }));
 
   it("lists a negotiated action in place of the harness command of that name", async () => {
-    render(<Composer onRunSessionAction={run} />);
+    render(<Composer />);
     const { listbox } = await openMenu();
     expect(names(listbox)).toEqual([
       "/review",
@@ -547,30 +546,28 @@ describe("composer session commands", () => {
     ).toBeInTheDocument();
   });
 
-  it("lists no action the chat cannot run or the session did not negotiate", async () => {
-    const { rerender } = render(<Composer />);
+  it("lists no action the session did not negotiate", async () => {
+    render(<Composer />);
     const { listbox } = await openMenu();
-    // The harness's own /compact and /review stay.
-    expect(names(listbox)).toEqual([
-      "/compact",
-      "/review",
-      "/mcp:docs:search",
-      "/init",
-      "/status",
-    ]);
+    expect(names(listbox)[0]).toBe("/review");
     act(() => acpProjectionStoreFor("chat-a").setState({ page: livePage() }));
-    rerender(<Composer onRunSessionAction={run} />);
+    // The next keystroke re-reads the negotiated actions: the harness's own
+    // /compact and /review return.
+    type("/r");
+    type("/");
     await waitFor(() =>
-      expect(
-        within(screen.getByRole("listbox")).getByRole("option", {
-          name: /^\/review, Review a pull request/u,
-        }),
-      ).toBeInTheDocument(),
+      expect(names(listbox)).toEqual([
+        "/compact",
+        "/review",
+        "/mcp:docs:search",
+        "/init",
+        "/status",
+      ]),
     );
   });
 
   it("runs /compact from a pick or a fully typed name, and clears the field", async () => {
-    render(<Composer onRunSessionAction={run} />);
+    render(<Composer />);
     const { field } = await openMenu("/comp");
     fireEvent.keyDown(field, { key: "Enter" });
     expect(run).toHaveBeenCalledWith({ kind: "compact" });
@@ -584,7 +581,7 @@ describe("composer session commands", () => {
   });
 
   it("writes the /init prompt into the field without sending it", async () => {
-    render(<Composer onRunSessionAction={run} />);
+    render(<Composer />);
     const { field } = await openMenu("/ini");
     fireEvent.keyDown(field, { key: "Enter" });
     expect((field as HTMLTextAreaElement).value).toMatch(
@@ -615,7 +612,7 @@ describe("composer session commands", () => {
         elapsedMs: 0,
       },
     });
-    render(<Composer onRunSessionAction={run} />);
+    render(<Composer />);
     const review = async () => {
       const { field } = await openMenu("/rev");
       fireEvent.keyDown(field, { key: "Enter" });
@@ -713,7 +710,7 @@ describe("composer session commands", () => {
         configOptions: [],
       },
     });
-    render(<Composer onRunSessionAction={run} />);
+    render(<Composer />);
     const { field } = await openMenu("/stat");
     fireEvent.keyDown(field, { key: "Enter" });
     const panel = await screen.findByRole("dialog", { name: "Session status" });

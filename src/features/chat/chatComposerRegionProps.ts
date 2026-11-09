@@ -1,6 +1,5 @@
 import type { FormEventHandler, ReactNode, RefObject } from "react";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
-import type { AcpSessionAction } from "../../domain/acp";
 import type { AcpGoalState } from "../../domain/acpGoal";
 import type {
   AcpConfigValue,
@@ -59,8 +58,6 @@ export interface ChatComposerRegionProps {
   ) => Promise<unknown>;
   onSelectHarness: (harnessId: string) => Promise<void>;
   onCompact?: () => void;
-  /** Present while the chat can run a session action. */
-  onRunSessionAction?: (action: AcpSessionAction) => unknown;
   onSelectModel: (modelId: string) => void;
   missingBindingNotice: boolean;
   disabledReason: string | null;

@@ -4,15 +4,14 @@ import "../../styles/composer-command-panel.css";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
 import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
-import type { AcpReviewTarget, AcpSessionAction } from "../../domain/acp";
+import type { AcpReviewTarget } from "../../domain/acp";
 import { utf8ByteLength } from "../../domain/text";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { isCurrentLocalBranch } from "../git/localBranches";
 import { currentSession } from "./acp/acpTurnState";
+import { chatActionController } from "./acp/useAcpChatActions";
 import { confirmedComposerModel } from "./inheritedComposerModel";
 import { sessionStatusRows } from "./sessionStatusRows";
-
-type Panel = "review" | "status";
 
 /** Panels the composer's `/` commands open beside the field. */
 export function ComposerCommandPanel({
@@ -20,13 +19,11 @@ export function ComposerCommandPanel({
   boundChatId,
   fieldRef,
   onClose,
-  onRunSessionAction,
 }: {
-  kind: Panel;
+  kind: "review" | "status";
   boundChatId?: string;
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   onClose: () => void;
-  onRunSessionAction?: (action: AcpSessionAction) => unknown;
 }) {
   const id = useId();
   return (
@@ -45,7 +42,10 @@ export function ComposerCommandPanel({
           onStart={(target) => {
             onClose();
             fieldRef.current?.focus();
-            onRunSessionAction?.({ kind: "review", target });
+            void chatActionController(boundChatId).runSessionAction({
+              kind: "review",
+              target,
+            });
           }}
         />
       ) : (

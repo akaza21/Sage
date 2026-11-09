@@ -79,6 +79,8 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerSlashController.tsx",
   // The review target picker and the status panel load with their command.
   "src/features/chat/ComposerCommandPanel.tsx",
+  // The chat's own `/` commands load with the first open menu.
+  "src/features/chat/composerCommands.tsx",
 ];
 const COMMAND_DYNAMIC_FACADES = [
   // The typed command route loads with the first `/name` sent.

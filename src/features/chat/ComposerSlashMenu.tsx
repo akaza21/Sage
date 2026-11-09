@@ -29,9 +29,17 @@ import { isImeComposing } from "../../ui/imeComposition";
 import { TextFieldSuggestions } from "../../ui/TextFieldSuggestions";
 import { createClientIntentFactory } from "./acp/clientIntent";
 import { currentContext } from "./acp/useAcpChatActions";
-import { composerCommands, type ComposerCommand } from "./composerCommands";
+import type * as CommandsChunk from "./composerCommands";
+import type { ComposerCommand } from "./composerCommands";
 
 const nextIntentId = createClientIntentFactory();
+// The chat's own commands load with this chunk, on the field's first focus.
+// Each keystroke re-reads them with the session's negotiated actions.
+let own: typeof CommandsChunk | undefined;
+void import("./composerCommands").then(
+  (chunk) => (own = chunk),
+  () => undefined,
+);
 const LOADING: Load = { kind: "loading" };
 
 type Load =
@@ -74,7 +82,7 @@ function filterSlashCommands(
 
 function suggestion(command: ComposerCommand): TextFieldSuggestion {
   return {
-    id: command.name,
+    id: command.id ?? command.name,
     label: `/${command.name}`,
     hint: command.inputHint ?? undefined,
     description: command.description || undefined,
@@ -197,7 +205,6 @@ function menuState(
 }
 
 export function ComposerSlashMenu({
-  actionsRunnable,
   anchorRef,
   boundChatId,
   keyHandlerRef,
@@ -208,8 +215,6 @@ export function ComposerSlashMenu({
   onStatusChange,
   query,
 }: {
-  /** Session actions are listed only while they can run. */
-  actionsRunnable: boolean;
   anchorRef: RefObject<HTMLElement | null>;
   boundChatId?: string;
   keyHandlerRef: RefObject<((event: SuggestionKeyEvent) => boolean) | null>;
@@ -222,20 +227,19 @@ export function ComposerSlashMenu({
   query: string;
 }) {
   const load = useSessionCommands(boundChatId);
-  const page = useStore(acpProjectionStoreFor(boundChatId), (state) =>
-    actionsRunnable ? state.page : null,
-  );
-  const commands = useMemo(
-    () =>
-      load?.kind === "ready" ? composerCommands(page, load.list.commands) : [],
-    [load, page],
-  );
-  const items = useMemo(
-    () => filterSlashCommands(commands, query).map(suggestion),
-    [commands, query],
-  );
+  const [commands, items] = useMemo(() => {
+    const listed: readonly ComposerCommand[] =
+      load?.kind !== "ready"
+        ? []
+        : own
+          ? own.composerCommands(load.list.commands, boundChatId)
+          : load.list.commands;
+    return [listed, filterSlashCommands(listed, query).map(suggestion)];
+  }, [boundChatId, load, query]);
   const pick = (item: TextFieldSuggestion) => {
-    const command = commands.find((candidate) => candidate.name === item.id);
+    const command = commands.find(
+      (candidate) => (candidate.id ?? candidate.name) === item.id,
+    );
     if (command) onPick(command);
   };
   const navigation = useSuggestionNavigation(items, pick, onDismiss);
@@ -252,17 +256,8 @@ export function ComposerSlashMenu({
         !isImeComposing(event);
       // A fully typed harness command runs on the first Enter, as in the
       // Claude Code CLI: the field's own Enter sends it. The chat's own
-      // commands are picked.
-      const active = commands.find(
-        ({ name }) => name === navigation.active?.id,
-      );
-      if (
-        enter &&
-        active?.name === query &&
-        active.kind === "prompt" &&
-        active.text === undefined
-      )
-        return false;
+      // commands have ids unlike their names, so they are picked.
+      if (enter && navigation.active?.id === query) return false;
       // While the list loads, Enter must not send a half-typed name.
       if (enter && loading) {
         event.preventDefault();

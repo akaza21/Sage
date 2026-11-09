@@ -74,7 +74,6 @@ export function ChatComposerRegion({
   onSetSessionMode,
   onSetSessionConfigOption,
   onCompact,
-  onRunSessionAction,
   onSelectHarness,
   onSelectModel,
   missingBindingNotice,
@@ -283,7 +282,6 @@ export function ChatComposerRegion({
             {slashArmed ? (
               <SlashPart
                 part="ComposerSlashController"
-                onRunSessionAction={onRunSessionAction}
                 fieldRef={composerRef}
                 readyRef={slashReady}
                 boundChatId={commandChatId}

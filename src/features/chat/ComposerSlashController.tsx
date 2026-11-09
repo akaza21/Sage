@@ -9,12 +9,9 @@ import {
 import "../../styles/composer-slash.css";
 import { isImeComposing } from "../../ui/imeComposition";
 import type { SuggestionKeyEvent } from "../../ui/textFieldSuggestionNavigation";
-import type { AcpSessionAction } from "../../domain/acp";
 import { ComposerCommandHint } from "./ComposerCommandHint";
 import { ComposerSlashMenu } from "./ComposerSlashMenu";
 import type { ComposerCommand } from "./composerCommands";
-import { lazyParts } from "./lazyParts";
-import type * as PanelChunk from "./ComposerCommandPanel";
 import {
   pendingSlashCommandHint,
   slashCommandName,
@@ -23,11 +20,6 @@ import {
   type PickedSlashCommand,
 } from "./composerSlashCommand";
 import { setPickedCommand } from "./slashCommandPicks";
-
-// The review target picker and the status panel load with their command.
-const PanelPart = lazyParts<typeof PanelChunk>(
-  () => import("./ComposerCommandPanel"),
-);
 
 /**
  * Replaces the leading `/token` and the whitespace after it through the
@@ -76,7 +68,6 @@ function setAttribute(field: HTMLElement, name: string, value: string | null) {
  * and keeps the field's combobox attributes.
  */
 export function ComposerSlashController({
-  onRunSessionAction,
   fieldRef,
   boundChatId,
   disabled,
@@ -85,8 +76,6 @@ export function ComposerSlashController({
   readyRef,
   text,
 }: {
-  /** Present while the chat can run a session action. */
-  onRunSessionAction?: (action: AcpSessionAction) => unknown;
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   boundChatId?: string;
   disabled: boolean;
@@ -108,13 +97,13 @@ export function ComposerSlashController({
   const [activeOptionId, setActiveOptionId] = useState<string | null>(null);
   const [picked, setPicked] = useState<PickedSlashCommand | null>(null);
   const [status, setStatus] = useState("");
-  const [panel, setPanel] = useState<"review" | "status" | null>(null);
+  const [Panel, setPanel] = useState<ComposerCommand["panel"]>();
   // Another Chat starts with no pick, dismissal or panel.
   if (scope !== boundChatId) {
     setScope(boundChatId);
     setDismissed(false);
     setPicked(null);
-    setPanel(null);
+    setPanel(undefined);
   }
   const query = slashCommandQuery(text, caret);
   // Escape closes the menu until the caret leaves the command name.
@@ -129,22 +118,17 @@ export function ComposerSlashController({
     (command: ComposerCommand) => {
       const field = fieldRef.current;
       // A harness command keeps the whitespace after its name, or adds a
-      // space; the chat's own prompt replaces the name; the rest clear it.
+      // space; the chat's own commands write their text in its place.
       const text =
-        command.kind !== "prompt"
-          ? ""
-          : (command.text ??
-            `/${command.name}${field?.value.charAt(slashTokenEnd(field.value)) || " "}`);
+        command.text ??
+        `/${command.name}${field?.value.charAt(slashTokenEnd(field.value)) || " "}`;
       if (field) replaceCommandToken(field, text);
       else onTextChange(text);
-      if (command.kind === "prompt" && command.text === undefined)
-        setPicked({ name: command.name, inputHint: command.inputHint ?? null });
-      else if (command.kind === "action" && command.action === "compact")
-        onRunSessionAction?.({ kind: "compact" });
-      else if (command.kind !== "prompt")
-        setPanel(command.kind === "action" ? "review" : "status");
+      if (command.text === undefined) setPicked(command);
+      command.run?.();
+      setPanel(() => command.panel);
     },
-    [fieldRef, onRunSessionAction, onTextChange],
+    [fieldRef, onTextChange],
   );
   // The send route reads the pick while the prompt still names it.
   const pickedName =
@@ -233,7 +217,6 @@ export function ComposerSlashController({
       <ComposerCommandHint hint={hint} hintId={hintId} text={text} />
       {open ? (
         <ComposerSlashMenu
-          actionsRunnable={Boolean(onRunSessionAction)}
           anchorRef={anchorRef}
           boundChatId={boundChatId}
           keyHandlerRef={keyHandlerRef}
@@ -245,14 +228,11 @@ export function ComposerSlashController({
           query={query}
         />
       ) : null}
-      {panel ? (
-        <PanelPart
-          part="ComposerCommandPanel"
-          kind={panel}
+      {Panel ? (
+        <Panel
           boundChatId={boundChatId}
           fieldRef={fieldRef}
-          onClose={() => setPanel(null)}
-          onRunSessionAction={onRunSessionAction}
+          onClose={() => setPanel(undefined)}
         />
       ) : null}
       {/* Mounted with the usable field, ahead of the menu, so its first
