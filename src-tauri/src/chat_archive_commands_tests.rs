@@ -257,3 +257,66 @@ fn a_failed_archived_lookup_refuses_delete_with_a_retry_message() {
         fs::remove_dir_all(root).unwrap();
     });
 }
+
+#[test]
+fn deleting_an_archived_chat_forgets_its_sessions_access_choices() {
+    use crate::settings_store::SessionAccessMode::{AcceptEdits, FullAccess};
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, request, root) = two_chat_state("delete-access");
+        let kept_chat = request
+            .current_layout
+            .tabs
+            .iter()
+            .map(|tab| tab.id.clone())
+            .find(|id| *id != request.chat_id)
+            .unwrap();
+        for (session, chat) in [
+            ("deleted-session", &request.chat_id),
+            ("kept-session", &kept_chat),
+        ] {
+            state
+                .database
+                .connection()
+                .execute(
+                    "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,
+                     binding_digest,capabilities_json,state,residency,legacy,revision,
+                     projection_revision,created_at,updated_at)
+                     VALUES(?1,?2,?3,0,'claude-agent-acp',?4,'{}','ready','cold',0,0,0,1,1)",
+                    rusqlite::params![session, request.project_id, chat, "a".repeat(64)],
+                )
+                .unwrap();
+        }
+        let token = state
+            .settings
+            .prepare_chat_access("deleted-session", FullAccess, 1)
+            .unwrap();
+        state
+            .settings
+            .grant_chat_access("deleted-session", FullAccess, &token, 2)
+            .unwrap();
+        state
+            .settings
+            .set_chat_access("kept-session", AcceptEdits, 3)
+            .unwrap();
+        let archived = archive_chat_inner(&state, request.clone(), 0).await;
+        assert!(archived.committed);
+        let deleted = delete_chat_inner(
+            &state,
+            ChatDeleteRequest {
+                project_id: request.project_id.clone(),
+                chat_id: request.chat_id.clone(),
+            },
+            archived.transition_epoch,
+        )
+        .await;
+        assert!(deleted.committed);
+        // Gone at once, without waiting for the next startup.
+        assert_eq!(state.settings.chat_access("deleted-session").unwrap(), None);
+        assert_eq!(
+            state.settings.chat_access("kept-session").unwrap(),
+            Some(AcceptEdits)
+        );
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
