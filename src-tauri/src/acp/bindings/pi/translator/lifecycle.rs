@@ -10,15 +10,16 @@ pub(super) enum TurnPhase {
     Settled(TerminalOutcome),
 }
 
-/// Prompt delivery, model activity and settlement share one lifecycle. An
-/// extension can start model work after delivery but before its RPC returns;
+/// Prompt delivery, model activity and settlement share one lifecycle. A
+/// command turn (an extension command, or a Pi command such as compact) can
+/// work after delivery but before its RPC returns;
 /// an ordinary prompt must first be acknowledged. Neither acknowledgment nor
 /// agent_end closes model work: agent_settled owns that boundary.
 #[derive(Debug)]
 pub(super) struct TurnLifecycle {
     pub(super) owner: u64,
     pub(super) phase: TurnPhase,
-    extension: bool,
+    command: bool,
     prompt_failed: bool,
     pending_aborts: u8,
     abort_accepted: bool,
@@ -29,26 +30,30 @@ impl TurnLifecycle {
         Self {
             owner,
             phase: TurnPhase::Reserved,
-            extension: false,
+            command: false,
             prompt_failed: false,
             pending_aborts: 0,
             abort_accepted: false,
         }
     }
 
-    pub(super) fn mark_extension(&mut self) -> Result<(), AdapterError> {
+    pub(super) fn mark_command(&mut self) -> Result<(), AdapterError> {
         if self.phase != TurnPhase::Reserved {
             return Err(AdapterError::EventSequence);
         }
-        self.extension = true;
+        self.command = true;
         Ok(())
+    }
+
+    pub(super) fn is_command(&self) -> bool {
+        self.command
     }
 
     pub(super) fn written(&mut self) -> Result<(), AdapterError> {
         if self.phase != TurnPhase::Reserved {
             return Err(AdapterError::Correlation);
         }
-        self.phase = if self.extension {
+        self.phase = if self.command {
             TurnPhase::AwaitingModel
         } else {
             TurnPhase::AwaitingAcknowledgment
@@ -64,12 +69,12 @@ impl TurnLifecycle {
         handled: bool,
     ) -> Result<bool, AdapterError> {
         let resolved_without_model = match self.phase {
-            TurnPhase::Reserved | TurnPhase::AwaitingAcknowledgment if !self.extension => {
+            TurnPhase::Reserved | TurnPhase::AwaitingAcknowledgment if !self.command => {
                 self.phase = TurnPhase::AwaitingModel;
                 handled || !success
             }
-            TurnPhase::AwaitingModel if self.extension => true,
-            TurnPhase::ModelRunning | TurnPhase::ModelEnded if self.extension => false,
+            TurnPhase::AwaitingModel if self.command => true,
+            TurnPhase::ModelRunning | TurnPhase::ModelEnded if self.command => false,
             _ => return Err(AdapterError::EventSequence),
         };
         self.prompt_failed |= !success;
