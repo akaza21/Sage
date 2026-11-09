@@ -78,6 +78,14 @@ pub(crate) fn handle_run_event(app_handle: &AppHandle, event: RunEvent) {
     if let RunEvent::ExitRequested { api, .. } = event {
         info!("Sage host ExitRequested shutdown start");
         let state = app_handle.state::<AppState>();
+        // An archive release still parking a runtime finishes first, within
+        // the same budget the lanes' shutdown has.
+        if !state
+            .archive_releases
+            .wait_settled(crate::acp::service::explicit_close_deadline())
+        {
+            warn!("an archived Chat's runtime release did not settle before exit");
+        }
         preview_lifecycle::cleanup_previews_on_exit();
         let window_gone = app_handle.get_webview_window("main").is_none();
         match handle_exit_request(

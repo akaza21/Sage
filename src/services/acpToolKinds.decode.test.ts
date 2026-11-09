@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { TOOL_PROGRESS_BYTES } from "../domain/acpProjection";
 import { safeToolPresentation } from "./acpDesktopResponsePayloads";
 import { safeItem } from "./acpDesktopResponseItems";
 
@@ -49,6 +50,30 @@ describe("tool kind decoding", () => {
         ],
       }),
     ).toMatchObject({ kind: "imageView", resources: [{ kind: "resource" }] });
+  });
+
+  it("carries a running MCP call's status line and rejects an oversized one", () => {
+    const mcp = {
+      kind: "mcp",
+      label: "search",
+      serverLabel: "docs",
+      toolLabel: "search",
+      argumentsSummary: null,
+      resultSummary: null,
+    };
+    expect(
+      safeToolPresentation({ ...mcp, progress: "Indexed 3 of 9 pages" }),
+    ).toEqual({ ...mcp, progress: "Indexed 3 of 9 pages" });
+    expect(safeToolPresentation(mcp)).toEqual(mcp);
+    expect(
+      safeToolPresentation({
+        ...mcp,
+        progress: "x".repeat(TOOL_PROGRESS_BYTES + 1),
+      }),
+    ).toBe(null);
+    expect(safeToolPresentation({ ...mcp, progress: 3 })).toBe(null);
+    expect(safeToolPresentation({ ...mcp, progress: null })).toBe(null);
+    expect(safeToolPresentation({ ...mcp, progress: "" })).toBe(null);
   });
 
   it("carries a permission's category and harness reason, and admits their absence", () => {

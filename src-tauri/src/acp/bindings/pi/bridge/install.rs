@@ -3,7 +3,7 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
-const BRIDGE_PI_VERSION: &str = "0.83.0";
+const BRIDGE_PI_VERSION: &str = "1.5.0";
 pub(crate) const SOURCE: &[u8] = include_bytes!("extension.mjs");
 /// The bridge's path under Sage's resource directory. `bundle.resources` in
 /// tauri.conf.json ships the file at exactly this path.

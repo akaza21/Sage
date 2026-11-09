@@ -2,7 +2,8 @@ use std::time::{Duration, Instant};
 
 use crate::acp::{
     bindings::codex::{
-        CodexAuthError, CodexAuthNotification, CodexAuthProtocol, NativeAuthUrl, NativeLoginId,
+        CodexAuthError, CodexAuthMode, CodexAuthNotification, CodexAuthProtocol, NativeApiKey,
+        NativeAuthUrl, NativeLoginId,
         discovery::{CodexDiscoveryRunError, DiscoveryZeroProcess},
     },
     limits::LIMITS,
@@ -124,6 +125,17 @@ pub(crate) fn run_logout_protocol(
     settle(transport, runtime_epoch, deadline, result)
 }
 
+pub(crate) fn run_api_key_protocol(
+    protocol: &mut CodexAuthProtocol,
+    transport: &mut dyn AuthTransport,
+    key: &NativeApiKey,
+    runtime_epoch: u64,
+    deadline: CodexAuthDeadline,
+) -> Result<CodexAuthOutcome, CodexDiscoveryRunError> {
+    let result = api_key_login(protocol, transport, key, deadline);
+    settle(transport, runtime_epoch, deadline, result)
+}
+
 pub(crate) fn run_account_protocol(
     protocol: &mut CodexAuthProtocol,
     transport: &mut dyn AuthTransport,
@@ -196,6 +208,48 @@ fn login(
     }
 }
 
+/// Codex stores the key and answers only once it has; account notifications
+/// that race the answer are accepted, and discovery re-reads the account.
+fn api_key_login(
+    protocol: &mut CodexAuthProtocol,
+    transport: &mut dyn AuthTransport,
+    key: &NativeApiKey,
+    deadline: CodexAuthDeadline,
+) -> Result<CodexAuthOutcome, CodexDiscoveryRunError> {
+    initialize(protocol, transport, deadline)?;
+    let request = protocol.api_key_login_request(key)?;
+    let expected = request.id();
+    write(transport, request.into_frame())?;
+    let mut router = AuthFrameRouter::new();
+    loop {
+        let frame = read(transport, deadline)?;
+        let answered = match router.route(protocol, frame)? {
+            RoutedFrame::Response { id, frame } if id == expected => {
+                protocol.accept_api_key_login(&frame, id)?;
+                true
+            }
+            RoutedFrame::Response { .. } => return Err(CodexDiscoveryRunError::Protocol),
+            RoutedFrame::Notification => false,
+        };
+        while let Some(notification) = router.pop_notification() {
+            if !matches!(
+                notification,
+                CodexAuthNotification::AccountUpdated {
+                    mode: Some(CodexAuthMode::ApiKey)
+                } | CodexAuthNotification::LoginCompleted {
+                    login_id: None,
+                    success: true,
+                }
+            ) {
+                return Err(CodexDiscoveryRunError::Protocol);
+            }
+        }
+        if answered {
+            return Ok(CodexAuthOutcome::SignedIn);
+        }
+    }
+}
+
 fn read_account(
     protocol: &mut CodexAuthProtocol,
     transport: &mut dyn AuthTransport,
@@ -212,10 +266,10 @@ fn read_account(
             RoutedFrame::Response { id, frame } if id == expected => {
                 while let Some(notification) = router.pop_notification() {
                     match notification {
-                        CodexAuthNotification::AccountUpdated { signed_in }
+                        CodexAuthNotification::AccountUpdated { mode }
                             if early_update.is_none() =>
                         {
-                            early_update = Some(signed_in)
+                            early_update = Some(mode.is_some())
                         }
                         _ => return Err(CodexDiscoveryRunError::Protocol),
                     }
@@ -256,9 +310,7 @@ fn logout(
             RoutedFrame::Notification => {
                 while let Some(notification) = router.pop_notification() {
                     match notification {
-                        CodexAuthNotification::AccountUpdated { signed_in: false } => {
-                            signed_out = true
-                        }
+                        CodexAuthNotification::AccountUpdated { mode: None } => signed_out = true,
                         CodexAuthNotification::LoginCompleted { success: false, .. } => {}
                         _ => return Err(CodexDiscoveryRunError::Protocol),
                     }
@@ -290,10 +342,12 @@ fn accept_login_notification(
 ) -> Result<(), CodexDiscoveryRunError> {
     match notification {
         CodexAuthNotification::LoginCompleted {
-            login_id: observed,
+            login_id: Some(observed),
             success,
         } if observed == *login_id && completed.is_none() => *completed = Some(success),
-        CodexAuthNotification::AccountUpdated { signed_in: true } if !*updated => *updated = true,
+        CodexAuthNotification::AccountUpdated {
+            mode: Some(CodexAuthMode::Chatgpt),
+        } if !*updated => *updated = true,
         _ => return Err(CodexDiscoveryRunError::Protocol),
     }
     Ok(())

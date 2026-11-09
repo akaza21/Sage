@@ -385,3 +385,40 @@ fn only_a_refusal_before_the_commit_deletes_the_native_fork() {
     // A failed COMMIT or a lost join may have landed: release nothing.
     assert_eq!(release_after(&ForkCommit::Unknown), None);
 }
+
+#[test]
+fn a_fork_starts_with_the_config_choices_of_its_parent() {
+    use crate::acp::{
+        contract::SageAgentSessionId,
+        session_config::{ConfigId, ConfigMutation, ConfigValue, choices},
+    };
+    let fixture = Fixture::new(&forkable());
+    let parent = SageAgentSessionId::parse("session-parent").unwrap();
+    let mode = ConfigMutation::Mode(ConfigId::new("modeId", "plan").unwrap());
+    let effort = ConfigMutation::Option {
+        config_id: ConfigId::new("configId", "effort").unwrap(),
+        value: ConfigValue::Select {
+            value: ConfigId::new("value", "high").unwrap(),
+        },
+    };
+    {
+        let connection = fixture.database.connection();
+        assert!(choices::record(&connection, &parent, &mode, 1).unwrap());
+        assert!(choices::record(&connection, &parent, &effort, 2).unwrap());
+    }
+    let fork = fixture.fork("thread-fork").expect("fork chat");
+    let connection = fixture.database.connection();
+    let session: String = connection
+        .query_row(
+            "SELECT session_id FROM chat_session_heads WHERE chat_id=?1",
+            [&fork],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let session = SageAgentSessionId::parse(session).unwrap();
+    assert_ne!(session, parent);
+    assert_eq!(
+        choices::load(&connection, &session).unwrap(),
+        [mode, effort]
+    );
+}

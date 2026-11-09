@@ -7,13 +7,16 @@ import {
   screen,
 } from "@testing-library/react";
 import { useRef, useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   SearchablePicker,
   type SearchablePickerOption,
 } from "./SearchablePicker";
 
+import { preloadSearchablePicker } from "./searchablePickerLoad";
+
+beforeAll(() => preloadSearchablePicker());
 afterEach(() => cleanup());
 
 const options: readonly SearchablePickerOption[] = [

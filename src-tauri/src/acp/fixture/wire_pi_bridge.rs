@@ -137,27 +137,19 @@ fn bounded_id(id: &str) -> Result<&str, FixtureError> {
         .ok_or(FixtureError::InvalidArguments)
 }
 
-/// The generated case's bridge tool calls, in replay order.
+/// The generated Pi journey's steps, in replay order.
 #[cfg(test)]
-pub(crate) fn pi_bridge_calls_for_test(case: &str) -> Vec<Value> {
+pub(crate) fn pi_journey_steps_for_test(case: &str) -> Vec<Value> {
     let case = super::super::generated_cases::JOURNEY_CASES
         .iter()
         .find(|entry| entry.id == case)
-        .expect("generated Pi bridge case");
-    serde_json::from_str::<Vec<Value>>(case.steps_json)
-        .expect("generated steps")
-        .into_iter()
-        .filter(|step| step["kind"] == "piBridgeTool")
-        .collect()
+        .expect("generated Pi case");
+    serde_json::from_str(case.steps_json).expect("generated steps")
 }
 
-/// Runs one bridge tool call step against a caller-owned Sage peer.
+/// Runs one journey step against a caller-owned Sage peer.
 #[cfg(test)]
-pub(crate) fn run_pi_bridge_call_for_test(
-    step: &Value,
-    input: &mut impl Read,
-    output: &mut impl Write,
-) {
+pub(crate) fn run_pi_step_for_test(step: &Value, input: &mut impl Read, output: &mut impl Write) {
     super::execute_with_io(step, &mut WireState::new(), input, output, &mut Vec::new())
-        .expect("bridge call replays");
+        .expect("step replays");
 }

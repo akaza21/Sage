@@ -36,6 +36,9 @@ where
     pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.pump.take_native_rpc_reply()
     }
+    pub(crate) fn abandon_usage_read(&mut self) {
+        self.pump.abandon_usage_read();
+    }
     pub(crate) fn begin_native_rpc(
         &mut self,
         intent: &crate::acp::goal::NativeRpcIntent,
@@ -46,6 +49,9 @@ where
         match &intent.request {
             crate::acp::goal::NativeRpcRequest::Goal(action) => {
                 self.pump.write_goal(&mut self.transport, *action)
+            }
+            crate::acp::goal::NativeRpcRequest::UsageRead => {
+                self.pump.write_usage_read(&mut self.transport)
             }
             crate::acp::goal::NativeRpcRequest::ChildThreadRead {
                 child_thread_id,

@@ -33,12 +33,15 @@ pub(super) fn await_request(
     let expected = match kind {
         "piInitialize" => "get_state",
         "piModels" => "get_available_models",
-        "piNew" => "new_session",
+        // A new chat takes the session Pi opened at launch.
+        "piNew" => "get_state",
         "piPrompt" => "prompt",
         "piThinkingLevels" | "piThinkingLevelsUnsupported" => "get_available_thinking_levels",
         "piCommandsUnsupported" => "get_commands",
         "piAbort" => "abort",
-        "piDialogCancelled" => "extension_ui_response",
+        "piSteer" => "steer",
+        "piClearQueue" => "clear_queue",
+        "piDialogCancelled" | "piDialogAnswered" => "extension_ui_response",
         "piIdle" => "idle",
         _ => return Err(FixtureError::InvalidArguments),
     };
@@ -59,10 +62,15 @@ pub(super) fn await_request(
             .ok_or(FixtureError::InvalidArguments)?
             .to_owned();
         if command == "extension_ui_response" {
-            return if expected == command
+            let answered = kind == "piDialogAnswered"
+                && id == "fixture-question-1"
+                && request["value"]
+                    .as_str()
+                    .is_some_and(|value| !value.is_empty());
+            let cancelled = kind == "piDialogCancelled"
                 && id == "fixture-dialog-1"
-                && request["cancelled"] == true
-            {
+                && request["cancelled"] == true;
+            return if expected == command && (answered || cancelled) {
                 Ok(())
             } else {
                 Err(FixtureError::InvalidArguments)
@@ -81,7 +89,12 @@ pub(super) fn await_request(
             && !(session_request
                 && matches!(
                     expected,
-                    "prompt" | "abort" | "idle" | "get_available_thinking_levels"
+                    "prompt"
+                        | "abort"
+                        | "steer"
+                        | "clear_queue"
+                        | "idle"
+                        | "get_available_thinking_levels"
                 ))
         {
             return Err(FixtureError::InvalidArguments);
@@ -127,7 +140,7 @@ fn response_data(
 ) -> Result<Value, FixtureError> {
     Ok(match command {
         "get_state" => acp::substitute(
-            json!({"model":model(state.pi.model),"thinkingLevel":state.pi.thinking,"isStreaming":false,"sessionFile":"$ROOT/synthetic-session.jsonl"}),
+            json!({"model":model(state.pi.model),"thinkingLevel":state.pi.thinking,"isStreaming":false,"sessionId":"fixture-pi-session","sessionFile":"$ROOT/synthetic-session.jsonl"}),
             state,
             0,
         )?,
@@ -155,7 +168,6 @@ fn response_data(
             state.pi.thinking = level.into();
             json!({})
         }
-        "new_session" => json!({"cancelled":false}),
         "prompt" => {
             let message = request["message"]
                 .as_str()
@@ -167,8 +179,16 @@ fn response_data(
                 .turn_count
                 .checked_add(1)
                 .ok_or(FixtureError::ExpandedLimit)?;
-            json!({})
+            json!({"disposition":"started"})
         }
+        "steer"
+            if request["message"]
+                .as_str()
+                .is_some_and(|message| !message.is_empty()) =>
+        {
+            json!({"disposition":"queued"})
+        }
+        "clear_queue" => json!({"steering":[],"followUp":[]}),
         "abort" => json!({}),
         _ => return Err(FixtureError::InvalidArguments),
     })

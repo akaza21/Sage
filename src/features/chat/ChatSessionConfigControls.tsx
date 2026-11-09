@@ -36,6 +36,7 @@ export function ChatSessionConfigControls({
         <SessionConfigControl
           key={option.id}
           option={option}
+          restored={sessionConfig?.restored}
           disabled={disabled || pending}
           onChange={onSetSessionConfigOption}
         />
@@ -46,16 +47,25 @@ export function ChatSessionConfigControls({
 
 function SessionConfigControl({
   option,
+  restored,
   disabled,
   onChange,
 }: {
   option: AcpConfigOption;
+  /** The note on a stored value the session has not reapplied yet. */
+  restored?: string;
   disabled: boolean;
   onChange: (configId: string, value: AcpConfigValue) => void;
 }) {
   const controlLabel = `Session ${option.name.toLocaleLowerCase()}`;
   return (
-    <div role="group" aria-label={controlLabel}>
+    <div
+      role="group"
+      aria-label={controlLabel}
+      aria-description={restored}
+      title={restored}
+      data-restored={restored ? true : undefined}
+    >
       {option.type === "unsupported" ? (
         <span className="menu-empty" aria-disabled="true">
           {option.name}

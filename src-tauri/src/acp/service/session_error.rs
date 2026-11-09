@@ -8,8 +8,6 @@ pub(crate) enum CodexSessionError {
     Binding(crate::acp::bindings::codex::CodexAdmissionUnavailable),
     #[error("the Codex session intent is stale or foreign")]
     Intent,
-    #[error("this native Codex thread was started on an earlier Codex version")]
-    EarlierCodexVersion,
     #[error(transparent)]
     Session(#[from] SessionCoordinatorError),
     #[error("Codex runtime capacity is occupied")]

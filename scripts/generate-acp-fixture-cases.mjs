@@ -1,10 +1,15 @@
 import { nativeCases } from "./acp-native-cases.mjs";
+import { emit, events, wait } from "./acp-native-case-events.mjs";
 import {
   piBridgeJourneys,
+  piFullTurnJourney,
   piIdleConfigJourney,
 } from "./acp-native-pi-cases.mjs";
 import { codexUserInputJourneys } from "./acp-native-codex-user-input-cases.mjs";
 import { codexNoticeJourneys } from "./acp-native-codex-notice-cases.mjs";
+import { customAcpJourneys } from "./acp-native-custom-acp-cases.mjs";
+import { claudeSdkJourneys } from "./acp-native-claude-sdk-cases.mjs";
+import { codexMcpHookJourneys } from "./acp-native-codex-mcp-hook-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -227,12 +232,112 @@ const journeyCases = [
       { op: "exit", code: 17 },
     ],
   },
+  {
+    // The / menu on a Claude session: the fixture advertises three commands,
+    // then checks the exact text of each prompt, so a command picked in the
+    // composer must reach the wire as `/name input` through run_acp_command.
+    id: "claude-slash-commands",
+    steps: [
+      { op: "awaitClient", kind: "acpInitialize" },
+      { op: "emitKnownFrame", shape: "acpInitialize" },
+      { op: "awaitClient", kind: "acpNew" },
+      { op: "emitKnownFrame", shape: "acpSession" },
+      {
+        op: "emitKnownFrame",
+        shape: "acpUpdate",
+        update: {
+          sessionUpdate: "available_commands_update",
+          availableCommands: [
+            {
+              name: "compact",
+              description: "Summarize the conversation to free context",
+            },
+            {
+              name: "review",
+              description: "Review a pull request",
+              input: { hint: "PR number" },
+            },
+            { name: "init", description: "Set up project instructions" },
+          ],
+        },
+      },
+      ...[
+        ["/review 42", "Synthetic review of pull request 42 completed."],
+        ["/compact", "Synthetic compaction completed."],
+        ["Summarize the example", "The synthetic example is unchanged."],
+      ].flatMap(([promptText, reply]) => [
+        { op: "awaitClient", kind: "acpPrompt", promptText },
+        {
+          op: "emitKnownFrame",
+          shape: "acpUpdate",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: reply },
+          },
+        },
+        { op: "emitKnownFrame", shape: "acpCompleted" },
+      ]),
+      { op: "awaitClient", kind: "acpClose" },
+      { op: "emitKnownFrame", shape: "acpAck" },
+    ],
+  },
 ];
+// Session config across an app restart. Each launch of the fixture opens the
+// session (new the first time, resumed after a restart) in the adapter's
+// default model, effort and mode, and answers every model, effort and mode
+// change, so a restart shows whether Sage reapplies the chosen ones. One
+// prompt per launch; the Claude one asks permission for its tool call.
+journeyCases.push(
+  {
+    id: "claude-config-resume",
+    steps: [
+      wait("acpInitialize"),
+      emit("acpInitializeConfig"),
+      wait("acpOpen"),
+      emit("acpSession"),
+      wait("acpPrompt"),
+      ...events("claude", "approval-approved"),
+      emit("acpCompleted"),
+      wait("acpClose"),
+      emit("acpAck"),
+    ],
+  },
+  {
+    id: "codex-config-resume",
+    steps: [
+      wait("codexInitialize"),
+      emit("codexInitializeResultObserved"),
+      wait("codexStartOrResume"),
+      // The thread runs the model it was opened or resumed with, at the
+      // Medium default effort; naming them makes Sage read the catalogue
+      // next, which offers a second model and Low, Medium and High.
+      emit("codexThreadConfigResult"),
+      wait("codexModelList"),
+      emit("codexModelListConfigResult"),
+      wait("codexGoalGet"),
+      emit("codexGoalMethodNotFound"),
+      wait("codexTurnStart"),
+      emit("codexTurnResult"),
+      emit("codexStarted"),
+      emit("codexDelta"),
+      emit("codexCompleted"),
+      wait("codexUnsubscribe"),
+      emit("codexAck"),
+    ],
+  },
+);
 journeyCases.push(longTranscriptJourney());
 journeyCases.push(...nativeCases());
-journeyCases.push(piIdleConfigJourney(), ...piBridgeJourneys());
+journeyCases.push(
+  piIdleConfigJourney(),
+  piFullTurnJourney(),
+  ...piBridgeJourneys(),
+);
 journeyCases.push(...codexUserInputJourneys());
 journeyCases.push(...codexNoticeJourneys());
+journeyCases.push(...customAcpJourneys());
+journeyCases.push(...claudeSdkJourneys());
+journeyCases.push(...codexMcpHookJourneys());
 if (privacyFailuresForRecords(journeyCases, false).length)
   throw new Error("native fixture privacy violation");
 const journeyIds = new Set();

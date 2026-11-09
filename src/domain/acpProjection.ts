@@ -1,7 +1,12 @@
 import type { AttachedContext } from "./attachedContext";
+import type { AcpSessionAction } from "./acpSessionAction";
 import type { AcpImagePayload } from "./acpImage";
 import type { AcpGoalState } from "./acpGoal";
-import type { AcpSessionConfig } from "./acpSessionConfig";
+import type {
+  AcpRestoredSessionConfig,
+  AcpSessionConfig,
+  AcpSessionConfigNotice,
+} from "./acpSessionConfig";
 import type { BrowserOperationProjection } from "./browserOperation";
 import type { FilePairMetadata } from "./agentDiff";
 import type { UserInputRequest } from "./acpPermission";
@@ -44,6 +49,9 @@ export type SafeResourceLocation =
       label: string;
       displayResource?: ResourceRef | null;
     };
+
+/** Byte cap of a running tool's status line; native `TOOL_PROGRESS_BYTES`. */
+export const TOOL_PROGRESS_BYTES = 512;
 
 export type ToolPresentation =
   | {
@@ -98,6 +106,8 @@ export type ToolPresentation =
       toolLabel: string;
       argumentsSummary: string | null;
       resultSummary: string | null;
+      /** Latest status line of a running call; absent once it is terminal. */
+      progress?: string;
     }
   | {
       kind: "subagent";
@@ -230,8 +240,26 @@ export interface HarnessActivityProjection {
   revision: EntityRevision;
 }
 
+/**
+ * A session activity row (a hook run, say) in the work list of the Turn
+ * that owns it; native `TurnSessionActivityProjection`. A Turn
+ * holds at most `SESSION_ACTIVITIES_MAX` of them.
+ */
+export interface TurnSessionActivity {
+  kind: string;
+  label: string;
+  state: "running" | "completed" | "failed" | "cancelled";
+  progress?: string;
+}
+
+export const SESSION_ACTIVITIES_MAX = 16;
+
 export interface TurnProjection {
   attachedContext?: readonly AttachedContext[];
+  /** The session action this Turn ran. */
+  sessionAction?: AcpSessionAction;
+  /** The Turn ran a session action this build cannot run again. */
+  unrecognizedAction?: true;
   id: SageTurnId;
   sessionId: SageAgentSessionId;
   runtimeEpoch: RuntimeEpoch;
@@ -256,6 +284,7 @@ export interface TurnProjection {
   activities: readonly HarnessActivityProjection[];
   browserOperations: readonly BrowserOperationProjection[];
   browserOperationsCollapsed: number;
+  sessionActivities?: readonly TurnSessionActivity[];
 }
 
 export interface AgentSessionProjection {
@@ -287,7 +316,13 @@ export interface SessionNotice {
 
 export interface AcpChatPage {
   sessionConfig?: AcpSessionConfig | null;
+  /** The current session's restored config while it has no live one. */
+  restoredSessionConfig?: AcpRestoredSessionConfig | null;
+  /** A stored choice the current session could not take back. */
+  sessionConfigNotice?: AcpSessionConfigNotice | null;
   goal?: AcpGoalState;
+  /** The current session's live runtime reports usage limits. */
+  usage?: true;
   projectId: SageProjectId;
   chatId: SageChatId;
   title: string;

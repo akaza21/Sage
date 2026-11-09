@@ -11,6 +11,12 @@ import type {
 } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { FileSurface } from "./FileSurface";
+// FileSurface loads the editor, its editing features and its gutter lazily.
+// Load them with the file, so their cold import is not paid inside the first
+// test's wait.
+import "./CodeMirrorEditorRuntime";
+import "./editorEditing";
+import "./gitGutter";
 
 // jsdom has no Worker: the shared pool runs the worker's core in-process.
 vi.mock("./gitGutter/gutterWorkerClient", async () => {

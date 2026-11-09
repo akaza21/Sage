@@ -7,6 +7,9 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+mod line_counts;
+pub(crate) use line_counts::line_change_counts;
+
 /// Maximum raw UTF-8 bytes per diff side. Checked before serialization so
 /// JSON escaping can never turn an admitted pair into an oversized payload.
 pub(crate) use super::limits::DIFF_SIDE_BYTES_MAX;

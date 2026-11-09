@@ -1,5 +1,6 @@
 import { lazyParts } from "./lazyParts";
 import type * as UsageChunk from "./ComposerUsageContext";
+import type { AcpUsageRequest } from "../../domain/acpUsage";
 import type { ChatUsage } from "./acp/chatUsage";
 import "../../styles/composer-context.css";
 
@@ -9,9 +10,11 @@ const UsageContext = lazyParts<typeof UsageChunk>(
 
 export function ComposerContext({
   usage,
+  usageRequest = null,
   visible = true,
 }: {
   usage: ChatUsage | null;
+  usageRequest?: AcpUsageRequest | null;
   visible?: boolean;
 }) {
   if (
@@ -22,7 +25,13 @@ export function ComposerContext({
     return null;
   return (
     <div className="composer__context-slot">
-      {visible && <UsageContext part="default" usage={usage} />}
+      {visible && (
+        <UsageContext
+          part="default"
+          usage={usage}
+          usageRequest={usageRequest}
+        />
+      )}
     </div>
   );
 }

@@ -71,6 +71,9 @@ impl PiTranslator {
             | PendingKind::ThinkingLevels
             | PendingKind::SetThinkingLevel
             | PendingKind::NewSession
+            | PendingKind::Resume
+            | PendingKind::Steer
+            | PendingKind::ClearQueue
             | PendingKind::Messages
             | PendingKind::Entries => {}
         }
@@ -86,13 +89,11 @@ impl PiTranslator {
             return Err(AdapterError::LaunchNotAdmitted);
         }
         validate_id("Turn key", &turn_key)?;
-        if message.is_empty() || message.len() > PROMPT_BYTES || message.contains('\0') {
-            return Err(AdapterError::Limit("prompt bytes"));
-        }
+        validate_message(&message)?;
         if self
             .pending
             .values()
-            .any(|request| request.kind == PendingKind::NewSession)
+            .any(|request| matches!(request.kind, PendingKind::NewSession | PendingKind::Resume))
         {
             return Err(AdapterError::SessionTransitionBusy);
         }
@@ -124,6 +125,23 @@ impl PiTranslator {
             unknown_suppression_emitted: false,
         });
         Ok(vec![outbound])
+    }
+
+    /// Queues `message` into the running model loop; Pi delivers it after
+    /// the current tool calls finish. Once the loop has ended Pi would keep it
+    /// for the next prompt, so a steer is refused outside `ModelRunning`.
+    pub(super) fn begin_steer(&mut self, message: String) -> Result<Vec<Outbound>, AdapterError> {
+        validate_message(&message)?;
+        if self.active.as_ref().is_none_or(|turn| {
+            turn.authority_denied
+                || turn.lifecycle.terminal().is_some()
+                || turn.lifecycle.phase != TurnPhase::ModelRunning
+        }) {
+            return Err(AdapterError::StaleIntent);
+        }
+        let mut fields = Map::new();
+        fields.insert("message".into(), Value::String(message));
+        self.one(PendingKind::Steer, fields)
     }
 
     pub(super) fn one(
@@ -160,7 +178,9 @@ impl PiTranslator {
         }
         let owner = match kind {
             PendingKind::Prompt => Some(self.next_command),
-            PendingKind::Abort => self.active.as_ref().map(|turn| turn.lifecycle.owner),
+            PendingKind::Abort | PendingKind::Steer => {
+                self.active.as_ref().map(|turn| turn.lifecycle.owner)
+            }
             _ => None,
         };
         self.pending
@@ -170,4 +190,11 @@ impl PiTranslator {
             line,
         })
     }
+}
+
+fn validate_message(message: &str) -> Result<(), AdapterError> {
+    if message.is_empty() || message.len() > PROMPT_BYTES || message.contains('\0') {
+        return Err(AdapterError::Limit("prompt bytes"));
+    }
+    Ok(())
 }

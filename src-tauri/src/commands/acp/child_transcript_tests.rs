@@ -234,6 +234,8 @@ async fn child_ipc_journey(
             prompt: true,
             cancel: true,
             native_session_fork: false,
+            native_session_compact: false,
+            native_review: false,
             active_turn_steer: false,
             child_conversation_projection: false,
             child_transcript_read: true,
@@ -241,6 +243,7 @@ async fn child_ipc_journey(
             multi_root_extension_schema_id: None,
             model_count: 1,
             prompt_resources: false,
+            prompt_images: false,
             config_count: 0,
         };
         complete_activation(

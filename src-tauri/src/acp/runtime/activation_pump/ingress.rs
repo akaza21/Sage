@@ -238,7 +238,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             }
         }
         for value in egress {
-            if self.phase == Phase::AwaitingInitialized {
+            if self.phase.admits_initialization_request(ready.is_some()) {
                 self.enqueue_initialization(value)?;
             } else if self.phase == Phase::Initialized && value.token().is_notification() {
                 self.enqueue(value)?;

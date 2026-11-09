@@ -83,3 +83,28 @@ fn stream_fade_replays_pace_word_level_chunks_within_the_case_bounds() {
         }
     }
 }
+
+#[test]
+fn mcp_progress_replay_holds_each_status_line_long_enough_to_read() {
+    let case = JOURNEY_CASES
+        .iter()
+        .find(|case| case.id == "codex-mcp-progress")
+        .expect("the codex-mcp-progress journey exists");
+    let steps: Vec<serde_json::Value> = serde_json::from_str(case.steps_json).unwrap();
+    let mut held = Vec::new();
+    let mut since_visible = None;
+    for step in &steps {
+        let method = step["method"].as_str().unwrap_or_default();
+        if step["op"] == "pauseMs" {
+            since_visible = since_visible.map(|ms: u64| ms + step["ms"].as_u64().unwrap());
+        } else if method.starts_with("item/") {
+            held.extend(since_visible);
+            since_visible = Some(0);
+        }
+    }
+    // Started, two reports, completed: each of the first three is shown
+    // for at least two seconds before the next replaces it.
+    assert_eq!(held.len(), 3);
+    assert!(held.iter().all(|ms| *ms >= 2_000), "{held:?}");
+    assert!(held.iter().sum::<u64>() <= LIMITS.deadlines_ms.fixture_delay_maximum);
+}

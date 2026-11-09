@@ -96,7 +96,10 @@ impl AcpService {
             Ok(NativeRpcReply::TooLarge) => Ok(ChildTranscriptRead::TooLarge),
             Ok(NativeRpcReply::Rejected) => Err(ChildTranscriptReadError::Rejected),
             Ok(
-                NativeRpcReply::GoalApplied | NativeRpcReply::Forked(_) | NativeRpcReply::Released,
+                NativeRpcReply::GoalApplied
+                | NativeRpcReply::Forked(_)
+                | NativeRpcReply::Released
+                | NativeRpcReply::UsageRead,
             ) => Err(ChildTranscriptReadError::RecoveryRequired),
             Err(crate::acp::runtime::HostError::Intent | crate::acp::runtime::HostError::State) => {
                 Err(ChildTranscriptReadError::Unavailable)

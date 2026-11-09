@@ -92,11 +92,14 @@ it("inherited history mounts no second navigator, find or virtual list", async (
       />
     </section>,
   );
-  const history = await screen.findByRole("group", {
+  // Wait for the lazy views and the parent page, then query once. Polling a
+  // role query over this transcript re-ran jsdom's style cascade on every
+  // render and raced a one-second clock.
+  await settleLazyModules();
+  const history = screen.getByRole("group", {
     name: "History from the parent chat",
   });
-  await settleLazyModules();
-  expect(await screen.findByText("Parent answer 44")).toBeInTheDocument();
+  expect(screen.getByText("Parent answer 44")).toBeInTheDocument();
   expect(history.querySelectorAll(".acp-turn")).toHaveLength(20);
   expect(screen.getByText("Earlier history isn't shown.")).toBeInTheDocument();
   expect(screen.getByText("Fork answer 1")).toBeInTheDocument();

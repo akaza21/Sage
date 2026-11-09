@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, expect, it, vi } from "vitest";
@@ -23,6 +24,10 @@ const { pickerOptionRender, pickerProps } = vi.hoisted(() => ({
 
 vi.mock("../ui/SearchablePicker", async (importOriginal) => {
   const actual = await importOriginal<typeof SearchablePickerModule>();
+  // The open list is loaded long before a person opens a picker.
+  await import("../ui/searchablePickerLoad").then((load) =>
+    load.preloadSearchablePicker(),
+  );
   function TrackedSearchablePicker(
     props: ComponentProps<typeof SearchablePicker>,
   ) {
@@ -1271,14 +1276,20 @@ it("offers Rename branch for a listed name to a valid unlisted name", async () =
 
   render(<SourceControlView />);
 
-  const picker = screen.getByRole("button", { name: "Branch to rename" });
+  // Query inside the form, and name only the options used: the branch list
+  // beside it holds 128 buttons, and a role query by name computes each name
+  // through jsdom's style cascade, which takes seconds under load.
+  const form = screen.getByRole("form", { name: /^Rename branch in / });
+  const picker = within(form).getByRole("button", {
+    name: "Branch to rename",
+  });
   fireEvent.click(picker);
   const listbox = screen.getByRole("listbox", { name: "Branch to rename" });
-  expect(screen.getAllByRole("option")).toHaveLength(64);
-  expect(screen.getByRole("option", { name: "main" })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  const options = within(listbox).getAllByRole("option");
+  expect(options).toHaveLength(64);
+  const [main, topic] = options;
+  expect(main).toHaveAccessibleName("main");
+  expect(main).toHaveAttribute("aria-selected", "true");
   const input = screen.getByRole("combobox", { name: "Branch to rename" });
   fireEvent.keyDown(input, { key: "ArrowDown" });
   fireEvent.keyDown(input, { key: "ArrowDown" });
@@ -1286,19 +1297,18 @@ it("offers Rename branch for a listed name to a valid unlisted name", async () =
     "aria-activedescendant",
     expect.stringContaining("topic"),
   );
-  expect(listbox).toContainElement(
-    screen.getByRole("option", { name: "topic" }),
-  );
+  expect(topic).toHaveAccessibleName("topic");
+  expect(listbox).toContainElement(topic!);
   fireEvent.keyDown(input, { key: "Enter" });
   expect(picker).toHaveTextContent("topic");
   act(() => useWorkbenchStore.setState({ repositoryRefreshing: true }));
   expect(picker).toBeDisabled();
   act(() => useWorkbenchStore.setState({ repositoryRefreshing: false }));
   fireEvent.change(
-    screen.getByRole("textbox", { name: "Renamed branch name" }),
+    within(form).getByRole("textbox", { name: "Renamed branch name" }),
     { target: { value: "feature" } },
   );
-  fireEvent.click(screen.getByRole("button", { name: "Rename branch" }));
+  fireEvent.click(within(form).getByRole("button", { name: "Rename branch" }));
   await waitFor(() => {
     expect(renameLocalBranch).toHaveBeenCalledWith(
       "root-a",

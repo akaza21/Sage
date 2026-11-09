@@ -1,6 +1,8 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { AcpUsageRequest } from "../../domain/acpUsage";
+import { acpUsageDesktop } from "../../services/acpUsageDesktop";
 import type { ChatUsage } from "./acp/chatUsage";
 import { ComposerContext } from "./ComposerContext";
 
@@ -89,5 +91,49 @@ describe("ComposerContext", () => {
     rerender(<ComposerContext usage={null} />);
     expect(screen.queryByText(/Reported usage/)).toBeNull();
     expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("reads usage limits only when opened and drops them when closed", async () => {
+    const read = vi.spyOn(acpUsageDesktop, "read").mockResolvedValue({
+      kind: "usage",
+      snapshot: {
+        plan: "Pro",
+        limitReached: true,
+        windows: [
+          {
+            label: null,
+            usedPercent: 42,
+            windowMinutes: 300,
+            resetsAt: null,
+          },
+        ],
+      },
+    });
+    const request = {
+      projectId: "project-a",
+      projectGeneration: "1",
+      chatId: "chat-a",
+      sessionId: "session-a",
+      runtimeEpoch: "2",
+    } as AcpUsageRequest;
+    render(
+      <ComposerContext usage={usage(6_000, 272_000)} usageRequest={request} />,
+    );
+    const trigger = await screen.findByRole("button", {
+      name: /Show usage limits/,
+    });
+    expect(read).not.toHaveBeenCalled();
+
+    fireEvent.click(trigger);
+    expect(
+      await screen.findByRole("progressbar", { name: "5-hour used" }),
+    ).toHaveAttribute("aria-valuenow", "42");
+    expect(screen.getByRole("alert")).toHaveTextContent("Usage limit reached.");
+    expect(screen.getByText("Pro")).toBeVisible();
+    expect(read).toHaveBeenCalledWith(request);
+
+    fireEvent.click(trigger);
+    expect(screen.queryByRole("dialog", { name: "Usage limits" })).toBeNull();
+    read.mockRestore();
   });
 });

@@ -77,6 +77,10 @@ pub(crate) enum HostError {
     RecoveryRequired,
     #[error("the runtime operation exceeded its bounded deadline")]
     Deadline,
+    /// A config change or native RPC whose deadline passed before it was
+    /// written: nothing reached the harness and the host is unharmed.
+    #[error("the runtime operation's deadline passed before it was sent")]
+    NotDispatched,
     #[error("the Steer acknowledgement timed out; the message may have been delivered")]
     SteerOutcomeUnknown,
     #[error("the runtime host is closed")]
@@ -190,6 +194,7 @@ pub(super) struct PendingHostConfig {
     pub(super) reply: mpsc::SyncSender<Result<HostReply, HostError>>,
     pub(super) deadline: Instant,
     pub(super) native_rpc: bool,
+    pub(super) passive: bool,
 }
 
 pub(super) struct PendingTerminal {

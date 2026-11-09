@@ -1,10 +1,13 @@
-import {
-  parseWorkspaceSearchResponse,
-  validateWorkspaceSearchRequest,
-  type WorkspaceSearchGateway,
-  type WorkspaceSearchRequest,
+import type {
+  WorkspaceSearchGateway,
+  WorkspaceSearchRequest,
 } from "./workspaceSearchDomain";
 import { invokeNative } from "../../ports/nativeInvoke";
+
+/** The request and response checks, loaded with the first Search rather
+ * than with the Search panel. */
+export const loadWorkspaceSearchChecks = () =>
+  import("./workspaceSearchDomain");
 
 export type WorkspaceSearchInvoke = (
   command: string,
@@ -25,6 +28,8 @@ export function createWorkspaceSearchAdapter(
   return {
     async search(request: WorkspaceSearchRequest, signal?: AbortSignal) {
       const normalized = { ...request, query: request.query.trim() };
+      const { parseWorkspaceSearchResponse, validateWorkspaceSearchRequest } =
+        await loadWorkspaceSearchChecks();
       validateWorkspaceSearchRequest(normalized);
       throwIfAborted(signal);
       const requestId = crypto.randomUUID();

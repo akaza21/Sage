@@ -251,16 +251,19 @@ pub async fn list_directory(
     .map_err(|error| error.to_string())
 }
 
+/// Async so the disk read runs on the blocking pool: Tauri runs a synchronous
+/// command on the main thread, where a large or slow file would freeze the UI.
 #[tauri::command]
-pub fn read_text_file(
-    state: State<'_, AppState>,
-    resource: ResourceRef,
-) -> Result<TextFile, String> {
-    state
-        .database
-        .resolve_active_resource(&resource)
-        .and_then(|workspace| workspace.read_text_file(&resource))
-        .map_err(|error| error.to_string())
+pub async fn read_text_file(app: AppHandle, resource: ResourceRef) -> Result<TextFile, String> {
+    let database = app.state::<AppState>().database.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        database
+            .resolve_active_resource(&resource)
+            .and_then(|workspace| workspace.read_text_file(&resource))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -313,6 +316,23 @@ pub async fn snapshot_editor_buffer(
     .map_err(|error| error.to_string())
 }
 
+/// "Keep mine" for an Editor buffer whose File changed or was deleted on disk.
+#[tauri::command]
+pub async fn rebase_editor_buffer(
+    state: State<'_, AppState>,
+    request: crate::domain::BufferRebaseRequest,
+) -> Result<EditorSaveResult, String> {
+    let resource = request.resource.clone();
+    run_editor_operation(
+        state,
+        resource,
+        EditorOperationKind::Terminal,
+        move |database, workspace, _| editor::rebase_buffer(database, workspace, request),
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub async fn save_editor_document(
     state: State<'_, AppState>,
@@ -332,12 +352,19 @@ pub async fn save_editor_document(
 pub async fn discard_editor_buffer(
     state: State<'_, AppState>,
     resource: ResourceRef,
+    keep_if_absent: Option<bool>,
 ) -> Result<EditorDocument, String> {
     run_editor_operation(
         state,
         resource,
         EditorOperationKind::Terminal,
-        editor::discard_document,
+        move |database, workspace, resource| {
+            if keep_if_absent == Some(true) {
+                editor::revert_document(database, workspace, resource)
+            } else {
+                editor::discard_document(database, workspace, resource)
+            }
+        },
     )
     .await
     .map_err(|error| error.to_string())

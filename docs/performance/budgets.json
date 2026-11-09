@@ -23,8 +23,14 @@
       },
       {
         "entry": "src/features/chat/ClaudeAuthActions.tsx",
-        "maxGzipBytes": 515,
-        "reason": "Existing sign-in actions load only after a Claude authentication error; keeps their native actions and copy off the ready first-Chat path."
+        "maxGzipBytes": 630,
+        "reason": "Sign-in actions and the sign-in-required sentence load only after a harness sign-in error; measured 588, keeping both off the ready first-Chat path."
+      },
+      {
+        "entry": "src/features/chat/ComposerSlashController.tsx",
+        "maxGzipBytes": 3700,
+        "maxCssGzipBytes": 720,
+        "reason": "Composer `/` controller, command menu, listbox and hint. Loads on the field's first focus, keeping the first-Chat path to a stub. Measured 3529 B JS, 670 B CSS."
       },
       {
         "entry": "src/workbench/AgentTaskResources.tsx",
@@ -101,8 +107,8 @@
       },
       {
         "entry": "src/features/chat/ComposerAccessMenu.tsx",
-        "maxGzipBytes": 959,
-        "reason": "Supported-access menu and workspace-write confirmation; loads on the first Access request."
+        "maxGzipBytes": 1790,
+        "reason": "Access menu: its confirmations, per-chat access changes and the new modes' icons; loads on the first Access request. Measured 1673 B plus 7%."
       },
       {
         "entry": "src/features/chat/ComposerAddActions.tsx",
@@ -155,8 +161,13 @@
       },
       {
         "entry": "src/features/settings/AgentHarnessSettings.tsx",
-        "maxGzipBytes": 1075,
-        "reason": "Harnesses settings page: install, version and sign-in status per harness; loaded only by Settings > Harnesses. Measured 1003 B plus 7%."
+        "maxGzipBytes": 1750,
+        "reason": "Harnesses settings page: install, version and sign-in per harness, the custom agent editor boundary and the account block. Loaded only by Settings > Harnesses. Measured 1635 B, plus 7%."
+      },
+      {
+        "entry": "src/features/settings/CustomAgentSettings.tsx",
+        "maxGzipBytes": 1360,
+        "reason": "Your ACP agents editor: at most four agents (name, executable, arguments, passed-through names) and the plain-text arguments hint; loaded only by Settings > Harnesses. Measured 1271 B plus 7%."
       },
       {
         "entry": "src/features/settings/AgentBrowserSettings.tsx",
@@ -374,6 +385,22 @@
         "reason": "Editor Search tool and bounded result list; loads only when Search is selected."
       },
       {
+        "entry": "src/features/search/WorkspaceReplaceParts.tsx",
+        "maxGzipBytes": 3369,
+        "maxCssGzipBytes": 820,
+        "reason": "Workspace Replace: field, row actions, preview and planning; loads when the user opens Replace or reaches for its toggle, never with Search alone."
+      },
+      {
+        "entry": "src/features/search/workspaceReplaceApply.ts",
+        "maxGzipBytes": 2012,
+        "reason": "Workspace Replace confirm dialog and apply: editor, buffer and disk writes and the guarded reopen; loads with the first preview."
+      },
+      {
+        "entry": "src/features/search/workspaceSearchDomain.ts",
+        "maxGzipBytes": 2002,
+        "reason": "Workspace Search response checks; preloaded when the Search panel mounts and awaited before a result shows."
+      },
+      {
         "entry": "src/features/settings/openEditorSettings.ts",
         "maxGzipBytes": 466,
         "reason": "Editor Settings resource action; loads only on an explicit Settings request."
@@ -406,8 +433,14 @@
       },
       {
         "entry": "src/features/chat/ComposerUsageContext.tsx",
-        "maxGzipBytes": 700,
-        "reason": "Reported context usage renders only after the harness supplies a known capacity; the idle composer does not load the meter."
+        "maxGzipBytes": 890,
+        "reason": "Reported context usage renders only after the harness supplies a known capacity; the idle composer does not load the meter. Measured 832 B with the usage-limits trigger."
+      },
+      {
+        "entry": "src/features/chat/ComposerUsageLimits.tsx",
+        "maxGzipBytes": 1520,
+        "maxCssGzipBytes": 400,
+        "reason": "Usage-limits popover and its bounded decoder; loads only when the context meter is clicked and unmounts when closed. Measured 1424 B."
       }
     ],
     "windowsInstallerMb": 45,

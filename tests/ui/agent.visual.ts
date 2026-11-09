@@ -272,7 +272,7 @@ async function expectComposerControlsLaidOut(page: Page) {
   const controls = [
     page.getByRole("button", { name: "Harness" }),
     page.getByLabel("Model", { exact: true }),
-    page.getByRole("textbox", { name: "Message agent" }),
+    page.getByRole("combobox", { name: "Message agent" }),
     page.getByRole("button", { name: "Send message" }),
   ];
   const boxes: ComposerControlBox[] = [];
@@ -598,7 +598,7 @@ test.describe("ED02 picker visual states", () => {
     await expect(draft).toHaveValue("Edited but unsent visual handoff");
     await expect(trigger).toHaveText("Target chat");
     await expect(
-      sourceChat.getByRole("textbox", { name: "Message agent" }),
+      sourceChat.getByRole("combobox", { name: "Message agent" }),
     ).toHaveValue("");
     await takeCanonicalScreenshot(workbench, "agent-picker-handoff");
     expect(
@@ -630,7 +630,7 @@ test.describe("ED02 picker visual states", () => {
       "Target chat",
     );
     await expect(
-      targetChat.getByRole("textbox", { name: "Message agent" }),
+      targetChat.getByRole("combobox", { name: "Message agent" }),
     ).toHaveValue("");
   });
 
@@ -866,7 +866,7 @@ test.describe("V6 Composer context meter", () => {
     await settleChatProjections(page);
     const unknownContext = page.getByLabel("Composer context", { exact: true });
     await expect(
-      page.getByRole("textbox", { name: "Message agent" }),
+      page.getByRole("combobox", { name: "Message agent" }),
     ).toBeVisible();
     await expect(unknownContext).toHaveCount(0);
     await expect(
@@ -1242,7 +1242,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
             index === 0,
           );
           await expect(
-            pane.getByRole("textbox", { name: "Message agent" }),
+            pane.getByRole("combobox", { name: "Message agent" }),
           ).toBeVisible();
         }
       }
@@ -1279,7 +1279,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       const before = await measurePanes();
       await panes
         .last()
-        .getByRole("textbox", { name: "Message agent" })
+        .getByRole("combobox", { name: "Message agent" })
         .focus();
       await expectFocusedChatIndicator(page, forcedColors, 2);
       expect(await measurePanes()).toEqual(before);
@@ -1311,7 +1311,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       "Editor consistency pass",
     );
     await expect(
-      panes.first().getByRole("textbox", { name: "Message agent" }),
+      panes.first().getByRole("combobox", { name: "Message agent" }),
     ).toBeEnabled();
     await expect(
       panes.first().getByRole("button", { name: "Cancel turn", exact: true }),

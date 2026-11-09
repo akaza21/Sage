@@ -47,6 +47,7 @@ struct SharedState {
     rebound_turns: Vec<SageTurnId>,
     ingest_error: Option<AdapterRuntimeError>,
     command_error: Option<AdapterRuntimeError>,
+    turn_unnamed: bool,
     commit_error: Option<PumpJournalError>,
     rejected_ingests: usize,
     ingest_outcomes: VecDeque<Result<(), AdapterRuntimeError>>,
@@ -65,6 +66,10 @@ struct FakeAdapter {
 impl HarnessAdapter for FakeAdapter {
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         None
+    }
+
+    fn defer_cancel(&mut self) -> bool {
+        self.shared.0.lock().expect("shared").turn_unnamed
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {

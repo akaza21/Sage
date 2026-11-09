@@ -140,6 +140,8 @@ pub(crate) trait EgressTransport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum QueueDisposition {
     Queued,
+    /// The adapter holds the frame until its Turn is named.
+    Deferred,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,6 +171,8 @@ pub(crate) struct AdapterPump<A, J, R> {
     teardown: bool,
     projection_recovery_required: bool,
     pending_permissions: Vec<PendingPermission>,
+    /// Recent requests the harness withdrew before the user answered.
+    withdrawn_permissions: std::collections::VecDeque<SageServerRequestId>,
     pending_steer_request: Option<u64>,
     steer_response: Option<bool>,
 }
@@ -251,6 +255,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             teardown: false,
             projection_recovery_required: false,
             pending_permissions: admission.pending_permissions,
+            withdrawn_permissions: std::collections::VecDeque::new(),
             pending_steer_request: None,
             steer_response: None,
         }

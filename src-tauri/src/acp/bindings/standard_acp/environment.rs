@@ -29,6 +29,25 @@ pub(crate) fn launch_environment(
     Some(entries)
 }
 
+/// Adds the named variables a user-defined agent passes through, when set
+/// and not already present. Only names are configured; values are read at
+/// launch and never stored.
+pub(crate) fn extend_passthrough(
+    entries: &mut Vec<(OsString, OsString)>,
+    names: &[String],
+    read: impl Fn(&str) -> Option<OsString>,
+) {
+    for name in names {
+        let key = OsString::from(name);
+        if contains_key(entries, &key) {
+            continue;
+        }
+        if let Some(value) = read(name).filter(|value| !value.is_empty()) {
+            entries.push((key, value));
+        }
+    }
+}
+
 #[cfg(windows)]
 fn baseline(read: &impl Fn(&str) -> Option<OsString>) -> Option<Vec<(OsString, OsString)>> {
     let entries: Vec<(OsString, OsString)> = WINDOWS_PROCESS_BASELINE_KEYS

@@ -174,8 +174,20 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
     let model_request: Value = serde_json::from_slice(model_request.payload()).unwrap();
     assert_eq!(model_request["method"], "model/list");
 
+    let mut api_key = protocol();
+    let account_id = advance_to_account(&mut api_key);
+    assert_eq!(
+        api_key
+            .accept_account(&frame(json!({"id":account_id,"result":{
+                "account":{"type":"apiKey"},"requiresOpenaiAuth":true
+            }})))
+            .unwrap(),
+        CodexAccountSnapshot::ApiKey
+    );
+
     for rejected in [
-        json!({"account":{"type":"apiKey"},"requiresOpenaiAuth":true,"workspaceRouting":null}),
+        json!({"account":{"type":"apiKey","key":"never-retain"},"requiresOpenaiAuth":true}),
+        json!({"account":{"type":"amazonBedrock"},"requiresOpenaiAuth":true}),
         json!({"account":{"type":"amazonBedrock"},"requiresOpenaiAuth":true,"workspaceRouting":null}),
     ] {
         let mut candidate = protocol();
@@ -455,4 +467,60 @@ fn exact_pinned_binary_discovery_hook_proves_bounded_zero_process_cleanup() {
 
     assert!(!discovery.content.models.is_empty());
     discovery.revalidate().expect("authority remains current");
+}
+
+/// What the composer's model menu shows for the desktop restart replay: Sage
+/// reads the case's own `model/list` frame with its real discovery protocol
+/// and keeps every model the session lists.
+#[cfg(feature = "acp-fixture")]
+#[test]
+fn a_replay_case_offers_every_model_its_session_lists() {
+    let case = "codex-config-resume";
+    let reply = |payload: &[u8]| {
+        let request: Value = serde_json::from_slice(payload).unwrap();
+        frame(crate::acp::fixture::native_case_discovery_reply(case, &request).unwrap())
+    };
+    let mut protocol = protocol();
+    let initialize = protocol.initialize_request().unwrap();
+    // The desktop replay is checked as an observed build, which accepts any
+    // absolute Codex home; this protocol is the pinned packet's, which
+    // expects its own.
+    let mut initialized = crate::acp::fixture::native_case_discovery_reply(
+        case,
+        &serde_json::from_slice(initialize.payload()).unwrap(),
+    )
+    .unwrap();
+    initialized["result"]["codexHome"] = parse_packet_metadata(include_bytes!(
+        "../../../../../testdata/acp/codex/candidate-windows.json"
+    ))
+    .unwrap()
+    .codex_home()
+    .to_string_lossy()
+    .into_owned()
+    .into();
+    protocol.accept_initialize(&frame(initialized)).unwrap();
+    let account = protocol.account_request().unwrap();
+    let models = protocol.model_request().unwrap();
+    assert_eq!(
+        protocol.accept_account(&reply(account.payload())).unwrap(),
+        CodexAccountSnapshot::ProviderManaged
+    );
+    let ProtocolProgress::Complete(content) = protocol
+        .accept_model_page(&reply(models.payload()))
+        .unwrap()
+    else {
+        panic!("one page lists the whole catalogue");
+    };
+    let listed: Vec<_> = content
+        .models
+        .iter()
+        .map(|model| (model.id.as_str(), model.name.as_str(), model.is_default))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            ("fixture-model", "Synthetic replay", true),
+            ("fixture-model-deep", "Synthetic replay deep", false)
+        ]
+    );
 }

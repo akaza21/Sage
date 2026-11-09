@@ -248,7 +248,7 @@ test("queued messages and the edit disclosure share the dock and never overlap i
   await disclosure.click();
   await expect(disclosure).toHaveAttribute("aria-expanded", "true");
   await page
-    .getByRole("textbox", { name: "Message agent" })
+    .getByRole("combobox", { name: "Message agent" })
     .fill("Keep this draft");
   for (const viewport of [
     { width: 1280, height: 800 },
@@ -300,7 +300,7 @@ test("queued messages and the edit disclosure share the dock and never overlap i
       expect.soft(geometry.queueScroll).toBeGreaterThan(0);
     }
     await expect(
-      page.getByRole("textbox", { name: "Message agent" }),
+      page.getByRole("combobox", { name: "Message agent" }),
     ).toHaveValue("Keep this draft");
     expect.soft(geometry.queuePosition).toBe("static");
     expect.soft(geometry.queueFill).toBe("rgba(0, 0, 0, 0)");

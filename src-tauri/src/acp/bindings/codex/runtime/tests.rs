@@ -28,11 +28,13 @@ use crate::{error::AppError, persistence::Database, state::AppState};
 mod browser_mcp_tests;
 mod duplicate_terminal_probe;
 mod fork_tests;
+mod hook_and_progress_events;
 mod model_identity;
 #[cfg(feature = "acp-fixture")]
 mod notice_journey_tests;
 mod notice_tests;
 mod saved_diff_tests;
+mod usage_tests;
 
 struct Mapper;
 

@@ -367,7 +367,7 @@ test.describe("Project chip 200% zoom reflow proxy", () => {
     expect(await page.evaluate(() => window.devicePixelRatio)).toBe(2);
     const composer = page.locator("form.composer").first();
     await expectResponsiveToolbar(composer);
-    const textarea = composer.getByRole("textbox", { name: "Message agent" });
+    const textarea = composer.getByRole("combobox", { name: "Message agent" });
     await textarea.fill("Draft remains editable at 200% reflow");
     await expect(textarea).toHaveValue("Draft remains editable at 200% reflow");
     const field = (await textarea.boundingBox())!;

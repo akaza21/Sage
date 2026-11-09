@@ -11,6 +11,7 @@ pub(crate) async fn start_acp_session_inner(
         request.chat_id.clone(),
     )
     .await?;
+    refuse_archived_chat(state, &request.project_id, &request.chat_id)?;
     validate_base_intent(
         &request.project_id,
         request.project_generation,
@@ -65,6 +66,7 @@ pub(crate) async fn activate_acp_session_inner(
         request.chat_id.clone(),
     )
     .await?;
+    refuse_archived_chat(state, &request.project_id, &request.chat_id)?;
     validate_session_intent(&request, &snapshot).map_err(intent_error)?;
     let binding_id = durable_binding_id(state, &request.session_id).map_err(store_error)?;
     #[cfg(all(windows, feature = "acp-fixture"))]
@@ -132,4 +134,25 @@ pub(super) fn durable_binding_id(
         .map_err(crate::acp::store::StoreError::Database)?;
     crate::acp::intent::BindingId::new("bindingId", binding_id)
         .map_err(|_| crate::acp::store::StoreError::Corrupt("session binding identity"))
+}
+
+/// An archived Chat runs no agent. Prompt, session start and activation
+/// refuse it here with a typed message while holding the project transition
+/// lock, which archive also takes. Archive advances the transition epoch, so
+/// a send that releases the lock for its workspace capture fails its relock
+/// in `lock_active_project` as stale rather than dispatching.
+pub(super) fn refuse_archived_chat(
+    state: &AppState,
+    project_id: &SageProjectId,
+    chat_id: &SageChatId,
+) -> Result<(), AcpIpcError> {
+    match crate::chat_archive::is_archived_chat(
+        &state.database.connection(),
+        project_id.as_str(),
+        chat_id.as_str(),
+    ) {
+        Ok(false) => Ok(()),
+        Ok(true) => Err(archived_chat()),
+        Err(_) => Err(internal_error()),
+    }
 }

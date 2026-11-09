@@ -71,14 +71,16 @@ pub(super) fn fail_pending_config(pending: &mut Option<PendingConfig>, error: Ho
     }
 }
 
+/// Settles the pending mutation; true when it missed its deadline, so the
+/// caller can abandon what the harness may still answer.
 pub(super) fn settle_pending_config(
     pending: &mut Option<PendingConfig>,
     config_pending: bool,
     goal_pending: bool,
     native_reply: Option<crate::acp::goal::NativeRpcReply>,
-) {
+) -> bool {
     let Some(config) = pending.take() else {
-        return;
+        return false;
     };
     if config.native_rpc
         && let Some(reply) = native_reply
@@ -97,9 +99,11 @@ pub(super) fn settle_pending_config(
         });
     } else if config.expired() {
         config.complete(Err(HostError::Deadline));
+        return true;
     } else {
         *pending = Some(config);
     }
+    false
 }
 
 pub(super) async fn handle_worker<A, R, T, Auth, C>(
@@ -129,6 +133,8 @@ where
             envelope.reject(HostError::Intent);
             return (RunnerAction::Continue(state), None);
         }
+        let mut state = state;
+        state.abandon_usage_read();
         let Some(config) = pending_config.take() else {
             envelope.reject(HostError::State);
             return (RunnerAction::Continue(state), None);
@@ -308,7 +314,7 @@ mod tests {
             deadline: std::time::Instant::now() + std::time::Duration::from_secs(1),
             native_rpc: true,
         });
-        settle_pending_config(&mut pending, false, false, None);
+        assert!(!settle_pending_config(&mut pending, false, false, None));
         assert!(pending.is_none());
         assert_eq!(receiver.recv().unwrap(), Err(HostError::RecoveryRequired));
     }

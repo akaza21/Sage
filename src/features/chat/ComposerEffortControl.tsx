@@ -10,7 +10,7 @@ const EffortMenu = lazy(() => import("./ComposerEffortMenu"));
 type Props = Omit<
   ComponentProps<typeof ComposerEffortMenu>,
   "triggerRef" | "panelId"
-> & { onToggle: () => void; triggerVisible?: boolean };
+> & { onToggle: () => void; triggerVisible?: boolean; restored?: string };
 
 export function ComposerEffortControl(props: Props) {
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -26,8 +26,10 @@ export function ComposerEffortControl(props: Props) {
           type="button"
           className="composer__control-trigger composer__effort-picker"
           data-overflow-control="effort"
-          title="Select effort"
+          title={props.restored ?? "Select effort"}
           aria-label={"Thinking level: " + label}
+          aria-description={props.restored}
+          data-restored={props.restored ? true : undefined}
           aria-controls={panelId}
           aria-haspopup="dialog"
           aria-expanded={props.open}

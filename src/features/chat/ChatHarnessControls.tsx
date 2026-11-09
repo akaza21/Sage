@@ -1,8 +1,7 @@
 import { IconButton } from "../../ui/IconButton";
-import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
-import { Plus, Settings } from "../../ui/leanIcons";
+import { Plus } from "../../ui/leanIcons";
 
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import type { ChatUsage } from "./acp/chatUsage";
 import { ComposerContext } from "./ComposerContext";
 
@@ -22,12 +21,12 @@ import {
   sessionModeActions,
 } from "../../domain/acpSessionConfigControls";
 import { capitalizeLabel } from "../../domain/text";
-import "../../styles/harness-picker.css";
-import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
 import { ComposerAccessControl } from "./ComposerAccessControl";
+import { ComposerHarnessPicker } from "./ComposerHarnessPicker";
 import { composerOptionLabel } from "./composerChrome";
 import { useComposerToolbarFit } from "./useComposerToolbarFit";
 import { formatContextWindow } from "./composerModelContext";
+import type { ComposerMenuActions } from "./ComposerAddActions";
 import { ComposerOptionsPart } from "./lazyParts";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { ComposerModelControls } from "./ComposerModelControls";
@@ -43,9 +42,9 @@ import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 
 interface Props {
   contextUsage?: ChatUsage | null;
+  usageRequest?: ComponentProps<typeof ComposerContext>["usageRequest"];
   accessBindingId?: string | null;
-  imageAction?: { disabled: boolean; onChoose: () => void };
-  onOpenGoal?: () => void;
+  addActions?: ComposerMenuActions;
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
@@ -74,9 +73,9 @@ interface Props {
 
 export function ChatHarnessControls({
   contextUsage,
+  usageRequest,
   accessBindingId,
-  imageAction,
-  onOpenGoal,
+  addActions = {},
   availableBinding,
   canPrompt,
   modelLabelScope,
@@ -103,7 +102,6 @@ export function ChatHarnessControls({
     (state) => state.projectTransitioning,
   );
   const [effortFromAdd, setEffortFromAdd] = useState(false);
-  const keyboardFocus = useHarnessKeyboardFocus();
   const {
     active,
     modelId,
@@ -118,9 +116,6 @@ export function ChatHarnessControls({
     (state) => state.selectedHarnessId,
   );
   const globalModels = useWorkbenchStore((state) => state.models);
-  const harnessesPending = harnesses.some(
-    (harness) => harness.installState === "detecting",
-  );
   const selectedHarness = harnesses.find(
     (harness) => harness.id === selectedHarnessId,
   );
@@ -137,9 +132,11 @@ export function ChatHarnessControls({
   // Effort levels are known only once a session runs the selected harness and
   // model; until then effort shows as unavailable, however the selection and
   // the session were reached.
+  // A restored config is passed only for the session the selection continues.
   const sessionOwnsSelection =
-    sessionHarnessId === selectedHarnessId &&
-    sessionModelId === selectedModelId;
+    !!sessionConfig?.restored ||
+    (sessionHarnessId === selectedHarnessId &&
+      sessionModelId === selectedModelId);
   const selectedSessionConfig = sessionOwnsSelection ? sessionConfig : null;
   const configOptions = sessionConfigControls(selectedSessionConfig);
   const findOption = (category: string) =>
@@ -219,8 +216,7 @@ export function ChatHarnessControls({
   // "+" is always the row's first control, as in Codex, so the toolbar keeps
   // the same shape in every chat; it is disabled while it has nothing to offer.
   const hasActions = Boolean(
-    imageAction ||
-    onOpenGoal ||
+    Object.values(addActions).some(Boolean) ||
     effortInMenu ||
     projectInMenu ||
     modeOptions.length > 0 ||
@@ -263,36 +259,21 @@ export function ChatHarnessControls({
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
             capabilities={accessHarness.accessModes}
+            sessionConfig={sessionConfig}
             disabled={turnBusy || projectTransitioning}
             open={active === "access"}
             onToggle={() => toggle("access")}
             onDismiss={dismiss}
           />
         ) : null}
-        <label
-          className="composer__control-trigger composer__harness"
-          data-keyboard-focus={keyboardFocus}
-        >
-          <HarnessSignInPicker
-            harnesses={harnesses}
-            ariaLabel="Harness"
-            open={active === "harness"}
-            onOpenChange={setHarnessOpen}
-            triggerIcon={<Settings size={16} aria-hidden="true" />}
-            candidates={harnessCandidates}
-            popoverClassName="composer__popover composer__harness-menu"
-            popoverGap={8}
-            popoverPlacement="above-start"
-            triggerClassName="composer__control-trigger composer__picker-trigger"
-            sectionLabel="Harnesses"
-            searchable={false}
-            disabled={projectTransitioning || turnBusy}
-            state={harnessesPending ? "loading" : undefined}
-            stateTitle={harnessesPending ? "Detecting harnesses…" : undefined}
-            onSelect={onSelectHarness}
-            selectedId={selectedHarnessId}
-          />
-        </label>
+        <ComposerHarnessPicker
+          open={active === "harness"}
+          onOpenChange={setHarnessOpen}
+          candidates={harnessCandidates}
+          disabled={projectTransitioning || turnBusy}
+          onSelect={onSelectHarness}
+          selectedId={selectedHarnessId}
+        />
         <ComposerModelControls
           triggerRef={modelTrigger}
           panelId={modelId}
@@ -312,6 +293,8 @@ export function ChatHarnessControls({
           effortLabel={confirmedModelLabel || inheriting ? effortLabel : null}
           contextWindow={contextWindow}
           effortOption={effortOption}
+          restored={selectedSessionConfig?.restored}
+          notice={selectedSessionConfig?.notice}
           awaitingSession={
             !sessionOwnsSelection &&
             selectedHarnessId !== null &&
@@ -349,6 +332,7 @@ export function ChatHarnessControls({
         {active === "options" ? (
           <ComposerOptionsPart
             part="ComposerOptionsMenu"
+            accessModes={accessHarness?.accessModes}
             fallback={
               <ComposerMenuLoading
                 triggerRef={optionsTriggerRef}
@@ -370,8 +354,7 @@ export function ChatHarnessControls({
             sessionConfig={selectedSessionConfig}
             pending={modePending}
             disabled={turnBusy || projectTransitioning}
-            imageAction={imageAction}
-            onOpenGoal={onOpenGoal}
+            {...addActions}
             onOpenEffort={
               effortInMenu
                 ? () => {
@@ -400,9 +383,11 @@ export function ChatHarnessControls({
           </span>
         ) : null}
       </div>
-      {contextUsage && (
-        <ComposerContext usage={contextUsage} visible={contextVisible} />
-      )}
+      <ComposerContext
+        usage={contextUsage ?? null}
+        usageRequest={usageRequest}
+        visible={contextVisible}
+      />
     </>
   );
 }

@@ -20,6 +20,10 @@ base64 = "=0.22.1"
 ignore = "=0.4.34"
 png = "=0.17.16"
 jpeg-decoder = { version = "=0.3.2", default-features = false }
+# Re-encodes downscaled prompt images that PNG cannot fit (photos, gradients).
+# Pure Rust with no dependencies (about 190 KiB of source); it runs only when
+# an attached image is normalised, on the upload's blocking thread.
+jpeg-encoder = { version = "=0.7.1", default-features = false, features = ["std"] }
 # Quick Open's byte prefilter (EDIT-0005 EP-07). Already in the lock through
 # regex, ignore and serde_json, so it adds no new code to the build.
 memchr = "=2.8.3"

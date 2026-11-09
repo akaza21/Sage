@@ -7,15 +7,19 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import { useQuickOpenStore } from "../features/quickOpen/quickOpenState";
 import { clearChatSearchFolderRequest } from "../features/chatSearch/chatSearchScope";
 import { LeftSidebar } from "./LeftSidebar";
 import { TitleBar } from "./TitleBar";
+import { preloadSearchablePicker } from "../ui/searchablePickerLoad";
 import { useSideChatState } from "./sideChatState";
 import { resetAgentChatHistory } from "./agentChatHistory";
+
+// The picker list loads when the window first idles.
+beforeAll(() => preloadSearchablePicker());
 
 const initialState = useWorkbenchStore.getState();
 

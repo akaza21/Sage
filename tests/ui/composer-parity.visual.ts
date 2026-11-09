@@ -223,7 +223,7 @@ for (const width of [1888, 720, 480]) {
           .click();
         await expect(harness).toBeFocused();
         await expect(harness).toHaveCSS("outline-style", "none");
-        await page.getByRole("textbox", { name: "Message agent" }).click();
+        await page.getByRole("combobox", { name: "Message agent" }).click();
         await page.keyboard.press("Tab");
         await page.keyboard.press("Tab");
         await page.keyboard.press("Tab");
@@ -283,7 +283,7 @@ for (const width of [1888, 720, 480]) {
             };
           });
         const resting = await paint();
-        await page.getByRole("textbox", { name: "Message agent" }).click();
+        await page.getByRole("combobox", { name: "Message agent" }).click();
         const focused = await paint();
         if (forcedColors === "none") {
           expect(focused).toEqual(resting);

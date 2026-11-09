@@ -12,10 +12,17 @@ use super::manifest::Platform;
 use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
 use super::turn_policy::{TurnPolicySurface, turn_policy, validate_turn_policy};
 
+mod session_action;
+
 // The shared writer owns the single LF delimiter. Keeping the payload one
 // byte below the wire ceiling makes the eventual payload + LF write fit the
 // existing bounded stdin endpoint without adapter-specific framing.
 const JSON_PAYLOAD_BYTES: usize = LIMITS.wire.frame_bytes as usize - 1;
+
+/// High-volume notifications Sage never projects, suppressed by Codex at the
+/// source: the whole-turn unified diff (Sage reads each file change from its
+/// own item) and the deprecated apply_patch output stream.
+const OPTED_OUT_NOTIFICATIONS: [&str; 2] = ["turn/diff/updated", "item/fileChange/outputDelta"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AppServerClientIdentity {
@@ -63,12 +70,23 @@ pub(crate) enum RequestKind {
     ForkDelete,
     Models,
     TurnStart,
+    /// `review/start`: an inline review that runs as the correlated Turn.
+    Review,
+    /// `thread/compact/start`: a compaction that runs as the correlated Turn.
+    Compact,
     Steer,
     Interrupt,
     Unsubscribe,
     GoalGet,
     GoalPause,
     GoalClear,
+    RateLimitsRead,
+}
+
+impl RequestKind {
+    pub(crate) fn starts_turn(self) -> bool {
+        matches!(self, Self::TurnStart | Self::Review | Self::Compact)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,6 +117,8 @@ impl OutgoingRequest {
             RequestKind::Fork => "thread/fork",
             RequestKind::Models => "model/list",
             RequestKind::TurnStart => "turn/start",
+            RequestKind::Review => "review/start",
+            RequestKind::Compact => "thread/compact/start",
             RequestKind::Steer => "turn/steer",
             RequestKind::Interrupt => "turn/interrupt",
             RequestKind::Unsubscribe | RequestKind::ForkRelease => "thread/unsubscribe",
@@ -106,6 +126,7 @@ impl OutgoingRequest {
             RequestKind::GoalGet => "thread/goal/get",
             RequestKind::GoalPause => "thread/goal/set",
             RequestKind::GoalClear => "thread/goal/clear",
+            RequestKind::RateLimitsRead => "account/rateLimits/read",
         };
         let bytes = serde_json::to_vec(&json!({"id": id, "method": method, "params": params}))
             .map_err(|_| RequestError::Encoding)?;
@@ -130,7 +151,10 @@ impl OutgoingRequest {
                 },
                 // Codex requires this initialize capability before it
                 // accepts the documented thread/start.dynamicTools field.
-                "capabilities": {"experimentalApi": true}
+                "capabilities": {
+                    "experimentalApi": true,
+                    "optOutNotificationMethods": OPTED_OUT_NOTIFICATIONS
+                }
             }),
         )
     }
@@ -227,6 +251,10 @@ impl OutgoingRequest {
             RequestKind::GoalClear,
             json!({"threadId": thread_id.as_str()}),
         )
+    }
+
+    pub(crate) fn rate_limits_read(id: u64) -> Result<Self, RequestError> {
+        Self::build(id, RequestKind::RateLimitsRead, Value::Null)
     }
 
     pub(crate) fn models(

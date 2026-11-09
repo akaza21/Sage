@@ -10,12 +10,9 @@ import { errorMessage } from "../../domain/errors";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
-import type {
-  ActiveEditorState,
-  EditorStateBridge,
-} from "./fileEditorController";
+import { isDeletedOnDisk } from "./editorDisk";
+import type { EditorStateBridge } from "./fileEditorController";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
-import { sameContent } from "./editorContent";
 
 export { EDITOR_EXTERNAL_WATCH_EVENT };
 
@@ -26,14 +23,13 @@ export const WATCH_LIMIT_MESSAGE =
   "File is not watched: the external-change watch limit was reached. Focus this File to retry.";
 export const WATCH_UNAVAILABLE_MESSAGE =
   "File is not watched: external-change notifications could not start.";
+/** Shown quietly: the File is gone, and is watched again once it exists. */
+export const WATCH_MISSING_MESSAGE =
+  "Not watched while the File is missing. Sage checks for it every few seconds.";
+const WATCH_RETRY_MS = 2_000;
 
 /** Returns the element whose focus means the user is back in this File. */
 export type EditorFocusBoundary = () => Element | null;
-
-const DELETION_CONFLICT = {
-  kind: "external-change" as const,
-  message: "This file was deleted outside Sage.",
-};
 
 export async function bindEditorExternalWatch(
   editor: EditorPort,
@@ -99,11 +95,29 @@ export function useEditorExternalWatch(
     let subscription: EditorWatchSubscription | undefined;
     let applying = false;
     let pendingNotice: EditorExternalWatchNotice | undefined;
+    let missing = false;
+    // Set while the File may have changed unseen: read once a watch starts.
+    let reread = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const editor = getWorkbenchPorts().editor;
 
     const applyNotice = (notice: EditorExternalWatchNotice) => {
       if (cancelled) {
         return;
+      }
+      // A deletion can take the File's folder, and the native watch with it,
+      // and no watch starts on a missing File. So the watch starts again
+      // once the File exists, and the File is read then.
+      if (notice.kind === "deleted" && subscription) {
+        const ended = subscription;
+        subscription = undefined;
+        missing = true;
+        reread = true;
+        cancellation.current = start
+          .catch(() => undefined)
+          .then(() => ended.cancel())
+          .catch(() => undefined);
+        tryStart();
       }
       if (applying) {
         pendingNotice = notice;
@@ -171,10 +185,28 @@ export function useEditorExternalWatch(
           subscription = nextSubscription;
           stopRetryingOnFocus();
           setUnwatched(null);
+          missing = false;
+          if (reread) {
+            reread = false;
+            applyNotice({ resource: watched, generation: 0, kind: "changed" });
+          }
         })
         .catch((error: unknown) => {
           if (cancelled) return;
+          const active = bridge.getActiveEditor();
           const limited = isEditorWatchLimitError(error);
+          const gone =
+            missing || (active?.phase === "ready" && isDeletedOnDisk(active));
+          // Unseen while unwatched: read once a watch starts.
+          if (gone) reread = true;
+          // Every slot taken is not a missing File: it waits for focus, as
+          // ever, without polling.
+          if (!limited && gone) {
+            missing = true;
+            retryTimer = setTimeout(tryStart, WATCH_RETRY_MS);
+            setUnwatched({ resource: watched, message: WATCH_MISSING_MESSAGE });
+            return;
+          }
           if (limited) {
             retryOnFocus();
           }
@@ -190,6 +222,7 @@ export function useEditorExternalWatch(
     tryStart();
 
     return () => {
+      clearTimeout(retryTimer);
       stopRetryingOnFocus();
       setUnwatched(null);
       cancelled = true;
@@ -217,103 +250,12 @@ export async function applyEditorExternalWatchNotice(
   bridge: EditorStateBridge,
   editor: Pick<EditorPort, "openEditorDocument">,
 ): Promise<void> {
+  // The editor is read now, as the notice arrives; what the notice does
+  // loads with the first one, since most sessions never see one.
   const active = bridge.getActiveEditor();
   if (!active || !noticeMatchesWatch(notice, active.resource)) {
     return;
   }
-  if (notice.kind === "deleted") {
-    if (active.phase !== "ready") {
-      return;
-    }
-    bridge.setActiveEditor(
-      {
-        ...active,
-        document: { ...active.document, conflict: DELETION_CONFLICT },
-        message: DELETION_CONFLICT.message,
-      },
-      { tabStatus: "failed" },
-    );
-    return;
-  }
-  const snapshot =
-    active.phase === "ready"
-      ? {
-          revision: active.revision,
-          persistedRevision: active.persistedRevision,
-          content: active.content,
-          fingerprint: active.document.buffer.fingerprint,
-          saving: active.saving,
-        }
-      : null;
-  const dirty =
-    active.phase === "ready" && active.revision > active.persistedRevision;
-  if (dirty && !active.saving) {
-    setExternalChangeConflict(bridge, active);
-    return;
-  }
-  const document = await editor.openEditorDocument(notice.resource);
-  const current = bridge.getActiveEditor();
-  if (!current || !noticeMatchesWatch(notice, current.resource)) {
-    return;
-  }
-  if (
-    current.phase === "ready" &&
-    snapshot !== null &&
-    (current.revision !== snapshot.revision ||
-      current.persistedRevision !== snapshot.persistedRevision ||
-      !sameContent(current.content, snapshot.content) ||
-      current.document.buffer.fingerprint !== snapshot.fingerprint ||
-      current.revision > current.persistedRevision)
-  ) {
-    const completedMatchingSave =
-      snapshot.saving &&
-      !current.saving &&
-      !current.document.dirty &&
-      current.document.conflict === null &&
-      current.revision === current.persistedRevision &&
-      sameContent(current.content, document.buffer.content) &&
-      current.document.buffer.fingerprint === document.buffer.fingerprint &&
-      current.document.disk.fingerprint === document.disk.fingerprint &&
-      current.document.lineEnding === document.lineEnding;
-    if (!completedMatchingSave) {
-      setExternalChangeConflict(bridge, current);
-      return;
-    }
-  }
-  bridge.setActiveEditor(
-    {
-      phase: "ready",
-      resource: document.resource,
-      document,
-      content: document.buffer.content,
-      revision: document.buffer.revision,
-      persistedRevision: document.buffer.revision,
-      persisting: false,
-      saving: false,
-      message: document.conflict?.message ?? null,
-    },
-    {
-      dirty: document.dirty,
-      tabStatus: document.conflict ? "failed" : null,
-    },
-  );
-}
-
-function setExternalChangeConflict(
-  bridge: EditorStateBridge,
-  current: Extract<ActiveEditorState, { phase: "ready" }>,
-): void {
-  bridge.setActiveEditor(
-    {
-      ...current,
-      document: {
-        ...current.document,
-        conflict: {
-          kind: "external-change",
-          message: "This file changed outside Sage.",
-        },
-      },
-    },
-    { tabStatus: "failed" },
-  );
+  const { applyWatchNotice } = await import("./editorNoticeState");
+  await applyWatchNotice(notice, bridge, editor, active);
 }

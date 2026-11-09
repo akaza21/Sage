@@ -77,6 +77,11 @@ pub(super) fn response_result(
         .ok_or(CodexDiscoveryError::Protocol)
 }
 
+/// An OpenAI API key Codex stores in its own home: `{"type":"apiKey"}`.
+pub(crate) fn api_key_account(account: &Map<String, Value>) -> bool {
+    account.len() == 1 && account.get("type").and_then(Value::as_str) == Some("apiKey")
+}
+
 /// Whether an `account/read` result has the pinned closed shape: the
 /// account, the auth requirement, and the optional (unused) workspace
 /// routing. Any other key is refused.

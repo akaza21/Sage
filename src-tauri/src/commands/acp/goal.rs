@@ -137,4 +137,4 @@ mod tests {
 
 #[cfg(test)]
 #[path = "goal_tests.rs"]
-mod integration_tests;
+pub(super) mod integration_tests;

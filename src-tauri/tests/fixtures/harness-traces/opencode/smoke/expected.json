@@ -15,6 +15,13 @@
     },
     {
       "event": "item",
+      "externalItemId": "thought:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "completed",
+      "text": "synthetic reasoning."
+    },
+    {
+      "event": "item",
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
@@ -26,11 +33,19 @@
       "outputTokens": 1,
       "contextWindow": 4096
     },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "completed",
+      "text": "synthetic final"
+    },
     { "event": "turn", "state": "completed" }
   ],
   "notes": [
     "Synthetic shape fixture derived from the live OpenCode ACP smoke observation; it is not a retained raw trace.",
     "The six session updates preserve one available-commands update, three thought chunks, one assistant-message chunk, and one usage update.",
-    "All identifiers, text, token counts, and the permitted fixture path are fixed placeholders."
+    "All identifiers, text, token counts, and the permitted fixture path are fixed placeholders.",
+    "ACP has no message end, so the translator closes output itself: answer text after an untagged thought completes that thought block (a later thought opens the next block's item), and the completed prompt response completes the turn's still-open text, thought and plan items before the turn terminal."
   ]
 }

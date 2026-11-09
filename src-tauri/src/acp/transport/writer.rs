@@ -24,6 +24,8 @@ pub(crate) enum FrameWriteOutcome {
 pub(crate) enum OutboundFrameClass {
     Ordinary,
     P02ReadTextFileResponse,
+    /// An ACP `session/prompt` request, which may carry image blocks.
+    Prompt,
 }
 
 #[allow(dead_code, reason = "ACP transport frame")]
@@ -42,6 +44,10 @@ impl OutboundFrame {
         payload: Vec<u8>,
     ) -> Result<Self, FrameWriteError> {
         Self::new_with_class(payload, OutboundFrameClass::P02ReadTextFileResponse)
+    }
+
+    pub(crate) fn new_prompt(payload: Vec<u8>) -> Result<Self, FrameWriteError> {
+        Self::new_with_class(payload, OutboundFrameClass::Prompt)
     }
 
     fn new_with_class(
@@ -124,6 +130,7 @@ fn validate_payload(payload: &[u8], class: OutboundFrameClass) -> Result<(), Fra
     let limit = match class {
         OutboundFrameClass::Ordinary => LIMITS.wire.frame_bytes as usize,
         OutboundFrameClass::P02ReadTextFileResponse => P02_READ_TEXT_RESPONSE_BYTES,
+        OutboundFrameClass::Prompt => crate::acp::limits::PROMPT_FRAME_BYTES,
     };
     if payload.len() > limit {
         return Err(FrameWriteError::Oversize);

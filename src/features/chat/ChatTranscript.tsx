@@ -56,6 +56,7 @@ export function ChatTranscript({
   messages,
   developmentSimulator,
   onRetry,
+  onReviewChanges,
   showJumpToLatest,
   onJumpToLatest,
 }: {
@@ -88,6 +89,7 @@ export function ChatTranscript({
   messages: readonly ChatMessage[];
   developmentSimulator: boolean;
   onRetry?: () => void;
+  onReviewChanges?: () => void;
   /** "activity": follow is paused and a running turn grew below. */
   showJumpToLatest: boolean | "activity";
   onJumpToLatest: () => void;
@@ -210,6 +212,7 @@ export function ChatTranscript({
                 historyError={historyError}
                 onLoadEarlier={onLoadEarlier}
                 onRetry={retryAction}
+                onReviewChanges={onReviewChanges}
                 feedback={feedback}
                 onFeedbackQueued={forgetCopyFeedback}
                 emptyState={

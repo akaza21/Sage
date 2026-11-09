@@ -3,7 +3,7 @@ use uuid::{Uuid, Variant, Version};
 
 use crate::acp::intent::ImageMediaType;
 
-pub(crate) const MAX_OUTGOING_IMAGE_BYTES: u32 = 4 * 1024 * 1024;
+pub(crate) const MAX_OUTGOING_IMAGE_BYTES: u32 = crate::acp::limits::STORED_IMAGE_BYTES as u32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ImageAttachmentKind {

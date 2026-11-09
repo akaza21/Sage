@@ -128,6 +128,7 @@ export function FileSurfaceContent({
         projectName={projectName}
         lineEnding={editor.document.lineEnding}
         diskByteLen={editor.document.disk.byteLen}
+        unwatched={editor.unwatched}
         persisting={editor.persisting}
         dirty={dirty}
         saving={editor.saving}
@@ -138,8 +139,9 @@ export function FileSurfaceContent({
         onTogglePreview={onTogglePreview}
       />
       <FileEditorNotices
-        conflict={editor.document.conflict}
+        document={editor.document}
         message={editor.message}
+        editable={!readOnly}
       />
       {languageNavigationStatus ? (
         <p role="status" className="file-language-navigation-status">

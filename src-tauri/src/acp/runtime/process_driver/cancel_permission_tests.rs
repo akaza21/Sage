@@ -41,6 +41,23 @@ fn zero_pending_permissions_writes_only_the_ordinary_cancel_notification() {
 }
 
 #[test]
+fn a_cancel_the_adapter_holds_for_an_unnamed_turn_writes_nothing_yet() {
+    runtime().block_on(async {
+        let (mut driver, shared, _, _) = build_driver(Vec::new(), VecDeque::new());
+        shared.0.lock().expect("shared").turn_unnamed = true;
+
+        let progress = driver
+            .dispatch_cancel(cancel("one", "message-one"))
+            .await
+            .expect("cancel");
+
+        assert!(progress.cancel_deferred);
+        assert_eq!(progress.written_frames, 0);
+        assert!(shared.0.lock().expect("shared").commands.is_empty());
+    });
+}
+
+#[test]
 fn driver_writes_all_cancelled_permissions_before_one_cancel_notification() {
     runtime().block_on(async {
         let batches = vec![

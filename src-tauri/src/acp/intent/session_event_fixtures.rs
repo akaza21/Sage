@@ -23,5 +23,6 @@ pub(crate) fn activity(id: &str, state: SessionActivityState, progress: &str) ->
         label: RequiredText::new("activityLabel", "npm test").unwrap(),
         state,
         progress: Some(RequiredText::new("activityProgress", progress).unwrap()),
+        in_previous_turn: false,
     }
 }

@@ -96,7 +96,7 @@ pub(super) fn activated_adapter() -> ObservedPi {
         .unwrap();
     let session = deliver(&mut inner, session);
     let batch = inner
-        .ingest(&response(&session, Value::Null), &Mapper)
+        .ingest(&response(&session, opened()), &Mapper)
         .unwrap();
     assert!(matches!(
         batch.events(),
@@ -134,7 +134,10 @@ pub(super) fn activation_with(mut adapter: ObservedPi, reset: bool) -> Activatio
         let command = deliver(&mut adapter.inner, egress);
         adapter
             .inner
-            .ingest(&response(&command, Value::Null), &Mapper)
+            .ingest(
+                &response(&command, json!({"sessionId":"pi-session-2"})),
+                &Mapper,
+            )
             .unwrap();
     }
     let session = ActivatedSession {
@@ -193,7 +196,7 @@ pub(super) struct Fixture {
 
 impl Fixture {
     pub(super) fn new() -> Self {
-        Self::with_external_session_id(ExternalId::new("session", "pi-session-91-1").unwrap())
+        Self::with_external_session_id(ExternalId::new("session", "pi-session-1").unwrap())
     }
 
     pub(super) fn with_external_session_id(external_session_id: ExternalId) -> Self {

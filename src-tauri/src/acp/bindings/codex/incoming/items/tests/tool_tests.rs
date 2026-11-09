@@ -184,6 +184,29 @@ fn codex_spawn_preserves_the_verified_operation_and_receivers() {
 }
 
 #[test]
+fn codex_message_and_roster_tools_keep_their_operation_label() {
+    for tool in [
+        "sendMessage",
+        "followupTask",
+        "interruptAgent",
+        "listAgents",
+    ] {
+        let call = item(json!({
+            "type": "collabAgentToolCall", "id": tool, "tool": tool, "status": "completed",
+            "senderThreadId": "parent", "receiverThreadIds": [], "agentsStates": {}
+        }));
+        let (payload, _, _) = normalize_item(&call, ItemLifecycle::Completed, &UnusedMapper)
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(payload, NormalizedPayload::Collaboration { label, operation: Some(operation), .. }
+                if label.as_str() == tool && operation.as_str() == tool),
+            "{tool}"
+        );
+    }
+}
+
+#[test]
 fn completed_child_activity_preserves_its_emitted_operation() {
     let activity = item(json!({"type": "subAgentActivity", "id": "done-1",
         "agentThreadId": "child-1", "agentPath": "Reviewer", "kind": "completed"}));

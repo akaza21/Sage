@@ -94,7 +94,7 @@ export function accessibleName(element) {
   );
 }
 export const HARNESS = Object.freeze({
-  pi: { id: "pi", binding: "pi-rpc", protocol: "pi-rpc-0.83.0" },
+  pi: { id: "pi", binding: "pi-rpc", protocol: "pi-rpc-1.5.0" },
   codex: {
     id: "codex",
     binding: "codex-app-server",

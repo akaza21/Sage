@@ -17,6 +17,42 @@ pub struct AccessModeCapability {
     pub(crate) label: String,
     pub(crate) description: String,
     pub(crate) fallback: bool,
+    /// The harness session mode this access mode selects. The composer offers
+    /// the mode only while the live session advertises this id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) session_mode_id: Option<String>,
+}
+
+/// An access mode a harness enforces itself, through one of its own session
+/// (permission) modes. A binding whose access works this way lists its rows
+/// in its own module; everything else here, and the settings, grants,
+/// diagnostics and composer, stay harness-neutral. Before each prompt Sage
+/// selects `session_mode` through the binding's session-config path, and a
+/// mode the live session does not advertise is refused, never approximated.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct NativeAccessMode {
+    pub(crate) id: SessionAccessMode,
+    pub(crate) label: &'static str,
+    pub(crate) description: &'static str,
+    pub(crate) session_mode: &'static str,
+}
+
+/// The curated binding's native access modes, first being its default.
+fn native_access_modes(binding: &str) -> &'static [NativeAccessMode] {
+    match binding {
+        "claude-agent-acp" => super::claude::CLAUDE_ACCESS_MODES,
+        "claude-code-sdk" => super::claude::CLAUDE_SDK_ACCESS_MODES,
+        _ => &[],
+    }
+}
+
+/// The harness session mode that carries `mode` for `binding`, when the
+/// binding enforces access through session modes.
+pub(crate) fn session_mode(binding: &str, mode: SessionAccessMode) -> Option<&'static str> {
+    native_access_modes(binding)
+        .iter()
+        .find(|native| native.id == mode)
+        .map(|native| native.session_mode)
 }
 
 pub(crate) fn access_modes(
@@ -40,6 +76,20 @@ pub(crate) fn admitted_modes(
     pi_bridge: Result<(), Unavailable>,
 ) -> Vec<AccessModeCapability> {
     use SessionAccessMode::{Ask, ReadOnly, WorkspaceWrite};
+    let native = native_access_modes(binding);
+    if !native.is_empty() {
+        return native
+            .iter()
+            .enumerate()
+            .map(|(index, mode)| AccessModeCapability {
+                id: mode.id,
+                label: mode.label.into(),
+                description: mode.description.into(),
+                fallback: index == 0 && mode.id.is_default_eligible(),
+                session_mode_id: Some(mode.session_mode.into()),
+            })
+            .collect();
+    }
     let rows: &[(SessionAccessMode, &str, &str)] = match binding {
         "codex-app-server" if version == CODEX_PINNED_VERSION && characterised => &[
             (
@@ -62,11 +112,6 @@ pub(crate) fn admitted_modes(
             ReadOnly,
             "Read-only",
             "Read workspace files; no writes or network.",
-        )],
-        "claude-agent-acp" => &[(
-            Ask,
-            "Ask each time",
-            "Review each permission request; no filesystem sandbox.",
         )],
         "pi-rpc" if characterised => match pi_bridge {
             Ok(_) => &[
@@ -107,6 +152,20 @@ pub(crate) fn admitted_modes(
                 "Auto-approve verified workspace edits; ask for other tools.",
             ),
         ],
+        // A user-defined agent: Sage answers its permission requests and
+        // stops a Turn whose agent runs a non-read tool without asking.
+        "custom-acp" => &[
+            (
+                Ask,
+                "Ask each time",
+                "Review each permission request; a tool run without asking stops the Turn.",
+            ),
+            (
+                ReadOnly,
+                "Read-only",
+                "Sage declines every permission request and file write.",
+            ),
+        ],
         _ => &[],
     };
     rows.iter()
@@ -119,6 +178,7 @@ pub(crate) fn admitted_modes(
             label: (*label).into(),
             description: (*description).into(),
             fallback: index == 0,
+            session_mode_id: None,
         })
         .collect()
 }
@@ -141,18 +201,101 @@ pub(crate) fn effective_mode(
         .map(|mode| mode.id)
 }
 
-pub(crate) fn effective_for_binding(
+/// The mode a prompt runs under: the chat's own choice while the binding
+/// still offers exactly that mode, else the binding's stored default. A
+/// choice the binding cannot carry never lowers or raises the default.
+pub(crate) fn turn_mode(
+    binding: &str,
+    version: &str,
+    characterised: bool,
+    chat: Option<SessionAccessMode>,
+    default: Option<SessionAccessMode>,
+) -> Option<SessionAccessMode> {
+    if let Some(chat) = chat
+        && effective_mode(binding, version, Some(chat), characterised) == Some(chat)
+    {
+        return Some(chat);
+    }
+    effective_mode(binding, version, default, characterised)
+}
+
+pub(crate) fn turn_mode_for_binding(
     registry: &super::registry::BindingRegistry,
     binding: &str,
-    requested: Option<SessionAccessMode>,
+    chat: Option<SessionAccessMode>,
+    default: Option<SessionAccessMode>,
 ) -> Option<SessionAccessMode> {
     let record = registry.route(binding).ok()?;
     let bound = record.bound_build()?;
-    effective_mode(
+    turn_mode(
         record.access_policy_binding_id(),
         &bound.reported_version,
-        requested,
         bound.characterisation.is_characterised(),
+        chat,
+        default,
+    )
+}
+
+/// Whether the routed binding offers `mode` to a chat.
+pub(crate) fn offers_mode(
+    registry: &super::registry::BindingRegistry,
+    binding: &str,
+    mode: SessionAccessMode,
+) -> bool {
+    turn_mode_for_binding(registry, binding, Some(mode), None) == Some(mode)
+}
+
+/// Whether `mode` is in the routed binding's own table of access modes,
+/// whatever build is bound or whether one is: a chat may always step down to
+/// such a mode, even while its harness is unavailable, and to no other.
+pub(crate) fn lists_mode(
+    registry: &super::registry::BindingRegistry,
+    binding: &str,
+    mode: SessionAccessMode,
+) -> bool {
+    use SessionAccessMode::{Ask, ReadOnly, WorkspaceWrite};
+    let Ok(record) = registry.route(binding) else {
+        return false;
+    };
+    let policy = record.access_policy_binding_id();
+    let native = native_access_modes(policy);
+    if !native.is_empty() {
+        return native.iter().any(|native| native.id == mode);
+    }
+    match policy {
+        "codex-app-server" => {
+            matches!(mode, ReadOnly | WorkspaceWrite)
+                || (mode == Ask && CODEX_ASK_NATIVE_APPROVAL_PROVEN)
+        }
+        "opencode-acp" => matches!(mode, ReadOnly | Ask | WorkspaceWrite),
+        "pi-rpc" => matches!(mode, ReadOnly | WorkspaceWrite),
+        _ => false,
+    }
+}
+
+/// Whether the routed binding's access is enforced through its harness
+/// session modes. Only the access path may then change the session mode.
+/// None when the binding cannot be routed, so the caller decides how to
+/// fail closed.
+pub(crate) fn governs_session_modes(
+    registry: &super::registry::BindingRegistry,
+    binding: &str,
+) -> Option<bool> {
+    registry
+        .route(binding)
+        .ok()
+        .map(|record| !native_access_modes(record.access_policy_binding_id()).is_empty())
+}
+
+/// The harness session mode that carries `mode` for a routed binding.
+pub(crate) fn session_mode_for_binding(
+    registry: &super::registry::BindingRegistry,
+    binding: &str,
+    mode: SessionAccessMode,
+) -> Option<&'static str> {
+    session_mode(
+        registry.route(binding).ok()?.access_policy_binding_id(),
+        mode,
     )
 }
 
@@ -220,7 +363,11 @@ mod tests {
                 vec!["readOnly", "workspaceWrite"],
             ),
             ("codex-app-server", "0.145.0", vec!["readOnly"]),
-            ("claude-agent-acp", "1", vec!["ask"]),
+            (
+                "claude-agent-acp",
+                "1",
+                vec!["ask", "acceptEdits", "plan", "auto", "fullAccess"],
+            ),
             (
                 "opencode-acp",
                 "1",
@@ -242,9 +389,14 @@ mod tests {
             for mode in wire.as_array().unwrap() {
                 assert!(!mode["label"].as_str().unwrap().is_empty());
                 assert!(!mode["description"].as_str().unwrap().is_empty());
-                assert_ne!(mode["label"], "Full access");
                 assert_ne!(mode["label"], "Approve for me");
                 assert_eq!(mode["fallback"], mode["id"] == modes[0]);
+                // Full access is offered only where a harness session mode
+                // carries it natively, and it is never the fallback.
+                if mode["id"] == "fullAccess" {
+                    assert_eq!(mode["sessionModeId"], "bypassPermissions");
+                    assert_eq!(mode["fallback"], false);
+                }
             }
         }
         let codex =
@@ -257,10 +409,145 @@ mod tests {
     }
 
     #[test]
+    fn claude_access_modes_select_its_advertised_permission_modes() {
+        use SessionAccessMode::{
+            AcceptEdits, Ask, Auto, FullAccess, Plan, ReadOnly, WorkspaceWrite,
+        };
+        let wire = serde_json::to_value(access_modes("claude-agent-acp", "0.76.0", true)).unwrap();
+        assert_eq!(
+            wire.as_array()
+                .unwrap()
+                .iter()
+                .map(|mode| (mode["id"].clone(), mode["sessionModeId"].clone()))
+                .collect::<Vec<_>>(),
+            vec![
+                (json!("ask"), json!("default")),
+                (json!("acceptEdits"), json!("acceptEdits")),
+                (json!("plan"), json!("plan")),
+                (json!("auto"), json!("auto")),
+                (json!("fullAccess"), json!("bypassPermissions")),
+            ]
+        );
+        for (mode, native) in [
+            (Ask, Some("default")),
+            (AcceptEdits, Some("acceptEdits")),
+            (Plan, Some("plan")),
+            (Auto, Some("auto")),
+            (FullAccess, Some("bypassPermissions")),
+            (ReadOnly, None),
+            (WorkspaceWrite, None),
+        ] {
+            assert_eq!(session_mode("claude-agent-acp", mode), native, "{mode:?}");
+        }
+        // Other harnesses keep their own enforcement; none maps to a
+        // session mode, and none offers the new modes.
+        for binding in ["codex-app-server", "opencode-acp", "pi-rpc"] {
+            assert_eq!(session_mode(binding, FullAccess), None);
+            assert!(
+                access_modes(binding, CODEX_PINNED_VERSION, true)
+                    .iter()
+                    .all(
+                        |mode| !matches!(mode.id, AcceptEdits | Plan | Auto | FullAccess)
+                            && mode.session_mode_id.is_none()
+                    )
+            );
+            // A grant those harnesses cannot carry falls back to read-only.
+            assert_eq!(
+                effective_mode(binding, CODEX_PINNED_VERSION, Some(FullAccess), true),
+                Some(ReadOnly)
+            );
+        }
+        assert_eq!(
+            effective_mode("claude-agent-acp", "1", Some(FullAccess), true),
+            Some(FullAccess)
+        );
+        assert_eq!(
+            effective_mode("claude-agent-acp", "1", None, true),
+            Some(Ask)
+        );
+    }
+
+    #[test]
+    fn the_claude_sdk_binding_governs_its_modes_through_the_access_path() {
+        use SessionAccessMode::{AcceptEdits, Ask, Auto, FullAccess, Plan, ReadOnly};
+        let registry = crate::acp::bindings::registry::BindingRegistry::default();
+        assert_eq!(
+            governs_session_modes(&registry, "claude-code-sdk"),
+            Some(true)
+        );
+        let wire = serde_json::to_value(access_modes("claude-code-sdk", "2.1.320", true)).unwrap();
+        assert_eq!(
+            wire.as_array()
+                .unwrap()
+                .iter()
+                .map(|mode| (mode["id"].clone(), mode["sessionModeId"].clone()))
+                .collect::<Vec<_>>(),
+            vec![
+                (json!("ask"), json!("default")),
+                (json!("acceptEdits"), json!("acceptEdits")),
+                (json!("auto"), json!("auto")),
+            ]
+        );
+        // Auto stays behind the access path's two-step confirmation.
+        assert!(Auto.needs_confirmation());
+        assert!(lists_mode(&registry, "claude-code-sdk", AcceptEdits));
+        assert!(!lists_mode(&registry, "claude-code-sdk", Plan));
+        assert!(lists_mode(&registry, "claude-code-sdk", Ask));
+        assert!(lists_mode(&registry, "claude-code-sdk", Auto));
+        // Nothing the SDK session cannot select is offered or falls back.
+        assert!(!lists_mode(&registry, "claude-code-sdk", FullAccess));
+        assert!(!lists_mode(&registry, "claude-code-sdk", ReadOnly));
+        assert_eq!(session_mode("claude-code-sdk", FullAccess), None);
+        assert_eq!(
+            effective_mode("claude-code-sdk", "2.1.320", Some(FullAccess), true),
+            None
+        );
+    }
+
+    #[test]
+    fn a_chat_choice_applies_only_where_the_binding_carries_it() {
+        use SessionAccessMode::{
+            AcceptEdits, Ask, Auto, FullAccess, Plan, ReadOnly, WorkspaceWrite,
+        };
+        let claude = |chat, default| turn_mode("claude-agent-acp", "0.76.0", true, chat, default);
+        assert_eq!(claude(Some(FullAccess), None), Some(FullAccess));
+        assert_eq!(claude(Some(FullAccess), Some(Plan)), Some(FullAccess));
+        assert_eq!(claude(Some(Auto), Some(AcceptEdits)), Some(Auto));
+        assert_eq!(claude(Some(Plan), Some(AcceptEdits)), Some(Plan));
+        // Without a choice a chat runs under the binding default, which
+        // starts at Ask each time and can be any non-Full mode.
+        assert_eq!(claude(None, None), Some(Ask));
+        assert_eq!(claude(None, Some(AcceptEdits)), Some(AcceptEdits));
+        assert_eq!(claude(None, Some(ReadOnly)), None);
+        // A choice Claude cannot carry leaves the default in charge.
+        assert_eq!(claude(Some(WorkspaceWrite), Some(Plan)), Some(Plan));
+        // A choice a harness cannot carry keeps its own default rather than
+        // falling to some other mode.
+        assert_eq!(
+            turn_mode(
+                "codex-app-server",
+                CODEX_PINNED_VERSION,
+                true,
+                Some(FullAccess),
+                Some(WorkspaceWrite)
+            ),
+            Some(WorkspaceWrite)
+        );
+        assert_eq!(
+            turn_mode("opencode-acp", "1", true, Some(FullAccess), None),
+            Some(ReadOnly)
+        );
+        assert_eq!(
+            turn_mode("opencode-acp", "1", true, Some(Ask), Some(ReadOnly)),
+            Some(Ask)
+        );
+    }
+
+    #[test]
     fn pi_offers_workspace_edits_only_with_its_bridge_and_says_why_not() {
         use SessionAccessMode::{ReadOnly, WorkspaceWrite};
         let modes = |bridge| {
-            admitted_modes("pi-rpc", "0.83.0", true, bridge)
+            admitted_modes("pi-rpc", crate::acp::bindings::pi::PI_VERSION, true, bridge)
                 .into_iter()
                 .map(|mode| (mode.id, mode.description))
                 .collect::<Vec<_>>()
@@ -288,10 +575,15 @@ mod tests {
             )]
         );
         assert_eq!(
-            admitted_modes("pi-rpc", "0.83.0", false, Ok(()))
-                .into_iter()
-                .map(|mode| mode.id)
-                .collect::<Vec<_>>(),
+            admitted_modes(
+                "pi-rpc",
+                crate::acp::bindings::pi::PI_VERSION,
+                false,
+                Ok(())
+            )
+            .into_iter()
+            .map(|mode| mode.id)
+            .collect::<Vec<_>>(),
             vec![ReadOnly]
         );
     }

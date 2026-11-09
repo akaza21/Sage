@@ -6,6 +6,7 @@ use crate::acp::contract::RequiredText;
 #[serde(rename_all = "camelCase")]
 pub(crate) enum CodexAccountSnapshot {
     ManagedChatgpt,
+    ApiKey,
     ProviderManaged,
     SignedOut,
 }
