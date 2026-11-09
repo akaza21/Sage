@@ -21,6 +21,7 @@ pub(in crate::acp::bindings::codex) use permissions::USER_INPUT_METHOD;
 mod provisional;
 mod rate_limits;
 mod session;
+mod turn_end;
 mod turn_errors;
 mod turn_prompt;
 mod turn_starts;
@@ -31,6 +32,7 @@ pub(crate) use errors::{AdapterError, TurnStartedRejection};
 
 use command_snapshots::CommandItemSnapshots;
 pub(crate) use command_snapshots::MaterializedCommandItem;
+pub(crate) use turn_end::PlanEntries;
 use turn_starts::{CorrelationMatch, TurnStartCorrelations};
 pub(in crate::acp::bindings::codex) use turns::SubagentLabels;
 
@@ -175,6 +177,9 @@ pub(crate) struct CodexAdapter {
     active_item_terminals: Vec<ItemTerminal>,
     active_terminal_id_bytes: usize,
     active_unretried_error_fingerprints: Vec<[u8; 32]>,
+    /// Sage wrote `turn/interrupt` for the active Turn.
+    active_turn_user_stop: bool,
+    active_turn_plan: Option<turn_end::PlanEntries>,
     previous_turn: Option<TurnTombstone>,
     command_item_snapshots: CommandItemSnapshots,
     running_mcp_tools: mcp_tools::RunningMcpTools,
@@ -256,6 +261,12 @@ impl CodexAdapter {
         }
         if kind == RequestKind::ChildRead {
             self.pending_child_read = None;
+        }
+        if kind == RequestKind::Interrupt {
+            self.active_turn_user_stop = self
+                .pending
+                .iter()
+                .any(|&(other, pending)| other != id && pending == RequestKind::Interrupt);
         }
         if kind == RequestKind::Fork {
             self.pending_fork = None;

@@ -13,6 +13,16 @@ import parity from "./harnessRenderParity.fixture.json";
 // plus each harness's known differences from it.
 
 type Projection = { turnState: string; items: Record<string, unknown>[] };
+type Gap = {
+  scenario: string;
+  harness: string;
+  visible: boolean;
+  differs: Record<string, unknown>;
+};
+
+// Typed explicitly: once every gap is closed the list is empty, and an empty
+// JSON array would otherwise infer as never[].
+const gaps: Gap[] = parity.gaps;
 
 const HARNESSES = ["claude", "codex", "pi", "acp"] as const;
 
@@ -148,7 +158,7 @@ function harnessProjection(
   harness: string,
   canonical: Projection,
 ): Projection {
-  const gap = parity.gaps.find(
+  const gap = gaps.find(
     (entry) => entry.scenario === scenario && entry.harness === harness,
   );
   const projection = structuredClone(canonical) as Record<string, unknown>;
@@ -198,7 +208,7 @@ describe("harness render parity", () => {
           (entry) => entry.scenario === name && entry.harness === harness,
         );
         if (!applicable) continue;
-        const gap = parity.gaps.find(
+        const gap = gaps.find(
           (entry) => entry.scenario === name && entry.harness === harness,
         );
         const lines = await rendered(

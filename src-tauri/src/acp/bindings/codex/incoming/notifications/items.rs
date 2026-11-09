@@ -1,5 +1,5 @@
 use super::super::super::state::ExternalKind;
-use super::super::items::normalize_file_change;
+use super::super::items::{file_change_edit_tool, normalize_file_change};
 use super::super::{
     CodexAdapter, IncomingEvent, IngressDisposition, IngressError, ItemUpdateMode, ResourceMapper,
     normalize_item, normalize_materialized_command,
@@ -40,16 +40,33 @@ pub(super) fn item_event<M: ResourceMapper>(
             )
         })
         .transpose()?;
+    let file_change =
+        item.get("type").and_then(Value::as_str) == Some("fileChange") && requested.is_terminal();
     let (normalized, pair) = match command.as_ref() {
         Some(command) => (Some(normalize_materialized_command(command)?), None),
-        None if item.get("type").and_then(Value::as_str) == Some("fileChange")
-            && requested.is_terminal() =>
-        {
+        None if file_change => {
             let (normalized, pair) = normalize_file_change(item, mapper, true)?;
             (Some(normalized), pair)
         }
         None => (normalize_item(item, requested, mapper)?, None),
     };
+    // A settled file change is also an Edit tool row, ordered before its diff.
+    let edit = file_change
+        .then(|| file_change_edit_tool(item, mapper))
+        .transpose()?
+        .flatten()
+        .map(|(payload, tool_state, terminal)| {
+            Ok::<_, IngressError>(IncomingEvent::Item {
+                id: adapter
+                    .scoped_in_turn(ExternalKind::Item, turn, &format!("{external}:edit"))
+                    .map_err(identity)?,
+                lifecycle: terminal.unwrap_or(requested),
+                tool_state,
+                payload,
+                update_mode: ItemUpdateMode::Replace,
+            })
+        })
+        .transpose()?;
     let Some((mut payload, tool_state, terminal)) = normalized else {
         return Ok(IngressDisposition::Events(vec![]));
     };
@@ -109,7 +126,8 @@ pub(super) fn item_event<M: ResourceMapper>(
             update_mode: ItemUpdateMode::Replace,
         },
     };
-    let mut events = vec![event];
+    let mut events: Vec<_> = edit.into_iter().collect();
+    events.push(event);
     events.extend(pair_event);
     Ok(IngressDisposition::Events(events))
 }
