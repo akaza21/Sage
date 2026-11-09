@@ -22,6 +22,7 @@ pub(super) fn setup() -> Connection {
         "CREATE TABLE chats(id TEXT PRIMARY KEY, project_id TEXT, projection_revision INTEGER, updated_at INTEGER, title TEXT NOT NULL DEFAULT 'Chat: Fixture');
          CREATE TABLE chat_lineage(child_project_id TEXT, child_chat_id TEXT PRIMARY KEY, parent_project_id TEXT, parent_chat_id TEXT, source_turn_id TEXT, relation TEXT);
          CREATE TABLE acp_child_thread_transcripts(native_child_thread_id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, updated_at INTEGER);
+         CREATE TABLE acp_imported_histories(session_id TEXT PRIMARY KEY,history_json TEXT,created_at INTEGER);
          CREATE TABLE agent_sessions(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, state TEXT, residency TEXT, revision INTEGER, projection_revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
          CREATE TABLE chat_session_heads(session_id TEXT PRIMARY KEY);
          CREATE TABLE session_runtime_epochs(session_id TEXT, runtime_epoch INTEGER, state TEXT, terminal_at INTEGER, exit_kind TEXT, started_at INTEGER, PRIMARY KEY(session_id,runtime_epoch));
