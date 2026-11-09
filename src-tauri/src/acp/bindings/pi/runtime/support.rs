@@ -17,6 +17,7 @@ use crate::acp::bindings::pi::{AdapterOutput, TerminalOutcome, ToolOutcome};
 mod authority;
 mod bridge;
 mod capabilities;
+mod commands;
 mod compaction;
 mod config;
 mod config_reply;
@@ -127,11 +128,7 @@ impl PiRuntime {
                 };
                 (Some(AdapterEvent::Acknowledged), refresh)
             }
-            AdapterOutput::Commands(value) => {
-                self.commands_pending = false;
-                self.commands.replace(&value, true)?;
-                (Some(AdapterEvent::Absorbed), None)
-            }
+            AdapterOutput::Commands(value) => (Some(self.list_commands(value)?), None),
             AdapterOutput::SessionOpened(id) => self.open_session(id)?,
 
             AdapterOutput::State(state) => self.state_reply(state)?,

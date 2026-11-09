@@ -25,25 +25,40 @@ fn sessions_dir() -> std::path::PathBuf {
 }
 
 #[test]
-fn a_new_chat_is_known_by_pis_own_session_id() {
-    let mut runtime = fixture_runtime(94);
-    initialize(&mut runtime);
+fn a_new_chat_is_keyed_by_its_session_file_and_reopens_it_directly() {
+    let dir = sessions_dir();
+    let key = "2026-11-09T10-00-00-000Z_019a2b3c-4d5e-7f00-8a9b-0c1d2e3f4a5b";
+    let file = dir.join(format!("{key}.jsonl"));
+    let mut runtime = launched_in(&dir);
     let session = runtime
         .command(AdapterCommand::NewSession {
             native_root: r"C:\repo".into(),
             model: None,
         })
         .unwrap();
-    // Pi opened a fresh session at launch; the chat takes it by its id.
+    // Pi opened a fresh session at launch; the chat takes it by its file's name.
     let value = deliver(&mut runtime, session);
     assert_eq!(value["type"], "get_state");
     let batch = runtime
-        .ingest(&response(&value, opened()), &Mapper)
+        .ingest(
+            &response(
+                &value,
+                json!({"sessionId":"019a2b3c-4d5e-7f00-8a9b-0c1d2e3f4a5b","sessionFile":file}),
+            ),
+            &Mapper,
+        )
         .unwrap();
     assert!(
         matches!(batch.events(), [AdapterEvent::SessionReady { id, loaded: false }]
-        if id.external_id.as_str() == "pi-session-1")
+        if id.external_id.as_str() == key)
     );
+    // Pi saved the chat; a later process reopens that file by its name.
+    std::fs::write(&file, "{}\n").unwrap();
+    let mut later = launched_in(&dir);
+    let switch = resume(&mut later, key).unwrap();
+    let switch = deliver(&mut later, switch);
+    assert_eq!(switch["sessionPath"], file.to_str().unwrap());
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]

@@ -163,25 +163,18 @@ pub(crate) async fn send_acp_turn_inner(
             })
         })?;
     if !files.0.is_empty() || prompt.action.is_some() {
-        let page = state
-            .acp
-            .load_chat_page(project_id.clone(), chat_id.clone(), None)
-            .map_err(store_error)
-            .map_err(prompt_not_dispatched)?;
-        let capabilities = page
-            .sessions
-            .as_slice()
-            .iter()
-            .find(|s| s.id == session_id)
-            .map(|s| &s.capabilities);
-        if !files.0.is_empty() && !capabilities.is_some_and(|c| c.prompt_resources) {
+        let capabilities =
+            session_routes::session_capabilities(state, &project_id, &chat_id, &session_id)
+                .map_err(store_error)
+                .map_err(prompt_not_dispatched)?;
+        if !files.0.is_empty() && !capabilities.as_ref().is_some_and(|c| c.prompt_resources) {
             return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
                 message: safe_message(
                     "This harness does not advertise embedded-resource prompt support. Remove the file attachments or choose another harness.",
                 ),
             }));
         }
-        if !prompt.action_admitted(capabilities) {
+        if !prompt.action_admitted(capabilities.as_ref()) {
             return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
                 message: safe_message("This session did not negotiate that action."),
             }));
