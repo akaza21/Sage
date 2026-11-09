@@ -52,9 +52,14 @@ impl PiTranslator {
             if matches!(kind, PendingKind::SetModel | PendingKind::SetThinkingLevel) {
                 return Err(AdapterError::ConfigMutationRejected);
             }
-            let mut output = vec![AdapterOutput::Error {
-                code: "command_failed",
-            }];
+            // A failed compaction has already told the user why, through
+            // `compaction_end`, so only other commands report the failure.
+            let mut output = Vec::new();
+            if kind != PendingKind::Compact {
+                output.push(AdapterOutput::Error {
+                    code: "command_failed",
+                });
+            }
             if kind.starts_turn() {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
                 if active.lifecycle.acknowledged(false, false)? {

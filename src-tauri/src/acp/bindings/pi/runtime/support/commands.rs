@@ -1,7 +1,10 @@
 use serde_json::{Value, json};
 
 use crate::acp::{
-    bindings::adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError},
+    bindings::{
+        adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError},
+        standard_acp::surface::command_list::MAX_COMMANDS,
+    },
     intent::Prompt,
 };
 
@@ -18,6 +21,10 @@ fn with_builtins(value: Value) -> Value {
         return value;
     };
     commands.retain(|command| command["name"] != COMPACT);
+    // A full catalog keeps its size, giving its last entry's place to compact.
+    if commands.len() == MAX_COMMANDS {
+        commands.pop();
+    }
     commands.push(json!({
         "name": COMPACT,
         "description": "Summarize the conversation so far to free up context",
@@ -50,7 +57,8 @@ impl PiRuntime {
                 let name = text.split_whitespace().next()?;
                 let listed = self.commands.snapshot().commands;
                 let listed = listed.iter().find(|command| command.name == name)?;
-                Some((name == COMPACT, listed.extension, text[name.len()..].trim()))
+                let rest = text.trim_start().strip_prefix(name)?.trim();
+                Some((name == COMPACT, listed.extension, rest))
             });
         let turn_key = turn_key.to_owned();
         let operation = match command {
