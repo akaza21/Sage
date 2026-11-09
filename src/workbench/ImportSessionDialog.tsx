@@ -42,13 +42,13 @@ async function openSession(session: NativeSessionSummary) {
   return reason || "Try again.";
 }
 
-export function ImportSessionDialog({
-  projectId,
-  onClose,
-}: {
-  projectId: string;
-  onClose: () => void;
-}) {
+/** The active Project's Codex CLI sessions; closing unmounts nothing else. */
+export function ImportSessionDialog() {
+  const [projectId] = useState(
+    () => useWorkbenchStore.getState().project?.id ?? "",
+  );
+  const [closed, setClosed] = useState(false);
+  const onClose = () => setClosed(true);
   const title = useId();
   const [sessions, setSessions] = useState<NativeSessionSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -70,6 +70,7 @@ export function ImportSessionDialog({
       .finally(() => setBusy(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps -- first page once per mount
   useEffect(() => void fetchPage(null), []);
+  if (closed) return null;
   return (
     <ModalDialog
       className="dirty-dialog dialog--scrim"

@@ -6,13 +6,10 @@ export function AgentProjectMenu({
   name,
   onCreateChat,
   onOpenProject,
-  onImportSession,
 }: {
   name: string;
   onCreateChat: () => void;
   onOpenProject: () => void;
-  /** Only the active Project can open its Codex CLI sessions. */
-  onImportSession?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -59,16 +56,6 @@ export function AgentProjectMenu({
         >
           Open project
         </button>
-        {onImportSession ? (
-          <button
-            className="menu-item"
-            type="button"
-            role="menuitem"
-            onClick={() => complete(onImportSession)}
-          >
-            Open a Codex CLI session
-          </button>
-        ) : null}
         {[
           [
             "Rename project",

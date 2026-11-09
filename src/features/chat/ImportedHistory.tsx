@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useStore } from "zustand";
+import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
 import {
   readImportedHistory,
@@ -10,14 +12,13 @@ import { ItemView } from "./acp/TurnActivityItem";
 export { ImportSessionDialog } from "../../workbench/ImportSessionDialog";
 
 /** The imported session's history, read-only, above where Sage continues it. */
-export function ImportedHistory({
-  chatId,
-  sessionId,
-}: {
-  chatId: string;
-  sessionId: string;
-}) {
+export function ImportedHistory({ chatId }: { chatId: string }) {
   const projectId = useWorkbenchStore((state) => state.project?.id);
+  // Items are shown under the imported (first) session.
+  const sessionId = useStore(
+    acpProjectionStoreFor(chatId),
+    (state) => state.page?.sessions[0]?.id ?? "",
+  );
   const key = `${projectId}/${chatId}/${sessionId}`;
   const [read, setRead] = useState<{
     key: string;

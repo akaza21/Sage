@@ -16,7 +16,22 @@ import "./BrowserNewTab.css";
 import { useWorkbenchStore } from "../../app/store";
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import { useSideChatState } from "../../workbench/sideChatState";
-export { AgentToolHost } from "../../workbench/AgentToolPanel";
+import { AgentToolHost as ToolHost } from "../../workbench/AgentToolPanel";
+import type { AgentLaunch } from "../../workbench/AgentToolsProvider";
+import { lazyParts } from "../chat/lazyParts";
+import type * as ImportChunk from "../chat/ImportedHistory";
+
+const ImportPart = lazyParts<typeof ImportChunk>(
+  () => import("../chat/ImportedHistory"),
+);
+
+export function AgentToolHost({ launch }: { launch: AgentLaunch }) {
+  return launch.tool === "sessionImport" ? (
+    <ImportPart part="ImportSessionDialog" />
+  ) : (
+    <ToolHost launch={launch} />
+  );
+}
 
 type NewTabProps = {
   suggestions: BrowserSuggestedSites;
