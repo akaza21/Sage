@@ -68,6 +68,24 @@ pub(super) fn apply_in(
         }
         None => return Ok(false),
     };
+    match &command.event {
+        SessionScopedEvent::Title { title: Some(title) } => {
+            crate::chat_lifecycle::apply_harness_title_in(
+                transaction,
+                project,
+                chat,
+                title.as_str(),
+                command.now_millis,
+            )?
+        }
+        SessionScopedEvent::Title { title: None } => crate::chat_lifecycle::clear_harness_title_in(
+            transaction,
+            project,
+            chat,
+            command.now_millis,
+        )?,
+        _ => {}
+    }
     let json = bounded_json(&mut surface)?;
     let next = match revision {
         Some(revision) => revision.next().map_err(|_| StoreError::CounterExhausted)?,

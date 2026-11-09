@@ -25,6 +25,7 @@ use mcp_progress::mcp_tool_progress;
 mod notices;
 mod plan;
 mod provisional;
+mod session;
 mod status_line;
 use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};
 use plan::structured_plan;
@@ -242,6 +243,7 @@ pub(super) fn notification<M: ResourceMapper>(
         "item/reasoning/summaryPartAdded" => summary_part_added(adapter, params),
         "item/plan/delta" => delta_event(adapter, params, DeltaKind::Plan, None),
         "turn/plan/updated" => structured_plan(adapter, params),
+        "thread/name/updated" => session::thread_name_updated(adapter, params),
         "thread/goal/updated" => {
             adapter
                 .expect_thread(text(params, "threadId", 512)?)

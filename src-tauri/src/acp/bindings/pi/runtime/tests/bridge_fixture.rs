@@ -388,7 +388,7 @@ fn pi_full_turn_fixture_projects_every_surface_and_clears_the_steer_queue() {
         events.iter().any(|event| match event {
             AdapterEvent::Session { event, .. } => match event {
                 SessionScopedEvent::Notice(notice) => notice.text.as_str() == wanted,
-                SessionScopedEvent::Title { title } => title.as_str() == wanted,
+                SessionScopedEvent::Title { title: Some(title) } => title.as_str() == wanted,
                 _ => false,
             },
             _ => false,

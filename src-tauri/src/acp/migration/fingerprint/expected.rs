@@ -191,5 +191,14 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
         )?;
         expected.pragma_update(None, "user_version", resume_link)?;
     }
+    let title_source = super::super::title_source::VERSION;
+    if version >= title_source {
+        expected.execute_batch(super::super::title_source::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [title_source],
+        )?;
+        expected.pragma_update(None, "user_version", title_source)?;
+    }
     Ok(expected)
 }

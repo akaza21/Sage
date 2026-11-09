@@ -214,6 +214,7 @@
         "src-tauri/src/acp/bindings/command_summary.rs",
         "src-tauri/src/acp/bindings/registry.rs",
         "src-tauri/src/acp/bindings/runtime.rs",
+        "src-tauri/src/acp/bindings/session_title.rs",
         "src-tauri/src/acp/command_output.rs",
         "src-tauri/src/acp/contract.rs",
         "src-tauri/src/acp/declared_test.rs",
