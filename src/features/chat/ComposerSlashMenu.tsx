@@ -56,8 +56,14 @@ function liveOwnerKey(page: AcpChatPage | null): string {
 }
 
 /**
- * With no query, every command in sections by source, each in advertised
- * order. While typing, the exact name first, then prefix matches, then
+ * Rows each section shows before typing, so every source stays in view:
+ * seven sources of seven rows fit the list's 50 rendered rows.
+ */
+const SECTION_ROWS = 7;
+
+/**
+ * With no query, the first commands of each source in sections, each in
+ * advertised order. While typing, the exact name first, then prefix matches, then
  * other name matches, each in advertised order.
  */
 function filterSlashCommands(
@@ -66,7 +72,10 @@ function filterSlashCommands(
 ): AvailableAcpCommand[] {
   if (!query)
     return (Object.keys(commandSourceGroups) as AcpCommandSource[]).flatMap(
-      (source) => commands.filter((command) => command.source === source),
+      (source) =>
+        commands
+          .filter((command) => command.source === source)
+          .slice(0, SECTION_ROWS),
     );
   const needle = query.toLocaleLowerCase();
   const exact: AvailableAcpCommand[] = [];
@@ -306,6 +315,11 @@ export function ComposerSlashMenu({
   return (
     <TextFieldSuggestions
       anchorRef={anchorRef}
+      footer={
+        !query && commands.length > items.length
+          ? `${commands.length - items.length} more — keep typing to narrow`
+          : undefined
+      }
       ariaLabel="Slash commands"
       className="composer-slash-menu"
       items={items}

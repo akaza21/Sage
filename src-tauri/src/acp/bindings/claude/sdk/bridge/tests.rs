@@ -557,6 +557,8 @@ fn commands_sharing_a_name_list_the_row_that_runs() {
                 {"name":"review","description":"Review a PR","argumentHint":"<pr>","builtin":true},
                 {"name":"deploy","description":"Ship it","argumentHint":""},
                 {"name":"deploy","description":"Other deploy","argumentHint":""},
+                {"name":"cost","description":"Cost","argumentHint":"","builtin":true},
+                {"name":"cost","description":"Later cost","argumentHint":"","builtin":true},
             ]}),
         )
         .unwrap();
@@ -566,6 +568,7 @@ fn commands_sharing_a_name_list_the_row_that_runs() {
         &json!([
             {"name":"review","description":"Review a PR","input":{"hint":"<pr>"},"_meta":{"source":"builtin"}},
             {"name":"deploy","description":"Ship it","input":null},
+            {"name":"cost","description":"Cost","input":null,"_meta":{"source":"builtin"}},
         ])
     );
 }

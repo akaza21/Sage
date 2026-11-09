@@ -405,6 +405,47 @@ describe("composer slash commands", () => {
     expect(field).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("keeps every source in view by showing the first rows of each section", async () => {
+    native.lists = [
+      {
+        revision: 1,
+        commands: [
+          ...Array.from({ length: 10 }, (_, index) => ({
+            name: `built-${index}`,
+            description: "Built-in",
+            inputHint: null,
+            source: "builtin" as const,
+          })),
+          {
+            name: "lint",
+            description: "Lint",
+            inputHint: null,
+            source: "skill",
+          },
+        ],
+      },
+    ];
+    render(<Composer />);
+    const { listbox } = await openMenu("/");
+    await waitFor(() =>
+      expect(
+        names(within(listbox).getByRole("group", { name: "Skills" })),
+      ).toEqual(["/lint"]),
+    );
+    expect(
+      within(listbox)
+        .getByRole("group", { name: "Commands" })
+        .querySelectorAll("[role='option']"),
+    ).toHaveLength(7);
+    expect(
+      screen.getByText("3 more — keep typing to narrow"),
+    ).toBeInTheDocument();
+    type("/built-9");
+    await waitFor(() =>
+      expect(names(screen.getByRole("listbox"))).toEqual(["/built-9"]),
+    );
+  });
+
   it("opens again after Escape once the focus leaves and returns", async () => {
     render(<Composer />);
     const { field } = await openMenu("/co");

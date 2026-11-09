@@ -20,11 +20,10 @@ const COMPACT: &str = "compact";
 /// One entry of Pi's `get_commands`. Its `source` says what the command
 /// is; only extension commands run as command turns.
 fn command(value: &Value) -> Result<AvailableCommand, AdapterRuntimeError> {
-    let (source, dispatch) = match value["source"].as_str() {
-        Some("extension") => (CommandSource::Extension, CommandDispatch::CommandTurn),
-        Some("prompt") => (CommandSource::Prompt, CommandDispatch::Prompt),
-        Some("skill") => (CommandSource::Skill, CommandDispatch::Prompt),
-        _ => (CommandSource::Harness, CommandDispatch::Prompt),
+    let source = CommandSource::from_wire(value["source"].as_str());
+    let dispatch = match source {
+        CommandSource::Extension => CommandDispatch::CommandTurn,
+        _ => CommandDispatch::Prompt,
     };
     let description = match value.get("description") {
         None => "",
@@ -40,18 +39,17 @@ fn command(value: &Value) -> Result<AvailableCommand, AdapterRuntimeError> {
 }
 
 /// Pi's commands with its built-ins added, so they list like any other. A
-/// full catalog keeps its size, giving its last entry's place to compact.
+/// catalog larger than Sage's list keeps its first commands, giving the last
+/// place to compact.
 fn with_builtins(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
-    let values = value
+    let mut commands = value
         .as_array()
-        .filter(|values| values.len() <= MAX_COMMANDS)
-        .ok_or(AdapterRuntimeError::BatchCount)?;
-    let mut commands = values
+        .ok_or(AdapterRuntimeError::Frame)?
         .iter()
         .filter(|value| value["name"] != COMPACT)
+        .take(MAX_COMMANDS - 1)
         .map(command)
         .collect::<Result<Vec<_>, _>>()?;
-    commands.truncate(MAX_COMMANDS - 1);
     commands.push(AvailableCommand::new(
         COMPACT,
         "Summarize the conversation so far to free up context",

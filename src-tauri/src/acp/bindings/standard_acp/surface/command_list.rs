@@ -34,6 +34,22 @@ pub(crate) enum CommandSource {
     Harness,
 }
 
+impl CommandSource {
+    /// A source as harnesses name it on the wire; anything else is the
+    /// harness's own, unclassified.
+    pub(crate) fn from_wire(value: Option<&str>) -> Self {
+        match value {
+            Some("builtin") => Self::Builtin,
+            Some("skill") => Self::Skill,
+            Some("prompt") => Self::Prompt,
+            Some("extension") => Self::Extension,
+            Some("mcp") => Self::Mcp,
+            Some("plugin") => Self::Plugin,
+            _ => Self::Harness,
+        }
+    }
+}
+
 /// How the binding that advertised a command runs it. Native only: the
 /// WebView names a command and the binding looks its dispatch up in the
 /// live list, so a prompt can never choose its own route.
@@ -89,15 +105,7 @@ impl AvailableCommand {
     /// An ACP `AvailableCommand`. ACP has no source field, so an adapter
     /// may name one in `_meta.source`; anything else is the harness's own.
     pub(crate) fn from_acp(value: &Value) -> Result<Self, AdapterRuntimeError> {
-        let source = match value["_meta"]["source"].as_str() {
-            Some("builtin") => CommandSource::Builtin,
-            Some("skill") => CommandSource::Skill,
-            Some("prompt") => CommandSource::Prompt,
-            Some("extension") => CommandSource::Extension,
-            Some("mcp") => CommandSource::Mcp,
-            Some("plugin") => CommandSource::Plugin,
-            _ => CommandSource::Harness,
-        };
+        let source = CommandSource::from_wire(value["_meta"]["source"].as_str());
         let input_hint = match value.get("input").filter(|v| !v.is_null()) {
             Some(input) => Some(wire_text(&input["hint"])?),
             None => None,
@@ -151,8 +159,9 @@ fn admit(commands: Vec<AvailableCommand>) -> Result<Vec<AvailableCommand>, Adapt
         return Err(AdapterRuntimeError::BatchCount);
     }
     let mut bytes = 0;
-    for (index, command) in commands.iter().enumerate() {
-        if commands[..index].iter().any(|c| c.name == command.name) {
+    let mut names = std::collections::HashSet::with_capacity(commands.len());
+    for command in &commands {
+        if !names.insert(command.name.as_str()) {
             return Err(AdapterRuntimeError::Frame);
         }
         bytes += command.name.len()
