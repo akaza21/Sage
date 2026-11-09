@@ -3,8 +3,10 @@ import {
   LazyModuleBoundary,
 } from "../../ui/LazyModuleBoundary";
 import type { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
+import { ArrowRightLeft } from "../../ui/leanIcons";
 
 import {
+  Component,
   Suspense,
   useState,
   type ComponentProps,
@@ -29,6 +31,30 @@ import type * as HarnessSignInChunk from "../harness/HarnessSignInStatus";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- keyed re-export of components
 type AnyComponent = ComponentType<any>;
 type Components = Record<string, AnyComponent>;
+
+/** A part's chunk failed to import; the part, not its chat, gives way. */
+class PartLoadFailed extends Error {}
+
+/**
+ * Renders the part's fallback in place of a chunk that failed to load, so
+ * the surface around it stays up; a later mount imports again. Any other
+ * error goes on to the boundary above.
+ */
+class PartLoadBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode },
+  { error?: unknown }
+> {
+  state: { error?: unknown } = {};
+  static getDerivedStateFromError(error: unknown) {
+    return { error };
+  }
+  render() {
+    const { error } = this.state;
+    if (error === undefined) return this.props.children;
+    if (error instanceof PartLoadFailed) return this.props.fallback;
+    throw error;
+  }
+}
 
 /** One loader per chunk; all named parts render synchronously once loaded. */
 export function lazyParts<Chunk extends Components>(
@@ -57,15 +83,24 @@ export function lazyParts<Chunk extends Components>(
     const [Ready] = useState<AnyComponent | undefined>(() => loaded?.[part]);
     if (Ready) return <Ready {...props} />;
     const loadPart = (parts[part] ??= () =>
-      loadOnce().then((chunk) => ({ default: chunk[part]! })));
+      loadOnce().then(
+        (chunk) => ({ default: chunk[part]! }),
+        (error: unknown) => {
+          throw new PartLoadFailed(`The ${part} part failed to load.`, {
+            cause: error,
+          });
+        },
+      ));
     return (
-      <Suspense fallback={fallback}>
-        <DeferredModuleSurface
-          load={loadPart}
-          fallback={fallback}
-          render={(Surface) => <Surface {...props} />}
-        />
-      </Suspense>
+      <PartLoadBoundary fallback={fallback}>
+        <Suspense fallback={fallback}>
+          <DeferredModuleSurface
+            load={loadPart}
+            fallback={fallback}
+            render={(Surface) => <Surface {...props} />}
+          />
+        </Suspense>
+      </PartLoadBoundary>
     );
   }
   Part.preload = loadOnce;
@@ -153,14 +188,37 @@ export const ComposerOptionsPart = lazyParts<
 const HandoffControlPart = lazyParts<typeof HandoffControlChunk>(
   () => import("./ChatHandoffControl"),
 );
+/** Loads the Hand off trigger, as a chat row menu does before it opens. */
+export const preloadChatHandoffControl = HandoffControlPart.preload;
 /**
- * The Editor chat header's Hand off trigger. Agent chrome offers Hand off
- * from the chat menu instead, so its first paint never needs this code.
+ * The Hand off trigger, for the Editor chat header and a chat row menu.
+ * Agent chrome renders neither on a chat's first paint, so it loads on
+ * demand; until it has, an invisible copy holds its place so the controls
+ * beside it never shift.
  */
 export function ChatHandoffControl(
   props: ComponentProps<typeof HandoffControlChunk.ChatHandoffControl>,
 ) {
-  return <HandoffControlPart part="ChatHandoffControl" {...props} />;
+  return (
+    <HandoffControlPart
+      part="ChatHandoffControl"
+      {...props}
+      fallback={
+        <div className="handoff-control" style={{ visibility: "hidden" }}>
+          <button
+            className={props.menuItem ? "menu-item" : "button button--compact"}
+            type="button"
+            disabled
+            tabIndex={-1}
+            aria-hidden="true"
+          >
+            <ArrowRightLeft size={14} aria-hidden="true" />
+            Hand off
+          </button>
+        </div>
+      }
+    />
+  );
 }
 
 /**

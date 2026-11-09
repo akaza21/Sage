@@ -90,4 +90,28 @@ describe("useAcpChatHistory", () => {
     );
     await waitFor(() => expect(result.current.hasEarlier).toBe(false));
   });
+
+  it("expects a page only for a resolved chat in a settled project", () => {
+    const active = renderHook(() => useAcpChatHistory());
+    expect(active.result.current.pageExpected).toBe(true);
+    const bound = renderHook(() => useAcpChatHistory("chat-2"));
+    expect(bound.result.current.pageExpected).toBe(true);
+    act(() => {
+      useWorkbenchStore.setState({
+        activeTabId: "file-1",
+        tabs: [{ id: "file-1", kind: "file" }] as never,
+      });
+    });
+    expect(active.result.current.pageExpected).toBe(false);
+    expect(bound.result.current.pageExpected).toBe(true);
+    act(() => useWorkbenchStore.setState({ projectTransitioning: true }));
+    expect(bound.result.current.pageExpected).toBe(false);
+    act(() =>
+      useWorkbenchStore.setState({
+        projectTransitioning: false,
+        project: null,
+      }),
+    );
+    expect(bound.result.current.pageExpected).toBe(false);
+  });
 });

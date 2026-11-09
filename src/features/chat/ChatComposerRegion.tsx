@@ -187,8 +187,7 @@ export function ChatComposerRegion({
               part="BoundChatGoalControl"
               state={goal}
               chatId={dictationScope}
-              detailsRef={goalDetails.detailsRef}
-              canMutate={goalDetails.canMutate}
+              details={goalDetails}
             />
           ) : null}
           {workbenchError ? (
