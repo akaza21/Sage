@@ -45,8 +45,9 @@ pub(crate) const CLAUDE_ACCESS_MODES: &[NativeAccessMode] =
     &[ASK, ACCEPT_EDITS, PLAN, AUTO, FULL_ACCESS];
 
 /// Claude Code over its SDK protocol. Its `bypassPermissions` mode needs a
-/// launch flag Sage does not pass, so Full access is not offered there.
-pub(crate) const CLAUDE_SDK_ACCESS_MODES: &[NativeAccessMode] = &[ASK, ACCEPT_EDITS, PLAN, AUTO];
+/// launch flag Sage does not pass, so Full access is not offered there, and
+/// its plan exit has no option Sage can answer, so neither is Plan.
+pub(crate) const CLAUDE_SDK_ACCESS_MODES: &[NativeAccessMode] = &[ASK, ACCEPT_EDITS, AUTO];
 
 /// Claude's permission modes from least to most permissive.
 const PERMISSIVENESS: [&str; 5] = [
