@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { useRef, useState } from "react";
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
 import { isImeComposing } from "../../ui/imeComposition";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
@@ -20,47 +20,13 @@ import { QueuedRows, lazyParts } from "./lazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
-import type * as PasteChunk from "./ComposerPaste";
-import type { StagedSummary } from "./pastedTextTypes";
-import { useComposerPasteSignal } from "./useComposerPasteSignal";
+import { ComposerPasteSlot } from "./ComposerPastePart";
+import { useComposerPaste } from "./useComposerPaste";
 import type * as SlashChunk from "./ComposerSlashController";
 
 const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
   () => import("./ClaudeAuthActions"),
 );
-// Paste staging, chips and messages load with a native chat's composer or
-// with input over the cap; only the synchronous size check stays eager.
-const PastePart = lazyParts<typeof PasteChunk>(
-  () => import("./ComposerPaste"),
-  { ComposerPaste: PasteUnavailable },
-);
-
-const PASTE_UNAVAILABLE =
-  "Text over the message limit cannot be attached: attachment support failed to load.";
-
-/**
- * Stands in for a paste part that failed to load: nothing can be staged,
- * so held input is let go, sends are not held for a batch, and a standing
- * notice says why long text is refused. The next composer mount tries the
- * import again.
- */
-function PasteUnavailable({
-  input: { seq, take },
-  noticeId,
-  onStaged,
-}: ComponentProps<typeof PasteChunk.ComposerPaste>) {
-  useEffect(() => void take(), [seq, take]);
-  useEffect(
-    () => onStaged({ revision: null, busy: false, settled: true }),
-    [onStaged],
-  );
-  return (
-    <p id={noticeId} className="composer__disabled-reason">
-      {PASTE_UNAVAILABLE}
-    </p>
-  );
-}
-
 // The `/` command menu loads with the field's first focus.
 const SlashPart = lazyParts<typeof SlashChunk>(
   () => import("./ComposerSlashController"),
@@ -150,13 +116,12 @@ export function ChatComposerRegion({
   });
   // The paste part loads with the composer of a native chat, or with
   // held-back input, and reports the batch it staged.
-  const paste = useComposerPasteSignal();
-  const [staged, setStaged] = useState<StagedSummary>();
-  // A native chat loads it at once, so the batch staged before a reload is
-  // read back before any send, whether or not the field was focused.
-  const pasteArmed = availableBinding || paste.seq > 0;
-  // The paste notices the field names, once the paste part is in place.
-  const pasteNoticeId = `${disabledReasonId}-paste`;
+  const paste = useComposerPaste(
+    availableBinding,
+    activeTurn,
+    disabledReasonId,
+    onTextChange,
+  );
   const dispatchBlocked =
     composerDisabled ||
     sendBlocked ||
@@ -164,13 +129,7 @@ export function ChatComposerRegion({
     (activeTurn && !queueAvailable) ||
     imageUploading ||
     imageInput.sendBlocked ||
-    // Staged pasted text goes with a sent message, never a queued one, and
-    // no send goes before the batch staged earlier has been read back.
-    Boolean(
-      staged?.busy ||
-      (activeTurn && staged?.revision) ||
-      (pasteArmed && !staged?.settled),
-    );
+    paste.blocksSend;
   const queueing = activeTurn && queueAvailable && !composerDisabled;
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
   const dictation = useComposerDictation(
@@ -200,7 +159,7 @@ export function ChatComposerRegion({
             return;
           }
           dictation.cancel();
-          onSubmit(event, staged?.revision);
+          onSubmit(event, paste.revision);
           composerRef.current?.focus();
         }}
       >
@@ -304,7 +263,7 @@ export function ChatComposerRegion({
                   ? "Enter queues a message while this turn runs."
                   : undefined
               }
-              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}${pasteArmed && staged ? ` ${pasteNoticeId}` : ""}`}
+              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}${paste.describedBy}`}
               value={text}
               rows={2}
               placeholder={composerPromptPlaceholder(
@@ -312,13 +271,7 @@ export function ChatComposerRegion({
                 sessionPromptUnavailable,
               )}
               disabled={composerDisabled}
-              onPaste={paste.onPaste}
-              onChange={(event) => {
-                const next = event.target.value;
-                // Held back with a message, never truncated. A draft is
-                // never over the cap, so this never blocks a deletion.
-                if (!paste.holdEdit(next)) onTextChange(next);
-              }}
+              {...paste.field}
               onFocus={() => setSlashArmed(true)}
               onBlur={dictation.cancel}
               onKeyDown={(event) => {
@@ -361,20 +314,13 @@ export function ChatComposerRegion({
               />
             ) : null}
           </div>
-          {pasteArmed ? (
-            <PastePart
-              part="ComposerPaste"
-              chatId={dictationScope}
-              session={pasteSession}
-              nativeAcp={availableBinding}
-              activeTurn={activeTurn}
-              input={paste}
-              text={text}
-              disabled={actionBusy || projectTransitioning}
-              noticeId={pasteNoticeId}
-              onStaged={setStaged}
-            />
-          ) : null}
+          <ComposerPasteSlot
+            paste={paste}
+            chatId={dictationScope}
+            session={pasteSession}
+            text={text}
+            disabled={actionBusy || projectTransitioning}
+          />
           {disabledReason ? (
             <p className="composer__disabled-reason" id={disabledReasonId}>
               {disabledReason}
@@ -454,7 +400,7 @@ export function ChatComposerRegion({
             queueing={Boolean(activeTurn && queueAvailable)}
             sendDisabled={
               dispatchBlocked ||
-              (!text.trim() && !attachedContext.length && !staged?.revision)
+              (!text.trim() && !attachedContext.length && !paste.revision)
             }
           />
         </div>

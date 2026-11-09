@@ -184,12 +184,10 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const retry = acpPage && latestRetryPrompt(acpPage);
   const retryLastTurn = () => {
     if (!retry || actionBusy || activeAcpTurn) return;
-    if (retry.action) void acpActions.runSessionAction(retry.action);
+    if (retry.action) return void acpActions.runSessionAction(retry.action);
     // Retry resends what that turn carried, never the next one's paste.
-    else
-      void acpActions.submit(retry.prompt, [], retry.bindingId, retry.modelId, {
-        retryOf: retry.turnId,
-      });
+    const { prompt, bindingId, modelId, turnId } = retry;
+    void acpActions.submit(prompt, [], bindingId, modelId, { retryOf: turnId });
   };
 
   useEffect(() => {
