@@ -1,4 +1,5 @@
-//! Curated bridge authority. Retains at most one 512 KiB old/new pair.
+//! Curated bridge authority. Retains at most one 512 KiB old/new pair or one
+//! shell command awaiting approval.
 pub(crate) mod files;
 pub(crate) mod install;
 pub(crate) mod path;
@@ -18,7 +19,7 @@ pub(crate) struct Bridge {
 }
 pub(crate) struct Pending {
     pub request_id: String,
-    pub edit: files::Edit,
+    pub prepared: files::Prepared,
     pub approved: bool,
     pub written: bool,
 }

@@ -8,6 +8,7 @@ use crate::acp::{
 
 use super::super::{DenyIntent, DenyStage, PiRuntime};
 use super::identity::external;
+use crate::acp::bindings::pi::bridge::files::Prepared;
 use crate::acp::bindings::pi::{
     protocol::is_allow_option,
     translator::{ANSWER_ID, PendingUiRequest},
@@ -187,21 +188,33 @@ impl PiRuntime {
                 Some(question) => question,
                 None => NormalizedPayload::PermissionRequest {
                     user_input: None,
-                    category: if self.bridge.as_ref().is_some_and(|b| b.pending.is_some()) {
-                        ToolCategory::Edit
-                    } else {
-                        ToolCategory::Other
+                    category: match self
+                        .bridge
+                        .as_ref()
+                        .and_then(|b| b.pending.as_ref())
+                        .map(|p| &p.prepared)
+                    {
+                        Some(Prepared::Edit(_)) => ToolCategory::Edit,
+                        Some(Prepared::Shell(_)) => ToolCategory::Execute,
+                        None => ToolCategory::Other,
                     },
+                    // Prepare admits only paths and commands that fit and show exactly.
                     summary: SafeText::new(
                         "permissionSummary",
-                        self.bridge
+                        match self
+                            .bridge
                             .as_ref()
                             .and_then(|b| b.pending.as_ref())
-                            // Prepare admits only paths that fit and show exactly.
-                            .map(|p| format!("Allow Pi to update {}?", p.edit.relative))
-                            .unwrap_or_else(|| {
-                                "Pi extension gate is awaiting your decision".into()
-                            }),
+                            .map(|p| &p.prepared)
+                        {
+                            Some(Prepared::Edit(edit)) => {
+                                format!("Allow Pi to update {}?", edit.relative)
+                            }
+                            Some(Prepared::Shell(shell)) => {
+                                format!("Allow Pi to run this command?\n{}", shell.command)
+                            }
+                            None => "Pi extension gate is awaiting your decision".into(),
+                        },
                     )
                     .map_err(|_| AdapterRuntimeError::Frame)?,
                     offered_option_kinds: Some(

@@ -1,5 +1,7 @@
 // Sage Pi bridge v1; admitted only with Pi 1.5.0 and exact installed bytes.
-// No filesystem or shell authority lives in this extension.
+// No filesystem authority lives in this extension: Sage writes approved files.
+// Pi's own bash runs a command only after Sage records the user's approval.
+import { createBashToolDefinition } from "@earendil-works/pi-coding-agent";
 const MAX_BYTES = 262144;
 // Every answer other than "approved" or "written" is Sage's reason, shown to
 // the model and the user as the tool's error.
@@ -11,11 +13,30 @@ const refusal = (answer) =>
   );
 const fields = (names) =>
   Object.fromEntries(names.map((name) => [name, { type: "string" }]));
+// Resolves once Sage records the user's approval of this tool call; throws
+// Sage's reason otherwise.
+async function approve(toolCallId, tool, args, signal, ctx) {
+  if (signal?.aborted) throw new Error("Cancelled");
+  const request = JSON.stringify({ version: 1, toolCallId, tool, args });
+  if (Buffer.byteLength(request) > MAX_BYTES)
+    throw new Error("Sage operation exceeds the byte limit");
+  let approved = await ctx.ui.input("sage.pi.prepare.v1", request, {
+    signal,
+    timeout: 60000,
+  });
+  // Pi expires or aborts a dialog without telling Sage, so Sage settles
+  // it: an undecided request is withdrawn, a recorded approval stands.
+  if (approved === undefined)
+    approved = await ctx.ui.input("sage.pi.withdraw.v1", toolCallId, {
+      timeout: 10000,
+    });
+  if (signal?.aborted) throw new Error("Cancelled");
+  if (approved !== "approved") throw refusal(approved);
+}
 export default function sageBridge(pi) {
   for (const [name, required] of [
     ["write", ["path", "content"]],
     ["edit", ["path", "oldText", "newText"]],
-    ["bash", ["command"]],
   ]) {
     pi.registerTool({
       name,
@@ -29,27 +50,7 @@ export default function sageBridge(pi) {
         additionalProperties: false,
       },
       async execute(toolCallId, args, signal, _update, ctx) {
-        if (signal?.aborted) throw new Error("Cancelled");
-        const request = JSON.stringify({
-          version: 1,
-          toolCallId,
-          tool: name,
-          args,
-        });
-        if (Buffer.byteLength(request) > MAX_BYTES)
-          throw new Error("Sage operation exceeds the byte limit");
-        let approved = await ctx.ui.input("sage.pi.prepare.v1", request, {
-          signal,
-          timeout: 60000,
-        });
-        // Pi expires or aborts a dialog without telling Sage, so Sage settles
-        // it: an undecided request is withdrawn, a recorded approval stands.
-        if (approved === undefined)
-          approved = await ctx.ui.input("sage.pi.withdraw.v1", toolCallId, {
-            timeout: 10000,
-          });
-        if (signal?.aborted) throw new Error("Cancelled");
-        if (approved !== "approved") throw refusal(approved);
+        await approve(toolCallId, name, args, signal, ctx);
         const result = await ctx.ui.input("sage.pi.commit.v1", toolCallId, {
           signal,
           timeout: 60000,
@@ -62,6 +63,21 @@ export default function sageBridge(pi) {
       },
     });
   }
+  // Pi's bash, unchanged except that each command first needs approval.
+  const shell = createBashToolDefinition(process.cwd());
+  pi.registerTool({
+    ...shell,
+    async execute(toolCallId, args, signal, update, ctx) {
+      await approve(toolCallId, "bash", args, signal, ctx);
+      return createBashToolDefinition(ctx.cwd).execute(
+        toolCallId,
+        args,
+        signal,
+        update,
+        ctx,
+      );
+    },
+  });
   pi.on("session_start", async () => {
     pi.setActiveTools(["read", "write", "edit", "bash"]);
   });

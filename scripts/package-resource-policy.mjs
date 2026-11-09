@@ -4,14 +4,15 @@ import path from "node:path";
 
 // Production packages ship no resources or external binaries, with one
 // curated exception: Pi loads extensions only from a file, so its approval
-// bridge must ship beside Sage. The script holds no filesystem or shell
-// authority, and Rust re-checks these bytes before handing the path to Pi.
+// bridge must ship beside Sage. The script holds no filesystem authority and
+// runs Pi's own bash only after Sage records the user's approval; Rust
+// re-checks these bytes before handing the path to Pi.
 // Changing the script, or adding any other resource, must update this pin.
 export const curatedPackageResources = Object.freeze([
   Object.freeze({
     path: "src/acp/bindings/pi/bridge/extension.mjs",
-    bytes: 2427,
-    sha256: "e5ae1a6260f635c0e33d3e9ea1c8ad9d7c775d6a80d3235aacfc2c5b6c8319d9",
+    bytes: 3089,
+    sha256: "174858ac66ae28a7a9eda4b87c386a85008218d267f9d9cbc2cf201370b4106e",
   }),
 ]);
 

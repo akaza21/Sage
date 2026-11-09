@@ -16,10 +16,8 @@ pub(crate) enum Refusal {
     WriteLimit,
     /// Another edit in this Turn is still awaiting its decision.
     Busy,
-    /// The request is not a well-formed write or edit of a known tool call.
+    /// The request is not a well-formed write, edit or command of a known tool call.
     Unsupported,
-    /// Shell commands never get filesystem authority through the bridge.
-    Shell,
     /// This tool call already had its one approval request.
     Replayed,
     /// A commit named no edit the user approved in this Turn.
@@ -49,8 +47,7 @@ impl Refusal {
             Self::ReadOnly => "Sage refused: this chat has read-only access",
             Self::WriteLimit => "Sage refused: this Turn reached its write limit",
             Self::Busy => "Sage refused: another edit is awaiting approval",
-            Self::Unsupported => "Sage refused: not a supported file edit",
-            Self::Shell => "Sage refused: shell commands are not allowed",
+            Self::Unsupported => "Sage refused: not a supported edit or command",
             Self::Replayed => "Sage refused: this tool call was already handled",
             Self::NotApproved => "Sage refused: the edit was not approved",
             Self::OutsideWorkspace => "Sage refused: the path is outside the workspace",
@@ -85,7 +82,6 @@ mod tests {
             WriteLimit,
             Busy,
             Unsupported,
-            Shell,
             Replayed,
             NotApproved,
             OutsideWorkspace,

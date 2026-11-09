@@ -137,14 +137,14 @@ impl PiRuntime {
             if bridge.used.len() >= 32 {
                 return refused(Refusal::WriteLimit);
             }
-            let edit = match files::prepare(&bridge.workspace, request) {
-                Ok(edit) => edit,
+            let prepared = match files::prepare(&bridge.workspace, request) {
+                Ok(prepared) => prepared,
                 Err(refusal) => return refused(refusal),
             };
-            bridge.used.insert(edit.tool_id.clone());
+            bridge.used.insert(prepared.tool_id().to_owned());
             bridge.pending = Some(Pending {
                 request_id: id.into(),
-                edit,
+                prepared,
                 approved: false,
                 written: false,
             });
@@ -174,17 +174,20 @@ impl PiRuntime {
         let Some(pending) = bridge.pending.take() else {
             return refused(Refusal::NotApproved);
         };
-        if !pending.approved || !pending.written || pending.edit.tool_id != body {
+        // A shell approval has nothing to commit: Pi runs the command itself.
+        let files::Prepared::Edit(edit) = pending.prepared else {
+            return refused(Refusal::NotApproved);
+        };
+        if !pending.approved || !pending.written || edit.tool_id != body {
             return refused(Refusal::NotApproved);
         }
         if !self
             .active_turn
             .as_ref()
-            .is_some_and(|turn| turn.tools.contains_key(&pending.edit.tool_id))
+            .is_some_and(|turn| turn.tools.contains_key(&edit.tool_id))
         {
             return refused(Refusal::Inactive);
         }
-        let edit = pending.edit;
         let root_id = crate::acp::contract::SageRootId::parse(bridge.workspace.root_id())
             .map_err(|_| AdapterRuntimeError::Frame)?;
         let resource = crate::acp::intent::SafeResourceRef::new(root_id, edit.relative.clone())
@@ -260,7 +263,7 @@ impl PiRuntime {
             .bridge
             .as_ref()
             .and_then(|bridge| bridge.pending.as_ref())
-            .filter(|pending| pending.edit.tool_id == tool_id)
+            .filter(|pending| pending.prepared.tool_id() == tool_id)
         else {
             return answer(Refusal::Unsupported.message());
         };
@@ -348,6 +351,12 @@ impl PiRuntime {
         {
             if resolution == EgressResolution::Written {
                 pending.written = true;
+                // Pi runs an approved command without a commit, so the
+                // approval reaching Pi frees the Turn's single pending slot.
+                if matches!(pending.prepared, files::Prepared::Shell(_)) {
+                    bridge.pending = None;
+                    return Ok(());
+                }
             }
             if matches!(
                 resolution,
