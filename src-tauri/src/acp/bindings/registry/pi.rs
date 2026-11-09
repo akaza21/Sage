@@ -70,7 +70,7 @@ pub(super) fn capabilities(
         native_session_fork: false,
         native_session_compact: false,
         native_review: false,
-        active_turn_steer: false,
+        active_turn_steer: true,
         child_conversation_projection: false,
         child_transcript_read: false,
         collaboration_event_projection: false,

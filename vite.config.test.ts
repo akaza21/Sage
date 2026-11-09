@@ -228,6 +228,9 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/AgentProjectMenu.tsx",
   "src/workbench/AgentRailArchiveNotice.tsx",
   "src/workbench/AgentRecentChats.tsx",
+  "src/app/chatArchiveActions.ts",
+  "src/workbench/ArchivedChatList.tsx",
+  "src/workbench/ChatRowErrorNotice.tsx",
   "src/workbench/useAgentRailStatus.ts",
   // The Agent header menu body loads before its first open.
   "src/workbench/AgentHeaderMenu.tsx",
