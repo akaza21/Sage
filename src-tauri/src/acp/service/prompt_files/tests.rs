@@ -170,8 +170,11 @@ fn staging_conflicts_owner_isolation_and_lifecycle_release() {
     let next = stages
         .stage("p", "c", 0, Some(&old.revision), f.read("two"))
         .unwrap();
-    stages.consume("p", "c", &snapshot); // Late acknowledgement cannot consume a newer selection.
+    // A late acknowledgement cannot consume a newer selection; it records
+    // only what was sent, which a later send replaces.
+    stages.consume("p", "c", 0, "late", &snapshot);
     assert_eq!(stages.list("p", "c").unwrap().revision, next.revision);
+    stages.consume("p", "c", 0, "later", &Resources::default());
     drop(snapshot);
     assert!(weak.upgrade().is_none());
     assert!(
@@ -182,7 +185,7 @@ fn staging_conflicts_owner_isolation_and_lifecycle_release() {
     );
     stages.stage("p", "c", 0, None, f.read("one")).unwrap();
     let sent = stages.get("p", "c");
-    stages.consume("p", "c", &sent);
+    stages.consume("p", "c", 0, "sent", &sent);
     assert!(stages.list("p", "c").is_none());
     drop(sent);
     stages.stage("p", "c", 0, None, f.read("one")).unwrap();
@@ -260,19 +263,42 @@ fn unix_backslashes_in_names_do_not_select_a_different_file() {
 }
 
 #[test]
-fn a_session_action_leaves_the_staged_files_for_the_next_prompt() {
-    let f = Fixture::new();
-    f.file("one", b"one");
-    let mut stages = FileStages::default();
-    stages.stage("p", "c", 0, None, f.read("one")).unwrap();
-    let mut action = crate::acp::intent::Prompt::new("prompt", "/compact").unwrap();
-    action.action = Some(serde_json::from_value(serde_json::json!({"kind": "compact"})).unwrap());
-    let sent = stages.for_prompt("p", "c", &action);
-    assert!(sent.0.is_empty());
-    stages.consume("p", "c", &sent);
-    let prompt = crate::acp::intent::Prompt::new("prompt", "next").unwrap();
-    let next = stages.for_prompt("p", "c", &prompt);
-    assert_eq!(next.0.len(), 1);
-    stages.consume("p", "c", &next);
-    assert!(stages.for_prompt("p", "c", &prompt).0.is_empty());
+fn the_webview_mirrors_the_native_caps() {
+    let mirror = include_str!("../../../../../src/ports/promptAttachments.ts");
+    assert!(mirror.contains(&format!("PROMPT_ATTACHMENT_COUNT = {FILE_COUNT};")));
+    assert!(mirror.contains(&format!(
+        "PROMPT_ATTACHMENT_TOTAL_BYTES = {} * 1024;",
+        TOTAL_BYTES / 1024
+    )));
+    assert_eq!(TOTAL_BYTES % 1024, 0);
+}
+
+#[test]
+fn limit_messages_name_their_caps_in_the_webview_units() {
+    // The WebView's `formatSize` writes KB of 1,024 bytes; native messages
+    // name the same caps the same way, derived from the constants.
+    let format_size = include_str!("../../../../../src/features/chat/composerPaste.ts");
+    assert!(format_size.contains("Math.ceil(bytes / 1024)).toLocaleString(\"en-US\")} KB`"));
+    let kb = |bytes: usize| format!("{} KB", bytes / 1024);
+    assert_eq!(
+        limits::DISPATCH_OVER.as_str(),
+        format!(
+            "Prompt text and file attachments exceed the {} native dispatch budget. Shorten the prompt or remove attachments.",
+            kb(DISPATCH_BYTES)
+        )
+    );
+    assert!(limits::FILE_OVER.contains(&kb(FILE_BYTES)));
+    assert!(limits::READ_OVER.contains(&kb(FILE_BYTES)));
+    assert!(limits::READ_OVER.contains(&kb(TOTAL_BYTES)));
+    assert!(limits::OVER_TOTAL.contains(&kb(TOTAL_BYTES)));
+    assert!(limits::PASTE_OVER_TOTAL.contains(&kb(TOTAL_BYTES)));
+    for message in [
+        &limits::DISPATCH_OVER,
+        &limits::FILE_OVER,
+        &limits::READ_OVER,
+        &limits::OVER_TOTAL,
+        &limits::PASTE_OVER_TOTAL,
+    ] {
+        assert!(!message.contains("KiB"), "{}", message.as_str());
+    }
 }

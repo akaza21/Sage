@@ -1653,6 +1653,7 @@ fn archive_refuses_a_running_turn_and_an_archived_chat_takes_no_prompt() {
             runtime_epoch: owner.runtime_epoch,
             prompt: crate::acp::intent::Prompt::new("prompt", "archived").unwrap(),
             attached_context: Default::default(),
+            staged: None,
         },
     ));
     let failure = refused.expect_err("an archived Chat takes no prompt");
