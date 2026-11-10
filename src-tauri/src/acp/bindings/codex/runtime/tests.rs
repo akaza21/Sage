@@ -27,6 +27,7 @@ use crate::{error::AppError, persistence::Database, state::AppState};
 
 mod browser_mcp_tests;
 mod duplicate_terminal_probe;
+mod foreign_thread_tests;
 mod fork_tests;
 mod hook_and_progress_events;
 mod model_choice;
