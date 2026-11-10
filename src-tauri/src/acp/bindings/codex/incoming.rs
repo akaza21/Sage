@@ -218,6 +218,11 @@ pub(crate) enum IngressDisposition {
     UsageRefused,
     /// The account signed in to ChatGPT, so usage may be reported again.
     UsageReset,
+    /// Codex changed the thread's model or effort.
+    SettingsUpdated {
+        model: crate::acp::intent::ModelId,
+        effort: Option<RequiredText<512>>,
+    },
     DuplicateTerminal,
     DuplicateServerRequest {
         denial: Option<Vec<u8>>,

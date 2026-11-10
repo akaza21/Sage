@@ -147,8 +147,13 @@ fn stage_fork_chat(
     let title = fork_title(&parent_title, titles.iter().map(String::as_str));
     let now = now_millis();
     transaction.execute(
-        "UPDATE chats SET title=?3,title_is_default=0 WHERE project_id=?1 AND id=?2",
-        params![project, chat_id, title],
+        "UPDATE chats SET title=?3,title_source=?4 WHERE project_id=?1 AND id=?2",
+        params![
+            project,
+            chat_id,
+            title,
+            crate::chat_lifecycle::ChatTitleSource::Fork.as_str()
+        ],
     )?;
     place_above_parent(
         transaction,

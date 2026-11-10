@@ -1,14 +1,11 @@
 import { useRef, useState } from "react";
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
-import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { isImeComposing } from "../../ui/imeComposition";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
 import "../../styles/queued-messages.css";
-import type * as GoalChunk from "./BoundChatGoalControl";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import type * as ClaudeAuthChunk from "./ClaudeAuthActions";
-import type * as AttachmentsChunk from "./ComposerAttachments";
 import {
   composerPromptPlaceholder,
   composerShortcutLabel,
@@ -17,10 +14,12 @@ import {
 } from "./composerChrome";
 import { ComposerImageInput } from "./ComposerImageInput";
 import { ComposerTurnControl } from "./ComposerTurnControl";
-import { QueuedRows, lazyParts } from "./lazyParts";
+import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import { useComposerImageInput } from "./useComposerImageInput";
+import { ComposerPasteSlot } from "./ComposerPastePart";
+import { useComposerPaste } from "./useComposerPaste";
 import type * as SlashChunk from "./ComposerSlashController";
 
 const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
@@ -30,15 +29,6 @@ const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
 const SlashPart = lazyParts<typeof SlashChunk>(
   () => import("./ComposerSlashController"),
 );
-// A native Goal's control and its mutations load with the first chat that
-// shows one.
-const GoalPart = lazyParts<typeof GoalChunk>(
-  () => import("./BoundChatGoalControl"),
-);
-// Attachment chips load with the first context attached to the draft.
-const AttachmentsPart = lazyParts<
-  Pick<typeof AttachmentsChunk, "ComposerAttachments">
->(() => import("./ComposerAttachments"));
 
 export function ChatComposerRegion({
   hidden = false,
@@ -53,6 +43,7 @@ export function ChatComposerRegion({
   disabledReasonId,
   text,
   attachedContext,
+  pasteSession,
   imagePreviews,
   imageUploading = false,
   enabled,
@@ -121,13 +112,22 @@ export function ChatComposerRegion({
     uploading: imageUploading,
     onAddImages,
   });
+  // The paste part loads with the composer of a native chat, or with
+  // held-back input, and reports the batch it staged.
+  const paste = useComposerPaste(
+    availableBinding,
+    activeTurn,
+    disabledReasonId,
+    onTextChange,
+  );
   const dispatchBlocked =
     composerDisabled ||
     sendBlocked ||
     actionBusy ||
     (activeTurn && !queueAvailable) ||
     imageUploading ||
-    imageInput.sendBlocked;
+    imageInput.sendBlocked ||
+    paste.blocksSend;
   const queueing = activeTurn && queueAvailable && !composerDisabled;
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
   const dictation = useComposerDictation(
@@ -157,7 +157,7 @@ export function ChatComposerRegion({
             return;
           }
           dictation.cancel();
-          onSubmit(event);
+          onSubmit(event, paste.revision);
           composerRef.current?.focus();
         }}
       >
@@ -261,16 +261,15 @@ export function ChatComposerRegion({
                   ? "Enter queues a message while this turn runs."
                   : undefined
               }
-              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}`}
+              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}${paste.describedBy}`}
               value={text}
-              maxLength={MAX_CHAT_COMPOSER_BYTES}
               rows={2}
               placeholder={composerPromptPlaceholder(
                 canPrompt,
                 sessionPromptUnavailable,
               )}
               disabled={composerDisabled}
-              onChange={(event) => onTextChange(event.target.value)}
+              {...paste.field}
               onFocus={() => setSlashArmed(true)}
               onBlur={dictation.cancel}
               onKeyDown={(event) => {
@@ -313,6 +312,13 @@ export function ChatComposerRegion({
               />
             ) : null}
           </div>
+          <ComposerPasteSlot
+            paste={paste}
+            chatId={dictationScope}
+            session={pasteSession}
+            text={text}
+            disabled={actionBusy || projectTransitioning}
+          />
           {disabledReason ? (
             <p className="composer__disabled-reason" id={disabledReasonId}>
               {disabledReason}
@@ -392,7 +398,8 @@ export function ChatComposerRegion({
             cancelDisabled={actionBusy || projectTransitioning}
             queueing={Boolean(activeTurn && queueAvailable)}
             sendDisabled={
-              dispatchBlocked || (!text.trim() && !attachedContext.length)
+              dispatchBlocked ||
+              (!text.trim() && !attachedContext.length && !paste.revision)
             }
           />
         </div>

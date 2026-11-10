@@ -8,6 +8,7 @@ pub(crate) use fork::{MAX_UNRELEASED_FORKS, fork_reply};
 pub(crate) mod command_explore;
 pub(crate) mod command_output_stream;
 mod command_snapshots;
+mod compactions;
 mod construction;
 mod errors;
 mod goal;
@@ -21,6 +22,7 @@ pub(in crate::acp::bindings::codex) use permissions::USER_INPUT_METHOD;
 mod provisional;
 mod rate_limits;
 mod session;
+mod turn_end;
 mod turn_errors;
 mod turn_prompt;
 mod turn_starts;
@@ -31,6 +33,7 @@ pub(crate) use errors::{AdapterError, TurnStartedRejection};
 
 use command_snapshots::CommandItemSnapshots;
 pub(crate) use command_snapshots::MaterializedCommandItem;
+pub(crate) use turn_end::PlanEntries;
 use turn_starts::{CorrelationMatch, TurnStartCorrelations};
 pub(in crate::acp::bindings::codex) use turns::SubagentLabels;
 
@@ -100,6 +103,8 @@ struct PermissionRequestEntry {
     item_id: String,
     response: Vec<u8>,
     state: ServerRequestState,
+    /// The form an MCP elicitation asked; its answers are typed against it.
+    form: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
 }
 
 pub(crate) struct PermissionRequestParams<'a> {
@@ -110,6 +115,7 @@ pub(crate) struct PermissionRequestParams<'a> {
     pub(crate) turn_id: &'a str,
     pub(crate) item_id: &'a str,
     pub(crate) response: &'a [u8],
+    pub(crate) form: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -175,10 +181,14 @@ pub(crate) struct CodexAdapter {
     active_item_terminals: Vec<ItemTerminal>,
     active_terminal_id_bytes: usize,
     active_unretried_error_fingerprints: Vec<[u8; 32]>,
+    /// Sage wrote `turn/interrupt` for the active Turn.
+    active_turn_user_stop: bool,
+    active_turn_plan: Option<turn_end::PlanEntries>,
     previous_turn: Option<TurnTombstone>,
     command_item_snapshots: CommandItemSnapshots,
     running_mcp_tools: mcp_tools::RunningMcpTools,
     running_hooks: hook_runs::RunningHooks,
+    compactions: compactions::Compactions,
     subagent_labels: SubagentLabels,
     child_threads: Vec<SafeText<512>>,
     bound_child_threads: Vec<SafeText<512>>,
@@ -256,6 +266,12 @@ impl CodexAdapter {
         }
         if kind == RequestKind::ChildRead {
             self.pending_child_read = None;
+        }
+        if kind == RequestKind::Interrupt {
+            self.active_turn_user_stop = self
+                .pending
+                .iter()
+                .any(|&(other, pending)| other != id && pending == RequestKind::Interrupt);
         }
         if kind == RequestKind::Fork {
             self.pending_fork = None;

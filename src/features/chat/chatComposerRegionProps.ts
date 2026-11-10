@@ -1,4 +1,4 @@
-import type { FormEventHandler, ReactNode, RefObject } from "react";
+import type { FormEvent, ReactNode, RefObject } from "react";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type { AcpGoalState } from "../../domain/acpGoal";
 import type {
@@ -9,6 +9,7 @@ import type { AttachedContext } from "../../domain/attachedContext";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import type { HarnessDefinition } from "../../domain/harness";
 import type { ChatUsage } from "./acp/chatUsage";
+import type { PasteAttachability } from "./composerPasteText";
 import type { AcpUsageRequest } from "../../domain/acpUsage";
 
 export interface ChatComposerRegionProps {
@@ -26,6 +27,8 @@ export interface ChatComposerRegionProps {
   disabledReasonId: string;
   text: string;
   attachedContext: readonly AttachedContext[];
+  /** The session the next send uses, for whether it takes attached text. */
+  pasteSession?: PasteAttachability["session"];
   imagePreviews?: Readonly<Record<string, string>>;
   imageUploading?: boolean;
   enabled: boolean;
@@ -70,7 +73,11 @@ export interface ChatComposerRegionProps {
   usage: ChatUsage | null;
   usageRequest?: AcpUsageRequest | null;
   goal: AcpGoalState;
-  onSubmit: FormEventHandler<HTMLFormElement>;
+  /** Sends, naming the staged batch revision the message carries. */
+  onSubmit: (
+    event: FormEvent<HTMLFormElement>,
+    stagedRevision?: string | null,
+  ) => void;
   onTextChange: (text: string) => void;
   onRemoveContext: (context: AttachedContext) => void;
   imageInputAvailable?: boolean;

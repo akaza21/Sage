@@ -33,7 +33,11 @@ mod model_identity;
 #[cfg(feature = "acp-fixture")]
 mod notice_journey_tests;
 mod notice_tests;
+mod remaining_events;
 mod saved_diff_tests;
+mod session_title_tests;
+#[cfg(feature = "acp-fixture")]
+mod steer_journey_tests;
 mod usage_tests;
 
 struct Mapper;
@@ -2491,13 +2495,16 @@ fn initialize_session_prompt_stream_tool_usage_cancel_and_terminal_are_normalize
             &Mapper,
         )
         .expect("terminal");
-    assert!(matches!(
-        terminal.events(),
-        [AdapterEvent::Turn {
-            state: crate::acp::lifecycle::TurnState::Interrupted,
-            ..
-        }]
-    ));
+    assert!(
+        matches!(
+            terminal.events(),
+            [AdapterEvent::Turn {
+                state: crate::acp::lifecycle::TurnState::Cancelled,
+                ..
+            }]
+        ),
+        "Sage asked for this stop, so it is a user cancel"
+    );
 }
 
 #[test]

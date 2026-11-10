@@ -12,12 +12,18 @@ use crate::acp::bindings::standard_acp::{
 const SESSION: &str = "acp-session-1";
 
 pub(super) fn claude(scenario: Scenario) -> Option<Vec<Fact>> {
-    Some(run("claude-code", scenario))
+    steerable(scenario).then(|| run("claude-code", scenario))
+}
+
+/// ACP has no way to add a message to a running prompt; the binding refuses
+/// a steer, so the composer waits for the turn to end.
+fn steerable(scenario: Scenario) -> bool {
+    scenario != Scenario::SteeredMessage
 }
 
 /// No vendor updates and no command field: what any ACP agent gets.
 pub(super) fn generic(scenario: Scenario) -> Option<Vec<Fact>> {
-    Some(run("gemini-cli", scenario))
+    steerable(scenario).then(|| run("gemini-cli", scenario))
 }
 
 fn update(update: Value) -> Value {
@@ -93,6 +99,7 @@ fn frames(scenario: Scenario) -> (Vec<Value>, &'static str) {
             ]})),
         ],
         Scenario::CancelledWithRunningTool => vec![read_call("in_progress")],
+        Scenario::SteeredMessage => unreachable!("ACP cannot steer"),
     };
     let stop = match scenario {
         Scenario::CancelledWithRunningTool => "cancelled",
