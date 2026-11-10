@@ -812,6 +812,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
     let turn = TurnProjection {
         attached_context: Vec::new(),
         session_action: None,
+        command: None,
         id: turn_id,
         session_id: session_id.clone(),
         runtime_epoch: RuntimeEpoch::new(2).unwrap(),

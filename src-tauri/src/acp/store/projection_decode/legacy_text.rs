@@ -17,6 +17,8 @@ pub(crate) fn parse_legacy_text(
         _attachments: u8,
         #[serde(default, rename = "sessionAction")]
         _session_action: Option<serde::de::IgnoredAny>,
+        #[serde(default, rename = "command")]
+        _command: Option<serde::de::IgnoredAny>,
     }
     #[derive(Debug, serde::Deserialize)]
     #[serde(deny_unknown_fields)]

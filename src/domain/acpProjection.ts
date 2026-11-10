@@ -1,5 +1,6 @@
 import type { AttachedContext } from "./attachedContext";
 import type { AcpSessionAction } from "./acpSessionAction";
+import type { AcpTurnCommand } from "./acpCommand";
 import type { AcpImagePayload } from "./acpImage";
 import type { AcpGoalState } from "./acpGoal";
 import type {
@@ -262,6 +263,8 @@ export interface TurnProjection {
   sessionAction?: AcpSessionAction;
   /** The Turn ran a session action this build cannot run again. */
   unrecognizedAction?: true;
+  /** The listed command this Turn's prompt ran. */
+  command?: AcpTurnCommand;
   id: SageTurnId;
   sessionId: SageAgentSessionId;
   runtimeEpoch: RuntimeEpoch;

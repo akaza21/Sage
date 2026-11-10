@@ -167,6 +167,8 @@ pub struct Prompt {
     #[serde(skip)]
     pub(crate) command_revision: Option<u64>,
     #[serde(skip)]
+    pub(crate) command: Option<super::slash_commands::CommandMark>,
+    #[serde(skip)]
     pub(crate) action: Option<super::session_action::SessionAction>,
     #[serde(skip)]
     context: Option<Box<(String, AttachedContexts)>>,
@@ -184,6 +186,7 @@ impl Prompt {
             text: RequiredText::new(field, text)?,
             context: None,
             command_revision: None,
+            command: None,
             action: None,
             resources: Default::default(),
             mentions: Default::default(),
@@ -239,6 +242,9 @@ impl Prompt {
         if let Some(action) = &self.action {
             payload["sessionAction"] = serde_json::json!(action);
         }
+        if let Some(command) = &self.command {
+            payload["command"] = serde_json::json!(command);
+        }
         payload
     }
 }
@@ -249,6 +255,8 @@ pub(crate) struct PromptMetadata {
     pub(crate) attached_context: Vec<super::attached_context::AttachedContext>,
     /// As stored, so an action this build does not run still marks its Turn.
     pub(crate) session_action: Option<serde_json::Value>,
+    /// The listed command the Turn ran, as stored.
+    pub(crate) command: Option<serde_json::Value>,
 }
 
 pub(crate) fn load_prompt_metadata(
@@ -274,10 +282,10 @@ pub(crate) fn load_prompt_metadata(
             .to_vec(),
         None => Vec::new(),
     };
-    let session_action = field("sessionAction").cloned();
     Ok(PromptMetadata {
         attached_context,
-        session_action,
+        session_action: field("sessionAction").cloned(),
+        command: field("command").cloned(),
     })
 }
 
