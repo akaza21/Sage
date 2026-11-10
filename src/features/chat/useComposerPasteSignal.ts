@@ -22,6 +22,11 @@ function overCap(text: string): number {
   return bytes > MAX_CHAT_COMPOSER_BYTES ? bytes : 0;
 }
 
+/** Input held only to say something about it. */
+function isNotice(input: HeldInput | undefined): boolean {
+  return input !== undefined && input.kind !== "paste" && input.kind !== "pick";
+}
+
 /**
  * The composer's eager half of paste handling: only the synchronous size
  * check. Over-cap pastes and edits are held back here, in order, and the
@@ -31,22 +36,27 @@ function overCap(text: string): number {
  * What is held stays small: the text of at most one paste, which the part
  * takes as soon as it can; a second long paste made meanwhile is refused.
  * A paste that could never attach keeps only its size. Only the latest
- * notice can show, so a notice replaces one held just before it.
+ * notice can show, so a notice replaces one held just before it. A pick
+ * from the attach button is held the same way, so the part stages pasted
+ * and picked files into one batch, one change at a time.
  */
 export function useComposerPasteSignal() {
   // Bumped for each input held back; 0 while there has been none.
   const [seq, setSeq] = useState(0);
   const queue = useRef<HeldInput[]>([]);
-  const hold = (input: HeldInput) => {
+  const hold = useCallback((input: HeldInput) => {
     const held = queue.current;
-    if (input.kind !== "paste" && held.at(-1)?.kind !== "paste") held.pop();
+    // A notice replaces only a notice; pastes and picks are never dropped.
+    if (isNotice(input) && isNotice(held.at(-1))) held.pop();
     held.push(input);
     setSeq((last) => last + 1);
-  };
+  }, []);
   return {
     seq,
     /** Hands over everything held, oldest first, once. */
     take: useCallback(() => queue.current.splice(0), []),
+    /** Asks for native's file dialog, staged in order with held pastes. */
+    holdPick: useCallback(() => hold({ kind: "pick" }), [hold]),
     /** True when an edit is over the cap and was held back; never truncated. */
     holdEdit(next: string) {
       const bytes = overCap(next);

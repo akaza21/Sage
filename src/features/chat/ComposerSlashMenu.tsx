@@ -29,7 +29,7 @@ import {
   type TextFieldSuggestionsState,
 } from "../../ui/textFieldSuggestionNavigation";
 import { isImeComposing } from "../../ui/imeComposition";
-import { TextFieldSuggestions } from "../../ui/TextFieldSuggestions";
+import { SuggestionsPart } from "./composerSuggestionsPart";
 import { createClientIntentFactory } from "./acp/clientIntent";
 import { currentContext } from "./acp/useAcpChatActions";
 import type { PickedSlashCommand } from "./composerSlashCommand";
@@ -320,7 +320,8 @@ export function ComposerSlashMenu({
       : state.title;
   useEffect(() => onStatusChange(status), [onStatusChange, status]);
   return (
-    <TextFieldSuggestions
+    <SuggestionsPart
+      part="TextFieldSuggestions"
       anchorRef={anchorRef}
       footer={
         !query && commands.length > items.length

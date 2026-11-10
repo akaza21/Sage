@@ -175,6 +175,8 @@ pub struct Prompt {
     #[serde(skip)]
     pub(crate) resources: super::attached_context::files::Resources,
     #[serde(skip)]
+    pub(crate) mentions: super::prompt_mentions::Mentions,
+    #[serde(skip)]
     pub(crate) images: super::attached_context::files::images::PromptImages,
 }
 
@@ -187,6 +189,7 @@ impl Prompt {
             command: None,
             action: None,
             resources: Default::default(),
+            mentions: Default::default(),
             images: Default::default(),
         })
     }
@@ -205,6 +208,7 @@ impl Prompt {
     }
     pub(crate) fn retained_bytes(&self) -> usize {
         self.resources.retained_bytes()
+            + self.mentions.retained_bytes()
             + self.images.retained_bytes()
             + self.as_str().len()
             + self.context.as_ref().map_or(0, |context| {

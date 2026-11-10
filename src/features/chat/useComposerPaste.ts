@@ -7,7 +7,8 @@ export type ComposerPasteWiring = ReturnType<typeof useComposerPaste>;
 
 /**
  * The composer's eager paste wiring: the field's paste and edit handlers,
- * whether the paste part is in place, and the batch it reports staged.
+ * the attach button's picks, whether the paste part is in place, and the
+ * batch it reports staged.
  */
 export function useComposerPaste(
   nativeAcp: boolean,
@@ -29,6 +30,8 @@ export function useComposerPaste(
     setStaged,
     armed,
     noticeId,
+    /** Files picked with the attach button join the same batch. */
+    pickFiles: signal.holdPick,
     /** The staged batch a send carries, if any. */
     revision: staged?.revision,
     /** Appended to the field's aria-describedby. */

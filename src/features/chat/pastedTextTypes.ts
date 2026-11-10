@@ -16,11 +16,13 @@ export interface HeldPaste {
 
 /**
  * Input the composer held back for the lazy paste part, oldest first. Only
- * a paste that may still attach keeps its text; the others keep at most a
+ * a paste that may still attach keeps its text; the notices keep at most a
  * size, a lower bound in UTF-8 bytes.
  */
 export type HeldInput =
   | { kind: "paste"; paste: HeldPaste }
+  /** A pick from the attach button: native's file dialog adds to the batch. */
+  | { kind: "pick" }
   /** A paste over the attachment limit, refused when it was made. */
   | { kind: "overLimit"; bytes: number }
   /** A paste made while another was still held, refused when it was made. */

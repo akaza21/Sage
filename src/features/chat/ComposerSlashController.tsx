@@ -8,6 +8,7 @@ import {
 } from "react";
 import "../../styles/composer-slash.css";
 import { isImeComposing } from "../../ui/imeComposition";
+import { useOwnedFieldAttributes } from "../../ui/ownedFieldAttributes";
 import type { SuggestionKeyEvent } from "../../ui/textFieldSuggestionNavigation";
 import { ComposerCommandHint } from "./ComposerCommandHint";
 import type * as MenuChunk from "./ComposerSlashMenu";
@@ -68,7 +69,7 @@ function setAttribute(field: HTMLElement, name: string, value: string | null) {
  * so the first-Chat path carries only the mount and an Enter guard. It
  * listens on the textarea itself (which keeps the focus throughout), takes
  * the keys the open menu uses before the composer's own handler sees them,
- * and keeps the field's combobox attributes.
+ * and holds the field's combobox attributes while its command name is edited.
  */
 export function ComposerSlashController({
   fieldRef,
@@ -184,36 +185,26 @@ export function ComposerSlashController({
       field.removeEventListener("keydown", keyDown);
     };
   }, [fieldRef, readyRef]);
-  // The composer renders aria-expanded="false" and its own description
-  // list; this keeps the menu's attributes on the field after every render.
+  // Only while the caret is in the command name: the rest of the time the
+  // field's other owners (such as the `@` picker) keep these attributes,
+  // and the composer's own aria-expanded="false" comes back.
+  useOwnedFieldAttributes(fieldRef, query !== null, () => ({
+    "aria-autocomplete": "list",
+    "aria-expanded": String(shown),
+    "aria-controls": shown ? listboxId : null,
+    "aria-activedescendant": shown && activeOptionId ? activeOptionId : null,
+  }));
+  // The composer renders its own description list; this keeps the hint in
+  // it after every render.
   useLayoutEffect(() => {
     const field = fieldRef.current;
     if (!field) return;
-    setAttribute(field, "aria-autocomplete", query === null ? null : "list");
-    setAttribute(field, "aria-expanded", String(shown));
-    setAttribute(field, "aria-controls", shown ? listboxId : null);
-    setAttribute(
-      field,
-      "aria-activedescendant",
-      shown && activeOptionId ? activeOptionId : null,
-    );
     const described = (field.getAttribute("aria-describedby") ?? "")
       .split(" ")
       .filter((id) => id && id !== hintId);
     if (hint) described.push(hintId);
     setAttribute(field, "aria-describedby", described.join(" ") || null);
   });
-  useLayoutEffect(
-    () => () => {
-      const field = fieldRef.current;
-      if (!field) return;
-      for (const name of ["aria-autocomplete", "aria-controls"])
-        field.removeAttribute(name);
-      field.removeAttribute("aria-activedescendant");
-      field.setAttribute("aria-expanded", "false");
-    },
-    [fieldRef],
-  );
   return (
     <>
       <ComposerCommandHint hint={hint} hintId={hintId} text={text} />

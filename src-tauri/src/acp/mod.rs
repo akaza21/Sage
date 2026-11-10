@@ -26,6 +26,7 @@ pub(crate) mod package_manifest;
 pub(crate) mod page_admission;
 pub(crate) mod process;
 pub mod projection;
+pub(crate) mod prompt_mentions;
 pub(crate) mod recovery;
 pub(crate) mod redaction;
 pub(crate) mod resource_mapper;
