@@ -112,6 +112,11 @@ impl AvailableCommand {
         })
     }
 
+    /// What this command counts toward a list's `MAX_COMMAND_BYTES`.
+    pub(crate) fn listed_bytes(&self) -> usize {
+        self.name.len() + self.description.len() + self.input_hint.as_ref().map_or(0, String::len)
+    }
+
     /// An ACP `AvailableCommand`. ACP has no source field, so an adapter
     /// may name one in `_meta.source`; anything else is the harness's own.
     pub(crate) fn from_acp(value: &Value) -> Result<Self, AdapterRuntimeError> {
@@ -174,9 +179,7 @@ fn admit(commands: Vec<AvailableCommand>) -> Result<Vec<AvailableCommand>, Adapt
         if !names.insert(command.name.as_str()) {
             return Err(AdapterRuntimeError::Frame);
         }
-        bytes += command.name.len()
-            + command.description.len()
-            + command.input_hint.as_ref().map_or(0, String::len);
+        bytes += command.listed_bytes();
         if bytes > MAX_COMMAND_BYTES {
             return Err(AdapterRuntimeError::BatchBytes);
         }

@@ -7,8 +7,9 @@ use serde_json::{Map, Value};
 use super::{AdapterError, CodexAdapter, RequestKind};
 use crate::acp::{
     bindings::{
-        adapter::AdapterRuntimeError, codex::request::OutgoingRequest,
-        standard_acp::surface::command_list::MAX_COMMANDS,
+        adapter::AdapterRuntimeError,
+        codex::request::OutgoingRequest,
+        standard_acp::surface::command_list::{MAX_COMMAND_BYTES, MAX_COMMANDS},
     },
     intent::Prompt,
     slash_commands::{AvailableCommand, CommandDispatch, CommandSource, CommandState},
@@ -54,13 +55,15 @@ fn text(value: Option<&Value>) -> Option<&str> {
 }
 
 /// The enabled skills a `skills/list` result names, first of each name, in
-/// listed order. A skill Sage cannot list is left out, not the whole list.
+/// listed order. A skill Sage cannot list is left out, not the whole list,
+/// and the list ends at the first skill past the shared count or byte bound.
 fn parse(result: &Map<String, Value>) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
     let entries = result
         .get("data")
         .and_then(Value::as_array)
         .ok_or(AdapterRuntimeError::Frame)?;
     let mut names = std::collections::HashSet::new();
+    let mut bytes = 0usize;
     let skills = entries
         .iter()
         .filter_map(|entry| entry.get("skills")?.as_array())
@@ -80,6 +83,10 @@ fn parse(result: &Map<String, Value>) -> Result<Vec<AvailableCommand>, AdapterRu
         })
         .filter(|command| names.insert(command.name.clone()))
         .take(MAX_COMMANDS)
+        .take_while(|command| {
+            bytes += command.listed_bytes();
+            bytes <= MAX_COMMAND_BYTES
+        })
         .collect();
     Ok(skills)
 }
@@ -91,12 +98,7 @@ impl CodexAdapter {
 
     /// The list is missing or stale, and no read of it is pending.
     pub(crate) fn skills_wanted(&self) -> bool {
-        self.negotiated.is_some()
-            && self.skills.wanted
-            && !self
-                .pending
-                .iter()
-                .any(|(_, kind)| *kind == RequestKind::SkillsList)
+        self.negotiated.is_some() && self.skills.wanted && !self.skills_read_pending()
     }
 
     pub(crate) fn skills_list(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
@@ -108,11 +110,31 @@ impl CodexAdapter {
         Ok(request)
     }
 
-    /// A refused read leaves the last list; Codex says when skills change.
+    /// A refused read empties the list, since a listed path may be gone;
+    /// Codex says when skills change. A list equal to the shown one keeps
+    /// its revision, so a pick made from it still runs.
     pub(crate) fn skills_result(&mut self, result: Option<&Map<String, Value>>) {
-        if let Some(result) = result {
-            let _ = self.skills.list.replace(parse(result));
+        let parsed = result.map_or_else(|| Ok(Vec::new()), parse);
+        if parsed.as_ref().ok() != Some(&self.skills.list.snapshot().commands) {
+            let _ = self.skills.list.replace(parsed);
         }
+    }
+
+    pub(crate) fn skills_read_pending(&self) -> bool {
+        self.pending
+            .iter()
+            .any(|(_, kind)| *kind == RequestKind::SkillsList)
+    }
+
+    /// A skills reply past the frame bound is a refused read, not a broken
+    /// session.
+    pub(crate) fn skills_oversized(&mut self, id: u64) -> bool {
+        if self.pending_kind(id) != Some(RequestKind::SkillsList) {
+            return false;
+        }
+        self.take_pending(id);
+        self.skills_result(None);
+        true
     }
 
     pub(crate) fn skills_changed(&mut self) {
