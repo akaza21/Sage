@@ -284,6 +284,7 @@ fn project_turn(
     Ok(TurnProjection {
         attached_context: prompt.attached_context,
         session_action: prompt.session_action,
+        command: prompt.command,
         id: SageTurnId::parse(row.id.clone()).map_err(|_| StoreError::Corrupt("turn id"))?,
         session_id: SageAgentSessionId::parse(row.session_id.clone())
             .map_err(|_| StoreError::Corrupt("session id"))?,

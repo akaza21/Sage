@@ -88,12 +88,16 @@ pub(crate) async fn run(
         Some(input) => format!("/{name} {}", input.as_str()),
         None => format!("/{name}"),
     };
-    commands
-        .validate(request.expected_commands_revision, &text)
+    let source = commands
+        .source(request.expected_commands_revision, &text)
         .map_err(|_| prompt_not_dispatched(unavailable()))?;
     let mut prompt =
         Prompt::new("command", text).map_err(|_| prompt_not_dispatched(unavailable()))?;
     prompt.command_revision = Some(request.expected_commands_revision);
+    prompt.command = Some(crate::acp::slash_commands::CommandMark {
+        name: name.to_owned(),
+        source,
+    });
     let r = request.session;
     session_operations::send_acp_turn_inner(
         state,

@@ -50,6 +50,14 @@ impl CommandSource {
     }
 }
 
+/// The listed command a Turn ran, kept beside its prompt so the chat shows
+/// it as a command after a reload. The list itself is never stored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct CommandMark {
+    pub(crate) name: String,
+    pub(crate) source: CommandSource,
+}
+
 /// How the binding that advertised a command runs it. Native only: the
 /// WebView names a command and the binding looks its dispatch up in the
 /// live list, so a prompt can never choose its own route.
@@ -256,6 +264,22 @@ impl CommandState {
             .as_ref()
             .ok_or(AdapterRuntimeError::Operation)?
             .validate(revision, text)
+    }
+    /// The source of the listed command a `/name …` prompt runs at this
+    /// revision, which the Turn keeps beside its prompt.
+    pub(crate) fn source(
+        &self,
+        revision: u64,
+        text: &str,
+    ) -> Result<CommandSource, AdapterRuntimeError> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .ok_or(AdapterRuntimeError::Operation)?
+            .find(revision, text)
+            .map(|command| command.source)
+            .ok_or(AdapterRuntimeError::UnsupportedCommand)
     }
     fn close(&self) {
         self.0

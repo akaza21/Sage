@@ -8,6 +8,7 @@ import {
 } from "../../../ui/leanIcons";
 
 import type { AcpItem, TurnState } from "../../../domain/acp";
+import type { AcpTurnCommand } from "../../../domain/acpCommand";
 import type {
   AgentArtifactOpenHandler,
   AgentArtifactOwner,
@@ -27,6 +28,25 @@ const loadMarkdown = () =>
     default: ChatMarkdown,
   }));
 
+/** What a command chip names beside the command, by source. */
+const commandSourceLabels: Partial<Record<AcpTurnCommand["source"], string>> = {
+  builtin: "Built-in",
+  skill: "Skill",
+  prompt: "Prompt",
+  extension: "Extension",
+  mcp: "MCP",
+  plugin: "Plugin",
+};
+
+/** What a prompt that ran `/name` typed after the name, or null. */
+function commandInput(text: string, name?: string): string | null {
+  const rest =
+    name && text.startsWith(`/${name}`) ? text.slice(name.length + 1) : null;
+  return rest !== null && (rest === "" || /^\s/u.test(rest))
+    ? rest.trim()
+    : null;
+}
+
 type TurnActivityProjectionItem = Extract<
   AcpItem,
   { kind: "thoughtSummary" | "plan" | "compactionNotice" | "error" }
@@ -42,6 +62,7 @@ export const ItemView = memo(
     fileReferenceOwner,
     onOpenResource,
     selectableTurnId,
+    command,
   }: {
     item: AcpItem;
     workingItems?: readonly AcpItem[];
@@ -51,6 +72,8 @@ export const ItemView = memo(
     fileReferenceOwner?: AgentArtifactOwner;
     onOpenResource?: AgentArtifactOpenHandler;
     selectableTurnId?: string;
+    /** The listed command a user prompt ran, shown as a chip. */
+    command?: AcpTurnCommand;
   }) {
     switch (item.kind) {
       // A steered message is the user's own bubble, at its place in the Turn.
@@ -60,6 +83,11 @@ export const ItemView = memo(
         const timestamp = chatTimestamp(item.createdAt);
         // Final assistant prose is quotable (and focusable for the menu key).
         const answerTurn = role === "assistant" && selectableTurnId;
+        const input =
+          role === "user"
+            ? commandInput(item.payload.text, command?.name)
+            : null;
+        const sourceLabel = command && commandSourceLabels[command.source];
         const partial =
           role === "assistant" &&
           (turnState === "interrupted" || turnState === "cancelled") &&
@@ -95,22 +123,36 @@ export const ItemView = memo(
                 </time>
               ) : null}
             </header>
-            <LazyModuleBoundary
-              label="Markdown renderer"
-              load={loadMarkdown}
-              render={(ChatMarkdown) => (
-                <ChatMarkdown
-                  text={item.payload.text}
-                  streaming={
-                    item.lifecycle === "started" ||
-                    item.lifecycle === "streaming"
-                  }
-                  fileReferenceOwner={
-                    role === "assistant" ? fileReferenceOwner : undefined
-                  }
-                />
-              )}
-            />
+            {input !== null ? (
+              <p className="acp-message__command">
+                <span className="acp-message__command-name">
+                  /{command?.name}
+                </span>
+                {sourceLabel ? (
+                  <span className="acp-message__command-source">
+                    {sourceLabel}
+                  </span>
+                ) : null}
+              </p>
+            ) : null}
+            {input === "" ? null : (
+              <LazyModuleBoundary
+                label="Markdown renderer"
+                load={loadMarkdown}
+                render={(ChatMarkdown) => (
+                  <ChatMarkdown
+                    text={input ?? item.payload.text}
+                    streaming={
+                      item.lifecycle === "started" ||
+                      item.lifecycle === "streaming"
+                    }
+                    fileReferenceOwner={
+                      role === "assistant" ? fileReferenceOwner : undefined
+                    }
+                  />
+                )}
+              />
+            )}
           </article>
         );
       }
@@ -162,6 +204,7 @@ export const ItemView = memo(
     left.interactive === right.interactive &&
     left.neutralTextRole === right.neutralTextRole &&
     left.turnState === right.turnState &&
+    left.command === right.command &&
     left.fileReferenceOwner === right.fileReferenceOwner &&
     left.onOpenResource === right.onOpenResource,
 );

@@ -244,6 +244,16 @@ fn acp_commands_carry_the_source_an_adapter_names_and_list_as_prompts() {
         wire,
         json!({"name":"review","description":"Review","inputHint":null,"source":"skill"})
     );
+    // A run names the source of the command it ran, at that revision only.
+    let state = CommandState::default();
+    state.replace(Ok(list.commands)).unwrap();
+    assert_eq!(
+        state.source(1, "/review the diff"),
+        Ok(CommandSource::Skill)
+    );
+    assert_eq!(state.source(1, "/plan"), Ok(CommandSource::Harness));
+    assert!(state.source(0, "/review").is_err());
+    assert!(state.source(1, "/missing").is_err());
 }
 
 #[test]
