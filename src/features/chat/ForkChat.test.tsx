@@ -88,7 +88,7 @@ function forkablePage(
 
 async function renderFooter(acpPage: AcpChatPage) {
   render(
-    <ForkChatDialogHost>
+    <ForkChatDialogHost focusRoot={{ current: null }}>
       <ChatTranscriptFooter useNativeAcp page={acpPage} messages={[]} />
     </ForkChatDialogHost>,
   );

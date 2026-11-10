@@ -13,7 +13,7 @@ export function ForkChatDialogHost({
   focusRoot,
 }: {
   children: ReactNode;
-  focusRoot?: RefObject<HTMLDivElement | null>;
+  focusRoot: RefObject<HTMLDivElement | null>;
 }) {
   const [request, setRequest] = useState<ForkChatRequest | null>(null);
   return (
@@ -25,18 +25,8 @@ export function ForkChatDialogHost({
           chatId={request.chatId}
           turnId={request.turnId}
           keyboard={request.keyboard}
-          onClose={() => {
-            setRequest(null);
-            // The transition may have replaced the answer's button. Keep
-            // only its live container ref, never a detached answer subtree.
-            queueMicrotask(() => {
-              const buttons =
-                focusRoot?.current?.querySelectorAll<HTMLButtonElement>(
-                  'button[aria-label="More actions"]',
-                );
-              buttons?.item(buttons.length - 1)?.focus();
-            });
-          }}
+          focusRoot={focusRoot}
+          onClose={() => setRequest(null)}
         />
       )}
     </ForkChatRequestContext.Provider>

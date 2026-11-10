@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useContext,
   useEffect,
   useId,
@@ -56,6 +57,7 @@ export function AnswerMoreMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
+        data-fork-trigger={onBranch ? true : undefined}
         onClick={() => setOpen(!open)}
       >
         <Ellipsis size={14} aria-hidden="true" />
@@ -172,22 +174,16 @@ export function AnswerMoreActions({
         session.capabilities.nativeSessionFork,
     );
   return (
-    <>
-      <AnswerMoreMenu
-        onCopy={onCopy}
-        trigger={trigger}
-        onBranch={
-          canFork
-            ? (keyboard) =>
-                requestFork({
-                  chatId: page.chatId,
-                  turnId: turn.id,
-                  keyboard,
-                })
-            : undefined
-        }
-      />
-    </>
+    <AnswerMoreMenu
+      onCopy={onCopy}
+      trigger={trigger}
+      onBranch={
+        canFork
+          ? (keyboard) =>
+              requestFork({ chatId: page.chatId, turnId: turn.id, keyboard })
+          : undefined
+      }
+    />
   );
 }
 
@@ -198,11 +194,13 @@ export function ForkChatDialog({
   onClose,
   keyboard = false,
   fork = forkChat,
+  focusRoot,
 }: ForkTarget & {
   onClose: () => void;
   /** Opened with Enter or Space; a pointer or scripted click is not. */
   keyboard?: boolean;
   fork?: (target: ForkTarget) => Promise<string | null>;
+  focusRoot?: RefObject<HTMLDivElement | null>;
 }) {
   const title = useId();
   const option = useRef<HTMLButtonElement>(null);
@@ -211,8 +209,17 @@ export function ForkChatDialog({
   const busy = result === undefined;
   // Focus the first option; highlight only for keyboard input.
   const [fresh, setFresh] = useState(!keyboard);
+  const close = useCallback(() => {
+    onClose();
+    // A project transition recreates the answer; never retain its old node.
+    queueMicrotask(() => {
+      focusRoot?.current
+        ?.querySelector<HTMLButtonElement>("[data-fork-trigger]")
+        ?.focus();
+    });
+  }, [onClose, focusRoot]);
   const dismiss = () => {
-    if (!busyRef.current) onClose();
+    if (!busyRef.current) close();
   };
   useEffect(() => {
     const dialog = option.current?.closest("dialog");
@@ -226,11 +233,11 @@ export function ForkChatDialog({
         event.clientY < box.top ||
         event.clientY > box.bottom
       )
-        onClose();
+        close();
     };
     dialog.addEventListener("click", backdrop);
     return () => dialog.removeEventListener("click", backdrop);
-  }, [onClose]);
+  }, [close]);
   return (
     <ModalDialog
       className="fork-chat-dialog dialog--scrim"
@@ -257,7 +264,7 @@ export function ForkChatDialog({
             const reason = await fork({ chatId, turnId });
             busyRef.current = false;
             setResult(reason);
-            if (reason === null) onClose();
+            if (reason === null) close();
           }}
         >
           <GitBranch size={14} />
