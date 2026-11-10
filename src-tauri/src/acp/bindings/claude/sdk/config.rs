@@ -55,11 +55,20 @@ impl SessionSettings {
     /// is the current model; otherwise Claude Code's default. A starting
     /// mode outside the picker is refused rather than shown as another.
     pub(super) fn from_initialize(reply: &Value, launch_model: Option<&str>) -> Option<Self> {
-        let models = reply
+        let mut models = reply
             .get("models")
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
+        let model = launch_model.unwrap_or(DEFAULT);
+        // A session launched with an alias Claude Code does not list still
+        // runs that model, so the picker keeps it as the current choice.
+        if !models
+            .iter()
+            .any(|entry| entry.get("value").and_then(Value::as_str) == Some(model))
+        {
+            models.push(json!({"value": model, "displayName": capitalized(model)}));
+        }
         let mode = reply
             .get("current_permission_mode")
             .and_then(Value::as_str)
@@ -67,7 +76,7 @@ impl SessionSettings {
         MODES.iter().any(|(id, ..)| *id == mode).then(|| Self {
             models,
             mode: mode.to_owned(),
-            model: launch_model.unwrap_or(DEFAULT).to_owned(),
+            model: model.to_owned(),
             effort: DEFAULT.to_owned(),
         })
     }
@@ -230,6 +239,29 @@ mod tests {
             assert!(offered(mode.session_mode), "{}", mode.session_mode);
         }
         assert!(!offered("bypassPermissions"));
+    }
+
+    #[test]
+    fn a_launch_alias_claude_code_does_not_list_stays_the_current_model() {
+        let reply = json!({
+            "current_permission_mode": "default",
+            "models": [{"value":"default","displayName":"Default (recommended)"}],
+        });
+        let settings = SessionSettings::from_initialize(&reply, Some("sonnet")).unwrap();
+        let options = settings.config_options();
+        let model = &options[1];
+        assert_eq!(model["currentValue"], "sonnet");
+        let values: Vec<_> = model["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|o| (o["value"].as_str().unwrap(), o["name"].as_str().unwrap()))
+            .collect();
+        assert_eq!(
+            values,
+            [("default", "Default (recommended)"), ("sonnet", "Sonnet")]
+        );
+        assert!(settings.has_model("sonnet"));
     }
 
     #[test]

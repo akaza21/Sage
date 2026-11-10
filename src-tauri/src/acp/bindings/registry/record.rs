@@ -336,6 +336,13 @@ impl AdmittedBindingRecord<'_> {
         }
     }
 
+    /// Whether a binding without model discovery can start a session with
+    /// `model`: Claude Code takes one of its launch aliases.
+    pub(crate) fn accepts_launch_model(&self, model: &str) -> bool {
+        matches!(self.binding, AdmittedBinding::ClaudeSdk(_))
+            && crate::acp::bindings::claude::sdk::is_launch_model(model)
+    }
+
     pub(crate) fn has_model_discovery(&self) -> Result<bool, RegistryAdmissionUnavailable> {
         match (&self.binding, self.record.model_provider) {
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]

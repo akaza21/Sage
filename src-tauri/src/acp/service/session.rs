@@ -80,7 +80,11 @@ impl AcpService {
                     command.model_id.as_ref(),
                 )
                 .map_err(|_| CodexSessionError::Intent)?;
-        } else if command.model_id.is_some() {
+        } else if command
+            .model_id
+            .as_ref()
+            .is_some_and(|model| !admitted.accepts_launch_model(model.as_str()))
+        {
             return Err(CodexSessionError::Intent);
         }
         command.binding_digest = identity.binding_digest_hex.to_owned();

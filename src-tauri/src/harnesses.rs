@@ -326,6 +326,14 @@ impl HarnessCatalog {
             .find(|definition| definition.id == harness_id)
             .ok_or_else(|| AppError::UnknownHarness(harness_id.into()))?;
 
+        // Claude Code lists its models only once a session runs; until then
+        // the picker offers the aliases a session can start with.
+        if definition.install_state == "available"
+            && definition.binding_id.as_deref()
+                == Some(crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID)
+        {
+            return Ok(crate::acp::bindings::claude::sdk::launch_models());
+        }
         if definition.install_state != "available" || definition.transport == HarnessTransport::Acp
         {
             return Ok(Vec::new());

@@ -131,20 +131,28 @@ impl SessionLaunch {
     }
 }
 
+fn parse_version(value: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = value.split('.').map(str::parse::<u64>);
+    let version = (
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+    );
+    parts.next().is_none().then_some(version)
+}
+
 fn version_admitted(version: &str) -> bool {
-    let parse = |value: &str| -> Option<(u64, u64, u64)> {
-        let mut parts = value.split('.').map(str::parse::<u64>);
-        let version = (
-            parts.next()?.ok()?,
-            parts.next()?.ok()?,
-            parts.next()?.ok()?,
-        );
-        parts.next().is_none().then_some(version)
-    };
-    parse(version).is_some_and(|found| {
+    parse_version(version).is_some_and(|found| {
         found >= SUPPORTED_MINIMUM
             && (found.0, found.1) == (SUPPORTED_MINIMUM.0, SUPPORTED_MINIMUM.1)
     })
+}
+
+/// Every admitted release up to the characterised one speaks the protocol
+/// this binding covers; a later 2.1 release is admitted but may add what the
+/// binding has not seen, so it stays uncharacterised.
+fn version_characterised(version: &str) -> bool {
+    version_admitted(version) && parse_version(version) <= parse_version(CLAUDE_CODE_VERSION)
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -219,7 +227,7 @@ impl AdmittedClaudeSdkBinding {
         &self.version
     }
     pub(crate) fn characterisation(&self) -> HarnessCharacterisation {
-        if self.version == CLAUDE_CODE_VERSION {
+        if version_characterised(&self.version) {
             HarnessCharacterisation::Characterised
         } else {
             HarnessCharacterisation::Uncharacterised
@@ -419,6 +427,21 @@ mod tests {
             ("2.1.319-beta", false),
         ] {
             assert_eq!(version_admitted(version), admitted, "{version}");
+        }
+    }
+
+    #[test]
+    fn earlier_admitted_releases_are_characterised_and_later_ones_are_not() {
+        for (version, characterised) in [
+            ("2.1.300", true),
+            ("2.1.314", true),
+            ("2.1.319", true),
+            ("2.1.320", false),
+            ("2.1.1000", false),
+            ("2.1.299", false),
+            ("2.2.0", false),
+        ] {
+            assert_eq!(version_characterised(version), characterised, "{version}");
         }
     }
 
