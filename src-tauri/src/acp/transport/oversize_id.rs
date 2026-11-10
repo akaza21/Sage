@@ -55,6 +55,17 @@ enum Token {
     },
 }
 
+/// An oversized frame, once scanned to its end.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Scanned {
+    /// A response to the request with this id.
+    Reply(u64),
+    /// One complete value with no top-level id; nothing waits on it.
+    Idless,
+    /// Malformed, or a request that a peer waits on.
+    Invalid,
+}
+
 pub(super) struct OversizeIdScanner {
     stack: Vec<Container>,
     expect: Expect,
@@ -136,7 +147,7 @@ impl OversizeIdScanner {
                         let next = match byte {
                             b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => {
                                 if key {
-                                    match_key(match_index, u16::from(byte))
+                                    match_key(match_index, unescaped(byte))
                                 } else {
                                     match_index
                                 }
@@ -282,22 +293,38 @@ impl OversizeIdScanner {
         Ok(())
     }
 
-    /// The id of a complete response frame; a frame naming a `method` is
-    /// never one, whatever its id.
-    pub(super) fn finish(&self) -> Result<u64, ()> {
-        if !self.is_complete() || self.has_method {
-            return Err(());
+    /// What the whole frame was. A frame naming a `method` is a request or
+    /// a notification, never a reply, whatever its id.
+    pub(super) fn finish(&self) -> Scanned {
+        if !self.is_complete() {
+            return Scanned::Invalid;
         }
-        self.id.ok_or(())
+        match (self.id, self.has_method) {
+            (Some(id), false) => Scanned::Reply(id),
+            (None, _) => Scanned::Idless,
+            (Some(_), true) => Scanned::Invalid,
+        }
     }
 
     /// The frame was one complete JSON value, whether or not it had an id.
-    pub(super) fn is_complete(&self) -> bool {
+    fn is_complete(&self) -> bool {
         matches!(self.token, Token::None)
             && matches!(self.expect, Expect::Done)
             && self.stack.is_empty()
             && self.utf8.is_complete()
     }
+}
+
+/// The character a one-letter escape such as `\t` stands for.
+fn unescaped(letter: u8) -> u16 {
+    u16::from(match letter {
+        b'b' => 0x08,
+        b'f' => 0x0c,
+        b'n' => b'\n',
+        b'r' => b'\r',
+        b't' => b'\t',
+        other => other,
+    })
 }
 
 /// Key-matching states: a key so far reads `i`, `id`, a prefix of

@@ -1,6 +1,6 @@
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-use super::oversize_id::OversizeIdScanner;
+use super::oversize_id::{OversizeIdScanner, Scanned};
 use crate::acp::limits::LIMITS;
 
 const READ_CHUNK_BYTES: usize = 8 * 1024;
@@ -185,11 +185,9 @@ impl IncrementalFrameDecoder {
             self.pending_cr = false;
             if let Some(discarding) = self.discarding.take() {
                 match discarding.scanner.finish() {
-                    Ok(id) => self.oversize_id = Some(id),
-                    Err(()) if self.skip_oversize && discarding.scanner.is_complete() => {
-                        self.skipped_oversize = true;
-                    }
-                    Err(()) => return Err(FrameError::Oversize),
+                    Scanned::Reply(id) => self.oversize_id = Some(id),
+                    Scanned::Idless if self.skip_oversize => self.skipped_oversize = true,
+                    Scanned::Idless | Scanned::Invalid => return Err(FrameError::Oversize),
                 }
                 return Ok(None);
             }
@@ -494,6 +492,19 @@ mod tests {
             .map(|chunk| truncated.push_chunk(chunk))
             .any(|result| matches!(result, Err(FrameError::Oversize)));
         assert!(failed);
+        // A request is never skipped: its peer waits on an answer.
+        let mut skipping = IncrementalFrameDecoder::new();
+        skipping.set_oversize_skip(true);
+        let request = format!(
+            "{{\"id\":7,\"method\":\"x\",\"params\":\"{}\"}}\n",
+            "x".repeat(frame_limit())
+        );
+        let refused = request
+            .as_bytes()
+            .chunks(READ_CHUNK_BYTES)
+            .map(|chunk| skipping.push_chunk(chunk))
+            .any(|result| matches!(result, Err(FrameError::Oversize)));
+        assert!(refused);
     }
 
     fn decode_oversize(raw: &[u8]) -> Result<Option<u64>, FrameError> {
@@ -588,6 +599,8 @@ mod tests {
             r#"{"id":7,"result":{"method":"x"},"text":""#,
             r#"{"id":7,"methods":"x","text":""#,
             r#"{"id":7,"metho":"x","text":""#,
+            // An escape is read as the character it stands for.
+            r#"{"id":7,"me\thod":"x","text":""#,
         ] {
             let raw = format!("{prefix}{}\"}}\n", "x".repeat(frame_limit()));
             assert_eq!(decode_oversize(raw.as_bytes()), Ok(Some(7)), "{prefix}");
