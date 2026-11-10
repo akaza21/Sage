@@ -104,6 +104,23 @@ it("keeps a refused fork visible when the project transition clears its answer",
   ).toBeEnabled();
   expect(useWorkbenchStore.getState().activeTabId).toBe("chat-1");
   expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+  fireEvent.click(
+    screen.getByRole("button", { name: /Fork in this workspace/ }),
+  );
+  expect(fork).toHaveBeenCalledTimes(2);
+  expect(fork).toHaveBeenNthCalledWith(
+    2,
+    expect.objectContaining({
+      chatId: "chat-1",
+      turnId: projection.turns[0].id,
+    }),
+  );
+  await act(async () =>
+    refuse(new Error("The harness declined to fork this chat.")),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "The harness declined",
+  );
   await act(async () => {
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   });
