@@ -236,3 +236,78 @@ fn a_skills_read_that_never_left_is_wanted_again() {
         .unwrap();
     assert!(runtime.discover_commands().unwrap().is_some());
 }
+
+fn send_prompt(runtime: &mut impl HarnessAdapter) {
+    let egress = runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "hello").unwrap(),
+            client_message_id: RequiredText::new("client", "client-1").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .unwrap();
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Queued)
+        .unwrap();
+}
+
+#[test]
+fn once_a_turn_starts_an_oversized_frame_is_never_taken_for_the_skills_reply() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let egress = runtime.discover_commands().unwrap().expect("skills/list");
+    let id = request_id(&egress);
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Queued)
+        .unwrap();
+    assert!(runtime.child_read_pending());
+    // During a turn Codex may send its own requests, whose ids are not
+    // Sage's; an oversized one must stay a frame error, never be dropped.
+    send_prompt(&mut runtime);
+    assert!(!runtime.child_read_pending());
+    assert!(runtime.accept_oversized_response(id).is_err());
+    // The read is still pending: the oversized frame was not taken for it.
+    assert!(runtime.discover_commands().unwrap().is_none());
+    skills_changed(&mut runtime);
+    assert!(runtime.discover_commands().unwrap().is_none());
+}
+
+#[test]
+fn an_oversized_skills_reply_tells_the_menu_the_list_changed() {
+    use crate::acp::{
+        bindings::runtime::NativeRuntime,
+        contract::SageChatId,
+        scheduler::RuntimeOwner,
+        slash_commands::{CommandChannel, CommandsChangedV1},
+    };
+    use std::sync::{Arc, Mutex};
+    let mut codex = fixture_runtime();
+    ready(&mut codex);
+    read_skills(&mut codex, json!([skill("pdf", true)]));
+    skills_changed(&mut codex);
+    let owner = RuntimeOwner {
+        project_id: SageProjectId::parse("project").unwrap(),
+        chat_id: SageChatId::parse("chat").unwrap(),
+        session_id: SageAgentSessionId::parse("session").unwrap(),
+        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+    };
+    let channel = Arc::new(CommandChannel::default());
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink_seen = Arc::clone(&seen);
+    channel.set_sink(Arc::new(move |notice: CommandsChangedV1| {
+        sink_seen.lock().unwrap().push(notice.revision);
+    }));
+    channel.reserve(owner.clone());
+    let mut runtime = NativeRuntime::new(codex);
+    runtime.attach_commands(owner, Arc::clone(&channel));
+    let egress = runtime.discover_commands().unwrap().expect("skills/list");
+    let id = request_id(&egress);
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Queued)
+        .unwrap();
+    let shown = runtime.available_commands().snapshot().revision;
+    runtime.accept_oversized_response(id).unwrap();
+    let emptied = runtime.available_commands().snapshot();
+    assert!(emptied.commands.is_empty());
+    assert!(emptied.revision > shown);
+    assert_eq!(seen.lock().unwrap().last(), Some(&emptied.revision));
+}

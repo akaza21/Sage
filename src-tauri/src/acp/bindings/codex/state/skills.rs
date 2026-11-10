@@ -126,10 +126,20 @@ impl CodexAdapter {
             .any(|(_, kind)| *kind == RequestKind::SkillsList)
     }
 
+    /// Between turns Codex sends no requests of its own, so an oversized
+    /// frame naming the read's id can only be its reply. During a turn an
+    /// oversized frame stays fatal, as an approval request must never be
+    /// dropped unseen.
+    pub(crate) fn skills_oversize_recoverable(&self) -> bool {
+        self.skills_read_pending() && !self.has_active_turn() && !self.has_pending_turn_start()
+    }
+
     /// A skills reply past the frame bound is a refused read, not a broken
     /// session.
     pub(crate) fn skills_oversized(&mut self, id: u64) -> bool {
-        if self.pending_kind(id) != Some(RequestKind::SkillsList) {
+        if !self.skills_oversize_recoverable()
+            || self.pending_kind(id) != Some(RequestKind::SkillsList)
+        {
             return false;
         }
         self.take_pending(id);
