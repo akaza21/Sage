@@ -209,7 +209,14 @@ const MAX_OPEN_DELIVERIES: usize = 64;
 
 fn sdk_frame(value: &Value) -> Result<OutboundFrame, AdapterRuntimeError> {
     let bytes = serde_json::to_vec(value).map_err(|_| AdapterRuntimeError::Frame)?;
-    OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)
+    // A user message carries the prompt's images and files, so it takes the
+    // prompt frame bound, as the ACP `session/prompt` it came from did.
+    if value.get("type").and_then(Value::as_str) == Some("user") {
+        OutboundFrame::new_prompt(bytes)
+    } else {
+        OutboundFrame::new(bytes)
+    }
+    .map_err(|_| AdapterRuntimeError::Frame)
 }
 
 impl LaunchableRuntime for ClaudeSdkRuntime {

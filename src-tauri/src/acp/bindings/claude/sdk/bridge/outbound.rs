@@ -158,6 +158,14 @@ fn prompt_content(blocks: Option<&Value>) -> Result<Vec<Value>, BridgeError> {
                     .filter(|url| url.scheme() == "file")
                     .and_then(|url| url.to_file_path().ok())
                     .ok_or(BridgeError::Unsupported)?;
+                // Claude Code reads an `@path` itself, so a credential file
+                // Sage would not embed is named without one.
+                if crate::acp::service::prompt_files::secrets::path_is_secret(&path, false) {
+                    let context = format!(
+                        "<context ref=\"{uri}\">\n(Not attached: Sage does not send credential files.)\n</context>"
+                    );
+                    return Ok(json!({"type": "text", "text": context}));
+                }
                 let path = path.display().to_string();
                 let mention = if path.contains(char::is_whitespace) {
                     format!("@\"{path}\"")
