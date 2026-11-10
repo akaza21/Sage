@@ -1,15 +1,13 @@
 use std::{
     ffi::OsString,
-    io::Read,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::mpsc,
-    thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use serde_json::Value;
 use tauri::State;
+use tokio::io::AsyncReadExt;
 
 use crate::state::AppState;
 
@@ -46,9 +44,7 @@ pub async fn get_claude_auth_status(
         .harnesses
         .claude_auth_environment()
         .ok_or("Claude Code binding is unavailable.")?;
-    tauri::async_runtime::spawn_blocking(move || run_status(&path, &environment))
-        .await
-        .map_err(|_| "Claude Code sign-in check failed.")?
+    run_status(&path, &environment).await
 }
 
 #[tauri::command]
@@ -97,14 +93,17 @@ fn status_command(path: &Path, environment: &ClaudeEnvironment) -> Result<Comman
     Ok(command)
 }
 
-fn run_status(
+async fn run_status(
     path: &Path,
     environment: &ClaudeEnvironment,
 ) -> Result<ClaudeAuthStatus, &'static str> {
-    run_status_with_timeout(path, environment, STATUS_TIMEOUT)
+    run_status_with_timeout(path, environment, STATUS_TIMEOUT).await
 }
 
-fn run_status_with_timeout(
+/// Runs `claude auth status --json` and waits for its output and exit,
+/// both within `timeout`. Dropping the child on any early return (timeout,
+/// oversized output) kills it.
+async fn run_status_with_timeout(
     path: &Path,
     environment: &ClaudeEnvironment,
     timeout: Duration,
@@ -115,50 +114,42 @@ fn run_status_with_timeout(
         use std::os::windows::process::CommandExt;
         command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
     }
-    let mut child = command
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+    let mut child = tokio::process::Command::from(command)
+        .kill_on_drop(true)
         .spawn()
         .map_err(|_| "Claude Code sign-in check could not start.")?;
     let stdout = child
         .stdout
         .take()
         .ok_or("Claude Code sign-in check failed.")?;
-    let (sender, receiver) = mpsc::sync_channel(1);
-    thread::spawn(move || {
+    let check = async {
         let mut bytes = Vec::new();
-        let result = stdout.take(STATUS_LIMIT + 1).read_to_end(&mut bytes);
-        let _ = sender.send(result.map(|_| bytes));
-    });
-    let deadline = Instant::now() + timeout;
-    loop {
-        match child.try_wait() {
-            Ok(Some(exit)) => {
-                let bytes = receiver
-                    .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-                    .map_err(|_| "Claude Code sign-in check timed out.")?
-                    .map_err(|_| "Claude Code sign-in check failed.")?;
-                if bytes.len() > STATUS_LIMIT as usize {
-                    return Err("Claude Code sign-in response was too large.");
-                }
-                let status =
-                    parse_status(&bytes).ok_or("Claude Code sign-in response was invalid.")?;
-                if !exit.success() && status.logged_in {
-                    return Err("Claude Code sign-in check failed.");
-                }
-                return Ok(status);
-            }
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
-            Ok(None) | Err(_) => {
-                let _ = child.kill();
-                thread::spawn(move || {
-                    let _ = child.wait();
-                });
-                return Err("Claude Code sign-in check timed out.");
-            }
+        stdout
+            .take(STATUS_LIMIT + 1)
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|_| "Claude Code sign-in check failed.")?;
+        if bytes.len() > STATUS_LIMIT as usize {
+            return Err("Claude Code sign-in response was too large.");
         }
+        let exit = child
+            .wait()
+            .await
+            .map_err(|_| "Claude Code sign-in check failed.")?;
+        Ok((bytes, exit))
+    };
+    let (bytes, exit) = tokio::time::timeout(timeout, check)
+        .await
+        .map_err(|_| "Claude Code sign-in check timed out.")??;
+    let status = parse_status(&bytes).ok_or("Claude Code sign-in response was invalid.")?;
+    if !exit.success() && status.logged_in {
+        return Err("Claude Code sign-in check failed.");
     }
+    Ok(status)
 }
 
 #[cfg(not(windows))]
@@ -169,6 +160,21 @@ fn launch_login(_: &Path, _: &ClaudeEnvironment, _: &Path) -> Result<(), &'stati
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    use std::{sync::mpsc, thread, time::Instant};
+
+    /// Runs one status check to completion on its own runtime.
+    fn check(path: &Path, timeout: Duration) -> Result<ClaudeAuthStatus, &'static str> {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(run_status_with_timeout(
+                path,
+                &std::env::vars_os().collect(),
+                timeout,
+            ))
+    }
 
     #[test]
     fn status_accepts_only_a_boolean_login_fact() {
@@ -196,6 +202,60 @@ mod tests {
             )]),
             Ok(std::env::temp_dir())
         );
+    }
+
+    #[cfg(unix)]
+    fn unix_fixture(directory: &Path, name: &str, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = directory.join(name);
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn status_reads_the_login_fact_and_fails_closed_on_unix() {
+        let directory =
+            std::env::temp_dir().join(format!("sage-claude-auth-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let fixture = |name, body| unix_fixture(&directory, name, body);
+        let signed_out = fixture(
+            "signed-out",
+            r#"echo '{"loggedIn":false,"authMethod":"none"}'; exit 1"#,
+        );
+        assert_eq!(
+            check(&signed_out, STATUS_TIMEOUT),
+            Ok(ClaudeAuthStatus { logged_in: false })
+        );
+        let failed = fixture("failed", r#"echo '{"loggedIn":true}'; exit 1"#);
+        assert_eq!(
+            check(&failed, STATUS_TIMEOUT),
+            Err("Claude Code sign-in check failed.")
+        );
+        let invalid = fixture("invalid", "echo not-json");
+        assert_eq!(
+            check(&invalid, STATUS_TIMEOUT),
+            Err("Claude Code sign-in response was invalid.")
+        );
+        let oversized = fixture("oversized", "head -c 8192 /dev/zero; exec sleep 30");
+        assert_eq!(
+            check(&oversized, STATUS_TIMEOUT),
+            Err("Claude Code sign-in response was too large.")
+        );
+        // A CLI that never exits is killed at the deadline, not waited on.
+        let hung = fixture("hung", "exec sleep 30");
+        let started = std::time::Instant::now();
+        assert_eq!(
+            check(&hung, Duration::from_millis(100)),
+            Err("Claude Code sign-in check timed out.")
+        );
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert_eq!(
+            check(&directory.join("missing"), STATUS_TIMEOUT),
+            Err("Claude Code sign-in check could not start.")
+        );
+        std::fs::remove_dir_all(&directory).unwrap();
     }
 
     #[cfg(windows)]
@@ -264,7 +324,7 @@ mod tests {
         let (path, directory) =
             fixture_script("echo {\"loggedIn\":false,\"authMethod\":\"none\"}\r\nexit /b 1");
         assert_eq!(
-            run_status(&path, &std::env::vars_os().collect()),
+            check(&path, STATUS_TIMEOUT),
             Ok(ClaudeAuthStatus { logged_in: false })
         );
         remove_fixture_directory(&directory).unwrap();
@@ -275,12 +335,12 @@ mod tests {
     fn malformed_or_failed_cli_status_cannot_be_reported_as_signed_in() {
         let (path, directory) = fixture_script("echo {\"loggedIn\":true}\r\nexit /b 1");
         assert_eq!(
-            run_status(&path, &std::env::vars_os().collect()),
+            check(&path, STATUS_TIMEOUT),
             Err("Claude Code sign-in check failed.")
         );
         std::fs::write(&path, "@echo off\r\necho not-json\r\n").unwrap();
         assert_eq!(
-            run_status(&path, &std::env::vars_os().collect()),
+            check(&path, STATUS_TIMEOUT),
             Err("Claude Code sign-in response was invalid.")
         );
         remove_fixture_directory(&directory).unwrap();
@@ -291,16 +351,12 @@ mod tests {
     fn missing_and_slow_cli_status_fail_closed() {
         let (path, directory) = fixture_script(":loop\r\ngoto loop");
         assert_eq!(
-            run_status_with_timeout(
-                &path,
-                &std::env::vars_os().collect(),
-                Duration::from_millis(30)
-            ),
+            check(&path, Duration::from_millis(30)),
             Err("Claude Code sign-in check timed out.")
         );
         let missing = directory.join("missing.exe");
         assert_eq!(
-            run_status(&missing, &std::env::vars_os().collect()),
+            check(&missing, STATUS_TIMEOUT),
             Err("Claude Code sign-in check could not start.")
         );
         remove_fixture_directory(&directory).unwrap();
