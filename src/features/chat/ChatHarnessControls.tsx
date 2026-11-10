@@ -31,6 +31,7 @@ import type { ComposerMenuActions } from "./ComposerAddActions";
 import { ComposerOptionsPart } from "./lazyParts";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { ComposerModelControls } from "./ComposerModelControls";
+import type { DraftEffort } from "./DraftEffortControl";
 import { composerModelName } from "./composerModelName";
 import { useInheritedComposerModel } from "./inheritedComposerModelState";
 import { ProjectScopeChip } from "./ProjectScopeChip";
@@ -40,7 +41,6 @@ import {
 } from "./useChatHarnessSelection";
 import { useComposerModelSelection } from "./useComposerModelChoices";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
-import { useDraftEffortOption } from "./useDraftEffortOption";
 
 interface Props {
   contextUsage?: ChatUsage | null;
@@ -192,15 +192,21 @@ export function ChatHarnessControls({
     confirmedModelLabel,
     selectedModelId,
   );
-  const { shownEffortOption, setConfigOption } = useDraftEffortOption({
-    effortOption,
-    hasSessionConfig: !!selectedSessionConfig,
-    draftChatId: accessTarget?.draftChatId,
-    bindingId: selectedHarness?.bindingId ?? null,
+  // Before the chat's first session (`draftChatId` is set only then), the
+  // levels the harness lists for the selected model can be chosen.
+  const draft = {
+    chatId: accessTarget?.draftChatId,
+    bindingId: selectedHarness?.bindingId,
     modelId: currentModelId,
-    models,
-    onSetSessionConfigOption,
-  });
+    levels: effortOption
+      ? undefined
+      : models.find((model) => model.id === currentModelId)?.effortLevels,
+  };
+  const draftEffort =
+    draft.chatId && draft.bindingId && draft.modelId && draft.levels?.length
+      ? (draft as DraftEffort)
+      : undefined;
+
   const contextWindow = formatContextWindow(
     models.find((model) => model.id === currentModelId)?.contextWindow,
   );
@@ -221,7 +227,7 @@ export function ChatHarnessControls({
   );
   const modeOptions = sessionModeActions(selectedSessionConfig);
   const otherOptions = sessionConfigControls(selectedSessionConfig, "other");
-  const canSelectEffort = !!selectedConfigChoice(shownEffortOption);
+  const canSelectEffort = !!selectedConfigChoice(effortOption) || !!draftEffort;
   const { controls, effortInMenu, projectInMenu, contextVisible } =
     useComposerToolbarFit(
       canSelectEffort,
@@ -309,7 +315,8 @@ export function ChatHarnessControls({
           modelLabel={modelLabel}
           effortLabel={confirmedModelLabel || inheriting ? effortLabel : null}
           contextWindow={contextWindow}
-          effortOption={shownEffortOption}
+          effortOption={effortOption}
+          draftEffort={draftEffort}
           restored={selectedSessionConfig?.restored}
           notice={selectedSessionConfig?.notice}
           awaitingSession={
@@ -326,7 +333,7 @@ export function ChatHarnessControls({
               (turnBusy && (hasSessionModel || models.length > 0)))
           }
           onSelectModel={chooseModel}
-          onSetOption={setConfigOption}
+          onSetOption={onSetSessionConfigOption}
         />
         {projectName && projectInMenu ? (
           <span

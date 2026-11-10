@@ -4,10 +4,7 @@ import {
   draftChatAccess,
   useChatAccessDrafts,
 } from "../../../app/chatAccessDrafts";
-import {
-  draftChatEffort,
-  useChatEffortDrafts,
-} from "../../../app/chatEffortDrafts";
+import { useChatEffortDraft } from "../../../app/chatEffortDraft";
 import { useChatAccessStore } from "../../../app/sessionAccessActions";
 import type {
   AcpChatPage,
@@ -119,7 +116,7 @@ function newChat() {
 beforeEach(() => {
   for (const fn of Object.values(port)) fn.mockReset();
   useChatAccessDrafts.setState({ drafts: {} });
-  useChatEffortDrafts.setState({ drafts: {} });
+  useChatEffortDraft.setState({ draft: null });
   useChatAccessStore.setState({ modes: {}, error: null });
 });
 
@@ -197,7 +194,9 @@ describe("access drafted before a chat's session starts", () => {
 
 describe("a thinking level drafted before a chat's session starts", () => {
   it("goes with the session start for the same binding and model", async () => {
-    draftChatEffort(scope.chatId, { bindingId, modelId, effort: "high" });
+    useChatEffortDraft.setState({
+      draft: { chatId: scope.chatId, bindingId, modelId, effort: "high" },
+    });
     const test = newChat();
 
     await expect(
@@ -208,16 +207,17 @@ describe("a thinking level drafted before a chat's session starts", () => {
       expect.objectContaining({ bindingId, modelId, effort: "high" }),
     );
     // Held until the session exists, so a failed start sends it again.
-    expect(useChatEffortDrafts.getState().drafts[scope.chatId]?.effort).toBe(
-      "high",
-    );
+    expect(useChatEffortDraft.getState().draft?.effort).toBe("high");
   });
 
   it("is not sent for another model", async () => {
-    draftChatEffort(scope.chatId, {
-      bindingId,
-      modelId: "model-b",
-      effort: "high",
+    useChatEffortDraft.setState({
+      draft: {
+        chatId: scope.chatId,
+        bindingId,
+        modelId: "model-b",
+        effort: "high",
+      },
     });
     const test = newChat();
 

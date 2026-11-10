@@ -16,7 +16,6 @@ import type {
   ProjectionCommitDisposition,
 } from "../../../app/acpProjectionStore";
 import { chatAccessDraftPort } from "../../../app/chatAccessDraftPort";
-import { chatEffortField } from "../../../app/chatEffortDrafts";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { createAcpSessionActions, typedError } from "./acpSessionActions";
 import { currentSession } from "./acpTurnState";
@@ -298,7 +297,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
             clientIntentId: nextIntentId(),
             bindingId,
             modelId,
-            ...chatEffortField(captured.scope.chatId, bindingId, modelId),
+            ...chatAccessDraftPort.effort?.(captured.scope, bindingId, modelId),
           });
           const applied = apply(captured, started);
           if (!applied) return "ignoredStale";

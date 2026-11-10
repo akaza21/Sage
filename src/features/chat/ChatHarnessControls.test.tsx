@@ -23,10 +23,7 @@ import {
   harnessModelIdentity,
   rememberHarnessModels,
 } from "../../app/harnessModelCache";
-import {
-  draftChatEffort,
-  useChatEffortDrafts,
-} from "../../app/chatEffortDrafts";
+import { useChatEffortDraft } from "../../app/chatEffortDraft";
 import { useChatAccessStore } from "../../app/sessionAccessActions";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import { useWorkbenchStore } from "../../app/store";
@@ -245,7 +242,7 @@ it("holds a thinking level chosen before the first session for the listed model"
     onSetSessionConfigOption,
   });
   fireEvent.click(
-    screen.getByRole("button", { name: "Thinking level: Default" }),
+    await screen.findByRole("button", { name: "Thinking level: Default" }),
   );
   const slider = await screen.findByRole("slider");
   fireEvent.pointerDown(slider, { pointerId: 1 });
@@ -256,7 +253,8 @@ it("holds a thinking level chosen before the first session for the listed model"
       screen.getByRole("button", { name: "Thinking level: High" }),
     ).toBeEnabled(),
   );
-  expect(useChatEffortDrafts.getState().drafts["chat-draft"]).toEqual({
+  expect(useChatEffortDraft.getState().draft).toEqual({
+    chatId: "chat-draft",
     bindingId: "fixture",
     modelId: "default",
     effort: "high",
@@ -269,7 +267,7 @@ it("holds a thinking level chosen before the first session for the listed model"
     accessTarget: { bindingId: "fixture", draftChatId: "chat-draft" },
   });
   expect(screen.getByRole("button", { name: "Thinking level" })).toBeDisabled();
-  draftChatEffort("chat-draft", null);
+  useChatEffortDraft.setState({ draft: null });
 });
 
 it("keeps advertised model groups and exact IDs when changing session models", async () => {
