@@ -865,14 +865,52 @@ fn a_late_withdrawal_reply_never_interrupts_the_next_turn() {
             &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
         )
         .unwrap();
-    // The run ends before Claude Code answers the withdrawal.
+    // The run ends before Claude Code answers the withdrawal: the turn
+    // waits for the answer, then ends without reaching the next one.
     let end = bridge
         .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
         .unwrap();
-    assert!(ended(&end));
-    prompt(&mut bridge, 4);
-    let late = bridge
+    assert!(!ended(&end));
+    let answered = bridge
         .inbound(success(&cancel, json!({"cancelled":true})))
         .unwrap();
-    assert!(late.replies.is_empty() && late.acp.is_empty());
+    assert!(answered.replies.is_empty());
+    assert_eq!(
+        answered.acp.last().unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+    prompt(&mut bridge, 4);
+    let next = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert_eq!(next.acp.last().unwrap()["result"]["stopReason"], "end_turn");
+}
+
+#[test]
+fn a_message_taken_up_while_its_withdrawal_is_in_flight_is_interrupted_in_its_turn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("later").unwrap();
+    let cancel = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    // The run ends and Claude Code takes the message up before reading the
+    // withdrawal.
+    let first = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(!ended(&first));
+    bridge.inbound(lifecycle(&uuid, "started")).unwrap();
+    let reply = bridge
+        .inbound(success(&cancel, json!({"cancelled":false})))
+        .unwrap();
+    assert_eq!(reply.replies[0]["request"]["subtype"], "interrupt");
+    let end = bridge
+        .inbound(
+            json!({"type":"result","subtype":"error_during_execution","is_error":true,"usage":{}}),
+        )
+        .unwrap();
+    assert_eq!(end.acp.last().unwrap()["result"]["stopReason"], "cancelled");
 }

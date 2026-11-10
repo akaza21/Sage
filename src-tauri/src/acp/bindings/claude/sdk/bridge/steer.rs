@@ -107,9 +107,12 @@ impl SdkBridge {
         }
     }
 
-    /// A run ended while messages wait: the turn goes on with them.
+    /// A run ended while messages wait: the turn goes on with them. While
+    /// stopping, a message still waits only until its withdrawal is
+    /// answered; if Claude Code took it up first, the interrupt that
+    /// follows ends that run.
     pub(super) fn holds_result(&mut self, sdk: &Value) -> bool {
-        if self.interrupted || self.steers.is_empty() {
+        if self.steers.is_empty() {
             return false;
         }
         self.held = Some(sdk.clone());
