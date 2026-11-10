@@ -71,7 +71,7 @@ impl SdkBridge {
                 .unwrap_or("Claude Code refused the request");
             match &pending {
                 Pending::Control => Self::controlled(Err(message), inbound),
-                Pending::Fork(_) => Self::forked(None, inbound),
+                Pending::Fork(_) => self.forked(None, inbound),
                 Pending::Withdraw(uuid) => self.withdrawn(uuid, inbound),
                 _ => {}
             }
@@ -146,7 +146,7 @@ impl SdkBridge {
             Pending::Interrupt => {}
             Pending::Withdraw(uuid) => self.withdrawn(&uuid, inbound),
             Pending::Control => Self::controlled(Ok(reply), inbound),
-            Pending::Fork(fork) => Self::forked(fork, inbound),
+            Pending::Fork(config) => self.forked(config.as_deref(), inbound),
         }
         Ok(())
     }

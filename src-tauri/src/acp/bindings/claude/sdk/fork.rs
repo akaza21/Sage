@@ -63,8 +63,13 @@ impl Fork {
     }
 
     /// The launch arguments that open this fork.
+    /// A profile Sage cannot read counts as holding the copy: resuming a
+    /// missing session fails as plainly, and a repeated fork would be
+    /// refused on every later launch.
     pub(super) fn launch_args(&self, config: &Path) -> Vec<OsString> {
-        if transcript(config, &self.session).is_some() {
+        let copied = std::fs::read_dir(config.join("projects")).is_err()
+            || transcript(config, &self.session).is_some();
+        if copied {
             return vec!["--resume".into(), self.session.clone().into()];
         }
         [
@@ -101,6 +106,8 @@ pub(super) fn config_directory(environment: &[(OsString, OsString)]) -> Option<P
     value("CLAUDE_CONFIG_DIR")
         .or_else(|| value("HOME").map(|home| home.join(".claude")))
         .or_else(|| value("USERPROFILE").map(|home| home.join(".claude")))
+        // Claude Code reads a relative one from the project, not from Sage.
+        .filter(|config| config.is_absolute())
 }
 
 /// A session's transcript: Claude Code keeps each project's sessions in
@@ -220,20 +227,30 @@ mod tests {
 
     #[test]
     fn the_profile_is_the_configured_one_or_the_home_default() {
-        let env = |pairs: &[(&str, &str)]| -> Vec<(OsString, OsString)> {
+        let root = std::env::temp_dir();
+        let (home, custom) = (root.join("h"), root.join("c"));
+        let env = |pairs: &[(&str, &Path)]| -> Vec<(OsString, OsString)> {
             pairs
                 .iter()
-                .map(|(k, v)| ((*k).into(), (*v).into()))
+                .map(|(key, value)| ((*key).into(), value.as_os_str().to_owned()))
                 .collect()
         };
         assert_eq!(
-            config_directory(&env(&[("HOME", "/h"), ("CLAUDE_CONFIG_DIR", "/c")])),
-            Some(PathBuf::from("/c"))
+            config_directory(&env(&[("HOME", &home), ("CLAUDE_CONFIG_DIR", &custom)])),
+            Some(custom.clone())
         );
         assert_eq!(
-            config_directory(&env(&[("HOME", "/h")])),
-            Some(PathBuf::from("/h/.claude"))
+            config_directory(&env(&[("HOME", &home)])),
+            Some(home.join(".claude"))
         );
-        assert_eq!(config_directory(&env(&[("PATH", "/bin")])), None);
+        assert_eq!(config_directory(&env(&[("PATH", &home)])), None);
+        assert_eq!(
+            config_directory(&env(&[
+                ("HOME", &home),
+                ("CLAUDE_CONFIG_DIR", Path::new("rel"))
+            ])),
+            None,
+            "Claude Code reads a relative one from elsewhere"
+        );
     }
 }

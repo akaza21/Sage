@@ -87,9 +87,9 @@ enum Pending {
     Withdraw(String),
     /// A session control; its reply completes the native request.
     Control,
-    /// A fork, by the id it will have (none when the session has no reply
-    /// to fork at); Claude Code's reply only confirms it is still there.
-    Fork(Option<String>),
+    /// A fork, with Claude Code's profile to read the cut point from once
+    /// its reply confirms the turn's transcript is written.
+    Fork(Option<std::path::PathBuf>),
 }
 
 #[derive(Debug)]

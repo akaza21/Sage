@@ -308,6 +308,7 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         Ok(None)
     }
     fn defer_fork_release(&mut self, _fork: &crate::acp::intent::ExternalId, _done: bool) -> bool {
+        self.native = Some(crate::acp::goal::NativeRpcReply::Released);
         true
     }
     fn native_rpc_pending(&self) -> bool {

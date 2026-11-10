@@ -852,4 +852,10 @@ fn a_session_forks_through_claude_code_and_holds_nothing_to_release() {
         runtime.take_native_rpc_reply(),
         Some(crate::acp::goal::NativeRpcReply::Released)
     );
+    // Mid-turn, the release is answered at once too.
+    assert!(runtime.defer_fork_release(&fork, true));
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(crate::acp::goal::NativeRpcReply::Released)
+    );
 }

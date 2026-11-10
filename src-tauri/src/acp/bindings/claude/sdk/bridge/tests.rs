@@ -917,24 +917,34 @@ fn a_message_taken_up_while_its_withdrawal_is_in_flight_is_interrupted_in_its_tu
 
 #[test]
 fn a_fork_answers_once_claude_code_replies_and_never_mid_turn() {
+    const REPLY: &str = "1c8e7d9f-4d2b-4a8f-8b62-3a7e9d2f5ca1";
+    let config = std::env::temp_dir().join(format!("sage-sdk-fork-{}", uuid::Uuid::new_v4()));
+    let project = config.join("projects").join("-w");
+    std::fs::create_dir_all(&project).unwrap();
     let mut bridge = initialized();
-    let fork = format!("{SESSION}~{SESSION}~{SESSION}");
-    let sdk = bridge.fork(Some(fork.clone())).unwrap();
+    // The turn's reply reaches the transcript before Claude Code answers.
+    let sdk = bridge.fork(Some(config.clone())).unwrap();
     assert_eq!(sdk["request"]["subtype"], "get_settings");
     assert!(bridge.controlling());
+    std::fs::write(
+        project.join(format!("{SESSION}.jsonl")),
+        json!({"type":"assistant","uuid":REPLY,"isSidechain":false}).to_string(),
+    )
+    .unwrap();
     let reply = bridge.inbound(success(&sdk, json!({}))).unwrap();
-    assert!(matches!(
-        reply.native,
-        Some(crate::acp::goal::NativeRpcReply::Forked(ref id)) if id.as_str() == fork
-    ));
-    // No reply to fork at, or Claude Code refusing, rejects the fork.
+    let Some(crate::acp::goal::NativeRpcReply::Forked(id)) = reply.native else {
+        panic!("forked: {:?}", reply.native);
+    };
+    let fork = crate::acp::bindings::claude::sdk::fork::Fork::parse(id.as_str()).unwrap();
+    assert_eq!((fork.source.as_str(), fork.at.as_str()), (SESSION, REPLY));
+    // No profile, or Claude Code refusing, rejects the fork.
     let sdk = bridge.fork(None).unwrap();
     let reply = bridge.inbound(success(&sdk, json!({}))).unwrap();
     assert_eq!(
         reply.native,
         Some(crate::acp::goal::NativeRpcReply::Rejected)
     );
-    let sdk = bridge.fork(Some(fork)).unwrap();
+    let sdk = bridge.fork(Some(config.clone())).unwrap();
     let reply = bridge.inbound(json!({"type":"control_response","response":{"subtype":"error","request_id":sdk["request_id"],"error":"gone"}})).unwrap();
     assert_eq!(
         reply.native,
@@ -942,4 +952,5 @@ fn a_fork_answers_once_claude_code_replies_and_never_mid_turn() {
     );
     prompt(&mut bridge, 3);
     assert!(bridge.fork(None).is_err());
+    let _ = std::fs::remove_dir_all(config);
 }

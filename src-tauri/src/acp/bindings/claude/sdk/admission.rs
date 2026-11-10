@@ -510,7 +510,8 @@ mod tests {
             resume: true,
             model: None,
         };
-        let empty = std::env::temp_dir().join(format!("sage-no-profile-{session}"));
+        let empty = std::env::temp_dir().join(format!("sage-empty-profile-{session}"));
+        std::fs::create_dir_all(empty.join("projects")).unwrap();
         assert_eq!(
             launch.args(Some(&empty))[SDK_ARGS.len()..],
             [
@@ -524,10 +525,14 @@ mod tests {
             ]
             .map(OsString::from)
         );
-        assert_eq!(
-            launch.args(None)[SDK_ARGS.len()..],
-            ["--resume", session].map(OsString::from)
-        );
+        let _ = std::fs::remove_dir_all(&empty);
+        // A profile Sage cannot read, or none, resumes the copy.
+        for config in [Some(empty.as_path()), None] {
+            assert_eq!(
+                launch.args(config)[SDK_ARGS.len()..],
+                ["--resume", session].map(OsString::from)
+            );
+        }
     }
 
     #[test]
