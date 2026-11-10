@@ -1,6 +1,6 @@
 use crate::acp::{
-    intent::user_input::UserInputAnswers, lifecycle::ServerRequestState, limits::LIMITS,
-    runtime::permissions::PermissionDecision,
+    bindings::standard_acp::elicitation::accepted, intent::user_input::UserInputAnswers,
+    lifecycle::ServerRequestState, limits::LIMITS, runtime::permissions::PermissionDecision,
 };
 
 /// The Codex server request that asks the user questions.
@@ -24,6 +24,7 @@ impl CodexAdapter {
             turn_id,
             item_id,
             response,
+            form,
         } = params;
         self.expect_turn(turn_id)?;
         if let Some(existing) = self
@@ -90,6 +91,7 @@ impl CodexAdapter {
             item_id: item_id.to_owned(),
             response: response.to_vec(),
             state: ServerRequestState::Received,
+            form,
         });
         Ok(PermissionRegistration::New(external))
     }
@@ -162,7 +164,7 @@ impl CodexAdapter {
         ) {
             return Err(AdapterError::PermissionTeardownRequired);
         }
-        let asks_user = entry.method == USER_INPUT_METHOD;
+        let asks_user = entry.method == USER_INPUT_METHOD || entry.form.is_some();
         match decision {
             PermissionDecision::Ask => {
                 entry.state = ServerRequestState::Asked;
@@ -181,7 +183,10 @@ impl CodexAdapter {
                 let mut value: serde_json::Value = serde_json::from_slice(&entry.response)
                     .map_err(|_| AdapterError::PermissionTeardownRequired)?;
                 let result = match decision {
-                    PermissionDecision::Answer(answers) => user_input_result(answers),
+                    PermissionDecision::Answer(answers) => match &entry.form {
+                        Some(form) => accepted(form, answers),
+                        None => user_input_result(answers),
+                    },
                     _ if entry.method == "item/permissions/requestApproval" => {
                         serde_json::json!({"permissions": {}})
                     }

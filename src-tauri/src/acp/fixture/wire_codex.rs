@@ -186,6 +186,9 @@ pub(super) fn emit_response(
             json!({"turn":{"id":turn_id}})
         }
         "ack" => json!({}),
+        "steer" => {
+            json!({"turnId": state.current_turn_id.as_deref().ok_or(FixtureError::InvalidArguments)?})
+        }
         "fork" => json!({"thread":{"id": FORK_THREAD_ID, "forkedFromId": THREAD_ID}}),
         _ => return Err(FixtureError::InvalidArguments),
     };
@@ -349,6 +352,7 @@ pub(super) fn emit_known(
         "codexModelListConfigResult" => emit_response("configModels", state, output),
         "codexGoalMethodNotFound" => emit_response("goalMethodNotFound", state, output),
         "codexTurnResult" => emit_response("turn", state, output),
+        "codexSteerResult" => emit_response("steer", state, output),
         "codexForkResult" => emit_response("fork", state, output),
         "codexStarted" => emit_notification("started", state, output),
         "codexAck" => emit_response("ack", state, output),

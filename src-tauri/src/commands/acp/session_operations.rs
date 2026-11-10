@@ -44,9 +44,9 @@ pub(crate) async fn send_acp_turn_inner(
             .map_err(prompt_not_dispatched)?;
         if state.acp.accepts_characterization(&binding_id) {
             image_input_block(attached_context).map_err(prompt_not_dispatched)?;
-            let selection = staged::resolve(state, &project_id, &chat_id, staged.clone(), prompt)
+            let selection = staged::resolve(state, project_id, chat_id, staged.clone(), prompt)
                 .map_err(prompt_not_dispatched)?;
-            staged::characterization_carries_none(state, &project_id, &chat_id, &selection)
+            staged::characterization_carries_none(state, project_id, chat_id, &selection)
                 .map_err(prompt_not_dispatched)?;
             return characterization::send(state, request);
         }

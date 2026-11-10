@@ -2258,6 +2258,19 @@ fn paths_and_secrets_are_redacted_and_file_paths_require_native_mapping() {
     assert!(matches!(
         &events[0],
         IncomingEvent::Item {
+            payload: NormalizedPayload::ToolCall { label, locations, .. },
+            ..
+        } if label.as_str() == "Edited file" && matches!(
+            locations.as_slice(),
+            [crate::acp::intent::SafeResourceLocation::Unavailable {
+                reason: crate::acp::intent::UnavailableResourceReason::Foreign,
+                ..
+            }]
+        )
+    ));
+    assert!(matches!(
+        &events[1],
+        IncomingEvent::Item {
             payload: NormalizedPayload::FileChangeDiff {
                 resource: crate::acp::intent::SafeResourceLocation::Unavailable {
                     reason: crate::acp::intent::UnavailableResourceReason::Foreign,

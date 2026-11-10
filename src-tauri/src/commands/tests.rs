@@ -2185,6 +2185,7 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
                 runtime_epoch: owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "must not run in plan").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await;

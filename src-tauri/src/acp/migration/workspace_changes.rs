@@ -11,6 +11,7 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
             | SchemaClass::CurrentV22
             | SchemaClass::CurrentV23
             | SchemaClass::CurrentResumeLink
+            | SchemaClass::CurrentTitleSource
     ) {
         return Ok(());
     }
