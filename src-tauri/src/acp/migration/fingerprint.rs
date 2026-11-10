@@ -14,7 +14,7 @@ pub(super) use super::file_artifact::{FileFingerprint, file_fingerprint, open_re
 
 pub(super) const V10_LEGACY_SESSION_EVENTS: &str = "CREATE TABLE session_events (\n  id TEXT PRIMARY KEY,\n  session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,\n  sequence INTEGER NOT NULL,\n  kind TEXT NOT NULL,\n  payload_json TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  UNIQUE (session_id, sequence)\n) STRICT;\nCREATE INDEX idx_session_events_order\n  ON session_events(session_id, sequence);";
 // One sentinel row detects migration histories newer than this binary.
-const MAX_SCHEMA_VERSION: usize = super::title_source::VERSION as usize;
+const MAX_SCHEMA_VERSION: usize = super::session_facts_turn_index::VERSION as usize;
 const MAX_SCHEMA_OBJECTS: usize = 128;
 const MAX_SCHEMA_BYTES: usize = 1_048_576;
 const MAX_COLUMNS: usize = 128;
@@ -54,15 +54,18 @@ pub(super) enum SchemaClass {
     /// The resume link schema plus each chat title's source; its version
     /// number lives in `title_source::VERSION`.
     CurrentTitleSource,
+    /// The title source schema plus the per-Turn session facts index; its
+    /// version number lives in `session_facts_turn_index::VERSION`.
+    CurrentSessionFactsTurnIndex,
 }
 
 /// The schema a fresh or fully migrated database reaches.
 #[cfg(test)]
-pub(super) const CURRENT_SCHEMA: SchemaClass = SchemaClass::CurrentTitleSource;
+pub(super) const CURRENT_SCHEMA: SchemaClass = SchemaClass::CurrentSessionFactsTurnIndex;
 
 /// The version number of [`CURRENT_SCHEMA`].
 #[cfg(test)]
-pub(crate) const CURRENT_SCHEMA_VERSION: u32 = super::title_source::VERSION;
+pub(crate) const CURRENT_SCHEMA_VERSION: u32 = super::session_facts_turn_index::VERSION;
 
 impl SchemaClass {
     pub(super) fn is_legacy(self) -> bool {
