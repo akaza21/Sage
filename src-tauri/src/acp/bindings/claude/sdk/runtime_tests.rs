@@ -95,8 +95,12 @@ fn ready() -> ClaudeSdkRuntime {
         &initialize,
         json!({"commands":[{"name":"review","description":"Review changes"}],"current_permission_mode":"default","models":[{"value":"default","displayName":"Default"}]}),
     );
-    assert!(matches!(events[..], [AdapterEvent::Initialized { .. }]));
+    let [AdapterEvent::Initialized { capabilities: told }] = &events[..] else {
+        panic!("initialized: {events:?}");
+    };
     let capabilities = runtime.capabilities().unwrap();
+    // The activation pump refuses a session whose two answers differ.
+    assert_eq!(told, &capabilities);
     assert!(capabilities.resume_session && capabilities.prompt_resources);
     let session = send(
         &mut runtime,
@@ -775,5 +779,51 @@ fn a_message_never_written_is_forgotten_and_one_after_the_turn_is_refused() {
             client_message_id: RequiredText::new("client", "client-3").unwrap(),
         }),
         Err(AdapterRuntimeError::Operation)
+    ));
+}
+
+#[test]
+fn compact_runs_as_claude_codes_own_command_and_ends_its_turn() {
+    let mut runtime = ready();
+    assert!(runtime.capabilities().unwrap().native_session_compact);
+    let mut prompt = Prompt::new("sessionAction", "/compact").unwrap();
+    prompt.action = Some(crate::acp::session_action::SessionAction::Compact {});
+    let user = send(
+        &mut runtime,
+        AdapterCommand::Prompt {
+            prompt,
+            client_message_id: RequiredText::new("client", "client-1").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::Ask,
+        },
+    );
+    assert_eq!(user["message"]["content"][0]["text"], "/compact");
+    let mut events = Vec::new();
+    // As Claude Code 2.1.322 reports a compaction.
+    for sdk in [
+        json!({"type":"system","subtype":"status","status":"compacting"}),
+        json!({"type":"system","subtype":"status","status":null}),
+        json!({"type":"system","subtype":"init","session_id":"x"}),
+        json!({"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"manual","pre_tokens":900}}),
+        json!({"type":"user","parent_tool_use_id":null,"isReplay":false,"message":{"role":"user","content":"This session is being continued from a previous conversation. Summary: secret plans"}}),
+        json!({"type":"user","parent_tool_use_id":null,"isReplay":true,"message":{"role":"user","content":"<local-command-stdout>Compacted </local-command-stdout>"}}),
+        json!({"type":"result","subtype":"success","is_error":false,"result":"","num_turns":0,"usage":{}}),
+    ] {
+        events.extend(feed(&mut runtime, sdk));
+    }
+    assert!(
+        !format!("{events:?}").contains("secret plans"),
+        "the summary stays Claude Code's own"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::Session { .. }))
+    );
+    assert!(matches!(
+        events.last(),
+        Some(AdapterEvent::Turn {
+            state: TurnState::Completed,
+            ..
+        })
     ));
 }
