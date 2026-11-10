@@ -233,7 +233,7 @@ export function ForkChatDialog({
     >
       <h2 id={title}>Fork chat from here</h2>
       <div
-        role="menu"
+        role="group"
         aria-labelledby={title}
         aria-busy={busy}
         onKeyDown={() => setFresh(false)}
@@ -243,7 +243,6 @@ export function ForkChatDialog({
           autoFocus
           className="button--compact"
           type="button"
-          role="menuitem"
           data-fresh={fresh || undefined}
           disabled={busy}
           onClick={async () => {
