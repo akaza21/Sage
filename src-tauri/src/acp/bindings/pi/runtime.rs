@@ -191,6 +191,18 @@ impl PiRuntime {
 }
 
 impl HarnessAdapter for PiRuntime {
+    /// Pi ends each run with `agent_end`, which repeats the whole run and
+    /// can outgrow a frame. Everything Sage needs from it already arrived
+    /// in the streamed events, so an oversized event is read past without
+    /// buffering it rather than ending the session. Pi's request ids are
+    /// strings the skip cannot see, so while a read is outstanding an
+    /// oversized frame still fails rather than leaving the read unanswered.
+    fn skips_oversize_frames(&self) -> bool {
+        !self.translator.awaits_large_response()
+    }
+    fn oversize_frame_skipped(&mut self) {
+        self.translator.note_dropped_frame();
+    }
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
         std::sync::Arc::clone(&self.commands)
     }

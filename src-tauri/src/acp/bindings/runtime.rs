@@ -187,6 +187,9 @@ impl HarnessAdapter for NativeRuntime {
     fn skips_oversize_frames(&self) -> bool {
         self.0.skips_oversize_frames()
     }
+    fn oversize_frame_skipped(&mut self) {
+        self.0.oversize_frame_skipped();
+    }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.0.take_native_rpc_reply()
     }

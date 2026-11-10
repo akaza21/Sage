@@ -15,10 +15,6 @@ impl PiTranslator {
     }
 
     pub(super) fn agent_end(&mut self, value: &Value) -> Result<Vec<AdapterOutput>, AdapterError> {
-        let turn = self.session_turn()?;
-        if !turn.lifecycle.end_model()? {
-            return Ok(vec![AdapterOutput::DuplicateIgnored]);
-        }
         let message = value
             .get("messages")
             .and_then(Value::as_array)
@@ -27,6 +23,22 @@ impl PiTranslator {
                     message.get("role").and_then(Value::as_str) == Some("assistant")
                 })
             });
+        self.end_run(message)
+    }
+
+    /// An oversized event of the running Turn was dropped unread.
+    pub(crate) fn note_dropped_frame(&mut self) {
+        if let Some(turn) = self.active.as_mut() {
+            turn.dropped_frame = true;
+        }
+    }
+
+    /// Ends the model run from its last assistant reply.
+    fn end_run(&mut self, message: Option<&Value>) -> Result<Vec<AdapterOutput>, AdapterError> {
+        let turn = self.session_turn()?;
+        if !turn.lifecycle.end_model()? {
+            return Ok(vec![AdapterOutput::DuplicateIgnored]);
+        }
         turn.settlement_outcome = match message
             .and_then(|message| message.get("stopReason"))
             .and_then(Value::as_str)
@@ -58,10 +70,18 @@ impl PiTranslator {
     }
 
     pub(super) fn agent_settled(&mut self) -> Result<Vec<AdapterOutput>, AdapterError> {
-        let turn = self.active.as_ref().ok_or(AdapterError::StaleIntent)?;
+        let turn = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
         if turn.lifecycle.terminal().is_some() {
             return Ok(vec![AdapterOutput::DuplicateIgnored]);
         }
+        // The run's `agent_end` was too large to read: end the run from the
+        // last reply the stream already delivered.
+        let mut output = Vec::new();
+        if turn.lifecycle.phase == TurnPhase::ModelRunning && turn.dropped_frame {
+            let reply = turn.last_reply.take();
+            output = self.end_run(reply.as_deref())?;
+        }
+        let turn = self.active.as_ref().ok_or(AdapterError::StaleIntent)?;
         if turn.lifecycle.phase != TurnPhase::ModelEnded {
             return Err(AdapterError::EventSequence);
         }
@@ -70,7 +90,8 @@ impl PiTranslator {
         } else {
             turn.settlement_outcome
         };
-        self.finish_turn(outcome)
+        output.extend(self.finish_turn(outcome)?);
+        Ok(output)
     }
 
     pub(super) fn retry_start(
