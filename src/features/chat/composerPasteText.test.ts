@@ -11,7 +11,7 @@ import {
   pasteDecision,
   pastedTextLabel,
   utf8Length,
-} from "./composerPaste";
+} from "./composerPasteText";
 
 const none = { bytes: 0, count: 0 };
 
