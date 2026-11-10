@@ -48,7 +48,9 @@ fn effort_reset_metadata_is_absent_without_an_advertised_catalog_default() {
 
 #[test]
 fn oversized_combined_config_preserves_identity_through_native_config_channel() {
-    for (name, option_count) in [("Short".to_owned(), 2), ("M".repeat(512), 0)] {
+    // The thinking level stops fitting beside a long model name; the model
+    // choice still fits and is kept rather than dropped with it.
+    for (name, option_count) in [("Short".to_owned(), 2), ("M".repeat(512), 1)] {
         let mut adapter = fixture_runtime();
         initialize(&mut adapter);
         let owner = crate::acp::scheduler::RuntimeOwner {

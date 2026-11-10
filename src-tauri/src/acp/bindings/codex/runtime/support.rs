@@ -171,43 +171,56 @@ pub(super) fn effort_option(model: &ModelDescriptor, current: &str) -> Option<se
     Some(option)
 }
 
-/// The thread's model among the listed ones, when the thread runs one of
-/// them: a model Codex did not list is never offered, nor replaced.
+/// The thread's model, `current`, as a choice among the listed models. A
+/// model Codex did not list (one its picker hides) is still the thread's, so
+/// it is offered first, named by its id: the composer then shows what the
+/// thread runs and can move it to a listed model.
 pub(super) fn model_option(
     catalog: &[ModelDescriptor],
     current: &crate::acp::intent::ModelId,
-) -> Option<serde_json::Value> {
-    catalog.iter().find(|model| model.id == *current)?;
-    let options: Vec<_> = catalog
-        .iter()
-        .map(|model| serde_json::json!({"value":model.id.as_str(),"name":model.name.as_str()}))
+) -> serde_json::Value {
+    let choice = |id: &str, name: &str| serde_json::json!({"value":id,"name":name});
+    let unlisted = (!catalog.iter().any(|model| model.id == *current))
+        .then(|| choice(current.as_str(), current.as_str()));
+    let options: Vec<_> = unlisted
+        .into_iter()
+        .chain(
+            catalog
+                .iter()
+                .map(|model| choice(model.id.as_str(), model.name.as_str())),
+        )
         .collect();
-    Some(serde_json::json!({
+    serde_json::json!({
         "id":"model", "name":"Model", "category":"model", "type":"select",
         "currentValue":current.as_str(), "options":options
-    }))
+    })
 }
 
-/// The config of those `options` that are each valid on their own, or
-/// `None` when there are none.
+/// `base` with each of `options`, in order, that still fits beside the ones
+/// before it, so an option over the config's bounds drops only itself.
 pub(super) fn thread_config(
+    base: crate::acp::session_config::SessionConfig,
     options: impl IntoIterator<Item = serde_json::Value>,
-) -> Option<crate::acp::session_config::SessionConfig> {
-    let config = |options: &[serde_json::Value]| {
-        let config: crate::acp::session_config::SessionConfig =
-            serde_json::from_value(serde_json::json!({"modes":null,"configOptions":options}))
-                .ok()?;
-        config.validate().ok()?;
-        Some(config)
+) -> crate::acp::session_config::SessionConfig {
+    let Ok(mut wire) = serde_json::to_value(&base) else {
+        return base;
     };
-    let valid: Vec<_> = options
-        .into_iter()
-        .filter(|option| config(std::slice::from_ref(option)).is_some())
-        .collect();
-    if valid.is_empty() {
-        return None;
+    let mut config = base;
+    let mut kept = Vec::new();
+    for option in options {
+        kept.push(option);
+        wire["configOptions"] = serde_json::Value::from(kept.clone());
+        match serde_json::from_value::<crate::acp::session_config::SessionConfig>(wire.clone())
+            .ok()
+            .filter(|candidate| candidate.validate().is_ok())
+        {
+            Some(candidate) => config = candidate,
+            None => {
+                kept.pop();
+            }
+        }
     }
-    config(&valid)
+    config
 }
 
 pub(super) fn map_adapter(error: AdapterError) -> AdapterRuntimeError {

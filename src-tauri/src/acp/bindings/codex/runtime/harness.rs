@@ -31,6 +31,9 @@ impl HarnessAdapter for CodexRuntime {
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
         self.session_config.clone()
     }
+    fn config_hydrating(&self) -> bool {
+        self.catalogue_pending()
+    }
 
     fn configure(
         &mut self,

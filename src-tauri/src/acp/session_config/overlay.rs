@@ -6,6 +6,8 @@ use crate::acp::{
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
+mod restore_gate;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub(crate) struct ConfigRevision(ProjectionRevision);
@@ -97,6 +99,8 @@ struct Entry {
     new_session: bool,
     /// The restore has started, so what the harness reports is a choice.
     restoring: bool,
+    /// The session is still reading what it offers; see `set_hydrating`.
+    hydrating: bool,
     /// Stored choices the restore has not reached yet. What the harness
     /// reports for them is not recorded, so a value it resets on its own
     /// (an effort a model change resets) does not replace the stored one.
@@ -119,6 +123,8 @@ pub(crate) struct ConfigChannel {
     recorder: Mutex<Option<ChoiceRecorder>>,
     snapshot: Mutex<Option<SnapshotRecorder>>,
     notice_scheduled: Arc<std::sync::atomic::AtomicBool>,
+    /// Woken whenever what a waiting restore reads may have changed.
+    changed: std::sync::Condvar,
 }
 impl ConfigChannel {
     pub(crate) fn set_sink(&self, sink: NoticeSink) {
@@ -159,9 +165,11 @@ impl ConfigChannel {
             restore_pending: true,
             new_session: false,
             restoring: false,
+            hydrating: false,
             held: Vec::new(),
         });
         state.pending = None;
+        self.changed.notify_all();
     }
     pub(crate) fn publish(&self, owner: &RuntimeOwner) {
         let mut state = self.lock();
@@ -285,29 +293,6 @@ impl ConfigChannel {
             .filter(|e| e.live && &e.owner == owner)
             .and_then(|e| e.overlay.clone())
     }
-    /// Hands out, exactly once, the live overlay of a runtime whose stored
-    /// choices have not been reapplied, with whether it started a new
-    /// session. It stays pending until `ready` accepts what the session
-    /// reports, so a harness that reports its options after activation is
-    /// restored before its next prompt instead. `held` are the stored
-    /// choices it is about to reapply; see `release`.
-    pub(crate) fn take_restore(
-        &self,
-        owner: &RuntimeOwner,
-        held: &[ConfigMutation],
-        ready: impl FnOnce(&SessionConfig) -> bool,
-    ) -> Option<(SessionConfigOverlay, bool)> {
-        let mut state = self.lock();
-        let entry = state
-            .entry
-            .as_mut()
-            .filter(|e| e.live && e.restore_pending && &e.owner == owner)?;
-        let overlay = entry.overlay.as_ref().filter(|o| ready(&o.config))?.clone();
-        entry.restore_pending = false;
-        entry.restoring = true;
-        entry.held = held.to_vec();
-        Some((overlay, entry.new_session))
-    }
     pub(crate) fn remove(&self, owner: &RuntimeOwner) -> Result<(), String> {
         let mut state = self.lock();
         let Some(entry) = &mut state.entry else {
@@ -355,9 +340,11 @@ impl ConfigChannel {
             state.entry = None;
             state.pending = None;
         }
+        self.changed.notify_all();
     }
     pub(crate) fn clear_all(&self) {
         *self.lock() = State::default();
+        self.changed.notify_all();
     }
     #[cfg(test)]
     pub(crate) fn take_notice(&self) -> Option<SessionConfigChangedV1> {

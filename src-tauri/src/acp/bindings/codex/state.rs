@@ -290,6 +290,11 @@ impl CodexAdapter {
             .find_map(|(pending, kind)| (*pending == id).then_some(*kind))
     }
 
+    /// Whether a request of `kind` is still waiting for its answer.
+    pub(crate) fn awaits(&self, kind: RequestKind) -> bool {
+        self.pending.iter().any(|(_, pending)| *pending == kind)
+    }
+
     pub(crate) fn ingest<M: ResourceMapper>(
         &mut self,
         bytes: &[u8],

@@ -31,11 +31,21 @@ enum Step {
     Fallback(ConfigMutation),
     /// The session no longer offers the option at all.
     Forget,
+    /// The session takes the option but has not said its value yet: the
+    /// stored one is kept for when it does.
+    Hold,
 }
 
 fn step(config: &SessionConfig, stored: &ConfigMutation) -> Step {
     let Some(current) = current_value(config, stored) else {
-        return Step::Forget;
+        return match stored {
+            ConfigMutation::Option { config_id, .. }
+                if config.unreported.as_slice().contains(config_id) =>
+            {
+                Step::Hold
+            }
+            _ => Step::Forget,
+        };
     };
     let offered = match stored {
         ConfigMutation::Mode(mode) => config.validate_mode(mode.as_str()),
@@ -126,8 +136,15 @@ impl AcpService {
     /// prompt, and until then what the harness reports for those choices
     /// does not replace them. `Err` means a change left the runtime needing
     /// recovery; its choice stays stored for the resumed runtime.
+    ///
+    /// A session still reading the options its choices need (a catalogue
+    /// asked for as activation handed off) is waited for within the same
+    /// budget, so the prompt that follows does not go out ahead of them.
     pub(crate) fn restore_session_config(&self, owner: &RuntimeOwner) -> Result<(), HostError> {
         let budget = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
+        if let Some(lane) = self.lane_for(owner) {
+            lane.runtime.config.wait_while_hydrating(owner, budget);
+        }
         self.restore_until(owner, || Instant::now() >= budget)
     }
 
@@ -189,9 +206,15 @@ impl AcpService {
             );
         }
         stored.sort_by_key(|choice| priority(&overlay.config, choice));
+        let mut held_back = false;
         for choice in stored {
             match step(&overlay.config, &choice) {
                 Step::Keep => {}
+                // Still held, and tried again before the next prompt.
+                Step::Hold => {
+                    held_back = true;
+                    continue;
+                }
                 // What the session runs now, not what the restore began
                 // with: a change made meanwhile (a live pick) counts.
                 Step::Forget | Step::Fallback(_) => self.fall_back(
@@ -214,14 +237,14 @@ impl AcpService {
                         return Ok(());
                     }
                     match self.apply_stored(owner, &overlay, &choice)? {
-                        Applied::Sent(latest) => overlay = latest,
+                        Applied::Sent(latest) => overlay = *latest,
                         Applied::Deferred | Applied::Gone => return Ok(()),
                     }
                 }
             }
             config.release(owner, &choice);
         }
-        unfinished.finished = true;
+        unfinished.finished = !held_back;
         Ok(())
     }
 
@@ -271,11 +294,12 @@ impl AcpService {
                 return Ok(Applied::Gone);
             };
             if !self.still_stored(owner, choice) {
-                return Ok(Applied::Sent(latest));
+                return Ok(Applied::Sent(Box::new(latest)));
             }
             result = match step(&latest.config, choice) {
                 Step::Apply => apply(latest.config_revision),
                 Step::Keep => Ok(()),
+                Step::Hold => return Ok(Applied::Deferred),
                 Step::Forget | Step::Fallback(_) => Err(HostError::ConfigMutationRejected),
             };
         }
@@ -297,13 +321,13 @@ impl AcpService {
         if result == Err(HostError::ConfigMutationRejected) {
             self.fall_back(owner, &latest.config, choice, NoticeReason::Rejected);
         }
-        Ok(Applied::Sent(latest))
+        Ok(Applied::Sent(Box::new(latest)))
     }
 }
 
 enum Applied {
     /// The harness answered; this is the session's config after it.
-    Sent(SessionConfigOverlay),
+    Sent(Box<SessionConfigOverlay>),
     /// Not sent now; tried again before the next prompt.
     Deferred,
     /// The runtime is gone.
@@ -420,6 +444,21 @@ mod tests {
                 option("fast", ConfigValue::Boolean { value: true }),
             ]
         );
+    }
+
+    #[test]
+    fn a_stored_option_whose_value_the_session_has_not_reported_is_held() {
+        let config = SessionConfig {
+            unreported: crate::acp::contract::BoundedVec::new(
+                "unreported",
+                vec![ConfigId::new("configId", "depth").unwrap()],
+            )
+            .unwrap(),
+            ..config()
+        };
+        assert_eq!(step(&config, &option("depth", select("deep"))), Step::Hold);
+        // An option the session does not take at all is still forgotten.
+        assert_eq!(step(&config, &option("model", select("a"))), Step::Forget);
     }
 
     #[test]

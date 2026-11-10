@@ -66,6 +66,18 @@ fn option(config: &Value, category: &str) -> Value {
         .unwrap_or(Value::Null)
 }
 
+fn settings_updated(thread: &str, model: &str, effort: &str) -> Value {
+    json!({"method":"thread/settings/updated","params":{"threadId":thread,"threadSettings":{
+        "disabledPluginIds":[],"cwd":"C:\\repo","approvalPolicy":"never",
+        "approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"},
+        "activePermissionProfile":null,"model":model,"modelProvider":"openai",
+        "serviceTier":null,"effort":effort,"summary":null,
+        "collaborationMode":{"mode":"default","settings":{"model":model,
+            "reasoning_effort":effort,"developer_instructions":null}},
+        "personality":null
+    }}})
+}
+
 fn turn_start(runtime: &mut CodexRuntime, client: &str) -> Value {
     let prompt = runtime
         .command(AdapterCommand::Prompt {
@@ -163,7 +175,7 @@ fn a_picked_model_without_the_current_effort_takes_its_own_default() {
 }
 
 #[test]
-fn a_thread_on_an_unlisted_model_offers_no_model_choice() {
+fn a_thread_on_an_unlisted_model_offers_its_own_model_beside_the_listed_ones() {
     let mut runtime = fixture_runtime();
     ready_with_reported_config(&mut runtime, Some("hidden-model"), Some("medium"));
     let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
@@ -171,6 +183,124 @@ fn a_thread_on_an_unlisted_model_offers_no_model_choice() {
         .ingest(&frame(json!({"id":list_id,"result":catalogue()})), &Mapper)
         .unwrap();
     let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
-    assert_eq!(option(&config, "model"), Value::Null);
-    assert!(runtime.configure(&pick("model", "fixture-model")).is_err());
+    // Codex did not list the thread's model, so it is named by its id.
+    let model = option(&config, "model");
+    assert_eq!(model["currentValue"], "hidden-model");
+    assert_eq!(
+        model["options"],
+        json!([
+            {"value":"hidden-model","name":"hidden-model"},
+            {"value":"fixture-model","name":"Synthetic replay"},
+            {"value":"fixture-model-deep","name":"Synthetic replay deep"}
+        ])
+    );
+    // Re-picking the thread's own model changes nothing.
+    runtime.configure(&pick("model", "hidden-model")).unwrap();
+    assert!(turn_start(&mut runtime, "own").get("model").is_none());
+    let mut runtime = fixture_runtime();
+    ready_with_reported_config(&mut runtime, Some("hidden-model"), Some("medium"));
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    runtime
+        .ingest(&frame(json!({"id":list_id,"result":catalogue()})), &Mapper)
+        .unwrap();
+    runtime.configure(&pick("model", "fixture-model")).unwrap();
+    let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert_eq!(option(&config, "model")["currentValue"], "fixture-model");
+    // The listed model shows its thinking levels at the thread's effort.
+    assert_eq!(option(&config, "effort")["currentValue"], "medium");
+    let params = turn_start(&mut runtime, "listed");
+    assert_eq!(params["model"], "fixture-model");
+    assert_eq!(params["effort"], "medium");
+}
+
+#[test]
+fn switching_to_a_model_always_sends_an_effort_that_model_offers() {
+    // The thread's effort was never reported, or the new model's default is
+    // not among its efforts: the switch still names an effort the new model
+    // runs, so the thread does not keep one it cannot.
+    for (reported, default, sent) in [
+        (None, json!("high"), "high"),
+        (Some("medium"), json!("max"), "low"),
+        (Some("medium"), Value::Null, "low"),
+    ] {
+        let mut runtime = fixture_runtime();
+        ready_with_reported_config(&mut runtime, Some("fixture-model"), reported);
+        let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+        let mut catalogue = catalogue();
+        catalogue["data"][1]["defaultReasoningEffort"] = default;
+        catalogue["data"][1]["supportedReasoningEfforts"] = json!([
+            {"reasoningEffort":"low","description":"Quick"},
+            {"reasoningEffort":"high","description":"Deep"}
+        ]);
+        runtime
+            .ingest(&frame(json!({"id":list_id,"result":catalogue})), &Mapper)
+            .unwrap();
+        runtime
+            .configure(&pick("model", "fixture-model-deep"))
+            .unwrap();
+        let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+        assert_eq!(option(&config, "effort")["currentValue"], sent);
+        let params = turn_start(&mut runtime, "switched");
+        assert_eq!(params["model"], "fixture-model-deep");
+        assert_eq!(params["effort"], sent);
+    }
+}
+
+#[test]
+fn a_reported_thread_settings_change_replaces_the_picked_model() {
+    let mut runtime = hydrated();
+    runtime
+        .configure(&pick("model", "fixture-model-deep"))
+        .unwrap();
+    // Codex reports the thread now runs `fixture-model` at High; that is the
+    // thread's model from here on, and the earlier pick is not sent again.
+    runtime
+        .ingest(
+            &frame(settings_updated("thread-1", "fixture-model", "high")),
+            &Mapper,
+        )
+        .unwrap();
+    let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert_eq!(option(&config, "model")["currentValue"], "fixture-model");
+    assert_eq!(option(&config, "effort")["currentValue"], "high");
+    assert_eq!(
+        config["confirmedModel"],
+        json!({"id":"fixture-model","name":"Synthetic replay"})
+    );
+    let params = turn_start(&mut runtime, "reported");
+    assert!(params.get("model").is_none());
+    assert_eq!(params["effort"], "high");
+}
+
+#[test]
+fn the_config_is_hydrating_until_every_listed_page_is_answered() {
+    let mut runtime = fixture_runtime();
+    ready_with_reported_config(&mut runtime, Some("fixture-model"), Some("medium"));
+    assert!(!runtime.config_hydrating());
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    assert!(runtime.config_hydrating());
+    let mut first = catalogue();
+    first["nextCursor"] = json!("page-2");
+    let batch = runtime
+        .ingest(&frame(json!({"id":list_id,"result":first})), &Mapper)
+        .unwrap();
+    // The thread's model and effort are offered while the next page is read.
+    assert!(runtime.config_hydrating());
+    assert_eq!(
+        runtime
+            .session_config()
+            .unwrap()
+            .config_options
+            .as_slice()
+            .len(),
+        2
+    );
+    let next = request_id(&batch.egress()[0]);
+    runtime
+        .ingest(
+            &frame(json!({"id":next,"error":{"code":-32601,"message":"Method not found"}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(!runtime.config_hydrating());
 }
