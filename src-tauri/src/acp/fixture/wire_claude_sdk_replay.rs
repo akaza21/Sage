@@ -17,7 +17,8 @@ use super::WireState;
 /// and returns the frames it sends. When a step reads past what the client
 /// sent, the client is called again with no kind and the newer frames, so
 /// it can answer them, as a live client answers a control request mid-step.
-/// The final call (no kind) receives the remaining output.
+/// The final call (no kind) receives the remaining output and must send
+/// nothing more.
 pub(crate) fn claude_sdk_wire_for_test(
     case_id: &str,
     client: impl FnMut(Option<&str>, Vec<Value>) -> Vec<Value>,
@@ -47,7 +48,8 @@ pub(crate) fn claude_sdk_wire_for_test(
         );
     }
     let rest = output.drain();
-    (pipe.client)(None, rest);
+    let unserved = (pipe.client)(None, rest);
+    assert!(unserved.is_empty(), "{case_id}: no unserved requests");
 }
 
 #[derive(Clone, Default)]

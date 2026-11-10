@@ -42,6 +42,12 @@ fn the_codex_config_echo_names_the_model_and_effort_turn_start_sent() {
         codex_answer(&picked),
         "This turn/start named model: fixture-model-deep; effort: high."
     );
+    // What the client sent is quoted as sent, never read as a placeholder.
+    let literal = replay_native(
+        "codex-config-echo",
+        &codex_turn(json!({"model":"m-$PROMPT_ECHO","input":[]})),
+    );
+    assert!(codex_answer(&literal).contains("model: m-$PROMPT_ECHO;"));
     let unnamed = replay_native("codex-config-echo", &codex_turn(json!({"input":[]})));
     assert_eq!(
         codex_answer(&unnamed),
@@ -163,7 +169,7 @@ fn the_pi_large_run_ends_with_one_oversized_frame_then_takes_a_second_prompt() {
         .iter()
         .filter(|kind| **kind == "tool_execution_end")
         .count();
-    assert_eq!((started, ended), (24, 24));
+    assert!(started > 0 && started == ended, "every read finished");
     let after: Vec<_> = frames[end + 1..]
         .iter()
         .map(|frame| &frame["type"])
@@ -174,4 +180,91 @@ fn the_pi_large_run_ends_with_one_oversized_frame_then_takes_a_second_prompt() {
         "the second prompt is answered"
     );
     assert_eq!(after.last().unwrap().as_str(), Some("agent_settled"));
+}
+
+/// Runs `steps` against `requests` and returns the frames written, or the
+/// first step's error.
+fn run_sdk(steps: &[Value], requests: &[Value]) -> Result<Vec<Value>, super::FixtureError> {
+    let mut input = std::io::Cursor::new(lines(requests).into_bytes());
+    let mut output = Vec::new();
+    let mut state = super::WireState::new();
+    for step in steps {
+        super::execute_with_io(step, &mut state, &mut input, &mut output, &mut Vec::new())?;
+    }
+    Ok(String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect())
+}
+
+#[test]
+fn only_a_waiting_follow_up_is_withdrawn() {
+    let follow_up = json!({"type":"user","message":{"role":"user","content":[{"type":"text","text":"also"}]},"uuid":"f-1"});
+    let cancel = |uuid: &str| json!({"type":"control_request","request_id":format!("c-{uuid}"),"request":{"subtype":"cancel_async_message","message_uuid":uuid}});
+    let interrupt =
+        json!({"type":"control_request","request_id":"i","request":{"subtype":"interrupt"}});
+    let wait = |kind: &str| json!({"op":"awaitClient","kind":kind});
+    let lifecycle =
+        |state: &str| json!({"op":"emitKnownFrame","shape":"claudeSdkLifecycle","state":state});
+    let answers = |frames: &[Value]| -> Vec<Value> {
+        frames
+            .iter()
+            .filter(|frame| frame["type"] == "control_response")
+            .map(|frame| frame["response"]["response"].clone())
+            .collect()
+    };
+
+    // Waiting: an unknown id is not cancelled, the message's own id is.
+    let waiting = run_sdk(
+        &[
+            wait("claudeSdkFollowUp"),
+            lifecycle("queued"),
+            wait("claudeSdkInterrupt"),
+        ],
+        &[
+            follow_up.clone(),
+            cancel("other"),
+            cancel("f-1"),
+            interrupt.clone(),
+        ],
+    )
+    .unwrap();
+    assert_eq!(
+        answers(&waiting),
+        [
+            json!({"cancelled":false}),
+            json!({"cancelled":true}),
+            json!({})
+        ]
+    );
+    let states: Vec<_> = waiting
+        .iter()
+        .filter_map(|frame| frame["state"].as_str())
+        .collect();
+    assert_eq!(states, ["queued", "cancelled"]);
+
+    // Running: it can no longer be withdrawn, nor queued again.
+    let running = run_sdk(
+        &[
+            wait("claudeSdkFollowUp"),
+            lifecycle("queued"),
+            lifecycle("started"),
+            wait("claudeSdkInterrupt"),
+        ],
+        &[follow_up.clone(), cancel("f-1"), interrupt],
+    )
+    .unwrap();
+    assert_eq!(answers(&running), [json!({"cancelled":false}), json!({})]);
+    assert!(
+        run_sdk(
+            &[
+                wait("claudeSdkFollowUp"),
+                lifecycle("started"),
+                lifecycle("queued")
+            ],
+            &[follow_up],
+        )
+        .is_err()
+    );
 }

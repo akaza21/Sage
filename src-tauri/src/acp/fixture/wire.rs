@@ -260,7 +260,7 @@ fn emit_known(
     if shape == "piNative" {
         return pi::emit(step, state, output);
     }
-    if shape.starts_with("claudeSdk") {
+    if matches!(shape, "claudeSdkNative" | "claudeSdkLifecycle") {
         return claude_sdk::emit(step, state, output);
     }
     if shape.starts_with("acp") {

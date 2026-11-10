@@ -17,12 +17,19 @@ use super::{WireState, acp, codex};
 const MAX_FRAMES_PER_STEP: usize = 32;
 const SESSION: &str = "fixture-session";
 
-/// The message sent while a run works, by the `uuid` the client gave it,
-/// from its arrival until Claude Code reports it finished or withdrawn.
 #[derive(Default)]
 pub(super) struct SdkWireState {
-    follow_up: Option<String>,
+    /// The message sent while a run works, from its arrival until Claude
+    /// Code reports it finished or withdrawn.
+    follow_up: Option<FollowUp>,
     lifecycle_events: u64,
+}
+
+/// A mid-turn message by the `uuid` the client gave it: waiting until a run
+/// takes it up, then running. Only a waiting message can be withdrawn.
+enum FollowUp {
+    Waiting(String),
+    Running(String),
 }
 
 pub(super) fn await_request(
@@ -100,7 +107,7 @@ fn receive(
         if state.claude_sdk.follow_up.is_some() {
             return Err(FixtureError::InvalidArguments);
         }
-        state.claude_sdk.follow_up = Some(uuid.to_owned());
+        state.claude_sdk.follow_up = Some(FollowUp::Waiting(uuid.to_owned()));
     }
     let blocks = content.as_array().ok_or(FixtureError::InvalidArguments)?;
     state.prompt_echo = Some(super::prompt_echo::blocks(blocks));
@@ -127,8 +134,10 @@ fn answer(
         // Claude Code reports a withdrawn message cancelled before it
         // answers; an id it holds no message for is not cancelled.
         Some("cancel_async_message") => {
-            let waiting = state.claude_sdk.follow_up.is_some()
-                && request["message_uuid"].as_str() == state.claude_sdk.follow_up.as_deref();
+            let waiting = matches!(
+                &state.claude_sdk.follow_up,
+                Some(FollowUp::Waiting(uuid)) if request["message_uuid"].as_str() == Some(uuid)
+            );
             if waiting {
                 emit_lifecycle("cancelled", state, output)?;
             }
@@ -173,12 +182,19 @@ fn emit_lifecycle(
     output: &mut impl Write,
 ) -> Result<(), FixtureError> {
     let sdk = &mut state.claude_sdk;
-    let uuid = match lifecycle {
-        "queued" | "started" => sdk.follow_up.clone(),
-        "completed" | "cancelled" => sdk.follow_up.take(),
-        _ => None,
-    }
-    .ok_or(FixtureError::InvalidArguments)?;
+    let uuid = match (lifecycle, sdk.follow_up.take()) {
+        ("queued", Some(FollowUp::Waiting(uuid))) => {
+            sdk.follow_up = Some(FollowUp::Waiting(uuid.clone()));
+            uuid
+        }
+        ("started", Some(FollowUp::Waiting(uuid))) => {
+            sdk.follow_up = Some(FollowUp::Running(uuid.clone()));
+            uuid
+        }
+        ("completed", Some(FollowUp::Running(uuid))) => uuid,
+        ("cancelled", Some(FollowUp::Waiting(uuid))) => uuid,
+        _ => return Err(FixtureError::InvalidArguments),
+    };
     sdk.lifecycle_events += 1;
     let event = format!("fixture-lifecycle-{}", sdk.lifecycle_events);
     codex::emit_json(

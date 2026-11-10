@@ -367,14 +367,7 @@ pub(super) fn substitute(
                     "$TURN",
                     state.current_turn_id.as_deref().unwrap_or("fixture-turn"),
                 );
-            // What the client sent goes in last, so its text is never read
-            // as a placeholder.
-            let text = quote(
-                text,
-                "$CODEX_TURN_CONFIG",
-                state.codex_turn_config.as_deref(),
-            )?;
-            Value::String(quote(text, "$PROMPT_ECHO", state.prompt_echo.as_deref())?)
+            Value::String(quote(&text, state)?)
         }
         Value::Array(values) => Value::Array(
             values
@@ -392,13 +385,39 @@ pub(super) fn substitute(
     })
 }
 
-/// `text` with `token` replaced by what the client sent; a frame that
-/// quotes something the client has not sent fails the case.
-fn quote(text: String, token: &str, value: Option<&str>) -> Result<String, FixtureError> {
-    if !text.contains(token) {
-        return Ok(text);
+/// Where the state keeps something the client sent.
+type Sent = fn(&WireState) -> Option<&str>;
+
+/// Placeholders for what the client sent, and where the state keeps it.
+const QUOTES: [(&str, Sent); 2] = [
+    ("$CODEX_TURN_CONFIG", |state| {
+        state.codex_turn_config.as_deref()
+    }),
+    ("$PROMPT_ECHO", |state| state.prompt_echo.as_deref()),
+];
+
+/// `text` with each client placeholder replaced by what the client sent, in
+/// one pass, so text the client sent is never read as a placeholder. A frame
+/// that quotes something the client has not sent fails the case.
+fn quote(text: &str, state: &WireState) -> Result<String, FixtureError> {
+    let mut quoted = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find('$') {
+        quoted.push_str(&rest[..start]);
+        rest = &rest[start..];
+        match QUOTES.iter().find(|(token, _)| rest.starts_with(token)) {
+            Some((token, sent)) => {
+                quoted.push_str(sent(state).ok_or(FixtureError::InvalidArguments)?);
+                rest = &rest[token.len()..];
+            }
+            None => {
+                quoted.push('$');
+                rest = &rest[1..];
+            }
+        }
     }
-    Ok(text.replace(token, value.ok_or(FixtureError::InvalidArguments)?))
+    quoted.push_str(rest);
+    Ok(quoted)
 }
 
 pub(super) fn substitute_root(text: &str, root: &std::path::Path) -> Result<String, FixtureError> {

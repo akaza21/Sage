@@ -249,8 +249,9 @@ const journeys = {
       stop_reason: null,
     }),
   ],
-  // Compact after one answered turn, as Claude Code 2.1.322 reports it:
-  // the summary replaces the history and stays Claude Code's own.
+  // Compact after one answered turn, in the 2.1.322 frames the SDK
+  // binding's runtime tests record: modelled, since capturing a real one
+  // takes a model call. The summary stays Claude Code's own.
   compact: [
     ...reply("msg_fixture_answer", ANSWER),
     result(),

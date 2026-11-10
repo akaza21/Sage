@@ -4,25 +4,27 @@
 use serde_json::{Value, json};
 
 use super::bridge::SdkBridge;
+use crate::acp::intent::session_event::SessionScopedEvent;
 
 const SESSION: &str = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
 
 /// What a replay produced: every ACP frame, each mid-turn message's
-/// answer, and the session events (notices, activities) as shown text.
+/// answer, and the text of each session notice.
 struct Replay {
     acp: Vec<Value>,
     steers: Vec<(String, bool)>,
-    session: String,
+    notices: Vec<String>,
 }
 
-/// Replays `case` and returns what the bridge produced. Prompts are sent in order with ids from
-/// 3; a message sent while Claude works says "Only the first page". The
-/// client approves the first permission option it is asked about.
+/// Replays `case` and returns what the bridge produced. Prompts are sent
+/// in order with ids from 3; a message sent while Claude works says "Only
+/// the first page". The client approves the first permission option it is
+/// asked about.
 fn replay_with(case: &str, prompts: &[Value]) -> Replay {
     let mut bridge = SdkBridge::new(SESSION.into(), None);
     let mut acp = Vec::new();
     let mut steers = Vec::new();
-    let mut session = String::new();
+    let mut notices = Vec::new();
     let mut prompts = prompts.iter().zip(3..);
     crate::acp::fixture::claude_sdk_wire_for_test(case, |kind, frames| {
         let mut sent = Vec::new();
@@ -32,7 +34,10 @@ fn replay_with(case: &str, prompts: &[Value]) -> Replay {
             // that follows a withdrawn message.
             sent.extend(inbound.replies);
             steers.extend(inbound.steers);
-            session.push_str(&format!("{:?}", inbound.session));
+            notices.extend(inbound.session.into_iter().filter_map(|event| match event {
+                SessionScopedEvent::Notice(notice) => Some(notice.text.as_str().to_owned()),
+                _ => None,
+            }));
             acp.extend(inbound.acp);
         }
         let request = match kind {
@@ -66,7 +71,7 @@ fn replay_with(case: &str, prompts: &[Value]) -> Replay {
     Replay {
         acp,
         steers,
-        session,
+        notices,
     }
 }
 
@@ -206,12 +211,12 @@ fn stop_withdraws_a_waiting_message_and_cancels_the_turn() {
 
 #[test]
 fn compact_after_an_answer_ends_its_own_turn_and_keeps_the_summary_private() {
-    let Replay { acp, session, .. } =
+    let Replay { acp, notices, .. } =
         replay_with("claude-sdk-compact", &[text("Inspect"), text("/compact")]);
     assert_eq!(settled(&acp, 3)["result"]["stopReason"], "end_turn");
     assert_eq!(settled(&acp, 4)["result"]["stopReason"], "end_turn");
-    assert!(session.contains("Claude Code compacted the conversation."));
-    let shown = serde_json::to_string(&acp).unwrap() + &session;
+    assert_eq!(notices, ["Claude Code compacted the conversation."]);
+    let shown = serde_json::to_string(&acp).unwrap() + &notices.concat();
     assert!(!shown.contains("the synthetic example was reviewed"));
 }
 
