@@ -90,6 +90,8 @@ struct Permission {
     suggestions: Option<Value>,
     /// An `AskUserQuestion` card: its questions' texts, in order.
     questions: Option<Vec<String>>,
+    /// An `ExitPlanMode` card: declining it ends the turn in plan mode.
+    plan_exit: bool,
 }
 
 #[derive(Debug)]
