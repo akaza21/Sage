@@ -48,7 +48,7 @@ impl SdkBridge {
             }
             "session/cancel" => {
                 self.interrupted = self.prompt.is_some();
-                self.control(json!({"subtype": "interrupt"}), Pending::Interrupt)
+                self.withdraw_steers()
             }
             "session/set_mode" => {
                 let mode = text(params.get("modeId"))?;

@@ -56,6 +56,7 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
             children: Children::default(),
             native: None,
             sent: Vec::new(),
+            steering: Steering::default(),
             launch: None,
             binding: self.binding,
             root: Some(self.root),
@@ -72,6 +73,7 @@ struct ClaudeSdkRuntime {
     native: Option<crate::acp::goal::NativeRpcReply>,
     /// Written frames whose delivery is still open, with what they started.
     sent: Vec<(EgressToken, Sent)>,
+    steering: Steering,
     launch: Option<SessionLaunch>,
     binding: Arc<AdmittedClaudeSdkBinding>,
     root: Option<crate::project_registry::ProjectRootAuthority>,
@@ -140,6 +142,10 @@ impl ClaudeSdkRuntime {
                 observed = true;
                 batch.push_event(event)?;
             }
+        }
+        for event in self.steering.answers(inbound.steers) {
+            observed = true;
+            batch.push_event(event)?;
         }
         if let Some(reply) = inbound.native {
             self.native = Some(reply);
@@ -269,8 +275,12 @@ impl HarnessAdapter for ClaudeSdkRuntime {
             .map(|egress| self.outbound(egress))
             .transpose()
     }
+    /// Claude Code queues a message sent while it works; see `bridge::steer`.
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
-        self.session.capabilities()
+        self.session.capabilities().map(|mut capabilities| {
+            capabilities.active_turn_steer = capabilities.prompt;
+            capabilities
+        })
     }
     fn session_control(
         &mut self,
@@ -328,6 +338,10 @@ impl HarnessAdapter for ClaudeSdkRuntime {
                 native_root,
                 model: None,
             },
+            AdapterCommand::Steer { prompt, .. } => {
+                let bridge = self.bridge.as_mut().ok_or(AdapterRuntimeError::Operation)?;
+                return self.steering.egress(bridge, &prompt);
+            }
             command => command,
         };
         let egress = self.session.command(command)?;
@@ -399,6 +413,12 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         token: EgressToken,
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
+        if self
+            .steering
+            .resolve(&token, resolution, self.bridge.as_mut())
+        {
+            return Ok(());
+        }
         if !matches!(resolution, EgressResolution::Queued)
             && let Some(index) = self.sent.iter().position(|(sent, _)| *sent == token)
         {
@@ -417,6 +437,10 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         self.session.resolve_egress(token, resolution)
     }
 }
+
+#[path = "runtime_steer.rs"]
+mod steering;
+use steering::Steering;
 
 #[cfg(test)]
 #[path = "runtime_tests.rs"]

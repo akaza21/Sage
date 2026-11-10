@@ -52,6 +52,7 @@ fn runtime() -> ClaudeSdkRuntime {
         children: Default::default(),
         native: None,
         sent: Vec::new(),
+        steering: Default::default(),
         launch: None,
         binding: Arc::new(AdmittedClaudeSdkBinding::for_test()),
         root: None,
@@ -680,4 +681,94 @@ fn a_prompt_larger_than_an_ordinary_frame_is_sent_as_a_prompt_frame() {
     assert!(sdk_frame(&user).is_ok());
     let control = json!({"type":"control_request","request":{"note":"x".repeat(ordinary)}});
     assert!(sdk_frame(&control).is_err());
+}
+
+fn steer(runtime: &mut ClaudeSdkRuntime, text: &str) -> (Value, u64) {
+    let egress = runtime
+        .command(AdapterCommand::Steer {
+            prompt: Prompt::new("prompt", text).unwrap(),
+            client_message_id: RequiredText::new("client", "client-2").unwrap(),
+        })
+        .unwrap();
+    let request_id = egress.token().request_id().unwrap();
+    let sdk = serde_json::from_slice(egress.frame().payload()).unwrap();
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Written)
+        .unwrap();
+    (sdk, request_id)
+}
+
+fn turn_ended(events: &[AdapterEvent]) -> bool {
+    events.iter().any(
+        |event| matches!(event, AdapterEvent::Turn { state, .. } if *state != TurnState::Running),
+    )
+}
+
+#[test]
+fn a_message_sent_while_claude_works_is_accepted_and_keeps_the_turn_open() {
+    let mut runtime = prompted();
+    assert!(runtime.capabilities().unwrap().active_turn_steer);
+    let (user, request_id) = steer(&mut runtime, "Only the first page");
+    assert_eq!(user["message"]["content"][0]["text"], "Only the first page");
+    let uuid = user["uuid"].as_str().unwrap().to_owned();
+    let queued = feed(
+        &mut runtime,
+        json!({"type":"command_lifecycle","command_uuid":uuid,"state":"queued","uuid":"e1"}),
+    );
+    assert!(matches!(
+        queued[..],
+        [AdapterEvent::SteerResponse { request_id: id, accepted: true }] if id == request_id
+    ));
+    let first = feed(
+        &mut runtime,
+        json!({"type":"result","subtype":"success","is_error":false,"usage":{}}),
+    );
+    assert!(!turn_ended(&first), "the waiting message runs in this turn");
+    let started = feed(
+        &mut runtime,
+        json!({"type":"command_lifecycle","command_uuid":uuid,"state":"started","uuid":"e2"}),
+    );
+    assert!(
+        !started
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::SteerResponse { .. })),
+        "accepted once"
+    );
+    let last = feed(
+        &mut runtime,
+        json!({"type":"result","subtype":"success","is_error":false,"usage":{}}),
+    );
+    assert!(matches!(
+        last.last(),
+        Some(AdapterEvent::Turn {
+            state: TurnState::Completed,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn a_message_never_written_is_forgotten_and_one_after_the_turn_is_refused() {
+    let mut runtime = prompted();
+    let egress = runtime
+        .command(AdapterCommand::Steer {
+            prompt: Prompt::new("prompt", "lost").unwrap(),
+            client_message_id: RequiredText::new("client", "client-2").unwrap(),
+        })
+        .unwrap();
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::QueueRejected)
+        .unwrap();
+    let end = feed(
+        &mut runtime,
+        json!({"type":"result","subtype":"success","is_error":false,"usage":{}}),
+    );
+    assert!(turn_ended(&end));
+    assert!(matches!(
+        runtime.command(AdapterCommand::Steer {
+            prompt: Prompt::new("prompt", "late").unwrap(),
+            client_message_id: RequiredText::new("client", "client-3").unwrap(),
+        }),
+        Err(AdapterRuntimeError::Operation)
+    ));
 }

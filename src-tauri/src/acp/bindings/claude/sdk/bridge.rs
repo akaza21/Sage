@@ -23,6 +23,7 @@ mod notices;
 mod outbound;
 mod permission;
 mod questions;
+mod steer;
 mod subagents;
 
 /// Bounds on per-turn bookkeeping; the inner session caps pending requests.
@@ -64,6 +65,8 @@ pub(super) struct Inbound {
     pub(super) native: Option<crate::acp::goal::NativeRpcReply>,
     /// Subagent facts, applied before the ACP frames.
     pub(super) children: Vec<crate::acp::bindings::claude::runtime::ChildEvent>,
+    /// Mid-turn messages, by id: taken up (or queued to be), or not.
+    pub(super) steers: Vec<(String, bool)>,
 }
 
 #[derive(Debug)]
@@ -80,6 +83,8 @@ enum Pending {
         value: String,
     },
     Interrupt,
+    /// Withdrawing a waiting mid-turn message, on the way to an interrupt.
+    Withdraw(String),
     /// A session control; its reply completes the native request.
     Control,
 }
@@ -118,6 +123,11 @@ pub(super) struct SdkBridge {
     streamed: VecDeque<String>,
     retrying: bool,
     compacting: bool,
+    /// Mid-turn messages Claude Code has not yet taken up.
+    steers: Vec<String>,
+    /// A run's `result` that did not end the turn, for when no waiting
+    /// message runs after all.
+    held: Option<Value>,
 }
 
 /// What a written SDK frame changed, so an undelivered one can be undone.
@@ -126,6 +136,8 @@ pub(super) enum Sent {
     Prompt,
     Control(String),
     Answer(String),
+    /// A mid-turn message, by id.
+    Steer(String),
 }
 
 impl SdkBridge {
@@ -151,6 +163,8 @@ impl SdkBridge {
             streamed: VecDeque::new(),
             retrying: false,
             compacting: false,
+            steers: Vec::new(),
+            held: None,
         }
     }
 
@@ -227,11 +241,14 @@ impl SdkBridge {
                 self.interrupted = false;
             }
             Sent::Control(request_id) => {
-                if let Some(Pending::Interrupt) = self.pending.remove(request_id) {
+                if let Some(Pending::Interrupt | Pending::Withdraw(_)) =
+                    self.pending.remove(request_id)
+                {
                     self.interrupted = false;
                 }
             }
             Sent::Answer(_) => self.delivered(sent),
+            Sent::Steer(uuid) => self.unsteer(uuid),
         }
     }
 

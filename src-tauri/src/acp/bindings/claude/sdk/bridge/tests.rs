@@ -696,3 +696,133 @@ fn a_mentioned_credential_file_is_named_but_not_handed_to_claude_code() {
     assert!(!text.contains('@'), "{text}");
     assert!(text.contains("Not attached"), "{text}");
 }
+
+fn lifecycle(uuid: &str, state: &str) -> Value {
+    json!({"type":"command_lifecycle","command_uuid":uuid,"state":state,"uuid":"e1","session_id":SESSION})
+}
+
+fn ended(inbound: &Inbound) -> bool {
+    inbound.acp.iter().any(|frame| frame["id"] == 3)
+}
+
+#[test]
+fn a_message_sent_mid_turn_is_queued_and_the_turn_ends_after_it_runs() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (user, uuid) = bridge.steer("also check the tests").unwrap();
+    assert_eq!(user["type"], "user");
+    assert_eq!(user["uuid"], uuid.as_str());
+    assert_eq!(
+        user["message"]["content"],
+        json!([{"type":"text","text":"also check the tests"}])
+    );
+    let queued = bridge.inbound(lifecycle(&uuid, "queued")).unwrap();
+    assert_eq!(queued.steers, [(uuid.clone(), true)]);
+
+    // The running reply ends before Claude Code takes the message up: the
+    // turn goes on.
+    let first = bridge.inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":1}})).unwrap();
+    assert!(!ended(&first) && first.acp.is_empty());
+    bridge.inbound(lifecycle(&uuid, "started")).unwrap();
+    let chunk = bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Checked"}}})).unwrap();
+    assert_eq!(updates(&chunk)[0]["content"]["text"], "Checked");
+    let last = bridge.inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":2}})).unwrap();
+    assert!(ended(&last));
+    assert!(last.steers.is_empty());
+    // A later lifecycle frame for it changes nothing.
+    assert!(
+        bridge
+            .inbound(lifecycle(&uuid, "completed"))
+            .unwrap()
+            .acp
+            .is_empty()
+    );
+}
+
+#[test]
+fn a_message_taken_up_at_a_tool_boundary_ends_with_the_one_result() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("stop after this").unwrap();
+    bridge.inbound(lifecycle(&uuid, "queued")).unwrap();
+    let started = bridge.inbound(lifecycle(&uuid, "started")).unwrap();
+    assert_eq!(started.steers, [(uuid.clone(), true)]);
+    bridge.inbound(lifecycle(&uuid, "completed")).unwrap();
+    let result = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(ended(&result));
+}
+
+#[test]
+fn a_held_turn_ends_when_its_waiting_message_is_dropped() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("later").unwrap();
+    let first = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(!ended(&first));
+    let dropped = bridge.inbound(lifecycle(&uuid, "cancelled")).unwrap();
+    assert_eq!(dropped.steers, [(uuid, false)]);
+    assert!(ended(&dropped));
+}
+
+#[test]
+fn stopping_withdraws_waiting_messages_before_interrupting() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, first) = bridge.steer("one").unwrap();
+    let (_, second) = bridge.steer("two").unwrap();
+    let cancel = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    assert_eq!(
+        cancel["request"],
+        json!({"subtype":"cancel_async_message","message_uuid":first})
+    );
+    assert!(
+        bridge.steer("three").is_err(),
+        "nothing joins a stopping turn"
+    );
+    let next = bridge
+        .inbound(success(&cancel, json!({"cancelled":true})))
+        .unwrap();
+    assert_eq!(next.steers, [(first, false)]);
+    assert_eq!(
+        next.replies[0]["request"],
+        json!({"subtype":"cancel_async_message","message_uuid":second})
+    );
+    // A message already running is not withdrawn; the interrupt stops it.
+    let next = bridge.inbound(json!({"type":"control_response","response":{"subtype":"error","request_id":next.replies[0]["request_id"],"error":"not queued"}})).unwrap();
+    assert_eq!(next.steers, [(second, false)]);
+    let interrupt = &next.replies[0];
+    assert_eq!(interrupt["request"]["subtype"], "interrupt");
+    bridge
+        .inbound(success(interrupt, json!({"still_queued":[]})))
+        .unwrap();
+    let result = bridge
+        .inbound(
+            json!({"type":"result","subtype":"error_during_execution","is_error":true,"usage":{}}),
+        )
+        .unwrap();
+    assert_eq!(
+        result.acp.last().unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn a_message_needs_a_running_turn_and_an_unsent_one_is_forgotten() {
+    let mut bridge = initialized();
+    assert!(bridge.steer("idle").is_err());
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("never written").unwrap();
+    bridge.undo(&Sent::Steer(uuid));
+    let result = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(ended(&result));
+}
