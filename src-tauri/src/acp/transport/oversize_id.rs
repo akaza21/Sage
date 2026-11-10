@@ -61,6 +61,9 @@ pub(super) struct OversizeIdScanner {
     token: Token,
     key_is_id: bool,
     id: Option<u64>,
+    /// A top-level `method` key: the frame is a request or notification,
+    /// so its id never answers one of Sage's requests.
+    has_method: bool,
     bytes_seen: usize,
     utf8: Utf8Validator,
 }
@@ -73,6 +76,7 @@ impl OversizeIdScanner {
             token: Token::None,
             key_is_id: false,
             id: None,
+            has_method: false,
             bytes_seen: 0,
             utf8: Utf8Validator::new(),
         }
@@ -95,7 +99,7 @@ impl OversizeIdScanner {
                         self.utf8.feed(byte)?;
                         self.token = Token::String {
                             key,
-                            match_index: 3,
+                            match_index: NO_KEY,
                             escaped,
                             unicode_digits,
                             unicode_value,
@@ -161,7 +165,9 @@ impl OversizeIdScanner {
                             b'"' => {
                                 self.token = Token::None;
                                 if key {
-                                    self.key_is_id = self.stack.len() == 1 && match_index == 2;
+                                    let top = self.stack.len() == 1;
+                                    self.key_is_id = top && match_index == ID_KEY;
+                                    self.has_method |= top && match_index == METHOD_KEY;
                                     self.expect = Expect::Colon;
                                 } else {
                                     self.finish_value();
@@ -276,8 +282,10 @@ impl OversizeIdScanner {
         Ok(())
     }
 
+    /// The id of a complete response frame; a frame naming a `method` is
+    /// never one, whatever its id.
     pub(super) fn finish(&self) -> Result<u64, ()> {
-        if !self.is_complete() {
+        if !self.is_complete() || self.has_method {
             return Err(());
         }
         self.id.ok_or(())
@@ -292,10 +300,22 @@ impl OversizeIdScanner {
     }
 }
 
+/// Key-matching states: a key so far reads `i`, `id`, a prefix of
+/// `method`, or none of them (`NO_KEY`, which never leaves).
+const ID_KEY: u8 = 2;
+const NO_KEY: u8 = 3;
+const METHOD_KEY: u8 = 9;
+
 fn match_key(index: u8, value: u16) -> u8 {
     match (index, value) {
-        (0, 105) => 1,
-        (1, 100) => 2,
-        _ => 3,
+        (0, 0x69) => 1,
+        (1, 0x64) => ID_KEY,
+        (0, 0x6d) => 4,
+        (4, 0x65) => 5,
+        (5, 0x74) => 6,
+        (6, 0x68) => 7,
+        (7, 0x6f) => 8,
+        (8, 0x64) => METHOD_KEY,
+        _ => NO_KEY,
     }
 }

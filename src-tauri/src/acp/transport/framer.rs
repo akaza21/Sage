@@ -569,6 +569,32 @@ mod tests {
     }
 
     #[test]
+    fn recoverable_oversize_never_takes_a_request_for_a_reply() {
+        // A server request carries an id from the peer's own counter, which
+        // may equal one of Sage's pending ids; it stays a frame error.
+        for (prefix, suffix) in [
+            (
+                r#"{"id":7,"method":"item/requestApproval","params":""#,
+                r#""}"#,
+            ),
+            (r#"{"id":7,"params":""#, r#"","method":"x"}"#),
+            (r#"{"id":7,"method":"x","params":""#, r#""}"#),
+        ] {
+            let raw = format!("{prefix}{}{suffix}\n", "x".repeat(frame_limit()));
+            assert_eq!(decode_oversize(raw.as_bytes()), Err(FrameError::Oversize));
+        }
+        // Only a top-level key counts, and a longer key is not `method`.
+        for prefix in [
+            r#"{"id":7,"result":{"method":"x"},"text":""#,
+            r#"{"id":7,"methods":"x","text":""#,
+            r#"{"id":7,"metho":"x","text":""#,
+        ] {
+            let raw = format!("{prefix}{}\"}}\n", "x".repeat(frame_limit()));
+            assert_eq!(decode_oversize(raw.as_bytes()), Ok(Some(7)), "{prefix}");
+        }
+    }
+
+    #[test]
     fn recoverable_oversize_accepts_escaped_id_key_and_crlf() {
         let raw = format!(
             "{{\"\\u0069d\":7,\"result\":\"{}\"}}\r\n",

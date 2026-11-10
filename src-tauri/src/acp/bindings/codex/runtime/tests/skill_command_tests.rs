@@ -237,40 +237,6 @@ fn a_skills_read_that_never_left_is_wanted_again() {
     assert!(runtime.discover_commands().unwrap().is_some());
 }
 
-fn send_prompt(runtime: &mut impl HarnessAdapter) {
-    let egress = runtime
-        .command(AdapterCommand::Prompt {
-            prompt: Prompt::new("prompt", "hello").unwrap(),
-            client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
-        })
-        .unwrap();
-    runtime
-        .resolve_egress(egress.into_token(), EgressResolution::Queued)
-        .unwrap();
-}
-
-#[test]
-fn once_a_turn_starts_an_oversized_frame_is_never_taken_for_the_skills_reply() {
-    let mut runtime = fixture_runtime();
-    ready(&mut runtime);
-    let egress = runtime.discover_commands().unwrap().expect("skills/list");
-    let id = request_id(&egress);
-    runtime
-        .resolve_egress(egress.into_token(), EgressResolution::Queued)
-        .unwrap();
-    assert!(runtime.child_read_pending());
-    // During a turn Codex may send its own requests, whose ids are not
-    // Sage's; an oversized one must stay a frame error, never be dropped.
-    send_prompt(&mut runtime);
-    assert!(!runtime.child_read_pending());
-    assert!(runtime.accept_oversized_response(id).is_err());
-    // The read is still pending: the oversized frame was not taken for it.
-    assert!(runtime.discover_commands().unwrap().is_none());
-    skills_changed(&mut runtime);
-    assert!(runtime.discover_commands().unwrap().is_none());
-}
-
 #[test]
 fn an_oversized_skills_reply_tells_the_menu_the_list_changed() {
     use crate::acp::{

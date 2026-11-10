@@ -16,9 +16,7 @@ impl CodexAdapter {
     /// A child read or a fork carries native Turns, and a skills read a
     /// whole catalogue; each may be answered past the frame bound.
     pub(crate) fn oversize_recoverable(&self) -> bool {
-        self.child_read_pending()
-            || self.fork_pending().is_some()
-            || self.skills_oversize_recoverable()
+        self.child_read_pending() || self.fork_pending().is_some() || self.skills_read_pending()
     }
 
     pub(crate) fn child_read_scope(&self) -> Option<(u64, &str, &str)> {
