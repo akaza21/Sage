@@ -39,6 +39,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         } else {
             self.idle_decoder.disable_recoverable_oversize();
         }
+        // Between turns the skip follows the adapter again, so a read sent
+        // after the turn cannot have its oversized answer dropped.
+        self.idle_decoder
+            .set_oversize_skip(self.adapter.skips_oversize_frames());
         let mut frame = self
             .idle_decoder
             .push_chunk(chunk)

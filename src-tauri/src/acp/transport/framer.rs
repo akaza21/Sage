@@ -5,6 +5,11 @@ use crate::acp::limits::LIMITS;
 
 const READ_CHUNK_BYTES: usize = 8 * 1024;
 const DISCARD_BYTES_MAX: usize = 8 * 1024 * 1024;
+/// How far an id-less frame a harness may skip is read past. Reading past it
+/// holds no more memory than the scanner's fixed state, so this only bounds a
+/// harness that never ends a line; it sits well above the largest end-of-run
+/// event a harness repeats its whole run in.
+const SKIPPED_BYTES_MAX: usize = 256 * 1024 * 1024;
 
 struct Discarding {
     scanner: OversizeIdScanner,
@@ -209,7 +214,12 @@ impl IncrementalFrameDecoder {
         }
         if let Some(discarding) = &mut self.discarding {
             discarding.bytes += 1;
-            if discarding.bytes > DISCARD_BYTES_MAX || discarding.scanner.feed(byte).is_err() {
+            let limit = if self.skip_oversize {
+                SKIPPED_BYTES_MAX
+            } else {
+                DISCARD_BYTES_MAX
+            };
+            if discarding.bytes > limit || discarding.scanner.feed(byte).is_err() {
                 self.reset_frame();
                 return Err(FrameError::Oversize);
             }
@@ -494,6 +504,30 @@ mod tests {
             .map(|chunk| truncated.push_chunk(chunk))
             .any(|result| matches!(result, Err(FrameError::Oversize)));
         assert!(failed);
+    }
+
+    /// A harness's end-of-run event can repeat a long run: one far past the
+    /// ordinary discard bound is still read past, holding only the scanner.
+    #[test]
+    fn skipped_oversize_reads_past_an_end_of_run_event_beyond_the_discard_bound() {
+        let body = "x".repeat(DISCARD_BYTES_MAX + frame_limit());
+        let raw = format!("{{\"type\":\"agent_end\",\"messages\":[\"{body}\"]}}\nnext\n");
+        let mut decoder = IncrementalFrameDecoder::new();
+        decoder.set_oversize_skip(true);
+        let (mut frames, mut skipped) = (Vec::new(), 0);
+        for chunk in raw.as_bytes().chunks(READ_CHUNK_BYTES) {
+            let mut frame = decoder.push_chunk(chunk).unwrap();
+            loop {
+                skipped += usize::from(decoder.take_skipped_oversize());
+                frames.extend(frame.map(|frame| frame.as_bytes().to_vec()));
+                assert!(decoder.assembly.capacity() <= frame_limit());
+                if !decoder.has_pending_input() {
+                    break;
+                }
+                frame = decoder.drain_pending().unwrap();
+            }
+        }
+        assert_eq!((frames, skipped), (vec![b"next".to_vec()], 1));
     }
 
     fn decode_oversize(raw: &[u8]) -> Result<Option<u64>, FrameError> {

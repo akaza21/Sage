@@ -168,6 +168,8 @@ pub(crate) trait HarnessAdapter {
     fn skips_oversize_frames(&self) -> bool {
         false
     }
+    /// An oversized frame without a request id was read past and dropped.
+    fn oversize_frame_skipped(&mut self) {}
     /// The frame for a session control; harnesses without one refuse it.
     fn session_control(
         &mut self,

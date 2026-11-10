@@ -150,6 +150,9 @@ impl PiTranslator {
             retry_final_error: None,
             unknown_kinds: Default::default(),
             unknown_suppression_emitted: false,
+            last_reply: None,
+            dropped_frame: false,
+            reply_open: false,
         });
         Ok(vec![outbound])
     }
