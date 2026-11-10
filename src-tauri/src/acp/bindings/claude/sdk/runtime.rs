@@ -218,16 +218,6 @@ impl ResourceMapper for NoResources {
 /// frames are not undone (the pump fails the session on such writes anyway).
 const MAX_OPEN_DELIVERIES: usize = 64;
 
-/// What Claude Code does beyond Claude's ACP surface: it queues a message
-/// sent while it works (see `bridge::steer`), and compacts on its own
-/// `/compact` prompt, which a Compact action sends as its Turn. The
-/// session's capabilities and its `Initialized` event must agree.
-fn sdk_capabilities(mut capabilities: CapabilitySnapshotV1) -> CapabilitySnapshotV1 {
-    capabilities.active_turn_steer = capabilities.prompt;
-    capabilities.native_session_compact = capabilities.prompt;
-    capabilities
-}
-
 fn sdk_frame(value: &Value) -> Result<OutboundFrame, AdapterRuntimeError> {
     let bytes = serde_json::to_vec(value).map_err(|_| AdapterRuntimeError::Frame)?;
     // A user message carries the prompt's images and files, so it takes the
@@ -301,20 +291,25 @@ impl HarnessAdapter for ClaudeSdkRuntime {
             .bridge()?
             .session_control(control)
             .map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
-        let sent = SdkBridge::sent(&sdk).ok_or(AdapterRuntimeError::Frame)?;
-        let frame = match sdk_frame(&sdk) {
-            Ok(frame) => frame,
-            Err(error) => {
-                self.bridge()?.undo(&sent);
-                return Err(error);
-            }
-        };
-        // One control at a time, so its token finds it if the write fails.
-        let token = EgressToken::protocol_notification();
-        if self.sent.len() < MAX_OPEN_DELIVERIES {
-            self.sent.push((token.clone(), sent));
-        }
-        Ok(AdapterEgress::new(frame, token))
+        self.control_egress(&sdk)
+    }
+    /// A fork of this session through its latest reply, as Claude Code
+    /// saved it.
+    fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.fork_egress()
+    }
+    /// Claude Code holds nothing for a fork until its chat launches.
+    fn release_fork(
+        &mut self,
+        _fork: &crate::acp::intent::ExternalId,
+        _committed: bool,
+    ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        self.native = Some(crate::acp::goal::NativeRpcReply::Released);
+        Ok(None)
+    }
+    fn defer_fork_release(&mut self, _fork: &crate::acp::intent::ExternalId, _done: bool) -> bool {
+        self.native = Some(crate::acp::goal::NativeRpcReply::Released);
+        true
     }
     fn native_rpc_pending(&self) -> bool {
         self.native.is_some()
@@ -449,6 +444,9 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     }
 }
 
+#[path = "runtime_native.rs"]
+mod native;
+use native::sdk_capabilities;
 #[path = "runtime_steer.rs"]
 mod steering;
 use steering::Steering;

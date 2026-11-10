@@ -9,6 +9,7 @@ mod bridge;
 mod config;
 #[cfg(all(test, feature = "acp-fixture"))]
 mod fixture_tests;
+mod fork;
 mod probe;
 mod runtime;
 mod tools;

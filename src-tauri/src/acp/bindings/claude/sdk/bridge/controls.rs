@@ -39,7 +39,32 @@ impl SdkBridge {
     pub(in crate::acp::bindings::claude::sdk) fn controlling(&self) -> bool {
         self.pending
             .values()
-            .any(|pending| matches!(pending, Pending::Control))
+            .any(|pending| matches!(pending, Pending::Control | Pending::Fork(_)))
+    }
+
+    /// A fork answers once Claude Code shows it is still running; the copy
+    /// itself is made when the fork's chat first launches (see `fork`).
+    pub(in crate::acp::bindings::claude::sdk) fn fork(
+        &mut self,
+        config: Option<std::path::PathBuf>,
+    ) -> Result<Value, BridgeError> {
+        if self.controlling() || self.prompt.is_some() {
+            return Err(BridgeError::Capacity);
+        }
+        self.control(json!({"subtype": "get_settings"}), Pending::Fork(config))
+    }
+
+    /// The fork through the session's latest saved reply, or a refusal
+    /// when there is none (or Claude Code failed the round trip).
+    pub(super) fn forked(&self, config: Option<&std::path::Path>, inbound: &mut Inbound) {
+        inbound.native = Some(
+            config
+                .and_then(|config| super::super::fork::Fork::of(&self.session_id, config))
+                .and_then(|fork| {
+                    crate::acp::intent::ExternalId::new("externalSessionId", fork.id()).ok()
+                })
+                .map_or(NativeRpcReply::Rejected, NativeRpcReply::Forked),
+        );
     }
 
     /// Claude Code's reply to a session control. A rewind it could not
