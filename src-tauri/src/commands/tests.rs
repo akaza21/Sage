@@ -63,6 +63,9 @@ mod attached_context;
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 mod slash_command_journey;
 
+#[cfg(feature = "acp-fixture")]
+mod embedded_resource_journey;
+
 pub(super) fn state_with_project() -> (AppState, String, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-acp-command-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();

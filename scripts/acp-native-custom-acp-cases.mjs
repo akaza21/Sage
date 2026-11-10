@@ -72,6 +72,29 @@ export function customAcpJourneys() {
       ],
     },
     {
+      // An agent that advertises embedded context (ACP
+      // promptCapabilities.embeddedContext), so Sage sends attached files
+      // and long pastes as resource blocks. It answers each prompt with what
+      // it carried: every resource's name, type, size and SHA-256, never its
+      // content. Send with an attachment, then Retry that turn: the second
+      // answer names the same file again.
+      id: "custom-acp-embedded-resources",
+      steps: [
+        wait("acpInitialize"),
+        emit("acpInitialize", {
+          promptCapabilities: { image: true, embeddedContext: true },
+        }),
+        wait("acpNew"),
+        emit("acpSession"),
+        ...["send", "retry"].flatMap(() => [
+          wait("acpPrompt"),
+          emit("acpResourceEcho"),
+          emit("acpCompleted"),
+        ]),
+        ...closing,
+      ],
+    },
+    {
       // Answer, decline or let the card wait; the echo names the fields only.
       id: "custom-acp-elicitation-form",
       steps: [...opening, ...asking(form), ...closing],

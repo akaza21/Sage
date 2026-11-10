@@ -64,6 +64,8 @@ pub(super) struct WireState {
     user_input_echo: Option<String>,
     pi: pi::PiWireState,
     acp_config: Option<acp::AcpConfig>,
+    /// What prompts carry, once `initialize` advertised embedded context.
+    embedded_context: Option<acp::EmbeddedContext>,
     /// The model the client opened or resumed the Codex thread with.
     codex_thread_model: Option<String>,
 }
@@ -83,6 +85,7 @@ impl WireState {
             user_input_echo: None,
             pi: pi::PiWireState::new(),
             acp_config: None,
+            embedded_context: None,
             codex_thread_model: None,
         }
     }
