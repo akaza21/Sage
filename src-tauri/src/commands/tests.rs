@@ -630,6 +630,7 @@ async fn start_admitted_command_session(
             client_intent_id: ClientIntentId::new(),
             binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
             model_id: None,
+            effort: None,
         },
     )
     .await
@@ -688,6 +689,7 @@ async fn start_registry_test_command_session(
             )
             .unwrap(),
             model_id: None,
+            effort: None,
         },
     )
     .await
@@ -1128,6 +1130,7 @@ fn start_preserves_project_root_failure_classification() {
                 client_intent_id: ClientIntentId::new(),
                 binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await;
@@ -1247,6 +1250,7 @@ fn unknown_requested_binding_is_rejected_before_any_durable_mutation() {
                 client_intent_id: ClientIntentId::new(),
                 binding_id: BindingId::new("bindingId", "not-admitted").unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await;
@@ -1306,6 +1310,7 @@ fn an_admitted_opencode_binding_starts_a_durable_session() {
                 client_intent_id: ClientIntentId::new(),
                 binding_id: BindingId::new("bindingId", "opencode-acp").unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await
@@ -1447,6 +1452,7 @@ fn unavailable_registration_rejects_the_codex_name_without_routing_by_name() {
                 client_intent_id: ClientIntentId::new(),
                 binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await;
@@ -1489,6 +1495,7 @@ fn admitted_registration_rejects_a_foreign_binding_name() {
                 client_intent_id: ClientIntentId::new(),
                 binding_id: BindingId::new("bindingId", "foreign-app-server").unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await;
@@ -1558,6 +1565,7 @@ fn test_binding_routes_through_registry_resolution_before_durable_start() {
                 )
                 .unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await
@@ -1615,6 +1623,7 @@ fn admitted_codex_start_command_routes_to_the_durable_service() {
                 client_intent_id: ClientIntentId::new(),
                 binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await
@@ -1688,6 +1697,7 @@ fn test_binding_activation_uses_the_registry_factory_path() {
                 )
                 .unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await

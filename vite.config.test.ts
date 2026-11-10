@@ -79,6 +79,9 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerAddActions.tsx",
   "src/features/chat/ComposerEffortMenu.tsx",
   "src/features/chat/ComposerModelMenu.tsx",
+  // The Thinking level a new chat chooses before its first session loads
+  // only when the selected model lists levels.
+  "src/features/chat/DraftEffortControl.tsx",
   // The `/` command controller loads with the field's first focus, its
   // menu with the first `/` typed.
   "src/features/chat/ComposerSlashController.tsx",

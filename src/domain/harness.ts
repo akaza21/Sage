@@ -94,6 +94,8 @@ export interface ModelOption {
   description?: string;
   isDefault?: boolean;
   contextWindow?: number;
+  /** Thinking levels the harness lists for this model before a session. */
+  effortLevels?: string[];
 }
 
 /** Presentation-only mark selection; never selects protocol behavior. */

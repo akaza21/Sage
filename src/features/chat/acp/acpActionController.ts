@@ -297,6 +297,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
             clientIntentId: nextIntentId(),
             bindingId,
             modelId,
+            ...chatAccessDraftPort.effort?.(captured.scope, bindingId, modelId),
           });
           const applied = apply(captured, started);
           if (!applied) return "ignoredStale";

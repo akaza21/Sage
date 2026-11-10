@@ -172,6 +172,7 @@ async fn open_journey() -> Journey {
             client_intent_id: ClientIntentId::new(),
             binding_id: BindingId::new("bindingId", AGENT).unwrap(),
             model_id: None,
+            effort: None,
         },
     )
     .await

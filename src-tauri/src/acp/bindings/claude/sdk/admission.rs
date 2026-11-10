@@ -25,17 +25,19 @@ use crate::{
 };
 
 pub(crate) const CLAUDE_SDK_BINDING_ID: &str = "claude-code-sdk";
-/// The Claude Code release whose SDK protocol this binding was characterised on.
+/// The Claude Code release the recorded fixtures replay.
+#[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
 pub(crate) const CLAUDE_CODE_VERSION: &str = "2.1.319";
-/// The oldest 2.1 release with every control request Sage sends; a new
-/// minor line may change the protocol, so it waits for its own admission.
+/// The oldest release with every control request Sage sends. Later releases
+/// of the same major version are admitted; a new major version may change
+/// the protocol, so it waits for its own admission.
 const SUPPORTED_MINIMUM: (u64, u64, u64) = (2, 1, 300);
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:claude-code-sdk:v1:";
 
 /// Fixed SDK-mode arguments; the session arguments follow them. The mode is
 /// forced to `default` so a settings file cannot start Claude Code in a
 /// mode the picker does not show (bypass would skip every approval).
-const SDK_ARGS: [&str; 12] = [
+pub(super) const SDK_ARGS: [&str; 12] = [
     "--output-format",
     "stream-json",
     "--input-format",
@@ -131,20 +133,29 @@ impl SessionLaunch {
     }
 }
 
+fn parse_version(value: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = value.split('.').map(str::parse::<u64>);
+    let version = (
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+    );
+    parts.next().is_none().then_some(version)
+}
+
 fn version_admitted(version: &str) -> bool {
-    let parse = |value: &str| -> Option<(u64, u64, u64)> {
-        let mut parts = value.split('.').map(str::parse::<u64>);
-        let version = (
-            parts.next()?.ok()?,
-            parts.next()?.ok()?,
-            parts.next()?.ok()?,
-        );
-        parts.next().is_none().then_some(version)
-    };
-    parse(version).is_some_and(|found| {
-        found >= SUPPORTED_MINIMUM
-            && (found.0, found.1) == (SUPPORTED_MINIMUM.0, SUPPORTED_MINIMUM.1)
-    })
+    parse_version(version)
+        .is_some_and(|found| found >= SUPPORTED_MINIMUM && found.0 == SUPPORTED_MINIMUM.0)
+}
+
+/// The 2.1 line keeps the SDK protocol this binding covers, so every admitted
+/// 2.1 release is characterised. A later minor release of the same major
+/// version is admitted and runs, but may add what the binding has not seen,
+/// so it stays uncharacterised and the chat says so.
+fn version_characterised(version: &str) -> bool {
+    version_admitted(version)
+        && parse_version(version)
+            .is_some_and(|found| (found.0, found.1) == (SUPPORTED_MINIMUM.0, SUPPORTED_MINIMUM.1))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -206,6 +217,14 @@ impl AdmittedClaudeSdkBinding {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn for_test_with_digest(digest: [u8; 32]) -> Self {
+        Self {
+            binding_digest: digest,
+            ..Self::for_test()
+        }
+    }
+
     pub(crate) fn binding_digest(&self) -> [u8; 32] {
         self.binding_digest
     }
@@ -215,11 +234,20 @@ impl AdmittedClaudeSdkBinding {
     pub(crate) fn artifact_digest(&self) -> &str {
         &self.sha256_hex
     }
+    /// The CLI a model probe may start: none for a replay fixture, whose
+    /// artifact is not the CLI.
+    pub(super) fn probe_executable(&self) -> Option<&std::path::Path> {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if self.fixture.is_some() {
+            return None;
+        }
+        Some(&self.executable)
+    }
     pub(crate) fn harness_version(&self) -> &str {
         &self.version
     }
     pub(crate) fn characterisation(&self) -> HarnessCharacterisation {
-        if self.version == CLAUDE_CODE_VERSION {
+        if version_characterised(&self.version) {
             HarnessCharacterisation::Characterised
         } else {
             HarnessCharacterisation::Uncharacterised
@@ -412,13 +440,29 @@ mod tests {
         for (version, admitted) in [
             ("2.1.319", true),
             ("2.1.300", true),
-            ("2.2.0", false),
+            ("2.1.400", true),
+            ("2.2.0", true),
             ("2.1.299", false),
             ("3.0.0", false),
             ("2.1", false),
             ("2.1.319-beta", false),
         ] {
             assert_eq!(version_admitted(version), admitted, "{version}");
+        }
+    }
+
+    #[test]
+    fn the_whole_2_1_line_is_characterised_and_a_later_minor_is_not() {
+        for (version, characterised) in [
+            ("2.1.300", true),
+            ("2.1.314", true),
+            ("2.1.319", true),
+            ("2.1.1000", true),
+            ("2.1.299", false),
+            ("2.2.0", false),
+            ("3.0.0", false),
+        ] {
+            assert_eq!(version_characterised(version), characterised, "{version}");
         }
     }
 

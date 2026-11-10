@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     attached_context::AttachedContexts,
     contract::*,
-    intent::{BindingId, ModelId, PageCursor, Prompt},
+    intent::{BindingId, EffortId, ModelId, PageCursor, Prompt},
 };
 
 mod intent_validation;
@@ -159,6 +159,10 @@ pub struct StartAcpSessionRequest {
     pub client_intent_id: ClientIntentId,
     pub binding_id: BindingId,
     pub model_id: Option<ModelId>,
+    /// The thinking level chosen before the session existed, given to the
+    /// session before its first prompt.
+    #[serde(default)]
+    pub effort: Option<EffortId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

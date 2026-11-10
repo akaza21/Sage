@@ -4,6 +4,7 @@ import {
   draftChatAccess,
   useChatAccessDrafts,
 } from "../../../app/chatAccessDrafts";
+import { useChatEffortDraft } from "../../../app/chatEffortDraft";
 import { useChatAccessStore } from "../../../app/sessionAccessActions";
 import type {
   AcpChatPage,
@@ -115,6 +116,7 @@ function newChat() {
 beforeEach(() => {
   for (const fn of Object.values(port)) fn.mockReset();
   useChatAccessDrafts.setState({ drafts: {} });
+  useChatEffortDraft.setState({ draft: null });
   useChatAccessStore.setState({ modes: {}, error: null });
 });
 
@@ -187,5 +189,42 @@ describe("access drafted before a chat's session starts", () => {
 
     expect(test.order).toEqual(["start", "send"]);
     expect(useChatAccessDrafts.getState().drafts).toEqual({});
+  });
+});
+
+describe("a thinking level drafted before a chat's session starts", () => {
+  it("goes with the session start for the same binding and model", async () => {
+    useChatEffortDraft.setState({
+      draft: { chatId: scope.chatId, bindingId, modelId, effort: "high" },
+    });
+    const test = newChat();
+
+    await expect(
+      test.controller.submit("hello", [], bindingId, modelId),
+    ).resolves.toBe("applied");
+
+    expect(test.commands.startSession).toHaveBeenCalledWith(
+      expect.objectContaining({ bindingId, modelId, effort: "high" }),
+    );
+    // Held until the session exists, so a failed start sends it again.
+    expect(useChatEffortDraft.getState().draft?.effort).toBe("high");
+  });
+
+  it("is not sent for another model", async () => {
+    useChatEffortDraft.setState({
+      draft: {
+        chatId: scope.chatId,
+        bindingId,
+        modelId: "model-b",
+        effort: "high",
+      },
+    });
+    const test = newChat();
+
+    await test.controller.submit("hello", [], bindingId, modelId);
+
+    expect(test.commands.startSession).toHaveBeenCalledWith(
+      expect.not.objectContaining({ effort: expect.anything() }),
+    );
   });
 });

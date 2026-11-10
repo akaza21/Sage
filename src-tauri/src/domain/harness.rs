@@ -133,4 +133,8 @@ pub struct ModelOption {
     pub is_default: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window: Option<u32>,
+    /// The thinking levels this model takes, when the harness lists them
+    /// before a session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort_levels: Option<Vec<String>>,
 }

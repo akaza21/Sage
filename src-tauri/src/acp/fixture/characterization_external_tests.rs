@@ -95,6 +95,7 @@ fn run(case: CharacterizationCase, expected_terminal: TurnState) {
                 client_intent_id: ClientIntentId::parse("characterization-start").unwrap(),
                 binding_id: BindingId::new("bindingId", CHARACTERIZATION_BINDING_ID).unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await

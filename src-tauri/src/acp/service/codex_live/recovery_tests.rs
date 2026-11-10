@@ -1524,6 +1524,7 @@ fn archiving_a_chat_after_its_turn_parks_its_runtime_and_it_then_deletes() {
             client_intent_id: ClientIntentId::new(),
             binding_id: BindingId::new("bindingId", "archive-command-recovery").unwrap(),
             model_id: None,
+            effort: None,
         },
     ));
     assert_archived_refusal(started.map(|_| ()));

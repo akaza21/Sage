@@ -31,9 +31,18 @@ pub(crate) async fn start_acp_session_inner(
     let project_root = admitted
         .project_root(&state.database, &transition)
         .map_err(|_| root_unavailable())?;
+    // A thinking level chosen before the session existed is kept only when
+    // this binding lists it for the chosen model; the composer shows any
+    // other level as Default, which is what the session then starts with.
+    let effort_choice = request.effort.as_ref().and_then(|effort| {
+        admitted.launch_effort_choice(
+            request.model_id.as_ref().map(|model| model.as_str()),
+            effort.as_str(),
+        )
+    });
     let project_id = request.project_id.clone();
     let chat_id = request.chat_id.clone();
-    state
+    let started = state
         .acp
         .start_session(
             admitted,
@@ -52,6 +61,15 @@ pub(crate) async fn start_acp_session_inner(
         )
         .await
         .map_err(session_error)?;
+    if let Some(choice) = effort_choice
+        && !state
+            .acp
+            .remember_start_choice(&started.session_id, &choice)
+    {
+        return Err(AcpIpcError::Internal {
+            message: safe_message("The chosen thinking level could not be kept. Send again."),
+        });
+    }
     mutation_response(state, project_id, chat_id)
 }
 

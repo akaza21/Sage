@@ -9,4 +9,14 @@ export const chatAccessDraftPort: {
     chatId: string,
     session: { id: string; bindingId: string },
   ) => Promise<void>;
+  /**
+   * The session start's `effort` for a thinking level drafted in the chat
+   * before its session existed (`chatEffortDraft.ts`), registered when the
+   * draft control loads; until then no chat holds one.
+   */
+  effort?: (
+    scope: { chatId: string },
+    bindingId: string,
+    modelId: string | null,
+  ) => { effort?: string };
 } = {};
