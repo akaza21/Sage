@@ -236,6 +236,7 @@ export function ComposerSlashMenu({
   listboxId,
   onActiveOptionChange,
   onDismiss,
+  onMountedChange,
   onPick,
   onStatusChange,
   query,
@@ -246,6 +247,8 @@ export function ComposerSlashMenu({
   listboxId: string;
   onActiveOptionChange: (optionId: string | null) => void;
   onDismiss: () => void;
+  /** Whether the listbox the field controls is in the document. */
+  onMountedChange: (mounted: boolean) => void;
   onPick: (command: PickedSlashCommand) => void;
   /** What the list holds, for the field's polite status region. */
   onStatusChange: (status: string) => void;
@@ -306,6 +309,10 @@ export function ComposerSlashMenu({
     () => () => onActiveOptionChange(null),
     [onActiveOptionChange],
   );
+  useLayoutEffect(() => {
+    onMountedChange(true);
+    return () => onMountedChange(false);
+  }, [onMountedChange]);
   const state = menuState(load, query, items.length);
   const status =
     state.kind === "ready"
