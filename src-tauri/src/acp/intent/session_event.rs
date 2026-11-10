@@ -82,8 +82,9 @@ pub struct SessionActivity {
 )]
 pub enum SessionScopedEvent {
     Notice(SessionNotice),
+    /// The harness's session title; `None` when the harness cleared it.
     Title {
-        title: RequiredText<SESSION_TITLE_BYTES>,
+        title: Option<RequiredText<SESSION_TITLE_BYTES>>,
     },
     /// The model the harness reports it is actually using, which can differ
     /// from the one Sage requested (for example after a reroute).
@@ -200,8 +201,10 @@ impl SessionSurface {
             self.activities.clear();
         }
         let changed = match event {
-            SessionScopedEvent::Title { title } => replace(&mut self.title, title),
-            SessionScopedEvent::TurnModel { model_id } => replace(&mut self.model_id, model_id),
+            SessionScopedEvent::Title { title } => replace(&mut self.title, title.as_ref()),
+            SessionScopedEvent::TurnModel { model_id } => {
+                replace(&mut self.model_id, Some(model_id))
+            }
             SessionScopedEvent::Notice(notice) => self.push_notice(notice),
             SessionScopedEvent::Activity(activity) => self.upsert_activity(activity),
         };
@@ -271,11 +274,11 @@ impl SessionSurface {
     }
 }
 
-fn replace<T: Clone + PartialEq>(slot: &mut Option<T>, value: &T) -> bool {
-    if slot.as_ref() == Some(value) {
+fn replace<T: Clone + PartialEq>(slot: &mut Option<T>, value: Option<&T>) -> bool {
+    if slot.as_ref() == value {
         return false;
     }
-    *slot = Some(value.clone());
+    *slot = value.cloned();
     true
 }
 

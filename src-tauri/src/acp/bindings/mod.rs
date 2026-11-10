@@ -26,4 +26,5 @@ pub(crate) mod omp;
 pub(crate) mod pi;
 pub(crate) mod registry;
 pub(crate) mod runtime;
+pub(crate) mod session_title;
 pub(crate) mod standard_acp;

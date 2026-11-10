@@ -1,0 +1,14 @@
+{
+  "id": 32,
+  "method": "mcpServer/elicitation/request",
+  "params": {
+    "threadId": "thread-1",
+    "turnId": "turn-1",
+    "serverName": "tickets",
+    "_meta": null,
+    "mode": "url",
+    "elicitationId": "elicitation-7",
+    "message": "Authorize access to the ticket tracker.",
+    "url": "https://tickets.example.com/authorize?state=abc"
+  }
+}

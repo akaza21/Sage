@@ -168,6 +168,10 @@ impl CodexRuntime {
                 self.apply_usage(usage);
                 one(AdapterEvent::IgnoredLate)
             }
+            IngressDisposition::SettingsUpdated { model, effort } => {
+                self.adopt_reported_settings(Some(model), effort);
+                one(AdapterEvent::IgnoredLate)
+            }
             IngressDisposition::DuplicateTerminal => one(AdapterEvent::IgnoredDuplicate),
             IngressDisposition::DuplicateServerRequest { denial: None } => {
                 one(AdapterEvent::IgnoredDuplicate)
@@ -213,18 +217,7 @@ impl CodexRuntime {
             } => (
                 {
                     self.snapshots.clear();
-                    self.reported_model_id = current_model.clone();
-                    if let Some(model) = current_model {
-                        if self.selected_model_id.as_ref() != Some(&model) {
-                            self.selected_model = None;
-                            self.session_config = None;
-                        }
-                        self.selected_model_id = Some(model);
-                    }
-                    if current_effort.is_some() {
-                        self.selected_effort = current_effort;
-                    }
-                    self.refresh_model_config();
+                    self.adopt_reported_settings(current_model, current_effort);
                     AdapterEvent::SessionReady {
                         id: identity(id),
                         loaded: false,

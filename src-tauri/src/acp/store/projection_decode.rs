@@ -137,6 +137,7 @@ fn content(
             role: legacy_role.unwrap_or(TextRole::Assistant),
             text,
         },
+        NormalizedPayload::UserPrompt { text } => ItemContent::UserPrompt { text },
         NormalizedPayload::ThoughtSummary { summary } => ItemContent::ThoughtSummary { summary },
         NormalizedPayload::Plan { summary } => ItemContent::Plan {
             entries: BoundedVec::new(
@@ -329,47 +330,11 @@ fn projected_line_count(value: Option<u64>) -> Option<u32> {
 /// Legacy summary-only rows (no pair metadata) decode as unavailable, never
 /// as fabricated empty text. Malformed admitted metadata fails closed.
 mod file_pair;
+mod legacy_text;
 mod tool_presentation;
 use file_pair::admitted_pair_view;
+pub(crate) use legacy_text::parse_legacy_text;
 use tool_presentation::{presentation, retain_live_progress};
-
-pub(crate) fn parse_legacy_text(
-    value: &str,
-) -> Result<(NormalizedPayload, Option<TextRole>), serde_json::Error> {
-    #[derive(Debug, serde::Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Wire {
-        role: String,
-        text: SafeText<262144>,
-        #[serde(default, rename = "attachedContext")]
-        _attached_context: crate::acp::attached_context::AttachedContexts,
-        #[serde(default, rename = "sessionAction")]
-        _session_action: Option<serde::de::IgnoredAny>,
-    }
-    #[derive(Debug, serde::Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct TaggedWire {
-        kind: String,
-        payload: Wire,
-    }
-    let wire = match serde_json::from_str::<Wire>(value) {
-        Ok(wire) => wire,
-        Err(_) => {
-            let tagged: TaggedWire = serde_json::from_str(value)?;
-            if tagged.kind != "text" {
-                return Err(serde_json::from_str::<Wire>("null").unwrap_err());
-            }
-            tagged.payload
-        }
-    };
-    let role = match wire.role.as_str() {
-        "user" => TextRole::User,
-        "assistant" => TextRole::Assistant,
-        "system" => TextRole::System,
-        _ => return Err(serde_json::from_str::<Wire>("null").unwrap_err()),
-    };
-    Ok((NormalizedPayload::Text { text: wire.text }, Some(role)))
-}
 
 fn summary_label(value: &str) -> Result<SafeText<512>, StoreError> {
     let mut end = value.len().min(512);

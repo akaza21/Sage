@@ -2445,6 +2445,9 @@ mod idle_egress_tests;
 #[path = "sign_in_tests.rs"]
 mod sign_in_tests;
 
+#[path = "steer_journal_tests.rs"]
+mod steer_journal_tests;
+
 #[path = "terminal_error_tests.rs"]
 mod terminal_error_tests;
 

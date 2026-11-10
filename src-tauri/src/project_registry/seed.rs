@@ -40,14 +40,25 @@ pub(super) fn seed_project(
         "INSERT INTO workbench_tabs
          (id, project_id, kind, title, position, pinned, dirty, status,
           metadata_json, created_at, updated_at)
-         VALUES (?1, ?2, 'chat', 'Chat: Chat', 0, 0, 0, 'idle',
+         VALUES (?1, ?2, 'chat', ?4, 0, 0, 0, 'idle',
                  '{}', ?3, ?3)",
-        params![tab_id, project_id, now],
+        params![
+            tab_id,
+            project_id,
+            now,
+            crate::chat_lifecycle::placeholder_chat_title(tab_id)
+        ],
     )?;
     transaction.execute(
-        "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_is_default)
-         VALUES (?1,?2,0,'Chat: Chat',0,?3,?3,1)",
-        params![tab_id, project_id, now],
+        "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_source)
+         VALUES (?1,?2,0,?5,0,?3,?3,?4)",
+        params![
+            tab_id,
+            project_id,
+            now,
+            crate::chat_lifecycle::ChatTitleSource::Default.as_str(),
+            crate::chat_lifecycle::placeholder_chat_title(tab_id)
+        ],
     )?;
     attach_chat_tab_in(transaction, project_id, tab_id, now)?;
     transaction.execute(

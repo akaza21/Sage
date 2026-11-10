@@ -1,7 +1,7 @@
 use serde_json::{Map, Value};
 
 use crate::acp::{
-    bindings::codex::state::ExternalKind,
+    bindings::codex::state::{ExternalKind, PlanEntries},
     contract::{BoundedVec, SafeText},
     intent::{NormalizedPayload, NormalizedPlanEntry, NormalizedPlanState},
     lifecycle::ItemLifecycle,
@@ -41,17 +41,25 @@ pub(super) fn structured_plan(
             state,
         });
     }
-    let id = adapter
-        .scoped_in_turn(ExternalKind::Item, turn, "sage:turn-plan")
-        .map_err(identity)?;
+    let entries = BoundedVec::new("planEntries", entries).map_err(content)?;
+    adapter.remember_turn_plan(entries.clone());
+    Ok(event(adapter, turn, entries, ItemLifecycle::Streaming)?.into())
+}
+
+/// The Turn's one plan item; every update replaces the whole list.
+pub(super) fn event(
+    adapter: &CodexAdapter,
+    turn: &str,
+    entries: PlanEntries,
+    lifecycle: ItemLifecycle,
+) -> Result<IncomingEvent, IngressError> {
     Ok(IncomingEvent::Item {
-        id,
-        lifecycle: ItemLifecycle::Streaming,
+        id: adapter
+            .scoped_in_turn(ExternalKind::Item, turn, "sage:turn-plan")
+            .map_err(identity)?,
+        lifecycle,
         tool_state: None,
-        payload: NormalizedPayload::PlanEntries {
-            entries: BoundedVec::new("planEntries", entries).map_err(content)?,
-        },
+        payload: NormalizedPayload::PlanEntries { entries },
         update_mode: ItemUpdateMode::Replace,
-    }
-    .into())
+    })
 }

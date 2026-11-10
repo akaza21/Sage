@@ -10,14 +10,14 @@ use crate::acp::{
     bindings::codex::state::command_explore::CommandExplore,
     contract::{BoundedVec, SafeText},
     declared_test::CommandActivity,
-    intent::{ToolCategory, ToolExecution},
+    intent::{SafeResourceLocation, ToolCategory, ToolExecution},
     lifecycle::ItemLifecycle,
 };
 
 use super::super::IngressError;
 use super::presentation::{
-    ToolPresentationInput, bounded_label, bounded_summary, declared_tool_state, lenient_tool_state,
-    tool_with_summary_status,
+    ToolLocations, ToolPresentationInput, bounded_label, bounded_summary, declared_tool_state,
+    lenient_tool_state, tool_with_summary_status,
 };
 use super::{ItemNormalization, content};
 
@@ -101,21 +101,28 @@ pub(super) fn web_search(
     })
 }
 
-/// A Codex command made only of typed reads is a read; one made only of
-/// reads, searches and listings is a search. Declared tests stay commands.
+/// A Codex command made only of typed reads is a read, labelled by the
+/// workspace path it read; one made only of reads, searches and listings is a
+/// search. Declared tests stay commands.
 pub(in crate::acp::bindings::codex::incoming) fn explore_presentation(
     explore: Option<&CommandExplore>,
     activity: CommandActivity,
     command: Option<&str>,
+    locations: &ToolLocations,
 ) -> (ToolCategory, String) {
+    let read_path = match locations.as_slice() {
+        [SafeResourceLocation::Resource { resource }] => Some(resource.relative_path.as_str()),
+        _ => None,
+    }
+    .filter(|path| !path.chars().any(char::is_control));
     match explore {
         _ if activity != CommandActivity::Ordinary => {
             (ToolCategory::Execute, bounded_label(command, "Command"))
         }
         Some(CommandExplore::Read(name)) => (
             ToolCategory::Read,
-            match name {
-                Some(name) => bounded_label(Some(&format!("Read {name}")), "Read files"),
+            match read_path.or(name.as_deref()) {
+                Some(path) => bounded_label(Some(&format!("Read {path}")), "Read files"),
                 None => bounded_label(command, "Read files"),
             },
         ),
