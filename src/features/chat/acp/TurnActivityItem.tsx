@@ -130,6 +130,8 @@ export const ItemView = memo(
                 </span>
                 {sourceLabel ? (
                   <span className="acp-message__command-source">
+                    {/* Read and copied as "/name, Source", not one word. */}
+                    <span className="sr-only">, </span>
                     {sourceLabel}
                   </span>
                 ) : null}

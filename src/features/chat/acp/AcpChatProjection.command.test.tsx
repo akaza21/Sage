@@ -30,7 +30,7 @@ describe("a prompt that ran a listed command", () => {
       command: { name: "deploy", source: "skill" },
     });
     const command = bubble.querySelector(".acp-message__command");
-    expect(command?.textContent).toBe("/deploySkill");
+    expect(command?.textContent).toBe("/deploy, Skill");
     expect(
       command?.querySelector(".acp-message__command-name")?.textContent,
     ).toBe("/deploy");
@@ -44,7 +44,7 @@ describe("a prompt that ran a listed command", () => {
       command: { name: "cost", source: "builtin" },
     });
     expect(bubble.querySelector(".acp-message__command")?.textContent).toBe(
-      "/costBuilt-in",
+      "/cost, Built-in",
     );
     expect(bubble.querySelector(".acp-markdown")).toBeNull();
   });
@@ -54,7 +54,7 @@ describe("a prompt that ran a listed command", () => {
       sessionAction: { kind: "compact" },
     });
     expect(bubble.querySelector(".acp-message__command")?.textContent).toBe(
-      "/compactBuilt-in",
+      "/compact, Built-in",
     );
   });
 
@@ -99,7 +99,7 @@ describe("a prompt that ran a listed command", () => {
     await settleLazyModules();
     expect(
       view.container.querySelector(".acp-message__command")?.textContent,
-    ).toBe("/deploySkill");
+    ).toBe("/deploy, Skill");
   });
 
   it("is plain text without a mark", async () => {

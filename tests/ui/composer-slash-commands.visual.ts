@@ -328,7 +328,7 @@ test("a prompt that ran a listed command shows the command beside what was typed
   });
   const bubble = page.locator(".acp-message--user").last();
   const command = bubble.locator(".acp-message__command");
-  await expect(command).toHaveText("/release-notesSkill");
+  await expect(command).toHaveText("/release-notes, Skill");
   await expect(bubble.locator(".acp-markdown")).toHaveText(
     "summarise the changes since the last tag for the team",
   );
