@@ -190,9 +190,9 @@ export function ComposerSlashController({
   // and the composer's own aria-expanded="false" comes back.
   useOwnedFieldAttributes(fieldRef, query !== null, () => ({
     "aria-autocomplete": "list",
-    "aria-expanded": String(open),
-    "aria-controls": open ? listboxId : null,
-    "aria-activedescendant": open && activeOptionId ? activeOptionId : null,
+    "aria-expanded": String(shown),
+    "aria-controls": shown ? listboxId : null,
+    "aria-activedescendant": shown && activeOptionId ? activeOptionId : null,
   }));
   // The composer renders its own description list; this keeps the hint in
   // it after every render.
