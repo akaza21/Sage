@@ -74,13 +74,7 @@ export default function sageBridge(pi) {
     executionMode: "sequential",
     async execute(toolCallId, args, signal, update, ctx) {
       await approve(toolCallId, "bash", args, signal, ctx);
-      return shell.execute(
-        toolCallId,
-        args,
-        signal,
-        update,
-        ctx,
-      );
+      return shell.execute(toolCallId, args, signal, update, ctx);
     },
   });
   pi.on("session_start", async () => {
