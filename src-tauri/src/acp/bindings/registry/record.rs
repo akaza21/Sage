@@ -136,12 +136,10 @@ impl BindingRecord {
     pub(crate) fn sends_prompt_blocks(&self) -> bool {
         // The Claude Agent SDK bridge turns an embedded resource into a
         // context text block and a link into an `@path` mention.
+        use Admission::{Claude, ClaudeSdk, CustomAcp, OpenCode};
         matches!(
             self.admission,
-            Admission::Claude(_)
-                | Admission::ClaudeSdk(_)
-                | Admission::OpenCode(_)
-                | Admission::CustomAcp(_)
+            Claude(_) | ClaudeSdk(_) | OpenCode(_) | CustomAcp(_)
         )
     }
 
