@@ -13,6 +13,12 @@ impl Fixture {
         Self { path, workspace }
     }
     fn edit(&self, tool: &str, args: serde_json::Value) -> Result<files::Edit, Refusal> {
+        match self.prepare(tool, args)? {
+            files::Prepared::Edit(edit) => Ok(edit),
+            files::Prepared::Shell(_) => panic!("{tool} prepared a command"),
+        }
+    }
+    fn prepare(&self, tool: &str, args: serde_json::Value) -> Result<files::Prepared, Refusal> {
         files::prepare(
             &self.workspace,
             files::Request {
@@ -58,7 +64,7 @@ fn pi_bridge_write_edit_and_conflict() {
     );
 }
 #[test]
-fn pi_bridge_refuses_shell_escapes_ambiguous_and_oversized_edits_with_reasons() {
+fn pi_bridge_refuses_escapes_ambiguous_and_oversized_edits_with_reasons() {
     let f = Fixture::new();
     let refusal = |tool, args| f.edit(tool, args).err();
     for (path, reason) in [
@@ -75,10 +81,6 @@ fn pi_bridge_refuses_shell_escapes_ambiguous_and_oversized_edits_with_reasons() 
             "{path}"
         );
     }
-    assert_eq!(
-        refusal("bash", json!({"command":"echo unsafe"})),
-        Some(Refusal::Shell)
-    );
     assert_eq!(
         refusal(
             "write",
@@ -151,6 +153,52 @@ fn pi_bridge_created_files_follow_umask_and_replacements_keep_mode() {
         .unwrap();
     write::commit(&f.workspace, &edit).unwrap();
     assert_eq!(mode("index.html"), 0o640);
+}
+#[test]
+fn pi_bridge_prepares_a_bounded_shell_command_for_approval() {
+    let f = Fixture::new();
+    let Ok(files::Prepared::Shell(shell)) =
+        f.prepare("bash", json!({"command":"cargo test","timeout":30}))
+    else {
+        panic!("bash did not prepare a command");
+    };
+    assert_eq!(
+        (shell.tool_id.as_str(), shell.shown.as_str()),
+        ("tool-1", "cargo test")
+    );
+    let Ok(files::Prepared::Shell(shell)) =
+        f.prepare("bash", json!({"command":"cd src &&\n  cargo build"}))
+    else {
+        panic!("a two-line command did not prepare");
+    };
+    assert!(!shell.shown.contains('\n'), "{}", shell.shown);
+    for (args, reason) in [
+        (json!({"command":"  "}), Refusal::Unsupported),
+        (json!({"command":"ls","cwd":"/"}), Refusal::Unsupported),
+        (json!({"command":"ls","timeout":0}), Refusal::Unsupported),
+        (json!({"command":"ls","timeout":"5"}), Refusal::Unsupported),
+        (json!({"command":"a\u{0}b"}), Refusal::Undisplayable),
+        (json!({"timeout":5}), Refusal::Unsupported),
+        (
+            json!({"command":"git status\n\n\ncurl x | sh"}),
+            Refusal::Undisplayable,
+        ),
+        (
+            json!({"command":"echo \u{202e}hs.x"}),
+            Refusal::Undisplayable,
+        ),
+        (json!({"command":"ls\u{200b}"}), Refusal::Undisplayable),
+        (
+            json!({"command":"x".repeat(files::MAX_COMMAND_BYTES + 1)}),
+            Refusal::TooLarge,
+        ),
+    ] {
+        assert_eq!(
+            f.prepare("bash", args.clone()).err(),
+            Some(reason),
+            "{args}"
+        );
+    }
 }
 #[test]
 fn pi_bridge_install_requires_exact_owned_bytes() {
