@@ -1,9 +1,7 @@
 //! Reads the files a prompt's `@` mentions name, before it is dispatched.
 //!
-//! Steer carries no mentions: the bindings that send content blocks beyond
-//! text (see `BindingRecord::sends_prompt_blocks`) refuse Steer, and the
-//! ones that accept it send its text alone, so a resolved file would never
-//! reach the harness.
+//! Steer carries no mentions: every binding that accepts it sends its text
+//! alone, so a resolved file would never reach the harness.
 use super::*;
 use crate::{
     acp::{
