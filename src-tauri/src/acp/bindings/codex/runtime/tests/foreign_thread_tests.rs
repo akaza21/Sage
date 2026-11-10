@@ -17,14 +17,15 @@ fn an_elicitation_for_a_foreign_thread_is_refused_and_the_session_stays_alive() 
             &Mapper,
         )
         .expect("a foreign elicitation must not tear the runtime down");
-    // Codex gets exactly one refusal for it, correlated to its id.
+    // Codex gets exactly one answer for it, correlated to its id: the
+    // server's request is cancelled, since no card here can show it.
     let [reply] = batch.egress() else {
         panic!("the elicitation must be answered once");
     };
     let reply: Value = serde_json::from_slice(reply.frame().payload()).unwrap();
     assert_eq!(reply["id"], 4711);
-    assert_eq!(reply["error"]["code"], -32601);
-    assert!(reply.get("result").is_none());
+    assert_eq!(reply["result"], json!({"action":"cancel"}));
+    assert!(reply.get("error").is_none());
     assert!(
         batch
             .events()
