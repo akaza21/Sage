@@ -247,6 +247,10 @@ impl CodexRuntime {
                 models,
                 next_cursor,
             } => self.apply_model_page(models, next_cursor),
+            IncomingEvent::ThreadSettings { model, effort } => {
+                self.apply_thread_settings(model, effort);
+                (AdapterEvent::IgnoredLate, None)
+            }
             IncomingEvent::Turn { id, state } => (
                 {
                     if state.is_terminal() {

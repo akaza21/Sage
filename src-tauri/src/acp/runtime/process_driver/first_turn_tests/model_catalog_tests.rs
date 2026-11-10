@@ -198,7 +198,25 @@ fn idle_worker_hydrates_model_catalog_and_bounds_pagination() {
                 );
             } else {
                 let config = serde_json::to_value(adapter.session_config().unwrap()).unwrap();
-                assert_eq!(config["configOptions"], json!([]));
+                // No page lists the thread's model: it is still offered,
+                // named by its id, beside the listed ones, with no thinking
+                // level since none is known for it.
+                let [model] = config["configOptions"].as_array().unwrap().as_slice() else {
+                    panic!("only the model is offered: {config}");
+                };
+                assert_eq!(model["category"], "model");
+                assert_eq!(model["currentValue"], "selected");
+                let values: Vec<_> = model["options"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|option| option["value"].as_str().unwrap())
+                    .collect();
+                assert_eq!(
+                    values,
+                    ["selected", "other-0", "other-1", "other-2", "other-3"]
+                );
+                assert_eq!(model["options"][0]["name"], "selected");
                 assert_eq!(config["confirmedModel"], json!({"id":"selected"}));
             }
             drop(context);

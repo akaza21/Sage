@@ -9,6 +9,8 @@ use crate::acp::{
 };
 
 #[cfg(test)]
+mod codex_restore_tests;
+#[cfg(test)]
 mod page_budget_tests;
 mod remember;
 mod restore;

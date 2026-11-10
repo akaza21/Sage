@@ -127,6 +127,12 @@ pub(crate) enum IncomingEvent {
     SessionLoaded {
         id: ScopedExternalId,
     },
+    /// The bound thread's model, and its effort when Codex names one, as
+    /// `thread/settings/updated` reports them.
+    ThreadSettings {
+        model: RequiredText<512>,
+        effort: Option<RequiredText<512>>,
+    },
     Models {
         models: Vec<ModelDescriptor>,
         next_cursor: Option<RequiredText<512>>,

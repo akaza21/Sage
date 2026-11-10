@@ -87,6 +87,11 @@ pub(crate) struct SessionConfig {
     pub confirmed_model: Option<ConfirmedModel>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confirmed_effort: Option<RequiredText<512>>,
+    /// Options the session takes but whose current value it has not
+    /// reported, so it shows none of them; a stored choice for one is kept
+    /// until it does. Local to Sage, never on the wire.
+    #[serde(skip)]
+    pub unreported: BoundedVec<ConfigId, 128>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

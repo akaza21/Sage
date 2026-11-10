@@ -125,10 +125,16 @@ impl HarnessAdapter for NativeRuntime {
         &mut self,
         frame: &Frame,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        self.0.discard_invalid_response(frame)
+        let batch = self.0.discard_invalid_response(frame)?;
+        self.publish_config()?;
+        Ok(batch)
     }
     fn model_config_hydration(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
-        self.0.model_config_hydration()
+        let egress = self.0.model_config_hydration()?;
+        // The session now waits on what it offers; say so before the
+        // restore that follows activation reads it.
+        self.publish_config()?;
+        Ok(egress)
     }
     fn finish_model_config_hydration(&mut self) {
         self.0.finish_model_config_hydration();
@@ -209,6 +215,9 @@ impl HarnessAdapter for NativeRuntime {
     }
     fn config_pending(&self) -> bool {
         self.0.config_pending()
+    }
+    fn config_hydrating(&self) -> bool {
+        self.0.config_hydrating()
     }
     fn configure(
         &mut self,
@@ -305,6 +314,7 @@ impl NativeRuntime {
                 None => channel.remove(owner),
             }
             .map_err(|_| AdapterRuntimeError::Frame)?;
+            channel.set_hydrating(owner, self.0.config_hydrating());
         }
         Ok(())
     }

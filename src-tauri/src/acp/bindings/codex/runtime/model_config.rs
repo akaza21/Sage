@@ -77,23 +77,33 @@ impl CodexRuntime {
         self.model_pages_seen = 0;
     }
 
+    /// Whether a `model/list` page the thread's options come from is still
+    /// unanswered.
+    pub(super) fn catalogue_pending(&self) -> bool {
+        self.inner
+            .awaits(super::super::request::RequestKind::Models)
+    }
+
     pub(super) fn refresh_model_config(&mut self) {
         let model = self
             .selected_model
             .as_ref()
             .filter(|model| self.reported_model_id.as_ref() == Some(&model.id));
         let effort = self.selected_effort.as_ref();
-        let config = thread_config(
-            model
-                .zip(effort)
-                .and_then(|(model, effort)| effort_option(model, effort.as_str()))
-                .into_iter()
-                .chain(
-                    self.reported_model_id
-                        .as_ref()
-                        .and_then(|id| model_option(&self.model_catalog.models, id)),
-                ),
-        );
+        // The model is a choice once the catalogue has been read, even when
+        // it lists no model the thread runs.
+        let catalogue_read =
+            self.model_pages_seen > 0 || (self.model_list_requested && !self.catalogue_pending());
+        let options = model
+            .zip(effort)
+            .and_then(|(model, effort)| effort_option(model, effort.as_str()))
+            .into_iter()
+            .chain(
+                self.reported_model_id
+                    .as_ref()
+                    .filter(|_| catalogue_read)
+                    .map(|id| model_option(&self.model_catalog.models, id)),
+            );
         let confirmed_model =
             self.reported_model_id
                 .as_ref()
@@ -101,19 +111,48 @@ impl CodexRuntime {
                     id: id.clone(),
                     name: model.map(|model| model.name.clone()),
                 });
-        self.session_config = if config.is_some() || confirmed_model.is_some() || effort.is_some() {
-            let mut candidate = crate::acp::session_config::SessionConfig {
+        let known = confirmed_model.is_some() || effort.is_some();
+        let mut config = thread_config(
+            crate::acp::session_config::SessionConfig {
                 confirmed_model,
                 confirmed_effort: effort.cloned(),
-                ..config.unwrap_or_default()
-            };
-            if candidate.validate().is_err() {
-                candidate.config_options = Default::default();
-            }
-            Some(candidate)
-        } else {
-            None
-        };
+                ..Default::default()
+            },
+            options,
+        );
+        // A model with thinking levels whose current one Codex did not
+        // report takes an effort Sage cannot show yet.
+        if effort.is_none() && model.is_some_and(|model| !model.supported_efforts.is_empty()) {
+            config.unreported = crate::acp::contract::BoundedVec::new(
+                "unreported",
+                vec![
+                    crate::acp::session_config::ConfigId::new("configId", "effort")
+                        .expect("fixed option id"),
+                ],
+            )
+            .expect("one option");
+        }
+        self.session_config =
+            (known || !config.config_options.as_slice().is_empty()).then_some(config);
+    }
+
+    /// The thread's settings as Codex reports them changed: its model and,
+    /// when given, its effort. That is the thread's model from now on, so a
+    /// pick not yet sent is dropped rather than sent over it.
+    pub(super) fn apply_thread_settings(
+        &mut self,
+        model: ModelId,
+        effort: Option<crate::acp::contract::RequiredText<512>>,
+    ) {
+        let same_model = self.reported_model_id.as_ref() == Some(&model);
+        self.model_catalog.choice = None;
+        self.selected_model = self.model_catalog.find(model.as_str()).cloned();
+        self.reported_model_id = Some(model.clone());
+        self.selected_model_id = Some(model);
+        if effort.is_some() || !same_model {
+            self.selected_effort = effort;
+        }
+        self.refresh_model_config();
     }
 
     pub(super) fn apply_effort(&mut self, effort: crate::acp::contract::RequiredText<512>) {
@@ -167,26 +206,32 @@ impl CodexRuntime {
         Ok(())
     }
 
-    /// Runs the thread on the listed model `id` from the next `turn/start`.
-    /// The effort stays when the model offers it; otherwise it becomes the
-    /// model's own default, and an effort Codex never reported stays unset.
+    /// Runs the thread on the listed model `id` from the next `turn/start`,
+    /// at an effort that model runs: the thread's own when the model offers
+    /// it, else the model's default, else its first. Codex keeps a thread's
+    /// effort until a `turn/start` names another, so one is always named.
+    /// Picking the thread's own unlisted model changes nothing.
     fn apply_model(&mut self, id: &str) -> Result<(), AdapterRuntimeError> {
-        let model = self
-            .model_catalog
-            .find(id)
-            .cloned()
-            .ok_or(AdapterRuntimeError::Operation)?;
-        let offers = |effort: &crate::acp::contract::RequiredText<512>| {
+        let Some(model) = self.model_catalog.find(id).cloned() else {
+            return if self.reported_model_id.as_ref().map(|model| model.as_str()) == Some(id) {
+                Ok(())
+            } else {
+                Err(AdapterRuntimeError::Operation)
+            };
+        };
+        let offered = |effort: &&crate::acp::contract::RequiredText<512>| {
             model
                 .supported_efforts
                 .iter()
-                .any(|supported| supported.id == *effort)
+                .any(|supported| supported.id == **effort)
         };
-        self.selected_effort = match self.selected_effort.take() {
-            Some(effort) if offers(&effort) => Some(effort),
-            Some(_) => model.default_effort.clone().filter(|effort| offers(effort)),
-            None => None,
-        };
+        self.selected_effort = self
+            .selected_effort
+            .as_ref()
+            .filter(offered)
+            .or(model.default_effort.as_ref().filter(offered))
+            .or(model.supported_efforts.first().map(|effort| &effort.id))
+            .cloned();
         self.model_catalog.choice = Some(model.id.clone());
         self.reported_model_id = Some(model.id.clone());
         self.selected_model_id = Some(model.id.clone());

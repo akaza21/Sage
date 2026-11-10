@@ -26,6 +26,7 @@ mod notices;
 mod plan;
 mod provisional;
 mod status_line;
+mod thread_settings;
 use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};
 use plan::structured_plan;
 
@@ -294,6 +295,7 @@ pub(super) fn notification<M: ResourceMapper>(
         "guardianWarning" => notices::guardian_warning(adapter, params),
         "configWarning" => notices::config_warning(adapter, params),
         "deprecationNotice" => notices::deprecation_notice(adapter, params),
+        "thread/settings/updated" => thread_settings::thread_settings(adapter, params),
         "model/rerouted" => notices::model_rerouted(adapter, params),
         "model/verification" => notices::model_verification(adapter, params),
         "model/safetyBuffering/updated" => notices::model_safety_buffering(adapter, params),
