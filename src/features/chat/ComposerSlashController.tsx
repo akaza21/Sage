@@ -10,7 +10,8 @@ import "../../styles/composer-slash.css";
 import { isImeComposing } from "../../ui/imeComposition";
 import type { SuggestionKeyEvent } from "../../ui/textFieldSuggestionNavigation";
 import { ComposerCommandHint } from "./ComposerCommandHint";
-import { ComposerSlashMenu } from "./ComposerSlashMenu";
+import type * as MenuChunk from "./ComposerSlashMenu";
+import { lazyParts } from "./lazyParts";
 import {
   pendingSlashCommandHint,
   slashCommandName,
@@ -19,6 +20,12 @@ import {
   type PickedSlashCommand,
 } from "./composerSlashCommand";
 import { setPickedCommand } from "./slashCommandPicks";
+
+// The menu, its list and the command port load with the first `/`, so a
+// focus that never types one carries only the key guard and the hint.
+const MenuPart = lazyParts<typeof MenuChunk>(
+  () => import("./ComposerSlashMenu"),
+);
 
 /**
  * Replaces the leading `/token` with `/name ` through the editing commands,
@@ -57,7 +64,7 @@ function setAttribute(field: HTMLElement, name: string, value: string | null) {
 }
 
 /**
- * The composer's `/` command menu. It loads with the field's first focus,
+ * The composer's `/` command menu. The list loads with the first `/` typed,
  * so the first-Chat path carries only the mount and an Enter guard. It
  * listens on the textarea itself (which keeps the focus throughout), takes
  * the keys the open menu uses before the composer's own handler sees them,
@@ -93,6 +100,11 @@ export function ComposerSlashController({
   const [activeOptionId, setActiveOptionId] = useState<string | null>(null);
   const [picked, setPicked] = useState<PickedSlashCommand | null>(null);
   const [status, setStatus] = useState("");
+  // The field names the listbox only once the menu's chunk has mounted it.
+  const [mounted, setMounted] = useState(false);
+  // A menu chunk that failed to load gives way until the field is left or
+  // the `/` is gone, so Enter sends and the next menu loads again.
+  const [failed, setFailed] = useState(false);
   // Another Chat starts with no pick and no dismissal.
   if (scope !== boundChatId) {
     setScope(boundChatId);
@@ -102,8 +114,10 @@ export function ComposerSlashController({
   const query = slashCommandQuery(text, caret);
   // Escape closes the menu until the caret leaves the command name.
   if (query === null && dismissed) setDismissed(false);
+  if (query === null && failed) setFailed(false);
   if (!text && picked) setPicked(null);
-  const open = query !== null && !dismissed && focused && !disabled;
+  const open = query !== null && !dismissed && !failed && focused && !disabled;
+  const shown = open && mounted;
   const listboxId = `${fieldId}-commands`;
   const hint = pendingSlashCommandHint(text, picked);
   const hintId = `${fieldId}-command-hint`;
@@ -139,6 +153,7 @@ export function ComposerSlashController({
     const blur = () => {
       setFocused(false);
       setDismissed(false);
+      setFailed(false);
     };
     // Runs on the field before the composer's delegated handler, so a key
     // the open menu takes never sends or reaches the composer.
@@ -175,12 +190,12 @@ export function ComposerSlashController({
     const field = fieldRef.current;
     if (!field) return;
     setAttribute(field, "aria-autocomplete", query === null ? null : "list");
-    setAttribute(field, "aria-expanded", String(open));
-    setAttribute(field, "aria-controls", open ? listboxId : null);
+    setAttribute(field, "aria-expanded", String(shown));
+    setAttribute(field, "aria-controls", shown ? listboxId : null);
     setAttribute(
       field,
       "aria-activedescendant",
-      open && activeOptionId ? activeOptionId : null,
+      shown && activeOptionId ? activeOptionId : null,
     );
     const described = (field.getAttribute("aria-describedby") ?? "")
       .split(" ")
@@ -203,7 +218,8 @@ export function ComposerSlashController({
     <>
       <ComposerCommandHint hint={hint} hintId={hintId} text={text} />
       {open ? (
-        <ComposerSlashMenu
+        <MenuPart
+          part="ComposerSlashMenu"
           anchorRef={anchorRef}
           boundChatId={boundChatId}
           keyHandlerRef={keyHandlerRef}
@@ -211,6 +227,8 @@ export function ComposerSlashController({
           onActiveOptionChange={setActiveOptionId}
           onStatusChange={setStatus}
           onDismiss={dismiss}
+          onLoadFailed={() => setFailed(true)}
+          onMountedChange={setMounted}
           onPick={pick}
           query={query}
         />

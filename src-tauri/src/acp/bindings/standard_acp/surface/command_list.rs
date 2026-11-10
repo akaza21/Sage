@@ -8,8 +8,61 @@ use serde::Serialize;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
-pub(crate) const MAX_COMMANDS: usize = 128;
-pub(crate) const MAX_COMMAND_BYTES: usize = 128 * 1024;
+/// Room for a harness with many skills, plugins and MCP prompts; the byte
+/// cap bounds the list's memory whatever the count.
+pub(crate) const MAX_COMMANDS: usize = 512;
+pub(crate) const MAX_COMMAND_BYTES: usize = 256 * 1024;
+const NAME_BYTES: usize = 128;
+const DESCRIPTION_BYTES: usize = 1024;
+const HINT_BYTES: usize = 256;
+
+/// Where a command comes from, as its harness reports it. The `/` menu
+/// groups and labels commands by it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum CommandSource {
+    /// The harness's own command.
+    Builtin,
+    Skill,
+    /// A user or project prompt template.
+    Prompt,
+    Extension,
+    /// A prompt an MCP server offers.
+    Mcp,
+    Plugin,
+    /// A command the harness did not classify.
+    Harness,
+}
+
+impl CommandSource {
+    /// A source as harnesses name it on the wire; anything else is the
+    /// harness's own, unclassified.
+    pub(crate) fn from_wire(value: Option<&str>) -> Self {
+        match value {
+            Some("builtin") => Self::Builtin,
+            Some("skill") => Self::Skill,
+            Some("prompt") => Self::Prompt,
+            Some("extension") => Self::Extension,
+            Some("mcp") => Self::Mcp,
+            Some("plugin") => Self::Plugin,
+            _ => Self::Harness,
+        }
+    }
+}
+
+/// How the binding that advertised a command runs it. Native only: the
+/// WebView names a command and the binding looks its dispatch up in the
+/// live list, so a prompt can never choose its own route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CommandDispatch {
+    /// Sent as `/name input` prompt text, which the harness parses.
+    Prompt,
+    /// Sent as prompt text that the harness runs as a command turn, which
+    /// may finish without model work (Pi's extension commands).
+    CommandTurn,
+    /// Run by the binding's own method for this name (Pi's `compact`).
+    Builtin,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,8 +70,108 @@ pub(crate) struct AvailableCommand {
     pub(crate) name: String,
     pub(crate) description: String,
     pub(crate) input_hint: Option<String>,
+    pub(crate) source: CommandSource,
     #[serde(skip)]
-    pub(crate) extension: bool,
+    pub(crate) dispatch: CommandDispatch,
+}
+
+impl AvailableCommand {
+    /// One advertised command, with the bounds every list shares.
+    pub(crate) fn new(
+        name: &str,
+        description: &str,
+        input_hint: Option<&str>,
+        source: CommandSource,
+        dispatch: CommandDispatch,
+    ) -> Result<Self, AdapterRuntimeError> {
+        if name.is_empty()
+            || name
+                .chars()
+                .any(|c| c.is_whitespace() || c.is_control() || c == '/')
+        {
+            return Err(AdapterRuntimeError::Frame);
+        }
+        Ok(Self {
+            name: bounded(name, NAME_BYTES)?,
+            description: clipped(description, DESCRIPTION_BYTES)?,
+            input_hint: input_hint
+                .map(|hint| bounded(hint, HINT_BYTES))
+                .transpose()?,
+            source,
+            dispatch,
+        })
+    }
+
+    /// An ACP `AvailableCommand`. ACP has no source field, so an adapter
+    /// may name one in `_meta.source`; anything else is the harness's own.
+    pub(crate) fn from_acp(value: &Value) -> Result<Self, AdapterRuntimeError> {
+        let source = CommandSource::from_wire(value["_meta"]["source"].as_str());
+        let input_hint = match value.get("input").filter(|v| !v.is_null()) {
+            Some(input) => Some(wire_text(&input["hint"])?),
+            None => None,
+        };
+        Self::new(
+            wire_text(&value["name"])?,
+            wire_text(&value["description"])?,
+            input_hint,
+            source,
+            CommandDispatch::Prompt,
+        )
+    }
+}
+
+/// A required string field of an advertisement.
+pub(crate) fn wire_text(value: &Value) -> Result<&str, AdapterRuntimeError> {
+    value.as_str().ok_or(AdapterRuntimeError::Frame)
+}
+
+fn bounded(text: &str, cap: usize) -> Result<String, AdapterRuntimeError> {
+    if text.len() > cap || text.contains('\0') {
+        return Err(AdapterRuntimeError::BatchBytes);
+    }
+    Ok(text.to_owned())
+}
+
+/// Display text: a long description is cut at a character boundary rather
+/// than costing the whole list.
+fn clipped(text: &str, cap: usize) -> Result<String, AdapterRuntimeError> {
+    let end = (0..=cap.min(text.len()))
+        .rev()
+        .find(|end| text.is_char_boundary(*end))
+        .unwrap_or(0);
+    bounded(&text[..end], cap)
+}
+
+/// ACP `availableCommands`, in advertised order.
+pub(crate) fn parse_acp(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
+    value
+        .as_array()
+        .filter(|values| values.len() <= MAX_COMMANDS)
+        .ok_or(AdapterRuntimeError::BatchCount)?
+        .iter()
+        .map(AvailableCommand::from_acp)
+        .collect()
+}
+
+/// Admits a whole list: bounded in count and bytes, names unique.
+fn admit(commands: Vec<AvailableCommand>) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
+    if commands.len() > MAX_COMMANDS {
+        return Err(AdapterRuntimeError::BatchCount);
+    }
+    let mut bytes = 0;
+    let mut names = std::collections::HashSet::with_capacity(commands.len());
+    for command in &commands {
+        if !names.insert(command.name.as_str()) {
+            return Err(AdapterRuntimeError::Frame);
+        }
+        bytes += command.name.len()
+            + command.description.len()
+            + command.input_hint.as_ref().map_or(0, String::len);
+        if bytes > MAX_COMMAND_BYTES {
+            return Err(AdapterRuntimeError::BatchBytes);
+        }
+    }
+    Ok(commands)
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
@@ -28,74 +181,34 @@ pub(crate) struct CommandList {
 }
 
 impl CommandList {
-    pub(crate) fn replace(&mut self, value: &Value, pi: bool) -> Result<(), AdapterRuntimeError> {
-        // An invalid replacement must never leave stale command authority usable.
+    /// Takes a binding's newly parsed list. A failed parse still counts as a
+    /// new revision and leaves the list empty, so stale command authority is
+    /// never usable.
+    pub(crate) fn replace(
+        &mut self,
+        parsed: Result<Vec<AvailableCommand>, AdapterRuntimeError>,
+    ) -> Result<(), AdapterRuntimeError> {
         self.commands = Vec::new();
         self.revision = self
             .revision
             .checked_add(1)
             .filter(|revision| *revision <= 9_007_199_254_740_991)
             .ok_or(AdapterRuntimeError::Operation)?;
-        self.commands = parse(value, pi)?;
+        self.commands = admit(parsed?)?;
         Ok(())
+    }
+    /// The listed command a `/name …` prompt runs at this revision.
+    pub(crate) fn find(&self, revision: u64, text: &str) -> Option<&AvailableCommand> {
+        let name = text.strip_prefix('/')?.split_whitespace().next()?;
+        (revision == self.revision)
+            .then(|| self.commands.iter().find(|c| c.name == name))
+            .flatten()
     }
     pub(crate) fn validate(&self, revision: u64, text: &str) -> Result<(), AdapterRuntimeError> {
-        let name = text
-            .strip_prefix('/')
-            .and_then(|s| s.split_whitespace().next())
-            .ok_or(AdapterRuntimeError::Operation)?;
-        if revision != self.revision || !self.commands.iter().any(|c| c.name == name) {
-            return Err(AdapterRuntimeError::UnsupportedCommand);
-        }
-        Ok(())
+        self.find(revision, text)
+            .map(|_| ())
+            .ok_or(AdapterRuntimeError::UnsupportedCommand)
     }
-}
-
-fn text(value: &Value, cap: usize) -> Result<String, AdapterRuntimeError> {
-    let s = value.as_str().ok_or(AdapterRuntimeError::Frame)?;
-    if s.len() > cap || s.contains('\0') {
-        return Err(AdapterRuntimeError::BatchBytes);
-    }
-    Ok(s.to_owned())
-}
-fn parse(value: &Value, pi: bool) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
-    let values = value
-        .as_array()
-        .filter(|v| v.len() <= MAX_COMMANDS)
-        .ok_or(AdapterRuntimeError::BatchCount)?;
-    let mut commands: Vec<AvailableCommand> = Vec::with_capacity(values.len());
-    let mut bytes = 0;
-    for value in values {
-        let name = text(&value["name"], 128)?;
-        if name.is_empty()
-            || name
-                .chars()
-                .any(|c| c.is_whitespace() || c.is_control() || c == '/')
-            || commands.iter().any(|c| c.name == name)
-        {
-            return Err(AdapterRuntimeError::Frame);
-        }
-        let description = if pi && value.get("description").is_none() {
-            String::new()
-        } else {
-            text(&value["description"], 1024)?
-        };
-        let input_hint = match value.get("input").filter(|v| !v.is_null()) {
-            Some(input) => Some(text(&input["hint"], 256)?),
-            None => None,
-        };
-        bytes += name.len() + description.len() + input_hint.as_ref().map_or(0, String::len);
-        if bytes > MAX_COMMAND_BYTES {
-            return Err(AdapterRuntimeError::BatchBytes);
-        }
-        commands.push(AvailableCommand {
-            name,
-            description,
-            input_hint,
-            extension: pi && value["source"] == "extension",
-        });
-    }
-    Ok(commands)
 }
 
 /// Shared with the runtime lane so process/project teardown revokes and frees
@@ -111,13 +224,16 @@ impl CommandState {
         static EMPTY: std::sync::OnceLock<Arc<CommandState>> = std::sync::OnceLock::new();
         Arc::clone(EMPTY.get_or_init(|| Arc::new(CommandState(Mutex::new(None)))))
     }
-    pub(crate) fn replace(&self, value: &Value, pi: bool) -> Result<(), AdapterRuntimeError> {
+    pub(crate) fn replace(
+        &self,
+        parsed: Result<Vec<AvailableCommand>, AdapterRuntimeError>,
+    ) -> Result<(), AdapterRuntimeError> {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_mut()
             .ok_or(AdapterRuntimeError::Operation)?
-            .replace(value, pi)
+            .replace(parsed)
     }
     pub(crate) fn snapshot(&self) -> CommandList {
         self.0

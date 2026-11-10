@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 
 use super::config::SessionSettings;
 
+mod commands;
 mod controls;
 mod inbound;
 mod notices;
