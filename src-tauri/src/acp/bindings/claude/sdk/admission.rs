@@ -25,17 +25,19 @@ use crate::{
 };
 
 pub(crate) const CLAUDE_SDK_BINDING_ID: &str = "claude-code-sdk";
-/// The Claude Code release whose SDK protocol this binding was characterised on.
+/// The Claude Code release the recorded fixtures replay.
+#[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
 pub(crate) const CLAUDE_CODE_VERSION: &str = "2.1.319";
-/// The oldest 2.1 release with every control request Sage sends; a new
-/// minor line may change the protocol, so it waits for its own admission.
+/// The oldest release with every control request Sage sends. Later releases
+/// of the same major version are admitted; a new major version may change
+/// the protocol, so it waits for its own admission.
 const SUPPORTED_MINIMUM: (u64, u64, u64) = (2, 1, 300);
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:claude-code-sdk:v1:";
 
 /// Fixed SDK-mode arguments; the session arguments follow them. The mode is
 /// forced to `default` so a settings file cannot start Claude Code in a
 /// mode the picker does not show (bypass would skip every approval).
-const SDK_ARGS: [&str; 12] = [
+pub(super) const SDK_ARGS: [&str; 12] = [
     "--output-format",
     "stream-json",
     "--input-format",
@@ -142,17 +144,18 @@ fn parse_version(value: &str) -> Option<(u64, u64, u64)> {
 }
 
 fn version_admitted(version: &str) -> bool {
-    parse_version(version).is_some_and(|found| {
-        found >= SUPPORTED_MINIMUM
-            && (found.0, found.1) == (SUPPORTED_MINIMUM.0, SUPPORTED_MINIMUM.1)
-    })
+    parse_version(version)
+        .is_some_and(|found| found >= SUPPORTED_MINIMUM && found.0 == SUPPORTED_MINIMUM.0)
 }
 
-/// Every admitted release up to the characterised one speaks the protocol
-/// this binding covers; a later 2.1 release is admitted but may add what the
-/// binding has not seen, so it stays uncharacterised.
+/// The 2.1 line keeps the SDK protocol this binding covers, so every admitted
+/// 2.1 release is characterised. A later minor release of the same major
+/// version is admitted and runs, but may add what the binding has not seen,
+/// so it stays uncharacterised and the chat says so.
 fn version_characterised(version: &str) -> bool {
-    version_admitted(version) && parse_version(version) <= parse_version(CLAUDE_CODE_VERSION)
+    version_admitted(version)
+        && parse_version(version)
+            .is_some_and(|found| (found.0, found.1) == (SUPPORTED_MINIMUM.0, SUPPORTED_MINIMUM.1))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -222,6 +225,9 @@ impl AdmittedClaudeSdkBinding {
     }
     pub(crate) fn artifact_digest(&self) -> &str {
         &self.sha256_hex
+    }
+    pub(super) fn executable(&self) -> &std::path::Path {
+        &self.executable
     }
     pub(crate) fn harness_version(&self) -> &str {
         &self.version
@@ -420,7 +426,8 @@ mod tests {
         for (version, admitted) in [
             ("2.1.319", true),
             ("2.1.300", true),
-            ("2.2.0", false),
+            ("2.1.400", true),
+            ("2.2.0", true),
             ("2.1.299", false),
             ("3.0.0", false),
             ("2.1", false),
@@ -431,15 +438,15 @@ mod tests {
     }
 
     #[test]
-    fn earlier_admitted_releases_are_characterised_and_later_ones_are_not() {
+    fn the_whole_2_1_line_is_characterised_and_a_later_minor_is_not() {
         for (version, characterised) in [
             ("2.1.300", true),
             ("2.1.314", true),
             ("2.1.319", true),
-            ("2.1.320", false),
-            ("2.1.1000", false),
+            ("2.1.1000", true),
             ("2.1.299", false),
             ("2.2.0", false),
+            ("3.0.0", false),
         ] {
             assert_eq!(version_characterised(version), characterised, "{version}");
         }

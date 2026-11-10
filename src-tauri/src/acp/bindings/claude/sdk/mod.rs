@@ -9,7 +9,7 @@ mod bridge;
 mod config;
 #[cfg(all(test, feature = "acp-fixture"))]
 mod fixture_tests;
-mod models;
+mod probe;
 mod runtime;
 mod tools;
 
@@ -17,5 +17,5 @@ pub(crate) use admission::{
     AdmittedClaudeSdkBinding, CLAUDE_SDK_BINDING_ID, ClaudeSdkBindingRegistration,
     launch_environment,
 };
-pub(crate) use models::{is_launch_model, launch_models};
+pub(crate) use probe::{models as probed_models, offers as offers_model};
 pub(crate) use runtime::ClaudeSdkRuntimeFactory;

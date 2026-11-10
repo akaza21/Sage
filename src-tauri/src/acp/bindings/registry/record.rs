@@ -337,10 +337,14 @@ impl AdmittedBindingRecord<'_> {
     }
 
     /// Whether a binding without model discovery can start a session with
-    /// `model`: Claude Code takes one of its launch aliases.
+    /// `model`: Claude Code takes a model its build listed before the session.
     pub(crate) fn accepts_launch_model(&self, model: &str) -> bool {
-        matches!(self.binding, AdmittedBinding::ClaudeSdk(_))
-            && crate::acp::bindings::claude::sdk::is_launch_model(model)
+        match &self.binding {
+            AdmittedBinding::ClaudeSdk(binding) => {
+                crate::acp::bindings::claude::sdk::offers_model(binding, model)
+            }
+            _ => false,
+        }
     }
 
     pub(crate) fn has_model_discovery(&self) -> Result<bool, RegistryAdmissionUnavailable> {
