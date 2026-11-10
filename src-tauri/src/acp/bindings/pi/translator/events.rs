@@ -68,14 +68,7 @@ impl PiTranslator {
             return Ok(vec![AdapterOutput::Absorbed]);
         }
         match kind {
-            "agent_start" => {
-                let turn = self.live_turn_any_phase()?;
-                turn.lifecycle.start_model()?;
-                turn.settlement_message = None;
-                Ok(vec![AdapterOutput::TurnRunning {
-                    turn_key: turn.turn_key.clone(),
-                }])
-            }
+            "agent_start" => self.agent_start(),
             "agent_end" => self.agent_end(value),
             "agent_settled" => self.agent_settled(),
             "auto_retry_start" => self.retry_start(value),
@@ -85,6 +78,7 @@ impl PiTranslator {
                 if !assistant_message(value) {
                     return Ok(Vec::new());
                 }
+                self.live_turn()?.reply_open = true;
                 Ok(vec![AdapterOutput::TextStarted {
                     external_id: message_id(value)?,
                 }])

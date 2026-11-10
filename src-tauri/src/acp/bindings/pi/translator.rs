@@ -107,8 +107,10 @@ struct ActiveTurn {
     /// The last assistant reply's stop reason, error and usage, kept from
     /// its `message_end` in case the run's `agent_end` is too large to read.
     last_reply: Option<Box<Value>>,
-    /// An oversized event of this Turn was dropped unread.
+    /// An oversized event of this run was dropped unread.
     dropped_frame: bool,
+    /// An assistant reply has started and not yet ended.
+    reply_open: bool,
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -202,6 +202,9 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     pub(crate) fn child_read_pending(&self) -> bool {
         self.adapter.child_read_pending()
     }
+    pub(crate) fn skips_oversize_frames(&self) -> bool {
+        self.adapter.skips_oversize_frames()
+    }
     pub(crate) fn write_session_config(
         &mut self,
         transport: &mut impl crate::acp::runtime::EgressTransport,

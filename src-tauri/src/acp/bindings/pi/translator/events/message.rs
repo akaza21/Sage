@@ -18,6 +18,7 @@ impl PiTranslator {
         }
         let message = value.get("message");
         let kept = |key| message.and_then(|message| message.get(key)).cloned();
+        self.live_turn()?.reply_open = false;
         self.live_turn()?.last_reply = Some(Box::new(serde_json::json!({
             "role": "assistant",
             "stopReason": kept("stopReason"),

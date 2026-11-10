@@ -152,6 +152,7 @@ impl PiTranslator {
             unknown_suppression_emitted: false,
             last_reply: None,
             dropped_frame: false,
+            reply_open: false,
         });
         Ok(vec![outbound])
     }

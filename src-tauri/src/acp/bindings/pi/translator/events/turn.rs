@@ -33,9 +33,52 @@ impl PiTranslator {
         }
     }
 
+    /// Whether an oversized id-less frame may be read past. Only between
+    /// the items of a running model loop with no read outstanding, so the
+    /// frame can only repeat what the stream already delivered, such as the
+    /// run's `agent_end`. Inside a reply, tool call or compaction, or between
+    /// Turns, an oversized frame still ends the session.
+    pub(crate) fn skips_oversize_frames(&self) -> bool {
+        !self.awaits_large_response()
+            && self.active.as_ref().is_some_and(|turn| {
+                turn.lifecycle.phase == TurnPhase::ModelRunning
+                    && !turn.reply_open
+                    && !turn.compaction_active
+                    && turn.tools.values().all(Option::is_some)
+            })
+    }
+
+    pub(super) fn agent_start(&mut self) -> Result<Vec<AdapterOutput>, AdapterError> {
+        // A retry or a continuation after compaction starts a new run, so a
+        // previous run whose `agent_end` was dropped ends here first.
+        let mut output = self.end_dropped_run()?;
+        let turn = self.live_turn_any_phase()?;
+        turn.lifecycle.start_model()?;
+        turn.settlement_message = None;
+        turn.last_reply = None;
+        output.push(AdapterOutput::TurnRunning {
+            turn_key: turn.turn_key.clone(),
+        });
+        Ok(output)
+    }
+
+    /// Ends a run whose `agent_end` was too large to read from the last
+    /// reply the stream already delivered.
+    fn end_dropped_run(&mut self) -> Result<Vec<AdapterOutput>, AdapterError> {
+        let Some(turn) = self.active.as_mut() else {
+            return Ok(Vec::new());
+        };
+        if turn.lifecycle.phase != TurnPhase::ModelRunning || !turn.dropped_frame {
+            return Ok(Vec::new());
+        }
+        let reply = turn.last_reply.take();
+        self.end_run(reply.as_deref())
+    }
+
     /// Ends the model run from its last assistant reply.
     fn end_run(&mut self, message: Option<&Value>) -> Result<Vec<AdapterOutput>, AdapterError> {
         let turn = self.session_turn()?;
+        turn.dropped_frame = false;
         if !turn.lifecycle.end_model()? {
             return Ok(vec![AdapterOutput::DuplicateIgnored]);
         }
@@ -76,11 +119,7 @@ impl PiTranslator {
         }
         // The run's `agent_end` was too large to read: end the run from the
         // last reply the stream already delivered.
-        let mut output = Vec::new();
-        if turn.lifecycle.phase == TurnPhase::ModelRunning && turn.dropped_frame {
-            let reply = turn.last_reply.take();
-            output = self.end_run(reply.as_deref())?;
-        }
+        let mut output = self.end_dropped_run()?;
         let turn = self.active.as_ref().ok_or(AdapterError::StaleIntent)?;
         if turn.lifecycle.phase != TurnPhase::ModelEnded {
             return Err(AdapterError::EventSequence);
