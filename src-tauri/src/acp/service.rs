@@ -376,8 +376,9 @@ impl AcpService {
         self.page_reads.try_acquire(project_id, chat_id)
     }
 
-    /// Reads a chat page from SQLite. Called from async commands, the
-    /// worker's other tasks move off while it runs.
+    /// Reads a chat page from SQLite. When called from async code on a
+    /// multi-thread runtime, the worker's other tasks move to another thread
+    /// while it runs.
     pub(crate) fn load_chat_page(
         &self,
         project_id: SageProjectId,
