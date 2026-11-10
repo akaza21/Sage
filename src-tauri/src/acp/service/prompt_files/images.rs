@@ -51,7 +51,8 @@ impl Default for PromptImages {
 pub(crate) enum ImageRefusal {
     Unsupported,
     TooMany,
-    TooLarge,
+    /// The images total more than this many bytes.
+    TooLarge(usize),
 }
 
 impl ImageRefusal {
@@ -62,16 +63,19 @@ impl ImageRefusal {
             Self::TooMany => format!(
                 "A message can include at most {PROMPT_IMAGE_COUNT} images. Remove some images."
             ),
-            Self::TooLarge => format!(
+            Self::TooLarge(total) => format!(
                 "Images in one message can total at most {} after resizing to {PROMPT_IMAGE_EDGE_PX} px. Remove some images or crop them.",
-                crate::image_artifacts::byte_size(PROMPT_IMAGE_TOTAL_BYTES)
+                crate::image_artifacts::byte_size(total)
             ),
         }
     }
 }
 
 /// The count and total-size bound every image prompt meets, from `limits.rs`.
-pub(crate) fn admit_sizes(sizes: impl IntoIterator<Item = usize>) -> Result<(), ImageRefusal> {
+pub(crate) fn admit_sizes(
+    sizes: impl IntoIterator<Item = usize>,
+    total_bytes: usize,
+) -> Result<(), ImageRefusal> {
     let mut count = 0_usize;
     let mut total = 0_usize;
     for size in sizes {
@@ -81,8 +85,8 @@ pub(crate) fn admit_sizes(sizes: impl IntoIterator<Item = usize>) -> Result<(), 
     if count > PROMPT_IMAGE_COUNT {
         return Err(ImageRefusal::TooMany);
     }
-    if total > PROMPT_IMAGE_TOTAL_BYTES {
-        return Err(ImageRefusal::TooLarge);
+    if total > total_bytes {
+        return Err(ImageRefusal::TooLarge(total_bytes));
     }
     Ok(())
 }
@@ -118,7 +122,10 @@ impl PromptImages {
         if !capabilities.is_some_and(|value| value.prompt_images) {
             return Err(ImageRefusal::Unsupported);
         }
-        admit_sizes(self.0.iter().map(|image| image.bytes.len()))?;
+        admit_sizes(
+            self.0.iter().map(|image| image.bytes.len()),
+            PROMPT_IMAGE_TOTAL_BYTES,
+        )?;
         Ok(self
             .0
             .iter()
@@ -129,6 +136,20 @@ impl PromptImages {
                     "data": STANDARD.encode(&image.bytes),
                 })
             })
+            .collect())
+    }
+
+    /// Each image's media type and base64, for a harness that repeats its
+    /// prompt images in its own events and so takes the echoed bound.
+    pub(crate) fn echoed(&self) -> Result<Vec<(&'static str, String)>, ImageRefusal> {
+        admit_sizes(
+            self.0.iter().map(|image| image.bytes.len()),
+            crate::acp::limits::ECHOED_PROMPT_IMAGE_TOTAL_BYTES,
+        )?;
+        Ok(self
+            .0
+            .iter()
+            .map(|image| (image.media_type.as_str(), STANDARD.encode(&image.bytes)))
             .collect())
     }
 }

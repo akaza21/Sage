@@ -93,6 +93,17 @@ impl PiRuntime {
             _ => Operation::Prompt {
                 turn_key,
                 message: prompt.resources.inline(prompt.as_str()),
+                // Pi repeats the images in its own events, so they take the
+                // echoed bound.
+                images: prompt
+                    .images
+                    .echoed()
+                    .map_err(|_| AdapterRuntimeError::UnsupportedCommand)?
+                    .into_iter()
+                    .map(|(media_type, data)| {
+                        serde_json::json!({"type": "image", "data": data, "mimeType": media_type})
+                    })
+                    .collect(),
             },
         };
         let egress = self.begin_one(operation, RequestKind::Prompt)?;

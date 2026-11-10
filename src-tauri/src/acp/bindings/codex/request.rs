@@ -12,7 +12,10 @@ use super::manifest::Platform;
 use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
 use super::turn_policy::{TurnPolicySurface, TurnSettings, turn_policy, validate_turn_policy};
 
+mod prompt_input;
 mod session_action;
+
+use prompt_input::prompt_input;
 
 // The shared writer owns the single LF delimiter. Keeping the payload one
 // byte below the wire ceiling makes the eventual payload + LF write fit the
@@ -130,9 +133,13 @@ impl OutgoingRequest {
         };
         let bytes = serde_json::to_vec(&json!({"id": id, "method": method, "params": params}))
             .map_err(|_| RequestError::Encoding)?;
-        if bytes.len() > JSON_PAYLOAD_BYTES
-            || bytes.iter().any(|byte| matches!(byte, b'\n' | b'\r'))
-        {
+        // A turn may carry images, so it is sent as a prompt frame.
+        let limit = if kind == RequestKind::TurnStart {
+            crate::acp::limits::PROMPT_FRAME_BYTES - 1
+        } else {
+            JSON_PAYLOAD_BYTES
+        };
+        if bytes.len() > limit || bytes.iter().any(|byte| matches!(byte, b'\n' | b'\r')) {
             return Err(RequestError::FrameBytes);
         }
         Ok(Self { id, kind, bytes })
@@ -303,7 +310,7 @@ impl OutgoingRequest {
         let mut params = json!({
             "threadId": thread_id.as_str(),
             "clientUserMessageId": client_message_id.as_str(),
-            "input": [{"type": "text", "text": prompt.resources.inline(prompt.as_str())}],
+            "input": prompt_input(prompt)?,
             "approvalPolicy": policy.approval,
             "sandboxPolicy": {
                 "type": policy.sandbox,

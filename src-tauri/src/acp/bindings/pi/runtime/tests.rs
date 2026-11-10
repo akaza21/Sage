@@ -6,6 +6,7 @@ mod config_delivery;
 mod extension_lifecycle;
 mod followups;
 mod oversize_end;
+mod prompt_images;
 mod pump_contract;
 mod questions;
 mod regressions;

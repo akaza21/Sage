@@ -19,6 +19,8 @@ pub enum Operation {
     Prompt {
         turn_key: String,
         message: String,
+        /// Pi `ImageContent` blocks: `type`, base64 `data` and `mimeType`.
+        images: Vec<serde_json::Value>,
     },
     Compact {
         turn_key: String,
