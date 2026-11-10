@@ -25,18 +25,22 @@ function revealInStrip(strip: HTMLElement, row: HTMLElement) {
 
 /**
  * Keeps one Tab stop on the selected tab, or the first tab when none is
- * selected. Keeps the tab the reader is on in view: the focused tab while
- * focus is in the strip, otherwise the selected one.
+ * selected, and returns the tab the reader is on: the focused tab while focus
+ * is in the strip, otherwise the selected one.
  */
-function revealSelectedTab(strip: HTMLElement) {
+function syncTabStop(strip: HTMLElement): HTMLElement | undefined {
   const tabs = tabListTabs(strip);
   const selected = tabs.find(
     (tab) => tab.getAttribute("aria-selected") === "true",
   );
   const stop = selected ?? tabs[0];
   for (const tab of tabs) tab.tabIndex = tab === stop ? 0 : -1;
-  const focused = tabs.find((tab) => tab === document.activeElement);
-  const shown = focused ?? selected;
+  return tabs.find((tab) => tab === document.activeElement) ?? selected;
+}
+
+/** Syncs the Tab stop and scrolls the tab the reader is on into view. */
+function revealSelectedTab(strip: HTMLElement) {
+  const shown = syncTabStop(strip);
   if (shown) revealInStrip(strip, tabRow(shown));
 }
 
@@ -63,6 +67,7 @@ export function useResourceTabStrip(
     const strip = ref.current;
     if (!strip) return;
     const observed = new Set<HTMLElement>();
+    // Tabs opened, closed or reselected: track their rows and reveal.
     const reveal = () => {
       const rows = new Set(tabListTabs(strip).map(tabRow));
       for (const row of observed) {
@@ -79,8 +84,23 @@ export function useResourceTabStrip(
       }
       revealSelectedTab(strip);
     };
+    // A resize reveals only when it can move the tab the reader is on out of
+    // view: the strip itself, or that tab's own row. A background tab growing
+    // (a status dot, a favicon, a Git mark) must not undo manual scrolling.
     const resize =
-      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reveal);
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver((entries) => {
+            const shown = syncTabStop(strip);
+            const row = shown ? tabRow(shown) : null;
+            if (
+              row &&
+              entries.some(
+                (entry) => entry.target === strip || entry.target === row,
+              )
+            )
+              revealInStrip(strip, row);
+          });
     resize?.observe(strip);
     reveal();
     const mutation = new MutationObserver((records) => {
