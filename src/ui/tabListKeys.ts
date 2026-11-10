@@ -1,18 +1,19 @@
 import type { KeyboardEvent } from "react";
 
+import {
+  hasNavigationModifier,
+  listIndexForKey,
+  type ListOrientation,
+} from "./listNavigation";
+
 /** Which arrow keys move between tabs, following the WAI-ARIA tabs pattern. */
-export type TabListOrientation = "horizontal" | "vertical";
+export type TabListOrientation = ListOrientation;
 
 /**
  * Whether moving focus also selects the tab. Use "manual" when selecting a
  * tab is costly or navigates away, so arrowing past it must not select it.
  */
 export type TabListActivation = "automatic" | "manual";
-
-const STEP_KEYS: Record<TabListOrientation, Record<string, -1 | 1>> = {
-  horizontal: { ArrowLeft: -1, ArrowRight: 1 },
-  vertical: { ArrowUp: -1, ArrowDown: 1 },
-};
 
 /**
  * The tab a key moves to from `index`: the arrows for the orientation step
@@ -26,23 +27,7 @@ export function tabIndexForKey(
   disabled: readonly boolean[],
   orientation: TabListOrientation,
 ): number | null {
-  const count = disabled.length;
-  const enabled = (at: number) => !disabled[at];
-  if (key === "Home" || key === "End") {
-    const forward = key === "Home";
-    for (let step = 0; step < count; step += 1) {
-      const at = forward ? step : count - 1 - step;
-      if (enabled(at)) return at;
-    }
-    return null;
-  }
-  const direction = STEP_KEYS[orientation][key];
-  if (!direction) return null;
-  for (let step = 1; step < count; step += 1) {
-    const at = (index + direction * step + count) % count;
-    if (enabled(at)) return at;
-  }
-  return null;
+  return listIndexForKey(key, index, disabled, { orientation, wrap: true });
 }
 
 /** The tabs a tab list owns, in document order. */
@@ -62,7 +47,7 @@ export function handleTabListKeyDown(
   activation: TabListActivation,
   reveal?: (tab: HTMLElement) => void,
 ): void {
-  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  if (hasNavigationModifier(event)) return;
   const target = event.target;
   if (!(target instanceof HTMLElement) || target.getAttribute("role") !== "tab")
     return;

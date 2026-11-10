@@ -188,6 +188,26 @@ describe("SearchablePicker", () => {
     expect(onSelect).toHaveBeenCalledWith("two");
   });
 
+  it("leaves Enter that confirms an input method composition to the field", () => {
+    const onSelect = vi.fn();
+    render(
+      <SearchablePicker
+        ariaLabel="Picker"
+        candidates={options}
+        onSelect={onSelect}
+        selectedId="one"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Picker" }));
+    const input = screen.getByRole("combobox", { name: "Picker" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(input).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledOnce();
+  });
+
   it("uses a concise trigger label without losing the full menu label", () => {
     render(
       <SearchablePicker
