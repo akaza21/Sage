@@ -143,6 +143,34 @@ fn the_fork_title_is_the_parent_title_with_the_next_free_number() {
 }
 
 #[test]
+fn a_fork_keeps_its_derived_title_when_its_harness_names_the_thread() {
+    let fixture = Fixture::new(&forkable());
+    let fork = fixture.fork("thread-fork").expect("fork chat");
+    let mut connection = fixture.database.connection();
+    let transaction = connection.transaction().unwrap();
+    crate::chat_lifecycle::apply_harness_title_in(
+        &transaction,
+        &fixture.project,
+        &fork,
+        "Inspect repo files",
+        9,
+    )
+    .unwrap();
+    transaction.commit().unwrap();
+    let (title, source): (String, String) = connection
+        .query_row(
+            "SELECT title,title_source FROM chats WHERE id=?1",
+            [&fork],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        (title.as_str(), source.as_str()),
+        ("Chat: Inspect repo files (2)", "fork")
+    );
+}
+
+#[test]
 fn a_fork_is_a_persistent_chat_above_its_parent_with_rust_owned_lineage() {
     let fixture = Fixture::new(&forkable());
     let parent_position: i64 = fixture

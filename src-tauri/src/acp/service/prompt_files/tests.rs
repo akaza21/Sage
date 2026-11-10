@@ -277,7 +277,7 @@ fn the_webview_mirrors_the_native_caps() {
 fn limit_messages_name_their_caps_in_the_webview_units() {
     // The WebView's `formatSize` writes KB of 1,024 bytes; native messages
     // name the same caps the same way, derived from the constants.
-    let format_size = include_str!("../../../../../src/features/chat/composerPaste.ts");
+    let format_size = include_str!("../../../../../src/features/chat/composerPasteText.ts");
     assert!(format_size.contains("Math.ceil(bytes / 1024)).toLocaleString(\"en-US\")} KB`"));
     let kb = |bytes: usize| format!("{} KB", bytes / 1024);
     assert_eq!(

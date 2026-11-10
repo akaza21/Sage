@@ -1,5 +1,5 @@
 //! Limit messages, worded from the caps they name in the units the WebView
-//! uses (KB of 1,024 bytes, as `formatSize` in composerPaste.ts).
+//! uses (KB of 1,024 bytes, as `formatSize` in composerPasteText.ts).
 use super::{DISPATCH_BYTES, FILE_BYTES, FILE_COUNT, TOTAL_BYTES};
 use std::sync::LazyLock;
 type Message = LazyLock<String>;
