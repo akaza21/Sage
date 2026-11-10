@@ -5,12 +5,32 @@ import {
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
 
-type Command = { name: string; description: string; inputHint: string | null };
+type Command = {
+  name: string;
+  description: string;
+  inputHint: string | null;
+  source: string;
+};
 
 const commands: Command[] = [
-  { name: "compact", description: "Compact the conversation", inputHint: null },
-  { name: "review", description: "Review a pull request", inputHint: "PR" },
-  { name: "mcp:docs:search", description: "Search docs", inputHint: "query" },
+  {
+    name: "compact",
+    description: "Compact the conversation",
+    inputHint: null,
+    source: "harness",
+  },
+  {
+    name: "review",
+    description: "Review a pull request",
+    inputHint: "PR",
+    source: "harness",
+  },
+  {
+    name: "mcp:docs:search",
+    description: "Search docs",
+    inputHint: "query",
+    source: "harness",
+  },
 ];
 
 /**
@@ -192,9 +212,75 @@ test("the open menu follows a new command list from the session", async ({
       (
         window as unknown as { __emitCommandsChanged(next: Command[]): void }
       ).__emitCommandsChanged(next),
-    [{ name: "init", description: "Set up the project", inputHint: null }],
+    [
+      {
+        name: "init",
+        description: "Set up the project",
+        inputHint: null,
+        source: "harness",
+      },
+    ],
   );
   await expect(listbox.getByRole("option")).toHaveText([
     "/initSet up the project",
   ]);
+});
+
+test("an unfiltered menu sections commands by source and fits a narrow window", async ({
+  page,
+}) => {
+  await openComposer(page);
+  await page.evaluate(
+    (next) =>
+      (
+        window as unknown as { __emitCommandsChanged(next: Command[]): void }
+      ).__emitCommandsChanged(next),
+    [
+      {
+        name: "deploy",
+        description: "Ship the current branch to staging",
+        inputHint: "environment",
+        source: "harness",
+      },
+      {
+        name: "frontend-design",
+        description:
+          "Create distinctive, production-grade frontend interfaces with high design quality that avoid generic looks",
+        inputHint: null,
+        source: "skill",
+      },
+      {
+        name: "compact",
+        description: "Clear conversation history but keep a summary in context",
+        inputHint: "instructions",
+        source: "builtin",
+      },
+      {
+        name: "review",
+        description: "Review a pull request",
+        inputHint: null,
+        source: "builtin",
+      },
+    ],
+  );
+  await page.keyboard.type("/");
+  const listbox = page.getByRole("listbox", { name: "Slash commands" });
+  const groups = listbox.getByRole("group");
+  await expect(groups).toHaveCount(3);
+  await expect(
+    listbox.getByRole("group", { name: "Commands", exact: true }),
+  ).toBeVisible();
+  await expect(
+    listbox.getByRole("group", { name: "Skills" }).getByRole("option"),
+  ).toHaveText([/^\/frontend-design/u]);
+  await expect(listbox.getByRole("option").first()).toHaveAccessibleName(
+    "/compact, Clear conversation history but keep a summary in context, Input: instructions",
+  );
+  await page.setViewportSize({ width: 720, height: 900 });
+  await expectNoViewportOverflow(page);
+  const row = (await listbox.getByRole("option").nth(2).boundingBox())!;
+  const menu = (await page.locator(".composer-slash-menu").boundingBox())!;
+  // A long description is cut to one line inside the menu.
+  expect(row.x + row.width).toBeLessThanOrEqual(menu.x + menu.width + 1);
+  expect(row.height).toBeLessThan(40);
 });

@@ -15,7 +15,9 @@ import type {
 } from "../../domain/acp";
 import {
   acpCommandsDesktop,
+  commandSourceGroups,
   type AcpCommandList,
+  type AcpCommandSource,
   type AvailableAcpCommand,
 } from "../../services/acpCommandsDesktop";
 import { AcpDesktopError } from "../../services/acpDesktop";
@@ -33,6 +35,7 @@ import { currentContext } from "./acp/useAcpChatActions";
 import type { PickedSlashCommand } from "./composerSlashCommand";
 
 const nextIntentId = createClientIntentFactory();
+
 const LOADING: Load = { kind: "loading" };
 
 type Load =
@@ -53,13 +56,27 @@ function liveOwnerKey(page: AcpChatPage | null): string {
 }
 
 /**
- * The exact name first, then prefix matches, then other name matches, each
- * in advertised order.
+ * Rows each section shows before typing, so every source stays in view:
+ * seven sources of seven rows fit the list's 50 rendered rows.
+ */
+const SECTION_ROWS = 7;
+
+/**
+ * With no query, the first commands of each source in sections, each in
+ * advertised order. While typing, the exact name first, then prefix matches, then
+ * other name matches, each in advertised order.
  */
 function filterSlashCommands(
   commands: readonly AvailableAcpCommand[],
   query: string,
 ): AvailableAcpCommand[] {
+  if (!query)
+    return (Object.keys(commandSourceGroups) as AcpCommandSource[]).flatMap(
+      (source) =>
+        commands
+          .filter((command) => command.source === source)
+          .slice(0, SECTION_ROWS),
+    );
   const needle = query.toLocaleLowerCase();
   const exact: AvailableAcpCommand[] = [];
   const prefix: AvailableAcpCommand[] = [];
@@ -73,9 +90,13 @@ function filterSlashCommands(
   return [...exact, ...prefix, ...inner];
 }
 
-function suggestion(command: AvailableAcpCommand): TextFieldSuggestion {
+function suggestion(
+  command: AvailableAcpCommand,
+  grouped: boolean,
+): TextFieldSuggestion {
   return {
     id: command.name,
+    group: grouped ? commandSourceGroups[command.source] : undefined,
     label: `/${command.name}`,
     hint: command.inputHint ?? undefined,
     description: command.description || undefined,
@@ -215,6 +236,7 @@ export function ComposerSlashMenu({
   listboxId,
   onActiveOptionChange,
   onDismiss,
+  onMountedChange,
   onPick,
   onStatusChange,
   query,
@@ -225,6 +247,8 @@ export function ComposerSlashMenu({
   listboxId: string;
   onActiveOptionChange: (optionId: string | null) => void;
   onDismiss: () => void;
+  /** Whether the listbox the field controls is in the document. */
+  onMountedChange: (mounted: boolean) => void;
   onPick: (command: PickedSlashCommand) => void;
   /** What the list holds, for the field's polite status region. */
   onStatusChange: (status: string) => void;
@@ -236,7 +260,10 @@ export function ComposerSlashMenu({
     [load],
   );
   const items = useMemo(
-    () => filterSlashCommands(commands, query).map(suggestion),
+    () =>
+      filterSlashCommands(commands, query).map((command) =>
+        suggestion(command, !query),
+      ),
     [commands, query],
   );
   const pick = (item: TextFieldSuggestion) => {
@@ -282,6 +309,10 @@ export function ComposerSlashMenu({
     () => () => onActiveOptionChange(null),
     [onActiveOptionChange],
   );
+  useLayoutEffect(() => {
+    onMountedChange(true);
+    return () => onMountedChange(false);
+  }, [onMountedChange]);
   const state = menuState(load, query, items.length);
   const status =
     state.kind === "ready"
@@ -292,6 +323,11 @@ export function ComposerSlashMenu({
     <SuggestionsPart
       part="TextFieldSuggestions"
       anchorRef={anchorRef}
+      footer={
+        !query && commands.length > items.length
+          ? `${commands.length - items.length} more — keep typing to narrow`
+          : undefined
+      }
       ariaLabel="Slash commands"
       className="composer-slash-menu"
       items={items}

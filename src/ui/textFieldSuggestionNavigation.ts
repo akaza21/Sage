@@ -12,6 +12,11 @@ export interface TextFieldSuggestion {
   hint?: string;
   /** The whole row as a screen reader should hear it. */
   accessibleLabel: string;
+  /**
+   * The heading of the section the row belongs to. Rows of one section are
+   * contiguous; a list whose rows share one section shows no heading.
+   */
+  group?: string;
 }
 
 export type TextFieldSuggestionsState =

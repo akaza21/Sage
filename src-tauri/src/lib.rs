@@ -1,6 +1,7 @@
 pub mod acp;
 pub(crate) mod app_preview_commands;
 mod app_run_events;
+pub(crate) mod blocking;
 #[cfg_attr(
     not(windows),
     allow(dead_code, reason = "the in-app browser runtime is WebView2-only")

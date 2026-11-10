@@ -87,7 +87,7 @@ impl SdkBridge {
                         .push(acp_error(id, INTERNAL_ERROR, UNKNOWN_MODE));
                     return Ok(());
                 }
-                self.commands = commands(reply);
+                self.commands = super::commands::commands(reply);
                 inbound.acp.push(acp_result(
                     id,
                     json!({
@@ -364,24 +364,6 @@ impl Pending {
             Self::Interrupt | Self::Control => None,
         }
     }
-}
-
-/// Claude Code's commands as ACP `availableCommands`.
-pub(super) fn commands(reply: &Value) -> Value {
-    reply
-        .get("commands")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|command| {
-            let hint = command.get("argumentHint").and_then(Value::as_str).filter(|hint| !hint.is_empty());
-            Some(json!({
-                "name": command.get("name")?.as_str()?,
-                "description": command.get("description").and_then(Value::as_str).unwrap_or_default(),
-                "input": hint.map(|hint| json!({"hint": hint})),
-            }))
-        })
-        .collect()
 }
 
 fn context_window(sdk: &Value) -> Option<u64> {

@@ -8,19 +8,33 @@ describe("native command list contract", () => {
     });
     const value = {
       revision: 1,
-      commands: [{ name: "plan", description: "Plan", inputHint: "task" }],
+      commands: [
+        {
+          name: "plan",
+          description: "Plan",
+          inputHint: "task",
+          source: "skill",
+        },
+      ],
     };
     expect(decodeCommandList(value)).toEqual(value);
   });
   it("rejects duplicate names, malformed entries, unsafe revisions and oversized lists", () => {
-    const command = { name: "plan", description: "Plan", inputHint: null };
+    const command = {
+      name: "plan",
+      description: "Plan",
+      inputHint: null,
+      source: "harness",
+    };
     for (const value of [
       null,
       { revision: -1, commands: [] },
       { revision: 2 ** 53, commands: [] },
       { revision: 1, commands: [command, command] },
       { revision: 1, commands: [{ ...command, name: "/plan" }] },
-      { revision: 1, commands: Array(129).fill(command) },
+      { revision: 1, commands: [{ ...command, source: "invented" }] },
+      { revision: 1, commands: [{ ...command, source: undefined }] },
+      { revision: 1, commands: Array(513).fill(command) },
       {
         revision: 1,
         commands: [{ ...command, description: "x".repeat(1025) }],

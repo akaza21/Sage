@@ -4,6 +4,8 @@ use std::io::Cursor;
 
 #[path = "wire_native_projection_tests.rs"]
 mod native_projection;
+#[path = "wire_acp_resource_tests.rs"]
+mod resource_tests;
 
 #[test]
 fn replay_resource_paths_resolve_existing_files_in_the_capture_project() {

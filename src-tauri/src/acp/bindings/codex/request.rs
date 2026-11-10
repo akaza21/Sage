@@ -303,7 +303,7 @@ impl OutgoingRequest {
         let mut params = json!({
             "threadId": thread_id.as_str(),
             "clientUserMessageId": client_message_id.as_str(),
-            "input": [{"type": "text", "text": prompt.as_str()}],
+            "input": [{"type": "text", "text": prompt.resources.inline(prompt.as_str())}],
             "approvalPolicy": policy.approval,
             "sandboxPolicy": {
                 "type": policy.sandbox,
@@ -342,7 +342,7 @@ impl OutgoingRequest {
                 "threadId": thread_id.as_str(),
                 "expectedTurnId": turn_id.as_str(),
                 "clientUserMessageId": client_message_id.as_str(),
-                "input": [{"type": "text", "text": prompt.as_str()}]
+                "input": [{"type": "text", "text": prompt.resources.inline(prompt.as_str())}]
             }),
         )
     }

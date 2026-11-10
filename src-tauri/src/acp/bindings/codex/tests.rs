@@ -2514,3 +2514,29 @@ fn all_outgoing_lifecycle_methods_are_exact_and_bounded() {
         "thread/unsubscribe"
     );
 }
+
+#[test]
+fn codex_turns_and_steers_carry_attached_files_in_their_text_input() {
+    use super::request::OutgoingRequest;
+    use crate::acp::service::prompt_files::{Resource, Resources};
+    let mut prompt = crate::acp::intent::Prompt::new("prompt", "Review").unwrap();
+    prompt.resources = Resources(std::sync::Arc::new(vec![Resource {
+        id: "res-1".into(),
+        name: "notes.md".into(),
+        bytes: b"# Notes".to_vec(),
+    }]));
+    let thread = crate::acp::contract::RequiredText::new("threadId", "thread-1").unwrap();
+    let client = crate::acp::contract::RequiredText::new("client", "client-1").unwrap();
+    let turn = crate::acp::contract::RequiredText::new("turnId", "turn-1").unwrap();
+    let expected = "Review\n\n<context name=\"notes.md\">\n# Notes\n</context>";
+    for request in [
+        OutgoingRequest::turn_start(1, &thread, &prompt, &client).unwrap(),
+        OutgoingRequest::steer(2, &thread, &turn, &prompt, &client).unwrap(),
+    ] {
+        let value: serde_json::Value = serde_json::from_slice(&request.bytes).unwrap();
+        assert_eq!(
+            value["params"]["input"],
+            serde_json::json!([{"type": "text", "text": expected}])
+        );
+    }
+}
