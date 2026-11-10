@@ -176,7 +176,12 @@ impl ClaudeSdkRuntime {
                 .into_parts();
             for event in events {
                 observed = true;
-                batch.push_event(event)?;
+                batch.push_event(match event {
+                    AdapterEvent::Initialized { capabilities } => AdapterEvent::Initialized {
+                        capabilities: sdk_capabilities(capabilities),
+                    },
+                    event => event,
+                })?;
             }
             for egress in egress {
                 batch.push_egress(self.outbound(egress)?)?;
@@ -212,6 +217,16 @@ impl ResourceMapper for NoResources {
 /// Deliveries the pump settles before more egress; beyond this, undelivered
 /// frames are not undone (the pump fails the session on such writes anyway).
 const MAX_OPEN_DELIVERIES: usize = 64;
+
+/// What Claude Code does beyond Claude's ACP surface: it queues a message
+/// sent while it works (see `bridge::steer`), and compacts on its own
+/// `/compact` prompt, which a Compact action sends as its Turn. The
+/// session's capabilities and its `Initialized` event must agree.
+fn sdk_capabilities(mut capabilities: CapabilitySnapshotV1) -> CapabilitySnapshotV1 {
+    capabilities.active_turn_steer = capabilities.prompt;
+    capabilities.native_session_compact = capabilities.prompt;
+    capabilities
+}
 
 fn sdk_frame(value: &Value) -> Result<OutboundFrame, AdapterRuntimeError> {
     let bytes = serde_json::to_vec(value).map_err(|_| AdapterRuntimeError::Frame)?;
@@ -275,15 +290,8 @@ impl HarnessAdapter for ClaudeSdkRuntime {
             .map(|egress| self.outbound(egress))
             .transpose()
     }
-    /// Claude Code queues a message sent while it works (see
-    /// `bridge::steer`), and compacts on its own `/compact` prompt, which a
-    /// Compact action sends as its Turn.
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
-        self.session.capabilities().map(|mut capabilities| {
-            capabilities.active_turn_steer = capabilities.prompt;
-            capabilities.native_session_compact = capabilities.prompt;
-            capabilities
-        })
+        self.session.capabilities().map(sdk_capabilities)
     }
     fn session_control(
         &mut self,

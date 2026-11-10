@@ -95,8 +95,12 @@ fn ready() -> ClaudeSdkRuntime {
         &initialize,
         json!({"commands":[{"name":"review","description":"Review changes"}],"current_permission_mode":"default","models":[{"value":"default","displayName":"Default"}]}),
     );
-    assert!(matches!(events[..], [AdapterEvent::Initialized { .. }]));
+    let [AdapterEvent::Initialized { capabilities: told }] = &events[..] else {
+        panic!("initialized: {events:?}");
+    };
     let capabilities = runtime.capabilities().unwrap();
+    // The activation pump refuses a session whose two answers differ.
+    assert_eq!(told, &capabilities);
     assert!(capabilities.resume_session && capabilities.prompt_resources);
     let session = send(
         &mut runtime,
