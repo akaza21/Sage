@@ -4,8 +4,10 @@
 //! reply to the SDK `initialize` request, which needs no prompt and makes no
 //! model call. Sage starts the admitted CLI in SDK mode from the profile
 //! directory, sends only that request, reads the reply within a byte and time
-//! bound, and stops the process. The list is kept per admitted build, so it is
-//! read again only after Claude Code changes.
+//! bound, and stops the process. The probe starts no MCP server and runs no
+//! hook. The list is kept per admitted build, so it is read again only after
+//! Claude Code changes; a failed probe is not retried for a while, and
+//! concurrent lookups wait for one probe.
 
 use std::{
     ffi::OsString,
@@ -14,7 +16,7 @@ use std::{
     process::{Command, Stdio},
     sync::{Mutex, mpsc},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use serde_json::{Value, json};
@@ -26,43 +28,79 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 /// Startup output before the reply is small; this bounds a misbehaving CLI.
 const PROBE_BYTES: u64 = 4 * 1024 * 1024;
 const REQUEST_ID: &str = "sage-model-probe";
+const RETRY_AFTER: Duration = Duration::from_secs(60);
+/// Only the probe's own request runs: no MCP server starts and no hook runs.
+const PROBE_ARGS: [&str; 3] = [
+    "--strict-mcp-config",
+    "--settings",
+    r#"{"disableAllHooks":true}"#,
+];
 
-/// The last probed list, keyed by the build it was read from.
-static PROBED: Mutex<Option<([u8; 32], Vec<ModelOption>)>> = Mutex::new(None);
+enum Probed {
+    Models(Vec<ModelOption>),
+    Failed(Instant),
+}
+
+/// The last probe's outcome, keyed by the build it was read from.
+static PROBED: Mutex<Option<([u8; 32], Probed)>> = Mutex::new(None);
+/// Held while a probe runs, so concurrent lookups share its outcome.
+static PROBING: Mutex<()> = Mutex::new(());
 
 /// The models the admitted build offers, probing it once per build. `None`
-/// when the build could not be read; nothing is cached then, so a later
-/// lookup tries again.
+/// when the build could not be read; a later lookup tries again once
+/// [`RETRY_AFTER`] has passed.
 pub(crate) fn models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<ModelOption>> {
-    if let Some(models) = cached(binding.binding_digest()) {
-        return Some(models);
+    let digest = binding.binding_digest();
+    let ready = || match lock(&PROBED).as_ref() {
+        Some((key, Probed::Models(models))) if *key == digest => Some(Some(models.clone())),
+        Some((key, Probed::Failed(at))) if *key == digest && at.elapsed() < RETRY_AFTER => {
+            Some(None)
+        }
+        _ => None,
+    };
+    if let Some(known) = ready() {
+        return known;
     }
-    binding.revalidate().ok()?;
-    let reply = run(binding.executable(), &launch_environment())?;
-    let models = model_options(&reply);
-    if models.is_empty() {
-        return None;
+    let _probing = lock(&PROBING);
+    if let Some(known) = ready() {
+        return known;
     }
-    *PROBED
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) =
-        Some((binding.binding_digest(), models.clone()));
-    Some(models)
+    let models = binding
+        .revalidate()
+        .ok()
+        .and(binding.probe_executable())
+        .and_then(|executable| run(executable, &launch_environment()))
+        .map(|reply| model_options(&reply))
+        .filter(|models| !models.is_empty());
+    *lock(&PROBED) = Some((
+        digest,
+        models
+            .clone()
+            .map_or_else(|| Probed::Failed(Instant::now()), Probed::Models),
+    ));
+    models
+}
+
+/// The models a probe already read for this build, without probing.
+pub(crate) fn known_models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<ModelOption>> {
+    match lock(&PROBED).as_ref() {
+        Some((key, Probed::Models(models))) if *key == binding.binding_digest() => {
+            Some(models.clone())
+        }
+        _ => None,
+    }
 }
 
 /// Whether a session of this build may start with `model`: only a model
 /// the build itself listed.
 pub(crate) fn offers(binding: &AdmittedClaudeSdkBinding, model: &str) -> bool {
-    cached(binding.binding_digest()).is_some_and(|models| models.iter().any(|m| m.id == model))
+    known_models(binding).is_some_and(|models| models.iter().any(|m| m.id == model))
 }
 
-fn cached(digest: [u8; 32]) -> Option<Vec<ModelOption>> {
-    PROBED
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .as_ref()
-        .filter(|(key, _)| *key == digest)
-        .map(|(_, models)| models.clone())
 }
 
 fn profile_directory(environment: &[(OsString, OsString)]) -> Option<PathBuf> {
@@ -78,6 +116,7 @@ fn run(executable: &Path, environment: &[(OsString, OsString)]) -> Option<Value>
     let mut command = Command::new(executable);
     command
         .args(SDK_ARGS)
+        .args(PROBE_ARGS)
         .env_clear()
         .envs(environment.iter().cloned())
         .current_dir(profile_directory(environment)?)
@@ -227,6 +266,19 @@ mod tests {
         let first = model_options(&json!({"models": [{"value": "a"}, {"value": "b"}]}));
         assert_eq!(first[0].is_default, Some(true));
         assert!(model_options(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn a_build_that_cannot_be_probed_offers_nothing_and_is_not_probed_again_at_once() {
+        let binding = AdmittedClaudeSdkBinding::for_test();
+        assert!(models(&binding).is_none());
+        assert!(matches!(
+            lock(&PROBED).as_ref(),
+            Some((key, Probed::Failed(_))) if *key == binding.binding_digest()
+        ));
+        assert!(models(&binding).is_none());
+        assert!(known_models(&binding).is_none());
+        assert!(!offers(&binding, "default"));
     }
 
     #[cfg(unix)]

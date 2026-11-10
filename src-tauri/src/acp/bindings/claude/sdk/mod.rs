@@ -17,5 +17,5 @@ pub(crate) use admission::{
     AdmittedClaudeSdkBinding, CLAUDE_SDK_BINDING_ID, ClaudeSdkBindingRegistration,
     launch_environment,
 };
-pub(crate) use probe::{models as probed_models, offers as offers_model};
+pub(crate) use probe::{known_models, models as probed_models, offers as offers_model};
 pub(crate) use runtime::ClaudeSdkRuntimeFactory;

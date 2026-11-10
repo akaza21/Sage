@@ -226,8 +226,14 @@ impl AdmittedClaudeSdkBinding {
     pub(crate) fn artifact_digest(&self) -> &str {
         &self.sha256_hex
     }
-    pub(super) fn executable(&self) -> &std::path::Path {
-        &self.executable
+    /// The CLI a model probe may start: none for a replay fixture, whose
+    /// artifact is not the CLI.
+    pub(super) fn probe_executable(&self) -> Option<&std::path::Path> {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if self.fixture.is_some() {
+            return None;
+        }
+        Some(&self.executable)
     }
     pub(crate) fn harness_version(&self) -> &str {
         &self.version
