@@ -82,7 +82,7 @@ impl PiRuntime {
             let text = prompt.as_str();
             let listed = listed.find(revision, text)?;
             let rest = text[1..].trim_start().strip_prefix(&listed.name)?.trim();
-            Some((listed.dispatch, listed.name.as_str(), rest))
+            Some((listed.dispatch.clone(), listed.name.as_str(), rest))
         });
         let turn_key = turn_key.to_owned();
         let operation = match command {

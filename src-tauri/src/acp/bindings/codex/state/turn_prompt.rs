@@ -90,6 +90,11 @@ impl CodexAdapter {
                 effort,
             )?,
         };
+        // A listed skill runs attached; its typed text follows it.
+        let request = match self.skill_input(prompt) {
+            Some((name, path)) if prompt.action.is_none() => request.with_skill(&name, &path)?,
+            _ => request,
+        };
         let request = self.reserve(request)?;
         self.turn_start_correlations
             .register(id, client_message_id.clone());

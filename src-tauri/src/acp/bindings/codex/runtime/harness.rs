@@ -22,6 +22,16 @@ impl HarnessAdapter for CodexRuntime {
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         self.discard_invalid_model_page(frame)
     }
+    fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
+        self.inner.skills()
+    }
+    /// Reads the skills while idle, first and after Codex says they changed.
+    fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        if !self.inner.skills_wanted() {
+            return Ok(None);
+        }
+        self.request(CodexAdapter::skills_list).map(Some)
+    }
     fn model_config_hydration(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(self.request_model_config())
     }

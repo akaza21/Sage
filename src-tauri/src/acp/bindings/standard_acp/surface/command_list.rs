@@ -61,7 +61,7 @@ pub(crate) struct CommandMark {
 /// How the binding that advertised a command runs it. Native only: the
 /// WebView names a command and the binding looks its dispatch up in the
 /// live list, so a prompt can never choose its own route.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommandDispatch {
     /// Sent as `/name input` prompt text, which the harness parses.
     Prompt,
@@ -70,6 +70,8 @@ pub(crate) enum CommandDispatch {
     CommandTurn,
     /// Run by the binding's own method for this name (Pi's `compact`).
     Builtin,
+    /// Sent with the skill attached by its harness path (Codex skills).
+    Skill { path: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
