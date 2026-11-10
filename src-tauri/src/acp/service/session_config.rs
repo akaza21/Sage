@@ -219,26 +219,25 @@ impl AcpService {
     pub(super) fn fit_session_config_to_page_budget(
         &self,
         page: &mut AcpChatPage,
+        size: &PageBytes,
     ) -> Result<(), StoreError> {
         fit_config_to_page_budget(
             page,
+            size,
             crate::acp::limits::LIMITS.durable.history_page_bytes as usize,
             |session| self.stored_choices_view(session),
         )
     }
 }
 
-fn page_bytes(page: &AcpChatPage) -> Result<usize, StoreError> {
-    serde_json::to_vec(page)
-        .map(|bytes| bytes.len())
-        .map_err(|_| StoreError::Corrupt("session config page"))
-}
-
 /// The bytes the page's session config fields (live config, restored config
 /// and notice) take beyond the page without them, when the page is over
 /// budget with them: history is loaded again leaving that much room.
-pub(super) fn config_reserve(page: &mut AcpChatPage) -> Result<Option<usize>, StoreError> {
-    let full = page_bytes(page)?;
+pub(super) fn config_reserve(
+    page: &mut AcpChatPage,
+    size: &PageBytes,
+) -> Result<Option<usize>, StoreError> {
+    let full = size.of(page)?;
     if full <= crate::acp::limits::LIMITS.durable.history_page_bytes as usize {
         return Ok(None);
     }
@@ -247,7 +246,7 @@ pub(super) fn config_reserve(page: &mut AcpChatPage) -> Result<Option<usize>, St
         page.restored_session_config.take(),
         page.session_config_notice.take(),
     );
-    let bare = page_bytes(page);
+    let bare = size.of(page);
     (
         page.session_config,
         page.restored_session_config,
@@ -258,24 +257,25 @@ pub(super) fn config_reserve(page: &mut AcpChatPage) -> Result<Option<usize>, St
 
 fn fit_config_to_page_budget(
     page: &mut AcpChatPage,
+    size: &PageBytes,
     limit: usize,
     stored_only: impl FnOnce(&crate::acp::contract::SageAgentSessionId) -> Option<SessionConfig>,
 ) -> Result<(), StoreError> {
-    if page_bytes(page)? <= limit {
+    if size.of(page)? <= limit {
         return Ok(());
     }
     if let Some(restored) = page.restored_session_config.take() {
         page.restored_session_config = stored_only(&restored.sage_agent_session_id)
             .map(|config| RestoredSessionConfig { config, ..restored });
-        if page_bytes(page)? <= limit {
+        if size.of(page)? <= limit {
             return Ok(());
         }
         page.restored_session_config = None;
-        if page_bytes(page)? <= limit {
+        if size.of(page)? <= limit {
             return Ok(());
         }
     }
-    if page.session_config_notice.take().is_some() && page_bytes(page)? <= limit {
+    if page.session_config_notice.take().is_some() && size.of(page)? <= limit {
         return Ok(());
     }
     Err(StoreError::Capacity {
