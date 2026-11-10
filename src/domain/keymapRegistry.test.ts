@@ -6,6 +6,7 @@ import {
   matchesKeymapChord,
   matchesPlatformChord,
 } from "./keymapRegistry";
+import { KEYMAP_DESCRIPTIONS } from "./keymapDescriptions";
 import { EDITOR_EDITING_BINDINGS } from "./settingsNavigation";
 
 it.each([
@@ -46,7 +47,7 @@ it("keeps chat and editor find as distinct scoped bindings", () => {
         binding.scope === "Editor" && matchesKeymapChord(binding, event),
     ).map((binding) => binding.id),
   ).toEqual(["find"]);
-  expect(keymapBinding("chat.findInChat").description).toBe(
+  expect(KEYMAP_DESCRIPTIONS["chat.findInChat"]).toBe(
     "Search the visible chat's messages.",
   );
 });
