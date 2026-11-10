@@ -16,6 +16,7 @@ import { settleLazyModules } from "../../test/settleLazyModules";
 import { page } from "./acp/acpProjection.fixture";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
 import { ForkChatDialog, ForkDivider, forkChat } from "./ForkChat";
+import { ForkChatDialogHost } from "./ForkChatDialogHost";
 
 const getGoalChatPage = vi.hoisted(() => vi.fn());
 const fakeCommit = vi.hoisted(() => ({
@@ -86,7 +87,11 @@ function forkablePage(
 }
 
 async function renderFooter(acpPage: AcpChatPage) {
-  render(<ChatTranscriptFooter useNativeAcp page={acpPage} messages={[]} />);
+  render(
+    <ForkChatDialogHost>
+      <ChatTranscriptFooter useNativeAcp page={acpPage} messages={[]} />
+    </ForkChatDialogHost>,
+  );
   await settleLazyModules();
 }
 

@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import {
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import {
@@ -17,6 +24,7 @@ import { ModalDialog } from "../../ui/ModalDialog";
 import { isSideChatId } from "../../workbench/sideChatState";
 import "./fork-chat.css";
 import { inheritComposerModel } from "./inheritedComposerModel";
+import { ForkChatRequestContext } from "./forkChatRequest";
 
 /** Lazy fork UI; Rust owns the fork and authoritative Project snapshot. */
 
@@ -149,10 +157,10 @@ export function AnswerMoreActions({
   forkable?: boolean;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
-  // null while closed; otherwise whether Enter or Space opened the dialog.
-  const [forking, setForking] = useState<boolean | null>(null);
+  const requestFork = useContext(ForkChatRequestContext);
   const turn = page.turns.at(-1);
   const canFork =
+    requestFork &&
     forkable &&
     turn?.state === "completed" &&
     turn.sessionId === page.currentSessionId &&
@@ -168,19 +176,17 @@ export function AnswerMoreActions({
       <AnswerMoreMenu
         onCopy={onCopy}
         trigger={trigger}
-        onBranch={canFork ? setForking : undefined}
+        onBranch={
+          canFork
+            ? (keyboard) =>
+                requestFork({
+                  chatId: page.chatId,
+                  turnId: turn.id,
+                  keyboard,
+                })
+            : undefined
+        }
       />
-      {forking !== null && canFork ? (
-        <ForkChatDialog
-          chatId={page.chatId}
-          turnId={turn.id}
-          keyboard={forking}
-          onClose={() => {
-            setForking(null);
-            trigger.current?.focus();
-          }}
-        />
-      ) : null}
     </>
   );
 }

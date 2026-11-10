@@ -16,6 +16,7 @@ import { ArrowDown } from "../../ui/leanIcons";
 import { isSideChatId } from "../../workbench/sideChatState";
 import { ChatHome } from "./ChatHome";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
+import { ForkChatDialogHost } from "./ForkChatDialogHost";
 import {
   AcpChatProjection,
   latestRetryPrompt,
@@ -33,7 +34,15 @@ import { ForkPart, LegacyTranscriptPart, NoticePart } from "./lazyParts";
 import { isNewProjectChat } from "./newProjectChat";
 import { TranscriptInteractionsGate, TranscriptPart } from "./transcriptLazy";
 
-export function ChatTranscript({
+export function ChatTranscript(props: Parameters<typeof Transcript>[0]) {
+  return (
+    <ForkChatDialogHost focusRoot={props.transcriptRef}>
+      <Transcript {...props} />
+    </ForkChatDialogHost>
+  );
+}
+
+function Transcript({
   editSummaryContainer = null,
   transcriptRef,
   contentRef,
@@ -172,7 +181,7 @@ export function ChatTranscript({
     </div>
   ) : (
     <div className="composer__notice" role="status">
-      Loading chat history…
+      Loading chat history.
     </div>
   );
   return (
@@ -185,7 +194,7 @@ export function ChatTranscript({
         <div ref={contentRef} className="message-list__content">
           {projectTransitioning ? (
             <div className="composer__notice" role="status">
-              Loading the authoritative project…
+              Loading the authoritative project.
             </div>
           ) : useNativeAcp &&
             !page &&
