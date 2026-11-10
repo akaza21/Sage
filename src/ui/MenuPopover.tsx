@@ -11,6 +11,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { DismissLayerContext, useDismissLayer } from "./dismissLayer";
 import { useNativePageLayer } from "./nativePageLayers";
 import {
   exitPopoverDialogOnTab,
@@ -282,23 +283,18 @@ export function MenuPopover({
     // its parent popover; the move remounts it, so focus is placed again.
   }, [focusKey, focusStrategy, initialFocus, placeFocus, role, portalRoot]);
 
-  useEffect(() => {
-    if (!open) return;
-    const dismissOutside = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (
-        !target ||
-        popoverRef.current?.contains(target) ||
-        triggerRef.current?.contains(target)
-      ) {
-        return;
-      }
-      onDismiss("outside");
-    };
-    document.addEventListener("pointerdown", dismissOutside, true);
-    return () =>
-      document.removeEventListener("pointerdown", dismissOutside, true);
-  }, [onDismiss, open, triggerRef]);
+  const { layer, onKeyDown: layerKeyDown } = useDismissLayer(open, {
+    inside: [popoverRef, triggerRef],
+    onOutside: () => onDismiss("outside"),
+    // Without roving focus, focus stays in a field that owns Escape.
+    onEscape:
+      focusStrategy === "none"
+        ? undefined
+        : () => {
+            triggerRef.current?.focus();
+            onDismiss("escape");
+          },
+  });
 
   useEffect(
     () => () => {
@@ -316,10 +312,7 @@ export function MenuPopover({
     const popover = event.currentTarget;
     const items = enabledMenuItems(popover);
     if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      triggerRef.current?.focus();
-      onDismiss("escape");
+      layerKeyDown(event);
       return;
     }
     if (event.key === "Tab") {
@@ -395,36 +388,38 @@ export function MenuPopover({
 
   return createPortal(
     <PopoverPlacementContext value={placement}>
-      <div
-        ref={popoverRef}
-        id={id}
-        className={[
-          "menu-popover",
-          position.maxHeight === undefined ? null : "menu-popover--bounded",
-          className,
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        role={role === "none" ? undefined : role}
-        tabIndex={role === "dialog" ? -1 : undefined}
-        aria-label={role === "none" ? undefined : ariaLabel}
-        aria-describedby={ariaDescribedBy}
-        hidden={!open}
-        style={position}
-        onKeyDown={moveFocus}
-        onFocus={(event) => {
-          if (focusStrategy === "none") return;
-          const item = (event.target as HTMLElement).closest<HTMLElement>(
-            ITEM_SELECTOR,
-          );
-          if (!item || item.hasAttribute("disabled")) return;
-          const items = enabledMenuItems(event.currentTarget);
-          const index = items.indexOf(item);
-          if (index >= 0) activateMenuItem(event.currentTarget, index);
-        }}
-      >
-        {children}
-      </div>
+      <DismissLayerContext value={layer}>
+        <div
+          ref={popoverRef}
+          id={id}
+          className={[
+            "menu-popover",
+            position.maxHeight === undefined ? null : "menu-popover--bounded",
+            className,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          role={role === "none" ? undefined : role}
+          tabIndex={role === "dialog" ? -1 : undefined}
+          aria-label={role === "none" ? undefined : ariaLabel}
+          aria-describedby={ariaDescribedBy}
+          hidden={!open}
+          style={position}
+          onKeyDown={moveFocus}
+          onFocus={(event) => {
+            if (focusStrategy === "none") return;
+            const item = (event.target as HTMLElement).closest<HTMLElement>(
+              ITEM_SELECTOR,
+            );
+            if (!item || item.hasAttribute("disabled")) return;
+            const items = enabledMenuItems(event.currentTarget);
+            const index = items.indexOf(item);
+            if (index >= 0) activateMenuItem(event.currentTarget, index);
+          }}
+        >
+          {children}
+        </div>
+      </DismissLayerContext>
     </PopoverPlacementContext>,
     portalRoot,
   );
