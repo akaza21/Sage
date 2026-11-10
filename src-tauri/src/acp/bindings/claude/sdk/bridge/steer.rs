@@ -59,12 +59,20 @@ impl SdkBridge {
 
     /// Claude Code's reply to a withdrawal, whatever it was: the message no
     /// longer waits on Sage, and the stop moves on.
+    /// A stop whose turn already ended goes no further, so a late reply
+    /// never interrupts the next turn. With nothing left to run and a run's
+    /// end held, Claude Code is idle: that end closes the turn as cancelled.
     pub(super) fn withdrawn(&mut self, uuid: &str, inbound: &mut Inbound) {
         if self.steers.iter().any(|steer| steer == uuid) {
             self.steers.retain(|steer| steer != uuid);
             inbound.steers.push((uuid.to_owned(), false));
         }
-        if let Ok(next) = self.withdraw_steers() {
+        if !self.interrupted || self.prompt.is_none() {
+            return;
+        }
+        if let Some(held) = self.release_held() {
+            self.result(&held, inbound);
+        } else if let Ok(next) = self.withdraw_steers() {
             inbound.replies.push(next);
         }
     }

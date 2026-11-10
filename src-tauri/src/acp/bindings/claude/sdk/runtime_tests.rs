@@ -756,6 +756,7 @@ fn a_message_never_written_is_forgotten_and_one_after_the_turn_is_refused() {
             client_message_id: RequiredText::new("client", "client-2").unwrap(),
         })
         .unwrap();
+    let request_id = egress.token().request_id().unwrap();
     runtime
         .resolve_egress(egress.into_token(), EgressResolution::QueueRejected)
         .unwrap();
@@ -763,6 +764,10 @@ fn a_message_never_written_is_forgotten_and_one_after_the_turn_is_refused() {
         &mut runtime,
         json!({"type":"result","subtype":"success","is_error":false,"usage":{}}),
     );
+    assert!(end.iter().any(|event| matches!(
+        event,
+        AdapterEvent::SteerResponse { request_id: id, accepted: false } if *id == request_id
+    )));
     assert!(turn_ended(&end));
     assert!(matches!(
         runtime.command(AdapterCommand::Steer {

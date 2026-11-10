@@ -826,3 +826,53 @@ fn a_message_needs_a_running_turn_and_an_unsent_one_is_forgotten() {
         .unwrap();
     assert!(ended(&result));
 }
+
+#[test]
+fn stopping_while_a_run_end_is_held_ends_the_turn_once_the_message_is_withdrawn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("later").unwrap();
+    let first = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(!ended(&first));
+    let cancel = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    let withdrawn = bridge
+        .inbound(success(&cancel, json!({"cancelled":true})))
+        .unwrap();
+    assert_eq!(withdrawn.steers, [(uuid, false)]);
+    assert!(
+        withdrawn.replies.is_empty(),
+        "Claude Code is idle; nothing to interrupt"
+    );
+    assert_eq!(
+        withdrawn.acp.last().unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn a_late_withdrawal_reply_never_interrupts_the_next_turn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    bridge.steer("later").unwrap();
+    let cancel = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    // The run ends before Claude Code answers the withdrawal.
+    let end = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(ended(&end));
+    prompt(&mut bridge, 4);
+    let late = bridge
+        .inbound(success(&cancel, json!({"cancelled":true})))
+        .unwrap();
+    assert!(late.replies.is_empty() && late.acp.is_empty());
+}
