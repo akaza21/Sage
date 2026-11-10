@@ -11,6 +11,7 @@ afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialState, true);
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const fileTab = (index: number): WorkbenchTab => ({
@@ -68,6 +69,34 @@ describe("TabStrip overflow", () => {
     useWorkbenchStore.setState({ activeTabId: "file:1" });
     rerender(<TabStrip />);
     expect(strip.scrollLeft).toBe(120);
+  });
+
+  it("keeps manual scrolling when a background tab resizes", () => {
+    let notify: ResizeObserverCallback = () => undefined;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          notify = callback;
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    installTabs(12, 0);
+    const { container } = render(<TabStrip />);
+    const strip = container.querySelector<HTMLElement>(".tab-strip__scroll")!;
+    layOut(strip);
+    fireEvent.wheel(strip, { deltaY: 600 });
+    const resized = (target: Element) =>
+      notify([{ target } as ResizeObserverEntry], {} as ResizeObserver);
+    // A Git mark or status dot widens a tab the reader is not on.
+    resized(strip.children[8]);
+    expect(strip.scrollLeft).toBe(600);
+    // The active tab's own row resizing brings it back into view.
+    resized(strip.children[0]);
+    expect(strip.scrollLeft).toBe(0);
   });
 
   it("scrolls the strip sideways with a vertical wheel", () => {
