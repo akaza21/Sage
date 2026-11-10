@@ -673,3 +673,26 @@ fn an_at_mention_reaches_claude_code_as_context_or_a_path_mention() {
         assert_eq!(user["message"]["content"][1]["text"], expected);
     }
 }
+
+/// Claude Code reads an `@path` it receives, so a link to a credential file
+/// Sage would not embed must not become one.
+#[test]
+fn a_mentioned_credential_file_is_named_but_not_handed_to_claude_code() {
+    let uri = if cfg!(windows) {
+        "file:///C:/work/.env"
+    } else {
+        "file:///work/.env"
+    };
+    let mut bridge = initialized();
+    let user = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"prompt":[
+                {"type":"text","text":"see @.env"},
+                {"type":"resource_link","uri":uri,"name":".env","size":9},
+            ]}}),
+        )
+        .unwrap();
+    let text = user["message"]["content"][1]["text"].as_str().unwrap();
+    assert!(!text.contains('@'), "{text}");
+    assert!(text.contains("Not attached"), "{text}");
+}

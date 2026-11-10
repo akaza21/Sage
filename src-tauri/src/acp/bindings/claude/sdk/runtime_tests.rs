@@ -672,3 +672,12 @@ fn a_subagent_fills_its_own_transcript_under_a_collaboration_row() {
     );
     assert!(matches!(late[..], [AdapterEvent::Absorbed]), "{late:?}");
 }
+
+#[test]
+fn a_prompt_larger_than_an_ordinary_frame_is_sent_as_a_prompt_frame() {
+    let ordinary = crate::acp::limits::LIMITS.wire.frame_bytes as usize;
+    let user = json!({"type":"user","message":{"content":"x".repeat(ordinary)}});
+    assert!(sdk_frame(&user).is_ok());
+    let control = json!({"type":"control_request","request":{"note":"x".repeat(ordinary)}});
+    assert!(sdk_frame(&control).is_err());
+}
