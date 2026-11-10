@@ -4,6 +4,7 @@ import { Plus } from "../../ui/leanIcons";
 import { useState, type ComponentProps } from "react";
 import type { ChatUsage } from "./acp/chatUsage";
 import { ComposerContext } from "./ComposerContext";
+import type { ComposerAccessTarget } from "./chatComposerRegionProps";
 
 import {
   cachedHarnessModels,
@@ -43,7 +44,7 @@ import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 interface Props {
   contextUsage?: ChatUsage | null;
   usageRequest?: ComponentProps<typeof ComposerContext>["usageRequest"];
-  accessBindingId?: string | null;
+  accessTarget?: ComposerAccessTarget;
   addActions?: ComposerMenuActions;
   availableBinding: boolean;
   canPrompt: boolean;
@@ -74,7 +75,7 @@ interface Props {
 export function ChatHarnessControls({
   contextUsage,
   usageRequest,
-  accessBindingId,
+  accessTarget,
   addActions = {},
   availableBinding,
   canPrompt,
@@ -119,6 +120,7 @@ export function ChatHarnessControls({
   const selectedHarness = harnesses.find(
     (harness) => harness.id === selectedHarnessId,
   );
+  const accessBindingId = accessTarget?.bindingId;
   const accessHarness = accessBindingId
     ? harnesses.find((harness) => harness.bindingId === accessBindingId)
     : selectedHarness;
@@ -258,6 +260,7 @@ export function ChatHarnessControls({
         {availableBinding && accessHarness?.bindingId ? (
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
+            chatId={accessTarget?.draftChatId}
             capabilities={accessHarness.accessModes}
             sessionConfig={sessionConfig}
             disabled={turnBusy || projectTransitioning}

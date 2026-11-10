@@ -15,6 +15,7 @@ import type {
   AcpProjectionScope,
   ProjectionCommitDisposition,
 } from "../../../app/acpProjectionStore";
+import { chatAccessDraftPort } from "../../../app/chatAccessDraftPort";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { createAcpSessionActions, typedError } from "./acpSessionActions";
 import { currentSession } from "./acpTurnState";
@@ -304,6 +305,8 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           if (!session)
             throw localFailure("Session start returned no session.");
           session = requireSelectedSession(session, bindingId, modelId);
+          // Access chosen before the session existed is given to it first.
+          await chatAccessDraftPort.spend?.(captured.scope.chatId, session);
         }
 
         if (session.residency === "cold") {
