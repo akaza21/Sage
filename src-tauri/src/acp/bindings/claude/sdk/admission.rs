@@ -217,6 +217,14 @@ impl AdmittedClaudeSdkBinding {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn for_test_with_digest(digest: [u8; 32]) -> Self {
+        Self {
+            binding_digest: digest,
+            ..Self::for_test()
+        }
+    }
+
     pub(crate) fn binding_digest(&self) -> [u8; 32] {
         self.binding_digest
     }

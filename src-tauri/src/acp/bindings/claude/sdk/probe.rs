@@ -247,6 +247,9 @@ pub(crate) fn offers_effort(binding: &AdmittedClaudeSdkBinding, model: &str, eff
 mod tests {
     use super::*;
 
+    /// Tests that read or write the process-wide probe outcome run one at a time.
+    static PROBE_STATE: Mutex<()> = Mutex::new(());
+
     #[test]
     fn the_reply_is_found_among_startup_output_and_a_refusal_is_not_a_list() {
         let output = format!(
@@ -317,7 +320,26 @@ mod tests {
     }
 
     #[test]
+    fn a_start_takes_only_a_model_and_level_the_probed_build_listed() {
+        let _state = lock(&PROBE_STATE);
+        let binding = AdmittedClaudeSdkBinding::for_test_with_digest([9; 32]);
+        let models = model_options(&json!({"models": [
+            {"value": "default", "supportsEffort": true, "supportedEffortLevels": ["low", "high"]},
+            {"value": "haiku"},
+        ]}));
+        *lock(&PROBED) = Some((binding.binding_digest(), Probed::Models(models)));
+        assert!(offers(&binding, "haiku"));
+        assert!(!offers(&binding, "opus"));
+        assert!(offers_effort(&binding, "default", "high"));
+        assert!(offers_effort(&binding, "default", "default"));
+        assert!(!offers_effort(&binding, "default", "max"));
+        assert!(!offers_effort(&binding, "haiku", "low"));
+        assert!(!offers_effort(&binding, "haiku", "default"));
+    }
+
+    #[test]
     fn a_build_that_cannot_be_probed_offers_nothing_and_is_not_probed_again_at_once() {
+        let _state = lock(&PROBE_STATE);
         let binding = AdmittedClaudeSdkBinding::for_test();
         assert!(models(&binding).is_none());
         assert!(matches!(

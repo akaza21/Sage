@@ -196,7 +196,7 @@ describe("access drafted before a chat's session starts", () => {
 });
 
 describe("a thinking level drafted before a chat's session starts", () => {
-  it("goes with the session start for the same binding and model, once", async () => {
+  it("goes with the session start for the same binding and model", async () => {
     draftChatEffort(scope.chatId, { bindingId, modelId, effort: "high" });
     const test = newChat();
 
@@ -207,7 +207,10 @@ describe("a thinking level drafted before a chat's session starts", () => {
     expect(test.commands.startSession).toHaveBeenCalledWith(
       expect.objectContaining({ bindingId, modelId, effort: "high" }),
     );
-    expect(useChatEffortDrafts.getState().drafts).toEqual({});
+    // Held until the session exists, so a failed start sends it again.
+    expect(useChatEffortDrafts.getState().drafts[scope.chatId]?.effort).toBe(
+      "high",
+    );
   });
 
   it("is not sent for another model", async () => {

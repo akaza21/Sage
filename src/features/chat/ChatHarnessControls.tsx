@@ -12,10 +12,6 @@ import {
 } from "../../app/harnessModelCache";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import { useWorkbenchStore } from "../../app/store";
-import {
-  draftChatEffort,
-  useChatEffortDrafts,
-} from "../../app/chatEffortDrafts";
 import type {
   AcpConfigValue,
   AcpSessionConfig,

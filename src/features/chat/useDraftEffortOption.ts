@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   draftChatEffort,
   useChatEffortDrafts,
@@ -47,16 +48,28 @@ export function useDraftEffortOption({
     !effortOption && !hasSessionConfig && draftChatId && bindingId && modelId
       ? models.find((model) => model.id === modelId)?.effortLevels
       : undefined;
+  const heldLevel =
+    held?.bindingId === bindingId && held.modelId === modelId
+      ? held.effort
+      : null;
+  // A level the model no longer lists (a new Claude Code build) is dropped,
+  // so the start never carries a level the control does not show.
+  const stale =
+    !!draftChatId &&
+    !!levels &&
+    heldLevel !== null &&
+    heldLevel !== DEFAULT_EFFORT &&
+    !levels.includes(heldLevel);
+  useEffect(() => {
+    if (stale && draftChatId) draftChatEffort(draftChatId, null);
+  }, [stale, draftChatId]);
   const draftOption: AcpConfigOption | undefined = levels?.length
     ? {
         id: DRAFT_EFFORT_ID,
         name: "Thinking level",
         category: "thought_level",
         type: "select",
-        currentValue:
-          held?.bindingId === bindingId && held.modelId === modelId
-            ? held.effort
-            : DEFAULT_EFFORT,
+        currentValue: heldLevel && !stale ? heldLevel : DEFAULT_EFFORT,
         options: [DEFAULT_EFFORT, ...levels].map((level) => ({
           value: level,
           name: capitalizeLabel(level),

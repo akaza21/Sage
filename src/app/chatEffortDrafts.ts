@@ -51,15 +51,15 @@ export function chatEffortDraft(
 }
 
 /**
- * The session start's `effort` for the chat's draft level, taken from the
- * chat: the session's own effort control shows the level from then on.
+ * The session start's `effort` for the chat's draft level. The draft stays
+ * held, so a start that fails sends it again; once the chat has a session,
+ * its own effort control shows the level and the draft is no longer read.
  */
-export function takeChatEffortField(
+export function chatEffortField(
   chatId: string,
   bindingId: string,
   modelId: string | null,
 ): { effort?: string } {
   const effort = chatEffortDraft(chatId, bindingId, modelId);
-  draftChatEffort(chatId, null);
   return effort ? { effort } : {};
 }
