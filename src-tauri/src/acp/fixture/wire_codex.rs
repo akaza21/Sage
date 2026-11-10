@@ -92,6 +92,9 @@ fn await_request_inner(
                     .and_then(Value::as_str)
                     .map(str::to_owned);
             }
+            if method == "turn/start" {
+                state.codex_turn_config = Some(super::codex_catalog::turn_config(&request));
+            }
             return Ok(());
         }
         if expected_method == "initialized" {

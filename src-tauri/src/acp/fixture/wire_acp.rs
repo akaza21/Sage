@@ -125,6 +125,9 @@ pub(super) fn await_request(
             if let Some(embedded) = state.embedded_context.as_mut() {
                 embedded.receive(&request["params"]["prompt"])?;
             }
+            state.prompt_echo = request["params"]["prompt"]
+                .as_array()
+                .map(|blocks| super::prompt_echo::blocks(blocks));
             state.prompt_request_id = Some(id);
         }
         return Ok(());
@@ -358,14 +361,20 @@ pub(super) fn substitute(
     Ok(match value {
         Value::String(text) => {
             let root = std::env::current_dir().map_err(|_| FixtureError::Io)?;
-            Value::String(
-                substitute_root(&text, &root)?
-                    .replace("$SESSION", SESSION)
-                    .replace(
-                        "$TURN",
-                        state.current_turn_id.as_deref().unwrap_or("fixture-turn"),
-                    ),
-            )
+            let text = substitute_root(&text, &root)?
+                .replace("$SESSION", SESSION)
+                .replace(
+                    "$TURN",
+                    state.current_turn_id.as_deref().unwrap_or("fixture-turn"),
+                );
+            // What the client sent goes in last, so its text is never read
+            // as a placeholder.
+            let text = quote(
+                text,
+                "$CODEX_TURN_CONFIG",
+                state.codex_turn_config.as_deref(),
+            )?;
+            Value::String(quote(text, "$PROMPT_ECHO", state.prompt_echo.as_deref())?)
         }
         Value::Array(values) => Value::Array(
             values
@@ -381,6 +390,15 @@ pub(super) fn substitute(
         ),
         other => other,
     })
+}
+
+/// `text` with `token` replaced by what the client sent; a frame that
+/// quotes something the client has not sent fails the case.
+fn quote(text: String, token: &str, value: Option<&str>) -> Result<String, FixtureError> {
+    if !text.contains(token) {
+        return Ok(text);
+    }
+    Ok(text.replace(token, value.ok_or(FixtureError::InvalidArguments)?))
 }
 
 pub(super) fn substitute_root(text: &str, root: &std::path::Path) -> Result<String, FixtureError> {
