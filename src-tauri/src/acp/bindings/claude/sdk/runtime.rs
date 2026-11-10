@@ -275,10 +275,13 @@ impl HarnessAdapter for ClaudeSdkRuntime {
             .map(|egress| self.outbound(egress))
             .transpose()
     }
-    /// Claude Code queues a message sent while it works; see `bridge::steer`.
+    /// Claude Code queues a message sent while it works (see
+    /// `bridge::steer`), and compacts on its own `/compact` prompt, which a
+    /// Compact action sends as its Turn.
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.session.capabilities().map(|mut capabilities| {
             capabilities.active_turn_steer = capabilities.prompt;
+            capabilities.native_session_compact = capabilities.prompt;
             capabilities
         })
     }
