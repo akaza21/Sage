@@ -5,7 +5,6 @@ import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
 import "../../styles/queued-messages.css";
 import { ChatHarnessControls } from "./ChatHarnessControls";
-import type * as ClaudeAuthChunk from "./ClaudeAuthActions";
 import {
   composerPromptPlaceholder,
   composerShortcutLabel,
@@ -13,7 +12,9 @@ import {
   useComposerDictation,
 } from "./composerChrome";
 import { ComposerImageInput } from "./ComposerImageInput";
+import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
+import { useComposerFiles } from "./useComposerFiles";
 import { AttachmentsPart, GoalPart, QueuedRows, lazyParts } from "./lazyParts";
 import { TranscriptPart } from "./transcriptLazy";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
@@ -22,9 +23,6 @@ import { ComposerPasteSlot } from "./ComposerPastePart";
 import { useComposerPaste } from "./useComposerPaste";
 import type * as SlashChunk from "./ComposerSlashController";
 
-const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
-  () => import("./ClaudeAuthActions"),
-);
 // The `/` command menu loads with the field's first focus.
 const SlashPart = lazyParts<typeof SlashChunk>(
   () => import("./ComposerSlashController"),
@@ -56,7 +54,7 @@ export function ChatComposerRegion({
   projectTransitioning,
   workbenchError,
   chatError,
-  signInHarness = null,
+  signInHarness,
   claudeSignInRequired,
   claudeAuthScope,
   accessTarget,
@@ -113,7 +111,8 @@ export function ChatComposerRegion({
     onAddImages,
   });
   // The paste part loads with the composer of a native chat, or with
-  // held-back input, and reports the batch it staged.
+  // held-back input, and reports the batch it staged: pasted text and files
+  // picked with the attach button alike.
   const paste = useComposerPaste(
     availableBinding,
     activeTurn,
@@ -129,6 +128,17 @@ export function ChatComposerRegion({
     imageInput.sendBlocked ||
     paste.blocksSend;
   const queueing = activeTurn && queueAvailable && !composerDisabled;
+  const files = useComposerFiles({
+    text,
+    chatId: dictationScope,
+    fieldRef: composerRef,
+    fieldId,
+    imageAction: imageInput.action,
+    onPickFiles: paste.pickFiles,
+    hidden,
+    disabled: composerDisabled,
+    attachable: availableBinding,
+  });
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
   const dictation = useComposerDictation(
     text,
@@ -190,44 +200,16 @@ export function ChatComposerRegion({
               details={goalDetails}
             />
           ) : null}
-          {workbenchError ? (
-            <div className="composer__error" role="alert">
-              {workbenchError}
-            </div>
-          ) : null}
-          {chatError || signInHarness ? (
-            <div className="composer__error" role="alert">
-              {signInHarness ? (
-                <AuthPart
-                  part="SignInRequiredMessage"
-                  harness={signInHarness}
-                  fallback={chatError}
-                />
-              ) : (
-                chatError
-              )}
-              {claudeSignInRequired ? (
-                <AuthPart part="ClaudeAuthActions" key={claudeAuthScope} />
-              ) : null}
-            </div>
-          ) : null}
-          {imageInput.status ? (
-            <div className="composer__error" role="alert">
-              {imageInput.status}
-            </div>
-          ) : null}
-          {missingBindingNotice &&
-          ![
-            "checking",
-            "signInRequired",
-            "consent",
-            "waiting",
-            "error",
-          ].includes(discoveryPhase) ? (
-            <div className="composer__notice">
-              No reviewed local binding is available for this harness.
-            </div>
-          ) : null}
+          <ComposerStatusNotices
+            workbenchError={workbenchError}
+            chatError={chatError}
+            signInHarness={signInHarness}
+            claudeSignInRequired={claudeSignInRequired}
+            claudeAuthScope={claudeAuthScope}
+            imageStatus={imageInput.status}
+            missingBindingNotice={missingBindingNotice}
+            discoveryPhase={discoveryPhase}
+          />
           <label className="sr-only" htmlFor={fieldId}>
             Message agent
           </label>
@@ -344,6 +326,7 @@ export function ChatComposerRegion({
               />
             </div>
           ) : null}
+          {files.parts}
         </div>
         <div className="composer__toolbar">
           {imageInputAvailable ? (
@@ -363,6 +346,7 @@ export function ChatComposerRegion({
                 onOpenGoal: goalDetails.onOpen,
                 onCompact,
               }}
+              attachSlot={files.attachButton}
               availableBinding={availableBinding}
               canPrompt={canPrompt}
               discoveryPhase={discoveryPhase}

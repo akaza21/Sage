@@ -37,7 +37,7 @@ pub(super) fn is_secret(name: &str, is_dir: bool) -> bool {
 
 /// Whether any component of `path` names a credential folder, or its final
 /// component a credential file.
-pub(super) fn path_is_secret(path: &std::path::Path, is_dir: bool) -> bool {
+pub(crate) fn path_is_secret(path: &std::path::Path, is_dir: bool) -> bool {
     let mut components = path.components().filter_map(|c| match c {
         std::path::Component::Normal(name) => name.to_str(),
         _ => None,

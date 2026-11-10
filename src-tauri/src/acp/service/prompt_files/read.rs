@@ -57,14 +57,7 @@ pub(super) fn read_paths(paths: &[String]) -> Result<Resources, &'static str> {
         let parent = selected
             .parent()
             .ok_or("Cannot attach a filesystem root.")?;
-        let root = parent
-            .ancestors()
-            .find(|p| p.join(".git").exists())
-            .unwrap_or(parent);
-        let rules = IgnoreRules::load(root, true, global_excludes_path().as_deref());
-        let relative_parent = relative(root, parent)?;
-        let (chain, ignored) = rules.chain_for(&relative_parent, RuleFiles::probe(parent));
-        honoured(&rules)?;
+        let (root, rules, chain, ignored) = scope(parent)?;
         if ignored || !reader.visit(selected, root, &rules, &chain, 0)? {
             return Err("The selected path is excluded by ignore rules.");
         }
@@ -73,6 +66,32 @@ pub(super) fn read_paths(paths: &[String]) -> Result<Resources, &'static str> {
         return Err("No readable, non-ignored files were selected.");
     }
     Ok(Resources(Arc::new(reader.files)))
+}
+/// The ignore rules over the entries of `parent`, rooted at its nearest
+/// enclosing repository (or `parent` itself), and whether `parent` is itself
+/// ignored. Fails closed when any rule source could not be honoured.
+fn scope(parent: &Path) -> Result<(&Path, IgnoreRules, FolderChain, bool), &'static str> {
+    let root = parent
+        .ancestors()
+        .find(|p| p.join(".git").exists())
+        .unwrap_or(parent);
+    let rules = IgnoreRules::load(root, true, global_excludes_path().as_deref());
+    let relative_parent = relative(root, parent)?;
+    let (chain, ignored) = rules.chain_for(&relative_parent, RuleFiles::probe(parent));
+    honoured(&rules)?;
+    Ok((root, rules, chain, ignored))
+}
+/// Whether the regular file at `path` is one an attachment never carries:
+/// inside `.git` or `node_modules`, or excluded by the same ignore rules a
+/// staged selection obeys. Errors when the rules cannot be applied in full.
+pub(crate) fn file_is_excluded(path: &Path) -> Result<bool, &'static str> {
+    let parent = path.parent().ok_or("Cannot attach a filesystem root.")?;
+    let (root, rules, chain, ignored) = scope(parent)?;
+    Ok(ignored || always_skipped(path) || rules.is_ignored(&chain, &relative(root, path)?, false))
+}
+fn always_skipped(path: &Path) -> bool {
+    path.components()
+        .any(|c| matches!(c.as_os_str().to_str(), Some(".git" | "node_modules")))
 }
 fn relative(root: &Path, path: &Path) -> Result<String, &'static str> {
     let value = path
@@ -106,9 +125,7 @@ impl Reader {
             .symlink_metadata()
             .map_err(|_| "A selected path is not readable.")?;
         let rel = relative(root, path)?;
-        if path
-            .components()
-            .any(|c| matches!(c.as_os_str().to_str(), Some(".git" | "node_modules")))
+        if always_skipped(path)
             || meta.file_type().is_symlink()
             || path
                 .file_name()

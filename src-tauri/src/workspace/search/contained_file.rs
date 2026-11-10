@@ -84,7 +84,9 @@ fn handle_has_links(_file: &File, _metadata: &Metadata) -> AppResult<bool> {
     Ok(false)
 }
 
-fn handle_contract_relative(workspace: &Workspace, file: &File) -> AppResult<String> {
+/// The canonical root-relative path of an open handle, as the filesystem
+/// names it (long names, no alternate streams), never as it was typed.
+pub(crate) fn handle_contract_relative(workspace: &Workspace, file: &File) -> AppResult<String> {
     let path = handle_path(file)?;
     let relative = path.strip_prefix(workspace.root()).map_err(|_| {
         AppError::InvalidRequest("search file handle is outside the Workspace root".into())

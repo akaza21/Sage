@@ -131,6 +131,17 @@ impl BindingRecord {
         }
     }
 
+    /// Whether this binding's prompts carry ACP content blocks beyond their
+    /// text (`resource_link`, embedded `resource`), which `@` mentions need.
+    pub(crate) fn sends_prompt_blocks(&self) -> bool {
+        // The Claude Agent SDK bridge maps only text, images and embedded
+        // resources to the Messages API, so it is left out.
+        matches!(
+            self.admission,
+            Admission::Claude(_) | Admission::OpenCode(_) | Admission::CustomAcp(_)
+        )
+    }
+
     pub(crate) fn session_operations_enabled(&self) -> bool {
         self.session_operations_enabled
     }
