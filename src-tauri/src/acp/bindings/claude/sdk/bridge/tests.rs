@@ -914,3 +914,32 @@ fn a_message_taken_up_while_its_withdrawal_is_in_flight_is_interrupted_in_its_tu
         .unwrap();
     assert_eq!(end.acp.last().unwrap()["result"]["stopReason"], "cancelled");
 }
+
+#[test]
+fn a_fork_answers_once_claude_code_replies_and_never_mid_turn() {
+    let mut bridge = initialized();
+    let fork = format!("{SESSION}~{SESSION}~{SESSION}");
+    let sdk = bridge.fork(Some(fork.clone())).unwrap();
+    assert_eq!(sdk["request"]["subtype"], "get_settings");
+    assert!(bridge.controlling());
+    let reply = bridge.inbound(success(&sdk, json!({}))).unwrap();
+    assert!(matches!(
+        reply.native,
+        Some(crate::acp::goal::NativeRpcReply::Forked(ref id)) if id.as_str() == fork
+    ));
+    // No reply to fork at, or Claude Code refusing, rejects the fork.
+    let sdk = bridge.fork(None).unwrap();
+    let reply = bridge.inbound(success(&sdk, json!({}))).unwrap();
+    assert_eq!(
+        reply.native,
+        Some(crate::acp::goal::NativeRpcReply::Rejected)
+    );
+    let sdk = bridge.fork(Some(fork)).unwrap();
+    let reply = bridge.inbound(json!({"type":"control_response","response":{"subtype":"error","request_id":sdk["request_id"],"error":"gone"}})).unwrap();
+    assert_eq!(
+        reply.native,
+        Some(crate::acp::goal::NativeRpcReply::Rejected)
+    );
+    prompt(&mut bridge, 3);
+    assert!(bridge.fork(None).is_err());
+}

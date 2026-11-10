@@ -87,6 +87,9 @@ enum Pending {
     Withdraw(String),
     /// A session control; its reply completes the native request.
     Control,
+    /// A fork, by the id it will have (none when the session has no reply
+    /// to fork at); Claude Code's reply only confirms it is still there.
+    Fork(Option<String>),
 }
 
 #[derive(Debug)]

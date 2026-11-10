@@ -39,7 +39,31 @@ impl SdkBridge {
     pub(in crate::acp::bindings::claude::sdk) fn controlling(&self) -> bool {
         self.pending
             .values()
-            .any(|pending| matches!(pending, Pending::Control))
+            .any(|pending| matches!(pending, Pending::Control | Pending::Fork(_)))
+    }
+
+    /// A fork answers once Claude Code shows it is still running; the copy
+    /// itself is made when the fork's chat first launches (see `fork`).
+    pub(in crate::acp::bindings::claude::sdk) fn fork(
+        &mut self,
+        fork: Option<String>,
+    ) -> Result<Value, BridgeError> {
+        if self.controlling() || self.prompt.is_some() {
+            return Err(BridgeError::Capacity);
+        }
+        self.control(json!({"subtype": "get_settings"}), Pending::Fork(fork))
+    }
+
+    /// The session's own id, as Sage stores it.
+    pub(in crate::acp::bindings::claude::sdk) fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    pub(super) fn forked(fork: Option<String>, inbound: &mut Inbound) {
+        inbound.native = Some(
+            fork.and_then(|id| crate::acp::intent::ExternalId::new("externalSessionId", id).ok())
+                .map_or(NativeRpcReply::Rejected, NativeRpcReply::Forked),
+        );
     }
 
     /// Claude Code's reply to a session control. A rewind it could not

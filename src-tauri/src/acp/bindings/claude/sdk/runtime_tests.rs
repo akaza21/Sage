@@ -827,3 +827,29 @@ fn compact_runs_as_claude_codes_own_command_and_ends_its_turn() {
         })
     ));
 }
+
+#[test]
+fn a_session_forks_through_claude_code_and_holds_nothing_to_release() {
+    let mut runtime = ready();
+    let capabilities = runtime.capabilities().unwrap();
+    assert!(capabilities.native_session_fork);
+    let egress = runtime.fork_session().unwrap();
+    let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Written)
+        .unwrap();
+    assert!(runtime.native_rpc_pending());
+    reply(&mut runtime, &sdk, json!({}));
+    // This session was never saved by a real Claude Code, so there is no
+    // reply to fork at.
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(crate::acp::goal::NativeRpcReply::Rejected)
+    );
+    let fork = crate::acp::intent::ExternalId::new("externalSessionId", "f").unwrap();
+    assert!(matches!(runtime.release_fork(&fork, true), Ok(None)));
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(crate::acp::goal::NativeRpcReply::Released)
+    );
+}
