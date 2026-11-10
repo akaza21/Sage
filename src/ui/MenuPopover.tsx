@@ -23,6 +23,11 @@ import {
   menuPopoverPosition,
   PopoverPlacementContext,
 } from "./menuPopoverPosition";
+import {
+  hasNavigationModifier,
+  listIndexForKey,
+  typeaheadIndex,
+} from "./listNavigation";
 
 const ITEM_SELECTOR = [
   '[role="menuitem"]',
@@ -56,6 +61,22 @@ function menuItems(container: HTMLElement) {
 
 function enabledMenuItems(container: HTMLElement) {
   return menuItems(container).filter((item) => !item.hasAttribute("disabled"));
+}
+
+const MENU_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End"]);
+
+/**
+ * The enabled item a key moves to. `items` holds only enabled items: natively
+ * disabled ones cannot take focus, while `aria-disabled` ones stay focusable
+ * so a screen reader can say why they are unavailable.
+ */
+function menuIndexForKey(key: string, items: HTMLElement[]) {
+  return listIndexForKey(
+    key,
+    items.indexOf(document.activeElement as HTMLElement),
+    items.map(() => false),
+    { orientation: "vertical", wrap: true },
+  );
 }
 
 function activateMenuItem(container: HTMLElement, next: number) {
@@ -324,14 +345,11 @@ export function MenuPopover({
       }
       if (trapFocus && items.length > 0) {
         event.preventDefault();
-        const current = Math.max(
-          0,
-          items.indexOf(document.activeElement as HTMLElement),
+        const next = menuIndexForKey(
+          event.shiftKey ? "ArrowUp" : "ArrowDown",
+          items,
         );
-        activateMenuItem(
-          popover,
-          (current + (event.shiftKey ? -1 : 1) + items.length) % items.length,
-        );
+        if (next !== null) activateMenuItem(popover, next);
       } else {
         if (restoreFocusOnTab) {
           event.preventDefault();
@@ -342,23 +360,12 @@ export function MenuPopover({
       return;
     }
     if (role === "dialog") return;
-    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-      if (items.length === 0) return;
+    if (MENU_KEYS.has(event.key)) {
+      if (items.length === 0 || hasNavigationModifier(event)) return;
       event.preventDefault();
       event.stopPropagation();
-      const current = Math.max(
-        0,
-        items.indexOf(document.activeElement as HTMLElement),
-      );
-      const next =
-        event.key === "Home"
-          ? 0
-          : event.key === "End"
-            ? items.length - 1
-            : event.key === "ArrowDown"
-              ? (current + 1) % items.length
-              : (current - 1 + items.length) % items.length;
-      activateMenuItem(popover, next);
+      const next = menuIndexForKey(event.key, items);
+      if (next !== null) activateMenuItem(popover, next);
       return;
     }
     if (
@@ -377,11 +384,10 @@ export function MenuPopover({
       typeaheadRef.current = "";
       typeaheadTimerRef.current = null;
     }, 500);
-    const match = items.findIndex((item) =>
-      (item.textContent ?? "")
-        .trim()
-        .toLocaleLowerCase()
-        .startsWith(typeaheadRef.current),
+    const match = typeaheadIndex(
+      items.map((item) => item.textContent ?? ""),
+      items.indexOf(document.activeElement as HTMLElement),
+      typeaheadRef.current,
     );
     if (match >= 0) activateMenuItem(popover, match);
   };

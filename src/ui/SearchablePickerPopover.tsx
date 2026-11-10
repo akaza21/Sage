@@ -9,6 +9,8 @@ import {
   type RefObject,
 } from "react";
 import { flushSync } from "react-dom";
+import { isImeComposing } from "./imeComposition";
+import { listIndexForKey } from "./listNavigation";
 import { PickerOption } from "./PickerOption";
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
 import type { MenuPlacement } from "./menuPopoverPosition";
@@ -138,20 +140,19 @@ export function SearchablePickerPopover({
     },
     [close],
   );
-  const moveActive = (direction: number, page = false) => {
-    if (selectable.length === 0) return;
-    const found = selectable.findIndex(
-      (candidate) => candidate.id === activeId,
+  // `selectable` holds only the candidates that can be picked.
+  const moveActive = (key: string) => {
+    const next = listIndexForKey(
+      key,
+      selectable.findIndex((candidate) => candidate.id === activeId),
+      selectable.map(() => false),
+      {
+        orientation: "vertical",
+        wrap: true,
+        pageSize: SEARCHABLE_PICKER_PAGE_SIZE,
+      },
     );
-    const current = found < 0 ? (direction > 0 ? -1 : 0) : found;
-    const offset = page ? SEARCHABLE_PICKER_PAGE_SIZE : 1;
-    const next = page
-      ? Math.max(
-          0,
-          Math.min(selectable.length - 1, current + direction * offset),
-        )
-      : (current + direction * offset + selectable.length) % selectable.length;
-    setActiveId(selectable[next]?.id ?? null);
+    if (next !== null) setActiveId(selectable[next].id);
   };
   const selectCandidate = useCallback(
     (next: string) => {
@@ -163,21 +164,19 @@ export function SearchablePickerPopover({
     [dismiss, disabled, onSelect, triggerRef],
   );
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (disabled) return;
+    // Keys that confirm an input method composition belong to the field.
+    if (disabled || isImeComposing(event)) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       if (!open) setOpen(true);
-      moveActive(event.key === "ArrowDown" ? 1 : -1);
+      moveActive(event.key);
     } else if (event.key === "Home" || event.key === "End") {
       if (selectable.length === 0) return;
       event.preventDefault();
-      setActiveId(
-        selectable[event.key === "Home" ? 0 : selectable.length - 1]?.id ??
-          null,
-      );
+      moveActive(event.key);
     } else if (event.key === "PageDown" || event.key === "PageUp") {
       event.preventDefault();
-      moveActive(event.key === "PageDown" ? 1 : -1, true);
+      moveActive(event.key);
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (active) selectCandidate(active.id);
