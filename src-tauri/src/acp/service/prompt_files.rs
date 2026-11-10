@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 mod attachment;
 pub(crate) mod commands;
 pub(crate) mod images;
+mod inline;
 pub(crate) mod limits;
 mod read;
 mod secrets;

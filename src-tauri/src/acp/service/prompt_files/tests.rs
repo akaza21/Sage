@@ -302,3 +302,33 @@ fn limit_messages_name_their_caps_in_the_webview_units() {
         assert!(!message.contains("KiB"), "{}", message.as_str());
     }
 }
+
+fn attached(files: &[(&str, &[u8])]) -> Resources {
+    Resources(std::sync::Arc::new(
+        files
+            .iter()
+            .map(|(name, bytes)| Resource {
+                id: "res-1".into(),
+                name: (*name).into(),
+                bytes: bytes.to_vec(),
+            })
+            .collect(),
+    ))
+}
+
+#[test]
+fn text_only_harnesses_get_text_files_inline_and_binary_files_named() {
+    let files = attached(&[
+        ("pasted-text.txt", b"long paste"),
+        ("a\"b<c>.bin", &[0xff, 0x00, 0x01]),
+        ("nul.txt", b"a\0b"),
+    ]);
+    let text = files.inline("Look at these");
+    assert_eq!(
+        text,
+        "Look at these\n\n<context name=\"pasted-text.txt\">\nlong paste\n</context>\
+         \n\n<context name=\"a_b_c_.bin\">\n(Binary file not shown: only text files can be sent to this harness.)\n</context>\
+         \n\n<context name=\"nul.txt\">\n(Binary file not shown: only text files can be sent to this harness.)\n</context>"
+    );
+    assert_eq!(Resources::default().inline("plain"), "plain");
+}
