@@ -30,6 +30,7 @@ import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
 import { TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
+import { TurnPrompts } from "./TurnPrompts";
 import { TurnSessionActivities } from "./TurnSessionActivities";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
@@ -167,9 +168,11 @@ const Turn = memo(
                 ))}
               </div>
             ) : null}
-            {promptItems.map((item) => (
-              <ItemView key={item.id} item={item} interactive={interactive} />
-            ))}
+            <TurnPrompts
+              items={promptItems}
+              turn={turn}
+              interactive={interactive}
+            />
             <ChatTranscriptTurnSummary
               turn={turn}
               thinkingPlaceholder={isSideChatId(page.chatId)}

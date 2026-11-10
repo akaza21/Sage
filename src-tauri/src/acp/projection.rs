@@ -332,6 +332,10 @@ pub struct TurnProjection {
     /// run it again on Retry and offers no Retry for one it cannot run.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) session_action: Option<serde_json::Value>,
+    /// The listed command this Turn ran, as stored, so the chat shows the
+    /// prompt as that command.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) command: Option<serde_json::Value>,
     pub id: SageTurnId,
     pub session_id: SageAgentSessionId,
     pub runtime_epoch: RuntimeEpoch,

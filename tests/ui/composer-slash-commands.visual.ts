@@ -284,3 +284,62 @@ test("an unfiltered menu sections commands by source and fits a narrow window", 
   expect(row.x + row.width).toBeLessThanOrEqual(menu.x + menu.width + 1);
   expect(row.height).toBeLessThan(40);
 });
+
+test("a prompt that ran a listed command shows the command beside what was typed", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 900 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  await page.evaluate(async () => {
+    const [{ acpProjectionStoreFor }, ids] = await Promise.all([
+      import("/src/app/acpProjectionRegistry.ts"),
+      import("/tests/ui/fixtures/visualFixtureIds.ts"),
+    ]);
+    const chatId = document.querySelector<HTMLElement>(
+      ".acp-chat-projection[data-chat-id]",
+    )!.dataset.chatId as never;
+    const store = acpProjectionStoreFor(chatId);
+    const chatPage = structuredClone(store.getState().page!);
+    const turn = chatPage.turns.reduce((a, b) =>
+      b.ordinal > a.ordinal ? b : a,
+    );
+    const prompt = turn.items.find(
+      (item) => item.kind === "text" && item.payload.role === "user",
+    );
+    if (prompt?.kind !== "text") throw new Error("Expected a prompt");
+    prompt.payload.text =
+      "/release-notes summarise the changes since the last tag for the team";
+    turn.command = { name: "release-notes", source: "skill" };
+    const next = <T extends string>(revision: T) =>
+      String(BigInt(revision) + 1n) as T;
+    turn.revision = next(turn.revision);
+    prompt.revision = next(prompt.revision);
+    chatPage.projectionRevision = next(chatPage.projectionRevision);
+    const applied = store.getState().applyAuthoritativePage(
+      {
+        projectId: ids.PROJECT_ID,
+        projectGeneration: ids.GENERATION,
+        chatId,
+      },
+      chatPage,
+    );
+    if (applied !== "accepted") throw new Error(applied);
+  });
+  const bubble = page.locator(".acp-message--user").last();
+  const command = bubble.locator(".acp-message__command");
+  await expect(command).toHaveText("/release-notes, Skill");
+  await expect(bubble.locator(".acp-markdown")).toHaveText(
+    "summarise the changes since the last tag for the team",
+  );
+  // The chip and its label share one line, above the input.
+  const [name, source, input] = await Promise.all([
+    command.locator(".acp-message__command-name").boundingBox(),
+    command.locator(".acp-message__command-source").boundingBox(),
+    bubble.locator(".acp-markdown").boundingBox(),
+  ]);
+  expect(source!.y).toBeLessThan(name!.y + name!.height);
+  expect(source!.x).toBeGreaterThan(name!.x + name!.width);
+  expect(input!.y).toBeGreaterThanOrEqual(name!.y + name!.height);
+  await expectNoViewportOverflow(page);
+});
