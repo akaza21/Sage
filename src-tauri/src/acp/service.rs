@@ -376,38 +376,42 @@ impl AcpService {
         self.page_reads.try_acquire(project_id, chat_id)
     }
 
+    /// Reads a chat page from SQLite. Called from async commands, the
+    /// worker's other tasks move off while it runs.
     pub(crate) fn load_chat_page(
         &self,
         project_id: SageProjectId,
         chat_id: SageChatId,
         cursor: Option<PageCursor>,
     ) -> Result<AcpChatPage, StoreError> {
-        let mut page = load_chat_page(
-            &self.database.connection(),
-            project_id.clone(),
-            chat_id.clone(),
-            cursor.clone(),
-        )?;
-        self.compose_session_config(&mut page)?;
-        let mut size = PageBytes::measure(&page)?;
-        // History yields room for the session config that does not fit.
-        if let Some(reserve) = session_config::config_reserve(&mut page, &size)? {
-            page = crate::acp::store::load_chat_page_reserving(
+        crate::blocking::in_place(|| {
+            let mut page = load_chat_page(
                 &self.database.connection(),
-                project_id,
-                chat_id,
-                cursor,
-                reserve,
+                project_id.clone(),
+                chat_id.clone(),
+                cursor.clone(),
             )?;
             self.compose_session_config(&mut page)?;
-            size = PageBytes::measure(&page)?;
-        }
-        self.fit_session_config_to_page_budget(&mut page, &size)?;
-        self.compose_goal(&mut page);
-        self.compose_usage(&mut page);
-        self.fit_goal_to_page_budget(&mut page, &size)?;
-        self.compose_session_surface(&mut page)?;
-        Ok(page)
+            let mut size = PageBytes::measure(&page)?;
+            // History yields room for the session config that does not fit.
+            if let Some(reserve) = session_config::config_reserve(&mut page, &size)? {
+                page = crate::acp::store::load_chat_page_reserving(
+                    &self.database.connection(),
+                    project_id,
+                    chat_id,
+                    cursor,
+                    reserve,
+                )?;
+                self.compose_session_config(&mut page)?;
+                size = PageBytes::measure(&page)?;
+            }
+            self.fit_session_config_to_page_budget(&mut page, &size)?;
+            self.compose_goal(&mut page);
+            self.compose_usage(&mut page);
+            self.fit_goal_to_page_budget(&mut page, &size)?;
+            self.compose_session_surface(&mut page)?;
+            Ok(page)
+        })
     }
 
     pub(crate) fn intent_snapshot(

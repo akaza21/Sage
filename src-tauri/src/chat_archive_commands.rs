@@ -138,13 +138,7 @@ async fn release_until(
         })
     };
     loop {
-        let outcome = if tokio::runtime::Handle::try_current().is_ok_and(|handle| {
-            handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread
-        }) {
-            tokio::task::block_in_place(attempt)
-        } else {
-            attempt()
-        };
+        let outcome = crate::blocking::in_place(attempt);
         match outcome {
             Err(ChatRuntimeRelease::LaneBusy) if Instant::now() + LANE_BUSY_RETRY < deadline => {
                 tokio::time::sleep(LANE_BUSY_RETRY).await;

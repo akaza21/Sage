@@ -23,13 +23,7 @@ impl Lane<'_> {
         };
         // Hand this thread to Tokio's blocking pool while preserving synchronous
         // durable settlement; unrelated async commands can keep making progress.
-        if tokio::runtime::Handle::try_current().is_ok_and(|handle| {
-            handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread
-        }) {
-            tokio::task::block_in_place(recover);
-        } else {
-            recover();
-        }
+        crate::blocking::in_place(recover);
     }
 
     pub(super) fn host_failed_closed(&self, host: &Arc<RuntimeHost>) -> bool {
