@@ -12,6 +12,10 @@ import {
 } from "../../app/harnessModelCache";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import { useWorkbenchStore } from "../../app/store";
+import {
+  draftChatEffort,
+  useChatEffortDrafts,
+} from "../../app/chatEffortDrafts";
 import type {
   AcpConfigValue,
   AcpSessionConfig,
@@ -40,6 +44,7 @@ import {
 } from "./useChatHarnessSelection";
 import { useComposerModelSelection } from "./useComposerModelChoices";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
+import { useDraftEffortOption } from "./useDraftEffortOption";
 
 interface Props {
   contextUsage?: ChatUsage | null;
@@ -188,6 +193,15 @@ export function ChatHarnessControls({
     confirmedModelLabel,
     selectedModelId,
   );
+  const { shownEffortOption, setConfigOption } = useDraftEffortOption({
+    effortOption,
+    hasSessionConfig: !!selectedSessionConfig,
+    draftChatId: accessTarget?.draftChatId,
+    bindingId: selectedHarness?.bindingId ?? null,
+    modelId: currentModelId,
+    models,
+    onSetSessionConfigOption,
+  });
   const contextWindow = formatContextWindow(
     models.find((model) => model.id === currentModelId)?.contextWindow,
   );
@@ -208,7 +222,7 @@ export function ChatHarnessControls({
   );
   const modeOptions = sessionModeActions(selectedSessionConfig);
   const otherOptions = sessionConfigControls(selectedSessionConfig, "other");
-  const canSelectEffort = !!selectedConfigChoice(effortOption);
+  const canSelectEffort = !!selectedConfigChoice(shownEffortOption);
   const { controls, effortInMenu, projectInMenu, contextVisible } =
     useComposerToolbarFit(
       canSelectEffort,
@@ -295,7 +309,7 @@ export function ChatHarnessControls({
           modelLabel={modelLabel}
           effortLabel={confirmedModelLabel || inheriting ? effortLabel : null}
           contextWindow={contextWindow}
-          effortOption={effortOption}
+          effortOption={shownEffortOption}
           restored={selectedSessionConfig?.restored}
           notice={selectedSessionConfig?.notice}
           awaitingSession={
@@ -312,7 +326,7 @@ export function ChatHarnessControls({
               (turnBusy && (hasSessionModel || models.length > 0)))
           }
           onSelectModel={chooseModel}
-          onSetOption={onSetSessionConfigOption}
+          onSetOption={setConfigOption}
         />
         {projectName && projectInMenu ? (
           <span

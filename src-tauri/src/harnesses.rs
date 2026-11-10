@@ -318,6 +318,7 @@ impl HarnessCatalog {
                     ),
                     is_default: Some(true),
                     context_window: None,
+                    effort_levels: None,
                 },
                 ModelOption {
                     id: SIMULATOR_DEEP_MODEL_ID.into(),
@@ -325,6 +326,7 @@ impl HarnessCatalog {
                     description: Some("A second option for testing model changes.".into()),
                     is_default: Some(false),
                     context_window: None,
+                    effort_levels: None,
                 },
             ]);
         }
@@ -638,6 +640,7 @@ mod tests {
             description: None,
             is_default: None,
             context_window: Some(272_000),
+            effort_levels: None,
         };
         assert_eq!(
             serde_json::to_value(known).unwrap()["contextWindow"],

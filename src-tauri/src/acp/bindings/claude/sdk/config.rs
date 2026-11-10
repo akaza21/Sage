@@ -41,6 +41,8 @@ pub(super) const MODE_ID: &str = "mode";
 pub(super) const MODEL_ID: &str = "model";
 pub(super) const EFFORT_ID: &str = "effort";
 const DEFAULT: &str = "default";
+/// The effort value that leaves the level to Claude Code.
+pub(super) const DEFAULT_EFFORT: &str = DEFAULT;
 
 #[derive(Debug, Default)]
 pub(super) struct SessionSettings {

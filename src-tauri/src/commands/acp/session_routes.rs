@@ -31,9 +31,29 @@ pub(crate) async fn start_acp_session_inner(
     let project_root = admitted
         .project_root(&state.database, &transition)
         .map_err(|_| root_unavailable())?;
+    // A thinking level chosen before the session existed must be one this
+    // binding lists for the chosen model; it is refused otherwise, so the
+    // chat never starts with a level the user did not get.
+    let effort_choice = match request.effort.as_ref() {
+        Some(effort) => Some(
+            admitted
+                .launch_effort_choice(
+                    request.model_id.as_ref().map(|model| model.as_str()),
+                    effort.as_str(),
+                )
+                .ok_or_else(|| {
+                    AcpIpcError::InvalidRequest {
+                        message: safe_message(
+                            "The chosen thinking level is not offered for this model. Choose it again and send.",
+                        ),
+                    }
+                })?,
+        ),
+        None => None,
+    };
     let project_id = request.project_id.clone();
     let chat_id = request.chat_id.clone();
-    state
+    let started = state
         .acp
         .start_session(
             admitted,
@@ -52,6 +72,15 @@ pub(crate) async fn start_acp_session_inner(
         )
         .await
         .map_err(session_error)?;
+    if let Some(choice) = effort_choice
+        && !state
+            .acp
+            .remember_start_choice(&started.session_id, &choice)
+    {
+        return Err(AcpIpcError::Internal {
+            message: safe_message("The chosen thinking level could not be kept. Send again."),
+        });
+    }
     mutation_response(state, project_id, chat_id)
 }
 

@@ -336,15 +336,20 @@ impl AdmittedBindingRecord<'_> {
         }
     }
 
-    /// Whether a binding without model discovery can start a session with
-    /// `model`: Claude Code takes a model its build listed before the session.
+    /// Whether a session may start with `model` though the binding has no
+    /// model discovery (Claude Code: a model its build listed).
     pub(crate) fn accepts_launch_model(&self, model: &str) -> bool {
-        match &self.binding {
-            AdmittedBinding::ClaudeSdk(binding) => {
-                crate::acp::bindings::claude::sdk::offers_model(binding, model)
-            }
-            _ => false,
-        }
+        super::claude_sdk::accepts_launch_model(&self.binding, model)
+    }
+
+    /// The config choice a new session starts with for a thinking level
+    /// chosen before it existed, when the binding lists it for `model`.
+    pub(crate) fn launch_effort_choice(
+        &self,
+        model: Option<&str>,
+        effort: &str,
+    ) -> Option<crate::acp::session_config::ConfigMutation> {
+        super::claude_sdk::launch_effort_choice(&self.binding, model, effort)
     }
 
     pub(crate) fn has_model_discovery(&self) -> Result<bool, RegistryAdmissionUnavailable> {

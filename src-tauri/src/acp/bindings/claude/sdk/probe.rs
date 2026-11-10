@@ -28,6 +28,8 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 /// Startup output before the reply is small; this bounds a misbehaving CLI.
 const PROBE_BYTES: u64 = 4 * 1024 * 1024;
 const REQUEST_ID: &str = "sage-model-probe";
+const MAX_EFFORT_LEVELS: usize = 16;
+const MAX_EFFORT_BYTES: usize = 64;
 const RETRY_AFTER: Duration = Duration::from_secs(60);
 /// Only the probe's own request runs: no MCP server starts and no hook runs.
 const PROBE_ARGS: [&str; 3] = [
@@ -193,6 +195,7 @@ pub(crate) fn model_options(reply: &Value) -> Vec<ModelOption> {
                     .map(Into::into),
                 is_default: Some(false),
                 context_window: None,
+                effort_levels: effort_levels(entry),
             })
         })
         .collect();
@@ -208,6 +211,36 @@ pub(crate) fn model_options(reply: &Value) -> Vec<ModelOption> {
             ..model
         })
         .collect()
+}
+
+/// The thinking levels a listed model takes, as the session's effort
+/// option will offer them; `None` for a model without effort control.
+fn effort_levels(entry: &Value) -> Option<Vec<String>> {
+    if entry["supportsEffort"].as_bool() != Some(true) {
+        return None;
+    }
+    let levels: Vec<String> = entry["supportedEffortLevels"]
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|level| !level.is_empty() && level.len() <= MAX_EFFORT_BYTES)
+        .take(MAX_EFFORT_LEVELS)
+        .map(Into::into)
+        .collect();
+    (!levels.is_empty()).then_some(levels)
+}
+
+/// Whether a session of this build that starts with `model` takes `effort`
+/// as its thinking level: `default`, or a level the probe listed for it.
+pub(crate) fn offers_effort(binding: &AdmittedClaudeSdkBinding, model: &str, effort: &str) -> bool {
+    known_models(binding).is_some_and(|models| {
+        models.iter().any(|entry| {
+            entry.id == model
+                && entry.effort_levels.as_ref().is_some_and(|levels| {
+                    effort == super::config::DEFAULT_EFFORT || levels.iter().any(|l| l == effort)
+                })
+        })
+    })
 }
 
 #[cfg(test)]
@@ -266,6 +299,21 @@ mod tests {
         let first = model_options(&json!({"models": [{"value": "a"}, {"value": "b"}]}));
         assert_eq!(first[0].is_default, Some(true));
         assert!(model_options(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn a_model_lists_its_thinking_levels_only_when_it_supports_effort() {
+        let models = model_options(&json!({"models": [
+            {"value": "default", "supportsEffort": true,
+             "supportedEffortLevels": ["low", "", 3, "high"]},
+            {"value": "haiku", "supportsEffort": false, "supportedEffortLevels": ["low"]},
+            {"value": "opus", "supportsEffort": true, "supportedEffortLevels": []},
+        ]}));
+        let levels: Vec<_> = models.iter().map(|m| m.effort_levels.clone()).collect();
+        assert_eq!(
+            levels,
+            [Some(vec!["low".to_owned(), "high".to_owned()]), None, None]
+        );
     }
 
     #[test]
