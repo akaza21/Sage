@@ -327,15 +327,16 @@ impl HarnessAdapter for CodexRuntime {
                 resolution,
                 EgressResolution::QueueRejected | EgressResolution::WriteZeroBytes
             ) {
-                let clear = self
-                    .inner
-                    .pending_kind(request_id)
-                    .is_some_and(RequestKind::starts_turn);
+                let kind = self.inner.pending_kind(request_id);
                 self.inner
                     .reject_before_write(request_id)
                     .map_err(map_adapter)?;
-                if clear {
+                if kind.is_some_and(RequestKind::starts_turn) {
                     self.snapshots.clear();
+                }
+                // The catalogue is read as far as it will be.
+                if kind == Some(RequestKind::Models) {
+                    self.refresh_model_config();
                 }
             }
             return Ok(());

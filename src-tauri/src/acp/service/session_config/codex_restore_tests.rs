@@ -237,14 +237,22 @@ fn go_live(
     owner: &RuntimeOwner,
     runtime: &Arc<Mutex<NativeRuntime>>,
 ) -> Value {
+    go_live_writing(service, owner, runtime, EgressResolution::Written)
+}
+
+/// `go_live`, with the `model/list` write ending as `write`.
+fn go_live_writing(
+    service: &AcpService,
+    owner: &RuntimeOwner,
+    runtime: &Arc<Mutex<NativeRuntime>>,
+    write: EgressResolution,
+) -> Value {
     let slot = &service.lane_at(0).runtime;
     let list = {
         let mut runtime = runtime.lock().unwrap();
         let egress = runtime.model_config_hydration().unwrap().unwrap();
         let request: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
-        runtime
-            .resolve_egress(egress.into_token(), EgressResolution::Written)
-            .unwrap();
+        runtime.resolve_egress(egress.into_token(), write).unwrap();
         request["id"].clone()
     };
     let host = Arc::new(RuntimeHost::start(CodexEngine(Arc::clone(runtime))).unwrap());
@@ -342,5 +350,71 @@ fn a_stored_effort_waits_for_codex_to_report_the_thread_effort() {
     let next = prompt(&service, &owner, &runtime, "reported");
     assert_eq!(next["params"]["effort"], "high");
     assert_eq!(stored(&service), [option("effort", "high")]);
+    service.shutdown_blocking().unwrap();
+}
+
+/// What one restore takes, as a share of the budget a wait for the
+/// session's options may use: a restore that waited took all of it.
+fn restore_share(service: &AcpService, owner: &RuntimeOwner) -> f64 {
+    let started = std::time::Instant::now();
+    service.restore_session_config(owner).unwrap();
+    started.elapsed().as_secs_f64()
+        / std::time::Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc)
+            .as_secs_f64()
+}
+
+#[test]
+fn activation_with_no_stored_choices_does_not_wait_for_the_model_list() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    let owner = owner(1);
+    let slot = &service.lane_at(0).runtime;
+    slot.reserve_start(owner.clone()).unwrap();
+    let runtime = Arc::new(Mutex::new(resumed(
+        &owner,
+        Arc::clone(&slot.config),
+        Some("medium"),
+    )));
+    // `model/list` is written and never answered.
+    go_live(&service, &owner, &runtime);
+    assert!(runtime.lock().unwrap().config_hydrating());
+    assert!(restore_share(&service, &owner) < 0.5);
+    let turn_start = prompt(&service, &owner, &runtime, "nothing-stored");
+    assert_eq!(turn_start["method"], "turn/start");
+    assert!(turn_start["params"].get("model").is_none());
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn a_rejected_model_list_write_ends_hydration() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    let owner = owner(1);
+    store(&service, &owner, &[option("effort", "high")]);
+    let slot = &service.lane_at(0).runtime;
+    slot.reserve_start(owner.clone()).unwrap();
+    let runtime = Arc::new(Mutex::new(resumed(
+        &owner,
+        Arc::clone(&slot.config),
+        Some("medium"),
+    )));
+    go_live_writing(&service, &owner, &runtime, EgressResolution::QueueRejected);
+    assert!(!runtime.lock().unwrap().config_hydrating());
+    // Nothing more is coming, so neither activation nor a send waits, and
+    // the thread's own model is offered.
+    assert!(restore_share(&service, &owner) < 0.5);
+    let config = serde_json::to_value(slot.config.live_snapshot(&owner).unwrap().config).unwrap();
+    assert_eq!(config["configOptions"][0]["category"], "model");
+    assert_eq!(config["configOptions"][0]["currentValue"], "fixture-model");
+    let turn_start = prompt(&service, &owner, &runtime, "after-rejection");
+    assert_eq!(turn_start["method"], "turn/start");
+    // No page listed the model, so its effort cannot be offered; the stored
+    // one is kept for when it can.
+    assert_eq!(
+        choices::load(&service.database.connection(), &owner.session_id).unwrap(),
+        [option("effort", "high")]
+    );
     service.shutdown_blocking().unwrap();
 }

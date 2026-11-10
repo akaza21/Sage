@@ -137,12 +137,16 @@ impl AcpService {
     /// does not replace them. `Err` means a change left the runtime needing
     /// recovery; its choice stays stored for the resumed runtime.
     ///
-    /// A session still reading the options its choices need (a catalogue
-    /// asked for as activation handed off) is waited for within the same
-    /// budget, so the prompt that follows does not go out ahead of them.
+    /// When there are stored choices, a session still reading the options
+    /// they need (a catalogue asked for as activation handed off) is waited
+    /// for within the same budget, so the prompt that follows does not go
+    /// out ahead of them. With none stored nothing waits.
     pub(crate) fn restore_session_config(&self, owner: &RuntimeOwner) -> Result<(), HostError> {
         let budget = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
-        if let Some(lane) = self.lane_for(owner) {
+        if let Some(lane) = self.lane_for(owner)
+            && choices::load(&self.database.connection(), &owner.session_id)
+                .is_ok_and(|stored| !stored.is_empty())
+        {
             lane.runtime.config.wait_while_hydrating(owner, budget);
         }
         self.restore_until(owner, || Instant::now() >= budget)

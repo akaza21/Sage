@@ -302,7 +302,10 @@ impl HarnessAdapter for NativeRuntime {
     ) -> Result<(), AdapterRuntimeError> {
         let result = self.0.resolve_egress(token, resolution);
         self.publish_goal();
-        result
+        // A request refused before it was written (a catalogue page among
+        // them) no longer holds the session's options back.
+        let published = self.publish_config();
+        result.and(published)
     }
 }
 

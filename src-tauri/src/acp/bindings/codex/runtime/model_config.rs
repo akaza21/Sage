@@ -148,18 +148,26 @@ impl CodexRuntime {
             },
             options,
         );
-        // A model with thinking levels whose current one Codex did not
-        // report takes an effort Sage cannot show yet.
-        if effort.is_none() && model.is_some_and(|model| !model.supported_efforts.is_empty()) {
-            config.unreported = crate::acp::contract::BoundedVec::new(
-                "unreported",
-                vec![
-                    crate::acp::session_config::ConfigId::new("configId", "effort")
-                        .expect("fixed option id"),
-                ],
-            )
-            .expect("one option");
-        }
+        // The thread's model is not a choice until the catalogue is read.
+        // Its effort is not one while no page lists the model, or while
+        // Codex has not reported the current level of a model that has them.
+        let unlisted = self.reported_model_id.is_some() && model.is_none();
+        let unreported = [
+            ("model", self.reported_model_id.is_some() && !catalogue_read),
+            (
+                "effort",
+                unlisted
+                    || effort.is_none()
+                        && model.is_some_and(|model| !model.supported_efforts.is_empty()),
+            ),
+        ]
+        .into_iter()
+        .filter(|(_, unreported)| *unreported)
+        .map(|(id, _)| crate::acp::session_config::ConfigId::new("configId", id))
+        .collect::<Result<Vec<_>, _>>()
+        .expect("fixed option ids");
+        config.unreported = crate::acp::contract::BoundedVec::new("unreported", unreported)
+            .expect("two options at most");
         self.session_config =
             (known || !config.config_options.as_slice().is_empty()).then_some(config);
     }

@@ -99,8 +99,9 @@ struct Entry {
     new_session: bool,
     /// The restore has started, so what the harness reports is a choice.
     restoring: bool,
-    /// The session is still reading what it offers; see `set_hydrating`.
-    hydrating: bool,
+    /// Whether the session is still reading what it offers; see
+    /// `set_hydrating`.
+    hydration: restore_gate::Hydration,
     /// Stored choices the restore has not reached yet. What the harness
     /// reports for them is not recorded, so a value it resets on its own
     /// (an effort a model change resets) does not replace the stored one.
@@ -165,7 +166,7 @@ impl ConfigChannel {
             restore_pending: true,
             new_session: false,
             restoring: false,
-            hydrating: false,
+            hydration: restore_gate::Hydration::Done,
             held: Vec::new(),
         });
         state.pending = None;

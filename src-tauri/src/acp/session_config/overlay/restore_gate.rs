@@ -4,16 +4,33 @@ use std::time::Instant;
 
 use super::{ConfigChannel, ConfigMutation, RuntimeOwner, SessionConfig, SessionConfigOverlay};
 
+/// Where a session is in reading what it offers (a catalogue its options
+/// come from).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Hydration {
+    Done,
+    Reading,
+    /// It was still reading when a wait for it ran out. A reply that never
+    /// comes then holds nothing back for the rest of the runtime.
+    Lapsed,
+}
+
 impl ConfigChannel {
     /// Whether the session of the runtime `owner` names is still reading
-    /// what it offers (a catalogue its options come from). Its stored
-    /// choices are not restored until it has.
+    /// what it offers. Its stored choices are not restored until it has, or
+    /// until a wait for it has run out.
     pub(crate) fn set_hydrating(&self, owner: &RuntimeOwner, hydrating: bool) {
         let mut state = self.lock();
-        if let Some(entry) = state.entry.as_mut().filter(|e| &e.owner == owner)
-            && entry.hydrating != hydrating
-        {
-            entry.hydrating = hydrating;
+        let Some(entry) = state.entry.as_mut().filter(|e| &e.owner == owner) else {
+            return;
+        };
+        let next = match (entry.hydration, hydrating) {
+            (Hydration::Lapsed, _) => Hydration::Lapsed,
+            (_, true) => Hydration::Reading,
+            (_, false) => Hydration::Done,
+        };
+        if entry.hydration != next {
+            entry.hydration = next;
             drop(state);
             self.changed.notify_all();
         }
@@ -31,31 +48,34 @@ impl ConfigChannel {
         ready: impl FnOnce(&SessionConfig) -> bool,
     ) -> Option<(SessionConfigOverlay, bool)> {
         let mut state = self.lock();
-        let entry = state
-            .entry
-            .as_mut()
-            .filter(|e| e.live && e.restore_pending && !e.hydrating && &e.owner == owner)?;
+        let entry = state.entry.as_mut().filter(|e| {
+            e.live && e.restore_pending && e.hydration != Hydration::Reading && &e.owner == owner
+        })?;
         let overlay = entry.overlay.as_ref().filter(|o| ready(&o.config))?.clone();
         entry.restore_pending = false;
         entry.restoring = true;
         entry.held = held.to_vec();
         Some((overlay, entry.new_session))
     }
-    /// Waits, until `deadline`, while the runtime `owner` names has stored
-    /// choices to restore and its session is still reading the options they
-    /// need, so a prompt sent right after activation does not go out ahead
-    /// of them. Returns at once otherwise.
+    /// Waits, until `deadline`, while the runtime `owner` names has a
+    /// restore pending and its session is still reading the options it
+    /// needs, so a prompt sent right after activation does not go out ahead
+    /// of them; the caller waits only when it has stored choices to restore.
+    /// Returns at once otherwise. A session still reading at `deadline` has
+    /// lapsed, and no restore waits for it again.
     pub(crate) fn wait_while_hydrating(&self, owner: &RuntimeOwner, deadline: Instant) {
         let mut state = self.lock();
         loop {
-            let hydrating = state
-                .entry
-                .as_ref()
-                .is_some_and(|e| e.live && e.restore_pending && e.hydrating && &e.owner == owner);
-            let Some(left) = deadline
-                .checked_duration_since(Instant::now())
-                .filter(|_| hydrating)
-            else {
+            let Some(entry) = state.entry.as_mut().filter(|e| {
+                e.live
+                    && e.restore_pending
+                    && e.hydration == Hydration::Reading
+                    && &e.owner == owner
+            }) else {
+                return;
+            };
+            let Some(left) = deadline.checked_duration_since(Instant::now()) else {
+                entry.hydration = Hydration::Lapsed;
                 return;
             };
             state = self
@@ -140,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn a_wait_ends_at_its_deadline_or_at_once_with_nothing_to_restore() {
+    fn a_wait_ends_at_its_deadline_and_a_lapsed_session_is_not_waited_for_again() {
         let channel = ConfigChannel::default();
         let runtime = owner();
         channel.reserve(runtime.clone());
@@ -154,5 +174,16 @@ mod tests {
         let deadline = Instant::now() + Duration::from_millis(20);
         channel.wait_while_hydrating(&runtime, deadline);
         assert!(Instant::now() >= deadline);
+        // The session has lapsed: a reply that never comes holds no later
+        // wait or restore back, even as it says it is still reading.
+        channel.set_hydrating(&runtime, true);
+        let started = Instant::now();
+        channel.wait_while_hydrating(&runtime, started + Duration::from_secs(30));
+        assert!(started.elapsed() < Duration::from_secs(30));
+        assert!(
+            channel
+                .take_restore(&runtime, &[stored()], |_| true)
+                .is_some()
+        );
     }
 }
