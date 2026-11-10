@@ -101,7 +101,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     canEndSession,
     canPrompt,
     sessionHarnessId,
-    accessBindingId,
+    accessTarget,
     sessionModelId,
     sessionPromptUnavailable,
     usage,
@@ -358,7 +358,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
           acpActions.errorKind === "signInRequired"
         }
         claudeAuthScope={`${project?.id ?? ""}:${epoch}:${chatId ?? activeTabId ?? ""}`}
-        accessBindingId={accessBindingId}
+        accessTarget={accessTarget}
         availableBinding={availableBinding}
         canPrompt={canPrompt}
         discoveryPhase={discoveryPhase}

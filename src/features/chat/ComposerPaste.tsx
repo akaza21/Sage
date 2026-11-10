@@ -5,7 +5,7 @@ import {
   heldInputMessage,
   pasteAttachmentRefusal,
   type PasteAttachability,
-} from "./composerPaste";
+} from "./composerPasteText";
 import { ComposerPasteNotices } from "./ComposerPasteNotices";
 import { PastedTextChips } from "./PastedTextChips";
 import {

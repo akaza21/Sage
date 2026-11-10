@@ -50,6 +50,7 @@ mod debug;
 mod intent_snapshot;
 mod live_lanes;
 mod live_routes;
+mod page_bytes;
 pub(crate) use live_lanes::{ChatRuntimeRelease, LIVE_RUNTIME_LANES, explicit_close_deadline};
 mod permission;
 // Only the Pi bridge fixture replay drives decisions through the service from outside it.
@@ -104,6 +105,7 @@ use intent_snapshot::load_intent_snapshot;
 pub(crate) use renderer_recreation::RendererRecreationUsage;
 pub(crate) use renderer_recreation_orchestrator::RendererRecreationReloadLifecycle;
 
+use page_bytes::PageBytes;
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 use runtime_identity::CodexRuntimeIdentityLedger;
 use runtime_slot::RuntimeSlot;
@@ -387,8 +389,9 @@ impl AcpService {
             cursor.clone(),
         )?;
         self.compose_session_config(&mut page)?;
+        let mut size = PageBytes::measure(&page)?;
         // History yields room for the session config that does not fit.
-        if let Some(reserve) = session_config::config_reserve(&mut page)? {
+        if let Some(reserve) = session_config::config_reserve(&mut page, &size)? {
             page = crate::acp::store::load_chat_page_reserving(
                 &self.database.connection(),
                 project_id,
@@ -397,11 +400,12 @@ impl AcpService {
                 reserve,
             )?;
             self.compose_session_config(&mut page)?;
+            size = PageBytes::measure(&page)?;
         }
-        self.fit_session_config_to_page_budget(&mut page)?;
+        self.fit_session_config_to_page_budget(&mut page, &size)?;
         self.compose_goal(&mut page);
         self.compose_usage(&mut page);
-        self.fit_goal_to_page_budget(&mut page)?;
+        self.fit_goal_to_page_budget(&mut page, &size)?;
         self.compose_session_surface(&mut page)?;
         Ok(page)
     }

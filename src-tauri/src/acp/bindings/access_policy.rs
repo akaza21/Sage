@@ -485,13 +485,14 @@ mod tests {
             vec![
                 (json!("ask"), json!("default")),
                 (json!("acceptEdits"), json!("acceptEdits")),
+                (json!("plan"), json!("plan")),
                 (json!("auto"), json!("auto")),
             ]
         );
         // Auto stays behind the access path's two-step confirmation.
         assert!(Auto.needs_confirmation());
         assert!(lists_mode(&registry, "claude-code-sdk", AcceptEdits));
-        assert!(!lists_mode(&registry, "claude-code-sdk", Plan));
+        assert!(lists_mode(&registry, "claude-code-sdk", Plan));
         assert!(lists_mode(&registry, "claude-code-sdk", Ask));
         assert!(lists_mode(&registry, "claude-code-sdk", Auto));
         // Nothing the SDK session cannot select is offered or falls back.

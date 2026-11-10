@@ -207,6 +207,7 @@ fn claude_slash_commands_run_through_the_command_route_with_the_live_revision() 
                 runtime_epoch: owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "Summarize the example").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await

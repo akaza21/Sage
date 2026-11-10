@@ -14,7 +14,7 @@ fn texts(events: Vec<SessionScopedEvent>) -> Vec<String> {
         .into_iter()
         .map(|event| match event {
             SessionScopedEvent::Notice(notice) => notice.text.as_str().to_owned(),
-            SessionScopedEvent::Title { title } => format!("title:{}", title.as_str()),
+            SessionScopedEvent::Title { title: Some(title) } => format!("title:{}", title.as_str()),
             other => panic!("unexpected session event {other:?}"),
         })
         .collect()

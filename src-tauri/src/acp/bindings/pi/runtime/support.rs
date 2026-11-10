@@ -356,10 +356,8 @@ impl PiRuntime {
             ),
             AdapterOutput::Title(title) => (
                 Some(
-                    self.session_event(SessionScopedEvent::Title {
-                        title: RequiredText::new("sessionTitle", title)
-                            .map_err(|_| AdapterRuntimeError::Frame)?,
-                    }),
+                    crate::acp::bindings::session_title::harness_title_event(&title)
+                        .map_or(AdapterEvent::IgnoredLate, |event| self.session_event(event)),
                 ),
                 None,
             ),

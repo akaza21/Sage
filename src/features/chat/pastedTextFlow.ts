@@ -15,7 +15,7 @@ import {
   pastedTextLabel,
   pasteDecision,
   type PasteAttachability,
-} from "./composerPaste";
+} from "./composerPasteText";
 import type { HeldPaste, PastedTextState } from "./pastedTextTypes";
 
 type Announce = (message: string) => void;

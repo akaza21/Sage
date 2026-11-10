@@ -156,7 +156,6 @@
                 "kind": "execute",
                 "label": "echo hello",
                 "summary": null,
-                "cwd": null,
                 "exitCode": 0,
                 "outputTail": null,
                 "outputTruncated": false,
@@ -358,6 +357,55 @@
         "status \"Cancelled\"",
         "  Cancelled"
       ]
+    },
+    "steeredMessage": {
+      "title": "A message the user steers into the running turn",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "text",
+            "payload": {
+              "role": "assistant",
+              "text": "Starting on lib.rs."
+            }
+          },
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "userPrompt",
+            "payload": {
+              "text": "Use main.rs instead."
+            }
+          },
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "text",
+            "payload": {
+              "role": "assistant",
+              "text": "Switching to main.rs."
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "summary",
+        "  Worked for 0s",
+        "article",
+        "  Agent",
+        "  Starting on lib.rs.",
+        "article",
+        "  You",
+        "  Use main.rs instead.",
+        "article",
+        "  Agent",
+        "  Switching to main.rs."
+      ]
     }
   },
   "notApplicable": [
@@ -370,106 +418,17 @@
       "scenario": "planUpdate",
       "harness": "pi",
       "reason": "Pi has no plan or todo tool."
+    },
+    {
+      "scenario": "steeredMessage",
+      "harness": "claude",
+      "reason": "ACP has no way to add a message to a running prompt; the binding refuses a steer, so the composer waits for the turn to end."
+    },
+    {
+      "scenario": "steeredMessage",
+      "harness": "acp",
+      "reason": "ACP has no way to add a message to a running prompt; the binding refuses a steer, so the composer waits for the turn to end."
     }
   ],
-  "gaps": [
-    {
-      "scenario": "toolCompletes",
-      "harness": "codex",
-      "owner": "Codex",
-      "visible": true,
-      "gap": "read label names the file, not its workspace path, and the shell line is kept as input",
-      "differs": {
-        "/items/0/payload/presentation/label": "Read lib.rs",
-        "/items/0/payload/inputSummary": "cat src/lib.rs"
-      }
-    },
-    {
-      "scenario": "toolFailsMidTurn",
-      "harness": "codex",
-      "owner": "Codex",
-      "visible": true,
-      "gap": "read label names the file, not its workspace path, and the shell line is kept as input",
-      "differs": {
-        "/items/0/payload/presentation/label": "Read lib.rs",
-        "/items/0/payload/inputSummary": "cat src/lib.rs"
-      }
-    },
-    {
-      "scenario": "commandWithOutput",
-      "harness": "codex",
-      "owner": "Codex",
-      "visible": false,
-      "gap": "reports the working directory, which no other binding can",
-      "differs": {
-        "/items/0/payload/presentation/cwd": {
-          "kind": "resource",
-          "resource": {
-            "rootId": "root-1",
-            "relativePath": "src"
-          }
-        }
-      }
-    },
-    {
-      "scenario": "fileEditWithDiff",
-      "harness": "codex",
-      "owner": "Codex",
-      "visible": true,
-      "gap": "the edit has no tool row; only the file change is projected",
-      "differs": {
-        "/items": [
-          {
-            "lifecycle": "completed",
-            "toolState": null,
-            "kind": "fileChangeDiff",
-            "payload": {
-              "changes": [
-                {
-                  "resource": {
-                    "kind": "resource",
-                    "resource": {
-                      "rootId": "root-1",
-                      "relativePath": "src/lib.rs"
-                    }
-                  },
-                  "operation": "updated",
-                  "originalResource": null,
-                  "summary": "Edited src/lib.rs",
-                  "additions": 1,
-                  "deletions": 1,
-                  "pairState": "available",
-                  "newBytes": 34,
-                  "oldBytes": 34
-                }
-              ],
-              "truncated": false
-            }
-          }
-        ]
-      }
-    },
-    {
-      "scenario": "planUpdate",
-      "harness": "codex",
-      "owner": "Codex",
-      "visible": false,
-      "gap": "the plan item is never closed and is swept to cancelled",
-      "differs": {
-        "/items/0/lifecycle": "cancelled"
-      }
-    },
-    {
-      "scenario": "cancelledWithRunningTool",
-      "harness": "codex",
-      "owner": "Codex",
-      "visible": true,
-      "gap": "a user stop settles the turn as interrupted, not cancelled; read label and input as above",
-      "differs": {
-        "/turnState": "interrupted",
-        "/items/0/payload/presentation/label": "Read lib.rs",
-        "/items/0/payload/inputSummary": "cat src/lib.rs"
-      }
-    }
-  ]
+  "gaps": []
 }

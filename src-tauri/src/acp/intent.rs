@@ -222,6 +222,11 @@ pub enum NormalizedPayload {
     Text {
         text: SafeText<262144>,
     },
+    /// A message the user steered into the running Turn. Sage journals it
+    /// when the harness accepts the steer; bindings never emit it.
+    UserPrompt {
+        text: SafeText<262144>,
+    },
     ThoughtSummary {
         summary: SafeText<262144>,
     },
@@ -379,7 +384,7 @@ impl NormalizedPayload {
 
     pub fn kind(&self) -> ItemKind {
         match self {
-            Self::Text { .. } => ItemKind::Text,
+            Self::Text { .. } | Self::UserPrompt { .. } => ItemKind::Text,
             Self::ThoughtSummary { .. } => ItemKind::ThoughtSummary,
             Self::Plan { .. } | Self::PlanEntries { .. } => ItemKind::Plan,
             Self::CompactionNotice => ItemKind::CompactionNotice,

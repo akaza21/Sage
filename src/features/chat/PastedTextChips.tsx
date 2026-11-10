@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 
 import { FileText, X } from "../../ui/leanIcons";
-import { stagedItemLabel } from "./composerPaste";
+import { stagedItemLabel } from "./composerPasteText";
 import type { StagedPromptItem } from "./pastedTextTypes";
 import "../../styles/composer-paste.css";
 

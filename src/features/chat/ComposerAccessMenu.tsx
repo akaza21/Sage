@@ -2,6 +2,7 @@ import { useEffect, useState, type RefObject } from "react";
 import {
   chooseChatAccess,
   grantChatAccess,
+  PERMISSIVE_ACCESS as PERMISSIVE,
   prepareChatAccess,
 } from "../../app/sessionAccessActions";
 import type {
@@ -16,8 +17,6 @@ import { CHAT_ACCESS_ICONS as ICONS } from "./chatAccessIcons";
 
 const FULL_ACCESS: SessionAccessMode = "fullAccess";
 
-/** Modes that run actions without asking take a confirmed native token. */
-const PERMISSIVE: readonly SessionAccessMode[] = ["auto", FULL_ACCESS];
 /** Modes confirmed before they apply. */
 const CONFIRMED: readonly SessionAccessMode[] = [
   "workspaceWrite",
@@ -36,6 +35,7 @@ export default function ComposerAccessMenu({
   candidates,
   effective,
   sessionId,
+  onDraft,
   onDismiss,
 }: {
   id: string;
@@ -44,6 +44,11 @@ export default function ComposerAccessMenu({
   effective: SessionAccessMode | null;
   /** The live chat a choice applies to; null before its session starts. */
   sessionId?: string;
+  /**
+   * Holds a choice made before the session starts; it is applied, through
+   * the same commands, before the chat's first prompt is dispatched.
+   */
+  onDraft?: (mode: SessionAccessMode) => void;
   onDismiss: () => void;
 }) {
   const [confirmation, setConfirmation] =
@@ -75,9 +80,16 @@ export default function ComposerAccessMenu({
     };
   }, [permissive, sessionId]);
   const close = () => setClosing(true);
+  /** Gives the chat a mode that needs no native token, or drafts it. */
+  const choose = (mode: SessionAccessMode) => {
+    if (sessionId) void chooseChatAccess(sessionId, mode);
+    else onDraft?.(mode);
+  };
+  // Without a session or a draft to hold it, a choice has nowhere to go.
+  const selectable = !!sessionId || !!onDraft;
   if (closing) return null;
   if (confirmation && !candidates.includes(confirmation)) setConfirmation(null);
-  if (confirmation && sessionId && candidates.includes(confirmation)) {
+  if (confirmation && selectable && candidates.includes(confirmation)) {
     const warning = WARNING[confirmation.id];
     return (
       <ModalDialog
@@ -109,10 +121,11 @@ export default function ComposerAccessMenu({
           <button
             className="button--compact"
             type="button"
-            disabled={permissive !== null && token === null}
+            disabled={permissive !== null && !!sessionId && token === null}
             onClick={() => {
-              if (!permissive)
-                void chooseChatAccess(sessionId, confirmation.id);
+              // A drafted permissive mode is confirmed natively once the
+              // session it is given to has started.
+              if (!permissive || !sessionId) choose(confirmation.id);
               else if (token)
                 void grantChatAccess(sessionId, permissive, token);
               close();
@@ -147,7 +160,7 @@ export default function ComposerAccessMenu({
         className="composer-access-menu__heading"
         aria-hidden="true"
       >
-        {sessionId
+        {sessionId || onDraft
           ? "How should agent actions be approved in this chat?"
           : "This chat's access can change once its session starts. Defaults for new chats are in Settings."}
       </p>
@@ -161,17 +174,17 @@ export default function ComposerAccessMenu({
             className={`menu-item composer-access-menu__option${candidate.id === FULL_ACCESS ? " composer-access-menu__option--full" : ""}`}
             aria-label={candidate.label}
             aria-checked={candidate.id === effective}
-            aria-disabled={!sessionId}
+            aria-disabled={!selectable}
             data-option-id={candidate.id}
             aria-describedby={id + "-" + candidate.id}
             tabIndex={-1}
             onClick={() => {
-              if (!sessionId) return;
+              if (!selectable) return;
               if (effective === candidate.id) close();
               else if (CONFIRMED.includes(candidate.id))
                 setConfirmation(candidate);
               else {
-                void chooseChatAccess(sessionId, candidate.id);
+                choose(candidate.id);
                 close();
               }
             }}

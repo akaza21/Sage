@@ -53,27 +53,29 @@ export const ItemView = memo(
     selectableTurnId?: string;
   }) {
     switch (item.kind) {
+      // A steered message is the user's own bubble, at its place in the Turn.
+      case "userPrompt":
       case "text": {
+        const role = item.kind === "text" ? item.payload.role : "user";
         const timestamp = chatTimestamp(item.createdAt);
         // Final assistant prose is quotable (and focusable for the menu key).
-        const answerTurn =
-          item.payload.role === "assistant" && selectableTurnId;
+        const answerTurn = role === "assistant" && selectableTurnId;
         const partial =
-          item.payload.role === "assistant" &&
+          role === "assistant" &&
           (turnState === "interrupted" || turnState === "cancelled") &&
           item.lifecycle !== "completed" &&
           item.payload.text.trim().length > 0;
         return (
           <article
-            className={`acp-message acp-message--${item.payload.role}`}
+            className={`acp-message acp-message--${role}`}
             data-item-id={item.id}
             data-selectable-answer={answerTurn || undefined}
             tabIndex={answerTurn ? 0 : undefined}
-            data-message-role={item.payload.role}
+            data-message-role={role}
             data-answer-state={partial ? "partial" : undefined}
           >
             <header className="acp-message__meta">
-              {item.payload.role === "assistant" ? (
+              {role === "assistant" ? (
                 <span className="acp-message__avatar" aria-hidden="true">
                   S
                 </span>
@@ -81,9 +83,9 @@ export const ItemView = memo(
               <span className="acp-message__role">
                 {neutralTextRole
                   ? "Unattributed"
-                  : item.payload.role === "assistant"
+                  : role === "assistant"
                     ? "Agent"
-                    : item.payload.role === "user"
+                    : role === "user"
                       ? "You"
                       : "System"}
               </span>
@@ -104,9 +106,7 @@ export const ItemView = memo(
                     item.lifecycle === "streaming"
                   }
                   fileReferenceOwner={
-                    item.payload.role === "assistant"
-                      ? fileReferenceOwner
-                      : undefined
+                    role === "assistant" ? fileReferenceOwner : undefined
                   }
                 />
               )}
