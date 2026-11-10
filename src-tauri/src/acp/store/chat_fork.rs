@@ -19,10 +19,18 @@ use super::{
 
 const FORK_CAPABILITY: &str = "nativeSessionFork";
 
-/// A session negotiated before its harness's fork method was characterised
-/// stored `nativeSessionFork: false`; the same harness now negotiates `true`.
-/// That single upgrade still resumes the session. Its stored snapshot stays
-/// immutable, so such a session keeps reporting no fork (fail closed).
+/// Capabilities a harness may gain once Sage learns to drive them, with
+/// whether a snapshot records them when false.
+const UPGRADES: [(&str, bool); 3] = [
+    (FORK_CAPABILITY, true),
+    ("activeTurnSteer", true),
+    ("nativeSessionCompact", false),
+];
+
+/// A session negotiated before Sage drove one of its harness's methods
+/// stored that capability as off; the same harness now negotiates it on.
+/// Such upgrades still resume the session. Its stored snapshot stays
+/// immutable, so the session keeps reporting them off (fail closed).
 pub(crate) fn resumable_capabilities(stored: &str, negotiated: &str) -> bool {
     if stored == negotiated {
         return true;
@@ -33,9 +41,15 @@ pub(crate) fn resumable_capabilities(stored: &str, negotiated: &str) -> bool {
     ) else {
         return false;
     };
-    stored.remove(FORK_CAPABILITY) == Some(Value::Bool(false))
-        && negotiated.remove(FORK_CAPABILITY) == Some(Value::Bool(true))
-        && stored == negotiated
+    UPGRADES.iter().all(|(key, recorded)| {
+        let (was, now) = (stored.remove(*key), negotiated.remove(*key));
+        let off = match was {
+            Some(Value::Bool(false)) => true,
+            None => !recorded,
+            _ => false,
+        };
+        was == now || (off && now == Some(Value::Bool(true)))
+    }) && stored == negotiated
 }
 
 /// The Turn a fork is taken through: the latest completed Turn of the Chat's
@@ -293,5 +307,22 @@ mod tests {
             r#"{"schemaVersion":1,"protocolVersion":"p","prompt":false,"nativeSessionFork":true}"#
         ));
         assert!(!resumable_capabilities(STORED, "not json"));
+    }
+
+    #[test]
+    fn steer_and_compact_upgrades_still_resume_but_never_a_downgrade() {
+        let stored = r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false,"activeTurnSteer":false}"#;
+        let upgraded = r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false,"nativeSessionCompact":true,"activeTurnSteer":true}"#;
+        assert!(resumable_capabilities(stored, upgraded));
+        assert!(!resumable_capabilities(upgraded, stored));
+        // A recorded flag cannot go missing.
+        assert!(!resumable_capabilities(
+            stored,
+            r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false}"#
+        ));
+        assert!(!resumable_capabilities(
+            stored,
+            r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false,"activeTurnSteer":"yes"}"#
+        ));
     }
 }
