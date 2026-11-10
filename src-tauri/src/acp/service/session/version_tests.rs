@@ -115,3 +115,17 @@ fn claude_sdk_chats_resume_after_a_claude_code_update() {
             .is_err()
     );
 }
+
+#[test]
+fn a_session_without_a_version_matches_only_a_binding_that_reports_none() {
+    let mut unversioned = session_at("");
+    unversioned.binding_id = "custom-acp-1".into();
+    unversioned.harness_version = None;
+    let digest = "e".repeat(64);
+    assert!(validate_session_identity(&unversioned, "custom-acp-1", &digest, "").is_ok());
+    assert!(validate_session_identity(&unversioned, "custom-acp-1", &digest, "1.0.0").is_err());
+    let mut versioned = session_at("1.0.0");
+    versioned.binding_id = "custom-acp-1".into();
+    assert!(validate_session_identity(&versioned, "custom-acp-1", &digest, "").is_err());
+    assert!(validate_session_identity(&versioned, "custom-acp-1", &digest, "1.0.0").is_ok());
+}
