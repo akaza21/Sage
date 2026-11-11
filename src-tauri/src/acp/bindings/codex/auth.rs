@@ -202,8 +202,7 @@ impl CodexAuthProtocol {
         match result.get("account") {
             Some(Value::Null) => Ok(CodexAuthAccount::SignedOut),
             Some(Value::Object(account))
-                if api_key_account(account)
-                    || managed_chatgpt(account).map_err(|_| CodexAuthError::Protocol)? =>
+                if api_key_account(account) || managed_chatgpt(account) =>
             {
                 Ok(CodexAuthAccount::SignedIn)
             }
