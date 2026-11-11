@@ -112,4 +112,27 @@ describe("TabStrip overflow", () => {
     fireEvent.wheel(strip, { deltaY: 50, ctrlKey: true });
     expect(strip.scrollLeft).toBe(100);
   });
+
+  it("marks the edges that hide tabs so the strip can fade them", () => {
+    installTabs(12, 0);
+    const { container } = render(<TabStrip />);
+    const strip = container.querySelector<HTMLElement>(".tab-strip__scroll")!;
+    layOut(strip);
+    fireEvent.scroll(strip);
+    expect(strip.dataset.overflow).toBe("end");
+    strip.scrollLeft = 600;
+    fireEvent.scroll(strip);
+    expect(strip.dataset.overflow).toBe("start end");
+    strip.scrollLeft = 120 * 12 - 360;
+    fireEvent.scroll(strip);
+    expect(strip.dataset.overflow).toBe("start");
+  });
+
+  it("does not mark edges while every tab fits", () => {
+    installTabs(2, 0);
+    const { container } = render(<TabStrip />);
+    const strip = container.querySelector<HTMLElement>(".tab-strip__scroll")!;
+    fireEvent.scroll(strip);
+    expect(strip).not.toHaveAttribute("data-overflow");
+  });
 });

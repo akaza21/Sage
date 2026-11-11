@@ -272,7 +272,7 @@ describe("TitleBar center chrome", () => {
     expect(
       within(dialog).getByRole("button", { name: "Search in" }),
     ).toHaveTextContent("All folders");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(titleSearch).toHaveFocus());
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByRole("button", { name: "New chat" })).toBeVisible();
@@ -298,7 +298,7 @@ describe("TitleBar center chrome", () => {
     );
     const dialog = screen.getByRole("dialog", { name: "Search Chats" });
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     await waitFor(() =>
       expect(
         within(screen.getByRole("banner")).getByRole("button", {

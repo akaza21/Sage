@@ -151,10 +151,17 @@
   box-shadow: var(--focus-ring-inset);
 }
 
+/* A palette under the title bar's Search chats control: it keeps its top
+   edge as results arrive and fits its content up to a cap; past it, only
+   the results scroll. */
 .chat-search-dialog {
+  --chat-search-dialog-top: calc(var(--chrome-row-height) + var(--space-6));
   width: min(620px, calc(100vw - 32px));
-  height: 100%;
-  max-height: min(720px, calc(100vh - 32px));
+  max-height: min(
+    720px,
+    calc(100vh - var(--chat-search-dialog-top) - var(--space-4))
+  );
+  margin-top: var(--chat-search-dialog-top);
   padding: 20px;
   border: 1px solid var(--search-dialog-border);
   border-radius: var(--radius-lg);
@@ -165,6 +172,8 @@
 }
 
 .chat-search-dialog[open] {
+  display: flex;
+  flex-direction: column;
   animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
 }
 
@@ -174,7 +183,7 @@
 
 .chat-search-dialog__form {
   display: flex;
-  height: 100%;
+  min-height: 0;
   flex-direction: column;
   gap: var(--space-3);
 }
@@ -217,48 +226,42 @@
   border-color: var(--color-focus-ring);
 }
 
-.chat-search-dialog__actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
+/* Out of flow at the header's end, beside the title. */
+.chat-search-dialog__close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
 }
 
-.chat-search-dialog__actions .button {
-  height: var(--control-height-emphasis);
-  min-height: var(--control-height-emphasis);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--search-dialog-border);
-  border-radius: var(--radius-sm);
-  color: var(--search-dialog-text-primary);
-  background: var(--search-dialog-control-fill);
-  box-shadow: var(--search-dialog-highlight);
+.chat-search-dialog__form > h2 {
+  padding-inline-end: var(--control-height-default);
 }
 
-.chat-search-dialog__actions .button:hover:not(:disabled) {
-  background: var(--search-dialog-control-hover);
-}
-
-.chat-search-dialog__actions .button--primary {
-  border-color: var(--color-accent);
-  background: var(--search-dialog-button-fill);
-}
-
-.chat-search-dialog__actions .button--primary:hover:not(:disabled) {
-  background: var(--search-dialog-button-hover);
+/* One line held even while empty, so results never shift up and down. */
+.chat-search-dialog__status {
+  min-block-size: 1lh;
+  margin: 0;
+  color: var(--search-dialog-text);
+  font-size: var(--font-size-sm);
 }
 
 .chat-search-dialog .composer__error {
   background: var(--search-dialog-error-fill);
 }
 
-.chat-search-dialog__results {
+.chat-search-dialog__form > .chat-search-dialog__results {
   min-height: 0;
-  max-height: 420px;
-  flex: 1 1 0;
+  flex: 0 1 auto;
   overflow: auto;
-  border-top: 1px solid var(--color-border-subtle);
+}
+
+.chat-search-dialog__results:empty {
+  display: none;
+}
+
+.chat-search-dialog__results {
   padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border-subtle);
 }
 
 .chat-search-dialog__results [role="listbox"] {
@@ -287,14 +290,39 @@
 
 .chat-search-result__heading {
   display: flex;
+  min-width: 0;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
 }
 
-.chat-search-result__heading > span,
-.chat-search-result > span:last-child {
-  color: var(--search-dialog-text);
+.chat-search-result__title {
+  min-width: 0;
+  overflow: hidden;
   font-size: var(--font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-search-result__details {
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-search-result__details,
+.chat-search-result__snippet {
+  color: var(--search-dialog-text);
+  font-size: var(--font-size-xs);
+}
+
+.chat-search-result__snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .chat-search-dialog__more,

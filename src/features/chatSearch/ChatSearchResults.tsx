@@ -1,3 +1,4 @@
+import { chatDisplayTitle } from "../../domain/chatTitle";
 import {
   chatSearchResultFolderName,
   isChatSearchFanout,
@@ -72,6 +73,13 @@ export function ChatSearchResults({
                   Boolean(folderName) &&
                   (isChatSearchFanout(scope.searchProjectId) ||
                     result.projectId !== scope.activeProjectId);
+                const title = chatDisplayTitle(result.title);
+                // Attached is the usual case; only Archived and another
+                // folder tell one row from the next.
+                const details = [
+                  showFolder ? folderName : null,
+                  result.attached ? null : "Archived",
+                ].filter((detail): detail is string => Boolean(detail));
                 return (
                   <button
                     className="chat-search-result"
@@ -79,17 +87,23 @@ export function ChatSearchResults({
                     type="button"
                     role="option"
                     aria-selected="false"
-                    aria-label={`${result.title} — ${result.attached ? "Attached" : "Archived"}`}
+                    aria-label={[title, ...details].join(" — ")}
+                    title={title}
                     onClick={() => void onSelect(result)}
                   >
                     <span className="chat-search-result__heading">
-                      <strong>{result.title}</strong>
-                      <span>
-                        {result.attached ? "Attached" : "Archived"}
-                        {showFolder ? ` · ${folderName}` : ""}
-                      </span>
+                      <span className="chat-search-result__title">{title}</span>
+                      {details.length > 0 ? (
+                        <span className="chat-search-result__details">
+                          {details.join(" · ")}
+                        </span>
+                      ) : null}
                     </span>
-                    {result.snippet ? <span>{result.snippet}</span> : null}
+                    {result.snippet ? (
+                      <span className="chat-search-result__snippet">
+                        {result.snippet}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}

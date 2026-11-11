@@ -15,7 +15,9 @@
   pointer-events: auto;
 }
 
+/* Rows, the input and its hint share the small size; notes go smaller. */
 .quick-open {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: min(var(--quick-open-width), var(--quick-open-width-ratio));
@@ -24,6 +26,7 @@
   border: 1px solid var(--color-border-strong);
   color: var(--color-text-primary);
   box-shadow: var(--elevation-popover);
+  font-size: var(--font-size-sm);
 }
 
 .quick-open__input {
@@ -34,7 +37,19 @@
   color: var(--color-text-primary);
   background: var(--color-canvas);
   font: inherit;
-  font-size: var(--font-size-sm);
+}
+
+/* The input's placeholder: it lies over the input, inside the input's 1px
+   border, and ends in an ellipsis rather than mid-word. */
+.quick-open__hint {
+  position: absolute;
+  inset: 1px 1px auto;
+  overflow: hidden;
+  margin: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quick-open__input:focus-visible {
@@ -43,7 +58,6 @@
 }
 
 .quick-open__list {
-  min-height: 0;
   max-height: var(--quick-open-list-max-height);
   margin: 0;
   padding: 0 var(--space-1) var(--space-1);
@@ -56,10 +70,8 @@
   height: var(--popup-row-height);
   align-items: center;
   gap: var(--space-2);
-  min-width: 0;
   padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
   line-height: var(--popup-row-height);
   white-space: nowrap;
   cursor: pointer;

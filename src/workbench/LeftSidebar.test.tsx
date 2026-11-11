@@ -542,7 +542,7 @@ it("mounts the lazy Chat search dialog only for a folder request, including one 
   const dialog = await screen.findByRole("dialog", { name: "Search Chats" });
   expect(within(dialog).getByRole("searchbox")).toHaveFocus();
   expect(hasChatSearchFolderRequest()).toBe(false);
-  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
   expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
   act(() => requestChatSearchInFolder("sage"));
   expect(screen.getByRole("dialog", { name: "Search Chats" })).toBeTruthy();
