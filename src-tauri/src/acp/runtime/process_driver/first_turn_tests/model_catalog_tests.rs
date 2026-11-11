@@ -11,12 +11,35 @@ struct CatalogTransport {
     writes: Arc<Mutex<Vec<Value>>>,
     mailbox: Arc<DriverMailbox>,
     shutdown_after: Option<usize>,
+    skills_reads: Arc<AtomicUsize>,
+}
+
+impl CatalogTransport {
+    fn new(
+        writes: &Arc<Mutex<Vec<Value>>>,
+        mailbox: Arc<DriverMailbox>,
+        shutdown_after: Option<usize>,
+    ) -> Self {
+        Self {
+            writes: Arc::clone(writes),
+            mailbox,
+            shutdown_after,
+            skills_reads: Default::default(),
+        }
+    }
 }
 
 impl crate::acp::runtime::EgressTransport for CatalogTransport {
     fn write(&mut self, frame: &OutboundFrame) -> FrameWriteOutcome {
+        let request: Value = serde_json::from_slice(frame.payload()).unwrap();
+        // The idle skills read is its own traffic; these tests follow the
+        // model catalog, and `skill_command_tests` follow the skills.
+        if request["method"] == "skills/list" {
+            self.skills_reads.fetch_add(1, Ordering::Relaxed);
+            return FrameWriteOutcome::Complete;
+        }
         let mut writes = self.writes.lock().unwrap();
-        writes.push(serde_json::from_slice(frame.payload()).unwrap());
+        writes.push(request);
         if self.shutdown_after == Some(writes.len()) {
             drop(self.mailbox.submit_worker(WorkerCommand::Shutdown).unwrap());
         }
@@ -94,6 +117,7 @@ fn idle_worker_hydrates_model_catalog_and_bounds_pagination() {
             let fixture = prepare_first_turn_fixture().await;
             let adapter = ready_runtime(&fixture.external_session);
             let writes = Arc::new(Mutex::new(Vec::new()));
+            let skills_reads = Arc::new(AtomicUsize::new(0));
             let mailbox = Arc::new(DriverMailbox::new().unwrap());
             let mut completed = CompletedActivationDriverParts {
                 parts: IdleActivationParts::new(
@@ -114,9 +138,8 @@ fn idle_worker_hydrates_model_catalog_and_bounds_pagination() {
                 ),
                 idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
                 transport: CatalogTransport {
-                    writes: Arc::clone(&writes),
-                    mailbox: Arc::clone(&mailbox),
-                    shutdown_after: Some(4),
+                    skills_reads: Arc::clone(&skills_reads),
+                    ..CatalogTransport::new(&writes, Arc::clone(&mailbox), Some(4))
                 },
                 control: NoChildProcessControl {
                     zero_checks: Arc::new(AtomicUsize::new(0)),
@@ -180,6 +203,8 @@ fn idle_worker_hydrates_model_catalog_and_bounds_pagination() {
             .await;
             assert_eq!(reason, TreeExit::ParentShutdown);
             assert_eq!(writes.lock().unwrap().len(), 4);
+            // The skills are read once while idle, beside the catalog.
+            assert_eq!(skills_reads.load(Ordering::Relaxed), 1);
             for (page, request) in writes.lock().unwrap().iter().enumerate().skip(1) {
                 assert_eq!(request["method"], "model/list");
                 assert_eq!(request["params"]["cursor"], format!("page-{page}"));
@@ -271,11 +296,11 @@ fn idle_catalog_keeps_exact_aggregate_limits_and_ignores_one_more_model_without_
                 },
             ),
             idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
-            transport: CatalogTransport {
-                writes: Arc::clone(&writes),
-                mailbox: Arc::new(DriverMailbox::new().unwrap()),
-                shutdown_after: None,
-            },
+            transport: CatalogTransport::new(
+                &writes,
+                Arc::new(DriverMailbox::new().unwrap()),
+                None,
+            ),
             control: NoChildProcessControl {
                 zero_checks: Arc::new(AtomicUsize::new(0)),
             },

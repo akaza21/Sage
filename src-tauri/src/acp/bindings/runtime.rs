@@ -182,7 +182,12 @@ impl HarnessAdapter for NativeRuntime {
         self.0.deferred_fork_release()
     }
     fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
-        self.0.accept_oversized_response(id)
+        // An oversized command-list reply empties the list without ingest.
+        let result = self.0.accept_oversized_response(id);
+        if let Some((owner, channel)) = &self.3 {
+            channel.update(owner, self.0.available_commands());
+        }
+        result
     }
     fn skips_oversize_frames(&self) -> bool {
         self.0.skips_oversize_frames()

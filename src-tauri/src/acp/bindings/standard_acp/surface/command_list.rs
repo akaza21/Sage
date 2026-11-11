@@ -61,7 +61,7 @@ pub(crate) struct CommandMark {
 /// How the binding that advertised a command runs it. Native only: the
 /// WebView names a command and the binding looks its dispatch up in the
 /// live list, so a prompt can never choose its own route.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommandDispatch {
     /// Sent as `/name input` prompt text, which the harness parses.
     Prompt,
@@ -70,6 +70,8 @@ pub(crate) enum CommandDispatch {
     CommandTurn,
     /// Run by the binding's own method for this name (Pi's `compact`).
     Builtin,
+    /// Sent with the skill attached by its harness path (Codex skills).
+    Skill { path: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -108,6 +110,11 @@ impl AvailableCommand {
             source,
             dispatch,
         })
+    }
+
+    /// What this command counts toward a list's `MAX_COMMAND_BYTES`.
+    pub(crate) fn listed_bytes(&self) -> usize {
+        self.name.len() + self.description.len() + self.input_hint.as_ref().map_or(0, String::len)
     }
 
     /// An ACP `AvailableCommand`. ACP has no source field, so an adapter
@@ -172,9 +179,7 @@ fn admit(commands: Vec<AvailableCommand>) -> Result<Vec<AvailableCommand>, Adapt
         if !names.insert(command.name.as_str()) {
             return Err(AdapterRuntimeError::Frame);
         }
-        bytes += command.name.len()
-            + command.description.len()
-            + command.input_hint.as_ref().map_or(0, String::len);
+        bytes += command.listed_bytes();
         if bytes > MAX_COMMAND_BYTES {
             return Err(AdapterRuntimeError::BatchBytes);
         }

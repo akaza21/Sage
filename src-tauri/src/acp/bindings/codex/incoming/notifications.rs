@@ -61,11 +61,12 @@ pub(super) fn notification<M: ResourceMapper>(
                 _ => Err(IngressError::Malformed),
             }
         }
-        // Account and skill changes belong to Codex and have no Sage-owned
-        // projection. The frame is bounded before reaching this matcher and
-        // its payload is discarded, so neither can become a transcript
-        // artifact or alter a turn/session state.
-        "skills/changed" => Ok(IngressDisposition::IgnoredLate),
+        // Skills changed on disk: the `/` menu reads them again while idle.
+        // The payload is discarded and touches no Turn or session state.
+        "skills/changed" => {
+            adapter.skills_changed();
+            Ok(IngressDisposition::IgnoredLate)
+        }
         // A ChatGPT sign-in may lift an earlier refusal to report usage.
         "account/updated" => Ok(
             if params.get("authMode").and_then(Value::as_str) == Some("chatgpt") {

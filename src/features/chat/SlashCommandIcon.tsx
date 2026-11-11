@@ -6,14 +6,19 @@ import {
   ListFilter,
 } from "../../ui/leanIcons";
 
-const commandIcons = new Map([
-  ["compact", ListFilter],
-  ["review", FileDiff],
-  ["status", Info],
-  ["plan", ListChecks],
-]);
+const iconProps = { size: 14, "aria-hidden": true } as const;
 
 export function SlashCommandIcon({ name }: { name: string }) {
-  const Icon = commandIcons.get(name) ?? Command;
-  return <Icon size={14} aria-hidden="true" />;
+  switch (name) {
+    case "compact":
+      return <ListFilter {...iconProps} />;
+    case "review":
+      return <FileDiff {...iconProps} />;
+    case "status":
+      return <Info {...iconProps} />;
+    case "plan":
+      return <ListChecks {...iconProps} />;
+    default:
+      return <Command {...iconProps} />;
+  }
 }
