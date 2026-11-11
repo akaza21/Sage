@@ -1,17 +1,56 @@
 //! What a client's prompt carried, as a replay agent quotes it back.
 //!
 //! A journey frame names `$PROMPT_ECHO` where the agent's reply should show
-//! the last prompt it received (see `acp::substitute`). Each content block
+//! the last prompt it received, or `$CODEX_TURN_CONFIG` for the model and
+//! effort of the last Codex `turn/start` (see `quote`). Each content block
 //! is described by its kind; text is shown as sent, up to a bound, so a
 //! check in the real app can read exactly what reached the agent. Binary
 //! data is described by its media type and size, never shown.
 
 use serde_json::Value;
 
+use super::super::FixtureError;
+use super::WireState;
+
 /// Blocks described one by one; any more are counted.
 const SHOWN_BLOCKS: usize = 16;
 /// Text shown per block; longer text is cut and its full size named.
 const SHOWN_TEXT_BYTES: usize = 512;
+
+/// Where the state keeps something the client sent.
+type Sent = fn(&WireState) -> Option<&str>;
+
+/// Placeholders for what the client sent, and where the state keeps it.
+const QUOTES: [(&str, Sent); 2] = [
+    ("$CODEX_TURN_CONFIG", |state| {
+        state.codex_turn_config.as_deref()
+    }),
+    ("$PROMPT_ECHO", |state| state.prompt_echo.as_deref()),
+];
+
+/// `text` with each client placeholder replaced by what the client sent, in
+/// one pass, so text the client sent is never read as a placeholder. A frame
+/// that quotes something the client has not sent fails the case.
+pub(super) fn quote(text: &str, state: &WireState) -> Result<String, FixtureError> {
+    let mut quoted = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find('$') {
+        quoted.push_str(&rest[..start]);
+        rest = &rest[start..];
+        match QUOTES.iter().find(|(token, _)| rest.starts_with(token)) {
+            Some((token, sent)) => {
+                quoted.push_str(sent(state).ok_or(FixtureError::InvalidArguments)?);
+                rest = &rest[token.len()..];
+            }
+            None => {
+                quoted.push('$');
+                rest = &rest[1..];
+            }
+        }
+    }
+    quoted.push_str(rest);
+    Ok(quoted)
+}
 
 /// The echo of prompt blocks, in ACP's or the Messages API's shape.
 pub(super) fn blocks(blocks: &[Value]) -> String {
