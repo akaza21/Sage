@@ -9,9 +9,18 @@ use super::{
 };
 
 fn setup() -> rusqlite::Connection {
-    let (connection, _) = crate::acp::migration::open_or_migrate(std::path::Path::new(":memory:"))
+    setup_at(std::path::Path::new(":memory:"))
+}
+
+fn open_at(path: &std::path::Path) -> rusqlite::Connection {
+    crate::acp::migration::open_or_migrate(path)
         .unwrap()
-        .into_parts();
+        .into_parts()
+        .0
+}
+
+fn setup_at(path: &std::path::Path) -> rusqlite::Connection {
+    let connection = open_at(path);
     connection.execute_batch(
         "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-one','Project',1,1,1);
          INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES('root-one','project-one','C:/project','c:/project',0);
@@ -520,6 +529,7 @@ fn plan(connection: &rusqlite::Connection, sql: &str, values: &[&dyn rusqlite::T
 fn fact_lookups_seek_their_index() {
     const TURN: &str = "idx_session_facts_turn";
     const TERMINAL: &str = "idx_session_facts_operation_terminal";
+    const START: &str = "idx_session_facts_operation_start";
     let connection = setup();
     let owner: [&dyn rusqlite::ToSql; 4] = [&"project-one", &"chat-one", &"session-one", &"turn"];
     let cases = [
@@ -545,20 +555,73 @@ fn fact_lookups_seek_their_index() {
                 super::write::RECOVER_SQL,
                 &[&"session-one", &0_i64],
             ),
-            [("terminal", TERMINAL)].as_slice(),
+            [("start", START), ("terminal", TERMINAL)].as_slice(),
         ),
     ];
     for (plan, seeks) in cases {
         for (table, index) in seeks {
             assert!(
-                plan.lines()
-                    .any(|step| step.split_whitespace().nth(1) == Some(table)
-                        && step.contains(index)),
-                "{table} does not use {index}:\n{plan}"
+                plan.lines().any(|step| {
+                    step.split_whitespace().nth(1) == Some(table)
+                        && step.contains(index)
+                        // A terminal is sought by its `$.s` key, not filtered after.
+                        && (*index != TERMINAL || step.contains("<expr>=?"))
+                }),
+                "{table} does not seek {index}:\n{plan}"
             );
         }
         assert!(!plan.contains("SCAN"), "{plan}");
         assert!(!plan.contains("TEMP B-TREE"), "{plan}");
         assert!(!plan.contains("MATERIALIZE"), "{plan}");
     }
+}
+
+#[test]
+fn upgraded_store_recovers_only_the_operation_left_unfinished() {
+    let directory = std::env::temp_dir().join(format!(
+        "sage-browser-terminal-upgrade-{}",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("sage.db");
+    let mut finished = record(1);
+    let unfinished = record(2);
+    {
+        let mut connection = setup_at(&path);
+        for operation in [&finished, &unfinished] {
+            start(&mut connection, RuntimeEpoch::new(1).unwrap(), operation).unwrap();
+        }
+        finished.phase = "completed".into();
+        finished.result_summary = Some("Page inspected".into());
+        finished.updated_at += 1;
+        finish(&mut connection, &finished).unwrap();
+        // Return the file to schema 26, before the operation indexes, with its
+        // facts already written, so the next open has to upgrade it.
+        connection
+            .execute_batch(
+                "DROP INDEX idx_session_facts_operation_start;
+                 DROP INDEX idx_session_facts_operation_terminal;
+                 DELETE FROM schema_migrations WHERE version=27;
+                 PRAGMA user_version=26;",
+            )
+            .unwrap();
+    }
+
+    let mut connection = open_at(&path);
+    let version: u32 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, crate::acp::migration::CURRENT_SCHEMA_VERSION);
+    assert_eq!(recover_started(&mut connection, 100).unwrap(), 1);
+    assert_eq!(recover_started(&mut connection, 101).unwrap(), 0);
+    let mut unknown = unfinished;
+    unknown.phase = "outcomeUnknown".into();
+    unknown.result_summary = Some("Sage restarted before the browser result was known".into());
+    unknown.updated_at = 100;
+    assert_eq!(
+        load(&connection, &turn_row("turn-browser")).unwrap(),
+        (vec![finished, unknown], 0)
+    );
+    drop(connection);
+    std::fs::remove_dir_all(directory).unwrap();
 }

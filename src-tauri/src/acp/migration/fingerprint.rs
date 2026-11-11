@@ -72,6 +72,24 @@ pub(super) const CURRENT_SCHEMA: SchemaClass = SchemaClass::CurrentOperationTerm
 pub(crate) const CURRENT_SCHEMA_VERSION: u32 = super::operation_terminal_index::VERSION;
 
 impl SchemaClass {
+    /// Every schema from v18 on, which opens and verifies in place: the
+    /// later migrations only add to it.
+    pub(super) fn is_v18_or_later(self) -> bool {
+        matches!(
+            self,
+            Self::CurrentV18
+                | Self::CurrentV19
+                | Self::CurrentV20
+                | Self::CurrentV21
+                | Self::CurrentV22
+                | Self::CurrentV23
+                | Self::CurrentResumeLink
+                | Self::CurrentTitleSource
+                | Self::CurrentSessionFactsTurnIndex
+                | Self::CurrentOperationTerminalIndex
+        )
+    }
+
     pub(super) fn is_legacy(self) -> bool {
         matches!(
             self,
