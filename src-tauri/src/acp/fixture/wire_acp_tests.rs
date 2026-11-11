@@ -334,7 +334,12 @@ fn launch_rules_follow_what_each_case_waits_for() {
     ] {
         assert!(!native_case_lists_models(case), "{case}");
     }
-    for case in ["claude-config-resume", "codex-config-resume"] {
+    // A Claude Code fork opens its fork chat as a second launch.
+    for case in [
+        "claude-config-resume",
+        "codex-config-resume",
+        "claude-sdk-fork",
+    ] {
         assert!(native_case_spans_restart(case), "{case}");
     }
     for case in [
@@ -343,6 +348,7 @@ fn launch_rules_follow_what_each_case_waits_for() {
         "codex-turn-completed",
         "codex-steer-lost-result",
         "pi-turn-completed",
+        "claude-sdk-turn-completed",
     ] {
         assert!(!native_case_spans_restart(case), "{case}");
     }

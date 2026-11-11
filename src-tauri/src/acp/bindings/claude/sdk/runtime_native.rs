@@ -34,8 +34,7 @@ impl ClaudeSdkRuntime {
     /// A fork of this session through its latest reply, as Claude Code
     /// saved it (see `fork`).
     pub(super) fn fork_egress(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
-        let config =
-            super::super::fork::config_directory(&super::super::admission::launch_environment());
+        let config = self.binding.config_directory();
         let sdk = self
             .bridge()?
             .fork(config)

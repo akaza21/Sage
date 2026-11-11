@@ -268,3 +268,94 @@ fn only_a_waiting_follow_up_is_withdrawn() {
         .is_err()
     );
 }
+
+#[test]
+fn only_a_launch_is_named_as_relaunched() {
+    let initialize =
+        json!({"type":"control_request","request_id":"1","request":{"subtype":"initialize"}});
+    let prompt =
+        json!({"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]}});
+    let step =
+        |kind: &str, relaunch: Value| json!({"op":"awaitClient","kind":kind,"relaunch":relaunch});
+    assert!(
+        run_sdk(
+            &[step("claudeSdkInitialize", json!(true))],
+            std::slice::from_ref(&initialize)
+        )
+        .is_ok()
+    );
+    for (refused, request) in [
+        (step("claudeSdkPrompt", json!(true)), prompt),
+        (step("claudeSdkInitialize", json!(false)), initialize),
+    ] {
+        assert_eq!(
+            run_sdk(std::slice::from_ref(&refused), &[request]).err(),
+            Some(super::FixtureError::InvalidArguments),
+            "{refused}"
+        );
+    }
+}
+
+#[test]
+fn a_follow_up_is_saved_when_a_run_takes_it_up() {
+    let root = std::env::temp_dir().join(format!("sage-follow-up-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(root.join("project")).unwrap();
+    let session = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
+    let mut state = super::WireState::new();
+    state.claude_sdk = super::claude_sdk::SdkWireState::opened(
+        &["--session-id".to_owned(), session.to_owned()],
+        &root.join("config"),
+        &root.join("project"),
+    )
+    .unwrap();
+    let user = |text: &str, uuid: &str| json!({"type":"user","message":{"role":"user","content":[{"type":"text","text":text}]},"uuid":uuid});
+    let reply = |text: &str| json!({"op":"emitKnownFrame","shape":"claudeSdkNative","frame":{"type":"assistant","parent_tool_use_id":null,"session_id":"fixture-session","message":{"role":"assistant","content":[{"type":"text","text":text}]}}});
+    let wait = |kind: &str| json!({"op":"awaitClient","kind":kind});
+    let lifecycle =
+        |state: &str| json!({"op":"emitKnownFrame","shape":"claudeSdkLifecycle","state":state});
+    let steps = [
+        wait("claudeSdkPrompt"),
+        wait("claudeSdkFollowUp"),
+        lifecycle("queued"),
+        reply("First answer"),
+        lifecycle("started"),
+        reply("Follow-up answer"),
+        lifecycle("completed"),
+    ];
+    let mut input = std::io::Cursor::new(
+        lines(&[user("Question", "p-1"), user("Also this", "f-1")]).into_bytes(),
+    );
+    for step in &steps {
+        super::execute_with_io(
+            step,
+            &mut state,
+            &mut input,
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .unwrap();
+    }
+    let saved = std::fs::read_dir(root.join("config").join("projects"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path()
+        .join(format!("{session}.jsonl"));
+    let order: Vec<String> = std::fs::read_to_string(saved)
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let entry: Value = serde_json::from_str(line).unwrap();
+            entry["message"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(
+        order,
+        ["Question", "First answer", "Also this", "Follow-up answer"]
+    );
+}

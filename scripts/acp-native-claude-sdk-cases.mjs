@@ -347,6 +347,22 @@ const compactEmpty = [
   ...closing,
 ];
 
+// A chat and its fork. Each launch opens the session its flags name and
+// saves it where Claude Code would; the reply quotes what the session held
+// before the prompt. The fork chat is the second launch: Sage forks from the
+// saved transcript, and the copy carries the first chat's turn.
+const TRANSCRIPT = "Synthetic replay of a saved session.\n\n$TRANSCRIPT_ECHO";
+const fork = [
+  { ...wait("claudeSdkInitialize"), relaunch: true },
+  wait("claudeSdkSettings"),
+  wait("claudeSdkPrompt"),
+  messageStart("msg_fixture_transcript"),
+  delta("text", TRANSCRIPT),
+  assistant("msg_fixture_transcript", [{ type: "text", text: TRANSCRIPT }]),
+  result(),
+  ...closing,
+];
+
 export function claudeSdkJourneys() {
   return [
     ...Object.entries(journeys).map(([state, steps]) => ({
@@ -354,5 +370,6 @@ export function claudeSdkJourneys() {
       steps: [...opening, ...steps, ...closing],
     })),
     { id: "claude-sdk-compact-empty", steps: compactEmpty },
+    { id: "claude-sdk-fork", steps: fork },
   ];
 }
