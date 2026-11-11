@@ -125,6 +125,9 @@ pub(super) fn await_request(
             if let Some(embedded) = state.embedded_context.as_mut() {
                 embedded.receive(&request["params"]["prompt"])?;
             }
+            state.prompt_echo = request["params"]["prompt"]
+                .as_array()
+                .map(|blocks| super::prompt_echo::blocks(blocks));
             state.prompt_request_id = Some(id);
         }
         return Ok(());
@@ -358,14 +361,13 @@ pub(super) fn substitute(
     Ok(match value {
         Value::String(text) => {
             let root = std::env::current_dir().map_err(|_| FixtureError::Io)?;
-            Value::String(
-                substitute_root(&text, &root)?
-                    .replace("$SESSION", SESSION)
-                    .replace(
-                        "$TURN",
-                        state.current_turn_id.as_deref().unwrap_or("fixture-turn"),
-                    ),
-            )
+            let text = substitute_root(&text, &root)?
+                .replace("$SESSION", SESSION)
+                .replace(
+                    "$TURN",
+                    state.current_turn_id.as_deref().unwrap_or("fixture-turn"),
+                );
+            Value::String(super::prompt_echo::quote(&text, state)?)
         }
         Value::Array(values) => Value::Array(
             values
