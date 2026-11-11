@@ -22,11 +22,17 @@ export function SessionSurfacePanel({
 }) {
   const { status, run } = useSessionControl(chatId || undefined);
   const [confirming, setConfirming] = useState(false);
+  // A turn removed from the conversation cannot be removed again.
+  const [rewound, setRewound] = useState<string | null>(null);
   const decoded = decodeSessionSurface(surface);
   const activities = decoded?.activities ?? [];
-  const undoTurn = decoded?.undoTurn;
   const keepsFiles = decoded?.undoKeepsFiles === true;
-  if (!activities.length && !undoTurn) return null;
+  const offered = decoded?.undoTurn;
+  const undoTurn =
+    keepsFiles && offered === rewound && status.kind === "done"
+      ? undefined
+      : offered;
+  if (!activities.length && !offered) return null;
   return (
     <section className="acp-session-surface" aria-label="Session activity">
       {activities.length ? (
@@ -75,6 +81,7 @@ export function SessionSurfacePanel({
           onClick={() => {
             if (!confirming) return setConfirming(true);
             setConfirming(false);
+            if (keepsFiles) setRewound(undoTurn);
             void run(
               { kind: "undoTurn", turnId: undoTurn },
               keepsFiles

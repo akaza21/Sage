@@ -4,11 +4,15 @@ import { decodeSessionSurface } from "../../../services/acpSessionSurface";
 import { SessionSurfacePanel } from "./SessionSurfacePanel";
 
 const run = vi.fn();
+let status: { kind: string; message?: string } = { kind: "idle" };
 vi.mock("./useSessionControl", () => ({
-  useSessionControl: () => ({ status: { kind: "idle" }, run }),
+  useSessionControl: () => ({ status, run }),
 }));
 
-beforeEach(() => run.mockReset());
+beforeEach(() => {
+  run.mockReset();
+  status = { kind: "idle" };
+});
 afterEach(cleanup);
 
 const KEY = "0123456789abcdef01234567";
@@ -100,12 +104,13 @@ it("undoes the latest turn after a confirming click", () => {
 });
 
 it("says when undo keeps the files and only rewinds the conversation", () => {
-  render(
+  const panel = () => (
     <SessionSurfacePanel
       chatId="chat-one"
       surface={{ activities: [], undoTurn: TURN, undoKeepsFiles: true }}
-    />,
+    />
   );
+  const { rerender } = render(panel());
   const undo = screen.getByRole("button", { name: "Undo last turn" });
   expect(undo.getAttribute("title")).toMatch(/stay as they are/);
   fireEvent.click(undo);
@@ -114,6 +119,11 @@ it("says when undo keeps the files and only rewinds the conversation", () => {
     { kind: "undoTurn", turnId: TURN },
     "Last turn removed from the conversation. Files are unchanged",
   );
+  // Once removed, the turn is not offered again; the notice stays.
+  status = { kind: "done", message: "Last turn removed" };
+  rerender(panel());
+  expect(screen.queryByRole("button", { name: /Undo/ })).toBeNull();
+  expect(screen.getByRole("status").textContent).toBe("Last turn removed");
   expect(
     decodeSessionSurface({ activities: [], undoKeepsFiles: true })
       ?.undoKeepsFiles,

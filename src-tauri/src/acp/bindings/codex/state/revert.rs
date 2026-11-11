@@ -28,13 +28,16 @@ impl CodexAdapter {
             .as_ref()
             .filter(|turn| turn.client_message_id.as_str() == client_message_id)
             .filter(|turn| self.reverted_turn.as_deref() != Some(turn.id.as_str()))
+            .filter(|turn| !turn.id.as_str().starts_with(super::REJECTED_TURN))
             .map(|turn| turn.id.as_str().to_owned())
             .ok_or(AdapterError::ForeignRequest)?;
         let thread = self
             .external_thread_id
             .clone()
             .ok_or(AdapterError::SessionUnavailable)?;
-        self.reserve(OutgoingRequest::thread_revert(id, &thread, &turn)?)
+        let request = self.reserve(OutgoingRequest::thread_revert(id, &thread, &turn)?)?;
+        self.revert_target = Some(turn);
+        Ok(request)
     }
 
     pub(crate) fn revert_pending(&self) -> bool {
@@ -48,11 +51,9 @@ impl CodexAdapter {
     pub(crate) fn complete_revert(&mut self, id: u64, error: Option<&Value>) -> NativeRpcReply {
         let removed = self.take_pending(id);
         debug_assert_eq!(removed, Some(RequestKind::ThreadRevert));
+        let target = self.revert_target.take();
         let Some(error) = error else {
-            self.reverted_turn = self
-                .previous_turn
-                .as_ref()
-                .map(|turn| turn.id.as_str().to_owned());
+            self.reverted_turn = target;
             return NativeRpcReply::Controlled(None);
         };
         let mut reason = error

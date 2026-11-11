@@ -22,6 +22,9 @@ pub(in crate::acp::bindings::codex) use permissions::USER_INPUT_METHOD;
 mod provisional;
 mod rate_limits;
 mod revert;
+
+/// The id a Turn Codex refused to start is recorded under; Codex never ran it.
+const REJECTED_TURN: &str = "rejected-";
 mod session;
 mod skills;
 mod turn_end;
@@ -206,7 +209,8 @@ pub(crate) struct CodexAdapter {
     skills: skills::Skills,
     pending_fork: Option<u64>,
     forks: fork::ForkLedger,
-    /// The Codex Turn this runtime already removed from the thread.
+    /// The Codex Turn an Undo in flight removes, then the one it removed.
+    revert_target: Option<String>,
     reverted_turn: Option<String>,
 }
 
@@ -338,8 +342,10 @@ impl CodexAdapter {
         Ok(match self.turn_start_correlations.failure(id)? {
             CorrelationMatch::Pending(client) => {
                 self.active_turn_client_message_id = Some(client);
-                self.active_turn_id =
-                    Some(ExternalId::new("externalTurnId", format!("rejected-{id}"))?);
+                self.active_turn_id = Some(ExternalId::new(
+                    "externalTurnId",
+                    format!("{REJECTED_TURN}{id}"),
+                )?);
                 self.accept_active_failure().map(TurnStartFailure::Failed)?
             }
             CorrelationMatch::Active { turn_id, .. }

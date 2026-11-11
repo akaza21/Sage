@@ -11,14 +11,18 @@ fn undo(turn: &str) -> SessionControl {
     }
 }
 
+const TURN_AFTER: &str = "turn-00000000-0000-4000-8000-000000000001";
+
+fn prompt_command(turn: &str) -> AdapterCommand {
+    AdapterCommand::Prompt {
+        prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
+        client_message_id: RequiredText::new("client", turn).expect("client"),
+        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+    }
+}
+
 fn finished_turn(runtime: &mut CodexRuntime) {
-    let egress = runtime
-        .command(AdapterCommand::Prompt {
-            prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
-            client_message_id: RequiredText::new("client", TURN).expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
-        })
-        .expect("prompt");
+    let egress = runtime.command(prompt_command(TURN)).expect("prompt");
     let id = request_id(&egress);
     runtime
         .resolve_egress(egress.into_token(), EgressResolution::Written)
@@ -117,4 +121,22 @@ fn stopping_an_activity_is_not_a_codex_control() {
         activity_id: ExternalId::new("activityId", "task-1".to_owned()).unwrap(),
     };
     assert!(runtime.session_control(&stop).is_err());
+}
+
+#[test]
+fn a_turn_codex_refused_to_start_is_not_undone() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let egress = runtime.command(prompt_command(TURN)).expect("prompt");
+    let id = request_id(&egress);
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Written)
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"id":id,"error":{"code":-32600,"message":"busy"}})),
+            &Mapper,
+        )
+        .expect("refused start");
+    assert!(runtime.session_control(&undo(TURN)).is_err());
 }

@@ -76,6 +76,7 @@ impl CodexAdapter {
             skills: Default::default(),
             pending_fork: None,
             forks: super::fork::ForkLedger::default(),
+            revert_target: None,
             reverted_turn: None,
         }
     }
