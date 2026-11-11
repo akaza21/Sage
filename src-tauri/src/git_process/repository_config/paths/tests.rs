@@ -93,6 +93,41 @@ fn drive_and_unc_paths_start_where_git_starts_them() {
     }
 }
 
+/// The layout `git worktree add` writes on Windows: a `.git` file naming the
+/// worktree's git dir with a drive letter and forward slashes, and a
+/// `commondir` of `../..`. Both are walked from canonical (verbatim) bases,
+/// as admission walks them, and must come out as plain Win32 paths so the
+/// operating system resolves each `..` the way Git does.
+#[cfg(windows)]
+#[test]
+fn a_linked_worktree_written_by_git_for_windows_is_walked_to_its_common_dir() {
+    let root = Path::new(r"\\?\D:\SageWork\ui-audit");
+    for bytes in [
+        &b"gitdir: D:/Sage/.git/worktrees/ui-audit"[..],
+        b"gitdir: D:/Sage/.git/worktrees/ui-audit\n",
+        b"gitdir: D:/Sage/.git/worktrees/ui-audit\r\n",
+    ] {
+        assert_eq!(
+            written_prefixes(root, gitfile_path(bytes).unwrap()).unwrap(),
+            [
+                PathBuf::from(r"D:\Sage"),
+                PathBuf::from(r"D:\Sage\.git"),
+                PathBuf::from(r"D:\Sage\.git\worktrees"),
+                PathBuf::from(r"D:\Sage\.git\worktrees\ui-audit"),
+            ],
+            "{bytes:?}"
+        );
+    }
+    let git_dir = Path::new(r"\\?\D:\Sage\.git\worktrees\ui-audit");
+    assert_eq!(
+        written_prefixes(git_dir, commondir_path(b"../..\n").unwrap()).unwrap(),
+        [
+            PathBuf::from(r"D:\Sage\.git\worktrees\ui-audit\.."),
+            PathBuf::from(r"D:\Sage\.git\worktrees\ui-audit\..\.."),
+        ]
+    );
+}
+
 #[cfg(windows)]
 #[test]
 fn starts_git_and_win32_could_read_differently_are_refused() {

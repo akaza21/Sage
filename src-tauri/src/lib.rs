@@ -73,6 +73,8 @@ mod repository_git_base;
 mod repository_history;
 mod repository_in_progress;
 mod repository_index_status;
+#[cfg(test)]
+mod repository_linked_worktree_tests;
 mod repository_merge_commit;
 mod repository_mutation;
 mod repository_mutation_commands;

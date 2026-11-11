@@ -10,9 +10,11 @@ pub enum GitContainmentState {
 pub enum RepositoryLayout {
     /// The opened folder is below the repository's top level.
     NestedRoot,
-    /// The repository's Git data is not the opened folder's own `.git`
-    /// directory, as with a linked worktree, a `gitdir:` file or a
-    /// `commondir` pointer.
+    /// The opened folder's `.git` leads to Git data in a layout admission
+    /// does not accept: a pointer file inside a `.git` directory, Git data
+    /// that is not where the `.git` entry says, or a path Git and the
+    /// filesystem could resolve differently. Linked worktrees and separate
+    /// git dirs are admitted.
     ExternalGitDir,
 }
 
@@ -23,7 +25,7 @@ impl RepositoryLayout {
                 "This folder is inside a parent Git repository. Open the repository root to use Git."
             }
             Self::ExternalGitDir => {
-                "This folder's Git data is not its own .git directory, as in a linked worktree or submodule. Open the repository root to use Git."
+                "This folder's .git leads to Git data in a layout Sage cannot verify. Open the repository's main folder to use Git."
             }
         }
     }
