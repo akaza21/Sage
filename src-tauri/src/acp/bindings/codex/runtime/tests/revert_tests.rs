@@ -20,23 +20,27 @@ fn prompt_command(turn: &str) -> AdapterCommand {
 }
 
 fn finished_turn(runtime: &mut CodexRuntime) {
-    let egress = runtime.command(prompt_command(TURN)).expect("prompt");
+    run_turn(runtime, TURN, "turn-1");
+}
+
+fn run_turn(runtime: &mut CodexRuntime, sage: &str, codex: &str) {
+    let egress = runtime.command(prompt_command(sage)).expect("prompt");
     let id = request_id(&egress);
     runtime
         .resolve_egress(egress.into_token(), EgressResolution::Written)
         .unwrap();
     for frame_value in [
-        json!({"id":id,"result":{"turn":{"id":"turn-1"}}}),
-        json!({"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}),
+        json!({"id":id,"result":{"turn":{"id":codex}}}),
+        json!({"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":codex}}}),
     ] {
         runtime.ingest(&frame(frame_value), &Mapper).expect("turn");
     }
     // Undo waits for the Turn to finish.
-    assert!(runtime.session_control(&undo(TURN)).is_err());
+    assert!(runtime.session_control(&undo(sage)).is_err());
     runtime
         .ingest(
             &frame(json!({"method":"turn/completed","params":{
-                "threadId":"thread-1","turn":{"id":"turn-1","status":"completed","items":[]}
+                "threadId":"thread-1","turn":{"id":codex,"status":"completed","items":[]}
             }})),
             &Mapper,
         )
@@ -137,4 +141,28 @@ fn a_turn_codex_refused_to_start_is_not_undone() {
         )
         .expect("refused start");
     assert!(runtime.session_control(&undo(TURN)).is_err());
+}
+
+#[test]
+fn a_turn_sent_during_an_undo_runs_and_can_itself_be_undone() {
+    const NEXT: &str = "turn-00000000-0000-4000-8000-000000000001";
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    finished_turn(&mut runtime);
+    let (id, _) = written_undo(&mut runtime);
+    run_turn(&mut runtime, NEXT, "turn-2");
+    runtime
+        .ingest(
+            &frame(json!({"id":id,"result":{"thread":{"id":"thread-1","turns":[]}}})),
+            &Mapper,
+        )
+        .expect("reverted");
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::Controlled(None))
+    );
+    // The undo removed the first turn, not the one that ran meanwhile.
+    let egress = runtime.session_control(&undo(NEXT)).expect("undo next");
+    let request: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    assert_eq!(request["params"]["beforeTurnId"], "turn-2");
 }
