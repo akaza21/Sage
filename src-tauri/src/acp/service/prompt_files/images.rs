@@ -152,4 +152,21 @@ impl PromptImages {
             .map(|image| (image.media_type.as_str(), STANDARD.encode(&image.bytes)))
             .collect())
     }
+
+    /// Whether a harness that echoes the prompt's text and every image in
+    /// one inbound line can fit that echo in a frame: text that escapes
+    /// heavily could push it past.
+    pub(crate) fn echo_fits(&self, text: &str) -> bool {
+        if self.0.is_empty() {
+            return true;
+        }
+        let escaped = serde_json::to_string(text).map_or(usize::MAX, |text| text.len());
+        let images = self
+            .0
+            .iter()
+            .map(|image| image.bytes.len().div_ceil(3) * 4)
+            .sum::<usize>();
+        escaped.saturating_add(images + crate::acp::limits::PROMPT_FRAME_ENVELOPE_BYTES)
+            <= crate::acp::limits::LIMITS.wire.frame_bytes as usize
+    }
 }
