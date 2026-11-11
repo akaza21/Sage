@@ -62,10 +62,17 @@ pub(crate) enum NativeRpcReply {
 }
 
 impl NativeRpcIntent {
-    /// A read nothing waits on beyond its caller: it gets a short deadline,
-    /// and missing it abandons the read instead of recovering the runtime.
+    /// A read or a cosmetic change nothing waits on beyond its caller: it
+    /// gets a short deadline, and missing it abandons the request instead of
+    /// recovering the runtime.
     pub(crate) fn passive(&self) -> bool {
-        matches!(self.request, NativeRpcRequest::UsageRead)
+        matches!(
+            self.request,
+            NativeRpcRequest::UsageRead
+                | NativeRpcRequest::Control(
+                    crate::acp::session_control::SessionControl::SetTitle { .. }
+                )
+        )
     }
 
     pub(crate) fn actual_bytes(&self) -> usize {

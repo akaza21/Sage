@@ -88,9 +88,14 @@ impl PiRuntime {
                 Ok(())
             }
             EgressResolution::DeliveryUnknown => {
-                self.reservations
+                let reservation = self
+                    .reservations
                     .remove(&id)
                     .ok_or(AdapterRuntimeError::EgressIntent)?;
+                // No answer will come for it, so its caller stops waiting.
+                if self.native_pending.as_ref() == Some(&reservation.command_id) {
+                    self.native_pending = None;
+                }
                 self.staged_initialize = None;
                 self.poisoned = true;
                 Ok(())

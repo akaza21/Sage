@@ -214,3 +214,73 @@ fn native_requests_wait_for_pis_session() {
     };
     assert!(runtime.session_control(&control).is_err());
 }
+
+/// Pi as the app holds it: inside the launchable wrapper every harness has.
+struct Launched(PiRuntime);
+
+impl crate::acp::bindings::runtime::LaunchableRuntime for Launched {
+    fn launch_spec(&mut self) -> Result<crate::acp::process::LaunchSpec, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::LaunchUnavailable)
+    }
+}
+
+impl HarnessAdapter for Launched {
+    fn capabilities(&self) -> Option<crate::acp::intent::CapabilitySnapshotV1> {
+        self.0.capabilities()
+    }
+    fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.0.command(command)
+    }
+    fn ingest(
+        &mut self,
+        frame: &Frame,
+        resources: &dyn ResourceMapper,
+    ) -> Result<crate::acp::bindings::adapter::AdapterBatch, AdapterRuntimeError> {
+        self.0.ingest(frame, resources)
+    }
+    fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
+        self.0.commit_mandatory_egress(token)
+    }
+    fn resolve_egress(
+        &mut self,
+        token: EgressToken,
+        resolution: EgressResolution,
+    ) -> Result<(), AdapterRuntimeError> {
+        self.0.resolve_egress(token, resolution)
+    }
+    fn session_control(
+        &mut self,
+        control: &SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.0.session_control(control)
+    }
+}
+
+#[test]
+fn a_rename_reaches_pi_through_the_runtime_wrapper_the_app_uses() {
+    let mut pi = fixture_runtime(1);
+    ready(&mut pi);
+    let mut runtime = crate::acp::bindings::runtime::NativeRuntime::new(Launched(pi));
+    let control = SessionControl::SetTitle {
+        title: RequiredText::new("sessionTitle", "Fix the login flow").unwrap(),
+    };
+    let egress = runtime.session_control(&control).unwrap();
+    assert_eq!(request(&egress)["type"], "set_session_name");
+}
+
+#[test]
+fn a_native_request_lost_in_delivery_stops_its_caller_waiting() {
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    let read = runtime.read_usage().unwrap();
+    assert!(runtime.native_rpc_pending());
+    let token = read.into_token();
+    runtime
+        .resolve_egress(token.clone(), EgressResolution::Queued)
+        .unwrap();
+    runtime
+        .resolve_egress(token, EgressResolution::DeliveryUnknown)
+        .unwrap();
+    assert!(!runtime.native_rpc_pending());
+    assert_eq!(runtime.take_native_rpc_reply(), None);
+}

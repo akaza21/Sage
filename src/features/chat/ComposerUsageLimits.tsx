@@ -90,30 +90,24 @@ function SessionSpendRows({
   spend: SessionSpend;
   labelledBy: string;
 }) {
-  const rows: [string, string][] = [
-    ["Input", spend.inputTokens.toLocaleString()],
-    ["Output", spend.outputTokens.toLocaleString()],
-    ...(spend.cacheReadTokens > 0
-      ? [
-          ["Cache read", spend.cacheReadTokens.toLocaleString()] as [
-            string,
-            string,
-          ],
-        ]
-      : []),
-    ...(spend.cacheWriteTokens > 0
-      ? [
-          ["Cache write", spend.cacheWriteTokens.toLocaleString()] as [
-            string,
-            string,
-          ],
-        ]
-      : []),
-    ["Total tokens", spend.totalTokens.toLocaleString()],
-    ...(spend.costUsd !== null
-      ? [["Cost", costText(spend.costUsd)] as [string, string]]
-      : []),
-  ];
+  const count = (tokens: number) => tokens.toLocaleString();
+  // Cache rows show only when the harness used its cache.
+  const rows = (
+    [
+      ["Input", count(spend.inputTokens)],
+      ["Output", count(spend.outputTokens)],
+      [
+        "Cache read",
+        spend.cacheReadTokens ? count(spend.cacheReadTokens) : null,
+      ],
+      [
+        "Cache write",
+        spend.cacheWriteTokens ? count(spend.cacheWriteTokens) : null,
+      ],
+      ["Total tokens", count(spend.totalTokens)],
+      ["Cost", spend.costUsd === null ? null : costText(spend.costUsd)],
+    ] satisfies [string, string | null][]
+  ).filter((row): row is [string, string] => row[1] !== null);
   return (
     <dl className="composer-usage__session" aria-labelledby={labelledBy}>
       {rows.map(([term, value]) => (
