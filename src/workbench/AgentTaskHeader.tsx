@@ -27,7 +27,7 @@ import { AgentTaskResourcesPart } from "./agentTaskHeaderLazy";
 import { AgentToolsContext } from "./AgentToolsProvider";
 import { AgentNavigationPart } from "./agentNavigationLazy";
 
-/** Loads the resources panel chunk once the header has painted, off the first frame. */
+/** Delay after mount before preloading the resources panel, off the first frame. */
 const RESOURCES_PRELOAD_DELAY_MS = 1000;
 
 function preloadResources() {
