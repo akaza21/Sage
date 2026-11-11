@@ -51,6 +51,8 @@ where
         } else {
             self.idle_decoder.disable_recoverable_oversize();
         }
+        self.idle_decoder
+            .set_oversize_skip(self.parts.skips_oversize_frames());
         let mut frame = self
             .idle_decoder
             .push_chunk(chunk)

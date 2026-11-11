@@ -134,3 +134,26 @@ it("uses default metadata for recommendations and caps visible models", () => {
     "Showing first 200 models",
   );
 });
+
+it("shows the harness recommendation as secondary text and keeps its wire ID", () => {
+  const onSelect = vi.fn();
+  render(
+    <ChatModelPicker
+      listboxId="models"
+      models={[
+        { id: "default", name: "Default (recommended)" },
+        { id: "sonnet", name: "Sonnet 5" },
+      ]}
+      selectedId="sonnet"
+      disabled={false}
+      onSelect={onSelect}
+    />,
+  );
+  const recommended = screen.getByRole("option", { name: "Default" });
+  expect(
+    within(recommended).getByText("Recommended by the harness"),
+  ).toBeVisible();
+  expect(screen.queryByText("Other models")).not.toBeInTheDocument();
+  fireEvent.click(recommended);
+  expect(onSelect).toHaveBeenCalledExactlyOnceWith("default");
+});

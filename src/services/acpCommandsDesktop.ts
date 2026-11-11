@@ -5,13 +5,33 @@ import type {
 import { AcpDesktopError, invokeAcp } from "./acpDesktopCommand";
 import { utf8ByteLength } from "../domain/text";
 import { isRecord } from "./acpDesktopGuards";
+import { isCommandSource, type AcpCommandSource } from "../domain/acpCommand";
 import { safeAcpMutationResponse } from "./acpDesktopResponses";
+
+export type { AcpCommandSource };
+
+/** The `/` menu's section heading for each source, in section order. */
+export const commandSourceGroups = {
+  builtin: "Commands",
+  skill: "Skills",
+  prompt: "Prompts",
+  extension: "Extensions",
+  mcp: "MCP prompts",
+  plugin: "Plugins",
+  harness: "Other commands",
+} as const satisfies Record<AcpCommandSource, string>;
 
 export interface AvailableAcpCommand {
   name: string;
   description: string;
   inputHint: string | null;
+  source: AcpCommandSource;
 }
+
+// The native list's bounds.
+const MAX_COMMANDS = 512;
+const MAX_COMMAND_BYTES = 256 * 1024;
+
 export interface AcpCommandList {
   revision: number;
   commands: AvailableAcpCommand[];
@@ -33,7 +53,7 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
     !Number.isSafeInteger(value.revision) ||
     (value.revision as number) < 0 ||
     !Array.isArray(value.commands) ||
-    value.commands.length > 128
+    value.commands.length > MAX_COMMANDS
   )
     return null;
   const names = new Set<string>();
@@ -49,16 +69,18 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
       /[\s/]/u.test(c.name) ||
       names.has(c.name) ||
       !text(c.description, 1024) ||
-      (c.inputHint !== null && !text(c.inputHint, 256))
+      (c.inputHint !== null && !text(c.inputHint, 256)) ||
+      !isCommandSource(c.source)
     )
       return null;
     names.add(c.name);
     bytes += utf8ByteLength(c.name + c.description + (c.inputHint ?? ""));
-    if (bytes > 131072) return null;
+    if (bytes > MAX_COMMAND_BYTES) return null;
     commands.push({
       name: c.name,
       description: c.description,
       inputHint: c.inputHint,
+      source: c.source,
     });
   }
   return { revision: value.revision as number, commands };

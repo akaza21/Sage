@@ -75,11 +75,7 @@ async fn run_catalog_page_crossing_turn(
             },
         ),
         idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
-        transport: CatalogTransport {
-            writes: Arc::clone(&writes),
-            mailbox: Arc::clone(&mailbox),
-            shutdown_after: None,
-        },
+        transport: CatalogTransport::new(&writes, Arc::clone(&mailbox), None),
         control: NoChildProcessControl {
             zero_checks: Arc::new(AtomicUsize::new(0)),
         },
@@ -117,9 +113,11 @@ async fn run_catalog_page_crossing_turn(
         let config = serde_json::to_value(&overlay.config).unwrap();
         assert_eq!(config["confirmedModel"]["id"], "selected");
         assert_eq!(config["confirmedEffort"], "high");
+        // Once a first page is read the thread's model is offered, listed or
+        // not; a page listing it also offers its effort.
         assert_eq!(
             config["configOptions"].as_array().unwrap().len(),
-            usize::from(!cold_prompt && failure.is_some())
+            usize::from(!cold_prompt) * (1 + usize::from(failure.is_some()))
         );
     }
     let _ = channel.take_notice();
@@ -323,11 +321,13 @@ async fn run_catalog_page_crossing_turn(
         assert_eq!(request["method"], "model/list");
         assert_eq!(request["params"]["cursor"], "third");
         let overlay = channel.live_snapshot(&fixture.owner).unwrap();
-        assert_eq!(
-            overlay.config.confirmed_model.unwrap().id.as_str(),
-            "selected"
-        );
-        assert!(overlay.config.config_options.as_slice().is_empty());
+        let config = serde_json::to_value(&overlay.config).unwrap();
+        assert_eq!(config["confirmedModel"]["id"], "selected");
+        // No page has listed the thread's model yet: it is offered by its
+        // id, and no thinking level is known for it.
+        assert_eq!(config["configOptions"].as_array().map(Vec::len), Some(1));
+        assert_eq!(config["configOptions"][0]["category"], "model");
+        assert_eq!(config["configOptions"][0]["currentValue"], "selected");
         let mut bytes = serde_json::to_vec(&json!({"id":request["id"],"result":{
             "data":[{"id":"selected","displayName":"Selected","isDefault":false,
             "defaultReasoningEffort":"high","supportedReasoningEfforts":[

@@ -129,6 +129,7 @@ fn claude_slash_commands_run_through_the_command_route_with_the_live_revision() 
                 client_intent_id: ClientIntentId::new(),
                 binding_id: BindingId::new("bindingId", "claude-agent-acp").unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await

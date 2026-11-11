@@ -12,6 +12,13 @@ import type { ChatUsage } from "./acp/chatUsage";
 import type { PasteAttachability } from "./composerPasteText";
 import type { AcpUsageRequest } from "../../domain/acpUsage";
 
+/** Whose access the composer offers: the session's binding, and the chat
+ * while it has no session at all, whose access is then drafted. */
+export interface ComposerAccessTarget {
+  bindingId?: string | null;
+  draftChatId?: string;
+}
+
 export interface ChatComposerRegionProps {
   /** Kept mounted while an approval holds the slot, so the draft survives. */
   hidden?: boolean;
@@ -45,7 +52,7 @@ export interface ChatComposerRegionProps {
   signInHarness?: Pick<HarnessDefinition, "name" | "signIn"> | null;
   claudeSignInRequired?: boolean;
   claudeAuthScope?: string;
-  accessBindingId?: string | null;
+  accessTarget?: ComposerAccessTarget;
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;

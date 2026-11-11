@@ -104,6 +104,13 @@ struct ActiveTurn {
     retry_final_error: Option<String>,
     unknown_kinds: BTreeSet<String>,
     unknown_suppression_emitted: bool,
+    /// The last assistant reply's stop reason, error and usage, kept from
+    /// its `message_end` in case the run's `agent_end` is too large to read.
+    last_reply: Option<Box<Value>>,
+    /// An oversized event of this run was dropped unread.
+    dropped_frame: bool,
+    /// An assistant reply has started and not yet ended.
+    reply_open: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -175,6 +182,23 @@ pub(crate) const ANSWER_ID: &str = "answer";
 pub(crate) const BRIDGE_WRITE_METHOD: &str = "sage-write";
 
 impl PiTranslator {
+    /// Whether an answer may still arrive that could outgrow a frame: any
+    /// read, as opposed to the turn commands Pi answers in a few bytes.
+    pub(crate) fn awaits_large_response(&self) -> bool {
+        self.pending.values().any(|request| {
+            !matches!(
+                request.kind,
+                PendingKind::Prompt
+                    | PendingKind::Compact
+                    | PendingKind::Steer
+                    | PendingKind::ClearQueue
+                    | PendingKind::Abort
+                    | PendingKind::SetModel
+                    | PendingKind::SetThinkingLevel
+            )
+        })
+    }
+
     pub(crate) fn permission_waiting_for(&self, id: &str) -> bool {
         self.pending_ui
             .as_ref()

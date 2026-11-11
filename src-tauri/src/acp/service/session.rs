@@ -80,14 +80,20 @@ impl AcpService {
                     command.model_id.as_ref(),
                 )
                 .map_err(|_| CodexSessionError::Intent)?;
-        } else if command.model_id.is_some() {
+        } else if command
+            .model_id
+            .as_ref()
+            .is_some_and(|model| !admitted.accepts_launch_model(model.as_str()))
+        {
             return Err(CodexSessionError::Intent);
         }
         command.binding_digest = identity.binding_digest_hex.to_owned();
-        command.harness_version = Some(
-            SafeText::new("harnessVersion", identity.harness_version)
-                .map_err(|_| CodexSessionError::Intent)?,
-        );
+        // A user-defined agent reports no version; its session stores none,
+        // as the schema admits only a non-empty version.
+        command.harness_version = (!identity.harness_version.is_empty())
+            .then(|| SafeText::new("harnessVersion", identity.harness_version))
+            .transpose()
+            .map_err(|_| CodexSessionError::Intent)?;
         self.session_starts
             .start_session(command)
             .await
@@ -331,7 +337,7 @@ fn validate_session_identity(
     }
     if session.binding_id != binding_id
         || session.binding_digest != binding_digest
-        || session.harness_version.as_deref() != Some(harness_version)
+        || session.harness_version.as_deref().unwrap_or_default() != harness_version
     {
         return Err(CodexSessionError::Intent);
     }

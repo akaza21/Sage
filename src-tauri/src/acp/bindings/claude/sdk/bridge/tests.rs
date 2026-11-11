@@ -548,6 +548,32 @@ fn local_command_output_and_new_commands_reach_the_chat() {
 }
 
 #[test]
+fn commands_sharing_a_name_list_the_row_that_runs() {
+    let mut bridge = initialized();
+    let commands = bridge
+        .inbound(
+            json!({"type":"system","subtype":"commands_changed","commands":[
+                {"name":"review","description":"Project review","argumentHint":""},
+                {"name":"review","description":"Review a PR","argumentHint":"<pr>","builtin":true},
+                {"name":"deploy","description":"Ship it","argumentHint":""},
+                {"name":"deploy","description":"Other deploy","argumentHint":""},
+                {"name":"cost","description":"Cost","argumentHint":"","builtin":true},
+                {"name":"cost","description":"Later cost","argumentHint":"","builtin":true},
+            ]}),
+        )
+        .unwrap();
+    let listed = &updates(&commands)[0]["availableCommands"];
+    assert_eq!(
+        listed,
+        &json!([
+            {"name":"review","description":"Review a PR","input":{"hint":"<pr>"},"_meta":{"source":"builtin"}},
+            {"name":"deploy","description":"Ship it","input":null},
+            {"name":"cost","description":"Cost","input":null,"_meta":{"source":"builtin"}},
+        ])
+    );
+}
+
+#[test]
 fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
     use crate::acp::{goal::NativeRpcReply, session_control::SessionControl};
     let mut bridge = initialized();
@@ -614,4 +640,317 @@ fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
         }),
         Err(BridgeError::Unsupported)
     );
+}
+
+/// The blocks `Mentions::blocks` sends for an `@` mention: the file's text
+/// when embedded context is offered, otherwise a sized link.
+#[test]
+fn an_at_mention_reaches_claude_code_as_context_or_a_path_mention() {
+    let (uri, path) = if cfg!(windows) {
+        ("file:///C:/work/a.rs", "@C:\\work\\a.rs")
+    } else {
+        ("file:///work/a.rs", "@/work/a.rs")
+    };
+    for (block, expected) in [
+        (
+            json!({"type":"resource","resource":{"uri":uri,"text":"fn a"}}),
+            format!("<context ref=\"{uri}\">\nfn a\n</context>"),
+        ),
+        (
+            json!({"type":"resource_link","uri":uri,"name":"a.rs","size":4}),
+            path.to_owned(),
+        ),
+    ] {
+        let mut bridge = initialized();
+        let user = bridge
+            .outbound(
+                &json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"prompt":[
+                    {"type":"text","text":"see @a.rs"},
+                    block,
+                ]}}),
+            )
+            .unwrap();
+        assert_eq!(user["message"]["content"][1]["text"], expected);
+    }
+}
+
+/// Claude Code reads an `@path` it receives, so a link to a credential file
+/// Sage would not embed must not become one.
+#[test]
+fn a_mentioned_credential_file_is_named_but_not_handed_to_claude_code() {
+    let uri = if cfg!(windows) {
+        "file:///C:/work/.env"
+    } else {
+        "file:///work/.env"
+    };
+    let mut bridge = initialized();
+    let user = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"prompt":[
+                {"type":"text","text":"see @.env"},
+                {"type":"resource_link","uri":uri,"name":".env","size":9},
+            ]}}),
+        )
+        .unwrap();
+    let text = user["message"]["content"][1]["text"].as_str().unwrap();
+    assert!(!text.contains('@'), "{text}");
+    assert!(text.contains("Not attached"), "{text}");
+}
+
+fn lifecycle(uuid: &str, state: &str) -> Value {
+    json!({"type":"command_lifecycle","command_uuid":uuid,"state":state,"uuid":"e1","session_id":SESSION})
+}
+
+fn ended(inbound: &Inbound) -> bool {
+    inbound.acp.iter().any(|frame| frame["id"] == 3)
+}
+
+#[test]
+fn a_message_sent_mid_turn_is_queued_and_the_turn_ends_after_it_runs() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (user, uuid) = bridge.steer("also check the tests").unwrap();
+    assert_eq!(user["type"], "user");
+    assert_eq!(user["uuid"], uuid.as_str());
+    assert_eq!(
+        user["message"]["content"],
+        json!([{"type":"text","text":"also check the tests"}])
+    );
+    let queued = bridge.inbound(lifecycle(&uuid, "queued")).unwrap();
+    assert_eq!(queued.steers, [(uuid.clone(), true)]);
+
+    // The running reply ends before Claude Code takes the message up: the
+    // turn goes on.
+    let first = bridge.inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":1}})).unwrap();
+    assert!(!ended(&first) && first.acp.is_empty());
+    bridge.inbound(lifecycle(&uuid, "started")).unwrap();
+    let chunk = bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Checked"}}})).unwrap();
+    assert_eq!(updates(&chunk)[0]["content"]["text"], "Checked");
+    let last = bridge.inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":2}})).unwrap();
+    assert!(ended(&last));
+    assert!(last.steers.is_empty());
+    // A later lifecycle frame for it changes nothing.
+    assert!(
+        bridge
+            .inbound(lifecycle(&uuid, "completed"))
+            .unwrap()
+            .acp
+            .is_empty()
+    );
+}
+
+#[test]
+fn a_message_taken_up_at_a_tool_boundary_ends_with_the_one_result() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("stop after this").unwrap();
+    bridge.inbound(lifecycle(&uuid, "queued")).unwrap();
+    let started = bridge.inbound(lifecycle(&uuid, "started")).unwrap();
+    assert_eq!(started.steers, [(uuid.clone(), true)]);
+    bridge.inbound(lifecycle(&uuid, "completed")).unwrap();
+    let result = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(ended(&result));
+}
+
+#[test]
+fn a_held_turn_ends_when_its_waiting_message_is_dropped() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("later").unwrap();
+    let first = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(!ended(&first));
+    let dropped = bridge.inbound(lifecycle(&uuid, "cancelled")).unwrap();
+    assert_eq!(dropped.steers, [(uuid, false)]);
+    assert!(ended(&dropped));
+}
+
+#[test]
+fn stopping_withdraws_waiting_messages_before_interrupting() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, first) = bridge.steer("one").unwrap();
+    let (_, second) = bridge.steer("two").unwrap();
+    let cancel = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    assert_eq!(
+        cancel["request"],
+        json!({"subtype":"cancel_async_message","message_uuid":first})
+    );
+    assert!(
+        bridge.steer("three").is_err(),
+        "nothing joins a stopping turn"
+    );
+    let next = bridge
+        .inbound(success(&cancel, json!({"cancelled":true})))
+        .unwrap();
+    assert_eq!(next.steers, [(first, false)]);
+    assert_eq!(
+        next.replies[0]["request"],
+        json!({"subtype":"cancel_async_message","message_uuid":second})
+    );
+    // A message already running is not withdrawn; the interrupt stops it.
+    let next = bridge.inbound(json!({"type":"control_response","response":{"subtype":"error","request_id":next.replies[0]["request_id"],"error":"not queued"}})).unwrap();
+    assert_eq!(next.steers, [(second, false)]);
+    let interrupt = &next.replies[0];
+    assert_eq!(interrupt["request"]["subtype"], "interrupt");
+    bridge
+        .inbound(success(interrupt, json!({"still_queued":[]})))
+        .unwrap();
+    let result = bridge
+        .inbound(
+            json!({"type":"result","subtype":"error_during_execution","is_error":true,"usage":{}}),
+        )
+        .unwrap();
+    assert_eq!(
+        result.acp.last().unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn a_message_needs_a_running_turn_and_an_unsent_one_is_forgotten() {
+    let mut bridge = initialized();
+    assert!(bridge.steer("idle").is_err());
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("never written").unwrap();
+    bridge.undo(&Sent::Steer(uuid));
+    let result = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(ended(&result));
+}
+
+#[test]
+fn stopping_while_a_run_end_is_held_ends_the_turn_once_the_message_is_withdrawn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("later").unwrap();
+    let first = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(!ended(&first));
+    let cancel = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    let withdrawn = bridge
+        .inbound(success(&cancel, json!({"cancelled":true})))
+        .unwrap();
+    assert_eq!(withdrawn.steers, [(uuid, false)]);
+    assert!(
+        withdrawn.replies.is_empty(),
+        "Claude Code is idle; nothing to interrupt"
+    );
+    assert_eq!(
+        withdrawn.acp.last().unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn a_late_withdrawal_reply_never_interrupts_the_next_turn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    bridge.steer("later").unwrap();
+    let cancel = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    // The run ends before Claude Code answers the withdrawal: the turn
+    // waits for the answer, then ends without reaching the next one.
+    let end = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(!ended(&end));
+    let answered = bridge
+        .inbound(success(&cancel, json!({"cancelled":true})))
+        .unwrap();
+    assert!(answered.replies.is_empty());
+    assert_eq!(
+        answered.acp.last().unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+    prompt(&mut bridge, 4);
+    let next = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert_eq!(next.acp.last().unwrap()["result"]["stopReason"], "end_turn");
+}
+
+#[test]
+fn a_message_taken_up_while_its_withdrawal_is_in_flight_is_interrupted_in_its_turn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("later").unwrap();
+    let cancel = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    // The run ends and Claude Code takes the message up before reading the
+    // withdrawal.
+    let first = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(!ended(&first));
+    bridge.inbound(lifecycle(&uuid, "started")).unwrap();
+    let reply = bridge
+        .inbound(success(&cancel, json!({"cancelled":false})))
+        .unwrap();
+    assert_eq!(reply.replies[0]["request"]["subtype"], "interrupt");
+    let end = bridge
+        .inbound(
+            json!({"type":"result","subtype":"error_during_execution","is_error":true,"usage":{}}),
+        )
+        .unwrap();
+    assert_eq!(end.acp.last().unwrap()["result"]["stopReason"], "cancelled");
+}
+
+#[test]
+fn a_fork_answers_once_claude_code_replies_and_never_mid_turn() {
+    const REPLY: &str = "1c8e7d9f-4d2b-4a8f-8b62-3a7e9d2f5ca1";
+    let config = std::env::temp_dir().join(format!("sage-sdk-fork-{}", uuid::Uuid::new_v4()));
+    let project = config.join("projects").join("-w");
+    std::fs::create_dir_all(&project).unwrap();
+    let mut bridge = initialized();
+    // The turn's reply reaches the transcript before Claude Code answers.
+    let sdk = bridge.fork(Some(config.clone())).unwrap();
+    assert_eq!(sdk["request"]["subtype"], "get_settings");
+    assert!(bridge.controlling());
+    std::fs::write(
+        project.join(format!("{SESSION}.jsonl")),
+        json!({"type":"assistant","uuid":REPLY,"isSidechain":false}).to_string(),
+    )
+    .unwrap();
+    let reply = bridge.inbound(success(&sdk, json!({}))).unwrap();
+    let Some(crate::acp::goal::NativeRpcReply::Forked(id)) = reply.native else {
+        panic!("forked: {:?}", reply.native);
+    };
+    let fork = crate::acp::bindings::claude::sdk::fork::Fork::parse(id.as_str()).unwrap();
+    assert_eq!((fork.source.as_str(), fork.at.as_str()), (SESSION, REPLY));
+    // No profile, or Claude Code refusing, rejects the fork.
+    let sdk = bridge.fork(None).unwrap();
+    let reply = bridge.inbound(success(&sdk, json!({}))).unwrap();
+    assert_eq!(
+        reply.native,
+        Some(crate::acp::goal::NativeRpcReply::Rejected)
+    );
+    let sdk = bridge.fork(Some(config.clone())).unwrap();
+    let reply = bridge.inbound(json!({"type":"control_response","response":{"subtype":"error","request_id":sdk["request_id"],"error":"gone"}})).unwrap();
+    assert_eq!(
+        reply.native,
+        Some(crate::acp::goal::NativeRpcReply::Rejected)
+    );
+    prompt(&mut bridge, 3);
+    assert!(bridge.fork(None).is_err());
+    let _ = std::fs::remove_dir_all(config);
 }

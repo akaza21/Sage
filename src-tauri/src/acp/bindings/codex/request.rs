@@ -10,9 +10,10 @@ use crate::acp::{
 use super::CODEX_BROWSE_TOOL_NAME;
 use super::manifest::Platform;
 use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
-use super::turn_policy::{TurnPolicySurface, turn_policy, validate_turn_policy};
+use super::turn_policy::{TurnPolicySurface, TurnSettings, turn_policy, validate_turn_policy};
 
 mod session_action;
+mod skills;
 
 // The shared writer owns the single LF delimiter. Keeping the payload one
 // byte below the wire ceiling makes the eventual payload + LF write fit the
@@ -81,6 +82,8 @@ pub(crate) enum RequestKind {
     GoalPause,
     GoalClear,
     RateLimitsRead,
+    /// `skills/list` for the `/` menu.
+    SkillsList,
 }
 
 impl RequestKind {
@@ -127,6 +130,7 @@ impl OutgoingRequest {
             RequestKind::GoalPause => "thread/goal/set",
             RequestKind::GoalClear => "thread/goal/clear",
             RequestKind::RateLimitsRead => "account/rateLimits/read",
+            RequestKind::SkillsList => "skills/list",
         };
         let bytes = serde_json::to_vec(&json!({"id": id, "method": method, "params": params}))
             .map_err(|_| RequestError::Encoding)?;
@@ -285,7 +289,7 @@ impl OutgoingRequest {
             client_message_id,
             crate::settings_store::SessionAccessMode::ReadOnly,
             TurnPolicySurface::Unsupported,
-            None,
+            TurnSettings::default(),
         )
     }
 
@@ -296,21 +300,24 @@ impl OutgoingRequest {
         client_message_id: &RequiredText<512>,
         access_mode: crate::settings_store::SessionAccessMode,
         surface: TurnPolicySurface,
-        effort: Option<&RequiredText<512>>,
+        settings: TurnSettings<'_>,
     ) -> Result<Self, RequestError> {
         let policy = turn_policy(surface, access_mode)?;
         validate_turn_policy(surface, access_mode, policy)?;
         let mut params = json!({
             "threadId": thread_id.as_str(),
             "clientUserMessageId": client_message_id.as_str(),
-            "input": [{"type": "text", "text": prompt.as_str()}],
+            "input": [{"type": "text", "text": prompt.resources.inline(prompt.as_str())}],
             "approvalPolicy": policy.approval,
             "sandboxPolicy": {
                 "type": policy.sandbox,
                 "networkAccess": policy.network_access
             }
         });
-        if let Some(effort) = effort {
+        if let Some(model) = settings.model {
+            params["model"] = json!(model.as_str());
+        }
+        if let Some(effort) = settings.effort {
             params["effort"] = json!(effort.as_str());
         }
         Self::build(id, RequestKind::TurnStart, params)
@@ -342,7 +349,7 @@ impl OutgoingRequest {
                 "threadId": thread_id.as_str(),
                 "expectedTurnId": turn_id.as_str(),
                 "clientUserMessageId": client_message_id.as_str(),
-                "input": [{"type": "text", "text": prompt.as_str()}]
+                "input": [{"type": "text", "text": prompt.resources.inline(prompt.as_str())}]
             }),
         )
     }

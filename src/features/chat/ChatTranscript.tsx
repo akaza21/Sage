@@ -16,6 +16,7 @@ import { ArrowDown } from "../../ui/leanIcons";
 import { isSideChatId } from "../../workbench/sideChatState";
 import { ChatHome } from "./ChatHome";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
+import { ForkChatDialogHost } from "./ForkChatDialogHost";
 import {
   AcpChatProjection,
   latestRetryPrompt,
@@ -176,114 +177,116 @@ export function ChatTranscript({
     </div>
   );
   return (
-    <AnswerCopyFeedback.Provider value={announceCopy}>
-      <div
-        ref={transcriptRef}
-        className={`message-list${showHome ? " message-list--home" : ""}`}
-        onScroll={onScroll}
-      >
-        <div ref={contentRef} className="message-list__content">
-          {projectTransitioning ? (
-            <div className="composer__notice" role="status">
-              Loading the authoritative project…
-            </div>
-          ) : useNativeAcp &&
-            !page &&
-            (historyLoading || historyFailure || pageExpected) ? (
-            // A native chat never falls through to the legacy transcript
-            // while its first page is on the way.
-            historyNotice
-          ) : useNativeAcp && page ? (
-            <>
-              {forkedFrom && !hasEarlier ? (
-                <ForkPart
-                  part="ForkDivider"
-                  parentChatId={forkedFrom}
-                  forkTurnId={page.forkedFromTurnId}
+    <ForkChatDialogHost focusRoot={transcriptRef}>
+      <AnswerCopyFeedback.Provider value={announceCopy}>
+        <div
+          ref={transcriptRef}
+          className={`message-list${showHome ? " message-list--home" : ""}`}
+          onScroll={onScroll}
+        >
+          <div ref={contentRef} className="message-list__content">
+            {projectTransitioning ? (
+              <div className="composer__notice" role="status">
+                Loading the authoritative project…
+              </div>
+            ) : useNativeAcp &&
+              !page &&
+              (historyLoading || historyFailure || pageExpected) ? (
+              // A native chat never falls through to the legacy transcript
+              // while its first page is on the way.
+              historyNotice
+            ) : useNativeAcp && page ? (
+              <>
+                {forkedFrom && !hasEarlier ? (
+                  <ForkPart
+                    part="ForkDivider"
+                    parentChatId={forkedFrom}
+                    forkTurnId={page.forkedFromTurnId}
+                  />
+                ) : null}
+                {page.sessionNotices?.length || page.sessionSurface ? (
+                  <NoticePart part="SessionStrip" page={page} />
+                ) : null}
+                <AcpChatProjection
+                  page={page}
+                  editSummaryContainer={editSummaryContainer}
+                  active
+                  focused={focused}
+                  projectRoots={projectRoots}
+                  retentionIncomplete={retentionIncomplete}
+                  onOpenResource={onOpenResource}
+                  hasEarlier={hasEarlier}
+                  loadingEarlier={loadingEarlier}
+                  historyError={historyError}
+                  onLoadEarlier={onLoadEarlier}
+                  onRetry={retryAction}
+                  onReviewChanges={onReviewChanges}
+                  feedback={feedback}
+                  onFeedbackQueued={forgetCopyFeedback}
+                  emptyState={
+                    showHome ? (
+                      isSideChatId(page.chatId) ? (
+                        <TranscriptPart part="SideChatHome" />
+                      ) : (
+                        <ChatHome projectName={projectName} />
+                      )
+                    ) : !hasEarlier &&
+                      page.nextCursor === null &&
+                      !retentionIncomplete &&
+                      historyError ? (
+                      historyNotice
+                    ) : undefined
+                  }
                 />
-              ) : null}
-              {page.sessionNotices?.length || page.sessionSurface ? (
-                <NoticePart part="SessionStrip" page={page} />
-              ) : null}
-              <AcpChatProjection
-                page={page}
-                editSummaryContainer={editSummaryContainer}
-                active
-                focused={focused}
-                projectRoots={projectRoots}
-                retentionIncomplete={retentionIncomplete}
-                onOpenResource={onOpenResource}
-                hasEarlier={hasEarlier}
-                loadingEarlier={loadingEarlier}
-                historyError={historyError}
-                onLoadEarlier={onLoadEarlier}
-                onRetry={retryAction}
-                onReviewChanges={onReviewChanges}
+              </>
+            ) : (
+              <LegacyTranscriptPart
+                part="ChatLegacyTranscript"
+                messages={messages}
+                developmentSimulator={developmentSimulator}
+              />
+            )}
+            <ChatTranscriptFooter
+              key={scope}
+              useNativeAcp={useNativeAcp}
+              page={useNativeAcp ? page : null}
+              messages={messages}
+              onRetry={
+                page?.turns.at(-1)?.state !== "failed" ? retryAction : undefined
+              }
+            />
+            {focused && (!useNativeAcp || !page) ? (
+              <AcpAnnouncementRegions
+                page={null}
                 feedback={feedback}
                 onFeedbackQueued={forgetCopyFeedback}
-                emptyState={
-                  showHome ? (
-                    isSideChatId(page.chatId) ? (
-                      <TranscriptPart part="SideChatHome" />
-                    ) : (
-                      <ChatHome projectName={projectName} />
-                    )
-                  ) : !hasEarlier &&
-                    page.nextCursor === null &&
-                    !retentionIncomplete &&
-                    historyError ? (
-                    historyNotice
-                  ) : undefined
-                }
               />
-            </>
-          ) : (
-            <LegacyTranscriptPart
-              part="ChatLegacyTranscript"
-              messages={messages}
-              developmentSimulator={developmentSimulator}
-            />
-          )}
-          <ChatTranscriptFooter
-            key={scope}
-            useNativeAcp={useNativeAcp}
-            page={useNativeAcp ? page : null}
-            messages={messages}
-            onRetry={
-              page?.turns.at(-1)?.state !== "failed" ? retryAction : undefined
-            }
-          />
-          {focused && (!useNativeAcp || !page) ? (
-            <AcpAnnouncementRegions
-              page={null}
-              feedback={feedback}
-              onFeedbackQueued={forgetCopyFeedback}
+            ) : null}
+          </div>
+          <div ref={endRef} />
+          {useNativeAcp && page && !projectTransitioning ? (
+            <TranscriptInteractionsGate
+              key={page.chatId}
+              chatId={page.chatId}
+              focused={focused}
+              contentRef={contentRef}
             />
           ) : null}
         </div>
-        <div ref={endRef} />
-        {useNativeAcp && page && !projectTransitioning ? (
-          <TranscriptInteractionsGate
-            key={page.chatId}
-            chatId={page.chatId}
-            focused={focused}
-            contentRef={contentRef}
-          />
-        ) : null}
-      </div>
 
-      <button
-        className="chat-follow-end"
-        type="button"
-        hidden={!showJumpToLatest}
+        <button
+          className="chat-follow-end"
+          type="button"
+          hidden={!showJumpToLatest}
 
-        data-mode={showJumpToLatest === "activity" ? "activity" : undefined}
-        aria-label={jumpLabel}
-        title={jumpLabel}
-        onClick={onJumpToLatest}
-      >
-        <ArrowDown size={24} aria-hidden="true" />
-      </button>
-    </AnswerCopyFeedback.Provider>
+          data-mode={showJumpToLatest === "activity" ? "activity" : undefined}
+          aria-label={jumpLabel}
+          title={jumpLabel}
+          onClick={onJumpToLatest}
+        >
+          <ArrowDown size={24} aria-hidden="true" />
+        </button>
+      </AnswerCopyFeedback.Provider>
+    </ForkChatDialogHost>
   );
 }

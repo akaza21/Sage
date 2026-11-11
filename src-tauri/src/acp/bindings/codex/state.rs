@@ -22,6 +22,7 @@ pub(in crate::acp::bindings::codex) use permissions::USER_INPUT_METHOD;
 mod provisional;
 mod rate_limits;
 mod session;
+mod skills;
 mod turn_end;
 mod turn_errors;
 mod turn_prompt;
@@ -201,6 +202,7 @@ pub(crate) struct CodexAdapter {
     pending_child_read: Option<(u64, String, String)>,
     child_read_tombstone: Option<u64>,
     rate_limits_abandoned: rate_limits::AbandonedReads,
+    skills: skills::Skills,
     pending_fork: Option<u64>,
     forks: fork::ForkLedger,
 }
@@ -267,6 +269,9 @@ impl CodexAdapter {
         if kind == RequestKind::ChildRead {
             self.pending_child_read = None;
         }
+        if kind == RequestKind::SkillsList {
+            self.skills_changed();
+        }
         if kind == RequestKind::Interrupt {
             self.active_turn_user_stop = self
                 .pending
@@ -288,6 +293,11 @@ impl CodexAdapter {
         self.pending
             .iter()
             .find_map(|(pending, kind)| (*pending == id).then_some(*kind))
+    }
+
+    /// Whether a request of `kind` is still waiting for its answer.
+    pub(crate) fn awaits(&self, kind: RequestKind) -> bool {
+        self.pending.iter().any(|(_, pending)| *pending == kind)
     }
 
     pub(crate) fn ingest<M: ResourceMapper>(

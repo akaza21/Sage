@@ -47,6 +47,7 @@ impl SdkBridge {
             Some("result") => self.result(&sdk, &mut inbound),
             Some("system") => self.system(&sdk, &mut inbound),
             Some("rate_limit_event") => Self::rate_limit(&sdk, &mut inbound),
+            Some("command_lifecycle") => self.lifecycle(&sdk, &mut inbound),
             Some(_) => {}
             None => return Err(BridgeError::Frame),
         }
@@ -68,8 +69,11 @@ impl SdkBridge {
                 .get("error")
                 .and_then(Value::as_str)
                 .unwrap_or("Claude Code refused the request");
-            if matches!(pending, Pending::Control) {
-                Self::controlled(Err(message), inbound);
+            match &pending {
+                Pending::Control => Self::controlled(Err(message), inbound),
+                Pending::Fork(_) => self.forked(None, inbound),
+                Pending::Withdraw(uuid) => self.withdrawn(uuid, inbound),
+                _ => {}
             }
             if let Some(id) = pending.acp_id() {
                 inbound.acp.push(acp_error(id, INTERNAL_ERROR, message));
@@ -87,7 +91,7 @@ impl SdkBridge {
                         .push(acp_error(id, INTERNAL_ERROR, UNKNOWN_MODE));
                     return Ok(());
                 }
-                self.commands = commands(reply);
+                self.commands = super::commands::commands(reply);
                 inbound.acp.push(acp_result(
                     id,
                     json!({
@@ -140,7 +144,9 @@ impl SdkBridge {
                 ));
             }
             Pending::Interrupt => {}
+            Pending::Withdraw(uuid) => self.withdrawn(&uuid, inbound),
             Pending::Control => Self::controlled(Ok(reply), inbound),
+            Pending::Fork(config) => self.forked(config.as_deref(), inbound),
         }
         Ok(())
     }
@@ -302,10 +308,14 @@ impl SdkBridge {
     /// `result` completes the running prompt, with the context meter first.
     /// Open approvals are cancelled, and tool rows Claude Code never
     /// reported on end as failed.
-    fn result(&mut self, sdk: &Value, inbound: &mut Inbound) {
+    pub(super) fn result(&mut self, sdk: &Value, inbound: &mut Inbound) {
+        if self.prompt.is_none() || self.holds_result(sdk) {
+            return;
+        }
         let Some(id) = self.prompt.take() else {
             return;
         };
+        self.end_steers(inbound);
         for (tool, name) in std::mem::take(&mut self.tools) {
             inbound.acp.push(self.update(json!({
                 "sessionUpdate": "tool_call_update", "toolCallId": tool, "status": "failed",
@@ -361,27 +371,9 @@ impl Pending {
             | Self::Session(id)
             | Self::Mode { id, .. }
             | Self::Option { id, .. } => Some(id),
-            Self::Interrupt | Self::Control => None,
+            Self::Interrupt | Self::Withdraw(_) | Self::Control | Self::Fork(_) => None,
         }
     }
-}
-
-/// Claude Code's commands as ACP `availableCommands`.
-pub(super) fn commands(reply: &Value) -> Value {
-    reply
-        .get("commands")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|command| {
-            let hint = command.get("argumentHint").and_then(Value::as_str).filter(|hint| !hint.is_empty());
-            Some(json!({
-                "name": command.get("name")?.as_str()?,
-                "description": command.get("description").and_then(Value::as_str).unwrap_or_default(),
-                "input": hint.map(|hint| json!({"hint": hint})),
-            }))
-        })
-        .collect()
 }
 
 fn context_window(sdk: &Value) -> Option<u64> {

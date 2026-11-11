@@ -65,14 +65,11 @@
   margin-left: 36px;
   padding: var(--space-2);
   gap: 0;
-  border-radius: var(--radius-xl);
-  background: var(--color-panel-raised);
 }
 .agent-header-more__menu .menu-item {
   min-height: 28px;
   gap: var(--space-3);
   padding: var(--space-1) var(--space-3);
-  color: var(--color-text-primary);
 }
 .agent-header-more__project {
   display: flex;

@@ -138,13 +138,7 @@ async fn release_until(
         })
     };
     loop {
-        let outcome = if tokio::runtime::Handle::try_current().is_ok_and(|handle| {
-            handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread
-        }) {
-            tokio::task::block_in_place(attempt)
-        } else {
-            attempt()
-        };
+        let outcome = crate::blocking::in_place(attempt);
         match outcome {
             Err(ChatRuntimeRelease::LaneBusy) if Instant::now() + LANE_BUSY_RETRY < deadline => {
                 tokio::time::sleep(LANE_BUSY_RETRY).await;
@@ -232,11 +226,14 @@ pub(crate) async fn delete_chat_inner(
         move |database| database.delete_archived_chat(&request),
     )
     .await;
-    if result.committed
-        && let Err(error) = state.settings.mark_chat_unread(&chat_id)
-    {
-        // Startup drops marks whose Chat no longer exists.
-        tracing::warn!(?error, "deleted Chat's read mark remains");
+    if result.committed {
+        if let Err(error) = state.settings.mark_chat_unread(&chat_id) {
+            // Startup drops marks whose Chat no longer exists.
+            tracing::warn!(?error, "deleted Chat's read mark remains");
+        }
+        // The delete removed the Chat's sessions; their access choices go
+        // with them. A failure is logged there, and startup retries it.
+        crate::settings_store::forget_removed_chat_access(&state.database, &state.settings);
     }
     result
 }

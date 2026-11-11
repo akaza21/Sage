@@ -28,14 +28,35 @@
       },
       {
         "entry": "src/features/chat/ComposerSlashController.tsx",
-        "maxGzipBytes": 3700,
-        "maxCssGzipBytes": 720,
-        "reason": "Composer `/` controller, command menu, listbox and hint. Loads on the field's first focus, keeping the first-Chat path to a stub. Measured 3529 B JS, 670 B CSS."
+        "maxGzipBytes": 1800,
+        "maxCssGzipBytes": 340,
+        "reason": "Composer `/` controller: key guard, picked-command hint and the menu's lazy mount. Loads on the field's first focus, keeping the first-Chat path to a stub. Measured 1680 B JS, 289 B CSS."
+      },
+      {
+        "entry": "src/features/chat/ComposerSlashMenu.tsx",
+        "maxGzipBytes": 1888,
+        "reason": "Composer `/` command menu: the command list in sections by source and the command port; the shared listbox has its own entry. Loads with the first `/` typed. Measured 1764 B JS."
       },
       {
         "entry": "src/workbench/AgentTaskResources.tsx",
         "maxGzipBytes": 879,
         "reason": "Agent header resources panel and inline rename form; prewarmed while idle or on header intent, mounted on first use and unmounted while closed. Measured 824 B; cap 907 B."
+      },
+      {
+        "entry": "src/features/chat/ComposerMentionController.tsx",
+        "maxGzipBytes": 2650,
+        "reason": "Composer `@` file picker: controller, menu and its path-index queries; the shared listbox has its own entry. Loads with the draft's first `@`. Measured 2457 B JS."
+      },
+      {
+        "entry": "src/ui/TextFieldSuggestions.tsx",
+        "maxGzipBytes": 988,
+        "maxCssGzipBytes": 620,
+        "reason": "Suggestion listbox shared by the composer `/` and `@` menus, with its sections and styles; loads with either controller. Measured 923 B JS, 579 B CSS."
+      },
+      {
+        "entry": "src/features/chat/ComposerAttach.tsx",
+        "maxGzipBytes": 828,
+        "reason": "Composer attach flow: the attach button's files/images menu and its refusals; the staged batch belongs to the paste part. Loads with the first press. Measured 774 B."
       },
       {
         "entry": "src/features/harness/HarnessSignInStatus.tsx",

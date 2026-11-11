@@ -19,7 +19,6 @@ export function useSessionAccessSelection(
   const effective = sessionAccessModeAvailability(mode, candidates).effective;
   return {
     ready,
-    error,
     setMode,
     candidates,
     effective,

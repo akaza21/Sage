@@ -8,7 +8,7 @@ import {
   X,
 } from "../ui/leanIcons";
 
-import { useLayoutEffect, useRef, type WheelEvent } from "react";
+import { useRef, type WheelEvent } from "react";
 
 import type { TabKind } from "../domain/workbench";
 import { orderedTabs } from "../app/tabState";
@@ -23,6 +23,7 @@ import {
   useGitDecorationsUi,
 } from "../features/git/gitDecorationsGate";
 import type { ResourceRef } from "../domain/workbench";
+import { useResourceTabStrip } from "./useResourceTabStrip";
 
 function BrowserTabPresence({
   tabId,
@@ -119,23 +120,21 @@ export function TabStrip({
     : orderedTabs(tabs);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Keep the active tab in view when it changes or tabs open and close.
-  useLayoutEffect(() => {
-    const strip = scrollRef.current;
-    const active = strip?.querySelector(".tab--active");
-    if (!strip || !active) return;
-    const bounds = strip.getBoundingClientRect();
-    const tab = active.getBoundingClientRect();
-    if (tab.left < bounds.left) strip.scrollLeft -= bounds.left - tab.left;
-    else if (tab.right > bounds.right)
-      strip.scrollLeft += tab.right - bounds.right;
-  }, [activeTabId, visibleTabs.length]);
+  // Selecting a tab opens its resource, so arrowing past a tab only moves
+  // focus; Enter or Space selects it.
+  const onTabKeyDown = useResourceTabStrip(scrollRef, {
+    activation: "manual",
+    revealKey: activeTabId,
+  });
 
   return (
     <nav className="tab-strip" aria-label={label}>
       <div
         className="tab-strip__scroll"
         ref={scrollRef}
+        role="tablist"
+        aria-label="Tabs"
+        onKeyDown={onTabKeyDown}
         onWheel={scrollTabsWithWheel}
       >
         {visibleTabs.map((tab) => {

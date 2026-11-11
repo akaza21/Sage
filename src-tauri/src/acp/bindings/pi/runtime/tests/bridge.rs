@@ -132,7 +132,7 @@ fn pi_bridge_journey_asked_allowed_and_single_use_write_emits_saved_pair() {
     assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
 }
 #[test]
-fn pi_bridge_journey_read_only_and_shell_are_denied_without_side_effects() {
+fn pi_bridge_journey_read_only_denies_edits_and_commands_without_side_effects() {
     for (mode, tool, args, refusal) in [
         (
             SessionAccessMode::ReadOnly,
@@ -141,10 +141,10 @@ fn pi_bridge_journey_read_only_and_shell_are_denied_without_side_effects() {
             Refusal::ReadOnly,
         ),
         (
-            SessionAccessMode::WorkspaceWrite,
+            SessionAccessMode::ReadOnly,
             "bash",
             json!({"command":"touch a.txt"}),
-            Refusal::Shell,
+            Refusal::ReadOnly,
         ),
     ] {
         let mut j = Journey::new(mode);
@@ -353,4 +353,47 @@ fn pi_bridge_approval_recorded_before_expiry_still_commits() {
         std::fs::read_to_string(j.root.join("a.txt")).unwrap(),
         "agent"
     );
+}
+#[test]
+fn pi_bridge_journey_shell_command_asks_and_its_approval_frees_the_slot() {
+    let mut j = Journey::new(SessionAccessMode::WorkspaceWrite);
+    let batch = j.prepare("bash", json!({"command":"cargo test"}));
+    let [AdapterEvent::PermissionRequest { payload, .. }] = batch.events() else {
+        panic!("a command did not ask: {:?}", batch.events());
+    };
+    let NormalizedPayload::PermissionRequest {
+        category, summary, ..
+    } = payload
+    else {
+        panic!("not a permission payload");
+    };
+    assert_eq!(*category, crate::acp::intent::ToolCategory::Execute);
+    assert!(
+        summary.as_str().ends_with("\ncargo test"),
+        "{}",
+        summary.as_str()
+    );
+    j.allow();
+    // Pi runs the approved command itself; nothing is left to commit.
+    assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
+    let commit = j.dialog("commit-1", "sage.pi.commit.v1", "tool-1");
+    assert_eq!(
+        request(&commit.egress()[0])["value"],
+        Refusal::NotApproved.message()
+    );
+    let replay = j.prepare_as(
+        "tool-1",
+        "prepare-2",
+        "bash",
+        json!({"command":"cargo test"}),
+    );
+    assert_eq!(
+        request(&replay.egress()[0])["value"],
+        Refusal::Replayed.message()
+    );
+    let next = j.prepare_as("tool-2", "prepare-3", "bash", json!({"command":"ls"}));
+    assert!(matches!(
+        next.events(),
+        [AdapterEvent::PermissionRequest { .. }]
+    ));
 }

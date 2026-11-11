@@ -5,6 +5,8 @@ use serde::Deserialize;
 use std::{io::Read, path::Path};
 
 pub(crate) const MAX_BYTES: usize = 262_144;
+/// The longest shell command the bridge shows on an approval card.
+pub(crate) const MAX_COMMAND_BYTES: usize = 16_384;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct Request {
@@ -22,10 +24,75 @@ pub(crate) struct Edit {
     pub created: bool,
 }
 
-pub(crate) fn prepare(workspace: &Workspace, request: Request) -> Result<Edit, Refusal> {
+/// A shell command Pi runs itself once the user approves it. Sage holds no
+/// shell authority: approval is the only thing it grants.
+pub(crate) struct Shell {
+    pub tool_id: String,
+    /// The card's text: the command on one line with credentials redacted.
+    pub shown: String,
+}
+
+/// What one approval request asks the user to allow.
+pub(crate) enum Prepared {
+    Edit(Edit),
+    Shell(Shell),
+}
+
+impl Prepared {
+    pub(crate) fn tool_id(&self) -> &str {
+        match self {
+            Self::Edit(edit) => &edit.tool_id,
+            Self::Shell(shell) => &shell.tool_id,
+        }
+    }
+}
+
+pub(crate) fn prepare(workspace: &Workspace, request: Request) -> Result<Prepared, Refusal> {
     if request.version != 1 || request.tool_call_id.is_empty() || request.tool_call_id.len() > 500 {
         return Err(Refusal::Unsupported);
     }
+    if request.tool == "bash" {
+        return shell(request).map(Prepared::Shell);
+    }
+    prepare_edit(workspace, request).map(Prepared::Edit)
+}
+
+/// Pi's bash takes a command and an optional timeout in seconds.
+fn shell(request: Request) -> Result<Shell, Refusal> {
+    let args = request.args.as_object().ok_or(Refusal::Unsupported)?;
+    if args.keys().any(|key| key != "command" && key != "timeout")
+        || args
+            .get("timeout")
+            .is_some_and(|timeout| !timeout.as_f64().is_some_and(|t| t > 0.0))
+    {
+        return Err(Refusal::Unsupported);
+    }
+    let command = args
+        .get("command")
+        .and_then(serde_json::Value::as_str)
+        .filter(|command| !command.trim().is_empty())
+        .ok_or(Refusal::Unsupported)?;
+    if command.len() > MAX_COMMAND_BYTES {
+        return Err(Refusal::TooLarge);
+    }
+    // The card must show what runs: no invisible or reordering characters,
+    // and no blank lines that push the rest of a command out of view.
+    if command
+        .chars()
+        .any(crate::acp::bindings::command_summary::is_hidden_format)
+        || command.lines().any(|line| line.trim().is_empty())
+    {
+        return Err(Refusal::Undisplayable);
+    }
+    let shown = crate::acp::bindings::command_summary::sanitize_command_summary(command)
+        .map_err(|_| Refusal::Undisplayable)?;
+    Ok(Shell {
+        tool_id: request.tool_call_id,
+        shown: shown.as_str().to_owned(),
+    })
+}
+
+fn prepare_edit(workspace: &Workspace, request: Request) -> Result<Edit, Refusal> {
     let args = request.args.as_object().ok_or(Refusal::Unsupported)?;
     let text = |key| {
         args.get(key)
@@ -35,7 +102,6 @@ pub(crate) fn prepare(workspace: &Workspace, request: Request) -> Result<Edit, R
     let replaces = match (request.tool.as_str(), args.len()) {
         ("write", 2) => false,
         ("edit", 3) => true,
-        ("bash", _) => return Err(Refusal::Shell),
         _ => return Err(Refusal::Unsupported),
     };
     let relative = super::path::admit_requested(workspace, text("path")?)?;

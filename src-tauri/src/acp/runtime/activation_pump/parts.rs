@@ -107,6 +107,18 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
         );
     }
 
+    /// Before the first turn the model catalog is read once, but the
+    /// command list is read again whenever the harness reports a change.
+    pub(crate) fn write_discovered_commands(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+    ) {
+        crate::acp::runtime::adapter_pump::session_config::write_discovered_commands(
+            &mut self.adapter,
+            transport,
+        );
+    }
+
     /// Best-effort read-only hydration after the activation handoff. A Goal
     /// read failure never changes the durable Session or Turn outcome.
     pub(crate) fn hydrate_goal(
@@ -201,6 +213,9 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     }
     pub(crate) fn child_read_pending(&self) -> bool {
         self.adapter.child_read_pending()
+    }
+    pub(crate) fn skips_oversize_frames(&self) -> bool {
+        self.adapter.skips_oversize_frames()
     }
     pub(crate) fn write_session_config(
         &mut self,

@@ -99,9 +99,14 @@ impl AcpService {
         };
     }
 
-    pub(super) fn fit_goal_to_page_budget(&self, page: &mut AcpChatPage) -> Result<(), StoreError> {
+    pub(super) fn fit_goal_to_page_budget(
+        &self,
+        page: &mut AcpChatPage,
+        size: &PageBytes,
+    ) -> Result<(), StoreError> {
         fit_goal_to_page_budget(
             page,
+            size,
             crate::acp::limits::LIMITS.durable.history_page_bytes as usize,
         )
     }
@@ -126,19 +131,18 @@ fn goal_reply(
     }
 }
 
-fn fit_goal_to_page_budget(page: &mut AcpChatPage, limit: usize) -> Result<(), StoreError> {
-    let bytes = |page: &AcpChatPage| {
-        serde_json::to_vec(page)
-            .map(|value| value.len())
-            .map_err(|_| StoreError::Corrupt("goal page serialization"))
-    };
-    if bytes(page)? <= limit {
+fn fit_goal_to_page_budget(
+    page: &mut AcpChatPage,
+    size: &PageBytes,
+    limit: usize,
+) -> Result<(), StoreError> {
+    if size.of(page)? <= limit {
         return Ok(());
     }
     // Goal is ephemeral decoration; the bounded durable transcript must remain
     // loadable even when its page leaves no room for a large native Goal.
     page.goal = GoalState::Unavailable;
-    if bytes(page)? <= limit {
+    if size.of(page)? <= limit {
         Ok(())
     } else {
         Err(StoreError::Capacity {
@@ -203,7 +207,8 @@ mod tests {
         let near_bound = serde_json::to_vec(&page).unwrap().len() + 1;
         page.goal = full_goal;
         assert!(serde_json::to_vec(&page).unwrap().len() > near_bound);
-        fit_goal_to_page_budget(&mut page, near_bound).unwrap();
+        let size = PageBytes::measure(&page).unwrap();
+        fit_goal_to_page_budget(&mut page, &size, near_bound).unwrap();
         assert!(matches!(page.goal, GoalState::Unavailable));
         assert_eq!(page.turns, existing_turns);
         assert!(serde_json::to_vec(&page).unwrap().len() <= near_bound);

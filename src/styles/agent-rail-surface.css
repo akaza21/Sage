@@ -317,11 +317,7 @@
 
 .agent-rail-options__menu.menu-popover {
   width: 200px;
-  padding: var(--space-1);
   gap: 0;
-  border-color: var(--color-panel-raised-hover);
-  border-radius: var(--radius-lg);
-  background: var(--color-panel-raised);
 }
 
 .agent-rail-options__submenu.menu-popover {

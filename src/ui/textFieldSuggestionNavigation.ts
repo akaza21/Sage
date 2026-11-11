@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { isImeComposing } from "./imeComposition";
 
 /** Rows rendered at once; the rest are counted and reached by typing more. */
@@ -7,11 +7,17 @@ export const TEXT_FIELD_SUGGESTIONS_MAX_RENDERED = 50;
 export interface TextFieldSuggestion {
   id: string;
   label: string;
+  icon?: ReactNode;
   description?: string;
   /** Muted trailing text, such as an argument hint. */
   hint?: string;
   /** The whole row as a screen reader should hear it. */
   accessibleLabel: string;
+  /**
+   * The heading of the section the row belongs to. Rows of one section are
+   * contiguous; a list whose rows share one section shows no heading.
+   */
+  group?: string;
 }
 
 export type TextFieldSuggestionsState =

@@ -92,7 +92,7 @@ export function pasteAttachmentRefusal({
 
 /** What the composer says about input it held back without its text. */
 export function heldInputMessage(
-  held: Exclude<HeldInput, { kind: "paste" }>,
+  held: Exclude<HeldInput, { kind: "paste" | "pick" }>,
   refusal: string | null,
 ): string {
   switch (held.kind) {

@@ -71,12 +71,23 @@ const CODEMIRROR_LANGUAGE_DYNAMIC_FACADES = {
 } as const;
 
 const COMPOSER_MENU_DYNAMIC_FACADES = [
+  // The `@` file picker loads with the draft's first `@`.
+  "src/features/chat/ComposerMentionController.tsx",
+  // The attach flow and its file chips load with the first attach press.
+  "src/features/chat/ComposerAttach.tsx",
   "src/features/chat/ComposerAccessMenu.tsx",
   "src/features/chat/ComposerAddActions.tsx",
   "src/features/chat/ComposerEffortMenu.tsx",
   "src/features/chat/ComposerModelMenu.tsx",
-  // The `/` command controller and menu load with the field's first focus.
+  // The Thinking level a new chat chooses before its first session loads
+  // only when the selected model lists levels.
+  "src/features/chat/DraftEffortControl.tsx",
+  // The `/` command controller loads with the field's first focus, its
+  // menu with the first `/` typed.
   "src/features/chat/ComposerSlashController.tsx",
+  "src/features/chat/ComposerSlashMenu.tsx",
+  // The suggestion listbox both menus share loads with either controller.
+  "src/ui/TextFieldSuggestions.tsx",
 ];
 const COMMAND_DYNAMIC_FACADES = [
   // The typed command route loads with the first `/name` sent.

@@ -290,14 +290,23 @@ impl HarnessCatalog {
         definitions
     }
 
+    /// The models a harness offers before a session; for Claude Code this
+    /// may start a bounded probe of the installed CLI, so call it off the
+    /// main thread.
     pub fn models(&self, harness_id: &str) -> AppResult<Vec<ModelOption>> {
-        self.models_for(harness_id, SIMULATOR_IN_CATALOG)
+        self.models_for(harness_id, SIMULATOR_IN_CATALOG, true)
+    }
+
+    /// The models already known for a harness, without starting a probe.
+    pub fn known_models(&self, harness_id: &str) -> AppResult<Vec<ModelOption>> {
+        self.models_for(harness_id, SIMULATOR_IN_CATALOG, false)
     }
 
     fn models_for(
         &self,
         harness_id: &str,
         simulator_in_catalog: bool,
+        probe: bool,
     ) -> AppResult<Vec<ModelOption>> {
         if harness_id == SIMULATOR_ID && simulator_in_catalog {
             return Ok(vec![
@@ -309,6 +318,7 @@ impl HarnessCatalog {
                     ),
                     is_default: Some(true),
                     context_window: None,
+                    effort_levels: None,
                 },
                 ModelOption {
                     id: SIMULATOR_DEEP_MODEL_ID.into(),
@@ -316,6 +326,7 @@ impl HarnessCatalog {
                     description: Some("A second option for testing model changes.".into()),
                     is_default: Some(false),
                     context_window: None,
+                    effort_levels: None,
                 },
             ]);
         }
@@ -326,6 +337,20 @@ impl HarnessCatalog {
             .find(|definition| definition.id == harness_id)
             .ok_or_else(|| AppError::UnknownHarness(harness_id.into()))?;
 
+        // Claude Code is asked for its models before any session runs, so
+        // the picker offers what the installed build lists.
+        if definition.install_state == "available"
+            && definition.binding_id.as_deref()
+                == Some(crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID)
+            && let Some(binding) = self.registry.claude_sdk_admission().admitted()
+        {
+            let models = if probe {
+                crate::acp::bindings::claude::sdk::probed_models(&binding)
+            } else {
+                crate::acp::bindings::claude::sdk::known_models(&binding)
+            };
+            return Ok(models.unwrap_or_default());
+        }
         if definition.install_state != "available" || definition.transport == HarnessTransport::Acp
         {
             return Ok(Vec::new());
@@ -615,6 +640,7 @@ mod tests {
             description: None,
             is_default: None,
             context_window: Some(272_000),
+            effort_levels: None,
         };
         assert_eq!(
             serde_json::to_value(known).unwrap()["contextWindow"],
@@ -998,7 +1024,7 @@ mod tests {
                 .all(|definition| definition.id != SIMULATOR_ID)
         );
         assert!(matches!(
-            catalog.models_for(SIMULATOR_ID, false),
+            catalog.models_for(SIMULATOR_ID, false, true),
             Err(AppError::UnknownHarness(_))
         ));
         assert_ne!(

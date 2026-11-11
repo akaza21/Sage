@@ -10,6 +10,7 @@ mod characterization_observation;
 pub(crate) mod command_output;
 pub mod contract;
 pub(crate) mod declared_test;
+pub(crate) mod encoded_len;
 pub(crate) mod file_diff;
 #[cfg(any(test, feature = "acp-fixture"))]
 pub mod fixture;
@@ -25,6 +26,7 @@ pub(crate) mod package_manifest;
 pub(crate) mod page_admission;
 pub(crate) mod process;
 pub mod projection;
+pub(crate) mod prompt_mentions;
 pub(crate) mod recovery;
 pub(crate) mod redaction;
 pub(crate) mod resource_mapper;

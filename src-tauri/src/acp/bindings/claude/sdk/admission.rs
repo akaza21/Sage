@@ -25,17 +25,19 @@ use crate::{
 };
 
 pub(crate) const CLAUDE_SDK_BINDING_ID: &str = "claude-code-sdk";
-/// The Claude Code release whose SDK protocol this binding was characterised on.
+/// The Claude Code release the recorded fixtures replay.
+#[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
 pub(crate) const CLAUDE_CODE_VERSION: &str = "2.1.319";
-/// The oldest 2.1 release with every control request Sage sends; a new
-/// minor line may change the protocol, so it waits for its own admission.
+/// The oldest release with every control request Sage sends. Later releases
+/// of the same major version are admitted; a new major version may change
+/// the protocol, so it waits for its own admission.
 const SUPPORTED_MINIMUM: (u64, u64, u64) = (2, 1, 300);
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:claude-code-sdk:v1:";
 
 /// Fixed SDK-mode arguments; the session arguments follow them. The mode is
 /// forced to `default` so a settings file cannot start Claude Code in a
 /// mode the picker does not show (bypass would skip every approval).
-const SDK_ARGS: [&str; 12] = [
+pub(super) const SDK_ARGS: [&str; 12] = [
     "--output-format",
     "stream-json",
     "--input-format",
@@ -112,17 +114,28 @@ pub(crate) struct SessionLaunch {
 }
 
 impl SessionLaunch {
-    fn args(&self) -> Vec<OsString> {
+    /// `config` is Claude Code's profile, where a fork's copy is looked for.
+    fn args(&self, config: Option<&std::path::Path>) -> Vec<OsString> {
         let mut args: Vec<OsString> = SDK_ARGS.map(OsString::from).into();
-        args.push(
-            if self.resume {
-                "--resume"
-            } else {
-                "--session-id"
+        let fork = self
+            .resume
+            .then(|| super::fork::Fork::parse(&self.session_id))
+            .flatten();
+        match (fork, config) {
+            (Some(fork), Some(config)) => args.extend(fork.launch_args(config)),
+            (Some(fork), None) => args.extend(["--resume".into(), fork.session.into()]),
+            (None, _) => {
+                args.push(
+                    if self.resume {
+                        "--resume"
+                    } else {
+                        "--session-id"
+                    }
+                    .into(),
+                );
+                args.push(self.session_id.clone().into());
             }
-            .into(),
-        );
-        args.push(self.session_id.clone().into());
+        }
         // `default` is the picker's name for Claude Code's own choice.
         if let Some(model) = self.model.as_ref().filter(|model| *model != "default") {
             args.extend(["--model".into(), model.into()]);
@@ -131,20 +144,29 @@ impl SessionLaunch {
     }
 }
 
+fn parse_version(value: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = value.split('.').map(str::parse::<u64>);
+    let version = (
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+    );
+    parts.next().is_none().then_some(version)
+}
+
 fn version_admitted(version: &str) -> bool {
-    let parse = |value: &str| -> Option<(u64, u64, u64)> {
-        let mut parts = value.split('.').map(str::parse::<u64>);
-        let version = (
-            parts.next()?.ok()?,
-            parts.next()?.ok()?,
-            parts.next()?.ok()?,
-        );
-        parts.next().is_none().then_some(version)
-    };
-    parse(version).is_some_and(|found| {
-        found >= SUPPORTED_MINIMUM
-            && (found.0, found.1) == (SUPPORTED_MINIMUM.0, SUPPORTED_MINIMUM.1)
-    })
+    parse_version(version)
+        .is_some_and(|found| found >= SUPPORTED_MINIMUM && found.0 == SUPPORTED_MINIMUM.0)
+}
+
+/// The 2.1 line keeps the SDK protocol this binding covers, so every admitted
+/// 2.1 release is characterised. A later minor release of the same major
+/// version is admitted and runs, but may add what the binding has not seen,
+/// so it stays uncharacterised and the chat says so.
+fn version_characterised(version: &str) -> bool {
+    version_admitted(version)
+        && parse_version(version)
+            .is_some_and(|found| (found.0, found.1) == (SUPPORTED_MINIMUM.0, SUPPORTED_MINIMUM.1))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -158,8 +180,16 @@ impl AdmittedClaudeSdkBinding {
             .clone()
             .filter(|version| version_admitted(version))
             .ok_or(ClaudeSdkAdmissionUnavailable::VersionUnsupported)?;
-        let executable = std::fs::canonicalize(&installed.executable)
-            .map_err(|_| ClaudeSdkAdmissionUnavailable::Unreadable)?;
+        let executable = crate::harness_discovery::claude_sdk_executable(&installed.executable)
+            .ok_or(ClaudeSdkAdmissionUnavailable::Unreadable)?;
+        // A native launcher can be repointed after the version probe.
+        // Its target names the version, so refuse a mismatched observation.
+        #[cfg(unix)]
+        if executable.file_name() != installed.executable.file_name()
+            && executable.file_name().and_then(std::ffi::OsStr::to_str) != Some(version.as_str())
+        {
+            return Err(ClaudeSdkAdmissionUnavailable::VersionUnsupported);
+        }
         let sha256_hex = crate::harness_discovery::cached_sha256_file(&executable)
             .ok_or(ClaudeSdkAdmissionUnavailable::Unreadable)?;
         let mut sha256 = [0_u8; 32];
@@ -206,6 +236,14 @@ impl AdmittedClaudeSdkBinding {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn for_test_with_digest(digest: [u8; 32]) -> Self {
+        Self {
+            binding_digest: digest,
+            ..Self::for_test()
+        }
+    }
+
     pub(crate) fn binding_digest(&self) -> [u8; 32] {
         self.binding_digest
     }
@@ -215,11 +253,20 @@ impl AdmittedClaudeSdkBinding {
     pub(crate) fn artifact_digest(&self) -> &str {
         &self.sha256_hex
     }
+    /// The CLI a model probe may start: none for a replay fixture, whose
+    /// artifact is not the CLI.
+    pub(super) fn probe_executable(&self) -> Option<&std::path::Path> {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if self.fixture.is_some() {
+            return None;
+        }
+        Some(&self.executable)
+    }
     pub(crate) fn harness_version(&self) -> &str {
         &self.version
     }
     pub(crate) fn characterisation(&self) -> HarnessCharacterisation {
-        if self.version == CLAUDE_CODE_VERSION {
+        if version_characterised(&self.version) {
             HarnessCharacterisation::Characterised
         } else {
             HarnessCharacterisation::Uncharacterised
@@ -264,6 +311,7 @@ impl AdmittedClaudeSdkBinding {
         // Claude Code checkpoints the files each turn changes, so a turn
         // can be undone.
         let mut environment = launch_environment();
+        let config = super::fork::config_directory(&environment);
         environment.push((
             "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING".into(),
             "true".into(),
@@ -272,7 +320,7 @@ impl AdmittedClaudeSdkBinding {
             binding_id: identity,
             runtime_epoch: epoch,
             artifact: artifact.map_err(unavailable)?,
-            fixed_args: BoundedOsArgs::new(session.args()).map_err(unavailable)?,
+            fixed_args: BoundedOsArgs::new(session.args(config.as_deref())).map_err(unavailable)?,
             environment: BoundedEnvironment::new(environment).map_err(unavailable)?,
             project_root: root,
             required_guarantee: if cfg!(windows) {
@@ -412,7 +460,8 @@ mod tests {
         for (version, admitted) in [
             ("2.1.319", true),
             ("2.1.300", true),
-            ("2.2.0", false),
+            ("2.1.400", true),
+            ("2.2.0", true),
             ("2.1.299", false),
             ("3.0.0", false),
             ("2.1", false),
@@ -423,13 +472,28 @@ mod tests {
     }
 
     #[test]
+    fn the_whole_2_1_line_is_characterised_and_a_later_minor_is_not() {
+        for (version, characterised) in [
+            ("2.1.300", true),
+            ("2.1.314", true),
+            ("2.1.319", true),
+            ("2.1.1000", true),
+            ("2.1.299", false),
+            ("2.2.0", false),
+            ("3.0.0", false),
+        ] {
+            assert_eq!(version_characterised(version), characterised, "{version}");
+        }
+    }
+
+    #[test]
     fn new_sessions_take_sages_id_and_resumes_name_theirs() {
         let mut launch = SessionLaunch {
             session_id: "s-1".into(),
             resume: false,
             model: Some("opus".into()),
         };
-        let args = launch.args();
+        let args = launch.args(None);
         let tail: Vec<_> = args[SDK_ARGS.len()..]
             .iter()
             .map(|a| a.to_str().unwrap())
@@ -437,11 +501,46 @@ mod tests {
         assert_eq!(tail, ["--session-id", "s-1", "--model", "opus"]);
         launch.resume = true;
         launch.model = None;
-        let args = launch.args();
+        let args = launch.args(None);
         assert_eq!(
             args[SDK_ARGS.len()..],
             [OsString::from("--resume"), "s-1".into()]
         );
+    }
+
+    #[test]
+    fn a_fork_launches_from_its_source_until_without_a_profile_it_resumes_itself() {
+        let session = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
+        let source = "1c8e7d9f-4d2b-4a8f-8b62-3a7e9d2f5ca1";
+        let at = "2d9f8e0a-5e3c-4b9a-9c73-4b8fae306db2";
+        let launch = SessionLaunch {
+            session_id: format!("{session}~{source}~{at}"),
+            resume: true,
+            model: None,
+        };
+        let empty = std::env::temp_dir().join(format!("sage-empty-profile-{session}"));
+        std::fs::create_dir_all(empty.join("projects")).unwrap();
+        assert_eq!(
+            launch.args(Some(&empty))[SDK_ARGS.len()..],
+            [
+                "--resume",
+                source,
+                "--resume-session-at",
+                at,
+                "--fork-session",
+                "--session-id",
+                session
+            ]
+            .map(OsString::from)
+        );
+        let _ = std::fs::remove_dir_all(&empty);
+        // A profile Sage cannot read, or none, resumes the copy.
+        for config in [Some(empty.as_path()), None] {
+            assert_eq!(
+                launch.args(config)[SDK_ARGS.len()..],
+                ["--resume", session].map(OsString::from)
+            );
+        }
     }
 
     #[test]

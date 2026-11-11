@@ -318,3 +318,90 @@ fn names(commands: &[crate::acp::slash_commands::AvailableCommand]) -> Vec<&str>
         .map(|command| command.name.as_str())
         .collect()
 }
+
+#[test]
+fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
+    use crate::acp::slash_commands::CommandSource;
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    let query = runtime.discover_commands().unwrap().unwrap();
+    let query = deliver(&mut runtime, query);
+    runtime
+        .ingest(
+            &response(
+                &query,
+                json!({"commands":[
+                    {"name":"review","description":"Review","source":"extension"},
+                    {"name":"fix","description":"Fix it","source":"prompt","location":"project"},
+                    {"name":"skill:lint","description":"Lint","source":"skill","path":"/s/SKILL.md"},
+                ]}),
+            ),
+            &Mapper,
+        )
+        .unwrap();
+    let listed = runtime.available_commands().snapshot();
+    let sources: Vec<_> = listed
+        .commands
+        .iter()
+        .map(|c| (c.name.as_str(), c.source))
+        .collect();
+    assert_eq!(
+        sources,
+        [
+            ("review", CommandSource::Extension),
+            ("fix", CommandSource::Prompt),
+            ("skill:lint", CommandSource::Skill),
+            ("compact", CommandSource::Builtin),
+        ]
+    );
+    // A prompt template is model work: Pi's acknowledgment does not end it.
+    let mut prompt = Prompt::new("prompt", "/fix the parser").unwrap();
+    prompt.command_revision = Some(listed.revision);
+    let send = runtime
+        .command(AdapterCommand::Prompt {
+            prompt,
+            client_message_id: RequiredText::new("client", "template").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .unwrap();
+    let send = deliver(&mut runtime, send);
+    assert_eq!(send["type"], "prompt");
+    assert_eq!(send["message"], "/fix the parser");
+    let ack = runtime
+        .ingest(&response(&send, Value::Null), &Mapper)
+        .unwrap();
+    assert!(
+        !ack.events()
+            .iter()
+            .any(|e| matches!(e, AdapterEvent::Turn { state, .. } if state.is_terminal()))
+    );
+}
+
+#[test]
+fn a_full_pi_catalog_that_lists_compact_keeps_it_as_the_builtin() {
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    let query = runtime.discover_commands().unwrap().unwrap();
+    let query = deliver(&mut runtime, query);
+    let mut advertised: Vec<_> = (0..crate::acp::slash_commands::MAX_COMMANDS - 1)
+        .map(|i| json!({"name":format!("t{i}"),"source":"prompt"}))
+        .collect();
+    advertised.insert(3, json!({"name":"compact","source":"prompt"}));
+    runtime
+        .ingest(
+            &response(&query, json!({ "commands": advertised })),
+            &Mapper,
+        )
+        .unwrap();
+    let listed = runtime.available_commands().snapshot().commands;
+    assert_eq!(listed.len(), crate::acp::slash_commands::MAX_COMMANDS);
+    assert_eq!(listed[3].name, "t3");
+    let compact = listed.last().unwrap();
+    assert_eq!(
+        (compact.name.as_str(), compact.source),
+        (
+            "compact",
+            crate::acp::slash_commands::CommandSource::Builtin
+        )
+    );
+}

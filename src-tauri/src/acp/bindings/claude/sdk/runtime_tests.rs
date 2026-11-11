@@ -52,6 +52,7 @@ fn runtime() -> ClaudeSdkRuntime {
         children: Default::default(),
         native: None,
         sent: Vec::new(),
+        steering: Default::default(),
         launch: None,
         binding: Arc::new(AdmittedClaudeSdkBinding::for_test()),
         root: None,
@@ -94,8 +95,12 @@ fn ready() -> ClaudeSdkRuntime {
         &initialize,
         json!({"commands":[{"name":"review","description":"Review changes"}],"current_permission_mode":"default","models":[{"value":"default","displayName":"Default"}]}),
     );
-    assert!(matches!(events[..], [AdapterEvent::Initialized { .. }]));
+    let [AdapterEvent::Initialized { capabilities: told }] = &events[..] else {
+        panic!("initialized: {events:?}");
+    };
     let capabilities = runtime.capabilities().unwrap();
+    // The activation pump refuses a session whose two answers differ.
+    assert_eq!(told, &capabilities);
     assert!(capabilities.resume_session && capabilities.prompt_resources);
     let session = send(
         &mut runtime,
@@ -219,6 +224,61 @@ fn a_tool_approval_round_trips_to_claude_code() {
         sdk["response"],
         json!({"subtype":"success","request_id":"cli-1","response":{"behavior":"allow","updatedInput":{"command":"cargo test"}}})
     );
+}
+
+#[test]
+fn approving_a_plan_leaves_plan_mode_for_the_mode_the_user_picked() {
+    use crate::acp::runtime::permissions::PermissionDecision;
+    for (decision, mode) in [
+        (PermissionDecision::AllowOnce, "default"),
+        (PermissionDecision::AllowAlways, "acceptEdits"),
+        (PermissionDecision::Deny, "plan"),
+    ] {
+        let mut runtime = ready();
+        send(
+            &mut runtime,
+            AdapterCommand::Prompt {
+                prompt: Prompt::new("prompt", "Plan the fix").unwrap(),
+                client_message_id: RequiredText::new("client", "client-1").unwrap(),
+                access_mode: crate::settings_store::SessionAccessMode::Ask,
+            },
+        );
+        let input = json!({"plan":"1. Fix the bug"});
+        feed(
+            &mut runtime,
+            json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[
+            {"type":"tool_use","id":"p1","name":"ExitPlanMode","input":input}]}}),
+        );
+        let events = feed(
+            &mut runtime,
+            json!({"type":"control_request","request_id":"cli-p","request":{
+            "subtype":"can_use_tool","tool_name":"ExitPlanMode","tool_use_id":"p1","input":input}}),
+        );
+        let request_id = events
+            .iter()
+            .find_map(|event| match event {
+                AdapterEvent::PermissionRequest {
+                    external_request_id,
+                    ..
+                } => Some(external_request_id.clone()),
+                _ => None,
+            })
+            .expect("plan card");
+        let egress = runtime
+            .command(AdapterCommand::ResolvePermission {
+                request_id: SageServerRequestId::parse(request_id.as_str()).unwrap(),
+                decision,
+            })
+            .unwrap();
+        let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+        let expected = if mode == "plan" {
+            json!({"behavior":"deny","message":"The user chose to keep planning.","interrupt":true})
+        } else {
+            json!({"behavior":"allow","updatedInput":input,
+                "updatedPermissions":[{"type":"setMode","mode":mode,"destination":"session"}]})
+        };
+        assert_eq!(sdk["response"]["response"], expected);
+    }
 }
 
 #[test]
@@ -616,4 +676,186 @@ fn a_subagent_fills_its_own_transcript_under_a_collaboration_row() {
         json!({"type":"assistant","parent_tool_use_id":"toolu_task","message":{"id":"s2","content":[{"type":"text","text":"late"}]}}),
     );
     assert!(matches!(late[..], [AdapterEvent::Absorbed]), "{late:?}");
+}
+
+#[test]
+fn a_prompt_larger_than_an_ordinary_frame_is_sent_as_a_prompt_frame() {
+    let ordinary = crate::acp::limits::LIMITS.wire.frame_bytes as usize;
+    let user = json!({"type":"user","message":{"content":"x".repeat(ordinary)}});
+    assert!(sdk_frame(&user).is_ok());
+    let control = json!({"type":"control_request","request":{"note":"x".repeat(ordinary)}});
+    assert!(sdk_frame(&control).is_err());
+}
+
+fn steer(runtime: &mut ClaudeSdkRuntime, text: &str) -> (Value, u64) {
+    let egress = runtime
+        .command(AdapterCommand::Steer {
+            prompt: Prompt::new("prompt", text).unwrap(),
+            client_message_id: RequiredText::new("client", "client-2").unwrap(),
+        })
+        .unwrap();
+    let request_id = egress.token().request_id().unwrap();
+    let sdk = serde_json::from_slice(egress.frame().payload()).unwrap();
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Written)
+        .unwrap();
+    (sdk, request_id)
+}
+
+fn turn_ended(events: &[AdapterEvent]) -> bool {
+    events.iter().any(
+        |event| matches!(event, AdapterEvent::Turn { state, .. } if *state != TurnState::Running),
+    )
+}
+
+#[test]
+fn a_message_sent_while_claude_works_is_accepted_and_keeps_the_turn_open() {
+    let mut runtime = prompted();
+    assert!(runtime.capabilities().unwrap().active_turn_steer);
+    let (user, request_id) = steer(&mut runtime, "Only the first page");
+    assert_eq!(user["message"]["content"][0]["text"], "Only the first page");
+    let uuid = user["uuid"].as_str().unwrap().to_owned();
+    let queued = feed(
+        &mut runtime,
+        json!({"type":"command_lifecycle","command_uuid":uuid,"state":"queued","uuid":"e1"}),
+    );
+    assert!(matches!(
+        queued[..],
+        [AdapterEvent::SteerResponse { request_id: id, accepted: true }] if id == request_id
+    ));
+    let first = feed(
+        &mut runtime,
+        json!({"type":"result","subtype":"success","is_error":false,"usage":{}}),
+    );
+    assert!(!turn_ended(&first), "the waiting message runs in this turn");
+    let started = feed(
+        &mut runtime,
+        json!({"type":"command_lifecycle","command_uuid":uuid,"state":"started","uuid":"e2"}),
+    );
+    assert!(
+        !started
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::SteerResponse { .. })),
+        "accepted once"
+    );
+    let last = feed(
+        &mut runtime,
+        json!({"type":"result","subtype":"success","is_error":false,"usage":{}}),
+    );
+    assert!(matches!(
+        last.last(),
+        Some(AdapterEvent::Turn {
+            state: TurnState::Completed,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn a_message_never_written_is_forgotten_and_one_after_the_turn_is_refused() {
+    let mut runtime = prompted();
+    let egress = runtime
+        .command(AdapterCommand::Steer {
+            prompt: Prompt::new("prompt", "lost").unwrap(),
+            client_message_id: RequiredText::new("client", "client-2").unwrap(),
+        })
+        .unwrap();
+    let request_id = egress.token().request_id().unwrap();
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::QueueRejected)
+        .unwrap();
+    let end = feed(
+        &mut runtime,
+        json!({"type":"result","subtype":"success","is_error":false,"usage":{}}),
+    );
+    assert!(end.iter().any(|event| matches!(
+        event,
+        AdapterEvent::SteerResponse { request_id: id, accepted: false } if *id == request_id
+    )));
+    assert!(turn_ended(&end));
+    assert!(matches!(
+        runtime.command(AdapterCommand::Steer {
+            prompt: Prompt::new("prompt", "late").unwrap(),
+            client_message_id: RequiredText::new("client", "client-3").unwrap(),
+        }),
+        Err(AdapterRuntimeError::Operation)
+    ));
+}
+
+#[test]
+fn compact_runs_as_claude_codes_own_command_and_ends_its_turn() {
+    let mut runtime = ready();
+    assert!(runtime.capabilities().unwrap().native_session_compact);
+    let mut prompt = Prompt::new("sessionAction", "/compact").unwrap();
+    prompt.action = Some(crate::acp::session_action::SessionAction::Compact {});
+    let user = send(
+        &mut runtime,
+        AdapterCommand::Prompt {
+            prompt,
+            client_message_id: RequiredText::new("client", "client-1").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::Ask,
+        },
+    );
+    assert_eq!(user["message"]["content"][0]["text"], "/compact");
+    let mut events = Vec::new();
+    // As Claude Code 2.1.322 reports a compaction.
+    for sdk in [
+        json!({"type":"system","subtype":"status","status":"compacting"}),
+        json!({"type":"system","subtype":"status","status":null}),
+        json!({"type":"system","subtype":"init","session_id":"x"}),
+        json!({"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"manual","pre_tokens":900}}),
+        json!({"type":"user","parent_tool_use_id":null,"isReplay":false,"message":{"role":"user","content":"This session is being continued from a previous conversation. Summary: secret plans"}}),
+        json!({"type":"user","parent_tool_use_id":null,"isReplay":true,"message":{"role":"user","content":"<local-command-stdout>Compacted </local-command-stdout>"}}),
+        json!({"type":"result","subtype":"success","is_error":false,"result":"","num_turns":0,"usage":{}}),
+    ] {
+        events.extend(feed(&mut runtime, sdk));
+    }
+    assert!(
+        !format!("{events:?}").contains("secret plans"),
+        "the summary stays Claude Code's own"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::Session { .. }))
+    );
+    assert!(matches!(
+        events.last(),
+        Some(AdapterEvent::Turn {
+            state: TurnState::Completed,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn a_session_forks_through_claude_code_and_holds_nothing_to_release() {
+    let mut runtime = ready();
+    let capabilities = runtime.capabilities().unwrap();
+    assert!(capabilities.native_session_fork);
+    let egress = runtime.fork_session().unwrap();
+    let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Written)
+        .unwrap();
+    assert!(runtime.native_rpc_pending());
+    reply(&mut runtime, &sdk, json!({}));
+    // This session was never saved by a real Claude Code, so there is no
+    // reply to fork at.
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(crate::acp::goal::NativeRpcReply::Rejected)
+    );
+    let fork = crate::acp::intent::ExternalId::new("externalSessionId", "f").unwrap();
+    assert!(matches!(runtime.release_fork(&fork, true), Ok(None)));
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(crate::acp::goal::NativeRpcReply::Released)
+    );
+    // Mid-turn, the release is answered at once too.
+    assert!(runtime.defer_fork_release(&fork, true));
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(crate::acp::goal::NativeRpcReply::Released)
+    );
 }

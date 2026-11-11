@@ -1,9 +1,11 @@
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::acp::{
     bindings::{
         adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError},
-        standard_acp::surface::command_list::MAX_COMMANDS,
+        standard_acp::surface::command_list::{
+            AvailableCommand, CommandDispatch, CommandSource, MAX_COMMANDS, wire_text,
+        },
     },
     intent::Prompt,
 };
@@ -15,22 +17,47 @@ use crate::acp::bindings::pi::Operation;
 /// Pi's CLI, they take the place of a template or skill of the same name.
 const COMPACT: &str = "compact";
 
-/// Pi's commands with its built-ins added, so they list like any other.
-fn with_builtins(value: Value) -> Value {
-    let Value::Array(mut commands) = value else {
-        return value;
+/// One entry of Pi's `get_commands`. Its `source` says what the command
+/// is; only extension commands run as command turns.
+fn command(value: &Value) -> Result<AvailableCommand, AdapterRuntimeError> {
+    let source = CommandSource::from_wire(value["source"].as_str());
+    let dispatch = match source {
+        CommandSource::Extension => CommandDispatch::CommandTurn,
+        _ => CommandDispatch::Prompt,
     };
-    commands.retain(|command| command["name"] != COMPACT);
-    // A full catalog keeps its size, giving its last entry's place to compact.
-    if commands.len() == MAX_COMMANDS {
-        commands.pop();
-    }
-    commands.push(json!({
-        "name": COMPACT,
-        "description": "Summarize the conversation so far to free up context",
-        "input": {"hint": "what the summary should focus on"},
-    }));
-    Value::Array(commands)
+    let description = match value.get("description") {
+        None => "",
+        Some(description) => wire_text(description)?,
+    };
+    AvailableCommand::new(
+        wire_text(&value["name"])?,
+        description,
+        None,
+        source,
+        dispatch,
+    )
+}
+
+/// Pi's commands with its built-ins added, so they list like any other. A
+/// catalog larger than Sage's list keeps its first commands, giving the last
+/// place to compact.
+fn with_builtins(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
+    let mut commands = value
+        .as_array()
+        .ok_or(AdapterRuntimeError::Frame)?
+        .iter()
+        .filter(|value| value["name"] != COMPACT)
+        .take(MAX_COMMANDS - 1)
+        .map(command)
+        .collect::<Result<Vec<_>, _>>()?;
+    commands.push(AvailableCommand::new(
+        COMPACT,
+        "Summarize the conversation so far to free up context",
+        Some("what the summary should focus on"),
+        CommandSource::Builtin,
+        CommandDispatch::Builtin,
+    )?);
+    Ok(commands)
 }
 
 impl PiRuntime {
@@ -39,7 +66,7 @@ impl PiRuntime {
         value: Value,
     ) -> Result<AdapterEvent, AdapterRuntimeError> {
         self.commands_pending = false;
-        self.commands.replace(&with_builtins(value), true)?;
+        self.commands.replace(with_builtins(&value))?;
         Ok(AdapterEvent::Absorbed)
     }
 
@@ -50,29 +77,26 @@ impl PiRuntime {
         prompt: &Prompt,
         turn_key: &str,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        let command = prompt
-            .command_revision
-            .and_then(|_| prompt.as_str().strip_prefix('/'))
-            .and_then(|text| {
-                let name = text.split_whitespace().next()?;
-                let listed = self.commands.snapshot().commands;
-                let listed = listed.iter().find(|command| command.name == name)?;
-                let rest = text.trim_start().strip_prefix(name)?.trim();
-                Some((name == COMPACT, listed.extension, rest))
-            });
+        let listed = self.commands.snapshot();
+        let command = prompt.command_revision.and_then(|revision| {
+            let text = prompt.as_str();
+            let listed = listed.find(revision, text)?;
+            let rest = text[1..].trim_start().strip_prefix(&listed.name)?.trim();
+            Some((listed.dispatch.clone(), listed.name.as_str(), rest))
+        });
         let turn_key = turn_key.to_owned();
         let operation = match command {
-            Some((true, _, instructions)) => Operation::Compact {
+            Some((CommandDispatch::Builtin, COMPACT, instructions)) => Operation::Compact {
                 turn_key,
                 instructions: (!instructions.is_empty()).then(|| instructions.to_owned()),
             },
             _ => Operation::Prompt {
                 turn_key,
-                message: prompt.as_str().to_owned(),
+                message: prompt.resources.inline(prompt.as_str()),
             },
         };
         let egress = self.begin_one(operation, RequestKind::Prompt)?;
-        if matches!(command, Some((false, true, _))) {
+        if matches!(command, Some((CommandDispatch::CommandTurn, ..))) {
             self.translator.mark_command_turn().map_err(super::map_pi)?;
         }
         Ok(egress)

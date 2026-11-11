@@ -245,6 +245,8 @@ export interface RunAcpSessionActionRequest extends AcpSessionMutationIntent {
 export interface StartAcpSessionRequest extends AcpMutationIntent {
   bindingId: CuratedBindingId;
   modelId: CuratedModelId | null;
+  /** A thinking level chosen before the session existed. */
+  effort?: string;
 }
 
 interface AcpTurnContent {

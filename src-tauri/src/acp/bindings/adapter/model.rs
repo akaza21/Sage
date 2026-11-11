@@ -89,6 +89,11 @@ pub(crate) trait HarnessAdapter {
         Ok(None)
     }
     fn finish_model_config_hydration(&mut self) {}
+    /// The session is still reading what it offers, so config options it
+    /// does not report yet may follow.
+    fn config_hydrating(&self) -> bool {
+        false
+    }
     fn provisional_turn_pending(&self) -> bool {
         false
     }
@@ -163,6 +168,8 @@ pub(crate) trait HarnessAdapter {
     fn skips_oversize_frames(&self) -> bool {
         false
     }
+    /// An oversized frame without a request id was read past and dropped.
+    fn oversize_frame_skipped(&mut self) {}
     /// The frame for a session control; harnesses without one refuse it.
     fn session_control(
         &mut self,

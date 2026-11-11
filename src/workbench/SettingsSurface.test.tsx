@@ -83,6 +83,20 @@ describe("SettingsSurface", () => {
     expect(screen.queryByRole("heading", { name: "Browser" })).toBeNull();
   });
 
+  it("moves between pages with the arrows without opening Browser", () => {
+    render(<SettingsSurface />);
+    const tabs = screen.getAllByRole("tab");
+    const browser = screen.getByRole("tab", { name: "Browser" });
+    const before = tabs[tabs.indexOf(browser) - 1];
+    expect(tabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1);
+    before.focus();
+    fireEvent.keyDown(before, { key: "ArrowRight" });
+    expect(browser).toHaveFocus();
+    expect(useAgentSettingsState.getState().page).not.toBe("Browser");
+    fireEvent.keyDown(browser, { key: "Home" });
+    expect(tabs[0]).toHaveFocus();
+  });
+
   it("shows the real chord for each shortcut on the Keyboard page", () => {
     render(<SettingsSurface />);
     fireEvent.click(screen.getByRole("tab", { name: "Keyboard" }));

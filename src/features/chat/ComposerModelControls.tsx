@@ -19,8 +19,10 @@ import {
 import { type ComposerModelChoice } from "./ChatModelPicker";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { ComposerEffortControl } from "./ComposerEffortControl";
+import type { DraftEffort } from "./DraftEffortControl";
 
 const ModelMenu = lazy(() => import("./ComposerModelMenu"));
+const DraftEffortControl = lazy(() => import("./DraftEffortControl"));
 
 export function ComposerModelControls({
   triggerRef,
@@ -38,6 +40,7 @@ export function ComposerModelControls({
   effortLabel,
   contextWindow,
   effortOption,
+  draftEffort,
   restored,
   notice,
   awaitingSession = false,
@@ -65,6 +68,8 @@ export function ComposerModelControls({
   effortLabel: string | null;
   contextWindow: string | null;
   effortOption: AcpConfigOption | undefined;
+  /** Levels to choose before the chat's first session, when listed. */
+  draftEffort?: DraftEffort;
   /** The note on values that are the chat's stored choices, not yet
    * reapplied to the session. */
   restored?: string;
@@ -93,7 +98,8 @@ export function ComposerModelControls({
     (modelId: string) => latestSelect.current(modelId),
     [],
   );
-  const hasEffortControl = !!selectedConfigChoice(effortOption);
+  const hasEffortControl =
+    !!selectedConfigChoice(effortOption) || (!effortOption && !!draftEffort);
   const modelDescription =
     modelLabel === "Model"
       ? undefined
@@ -172,6 +178,23 @@ export function ComposerModelControls({
             pending={pending}
             onSetOption={onSetOption}
           />
+        ) : draftEffort && !effortOption ? (
+          <Suspense fallback={null}>
+            <DraftEffortControl
+              draft={draftEffort}
+              triggerVisible={!effortSuspended}
+              anchorRef={effortAnchorRef}
+              fallbackRef={triggerRef}
+              modelLabel={modelLabel}
+              open={effortOpen}
+              onToggle={onToggleEffort}
+              onDismiss={onDismiss}
+              onOpenModel={onToggle}
+              modelAvailable={available}
+              disabled={effortDisabled}
+              pending={pending}
+            />
+          </Suspense>
         ) : awaitingSession ? (
           <button
             type="button"
