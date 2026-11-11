@@ -1,6 +1,6 @@
 use super::*;
 use crate::acp::{
-    contract::SafeText,
+    contract::{RequiredText, SafeText},
     goal::{NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
     runtime::HostError,
     scheduler::RuntimeOwner,
@@ -54,5 +54,61 @@ impl AcpService {
             Err(HostError::Intent | HostError::State) => Err(SessionControlError::Unavailable),
             Err(_) => Err(SessionControlError::RecoveryRequired),
         }
+    }
+}
+
+impl AcpService {
+    /// Names the chat's running harness session after the chat's title as
+    /// Sage now keeps it, so the harness lists it by that name too. Reading
+    /// the kept title rather than carrying one makes overlapping renames
+    /// settle on the latest. Best effort: a chat with no running session, or
+    /// a harness that names no sessions, keeps its title in Sage alone, and
+    /// a name the harness did not confirm in time leaves the session as is.
+    pub(crate) fn retitle_live_session(&self, project_id: &str, chat_id: &str) {
+        let Some(owner) = self.lanes().find_map(|lane| {
+            lane.runtime.owner().filter(|owner| {
+                owner.project_id.as_str() == project_id && owner.chat_id.as_str() == chat_id
+            })
+        }) else {
+            return;
+        };
+        let Some(title) = self.kept_chat_title(project_id, chat_id) else {
+            return;
+        };
+        let Ok(host) = self.host_for(&owner) else {
+            return;
+        };
+        let result = host.native_rpc(NativeRpcIntent {
+            owner: owner.clone(),
+            request: NativeRpcRequest::Control(SessionControl::SetTitle { title }),
+        });
+        // Only a session whose stream may be broken needs recovery.
+        if matches!(
+            result,
+            Err(HostError::DeliveryUnknown | HostError::RecoveryRequired)
+        ) {
+            self.retain_config_effect_recovery(owner, host);
+        }
+    }
+
+    fn kept_chat_title(
+        &self,
+        project_id: &str,
+        chat_id: &str,
+    ) -> Option<RequiredText<{ crate::acp::intent::session_event::SESSION_TITLE_BYTES }>> {
+        let stored: String = self
+            .database
+            .connection()
+            .query_row(
+                "SELECT title FROM chats WHERE project_id=?1 AND id=?2",
+                rusqlite::params![project_id, chat_id],
+                |row| row.get(0),
+            )
+            .ok()?;
+        RequiredText::new(
+            "sessionTitle",
+            crate::chat_lifecycle::chat_display_title(&stored),
+        )
+        .ok()
     }
 }

@@ -1,7 +1,14 @@
-import { useEffect, useState, type CSSProperties, type RefObject } from "react";
+import {
+  useEffect,
+  useId,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from "react";
 import type {
   AcpUsageRequest,
   AcpUsageState,
+  SessionSpend,
   UsageWindow,
 } from "../../domain/acpUsage";
 import { errorMessage } from "../../domain/errors";
@@ -10,9 +17,9 @@ import { MenuPopover } from "../../ui/MenuPopover";
 import "./composer-usage-limits.css";
 
 const NOTICE: Record<Exclude<AcpUsageState["kind"], "usage">, string> = {
-  unsupported: "This account does not report usage limits.",
-  offline: "Usage limits are available while this chat's session is running.",
-  unavailable: "The harness has not reported usage limits yet.",
+  unsupported: "This account does not report usage.",
+  offline: "Usage is available while this chat's session is running.",
+  unavailable: "The harness has not reported usage yet.",
 };
 
 function windowSpan(minutes: number | null): string | null {
@@ -66,6 +73,59 @@ function UsageBar({ window }: { window: UsageWindow }) {
   );
 }
 
+function costText(usd: number): string {
+  // Sub-dollar sessions keep their cents' fractions, as harnesses price them.
+  return usd.toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: usd < 1 ? 4 : 2,
+  });
+}
+
+function SessionSpendRows({
+  spend,
+  labelledBy,
+}: {
+  spend: SessionSpend;
+  labelledBy: string;
+}) {
+  const rows: [string, string][] = [
+    ["Input", spend.inputTokens.toLocaleString()],
+    ["Output", spend.outputTokens.toLocaleString()],
+    ...(spend.cacheReadTokens > 0
+      ? [
+          ["Cache read", spend.cacheReadTokens.toLocaleString()] as [
+            string,
+            string,
+          ],
+        ]
+      : []),
+    ...(spend.cacheWriteTokens > 0
+      ? [
+          ["Cache write", spend.cacheWriteTokens.toLocaleString()] as [
+            string,
+            string,
+          ],
+        ]
+      : []),
+    ["Total tokens", spend.totalTokens.toLocaleString()],
+    ...(spend.costUsd !== null
+      ? [["Cost", costText(spend.costUsd)] as [string, string]]
+      : []),
+  ];
+  return (
+    <dl className="composer-usage__session" aria-labelledby={labelledBy}>
+      {rows.map(([term, value]) => (
+        <div key={term} className="composer-usage__row">
+          <dt>{term}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export default function ComposerUsageLimits({
   id,
   request,
@@ -78,6 +138,8 @@ export default function ComposerUsageLimits({
   onDismiss: () => void;
 }) {
   const [state, setState] = useState<AcpUsageState | string | null>(null);
+  const headingId = useId();
+  const sessionHeadingId = useId();
   useEffect(() => {
     let current = true;
     acpUsageDesktop.read(request).then(
@@ -88,10 +150,16 @@ export default function ComposerUsageLimits({
       current = false;
     };
   }, [request]);
+  const reported = typeof state === "object" ? state : null;
+  const snapshot = reported?.kind === "usage" ? reported.snapshot : null;
+  // A harness that reports only its session's spend has no limits to name.
+  const sessionOnly = Boolean(
+    snapshot && snapshot.windows.length === 0 && snapshot.session,
+  );
   return (
     <MenuPopover
       id={id}
-      ariaLabel="Usage limits"
+      ariaLabel="Usage"
       role="dialog"
       focusStrategy="none"
       placement="above-end"
@@ -101,12 +169,10 @@ export default function ComposerUsageLimits({
       className="composer__popover composer-usage"
     >
       <div className="composer-usage__heading">
-        <strong>Usage limits</strong>
-        {typeof state === "object" &&
-        state?.kind === "usage" &&
-        state.snapshot.plan ? (
-          <span>{state.snapshot.plan}</span>
-        ) : null}
+        <strong id={headingId}>
+          {sessionOnly ? "This session" : "Usage limits"}
+        </strong>
+        {snapshot?.plan ? <span>{snapshot.plan}</span> : null}
       </div>
       {state === null ? (
         <p role="status">Checking usage…</p>
@@ -114,20 +180,38 @@ export default function ComposerUsageLimits({
         <p role="alert">{state}</p>
       ) : state.kind !== "usage" ? (
         <p role="status">{NOTICE[state.kind]}</p>
-      ) : (
+      ) : snapshot ? (
         <>
-          {state.snapshot.limitReached ? (
+          {snapshot.limitReached ? (
             <p role="alert" className="composer-usage__reached">
               Usage limit reached.
             </p>
           ) : null}
-          <ul className="composer-usage__windows">
-            {state.snapshot.windows.map((window, index) => (
-              <UsageBar key={index} window={window} />
-            ))}
-          </ul>
+          {snapshot.windows.length > 0 ? (
+            <ul className="composer-usage__windows">
+              {snapshot.windows.map((window, index) => (
+                <UsageBar key={index} window={window} />
+              ))}
+            </ul>
+          ) : null}
+          {snapshot.session ? (
+            <>
+              {sessionOnly ? null : (
+                <strong
+                  id={sessionHeadingId}
+                  className="composer-usage__subheading"
+                >
+                  This session
+                </strong>
+              )}
+              <SessionSpendRows
+                spend={snapshot.session}
+                labelledBy={sessionOnly ? headingId : sessionHeadingId}
+              />
+            </>
+          ) : null}
         </>
-      )}
+      ) : null}
     </MenuPopover>
   );
 }

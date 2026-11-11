@@ -107,6 +107,7 @@ describe("ComposerContext", () => {
             resetsAt: null,
           },
         ],
+        session: null,
       },
     });
     const request = {
@@ -120,7 +121,7 @@ describe("ComposerContext", () => {
       <ComposerContext usage={usage(6_000, 272_000)} usageRequest={request} />,
     );
     const trigger = await screen.findByRole("button", {
-      name: /Show usage limits/,
+      name: /Show usage/,
     });
     expect(read).not.toHaveBeenCalled();
 
@@ -133,7 +134,58 @@ describe("ComposerContext", () => {
     expect(read).toHaveBeenCalledWith(request);
 
     fireEvent.click(trigger);
-    expect(screen.queryByRole("dialog", { name: "Usage limits" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Usage" })).toBeNull();
+    read.mockRestore();
+  });
+
+  it("shows a session's tokens and cost when its harness reports no limits", async () => {
+    const read = vi.spyOn(acpUsageDesktop, "read").mockResolvedValue({
+      kind: "usage",
+      snapshot: {
+        plan: null,
+        limitReached: false,
+        windows: [],
+        session: {
+          inputTokens: 50_000,
+          outputTokens: 10_000,
+          cacheReadTokens: 40_000,
+          cacheWriteTokens: 0,
+          totalTokens: 100_000,
+          costUsd: 0.0125,
+        },
+      },
+    });
+    render(
+      <ComposerContext
+        usage={usage(6_000, 272_000)}
+        usageRequest={
+          {
+            projectId: "project-a",
+            projectGeneration: "1",
+            chatId: "chat-a",
+            sessionId: "session-a",
+            runtimeEpoch: "2",
+          } as AcpUsageRequest
+        }
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Show usage/ }));
+    const rows = await screen.findByLabelText("This session");
+    const pairs = [...rows.querySelectorAll("div")].map((row) => [
+      row.querySelector("dt")?.textContent,
+      row.querySelector("dd")?.textContent,
+    ]);
+    expect(pairs).toEqual([
+      ["Input", (50_000).toLocaleString()],
+      ["Output", (10_000).toLocaleString()],
+      ["Cache read", (40_000).toLocaleString()],
+      ["Total tokens", (100_000).toLocaleString()],
+      ["Cost", expect.stringMatching(/0[.,]0125/)],
+    ]);
+    expect(
+      screen.getByText("This session", { selector: "strong" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("progressbar", { name: /used$/ })).toBeNull();
     read.mockRestore();
   });
 });

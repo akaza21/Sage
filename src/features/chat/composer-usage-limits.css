@@ -9,6 +9,7 @@
 }
 
 .composer-usage__heading,
+.composer-usage__subheading,
 .composer-usage__row {
   display: flex;
   justify-content: space-between;
@@ -16,7 +17,8 @@
 }
 
 .composer-usage__heading span,
-.composer-usage__reset {
+.composer-usage__reset,
+.composer-usage__session dt {
   color: var(--color-text-muted);
 }
 
@@ -35,6 +37,17 @@
 .composer-usage__window {
   display: grid;
   gap: var(--space-1);
+}
+
+.composer-usage__session {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.composer-usage__session dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .composer-usage__bar {

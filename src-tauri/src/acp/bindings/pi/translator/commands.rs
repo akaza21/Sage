@@ -75,7 +75,8 @@ impl PiTranslator {
             | PendingKind::Steer
             | PendingKind::ClearQueue
             | PendingKind::Messages
-            | PendingKind::Entries => {}
+            | PendingKind::Entries
+            | PendingKind::Native(_) => {}
         }
         Ok(())
     }
