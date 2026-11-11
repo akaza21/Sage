@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
 import { harnessAvailability } from "../chat/harnessAvailability";
@@ -9,6 +10,7 @@ import { SettingsRow } from "./SettingsRow";
 const loadNotificationSettings = () => import("./AgentNotificationSettings");
 
 export function AgentChatSettings() {
+  const notificationsHeading = useId();
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const harnessId = useWorkbenchStore((state) => state.selectedHarnessId);
   const models = useWorkbenchStore((state) => state.models);
@@ -41,7 +43,7 @@ export function AgentChatSettings() {
         >
           <select
             aria-label="Current harness"
-            className="input"
+            className="select"
             disabled={disabled}
             value={harnessId ?? ""}
             onChange={(event) => void selectHarness(event.target.value)}
@@ -70,7 +72,7 @@ export function AgentChatSettings() {
         >
           <select
             aria-label="Current model"
-            className="input"
+            className="select"
             disabled={disabled || phase !== "ready" || !models.length}
             value={modelId ?? ""}
             onChange={(event) => selectModel(event.target.value)}
@@ -94,7 +96,7 @@ export function AgentChatSettings() {
         >
           <select
             aria-label="Default access"
-            className="input"
+            className="select"
             disabled={
               disabled ||
               !access.ready ||
@@ -125,12 +127,17 @@ export function AgentChatSettings() {
       {!project ? (
         <p role="status">Open a project to select a harness and model.</p>
       ) : null}
-      <h3>Notifications</h3>
-      <LazyModuleBoundary
-        label="Notification settings"
-        load={loadNotificationSettings}
-        render={(NotificationSettings) => <NotificationSettings />}
-      />
+      <section
+        className="settings-surface__group"
+        aria-labelledby={notificationsHeading}
+      >
+        <h3 id={notificationsHeading}>Notifications</h3>
+        <LazyModuleBoundary
+          label="Notification settings"
+          load={loadNotificationSettings}
+          render={(NotificationSettings) => <NotificationSettings />}
+        />
+      </section>
     </>
   );
 }

@@ -114,7 +114,7 @@ describe("SettingsSurface", () => {
   it("keeps the Keyboard page read-only", () => {
     render(<SettingsSurface />);
     fireEvent.click(screen.getByRole("tab", { name: "Keyboard" }));
-    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("switch")).toBeNull();
     expect(screen.queryByRole("combobox")).toBeNull();
   });
 

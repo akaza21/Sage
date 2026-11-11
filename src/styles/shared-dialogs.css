@@ -20,7 +20,8 @@
   background: var(--chat-annotation-scrim);
 }
 
-.dirty-dialog h2 {
+/* Zero-specificity tag, so a laid-out dialog body can reset the margin. */
+.dirty-dialog :where(h2) {
   margin: 0 0 var(--space-2);
   font-size: var(--font-size-lg);
 }
@@ -42,6 +43,21 @@
   justify-content: flex-end;
   gap: var(--space-2);
   margin-top: 20px;
+}
+
+/* A dialog laid out by one gap: title, description, field, content, then
+   the actions row. */
+.dialog-body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.dialog-body > * {
+  margin: 0;
+}
+
+.dialog-body > [role="alert"] {
+  color: var(--color-danger);
 }
 
 .new-file-dialog {
