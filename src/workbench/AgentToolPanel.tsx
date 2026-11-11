@@ -298,63 +298,75 @@ export function AgentToolPanel({
       setError(String(cause).slice(0, 512));
     }
   }
+  const multiRoot = (project?.roots.length ?? 0) > 1;
   return (
     <ModalDialog
       labelledBy={titleId}
+      describedBy={`${titleId}-description`}
       className="agent-tool-panel"
       onDismiss={onDismiss}
     >
-      <h2 id={titleId}>{request.tool === "changes" ? "Changes" : "Files"}</h2>
-      <p>Only this Chat's resources · up to 128 recent files</p>
-      <input
-        ref={input}
-        aria-label="Filter chat files"
-        placeholder="Search chat files"
-        maxLength={256}
-        value={query}
-        onChange={(event) => setQuery(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            const first = rows.find((entry) => entry.intent || entry.tabId);
-            if (first) void select(first);
-          }
-        }}
-      />
-      <div
-        className="agent-tool-panel__list"
-        role="group"
-        aria-label="Chat files"
-      >
-        {rows.map((entry) => (
-          <button
-            type="button"
-            key={resourceKey(entry.resource)}
-            disabled={!entry.intent && !entry.tabId}
-            title={
-              !entry.intent && !entry.tabId
-                ? "No saved resource is available"
-                : entry.label
+      <div className="dialog-body">
+        <h2 id={titleId}>{request.tool === "changes" ? "Changes" : "Files"}</h2>
+        <p id={`${titleId}-description`}>
+          Only this Chat's resources · up to 128 recent files
+        </p>
+        <input
+          ref={input}
+          className="input"
+          aria-label="Filter chat files"
+          placeholder="Search chat files"
+          maxLength={256}
+          value={query}
+          onChange={(event) => setQuery(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              const first = rows.find((entry) => entry.intent || entry.tabId);
+              if (first) void select(first);
             }
-            onClick={() => void select(entry)}
-          >
-            {(project?.roots.length ?? 0) > 1
-              ? `${project?.roots.find((root) => root.id === entry.resource.rootId)?.name ?? entry.resource.rootId} / `
-              : ""}
-            {entry.label}
+          }}
+        />
+        <div
+          className="agent-tool-panel__list"
+          role="group"
+          aria-label="Chat files"
+        >
+          {rows.map((entry) => (
+            <button
+              type="button"
+              className="menu-item"
+              key={resourceKey(entry.resource)}
+              disabled={!entry.intent && !entry.tabId}
+              title={
+                !entry.intent && !entry.tabId
+                  ? "No saved resource is available"
+                  : entry.label
+              }
+              onClick={() => void select(entry)}
+            >
+              <span>
+                {multiRoot
+                  ? `${project?.roots.find((root) => root.id === entry.resource.rootId)?.name ?? entry.resource.rootId} / `
+                  : ""}
+                {entry.label}
+              </span>
+            </button>
+          ))}
+          {rows.length === 0 ? (
+            <p>
+              {resources.length === 0
+                ? "No resources available for this Chat yet."
+                : "No matching chat files."}
+            </p>
+          ) : null}
+        </div>
+        {error ? <p role="alert">{error}</p> : null}
+        <div className="dirty-dialog__actions">
+          <button className="button" type="button" onClick={onDismiss}>
+            Close
           </button>
-        ))}
-        {rows.length === 0 ? (
-          <p>
-            {resources.length === 0
-              ? "No resources available for this Chat yet."
-              : "No matching chat files."}
-          </p>
-        ) : null}
+        </div>
       </div>
-      {error ? <p role="alert">{error}</p> : null}
-      <button type="button" onClick={onDismiss}>
-        Close
-      </button>
     </ModalDialog>
   );
 }

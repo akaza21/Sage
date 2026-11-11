@@ -72,7 +72,7 @@ it("lists the General settings that Sage's browser supports", async () => {
   render(<SettingsBrowserPage visible={all()} />);
   expect(screen.getByRole("heading", { name: "Browser" })).toBeVisible();
   const general = screen.getByRole("group", { name: "General" });
-  const toggle = await screen.findByRole("checkbox", { name: "Show full URL" });
+  const toggle = await screen.findByRole("switch", { name: "Show full URL" });
   expect(general).toContainElement(toggle);
   expect(toggle).toHaveAccessibleDescription(
     "Include the path, query, and fragment in the address bar. Default: Off",
@@ -88,7 +88,7 @@ it("lists the General settings that Sage's browser supports", async () => {
 it("loads the stored choice and saves a change through Rust", async () => {
   getPreferences.mockResolvedValue({ showFullUrl: true });
   render(<SettingsBrowserPage visible={all()} />);
-  const toggle = await screen.findByRole("checkbox", { name: "Show full URL" });
+  const toggle = await screen.findByRole("switch", { name: "Show full URL" });
   await vi.waitFor(() => expect(toggle).toBeChecked());
   expect(toggle).toBeEnabled();
   fireEvent.click(toggle);
@@ -102,15 +102,11 @@ it("keeps the toggle disabled and says why when loading fails", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Browser settings could not be loaded.",
   );
-  expect(
-    screen.getByRole("checkbox", { name: "Show full URL" }),
-  ).toBeDisabled();
+  expect(screen.getByRole("switch", { name: "Show full URL" })).toBeDisabled();
   getPreferences.mockResolvedValue({ showFullUrl: true });
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   await vi.waitFor(() =>
-    expect(
-      screen.getByRole("checkbox", { name: "Show full URL" }),
-    ).toBeChecked(),
+    expect(screen.getByRole("switch", { name: "Show full URL" })).toBeChecked(),
   );
   expect(screen.queryByRole("alert")).toBeNull();
 });
@@ -121,7 +117,7 @@ it("hides entries the search filtered out", () => {
       visible={matchingSettingsEntryIds("cookies", "browser")}
     />,
   );
-  expect(screen.queryByRole("checkbox", { name: "Show full URL" })).toBeNull();
+  expect(screen.queryByRole("switch", { name: "Show full URL" })).toBeNull();
   expect(
     screen.getByRole("button", { name: "Clear browsing data" }),
   ).toBeVisible();
@@ -148,7 +144,7 @@ it("finds site permissions by the kinds they cover", () => {
     />,
   );
   expect(screen.getByRole("group", { name: "Site permissions" })).toBeVisible();
-  expect(screen.queryByRole("checkbox", { name: "Show full URL" })).toBeNull();
+  expect(screen.queryByRole("switch", { name: "Show full URL" })).toBeNull();
 });
 
 it("explains that browser settings need the desktop app", () => {
@@ -157,7 +153,7 @@ it("explains that browser settings need the desktop app", () => {
   expect(screen.getByRole("status")).toHaveTextContent(
     "Browser settings are available in the Sage desktop app.",
   );
-  expect(screen.queryByRole("checkbox")).toBeNull();
+  expect(screen.queryByRole("switch")).toBeNull();
   expect(getPreferences).not.toHaveBeenCalled();
   expect(screen.queryByRole("group", { name: "Site permissions" })).toBeNull();
   expect(siteSettings).not.toHaveBeenCalled();
@@ -176,7 +172,7 @@ it("offers developer mode off by default, names its risk, and saves through Rust
   });
   render(<SettingsBrowserPage visible={all()} />);
   const group = await screen.findByRole("group", { name: "Developer mode" });
-  const toggle = screen.getByRole("checkbox", {
+  const toggle = screen.getByRole("switch", {
     name: "Enable CDP access",
   });
   expect(group).toContainElement(toggle);
@@ -202,7 +198,7 @@ it("offers developer mode off by default, names its risk, and saves through Rust
 
 it("hides developer mode where the browser has no CDP", async () => {
   render(<SettingsBrowserPage visible={all()} />);
-  await screen.findByRole("checkbox", { name: "Show full URL" });
+  await screen.findByRole("switch", { name: "Show full URL" });
   await vi.waitFor(() => expect(getDeveloperMode).toHaveBeenCalled());
   expect(screen.queryByRole("group", { name: "Developer mode" })).toBeNull();
 });
@@ -211,7 +207,7 @@ it("says so when developer mode cannot be changed, and keeps Rust's value", asyn
   getDeveloperMode.mockResolvedValue({ available: true, enabled: false });
   setDeveloperMode.mockRejectedValue(new Error("unavailable"));
   render(<SettingsBrowserPage visible={all()} />);
-  const toggle = await screen.findByRole("checkbox", {
+  const toggle = await screen.findByRole("switch", {
     name: "Enable CDP access",
   });
   fireEvent.click(toggle);

@@ -70,13 +70,114 @@
   color: var(--color-text-muted);
 }
 
+/*
+ * A native select drawn like the composer's chevron dropdowns: the OS arrow
+ * is replaced by a chevron painted from the colour tokens, so it follows the
+ * text colour on hover and needs no image. Fills are set with
+ * background-color so the chevron layer survives local overrides.
+ */
 .select {
+  --select-chevron-color: var(--color-text-muted);
+  --select-chevron-arm: var(--space-1);
+  --select-chevron-stroke: calc(var(--border-width) * 1.5);
+  --select-chevron-inset: var(--space-2);
+
+  overflow: hidden;
+  padding-inline-end: calc(
+    var(--select-chevron-inset) * 2 + var(--select-chevron-arm) * 2
+  );
+  appearance: none;
   color-scheme: dark;
+  background-image:
+    linear-gradient(
+      45deg,
+      transparent calc(50% - var(--select-chevron-stroke) / 2),
+      var(--select-chevron-color) calc(50% - var(--select-chevron-stroke) / 2),
+      var(--select-chevron-color) calc(50% + var(--select-chevron-stroke) / 2),
+      transparent calc(50% + var(--select-chevron-stroke) / 2)
+    ),
+    linear-gradient(
+      -45deg,
+      transparent calc(50% - var(--select-chevron-stroke) / 2),
+      var(--select-chevron-color) calc(50% - var(--select-chevron-stroke) / 2),
+      var(--select-chevron-color) calc(50% + var(--select-chevron-stroke) / 2),
+      transparent calc(50% + var(--select-chevron-stroke) / 2)
+    );
+  background-position:
+    right calc(var(--select-chevron-inset) + var(--select-chevron-arm)) center,
+    right var(--select-chevron-inset) center;
+  background-repeat: no-repeat;
+  background-size: var(--select-chevron-arm) var(--select-chevron-arm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.select:hover:not(:disabled) {
+  --select-chevron-color: var(--color-text-primary);
 }
 
 .select option {
   color: var(--color-text-primary);
   background: var(--color-surface);
+}
+
+/*
+ * A boolean setting: a styled native checkbox with role="switch", so its
+ * label, keyboard and checked state stay native.
+ */
+.switch {
+  --switch-height: var(--icon-size-md);
+  --switch-width: calc(var(--switch-height) * 2 - var(--space-1));
+  --switch-inset: calc(var(--border-width) * 2);
+  --switch-thumb: calc(var(--switch-height) - var(--switch-inset) * 2);
+  --switch-track: var(--color-panel-raised-hover);
+  --switch-knob: var(--color-text-secondary);
+
+  position: relative;
+  display: inline-block;
+  width: var(--switch-width);
+  height: var(--switch-height);
+  flex: none;
+  margin: 0;
+  border-radius: var(--radius-pill);
+  appearance: none;
+  background-color: var(--switch-track);
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) ease;
+}
+
+.switch::before {
+  position: absolute;
+  top: var(--switch-inset);
+  left: var(--switch-inset);
+  width: var(--switch-thumb);
+  height: var(--switch-thumb);
+  border-radius: var(--radius-circle);
+  background-color: var(--switch-knob);
+  content: "";
+  transition:
+    translate var(--motion-duration-fast) ease,
+    background-color var(--motion-duration-fast) ease;
+}
+
+.switch:checked {
+  --switch-track: var(--color-accent);
+  --switch-knob: var(--color-text-emphasis);
+}
+
+.switch:checked::before {
+  translate: calc(var(--switch-width) - var(--switch-height)) 0;
+}
+
+.switch:hover:not(:disabled, :checked) {
+  --switch-knob: var(--color-text-primary);
+}
+
+.switch:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .menu-popover {
@@ -311,19 +412,29 @@
   gap: 2px;
 }
 
-.agent-settings select.input {
+/* Agent settings set selects in the Agent type, as before. */
+.agent-settings .select {
   color: var(--color-text-emphasis);
   font-size: var(--font-size-sm);
 }
 
 @supports (appearance: base-select) {
   @media (forced-colors: none) {
-    .agent-settings select.input,
-    .agent-settings select.input::picker(select) {
+    .select,
+    .select::picker(select) {
       appearance: base-select;
     }
 
-    .agent-settings select.input::picker(select) {
+    .select {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .select::picker-icon {
+      display: none;
+    }
+
+    .select::picker(select) {
       margin-block: var(--space-1);
       padding: var(--space-1);
       border: 1px solid var(--glass-border);
@@ -334,17 +445,20 @@
       font-family: var(--font-family-agent);
     }
 
-    .agent-settings select.input option {
+    .select option {
       min-height: var(--row-height-compact);
       padding-inline: var(--space-2);
       border-radius: var(--radius-md);
+      color: inherit;
+      background: transparent;
+      font-size: var(--font-size-sm);
     }
 
-    .agent-settings select.input option:is(:hover, :focus-visible) {
+    .select option:is(:hover, :focus-visible) {
       background: var(--color-panel-raised-hover);
     }
 
-    .agent-settings select.input option::checkmark {
+    .select option::checkmark {
       order: 1;
       margin-inline-start: auto;
     }
@@ -388,6 +502,42 @@
     box-shadow: none;
   }
 
+  /* The system draws the select and its arrow. */
+  .select {
+    padding-inline-end: var(--space-2);
+    appearance: auto;
+    background-image: none;
+  }
+
+  .switch {
+    border: 1px solid ButtonText;
+    background-color: Canvas;
+    forced-color-adjust: none;
+  }
+
+  .switch::before {
+    top: var(--border-width);
+    left: var(--border-width);
+    background-color: ButtonText;
+  }
+
+  .switch:checked {
+    border-color: Highlight;
+    background-color: Highlight;
+  }
+
+  .switch:checked::before {
+    background-color: HighlightText;
+  }
+
+  .switch:disabled {
+    border-color: GrayText;
+  }
+
+  .switch:disabled::before {
+    background-color: GrayText;
+  }
+
   .popup-material {
     background: Canvas;
     backdrop-filter: none;
@@ -405,7 +555,9 @@
 @media (prefers-reduced-motion: reduce) {
   .button,
   .input,
-  .select {
+  .select,
+  .switch,
+  .switch::before {
     transition: none;
   }
 

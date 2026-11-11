@@ -58,7 +58,7 @@ export default function AgentNotificationSettings() {
         >
           <select
             aria-label="Turn notifications"
-            className="input"
+            className="select"
             disabled={preference === null || saving}
             value={preference ?? ""}
             onChange={(event) => {

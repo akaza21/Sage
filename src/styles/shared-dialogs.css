@@ -44,6 +44,23 @@
   margin-top: 20px;
 }
 
+/* A dialog laid out by one gap: title, description, field, content, then
+   the actions row. */
+.dialog-body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* h2 also outranks the .dirty-dialog heading margin. */
+.dialog-body > *,
+.dialog-body > h2 {
+  margin: 0;
+}
+
+.dialog-body > [role="alert"] {
+  color: var(--color-danger);
+}
+
 .new-file-dialog {
   width: min(480px, calc(100vw - 32px));
   color: var(--color-text-primary);
