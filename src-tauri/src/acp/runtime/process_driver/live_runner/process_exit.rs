@@ -101,7 +101,7 @@ where
     C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
 {
     fail_pending_config(pending_config, HostError::RecoveryRequired);
-    failed(FirstTurnWorkerState::Active(active))
+    failed(FirstTurnWorkerState::Active(Box::new(active)))
 }
 
 fn commit_unknown(error: &PreparedWriteError) -> bool {
