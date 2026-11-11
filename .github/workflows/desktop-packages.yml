@@ -42,28 +42,38 @@ jobs:
         run: |
           set -euo pipefail
           bundle=src-tauri/target/universal-apple-darwin/release/bundle
-          app="$bundle/macos/Sage.app"
+          set -- "$bundle"/dmg/*.dmg
+          test "$#" -eq 1
+          dmg="$1"
+          test -f "$dmg"
+          hdiutil verify "$dmg"
+
+          # Inspect the shipped image because Tauri cleans its staging app.
+          mount="$(mktemp -d)"
+          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount"
+          trap 'hdiutil detach "$mount"' EXIT
+          app="$mount/Sage.app"
           codesign --verify --deep --strict --verbose=2 "$app"
           lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/sage"
+          ditto "$app" "$RUNNER_TEMP/Sage.app"
+
           mkdir -p work/macos-package
-          cp "$bundle"/dmg/*.dmg work/macos-package/
+          cp "$dmg" work/macos-package/
           cd work/macos-package
           printf '%s\n' "$GITHUB_SHA" > source.txt
           shasum -a 256 ./*.dmg > SHA256SUMS.txt
-          for dmg in ./*.dmg; do
-            hdiutil verify "$dmg"
-          done
       - name: Check the app bundle starts
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import os
           import subprocess
           import time
 
-          bundle = Path("src-tauri/target/universal-apple-darwin/release/bundle")
-          binary = bundle / "macos/Sage.app/Contents/MacOS/sage"
-          with Path("work/macos-package/startup.log").open("wb") as log:
+          binary = Path(os.environ["RUNNER_TEMP"]) / "Sage.app/Contents/MacOS/sage"
+          log_path = Path("work/macos-package/startup.log")
+          with log_path.open("wb") as log:
               app = subprocess.Popen([str(binary.resolve())], stdout=log, stderr=subprocess.STDOUT)
               try:
                   time.sleep(8)
