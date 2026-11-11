@@ -6,9 +6,9 @@ use crate::acp::limits::LIMITS;
 
 use super::super::FixtureError;
 use super::super::interpreter::{field_str, field_u64};
-use super::{WireState, acp, user_input, write_stdout};
+use super::{WireState, acp, background, user_input, write_stdout};
 
-const THREAD_ID: &str = "fixture-persisted-session-1";
+pub(super) const THREAD_ID: &str = "fixture-persisted-session-1";
 /// The session a native capture's fork creates (Codex `thread/fork` per the
 /// pinned schema; Claude `session/fork` per claude-agent-acp 0.76.0).
 pub(super) const FORK_THREAD_ID: &str = "fixture-fork-session-1";
@@ -58,22 +58,9 @@ fn await_request_inner(
         if object.get("id").is_none() && !expected(expected_method, method) {
             continue;
         }
-        if method == "thread/read" {
-            emit_child_read(&request, output, state)?;
-            continue;
-        }
-        // Sage reads the skills while a session is idle; a replay case has
-        // none, as a Codex install with no skills answers.
-        if method == "skills/list" && !expected(expected_method, method) {
-            let id = object
-                .get("id")
-                .and_then(Value::as_u64)
-                .ok_or(FixtureError::InvalidArguments)?;
-            emit_json(
-                output,
-                state,
-                &json!({"jsonrpc":"2.0","id":id,"result":{"data":[]}}),
-            )?;
+        if !expected(expected_method, method)
+            && background::answer(method, &request, output, state)?
+        {
             continue;
         }
         if method == "model/list" {
@@ -119,38 +106,6 @@ fn await_request_inner(
 /// `expected` names one method, or alternatives separated by `|`.
 fn expected(expected: &str, method: &str) -> bool {
     expected.split('|').any(|candidate| candidate == method)
-}
-
-fn emit_child_read(
-    request: &Value,
-    output: &mut impl Write,
-    state: &mut WireState,
-) -> Result<(), FixtureError> {
-    let id = request
-        .get("id")
-        .and_then(Value::as_u64)
-        .ok_or(FixtureError::InvalidArguments)?;
-    let params = request
-        .get("params")
-        .ok_or(FixtureError::InvalidArguments)?;
-    let child = params
-        .get("threadId")
-        .and_then(Value::as_str)
-        .filter(|child| matches!(*child, "fixture-child-1" | "fixture-child-2"))
-        .ok_or(FixtureError::InvalidArguments)?;
-    if params.get("includeTurns").and_then(Value::as_bool) != Some(true) {
-        return Err(FixtureError::InvalidArguments);
-    }
-    emit_json(
-        output,
-        state,
-        &json!({"jsonrpc":"2.0","id":id,"result":{"thread":{
-            "id":child,"parentThreadId":THREAD_ID,"turns":[{
-                "id":"fixture-child-turn","itemsView":"full","status":"completed",
-                "items":[{"id":"fixture-child-answer","type":"agentMessage","text":"Synthetic child summary"}]
-            }]
-        }}}),
-    )
 }
 
 pub(super) fn emit_response(
