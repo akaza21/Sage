@@ -394,7 +394,9 @@ mod tests {
             .iter()
             .find(|entry| entry.id == "claude-code")
             .unwrap();
-        assert_eq!(claude.binding_id.as_deref(), Some("claude-agent-acp"));
+        // Before discovery Claude Code keeps its SDK binding, so restored
+        // Chats find their harness.
+        assert_eq!(claude.binding_id.as_deref(), Some("claude-code-sdk"));
         // Pi has a curated read-only binding that stays unadmitted until
         // discovery finds the installed package.
         assert!(registry.for_harness("pi").is_some());

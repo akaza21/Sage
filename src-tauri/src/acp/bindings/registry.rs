@@ -251,7 +251,14 @@ impl BindingRegistry {
         }
         // Claude Code runs over its SDK protocol once that binding is
         // admitted; the ACP adapter serves only installs it cannot admit.
-        let claude = if self.claude_sdk.admission_available() {
+        // Until discovery finishes the SDK binding stays the harness's, so a
+        // Chat restored at startup keeps its harness instead of a placeholder.
+        let discovery_pending = self.claude_sdk_admission().discovery_pending()
+            && matches!(
+                self.claude_admission().unavailable(),
+                Some(ClaudeAdmissionUnavailable::DiscoveryPending)
+            );
+        let claude = if self.claude_sdk.admission_available() || discovery_pending {
             &self.claude_sdk
         } else {
             self.claude()

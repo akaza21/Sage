@@ -944,6 +944,26 @@ mod tests {
         assert_eq!(catalog.harness_id_for_binding("unknown"), None);
     }
 
+    #[test]
+    fn a_claude_sdk_chat_restored_before_discovery_keeps_its_harness() {
+        let registry = Arc::new(BindingRegistry::default());
+        let catalog = HarnessCatalog::with_registry(Arc::clone(&registry));
+        let sdk = crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID;
+        let mut definitions = catalog.definitions();
+        assert_eq!(
+            catalog.restore_binding(sdk, &mut definitions),
+            "claude-code"
+        );
+        assert!(
+            definitions
+                .iter()
+                .all(|entry| entry.id != format!("unavailable-binding:{sdk}"))
+        );
+        // Discovery that finds no CLI hands the harness to the ACP adapter.
+        registry.claude_sdk_admission().apply_discovery(None);
+        assert_eq!(catalog.harness_id_for_binding(sdk), None);
+    }
+
     #[cfg(all(windows, feature = "acp-fixture"))]
     #[test]
     fn characterization_catalog_exists_only_for_an_admitted_launch_binding() {
