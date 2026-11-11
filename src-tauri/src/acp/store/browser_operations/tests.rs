@@ -577,7 +577,7 @@ fn fact_lookups_seek_their_index() {
 }
 
 #[test]
-fn upgraded_store_recovers_only_the_operation_left_unfinished() {
+fn upgraded_store_with_a_duplicate_terminal_recovers_only_the_unfinished_operation() {
     let directory = std::env::temp_dir().join(format!(
         "sage-browser-terminal-upgrade-{}",
         uuid::Uuid::new_v4()
@@ -596,10 +596,16 @@ fn upgraded_store_recovers_only_the_operation_left_unfinished() {
         finished.updated_at += 1;
         finish(&mut connection, &finished).unwrap();
         // Return the file to schema 26, before the operation indexes, with its
-        // facts already written, so the next open has to upgrade it.
+        // facts already written and a duplicate terminal an older store could
+        // hold, so the next open has to upgrade it.
         connection
             .execute_batch(
-                "DROP INDEX idx_session_facts_operation_start;
+                "INSERT INTO session_facts(project_id,chat_id,session_id,sequence,turn_id,kind,
+                   payload_json,payload_bytes,payload_digest,projection_revision,created_at)
+                 SELECT project_id,chat_id,session_id,sequence+1,turn_id,kind,
+                   payload_json,payload_bytes,payload_digest,projection_revision,created_at
+                 FROM session_facts WHERE kind='browserOperationTerminal';
+                 DROP INDEX idx_session_facts_operation_start;
                  DROP INDEX idx_session_facts_operation_terminal;
                  DELETE FROM schema_migrations WHERE version=27;
                  PRAGMA user_version=26;",
