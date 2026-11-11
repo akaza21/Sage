@@ -197,7 +197,7 @@ fn idle_worker_hydrates_model_catalog_and_bounds_pagination() {
             }
             mailbox.try_push_chunk(chunk).unwrap();
             let (state, reason) = super::super::live_runner::drive_for_test(
-                FirstTurnWorkerState::Idle(completed),
+                FirstTurnWorkerState::Idle(Box::new(completed)),
                 &context,
             )
             .await;

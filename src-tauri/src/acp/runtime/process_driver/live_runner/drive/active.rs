@@ -17,7 +17,7 @@ use super::super::{
 use super::wait_deadline;
 
 pub(super) async fn step<A, R, T, Auth, C>(
-    mut active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
+    mut active: Box<PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>>,
     context: &FirstTurnWorkerContext<Auth>,
     pending_config: &mut Option<PendingConfig>,
     eof_deadline_millis: &mut Option<i64>,
@@ -85,10 +85,10 @@ where
                 None,
             )),
             Err(DriverError::TeardownRequired(TeardownCause::ProcessExit)) => {
-                Err(super::super::process_exit::reconcile(active, context, pending_config).await)
+                Err(super::super::process_exit::reconcile(*active, context, pending_config).await)
             }
             Err(DriverError::Tree) if active.turn.driver.terminal_outcome().is_some() => {
-                Err(super::super::process_exit::reconcile(active, context, pending_config).await)
+                Err(super::super::process_exit::reconcile(*active, context, pending_config).await)
             }
             Err(_) if active.has_durable_terminal() => {
                 match context.mailbox.wait_control_until(
@@ -174,7 +174,7 @@ where
                     Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
                     | Err(DriverError::Tree),
                 ) if active.turn.driver.terminal_outcome().is_some() => Err(
-                    super::super::process_exit::reconcile(active, context, pending_config).await,
+                    super::super::process_exit::reconcile(*active, context, pending_config).await,
                 ),
                 Some(Err(_)) | Some(Ok(())) => Err(failed(FirstTurnWorkerState::Active(active))),
                 None if pending_config.is_some()
@@ -208,7 +208,7 @@ where
                     if active.turn.driver.terminal_outcome().is_some() =>
                 {
                     Err(
-                        super::super::process_exit::reconcile(active, context, pending_config)
+                        super::super::process_exit::reconcile(*active, context, pending_config)
                             .await,
                     )
                 }
@@ -231,7 +231,7 @@ where
                     if active.turn.driver.terminal_outcome().is_some() =>
                 {
                     Err(
-                        super::super::process_exit::reconcile(active, context, pending_config)
+                        super::super::process_exit::reconcile(*active, context, pending_config)
                             .await,
                     )
                 }

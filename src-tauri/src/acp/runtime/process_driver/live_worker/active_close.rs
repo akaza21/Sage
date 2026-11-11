@@ -51,7 +51,7 @@ where
     match state.begin().await {
         Ok(closing) => {
             envelope.respond(Ok(WorkerReply::Unit));
-            FirstTurnWorkerState::Draining(closing)
+            FirstTurnWorkerState::Draining(Box::new(closing))
         }
         Err(failure) => {
             envelope.respond(Err(super::map_close(&failure.error)));
@@ -61,7 +61,7 @@ where
 }
 
 pub(super) async fn handle_draining<A, R, T, C, Auth>(
-    closing: ClosingProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
+    closing: Box<ClosingProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>>,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>
@@ -92,7 +92,7 @@ where
         Ok(zero) => {
             let proof = zero.receipt().clone();
             envelope.respond(Ok(WorkerReply::Zero(proof)));
-            FirstTurnWorkerState::Zero(zero)
+            FirstTurnWorkerState::Zero(Box::new(zero))
         }
         Err(failure) => {
             envelope.respond(Err(super::map_close(&failure.error)));
@@ -102,7 +102,7 @@ where
 }
 
 pub(super) async fn handle_zero<A, R, T, C, Auth>(
-    zero: ZeroCloseState<A, SqliteAdapterBatchJournal, R, T, C>,
+    zero: Box<ZeroCloseState<A, SqliteAdapterBatchJournal, R, T, C>>,
     _context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>

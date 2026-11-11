@@ -58,8 +58,10 @@ impl<Auth> FirstTurnWorkerContext<Auth> {
 }
 
 // Each variant owns an exact typestate and is capped by the live-tree
-// scheduler. Keeping it inline preserves deterministic drop/zero-proof order.
-#[allow(clippy::large_enum_variant)]
+// scheduler. The typestates are kilobytes each and move through every runner
+// step, so each one is boxed: a step moves a pointer, and an unoptimized
+// build's async frames stay small. Boxing keeps each typestate's own
+// drop/zero-proof order.
 pub(crate) enum FirstTurnWorkerState<A, R, T, C>
 where
     A: HarnessAdapter,
@@ -68,29 +70,31 @@ where
     C: ProcessTreeControl,
     C::ZeroProof: CoordinatorZeroToken,
 {
-    Idle(CompletedActivationDriverParts<A, CoordinatorActivationJournal, R, T, C>),
+    Idle(Box<CompletedActivationDriverParts<A, CoordinatorActivationJournal, R, T, C>>),
     Prepared {
-        turn: PreparedActivationTurn<A, R, T, C>,
+        turn: Box<PreparedActivationTurn<A, R, T, C>>,
         prompt: crate::acp::intent::Prompt,
         access_mode: crate::settings_store::SessionAccessMode,
     },
-    Active(PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>),
+    Active(Box<PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>>),
     Reusable(
-        CompletedDriverParts<
-            A,
-            SqliteAdapterBatchJournal,
-            R,
-            T,
-            C,
-            crate::acp::runtime::SessionTreeLease,
+        Box<
+            CompletedDriverParts<
+                A,
+                SqliteAdapterBatchJournal,
+                R,
+                T,
+                C,
+                crate::acp::runtime::SessionTreeLease,
+            >,
         >,
     ),
-    ReusableDraining(ReusableClosingState<A, SqliteAdapterBatchJournal, R, T, C>),
-    ReusableZero(ReusableZeroState<A, SqliteAdapterBatchJournal, R, T, C>),
-    Draining(ClosingProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>),
-    Zero(ZeroCloseState<A, SqliteAdapterBatchJournal, R, T, C>),
-    IdleDraining(IdleClosingState<A, R, T, C>),
-    IdleZero(IdleZeroState<A, R, T, C>),
+    ReusableDraining(Box<ReusableClosingState<A, SqliteAdapterBatchJournal, R, T, C>>),
+    ReusableZero(Box<ReusableZeroState<A, SqliteAdapterBatchJournal, R, T, C>>),
+    Draining(Box<ClosingProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>>),
+    Zero(Box<ZeroCloseState<A, SqliteAdapterBatchJournal, R, T, C>>),
+    IdleDraining(Box<IdleClosingState<A, R, T, C>>),
+    IdleZero(Box<IdleZeroState<A, R, T, C>>),
     Closed,
     Recovery(Box<FirstTurnWorkerRecovery<A, R, T, C>>),
 }
@@ -204,24 +208,32 @@ where
             return self;
         }
         match self {
-            Self::Idle(parts) => turn::handle_idle(parts, context, envelope).await,
+            Self::Idle(parts) => boxed(|| turn::handle_idle(parts, context, envelope)).await,
             Self::Prepared {
                 turn,
                 prompt,
                 access_mode,
-            } => turn::handle_prepared(turn, prompt, access_mode, context, envelope).await,
-            Self::Active(active) => turn::handle_active(active, context, envelope).await,
-            Self::Reusable(parts) => turn::handle_reusable(parts, context, envelope).await,
+            } => {
+                boxed(|| turn::handle_prepared(turn, prompt, access_mode, context, envelope)).await
+            }
+            Self::Active(active) => boxed(|| turn::handle_active(active, context, envelope)).await,
+            Self::Reusable(parts) => {
+                boxed(|| turn::handle_reusable(parts, context, envelope)).await
+            }
             Self::ReusableDraining(closing) => {
-                reusable::handle_draining(closing, context, envelope).await
+                boxed(|| reusable::handle_draining(closing, context, envelope)).await
             }
-            Self::ReusableZero(zero) => reusable::handle_zero(zero, context, envelope).await,
+            Self::ReusableZero(zero) => {
+                boxed(|| reusable::handle_zero(zero, context, envelope)).await
+            }
             Self::Draining(closing) => {
-                active_close::handle_draining(closing, context, envelope).await
+                boxed(|| active_close::handle_draining(closing, context, envelope)).await
             }
-            Self::Zero(zero) => active_close::handle_zero(zero, context, envelope).await,
-            Self::IdleDraining(closing) => idle::handle_draining(closing, context, envelope).await,
-            Self::IdleZero(zero) => idle::handle_zero(zero, context, envelope).await,
+            Self::Zero(zero) => boxed(|| active_close::handle_zero(zero, context, envelope)).await,
+            Self::IdleDraining(closing) => {
+                boxed(|| idle::handle_draining(closing, context, envelope)).await
+            }
+            Self::IdleZero(zero) => boxed(|| idle::handle_zero(zero, context, envelope)).await,
             Self::Closed => {
                 if matches!(envelope.command, WorkerCommand::Shutdown) {
                     envelope.respond(Ok(WorkerReply::Unit));
@@ -232,34 +244,41 @@ where
             }
             Self::Recovery(recovery) => match *recovery {
                 FirstTurnWorkerRecovery::Finalize(failure) => {
-                    active_close::handle_zero(failure.state, context, envelope).await
+                    boxed(|| active_close::handle_zero(Box::new(failure.state), context, envelope))
+                        .await
                 }
                 FirstTurnWorkerRecovery::BeginClose(failure) => {
-                    active_close::handle_begin(failure.state, context, envelope).await
+                    boxed(|| active_close::handle_begin(failure.state, context, envelope)).await
                 }
                 FirstTurnWorkerRecovery::Converge(failure) => {
-                    active_close::handle_draining(failure.state, context, envelope).await
+                    boxed(|| {
+                        active_close::handle_draining(Box::new(failure.state), context, envelope)
+                    })
+                    .await
                 }
                 FirstTurnWorkerRecovery::IdleBegin(failure) => {
-                    idle::handle_begin(failure.state, context, envelope).await
+                    boxed(|| idle::handle_begin(failure.state, context, envelope)).await
                 }
                 FirstTurnWorkerRecovery::IdleConverge(failure) => {
-                    idle::handle_draining(failure.state, context, envelope).await
+                    boxed(|| idle::handle_draining(Box::new(failure.state), context, envelope))
+                        .await
                 }
                 FirstTurnWorkerRecovery::IdleFinalize(failure) => {
-                    idle::handle_zero(failure.state, context, envelope).await
+                    boxed(|| idle::handle_zero(Box::new(failure.state), context, envelope)).await
                 }
                 FirstTurnWorkerRecovery::ReusableBegin(failure) => {
-                    reusable::handle_begin(failure.state, context, envelope).await
+                    boxed(|| reusable::handle_begin(failure.state, context, envelope)).await
                 }
                 FirstTurnWorkerRecovery::ReusableConverge(failure) => {
-                    reusable::handle_draining(failure.state, context, envelope).await
+                    boxed(|| reusable::handle_draining(Box::new(failure.state), context, envelope))
+                        .await
                 }
                 FirstTurnWorkerRecovery::ReusableFinalize(failure) => {
-                    reusable::handle_zero(failure.state, context, envelope).await
+                    boxed(|| reusable::handle_zero(Box::new(failure.state), context, envelope))
+                        .await
                 }
                 FirstTurnWorkerRecovery::BeginCancel { failure, intent } => {
-                    recovery::handle_begin_cancel(failure.state, intent, envelope).await
+                    boxed(|| recovery::handle_begin_cancel(failure.state, intent, envelope)).await
                 }
                 FirstTurnWorkerRecovery::BeginSend {
                     failure,
@@ -271,13 +290,15 @@ where
                     owner,
                     turn_id,
                 } => {
-                    recovery::handle_begin_send_retry(
-                        failure.state,
-                        owner,
-                        turn_id,
-                        context,
-                        envelope,
-                    )
+                    boxed(|| {
+                        recovery::handle_begin_send_retry(
+                            failure.state,
+                            owner,
+                            turn_id,
+                            context,
+                            envelope,
+                        )
+                    })
                     .await
                 }
                 FirstTurnWorkerRecovery::Observe {
@@ -292,14 +313,16 @@ where
                     turn_id,
                     observation,
                 } => {
-                    recovery::handle_observe_retry(
-                        failure.state,
-                        owner,
-                        turn_id,
-                        observation,
-                        context,
-                        envelope,
-                    )
+                    boxed(|| {
+                        recovery::handle_observe_retry(
+                            failure.state,
+                            owner,
+                            turn_id,
+                            observation,
+                            context,
+                            envelope,
+                        )
+                    })
                     .await
                 }
                 FirstTurnWorkerRecovery::Terminal {
@@ -373,4 +396,12 @@ fn map_close(error: &CloseError) -> HostError {
         | CloseError::Driver(_)
         | CloseError::Proof => HostError::RecoveryRequired,
     }
+}
+
+/// Builds a handler's future on the heap. An unoptimized build gives every
+/// match arm its own stack slot for the future it awaits, so a dispatcher that
+/// awaits a different handler in each arm would need all of them at once.
+#[inline(never)]
+fn boxed<F: std::future::Future>(make: impl FnOnce() -> F) -> std::pin::Pin<Box<F>> {
+    Box::pin(make())
 }
