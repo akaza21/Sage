@@ -476,7 +476,7 @@ test.describe("ED02 picker visual states", () => {
       listbox.getByRole("option", { name: "Codex — test only", exact: true }),
     ).toHaveAttribute("aria-selected", "true");
     const unavailable = listbox.getByRole("option", {
-      name: /Unavailable Codex.*Sage did not admit this harness and will not start it\./,
+      name: /Unavailable Codex.*Sage can't start this harness\./,
     });
     await expect(unavailable).toHaveAttribute("aria-disabled", "true");
     await expect(page.getByRole("combobox", { name: "Harness" })).toHaveCount(
@@ -562,7 +562,7 @@ test.describe("ED02 picker visual states", () => {
     });
     await expect(handoffTrigger).toBeEnabled();
     await handoffTrigger.click();
-    const dialog = page.getByRole("dialog", { name: "Hand off this Chat" });
+    const dialog = page.getByRole("dialog", { name: "Hand off this chat" });
     const trigger = dialog.getByRole("button", { name: "Target chat" });
     await expect(trigger).toHaveText("Target chat");
     await trigger.click();

@@ -9,7 +9,7 @@ export function AgentArtifactEmptyState({ titleId }: { titleId: string }) {
       <span className="placeholder-surface__icon" aria-hidden="true">
         <Files size={19} strokeWidth={1.7} />
       </span>
-      <h1 id={titleId}>Waiting for this Chat</h1>
+      <h1 id={titleId}>Waiting for this chat</h1>
       <p>
         Open a file or change from the conversation. Preview will appear when
         this chat starts a loopback server.

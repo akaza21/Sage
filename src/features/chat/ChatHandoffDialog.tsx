@@ -12,7 +12,7 @@ import { ModalDialog } from "../../ui/ModalDialog";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 
 /**
- * Lazy handoff chunk: the "Hand off this Chat" dialog. The eager
+ * Lazy handoff chunk: the "Hand off this chat" dialog. The eager
  * ChatHandoffControl owns the trigger, the intent and its staleness checks;
  * this mounts only while a current intent exists.
  */
@@ -91,7 +91,7 @@ export function ChatHandoffDialog({
         aria-labelledby="handoff-dialog-title"
         onSubmit={(event) => void confirm(event)}
       >
-        <h2 id="handoff-dialog-title">Hand off this Chat</h2>
+        <h2 id="handoff-dialog-title">Hand off this chat</h2>
         <p>
           Review the bounded context as an ordinary prompt. It will be placed in
           the target composer and will not be sent automatically.

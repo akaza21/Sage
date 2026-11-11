@@ -2811,7 +2811,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(options[0]).toHaveTextContent(/^Simulator$/);
     expect(options[0]).toHaveAccessibleName("Simulator — test only");
     expect(options[1]).toHaveAccessibleName(
-      "Codex — unavailable. Sage did not admit this harness and will not start it.",
+      "Codex — unavailable. Sage can't start this harness.",
     );
     expect(options[1]).toBeDisabled();
     expect(options[2]).toHaveAccessibleName(
@@ -3291,7 +3291,7 @@ describe("ChatSurface ACP resource integration", () => {
     // The dialog loads in its own lazy chunk on the first Hand off: wait for
     // it rather than race a cold import against findByRole's clock.
     await settleLazyModules();
-    const dialog = screen.getByRole("dialog", { name: "Hand off this Chat" });
+    const dialog = screen.getByRole("dialog", { name: "Hand off this chat" });
     // Query inside the dialog and name only the options used: a role query
     // by name computes each candidate's name through jsdom's style cascade,
     // across the whole Chat surface or all 63 targets.
@@ -3338,7 +3338,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(handoffChat).not.toHaveBeenCalled();
     act(() => useWorkbenchStore.setState({ projectTransitioning: false }));
     fireEvent.click(trigger);
-    const reopened = screen.getByRole("dialog", { name: "Hand off this Chat" });
+    const reopened = screen.getByRole("dialog", { name: "Hand off this chat" });
     fireEvent.click(
       within(reopened).getByRole("button", { name: "Target chat" }),
     );
@@ -3476,7 +3476,7 @@ describe("ChatSurface ACP resource integration", () => {
     const trigger = screen.getByRole("button", { name: "Hand off chat" });
     fireEvent.click(trigger);
     const dialog = await screen.findByRole("dialog", {
-      name: "Hand off this Chat",
+      name: "Hand off this chat",
     });
     const first = screen.getByRole("button", { name: "Target chat" });
     const last = screen.getByRole("button", { name: "Place in target" });
@@ -3889,7 +3889,7 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     expect(
       screen.getByRole("option", {
-        name: "Unavailable harness — unavailable. Sage did not admit this harness and will not start it.",
+        name: "Unavailable harness — unavailable. Sage can't start this harness.",
       }),
     ).toBeDisabled();
     fireEvent.click(screen.getByRole("option", { name: "Codex — available" }));

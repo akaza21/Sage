@@ -298,8 +298,8 @@ export function ChatSearchControl({
               <X size={16} aria-hidden="true" />
             </button>
             <p>
-              Search durable titles and primary conversation text in the
-              selected folder, or across listed folders.
+              Search chat titles and messages in the selected folder, or across
+              listed folders.
             </p>
             <label className="chat-search-dialog__query">
               <span>Search chats</span>
