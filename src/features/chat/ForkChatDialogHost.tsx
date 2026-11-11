@@ -22,9 +22,7 @@ export function ForkChatDialogHost({
       {request && (
         <ForkPart
           part="ForkChatDialog"
-          chatId={request.chatId}
-          turnId={request.turnId}
-          keyboard={request.keyboard}
+          {...request}
           focusRoot={focusRoot}
           onClose={() => setRequest(null)}
         />

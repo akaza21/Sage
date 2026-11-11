@@ -173,7 +173,7 @@ export function ChatTranscript({
     </div>
   ) : (
     <div className="composer__notice" role="status">
-      Loading chat history.
+      Loading chat history…
     </div>
   );
   return (
@@ -187,7 +187,7 @@ export function ChatTranscript({
           <div ref={contentRef} className="message-list__content">
             {projectTransitioning ? (
               <div className="composer__notice" role="status">
-                Loading the authoritative project.
+                Loading the authoritative project…
               </div>
             ) : useNativeAcp &&
               !page &&
