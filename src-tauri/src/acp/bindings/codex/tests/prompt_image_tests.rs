@@ -53,3 +53,22 @@ fn images_at_the_echoed_bound_fit_and_beyond_it_are_refused() {
         Err(RequestError::FrameBytes)
     ));
 }
+
+#[test]
+fn text_whose_escaped_echo_would_overflow_the_frame_is_refused_with_images() {
+    let with = |text: &str, sizes: &[usize]| {
+        let mut prompt = Prompt::new("prompt", text).unwrap();
+        prompt.images = self::prompt(sizes).images;
+        prompt
+    };
+    let images = [ECHOED_PROMPT_IMAGE_TOTAL_BYTES];
+    // Each escape character echoes as six bytes.
+    assert!(turn_start(&with(&"\u{1b}".repeat(30 * 1024), &images)).is_ok());
+    let dense = "\u{1b}".repeat(60 * 1024);
+    assert!(matches!(
+        turn_start(&with(&dense, &images)),
+        Err(RequestError::FrameBytes)
+    ));
+    // Without images the echo leaves the text room enough.
+    assert!(turn_start(&with(&dense, &[])).is_ok());
+}

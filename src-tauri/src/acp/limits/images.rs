@@ -107,7 +107,8 @@ const _: () = assert!(
         && PROMPT_IMAGE_PNG_BYTES <= PROMPT_IMAGE_TOTAL_BYTES
         && ECHOED_PROMPT_IMAGE_TOTAL_BYTES <= PROMPT_IMAGE_TOTAL_BYTES
         && PROMPT_IMAGE_PNG_BYTES <= ECHOED_PROMPT_IMAGE_TOTAL_BYTES
-        // The echo of every image with the prompt text fits one inbound frame.
+        // The echo of every image leaves room for the prompt text; a text
+        // whose escaped echo would not fit is refused when the turn is sent.
         && base64_len(ECHOED_PROMPT_IMAGE_TOTAL_BYTES) + DISPATCH_BYTES + PROMPT_FRAME_ENVELOPE_BYTES
             <= LIMITS.wire.frame_bytes as usize
         && PROMPT_IMAGE_TOTAL_BYTES <= STORED_IMAGE_BYTES
