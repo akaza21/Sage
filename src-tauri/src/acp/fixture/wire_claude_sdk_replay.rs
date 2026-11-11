@@ -5,6 +5,7 @@ use std::{
     cell::RefCell,
     collections::VecDeque,
     io::{Read, Write},
+    path::Path,
     rc::Rc,
 };
 
@@ -12,15 +13,34 @@ use serde_json::Value;
 
 use super::WireState;
 
-/// Replays `case_id` against `client`. The client is called with each
-/// awaited step's kind and the frames the child wrote since its last call,
-/// and returns the frames it sends. When a step reads past what the client
-/// sent, the client is called again with no kind and the newer frames, so
-/// it can answer them, as a live client answers a control request mid-step.
-/// The final call (no kind) receives the remaining output and must send
-/// nothing more.
+/// Replays `case_id`, launched with Claude Code's session flags
+/// `harness_args` in profile `config` and working in `cwd`, against
+/// `client`. The client is called with each awaited step's kind and the
+/// frames the child wrote since its last call, and returns the frames it
+/// sends. When a step reads past what the client sent, the client is called
+/// again with no kind and the newer frames, so it can answer them, as a live
+/// client answers a control request mid-step. The final call (no kind)
+/// receives the remaining output and must send nothing more.
 pub(crate) fn claude_sdk_wire_for_test(
     case_id: &str,
+    harness_args: &[std::ffi::OsString],
+    config: &Path,
+    cwd: &Path,
+    client: impl FnMut(Option<&str>, Vec<Value>) -> Vec<Value>,
+) {
+    let args: Vec<String> = harness_args
+        .iter()
+        .map(|arg| arg.to_str().expect("UTF-8 argument").to_owned())
+        .collect();
+    let mut state = WireState::new();
+    state.claude_sdk = super::claude_sdk::SdkWireState::opened(&args, config, cwd)
+        .unwrap_or_else(|error| panic!("{case_id}: {args:?} opens a session: {error:?}"));
+    replay(case_id, state, client);
+}
+
+fn replay(
+    case_id: &str,
+    mut state: WireState,
     client: impl FnMut(Option<&str>, Vec<Value>) -> Vec<Value>,
 ) {
     let case = super::super::generated_cases::JOURNEY_CASES
@@ -35,7 +55,6 @@ pub(crate) fn claude_sdk_wire_for_test(
         input: VecDeque::new(),
         output: output.clone(),
     };
-    let mut state = WireState::new();
     let mut writer = output.clone();
     for step in &steps {
         pipe.kind = (step["op"] == "awaitClient")

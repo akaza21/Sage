@@ -1,8 +1,9 @@
 //! What a client's prompt carried, as a replay agent quotes it back.
 //!
 //! A journey frame names `$PROMPT_ECHO` where the agent's reply should show
-//! the last prompt it received, or `$CODEX_TURN_CONFIG` for the model and
-//! effort of the last Codex `turn/start` (see `quote`). Each content block
+//! the last prompt it received, `$CODEX_TURN_CONFIG` for the model and
+//! effort of the last Codex `turn/start`, or `$TRANSCRIPT_ECHO` for what a
+//! Claude Code session held before its last prompt (see `quote`). Each content block
 //! is described by its kind; text is shown as sent, up to a bound, so a
 //! check in the real app can read exactly what reached the agent. Binary
 //! data is described by its media type and size, never shown.
@@ -21,11 +22,14 @@ const SHOWN_TEXT_BYTES: usize = 512;
 type Sent = fn(&WireState) -> Option<&str>;
 
 /// Placeholders for what the client sent, and where the state keeps it.
-const QUOTES: [(&str, Sent); 2] = [
+const QUOTES: [(&str, Sent); 3] = [
     ("$CODEX_TURN_CONFIG", |state| {
         state.codex_turn_config.as_deref()
     }),
     ("$PROMPT_ECHO", |state| state.prompt_echo.as_deref()),
+    ("$TRANSCRIPT_ECHO", |state| {
+        state.claude_sdk.transcript_echo()
+    }),
 ];
 
 /// `text` with each client placeholder replaced by what the client sent, in

@@ -40,6 +40,8 @@ pub(crate) use user_input::codex_user_input_wire_for_test;
 mod acp;
 #[path = "wire_claude_sdk.rs"]
 mod claude_sdk;
+#[path = "wire_claude_sdk_transcript.rs"]
+mod claude_transcript;
 #[path = "wire_codex.rs"]
 mod codex;
 #[path = "wire_codex_catalog.rs"]
@@ -102,6 +104,14 @@ impl WireState {
             prompt_echo: None,
             claude_sdk: claude_sdk::SdkWireState::default(),
         }
+    }
+
+    /// A launch's starting state: a Claude Code SDK case opens the session
+    /// its `harness_args` name.
+    pub(super) fn launched(harness_args: &[String]) -> Result<Self, FixtureError> {
+        let mut state = Self::new();
+        state.claude_sdk = claude_sdk::SdkWireState::launched(harness_args)?;
+        Ok(state)
     }
 
     fn charge(&mut self, bytes: u64) -> Result<(), FixtureError> {
