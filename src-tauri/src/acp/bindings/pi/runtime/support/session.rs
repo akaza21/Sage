@@ -11,7 +11,7 @@ use crate::acp::bindings::pi::Operation;
 type Reply = (Option<AdapterEvent>, Option<AdapterEgress>);
 
 /// Entries read from Pi's session directory while looking for an older chat's file.
-const SESSION_DIR_SCAN_LIMIT: usize = 20_000;
+pub(super) const SESSION_DIR_SCAN_LIMIT: usize = 20_000;
 
 impl PiRuntime {
     /// Reopens a chat's Pi session from the file Pi saved it in. Pi's own
@@ -64,7 +64,7 @@ impl PiRuntime {
 /// file `<timestamp>_<id>.jsonl`; those are looked up by a scan that stops
 /// after `limit` entries. Pi writes the file once the chat has a message, so
 /// a chat that never had one has nothing to reopen.
-fn session_path(dir: &Path, key: &str, limit: usize) -> Option<PathBuf> {
+pub(super) fn session_path(dir: &Path, key: &str, limit: usize) -> Option<PathBuf> {
     if !crate::acp::bindings::pi::protocol::is_session_key(key) {
         return None;
     }

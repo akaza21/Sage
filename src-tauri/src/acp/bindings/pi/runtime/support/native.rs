@@ -22,21 +22,28 @@ impl PiRuntime {
         &mut self,
         request: NativeRequest,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        if self.poisoned || self.external_session.is_none() || self.native_pending.is_some() {
+        // A fork moves Pi off the chat's session until it is moved back.
+        if self.poisoned
+            || self.external_session.is_none()
+            || self.native_pending.is_some()
+            || self.fork.is_some()
+        {
             return Err(AdapterRuntimeError::Operation);
         }
         self.native_rpc_reply = None;
         let egress = self.begin_one(Operation::Native(request), RequestKind::Native)?;
-        self.native_pending = self
-            .reservations
-            .get(
-                &egress
-                    .token()
-                    .request_id()
-                    .ok_or(AdapterRuntimeError::Operation)?,
-            )
-            .map(|reservation| reservation.command_id.clone());
+        self.native_pending = Some(self.command_id(&egress)?);
         Ok(egress)
+    }
+
+    /// The Pi command id a written request is answered under.
+    pub(super) fn command_id(&self, egress: &AdapterEgress) -> Result<String, AdapterRuntimeError> {
+        egress
+            .token()
+            .request_id()
+            .and_then(|id| self.reservations.get(&id))
+            .map(|reservation| reservation.command_id.clone())
+            .ok_or(AdapterRuntimeError::Operation)
     }
 
     /// The request for a session control Pi can carry out.
@@ -48,6 +55,9 @@ impl PiRuntime {
             SessionControl::SetTitle { title } => self.begin_native(NativeRequest::SessionName {
                 name: title.as_str().to_owned(),
             }),
+            SessionControl::StopActivity { activity_id } if self.is_current_retry(activity_id) => {
+                self.begin_native(NativeRequest::AbortRetry)
+            }
             SessionControl::UndoTurn { .. } | SessionControl::StopActivity { .. } => {
                 Err(AdapterRuntimeError::UnsupportedCommand)
             }
@@ -62,11 +72,15 @@ impl PiRuntime {
         command_id: &str,
         command: NativeCommand,
         data: Option<Value>,
-    ) -> AdapterEvent {
+    ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
         let awaited = self
             .native_pending
             .take_if(|pending| pending == command_id)
             .is_some();
+        if self.is_fork_step(command_id) {
+            let egress = self.fork_reply(command, data, awaited)?;
+            return Ok((Some(AdapterEvent::Absorbed), egress));
+        }
         let reply = match (command, data) {
             (NativeCommand::SessionStats, Some(data)) => match session_spend(&data) {
                 Some(session) => {
@@ -79,13 +93,20 @@ impl PiRuntime {
                 None => NativeRpcReply::Rejected,
             },
             (NativeCommand::SessionName, Some(_)) => NativeRpcReply::Controlled(None),
-            (_, None) => NativeRpcReply::Rejected,
+            // Pi ends the wait with `auto_retry_end`, which closes the activity.
+            (NativeCommand::AbortRetry, Some(_)) => NativeRpcReply::Controlled(None),
+            // Only a fork asks for these, and a fork is answered above.
+            (
+                NativeCommand::Clone | NativeCommand::ForkState | NativeCommand::ReturnToSession,
+                _,
+            )
+            | (_, None) => NativeRpcReply::Rejected,
         };
         if !awaited {
-            return AdapterEvent::IgnoredLate;
+            return Ok((Some(AdapterEvent::IgnoredLate), None));
         }
         self.native_rpc_reply = Some(reply);
-        AdapterEvent::Absorbed
+        Ok((Some(AdapterEvent::Absorbed), None))
     }
 
     /// The caller gave up waiting for the native answer; Pi's late reply
