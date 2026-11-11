@@ -1,3 +1,5 @@
+import { createElement } from "react";
+
 import {
   Command,
   FileDiff,
@@ -14,6 +16,10 @@ const commandIcons = new Map([
 ]);
 
 export function SlashCommandIcon({ name }: { name: string }) {
-  const Icon = commandIcons.get(name) ?? Command;
-  return <Icon size={14} aria-hidden="true" />;
+  // The icon is a module-level component chosen by name, so it never
+  // remounts; createElement says so where JSX on a local would not.
+  return createElement(commandIcons.get(name) ?? Command, {
+    size: 14,
+    "aria-hidden": "true",
+  });
 }
