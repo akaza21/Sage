@@ -47,13 +47,14 @@ impl Drop for Profile {
 #[test]
 fn native_claude_install_is_discovered_and_available_to_sign_in() {
     let profile = Profile::new();
-    profile.version("2.1.319");
+    let binary = profile.version("2.1.319");
     symlink("../share/claude/versions/2.1.319", profile.launcher()).unwrap();
-    let present = candidates::scan_candidates_from_roots(
+    let launcher = super::native_claude::launcher(&profile.0).unwrap();
+    let present = candidates::candidates_from_roots(
         &["claude"],
         [(
             DiscoverySource::KnownInstallRoot,
-            profile.0.join(".local/bin"),
+            launcher.parent().unwrap().to_owned(),
         )],
     );
     assert!(matches!(
@@ -66,7 +67,7 @@ fn native_claude_install_is_discovered_and_available_to_sign_in() {
         executable: profile.launcher(),
         version: Some("2.1.319".into()),
     }]);
-    assert_eq!(catalog.claude_cli_path(), Some(profile.launcher()));
+    assert_eq!(catalog.claude_cli_path(), Some(binary));
 }
 
 #[test]
@@ -101,10 +102,7 @@ fn native_claude_refuses_symlinked_install_store_parents() {
     let moved = profile.0.join("moved-share");
     fs::rename(&share, &moved).unwrap();
     symlink(&moved, &share).unwrap();
-    assert!(!validation::authentic_harness_file(
-        &profile.launcher(),
-        "claude"
-    ));
+    assert!(super::native_claude::launcher(&profile.0).is_none());
 }
 
 #[test]
@@ -125,6 +123,14 @@ fn native_claude_revalidates_the_link_and_artifact_when_the_cli_updates() {
     let updated = profile.version("2.1.322");
     symlink(&updated, profile.launcher()).unwrap();
     assert!(old.revalidate().is_err());
+    let stale = ClaudeSdkBindingRegistration::startup();
+    stale.apply_discovery(Some(&InstalledHarness {
+        id: "claude-code",
+        executable: profile.launcher(),
+        version: Some("2.1.319".into()),
+    }));
+    assert!(stale.admitted().is_none());
+
     let new = registration.refresh().unwrap();
     assert_eq!(new.harness_version(), "2.1.322");
     assert_ne!(old.artifact_digest(), new.artifact_digest());

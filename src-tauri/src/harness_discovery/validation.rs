@@ -41,7 +41,7 @@ pub(super) fn authentic_harness_file(path: &Path, expected_basename: &str) -> bo
         return true;
     }
     #[cfg(unix)]
-    if super::native_claude::authentic_launcher(path) {
+    if super::native_claude::target(path).is_some() {
         return true;
     }
     false

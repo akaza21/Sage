@@ -1,15 +1,17 @@
 //! The native Claude installer links its launcher to a versioned executable.
 //! Only that layout is allowed. Admission still pins and revalidates the file.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::validation::{authentic_regular_file, is_local_probe_root};
 
-pub(super) fn authentic_launcher(path: &Path) -> bool {
-    native_target(path).is_some()
+pub(super) fn launcher(home: &Path) -> Option<PathBuf> {
+    let launcher = home.join(".local/bin/claude");
+    target(&launcher)?;
+    Some(launcher)
 }
 
-fn native_target(path: &Path) -> Option<()> {
+pub(super) fn target(path: &Path) -> Option<PathBuf> {
     if path.file_name()? != "claude" {
         return None;
     }
@@ -35,7 +37,7 @@ fn native_target(path: &Path) -> Option<()> {
     {
         return None;
     }
-    Some(())
+    Some(target)
 }
 
 /// Bound filesystem checks and reject symlinks in the launcher and store's parents.
