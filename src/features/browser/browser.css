@@ -293,6 +293,17 @@
   display: none;
 }
 
+.workbench--agent .browser-surface__menu {
+  border-radius: var(--radius-xl);
+  background: var(--color-plane-raised);
+  font-size: var(--font-size-sm);
+}
+
+.workbench--agent .browser-surface__menu [role="menuitem"] {
+  min-height: var(--row-height-compact);
+  border-radius: var(--radius-md);
+}
+
 .browser-surface__menu-group + .browser-surface__menu-group {
   border-top: 1px solid var(--browser-menu-divider);
   margin-top: 4px;

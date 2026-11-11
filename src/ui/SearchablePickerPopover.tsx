@@ -235,6 +235,7 @@ export function SearchablePickerPopover({
           aria-autocomplete="list"
           aria-controls={`${id}-listbox`}
           aria-expanded={expanded}
+          placeholder="Search…"
           value={draft}
           onChange={(event) => {
             setDraft(event.target.value);

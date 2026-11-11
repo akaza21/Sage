@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { isImeComposing } from "./imeComposition";
 
 /** Rows rendered at once; the rest are counted and reached by typing more. */
@@ -7,6 +7,7 @@ export const TEXT_FIELD_SUGGESTIONS_MAX_RENDERED = 50;
 export interface TextFieldSuggestion {
   id: string;
   label: string;
+  icon?: ReactNode;
   description?: string;
   /** Muted trailing text, such as an argument hint. */
   hint?: string;

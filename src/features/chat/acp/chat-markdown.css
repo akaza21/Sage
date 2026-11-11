@@ -51,9 +51,9 @@
 }
 
 .acp-markdown {
-  --chat-text-leading: 21px;
-  --chat-table-font-size: 11px;
-  font-size: var(--font-size-sm);
+  --chat-text-leading: 1.6;
+  --chat-table-font-size: var(--font-size-xs);
+  font-size: var(--font-size-md);
   line-height: var(--chat-text-leading);
 }
 
@@ -76,6 +76,7 @@
   margin: var(--space-4) 0 var(--space-2);
   line-height: var(--line-height-tight);
   font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
 }
 
 .acp-markdown blockquote {
