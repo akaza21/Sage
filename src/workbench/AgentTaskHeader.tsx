@@ -27,6 +27,9 @@ import { AgentTaskResourcesPart } from "./agentTaskHeaderLazy";
 import { AgentToolsContext } from "./AgentToolsProvider";
 import { AgentNavigationPart } from "./agentNavigationLazy";
 
+/** Loads the resources panel chunk once the header has painted, off the first frame. */
+const RESOURCES_PRELOAD_DELAY_MS = 1000;
+
 function preloadResources() {
   void AgentTaskResourcesPart.preload().catch(() => undefined);
 }
@@ -56,7 +59,7 @@ export function AgentTaskHeader({
   const [showAllSources, setShowAllSources] = useState(false);
   const resourcesSession = useRef("");
   useEffect(() => {
-    const timer = setTimeout(preloadResources, 1000);
+    const timer = setTimeout(preloadResources, RESOURCES_PRELOAD_DELAY_MS);
     return () => clearTimeout(timer);
   }, []);
   const resourcesTriggerRef = useRef<HTMLButtonElement | null>(null);
