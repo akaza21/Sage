@@ -5,11 +5,7 @@ use super::HarnessCatalog;
 impl HarnessCatalog {
     pub(crate) fn claude_cli_path(&self) -> Option<PathBuf> {
         let discovered = self.discovered("claude-code")?;
-        if cfg!(windows) {
-            native_claude_executable(&discovered.executable)
-        } else {
-            None
-        }
+        native_claude_executable(&discovered.executable)
     }
 
     pub(crate) fn claude_auth_environment(&self) -> Option<Vec<(OsString, OsString)>> {

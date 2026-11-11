@@ -34,7 +34,17 @@ pub(super) fn expected_basenames(harness: HarnessExecutable) -> &'static [&'stat
 }
 
 pub(super) fn authentic_harness_file(path: &Path, expected_basename: &str) -> bool {
-    path.file_name() == Some(OsStr::new(expected_basename)) && authentic_file_with_parents(path)
+    if path.file_name() != Some(OsStr::new(expected_basename)) {
+        return false;
+    }
+    if authentic_file_with_parents(path) {
+        return true;
+    }
+    #[cfg(unix)]
+    if super::native_claude::authentic_launcher(path) {
+        return true;
+    }
+    false
 }
 
 pub(super) fn authentic_regular_file(path: &Path) -> bool {

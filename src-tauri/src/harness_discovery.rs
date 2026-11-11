@@ -14,6 +14,10 @@ use std::{
 
 mod candidates;
 mod claude;
+#[cfg(unix)]
+mod native_claude;
+#[cfg(all(test, unix))]
+mod native_claude_tests;
 mod parsing;
 mod pi;
 mod validation;

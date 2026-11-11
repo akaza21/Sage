@@ -211,11 +211,13 @@ pub(super) fn scan_candidates_from_roots(
         .flat_map(|(source, root)| {
             wanted_names.iter().filter_map(move |name| {
                 let executable = root.join(name);
-                matches!(
+                let plain = matches!(
                     executable.symlink_metadata(),
                     Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink()
-                )
-                .then(|| candidate(executable, source))
+                );
+                #[cfg(unix)]
+                let plain = plain || super::native_claude::authentic_launcher(&executable);
+                plain.then(|| candidate(executable, source))
             })
         })
         .collect()
