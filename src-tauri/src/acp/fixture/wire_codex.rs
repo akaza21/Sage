@@ -62,6 +62,20 @@ fn await_request_inner(
             emit_child_read(&request, output, state)?;
             continue;
         }
+        // Sage reads the skills while a session is idle; a replay case has
+        // none, as a Codex install with no skills answers.
+        if method == "skills/list" && !expected(expected_method, method) {
+            let id = object
+                .get("id")
+                .and_then(Value::as_u64)
+                .ok_or(FixtureError::InvalidArguments)?;
+            emit_json(
+                output,
+                state,
+                &json!({"jsonrpc":"2.0","id":id,"result":{"data":[]}}),
+            )?;
+            continue;
+        }
         if method == "model/list" {
             if request
                 .pointer("/params/cursor")
