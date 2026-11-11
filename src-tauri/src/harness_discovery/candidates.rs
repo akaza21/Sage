@@ -78,7 +78,7 @@ pub(super) fn production_present_candidates(
                 .cloned();
             #[cfg(unix)]
             let found = found.or_else(|| match spec.executable {
-                HarnessExecutable::Claude => native_claude.clone(),
+                super::HarnessExecutable::Claude => native_claude.clone(),
                 _ => None,
             });
             found.map(|candidate| (spec.id, candidate))

@@ -5,8 +5,8 @@ use std::{
 };
 
 use super::{
-    DiscoverySource, HarnessDiscovery, HarnessExecutable, InstalledHarness, ProbeLimits, candidates,
-    validation,
+    DiscoverySource, HarnessDiscovery, HarnessExecutable, InstalledHarness, ProbeLimits,
+    candidates, validation,
 };
 
 struct Profile(PathBuf);
@@ -58,7 +58,11 @@ fn native_claude_install_is_discovered_and_available_to_sign_in() {
         )],
     );
     assert!(matches!(
-        super::discover_from_candidates(HarnessExecutable::Claude, present, ProbeLimits::PRODUCTION),
+        super::discover_from_candidates(
+            HarnessExecutable::Claude,
+            present,
+            ProbeLimits::PRODUCTION
+        ),
         HarnessDiscovery::Present(_)
     ));
     let catalog = crate::harnesses::HarnessCatalog::default();

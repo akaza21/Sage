@@ -379,8 +379,8 @@ pub(crate) fn enrich_installed_harness_versions(
             .map(|harness| {
                 scope.spawn(move || {
                     let spec = known_harness_spec(harness.id);
-                    let target = spec
-                        .and_then(|spec| probe_target(spec.executable, &harness.executable));
+                    let target =
+                        spec.and_then(|spec| probe_target(spec.executable, &harness.executable));
                     let identity = target.as_deref().and_then(display_file_identity);
                     let version = identity
                         .as_ref()
@@ -390,7 +390,10 @@ pub(crate) fn enrich_installed_harness_versions(
                                 let output = run_version_command(target, ProbeLimits::PRODUCTION)?;
                                 parse_harness_display_version(spec.executable, &output.stdout)
                                     .or_else(|| {
-                                        parse_harness_display_version(spec.executable, &output.stderr)
+                                        parse_harness_display_version(
+                                            spec.executable,
+                                            &output.stderr,
+                                        )
                                     })
                                     .map(|version| version.to_string())
                             });
