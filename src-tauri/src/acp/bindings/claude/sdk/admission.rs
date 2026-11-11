@@ -180,8 +180,16 @@ impl AdmittedClaudeSdkBinding {
             .clone()
             .filter(|version| version_admitted(version))
             .ok_or(ClaudeSdkAdmissionUnavailable::VersionUnsupported)?;
-        let executable = std::fs::canonicalize(&installed.executable)
-            .map_err(|_| ClaudeSdkAdmissionUnavailable::Unreadable)?;
+        let executable = crate::harness_discovery::claude_sdk_executable(&installed.executable)
+            .ok_or(ClaudeSdkAdmissionUnavailable::Unreadable)?;
+        // A native launcher can be repointed after the version probe.
+        // Its target names the version, so refuse a mismatched observation.
+        #[cfg(unix)]
+        if executable.file_name() != installed.executable.file_name()
+            && executable.file_name().and_then(std::ffi::OsStr::to_str) != Some(version.as_str())
+        {
+            return Err(ClaudeSdkAdmissionUnavailable::VersionUnsupported);
+        }
         let sha256_hex = crate::harness_discovery::cached_sha256_file(&executable)
             .ok_or(ClaudeSdkAdmissionUnavailable::Unreadable)?;
         let mut sha256 = [0_u8; 32];
