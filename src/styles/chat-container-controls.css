@@ -57,7 +57,7 @@
 .composer
   [data-fit~="placeholder"]
   .composer__effort-picker:not([aria-controls])
-  .composer__effort-label,
+  :is(.composer__effort-label, svg:last-child),
 .composer [data-fit~="capacity"] .composer__capacity,
 .composer [data-fit~="access"] .composer__access-text,
 .composer
