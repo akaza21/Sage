@@ -332,6 +332,8 @@ export default function QuickOpen({
           }
         }}
       >
+        {/* Chromium drops a focused input's placeholder ellipsis, and this
+            input always has focus, so the hint is drawn over it instead. */}
         <input
           className="quick-open__input"
           role="combobox"
@@ -345,7 +347,7 @@ export default function QuickOpen({
           autoFocus
           spellCheck={false}
           autoComplete="off"
-          placeholder="Search Files by name (:line goes to a line, > runs a command)"
+          aria-describedby={`${listId}-hint`}
           value={text}
           onChange={(event) => {
             const next = event.target.value;
@@ -357,6 +359,14 @@ export default function QuickOpen({
           onKeyDown={onKeyDown}
           onBlur={() => close(false)}
         />
+        <span
+          id={`${listId}-hint`}
+          className="quick-open__hint"
+          aria-hidden="true"
+          hidden={text !== ""}
+        >
+          Search Files by name (:line goes to a line, &gt; runs a command)
+        </span>
         <ul
           ref={list}
           className="quick-open__list"

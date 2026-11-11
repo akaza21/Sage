@@ -178,7 +178,7 @@ test("AP-C sidebar search and Ctrl+K share a focused live palette", async ({
   await expect(query).toHaveValue("");
 });
 
-test("Search Chats keeps Cancel reachable when a pending search fails", async ({
+test("Search Chats keeps Close reachable when a pending search fails", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 690, height: 440 });
@@ -200,7 +200,7 @@ test("Search Chats keeps Cancel reachable when a pending search fails", async ({
   const dialog = page.getByRole("dialog", { name: "Search Chats" });
   await page.clock.runFor(250);
   await expect(dialog.getByRole("status")).toHaveText("Searching…");
-  const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+  const cancel = dialog.getByRole("button", { name: "Close", exact: true });
   await cancel.click({ trial: true });
   await waitForAnimations(dialog);
   const before = (await cancel.boundingBox())!;
