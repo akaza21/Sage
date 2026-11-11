@@ -22,6 +22,16 @@ impl HarnessAdapter for CodexRuntime {
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         self.discard_invalid_model_page(frame)
     }
+    fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
+        self.inner.skills()
+    }
+    /// Reads the skills while idle, first and after Codex says they changed.
+    fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        let wanted = self.inner.skills_wanted();
+        wanted
+            .then(|| self.request(CodexAdapter::skills_list))
+            .transpose()
+    }
     fn model_config_hydration(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(self.request_model_config())
     }
@@ -89,10 +99,10 @@ impl HarnessAdapter for CodexRuntime {
         self.inner.abandon_rate_limits_read();
     }
 
-    /// A child read or a fork may answer with an oversize frame (both carry
-    /// native Turns), so either keeps the decoder in recoverable mode.
+    /// Each read whose reply may be past the frame bound keeps the decoder
+    /// in recoverable mode.
     fn child_read_pending(&self) -> bool {
-        self.inner.child_read_pending() || self.inner.fork_pending().is_some()
+        self.inner.oversize_recoverable()
     }
 
     fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -119,18 +129,17 @@ impl HarnessAdapter for CodexRuntime {
     }
 
     fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
-        if self.inner.fork_pending() == Some(id) {
-            // The native fork happened, but its new thread id is beyond the
-            // frame bound; Sage creates no Chat for it.
-            self.inner.complete_fork(id).map_err(map_adapter)?;
-            self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::TooLarge);
+        if self.inner.skills_oversized(id) {
             return Ok(());
         }
-        if self
-            .inner
-            .oversized_child_response(id)
-            .map_err(map_adapter)?
-        {
+        let native = if self.inner.fork_pending() == Some(id) {
+            // The native fork happened, but its new thread id is beyond the
+            // frame bound; Sage creates no Chat for it.
+            self.inner.complete_fork(id).map(|_| true)
+        } else {
+            self.inner.oversized_child_response(id)
+        };
+        if native.map_err(map_adapter)? {
             self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::TooLarge);
         }
         Ok(())

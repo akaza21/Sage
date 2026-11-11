@@ -73,6 +73,7 @@ impl CodexAdapter {
             pending_child_read: None,
             child_read_tombstone: None,
             rate_limits_abandoned: super::rate_limits::AbandonedReads::default(),
+            skills: Default::default(),
             pending_fork: None,
             forks: super::fork::ForkLedger::default(),
         }

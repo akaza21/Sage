@@ -13,6 +13,7 @@ use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
 use super::turn_policy::{TurnPolicySurface, TurnSettings, turn_policy, validate_turn_policy};
 
 mod session_action;
+mod skills;
 
 // The shared writer owns the single LF delimiter. Keeping the payload one
 // byte below the wire ceiling makes the eventual payload + LF write fit the
@@ -81,6 +82,8 @@ pub(crate) enum RequestKind {
     GoalPause,
     GoalClear,
     RateLimitsRead,
+    /// `skills/list` for the `/` menu.
+    SkillsList,
 }
 
 impl RequestKind {
@@ -127,6 +130,7 @@ impl OutgoingRequest {
             RequestKind::GoalPause => "thread/goal/set",
             RequestKind::GoalClear => "thread/goal/clear",
             RequestKind::RateLimitsRead => "account/rateLimits/read",
+            RequestKind::SkillsList => "skills/list",
         };
         let bytes = serde_json::to_vec(&json!({"id": id, "method": method, "params": params}))
             .map_err(|_| RequestError::Encoding)?;
