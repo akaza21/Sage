@@ -11,6 +11,7 @@ mod legacy_project;
 mod limits;
 mod manifest;
 mod notifications;
+mod operation_terminal_index;
 mod paths;
 mod platform;
 mod platform_anchor;
@@ -144,6 +145,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     session_resume_link::apply(&mut opened.connection)?;
     title_source::apply(&mut opened.connection)?;
     session_facts_turn_index::apply(&mut opened.connection)?;
+    operation_terminal_index::apply(&mut opened.connection)?;
     Ok(opened)
 }
 
@@ -202,7 +204,8 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
         | SchemaClass::CurrentV23
         | SchemaClass::CurrentResumeLink
         | SchemaClass::CurrentTitleSource
-        | SchemaClass::CurrentSessionFactsTurnIndex => {
+        | SchemaClass::CurrentSessionFactsTurnIndex
+        | SchemaClass::CurrentOperationTerminalIndex => {
             let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
             if probe::classify_live(&paths)? != source_schema {
@@ -369,6 +372,7 @@ fn verify_current(connection: &Connection) -> AppResult<()> {
             | SchemaClass::CurrentResumeLink
             | SchemaClass::CurrentTitleSource
             | SchemaClass::CurrentSessionFactsTurnIndex
+            | SchemaClass::CurrentOperationTerminalIndex
     ) {
         return invalid("database did not reach an exact current schema");
     }

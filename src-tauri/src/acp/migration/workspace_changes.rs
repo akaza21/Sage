@@ -13,6 +13,7 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
             | SchemaClass::CurrentResumeLink
             | SchemaClass::CurrentTitleSource
             | SchemaClass::CurrentSessionFactsTurnIndex
+            | SchemaClass::CurrentOperationTerminalIndex
     ) {
         return Ok(());
     }

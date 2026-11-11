@@ -517,21 +517,19 @@ fn plan(connection: &rusqlite::Connection, sql: &str, values: &[&dyn rusqlite::T
 }
 
 #[test]
-fn per_turn_fact_lookups_seek_the_turn_index() {
+fn fact_lookups_seek_their_index() {
+    const TURN: &str = "idx_session_facts_turn";
+    const TERMINAL: &str = "idx_session_facts_operation_terminal";
     let connection = setup();
     let owner: [&dyn rusqlite::ToSql; 4] = [&"project-one", &"chat-one", &"session-one", &"turn"];
     let cases = [
         (
             plan(&connection, super::TURN_OPERATIONS_SQL, &owner),
-            ["start", "marker"].as_slice(),
+            [("start", TURN), ("marker", TURN)].as_slice(),
         ),
         (
-            plan(
-                &connection,
-                super::TERMINAL_SQL,
-                &[&"session-one", &"turn", &1_i64],
-            ),
-            ["session_facts"].as_slice(),
+            plan(&connection, super::TERMINAL_SQL, &[&"session-one", &1_i64]),
+            [("session_facts", TERMINAL)].as_slice(),
         ),
         (
             plan(
@@ -539,19 +537,28 @@ fn per_turn_fact_lookups_seek_the_turn_index() {
                 crate::acp::store::turn_activity_facts::TURN_FACTS_SQL,
                 &[&"session-one", &"turn", &"sessionActivity", &80_i64],
             ),
-            ["session_facts"].as_slice(),
+            [("session_facts", TURN)].as_slice(),
+        ),
+        (
+            plan(
+                &connection,
+                super::write::RECOVER_SQL,
+                &[&"session-one", &0_i64],
+            ),
+            [("terminal", TERMINAL)].as_slice(),
         ),
     ];
-    for (plan, tables) in cases {
-        for table in tables {
+    for (plan, seeks) in cases {
+        for (table, index) in seeks {
             assert!(
                 plan.lines()
                     .any(|step| step.split_whitespace().nth(1) == Some(table)
-                        && step.contains("idx_session_facts_turn")),
-                "{table} does not use the Turn index:\n{plan}"
+                        && step.contains(index)),
+                "{table} does not use {index}:\n{plan}"
             );
         }
         assert!(!plan.contains("SCAN"), "{plan}");
         assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+        assert!(!plan.contains("MATERIALIZE"), "{plan}");
     }
 }

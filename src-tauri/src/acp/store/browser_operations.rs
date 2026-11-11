@@ -24,10 +24,11 @@ const TURN_OPERATIONS_SQL: &str =
        AND json_extract(marker.payload_json,'$.s')=start.sequence)
      ORDER BY start.sequence DESC LIMIT 33";
 
-/// The terminal fact of one operation; it carries its start's Turn.
+/// The terminal fact of one operation, sought by its start's sequence through
+/// `idx_session_facts_operation_terminal`.
 const TERMINAL_SQL: &str = "SELECT payload_json,payload_bytes,payload_digest FROM session_facts
-     WHERE session_id=?1 AND turn_id=?2 AND kind='browserOperationTerminal'
-     AND json_extract(payload_json,'$.s')=?3 LIMIT 1";
+     WHERE session_id=?1 AND kind='browserOperationTerminal'
+     AND json_extract(payload_json,'$.s')=?2 LIMIT 1";
 
 pub(super) fn load(
     connection: &rusqlite::Connection,
@@ -66,11 +67,9 @@ pub(super) fn load(
                 return Err(StoreError::Corrupt("browser operation owner"));
             }
             let terminal: Option<(String, i64, String)> = connection
-                .query_row(
-                    TERMINAL_SQL,
-                    params![turn.session_id, turn.id, sequence],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-                )
+                .query_row(TERMINAL_SQL, params![turn.session_id, sequence], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })
                 .optional()?;
             if let Some((payload, bytes, digest)) = terminal {
                 if bytes != payload.len() as i64

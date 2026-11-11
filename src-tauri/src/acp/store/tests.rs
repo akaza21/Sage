@@ -94,6 +94,11 @@ pub(super) fn setup() -> Connection {
         ))
         .unwrap();
     connection
+        .execute_batch(include_str!(
+            "../../../migrations/027_browser_operation_terminal_index.sql"
+        ))
+        .unwrap();
+    connection
 }
 
 pub(super) fn command(prompt: &str) -> PrepareTurnCommand {
