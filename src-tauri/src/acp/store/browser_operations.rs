@@ -24,11 +24,11 @@ const TURN_OPERATIONS_SQL: &str =
        AND json_extract(marker.payload_json,'$.s')=start.sequence)
      ORDER BY start.sequence DESC LIMIT 33";
 
-/// The terminal fact of one operation, sought by its start's sequence through
-/// `idx_session_facts_operation_terminal`.
+/// The first terminal fact of one operation, sought by its start's sequence
+/// through `idx_session_facts_operation_terminal`.
 const TERMINAL_SQL: &str = "SELECT payload_json,payload_bytes,payload_digest FROM session_facts
      WHERE session_id=?1 AND kind='browserOperationTerminal'
-     AND json_extract(payload_json,'$.s')=?2 LIMIT 1";
+     AND json_extract(payload_json,'$.s')=?2 ORDER BY sequence LIMIT 1";
 
 pub(super) fn load(
     connection: &rusqlite::Connection,
