@@ -140,7 +140,7 @@ const REASONS: [RegExp, string][] = [
   ],
   [
     /no longer matches disk/i,
-    "the File changed on disk. Keep your version or reload it.",
+    "the file changed on disk. Keep your version or reload it.",
   ],
 ];
 

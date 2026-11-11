@@ -156,7 +156,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(diff).toHaveAccessibleDescription("New resource");
     await expect(
       resources.getByRole("button", {
-        name: "Pinned resource, new File or Diff available",
+        name: "Pinned resource, new file or diff available",
       }),
     ).toContainText("New");
   });

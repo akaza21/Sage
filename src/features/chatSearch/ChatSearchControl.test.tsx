@@ -590,7 +590,7 @@ describe("ChatSearchControl", () => {
     const input = screen.getByRole("searchbox", { name: "Search chats" });
     fireEvent.change(input, { target: { value: "needle" } });
     fireEvent.submit(input.closest("form")!);
-    expect(await screen.findByText(/No Chats matched/)).toBeVisible();
+    expect(await screen.findByText(/No chats matched/)).toBeVisible();
     // The empty list is not a live region, so the status announces it.
     expect(screen.getByRole("status")).toHaveTextContent("0 chats");
 

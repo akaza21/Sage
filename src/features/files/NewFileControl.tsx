@@ -194,7 +194,7 @@ function NewEntryControl({
                   ? "Creating…"
                   : kind === "file"
                     ? "Create"
-                    : "Create Folder"}
+                    : "Create folder"}
               </button>
             </div>
           </form>

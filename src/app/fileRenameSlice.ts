@@ -218,7 +218,7 @@ export const createFileRenameSlice: StateCreator<
     if (hasResourceTab(state, source, target, kind) || activeEditorConflict) {
       set({
         fileRenameError:
-          "Close File and Diff tabs for the source and target before renaming.",
+          "Close file and diff tabs for the source and target before renaming.",
       });
       return false;
     }
@@ -251,7 +251,7 @@ export const createFileRenameSlice: StateCreator<
       const currentLayout = currentProjectLayout(get());
       if (!currentLayout || hasResourceTab(get(), source, target, kind)) {
         throw new Error(
-          "Close File and Diff tabs for the source and target before renaming.",
+          "Close file and diff tabs for the source and target before renaming.",
         );
       }
       await getWorkbenchPorts().project.persistProjectLayout(

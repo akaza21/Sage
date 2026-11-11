@@ -196,7 +196,7 @@ describe("Quick Open", () => {
     render(<QuickOpen onClose={vi.fn()} />);
     await waitFor(() => expect(sent).toHaveLength(1));
     fireEvent.change(input(), { target: { value: ":30" } });
-    await screen.findByText("Press Enter to go to line 30 in the active File.");
+    await screen.findByText("Press Enter to go to line 30 in the active file.");
     // Nothing is asked for a bare line; the opening query was the only one.
     expect(sent.map((request) => request.query)).toEqual([""]);
     fireEvent.keyDown(input(), { key: "Enter" });

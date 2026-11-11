@@ -287,11 +287,11 @@ export function AgentArtifactTabStrip({
             following
               ? "Following latest resource"
               : previewPending && fileOrDiffPending
-                ? "Pinned resource, new File, Diff, and Preview available"
+                ? "Pinned resource, new file, diff, and preview available"
                 : previewPending
                   ? "Pinned resource, new Preview available"
                   : fileOrDiffPending
-                    ? "Pinned resource, new File or Diff available"
+                    ? "Pinned resource, new file or diff available"
                     : "Pinned resource"
           }
           aria-pressed={following}

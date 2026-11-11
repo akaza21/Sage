@@ -97,7 +97,7 @@ export function ChatHandoffDialog({
           the target composer and will not be sent automatically.
         </p>
         <label className="handoff-dialog__field">
-          <span>Target Chat</span>
+          <span>Target chat</span>
           <SearchablePicker
             ariaLabel="Target chat"
             candidates={targetCandidates}

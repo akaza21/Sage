@@ -301,8 +301,8 @@ export default function QuickOpen({
   } else if (!projectId) status = "Open a project to find its files.";
   else if (bareLine) {
     status = activeFile()
-      ? `Press Enter to go to line ${line} in the active File.`
-      : "Open a File to go to a line in it.";
+      ? `Press Enter to go to line ${line} in the active file.`
+      : "Open a file to go to a line in it.";
   } else if (error) status = error;
   else if (!answer) status = indexing ? "Indexing…" : "";
   else if (results.length === 0) {

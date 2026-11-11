@@ -200,7 +200,7 @@ async function trashResource(
   }
   if (hasOpenResource(state, source)) {
     set({
-      resourceTrashError: `Close File and Diff tabs for the resource and its descendants before moving it to the ${trashName()}.`,
+      resourceTrashError: `Close file and diff tabs for the resource and its descendants before moving it to the ${trashName()}.`,
     });
     return false;
   }
