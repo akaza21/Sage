@@ -94,7 +94,10 @@ impl<'a> ConfigKey<'a> {
 
     /// Keys whose value Git runs as a program, plus includes, whose target
     /// files and conditions this check does not follow. Keys Sage overrides
-    /// on every invocation (`core.hooksPath`, `core.fsmonitor`) are absent.
+    /// on every invocation (`core.hooksPath`, `core.fsmonitor`, and
+    /// `credential.helper`, whose empty command-line value clears every
+    /// helper the config files set, URL-scoped `credential.<url>.helper`
+    /// included) are absent.
     fn runs_command(&self) -> bool {
         if self.is_remote_helper_alias() {
             return true;
@@ -115,7 +118,6 @@ impl<'a> ConfigKey<'a> {
                 | b"editor"
                 | b"pager",
             ) => !scoped,
-            (b"credential", b"helper") => true,
             (b"remote", b"uploadpack" | b"receivepack" | b"vcs") => scoped,
             (b"sequence", b"editor") => !scoped,
             (b"gpg", b"program" | b"defaultkeycommand") => true,

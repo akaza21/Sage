@@ -486,7 +486,12 @@ fn configured_command(
         .args(["-c", "core.fsmonitor=false"])
         .args(["-c", "maintenance.auto=false"])
         .args(["-c", "gc.auto=0"])
-        .args(["-c", "safe.bareRepository=explicit"]);
+        .args(["-c", "safe.bareRepository=explicit"])
+        // An empty helper clears every helper the config files listed,
+        // URL-scoped ones included, because command-line config is read
+        // last. A repository's own helper therefore never runs, so admission
+        // need not refuse it.
+        .args(["-c", "credential.helper="]);
     for setting in submodule_isolation::CONFIG {
         command.arg("-c").arg(setting);
     }

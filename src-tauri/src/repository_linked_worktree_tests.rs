@@ -4,7 +4,15 @@
 
 use std::{
     fs,
+    io::{ErrorKind, Read as _, Write as _},
+    net::TcpListener,
     path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread,
+    time::Duration,
 };
 
 use uuid::Uuid;
@@ -125,35 +133,126 @@ fn a_linked_worktree_is_refused_when_the_shared_config_runs_a_command() {
     assert!(sentinel.exists(), "the shared filter is not live");
 }
 
+/// An HTTP remote that answers every request with `401` and a Basic
+/// challenge, so Git asks its credential helpers for a username.
+struct Unauthorized {
+    address: std::net::SocketAddr,
+    stop: Arc<AtomicBool>,
+    server: Option<thread::JoinHandle<()>>,
+}
+
+impl Unauthorized {
+    fn start() -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopped = Arc::clone(&stop);
+        let server = thread::spawn(move || {
+            while !stopped.load(Ordering::SeqCst) {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        stream.set_nonblocking(false).unwrap();
+                        let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                        let mut request = [0_u8; 4096];
+                        let _ = stream.read(&mut request);
+                        let _ = stream.write_all(
+                            b"HTTP/1.1 401 Unauthorized\r\n\
+                              WWW-Authenticate: Basic realm=\"sage\"\r\n\
+                              Content-Length: 0\r\nConnection: close\r\n\r\n",
+                        );
+                    }
+                    Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("loopback listener failed: {error}"),
+                }
+            }
+        });
+        Self {
+            address,
+            stop,
+            server: Some(server),
+        }
+    }
+
+    fn url(&self) -> String {
+        format!("http://{}/repo", self.address)
+    }
+}
+
+impl Drop for Unauthorized {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(server) = self.server.take() {
+            let _ = server.join();
+        }
+    }
+}
+
 /// The layout the bug was reported from: the main repository's own config
-/// enables per-worktree config and sets a shell credential helper. The
-/// helper is a command-running key, so admission refuses every worktree of
-/// that repository by design; the root reports why.
+/// enables per-worktree config and sets shell credential helpers, plain and
+/// URL-scoped. Sage clears every helper on its command line, so the
+/// repository is admitted and no helper runs, even for the fetch, pull and
+/// push that make Git ask for credentials.
 #[test]
-fn a_shared_credential_helper_is_reported_as_the_reason_git_is_unavailable() {
+fn a_repository_credential_helper_is_admitted_and_never_runs() {
     let fixture = Fixture::new();
+    let remote = Unauthorized::start();
+    let sentinel = fixture.base.join("helper-ran");
+    let helper = |name: &str| {
+        format!(
+            "!f() {{ echo {name} >> \"{}\"; }}; f",
+            sentinel.to_string_lossy().replace('\\', "/")
+        )
+    };
+    let main = &fixture.main;
+    git(main, &["config", "extensions.worktreeConfig", "true"]);
+    git(main, &["config", "credential.helper", &helper("plain")]);
+    let scoped = format!("credential.{}.helper", remote.url());
+    git(main, &["config", &scoped, &helper("scoped")]);
+    git(main, &["remote", "add", "origin", &remote.url()]);
+    // `topic` is one commit behind `origin/topic`, so a pull is admitted.
+    let linked = &fixture.linked;
+    git(linked, &["commit", "-q", "--allow-empty", "-m", "upstream"]);
+    git(linked, &["update-ref", "refs/remotes/origin/topic", "HEAD"]);
+    git(linked, &["reset", "-q", "--hard", "HEAD~1"]);
+    git(linked, &["config", "branch.topic.remote", "origin"]);
     git(
-        &fixture.main,
-        &["config", "extensions.worktreeConfig", "true"],
-    );
-    git(
-        &fixture.main,
-        &[
-            "config",
-            "credential.helper",
-            "!f() { touch helper-ran; }; f",
-        ],
+        linked,
+        &["config", "branch.topic.merge", "refs/heads/topic"],
     );
 
-    let projection = block_on(crate::repository::project_status(vec![(
-        ROOT_ID.into(),
-        Ok(fixture.workspace()),
-    )]));
-    let root = &projection.roots[0];
-    assert_eq!(root.state, "unavailable");
-    let message = root.message.as_deref().unwrap_or_default();
-    assert!(message.contains("credential.helper"), "{message}");
-    assert!(!fixture.linked.join("helper-ran").exists());
+    let workspace = fixture.workspace();
+    let status = block_on(crate::repository::status(&workspace)).unwrap();
+    assert_eq!(status.state, "repository");
+    assert_eq!(status.behind, 1);
+    let fetch = block_on(crate::repository_remote_transport::fetch_listed_remote(
+        &workspace, "origin",
+    ));
+    let pull = block_on(crate::repository_pull::pull_fast_forward(&workspace));
+    let push = block_on(crate::repository_remote_transport::push_listed_remote(
+        &workspace, "origin",
+    ));
+    for (operation, result) in [("fetch", fetch), ("pull", pull), ("push", push)] {
+        assert!(
+            matches!(result, Err(AppError::Git(_))),
+            "{operation}: expected the remote to refuse, got {result:?}"
+        );
+    }
+    assert!(!sentinel.exists(), "a repository credential helper ran");
+
+    // Control: plain Git asks both configured helpers for this remote.
+    let control = crate::git_process::fixture_git()
+        .arg("-C")
+        .arg(linked)
+        .args(["fetch", "-q", "origin"])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .unwrap();
+    assert!(!control.status.success());
+    let ran = fs::read_to_string(&sentinel).unwrap_or_default();
+    assert!(ran.contains("plain") && ran.contains("scoped"), "{ran:?}");
 }
 
 #[test]

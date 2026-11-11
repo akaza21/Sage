@@ -17,8 +17,6 @@ fn classifies_command_running_keys() {
         "core.alternateRefsCommand",
         "core.editor",
         "core.pager",
-        "credential.helper",
-        "credential.https://user:token@host.helper",
         "remote.origin.uploadpack",
         "remote.origin.receivepack",
         "sequence.editor",
@@ -34,6 +32,8 @@ fn classifies_command_running_keys() {
     for key in [
         "core.hooksPath",
         "core.fsmonitor",
+        "credential.helper",
+        "credential.https://user:token@host.helper",
         "core.bare",
         "filter.lfs.required",
         "filter.clean",
@@ -56,11 +56,11 @@ fn classifies_command_running_keys() {
 
 #[test]
 fn refusal_names_bounded_redacted_keys() {
-    let listing = b"core.bare\0credential.https://user:token@host.helper\0filter.lfs.clean\0\
+    let listing = b"core.bare\0diff.https://user:token@host.command\0filter.lfs.clean\0\
 filter.lfs.clean\0filter.lfs.smudge\0merge.x\x1b[2J.driver\0"
         .to_vec();
     let message = refusal_message(&listing).unwrap();
-    assert!(message.contains("credential.*.helper, filter.lfs.clean, filter.lfs.smudge"));
+    assert!(message.contains("diff.*.command, filter.lfs.clean, filter.lfs.smudge"));
     assert!(message.contains("and 1 more"), "{message}");
     assert!(!message.contains("token"));
     assert!(!message.contains('\x1b'));

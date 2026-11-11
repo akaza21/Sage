@@ -3,9 +3,11 @@
 //! Sage clears the global and system Git config, but Git still honours the
 //! repository's own `config` and `config.worktree`. Several keys there name a
 //! program Git runs: content filters, diff and merge drivers, transport
-//! commands, credential helpers. A folder that ships its own `.git` directory
-//! would otherwise run code as soon as Sage refreshes status, so Sage refuses
-//! to run Git for a root whose repository config sets any of them. Sage's
+//! commands. A folder that ships its own `.git` directory would otherwise run
+//! code as soon as Sage refreshes status, so Sage refuses to run Git for a
+//! root whose repository config sets any of them. Keys Sage overrides on
+//! every call, credential helpers among them, cannot run and are not
+//! refused. Sage's
 //! Git never runs in a submodule repository (see `submodule_isolation`),
 //! so submodule configs need no admission.
 //!
