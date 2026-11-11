@@ -104,6 +104,15 @@
     display var(--motion-duration-exit) allow-discrete;
 }
 
+/* MenuSubmenu: its trigger's trailing chevron and the nested item column. */
+.menu-item > .menu-submenu__chevron {
+  margin-left: auto;
+}
+
+.menu-submenu__items {
+  display: grid;
+}
+
 /*
  * The Editor's floating surfaces (Quick Open, its menus), after VS Code's
  * modern UI (frostedGlass.css, contextview.ts, menu.ts): a frosted fill, a

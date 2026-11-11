@@ -12,6 +12,7 @@ use std::io::{Read, Write};
 use serde_json::{Value, json};
 
 use super::super::FixtureError;
+use super::claude_transcript::Transcript;
 use super::{WireState, acp, codex};
 
 const MAX_FRAMES_PER_STEP: usize = 32;
@@ -23,6 +24,43 @@ pub(super) struct SdkWireState {
     /// Code reports it finished or withdrawn.
     follow_up: Option<FollowUp>,
     lifecycle_events: u64,
+    /// The session the launch flags opened, when the launch named one.
+    transcript: Option<Transcript>,
+    /// What that session held before the last prompt (`$TRANSCRIPT_ECHO`).
+    transcript_echo: Option<String>,
+    /// A follow-up's frame, saved once a run takes it up, as Claude Code
+    /// saves a queued message.
+    unsaved_follow_up: Option<Value>,
+}
+
+impl SdkWireState {
+    /// The state of a launch with `harness_args`: Claude Code's session
+    /// flags, read from the profile and project it was launched in.
+    pub(super) fn launched(harness_args: &[String]) -> Result<Self, FixtureError> {
+        if harness_args.is_empty() {
+            return Ok(Self::default());
+        }
+        let config = std::env::var_os("CLAUDE_CONFIG_DIR").ok_or(FixtureError::InvalidArguments)?;
+        let cwd = std::env::current_dir().map_err(|_| FixtureError::Io)?;
+        Self::opened(harness_args, std::path::Path::new(&config), &cwd)
+    }
+
+    /// The state of a launch whose session flags open a session in profile
+    /// `config`, working in `cwd`.
+    pub(super) fn opened(
+        harness_args: &[String],
+        config: &std::path::Path,
+        cwd: &std::path::Path,
+    ) -> Result<Self, FixtureError> {
+        Ok(Self {
+            transcript: Some(Transcript::launched(harness_args, config, cwd)?),
+            ..Self::default()
+        })
+    }
+
+    pub(super) fn transcript_echo(&self) -> Option<&str> {
+        self.transcript_echo.as_deref()
+    }
 }
 
 /// A mid-turn message by the `uuid` the client gave it: waiting until a run
@@ -42,7 +80,12 @@ pub(super) fn await_request(
         .as_str()
         .ok_or(FixtureError::InvalidArguments)?;
     let prompt_text = step.get("promptText").and_then(Value::as_str);
-    if prompt_text.is_some() && kind != "claudeSdkPrompt" {
+    // Only a launch can be one the case expects again.
+    if (prompt_text.is_some() && kind != "claudeSdkPrompt")
+        || step
+            .get("relaunch")
+            .is_some_and(|relaunch| *relaunch != true || kind != "claudeSdkInitialize")
+    {
         return Err(FixtureError::InvalidArguments);
     }
     let expected = match kind {
@@ -111,6 +154,14 @@ fn receive(
     }
     let blocks = content.as_array().ok_or(FixtureError::InvalidArguments)?;
     state.prompt_echo = Some(super::prompt_echo::blocks(blocks));
+    if let Some(transcript) = &mut state.claude_sdk.transcript {
+        state.claude_sdk.transcript_echo = Some(transcript.echo());
+        if follow_up {
+            state.claude_sdk.unsaved_follow_up = Some(frame.clone());
+        } else {
+            transcript.sent(frame)?;
+        }
+    }
     Ok(())
 }
 
@@ -189,19 +240,32 @@ fn emit_lifecycle(
         }
         ("started", Some(FollowUp::Waiting(uuid))) => {
             sdk.follow_up = Some(FollowUp::Running(uuid.clone()));
+            if let (Some(transcript), Some(frame)) =
+                (&mut sdk.transcript, sdk.unsaved_follow_up.take())
+            {
+                transcript.sent(&frame)?;
+            }
             uuid
         }
         ("completed", Some(FollowUp::Running(uuid))) => uuid,
-        ("cancelled", Some(FollowUp::Waiting(uuid))) => uuid,
+        ("cancelled", Some(FollowUp::Waiting(uuid))) => {
+            sdk.unsaved_follow_up = None;
+            uuid
+        }
         _ => return Err(FixtureError::InvalidArguments),
     };
     sdk.lifecycle_events += 1;
     let event = format!("fixture-lifecycle-{}", sdk.lifecycle_events);
+    let session = sdk
+        .transcript
+        .as_ref()
+        .map_or(SESSION, Transcript::session)
+        .to_owned();
     codex::emit_json(
         output,
         state,
         &json!({"type": "command_lifecycle", "command_uuid": uuid, "state": lifecycle,
-            "uuid": event, "session_id": SESSION}),
+            "uuid": event, "session_id": session}),
     )
 }
 
@@ -220,9 +284,12 @@ pub(super) fn emit(
         }
         return emit_lifecycle(lifecycle, state, output);
     }
-    let frame = acp::substitute(step["frame"].clone(), state, 0)?;
+    let mut frame = acp::substitute(step["frame"].clone(), state, 0)?;
     if !frame.is_object() || frame["type"].as_str().is_none() {
         return Err(FixtureError::InvalidArguments);
+    }
+    if let Some(transcript) = &mut state.claude_sdk.transcript {
+        transcript.replayed(&mut frame)?;
     }
     codex::emit_json(output, state, &frame)
 }

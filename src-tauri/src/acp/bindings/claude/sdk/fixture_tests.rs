@@ -1,32 +1,90 @@
 //! The SDK replay journeys, driven through the bridge as a live session
 //! would drive them: each journey must complete and render its turn.
 
+use std::path::Path;
+
 use serde_json::{Value, json};
 
-use super::bridge::SdkBridge;
-use crate::acp::intent::session_event::SessionScopedEvent;
+use super::{admission::SessionLaunch, bridge::SdkBridge};
+use crate::acp::{goal::NativeRpcReply, intent::session_event::SessionScopedEvent};
 
 const SESSION: &str = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
 
 /// What a replay produced: every ACP frame, each mid-turn message's
-/// answer, and the text of each session notice.
+/// answer, the text of each session notice, and the session a fork opened.
 struct Replay {
     acp: Vec<Value>,
     steers: Vec<(String, bool)>,
     notices: Vec<String>,
+    forked: Option<String>,
+}
+
+/// A launch with Claude Code's session flags, in a profile and project.
+struct Launched<'a> {
+    launch: &'a SessionLaunch,
+    config: &'a Path,
+    cwd: &'a Path,
+    /// Whether the client forks the chat once its turns are done.
+    fork: bool,
+}
+
+/// A profile and project under a fresh directory, removed on drop.
+struct Profile(std::path::PathBuf);
+
+impl Profile {
+    fn new() -> Self {
+        let root = std::env::temp_dir().join(format!("sage-sdk-replay-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(root.join("project")).unwrap();
+        Self(root)
+    }
+
+    fn config(&self) -> std::path::PathBuf {
+        self.0.join("config")
+    }
+
+    fn cwd(&self) -> std::path::PathBuf {
+        self.0.join("project")
+    }
+}
+
+impl Drop for Profile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Replays `case` in a new chat, launched as the real app launches it:
+/// with Claude Code's session flags, in a profile of its own.
+fn replay_with(case: &str, prompts: &[Value]) -> Replay {
+    let profile = Profile::new();
+    let launch = SessionLaunch {
+        session_id: SESSION.into(),
+        resume: false,
+        model: None,
+    };
+    let (config, cwd) = (profile.config(), profile.cwd());
+    let launched = Launched {
+        launch: &launch,
+        config: &config,
+        cwd: &cwd,
+        fork: false,
+    };
+    replay_in(case, prompts, &launched)
 }
 
 /// Replays `case` and returns what the bridge produced. Prompts are sent
 /// in order with ids from 3; a message sent while Claude works says "Only
 /// the first page". The client approves the first permission option it is
 /// asked about.
-fn replay_with(case: &str, prompts: &[Value]) -> Replay {
-    let mut bridge = SdkBridge::new(SESSION.into(), None);
+fn replay_in(case: &str, prompts: &[Value], launched: &Launched) -> Replay {
+    let session = launched.launch.session_id.as_str();
+    let mut bridge = SdkBridge::new(session.into(), None);
     let mut acp = Vec::new();
     let mut steers = Vec::new();
     let mut notices = Vec::new();
+    let mut forked = None;
     let mut prompts = prompts.iter().zip(3..);
-    crate::acp::fixture::claude_sdk_wire_for_test(case, |kind, frames| {
+    let client = |kind: Option<&str>, frames: Vec<Value>| {
         let mut sent = Vec::new();
         for frame in frames {
             let inbound = bridge.inbound(frame).expect("SDK frame maps");
@@ -38,6 +96,9 @@ fn replay_with(case: &str, prompts: &[Value]) -> Replay {
                 SessionScopedEvent::Notice(notice) => Some(notice.text.as_str().to_owned()),
                 _ => None,
             }));
+            if let Some(NativeRpcReply::Forked(id)) = inbound.native {
+                forked = Some(id.as_str().to_owned());
+            }
             acp.extend(inbound.acp);
         }
         let request = match kind {
@@ -46,7 +107,7 @@ fn replay_with(case: &str, prompts: &[Value]) -> Replay {
             Some("claudeSdkPrompt") => {
                 let (prompt, id) = prompts.next().expect("a prompt to send");
                 json!({"id": id, "method": "session/prompt", "params": {
-                    "sessionId": SESSION, "prompt": prompt,
+                    "sessionId": session, "prompt": prompt,
                 }})
             }
             Some("claudeSdkFollowUp") => {
@@ -63,15 +124,31 @@ fn replay_with(case: &str, prompts: &[Value]) -> Replay {
                     "outcome": "selected", "optionId": asked["params"]["options"][0]["optionId"],
                 }}})
             }
+            Some("claudeSdkIdle") if launched.fork => {
+                sent.push(
+                    bridge
+                        .fork(Some(launched.config.to_path_buf()))
+                        .expect("fork"),
+                );
+                return sent;
+            }
             _ => return sent,
         };
         sent.push(bridge.outbound(&request).expect("ACP request maps"));
         sent
-    });
+    };
+    crate::acp::fixture::claude_sdk_wire_for_test(
+        case,
+        &launched.launch.session_args(Some(launched.config)),
+        launched.config,
+        launched.cwd,
+        client,
+    );
     Replay {
         acp,
         steers,
         notices,
+        forked,
     }
 }
 
@@ -241,4 +318,60 @@ fn each_prompt_is_echoed_as_claude_code_received_it() {
     let large = std::env::temp_dir().join("large.log");
     assert!(second.contains(&format!("@{}", large.display())));
     assert_eq!(settled(&acp, 4)["result"]["stopReason"], "end_turn");
+}
+
+#[test]
+fn a_fork_chat_carries_the_first_chats_turn_from_its_saved_transcript() {
+    let profile = Profile::new();
+    let (config, cwd) = (profile.config(), profile.cwd());
+    let chat = |launch: &SessionLaunch, prompt: &str, fork: bool| {
+        let launched = Launched {
+            launch,
+            config: &config,
+            cwd: &cwd,
+            fork,
+        };
+        replay_in("claude-sdk-fork", &[text(prompt)], &launched)
+    };
+    let source = SessionLaunch {
+        session_id: SESSION.into(),
+        resume: false,
+        model: None,
+    };
+    let first = chat(&source, "Remember the synthetic example", true);
+    assert!(said(&first.acp).contains(&format!("Claude Code session {SESSION}, new.")));
+    let fork = SessionLaunch {
+        session_id: first.forked.expect("the chat forks"),
+        resume: true,
+        model: None,
+    };
+    let flags = fork.session_args(Some(&config));
+    assert_eq!(
+        flags[..2],
+        ["--resume", SESSION],
+        "the fork starts from its source"
+    );
+    assert!(flags.iter().any(|flag| flag == "--fork-session"));
+
+    let forked = said(&chat(&fork, "What did I ask first?", false).acp);
+    assert!(
+        forked.contains(&format!("forked from {SESSION} through message")),
+        "{forked}"
+    );
+    assert!(forked.contains("with 2 entries"), "{forked}");
+    assert!(
+        forked.contains("User: Remember the synthetic example"),
+        "{forked}"
+    );
+    // Its first message saved the copy, so the fork chat now resumes it.
+    let copy = super::fork::claude_session(&fork.session_id).to_owned();
+    assert_eq!(
+        fork.session_args(Some(&config)),
+        ["--resume", copy.as_str()]
+    );
+    let resumed = said(&chat(&fork, "And now?", false).acp);
+    assert!(resumed.contains(&format!(
+        "Claude Code session {copy}, resumed with 4 entries."
+    )));
+    assert!(resumed.contains("User: What did I ask first?"), "{resumed}");
 }

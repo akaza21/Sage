@@ -377,3 +377,38 @@ fn a_transcript_step_outside_its_bounds_is_refused() {
         );
     }
 }
+
+#[test]
+fn an_idle_skills_read_is_answered_with_no_skills_and_the_case_goes_on() {
+    let mut state = WireState::new();
+    let mut input = Cursor::new(concat!(
+        r#"{"id":5,"method":"skills/list","params":{}}"#,
+        "\n",
+        r#"{"id":6,"method":"skills/list","params":{"cwds":["C:/repo"],"forceReload":true}}"#,
+        "\n",
+        r#"{"id":7,"method":"model/list","params":{"cursor":null}}"#,
+        "\n"
+    ));
+    let mut output = Vec::new();
+    execute_with_io(
+        &json!({"op":"awaitClient","kind":"codexModelList"}),
+        &mut state,
+        &mut input,
+        &mut output,
+        &mut Vec::new(),
+    )
+    .unwrap();
+    let replies: Vec<Value> = output
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap())
+        .collect();
+    assert_eq!(
+        replies,
+        [
+            json!({"jsonrpc":"2.0","id":5,"result":{"data":[]}}),
+            json!({"jsonrpc":"2.0","id":6,"result":{"data":[]}}),
+        ]
+    );
+    assert_eq!(state.last_request_id, Some(7));
+}
