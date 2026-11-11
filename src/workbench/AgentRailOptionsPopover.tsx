@@ -1,20 +1,15 @@
-import {
-  useId,
-  useRef,
-  useState,
-  type ComponentType,
-  type RefObject,
-} from "react";
+import { useState, type ComponentType, type RefObject } from "react";
 
 import {
   ArrowDownUp,
   Check,
-  ChevronRight,
   FolderOpen,
   List,
   PanelLeft,
 } from "../ui/leanIcons";
 import { MenuPopover } from "../ui/MenuPopover";
+import { MenuSubmenu } from "../ui/MenuSubmenu";
+import { useSubmenuGrace } from "../ui/submenuGrace";
 import type {
   AgentRailOrdering,
   AgentRailOrganizeMode,
@@ -65,6 +60,7 @@ export function AgentRailOptionsPopover({
 }) {
   const prefs = useAgentRailViewPrefs();
   const [submenu, setSubmenu] = useState<Submenu | null>(null);
+  const grace = useSubmenuGrace();
   return (
     <MenuPopover
       id={menuId}
@@ -76,130 +72,77 @@ export function AgentRailOptionsPopover({
       triggerRef={triggerRef}
       onDismiss={onDismiss}
     >
-      <SubmenuItem
+      <MenuSubmenu
         label="Organize sidebar"
-        icon={PanelLeft}
+        leading={<PanelLeft size={14} aria-hidden="true" />}
+        className={ITEM_CLASS}
+        menuClassName={SUBMENU_CLASS}
         open={submenu === "organize"}
         onOpenChange={(open) => setSubmenu(open ? "organize" : null)}
-        choices={ORGANIZE_CHOICES}
-        selected={prefs.organize}
-        onSelect={(value) => {
-          setAgentRailOrganize(value);
-          onCloseAndRestoreFocus();
-        }}
-      />
-      <SubmenuItem
+        grace={grace}
+      >
+        <Choices
+          choices={ORGANIZE_CHOICES}
+          selected={prefs.organize}
+          onSelect={(value) => {
+            setAgentRailOrganize(value);
+            onCloseAndRestoreFocus();
+          }}
+        />
+      </MenuSubmenu>
+      <MenuSubmenu
         label="Sort chats by"
-        icon={ArrowDownUp}
+        leading={<ArrowDownUp size={14} aria-hidden="true" />}
+        className={ITEM_CLASS}
+        menuClassName={SUBMENU_CLASS}
         open={submenu === "ordering"}
         onOpenChange={(open) => setSubmenu(open ? "ordering" : null)}
-        choices={ORDERING_CHOICES}
-        selected={prefs.ordering}
-        onSelect={(value) => {
-          setAgentRailOrdering(value);
-          onCloseAndRestoreFocus();
-        }}
-      />
+        grace={grace}
+      >
+        <Choices
+          choices={ORDERING_CHOICES}
+          selected={prefs.ordering}
+          onSelect={(value) => {
+            setAgentRailOrdering(value);
+            onCloseAndRestoreFocus();
+          }}
+        />
+      </MenuSubmenu>
     </MenuPopover>
   );
 }
 
-function SubmenuItem<T extends string>({
-  label,
-  icon: Icon,
-  open,
-  onOpenChange,
+const ITEM_CLASS = "menu-item agent-rail-options__item";
+const SUBMENU_CLASS = "agent-rail-options__menu agent-rail-options__submenu";
+
+function Choices<T extends string>({
   choices,
   selected,
   onSelect,
 }: {
-  label: string;
-  icon: IconComponent;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   choices: ReadonlyArray<Choice<T>>;
   selected: T;
   onSelect: (value: T) => void;
 }) {
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const submenuId = useId();
-  const close = () => {
-    onOpenChange(false);
-    triggerRef.current?.focus();
-  };
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        className="menu-item agent-rail-options__item"
-        type="button"
-        role="menuitem"
-        tabIndex={-1}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? submenuId : undefined}
-        onPointerEnter={() => onOpenChange(true)}
-        onClick={() => onOpenChange(true)}
-        onKeyDown={(event) => {
-          if (event.key !== "ArrowRight") return;
-          event.preventDefault();
-          event.stopPropagation();
-          onOpenChange(true);
-        }}
-      >
-        <Icon size={14} aria-hidden="true" />
-        <span>{label}</span>
-        <ChevronRight
+  return choices.map(({ value, label, icon: ChoiceIcon }) => (
+    <button
+      key={value}
+      className={ITEM_CLASS}
+      type="button"
+      role="menuitemradio"
+      tabIndex={-1}
+      aria-checked={selected === value}
+      onClick={() => onSelect(value)}
+    >
+      {ChoiceIcon ? <ChoiceIcon size={14} aria-hidden="true" /> : null}
+      <span>{label}</span>
+      {selected === value ? (
+        <Check
           className="agent-rail-options__trailing"
           size={14}
           aria-hidden="true"
         />
-      </button>
-      <MenuPopover
-        id={submenuId}
-        open={open}
-        ariaLabel={label}
-        className="agent-rail-options__menu agent-rail-options__submenu"
-        initialFocus="selected"
-        portalTarget="closest-popover"
-        triggerRef={triggerRef}
-        onDismiss={(reason) => {
-          if (reason === "escape") close();
-          else onOpenChange(false);
-        }}
-      >
-        <div
-          className="agent-rail-options__choices"
-          onKeyDown={(event) => {
-            if (event.key !== "ArrowLeft") return;
-            event.preventDefault();
-            event.stopPropagation();
-            close();
-          }}
-        >
-          {choices.map(({ value, label: choiceLabel, icon: ChoiceIcon }) => (
-            <button
-              key={value}
-              className="menu-item agent-rail-options__item"
-              type="button"
-              role="menuitemradio"
-              tabIndex={-1}
-              aria-checked={selected === value}
-              onClick={() => onSelect(value)}
-            >
-              {ChoiceIcon ? <ChoiceIcon size={14} aria-hidden="true" /> : null}
-              <span>{choiceLabel}</span>
-              {selected === value ? (
-                <Check
-                  className="agent-rail-options__trailing"
-                  size={14}
-                  aria-hidden="true"
-                />
-              ) : null}
-            </button>
-          ))}
-        </div>
-      </MenuPopover>
-    </>
-  );
+      ) : null}
+    </button>
+  ));
 }

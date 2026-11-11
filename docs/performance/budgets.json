@@ -287,8 +287,8 @@
       },
       {
         "entry": "src/workbench/AgentRailOptionsPopover.tsx",
-        "maxGzipBytes": 990,
-        "reason": "The open sidebar options menu (Organize sidebar, Sort chats by); loads on the first open."
+        "maxGzipBytes": 1500,
+        "reason": "The open sidebar options menu (Organize sidebar, Sort chats by) with the shared submenu and its pointer grace area; loads on the first open. Measured 1443 B (993 B before the grace area)."
       },
       {
         "entry": "src/workbench/AgentProjectMenu.tsx",
