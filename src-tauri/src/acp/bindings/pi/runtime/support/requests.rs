@@ -53,7 +53,12 @@ impl PiRuntime {
                 .map_err(super::map_pi)?;
             return Err(AdapterRuntimeError::BatchCount);
         }
-        let frame = match OutboundFrame::new(outbound.line.into_bytes()) {
+        let bytes = outbound.line.into_bytes();
+        let frame = match if kind == RequestKind::Prompt {
+            OutboundFrame::new_prompt(bytes)
+        } else {
+            OutboundFrame::new(bytes)
+        } {
             Ok(frame) => frame,
             Err(_) => {
                 self.translator
