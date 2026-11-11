@@ -50,6 +50,8 @@
   color: var(--color-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Clicks, including the context menu, go to the input beneath. */
+  pointer-events: none;
 }
 
 .quick-open__input:focus-visible {
@@ -96,8 +98,8 @@
   flex: none;
 }
 
+/* Clipping already lets this flex item shrink below its text width. */
 .quick-open__folder {
-  min-width: 0;
   overflow: hidden;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);

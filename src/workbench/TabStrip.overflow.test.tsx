@@ -34,7 +34,10 @@ function installTabs(count: number, activeIndex: number) {
 
 // jsdom has no layout: tabs are 120 px wide in a 360 px strip.
 function layOut(strip: HTMLElement) {
-  Object.defineProperty(strip, "clientWidth", { value: 360 });
+  Object.defineProperty(strip, "clientWidth", {
+    value: 360,
+    configurable: true,
+  });
   Object.defineProperty(strip, "scrollWidth", { value: 120 * 12 });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {
@@ -128,11 +131,31 @@ describe("TabStrip overflow", () => {
     expect(strip.dataset.overflow).toBe("start");
   });
 
-  it("does not mark edges while every tab fits", () => {
-    installTabs(2, 0);
+  it("clears the edge marks once a widened strip fits every tab", () => {
+    let resized: ResizeObserverCallback | undefined;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resized = callback;
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    installTabs(12, 0);
     const { container } = render(<TabStrip />);
     const strip = container.querySelector<HTMLElement>(".tab-strip__scroll")!;
+    layOut(strip);
     fireEvent.scroll(strip);
+    expect(strip.dataset.overflow).toBe("end");
+    // The pane widens until all twelve 120 px tabs fit.
+    Object.defineProperty(strip, "clientWidth", { value: 120 * 12 });
+    resized!(
+      [{ target: strip } as unknown as ResizeObserverEntry],
+      {} as ResizeObserver,
+    );
     expect(strip).not.toHaveAttribute("data-overflow");
   });
 });

@@ -656,6 +656,7 @@ describe("ChatSearchControl", () => {
     // Search in ends the dialog, so Tab from its list wraps to Close.
     const forwardTab = createEvent.keyDown(pickerInput, { key: "Tab" });
     fireEvent(pickerInput, forwardTab);
+    expect(forwardTab.defaultPrevented).toBe(true);
     expect(screen.queryByRole("combobox", { name: "Search in" })).toBeNull();
     expect(close).toHaveFocus();
     fireEvent.click(select);

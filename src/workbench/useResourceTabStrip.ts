@@ -49,6 +49,8 @@ function markOverflowEdges(strip: HTMLElement) {
   ]
     .filter(Boolean)
     .join(" ");
+  // Scroll events call this per frame; write only on a change.
+  if ((strip.dataset.overflow ?? "") === edges) return;
   if (edges) strip.dataset.overflow = edges;
   else delete strip.dataset.overflow;
 }

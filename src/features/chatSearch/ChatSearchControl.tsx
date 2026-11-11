@@ -36,7 +36,8 @@ import { ChatSearchResults } from "./ChatSearchResults";
 
 type SearchPhase = "idle" | "searching" | "results" | "error";
 
-/** The live status: progress, then how many Chats were found. */
+/** The live status: progress, then how many chats were found. With no
+    match the results list says so, and the status stays quiet. */
 function searchStatus(
   phase: SearchPhase,
   response: ChatSearchFanoutView | null,
@@ -44,7 +45,9 @@ function searchStatus(
   if (phase === "searching") return "Searching…";
   if (phase !== "results" || !response) return "";
   const count = response.results.length;
-  return `${count}${response.hasMore ? "+" : ""} ${count === 1 ? "chat" : "chats"}`;
+  if (count === 0) return "";
+  const more = response.hasMore;
+  return `${count}${more ? "+" : ""} ${count === 1 && !more ? "chat" : "chats"}`;
 }
 
 function matchesScope(scope: ChatSearchScope) {
