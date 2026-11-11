@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { BrowserClearData } from "../../features/browser/BrowserClearData";
 import { BrowserDeveloperModeSetting } from "../../features/browser/BrowserDeveloperModeSetting";
 import { BrowserDownloadFolder } from "../../features/browser/BrowserDownloadFolder";
-import { BrowserSiteSettings } from "../../features/browser/BrowserSiteSettings";
+import { BrowserSitePermissionsGroup } from "../../features/browser/BrowserSiteSettings";
 import {
   DEFAULT_BROWSER_PREFERENCES,
   ensureBrowserPreferences,
@@ -61,46 +61,49 @@ export function SettingsBrowserPage({ visible }: { visible: Set<string> }) {
                 ) : null}
               </div>
             ) : null}
-            {visible.has("browser.showFullUrl") ? (
-              <div className="settings-surface__row">
-                <div className="settings-surface__copy">
-                  <label htmlFor={SHOW_FULL_URL}>Show full URL</label>
-                  <p id={`${SHOW_FULL_URL}-description`}>
-                    Include the path, query, and fragment in the address bar.
-                  </p>
-                  <small id={`${SHOW_FULL_URL}-default`}>
-                    Default:{" "}
-                    {DEFAULT_BROWSER_PREFERENCES.showFullUrl ? "On" : "Off"}
-                  </small>
+            <div className="settings-surface__rows">
+              {visible.has("browser.showFullUrl") ? (
+                <div className="settings-surface__row">
+                  <div className="settings-surface__copy">
+                    <label htmlFor={SHOW_FULL_URL}>Show full URL</label>
+                    <p id={`${SHOW_FULL_URL}-description`}>
+                      Include the path, query, and fragment in the address bar.
+                    </p>
+                    <small id={`${SHOW_FULL_URL}-default`}>
+                      Default:{" "}
+                      {DEFAULT_BROWSER_PREFERENCES.showFullUrl ? "On" : "Off"}
+                    </small>
+                  </div>
+                  <div className="settings-surface__toggle">
+                    <input
+                      id={SHOW_FULL_URL}
+                      className="switch"
+                      type="checkbox"
+                      role="switch"
+                      checked={preferences.showFullUrl}
+                      disabled={!ready}
+                      aria-describedby={`${SHOW_FULL_URL}-description ${SHOW_FULL_URL}-default`}
+                      onChange={(event) => setShowFullUrl(event.target.checked)}
+                    />
+                  </div>
                 </div>
-                <div className="settings-surface__toggle">
-                  <span>{preferences.showFullUrl ? "On" : "Off"}</span>
-                  <input
-                    id={SHOW_FULL_URL}
-                    type="checkbox"
-                    checked={preferences.showFullUrl}
-                    disabled={!ready}
-                    aria-describedby={`${SHOW_FULL_URL}-description ${SHOW_FULL_URL}-default`}
-                    onChange={(event) => setShowFullUrl(event.target.checked)}
+              ) : null}
+              {visible.has("browser.clearData") ? (
+                <div className="settings-surface__row">
+                  <div className="settings-surface__copy">
+                    <span>Browsing data</span>
+                    <p id="browser-clear-data-description">
+                      Clear browsing history, cookies, site data, and cache from
+                      the built-in browser. Every browser tab closes.
+                    </p>
+                  </div>
+                  <BrowserClearData
+                    buttonClassName="button button--compact"
+                    describedBy="browser-clear-data-description"
                   />
                 </div>
-              </div>
-            ) : null}
-            {visible.has("browser.clearData") ? (
-              <div className="settings-surface__row">
-                <div className="settings-surface__copy">
-                  <span>Browsing data</span>
-                  <p id="browser-clear-data-description">
-                    Clear browsing history, cookies, site data, and cache from
-                    the built-in browser. Every browser tab closes.
-                  </p>
-                </div>
-                <BrowserClearData
-                  buttonClassName="button button--compact"
-                  describedBy="browser-clear-data-description"
-                />
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </section>
           {visible.has("browser.developerMode") ? (
             <BrowserDeveloperModeSetting />
@@ -118,23 +121,7 @@ export function SettingsBrowserPage({ visible }: { visible: Set<string> }) {
         </section>
       ) : null}
       {desktop && visible.has("browser.sitePermissions") ? (
-        <section
-          className="settings-surface__group"
-          role="group"
-          aria-labelledby="browser-site-permissions-heading"
-        >
-          <h3 id="browser-site-permissions-heading">Site permissions</h3>
-          <p
-            className="settings-surface__group-note"
-            id="browser-site-permissions-description"
-          >
-            Your answers to sites that asked for your camera, microphone,
-            location, notifications, or clipboard. They apply to every browser
-            tab and stay after Clear browsing data. Reset one to have the site
-            ask again.
-          </p>
-          <BrowserSiteSettings describedBy="browser-site-permissions-description" />
-        </section>
+        <BrowserSitePermissionsGroup />
       ) : null}
     </section>
   );

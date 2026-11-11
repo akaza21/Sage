@@ -1750,7 +1750,7 @@ test.describe("Wave 2 200% zoom state", () => {
     await page.keyboard.press("Escape");
     await expect(searchDialog).toBeVisible();
     await expect(folderTrigger).toBeFocused();
-    await searchDialog.getByRole("button", { name: "Cancel" }).click();
+    await searchDialog.getByRole("button", { name: "Close" }).click();
     await expect(searchDialog).toHaveCount(0);
     await expect(titleSearch).toBeFocused();
     await expectNoViewportOverflow(page);

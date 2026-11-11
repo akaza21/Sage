@@ -144,7 +144,7 @@ it("uses persisted appearance settings and leaves Editor appearance separate", (
     fontSize: 14,
     density: "compact",
   });
-  expect(screen.queryByRole("checkbox", { name: "Code folding" })).toBeNull();
+  expect(screen.queryByRole("switch", { name: "Code folding" })).toBeNull();
 });
 
 it("lists app-wide and Agent shortcuts and leaves Editor shortcuts to Editor settings", async () => {

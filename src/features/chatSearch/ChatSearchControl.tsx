@@ -1,4 +1,4 @@
-import { Search } from "../../ui/leanIcons";
+import { Search, X } from "../../ui/leanIcons";
 import {
   useCallback,
   useEffect,
@@ -35,6 +35,19 @@ import {
 import { ChatSearchResults } from "./ChatSearchResults";
 
 type SearchPhase = "idle" | "searching" | "results" | "error";
+
+/** The live status: progress, then how many chats were found, including
+    none, since the empty results list is not announced. */
+function searchStatus(
+  phase: SearchPhase,
+  response: ChatSearchFanoutView | null,
+): string {
+  if (phase === "searching") return "Searching…";
+  if (phase !== "results" || !response) return "";
+  const count = response.results.length;
+  const more = response.hasMore;
+  return `${count}${more ? "+" : ""} ${count === 1 && !more ? "chat" : "chats"}`;
+}
 
 function matchesScope(scope: ChatSearchScope) {
   return matchesChatSearchScope(useWorkbenchStore.getState(), scope);
@@ -268,10 +281,22 @@ export function ChatSearchControl({
         <ModalDialog
           className="chat-search-dialog"
           labelledBy="chat-search-title"
+          initialFocusRef={queryRef}
           onDismiss={() => close()}
         >
           <form className="chat-search-dialog__form" onSubmit={submit}>
             <h2 id="chat-search-title">Search Chats</h2>
+            {/* Dismiss sits in the header, as in the other dialogs, so it
+                stays put while results and errors come and go. */}
+            <button
+              className="icon-button chat-search-dialog__close"
+              type="button"
+              aria-label="Close"
+              title="Close"
+              onClick={() => close()}
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
             <p>
               Search durable titles and primary conversation text in the
               selected folder, or across listed folders.
@@ -311,14 +336,9 @@ export function ChatSearchControl({
                 selectedId={scope.searchProjectId}
               />
             </label>
-            <div className="chat-search-dialog__actions">
-              <span role="status">
-                {phase === "searching" ? "Searching…" : "Type to search chats"}
-              </span>
-              <button className="button" type="button" onClick={() => close()}>
-                Cancel
-              </button>
-            </div>
+            <p className="chat-search-dialog__status" role="status">
+              {searchStatus(phase, response)}
+            </p>
             <ChatSearchResults
               response={phase === "results" ? response : null}
               error={error}

@@ -212,7 +212,7 @@ describe("ChatSearchControl", () => {
     const query = screen.getByRole("searchbox", { name: "Search Chats" });
     fireEvent.change(query, { target: { value: "needle" } });
     fireEvent.submit(query.closest("form")!);
-    screen.getByRole("button", { name: "Cancel" }).focus();
+    screen.getByRole("button", { name: "Close" }).focus();
     act(() => requestChatSearchInFolder("project-a"));
     expect(query).toHaveFocus();
     expect(query).toHaveValue("");
@@ -258,7 +258,7 @@ describe("ChatSearchControl", () => {
     fireEvent.change(input, { target: { value: "needle" } });
     fireEvent.submit(input.closest("form")!);
     await screen.findByRole("listbox", { name: "Chat search results" });
-    fireEvent.click(screen.getByRole("option", { name: /Chat: B.*Attached/ }));
+    fireEvent.click(screen.getByRole("option", { name: "B" }));
     expect(activateChat).toHaveBeenCalledWith("chat-b");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
@@ -269,9 +269,7 @@ describe("ChatSearchControl", () => {
     fireEvent.change(reopenedInput, { target: { value: "needle" } });
     fireEvent.submit(reopenedInput.closest("form")!);
     await screen.findByRole("listbox", { name: "Chat search results" });
-    fireEvent.click(
-      screen.getByRole("option", { name: /Chat: Old.*Archived/ }),
-    );
+    fireEvent.click(screen.getByRole("option", { name: "Old — Archived" }));
     expect(restoreChat).toHaveBeenCalledWith("chat-old", "project-a");
     expect(dialog).not.toBeInTheDocument();
   });
@@ -293,7 +291,7 @@ describe("ChatSearchControl", () => {
     fireEvent.change(firstInput, { target: { value: "needle" } });
     fireEvent.submit(firstInput.closest("form")!);
     await screen.findByRole("listbox", { name: "Chat search results" });
-    fireEvent.click(screen.getByRole("option", { name: /Chat: B.*Attached/ }));
+    fireEvent.click(screen.getByRole("option", { name: "B" }));
     await waitFor(() => expect(activateChat).toHaveBeenCalledWith("chat-b"));
     expect(priorReturn).not.toHaveBeenCalled();
     expect(activated).toHaveFocus();
@@ -301,7 +299,7 @@ describe("ChatSearchControl", () => {
     const nextReturn = vi.fn();
     act(() => requestChatSearchInFolder("project-a", nextReturn));
     await screen.findByRole("dialog", { name: "Search Chats" });
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(nextReturn).toHaveBeenCalledOnce());
     expect(priorReturn).not.toHaveBeenCalled();
     activated.remove();
@@ -320,7 +318,7 @@ describe("ChatSearchControl", () => {
     act(() => useWorkbenchStore.setState({ projectTransitioning: false }));
     const trigger = screen.getByRole("button", { name: "Search chats" });
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(staleReturn).not.toHaveBeenCalled();
@@ -379,7 +377,7 @@ describe("ChatSearchControl", () => {
     fireEvent.change(input, { target: { value: "Research" } });
     fireEvent.submit(input.closest("form")!);
     expect(
-      await screen.findByRole("option", { name: /Chat: Research/ }),
+      await screen.findByRole("option", { name: /^Research/ }),
     ).toBeInTheDocument();
     expect(search).toHaveBeenCalledWith({
       projectId: "cross",
@@ -388,7 +386,7 @@ describe("ChatSearchControl", () => {
       query: "Research",
     });
     fireEvent.click(
-      screen.getByRole("option", { name: /Chat: Research.*Archived/ }),
+      screen.getByRole("option", { name: /^Research — .*Archived$/ }),
     );
     expect(restoreChat).toHaveBeenCalledWith("chat-old", "cross");
     expect(switchProject).not.toHaveBeenCalled();
@@ -502,14 +500,14 @@ describe("ChatSearchControl", () => {
     fireEvent.change(input, { target: { value: "Research" } });
     fireEvent.submit(input.closest("form")!);
     expect(
-      await screen.findByRole("option", { name: /Chat: Research/ }),
+      await screen.findByRole("option", { name: /^Research/ }),
     ).toHaveTextContent("Cross");
     expect(search.mock.calls.map((call) => call[0]?.projectId)).toEqual([
       "project-a",
       "cross",
     ]);
     fireEvent.click(
-      screen.getByRole("option", { name: /Chat: Research.*Archived/ }),
+      screen.getByRole("option", { name: /^Research — .*Archived$/ }),
     );
     expect(restoreChat).toHaveBeenCalledWith("chat-old", "cross");
     expect(switchProject).not.toHaveBeenCalled();
@@ -571,7 +569,7 @@ describe("ChatSearchControl", () => {
     const input = screen.getByRole("searchbox", { name: "Search Chats" });
     fireEvent.change(input, { target: { value: "needle" } });
     fireEvent.submit(input.closest("form")!);
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     pending.resolve(response);
 
     await waitFor(() => expect(trigger).toHaveFocus());
@@ -593,6 +591,8 @@ describe("ChatSearchControl", () => {
     fireEvent.change(input, { target: { value: "needle" } });
     fireEvent.submit(input.closest("form")!);
     expect(await screen.findByText(/No Chats matched/)).toBeVisible();
+    // The empty list is not a live region, so the status announces it.
+    expect(screen.getByRole("status")).toHaveTextContent("0 chats");
 
     fireEvent.submit(input.closest("form")!);
     await screen.findByRole("listbox", { name: "Chat search results" });
@@ -610,9 +610,7 @@ describe("ChatSearchControl", () => {
         },
       ],
     });
-    fireEvent.click(
-      screen.getByRole("option", { name: /Chat: Old.*Archived/ }),
-    );
+    fireEvent.click(screen.getByRole("option", { name: "Old — Archived" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "result changed",
     );
@@ -650,19 +648,19 @@ describe("ChatSearchControl", () => {
     fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
     const dialog = screen.getByRole("dialog", { name: "Search Chats" });
     const select = screen.getByRole("button", { name: "Search in" });
-    const search = screen.getByRole("button", { name: "Cancel" });
-    const query = screen.getByRole("searchbox", { name: "Search Chats" });
+    const close = screen.getByRole("button", { name: "Close" });
 
     fireEvent.click(select);
     const pickerInput = screen.getByRole("combobox", { name: "Search in" });
     expect(dialog.contains(pickerInput)).toBe(true);
     await waitFor(() => expect(pickerInput).toHaveFocus());
     expect(screen.getAllByRole("option")).toHaveLength(65);
+    // Search in ends the dialog, so Tab from its list wraps to Close.
     const forwardTab = createEvent.keyDown(pickerInput, { key: "Tab" });
     fireEvent(pickerInput, forwardTab);
-    expect(forwardTab.defaultPrevented).toBe(false);
+    expect(forwardTab.defaultPrevented).toBe(true);
     expect(screen.queryByRole("combobox", { name: "Search in" })).toBeNull();
-    expect(select).toHaveFocus();
+    expect(close).toHaveFocus();
     fireEvent.click(select);
     const reverseInput = screen.getByRole("combobox", { name: "Search in" });
     await waitFor(() => expect(reverseInput).toHaveFocus());
@@ -681,12 +679,28 @@ describe("ChatSearchControl", () => {
     expect(dialog).toBeVisible();
     expect(select).toHaveFocus();
 
-    search.focus();
+    // Close leads the dialog and Search in ends it.
+    select.focus();
     fireEvent.keyDown(dialog, { key: "Tab" });
-    expect(query).toHaveFocus();
+    expect(close).toHaveFocus();
 
-    query.focus();
+    close.focus();
     fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
-    expect(search).toHaveFocus();
+    expect(select).toHaveFocus();
+  });
+
+  it("names rows by Chat title and labels only the archived ones", async () => {
+    vi.spyOn(projectChatSearchDesktop, "search").mockResolvedValue(response);
+    render(<ChatSearchControl />);
+    fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
+    const input = screen.getByRole("searchbox", { name: "Search Chats" });
+    fireEvent.change(input, { target: { value: "needle" } });
+    fireEvent.submit(input.closest("form")!);
+    const [attached, archived] = within(
+      await screen.findByRole("listbox", { name: "Chat search results" }),
+    ).getAllByRole("option");
+    expect(attached).toHaveTextContent(/^Battached needle context$/);
+    expect(archived).toHaveTextContent(/^OldArchived$/);
+    expect(screen.getByRole("status")).toHaveTextContent("2 chats");
   });
 });

@@ -34,7 +34,10 @@ function installTabs(count: number, activeIndex: number) {
 
 // jsdom has no layout: tabs are 120 px wide in a 360 px strip.
 function layOut(strip: HTMLElement) {
-  Object.defineProperty(strip, "clientWidth", { value: 360 });
+  Object.defineProperty(strip, "clientWidth", {
+    value: 360,
+    configurable: true,
+  });
   Object.defineProperty(strip, "scrollWidth", { value: 120 * 12 });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {
@@ -111,5 +114,48 @@ describe("TabStrip overflow", () => {
     // A trackpad pinch arrives as a wheel with Ctrl held.
     fireEvent.wheel(strip, { deltaY: 50, ctrlKey: true });
     expect(strip.scrollLeft).toBe(100);
+  });
+
+  it("marks the edges that hide tabs so the strip can fade them", () => {
+    installTabs(12, 0);
+    const { container } = render(<TabStrip />);
+    const strip = container.querySelector<HTMLElement>(".tab-strip__scroll")!;
+    layOut(strip);
+    fireEvent.scroll(strip);
+    expect(strip.dataset.overflow).toBe("end");
+    strip.scrollLeft = 600;
+    fireEvent.scroll(strip);
+    expect(strip.dataset.overflow).toBe("start end");
+    strip.scrollLeft = 120 * 12 - 360;
+    fireEvent.scroll(strip);
+    expect(strip.dataset.overflow).toBe("start");
+  });
+
+  it("clears the edge marks once a widened strip fits every tab", () => {
+    let resized: ResizeObserverCallback | undefined;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resized = callback;
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    installTabs(12, 0);
+    const { container } = render(<TabStrip />);
+    const strip = container.querySelector<HTMLElement>(".tab-strip__scroll")!;
+    layOut(strip);
+    fireEvent.scroll(strip);
+    expect(strip.dataset.overflow).toBe("end");
+    // The pane widens until all twelve 120 px tabs fit.
+    Object.defineProperty(strip, "clientWidth", { value: 120 * 12 });
+    resized!(
+      [{ target: strip } as unknown as ResizeObserverEntry],
+      {} as ResizeObserver,
+    );
+    expect(strip).not.toHaveAttribute("data-overflow");
   });
 });

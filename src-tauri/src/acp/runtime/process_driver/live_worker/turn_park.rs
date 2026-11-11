@@ -29,7 +29,7 @@ where
         .cloned()
     else {
         envelope.reject(HostError::State);
-        return FirstTurnWorkerState::Active(active);
+        return FirstTurnWorkerState::Active(Box::new(active));
     };
     let owner = context.owner.clone();
     super::recovery::accept_terminal_once(active, owner, cursor, context, envelope)
@@ -49,21 +49,21 @@ where
 {
     let WorkerCommand::WaitZero { owner } = &envelope.command else {
         envelope.reject(HostError::Intent);
-        return FirstTurnWorkerState::Active(active);
+        return FirstTurnWorkerState::Active(Box::new(active));
     };
     if owner != &context.owner || !active.has_durable_terminal() {
         envelope.reject(HostError::Intent);
-        return FirstTurnWorkerState::Active(active);
+        return FirstTurnWorkerState::Active(Box::new(active));
     }
     let Some(token) = context.next_zero_token() else {
         envelope.reject(HostError::RecoveryRequired);
-        return FirstTurnWorkerState::Active(active);
+        return FirstTurnWorkerState::Active(Box::new(active));
     };
     let receipt = match WorkerZeroProof::new(context.owner.clone(), token) {
         Ok(receipt) => receipt,
         Err(_) => {
             envelope.reject(HostError::RecoveryRequired);
-            return FirstTurnWorkerState::Active(active);
+            return FirstTurnWorkerState::Active(Box::new(active));
         }
     };
     match active.turn.driver.control.wait_zero() {
@@ -75,20 +75,20 @@ where
                 .is_some_and(|cursor| cursor.state() == crate::acp::lifecycle::TurnState::Completed)
             {
                 envelope.respond(Ok(WorkerReply::Zero(receipt)));
-                return FirstTurnWorkerState::Active(active);
+                return FirstTurnWorkerState::Active(Box::new(active));
             }
             let Ok(proof) = native.try_into_coordinator_proof(context.owner.clone()) else {
                 envelope.reject(HostError::RecoveryRequired);
-                return FirstTurnWorkerState::Active(active);
+                return FirstTurnWorkerState::Active(Box::new(active));
             };
             let Some(lease) = active.turn.driver.lease.as_mut() else {
                 envelope.reject(HostError::RecoveryRequired);
-                return FirstTurnWorkerState::Active(active);
+                return FirstTurnWorkerState::Active(Box::new(active));
             };
             let Ok(exit_kind) = crate::acp::contract::RequiredText::new("exitKind", "hostShutdown")
             else {
                 envelope.reject(HostError::RecoveryRequired);
-                return FirstTurnWorkerState::Active(active);
+                return FirstTurnWorkerState::Active(Box::new(active));
             };
             match lease
                 .park_after_zero_process(
@@ -106,17 +106,17 @@ where
             {
                 Ok(_) => {
                     envelope.respond(Ok(WorkerReply::Zero(receipt)));
-                    FirstTurnWorkerState::Active(active)
+                    FirstTurnWorkerState::Active(Box::new(active))
                 }
                 Err(_) => {
                     envelope.reject(HostError::RecoveryRequired);
-                    FirstTurnWorkerState::Active(active)
+                    FirstTurnWorkerState::Active(Box::new(active))
                 }
             }
         }
         Err(_) => {
             envelope.reject(HostError::RecoveryRequired);
-            FirstTurnWorkerState::Active(active)
+            FirstTurnWorkerState::Active(Box::new(active))
         }
     }
 }
@@ -135,11 +135,11 @@ where
 {
     let WorkerCommand::ParkAfterZero { owner } = &envelope.command else {
         envelope.reject(HostError::Intent);
-        return FirstTurnWorkerState::Active(active);
+        return FirstTurnWorkerState::Active(Box::new(active));
     };
     if owner != &context.owner || !active.has_durable_terminal() {
         envelope.reject(HostError::Intent);
-        return FirstTurnWorkerState::Active(active);
+        return FirstTurnWorkerState::Active(Box::new(active));
     }
     active.settle_steer();
     envelope.respond(Ok(WorkerReply::Unit));

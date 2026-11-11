@@ -68,6 +68,7 @@ export const ChangesSurface = memo(function ChangesSurface({
     <section className="changes-surface" aria-label="Chat changes">
       <div className="changes-surface__toolbar">
         <select
+          className="select"
           aria-label="Changes scope"
           value={scope}
           onChange={(event) => {

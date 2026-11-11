@@ -16,7 +16,11 @@ import type {
   RootRepositoryStatus,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
-import { idleAtEpoch, matchesProjectIntent } from "./projectIntent";
+import {
+  idleAtEpoch,
+  matchesProjectIntent,
+  repositoryBusy,
+} from "./projectIntent";
 import type { WorkbenchState } from "./store";
 
 export interface RepositoryCommit {
@@ -63,12 +67,7 @@ async function runLockedSequenceCommand(
   if (
     !projectId ||
     !root ||
-    get().projectTransitioning ||
-    get().repositoryRefreshing ||
-    get().repositoryMutation ||
-    get().repositoryCommit ||
-    get().repositoryCheckout ||
-    get().repositoryRemote ||
+    repositoryBusy(get()) ||
     !eligible(root) ||
     !get().project?.roots.some((candidate) => candidate.id === rootId)
   ) {
