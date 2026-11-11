@@ -204,8 +204,8 @@ export const createFileRenameSlice: StateCreator<
       set({
         fileRenameError:
           kind === "file"
-            ? "Select one visible regular file in an available Project root to rename."
-            : "Select one visible empty folder in an available Project root to rename.",
+            ? "Select one visible regular file in an available project root to rename."
+            : "Select one visible empty folder in an available project root to rename.",
       });
       return false;
     }

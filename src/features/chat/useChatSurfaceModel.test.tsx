@@ -226,7 +226,7 @@ it("blocks native submission on a failed Chat load and permits it after retry su
   );
   expect(result.current.composerEnabled).toBe(false);
   expect(result.current.disabledReason).toBe(
-    "This Chat failed to load. Retry to send a prompt.",
+    "This chat failed to load. Retry to send a prompt.",
   );
   const event = { preventDefault: vi.fn() } as unknown as FormEvent;
   result.current.submit(event);

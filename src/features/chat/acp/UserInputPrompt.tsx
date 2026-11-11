@@ -256,7 +256,7 @@ export function UserInputPrompt({
       ) : null}
       {sent === false ? (
         <p className="acp-permission__error" role="alert">
-          This answer could not be sent. Try again, or cancel the Turn.
+          This answer could not be sent. Try again, or cancel the turn.
         </p>
       ) : null}
       <p className="sr-only" role="status">

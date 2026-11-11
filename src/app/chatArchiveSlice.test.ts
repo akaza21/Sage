@@ -121,6 +121,6 @@ it("still reports the last attached Chat in the Project it was started in", asyn
     useWorkbenchStore.getState().archiveChat("chat:a1"),
   ).resolves.toBe(false);
   expect(useWorkbenchStore.getState().error).toBe(
-    "The last attached Chat cannot be archived",
+    "The last attached chat cannot be archived",
   );
 });

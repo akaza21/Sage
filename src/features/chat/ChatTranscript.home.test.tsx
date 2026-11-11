@@ -287,7 +287,7 @@ it("retains earlier-history retry and discarded-history disclosure after an empt
   await settleLazyModules();
   expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
   expect(screen.getByRole("alert")).toHaveTextContent("History unavailable");
-  expect(screen.getByText(/Some Chat history was discarded/)).toBeVisible();
+  expect(screen.getByText(/Some chat history was discarded/)).toBeVisible();
   const retry = screen.getByRole("button", { name: "Load earlier history" });
   expect(retry).toBeEnabled();
   fireEvent.click(retry);

@@ -189,7 +189,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       exact: true,
     });
     await expect(searchTools).toContainText(
-      "Search all roots in the active Project.",
+      "Search all roots in the active project.",
     );
     await expectNoViewportOverflow(page);
     await expect(workbench).toHaveScreenshot("editor-search.png");

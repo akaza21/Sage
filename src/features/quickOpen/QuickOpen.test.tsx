@@ -99,7 +99,7 @@ afterEach(() => {
 });
 
 const input = () =>
-  screen.getByRole("combobox", { name: "Search Files by name" });
+  screen.getByRole("combobox", { name: "Search files by name" });
 const options = () =>
   screen.queryAllByRole("option").map((option) => option.textContent);
 
@@ -215,7 +215,7 @@ describe("Quick Open", () => {
     fireEvent.change(input(), { target: { value: "zzz" } });
     expect(await screen.findByText("Indexing…")).toBeInTheDocument();
     expect(
-      await screen.findByText("No matching Files.", {}, { timeout: 2000 }),
+      await screen.findByText("No matching files.", {}, { timeout: 2000 }),
     ).toBeInTheDocument();
   });
 
@@ -413,7 +413,7 @@ describe("Quick Open", () => {
     useWorkbenchStore.setState({ project: null });
     const { unmount } = render(<QuickOpen onClose={vi.fn()} />);
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Open a Project to find its Files.",
+      "Open a project to find its files.",
     );
     unmount();
     useWorkbenchStore.setState({

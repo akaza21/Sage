@@ -129,7 +129,7 @@ describe("ChatSearchControl", () => {
         }));
       render(<ChatSearchControl />);
       fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
-      const query = screen.getByRole("searchbox", { name: "Search Chats" });
+      const query = screen.getByRole("searchbox", { name: "Search chats" });
       expect(query).toHaveFocus();
       fireEvent.change(query, { target: { value: "ne" } });
       await act(() => vi.advanceTimersByTimeAsync(100));
@@ -186,7 +186,7 @@ describe("ChatSearchControl", () => {
     useWorkbenchStore.setState({ restoreChat });
     render(<ChatSearchControl />);
     act(() => requestChatSearchInFolder("project-a"));
-    expect(screen.getByRole("searchbox", { name: "Search Chats" })).toHaveValue(
+    expect(screen.getByRole("searchbox", { name: "Search chats" })).toHaveValue(
       "",
     );
     fireEvent.click(
@@ -199,7 +199,7 @@ describe("ChatSearchControl", () => {
       query: "",
     });
     expect(restoreChat).toHaveBeenCalledWith("chat-old", "project-a");
-    expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Search chats" })).toBeNull();
   });
 
   it("restarts a mounted palette with query focus and invalidates its pending search", async () => {
@@ -209,7 +209,7 @@ describe("ChatSearchControl", () => {
       .mockReturnValue(pending.promise);
     render(<ChatSearchControl />);
     fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
-    const query = screen.getByRole("searchbox", { name: "Search Chats" });
+    const query = screen.getByRole("searchbox", { name: "Search chats" });
     fireEvent.change(query, { target: { value: "needle" } });
     fireEvent.submit(query.closest("form")!);
     screen.getByRole("button", { name: "Close" }).focus();
@@ -234,8 +234,8 @@ describe("ChatSearchControl", () => {
 
     const trigger = screen.getByRole("button", { name: "Search chats" });
     fireEvent.click(trigger);
-    const dialog = screen.getByRole("dialog", { name: "Search Chats" });
-    const input = screen.getByRole("searchbox", { name: "Search Chats" });
+    const dialog = screen.getByRole("dialog", { name: "Search chats" });
+    const input = screen.getByRole("searchbox", { name: "Search chats" });
     expect(input).toHaveFocus();
     fireEvent.change(input, { target: { value: "needle" } });
     expect(search).not.toHaveBeenCalled();
@@ -264,7 +264,7 @@ describe("ChatSearchControl", () => {
 
     fireEvent.click(trigger);
     const reopenedInput = screen.getByRole("searchbox", {
-      name: "Search Chats",
+      name: "Search chats",
     });
     fireEvent.change(reopenedInput, { target: { value: "needle" } });
     fireEvent.submit(reopenedInput.closest("form")!);
@@ -286,7 +286,7 @@ describe("ChatSearchControl", () => {
     const priorReturn = vi.fn();
     act(() => requestChatSearchInFolder("project-a", priorReturn));
     const firstInput = await screen.findByRole("searchbox", {
-      name: "Search Chats",
+      name: "Search chats",
     });
     fireEvent.change(firstInput, { target: { value: "needle" } });
     fireEvent.submit(firstInput.closest("form")!);
@@ -298,7 +298,7 @@ describe("ChatSearchControl", () => {
 
     const nextReturn = vi.fn();
     act(() => requestChatSearchInFolder("project-a", nextReturn));
-    await screen.findByRole("dialog", { name: "Search Chats" });
+    await screen.findByRole("dialog", { name: "Search chats" });
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(nextReturn).toHaveBeenCalledOnce());
     expect(priorReturn).not.toHaveBeenCalled();
@@ -313,7 +313,7 @@ describe("ChatSearchControl", () => {
       useWorkbenchStore.setState({ projectTransitioning: true });
       requestChatSearchInFolder("project-a", staleReturn);
     });
-    expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Search chats" })).toBeNull();
 
     act(() => useWorkbenchStore.setState({ projectTransitioning: false }));
     const trigger = screen.getByRole("button", { name: "Search chats" });
@@ -373,7 +373,7 @@ describe("ChatSearchControl", () => {
     fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
     fireEvent.click(screen.getByRole("button", { name: "Search in" }));
     fireEvent.click(screen.getByRole("option", { name: "Cross" }));
-    const input = screen.getByRole("searchbox", { name: "Search Chats" });
+    const input = screen.getByRole("searchbox", { name: "Search chats" });
     fireEvent.change(input, { target: { value: "Research" } });
     fireEvent.submit(input.closest("form")!);
     expect(
@@ -440,7 +440,7 @@ describe("ChatSearchControl", () => {
     expect(openRailChat).toHaveBeenCalledWith("cross", "hidden-ninth");
     expect(restoreChat).not.toHaveBeenCalled();
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Search chats" })).toBeNull();
   });
 
   it("fans out All folders and restores without switching", async () => {
@@ -496,7 +496,7 @@ describe("ChatSearchControl", () => {
     fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
     fireEvent.click(screen.getByRole("button", { name: "Search in" }));
     fireEvent.click(screen.getByRole("option", { name: "All folders" }));
-    const input = screen.getByRole("searchbox", { name: "Search Chats" });
+    const input = screen.getByRole("searchbox", { name: "Search chats" });
     fireEvent.change(input, { target: { value: "Research" } });
     fireEvent.submit(input.closest("form")!);
     expect(
@@ -543,7 +543,7 @@ describe("ChatSearchControl", () => {
       key: "Escape",
     });
     fireEvent.click(screen.getByRole("button", { name: "Search in" }));
-    const input = screen.getByRole("searchbox", { name: "Search Chats" });
+    const input = screen.getByRole("searchbox", { name: "Search chats" });
     fireEvent.change(input, { target: { value: "needle" } });
     fireEvent.submit(input.closest("form")!);
     useWorkbenchStore.setState({ projectGeneration: 4 });
@@ -566,7 +566,7 @@ describe("ChatSearchControl", () => {
     render(<ChatSearchControl />);
     const trigger = screen.getByRole("button", { name: "Search chats" });
     fireEvent.click(trigger);
-    const input = screen.getByRole("searchbox", { name: "Search Chats" });
+    const input = screen.getByRole("searchbox", { name: "Search chats" });
     fireEvent.change(input, { target: { value: "needle" } });
     fireEvent.submit(input.closest("form")!);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -587,7 +587,7 @@ describe("ChatSearchControl", () => {
     useWorkbenchStore.setState({ restoreChat });
     render(<ChatSearchControl />);
     fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
-    const input = screen.getByRole("searchbox", { name: "Search Chats" });
+    const input = screen.getByRole("searchbox", { name: "Search chats" });
     fireEvent.change(input, { target: { value: "needle" } });
     fireEvent.submit(input.closest("form")!);
     expect(await screen.findByText(/No Chats matched/)).toBeVisible();
@@ -624,8 +624,8 @@ describe("ChatSearchControl", () => {
     render(<ChatSearchControl />);
     const trigger = screen.getByRole("button", { name: "Search chats" });
     fireEvent.click(trigger);
-    const dialog = screen.getByRole("dialog", { name: "Search Chats" });
-    const input = screen.getByRole("searchbox", { name: "Search Chats" });
+    const dialog = screen.getByRole("dialog", { name: "Search chats" });
+    const input = screen.getByRole("searchbox", { name: "Search chats" });
     fireEvent.change(input, { target: { value: "needle" } });
     fireEvent.submit(input.closest("form")!);
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -646,7 +646,7 @@ describe("ChatSearchControl", () => {
     });
     render(<ChatSearchControl />);
     fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
-    const dialog = screen.getByRole("dialog", { name: "Search Chats" });
+    const dialog = screen.getByRole("dialog", { name: "Search chats" });
     const select = screen.getByRole("button", { name: "Search in" });
     const close = screen.getByRole("button", { name: "Close" });
 
@@ -693,7 +693,7 @@ describe("ChatSearchControl", () => {
     vi.spyOn(projectChatSearchDesktop, "search").mockResolvedValue(response);
     render(<ChatSearchControl />);
     fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
-    const input = screen.getByRole("searchbox", { name: "Search Chats" });
+    const input = screen.getByRole("searchbox", { name: "Search chats" });
     fireEvent.change(input, { target: { value: "needle" } });
     fireEvent.submit(input.closest("form")!);
     const [attached, archived] = within(

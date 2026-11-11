@@ -113,7 +113,7 @@ test.describe("Command palette (ED-2a)", () => {
     await box.fill(">file");
     await box.press("Enter");
     await expect(
-      dialog.getByRole("combobox", { name: "Search Files by name" }),
+      dialog.getByRole("combobox", { name: "Search files by name" }),
     ).toHaveValue("");
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
@@ -145,7 +145,7 @@ test.describe("Quick Open", () => {
 
     const dialog = page.getByRole("dialog", { name: "Quick Open" });
     const input = dialog.getByRole("combobox", {
-      name: "Search Files by name",
+      name: "Search files by name",
     });
     const options = dialog.getByRole("option");
 
@@ -270,7 +270,7 @@ test("leaving Editor cancels Quick Open while its controller is still loading", 
     await expect(dialog).toBeHidden();
     await page.keyboard.press("ControlOrMeta+p");
     await expect(
-      dialog.getByRole("combobox", { name: "Search Files by name" }),
+      dialog.getByRole("combobox", { name: "Search files by name" }),
     ).toBeFocused();
   } finally {
     release();

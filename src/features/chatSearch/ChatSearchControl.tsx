@@ -247,7 +247,7 @@ export function ChatSearchControl({
       requestGeneration.current += 1;
       setResponse(null);
       setPhase("error");
-      setError("This Chat result changed. Search again to continue.");
+      setError("This chat result changed. Search again to continue.");
       return;
     }
     close(false);
@@ -285,7 +285,7 @@ export function ChatSearchControl({
           onDismiss={() => close()}
         >
           <form className="chat-search-dialog__form" onSubmit={submit}>
-            <h2 id="chat-search-title">Search Chats</h2>
+            <h2 id="chat-search-title">Search chats</h2>
             {/* Dismiss sits in the header, as in the other dialogs, so it
                 stays put while results and errors come and go. */}
             <button
@@ -302,11 +302,11 @@ export function ChatSearchControl({
               selected folder, or across listed folders.
             </p>
             <label className="chat-search-dialog__query">
-              <span>Search Chats</span>
+              <span>Search chats</span>
               <input
                 ref={queryRef}
                 autoFocus
-                aria-label="Search Chats"
+                aria-label="Search chats"
                 disabled={projectTransitioning}
                 maxLength={MAX_CHAT_SEARCH_QUERY_BYTES}
                 role="searchbox"

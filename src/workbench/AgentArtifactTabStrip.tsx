@@ -72,7 +72,7 @@ export function AgentArtifactTabStrip({
     `agent-artifact-pending-${index}`;
   const modeLabel = following ? "Following latest" : "Pinned";
   const followTitle = following
-    ? "Following the newest resource from this Chat"
+    ? "Following the newest resource from this chat"
     : latestPendingTarget
       ? "A newer resource arrived. Select to follow it."
       : "Pinned to this resource. Select to follow the newest resource.";

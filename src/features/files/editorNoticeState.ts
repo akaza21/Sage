@@ -132,11 +132,11 @@ const REASONS: [RegExp, string][] = [
   [/no space|disk is full|os error (28|112)\)/i, "the disk is full."],
   [
     /cannot be created inside|escapes the workspace|link or not a folder/i,
-    "Sage doesn't create Files there (inside protected folders such as .git, or through a link).",
+    "Sage doesn't create files there (inside protected folders such as .git, or through a link).",
   ],
   [
     /buffer recovery limit|-buffer limit|MiB project limit/i,
-    "too many Files have unsaved changes. Save or close some, then try again.",
+    "too many files have unsaved changes. Save or close some, then try again.",
   ],
   [
     /no longer matches disk/i,

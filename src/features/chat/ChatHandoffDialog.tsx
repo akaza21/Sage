@@ -99,7 +99,7 @@ export function ChatHandoffDialog({
         <label className="handoff-dialog__field">
           <span>Target Chat</span>
           <SearchablePicker
-            ariaLabel="Target Chat"
+            ariaLabel="Target chat"
             candidates={targetCandidates}
             disabled={locked}
             onSelect={chooseTarget}

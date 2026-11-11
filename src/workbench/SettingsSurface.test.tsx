@@ -282,7 +282,7 @@ describe("SettingsSurface", () => {
 
     for (const [pattern, message] of [
       ["**/dist", "That pattern is already listed."],
-      ["/dist", "Write the pattern relative to the Project"],
+      ["/dist", "Write the pattern relative to the project"],
       ["", "Enter a pattern."],
     ] as const) {
       fireEvent.change(input, { target: { value: pattern } });

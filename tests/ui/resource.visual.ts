@@ -1091,7 +1091,7 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
     ).toBeVisible();
     await expect(
       resources.getByText(
-        "Open a file or change from the conversation. Preview will appear when this Chat starts a loopback server.",
+        "Open a file or change from the conversation. Preview will appear when this chat starts a loopback server.",
         { exact: true },
       ),
     ).toBeVisible();

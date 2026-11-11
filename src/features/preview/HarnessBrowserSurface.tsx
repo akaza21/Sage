@@ -267,7 +267,7 @@ export function HarnessBrowserSurface({
           <ResourceStateNotice
             state="idle"
             title="Preview unavailable"
-            detail="Select a Chat to preview loopback development servers."
+            detail="Select a chat to preview loopback development servers."
           />
         ))}
     </section>

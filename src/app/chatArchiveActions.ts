@@ -126,7 +126,7 @@ export function createChatArchiveActions(set: Set, get: Get) {
         (!foreign && attachedChats?.length === 1) ||
         (foreign && foreignChats.length === 1)
       ) {
-        set({ error: "The last attached Chat cannot be archived" });
+        set({ error: "The last attached chat cannot be archived" });
       }
       return false;
     }
