@@ -60,6 +60,47 @@
   overscroll-behavior: contain;
 }
 
+.composer__project-menu.searchable-picker__popover {
+  display: flex;
+  flex-direction: column;
+  width: min(248px, calc(100vw - var(--space-8)));
+  padding: calc(var(--space-1) * 1.5);
+}
+
+.composer__project-menu .searchable-picker__input {
+  flex: none;
+  min-height: var(--control-height-default);
+  border-color: transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text-emphasis);
+  background: var(--color-surface);
+  font-size: var(--font-size-sm);
+}
+
+.composer__project-menu .searchable-picker__input:focus-visible {
+  border-color: var(--color-text-muted);
+  outline: 0;
+}
+
+.composer__project-menu .searchable-picker__option.menu-item {
+  grid-template-columns: minmax(0, 1fr) var(--icon-size-sm);
+  gap: var(--space-2);
+}
+
+.composer__project-menu
+  .searchable-picker__option[aria-selected="true"]:not(
+    :hover,
+    :focus-visible,
+    [data-active="true"]
+  ) {
+  background: transparent;
+}
+
+.composer__project-menu .searchable-picker__option[data-active="true"] {
+  color: var(--menu-row-text);
+  background: var(--menu-row-hover);
+}
+
 .searchable-picker__current,
 .searchable-picker__footer,
 .searchable-picker__limit,
@@ -142,6 +183,15 @@
     color: HighlightText;
     background: Highlight;
     box-shadow: none;
+  }
+
+  .composer__project-menu .searchable-picker__input:focus-visible {
+    outline: 1px solid Highlight;
+  }
+
+  .composer__project-menu .searchable-picker__option[data-active="true"] {
+    color: HighlightText;
+    background: Highlight;
   }
 }
 

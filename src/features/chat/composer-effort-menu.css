@@ -2,7 +2,7 @@
   max-width: 100%;
   overflow: hidden;
   color: var(--composer-muted-text);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

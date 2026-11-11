@@ -17,6 +17,7 @@
   --workbench-card-radius: var(--radius-xl);
   --workbench-card-fill: var(--agent-shell-center);
   --workbench-card-margin: var(--space-2);
+  font-family: var(--font-family-agent);
 }
 .title-bar {
   display: grid;
