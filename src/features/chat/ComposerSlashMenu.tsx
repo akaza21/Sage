@@ -30,6 +30,7 @@ import {
 } from "../../ui/textFieldSuggestionNavigation";
 import { isImeComposing } from "../../ui/imeComposition";
 import { SuggestionsPart } from "./composerSuggestionsPart";
+import { SlashCommandIcon } from "./SlashCommandIcon";
 import { createClientIntentFactory } from "./acp/clientIntent";
 import { currentContext } from "./acp/useAcpChatActions";
 import type { PickedSlashCommand } from "./composerSlashCommand";
@@ -98,6 +99,7 @@ function suggestion(
     id: command.name,
     group: grouped ? commandSourceGroups[command.source] : undefined,
     label: `/${command.name}`,
+    icon: <SlashCommandIcon name={command.name} />,
     hint: command.inputHint ?? undefined,
     description: command.description || undefined,
     accessibleLabel: [

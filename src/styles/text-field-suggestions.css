@@ -24,26 +24,25 @@
 
 .text-field-suggestions__option.menu-item {
   display: grid;
-  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
-  align-items: baseline;
-  gap: var(--space-2);
-}
-
-.text-field-suggestions__option[data-active="true"] {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-  box-shadow: inset 0 0 0 var(--border-width) var(--menu-focus-edge);
+  min-height: var(--row-height-emphasis);
+  grid-template-columns: fit-content(45%) minmax(0, 1fr);
 }
 
 .text-field-suggestions__label {
-  color: var(--color-text-primary);
-  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-medium);
+}
+
+.text-field-suggestions__label > svg {
+  margin-inline-end: var(--space-2);
+  vertical-align: middle;
 }
 
 .text-field-suggestions__hint,
 .text-field-suggestions__description,
 .text-field-suggestions__footer {
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
 }
 
 .text-field-suggestions__hint {
@@ -53,19 +52,12 @@
 .text-field-suggestions__footer {
   flex: 0 0 auto;
   margin: var(--space-1) var(--space-2);
-  font-size: var(--font-size-xs);
   line-height: 1.4;
 }
 
 @media (forced-colors: active) {
-  .text-field-suggestions__option[data-active="true"] {
-    color: HighlightText;
-    background: Highlight;
-    box-shadow: none;
-  }
-
-  .text-field-suggestions__option[data-active="true"] :is(span) {
-    color: HighlightText;
+  .text-field-suggestions__option[data-active="true"] span {
+    color: inherit;
   }
 }
 

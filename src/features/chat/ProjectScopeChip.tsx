@@ -94,7 +94,6 @@ export function ProjectScopeChip({
             void switchProject(id);
           }}
           selectedId={projectId}
-          showSelectedCheck
         />
       ) : (
         <>

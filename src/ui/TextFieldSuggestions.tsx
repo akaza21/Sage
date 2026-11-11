@@ -83,6 +83,7 @@ export function TextFieldSuggestions({
         onClick={() => onPick(item)}
       >
         <span className="text-field-suggestions__label">
+          {item.icon}
           {item.label}
           {item.hint ? (
             <span className="text-field-suggestions__hint">{item.hint}</span>

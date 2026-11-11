@@ -52,7 +52,6 @@ export function SearchablePickerPopover({
   sectionLabel,
   selected,
   selectedId,
-  showSelectedCheck,
   setDraft,
   setOpen,
   state,
@@ -81,7 +80,6 @@ export function SearchablePickerPopover({
   sectionLabel?: string;
   selected: SearchablePickerOption | undefined;
   selectedId: string | null;
-  showSelectedCheck?: boolean;
   setDraft: (draft: string) => void;
   setOpen: (open: boolean) => void;
   state?: "error" | "idle" | "loading";
@@ -246,7 +244,7 @@ export function SearchablePickerPopover({
           onKeyDown={onKeyDown}
         />
       ) : null}
-      {selected && !showSelectedCheck ? (
+      {selected ? (
         <p className="searchable-picker__current">Current: {selected.label}</p>
       ) : null}
       {sectionLabel ? (
@@ -276,7 +274,6 @@ export function SearchablePickerPopover({
             onRender={onOptionRender}
             onSelect={selectCandidate}
             selected={candidate.id === selectedId}
-            showSelectedCheck={showSelectedCheck}
             disabled={disabled}
           />
         ))}

@@ -95,7 +95,6 @@ export function SearchablePicker({
   triggerRole,
   triggerIcon,
   sectionLabel,
-  showSelectedCheck,
   searchable = true,
   onSelect,
   portalTarget = "document",
@@ -121,7 +120,6 @@ export function SearchablePicker({
   triggerRole?: "menuitem";
   triggerIcon?: ReactNode;
   sectionLabel?: string;
-  showSelectedCheck?: boolean;
   searchable?: boolean;
   onSelect: (id: string) => void;
   portalTarget?: "closest-dialog" | "closest-popover" | "document";
@@ -259,7 +257,6 @@ export function SearchablePicker({
           sectionLabel={sectionLabel}
           selected={selected}
           selectedId={selectedId}
-          showSelectedCheck={showSelectedCheck}
           setDraft={setDraft}
           setOpen={setOpen}
           state={state}

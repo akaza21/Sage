@@ -180,7 +180,7 @@
     var(--color-text-emphasis) 8%,
     transparent
   );
-  --menu-row-radius: var(--radius-md);
+  --radius-menu-row: var(--radius-md);
   --menu-row-size: var(--font-size-sm);
   --menu-row-height: var(--row-height-compact);
   --menu-focus-edge: var(--highlight-focus-edge);
@@ -201,7 +201,7 @@
   padding: 4px 8px;
   overflow: hidden;
   border: 0;
-  border-radius: var(--menu-row-radius, var(--radius-sm));
+  border-radius: var(--radius-menu-row);
   color: var(--menu-row-text, var(--color-text-secondary));
   background: transparent;
   font: inherit;

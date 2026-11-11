@@ -87,6 +87,32 @@
   gap: var(--space-2);
 }
 
+.composer__project-menu .searchable-picker__option-copy {
+  display: grid;
+}
+
+.composer__project-menu .searchable-picker__option-copy > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer__project-menu .searchable-picker__current {
+  display: none;
+}
+
+.composer__project-menu
+  .searchable-picker__option[aria-selected="true"]:not(
+    :has(.searchable-picker__selected-check)
+  )::after {
+  width: 8px;
+  height: 5px;
+  justify-self: center;
+  border-block-end: var(--border-width) solid currentColor;
+  border-inline-start: var(--border-width) solid currentColor;
+  content: "";
+  transform: translateY(-1px) rotate(-45deg);
+}
+
 .composer__project-menu
   .searchable-picker__option[aria-selected="true"]:not(
     :hover,
