@@ -34,6 +34,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          cache-on-failure: true
       - run: npm ci
       - name: Build the universal installer
         run: npm run tauri build -- --target universal-apple-darwin --bundles dmg --ci -- --locked
@@ -54,7 +55,7 @@ jobs:
           trap 'hdiutil detach "$mount"' EXIT
           app="$mount/Sage.app"
           codesign --verify --deep --strict --verbose=2 "$app"
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/sage"
+          lipo "$app/Contents/MacOS/sage" -verify_arch arm64 x86_64
           ditto "$app" "$RUNNER_TEMP/Sage.app"
 
           mkdir -p work/macos-package
