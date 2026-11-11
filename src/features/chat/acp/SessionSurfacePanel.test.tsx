@@ -117,7 +117,7 @@ it("says when undo keeps the files and only rewinds the conversation", () => {
   fireEvent.click(screen.getByRole("button", { name: "Confirm undo" }));
   expect(run).toHaveBeenCalledWith(
     { kind: "undoTurn", turnId: TURN },
-    "Last turn removed from the conversation. Files are unchanged",
+    "Last turn removed; files unchanged",
   );
   // Once removed, the turn is not offered again; the notice stays.
   status = { kind: "done", message: "Last turn removed" };

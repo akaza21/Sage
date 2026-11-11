@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { decodeSessionSurface } from "../../../services/acpSessionSurface";
 import "./session-surface.css";
 import { useSessionControl } from "./useSessionControl";
@@ -27,16 +27,8 @@ export function SessionSurfacePanel({
   const [confirming, setConfirming] = useState(false);
   // A turn removed from the conversation cannot be removed again; the
   // session keeps offering it, so the app remembers it was removed.
-  const undoing = useRef<string | null>(null);
-  const [, setRewound] = useState(0);
-  useEffect(() => {
-    if (status.kind === "pending") return;
-    if (status.kind === "done" && undoing.current) {
-      rewoundTurns.add(undoing.current);
-      setRewound((count) => count + 1);
-    }
-    undoing.current = null;
-  }, [status]);
+  const [undoing, setUndoing] = useState<string>();
+  if (status.kind === "done" && undoing) rewoundTurns.add(undoing);
   const decoded = decodeSessionSurface(surface);
   const activities = decoded?.activities ?? [];
   const keepsFiles = decoded?.undoKeepsFiles === true;
@@ -65,12 +57,13 @@ export function SessionSurfacePanel({
                 <button
                   type="button"
                   disabled={status.kind === "pending"}
-                  onClick={() =>
+                  onClick={() => {
+                    setUndoing(undefined);
                     void run(
                       { kind: "stopActivity", activityKey: activity.key },
                       `Stopping ${activity.label}`,
-                    )
-                  }
+                    );
+                  }}
                 >
                   Stop
                 </button>
@@ -86,17 +79,17 @@ export function SessionSurfacePanel({
           disabled={status.kind === "pending"}
           title={
             keepsFiles
-              ? "Remove the last turn from the conversation. Files it changed stay as they are"
+              ? "Remove the last turn from the chat; files stay as they are"
               : "Restore the files the last turn changed to how they were before it"
           }
           onClick={() => {
             if (!confirming) return setConfirming(true);
             setConfirming(false);
-            if (keepsFiles) undoing.current = undoTurn;
+            setUndoing(keepsFiles ? undoTurn : undefined);
             void run(
               { kind: "undoTurn", turnId: undoTurn },
               keepsFiles
-                ? "Last turn removed from the conversation. Files are unchanged"
+                ? "Last turn removed; files unchanged"
                 : "Changes undone",
             );
           }}
