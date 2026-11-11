@@ -1,4 +1,12 @@
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import {
@@ -17,6 +25,7 @@ import { ModalDialog } from "../../ui/ModalDialog";
 import { isSideChatId } from "../../workbench/sideChatState";
 import "./fork-chat.css";
 import { inheritComposerModel } from "./inheritedComposerModel";
+import { ForkChatRequestContext } from "./forkChatRequest";
 
 /** Lazy fork UI; Rust owns the fork and authoritative Project snapshot. */
 
@@ -48,6 +57,7 @@ export function AnswerMoreMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
+        data-fork-trigger={onBranch ? true : undefined}
         onClick={() => setOpen(!open)}
       >
         <Ellipsis size={14} aria-hidden="true" />
@@ -149,10 +159,10 @@ export function AnswerMoreActions({
   forkable?: boolean;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
-  // null while closed; otherwise whether Enter or Space opened the dialog.
-  const [forking, setForking] = useState<boolean | null>(null);
+  const requestFork = useContext(ForkChatRequestContext);
   const turn = page.turns.at(-1);
   const canFork =
+    requestFork &&
     forkable &&
     turn?.state === "completed" &&
     turn.sessionId === page.currentSessionId &&
@@ -164,25 +174,26 @@ export function AnswerMoreActions({
         session.capabilities.nativeSessionFork,
     );
   return (
-    <>
-      <AnswerMoreMenu
-        onCopy={onCopy}
-        trigger={trigger}
-        onBranch={canFork ? setForking : undefined}
-      />
-      {forking !== null && canFork ? (
-        <ForkChatDialog
-          chatId={page.chatId}
-          turnId={turn.id}
-          keyboard={forking}
-          onClose={() => {
-            setForking(null);
-            trigger.current?.focus();
-          }}
-        />
-      ) : null}
-    </>
+    <AnswerMoreMenu
+      onCopy={onCopy}
+      trigger={trigger}
+      onBranch={
+        canFork
+          ? (keyboard) =>
+              requestFork({ chatId: page.chatId, turnId: turn.id, keyboard })
+          : undefined
+      }
+    />
   );
+}
+
+function restoreForkFocus(focusRoot?: RefObject<HTMLDivElement | null>) {
+  // A project transition recreates the answer. Look up its live button.
+  queueMicrotask(() => {
+    focusRoot?.current
+      ?.querySelector<HTMLButtonElement>("[data-fork-trigger]")
+      ?.focus();
+  });
 }
 
 /** No worktree fork: Chats lack worktree support; worktrees aren't Projects. */
@@ -192,11 +203,13 @@ export function ForkChatDialog({
   onClose,
   keyboard = false,
   fork = forkChat,
+  focusRoot,
 }: ForkTarget & {
   onClose: () => void;
   /** Opened with Enter or Space; a pointer or scripted click is not. */
   keyboard?: boolean;
   fork?: (target: ForkTarget) => Promise<string | null>;
+  focusRoot?: RefObject<HTMLDivElement | null>;
 }) {
   const title = useId();
   const option = useRef<HTMLButtonElement>(null);
@@ -205,8 +218,12 @@ export function ForkChatDialog({
   const busy = result === undefined;
   // Focus the first option; highlight only for keyboard input.
   const [fresh, setFresh] = useState(!keyboard);
+  const close = useCallback(() => {
+    onClose();
+    restoreForkFocus(focusRoot);
+  }, [onClose, focusRoot]);
   const dismiss = () => {
-    if (!busyRef.current) onClose();
+    if (!busyRef.current) close();
   };
   useEffect(() => {
     const dialog = option.current?.closest("dialog");
@@ -220,11 +237,11 @@ export function ForkChatDialog({
         event.clientY < box.top ||
         event.clientY > box.bottom
       )
-        onClose();
+        close();
     };
     dialog.addEventListener("click", backdrop);
     return () => dialog.removeEventListener("click", backdrop);
-  }, [onClose]);
+  }, [close]);
   return (
     <ModalDialog
       className="fork-chat-dialog dialog--scrim"
@@ -251,7 +268,7 @@ export function ForkChatDialog({
             const reason = await fork({ chatId, turnId });
             busyRef.current = false;
             setResult(reason);
-            if (reason === null) onClose();
+            if (reason === null) close();
           }}
         >
           <GitBranch size={14} />
