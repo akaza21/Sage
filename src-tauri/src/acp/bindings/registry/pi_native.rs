@@ -81,7 +81,7 @@ fn capabilities(
         // Counts arrive from the native session handshake, not installation metadata.
         model_count: 0,
         prompt_resources: true,
-        prompt_images: false,
+        prompt_images: true,
         config_count: 0,
     })
 }

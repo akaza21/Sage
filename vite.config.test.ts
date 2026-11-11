@@ -270,6 +270,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/TerminalDockShell.tsx",
   // Terminal controls load outside the shared workbench.
   "src/workbench/terminalDockCommands.tsx",
+  // The shared tooltip installs once the window is idle after startup.
+  "src/ui/tooltips.ts",
 ].sort();
 
 const ORDINARY_DYNAMIC_FACADES = [

@@ -21,10 +21,11 @@ const FORK_CAPABILITY: &str = "nativeSessionFork";
 
 /// Capabilities a harness may gain once Sage learns to drive them, with
 /// whether a snapshot records them when false.
-const UPGRADES: [(&str, bool); 3] = [
+const UPGRADES: [(&str, bool); 4] = [
     (FORK_CAPABILITY, true),
     ("activeTurnSteer", true),
     ("nativeSessionCompact", false),
+    ("promptImages", false),
 ];
 
 /// A session negotiated before Sage drove one of its harness's methods
@@ -324,5 +325,14 @@ mod tests {
             stored,
             r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false,"activeTurnSteer":"yes"}"#
         ));
+    }
+
+    #[test]
+    fn a_session_from_before_prompt_images_still_resumes_with_them() {
+        let stored = r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":true}"#;
+        let upgraded =
+            r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":true,"promptImages":true}"#;
+        assert!(resumable_capabilities(stored, upgraded));
+        assert!(!resumable_capabilities(upgraded, stored));
     }
 }

@@ -303,7 +303,11 @@ impl PiTranslator {
                 self.resuming = Some(session_id);
                 Ok(outbound)
             }
-            Operation::Prompt { turn_key, message } => self.begin_prompt(turn_key, message),
+            Operation::Prompt {
+                turn_key,
+                message,
+                images,
+            } => self.begin_prompt(turn_key, message, images),
             Operation::Compact {
                 turn_key,
                 instructions,

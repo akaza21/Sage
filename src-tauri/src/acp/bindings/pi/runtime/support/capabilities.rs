@@ -6,7 +6,7 @@ use crate::acp::{
 pub(super) fn capabilities(model_count: u16, config_count: u16) -> CapabilitySnapshotV1 {
     CapabilitySnapshotV1 {
         prompt_resources: true,
-        prompt_images: false,
+        prompt_images: true,
         schema_version: SchemaVersionV1,
         protocol_version: RequiredText::new(
             "protocolVersion",

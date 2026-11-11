@@ -27,7 +27,10 @@ mod parity_tests;
 #[cfg(test)]
 pub(crate) use child_opened_tests::child_opened_wire_for_test;
 #[cfg(test)]
-pub(crate) use claude_sdk::claude_sdk_wire_for_test;
+#[path = "wire_claude_sdk_replay.rs"]
+mod claude_sdk_replay;
+#[cfg(test)]
+pub(crate) use claude_sdk_replay::claude_sdk_wire_for_test;
 #[cfg(test)]
 pub(crate) use pi_bridge::{pi_journey_steps_for_test, run_pi_step_for_test};
 #[cfg(test)]
@@ -45,6 +48,8 @@ mod codex_catalog;
 mod pi;
 #[path = "wire_pi_bridge.rs"]
 mod pi_bridge;
+#[path = "wire_prompt_echo.rs"]
+mod prompt_echo;
 #[path = "wire_codex_user_input.rs"]
 mod user_input;
 
@@ -68,6 +73,12 @@ pub(super) struct WireState {
     embedded_context: Option<acp::EmbeddedContext>,
     /// The model the client opened or resumed the Codex thread with.
     codex_thread_model: Option<String>,
+    /// The model and effort the client's last Codex `turn/start` named, as
+    /// a frame quotes them (`$CODEX_TURN_CONFIG`).
+    codex_turn_config: Option<String>,
+    /// The client's last prompt, as a frame quotes it (`$PROMPT_ECHO`).
+    prompt_echo: Option<String>,
+    claude_sdk: claude_sdk::SdkWireState,
 }
 
 impl WireState {
@@ -87,6 +98,9 @@ impl WireState {
             acp_config: None,
             embedded_context: None,
             codex_thread_model: None,
+            codex_turn_config: None,
+            prompt_echo: None,
+            claude_sdk: claude_sdk::SdkWireState::default(),
         }
     }
 
@@ -160,10 +174,10 @@ fn await_client_kind(
         return pi_bridge::tool(step, input, output, state);
     }
     if kind.starts_with("claudeSdk") {
-        return claude_sdk::await_request(input, output, state, kind);
+        return claude_sdk::await_request(input, output, state, step);
     }
     if kind.starts_with("pi") {
-        return pi::await_request(input, output, state, kind);
+        return pi::await_request(input, output, state, step);
     }
     if kind.starts_with("acp") {
         let prompt_text = step.get("promptText").and_then(Value::as_str);
@@ -246,7 +260,7 @@ fn emit_known(
     if shape == "piNative" {
         return pi::emit(step, state, output);
     }
-    if shape == "claudeSdkNative" {
+    if matches!(shape, "claudeSdkNative" | "claudeSdkLifecycle") {
         return claude_sdk::emit(step, state, output);
     }
     if shape.starts_with("acp") {
@@ -379,50 +393,10 @@ fn emit_sized_frame(
     write_stdout(output, state, b"}\n", false)
 }
 
-fn emit_stderr_line(
-    bytes: u64,
-    state: &mut WireState,
-    error: &mut impl Write,
-) -> Result<(), FixtureError> {
-    emit_repeated(error, state, b'x', bytes)?;
-    write_stderr(error, state, b"\n")
-}
-
-fn fill_stderr(
-    step: &Value,
-    state: &mut WireState,
-    error: &mut impl Write,
-) -> Result<(), FixtureError> {
-    if let Some(chunks) = step.get("rawChunks").and_then(Value::as_array) {
-        for chunk in chunks {
-            let bytes = field_u64(chunk, "bytes")?;
-            for _ in 0..field_u64(chunk, "count")? {
-                emit_repeated(error, state, b'x', bytes)?;
-            }
-        }
-        if let Some(final_bytes) = step.get("finalRawChunkBytes").and_then(Value::as_u64) {
-            emit_repeated(error, state, b'x', final_bytes)?;
-        }
-        return Ok(());
-    }
-    let repeated = step
-        .get("repeatedLineBytes")
-        .ok_or(FixtureError::InvalidArguments)?;
-    let bytes = field_u64(repeated, "bytes")?;
-    let count = field_u64(repeated, "count")?;
-    for _ in 0..count {
-        emit_stderr_line(bytes, state, error)?;
-    }
-    if let Some(final_bytes) = step.get("finalLineBytes").and_then(Value::as_u64) {
-        emit_stderr_line(final_bytes, state, error)?;
-    }
-    Ok(())
-}
-
 #[path = "wire_output.rs"]
 mod output;
-use output::write_stderr;
 pub(super) use output::{emit_repeated, write_stdout};
+use output::{emit_stderr_line, fill_stderr};
 
 #[cfg(test)]
 #[path = "wire_capture_steps.rs"]
@@ -431,3 +405,6 @@ mod capture;
 pub(super) use capture::capture_steps;
 #[cfg(test)]
 pub(crate) use capture::replay_native;
+#[cfg(test)]
+#[path = "wire_echo_journey_tests.rs"]
+mod echo_journey_tests;

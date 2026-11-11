@@ -2,8 +2,10 @@ import { nativeCases } from "./acp-native-cases.mjs";
 import { emit, events, wait } from "./acp-native-case-events.mjs";
 import {
   piBridgeJourneys,
+  piCommandsJourney,
   piFullTurnJourney,
   piIdleConfigJourney,
+  piLargeRunJourney,
 } from "./acp-native-pi-cases.mjs";
 import { codexUserInputJourneys } from "./acp-native-codex-user-input-cases.mjs";
 import { codexNoticeJourneys } from "./acp-native-codex-notice-cases.mjs";
@@ -326,12 +328,50 @@ journeyCases.push(
       emit("codexAck"),
     ],
   },
+  {
+    // The restart journey above, answering with the model and effort its
+    // turn/start named, so the first send after a restart shows whether
+    // Sage sent the model and effort the user picked.
+    id: "codex-config-echo",
+    steps: [
+      wait("codexInitialize"),
+      emit("codexInitializeResultObserved"),
+      wait("codexStartOrResume"),
+      emit("codexThreadConfigResult"),
+      wait("codexModelList"),
+      emit("codexModelListConfigResult"),
+      wait("codexGoalGet"),
+      emit("codexGoalMethodNotFound"),
+      wait("codexTurnStart"),
+      emit("codexTurnResult"),
+      emit("codexStarted"),
+      emit("codexNative", {
+        method: "item/agentMessage/delta",
+        params: { itemId: "fixture-config-echo", delta: "$CODEX_TURN_CONFIG" },
+      }),
+      emit("codexNative", {
+        method: "item/completed",
+        params: {
+          item: {
+            type: "agentMessage",
+            id: "fixture-config-echo",
+            text: "$CODEX_TURN_CONFIG",
+          },
+        },
+      }),
+      emit("codexCompleted"),
+      wait("codexUnsubscribe"),
+      emit("codexAck"),
+    ],
+  },
 );
 journeyCases.push(longTranscriptJourney());
 journeyCases.push(...nativeCases());
 journeyCases.push(
   piIdleConfigJourney(),
   piFullTurnJourney(),
+  piLargeRunJourney(),
+  piCommandsJourney(),
   ...piBridgeJourneys(),
 );
 journeyCases.push(...codexUserInputJourneys());
