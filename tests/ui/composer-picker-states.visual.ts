@@ -21,7 +21,7 @@ async function closeChatSessions(page: Page) {
   });
 }
 
-test("an unavailable harness's reason reads on two lines inside the menu", async ({
+test("an unavailable harness's reason reads in full inside the menu", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -32,12 +32,13 @@ test("an unavailable harness's reason reads on two lines inside the menu", async
     .getByRole("button", { name: "Harness", exact: true })
     .click();
   const list = page.getByRole("listbox", { name: "Harness", exact: true });
-  const reason = list
-    .getByRole("option", { name: /^Unavailable Codex/ })
-    .locator(".searchable-picker__reason");
-  await expect(reason).toHaveText(
-    "Sage did not admit this harness and will not start it.",
-  );
+  const option = list.getByRole("option", { name: /^Unavailable Codex/ });
+  const reason = option.locator(".searchable-picker__reason");
+  // The row's tooltip carries the full reason; the inline copy must show it
+  // whole on at most two lines rather than cutting it to one.
+  const fullReason = await option.getAttribute("title");
+  expect(fullReason).toBeTruthy();
+  await expect(reason).toHaveText(fullReason!);
   const layout = await reason.evaluate((element) => {
     const range = document.createRange();
     range.selectNodeContents(element);
@@ -46,10 +47,13 @@ test("an unavailable harness's reason reads on two lines inside the menu", async
     );
     return {
       lines: lines.size,
-      clipped: element.scrollHeight > element.clientHeight + 1,
+      clipped:
+        element.scrollHeight > element.clientHeight + 1 ||
+        element.scrollWidth > element.clientWidth + 1,
     };
   });
-  expect(layout).toEqual({ lines: 2, clipped: false });
+  expect(layout.lines).toBeLessThanOrEqual(2);
+  expect(layout.clipped).toBe(false);
   const menu = (await list.boundingBox())!;
   expect(menu.x).toBeGreaterThanOrEqual(0);
   expect(menu.x + menu.width).toBeLessThanOrEqual(1280);
@@ -68,7 +72,7 @@ test("thinking level waiting for a session is a disabled picker like Model", asy
   await expect(effort).toBeDisabled();
   await expect(effort).toHaveAccessibleDescription(/.+/);
   await expect(effort).toHaveAttribute("title", /.+/);
-  await expect(effort.locator("svg").last()).toBeVisible();
+  await expect(effort.locator(".composer__effort-chevron")).toBeVisible();
   const model = composer.getByRole("button", { name: "Model", exact: true });
   const treatment = (control: Locator) =>
     control.evaluate((element) => {

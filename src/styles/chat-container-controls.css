@@ -57,7 +57,7 @@
 .composer
   [data-fit~="placeholder"]
   .composer__effort-picker:not([aria-controls])
-  :is(.composer__effort-label, svg:last-child),
+  :is(.composer__effort-label, .composer__effort-chevron),
 .composer [data-fit~="capacity"] .composer__capacity,
 .composer [data-fit~="access"] .composer__access-text,
 .composer
@@ -75,7 +75,7 @@
 .composer
   [data-fit~="effort"]
   .composer__effort-picker
-  :is(.composer__effort-label, svg:last-child),
+  :is(.composer__effort-label, .composer__effort-chevron),
 .composer [data-fit~="effort"] .composer__model-effort,
 .composer
   [data-fit~="model"]

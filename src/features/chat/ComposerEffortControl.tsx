@@ -19,7 +19,11 @@ export function EffortTriggerFace({ label }: { label: string }) {
     <>
       <Brain className="composer__effort-icon" size={14} aria-hidden="true" />
       <span className="composer__effort-label">{label}</span>
-      <ChevronDown size={12} aria-hidden="true" />
+      <ChevronDown
+        className="composer__effort-chevron"
+        size={12}
+        aria-hidden="true"
+      />
     </>
   );
 }
