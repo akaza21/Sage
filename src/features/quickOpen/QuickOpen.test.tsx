@@ -493,4 +493,33 @@ describe("Quick Open's commands (ED-2a)", () => {
     fireEvent.change(input(), { target: { value: "app" } });
     await waitFor(() => expect(options()).toHaveLength(2));
   });
+
+  it("pages through the list and leaves Home and End to the caret", async () => {
+    const files = Array.from(
+      { length: 15 },
+      (_, index) => `f${String(index).padStart(2, "0")}.ts`,
+    );
+    fakeNative({ files: () => files });
+    render(<QuickOpen onClose={vi.fn()} />);
+    fireEvent.change(input(), { target: { value: "f" } });
+    await waitFor(() => expect(options()).toHaveLength(15));
+    const selected = () =>
+      screen
+        .getAllByRole("option")
+        .findIndex((option) => option.getAttribute("aria-selected") === "true");
+
+    fireEvent.keyDown(input(), { key: "PageDown" });
+    expect(selected()).toBe(10);
+    expect(input()).toHaveAttribute(
+      "aria-activedescendant",
+      screen.getAllByRole("option")[10].id,
+    );
+    fireEvent.keyDown(input(), { key: "PageDown" });
+    expect(selected()).toBe(14);
+    fireEvent.keyDown(input(), { key: "PageUp" });
+    expect(selected()).toBe(4);
+    expect(fireEvent.keyDown(input(), { key: "Home" })).toBe(true);
+    expect(fireEvent.keyDown(input(), { key: "End" })).toBe(true);
+    expect(selected()).toBe(4);
+  });
 });
