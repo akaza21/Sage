@@ -191,12 +191,7 @@ export default function ComposerUsageLimits({
           {snapshot.session ? (
             <>
               {sessionOnly ? null : (
-                <strong
-                  id={sessionHeadingId}
-                  className="composer-usage__subheading"
-                >
-                  This session
-                </strong>
+                <strong id={sessionHeadingId}>This session</strong>
               )}
               <SessionSpendRows
                 spend={snapshot.session}
