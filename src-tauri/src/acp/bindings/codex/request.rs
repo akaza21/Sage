@@ -15,6 +15,7 @@ use super::turn_policy::{TurnPolicySurface, TurnSettings, turn_policy, validate_
 mod prompt_input;
 mod session_action;
 mod skills;
+mod thread_revert;
 
 use prompt_input::prompt_input;
 
@@ -87,6 +88,8 @@ pub(crate) enum RequestKind {
     RateLimitsRead,
     /// `skills/list` for the `/` menu.
     SkillsList,
+    /// `thread/revert`: drops the latest Turn from the thread's history.
+    ThreadRevert,
 }
 
 impl RequestKind {
@@ -134,6 +137,7 @@ impl OutgoingRequest {
             RequestKind::GoalClear => "thread/goal/clear",
             RequestKind::RateLimitsRead => "account/rateLimits/read",
             RequestKind::SkillsList => "skills/list",
+            RequestKind::ThreadRevert => "thread/revert",
         };
         let bytes = serde_json::to_vec(&json!({"id": id, "method": method, "params": params}))
             .map_err(|_| RequestError::Encoding)?;
