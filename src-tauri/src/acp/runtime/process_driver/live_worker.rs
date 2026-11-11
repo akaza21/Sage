@@ -398,10 +398,12 @@ fn map_close(error: &CloseError) -> HostError {
     }
 }
 
-/// Builds a handler's future on the heap. An unoptimized build gives every
+/// Builds a handler's future on the heap, inside this function's frame. An unoptimized build gives every
 /// match arm its own stack slot for the future it awaits, so a dispatcher that
 /// awaits a different handler in each arm would need all of them at once.
 #[inline(never)]
-fn boxed<F: std::future::Future>(make: impl FnOnce() -> F) -> std::pin::Pin<Box<F>> {
+pub(in crate::acp::runtime::process_driver) fn boxed<F: std::future::Future>(
+    make: impl FnOnce() -> F,
+) -> std::pin::Pin<Box<F>> {
     Box::pin(make())
 }

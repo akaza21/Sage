@@ -15,6 +15,7 @@ use super::super::{
     failed, process_tail,
 };
 use super::wait_deadline;
+use crate::acp::runtime::process_driver::live_worker::boxed;
 
 pub(super) async fn step<A, R, T, Auth, C>(
     mut active: Box<PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>>,
@@ -84,11 +85,15 @@ where
                 RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
                 None,
             )),
-            Err(DriverError::TeardownRequired(TeardownCause::ProcessExit)) => {
-                Err(super::super::process_exit::reconcile(*active, context, pending_config).await)
-            }
+            Err(DriverError::TeardownRequired(TeardownCause::ProcessExit)) => Err(boxed(|| {
+                super::super::process_exit::reconcile(*active, context, pending_config)
+            })
+            .await),
             Err(DriverError::Tree) if active.turn.driver.terminal_outcome().is_some() => {
-                Err(super::super::process_exit::reconcile(*active, context, pending_config).await)
+                Err(boxed(|| {
+                    super::super::process_exit::reconcile(*active, context, pending_config)
+                })
+                .await)
             }
             Err(_) if active.has_durable_terminal() => {
                 match context.mailbox.wait_control_until(
@@ -173,9 +178,10 @@ where
                 Some(
                     Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
                     | Err(DriverError::Tree),
-                ) if active.turn.driver.terminal_outcome().is_some() => Err(
-                    super::super::process_exit::reconcile(*active, context, pending_config).await,
-                ),
+                ) if active.turn.driver.terminal_outcome().is_some() => Err(boxed(|| {
+                    super::super::process_exit::reconcile(*active, context, pending_config)
+                })
+                .await),
                 Some(Err(_)) | Some(Ok(())) => Err(failed(FirstTurnWorkerState::Active(active))),
                 None if pending_config.is_some()
                     || eof_deadline_millis.is_some()
@@ -207,10 +213,10 @@ where
                 | Err(DriverError::Tree)
                     if active.turn.driver.terminal_outcome().is_some() =>
                 {
-                    Err(
+                    Err(boxed(|| {
                         super::super::process_exit::reconcile(*active, context, pending_config)
-                            .await,
-                    )
+                    })
+                    .await)
                 }
                 Err(_) => Err(failed(FirstTurnWorkerState::Active(active))),
             }
@@ -230,10 +236,10 @@ where
                 | Err(DriverError::Tree)
                     if active.turn.driver.terminal_outcome().is_some() =>
                 {
-                    Err(
+                    Err(boxed(|| {
                         super::super::process_exit::reconcile(*active, context, pending_config)
-                            .await,
-                    )
+                    })
+                    .await)
                 }
                 Err(_) => Err(failed(FirstTurnWorkerState::Active(active))),
             }
