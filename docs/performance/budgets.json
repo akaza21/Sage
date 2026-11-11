@@ -22,6 +22,12 @@
         "reason": "Dismissible build/account notice, memoized during typing. Compact wrapping CSS measures 467 B. JS and CSS load only when attention is needed and stay off the ready first-Chat path."
       },
       {
+        "entry": "src/ui/tooltips.ts",
+        "maxGzipBytes": 960,
+        "maxCssGzipBytes": 420,
+        "reason": "Shared tooltip for icon buttons: one node and delegated listeners, installed once the window is idle, off the first-Chat path. Measured 893 B JS, 381 B CSS."
+      },
+      {
         "entry": "src/features/chat/ClaudeAuthActions.tsx",
         "maxGzipBytes": 630,
         "reason": "Sign-in actions and the sign-in-required sentence load only after a harness sign-in error; measured 588, keeping both off the ready first-Chat path."
