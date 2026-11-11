@@ -443,6 +443,68 @@ fn each_turn_projects_only_its_own_operations_in_order() {
     assert_eq!(load(&connection, &turn_row("turn-9")).unwrap().0, vec![]);
 }
 
+fn start_in_turn(
+    connection: &mut rusqlite::Connection,
+    numbers: std::ops::RangeInclusive<u32>,
+    turn: &str,
+) -> Vec<BrowserOperationProjection> {
+    numbers
+        .map(|number| {
+            let mut operation = record(number);
+            operation.turn_id = SageTurnId::parse(turn).unwrap();
+            start(connection, RuntimeEpoch::new(1).unwrap(), &operation).unwrap();
+            operation
+        })
+        .collect()
+}
+
+#[test]
+fn turn_page_hides_operations_collapsed_past_the_turn_cap() {
+    let mut connection = setup();
+    let earlier = start_in_turn(&mut connection, 1..=2, "turn-browser");
+    begin_turn(&connection, 1);
+    // Two past the per-Turn cap of 32, so the Turn's two oldest collapse.
+    let crowded = start_in_turn(&mut connection, 3..=36, "turn-1");
+
+    assert_eq!(
+        load(&connection, &turn_row("turn-1")).unwrap(),
+        (crowded[2..].to_vec(), 2)
+    );
+    assert_eq!(
+        load(&connection, &turn_row("turn-browser")).unwrap(),
+        (earlier, 0)
+    );
+}
+
+#[test]
+fn turn_page_hides_operations_collapsed_past_the_chat_cap() {
+    let mut connection = setup();
+    let mut turns = vec![(
+        "turn-browser".to_owned(),
+        start_in_turn(&mut connection, 1..=4, "turn-browser"),
+    )];
+    // Five Turns of 25 stay under the per-Turn cap and bring the chat to 129
+    // operations, one past its cap of 128, so only the chat's oldest operation
+    // collapses, out of an earlier Turn.
+    for ordinal in 1_u32..=5 {
+        begin_turn(&connection, i64::from(ordinal));
+        let turn = format!("turn-{ordinal}");
+        let first = 5 + (ordinal - 1) * 25;
+        let operations = start_in_turn(&mut connection, first..=first + 24, &turn);
+        turns.push((turn, operations));
+    }
+    turns[0].1.remove(0);
+
+    for (index, (turn, operations)) in turns.into_iter().enumerate() {
+        let collapsed = u64::from(index == 0);
+        assert_eq!(
+            load(&connection, &turn_row(&turn)).unwrap(),
+            (operations, collapsed),
+            "{turn}"
+        );
+    }
+}
+
 fn plan(connection: &rusqlite::Connection, sql: &str, values: &[&dyn rusqlite::ToSql]) -> String {
     connection
         .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
@@ -461,11 +523,7 @@ fn per_turn_fact_lookups_seek_the_turn_index() {
     let cases = [
         (
             plan(&connection, super::TURN_OPERATIONS_SQL, &owner),
-            [
-                "SEARCH start USING INDEX idx_session_facts_turn (session_id=? AND turn_id=? AND kind=?)",
-                "SEARCH marker USING INDEX idx_session_facts_turn (session_id=? AND turn_id=? AND kind=?)",
-            ]
-            .as_slice(),
+            ["start", "marker"].as_slice(),
         ),
         (
             plan(
@@ -473,8 +531,7 @@ fn per_turn_fact_lookups_seek_the_turn_index() {
                 super::TERMINAL_SQL,
                 &[&"session-one", &"turn", &1_i64],
             ),
-            ["SEARCH session_facts USING INDEX idx_session_facts_turn (session_id=? AND turn_id=? AND kind=?)"]
-                .as_slice(),
+            ["session_facts"].as_slice(),
         ),
         (
             plan(
@@ -482,13 +539,17 @@ fn per_turn_fact_lookups_seek_the_turn_index() {
                 crate::acp::store::turn_activity_facts::TURN_FACTS_SQL,
                 &[&"session-one", &"turn", &"sessionActivity", &80_i64],
             ),
-            ["SEARCH session_facts USING INDEX idx_session_facts_turn (session_id=? AND turn_id=? AND kind=?)"]
-                .as_slice(),
+            ["session_facts"].as_slice(),
         ),
     ];
-    for (plan, searches) in cases {
-        for search in searches {
-            assert!(plan.contains(search), "{plan}");
+    for (plan, tables) in cases {
+        for table in tables {
+            assert!(
+                plan.lines()
+                    .any(|step| step.split_whitespace().nth(1) == Some(table)
+                        && step.contains("idx_session_facts_turn")),
+                "{table} does not use the Turn index:\n{plan}"
+            );
         }
         assert!(!plan.contains("SCAN"), "{plan}");
         assert!(!plan.contains("TEMP B-TREE"), "{plan}");

@@ -62,6 +62,9 @@ pub(crate) fn start(
             resource: "browserOperationId",
         });
     }
+    // Every browser operation start, and so every collapse marker copied from
+    // one, carries its Turn, so `marker.turn_id=start.turn_id` never meets a
+    // NULL. Plain equality also lets these reads use the partial Turn index.
     let turn_count: i64 = tx.query_row(
         "SELECT COUNT(*) FROM session_facts start WHERE start.session_id=?1 AND start.turn_id=?2
          AND start.kind='browserOperation' AND NOT EXISTS (
