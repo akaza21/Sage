@@ -23,7 +23,8 @@ const isWord = (value: unknown, maximum: number): value is string =>
   typeof value === "string" &&
   value.length > 0 &&
   !value.startsWith("-") &&
-  !/[\s\p{Cc}]/u.test(value) &&
+  // As Rust's `char::is_whitespace`, which `\s` is not (it adds U+FEFF).
+  !/[\p{White_Space}\p{Cc}]/u.test(value) &&
   utf8ByteLength(value) <= maximum;
 
 const exactKeys = (value: Record<string, unknown>, keys: string[]) =>

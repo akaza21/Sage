@@ -360,3 +360,29 @@ fn a_listed_review_runs_review_start_with_the_target_it_names() {
         json!({"type":"commit","sha":"1a2b3c4"})
     );
 }
+
+#[test]
+fn a_changed_skills_read_skips_the_cache_until_one_succeeds() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let params = |runtime: &mut CodexRuntime| {
+        let egress = runtime.discover_commands().unwrap().expect("skills/list");
+        let wire: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+        runtime
+            .resolve_egress(egress.into_token(), EgressResolution::QueueRejected)
+            .unwrap();
+        wire["params"].clone()
+    };
+    assert_eq!(params(&mut runtime)["forceReload"], Value::Null);
+    read_skills(&mut runtime, json!([]));
+    skills_changed(&mut runtime);
+    assert_eq!(params(&mut runtime)["forceReload"], true);
+    // The read that retries a refused one still skips the cache.
+    refuse_read(&mut runtime);
+    assert_eq!(params(&mut runtime)["forceReload"], true);
+    read_skills(&mut runtime, json!([]));
+    skills_changed(&mut runtime);
+    read_skills(&mut runtime, json!([]));
+    skills_changed(&mut runtime);
+    assert_eq!(params(&mut runtime)["forceReload"], true);
+}

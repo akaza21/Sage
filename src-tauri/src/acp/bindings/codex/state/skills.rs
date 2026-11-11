@@ -25,7 +25,8 @@ pub(super) struct Skills {
     list: Arc<CommandState>,
     /// The list is missing or stale and no read is pending.
     wanted: bool,
-    /// Codex said the skills changed, so the next read skips its cache.
+    /// Codex said the skills changed, so reads skip its cache until one
+    /// succeeds.
     reload: bool,
     /// A refused read was already retried once; reset by a good read.
     retried: bool,
@@ -172,7 +173,6 @@ impl CodexAdapter {
         let request = OutgoingRequest::skills_list(id, &root, self.skills.reload)?;
         let request = self.reserve(request)?;
         self.skills.wanted = false;
-        self.skills.reload = false;
         Ok(request)
     }
 
@@ -182,7 +182,8 @@ impl CodexAdapter {
     pub(crate) fn skills_result(&mut self, result: Option<&Map<String, Value>>) {
         let skills = result.and_then(parse);
         match &skills {
-            Some(_) => self.skills.retried = false,
+            // A good read has skipped the cache; a retry still skips it.
+            Some(_) => (self.skills.retried, self.skills.reload) = (false, false),
             None if !self.skills.retried => {
                 self.skills.retried = true;
                 self.skills.wanted = true;

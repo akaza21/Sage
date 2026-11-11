@@ -10,6 +10,8 @@ describe("decodeSessionAction", () => {
       '{"kind":"review","target":{"kind":"baseBranch","branch":"main"}}',
       '{"kind":"review","target":{"kind":"commit","sha":"1a2b3c4"}}',
       '{"kind":"review","target":{"kind":"custom","instructions":"check the error paths"}}',
+      // U+FEFF is not whitespace to the native side, so it is one word.
+      '{"kind":"review","target":{"kind":"baseBranch","branch":"main\ufeff"}}',
     ])
       expect(decodeSessionAction(JSON.parse(stored))).toEqual(
         JSON.parse(stored),
