@@ -1,8 +1,13 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { openScenario } from "./shared/visualBrowserPrimitives";
+import {
+  openScenario,
+  settleChatProjections,
+} from "./shared/visualBrowserPrimitives";
 
 async function closeChatSessions(page: Page) {
+  // A late projection load would reopen the sessions after this edit.
+  await settleChatProjections(page);
   await page.evaluate(async () => {
     const { useWorkbenchStore } = await import("/src/app/store.ts");
     const { acpProjectionStoreFor } =
