@@ -19,6 +19,7 @@ mod file_change_sequence_tests;
 #[cfg(feature = "acp-fixture")]
 mod mcp_progress_hook_journey_tests;
 mod mcp_progress_hook_tests;
+mod prompt_image_tests;
 mod session_action_tests;
 #[cfg(windows)]
 mod state_volume;

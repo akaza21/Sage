@@ -84,6 +84,7 @@ impl HarnessAdapter for CodexRuntime {
             || self.inner.child_read_pending()
             || self.inner.fork_rpc_pending()
             || self.inner.rate_limits_read_pending()
+            || self.inner.revert_pending()
     }
 
     fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
@@ -103,6 +104,13 @@ impl HarnessAdapter for CodexRuntime {
     /// in recoverable mode.
     fn child_read_pending(&self) -> bool {
         self.inner.oversize_recoverable()
+    }
+
+    fn session_control(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.control_request(control)
     }
 
     fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {

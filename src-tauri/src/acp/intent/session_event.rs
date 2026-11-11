@@ -291,6 +291,10 @@ pub struct SessionSurfaceView {
     /// The latest turn, when the running session can undo its file changes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub undo_turn: Option<crate::acp::contract::SageTurnId>,
+    /// Undo removes the turn from the conversation only; its file changes
+    /// stay.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub undo_keeps_files: bool,
 }
 
 /// One activity as the chat shows it. Its key is a digest of the harness's
@@ -325,6 +329,7 @@ impl SessionSurface {
                 })
                 .collect(),
             undo_turn: None,
+            undo_keeps_files: false,
         }
     }
 

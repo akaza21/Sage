@@ -207,6 +207,12 @@ impl HarnessAdapter for NativeRuntime {
     fn abandon_usage_read(&mut self) {
         self.0.abandon_usage_read()
     }
+    fn session_control(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.0.session_control(control)
+    }
     fn mutate_goal(
         &mut self,
         action: crate::acp::goal::GoalAction,

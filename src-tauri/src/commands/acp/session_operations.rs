@@ -240,6 +240,18 @@ pub(crate) async fn send_acp_turn_inner(
             prompt_not_dispatched(error)
         })?;
     prompt.resources = files.clone();
+    if binding_id.as_str() == crate::acp::bindings::codex::CODEX_BINDING_ID
+        && !prompt
+            .images
+            .echo_fits(&prompt.resources.inline(prompt.as_str()))
+    {
+        super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
+        return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
+            message: safe_message(
+                "These images and this text are too large to send together. Remove an image or some attached text.",
+            ),
+        }));
+    }
     let tracked_session = session_id.clone();
     let tracked_intent = client_intent_id.clone();
     let dispatch = state

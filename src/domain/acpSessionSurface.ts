@@ -16,4 +16,6 @@ export interface AcpSessionSurface {
   activities: readonly SessionActivity[];
   /** The latest turn, when the running session can undo its file changes. */
   undoTurn?: string;
+  /** Undo removes the turn from the conversation only; files stay. */
+  undoKeepsFiles?: boolean;
 }

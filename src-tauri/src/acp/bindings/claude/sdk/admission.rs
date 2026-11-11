@@ -117,6 +117,13 @@ impl SessionLaunch {
     /// `config` is Claude Code's profile, where a fork's copy is looked for.
     fn args(&self, config: Option<&std::path::Path>) -> Vec<OsString> {
         let mut args: Vec<OsString> = SDK_ARGS.map(OsString::from).into();
+        args.extend(self.session_args(config));
+        args
+    }
+
+    /// The arguments that open this session, after the fixed SDK ones.
+    pub(super) fn session_args(&self, config: Option<&std::path::Path>) -> Vec<OsString> {
+        let mut args = Vec::new();
         let fork = self
             .resume
             .then(|| super::fork::Fork::parse(&self.session_id))
@@ -296,7 +303,8 @@ impl AdmittedClaudeSdkBinding {
         self.revalidate().map_err(unavailable)?;
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         if let Some(selection) = &self.fixture {
-            return self.fixture_launch(selection, epoch, root);
+            let session = session.session_args(Some(&selection.durable_dir));
+            return self.fixture_launch(selection, epoch, root, session);
         }
         root.revalidate().map_err(unavailable)?;
         let mut identity = [0_u8; 16];
@@ -334,6 +342,18 @@ impl AdmittedClaudeSdkBinding {
             #[cfg(all(test, windows))]
             test_after_artifact_verified: None,
         })
+    }
+}
+
+impl AdmittedClaudeSdkBinding {
+    /// Claude Code's profile, where it keeps each session's transcript: a
+    /// replay case's own profile, or the one the launch environment names.
+    pub(super) fn config_directory(&self) -> Option<PathBuf> {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if let Some(selection) = &self.fixture {
+            return Some(selection.durable_dir.clone());
+        }
+        super::fork::config_directory(&launch_environment())
     }
 }
 

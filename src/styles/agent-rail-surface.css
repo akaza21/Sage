@@ -324,10 +324,6 @@
   width: 164px;
 }
 
-.agent-rail-options__choices {
-  display: grid;
-}
-
 .agent-rail-options__menu .menu-item {
   min-height: var(--control-height-compact);
   gap: var(--space-2);

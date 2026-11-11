@@ -86,6 +86,36 @@ const opening = [
 ];
 const closing = [wait("claudeSdkIdle")];
 
+// A message sent while Claude works, reported as Claude Code 2.1.322 reports
+// its queued input: `queued` on arrival, `started` when a run takes it up,
+// `completed` once it ran. Stop withdraws it first (`cancelled`).
+const followUp = [wait("claudeSdkFollowUp"), lifecycle("queued")];
+function lifecycle(state) {
+  return { op: "emitKnownFrame", shape: "claudeSdkLifecycle", state };
+}
+// The reply quotes what the prompt carried, block by block.
+const ECHO = "$PROMPT_ECHO";
+const echo = (id) => [
+  messageStart(id),
+  delta("text", ECHO),
+  assistant(id, [{ type: "text", text: ECHO }]),
+];
+const LONG_REPLY = [
+  "Reviewing the synthetic example section by section.",
+  " The first section declares the example constant.",
+  " The second section exports it for the replay.",
+  " The third section is still being read.",
+];
+const longReply = (id) => [
+  messageStart(id),
+  ...LONG_REPLY.map((text) => delta("text", text)),
+];
+const compact = {
+  op: "awaitClient",
+  kind: "claudeSdkPrompt",
+  promptText: "/compact",
+};
+
 const journeys = {
   "turn-completed": [
     messageStart("msg_fixture_answer"),
@@ -182,6 +212,91 @@ const journeys = {
       result: "API Error: 529 Overloaded. The synthetic service is busy.",
     }),
   ],
+  // Send a message while the read runs: Claude takes it up at the tool
+  // boundary and answers it in the same turn.
+  "follow-up-tool": [
+    toolUse("read", "Read", { file_path: EXAMPLE }),
+    ...followUp,
+    toolResult("read", "1\texport const example = 1;\n"),
+    lifecycle("started"),
+    ...echo("msg_fixture_follow_up"),
+    result(),
+    lifecycle("completed"),
+  ],
+  // Send a message while the reply streams: the reply's run ends, then the
+  // message runs as the turn's next run.
+  "follow-up-reply": [
+    ...longReply("msg_fixture_long"),
+    ...followUp,
+    assistant("msg_fixture_long", [
+      { type: "text", text: LONG_REPLY.join("") },
+    ]),
+    result(),
+    lifecycle("started"),
+    ...echo("msg_fixture_follow_up"),
+    result(),
+    lifecycle("completed"),
+  ],
+  // Send a message while the reply streams, then Stop: Sage withdraws the
+  // message before it interrupts, so it never runs.
+  "follow-up-stop": [
+    ...longReply("msg_fixture_long"),
+    ...followUp,
+    wait("claudeSdkInterrupt"),
+    result({
+      subtype: "error_during_execution",
+      is_error: true,
+      stop_reason: null,
+    }),
+  ],
+  // Compact after one answered turn, in the 2.1.322 frames the SDK
+  // binding's runtime tests record: modelled, since capturing a real one
+  // takes a model call. The summary stays Claude Code's own.
+  compact: [
+    ...reply("msg_fixture_answer", ANSWER),
+    result(),
+    compact,
+    frame({ type: "system", subtype: "status", status: "compacting" }),
+    frame({
+      type: "system",
+      subtype: "status",
+      status: null,
+      compact_result: "success",
+    }),
+    frame({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "manual", pre_tokens: 1296 },
+    }),
+    frame({
+      type: "user",
+      isReplay: false,
+      message: {
+        role: "user",
+        content:
+          "This session is being continued from a previous conversation. Summary: the synthetic example was reviewed.",
+      },
+    }),
+    frame({
+      type: "user",
+      isReplay: true,
+      message: {
+        role: "user",
+        content: "<local-command-stdout>Compacted </local-command-stdout>",
+      },
+    }),
+    result({ num_turns: 0 }),
+  ],
+  // Each prompt is answered with what it carried, so an @ mention of a
+  // credential file shows Sage's "Not attached" note and a file too large to
+  // attach shows its @path. Two prompts, then the chat closes.
+  "prompt-echo": [
+    ...echo("msg_fixture_echo_1"),
+    result(),
+    wait("claudeSdkPrompt"),
+    ...echo("msg_fixture_echo_2"),
+    result(),
+  ],
   "sign-in": [
     assistant(
       "msg_fixture_auth",
@@ -195,9 +310,66 @@ const journeys = {
   ],
 };
 
+// Compact in a new chat, as Claude Code 2.1.322 answers it: a local error
+// reply, and a turn that ends without an error.
+const compactEmpty = [
+  wait("claudeSdkInitialize"),
+  wait("claudeSdkSettings"),
+  compact,
+  frame({
+    type: "assistant",
+    message: {
+      id: "msg_fixture_compact",
+      type: "message",
+      role: "assistant",
+      model: "<synthetic>",
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      content: [{ type: "text", text: "Error: No messages to compact" }],
+    },
+    local_command_source:
+      "<local-command-stderr>Error: No messages to compact</local-command-stderr>",
+    local_command_run: { command: "compact", args: "" },
+    local_command_outcome: { kind: "failed" },
+  }),
+  result({
+    num_turns: 0,
+    stop_reason: null,
+    local_command: "compact",
+    usage: {
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+    },
+    modelUsage: {},
+  }),
+  ...closing,
+];
+
+// A chat and its fork. Each launch opens the session its flags name and
+// saves it where Claude Code would; the reply quotes what the session held
+// before the prompt. The fork chat is the second launch: Sage forks from the
+// saved transcript, and the copy carries the first chat's turn.
+const TRANSCRIPT = "Synthetic replay of a saved session.\n\n$TRANSCRIPT_ECHO";
+const fork = [
+  { ...wait("claudeSdkInitialize"), relaunch: true },
+  wait("claudeSdkSettings"),
+  wait("claudeSdkPrompt"),
+  messageStart("msg_fixture_transcript"),
+  delta("text", TRANSCRIPT),
+  assistant("msg_fixture_transcript", [{ type: "text", text: TRANSCRIPT }]),
+  result(),
+  ...closing,
+];
+
 export function claudeSdkJourneys() {
-  return Object.entries(journeys).map(([state, steps]) => ({
-    id: `claude-sdk-${state}`,
-    steps: [...opening, ...steps, ...closing],
-  }));
+  return [
+    ...Object.entries(journeys).map(([state, steps]) => ({
+      id: `claude-sdk-${state}`,
+      steps: [...opening, ...steps, ...closing],
+    })),
+    { id: "claude-sdk-compact-empty", steps: compactEmpty },
+    { id: "claude-sdk-fork", steps: fork },
+  ];
 }

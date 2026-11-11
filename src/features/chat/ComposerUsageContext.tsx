@@ -55,8 +55,8 @@ export default function UsageContext({
             ref={triggerRef}
             type="button"
             className="composer__context-usage"
-            title={`${tooltip} · Usage limits`}
-            aria-label={`${formattedTotal} / ${formattedCapacity} context tokens used. Show usage limits`}
+            title={`${tooltip} · Usage`}
+            aria-label={`${formattedTotal} / ${formattedCapacity} context tokens used. Show usage`}
             aria-haspopup="dialog"
             aria-expanded={limitsOpen}
             aria-controls={limitsOpen ? limitsId : undefined}

@@ -113,7 +113,13 @@ fn a_4k_screenshot_is_accepted_and_sent_at_most_1568_px_wide() {
         );
         assert!(image.preview().is_some());
     }
-    assert!(admit_sizes(read.iter().map(|image| image.bytes.len())).is_ok());
+    assert!(
+        admit_sizes(
+            read.iter().map(|image| image.bytes.len()),
+            PROMPT_IMAGE_TOTAL_BYTES
+        )
+        .is_ok()
+    );
 }
 
 #[test]
@@ -139,4 +145,26 @@ fn an_image_still_too_large_after_resizing_is_refused_with_the_prompt_bounds() {
         "{}",
         message.as_str()
     );
+}
+
+#[test]
+fn codex_and_pi_take_the_echoed_image_bound_and_others_the_full_one() {
+    use crate::acp::limits::ECHOED_PROMPT_IMAGE_TOTAL_BYTES;
+    for binding in ["codex-app-server", "pi-rpc"] {
+        let (bounds, total) = super::prompt_bounds(binding);
+        assert_eq!(
+            (bounds.bytes, total),
+            (
+                ECHOED_PROMPT_IMAGE_TOTAL_BYTES,
+                ECHOED_PROMPT_IMAGE_TOTAL_BYTES
+            )
+        );
+    }
+    for binding in ["claude-code-sdk", "claude-agent-acp", "opencode-acp"] {
+        let (bounds, total) = super::prompt_bounds(binding);
+        assert_eq!(
+            (bounds.bytes, total),
+            (PROMPT_IMAGE_TOTAL_BYTES, PROMPT_IMAGE_TOTAL_BYTES)
+        );
+    }
 }

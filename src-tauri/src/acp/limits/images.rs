@@ -61,6 +61,10 @@ pub const PROMPT_IMAGE_JPEG_QUALITY: u8 = 85;
 /// Decoded bytes of every normalised image in one prompt together, and so of
 /// any one image: three or four normalised screenshots.
 pub const PROMPT_IMAGE_TOTAL_BYTES: usize = 1024 * 1024;
+/// Codex and Pi repeat each prompt image inside their own events, as base64
+/// in one inbound JSON line that must fit the ordinary frame. The images of
+/// one prompt to them, and so any one image, total at most this.
+pub const ECHOED_PROMPT_IMAGE_TOTAL_BYTES: usize = 600 * 1024;
 /// The long edge of the transcript copy of a sent image too large to keep
 /// whole: legible in the transcript, a quarter of the prompt's pixels.
 pub const IMAGE_PREVIEW_EDGE_PX: u32 = 768;
@@ -101,6 +105,12 @@ pub const PROMPT_INTENT_OVERHEAD_BYTES: usize = 8192;
 const _: () = assert!(
     PROMPT_FRAME_BYTES > LIMITS.wire.frame_bytes as usize
         && PROMPT_IMAGE_PNG_BYTES <= PROMPT_IMAGE_TOTAL_BYTES
+        && ECHOED_PROMPT_IMAGE_TOTAL_BYTES <= PROMPT_IMAGE_TOTAL_BYTES
+        && PROMPT_IMAGE_PNG_BYTES <= ECHOED_PROMPT_IMAGE_TOTAL_BYTES
+        // The echo of every image leaves room for the prompt text; a text
+        // whose escaped echo would not fit is refused when the turn is sent.
+        && base64_len(ECHOED_PROMPT_IMAGE_TOTAL_BYTES) + DISPATCH_BYTES + PROMPT_FRAME_ENVELOPE_BYTES
+            <= LIMITS.wire.frame_bytes as usize
         && PROMPT_IMAGE_TOTAL_BYTES <= STORED_IMAGE_BYTES
         && PROMPT_IMAGE_EDGE_PX <= STORED_IMAGE_EDGE_PX
         && STORED_IMAGE_BYTES <= IMAGE_UPLOAD_BYTES

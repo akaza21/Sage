@@ -163,7 +163,7 @@ async fn run_catalog_page_crossing_turn(
         session_recovery: None,
         zero_sequence: std::sync::atomic::AtomicU64::new(0),
     };
-    let mut state = FirstTurnWorkerState::Idle(completed);
+    let mut state = FirstTurnWorkerState::Idle(Box::new(completed));
     let prepare = mailbox
         .submit_worker(WorkerCommand::PreparePrompt(HostPromptIntent {
             command: PrepareTurnCommand {

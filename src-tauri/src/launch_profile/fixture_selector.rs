@@ -72,9 +72,12 @@ pub(crate) struct FixtureSelection {
 
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 impl FixtureSelection {
+    /// The replay child's identity, artifact and arguments: the case and
+    /// seed, then `harness_args`, the arguments the real harness would take.
     pub(crate) fn launch_metadata(
         &self,
         binding_digest: [u8; 32],
+        harness_args: Vec<std::ffi::OsString>,
     ) -> Result<
         (
             uuid::Uuid,
@@ -99,13 +102,15 @@ impl FixtureSelection {
             self.artifact_bytes,
         )
         .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        let fixed_args = BoundedOsArgs::new(vec![
+        let mut args = vec![
             "--case".into(),
             self.case.clone().into(),
             "--seed".into(),
             "0".into(),
-        ])
-        .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        ];
+        args.extend(harness_args);
+        let fixed_args =
+            BoundedOsArgs::new(args).map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         Ok((identity(binding_digest), artifact, fixed_args))
     }
 

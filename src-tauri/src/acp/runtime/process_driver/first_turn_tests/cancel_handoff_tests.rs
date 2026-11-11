@@ -129,7 +129,7 @@ async fn accept_terminal_behind_late_starts(
             session_recovery: None,
             zero_sequence: std::sync::atomic::AtomicU64::new(0),
         };
-        let mut state = FirstTurnWorkerState::Idle(completed);
+        let mut state = FirstTurnWorkerState::Idle(Box::new(completed));
 
         macro_rules! step {
             ($command:expr) => {{

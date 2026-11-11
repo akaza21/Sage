@@ -18,12 +18,35 @@ pub(crate) struct UsageWindow {
     pub(crate) resets_at: Option<i64>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+/// What the current session has spent so far, as its harness counts it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SessionSpend {
+    pub(crate) input_tokens: u64,
+    pub(crate) output_tokens: u64,
+    pub(crate) cache_read_tokens: u64,
+    pub(crate) cache_write_tokens: u64,
+    pub(crate) total_tokens: u64,
+    /// US dollars at the harness's own prices; `None` when it has none.
+    pub(crate) cost_usd: Option<f64>,
+}
+
+impl SessionSpend {
+    /// Admits a reported cost only when it is a real, non-negative amount.
+    pub(crate) fn with_cost(mut self, cost: Option<f64>) -> Self {
+        self.cost_usd = cost.filter(|cost| cost.is_finite() && *cost >= 0.0);
+        self
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct UsageSnapshot {
     pub(crate) plan: Option<String>,
     pub(crate) limit_reached: bool,
     pub(crate) windows: Vec<UsageWindow>,
+    /// The session's own spend, for harnesses that report one.
+    pub(crate) session: Option<SessionSpend>,
 }
 
 impl UsageSnapshot {
@@ -57,7 +80,7 @@ fn bounded_label(value: &str) -> Option<String> {
         .then(|| value.to_owned())
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub(crate) enum UsageState {
     Unsupported,
@@ -158,6 +181,34 @@ mod tests {
         assert_eq!(snapshot.windows[1].label, None);
         assert_eq!(snapshot.windows[1].used_percent, 0);
         assert_eq!(snapshot.windows[1].window_minutes, None);
+    }
+
+    #[test]
+    fn a_session_spend_reaches_the_webview_in_its_ipc_shape() {
+        let spend = SessionSpend {
+            input_tokens: 1,
+            output_tokens: 2,
+            cache_read_tokens: 3,
+            cache_write_tokens: 4,
+            total_tokens: 10,
+            cost_usd: None,
+        };
+        let state = UsageState::Usage {
+            snapshot: UsageSnapshot {
+                session: Some(spend.clone().with_cost(Some(0.5))),
+                ..UsageSnapshot::default()
+            },
+        };
+        assert_eq!(
+            serde_json::to_value(state).unwrap(),
+            serde_json::json!({"kind":"usage","snapshot":{
+                "plan":null,"limitReached":false,"windows":[],
+                "session":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":3,
+                    "cacheWriteTokens":4,"totalTokens":10,"costUsd":0.5}}})
+        );
+        for cost in [f64::NAN, f64::INFINITY, -0.01] {
+            assert_eq!(spend.clone().with_cost(Some(cost)).cost_usd, None);
+        }
     }
 
     #[test]

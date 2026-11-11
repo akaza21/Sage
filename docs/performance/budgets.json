@@ -22,6 +22,12 @@
         "reason": "Dismissible build/account notice, memoized during typing. Compact wrapping CSS measures 467 B. JS and CSS load only when attention is needed and stay off the ready first-Chat path."
       },
       {
+        "entry": "src/ui/tooltips.ts",
+        "maxGzipBytes": 1040,
+        "maxCssGzipBytes": 420,
+        "reason": "Shared tooltip for icon buttons: one node and delegated listeners, installed once the window is idle, off the first-Chat path. Measured 982 B JS, 381 B CSS."
+      },
+      {
         "entry": "src/features/chat/ClaudeAuthActions.tsx",
         "maxGzipBytes": 630,
         "reason": "Sign-in actions and the sign-in-required sentence load only after a harness sign-in error; measured 588, keeping both off the ready first-Chat path."
@@ -34,8 +40,8 @@
       },
       {
         "entry": "src/features/chat/ComposerSlashMenu.tsx",
-        "maxGzipBytes": 1888,
-        "reason": "Composer `/` command menu: the command list in sections by source and the command port; the shared listbox has its own entry. Loads with the first `/` typed. Measured 1764 B JS."
+        "maxGzipBytes": 1889,
+        "reason": "Composer `/` command menu: commands in sections by source and the command port. Loads with the first `/` typed. Measured 1888-1889 B JS; the byte is minifier renaming of shared exports."
       },
       {
         "entry": "src/workbench/AgentTaskResources.tsx",
@@ -281,8 +287,8 @@
       },
       {
         "entry": "src/workbench/AgentRailOptionsPopover.tsx",
-        "maxGzipBytes": 990,
-        "reason": "The open sidebar options menu (Organize sidebar, Sort chats by); loads on the first open."
+        "maxGzipBytes": 1500,
+        "reason": "The open sidebar options menu (Organize sidebar, Sort chats by) with the shared submenu and its pointer grace area; loads on the first open. Measured 1443 B (993 B before the grace area)."
       },
       {
         "entry": "src/workbench/AgentProjectMenu.tsx",
@@ -480,9 +486,9 @@
       },
       {
         "entry": "src/features/chat/ComposerUsageLimits.tsx",
-        "maxGzipBytes": 1520,
+        "maxGzipBytes": 2020,
         "maxCssGzipBytes": 400,
-        "reason": "Usage-limits popover and its bounded decoder; loads only when the context meter is clicked and unmounts when closed. Measured 1424 B."
+        "reason": "Usage popover, its bounded decoder and session token and cost rows; loads only when the context meter is clicked and unmounts when closed. Measured 1895 B."
       }
     ],
     "windowsInstallerMb": 45,

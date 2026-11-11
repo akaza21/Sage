@@ -95,6 +95,54 @@ export function customAcpJourneys() {
       ],
     },
     {
+      // An agent that lists its commands, each naming its source in
+      // `_meta.source` as ACP adapters do, one with a name long enough to
+      // test how the / menu fits it. Each prompt is answered with what the
+      // agent received, so a picked command shows the `/name arguments`
+      // text Sage sent. Two prompts, then the chat closes.
+      id: "custom-acp-commands",
+      steps: [
+        ...opening,
+        emit("acpUpdate", {
+          update: {
+            sessionUpdate: "available_commands_update",
+            availableCommands: [
+              {
+                name: "review",
+                description: "Review the changes on this branch",
+                input: { hint: "what to focus on" },
+                _meta: { source: "prompt" },
+              },
+              {
+                name: "summarize-the-current-branch-changes-for-a-pull-request-description",
+                description:
+                  "Summarize the branch's changes as a pull request description",
+                _meta: { source: "prompt" },
+              },
+              {
+                name: "lint",
+                description: "Lint the files changed in this session",
+                _meta: { source: "skill" },
+              },
+              {
+                name: "search-issues",
+                description: "Search the tracker's issues",
+                input: { hint: "query" },
+                _meta: { source: "mcp" },
+              },
+              { name: "init", description: "Set up project instructions" },
+            ],
+          },
+        }),
+        ...["first", "second"].flatMap(() => [
+          wait("acpPrompt"),
+          say("$PROMPT_ECHO"),
+          emit("acpCompleted"),
+        ]),
+        ...closing,
+      ],
+    },
+    {
       // Answer, decline or let the card wait; the echo names the fields only.
       id: "custom-acp-elicitation-form",
       steps: [...opening, ...asking(form), ...closing],

@@ -1,6 +1,7 @@
 import type {
   AcpUsageRequest,
   AcpUsageState,
+  SessionSpend,
   UsageWindow,
 } from "../domain/acpUsage";
 import { AcpDesktopError, invokeAcp } from "./acpDesktopCommand";
@@ -33,6 +34,36 @@ function decodeWindow(value: unknown): UsageWindow | null {
   };
 }
 
+const count = (value: unknown): value is number =>
+  bounded(value, Number.MAX_SAFE_INTEGER);
+
+function decodeSession(value: unknown): SessionSpend | null | undefined {
+  if (value === null) return null;
+  if (
+    !isRecord(value) ||
+    !count(value.inputTokens) ||
+    !count(value.outputTokens) ||
+    !count(value.cacheReadTokens) ||
+    !count(value.cacheWriteTokens) ||
+    !count(value.totalTokens) ||
+    (value.costUsd !== null &&
+      !(
+        typeof value.costUsd === "number" &&
+        Number.isFinite(value.costUsd) &&
+        value.costUsd >= 0
+      ))
+  )
+    return undefined;
+  return {
+    inputTokens: value.inputTokens,
+    outputTokens: value.outputTokens,
+    cacheReadTokens: value.cacheReadTokens,
+    cacheWriteTokens: value.cacheWriteTokens,
+    totalTokens: value.totalTokens,
+    costUsd: value.costUsd as number | null,
+  };
+}
+
 export function decodeUsageState(value: unknown): AcpUsageState | null {
   if (!isRecord(value)) return null;
   if (isOneOf(value.kind, ["unsupported", "offline", "unavailable"] as const))
@@ -53,12 +84,15 @@ export function decodeUsageState(value: unknown): AcpUsageState | null {
     if (!window) return null;
     windows.push(window);
   }
+  const session = decodeSession(snapshot.session);
+  if (session === undefined) return null;
   return {
     kind: "usage",
     snapshot: {
       plan: snapshot.plan as string | null,
       limitReached: snapshot.limitReached,
       windows,
+      session,
     },
   };
 }
@@ -69,7 +103,7 @@ export const acpUsageDesktop = {
     if (!state)
       throw new AcpDesktopError({
         kind: "internal",
-        message: "Usage limits returned an invalid bounded response.",
+        message: "Usage returned an invalid bounded response.",
       });
     return state;
   },
