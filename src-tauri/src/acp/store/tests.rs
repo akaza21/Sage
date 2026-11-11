@@ -773,7 +773,7 @@ fn turn_is_terminal_reads_the_scoped_turn_row() {
     assert!(!probe(&connection, &session, &prepared.turn_id));
     connection
         .execute(
-            "UPDATE turns SET state='completed' WHERE id=?1",
+            "UPDATE turns SET state='completed', terminal_at=13 WHERE id=?1",
             [prepared.turn_id.as_str()],
         )
         .unwrap();

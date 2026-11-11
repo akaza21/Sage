@@ -45,9 +45,11 @@ pub(crate) fn turn_is_terminal(
             |row| row.get(0),
         )
         .optional()?;
-    state.map_or(Ok(false), |state| {
-        Ok(parse_turn_state(&state)?.is_terminal())
-    })
+    Ok(state
+        .as_deref()
+        .map(parse_turn_state)
+        .transpose()?
+        .is_some_and(TurnState::is_terminal))
 }
 
 pub(super) fn begin_cancel_in(
