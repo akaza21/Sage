@@ -1,7 +1,12 @@
 import { isRecord } from "./guards";
+import { utf8ByteLength } from "./text";
 
-/** What a review covers. The chat offers only the uncommitted changes. */
-export type AcpReviewTarget = { kind: "uncommittedChanges" };
+/** What a review covers, as Codex's `review/start` names its targets. */
+export type AcpReviewTarget =
+  | { kind: "uncommittedChanges" }
+  | { kind: "baseBranch"; branch: string }
+  | { kind: "commit"; sha: string }
+  | { kind: "custom"; instructions: string };
 
 /** Runs as a Turn on an idle session that negotiated it. */
 export type AcpSessionAction =
@@ -13,16 +18,51 @@ export const sessionActions = {
   compact: { kind: "compact" },
 } as const satisfies Record<string, AcpSessionAction>;
 
-const sameShape = (value: unknown, shape: unknown): boolean =>
-  isRecord(value) && isRecord(shape)
-    ? Object.keys(value).length === Object.keys(shape).length &&
-      Object.keys(shape).every((key) => sameShape(value[key], shape[key]))
-    : value === shape;
+/** One word of a review target, bounded as the native side bounds it. */
+const isWord = (value: unknown, maximum: number): value is string =>
+  typeof value === "string" &&
+  value.length > 0 &&
+  !value.startsWith("-") &&
+  !/[\s\p{Cc}]/u.test(value) &&
+  utf8ByteLength(value) <= maximum;
 
-/** The action a stored Turn ran, or null for one the chat does not offer. */
+const exactKeys = (value: Record<string, unknown>, keys: string[]) =>
+  Object.keys(value).length === keys.length &&
+  keys.every((key) => key in value);
+
+function decodeReviewTarget(value: unknown): AcpReviewTarget | null {
+  if (!isRecord(value)) return null;
+  switch (value.kind) {
+    case "uncommittedChanges":
+      return exactKeys(value, ["kind"]) ? { kind: "uncommittedChanges" } : null;
+    case "baseBranch":
+      return exactKeys(value, ["kind", "branch"]) && isWord(value.branch, 256)
+        ? { kind: "baseBranch", branch: value.branch }
+        : null;
+    case "commit":
+      return exactKeys(value, ["kind", "sha"]) && isWord(value.sha, 64)
+        ? { kind: "commit", sha: value.sha }
+        : null;
+    case "custom":
+      return exactKeys(value, ["kind", "instructions"]) &&
+        typeof value.instructions === "string" &&
+        value.instructions.length > 0 &&
+        !value.instructions.includes("\0") &&
+        utf8ByteLength(value.instructions) <= 16384
+        ? { kind: "custom", instructions: value.instructions }
+        : null;
+    default:
+      return null;
+  }
+}
+
+/** The action a stored Turn ran, or null for one this build cannot run. */
 export function decodeSessionAction(value: unknown): AcpSessionAction | null {
-  return (
-    Object.values(sessionActions).find((action) => sameShape(value, action)) ??
-    null
-  );
+  if (!isRecord(value)) return null;
+  if (value.kind === "compact")
+    return exactKeys(value, ["kind"]) ? { kind: "compact" } : null;
+  if (value.kind !== "review" || !exactKeys(value, ["kind", "target"]))
+    return null;
+  const target = decodeReviewTarget(value.target);
+  return target ? { kind: "review", target } : null;
 }

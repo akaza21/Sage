@@ -72,6 +72,9 @@ pub(crate) enum CommandDispatch {
     Builtin,
     /// Sent with the skill attached by its harness path (Codex skills).
     Skill { path: String },
+    /// Run by the host as the session action its name and input name, with
+    /// the action's capability gate (Codex's `compact` and `review`).
+    Action,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -112,9 +115,17 @@ impl AvailableCommand {
         })
     }
 
-    /// What this command counts toward a list's `MAX_COMMAND_BYTES`.
+    /// What this command counts toward a list's `MAX_COMMAND_BYTES`,
+    /// including the native route it keeps, such as a skill's path.
     pub(crate) fn listed_bytes(&self) -> usize {
-        self.name.len() + self.description.len() + self.input_hint.as_ref().map_or(0, String::len)
+        let route = match &self.dispatch {
+            CommandDispatch::Skill { path } => path.len(),
+            _ => 0,
+        };
+        self.name.len()
+            + self.description.len()
+            + self.input_hint.as_ref().map_or(0, String::len)
+            + route
     }
 
     /// An ACP `AvailableCommand`. ACP has no source field, so an adapter
@@ -248,6 +259,22 @@ impl CommandState {
             .ok_or(AdapterRuntimeError::Operation)?
             .replace(parsed)
     }
+    /// Takes a binding's new list unless it equals the shown one, so an
+    /// unchanged list keeps its revision and a pick made from it still runs.
+    pub(crate) fn replace_if_changed(
+        &self,
+        commands: Vec<AvailableCommand>,
+    ) -> Result<(), AdapterRuntimeError> {
+        let mut list = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let list = list.as_mut().ok_or(AdapterRuntimeError::Operation)?;
+        if list.commands == commands {
+            return Ok(());
+        }
+        list.replace(Ok(commands))
+    }
     pub(crate) fn snapshot(&self) -> CommandList {
         self.0
             .lock()
@@ -272,18 +299,18 @@ impl CommandState {
     }
     /// The source of the listed command a `/name …` prompt runs at this
     /// revision, which the Turn keeps beside its prompt.
-    pub(crate) fn source(
+    pub(crate) fn command(
         &self,
         revision: u64,
         text: &str,
-    ) -> Result<CommandSource, AdapterRuntimeError> {
+    ) -> Result<AvailableCommand, AdapterRuntimeError> {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
             .ok_or(AdapterRuntimeError::Operation)?
             .find(revision, text)
-            .map(|command| command.source)
+            .cloned()
             .ok_or(AdapterRuntimeError::UnsupportedCommand)
     }
     fn close(&self) {

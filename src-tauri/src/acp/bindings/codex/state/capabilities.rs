@@ -68,6 +68,9 @@ impl CodexAdapter {
             snapshot: snapshot.clone(),
             models,
         });
+        // The built-ins list as soon as the session can run them; the skills
+        // follow their own read.
+        self.list_commands(Vec::new());
         Ok(snapshot)
     }
 }

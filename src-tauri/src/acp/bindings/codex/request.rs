@@ -56,7 +56,7 @@ impl NativeProjectRoot {
         Ok(Self(value))
     }
 
-    fn as_str(&self) -> &str {
+    pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
 }

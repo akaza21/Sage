@@ -10,9 +10,29 @@ fn skill(name: &str, enabled: bool) -> Value {
         "path":format!(r"C:\skills\{name}\SKILL.md"),"scope":"user"})
 }
 
+/// The listed skills; Codex's own commands come first and are checked
+/// on their own.
 fn listed(runtime: &CodexRuntime) -> Vec<String> {
     let list = runtime.available_commands().snapshot();
-    list.commands.iter().map(|c| c.name.clone()).collect()
+    list.commands
+        .iter()
+        .filter(|c| c.source == CommandSource::Skill)
+        .map(|c| c.name.clone())
+        .collect()
+}
+
+fn refuse_read(runtime: &mut CodexRuntime) {
+    let egress = runtime.discover_commands().unwrap().expect("skills/list");
+    let id = request_id(&egress);
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Queued)
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"id":id,"error":{"code":-32603,"message":"failed"}})),
+            &Mapper,
+        )
+        .unwrap();
 }
 
 fn read_skills(runtime: &mut CodexRuntime, skills: Value) {
@@ -51,13 +71,13 @@ fn enabled_skills_list_as_commands_and_are_read_again_when_codex_says_they_chang
     );
     let list = runtime.available_commands().snapshot();
     assert_eq!(listed(&runtime), ["pdf", "lint"]);
-    assert_eq!(list.commands[0].description, "Read PDFs");
-    assert_eq!(list.commands[1].description, "lint in full");
-    assert!(
-        list.commands
-            .iter()
-            .all(|c| c.source == CommandSource::Skill)
-    );
+    let skills: Vec<_> = list
+        .commands
+        .iter()
+        .filter(|c| c.source == CommandSource::Skill)
+        .collect();
+    assert_eq!(skills[0].description, "Read PDFs");
+    assert_eq!(skills[1].description, "lint in full");
     // Nothing more to read until Codex says the skills changed.
     assert!(runtime.discover_commands().unwrap().is_none());
     runtime
@@ -97,7 +117,7 @@ fn a_listed_skill_runs_with_the_skill_attached() {
         input(&mut runtime, "/pdf summarise it", Some(revision)),
         json!([
             {"type":"skill","name":"pdf","path":r"C:\skills\pdf\SKILL.md"},
-            {"type":"text","text":"/pdf summarise it"}
+            {"type":"text","text":"summarise it"}
         ])
     );
 }
@@ -122,21 +142,22 @@ fn typed_text_naming_a_skill_is_only_text() {
 }
 
 #[test]
-fn a_refused_skills_read_leaves_an_empty_list_and_is_not_retried() {
+fn a_refused_skills_read_is_tried_once_more_then_waits_for_a_change() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
-    let egress = runtime.discover_commands().unwrap().expect("skills/list");
-    let id = request_id(&egress);
-    runtime
-        .resolve_egress(egress.into_token(), EgressResolution::Queued)
-        .unwrap();
-    runtime
-        .ingest(
-            &frame(json!({"id":id,"error":{"code":-32601,"message":"unknown method"}})),
-            &Mapper,
-        )
-        .unwrap();
+    refuse_read(&mut runtime);
     assert!(listed(&runtime).is_empty());
+    // One more read at the next idle moment, in case the failure passed.
+    refuse_read(&mut runtime);
+    assert!(listed(&runtime).is_empty());
+    assert!(runtime.discover_commands().unwrap().is_none());
+    // A change is read again, and a good read restores the retry.
+    skills_changed(&mut runtime);
+    read_skills(&mut runtime, json!([skill("pdf", true)]));
+    assert_eq!(listed(&runtime), ["pdf"]);
+    skills_changed(&mut runtime);
+    refuse_read(&mut runtime);
+    refuse_read(&mut runtime);
     assert!(runtime.discover_commands().unwrap().is_none());
 }
 
@@ -216,14 +237,17 @@ fn a_long_catalogue_lists_the_skills_that_fit_the_byte_bound() {
         .collect();
     read_skills(&mut runtime, Value::Array(skills));
     let list = runtime.available_commands().snapshot();
+    // The bound counts each skill's path as well as its text.
     let bytes: usize = list.commands.iter().map(|c| c.listed_bytes()).sum();
+    let next = 1000 + "skill-399".len() + r"C:\skills\skill-399\SKILL.md".len();
     // Every skill that fits is listed, in order; the next one would not fit.
     assert!(bytes <= MAX_COMMAND_BYTES);
-    assert!(bytes + 1000 + "skill-399".len() > MAX_COMMAND_BYTES);
-    let names: Vec<String> = (0..list.commands.len())
+    assert!(bytes + next > MAX_COMMAND_BYTES);
+    let skills = listed(&runtime);
+    let names: Vec<String> = (0..skills.len())
         .map(|index| format!("skill-{index}"))
         .collect();
-    assert_eq!(listed(&runtime), names);
+    assert_eq!(skills, names);
 }
 
 #[test]
@@ -273,7 +297,66 @@ fn an_oversized_skills_reply_tells_the_menu_the_list_changed() {
     let shown = runtime.available_commands().snapshot().revision;
     runtime.accept_oversized_response(id).unwrap();
     let emptied = runtime.available_commands().snapshot();
-    assert!(emptied.commands.is_empty());
+    assert!(
+        emptied
+            .commands
+            .iter()
+            .all(|c| c.source == CommandSource::Builtin)
+    );
     assert!(emptied.revision > shown);
     assert_eq!(seen.lock().unwrap().last(), Some(&emptied.revision));
+}
+
+#[test]
+fn codex_lists_its_own_commands_for_the_methods_this_session_negotiated() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let list = runtime.available_commands().snapshot();
+    let builtins: Vec<_> = list
+        .commands
+        .iter()
+        .map(|c| (c.name.as_str(), c.source, c.input_hint.is_some()))
+        .collect();
+    assert_eq!(
+        builtins,
+        [
+            ("compact", CommandSource::Builtin, false),
+            ("review", CommandSource::Builtin, true),
+        ]
+    );
+    // Codex's own command keeps its name over a skill that shares it.
+    read_skills(
+        &mut runtime,
+        json!([skill("review", true), skill("pdf", true)]),
+    );
+    let list = runtime.available_commands().snapshot();
+    let names: Vec<_> = list.commands.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["compact", "review", "pdf"]);
+    assert_eq!(list.commands[1].source, CommandSource::Builtin);
+}
+
+#[test]
+fn a_listed_review_runs_review_start_with_the_target_it_names() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let revision = runtime.available_commands().snapshot().revision;
+    let action =
+        crate::acp::session_action::SessionAction::from_command("review", Some("commit 1a2b3c4"))
+            .unwrap();
+    let mut prompt = Prompt::new("sessionAction", action.prompt_text()).unwrap();
+    prompt.action = Some(action);
+    prompt.command_revision = Some(revision);
+    let egress = runtime
+        .command(AdapterCommand::Prompt {
+            prompt,
+            client_message_id: RequiredText::new("client", "client-1").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .unwrap();
+    let wire: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    assert_eq!(wire["method"], "review/start");
+    assert_eq!(
+        wire["params"]["target"],
+        json!({"type":"commit","sha":"1a2b3c4"})
+    );
 }

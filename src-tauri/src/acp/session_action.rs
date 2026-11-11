@@ -3,7 +3,7 @@
 //! own native method.
 use serde::{Deserialize, Serialize};
 
-use super::intent::CapabilitySnapshotV1;
+use super::{contract::RequiredText, intent::CapabilitySnapshotV1};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
@@ -24,9 +24,38 @@ pub(crate) enum SessionAction {
     rename_all_fields = "camelCase",
     deny_unknown_fields
 )]
-/// What a review covers. The chat offers only the uncommitted changes.
+/// What a review covers, as Codex's `review/start` names its targets.
 pub(crate) enum ReviewTarget {
     UncommittedChanges {},
+    BaseBranch { branch: Word<256> },
+    Commit { sha: Word<64> },
+    Custom { instructions: RequiredText<16384> },
+}
+
+/// One word of a `/review` command: a branch name or a commit. It has no
+/// whitespace or control characters and cannot read as an option.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub(crate) struct Word<const MAX: usize>(String);
+
+impl<const MAX: usize> Word<MAX> {
+    pub(crate) fn new(value: &str) -> Option<Self> {
+        (!value.is_empty()
+            && value.len() <= MAX
+            && !value.starts_with('-')
+            && !value.chars().any(|c| c.is_whitespace() || c.is_control()))
+        .then(|| Self(value.to_owned()))
+    }
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<'de, const MAX: usize> Deserialize<'de> for Word<MAX> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Self::new(&value).ok_or_else(|| serde::de::Error::custom("not one word"))
+    }
 }
 
 /// The `/` commands that name session actions, as their prompts read.
@@ -40,13 +69,55 @@ impl SessionAction {
         }
     }
 
-    /// The Turn's user-visible prompt, in the form a `/` command takes.
+    /// The Turn's user-visible prompt, in the form a `/` command takes;
+    /// [`Self::from_command`] reads it back.
     pub(crate) fn prompt_text(&self) -> String {
         match self {
             Self::Compact {} => "/compact".to_owned(),
-            Self::Review {
+            Self::Review { target } => match target {
+                ReviewTarget::UncommittedChanges {} => "/review".to_owned(),
+                ReviewTarget::BaseBranch { branch } => format!("/review base {}", branch.as_str()),
+                ReviewTarget::Commit { sha } => format!("/review commit {}", sha.as_str()),
+                ReviewTarget::Custom { instructions } => {
+                    format!("/review {}", instructions.as_str())
+                }
+            },
+        }
+    }
+
+    /// The action a `/name input` command names. `/review` alone reviews
+    /// the uncommitted changes, `/review base <branch>` and `/review commit
+    /// <sha>` name a branch or commit, and any other input is what to look
+    /// for. `/compact` takes no input.
+    pub(crate) fn from_command(name: &str, input: Option<&str>) -> Option<Self> {
+        let input = input.map(str::trim).filter(|input| !input.is_empty());
+        match (name, input) {
+            ("compact", None) => Some(Self::Compact {}),
+            ("review", None) => Some(Self::Review {
                 target: ReviewTarget::UncommittedChanges {},
-            } => "/review".to_owned(),
+            }),
+            ("review", Some(input)) => {
+                let words: Vec<&str> = input.split_whitespace().collect();
+                let target = match words.as_slice() {
+                    ["base", branch] => {
+                        Word::new(branch).map(|branch| ReviewTarget::BaseBranch { branch })
+                    }
+                    ["commit", sha]
+                        if sha.len() >= 4 && sha.chars().all(|c| c.is_ascii_hexdigit()) =>
+                    {
+                        Word::new(sha).map(|sha| ReviewTarget::Commit { sha })
+                    }
+                    _ => None,
+                };
+                let target = match target {
+                    Some(target) => target,
+                    None => ReviewTarget::Custom {
+                        instructions: RequiredText::new("instructions", input).ok()?,
+                    },
+                };
+                Some(Self::Review { target })
+            }
+            _ => None,
         }
     }
 }
@@ -70,9 +141,10 @@ mod tests {
             "/compact"
         );
         for invalid in [
-            json!({"kind":"review","target":{"kind":"baseBranch","branch":"main"}}),
-            json!({"kind":"review","target":{"kind":"commit","sha":"abc123"}}),
-            json!({"kind":"review","target":{"kind":"custom","instructions":"Check"}}),
+            json!({"kind":"review","target":{"kind":"baseBranch","branch":"two words"}}),
+            json!({"kind":"review","target":{"kind":"baseBranch","branch":"--force"}}),
+            json!({"kind":"review","target":{"kind":"commit","sha":""}}),
+            json!({"kind":"review","target":{"kind":"custom","instructions":""}}),
             json!({"kind":"review"}),
             json!({"kind":"review","target":{"kind":"uncommittedChanges","extra":1}}),
             json!({"kind":"compact","extra":1}),
@@ -80,6 +152,72 @@ mod tests {
         ] {
             assert!(serde_json::from_value::<SessionAction>(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn a_command_names_its_action_and_the_prompt_reads_back_as_it() {
+        for (name, input, action) in [
+            ("compact", None, json!({"kind":"compact"})),
+            (
+                "review",
+                None,
+                json!({"kind":"review","target":{"kind":"uncommittedChanges"}}),
+            ),
+            (
+                "review",
+                Some("  "),
+                json!({"kind":"review","target":{"kind":"uncommittedChanges"}}),
+            ),
+            (
+                "review",
+                Some("base main"),
+                json!({"kind":"review","target":{"kind":"baseBranch","branch":"main"}}),
+            ),
+            (
+                "review",
+                Some("commit 1a2b3c4"),
+                json!({"kind":"review","target":{"kind":"commit","sha":"1a2b3c4"}}),
+            ),
+            (
+                "review",
+                Some("check the error paths"),
+                json!({"kind":"review","target":{"kind":"custom","instructions":"check the error paths"}}),
+            ),
+            // A word that is not a branch or commit is read as instructions.
+            (
+                "review",
+                Some("base --force"),
+                json!({"kind":"review","target":{"kind":"custom","instructions":"base --force"}}),
+            ),
+            (
+                "review",
+                Some("commit main"),
+                json!({"kind":"review","target":{"kind":"custom","instructions":"commit main"}}),
+            ),
+        ] {
+            let parsed = SessionAction::from_command(name, input).unwrap();
+            assert_eq!(
+                serde_json::to_value(&parsed).unwrap(),
+                action,
+                "{name} {input:?}"
+            );
+            let text = parsed.prompt_text();
+            let (read_name, read_input) = text[1..]
+                .split_once(' ')
+                .map_or((&text[1..], None), |(n, i)| (n, Some(i)));
+            assert_eq!(
+                SessionAction::from_command(read_name, read_input),
+                Some(parsed)
+            );
+            assert_eq!(
+                serde_json::from_value::<SessionAction>(action)
+                    .ok()
+                    .map(|a| a.prompt_text()),
+                Some(text)
+            );
+        }
+        assert_eq!(SessionAction::from_command("compact", Some("now")), None);
+        assert_eq!(SessionAction::from_command("deploy", None), None);
     }
 
     #[test]
