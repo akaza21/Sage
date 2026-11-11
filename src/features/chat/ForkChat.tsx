@@ -187,6 +187,15 @@ export function AnswerMoreActions({
   );
 }
 
+function restoreForkFocus(focusRoot?: RefObject<HTMLDivElement | null>) {
+  // A project transition recreates the answer. Look up its live button.
+  queueMicrotask(() => {
+    focusRoot?.current
+      ?.querySelector<HTMLButtonElement>("[data-fork-trigger]")
+      ?.focus();
+  });
+}
+
 /** No worktree fork: Chats lack worktree support; worktrees aren't Projects. */
 export function ForkChatDialog({
   chatId,
@@ -211,12 +220,7 @@ export function ForkChatDialog({
   const [fresh, setFresh] = useState(!keyboard);
   const close = useCallback(() => {
     onClose();
-    // A project transition recreates the answer; never retain its old node.
-    queueMicrotask(() => {
-      focusRoot?.current
-        ?.querySelector<HTMLButtonElement>("[data-fork-trigger]")
-        ?.focus();
-    });
+    restoreForkFocus(focusRoot);
   }, [onClose, focusRoot]);
   const dismiss = () => {
     if (!busyRef.current) close();
