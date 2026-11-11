@@ -1,6 +1,9 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::acp::{contract::EntityRevision, lifecycle::TurnState};
+use crate::acp::{
+    contract::{EntityRevision, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
+    lifecycle::TurnState,
+};
 
 use super::{
     BeginCancelCommand, MutationDisposition, StoreError, TurnMutation,
@@ -18,6 +21,33 @@ pub(crate) fn begin_cancel(
         .commit()
         .map_err(|_| StoreError::CommitUnknown)?;
     Ok(mutation)
+}
+
+/// Whether the turn has settled, read from its own row rather than a chat page.
+/// A turn missing from the session reads as not terminal.
+pub(crate) fn turn_is_terminal(
+    connection: &rusqlite::Connection,
+    project_id: &SageProjectId,
+    chat_id: &SageChatId,
+    session_id: &SageAgentSessionId,
+    turn_id: &SageTurnId,
+) -> Result<bool, StoreError> {
+    let state: Option<String> = connection
+        .query_row(
+            "SELECT state FROM turns
+             WHERE id=?1 AND project_id=?2 AND chat_id=?3 AND session_id=?4",
+            params![
+                turn_id.as_str(),
+                project_id.as_str(),
+                chat_id.as_str(),
+                session_id.as_str()
+            ],
+            |row| row.get(0),
+        )
+        .optional()?;
+    state.map_or(Ok(false), |state| {
+        Ok(parse_turn_state(&state)?.is_terminal())
+    })
 }
 
 pub(super) fn begin_cancel_in(

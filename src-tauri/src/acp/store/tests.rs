@@ -759,3 +759,27 @@ fn every_durable_terminal_family_is_idempotent_and_conflict_safe() {
     .unwrap();
     assert_eq!(duplicate.disposition, MutationDisposition::Duplicate);
 }
+
+#[test]
+fn turn_is_terminal_reads_the_scoped_turn_row() {
+    let mut connection = setup();
+    let prepared = prepare_turn(&mut connection, command("terminal")).unwrap();
+    let project = SageProjectId::parse("project-one").unwrap();
+    let chat = SageChatId::parse("chat-one").unwrap();
+    let session = SageAgentSessionId::parse("session-one").unwrap();
+    let probe = |connection: &Connection, session: &SageAgentSessionId, turn: &SageTurnId| {
+        turn_is_terminal(connection, &project, &chat, session, turn).unwrap()
+    };
+    assert!(!probe(&connection, &session, &prepared.turn_id));
+    connection
+        .execute(
+            "UPDATE turns SET state='completed' WHERE id=?1",
+            [prepared.turn_id.as_str()],
+        )
+        .unwrap();
+    assert!(probe(&connection, &session, &prepared.turn_id));
+    let other_session = SageAgentSessionId::parse("session-two").unwrap();
+    assert!(!probe(&connection, &other_session, &prepared.turn_id));
+    let missing = SageTurnId::parse("turn-missing").unwrap();
+    assert!(!probe(&connection, &session, &missing));
+}
