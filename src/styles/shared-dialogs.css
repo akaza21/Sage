@@ -20,7 +20,8 @@
   background: var(--chat-annotation-scrim);
 }
 
-.dirty-dialog h2 {
+/* Zero-specificity tag, so a laid-out dialog body can reset the margin. */
+.dirty-dialog :where(h2) {
   margin: 0 0 var(--space-2);
   font-size: var(--font-size-lg);
 }
@@ -51,9 +52,7 @@
   gap: var(--space-3);
 }
 
-/* h2 also outranks the .dirty-dialog heading margin. */
-.dialog-body > *,
-.dialog-body > h2 {
+.dialog-body > * {
   margin: 0;
 }
 

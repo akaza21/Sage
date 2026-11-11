@@ -340,7 +340,7 @@
   outline: 0;
   color: var(--menu-row-text, var(--color-text-primary));
   background: var(--menu-row-hover, var(--color-surface-hover));
-  box-shadow: inset 0 0 0 1px var(--menu-focus-edge);
+  box-shadow: inset 0 0 0 1px var(--menu-focus-edge, var(--color-focus-ring));
 }
 
 .menu-item[aria-checked="true"],
@@ -442,7 +442,6 @@
       color: var(--color-text-emphasis);
       background: var(--color-plane-raised);
       box-shadow: var(--elevation-popover);
-      font-family: var(--font-family-agent);
     }
 
     .select option {
@@ -536,6 +535,11 @@
 
   .switch:disabled::before {
     background-color: GrayText;
+  }
+
+  /* The switch opts out of forced colours, so its ring must be set here. */
+  .switch:focus-visible {
+    outline-color: Highlight;
   }
 
   .popup-material {
