@@ -25,6 +25,7 @@ export function SessionSurfacePanel({
   const decoded = decodeSessionSurface(surface);
   const activities = decoded?.activities ?? [];
   const undoTurn = decoded?.undoTurn;
+  const keepsFiles = decoded?.undoKeepsFiles === true;
   if (!activities.length && !undoTurn) return null;
   return (
     <section className="acp-session-surface" aria-label="Session activity">
@@ -66,11 +67,20 @@ export function SessionSurfacePanel({
           type="button"
           className="acp-session-surface__undo"
           disabled={status.kind === "pending"}
-          title="Restore the files the last turn changed to how they were before it"
+          title={
+            keepsFiles
+              ? "Remove the last turn from the conversation. Files it changed stay as they are"
+              : "Restore the files the last turn changed to how they were before it"
+          }
           onClick={() => {
             if (!confirming) return setConfirming(true);
             setConfirming(false);
-            void run({ kind: "undoTurn", turnId: undoTurn }, "Changes undone");
+            void run(
+              { kind: "undoTurn", turnId: undoTurn },
+              keepsFiles
+                ? "Last turn removed from the conversation. Files are unchanged"
+                : "Changes undone",
+            );
           }}
           onBlur={() => setConfirming(false)}
         >

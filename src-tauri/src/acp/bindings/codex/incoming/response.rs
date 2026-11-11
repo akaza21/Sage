@@ -43,6 +43,12 @@ pub(super) fn response(
         adapter.skills_result(result.filter(|_| !object.contains_key("error")));
         return Ok(IngressDisposition::IgnoredLate);
     }
+    if kind == RequestKind::ThreadRevert {
+        let error = object.get("error");
+        return Ok(IngressDisposition::Controlled(
+            adapter.complete_revert(id, error),
+        ));
+    }
     if kind == RequestKind::RateLimitsRead {
         adapter.take_pending(id);
         if let Some(error) = object.get("error") {
@@ -251,7 +257,8 @@ pub(super) fn response(
         | RequestKind::ForkRelease
         | RequestKind::ForkDelete
         | RequestKind::RateLimitsRead
-        | RequestKind::SkillsList => {
+        | RequestKind::SkillsList
+        | RequestKind::ThreadRevert => {
             unreachable!("handled above")
         }
     };

@@ -210,6 +210,8 @@ pub(crate) enum IngressDisposition {
     DroppedRawReasoning,
     GoalMutationRejected,
     GoalMutationApplied,
+    /// Codex's answer to a session control, such as undoing a Turn.
+    Controlled(crate::acp::goal::NativeRpcReply),
     /// A limit bucket Codex pushed.
     UsageUpdated(rate_limits::RateLimitBucket),
     /// The answer to a usage read; `None` when nothing usable was reported.

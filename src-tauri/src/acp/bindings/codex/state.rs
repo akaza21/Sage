@@ -21,6 +21,7 @@ mod permissions;
 pub(in crate::acp::bindings::codex) use permissions::USER_INPUT_METHOD;
 mod provisional;
 mod rate_limits;
+mod revert;
 mod session;
 mod skills;
 mod turn_end;
@@ -205,6 +206,8 @@ pub(crate) struct CodexAdapter {
     skills: skills::Skills,
     pending_fork: Option<u64>,
     forks: fork::ForkLedger,
+    /// The Codex Turn this runtime already removed from the thread.
+    reverted_turn: Option<String>,
 }
 
 impl CodexAdapter {

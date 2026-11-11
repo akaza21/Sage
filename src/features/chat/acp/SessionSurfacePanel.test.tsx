@@ -98,3 +98,24 @@ it("undoes the latest turn after a confirming click", () => {
   );
   expect(screen.queryByRole("button", { name: /Undo/ })).toBeNull();
 });
+
+it("says when undo keeps the files and only rewinds the conversation", () => {
+  render(
+    <SessionSurfacePanel
+      chatId="chat-one"
+      surface={{ activities: [], undoTurn: TURN, undoKeepsFiles: true }}
+    />,
+  );
+  const undo = screen.getByRole("button", { name: "Undo last turn" });
+  expect(undo.getAttribute("title")).toMatch(/stay as they are/);
+  fireEvent.click(undo);
+  fireEvent.click(screen.getByRole("button", { name: "Confirm undo" }));
+  expect(run).toHaveBeenCalledWith(
+    { kind: "undoTurn", turnId: TURN },
+    "Last turn removed from the conversation. Files are unchanged",
+  );
+  expect(
+    decodeSessionSurface({ activities: [], undoKeepsFiles: true })
+      ?.undoKeepsFiles,
+  ).toBeUndefined();
+});
