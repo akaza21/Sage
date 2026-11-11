@@ -11,8 +11,6 @@ fn undo(turn: &str) -> SessionControl {
     }
 }
 
-const TURN_AFTER: &str = "turn-00000000-0000-4000-8000-000000000001";
-
 fn prompt_command(turn: &str) -> AdapterCommand {
     AdapterCommand::Prompt {
         prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),

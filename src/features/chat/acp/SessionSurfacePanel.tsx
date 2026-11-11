@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { decodeSessionSurface } from "../../../services/acpSessionSurface";
 import "./session-surface.css";
 import { useSessionControl } from "./useSessionControl";
+
+/** Turns this app removed from their conversation. */
+const rewoundTurns = new Set<string>();
 
 const STATE_LABEL = {
   running: "Running",
@@ -22,16 +25,24 @@ export function SessionSurfacePanel({
 }) {
   const { status, run } = useSessionControl(chatId || undefined);
   const [confirming, setConfirming] = useState(false);
-  // A turn removed from the conversation cannot be removed again.
-  const [rewound, setRewound] = useState<string | null>(null);
+  // A turn removed from the conversation cannot be removed again; the
+  // session keeps offering it, so the app remembers it was removed.
+  const undoing = useRef<string | null>(null);
+  const [, setRewound] = useState(0);
+  useEffect(() => {
+    if (status.kind === "pending") return;
+    if (status.kind === "done" && undoing.current) {
+      rewoundTurns.add(undoing.current);
+      setRewound((count) => count + 1);
+    }
+    undoing.current = null;
+  }, [status]);
   const decoded = decodeSessionSurface(surface);
   const activities = decoded?.activities ?? [];
   const keepsFiles = decoded?.undoKeepsFiles === true;
   const offered = decoded?.undoTurn;
   const undoTurn =
-    keepsFiles && offered === rewound && status.kind === "done"
-      ? undefined
-      : offered;
+    keepsFiles && offered && rewoundTurns.has(offered) ? undefined : offered;
   if (!activities.length && !offered) return null;
   return (
     <section className="acp-session-surface" aria-label="Session activity">
@@ -81,7 +92,7 @@ export function SessionSurfacePanel({
           onClick={() => {
             if (!confirming) return setConfirming(true);
             setConfirming(false);
-            if (keepsFiles) setRewound(undoTurn);
+            if (keepsFiles) undoing.current = undoTurn;
             void run(
               { kind: "undoTurn", turnId: undoTurn },
               keepsFiles

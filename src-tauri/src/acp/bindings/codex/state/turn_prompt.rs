@@ -71,11 +71,9 @@ impl CodexAdapter {
         settings: TurnSettings<'_>,
     ) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.prompt)?;
-        // A turn waits for an Undo in flight, so Codex never reverts around it.
         if self.turn_start_correlations.has_pending()
             || self.active_turn_id.is_some()
             || self.provisional_turn.is_some()
-            || self.revert_pending()
         {
             return Err(AdapterError::TurnAlreadyActive);
         }
