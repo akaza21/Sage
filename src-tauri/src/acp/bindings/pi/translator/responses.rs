@@ -39,6 +39,15 @@ impl PiTranslator {
             }
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
+        // A native reply goes back to the caller that asked for it; Pi's
+        // refusal is that caller's to report, not a transcript error.
+        if let (PendingKind::Native(command), false) = (kind, response.success) {
+            return Ok(vec![AdapterOutput::NativeReply {
+                command_id: response.id,
+                command,
+                data: None,
+            }]);
+        }
         if !response.success && kind == PendingKind::Commands {
             return Ok(vec![AdapterOutput::Commands(serde_json::json!([]))]);
         }
@@ -173,6 +182,11 @@ impl PiTranslator {
             PendingKind::Entries => {
                 Ok(vec![AdapterOutput::Entries(parse_entries(&response.data)?)])
             }
+            PendingKind::Native(command) => Ok(vec![AdapterOutput::NativeReply {
+                command_id: response.id,
+                command,
+                data: Some(response.data),
+            }]),
         }
     }
 

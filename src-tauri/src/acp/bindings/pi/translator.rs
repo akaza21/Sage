@@ -20,8 +20,8 @@ use super::{
     decode::{EXTERNAL_ID_BYTES, Record, Response, decode_record, validate_opaque_text},
     manifest::LaunchAdmission,
     protocol::{
-        AdapterError, AdapterOutput, Operation, Outbound, TerminalOutcome, ToolOutcome,
-        is_allow_option,
+        AdapterError, AdapterOutput, NativeCommand, NativeRequest, Operation, Outbound,
+        TerminalOutcome, ToolOutcome, is_allow_option,
     },
 };
 
@@ -29,6 +29,8 @@ const PENDING_COMMANDS: usize = 16;
 const COMPLETED_COMMANDS: usize = 32;
 const TOOLS_PER_TURN: usize = 512;
 const UNKNOWN_KINDS_PER_TURN: usize = 32;
+/// Sage sends at most a chat title, whose cap this mirrors.
+const SESSION_NAME_BYTES: usize = crate::acp::intent::session_event::SESSION_TITLE_BYTES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PendingKind {
@@ -47,6 +49,7 @@ enum PendingKind {
     Abort,
     Messages,
     Entries,
+    Native(NativeCommand),
 }
 
 impl PendingKind {
@@ -81,6 +84,7 @@ impl PendingKind {
             Self::Abort => "abort",
             Self::Messages => "get_messages",
             Self::Entries => "get_entries",
+            Self::Native(command) => command.wire(),
         }
     }
 }
@@ -195,6 +199,7 @@ impl PiTranslator {
                     | PendingKind::Abort
                     | PendingKind::SetModel
                     | PendingKind::SetThinkingLevel
+                    | PendingKind::Native(_)
             )
         })
     }
@@ -344,6 +349,16 @@ impl PiTranslator {
             Operation::Close => Err(AdapterError::UnsupportedOperation("close")),
             Operation::MultiRoot => Err(AdapterError::UnsupportedOperation("multi-root")),
             Operation::ForkOrClone => Err(AdapterError::UnsupportedOperation("fork or clone")),
+            Operation::Native(request) => {
+                if let NativeRequest::SessionName { name } = &request {
+                    validate_opaque_text(name, SESSION_NAME_BYTES)
+                        .map_err(|_| AdapterError::Limit("session name"))?;
+                }
+                self.one(
+                    PendingKind::Native(request.command()),
+                    request.into_fields(),
+                )
+            }
         }
     }
 

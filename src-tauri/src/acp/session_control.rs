@@ -1,5 +1,6 @@
 //! Requests that act on a running harness session without starting a turn:
-//! undoing a turn's file changes and stopping one running activity.
+//! undoing a turn's file changes, stopping one running activity and naming
+//! the session after its chat.
 
 use super::{contract::SageTurnId, intent::ExternalId};
 
@@ -10,6 +11,11 @@ pub(crate) enum SessionControl {
     UndoTurn { turn_id: SageTurnId },
     /// Stops one running activity the harness reported as stoppable.
     StopActivity { activity_id: ExternalId },
+    /// Names the harness's session after its chat, where the harness lists
+    /// its sessions by name.
+    SetTitle {
+        title: super::contract::RequiredText<{ super::intent::session_event::SESSION_TITLE_BYTES }>,
+    },
 }
 
 impl SessionControl {
@@ -17,6 +23,7 @@ impl SessionControl {
         match self {
             Self::UndoTurn { turn_id } => turn_id.as_str().len(),
             Self::StopActivity { activity_id } => activity_id.as_str().len(),
+            Self::SetTitle { title } => title.as_str().len(),
         }
     }
 }

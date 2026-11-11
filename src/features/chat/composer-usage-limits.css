@@ -16,7 +16,8 @@
 }
 
 .composer-usage__heading span,
-.composer-usage__reset {
+.composer-usage__reset,
+.composer-usage__session dt {
   color: var(--color-text-muted);
 }
 
@@ -32,9 +33,15 @@
   list-style: none;
 }
 
-.composer-usage__window {
+.composer-usage__window,
+.composer-usage__session {
   display: grid;
   gap: var(--space-1);
+}
+
+.composer-usage__session,
+.composer-usage__session dd {
+  margin: 0;
 }
 
 .composer-usage__bar {

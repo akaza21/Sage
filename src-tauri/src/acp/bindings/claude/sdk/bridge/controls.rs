@@ -31,6 +31,7 @@ impl SdkBridge {
                     .ok_or(BridgeError::Unsupported)?;
                 json!({"subtype": "stop_task", "task_id": task})
             }
+            SessionControl::SetTitle { .. } => return Err(BridgeError::Unsupported),
         };
         self.control(request, Pending::Control)
     }

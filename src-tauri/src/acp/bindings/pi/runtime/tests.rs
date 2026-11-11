@@ -5,6 +5,7 @@ mod compact_command;
 mod config_delivery;
 mod extension_lifecycle;
 mod followups;
+mod native_rpc;
 mod oversize_end;
 mod prompt_images;
 mod pump_contract;

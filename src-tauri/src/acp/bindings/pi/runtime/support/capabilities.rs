@@ -20,7 +20,7 @@ pub(super) fn capabilities(model_count: u16, config_count: u16) -> CapabilitySna
         prompt: true,
         cancel: true,
         native_session_fork: false,
-        native_session_compact: false,
+        native_session_compact: true,
         native_review: false,
         active_turn_steer: true,
         child_conversation_projection: false,

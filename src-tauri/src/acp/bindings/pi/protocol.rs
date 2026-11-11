@@ -44,6 +44,54 @@ pub enum Operation {
     Close,
     MultiRoot,
     ForkOrClone,
+    /// A request outside any Turn whose answer goes back to the caller that
+    /// asked for it, never into the transcript.
+    Native(NativeRequest),
+}
+
+/// Requests Sage makes of Pi's session on behalf of a native RPC.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NativeRequest {
+    /// Token and cost totals for the whole session (`get_session_stats`).
+    SessionStats,
+    /// The display name Pi lists the session under (`set_session_name`).
+    SessionName { name: String },
+}
+
+impl NativeRequest {
+    pub(crate) const fn command(&self) -> NativeCommand {
+        match self {
+            Self::SessionStats => NativeCommand::SessionStats,
+            Self::SessionName { .. } => NativeCommand::SessionName,
+        }
+    }
+
+    pub(crate) fn into_fields(self) -> serde_json::Map<String, serde_json::Value> {
+        let mut fields = serde_json::Map::new();
+        match self {
+            Self::SessionStats => {}
+            Self::SessionName { name } => {
+                fields.insert("name".into(), serde_json::Value::String(name));
+            }
+        }
+        fields
+    }
+}
+
+/// Which native request a reply answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeCommand {
+    SessionStats,
+    SessionName,
+}
+
+impl NativeCommand {
+    pub(crate) const fn wire(self) -> &'static str {
+        match self {
+            Self::SessionStats => "get_session_stats",
+            Self::SessionName => "set_session_name",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -237,6 +285,12 @@ pub enum AdapterOutput {
         kind: String,
     },
     UnknownEventsSuppressed,
+    /// Pi answered a native request; a refusal carries no data.
+    NativeReply {
+        command_id: String,
+        command: NativeCommand,
+        data: Option<serde_json::Value>,
+    },
     DuplicateIgnored,
     LateIgnored,
     Absorbed,

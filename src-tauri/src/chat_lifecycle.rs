@@ -38,6 +38,14 @@ fn is_chat_title_trim_character(value: char) -> bool {
     )
 }
 
+/// Every stored Chat title starts with this; the UI shows what follows.
+pub(crate) const CHAT_TITLE_PREFIX: &str = "Chat: ";
+
+/// The title the user sees and named the Chat, without the stored prefix.
+pub(crate) fn chat_display_title(stored: &str) -> &str {
+    stored.strip_prefix(CHAT_TITLE_PREFIX).unwrap_or(stored)
+}
+
 pub(crate) fn canonical_chat_title(input: &str) -> AppResult<String> {
     let title = input.trim_matches(is_chat_title_trim_character);
     if title.is_empty() {
@@ -55,7 +63,7 @@ pub(crate) fn canonical_chat_title(input: &str) -> AppResult<String> {
             "Chat title must not contain control characters".into(),
         ));
     }
-    Ok(format!("Chat: {title}"))
+    Ok(format!("{CHAT_TITLE_PREFIX}{title}"))
 }
 
 pub(crate) fn validate_chat_identifier(label: &str, value: &str) -> AppResult<()> {

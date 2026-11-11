@@ -712,6 +712,17 @@ fn a_native_rpc_that_cannot_begin_in_time_recovers_only_when_not_passive() {
             crate::acp::goal::NativeRpcRequest::UsageRead,
             HostState::Idle,
         ),
+        // Renaming the harness session is cosmetic: a slow one never
+        // costs the chat its runtime.
+        (
+            crate::acp::goal::NativeRpcRequest::Control(
+                crate::acp::session_control::SessionControl::SetTitle {
+                    title: crate::acp::contract::RequiredText::new("sessionTitle", "Renamed")
+                        .unwrap(),
+                },
+            ),
+            HostState::Idle,
+        ),
         (
             crate::acp::goal::NativeRpcRequest::Goal(crate::acp::goal::GoalAction::PauseExisting),
             HostState::Recovery,
