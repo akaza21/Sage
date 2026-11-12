@@ -6,6 +6,8 @@ export const WORKSPACE_NOTIFY_EVENT = "workspace-notify-v2";
 /** The native watcher sends at most this many notices in one event. */
 export const MAX_NOTIFY_BATCH_NOTICES = 256;
 export const MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS = 8;
+/** Folder refreshes waiting for an in-flight slot; past this, the root resyncs. */
+export const MAX_QUEUED_NOTIFY_INVALIDATIONS = 64;
 export const MAX_NOTIFY_LISTING_WAITERS = 64;
 export const MAX_NOTIFY_SEARCH_SUBSCRIBERS = 8;
 
@@ -81,7 +83,80 @@ export interface WorkspaceNotifyHooks {
 interface BoundNotifySession {
   live: LiveProjectNotifyStamp;
   unlisten: () => void;
-  inflight: Set<string>;
+}
+
+interface ListingRefresh {
+  notice: WorkspaceNotifyNotice;
+  listing: ResourceRef;
+}
+
+/**
+ * Runs folder refreshes for one bound session: at most
+ * MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS at once and one per folder. A notice for
+ * a folder that is refreshing marks it dirty, so it refreshes once more when
+ * the running refresh ends, since that one may have listed the folder before
+ * the change. A folder with no free slot waits in a bounded queue; past that
+ * bound the root refreshes as a whole, once.
+ */
+function createListingRefreshes(
+  invalidate: WorkspaceNotifyHooks["invalidate"],
+  live: () => boolean,
+) {
+  const running = new Map<string, { dirty: ListingRefresh | null }>();
+  const queued = new Map<string, ListingRefresh>();
+
+  const start = (key: string, refresh: ListingRefresh) => {
+    const entry = { dirty: null as ListingRefresh | null };
+    running.set(key, entry);
+    let pending: Promise<void>;
+    try {
+      pending = Promise.resolve(invalidate(refresh.notice, refresh.listing));
+    } catch {
+      pending = Promise.resolve();
+    }
+    void pending
+      .catch(() => undefined)
+      .finally(() => {
+        running.delete(key);
+        if (!live()) {
+          return;
+        }
+        if (entry.dirty) {
+          start(key, entry.dirty);
+          return;
+        }
+        const next = queued.entries().next();
+        if (!next.done) {
+          const [nextKey, nextRefresh] = next.value;
+          queued.delete(nextKey);
+          start(nextKey, nextRefresh);
+        }
+      });
+  };
+
+  return (refresh: ListingRefresh) => {
+    const { listing, notice } = refresh;
+    const key = `${listing.rootId}\0${listing.relativePath}`;
+    const current = running.get(key);
+    if (current) {
+      current.dirty = refresh;
+      return;
+    }
+    if (running.size < MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS) {
+      start(key, refresh);
+      return;
+    }
+    if (queued.has(key) || queued.size < MAX_QUEUED_NOTIFY_INVALIDATIONS) {
+      queued.set(key, refresh);
+      return;
+    }
+    void Promise.resolve(
+      invalidate(
+        { ...notice, relativePath: LOST_NOTICES_PATH, kind: "resync" },
+        { rootId: listing.rootId, relativePath: "" },
+      ),
+    );
+  };
 }
 
 const searchSubscribers = new Set<(notice: WorkspaceNotifyNotice) => void>();
@@ -127,6 +202,8 @@ export function resetNotifyListingAdmission(): void {
 }
 
 const MAX_NOTICE_PATH_BYTES = 16 * 1024;
+/** The path the native watcher gives a resync notice. */
+const LOST_NOTICES_PATH = "lost-notices";
 const NOTICE_KINDS = new Set(["created", "changed", "deleted", "resync"]);
 
 function boundedNotifyPath(value: unknown): value is string {
@@ -280,7 +357,11 @@ export async function syncLiveProjectWorkspaceNotify(
     session.unlisten();
     session = null;
   }
-  const inflight = new Set<string>();
+  let bound: BoundNotifySession | null = null;
+  const refreshListing = createListingRefreshes(
+    hooks.invalidate,
+    () => bound !== null && session === bound,
+  );
   const unlisten = await hooks.listen((value) => {
     if (!session) {
       return;
@@ -297,19 +378,10 @@ export async function syncLiveProjectWorkspaceNotify(
       void Promise.resolve(hooks.invalidate(accepted, listing));
       return;
     }
-    const key = `${listing.rootId}\0${listing.relativePath}`;
-    if (inflight.has(key)) {
-      return;
-    }
-    if (inflight.size >= MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS) {
-      return;
-    }
-    inflight.add(key);
-    void Promise.resolve(hooks.invalidate(accepted, listing)).finally(() => {
-      inflight.delete(key);
-    });
+    refreshListing({ notice: accepted, listing });
   });
-  session = { live, unlisten, inflight };
+  bound = { live, unlisten };
+  session = bound;
   try {
     await hooks.watch({
       stamp: {

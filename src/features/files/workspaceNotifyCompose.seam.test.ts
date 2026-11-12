@@ -5,6 +5,7 @@ import {
   MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
   MAX_NOTIFY_BATCH_NOTICES,
   MAX_NOTIFY_LISTING_WAITERS,
+  MAX_QUEUED_NOTIFY_INVALIDATIONS,
   MAX_NOTIFY_SEARCH_SUBSCRIBERS,
   acceptWorkspaceNotifyNotice,
   acquireNotifyListingSlot,
@@ -20,6 +21,7 @@ import {
   type WorkspaceNotifyNotice,
   workspaceNotifyBatchNotices,
 } from "./workspaceNotifyCompose";
+import type { ResourceRef } from "../../domain/workbench";
 
 const live: LiveProjectNotifyStamp = {
   projectId: "project-a",
@@ -188,13 +190,13 @@ describe("workspace notify compose", () => {
     expect(invalidate).toHaveBeenCalledTimes(1);
   });
 
-  it("coalesces a second notice for a listing that is already refreshing", async () => {
+  it("refreshes a folder once more when notices arrive during its refresh", async () => {
     let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
-    let finish: () => void = () => undefined;
+    const finishers: Array<() => void> = [];
     const invalidate = vi.fn(
-      () =>
+      (_notice: WorkspaceNotifyNotice) =>
         new Promise<void>((resolve) => {
-          finish = resolve;
+          finishers.push(resolve);
         }),
     );
     await syncLiveProjectWorkspaceNotify(live, {
@@ -207,9 +209,17 @@ describe("workspace notify compose", () => {
       invalidate,
     });
     emit(notice);
-    emit(notice);
+    emit({ ...notice, relativePath: "src/other.ts" });
+    emit({ ...notice, relativePath: "src/third.ts" });
     expect(invalidate).toHaveBeenCalledTimes(1);
-    finish();
+    finishers[0]();
+    await vi.waitFor(() => expect(invalidate).toHaveBeenCalledTimes(2));
+    expect(invalidate.mock.calls[1][0]).toMatchObject({
+      relativePath: "src/third.ts",
+    });
+    finishers[1]();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(invalidate).toHaveBeenCalledTimes(2);
   });
 
   it("never coalesces an ignore-file change into a running folder refresh", async () => {
@@ -243,10 +253,16 @@ describe("workspace notify compose", () => {
     }
   });
 
-  it("drops a ninth distinct in-flight listing refresh", async () => {
+  it("queues a ninth distinct folder refresh until a slot frees", async () => {
     expect(MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS).toBe(8);
     let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
-    const invalidate = vi.fn(() => new Promise<void>(() => undefined));
+    const finishers: Array<() => void> = [];
+    const invalidate = vi.fn(
+      (_notice: WorkspaceNotifyNotice, _listing: ResourceRef) =>
+        new Promise<void>((resolve) => {
+          finishers.push(resolve);
+        }),
+    );
     await syncLiveProjectWorkspaceNotify(live, {
       watch: vi.fn().mockResolvedValue({ generation: 1 }),
       unwatch: vi.fn(),
@@ -262,7 +278,39 @@ describe("workspace notify compose", () => {
     expect(invalidate).toHaveBeenCalledTimes(8);
     emit({ ...notice, relativePath: "lost-notices", kind: "resync" });
     expect(invalidate).toHaveBeenCalledTimes(9);
-    expect(invalidate).toHaveBeenCalledWith(
+    expect(invalidate).toHaveBeenLastCalledWith(
+      { ...notice, relativePath: "lost-notices", kind: "resync" },
+      childResource("root-a"),
+    );
+    finishers[0]();
+    await vi.waitFor(() => expect(invalidate).toHaveBeenCalledTimes(10));
+    expect(invalidate).toHaveBeenLastCalledWith(
+      { ...notice, relativePath: "dir-8/file.ts" },
+      childResource("root-a", "dir-8"),
+    );
+  });
+
+  it("resyncs the root once the folder queue is full", async () => {
+    let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
+    const invalidate = vi.fn(() => new Promise<void>(() => undefined));
+    await syncLiveProjectWorkspaceNotify(live, {
+      watch: vi.fn().mockResolvedValue({ generation: 1 }),
+      unwatch: vi.fn(),
+      async listen(next) {
+        emit = next;
+        return () => undefined;
+      },
+      invalidate,
+    });
+    const folders =
+      MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS + MAX_QUEUED_NOTIFY_INVALIDATIONS;
+    for (let index = 0; index <= folders; index += 1) {
+      emit({ ...notice, relativePath: `dir-${index}/file.ts` });
+    }
+    expect(invalidate).toHaveBeenCalledTimes(
+      MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS + 1,
+    );
+    expect(invalidate).toHaveBeenLastCalledWith(
       { ...notice, relativePath: "lost-notices", kind: "resync" },
       childResource("root-a"),
     );
