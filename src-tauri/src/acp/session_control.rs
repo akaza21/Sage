@@ -34,10 +34,17 @@ pub(crate) enum SessionControl {
 impl SessionControl {
     /// Whether a control missing its deadline leaves Sage's state as it
     /// was: the binding stops waiting and drops the late reply, and the
-    /// harness may still finish the work. Reading the MCP servers changes
-    /// nothing, and reconnecting a server keeps its configuration.
+    /// harness may still finish the work. A rename is cosmetic, reading the
+    /// MCP servers changes nothing, and reconnecting a server keeps its
+    /// configuration.
     pub(crate) fn abandons_at_deadline(&self) -> bool {
-        matches!(self, Self::ReadMcpServers | Self::ReconnectMcpServer { .. })
+        self.answers_at_once() || matches!(self, Self::ReconnectMcpServer { .. })
+    }
+
+    /// Whether the harness answers without waiting on outside work, so a
+    /// short deadline suffices. Connecting a server waits on that server.
+    pub(crate) fn answers_at_once(&self) -> bool {
+        matches!(self, Self::SetTitle { .. } | Self::ReadMcpServers)
     }
 
     pub(crate) fn actual_bytes(&self) -> usize {
