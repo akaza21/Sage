@@ -113,6 +113,24 @@ for (const width of [1888, 560, 480]) {
       "Harnesses",
     );
     await settleTranscriptAtEnd(page);
+    const emphasis = page
+      .getByRole("cell", { name: "bounded", exact: true })
+      .locator("em");
+    await expect(emphasis).toHaveCSS("font-style", "italic");
+    // Computed font-style can say italic while synthesis suppression leaves
+    // the glyphs upright. Compare actual ink with the same text set upright.
+    const italic = await emphasis.screenshot();
+    await emphasis.evaluate((element) => {
+      (element as HTMLElement).style.fontStyle = "normal";
+    });
+    try {
+      const upright = await emphasis.screenshot();
+      expect(italic.equals(upright)).toBe(false);
+    } finally {
+      await emphasis.evaluate((element) => {
+        (element as HTMLElement).style.removeProperty("font-style");
+      });
+    }
     await assertContained(page);
     await expect(page.locator(".agent-chat-pane").first()).toHaveScreenshot(
       `cp22-table-${width}.png`,
