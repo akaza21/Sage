@@ -391,6 +391,39 @@ for (const width of [1888, 720, 480]) {
     test("supported workspace-write escalation requires confirmation, with safe cancel focus", async ({
       page,
     }) => {
+      // A live chat's access is the desktop's to change: stand in for its
+      // chat access commands and record each change the composer asks for.
+      await page.evaluate(() => {
+        const modes = new Map<string, string>();
+        const changes: unknown[] = [];
+        Object.defineProperty(window, "__TAURI_INTERNALS__", {
+          configurable: true,
+          value: {
+            transformCallback: () => 0,
+            invoke: async (
+              command: string,
+              args: { request: { sessionId: string; mode?: string } },
+            ) => {
+              const { sessionId, mode } = args.request;
+              if (command === "get_chat_access")
+                return modes.get(sessionId) ?? null;
+              if (command === "set_chat_access" && mode) {
+                changes.push(args.request);
+                modes.set(sessionId, mode);
+                return null;
+              }
+              throw new Error(`Unexpected command ${command}`);
+            },
+          },
+        });
+        Object.assign(window, { chatAccessChanges: changes });
+      });
+      const changes = () =>
+        page.evaluate(
+          () =>
+            (window as typeof window & { chatAccessChanges: unknown[] })
+              .chatAccessChanges,
+        );
       await render(page, "Codex", "access");
       const access = page.getByRole("button", {
         name: "Access options",
@@ -414,6 +447,7 @@ for (const width of [1888, 720, 480]) {
       await page.keyboard.press("Escape");
       await expect(dialog).toHaveCount(0);
       await expect(access).toBeFocused();
+      expect(await changes()).toEqual([]);
       await access.click();
       await page
         .getByRole("menuitemradio", { name: "Workspace edits", exact: true })
@@ -425,6 +459,9 @@ for (const width of [1888, 720, 480]) {
         "data-selected-id",
         "workspaceWrite",
       );
+      expect(await changes()).toEqual([
+        { sessionId: "session-a", mode: "workspaceWrite" },
+      ]);
       await expect(access).toBeFocused();
     });
     for (const forcedColors of ["none", "active"] as const) {
