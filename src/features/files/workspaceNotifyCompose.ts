@@ -1,13 +1,15 @@
 import { isShortId, safeOrdinal } from "../../domain/guards";
 import { parentResource } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
+import { createNotifyRefreshes } from "./workspaceNotifyRefreshes";
 
 export const WORKSPACE_NOTIFY_EVENT = "workspace-notify-v2";
-/** The native watcher sends at most this many notices in one event. */
+/**
+ * The native watcher sends at most this many notices in one event; equal to
+ * `MAX_BATCH_NOTICES` in `src-tauri/src/workspace/notify/batch.rs`.
+ */
 export const MAX_NOTIFY_BATCH_NOTICES = 256;
 export const MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS = 8;
-/** Folder refreshes waiting for an in-flight slot; past this, the root resyncs. */
-export const MAX_QUEUED_NOTIFY_INVALIDATIONS = 64;
 export const MAX_NOTIFY_LISTING_WAITERS = 64;
 export const MAX_NOTIFY_SEARCH_SUBSCRIBERS = 8;
 
@@ -22,20 +24,12 @@ export function isIgnoreRuleFile(relativePath: string): boolean {
  * not a bounded batch yields nothing.
  */
 export function workspaceNotifyBatchNotices(value: unknown): unknown[] {
-  if (!value || typeof value !== "object") {
-    return [];
-  }
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record);
-  const notices = record.notices;
-  if (
-    keys.length !== 1 ||
-    !Array.isArray(notices) ||
-    notices.length > MAX_NOTIFY_BATCH_NOTICES
-  ) {
-    return [];
-  }
-  return notices;
+  const notices = (value as { notices?: unknown } | null)?.notices;
+  return Array.isArray(notices) &&
+    notices.length <= MAX_NOTIFY_BATCH_NOTICES &&
+    Object.keys(value as object).length === 1
+    ? notices
+    : [];
 }
 
 const NOTICE_KEYS = [
@@ -85,80 +79,6 @@ interface BoundNotifySession {
   unlisten: () => void;
 }
 
-interface ListingRefresh {
-  notice: WorkspaceNotifyNotice;
-  listing: ResourceRef;
-}
-
-/**
- * Runs folder refreshes for one bound session: at most
- * MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS at once and one per folder. A notice for
- * a folder that is refreshing marks it dirty, so it refreshes once more when
- * the running refresh ends, since that one may have listed the folder before
- * the change. A folder with no free slot waits in a bounded queue; past that
- * bound the root refreshes as a whole, once.
- */
-function createListingRefreshes(
-  invalidate: WorkspaceNotifyHooks["invalidate"],
-  live: () => boolean,
-) {
-  const running = new Map<string, { dirty: ListingRefresh | null }>();
-  const queued = new Map<string, ListingRefresh>();
-
-  const start = (key: string, refresh: ListingRefresh) => {
-    const entry = { dirty: null as ListingRefresh | null };
-    running.set(key, entry);
-    let pending: Promise<void>;
-    try {
-      pending = Promise.resolve(invalidate(refresh.notice, refresh.listing));
-    } catch {
-      pending = Promise.resolve();
-    }
-    void pending
-      .catch(() => undefined)
-      .finally(() => {
-        running.delete(key);
-        if (!live()) {
-          return;
-        }
-        if (entry.dirty) {
-          start(key, entry.dirty);
-          return;
-        }
-        const next = queued.entries().next();
-        if (!next.done) {
-          const [nextKey, nextRefresh] = next.value;
-          queued.delete(nextKey);
-          start(nextKey, nextRefresh);
-        }
-      });
-  };
-
-  return (refresh: ListingRefresh) => {
-    const { listing, notice } = refresh;
-    const key = `${listing.rootId}\0${listing.relativePath}`;
-    const current = running.get(key);
-    if (current) {
-      current.dirty = refresh;
-      return;
-    }
-    if (running.size < MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS) {
-      start(key, refresh);
-      return;
-    }
-    if (queued.has(key) || queued.size < MAX_QUEUED_NOTIFY_INVALIDATIONS) {
-      queued.set(key, refresh);
-      return;
-    }
-    void Promise.resolve(
-      invalidate(
-        { ...notice, relativePath: LOST_NOTICES_PATH, kind: "resync" },
-        { rootId: listing.rootId, relativePath: "" },
-      ),
-    );
-  };
-}
-
 const searchSubscribers = new Set<(notice: WorkspaceNotifyNotice) => void>();
 let session: BoundNotifySession | null = null;
 let listingAdmission = 0;
@@ -202,9 +122,17 @@ export function resetNotifyListingAdmission(): void {
 }
 
 const MAX_NOTICE_PATH_BYTES = 16 * 1024;
-/** The path the native watcher gives a resync notice. */
-const LOST_NOTICES_PATH = "lost-notices";
-const NOTICE_KINDS = new Set(["created", "changed", "deleted", "resync"]);
+/**
+ * `ignored`: something changed inside the ignored folder the notice names
+ * (the topmost one; the watcher folds everything below it into this).
+ */
+const NOTICE_KINDS = new Set([
+  "created",
+  "changed",
+  "deleted",
+  "resync",
+  "ignored",
+]);
 
 function boundedNotifyPath(value: unknown): value is string {
   if (typeof value !== "string" || value.length === 0 || value.includes("\0")) {
@@ -275,6 +203,9 @@ export function listingResourceForNotify(
 ): ResourceRef {
   if (notice.kind === "resync") {
     return { rootId: notice.rootId, relativePath: "" };
+  }
+  if (notice.kind === "ignored") {
+    return { rootId: notice.rootId, relativePath: notice.relativePath };
   }
   return parentResource({
     rootId: notice.rootId,
@@ -358,9 +289,10 @@ export async function syncLiveProjectWorkspaceNotify(
     session = null;
   }
   let bound: BoundNotifySession | null = null;
-  const refreshListing = createListingRefreshes(
+  const refreshes = createNotifyRefreshes(
     hooks.invalidate,
     () => bound !== null && session === bound,
+    MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
   );
   const unlisten = await hooks.listen((value) => {
     if (!session) {
@@ -368,6 +300,14 @@ export async function syncLiveProjectWorkspaceNotify(
     }
     const accepted = acceptWorkspaceNotifyNotice(value, session.live);
     if (!accepted) {
+      return;
+    }
+    // Changes inside an ignored folder only refresh its expanded listings.
+    // Search and Git skip them: Git ignores those files, except a tracked
+    // one (`git add -f`, or ignored after commit), which the Git refresh on
+    // focus, on a changed Git stamp, or from the poll picks up instead.
+    if (accepted.kind === "ignored") {
+      refreshes.ignoredFolder(accepted);
       return;
     }
     publishWorkspaceNotifySearch(accepted);
@@ -378,7 +318,7 @@ export async function syncLiveProjectWorkspaceNotify(
       void Promise.resolve(hooks.invalidate(accepted, listing));
       return;
     }
-    refreshListing({ notice: accepted, listing });
+    refreshes.folder({ notice: accepted, listing });
   });
   bound = { live, unlisten };
   session = bound;

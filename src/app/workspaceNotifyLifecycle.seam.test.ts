@@ -132,6 +132,44 @@ describe("live Project workspace notify bind", () => {
     expect(refreshed).toHaveLength(2);
   });
 
+  it("refreshes only the listings inside an ignored folder that changed", async () => {
+    await useWorkbenchStore.getState().initialize();
+    const root = childResource("root-a");
+    const target = { rootId: "root-a", relativePath: "target" };
+    const debug = { rootId: "root-a", relativePath: "target/debug" };
+    const sibling = { rootId: "root-a", relativePath: "target-notes" };
+    useWorkbenchStore.setState({
+      directoryListings: Object.fromEntries(
+        [root, target, sibling].map((resource) => [
+          resourceKey(resource),
+          {
+            phase: "ready" as const,
+            value: { resource, entries: [], truncated: false },
+          },
+        ]),
+      ),
+      expandedDirectories: { [resourceKey(debug)]: true },
+    });
+    const listDirectory = vi.mocked(projectPort.listDirectory);
+    listDirectory.mockClear();
+    await createWorkspaceNotifyHooks(() =>
+      useWorkbenchStore.getState(),
+    ).invalidate(
+      {
+        projectId: "project-a",
+        projectGeneration: 1,
+        transitionEpoch: 7,
+        rootId: "root-a",
+        relativePath: "target",
+        kind: "ignored",
+      },
+      target,
+    );
+    const refreshed = listDirectory.mock.calls.map(([resource]) => resource);
+    expect(refreshed).toEqual(expect.arrayContaining([target, debug]));
+    expect(refreshed).toHaveLength(2);
+  });
+
   it("refreshes the root's cached listings when an ignore file changes", async () => {
     await useWorkbenchStore.getState().initialize();
     const root = childResource("root-a");

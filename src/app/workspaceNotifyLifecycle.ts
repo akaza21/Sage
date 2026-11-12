@@ -109,6 +109,42 @@ async function admittedLoadDirectory(
   }
 }
 
+/** Reloads the root's ready or expanded listings that `within` admits. */
+async function reloadRootListings(
+  get: () => WorkbenchState,
+  rootId: string,
+  within: (relativePath: string) => boolean,
+): Promise<void> {
+  const seen = new Set<string>();
+  const resources: ResourceRef[] = [];
+  const add = (resource: ResourceRef) => {
+    const key = resourceKey(resource);
+    if (
+      resource.rootId !== rootId ||
+      !within(resource.relativePath) ||
+      seen.has(key)
+    ) {
+      return;
+    }
+    seen.add(key);
+    resources.push(resource);
+  };
+  for (const entry of Object.values(get().directoryListings)) {
+    if (entry.phase === "ready") {
+      add(entry.value.resource);
+    }
+  }
+  for (const key of Object.keys(get().expandedDirectories)) {
+    const resource = resourceFromKey(key);
+    if (resource) {
+      add(resource);
+    }
+  }
+  await Promise.all(
+    resources.map((resource) => admittedLoadDirectory(get, resource)),
+  );
+}
+
 async function refreshListingsForResync(
   get: () => WorkbenchState,
   notice: WorkspaceNotifyNotice,
@@ -121,30 +157,7 @@ async function refreshListingsForResync(
   try {
     do {
       resyncRootsQueued.delete(notice.rootId);
-      const seen = new Set<string>();
-      const resources: ResourceRef[] = [];
-      const add = (resource: ResourceRef) => {
-        const key = resourceKey(resource);
-        if (resource.rootId !== notice.rootId || seen.has(key)) {
-          return;
-        }
-        seen.add(key);
-        resources.push(resource);
-      };
-      for (const entry of Object.values(get().directoryListings)) {
-        if (entry.phase === "ready") {
-          add(entry.value.resource);
-        }
-      }
-      for (const key of Object.keys(get().expandedDirectories)) {
-        const resource = resourceFromKey(key);
-        if (resource) {
-          add(resource);
-        }
-      }
-      await Promise.all(
-        resources.map((resource) => admittedLoadDirectory(get, resource)),
-      );
+      await reloadRootListings(get, notice.rootId, () => true);
     } while (resyncRootsQueued.has(notice.rootId));
   } finally {
     resyncRootsInFlight.delete(notice.rootId);
@@ -177,6 +190,15 @@ export function createWorkspaceNotifyHooks(
       // below it, so it refreshes the root's listings as a resync does.
       if (notice.kind === "resync" || isIgnoreRuleFile(notice.relativePath)) {
         return refreshListingsForResync(get, notice);
+      }
+      // Changes inside an ignored folder: its listings and those below.
+      if (notice.kind === "ignored") {
+        const folder = notice.relativePath;
+        return reloadRootListings(
+          get,
+          notice.rootId,
+          (path) => path === folder || path.startsWith(`${folder}/`),
+        );
       }
       const key = resourceKey(listing);
       if (get().directoryListings[key] || get().expandedDirectories[key]) {

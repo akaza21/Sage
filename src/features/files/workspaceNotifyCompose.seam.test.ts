@@ -5,7 +5,6 @@ import {
   MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
   MAX_NOTIFY_BATCH_NOTICES,
   MAX_NOTIFY_LISTING_WAITERS,
-  MAX_QUEUED_NOTIFY_INVALIDATIONS,
   MAX_NOTIFY_SEARCH_SUBSCRIBERS,
   acceptWorkspaceNotifyNotice,
   acquireNotifyListingSlot,
@@ -290,9 +289,11 @@ describe("workspace notify compose", () => {
     );
   });
 
-  it("resyncs the root once the folder queue is full", async () => {
+  it("sends changes inside an ignored folder to its listings only", async () => {
     let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
-    const invalidate = vi.fn(() => new Promise<void>(() => undefined));
+    const invalidate = vi.fn();
+    const search = vi.fn();
+    subscribeWorkspaceNotifySearch(search);
     await syncLiveProjectWorkspaceNotify(live, {
       watch: vi.fn().mockResolvedValue({ generation: 1 }),
       unwatch: vi.fn(),
@@ -302,18 +303,13 @@ describe("workspace notify compose", () => {
       },
       invalidate,
     });
-    const folders =
-      MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS + MAX_QUEUED_NOTIFY_INVALIDATIONS;
-    for (let index = 0; index <= folders; index += 1) {
-      emit({ ...notice, relativePath: `dir-${index}/file.ts` });
-    }
-    expect(invalidate).toHaveBeenCalledTimes(
-      MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS + 1,
+    const ignored = { ...notice, relativePath: "target", kind: "ignored" };
+    emit(ignored);
+    expect(invalidate).toHaveBeenCalledWith(
+      ignored,
+      childResource("root-a", "target"),
     );
-    expect(invalidate).toHaveBeenLastCalledWith(
-      { ...notice, relativePath: "lost-notices", kind: "resync" },
-      childResource("root-a"),
-    );
+    expect(search).not.toHaveBeenCalled();
   });
 
   it("reads the notices of a bounded native batch only", () => {
