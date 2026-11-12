@@ -459,3 +459,12 @@ describe("ChatMarkdown line breaks", () => {
     expect(paragraphs[0].querySelector("strong")).toHaveTextContent("sugar");
   });
 });
+
+it("reads a line ending inside a code span as a space", () => {
+  const { container } = render(
+    <ChatMarkdown text={"Run `npm\nrun check` now"} />,
+  );
+  expect(container.querySelector(".acp-markdown p code")?.textContent).toBe(
+    "npm run check",
+  );
+});
