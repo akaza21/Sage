@@ -140,7 +140,12 @@ for (const width of [1888, 720, 480]) {
         }
         if (name === "Access options") {
           await expect(
-            menu.getByText("How should agent actions be approved?"),
+            menu.getByText(
+              "How should agent actions be approved in this chat?",
+              {
+                exact: true,
+              },
+            ),
           ).toBeVisible();
           await expect(menu.getByRole("menuitemradio")).toHaveCount(
             profile.access.length,
