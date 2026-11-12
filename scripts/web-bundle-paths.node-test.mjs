@@ -323,15 +323,9 @@ test("manifest traversal accepts bounded deep graphs and rejects the next record
   }
 });
 
-test("committed path caps tighten startup and Agent within the original 0.5 percent ceilings", async () => {
-  const baseline = {
-    initial: 103957,
-    agentOneChat: 210654,
-    editorShell: 187184,
-    editorDiff: 190343,
-    editorSearch: 192978,
-    editorFile: 289551,
-  };
+test("committed path caps keep their headroom over hash-masked measurements", async () => {
+  // Caps were rebased from emitted to hash-masked bytes by subtracting each
+  // path's masking difference on main, so headroom is unchanged.
   const budgets = JSON.parse(
     await readFile(
       new URL("../docs/performance/budgets.json", import.meta.url),
@@ -339,14 +333,12 @@ test("committed path caps tighten startup and Agent within the original 0.5 perc
     ),
   );
   assert.deepEqual(budgets.bundle.webPathJsGzipBytes, {
-    ...Object.fromEntries(
-      Object.entries(baseline).map(([name, bytes]) => [
-        name,
-        Math.floor(bytes * 1.005),
-      ]),
-    ),
-    initial: 97598,
-    agentOneChat: 208434,
+    initial: 97452,
+    agentOneChat: 207088,
+    editorShell: 187377,
+    editorDiff: 190521,
+    editorSearch: 193112,
+    editorFile: 289989,
   });
   assert.equal(
     budgets.measurement.webBundlePaths.integrationAdjustment,

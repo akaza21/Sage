@@ -163,6 +163,11 @@ export function normalizeHashedImports(source) {
   return parts.join("");
 }
 
+/** Gzip of a chunk with hashed sibling chunk names masked. */
+function maskedGzipBytes(contents) {
+  return gzipSync(normalizeHashedImports(contents.toString("utf8"))).byteLength;
+}
+
 function lazyChunkGzipBytes(file) {
   if (!file.endsWith(".js")) return gzipBytes(file);
   const contents = readFileSync(file, "utf8");
@@ -250,8 +255,10 @@ export function verifyWebBundle(root) {
   };
   visit(entry);
   const entryGzipBytes = gzipBytes(assetPath(root, entry.file));
+  // Startup closures mask hashed chunk names too: a lazy chunk's new name
+  // changes the startup chunk that imports it without changing its code.
   const initialStaticClosureGzipBytes = [...initial].reduce(
-    (sum, file) => sum + gzipBytes(assetPath(root, file)),
+    (sum, file) => sum + lazyChunkGzipBytes(assetPath(root, file)),
     0,
   );
   const assets = path.join(root, "dist/assets");
@@ -288,7 +295,7 @@ export function verifyWebBundle(root) {
     if (markdown.length !== 1)
       fail("markdown must own one reachable rendering chunk");
     const file = markdown[0][1].file;
-    const paths = measureWebBundlePaths(root, manifest);
+    const paths = measureWebBundlePaths(root, manifest, maskedGzipBytes);
     if (initial.has(file) || paths.agentOneChat.files.includes(file))
       fail("markdown entered a startup static closure");
     markdownLazyGzipBytes = gzipBytes(assetPath(root, file));
@@ -501,7 +508,7 @@ export function verifyWebBundle(root) {
       `subagent lazy gzip ${subagentLazyGzipBytes} exceeds ${subagentLimit}`,
     );
   if (exceeded.length) fail(exceeded.join("; "));
-  const paths = measureWebBundlePaths(root, manifest);
+  const paths = measureWebBundlePaths(root, manifest, maskedGzipBytes);
   verifyWebBundlePathBudgets(paths, budgets.bundle?.webPathJsGzipBytes);
   return {
     paths,
