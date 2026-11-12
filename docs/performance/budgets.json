@@ -545,7 +545,7 @@
     "webBundlePaths": {
       "baselineDate": "2026-10-12",
       "baselineCommit": "15cf4bf677ca16953063a5f0a9ced385da859bf3",
-      "margin": "floor(measured lane-base gzip bytes * 1.005), a 0.5% allowance per path; the baseline is pinned, not a moving main reference",
+      "margin": "floor(measured lane-base gzip bytes * 1.005), a 0.5% allowance per path; the baseline is pinned, not a moving main reference. Caps were later rebased to hash-masked bytes with the same headroom (see hashMaskedRebase).",
       "metric": "Sum node:zlib.gzipSync defaults per unique JavaScript asset, with hashed sibling chunk names masked, in the union of the named Vite manifest roots' static-import closures. CSS and optional dynamic children are excluded.",
       "roots": "initial: index.html; Editor shell: initial + Workbench; Agent + one chat: Editor shell + AgentWorkbenchBody + ChatSurface + AcpChatPresentation; Editor Diff/Search: Editor shell + the respective Surface; Editor File: Editor shell + FileSurface + CodeMirrorEditorRuntime (language parsers remain optional). Folded roots use named chunk ownership pinned by vite.config.test.ts.",
       "initialHeadroom": {

@@ -71,11 +71,11 @@ function gzipBytes(file) {
 // import siblings by `./<name>.js`, so a change to any shared chunk rewrites
 // these names without touching the importing chunk's code. The specifier of
 // each static import, `export … from` and dynamic `import()` that names such a
-// chunk becomes a fixed token before a per-chunk lazy
-// budget gzips it. The chunk is parsed, so the same text inside a string,
-// template or comment is measured as written.
+// chunk becomes a fixed token before a lazy budget, the initial closure or a
+// startup path gzips it. The chunk is parsed, so the same text inside a
+// string, template or comment is measured as written.
 // The core total still subtracts the chunks' emitted sizes.
-// Entry, initial-closure and core-total measurements stay as emitted.
+// Entry and core-total measurements stay as emitted.
 const HASHED_CHUNK_SPECIFIER = /^\.\/([A-Za-z0-9_-]{8}\d*)\.js$/u;
 // The bundler's deduplication suffix comes and goes with the sibling's name
 // ("DVYjmKP2" in one build, "C8dRJxrK2" in the next, for the same importing
