@@ -117,14 +117,15 @@ fn older_and_newer_pi_releases_are_admitted_and_an_unreadable_or_too_old_one_is_
         assert_eq!(registration.unavailable(), None, "{version}");
         std::fs::remove_dir_all(root).unwrap();
     }
-    for version in ["1.6", "0.73.0"] {
+    for (version, reason) in [
+        ("1.6", PiAdmissionUnavailable::VersionUnreadable),
+        ("1.6.0-01", PiAdmissionUnavailable::VersionUnreadable),
+        ("0.73.0", PiAdmissionUnavailable::VersionUnsupported),
+        ("0.74.0-rc.1", PiAdmissionUnavailable::VersionUnsupported),
+    ] {
         let (discovery, root) = discovered(version);
         let registration = PiBindingRegistration::from_discovery_for_test(discovery);
-        assert_eq!(
-            registration.unavailable(),
-            Some(PiAdmissionUnavailable::VersionUnsupported),
-            "{version}"
-        );
+        assert_eq!(registration.unavailable(), Some(reason), "{version}");
         std::fs::remove_dir_all(root).unwrap();
     }
 }

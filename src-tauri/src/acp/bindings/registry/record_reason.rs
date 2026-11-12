@@ -49,7 +49,7 @@ impl BindingRecord {
                 use crate::acp::bindings::pi::native_admission::PiAdmissionUnavailable as Pi;
                 match reason {
                     Pi::DiscoveryPending => HarnessUnavailableReason::AdmissionIncomplete,
-                    Pi::Absent | Pi::PackageUnreadable => {
+                    Pi::Absent | Pi::PackageUnreadable | Pi::VersionUnreadable => {
                         HarnessUnavailableReason::CandidateInvalid
                     }
                     Pi::VersionUnsupported => HarnessUnavailableReason::VersionTooOld,

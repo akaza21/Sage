@@ -40,11 +40,8 @@ impl ReleaseVersion {
         let prerelease = match prerelease {
             None => None,
             Some(tag)
-                if !tag.is_empty()
-                    && tag.len() <= PRERELEASE_BYTES_MAX
-                    && tag.bytes().all(|byte| {
-                        byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-')
-                    }) =>
+                if tag.len() <= PRERELEASE_BYTES_MAX
+                    && tag.split('.').all(prerelease_identifier) =>
             {
                 Some(tag.to_owned())
             }
@@ -75,6 +72,18 @@ fn component(value: &str) -> Option<u64> {
         && (value == "0" || !value.starts_with('0')))
     .then(|| value.parse().ok())
     .flatten()
+}
+
+/// A non-empty prerelease identifier of ASCII alphanumerics and hyphens; a
+/// numeric one has no leading zeros, as semantic versioning requires.
+fn prerelease_identifier(identifier: &str) -> bool {
+    !identifier.is_empty()
+        && identifier
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        && (!identifier.bytes().all(|byte| byte.is_ascii_digit())
+            || identifier == "0"
+            || !identifier.starts_with('0'))
 }
 
 /// Semantic-versioning precedence of two prerelease tags: identifiers
@@ -170,6 +179,10 @@ mod tests {
             "00000000001.0.0",
             "01.2.3",
             "1.02.3",
+            "1.0.0-01",
+            "1.0.0-a..b",
+            "1.0.0-.a",
+            "1.0.0-a.",
         ] {
             assert_eq!(ReleaseVersion::parse(reported), None, "{reported:?}");
         }

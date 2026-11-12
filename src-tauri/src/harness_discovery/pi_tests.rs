@@ -151,3 +151,33 @@ fn a_declared_bin_that_is_a_symlink_is_never_admitted() {
     );
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn a_bin_target_is_a_portable_relative_module_path_on_every_host() {
+    for accepted in [
+        "dist/cli.js",
+        "./dist/bundle/cli.js",
+        "bin/pi-cli_1.mjs",
+        "cli.cjs",
+    ] {
+        assert!(package_entry(accepted).is_some(), "{accepted}");
+    }
+    for refused in [
+        "",
+        "./",
+        "/dist/cli.js",
+        "C:/dist/cli.js",
+        "dist\\cli.js",
+        "../cli.js",
+        "dist/../cli.js",
+        "dist/./cli.js",
+        "dist//cli.js",
+        "dist/cli.js:x.js",
+        "dist/cli .js",
+        "dist/cli.ts",
+        "dist/cli",
+    ] {
+        assert!(package_entry(refused).is_none(), "{refused:?}");
+    }
+    assert!(package_entry(&format!("{}.js", "a".repeat(PI_ENTRY_BYTES_MAX))).is_none());
+}

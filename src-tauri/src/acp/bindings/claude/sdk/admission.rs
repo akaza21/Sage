@@ -59,7 +59,9 @@ pub(crate) enum ClaudeSdkAdmissionUnavailable {
     DiscoveryPending,
     #[error("Claude Code is not installed")]
     Absent,
-    #[error("the installed Claude Code version could not be read or is not supported")]
+    #[error("the installed Claude Code version could not be read")]
+    VersionUnreadable,
+    #[error("the installed Claude Code version is older than Sage supports")]
     VersionUnsupported,
     #[error("the Claude Code executable could not be read")]
     Unreadable,
@@ -72,7 +74,7 @@ impl From<ClaudeSdkAdmissionUnavailable> for HarnessUnavailableReason {
         use ClaudeSdkAdmissionUnavailable as Sdk;
         match reason {
             Sdk::DiscoveryPending => Self::AdmissionIncomplete,
-            Sdk::Absent | Sdk::Unreadable => Self::CandidateInvalid,
+            Sdk::Absent | Sdk::Unreadable | Sdk::VersionUnreadable => Self::CandidateInvalid,
             Sdk::VersionUnsupported => Self::VersionTooOld,
             Sdk::Drift => Self::DriftDetected,
         }
@@ -184,8 +186,11 @@ impl AdmittedClaudeSdkBinding {
         let version = installed
             .version
             .clone()
-            .filter(|version| version_admitted(version))
-            .ok_or(ClaudeSdkAdmissionUnavailable::VersionUnsupported)?;
+            .filter(|version| ReleaseVersion::parse(version).is_some())
+            .ok_or(ClaudeSdkAdmissionUnavailable::VersionUnreadable)?;
+        if !version_admitted(&version) {
+            return Err(ClaudeSdkAdmissionUnavailable::VersionUnsupported);
+        }
         let executable = crate::harness_discovery::claude_sdk_executable(&installed.executable)
             .ok_or(ClaudeSdkAdmissionUnavailable::Unreadable)?;
         // A native launcher can be repointed after the version probe.
@@ -580,6 +585,23 @@ mod tests {
         assert_eq!(
             registration.unavailable(),
             Some(ClaudeSdkAdmissionUnavailable::VersionUnsupported)
+        );
+        assert_eq!(
+            HarnessUnavailableReason::from(ClaudeSdkAdmissionUnavailable::VersionUnsupported),
+            HarnessUnavailableReason::VersionTooOld
+        );
+        registration.apply_discovery(Some(&InstalledHarness {
+            id: "claude-code",
+            executable: PathBuf::from("/nonexistent/claude"),
+            version: Some("2.1".into()),
+        }));
+        assert_eq!(
+            registration.unavailable(),
+            Some(ClaudeSdkAdmissionUnavailable::VersionUnreadable)
+        );
+        assert_eq!(
+            HarnessUnavailableReason::from(ClaudeSdkAdmissionUnavailable::VersionUnreadable),
+            HarnessUnavailableReason::CandidateInvalid
         );
     }
 }

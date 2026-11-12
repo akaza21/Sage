@@ -18,7 +18,10 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     acp::{
-        bindings::{adapter::AdapterRuntimeError, release_version::characterise_against},
+        bindings::{
+            adapter::AdapterRuntimeError,
+            release_version::{ReleaseVersion, characterise_against},
+        },
         process::{
             ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
             RequiredContainment, TreeLimits,
@@ -79,7 +82,9 @@ pub(crate) enum PiAdmissionUnavailable {
     NodeVersionUnreadable,
     #[error("the discovered Node.js does not satisfy Pi's engine")]
     NodeEngineMismatch,
-    #[error("the installed Pi version is unreadable or older than Sage supports")]
+    #[error("the installed Pi version could not be read")]
+    VersionUnreadable,
+    #[error("the installed Pi version is older than Sage supports")]
     VersionUnsupported,
     #[error("the discovered Pi package or Node runtime changed after admission")]
     Drift,
@@ -117,6 +122,9 @@ pub(crate) fn version_admitted(version: &str) -> bool {
 
 impl AdmittedPiBinding {
     fn admit(launch: DiscoveredPiLaunch) -> Result<Self, PiAdmissionUnavailable> {
+        if ReleaseVersion::parse(&launch.package_version).is_none() {
+            return Err(PiAdmissionUnavailable::VersionUnreadable);
+        }
         if !version_admitted(&launch.package_version) {
             return Err(PiAdmissionUnavailable::VersionUnsupported);
         }
