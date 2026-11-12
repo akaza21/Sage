@@ -74,6 +74,8 @@ pub(crate) fn option_target_mode(option_id: &str) -> Option<&'static str> {
     match option_id {
         "exit-plan-default" => Some("default"),
         "exit-plan-accept-edits" | "exit-plan-clear-accept-edits" => Some("acceptEdits"),
+        // The SDK bridge's allow-always on a file edit.
+        "allow-always-accept-edits" => Some("acceptEdits"),
         "exit-plan-auto" | "exit-plan-clear-auto" => Some("auto"),
         "exit-plan-bypass" | "exit-plan-clear-bypass" => Some("bypassPermissions"),
         _ => None,
@@ -83,9 +85,10 @@ pub(crate) fn option_target_mode(option_id: &str) -> Option<&'static str> {
 /// The plan-exit options Sage may answer with: each one's kind, and the
 /// permission mode it leaves the session in, no more permissive than
 /// accepting edits and without clearing the conversation.
-const PLAN_EXIT_OPTIONS: [(&str, &str, &str); 2] = [
+const PLAN_EXIT_OPTIONS: [(&str, &str, &str); 3] = [
     ("exit-plan-default", "allow_once", "default"),
     ("exit-plan-accept-edits", "allow_always", "acceptEdits"),
+    ("allow-always-accept-edits", "allow_always", "acceptEdits"),
 ];
 
 /// Whether Sage may answer with this option. A request that switches the

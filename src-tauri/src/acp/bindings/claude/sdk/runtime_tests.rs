@@ -227,6 +227,64 @@ fn a_tool_approval_round_trips_to_claude_code() {
 }
 
 #[test]
+fn always_allowing_an_edit_keeps_the_turn_running_in_accept_edits() {
+    let mut runtime = ready();
+    send(
+        &mut runtime,
+        AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Write notes").unwrap(),
+            client_message_id: RequiredText::new("client", "client-1").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::Ask,
+        },
+    );
+    let input = json!({"file_path":"/w/notes.txt","content":"x\n"});
+    feed(
+        &mut runtime,
+        json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[
+        {"type":"tool_use","id":"w1","name":"Write","input":input}]}}),
+    );
+    let events = feed(
+        &mut runtime,
+        json!({"type":"control_request","request_id":"cli-w","request":{
+        "subtype":"can_use_tool","tool_name":"Write","tool_use_id":"w1","input":input,
+        "permission_suggestions":[
+            {"type":"setMode","mode":"acceptEdits","destination":"session"},
+            {"type":"setMode","mode":"bypassPermissions","destination":"session"}]}}),
+    );
+    let request_id = events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::PermissionRequest {
+                external_request_id,
+                ..
+            } => Some(external_request_id.clone()),
+            _ => None,
+        })
+        .expect("edit card");
+    let egress = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse(request_id.as_str()).unwrap(),
+            decision: crate::acp::runtime::permissions::PermissionDecision::AllowAlways,
+        })
+        .unwrap();
+    let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    // Only the switch into accepting edits is passed on.
+    assert_eq!(
+        sdk["response"]["response"]["updatedPermissions"],
+        json!([{"type":"setMode","mode":"acceptEdits","destination":"session"}])
+    );
+    let status =
+        json!({"type":"system","subtype":"status","status":null,"permissionMode":"acceptEdits"});
+    let (events, egress) = runtime
+        .ingest(&frame(status), &Mapper)
+        .unwrap()
+        .into_parts();
+    // The user's own answer must not cancel the turn with a notice.
+    assert!(egress.is_empty(), "the turn was cancelled");
+    assert!(!format!("{events:?}").contains("Notice"), "{events:?}");
+}
+
+#[test]
 fn approving_a_plan_leaves_plan_mode_for_the_mode_the_user_picked() {
     use crate::acp::runtime::permissions::PermissionDecision;
     for (decision, mode) in [
