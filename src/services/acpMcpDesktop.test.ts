@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { decodeMcpInventory } from "./acpMcpDesktop";
 
+const codex = { reload: true, signIn: true, reconnect: false };
+const claude = { reload: false, signIn: false, reconnect: true };
+
 const server = {
   name: "notion",
   title: "Notion",
@@ -18,19 +21,19 @@ describe("native MCP server list contract", () => {
     const value = {
       servers: [server],
       truncated: false,
-      signInAvailable: true,
+      actions: codex,
     };
     expect(decodeMcpInventory(value)).toEqual(value);
     expect(
       decodeMcpInventory({
         servers: [],
         truncated: true,
-        signInAvailable: false,
+        actions: claude,
       }),
     ).toEqual({
       servers: [],
       truncated: true,
-      signInAvailable: false,
+      actions: claude,
     });
   });
 
@@ -52,19 +55,26 @@ describe("native MCP server list contract", () => {
         decodeMcpInventory({
           servers: [{ ...server, ...changed }],
           truncated: false,
-          signInAvailable: true,
+          actions: codex,
         }),
       ).toBeNull();
     expect(
       decodeMcpInventory({
         servers: Array(65).fill(server),
         truncated: true,
-        signInAvailable: false,
+        actions: claude,
       }),
     ).toBeNull();
     expect(decodeMcpInventory({ servers: [server] })).toBeNull();
     expect(
       decodeMcpInventory({ servers: [server], truncated: false }),
+    ).toBeNull();
+    expect(
+      decodeMcpInventory({
+        servers: [server],
+        truncated: false,
+        actions: { reload: true, signIn: "yes", reconnect: false },
+      }),
     ).toBeNull();
   });
 });

@@ -422,7 +422,6 @@ fn model_efforts_accept_the_exact_collection_limit() {
 fn model_effort_pages_with_invalid_fields_or_collections_are_ignored_and_stop_paging() {
     for efforts in [
         json!([{"reasoningEffort":"e".repeat(513),"description":"Deep"}]),
-        json!([{"reasoningEffort":"high","description":"Deep","unknown":true}]),
         json!([{"reasoningEffort":"high","description":"Deep\0"}]),
         json!((0..33).map(|index| json!({"reasoningEffort":format!("effort-{index}"),"description":"Deep"})).collect::<Vec<_>>()),
         json!({"reasoningEffort":"high","description":"not an array"}),

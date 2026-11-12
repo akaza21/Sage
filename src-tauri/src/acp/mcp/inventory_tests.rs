@@ -34,7 +34,14 @@ fn a_codex_list_becomes_named_servers_with_states_counts_and_origins() {
     .unwrap();
     assert!(!listed.truncated);
     // Sign-in is offered only where Sage can open the browser.
-    assert_eq!(listed.sign_in_available, cfg!(windows));
+    assert_eq!(
+        listed.actions,
+        McpActions {
+            reload: true,
+            sign_in: cfg!(windows),
+            reconnect: false,
+        }
+    );
     assert_eq!(
         listed.servers,
         vec![
@@ -120,6 +127,77 @@ fn a_long_or_paged_list_is_marked_truncated() {
     assert_eq!(listed.servers.len(), MAX_LISTED_SERVERS);
     let paged = inventory(json!({"data": [server(1)], "nextCursor": "page-2"})).unwrap();
     assert!(paged.truncated);
+}
+
+#[test]
+fn a_claude_status_reply_lists_servers_without_their_configuration() {
+    let listed = McpInventory::from_claude(&json!({"mcpServers": [
+        {
+            "name": "linear",
+            "status": "needs-auth",
+            "scope": "user",
+            "config": {
+                "type": "http",
+                "url": "https://mcp.linear.app/mcp/secret-path?token=abc",
+                "headers": {"Authorization": "Bearer hidden"}
+            }
+        },
+        {
+            "name": "files",
+            "status": "connected",
+            "serverInfo": {"name": "File Server", "version": "0.4.1"},
+            "config": {"type": "stdio", "command": "/opt/files", "args": ["--key", "hidden"]},
+            "tools": [{"name": "read"}, {"name": "write"}, {"name": "list"}]
+        },
+        {"name": "flaky", "status": "failed", "error": "spawn ENOENT\n  at x"},
+        {"name": "warming", "status": "pending"},
+        {"name": "off", "status": "disabled"},
+        {"name": "next", "status": "somethingNew"},
+        {"name": " padded", "status": "connected"},
+        {"status": "connected"}
+    ]}))
+    .unwrap();
+    assert_eq!(
+        listed.actions,
+        McpActions {
+            reload: false,
+            sign_in: false,
+            reconnect: true,
+        }
+    );
+    assert!(!listed.truncated);
+    let states: Vec<_> = listed
+        .servers
+        .iter()
+        .map(|server| (server.name.as_str(), server.connection))
+        .collect();
+    assert_eq!(
+        states,
+        vec![
+            ("files", McpConnection::Connected),
+            ("flaky", McpConnection::Failed),
+            ("linear", McpConnection::SignInRequired),
+            ("next", McpConnection::Unknown),
+            ("off", McpConnection::Disabled),
+            ("warming", McpConnection::Starting),
+        ]
+    );
+    let files = &listed.servers[0];
+    assert_eq!(files.title.as_deref(), Some("File Server"));
+    assert_eq!(files.version.as_deref(), Some("0.4.1"));
+    assert_eq!((files.tools, files.origin.as_deref()), (3, None));
+    assert_eq!(
+        listed.servers[1].error.as_deref(),
+        Some("spawn ENOENT at x")
+    );
+    let linear = &listed.servers[2];
+    assert_eq!(linear.auth, McpAuth::SignedOut);
+    assert_eq!(linear.origin.as_deref(), Some("https://mcp.linear.app"));
+    let shown = serde_json::to_string(&listed).unwrap();
+    for secret in ["hidden", "secret-path", "token=abc", "/opt/files", "user"] {
+        assert!(!shown.contains(secret), "{secret} reached the WebView");
+    }
+    assert_eq!(McpInventory::from_claude(&json!({})), None);
 }
 
 #[test]

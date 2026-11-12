@@ -3,7 +3,7 @@ import { ShieldCheck } from "../../../ui/leanIcons";
 
 import type { AcpItem } from "../../../domain/acp";
 import { awaitingPermission, getPermissionStatus } from "./statusSemantics";
-import { WorkedTurnTerminal } from "./WorkedActivityVisibility";
+import { WorkedTurnTerminal } from "./WorkedTurnTerminal";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 

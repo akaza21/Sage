@@ -1,9 +1,10 @@
 import {
+  type McpActions,
   mcpAuths,
   mcpConnections,
   type McpInventory,
   type McpServer,
-  type McpSignInRequest,
+  type McpServerRequest,
 } from "../domain/acpMcp";
 import type { AcpUsageRequest } from "../domain/acpUsage";
 import { AcpDesktopError, invokeAcp } from "./acpDesktopCommand";
@@ -57,11 +58,27 @@ function decodeServer(value: unknown): McpServer | null {
   };
 }
 
-export function decodeMcpInventory(value: unknown): McpInventory | null {
+function decodeActions(value: unknown): McpActions | null {
   if (
     !isRecord(value) ||
+    typeof value.reload !== "boolean" ||
+    typeof value.signIn !== "boolean" ||
+    typeof value.reconnect !== "boolean"
+  )
+    return null;
+  return {
+    reload: value.reload,
+    signIn: value.signIn,
+    reconnect: value.reconnect,
+  };
+}
+
+export function decodeMcpInventory(value: unknown): McpInventory | null {
+  const actions = isRecord(value) ? decodeActions(value.actions) : null;
+  if (
+    !isRecord(value) ||
+    !actions ||
     typeof value.truncated !== "boolean" ||
-    typeof value.signInAvailable !== "boolean" ||
     !Array.isArray(value.servers) ||
     value.servers.length > MAX_SERVERS
   )
@@ -75,7 +92,7 @@ export function decodeMcpInventory(value: unknown): McpInventory | null {
   return {
     servers,
     truncated: value.truncated,
-    signInAvailable: value.signInAvailable,
+    actions,
   };
 }
 
@@ -97,8 +114,12 @@ export const acpMcpDesktop = {
   async reload(request: AcpUsageRequest): Promise<McpInventory> {
     return inventory(await invokeAcp("reload_acp_mcp_servers", request));
   },
+  /** Connects one server again; answers with the list after it. */
+  async reconnect(request: McpServerRequest): Promise<McpInventory> {
+    return inventory(await invokeAcp("reconnect_acp_mcp_server", request));
+  },
   /** Opens the server's sign-in page in the user's browser. */
-  async signIn(request: McpSignInRequest): Promise<void> {
+  async signIn(request: McpServerRequest): Promise<void> {
     await invokeAcp("sign_in_acp_mcp_server", request);
   },
 };

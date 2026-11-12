@@ -17,9 +17,9 @@
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
-        "maxGzipBytes": 1185,
+        "maxGzipBytes": 1300,
         "maxCssGzipBytes": 490,
-        "reason": "Build and account notice, incl. newer-than-tested and too-old builds; memoized while typing, off the ready first-Chat path. Measured 1175 B JS, 467 B CSS."
+        "reason": "Build, update and account notice (newer, too-old, update command); memoized while typing, off the ready first-Chat path. Measured 1284 B JS, 467 B CSS."
       },
       {
         "entry": "src/ui/tooltips.ts",
@@ -40,14 +40,14 @@
       },
       {
         "entry": "src/features/chat/ComposerSlashMenu.tsx",
-        "maxGzipBytes": 1923,
-        "reason": "Composer `/` command menu: commands in sections by source, the command port, and opening a panel command such as `/mcp` on Enter. Loads with the first `/` typed. Measured 1923 B JS."
+        "maxGzipBytes": 1925,
+        "reason": "Composer `/` command menu: commands by source, the command port, and panel commands such as `/mcp` on Enter. Loads with the first `/` typed. Measured 1923-1925 B JS as shared-chunk aliases move."
       },
       {
         "entry": "src/features/chat/ComposerCommandPanel.tsx",
-        "maxGzipBytes": 2540,
+        "maxGzipBytes": 2730,
         "maxCssGzipBytes": 520,
-        "reason": "`/status` and `/mcp` panels with the MCP port and its bounded decoder. Load when a panel command first opens, off the first-Chat path. Measured 2507 B JS, 487 B CSS."
+        "reason": "`/status` and `/mcp` panels, the MCP port, its bounded decoder and per-harness server actions. Load when a panel opens, off the first-Chat path. Measured 2697 B JS, 487 B CSS."
       },
       {
         "entry": "src/workbench/AgentTaskResources.tsx",

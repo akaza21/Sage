@@ -101,6 +101,32 @@ it("states each harness's install state once and puts the sign-in command before
   expect(screen.queryByText(/missing login/)).toBeNull();
 });
 
+it("shows a published update with the command that installs it", async () => {
+  const harness = useWorkbenchStore.getState().harnesses[0];
+  useWorkbenchStore.setState({
+    harnesses: [
+      {
+        ...harness,
+        id: "pi",
+        name: "Pi",
+        version: "0.74.2",
+        update: {
+          latestVersion: "0.75.0",
+          command: "npm install -g @earendil-works/pi-coding-agent@latest",
+        },
+      },
+      { ...harness, id: "current", name: "Current", version: "1.0.0" },
+    ],
+  });
+  render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
+  const line = await screen.findByText(/Update available/);
+  expect(line).toHaveTextContent(
+    "Update available: 0.74.2 → 0.75.0. Run npm install -g @earendil-works/pi-coding-agent@latest in a terminal, then choose Refresh discovery.",
+  );
+  expect(screen.getAllByText(/Update available/)).toHaveLength(1);
+});
+
 it("restores an archived chat through the existing project-scoped action", async () => {
   const restoreChat = vi.fn(async () => true);
   useWorkbenchStore.setState({
@@ -477,7 +503,7 @@ it("does not apply an obsolete discovery result after leaving and reopening Harn
   const oldInventory = useWorkbenchStore.getState().harnesses;
   const newerInventory = [{ ...oldInventory[0], name: "New discovery" }];
   let finishOld!: (value: typeof oldInventory) => void;
-  vi.spyOn(getWorkbenchPorts().agent, "listHarnesses")
+  vi.spyOn(getWorkbenchPorts().agent, "refreshHarnesses")
     .mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -507,7 +533,10 @@ it("keeps native discovery updates that supersede a pending refresh", async () =
   const oldInventory = useWorkbenchStore.getState().harnesses;
   const nativeInventory = [{ ...oldInventory[0], name: "Native discovery" }];
   let finishRefresh!: (value: typeof oldInventory) => void;
-  vi.spyOn(getWorkbenchPorts().agent, "listHarnesses").mockImplementationOnce(
+  vi.spyOn(
+    getWorkbenchPorts().agent,
+    "refreshHarnesses",
+  ).mockImplementationOnce(
     () =>
       new Promise((resolve) => {
         finishRefresh = resolve;
@@ -534,7 +563,10 @@ it("records a discovery refresh that finishes while the window is minimized", as
   const oldInventory = useWorkbenchStore.getState().harnesses;
   const freshInventory = [{ ...oldInventory[0], name: "Fresh discovery" }];
   let finishRefresh!: (value: typeof oldInventory) => void;
-  vi.spyOn(getWorkbenchPorts().agent, "listHarnesses").mockImplementationOnce(
+  vi.spyOn(
+    getWorkbenchPorts().agent,
+    "refreshHarnesses",
+  ).mockImplementationOnce(
     () =>
       new Promise((resolve) => {
         finishRefresh = resolve;

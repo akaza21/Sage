@@ -6,7 +6,7 @@ pub(super) fn annotate_binding(
 ) {
     match record.bound_build() {
         Some(bound) => {
-            definition.bound_version = super::safe_display_version(&bound.reported_version);
+            definition.bound_version = safe_display_version(&bound.reported_version);
             definition.characterisation = Some(bound.characterisation);
             definition.account_model_discovery = bound.account_model_discovery;
             definition.access_modes = crate::acp::bindings::access_policy::access_modes(
@@ -76,9 +76,44 @@ pub(super) fn definition(
         unavailable_reason: None,
         sign_in: None,
         brand: None,
+        update: None,
     };
     definition
         .validate_transport_contract()
         .expect("curated harness metadata must satisfy its transport contract");
     definition
+}
+
+/// Untrusted CLI version prose may contain paths or secrets. Project only a
+/// bounded dotted numeric token, never the executable identity or raw output.
+pub(super) fn safe_display_version(version: &str) -> Option<String> {
+    version.split_ascii_whitespace().find_map(|token| {
+        let token = token.strip_prefix('v').unwrap_or(token);
+        let parts: Vec<_> = token.split('.').collect();
+        let numeric = token.len() <= 32
+            && (2..=4).contains(&parts.len())
+            && parts.iter().all(|part| {
+                !part.is_empty()
+                    && part.len() <= 8
+                    && part.bytes().all(|byte| byte.is_ascii_digit())
+            });
+        if numeric {
+            return Some(token.to_owned());
+        }
+        let (base, prerelease) = token.split_once('-')?;
+        let base_parts: Vec<_> = base.split('.').collect();
+        (token.len() <= 96
+            && base_parts.len() == 3
+            && base_parts.iter().all(|part| {
+                !part.is_empty()
+                    && part.len() <= 8
+                    && part.bytes().all(|byte| byte.is_ascii_digit())
+            })
+            && !prerelease.is_empty()
+            && prerelease.len() <= 64
+            && prerelease
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-'))
+        .then(|| token.to_owned())
+    })
 }

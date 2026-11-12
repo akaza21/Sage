@@ -10,7 +10,7 @@ use super::{AdapterError, CodexAdapter, RequestKind};
 use crate::acp::{
     bindings::{
         codex::request::OutgoingRequest,
-        standard_acp::surface::command_list::{MAX_COMMAND_BYTES, MAX_COMMANDS},
+        standard_acp::surface::{first_listed, panel},
     },
     intent::{CapabilitySnapshotV1, Prompt},
     slash_commands::{
@@ -112,15 +112,6 @@ fn builtins(capabilities: &CapabilitySnapshotV1) -> Vec<AvailableCommand> {
             CommandDispatch::Action,
         )
     };
-    let panel = |name, description, panel| {
-        AvailableCommand::new(
-            name,
-            description,
-            None,
-            CommandSource::Builtin,
-            CommandDispatch::Panel(panel),
-        )
-    };
     [
         capabilities.native_session_compact.then(|| {
             builtin(
@@ -147,22 +138,6 @@ fn builtins(capabilities: &CapabilitySnapshotV1) -> Vec<AvailableCommand> {
     .flatten()
     .filter_map(Result::ok)
     .collect()
-}
-
-/// The built-ins, then the skills: first of each name, ending at the first
-/// command past the shared count or byte bound.
-fn bounded(commands: impl IntoIterator<Item = AvailableCommand>) -> Vec<AvailableCommand> {
-    let mut names = std::collections::HashSet::new();
-    let mut bytes = 0usize;
-    commands
-        .into_iter()
-        .filter(|command| names.insert(command.name.clone()))
-        .take(MAX_COMMANDS)
-        .take_while(|command| {
-            bytes += command.listed_bytes();
-            bytes <= MAX_COMMAND_BYTES
-        })
-        .collect()
 }
 
 impl CodexAdapter {
@@ -232,7 +207,7 @@ impl CodexAdapter {
         let _ = self
             .skills
             .list
-            .replace_if_changed(bounded(builtins.into_iter().chain(skills)));
+            .replace_if_changed(first_listed(builtins.into_iter().chain(skills)));
     }
 
     pub(crate) fn skills_read_pending(&self) -> bool {

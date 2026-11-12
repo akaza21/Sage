@@ -186,7 +186,9 @@ impl CodexRuntime {
             | SessionControl::SignInMcpServer { .. } => {
                 self.request(|adapter, id| adapter.mcp_request(id, control))
             }
-            SessionControl::StopActivity { .. } | SessionControl::SetTitle { .. } => {
+            SessionControl::StopActivity { .. }
+            | SessionControl::SetTitle { .. }
+            | SessionControl::ReconnectMcpServer { .. } => {
                 Err(AdapterRuntimeError::UnsupportedCommand)
             }
         }
