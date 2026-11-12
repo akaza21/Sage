@@ -12,7 +12,7 @@ pub(super) fn annotate_binding(
             definition.access_modes = crate::acp::bindings::access_policy::access_modes(
                 record.access_policy_binding_id(),
                 &bound.reported_version,
-                bound.characterisation.is_characterised(),
+                bound.characterisation.runs_tested_features(),
             );
         }
         None => definition.unavailable_reason = record.unavailable_reason(),

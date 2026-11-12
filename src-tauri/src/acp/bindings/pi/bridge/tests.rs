@@ -210,7 +210,9 @@ fn pi_bridge_install_requires_exact_owned_bytes() {
     assert_eq!(install::matches_install(&f.path, &path), Ok(()));
     std::fs::write(&path, "outdated").unwrap();
     assert_eq!(install::matches_install(&f.path, &path), Err(Modified));
+    // Releases before the tested one lack the extension API the bridge uses.
     assert_eq!(install::installed("0.82.0"), Err(UnsupportedVersion));
+    assert_eq!(install::installed("1.5.0-rc.1"), Err(UnsupportedVersion));
     let outside = Fixture::new();
     std::fs::write(
         outside.path.join("bridge.mjs"),

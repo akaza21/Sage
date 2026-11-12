@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     acp::{
-        bindings::adapter::AdapterRuntimeError,
+        bindings::{adapter::AdapterRuntimeError, release_version::ReleaseVersion},
         process::{
             ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
             RequiredContainment, TreeLimits,
@@ -28,10 +28,11 @@ pub(crate) const CLAUDE_SDK_BINDING_ID: &str = "claude-code-sdk";
 /// The Claude Code release the recorded fixtures replay.
 #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
 pub(crate) const CLAUDE_CODE_VERSION: &str = "2.1.319";
-/// The oldest release with every control request Sage sends. Later releases
-/// of the same major version are admitted; a new major version may change
-/// the protocol, so it waits for its own admission.
-const SUPPORTED_MINIMUM: (u64, u64, u64) = (2, 1, 300);
+/// The oldest release with every control request Sage sends; an earlier one
+/// is refused because those requests would fail. Every later release is
+/// admitted: the 2.1 line is the tested one, and later lines run with the
+/// tested features and a "newer than tested" notice.
+const SUPPORTED_MINIMUM: &str = "2.1.300";
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:claude-code-sdk:v1:";
 
 /// Fixed SDK-mode arguments; the session arguments follow them. The mode is
@@ -58,7 +59,9 @@ pub(crate) enum ClaudeSdkAdmissionUnavailable {
     DiscoveryPending,
     #[error("Claude Code is not installed")]
     Absent,
-    #[error("the installed Claude Code version could not be read or is not supported")]
+    #[error("the installed Claude Code version could not be read")]
+    VersionUnreadable,
+    #[error("the installed Claude Code version is older than Sage supports")]
     VersionUnsupported,
     #[error("the Claude Code executable could not be read")]
     Unreadable,
@@ -71,7 +74,8 @@ impl From<ClaudeSdkAdmissionUnavailable> for HarnessUnavailableReason {
         use ClaudeSdkAdmissionUnavailable as Sdk;
         match reason {
             Sdk::DiscoveryPending => Self::AdmissionIncomplete,
-            Sdk::Absent | Sdk::VersionUnsupported | Sdk::Unreadable => Self::CandidateInvalid,
+            Sdk::Absent | Sdk::Unreadable | Sdk::VersionUnreadable => Self::CandidateInvalid,
+            Sdk::VersionUnsupported => Self::VersionTooOld,
             Sdk::Drift => Self::DriftDetected,
         }
     }
@@ -151,29 +155,22 @@ impl SessionLaunch {
     }
 }
 
-fn parse_version(value: &str) -> Option<(u64, u64, u64)> {
-    let mut parts = value.split('.').map(str::parse::<u64>);
-    let version = (
-        parts.next()?.ok()?,
-        parts.next()?.ok()?,
-        parts.next()?.ok()?,
-    );
-    parts.next().is_none().then_some(version)
-}
-
-fn version_admitted(version: &str) -> bool {
-    parse_version(version)
-        .is_some_and(|found| found >= SUPPORTED_MINIMUM && found.0 == SUPPORTED_MINIMUM.0)
-}
-
-/// The 2.1 line keeps the SDK protocol this binding covers, so every admitted
-/// 2.1 release is characterised. A later minor release of the same major
-/// version is admitted and runs, but may add what the binding has not seen,
-/// so it stays uncharacterised and the chat says so.
-fn version_characterised(version: &str) -> bool {
-    version_admitted(version)
-        && parse_version(version)
-            .is_some_and(|found| (found.0, found.1) == (SUPPORTED_MINIMUM.0, SUPPORTED_MINIMUM.1))
+/// Where a release sits against the tested 2.1 line, which keeps the SDK
+/// protocol this binding covers from [`SUPPORTED_MINIMUM`] on.
+fn version_characterisation(version: &str) -> HarnessCharacterisation {
+    let (Some(found), Some(minimum)) = (
+        ReleaseVersion::parse(version),
+        ReleaseVersion::parse(SUPPORTED_MINIMUM),
+    ) else {
+        return HarnessCharacterisation::Uncharacterised;
+    };
+    if found < minimum {
+        HarnessCharacterisation::Uncharacterised
+    } else if found.same_minor_line(&minimum) && !found.is_prerelease() {
+        HarnessCharacterisation::Characterised
+    } else {
+        HarnessCharacterisation::NewerThanTested
+    }
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -185,8 +182,11 @@ impl AdmittedClaudeSdkBinding {
         let version = installed
             .version
             .clone()
-            .filter(|version| version_admitted(version))
-            .ok_or(ClaudeSdkAdmissionUnavailable::VersionUnsupported)?;
+            .filter(|version| ReleaseVersion::parse(version).is_some())
+            .ok_or(ClaudeSdkAdmissionUnavailable::VersionUnreadable)?;
+        if !version_characterisation(&version).runs_tested_features() {
+            return Err(ClaudeSdkAdmissionUnavailable::VersionUnsupported);
+        }
         let executable = crate::harness_discovery::claude_sdk_executable(&installed.executable)
             .ok_or(ClaudeSdkAdmissionUnavailable::Unreadable)?;
         // A native launcher can be repointed after the version probe.
@@ -195,7 +195,7 @@ impl AdmittedClaudeSdkBinding {
         if executable.file_name() != installed.executable.file_name()
             && executable.file_name().and_then(std::ffi::OsStr::to_str) != Some(version.as_str())
         {
-            return Err(ClaudeSdkAdmissionUnavailable::VersionUnsupported);
+            return Err(ClaudeSdkAdmissionUnavailable::Drift);
         }
         let sha256_hex = crate::harness_discovery::cached_sha256_file(&executable)
             .ok_or(ClaudeSdkAdmissionUnavailable::Unreadable)?;
@@ -273,11 +273,7 @@ impl AdmittedClaudeSdkBinding {
         &self.version
     }
     pub(crate) fn characterisation(&self) -> HarnessCharacterisation {
-        if version_characterised(&self.version) {
-            HarnessCharacterisation::Characterised
-        } else {
-            HarnessCharacterisation::Uncharacterised
-        }
+        version_characterisation(&self.version)
     }
 
     /// The admitted file is unchanged and still the one the launcher names.
@@ -480,33 +476,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn admits_the_supported_release_line_only() {
+    fn admits_every_release_from_the_supported_minimum() {
         for (version, admitted) in [
             ("2.1.319", true),
             ("2.1.300", true),
             ("2.1.400", true),
             ("2.2.0", true),
+            ("3.0.0", true),
+            ("2.1.320-beta.1", true),
             ("2.1.299", false),
-            ("3.0.0", false),
+            ("2.1.300-rc.1", false),
             ("2.1", false),
-            ("2.1.319-beta", false),
         ] {
-            assert_eq!(version_admitted(version), admitted, "{version}");
+            assert_eq!(
+                version_characterisation(version).runs_tested_features(),
+                admitted,
+                "{version}"
+            );
         }
     }
 
     #[test]
-    fn the_whole_2_1_line_is_characterised_and_a_later_minor_is_not() {
-        for (version, characterised) in [
-            ("2.1.300", true),
-            ("2.1.314", true),
-            ("2.1.319", true),
-            ("2.1.1000", true),
-            ("2.1.299", false),
-            ("2.2.0", false),
-            ("3.0.0", false),
+    fn the_2_1_line_is_tested_and_later_lines_are_newer_than_tested() {
+        use HarnessCharacterisation::{Characterised, NewerThanTested, Uncharacterised};
+        for (version, expected) in [
+            ("2.1.300", Characterised),
+            ("2.1.319", Characterised),
+            ("2.1.1000", Characterised),
+            ("2.1.320-beta.1", NewerThanTested),
+            ("2.2.0", NewerThanTested),
+            ("3.0.0", NewerThanTested),
+            ("2.1.299", Uncharacterised),
         ] {
-            assert_eq!(version_characterised(version), characterised, "{version}");
+            assert_eq!(version_characterisation(version), expected, "{version}");
         }
     }
 
@@ -587,6 +589,23 @@ mod tests {
         assert_eq!(
             registration.unavailable(),
             Some(ClaudeSdkAdmissionUnavailable::VersionUnsupported)
+        );
+        assert_eq!(
+            HarnessUnavailableReason::from(ClaudeSdkAdmissionUnavailable::VersionUnsupported),
+            HarnessUnavailableReason::VersionTooOld
+        );
+        registration.apply_discovery(Some(&InstalledHarness {
+            id: "claude-code",
+            executable: PathBuf::from("/nonexistent/claude"),
+            version: Some("2.1".into()),
+        }));
+        assert_eq!(
+            registration.unavailable(),
+            Some(ClaudeSdkAdmissionUnavailable::VersionUnreadable)
+        );
+        assert_eq!(
+            HarnessUnavailableReason::from(ClaudeSdkAdmissionUnavailable::VersionUnreadable),
+            HarnessUnavailableReason::CandidateInvalid
         );
     }
 }

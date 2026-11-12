@@ -46,13 +46,19 @@ impl HarnessInstallState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum HarnessCharacterisation {
+    /// The release Sage was tested with.
     Characterised,
+    /// A later release. It keeps the tested features; the chat notes that it
+    /// is newer than tested.
+    NewerThanTested,
+    /// An earlier release, or one whose version cannot be read.
     Uncharacterised,
 }
 
 impl HarnessCharacterisation {
-    pub(crate) fn is_characterised(self) -> bool {
-        matches!(self, Self::Characterised)
+    /// Whether the features Sage tested apply to this release.
+    pub(crate) fn runs_tested_features(self) -> bool {
+        matches!(self, Self::Characterised | Self::NewerThanTested)
     }
 }
 
@@ -68,6 +74,9 @@ pub enum HarnessUnavailableReason {
     NodeAbsent,
     NodeVersionUnreadable,
     NodeEngineMismatch,
+    /// The installed release predates the oldest one whose protocol Sage
+    /// speaks; updating it fixes this.
+    VersionTooOld,
     CandidateInvalid,
     CapabilityProjectionUnavailable,
     NoNativeAcpEndpoint,

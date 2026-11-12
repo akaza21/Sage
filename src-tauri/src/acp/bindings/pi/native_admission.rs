@@ -18,7 +18,10 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     acp::{
-        bindings::adapter::AdapterRuntimeError,
+        bindings::{
+            adapter::AdapterRuntimeError,
+            release_version::{ReleaseVersion, characterise_against},
+        },
         process::{
             ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
             RequiredContainment, TreeLimits,
@@ -31,8 +34,6 @@ use crate::{
 use super::manifest::parse_version;
 
 pub(crate) const PI_BINDING_ID: &str = "pi-rpc";
-/// Oldest Pi release whose RPC commands and events the translator covers.
-pub(crate) const PI_SUPPORTED_MINIMUM: (u64, u64, u64) = (1, 5, 0);
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:pi-rpc:native:v1:";
 /// Read-only launch arguments after the entrypoint. Prompt templates, skills
 /// and saved sessions load as they do in Pi's own CLI; user extensions stay
@@ -81,7 +82,9 @@ pub(crate) enum PiAdmissionUnavailable {
     NodeVersionUnreadable,
     #[error("the discovered Node.js does not satisfy Pi's engine")]
     NodeEngineMismatch,
-    #[error("the installed Pi version is outside the curated range")]
+    #[error("the installed Pi version could not be read")]
+    VersionUnreadable,
+    #[error("the installed Pi version is older than Sage supports")]
     VersionUnsupported,
     #[error("the discovered Pi package or Node runtime changed after admission")]
     Drift,
@@ -104,18 +107,24 @@ fn engine_satisfied(engine: &str, node_version: &str) -> Option<bool> {
     Some(parse_version(node_version)? >= minimum)
 }
 
-/// Curated version range: at least [`PI_SUPPORTED_MINIMUM`], and no newer
-/// minor than the pinned [`super::PI_VERSION`].
+/// The first release of the Pi package Sage launches. It already honours
+/// every launch flag Sage relies on for read-only mode (`--tools`,
+/// `--no-builtin-tools`, `--no-extensions`, `--no-themes`) and answers every
+/// RPC command Sage sends, so nothing older can exist under this package.
+const PI_READ_ONLY_MINIMUM: &str = "0.74.0";
+
+/// Pi releases from [`PI_READ_ONLY_MINIMUM`] on are admitted. The tested
+/// release and later ones keep the tested features; an earlier one runs
+/// read-only (see [`AdmittedPiBinding::characterisation`]).
 pub(crate) fn version_admitted(version: &str) -> bool {
-    let (Some(found), Some(pinned)) = (parse_version(version), parse_version(super::PI_VERSION))
-    else {
-        return false;
-    };
-    found >= PI_SUPPORTED_MINIMUM && (found.0, found.1) <= (pinned.0, pinned.1)
+    characterise_against(version, PI_READ_ONLY_MINIMUM).runs_tested_features()
 }
 
 impl AdmittedPiBinding {
     fn admit(launch: DiscoveredPiLaunch) -> Result<Self, PiAdmissionUnavailable> {
+        if ReleaseVersion::parse(&launch.package_version).is_none() {
+            return Err(PiAdmissionUnavailable::VersionUnreadable);
+        }
         if !version_admitted(&launch.package_version) {
             return Err(PiAdmissionUnavailable::VersionUnsupported);
         }
@@ -156,11 +165,7 @@ impl AdmittedPiBinding {
         &self.launch.package_version
     }
     pub(crate) fn characterisation(&self) -> HarnessCharacterisation {
-        if self.launch.package_version == super::PI_VERSION {
-            HarnessCharacterisation::Characterised
-        } else {
-            HarnessCharacterisation::Uncharacterised
-        }
+        characterise_against(&self.launch.package_version, super::PI_VERSION)
     }
 
     /// Revalidates both launch fingerprints through the shared metadata-keyed hash cache.

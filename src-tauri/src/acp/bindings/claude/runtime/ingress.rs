@@ -10,7 +10,7 @@ impl ClaudeRuntime {
     fn binding_is_characterised(&self) -> bool {
         self.launch_binding
             .as_ref()
-            .is_none_or(|binding| binding.characterisation().is_characterised())
+            .is_none_or(|binding| binding.characterisation().runs_tested_features())
     }
 
     fn ingest_response(&mut self, value: Value) -> Result<AdapterBatch, AdapterRuntimeError> {

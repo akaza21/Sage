@@ -278,17 +278,14 @@ fn a_chat_can_step_down_while_its_harness_is_unavailable() {
 fn every_mode_a_binding_admits_is_in_its_own_table() {
     use crate::acp::bindings::access_policy::{admitted_modes, lists_mode};
     let registry = crate::acp::bindings::registry::BindingRegistry::default();
-    for (binding, version) in [
-        ("claude-agent-acp", "0.76.0"),
-        (
-            "codex-app-server",
-            crate::acp::bindings::codex::CODEX_PINNED_VERSION,
-        ),
-        ("opencode-acp", "1.0.0"),
-        ("pi-rpc", "0.83.0"),
+    for binding in [
+        "claude-agent-acp",
+        "codex-app-server",
+        "opencode-acp",
+        "pi-rpc",
     ] {
         for characterised in [true, false] {
-            for mode in admitted_modes(binding, version, characterised, Ok(())) {
+            for mode in admitted_modes(binding, characterised, Ok(())) {
                 assert!(
                     lists_mode(&registry, binding, mode.id),
                     "{binding} {:?}",
