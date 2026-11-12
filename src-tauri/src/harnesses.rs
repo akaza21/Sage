@@ -6,8 +6,10 @@ mod custom_acp;
 mod discovery_state;
 mod install_state;
 mod persisted_binding;
-use catalog_definition::{CuratedProtocol, definition};
+mod published_releases;
+use catalog_definition::{CuratedProtocol, definition, safe_display_version};
 use discovery_state::DiscoveryState;
+use published_releases::PublishedReleases;
 
 use crate::{
     acp::bindings::{
@@ -40,6 +42,7 @@ fn simulator_admission(in_catalog: bool) -> Option<HarnessInstallState> {
 pub struct HarnessCatalog {
     registry: Arc<BindingRegistry>,
     discovered: DiscoveryState,
+    published: PublishedReleases,
     #[cfg(test)]
     presence_override: Option<CodexHostPresence>,
     #[cfg(all(windows, feature = "acp-fixture"))]
@@ -57,6 +60,7 @@ impl HarnessCatalog {
         Self {
             registry,
             discovered: DiscoveryState::default(),
+            published: PublishedReleases::default(),
             #[cfg(test)]
             presence_override: None,
             #[cfg(all(windows, feature = "acp-fixture"))]
@@ -77,6 +81,7 @@ impl HarnessCatalog {
         Self {
             registry: Arc::new(BindingRegistry::with_codex(codex)),
             discovered: DiscoveryState::default(),
+            published: PublishedReleases::default(),
             presence_override: Some(presence),
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization_available: false,
@@ -107,6 +112,18 @@ impl HarnessCatalog {
         self.discovered.apply_presence(discovered);
     }
 
+    /// Claims the next update check; false while a recent one stands.
+    pub(crate) fn begin_update_check(&self) -> bool {
+        self.published.begin_check()
+    }
+
+    pub(crate) fn apply_published_releases(
+        &self,
+        releases: Vec<crate::harness_discovery::PublishedRelease>,
+    ) {
+        self.published.replace(releases);
+    }
+
     #[cfg(test)]
     pub(crate) fn codex_registration(&self) -> CodexBindingRegistration {
         self.registry.codex_admission().clone()
@@ -129,6 +146,7 @@ impl HarnessCatalog {
         Self {
             registry,
             discovered: DiscoveryState::default(),
+            published: PublishedReleases::default(),
             #[cfg(test)]
             presence_override: None,
             characterization_available: true,
@@ -272,6 +290,9 @@ impl HarnessCatalog {
             if let Some(discovered) = self.discovered(&definition.id) {
                 definition.version = discovered.version.as_deref().and_then(safe_display_version);
             }
+            definition.update = self
+                .published
+                .update_for(&definition.id, definition.version.as_deref());
             definition.version_checking = self.discovered.is_version_checking(&definition.id);
             let Some(record) = self.registry.for_harness(&definition.id) else {
                 continue;
@@ -397,40 +418,6 @@ impl HarnessCatalog {
             })
             .map(|definition| definition.id)
     }
-}
-
-/// Untrusted CLI version prose may contain paths or secrets. Project only a
-/// bounded dotted numeric token, never the executable identity or raw output.
-fn safe_display_version(version: &str) -> Option<String> {
-    version.split_ascii_whitespace().find_map(|token| {
-        let token = token.strip_prefix('v').unwrap_or(token);
-        let parts: Vec<_> = token.split('.').collect();
-        let numeric = token.len() <= 32
-            && (2..=4).contains(&parts.len())
-            && parts.iter().all(|part| {
-                !part.is_empty()
-                    && part.len() <= 8
-                    && part.bytes().all(|byte| byte.is_ascii_digit())
-            });
-        if numeric {
-            return Some(token.to_owned());
-        }
-        let (base, prerelease) = token.split_once('-')?;
-        let base_parts: Vec<_> = base.split('.').collect();
-        (token.len() <= 96
-            && base_parts.len() == 3
-            && base_parts.iter().all(|part| {
-                !part.is_empty()
-                    && part.len() <= 8
-                    && part.bytes().all(|byte| byte.is_ascii_digit())
-            })
-            && !prerelease.is_empty()
-            && prerelease.len() <= 64
-            && prerelease
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-'))
-        .then(|| token.to_owned())
-    })
 }
 
 #[cfg(test)]
@@ -848,7 +835,8 @@ mod tests {
                     "characterisation",
                     "unavailableReason",
                     "signIn",
-                    "brand"
+                    "brand",
+                    "update"
                 ]
                 .into_iter()
                 .collect()

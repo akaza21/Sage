@@ -100,3 +100,52 @@ it("tells the user to update a release older than Sage supports", () => {
     "This version is too old for Sage. Update it, then refresh harness discovery in Settings.",
   );
 });
+
+const update = {
+  latestVersion: "1.3.0",
+  command: "npm install -g fixture-agent@latest",
+};
+
+it("names a published update and the command that installs it", () => {
+  const { rerender } = render(
+    <HarnessDiscoveryNotice
+      harness={{ ...harness, characterisation: "characterised", update }}
+    />,
+  );
+  const notice = screen.getByRole("status");
+  expect(notice).toHaveTextContent(
+    "Fixture agent 1.3.0 is available. Run npm install -g fixture-agent@latest, then refresh discovery in Settings.",
+  );
+  expect(notice).not.toHaveTextContent("tested");
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss build notice" }));
+  expect(screen.queryByRole("status")).toBeNull();
+  // A later release is announced again.
+  rerender(
+    <HarnessDiscoveryNotice
+      harness={{
+        ...harness,
+        characterisation: "characterised",
+        update: { ...update, latestVersion: "1.4.0" },
+      }}
+    />,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Fixture agent 1.4.0 is available.",
+  );
+});
+
+it("tells a too-old install the exact update command when one is known", () => {
+  render(
+    <HarnessDiscoveryNotice
+      harness={{
+        ...harness,
+        installState: "unavailable",
+        unavailableReason: "versionTooOld",
+        update,
+      }}
+    />,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "This version is too old for Sage. Run npm install -g fixture-agent@latest, then refresh discovery in Settings.",
+  );
+});

@@ -198,11 +198,12 @@ const chat: ChatPort = {
     browserDesktop.pinChat(request, expectedTransitionEpoch),
 };
 
+const listBrowserHarnesses = () =>
+  browserDesktop.getBootstrapSnapshot().then((snapshot) => snapshot.harnesses);
+
 const agent: AgentPort = {
-  listHarnesses: () =>
-    browserDesktop
-      .getBootstrapSnapshot()
-      .then((snapshot) => snapshot.harnesses),
+  listHarnesses: listBrowserHarnesses,
+  refreshHarnesses: listBrowserHarnesses,
   listHarnessModels: (harnessId) => browserDesktop.listHarnessModels(harnessId),
   sendPrompt: (request) => browserDesktop.sendPrompt(request),
 };

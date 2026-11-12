@@ -100,6 +100,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         project_commands::switch_project,
         commands::list_harness_models,
         commands::list_harnesses,
+        commands::refresh_harnesses,
         commands::send_simulated_prompt,
         settings_commands::get_editor_settings,
         settings_commands::set_editor_settings,

@@ -86,33 +86,74 @@ impl AppState {
 
     pub(crate) fn refresh_harnesses_after_window_shown(app: tauri::AppHandle) {
         tauri::async_runtime::spawn_blocking(move || {
-            let state = app.state::<AppState>();
-            crate::settings_commands::custom_acp_agents::apply_saved(&state);
-            let presence = crate::harness_discovery::discover_installed_harness_presence();
-            state.harnesses.apply_presence(presence.clone());
-            use tauri::Emitter;
-            let _ = app.emit(
-                "harness-discovery-changed-v1",
-                state.harnesses.definitions(),
-            );
-            let (claude, discovered) = std::thread::scope(|scope| {
-                let claude = scope.spawn(crate::harness_discovery::discover_claude_launch);
-                let discovered = crate::harness_discovery::enrich_installed_harness_versions(
-                    &presence,
-                    &state.harness_version_cache,
-                );
-                let claude = claude.join().unwrap_or_else(|_| {
-                    tracing::warn!("Claude launch discovery panicked");
-                    crate::harness_discovery::ClaudeLaunchDiscovery::AdapterVersionUnreadable
-                });
-                (claude, discovered)
-            });
-            state.harnesses.apply_discovery(claude, discovered);
-            let _ = app.emit(
-                "harness-discovery-changed-v1",
-                state.harnesses.definitions(),
-            );
+            let installed = Self::discover_harnesses(&app);
+            if app.state::<AppState>().harnesses.begin_update_check() {
+                Self::check_harness_updates(&app, &installed);
+            }
         });
+    }
+
+    /// Discovers the installed harnesses again and re-admits them, so a
+    /// harness installed or updated while Sage runs is picked up without a
+    /// restart. Blocking: it runs each harness's bounded version probe. A
+    /// due update check continues in the background.
+    pub(crate) fn rediscover_harnesses(
+        app: &tauri::AppHandle,
+    ) -> Vec<crate::domain::HarnessDefinition> {
+        let installed = Self::discover_harnesses(app);
+        let harnesses = &app.state::<AppState>().harnesses;
+        if harnesses.begin_update_check() {
+            let app = app.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                Self::check_harness_updates(&app, &installed);
+            });
+        }
+        harnesses.definitions()
+    }
+
+    fn discover_harnesses(
+        app: &tauri::AppHandle,
+    ) -> Vec<crate::harness_discovery::InstalledHarness> {
+        use tauri::Emitter;
+        let state = app.state::<AppState>();
+        crate::settings_commands::custom_acp_agents::apply_saved(&state);
+        let presence = crate::harness_discovery::discover_installed_harness_presence();
+        state.harnesses.apply_presence(presence.clone());
+        let _ = app.emit(
+            "harness-discovery-changed-v1",
+            state.harnesses.definitions(),
+        );
+        let (claude, discovered) = std::thread::scope(|scope| {
+            let claude = scope.spawn(crate::harness_discovery::discover_claude_launch);
+            let discovered = crate::harness_discovery::enrich_installed_harness_versions(
+                &presence,
+                &state.harness_version_cache,
+            );
+            let claude = claude.join().unwrap_or_else(|_| {
+                tracing::warn!("Claude launch discovery panicked");
+                crate::harness_discovery::ClaudeLaunchDiscovery::AdapterVersionUnreadable
+            });
+            (claude, discovered)
+        });
+        state.harnesses.apply_discovery(claude, discovered.clone());
+        let _ = app.emit(
+            "harness-discovery-changed-v1",
+            state.harnesses.definitions(),
+        );
+        discovered
+    }
+
+    /// Looks up the newest published release of each installed harness and
+    /// republishes the catalog with any update it finds.
+    fn check_harness_updates(
+        app: &tauri::AppHandle,
+        installed: &[crate::harness_discovery::InstalledHarness],
+    ) {
+        use tauri::Emitter;
+        let releases = crate::harness_discovery::published_releases(installed);
+        let harnesses = &app.state::<AppState>().harnesses;
+        harnesses.apply_published_releases(releases);
+        let _ = app.emit("harness-discovery-changed-v1", harnesses.definitions());
     }
 
     pub(crate) async fn lock_active_project(
