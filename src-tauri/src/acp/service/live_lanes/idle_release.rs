@@ -115,14 +115,17 @@ impl AcpService {
             }
             // Each park has the whole close budget, as an eviction does.
             let deadline = explicit_close_deadline();
-            parked += usize::from(self.park_idle_lane(index, &owner, idle_since, deadline));
+            parked += usize::from(self.park_idle_lane(index, &owner, idle_since, now, deadline));
         }
         Some(parked)
     }
 
     /// The lanes whose idle runtime is due, with the idle mark each was due
     /// at. Out-of-view marks of Chats without a live runtime are dropped.
-    fn idle_runtimes_due(&self, now: Instant) -> Vec<(usize, RuntimeOwner, Instant)> {
+    pub(in crate::acp::service) fn idle_runtimes_due(
+        &self,
+        now: Instant,
+    ) -> Vec<(usize, RuntimeOwner, Instant)> {
         let active: Vec<_> = self
             .lanes
             .iter()
@@ -157,11 +160,12 @@ impl AcpService {
     /// Parks one due lane under its activation claim, after checking that no
     /// Turn or activation has used it since it was found due, and answers
     /// whether its runtime was released.
-    fn park_idle_lane(
+    pub(in crate::acp::service) fn park_idle_lane(
         &self,
         index: usize,
         owner: &RuntimeOwner,
         idle_since: Instant,
+        now: Instant,
         deadline: Instant,
     ) -> bool {
         let lane = &self.lanes[index];
@@ -177,7 +181,15 @@ impl AcpService {
             .scheduler
             .active()
             .is_some_and(|active| &active.tree == owner && active.idle_since == Some(idle_since));
-        if !unchanged || !self.parks_resumably(index) {
+        // The Chat may have come back into view while earlier lanes parked.
+        let still_due = || {
+            self.idle_release
+                .view
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .due(&owner.chat_id, idle_since, now)
+        };
+        if !unchanged || !still_due() || !self.parks_resumably(index) {
             return false;
         }
         self.lane_at(index).park_or_reclaim(deadline);

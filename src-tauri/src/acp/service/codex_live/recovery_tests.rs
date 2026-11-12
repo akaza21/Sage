@@ -2426,3 +2426,22 @@ fn a_session_that_cannot_resume_or_never_completed_a_turn_is_kept() {
         service.shutdown_blocking().unwrap();
     }
 }
+
+#[test]
+fn a_chat_shown_again_while_a_sweep_runs_is_kept() {
+    let (service, owner) = idle_release_fixture("idle-came-back");
+    let start = std::time::Instant::now();
+    service.set_shown_chats([]);
+    assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
+    let now = start + 3 * MINUTE;
+    let due = service.idle_runtimes_due(now);
+    assert_eq!(due.len(), 1);
+    // The user opens the Chat while earlier lanes of the sweep are parking.
+    service.set_shown_chats([owner.chat_id.clone()]);
+    let (index, due_owner, idle_since) = due.into_iter().next().unwrap();
+    let deadline = crate::acp::service::explicit_close_deadline();
+    assert!(!service.park_idle_lane(index, &due_owner, idle_since, now, deadline));
+    assert!(service.lane_for(&owner).is_some());
+    assert!(runtime_epoch_is_live(&service, &owner));
+    service.shutdown_blocking().unwrap();
+}
