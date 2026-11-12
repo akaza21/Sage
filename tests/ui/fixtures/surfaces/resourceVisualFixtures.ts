@@ -15,6 +15,7 @@ import {
 } from "../../../../src/features/preview/harnessBrowse";
 
 import { standardPage } from "../visualChatPages";
+import { VISUAL_PREVIEW_URL } from "../visualPreviewFixture";
 import {
   editorContent,
   editorDocument,
@@ -48,11 +49,6 @@ function browseOwner(chatId: HarnessBrowseOwner["chatId"]): HarnessBrowseOwner {
     transitionEpoch: VISUAL_NATIVE_TRANSITION_EPOCH,
     runtimeEpoch: RUNTIME_EPOCH,
   };
-}
-
-function visualPreviewUrl(): string {
-  const port = window.location.port || "1420";
-  return `http://127.0.0.1:${port}/tests/ui/fixtures/preview.html`;
 }
 
 export function buildResourcePages(
@@ -299,7 +295,7 @@ export async function installVisualAgentArtifactFollowFixture() {
   setHarnessBrowseOwner(browseOwnerB, [chatA.id, chatB.id]);
   applyBrowseIntent({
     owner: browseOwnerB,
-    url: visualPreviewUrl(),
+    url: VISUAL_PREVIEW_URL,
   });
   await new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),

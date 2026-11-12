@@ -59,15 +59,11 @@ import {
 } from "./visualScenarioShell";
 import { fixtureTabs, visualSnapshotDiffRef } from "./visualDocumentFixtures";
 import { applyVisualWorkbenchState } from "./visualWorkbenchState";
+import { VISUAL_PREVIEW_URL } from "./visualPreviewFixture";
 import { useAcpChatProjection } from "../../../src/features/chat/acp/useAcpChatProjection";
 import { settleLazyModules } from "../../../src/test/settleLazyModules";
 
 const initialState = useWorkbenchStore.getState();
-
-function visualPreviewUrl(): string {
-  const port = window.location.port || "1420";
-  return `http://127.0.0.1:${port}/tests/ui/fixtures/preview.html`;
-}
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -434,7 +430,7 @@ describe("visual scenario surface ownership", () => {
     expect(
       applyBrowseIntent({
         owner: firstOwner,
-        url: visualPreviewUrl(),
+        url: VISUAL_PREVIEW_URL,
       }),
     ).not.toBeNull();
     const secondOwner: HarnessBrowseOwner = {
@@ -445,7 +441,7 @@ describe("visual scenario surface ownership", () => {
     expect(
       applyBrowseIntent({
         owner: secondOwner,
-        url: `${visualPreviewUrl()}?chat=2`,
+        url: `${VISUAL_PREVIEW_URL}?chat=2`,
       }),
     ).not.toBeNull();
     expect(browseSessionForOwner(firstOwner)?.href).toContain("preview.html");
@@ -582,7 +578,7 @@ describe("visual scenario surface ownership", () => {
     );
     const owner = harnessBrowseOwner();
     if (!owner) throw new Error("Preview fixture browse owner was absent.");
-    expect(browseSessionForOwner(owner)?.href).toBe(visualPreviewUrl());
+    expect(browseSessionForOwner(owner)?.href).toBe(VISUAL_PREVIEW_URL);
     expect(listBrowseSessions()).toHaveLength(1);
   });
 
@@ -703,24 +699,30 @@ describe("visual scenario surface ownership", () => {
     expect(git).not.toHaveBeenCalled();
   });
 
-  it("seeds the resource follow fixture's second Chat browse owner before intent", async () => {
-    await installVisualScenario("agent-dual");
-    const chats = useWorkbenchStore
-      .getState()
-      .tabs.filter((tab) => tab.kind === "chat");
-    const second = chats[1];
-    if (!second) throw new Error("Visual fixture requires a second Chat.");
-    await installVisualAgentArtifactFollowFixture();
-    const owner = harnessBrowseOwner();
-    expect(owner).toEqual({
-      projectId: PROJECT_ID,
-      projectGeneration: GENERATION,
-      transitionEpoch: 0,
-      chatId: second.id,
-      sessionId: SESSION_ID,
-      runtimeEpoch: RUNTIME_EPOCH,
-    });
-    if (!owner) throw new Error("Follow fixture browse owner was absent.");
-    expect(browseSessionForOwner(owner)?.href).toBe(visualPreviewUrl());
-  });
+  it.each([1471, 1472])(
+    "seeds the resource follow fixture's second Chat browse owner with a stable URL on dev port %i",
+    async (port) => {
+      vi.stubGlobal("location", new URL(`http://127.0.0.1:${port}/`));
+      await installVisualScenario("agent-dual");
+      const chats = useWorkbenchStore
+        .getState()
+        .tabs.filter((tab) => tab.kind === "chat");
+      const second = chats[1];
+      if (!second) throw new Error("Visual fixture requires a second Chat.");
+      await installVisualAgentArtifactFollowFixture();
+      const owner = harnessBrowseOwner();
+      expect(owner).toEqual({
+        projectId: PROJECT_ID,
+        projectGeneration: GENERATION,
+        transitionEpoch: 0,
+        chatId: second.id,
+        sessionId: SESSION_ID,
+        runtimeEpoch: RUNTIME_EPOCH,
+      });
+      if (!owner) throw new Error("Follow fixture browse owner was absent.");
+      expect(browseSessionForOwner(owner)?.href).toBe(
+        "http://127.0.0.1:1457/tests/ui/fixtures/preview.html",
+      );
+    },
+  );
 });
