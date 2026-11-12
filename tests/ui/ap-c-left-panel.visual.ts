@@ -158,7 +158,7 @@ test("AP-C sidebar search and Ctrl+K share a focused live palette", async ({
     exact: true,
   });
   await trigger.click();
-  const query = page.getByRole("searchbox", { name: "Search chats" });
+  const query = page.getByRole("combobox", { name: "Search chats" });
   await expect(query).toBeFocused();
   await expect(
     page
