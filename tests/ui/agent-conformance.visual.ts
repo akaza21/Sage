@@ -951,8 +951,13 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       exact: true,
     });
     // This binding advertises no image input, Goal or session modes, so the
-    // Add menu has nothing truthful to offer and no image chooser exists.
-    await expect(options).toHaveCount(0);
+    // Add menu has nothing truthful to offer: "+" keeps its place disabled
+    // and no image chooser exists.
+    await expect(options).toBeDisabled();
+    await expect(options).toHaveAttribute(
+      "title",
+      "No options for this harness",
+    );
     await expect(
       toolbar.getByRole("button", { name: "Add images", exact: true }),
     ).toHaveCount(0);
@@ -969,7 +974,11 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "title",
       "Speech may be processed by an online service",
     );
-    await expect(toolbar.getByRole("button")).toHaveCount(6);
+    // Any usable binding takes attached files.
+    await expect(
+      toolbar.getByRole("button", { name: "Attach files", exact: true }),
+    ).toBeEnabled();
+    await expect(toolbar.getByRole("button")).toHaveCount(8);
     const [inputBox, toolbarBox] = await Promise.all([
       boundsOf(form.getByRole("combobox", { name: "Message agent" })),
       boundsOf(toolbar),
@@ -1003,6 +1012,8 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     expect(inventory).toEqual([
       "2 files changed+44-18",
       "Message agent",
+      "Composer options",
+      "Attach files",
       "Access options",
       "Harness",
       "Model",
@@ -1032,6 +1043,8 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       composer(page).getByRole("button", { name: "Send message" }),
     ).toBeVisible();
     expect(await composerControlOrder(page)).toEqual([
+      "Composer options",
+      "Attach files",
       "Access options",
       "Harness",
       "Model",
@@ -1067,7 +1080,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
           return bounds.top + bounds.height / 2;
         }),
       );
-    expect(centres).toHaveLength(6);
+    expect(centres).toHaveLength(8);
     expect(Math.max(...centres) - Math.min(...centres)).toBeLessThanOrEqual(1);
   });
 
