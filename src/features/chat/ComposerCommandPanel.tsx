@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useId, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { useStore } from "zustand";
 import "../../styles/composer-command-panel.css";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
@@ -176,48 +183,62 @@ type McpLoad =
 
 function McpServers({ request }: { request: AcpUsageRequest | null }) {
   const [load, setLoad] = useState<McpLoad>({ kind: "loading" });
-  // The reload or the server whose sign-in is starting.
-  const [busy, setBusy] = useState<string | null>(null);
+  // The one call running: a read, the reload, or a server's sign-in. The
+  // session takes one at a time, so nothing else starts meanwhile.
+  const [busy, setBusy] = useState<string | null>("read");
+  const busyRef = useRef<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const run = useCallback(
-    (read: (request: AcpUsageRequest) => Promise<McpInventory>) => {
-      if (!request) return Promise.resolve();
-      return read(request).then(
-        (inventory) => setLoad({ kind: "ready", inventory }),
-        (error: unknown) =>
-          setLoad({ kind: "error", message: errorMessage(error) }),
-      );
+  const start = useCallback(
+    (
+      what: string,
+      call: (request: AcpUsageRequest) => Promise<McpInventory | void>,
+      done?: () => void,
+    ) => {
+      if (!request || busyRef.current) return;
+      busyRef.current = what;
+      setBusy(what);
+      setNotice(null);
+      void call(request)
+        .then(
+          (inventory) => {
+            if (inventory) setLoad({ kind: "ready", inventory });
+            done?.();
+          },
+          (error: unknown) => {
+            const message = errorMessage(error);
+            // A list already shown stays; the failure is a notice.
+            setLoad((shown) =>
+              shown.kind === "ready" ? shown : { kind: "error", message },
+            );
+            setNotice(message);
+          },
+        )
+        .finally(() => {
+          busyRef.current = null;
+          setBusy(null);
+        });
     },
     [request],
   );
   useEffect(() => {
-    void run(acpMcpDesktop.read);
+    const read = () => start("read", acpMcpDesktop.read);
+    read();
     // A sign-in finishes in the browser; coming back shows its result.
-    const reread = () => void run(acpMcpDesktop.read);
-    window.addEventListener("focus", reread);
-    return () => window.removeEventListener("focus", reread);
-  }, [run]);
+    window.addEventListener("focus", read);
+    return () => window.removeEventListener("focus", read);
+  }, [start]);
   if (!request)
     return <p role="status">MCP servers appear once the session is running.</p>;
-  const reload = () => {
-    setBusy("reload");
-    setNotice(null);
-    void run(acpMcpDesktop.reload).finally(() => setBusy(null));
-  };
-  const signIn = (server: McpServer) => {
-    setBusy(server.name);
-    setNotice(null);
-    acpMcpDesktop
-      .signIn({ ...request, name: server.name })
-      .then(
-        () =>
-          setNotice(
-            `Finish signing in to ${server.title ?? server.name} in your browser.`,
-          ),
-        (error: unknown) => setNotice(errorMessage(error)),
-      )
-      .finally(() => setBusy(null));
-  };
+  const reload = () => start("reload", acpMcpDesktop.reload);
+  const signIn = (server: McpServer) =>
+    start(
+      server.name,
+      (live) => acpMcpDesktop.signIn({ ...live, name: server.name }),
+      () =>
+        setNotice(
+          `Finish signing in to ${server.title ?? server.name} in your browser.`,
+        ),
+    );
   return (
     <div className="composer-command-panel__mcp">
       <div className="composer-command-panel__heading">
@@ -231,12 +252,12 @@ function McpServers({ request }: { request: AcpUsageRequest | null }) {
           {busy === "reload" ? "Reloading…" : "Reload"}
         </button>
       </div>
-      {notice ? <p role="status">{notice}</p> : null}
+      {notice ? (
+        <p role={load.kind === "error" ? "alert" : "status"}>{notice}</p>
+      ) : null}
       {load.kind === "loading" ? (
         <p role="status">Loading MCP servers…</p>
-      ) : load.kind === "error" ? (
-        <p role="alert">{load.message}</p>
-      ) : load.inventory.servers.length === 0 ? (
+      ) : load.kind === "error" ? null : load.inventory.servers.length === 0 ? (
         <p role="status">This session has no MCP servers.</p>
       ) : (
         <ul className="composer-command-panel__servers">

@@ -12,14 +12,20 @@ pub(crate) enum BrowserError {
 /// Opens an https page. Anything else is refused, so a caller cannot
 /// launch a program or a local file through this.
 pub(crate) fn open_https(url: &str) -> Result<(), BrowserError> {
-    let admitted = !url.chars().any(char::is_control)
-        && url::Url::parse(url).is_ok_and(|parsed| {
-            parsed.scheme() == "https" && parsed.host_str().is_some_and(|host| !host.is_empty())
-        });
-    if !admitted {
+    if url.chars().any(char::is_control) {
         return Err(BrowserError::Failed);
     }
-    open(url)
+    let parsed = url::Url::parse(url).map_err(|_| BrowserError::Failed)?;
+    if parsed.scheme() != "https" || parsed.host_str().is_none_or(str::is_empty) {
+        return Err(BrowserError::Failed);
+    }
+    // The system gets the URL as parsed, never the text it was parsed from.
+    open(parsed.as_str())
+}
+
+/// Whether `open_https` can open anything on this system.
+pub(crate) const fn available() -> bool {
+    cfg!(windows)
 }
 
 #[cfg(windows)]

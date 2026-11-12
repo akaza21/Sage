@@ -51,13 +51,8 @@ impl AcpService {
             owner: owner.clone(),
             request: NativeRpcRequest::Control(control),
         });
-        if matches!(
-            result,
-            Err(HostError::Unavailable
-                | HostError::Closed
-                | HostError::DeliveryUnknown
-                | HostError::RecoveryRequired)
-        ) || (!abandons && matches!(result, Err(HostError::Deadline)))
+        if let Err(error) = &result
+            && needs_recovery(error, abandons)
         {
             self.retain_config_effect_recovery(owner, host);
         }
@@ -70,6 +65,29 @@ impl AcpService {
             Err(_) => Err(SessionControlError::RecoveryRequired),
         }
     }
+}
+
+/// Whether a failed control leaves the runtime's state unknown. A read its
+/// binding abandons at the deadline changed nothing.
+fn needs_recovery(error: &HostError, abandons: bool) -> bool {
+    match error {
+        HostError::Unavailable
+        | HostError::Closed
+        | HostError::DeliveryUnknown
+        | HostError::RecoveryRequired => true,
+        HostError::Deadline => !abandons,
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn only_an_abandoned_read_misses_its_deadline_without_recovery() {
+    assert!(!needs_recovery(&HostError::Deadline, true));
+    assert!(needs_recovery(&HostError::Deadline, false));
+    assert!(needs_recovery(&HostError::DeliveryUnknown, true));
+    assert!(!needs_recovery(&HostError::Intent, false));
+    assert!(!needs_recovery(&HostError::State, false));
 }
 
 /// Renames one call sends before the latest is known to be the one Pi has.

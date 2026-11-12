@@ -5,6 +5,10 @@
 use serde_json::{Map, Value};
 
 use super::{AdapterError, CodexAdapter, RequestKind};
+
+/// Abandoned list reads whose late answers are still dropped; past these, a
+/// new list waits for Codex to answer one of them.
+const MAX_ABANDONED_LISTS: usize = 4;
 use crate::acp::{
     bindings::codex::request::OutgoingRequest,
     contract::SafeText,
@@ -24,7 +28,11 @@ impl CodexAdapter {
         if self.negotiated.is_none() {
             return Err(AdapterError::CapabilityUnavailable);
         }
-        if self.mcp_pending() || self.mcp_read_tombstone.is_some() {
+        // A list Codex is slow to answer holds back only further lists, and
+        // only once several are outstanding.
+        let lists_held = matches!(control, SessionControl::ReadMcpServers)
+            && self.mcp_read_tombstones.len() >= MAX_ABANDONED_LISTS;
+        if self.mcp_pending() || lists_held {
             return Err(AdapterError::TurnIntentConflict);
         }
         let thread = self
@@ -47,8 +55,7 @@ impl CodexAdapter {
     }
 
     /// Stops waiting for a list whose caller gave up; its late answer is
-    /// dropped by `take_mcp_tombstone`, and no new MCP request starts
-    /// before it arrives.
+    /// dropped by `take_mcp_tombstone`.
     pub(crate) fn abandon_mcp_read(&mut self) {
         let read = self
             .pending
@@ -57,14 +64,14 @@ impl CodexAdapter {
             .map(|(id, _)| *id);
         if let Some(id) = read {
             self.take_pending(id);
-            self.mcp_read_tombstone = Some(id);
+            self.mcp_read_tombstones.push(id);
         }
     }
 
     /// A list is on its way, answered or abandoned. Its answer can pass the
     /// frame bound, since Codex sends every tool's schema with it.
     pub(super) fn mcp_list_awaited(&self) -> bool {
-        self.mcp_read_tombstone.is_some() || self.awaits(RequestKind::McpList)
+        !self.mcp_read_tombstones.is_empty() || self.awaits(RequestKind::McpList)
     }
 
     /// A list answer past the frame bound: `true` when it was the awaited
@@ -81,9 +88,9 @@ impl CodexAdapter {
     }
 
     pub(crate) fn take_mcp_tombstone(&mut self, id: u64) -> bool {
-        self.mcp_read_tombstone
-            .take_if(|dead| *dead == id)
-            .is_some()
+        let before = self.mcp_read_tombstones.len();
+        self.mcp_read_tombstones.retain(|dead| *dead != id);
+        self.mcp_read_tombstones.len() != before
     }
 
     /// Codex answered an MCP request: a list becomes the inventory, a

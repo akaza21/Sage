@@ -89,7 +89,13 @@ impl McpInventory {
 }
 
 fn codex_server(server: &Map<String, Value>) -> Option<McpServer> {
-    let name = clean(server.get("name")?.as_str()?, MAX_NAME_BYTES)?;
+    // The name is how Codex knows the server, so it is shown as it is or
+    // not at all: a cleaned name would sign in to no server.
+    let name = server.get("name")?.as_str()?;
+    if clean(name, MAX_NAME_BYTES).as_deref() != Some(name) {
+        return None;
+    }
+    let name = name.to_owned();
     let info = server.get("serverInfo").and_then(Value::as_object);
     let text = |key: &str, max| {
         info.and_then(|info| info.get(key))
@@ -196,7 +202,8 @@ impl McpAuthUrl {
             && url.host_str().is_some_and(|host| !host.is_empty())
             && url.username().is_empty()
             && url.password().is_none();
-        admitted.then(|| Self(value.to_owned()))
+        let url: String = url.into();
+        (admitted && url.len() <= MAX_AUTH_URL_BYTES).then_some(Self(url))
     }
 
     pub(crate) fn as_str(&self) -> &str {

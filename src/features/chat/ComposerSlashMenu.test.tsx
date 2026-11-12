@@ -623,6 +623,63 @@ describe("composer slash commands", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("runs one MCP call at a time and keeps a shown list through a refusal", async () => {
+    const files = {
+      name: "files",
+      title: null,
+      version: null,
+      connection: "connected",
+      auth: "none",
+      tools: 2,
+      resources: 0,
+      error: null,
+      origin: null,
+    };
+    mcp.read
+      .mockReset()
+      .mockResolvedValue({ servers: [files], truncated: false });
+    let reloaded: (value: unknown) => void = () => undefined;
+    mcp.reload
+      .mockReset()
+      .mockReturnValue(new Promise((resolve) => (reloaded = resolve)));
+    native.lists = [
+      {
+        revision: 1,
+        commands: [
+          {
+            name: "mcp",
+            description: "List MCP tools",
+            inputHint: null,
+            source: "builtin",
+            panel: "mcp",
+          },
+        ],
+      },
+    ];
+    render(<Composer />);
+    const { field } = await openMenu("/mcp");
+    fireEvent.keyDown(field, { key: "Enter" });
+    const panel = await screen.findByRole("dialog", { name: "MCP servers" });
+    expect(await within(panel).findByText("files")).toBeVisible();
+    fireEvent.click(within(panel).getByRole("button", { name: "Reload" }));
+    // Coming back to the window mid-reload starts no second call.
+    act(() => void window.dispatchEvent(new Event("focus")));
+    expect(mcp.read).toHaveBeenCalledTimes(1);
+    expect(
+      within(panel).getByRole("button", { name: "Reloading…" }),
+    ).toBeDisabled();
+    await act(async () => reloaded({ servers: [files], truncated: false }));
+    // A refused re-read leaves the list in place and says why.
+    mcp.read.mockRejectedValueOnce(
+      new Error("This session cannot do that right now."),
+    );
+    act(() => void window.dispatchEvent(new Event("focus")));
+    expect(
+      await within(panel).findByText("This session cannot do that right now."),
+    ).toBeVisible();
+    expect(within(panel).getByText("files")).toBeVisible();
+  });
+
   it("does not send a half-typed name while the list is loading", async () => {
     native.hold = new Promise(() => undefined);
     render(<Composer />);

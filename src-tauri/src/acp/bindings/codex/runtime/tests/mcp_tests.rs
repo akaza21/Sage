@@ -123,24 +123,44 @@ fn a_reload_rereads_the_configuration() {
 }
 
 #[test]
-fn an_abandoned_list_holds_the_next_request_until_its_answer_is_dropped() {
+fn abandoned_lists_drop_their_late_answers_and_hold_only_further_lists() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
-    let (abandoned, _) = sent(&mut runtime, &SessionControl::ReadMcpServers);
-    runtime.abandon_usage_read();
-    assert!(!runtime.native_rpc_pending());
+    let mut abandoned = Vec::new();
+    for _ in 0..4 {
+        abandoned.push(sent(&mut runtime, &SessionControl::ReadMcpServers).0);
+        runtime.abandon_usage_read();
+        assert!(!runtime.native_rpc_pending());
+    }
+    // Four lists Codex never answered hold back a fifth, but not the rest.
     assert!(
         runtime
             .session_control(&SessionControl::ReadMcpServers)
             .is_err()
     );
+    let (reload, _) = sent(&mut runtime, &SessionControl::ReloadMcpServers);
+    answer(&mut runtime, reload, json!({"result":{}}));
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::Controlled(None))
+    );
+    // A late answer is dropped, and frees room for a new list.
     answer(
         &mut runtime,
-        abandoned,
+        abandoned[0],
         json!({"result":{"data":[],"nextCursor":null}}),
     );
     assert_eq!(runtime.take_native_rpc_reply(), None);
-    sent(&mut runtime, &SessionControl::ReadMcpServers);
+    let (id, _) = sent(&mut runtime, &SessionControl::ReadMcpServers);
+    answer(
+        &mut runtime,
+        id,
+        json!({"result":{"data":[],"nextCursor":null}}),
+    );
+    assert!(matches!(
+        runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::McpServers(_))
+    ));
 }
 
 #[test]

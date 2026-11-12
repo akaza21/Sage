@@ -36,7 +36,18 @@ impl AcpService {
         owner: RuntimeOwner,
     ) -> Result<McpInventory, SessionControlError> {
         match self.session_control_reply(owner.clone(), SessionControl::ReloadMcpServers)? {
-            NativeRpcReply::Controlled(_) => self.read_mcp_servers(owner),
+            NativeRpcReply::Controlled(_) => {
+                self.read_mcp_servers(owner).map_err(|error| match error {
+                    SessionControlError::Unavailable => SessionControlError::Refused(
+                        SafeText::new(
+                            "controlSummary",
+                            "The MCP configuration was reloaded, but the server list did not arrive in time.",
+                        )
+                        .ok(),
+                    ),
+                    other => other,
+                })
+            }
             _ => Err(SessionControlError::RecoveryRequired),
         }
     }

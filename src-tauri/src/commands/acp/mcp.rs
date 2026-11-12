@@ -70,12 +70,20 @@ pub(crate) async fn sign_in_acp_mcp_server(
         session_id,
         runtime_epoch,
     };
+    // Codex starts a login only when Sage can open its page.
+    if !crate::system_browser::available() {
+        return Err(no_browser());
+    }
     let owner = live_owner(&state, runtime).await?;
     let url = blocking(app, move |state| state.acp.sign_in_mcp_server(owner, name)).await?;
-    crate::system_browser::open_https(url.as_str()).map_err(|_| AcpIpcError::Unavailable {
+    crate::system_browser::open_https(url.as_str()).map_err(|_| no_browser())
+}
+
+fn no_browser() -> AcpIpcError {
+    AcpIpcError::Unavailable {
         reason: AcpUnavailableReason::CapabilityUnavailable,
         message: safe_message("Sage could not open your browser to sign in."),
-    })
+    }
 }
 
 async fn live_owner(

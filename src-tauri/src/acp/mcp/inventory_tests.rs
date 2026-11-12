@@ -67,6 +67,8 @@ fn unknown_states_unnamed_servers_and_a_missing_list_are_handled() {
     assert_eq!(inventory(json!({"nextCursor": null})), None);
     let listed = inventory(json!({"data": [
         {"name": "", "authStatus": "oAuth", "tools": {}, "resources": [], "resourceTemplates": []},
+        {"name": "a\tb", "authStatus": "oAuth", "tools": {}, "resources": [], "resourceTemplates": []},
+        {"name": " padded", "authStatus": "oAuth", "tools": {}, "resources": [], "resourceTemplates": []},
         {"authStatus": "oAuth"},
         {"name": "later", "authStatus": "somethingNew", "runtimeStatus": "rebooting",
          "tools": {}, "resources": [], "resourceTemplates": []}
@@ -81,7 +83,7 @@ fn unknown_states_unnamed_servers_and_a_missing_list_are_handled() {
 fn text_is_one_clipped_line_and_origins_drop_paths_and_credentials() {
     let error = format!("bad\nthing\u{7}{}", "é".repeat(400));
     let listed = inventory(json!({"data": [
-        {"name": "a\tb", "authStatus": "bearerToken", "toolsError": error,
+        {"name": "a", "authStatus": "bearerToken", "toolsError": error,
          "httpOrigin": "https://user:secret@example.com:8443/path?q=1",
          "tools": {}, "resources": [], "resourceTemplates": []},
         {"name": "c", "authStatus": "bearerToken",
@@ -94,7 +96,7 @@ fn text_is_one_clipped_line_and_origins_drop_paths_and_credentials() {
     let [a, c, d] = listed.servers.as_slice() else {
         panic!("three servers")
     };
-    assert_eq!(a.name, "a b");
+    assert_eq!(a.name, "a");
     assert_eq!(a.auth, McpAuth::Token);
     let error = a.error.as_deref().unwrap();
     assert!(error.starts_with("bad thing é"));
