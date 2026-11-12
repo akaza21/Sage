@@ -204,11 +204,13 @@ impl AvailableCommand {
 }
 
 /// A name a prompt can run as `/name`: no whitespace, controls or slash.
+/// The byte order mark counts as whitespace, as it does in the WebView's
+/// check of the same list.
 fn is_command_name(name: &str) -> bool {
     !name.is_empty()
         && !name
             .chars()
-            .any(|c| c.is_whitespace() || c.is_control() || c == '/')
+            .any(|c| c.is_whitespace() || c.is_control() || c == '/' || c == '\u{feff}')
 }
 
 /// A required string field of an advertisement.

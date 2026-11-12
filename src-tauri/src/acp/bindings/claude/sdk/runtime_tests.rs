@@ -94,6 +94,7 @@ fn ready() -> ClaudeSdkRuntime {
         &mut runtime,
         &initialize,
         json!({"commands":[{"name":"review","description":"Review changes"},
+            {"name":"status","description":"A user skill"},
             {"name":"mcp","description":"Manage MCP servers","argumentHint":"[reconnect]","builtin":true,"aliases":["servers"]}],
             "current_permission_mode":"default","models":[{"value":"default","displayName":"Default"}]}),
     );
@@ -126,13 +127,17 @@ fn ready() -> ClaudeSdkRuntime {
     let listed = runtime.available_commands().snapshot().commands;
     let names: Vec<_> = listed.iter().map(|command| command.name.as_str()).collect();
     assert_eq!(names, ["status", "mcp", "review"]);
-    // A panel Claude Code lists too keeps Claude Code's wording.
+    // A panel that is also Claude Code's built-in keeps Claude Code's
+    // wording but takes no input, since the panel sends nothing.
     let mcp = &listed[1];
     assert_eq!(
         (mcp.description.as_str(), mcp.input_hint.as_deref()),
-        ("Manage MCP servers", Some("[reconnect]"))
+        ("Manage MCP servers", None)
     );
     assert_eq!(mcp.aliases, ["servers"]);
+    // A user's command of a panel's name is not the built-in, so the panel
+    // keeps its own wording.
+    assert_ne!(listed[0].description, "A user skill");
     assert_eq!(
         mcp.dispatch,
         crate::acp::slash_commands::CommandDispatch::Panel(
