@@ -8,6 +8,10 @@ import {
   type KeyboardEvent,
 } from "react";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import {
+  hasNavigationModifier,
+  listIndexForKey,
+} from "../../ui/listNavigation";
 import { useDocumentVisible } from "../../ui/useDocumentVisible";
 import {
   Archive,
@@ -76,15 +80,12 @@ const groups: readonly {
   { heading: null, pages: ["Archived chats"] },
 ];
 
-const SECTION_STEPS: Partial<Record<string, number>> = {
-  ArrowDown: 1,
-  ArrowUp: -1,
-};
-
-/** ArrowUp and ArrowDown move between the section buttons, wrapping. */
+/**
+ * ArrowUp and ArrowDown move between the section buttons, wrapping; Home and
+ * End go to the first and last. The search field keeps its own keys.
+ */
 function moveSectionFocus(event: KeyboardEvent<HTMLElement>) {
-  const step = SECTION_STEPS[event.key];
-  if (!step) return;
+  if (hasNavigationModifier(event)) return;
   const sections = [
     ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
       ".agent-settings__nav-group > button",
@@ -92,8 +93,15 @@ function moveSectionFocus(event: KeyboardEvent<HTMLElement>) {
   ];
   const index = sections.indexOf(event.target as HTMLButtonElement);
   if (index < 0) return;
+  const next = listIndexForKey(
+    event.key,
+    index,
+    sections.map(() => false),
+    { orientation: "vertical", wrap: true },
+  );
+  if (next === null) return;
   event.preventDefault();
-  sections[(index + step + sections.length) % sections.length]?.focus();
+  sections[next].focus();
 }
 
 const icons: Record<AgentSettingsPage, typeof Archive> = {

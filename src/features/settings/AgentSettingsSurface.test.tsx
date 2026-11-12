@@ -321,6 +321,26 @@ it("moves between sections with the arrow keys, wrapping at either end", () => {
     key: "ArrowDown",
   });
   expect(appearance).toHaveFocus();
+  fireEvent.keyDown(appearance, { key: "End" });
+  expect(screen.getByRole("button", { name: "Archived chats" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Archived chats" }), {
+    key: "Home",
+  });
+  expect(appearance).toHaveFocus();
+  // Modified arrows belong to someone else.
+  expect(
+    fireEvent.keyDown(appearance, { key: "ArrowDown", altKey: true }),
+  ).toBe(true);
+  expect(appearance).toHaveFocus();
+});
+
+it("leaves the search field's keys to the field", () => {
+  render(<AgentSettingsSurface />);
+  const search = screen.getByRole("searchbox");
+  search.focus();
+  for (const key of ["Home", "End", "ArrowDown", "ArrowUp"])
+    expect(fireEvent.keyDown(search, { key })).toBe(true);
+  expect(search).toHaveFocus();
 });
 
 it("restores the real per-harness access default from its persistence boundary after renderer state is discarded", async () => {

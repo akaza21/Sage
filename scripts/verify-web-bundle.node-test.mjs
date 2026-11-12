@@ -489,6 +489,42 @@ test("web bundle verifier counts static closure but includes dynamic chunks in t
   }
 });
 
+test("startup closures ignore which content hashes they import but count code growth", async () => {
+  const code =
+    "const s=e.useMemo(()=>t.snapshot(n),[n]);export{s as ChangesSurface};";
+  const importing = (shared, deps, body = code) =>
+    `import{a as e}from"./${shared}.js";import{t}from"./${deps}.js";${body}`;
+  const measure = async (imported) => {
+    const root = await candidate({ imported });
+    try {
+      const result = verifyWebBundle(root);
+      return {
+        initial: result.initialStaticClosureGzipBytes,
+        paths: Object.fromEntries(
+          Object.entries(result.paths).map(([name, value]) => [
+            name,
+            value.gzipBytes,
+          ]),
+        ),
+      };
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  };
+  const first = await measure(importing("DLlys00o", "CPZB2TWi"));
+  // As emitted, the two chunks compress to different sizes.
+  assert.notEqual(
+    gzipSync(importing("DLlys00o", "CPZB2TWi")).length,
+    gzipSync(importing("snapshot", "useMemo_")).length,
+  );
+  assert.deepEqual(await measure(importing("snapshot", "useMemo_")), first);
+  const grown = await measure(
+    importing("snapshot", "useMemo_", code.replace("[n]", "[+n]")),
+  );
+  assert.ok(grown.initial > first.initial);
+  assert.ok(grown.paths.agentOneChat > first.paths.agentOneChat);
+});
+
 test("a shrinking core total cannot hide an independently regressed user path", async () => {
   const root = await candidate();
   try {
