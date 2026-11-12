@@ -927,7 +927,8 @@ test("only import specifiers lose their content hashes", () => {
     ["import './DLlys00o.js';", `import '${masked}';`],
     ["await import(`./DLlys00o.js`)", `await import(\`${masked}\`)`],
     ['import ( "./DLlys00o.js" )', `import ( "${masked}" )`],
-    ['import"./fObb2P8k2.js";', 'import"./xxxxxxxxx.js";'],
+    // A deduplication suffix is part of the emitted name, not the code.
+    ['import"./fObb2P8k2.js";', `import"${masked}";`],
     ['export{a}from"./DLlys00o.js";', `export{a}from"${masked}";`],
     ['export*from"./DLlys00o.js";', `export*from"${masked}";`],
   ]) {
