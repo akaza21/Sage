@@ -131,6 +131,25 @@ export default function ComposerUsageLimits({
   triggerRef: RefObject<HTMLElement | null>;
   onDismiss: () => void;
 }) {
+  return (
+    <MenuPopover
+      id={id}
+      ariaLabel="Usage"
+      role="dialog"
+      focusStrategy="none"
+      placement="above-end"
+      open
+      triggerRef={triggerRef}
+      onDismiss={onDismiss}
+      className="composer__popover composer-usage"
+    >
+      <UsageReport request={request} />
+    </MenuPopover>
+  );
+}
+
+/** The harness's usage limits and session spend, read when shown. */
+export function UsageReport({ request }: { request: AcpUsageRequest }) {
   const [state, setState] = useState<AcpUsageState | string | null>(null);
   const headingId = useId();
   const sessionHeadingId = useId();
@@ -151,17 +170,7 @@ export default function ComposerUsageLimits({
     snapshot && snapshot.windows.length === 0 && snapshot.session,
   );
   return (
-    <MenuPopover
-      id={id}
-      ariaLabel="Usage"
-      role="dialog"
-      focusStrategy="none"
-      placement="above-end"
-      open
-      triggerRef={triggerRef}
-      onDismiss={onDismiss}
-      className="composer__popover composer-usage"
-    >
+    <>
       <div className="composer-usage__heading">
         <strong id={headingId}>
           {sessionOnly ? "This session" : "Usage limits"}
@@ -201,6 +210,6 @@ export default function ComposerUsageLimits({
           ) : null}
         </>
       ) : null}
-    </MenuPopover>
+    </>
   );
 }

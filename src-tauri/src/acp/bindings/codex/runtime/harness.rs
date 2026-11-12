@@ -85,6 +85,7 @@ impl HarnessAdapter for CodexRuntime {
             || self.inner.fork_rpc_pending()
             || self.inner.rate_limits_read_pending()
             || self.inner.revert_pending()
+            || self.inner.mcp_pending()
     }
 
     fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
@@ -96,8 +97,10 @@ impl HarnessAdapter for CodexRuntime {
         self.request(CodexAdapter::rate_limits_read)
     }
 
+    /// A passive read whose caller gave up: a usage or MCP list read.
     fn abandon_usage_read(&mut self) {
         self.inner.abandon_rate_limits_read();
+        self.inner.abandon_mcp_read();
     }
 
     /// Each read whose reply may be past the frame bound keeps the decoder

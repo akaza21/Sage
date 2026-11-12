@@ -99,6 +99,7 @@ mod settings_store;
 mod side_chat;
 mod side_chat_storage;
 mod state;
+mod system_browser;
 #[cfg(test)]
 mod test_diagnostics;
 #[cfg(test)]

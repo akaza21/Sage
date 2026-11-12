@@ -86,6 +86,8 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   // menu with the first `/` typed.
   "src/features/chat/ComposerSlashController.tsx",
   "src/features/chat/ComposerSlashMenu.tsx",
+  // `/status` and `/mcp` load their panel when first opened.
+  "src/features/chat/ComposerCommandPanel.tsx",
   // The suggestion listbox both menus share loads with either controller.
   "src/ui/TextFieldSuggestions.tsx",
 ];

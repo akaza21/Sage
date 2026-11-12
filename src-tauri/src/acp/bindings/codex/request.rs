@@ -12,6 +12,8 @@ use super::manifest::Platform;
 use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
 use super::turn_policy::{TurnPolicySurface, TurnSettings, turn_policy, validate_turn_policy};
 
+mod goal;
+mod mcp;
 mod prompt_input;
 mod session_action;
 mod skills;
@@ -90,6 +92,12 @@ pub(crate) enum RequestKind {
     SkillsList,
     /// `thread/revert`: drops the latest Turn from the thread's history.
     ThreadRevert,
+    /// `mcpServerStatus/list` for `/mcp`.
+    McpList,
+    /// `config/mcpServer/reload`.
+    McpReload,
+    /// `mcpServer/oauth/login`.
+    McpSignIn,
 }
 
 impl RequestKind {
@@ -138,6 +146,9 @@ impl OutgoingRequest {
             RequestKind::RateLimitsRead => "account/rateLimits/read",
             RequestKind::SkillsList => "skills/list",
             RequestKind::ThreadRevert => "thread/revert",
+            RequestKind::McpList => "mcpServerStatus/list",
+            RequestKind::McpReload => "config/mcpServer/reload",
+            RequestKind::McpSignIn => "mcpServer/oauth/login",
         };
         let bytes = serde_json::to_vec(&json!({"id": id, "method": method, "params": params}))
             .map_err(|_| RequestError::Encoding)?;
@@ -241,30 +252,6 @@ impl OutgoingRequest {
             id,
             RequestKind::Fork,
             json!({"threadId": thread_id.as_str(), "excludeTurns": true}),
-        )
-    }
-
-    pub(crate) fn goal_get(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
-        Self::build(
-            id,
-            RequestKind::GoalGet,
-            json!({"threadId": thread_id.as_str()}),
-        )
-    }
-
-    pub(crate) fn goal_pause(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
-        Self::build(
-            id,
-            RequestKind::GoalPause,
-            json!({"threadId": thread_id.as_str(), "status": "paused"}),
-        )
-    }
-
-    pub(crate) fn goal_clear(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
-        Self::build(
-            id,
-            RequestKind::GoalClear,
-            json!({"threadId": thread_id.as_str()}),
         )
     }
 

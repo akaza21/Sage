@@ -125,7 +125,9 @@ fn goal_reply(
             | NativeRpcReply::Released
             | NativeRpcReply::UsageRead
             | NativeRpcReply::Controlled(_)
-            | NativeRpcReply::ControlRefused(_),
+            | NativeRpcReply::ControlRefused(_)
+            | NativeRpcReply::McpServers(_)
+            | NativeRpcReply::McpSignIn(_),
         ) => Err(crate::acp::runtime::HostError::RecoveryRequired),
         Err(error) => Err(error),
     }

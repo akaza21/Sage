@@ -30,6 +30,7 @@ mod duplicate_terminal_probe;
 mod foreign_thread_tests;
 mod fork_tests;
 mod hook_and_progress_events;
+mod mcp_tests;
 mod model_choice;
 mod model_identity;
 #[cfg(feature = "acp-fixture")]

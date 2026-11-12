@@ -52,6 +52,12 @@ vi.mock("../../services/acpCommandsDesktop", async (original) => ({
     ),
   },
 }));
+const mcp = vi.hoisted(() => ({
+  read: vi.fn(),
+  reload: vi.fn(),
+  signIn: vi.fn(),
+}));
+vi.mock("../../services/acpMcpDesktop", () => ({ acpMcpDesktop: mcp }));
 vi.mock("./acp/useAcpChatActions", async (original) => ({
   ...(await original<object>()),
   currentContext: () => ({
@@ -523,6 +529,170 @@ describe("composer slash commands", () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
     // Not picked from the menu: the send path matches it against the list.
     expect(pickedCommandFor("chat-a")).toBeUndefined();
+  });
+
+  it("opens a panel command in place of sending it, typed or picked", async () => {
+    const notion = {
+      name: "notion",
+      title: "Notion",
+      version: null,
+      connection: "signInRequired",
+      auth: "signedOut",
+      tools: 0,
+      resources: 0,
+      error: null,
+      origin: "https://mcp.notion.com",
+    };
+    const files = {
+      ...notion,
+      name: "files",
+      title: null,
+      connection: "connected",
+      auth: "none",
+      tools: 2,
+      origin: null,
+    };
+    mcp.read.mockResolvedValue({
+      servers: [files, notion],
+      truncated: false,
+      signInAvailable: true,
+    });
+    mcp.reload.mockResolvedValue({
+      servers: [files],
+      truncated: false,
+      signInAvailable: true,
+    });
+    mcp.signIn.mockResolvedValue(undefined);
+    native.lists = [
+      {
+        revision: 1,
+        commands: [
+          ...commands,
+          {
+            name: "status",
+            description: "Show the session",
+            inputHint: null,
+            source: "builtin",
+            panel: "status",
+          },
+          {
+            name: "mcp",
+            description: "List MCP tools",
+            inputHint: null,
+            source: "builtin",
+            panel: "mcp",
+          },
+        ],
+      },
+    ];
+    render(<Composer />);
+    const { field } = await openMenu("/mcp");
+    fireEvent.keyDown(field, { key: "Enter" });
+    const panel = await screen.findByRole("dialog", { name: "MCP servers" });
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(field).toHaveValue("");
+    expect(mcp.read).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "session-a", runtimeEpoch: "3" }),
+    );
+    expect(await within(panel).findByText("Sign-in required")).toBeVisible();
+    expect(within(panel).getByText("files")).toBeVisible();
+    expect(within(panel).getByText("2 tools")).toBeVisible();
+    expect(
+      within(panel).getByText("notion · 0 tools · https://mcp.notion.com"),
+    ).toBeVisible();
+    // Only the server that needs it offers a sign-in.
+    expect(
+      within(panel).getAllByRole("button", { name: /^Sign in/u }),
+    ).toHaveLength(1);
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Sign in to Notion" }),
+    );
+    expect(mcp.signIn).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "notion", sessionId: "session-a" }),
+    );
+    expect(
+      await within(panel).findByText(
+        "Finish signing in to Notion in your browser.",
+      ),
+    ).toBeVisible();
+    fireEvent.click(within(panel).getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(within(panel).queryByText("Notion")).toBeNull());
+    expect(mcp.reload).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(panel, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // Picked from the menu, `/status` opens its panel the same way.
+    await openMenu("/sta");
+    fireEvent.click(screen.getByRole("option", { name: /^\/status/u }));
+    expect(
+      await screen.findByRole("dialog", { name: "Session status" }),
+    ).toBeInTheDocument();
+    expect(field).toHaveValue("");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("runs one MCP call at a time and keeps a shown list through a refusal", async () => {
+    const files = {
+      name: "files",
+      title: null,
+      version: null,
+      connection: "connected",
+      auth: "none",
+      tools: 2,
+      resources: 0,
+      error: null,
+      origin: null,
+    };
+    mcp.read.mockReset().mockResolvedValue({
+      servers: [files],
+      truncated: false,
+      signInAvailable: true,
+    });
+    let reloaded: (value: unknown) => void = () => undefined;
+    mcp.reload
+      .mockReset()
+      .mockReturnValue(new Promise((resolve) => (reloaded = resolve)));
+    native.lists = [
+      {
+        revision: 1,
+        commands: [
+          {
+            name: "mcp",
+            description: "List MCP tools",
+            inputHint: null,
+            source: "builtin",
+            panel: "mcp",
+          },
+        ],
+      },
+    ];
+    render(<Composer />);
+    const { field } = await openMenu("/mcp");
+    fireEvent.keyDown(field, { key: "Enter" });
+    const panel = await screen.findByRole("dialog", { name: "MCP servers" });
+    expect(await within(panel).findByText("files")).toBeVisible();
+    fireEvent.click(within(panel).getByRole("button", { name: "Reload" }));
+    // Coming back to the window mid-reload starts no second call.
+    act(() => void window.dispatchEvent(new Event("focus")));
+    expect(mcp.read).toHaveBeenCalledTimes(1);
+    expect(
+      within(panel).getByRole("button", { name: "Reloading…" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    // It keeps the focus but starts nothing while the reload runs.
+    fireEvent.click(within(panel).getByRole("button", { name: "Reloading…" }));
+    expect(mcp.reload).toHaveBeenCalledTimes(1);
+    await act(async () =>
+      reloaded({ servers: [files], truncated: false, signInAvailable: true }),
+    );
+    // A refused re-read leaves the list in place and says why.
+    mcp.read.mockRejectedValueOnce(
+      new Error("This session cannot do that right now."),
+    );
+    act(() => void window.dispatchEvent(new Event("focus")));
+    expect(
+      await within(panel).findByText("This session cannot do that right now."),
+    ).toBeVisible();
+    expect(within(panel).getByText("files")).toBeVisible();
   });
 
   it("does not send a half-typed name while the list is loading", async () => {

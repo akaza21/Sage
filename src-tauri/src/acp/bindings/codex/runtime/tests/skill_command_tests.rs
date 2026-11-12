@@ -322,8 +322,15 @@ fn codex_lists_its_own_commands_for_the_methods_this_session_negotiated() {
         [
             ("compact", CommandSource::Builtin, false),
             ("review", CommandSource::Builtin, true),
+            ("status", CommandSource::Builtin, false),
+            ("mcp", CommandSource::Builtin, false),
         ]
     );
+    // The panel a command opens is the only route the WebView learns.
+    let listed = serde_json::to_value(&list.commands).unwrap();
+    assert_eq!(listed[0].get("panel"), None);
+    assert_eq!(listed[2]["panel"], "status");
+    assert_eq!(listed[3]["panel"], "mcp");
     // Codex's own command keeps its name over a skill that shares it.
     read_skills(
         &mut runtime,
@@ -331,7 +338,7 @@ fn codex_lists_its_own_commands_for_the_methods_this_session_negotiated() {
     );
     let list = runtime.available_commands().snapshot();
     let names: Vec<_> = list.commands.iter().map(|c| c.name.as_str()).collect();
-    assert_eq!(names, ["compact", "review", "pdf"]);
+    assert_eq!(names, ["compact", "review", "status", "mcp", "pdf"]);
     assert_eq!(list.commands[1].source, CommandSource::Builtin);
 }
 

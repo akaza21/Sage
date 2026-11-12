@@ -723,6 +723,19 @@ fn a_native_rpc_that_cannot_begin_in_time_recovers_only_when_not_passive() {
             ),
             HostState::Idle,
         ),
+        // Listing MCP servers is a read; reloading them changes the session.
+        (
+            crate::acp::goal::NativeRpcRequest::Control(
+                crate::acp::session_control::SessionControl::ReadMcpServers,
+            ),
+            HostState::Idle,
+        ),
+        (
+            crate::acp::goal::NativeRpcRequest::Control(
+                crate::acp::session_control::SessionControl::ReloadMcpServers,
+            ),
+            HostState::Recovery,
+        ),
         (
             crate::acp::goal::NativeRpcRequest::Goal(crate::acp::goal::GoalAction::PauseExisting),
             HostState::Recovery,

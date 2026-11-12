@@ -85,6 +85,7 @@ impl CodexAdapter {
             pending_child_read: None,
             child_read_tombstone: None,
             rate_limits_abandoned: super::rate_limits::AbandonedReads::default(),
+            mcp_read_tombstones: Vec::new(),
             skills: Default::default(),
             pending_fork: None,
             forks: super::fork::ForkLedger::default(),

@@ -271,7 +271,11 @@ export function ComposerSlashMenu({
   const pick = (item: TextFieldSuggestion) => {
     const command = commands.find((candidate) => candidate.name === item.id);
     if (command)
-      onPick({ name: command.name, inputHint: command.inputHint ?? null });
+      onPick({
+        name: command.name,
+        inputHint: command.inputHint ?? null,
+        ...(command.panel ? { panel: command.panel } : {}),
+      });
   };
   const navigation = useSuggestionNavigation(items, pick, onDismiss);
   const activeId = navigation.active?.id ?? null;
@@ -286,8 +290,14 @@ export function ComposerSlashMenu({
         !event.metaKey &&
         !isImeComposing(event);
       // A fully typed name runs on the first Enter, as in the Claude Code
-      // CLI: the field's own Enter sends it.
-      if (enter && navigation.active?.id === query) return false;
+      // CLI: the field's own Enter sends it, and a panel command opens.
+      if (enter && navigation.active?.id === query) {
+        if (!commands.find((command) => command.name === query)?.panel)
+          return false;
+        event.preventDefault();
+        pick(navigation.active);
+        return true;
+      }
       // While the list loads, Enter must not send a half-typed name.
       if (enter && loading) {
         event.preventDefault();
