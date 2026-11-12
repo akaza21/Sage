@@ -49,7 +49,10 @@ use version_probe::run_version_command;
 pub(crate) const PATH_BYTES_MAX: usize = 32 * 1024;
 pub(super) const KNOWN_INSTALL_ROOT_CAP: usize = 4;
 pub(super) const VERSION_OUTPUT_BYTES_MAX: usize = 16 * 1024;
-pub(super) const VERSION_TIMEOUT: Duration = Duration::from_secs(2);
+/// Long enough for a first run after an update, when the OS scans the new
+/// binary or Node compiles its cache; a probe that answers sooner returns
+/// sooner.
+pub(super) const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 pub(super) const VERSION_REAP_TIMEOUT: Duration = Duration::from_millis(250);
 pub(super) const VERSION_POLL_INTERVAL: Duration = Duration::from_millis(5);
 

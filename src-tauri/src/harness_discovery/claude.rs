@@ -195,7 +195,11 @@ fn node_candidate_exists(paths: &[PathBuf]) -> bool {
         .any(|path| authentic_harness_file(path, node_basename()))
 }
 
+/// Node runtimes in the order a shell would pick them: PATH first, then the
+/// standard install folder. A version manager that puts its active Node first
+/// on PATH (nvm, fnm, Volta) is the one Sage runs.
 pub(super) fn node_candidates() -> Vec<PathBuf> {
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut candidates = path_candidates_for_basename(node_basename());
     #[cfg(windows)]
     if let Some(program_files) = std::env::var_os("ProgramFiles") {
@@ -204,9 +208,15 @@ pub(super) fn node_candidates() -> Vec<PathBuf> {
             candidates.push(root.join(node_basename()));
         }
     }
-    candidates.sort();
-    candidates.dedup();
-    candidates
+    first_occurrences(candidates)
+}
+
+fn first_occurrences(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut seen = std::collections::HashSet::new();
+    paths
+        .into_iter()
+        .filter(|path| seen.insert(path.clone()))
+        .collect()
 }
 
 #[cfg(windows)]
@@ -451,6 +461,15 @@ mod tests {
         assert_eq!(adapter.acp_sdk_version, "1.4.0");
         assert_eq!(adapter.node_engine, ">=22");
         fs::remove_dir_all(root).expect("remove root");
+    }
+
+    #[test]
+    fn node_candidates_keep_the_order_a_shell_would_pick_them_in() {
+        let path = |name: &str| PathBuf::from(name).join(node_basename());
+        assert_eq!(
+            first_occurrences(vec![path("z-active"), path("a-older"), path("z-active")]),
+            vec![path("z-active"), path("a-older")]
+        );
     }
 
     #[cfg(windows)]
