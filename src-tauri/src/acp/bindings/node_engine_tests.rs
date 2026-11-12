@@ -54,6 +54,8 @@ fn a_range_sage_cannot_read_is_never_a_pass() {
         ">=22 ||",
         "|| >=22",
         "latest",
+        ">=022",
+        "^22.01.0",
         long.as_str(),
     ] {
         assert_eq!(check(range, "24.0.0"), None, "{range:?}");
@@ -71,7 +73,15 @@ fn empty_comparators_admit_nothing() {
 fn a_node_version_is_read_from_its_bare_or_v_form() {
     assert_eq!(parse_node_version("22.18.0"), Some((22, 18, 0)));
     assert_eq!(parse_node_version("v22.23.5\n"), Some((22, 23, 5)));
-    for refused in ["22", "22.18", "22.18.0.1", "22.18.0-nightly", "", "v"] {
+    for refused in [
+        "22",
+        "22.18",
+        "22.18.0.1",
+        "22.18.0-nightly",
+        "022.1.0",
+        "",
+        "v",
+    ] {
         assert_eq!(parse_node_version(refused), None, "{refused}");
     }
 }

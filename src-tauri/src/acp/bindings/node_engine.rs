@@ -7,7 +7,7 @@
 //! read is never a pass.
 
 /// Longest `engines.node` value Sage evaluates.
-const RANGE_BYTES_MAX: usize = 256;
+pub(crate) const RANGE_BYTES_MAX: usize = 256;
 
 /// A release version: major, minor, patch.
 pub(crate) type NodeVersion = (u64, u64, u64);
@@ -216,9 +216,14 @@ impl Partial {
     }
 }
 
-/// A decimal version part with no sign, prerelease or build suffix.
+/// A decimal version part with no sign, leading zero, prerelease or build
+/// suffix, as npm's strict grammar reads it.
 fn number(part: &str) -> Option<u64> {
-    if part.is_empty() || part.len() > 10 || !part.bytes().all(|byte| byte.is_ascii_digit()) {
+    if part.is_empty()
+        || part.len() > 10
+        || (part.len() > 1 && part.starts_with('0'))
+        || !part.bytes().all(|byte| byte.is_ascii_digit())
+    {
         return None;
     }
     part.parse().ok()

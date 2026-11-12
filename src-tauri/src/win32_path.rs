@@ -54,8 +54,39 @@ pub(crate) fn simplified_text(text: &str) -> Option<String> {
     };
     let rewritable = simple
         .split('\\')
-        .any(|part| part.ends_with('.') || part.ends_with(' '));
+        .any(|part| part.ends_with('.') || part.ends_with(' ') || dos_device(part));
     (simple.len() < MAX_PATH && !rewritable).then_some(simple)
+}
+
+/// Whether Win32 reads `part` as a device rather than a file: `NUL`, `CON`,
+/// `COM1` and the rest, with or without an extension.
+fn dos_device(part: &str) -> bool {
+    let stem = part.split('.').next().unwrap_or(part).trim_end();
+    let upper = stem.to_ascii_uppercase();
+    let numbered = |prefix: &str| {
+        stem.get(..3)
+            .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+            && matches!(
+                &stem[3..],
+                "0" | "1"
+                    | "2"
+                    | "3"
+                    | "4"
+                    | "5"
+                    | "6"
+                    | "7"
+                    | "8"
+                    | "9"
+                    | "\u{b9}"
+                    | "\u{b2}"
+                    | "\u{b3}"
+            )
+    };
+    matches!(
+        upper.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) || numbered("COM")
+        || numbered("LPT")
 }
 
 #[cfg(test)]
@@ -74,6 +105,24 @@ mod tests {
         );
         assert_eq!(simplified_text(r"\\?\C:\odd.\dir"), None);
         assert_eq!(simplified_text(r"\\?\C:\trailing \dir"), None);
+        for device in [
+            "nul",
+            "CON.js",
+            "aux.tar.gz",
+            "Com1",
+            "lpt9.txt",
+            "COM\u{b9}",
+        ] {
+            assert_eq!(
+                simplified_text(&format!(r"\\?\C:\dir\{device}")),
+                None,
+                "{device}"
+            );
+        }
+        assert_eq!(
+            simplified_text(r"\\?\C:\console\nullable\com10").as_deref(),
+            Some(r"C:\console\nullable\com10")
+        );
         assert_eq!(simplified_text(r"\\?\Volume{x}\dir"), None);
         assert_eq!(simplified_text("/home/me"), None);
         assert_eq!(simplified_text(r"C:\already\plain"), None);

@@ -116,7 +116,9 @@ fn read_package(npm_root: &Path) -> Option<PiPackage> {
         .get("engines")
         .and_then(|engines| engines.get("node"))
         .and_then(Value::as_str)
-        .filter(|engine| !engine.is_empty() && engine.len() <= 64)?;
+        .filter(|engine| {
+            !engine.is_empty() && engine.len() <= crate::acp::bindings::node_engine::RANGE_BYTES_MAX
+        })?;
     Some(PiPackage {
         version: required_package_text(&manifest, "version")?,
         node_engine: engine.to_owned(),

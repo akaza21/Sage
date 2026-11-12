@@ -27,13 +27,20 @@ pub(crate) fn npm_package_bin(npm_root: &Path, package: &str, name: &str) -> Opt
     authentic_descendant_file(npm_root, &entry).then(|| npm_root.join(entry))
 }
 
-/// The target of `bin.<name>` as a path relative to the package root.
+/// The target of the bin `name` as a path relative to the package root:
+/// `bin.<name>`, or a single string `bin`, which npm names after the package
+/// without its scope.
 pub(super) fn bin_entry(manifest: &Value, name: &str) -> Option<PathBuf> {
-    manifest
-        .get("bin")
-        .and_then(|bin| bin.get(name))
-        .and_then(Value::as_str)
-        .and_then(relative_module)
+    let bin = manifest.get("bin")?;
+    let target = match bin {
+        Value::String(target) => {
+            let package = manifest.get("name").and_then(Value::as_str)?;
+            let unscoped = package.rsplit('/').next().unwrap_or(package);
+            (unscoped == name).then_some(target.as_str())?
+        }
+        _ => bin.get(name).and_then(Value::as_str)?,
+    };
+    relative_module(target)
 }
 
 /// A bin target as a relative `/`-separated path naming a JavaScript module
@@ -118,6 +125,17 @@ mod tests {
         manifest("@openai/codex", "bin/moved.js");
         assert_eq!(npm_package_bin(&root, "@openai/codex", "codex"), None);
         manifest("@openai/codex", "bin/codex.js");
+        assert_eq!(npm_package_bin(&root, "@openai/codex", "codex-exec"), None);
+        // The single-string form names the bin after the unscoped package.
+        std::fs::write(
+            package.join("package.json"),
+            serde_json::json!({"name": "@openai/codex", "bin": "bin/codex.js"}).to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            npm_package_bin(&root, "@openai/codex", "codex"),
+            Some(root.join("node_modules/@openai/codex").join("bin/codex.js"))
+        );
         assert_eq!(npm_package_bin(&root, "@openai/codex", "codex-exec"), None);
         std::fs::remove_dir_all(root).unwrap();
     }
