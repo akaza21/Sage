@@ -69,8 +69,15 @@ impl UsageSnapshot {
         });
     }
 
+    /// Names the plan as harnesses spell it (`plus`, `max`, `pro_lite`),
+    /// shown with its first letter capitalized.
     pub(crate) fn set_plan(&mut self, plan: &str) {
-        self.plan = bounded_label(plan);
+        self.plan = bounded_label(&plan.replace('_', " ")).map(|mut plan| {
+            if let Some(first) = plan.get_mut(..1) {
+                first.make_ascii_uppercase();
+            }
+            plan
+        });
     }
 }
 

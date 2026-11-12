@@ -5,7 +5,11 @@ use serde_json::Value;
 
 use super::{ClaudeSdkRuntime, MAX_OPEN_DELIVERIES, SdkBridge, sdk_frame};
 use crate::acp::{
-    bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressToken},
+    bindings::{
+        adapter::{AdapterEgress, AdapterRuntimeError, EgressToken},
+        claude::sdk::bridge::UsageReply,
+    },
+    goal::NativeRpcReply,
     intent::CapabilitySnapshotV1,
 };
 
@@ -43,11 +47,33 @@ impl ClaudeSdkRuntime {
         self.control_egress(&sdk)
     }
 
-    /// MCP requests whose caller gave up (a list or a reconnect); their late
-    /// replies are then dropped.
-    pub(super) fn abandon_mcp_requests(&mut self) {
+    /// Claude Code's answer to a native request, until the host takes it,
+    /// and what a usage read learned about the plan's limits.
+    pub(super) fn answered(&mut self, reply: Option<NativeRpcReply>, usage: Option<UsageReply>) {
+        if let Some(reply) = reply {
+            self.native = Some(reply);
+        }
+        match usage {
+            Some(UsageReply::Limits(snapshot)) => self.usage.replace(snapshot),
+            Some(UsageReply::Unsupported) => self.usage.mark_unsupported(),
+            None => {}
+        }
+    }
+
+    /// The control frame that reads the plan's usage limits.
+    pub(super) fn usage_request(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let sdk = self
+            .bridge()?
+            .usage_read()
+            .map_err(|_| AdapterRuntimeError::Operation)?;
+        self.control_egress(&sdk)
+    }
+
+    /// Passive requests whose caller gave up (an MCP list or reconnect, or
+    /// a usage read); their late replies are then dropped.
+    pub(super) fn abandon_passive_requests(&mut self) {
         if let Some(bridge) = self.bridge.as_mut() {
-            bridge.abandon_mcp_requests();
+            bridge.abandon_passive_requests();
         }
     }
 

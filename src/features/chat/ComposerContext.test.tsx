@@ -6,7 +6,10 @@ import { acpUsageDesktop } from "../../services/acpUsageDesktop";
 import type { ChatUsage } from "./acp/chatUsage";
 import { ComposerContext } from "./ComposerContext";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function usage(totalTokens: number, contextWindow?: number): ChatUsage {
   return {
@@ -94,6 +97,9 @@ describe("ComposerContext", () => {
   });
 
   it("reads usage limits only when opened and drops them when closed", async () => {
+    // A reset on another day names its weekday.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.UTC(2026, 10, 12, 9));
     const read = vi.spyOn(acpUsageDesktop, "read").mockResolvedValue({
       kind: "usage",
       snapshot: {
@@ -105,6 +111,12 @@ describe("ComposerContext", () => {
             usedPercent: 42,
             windowMinutes: 300,
             resetsAt: null,
+          },
+          {
+            label: "Opus",
+            usedPercent: 55,
+            windowMinutes: 10_080,
+            resetsAt: Date.UTC(2026, 10, 18, 3, 37) / 1_000,
           },
         ],
         session: null,
@@ -126,11 +138,19 @@ describe("ComposerContext", () => {
     expect(read).not.toHaveBeenCalled();
 
     fireEvent.click(trigger);
-    expect(
-      await screen.findByRole("progressbar", { name: "5-hour used" }),
-    ).toHaveAttribute("aria-valuenow", "42");
+    const limits = await screen.findAllByRole("listitem");
+    expect(limits.map((limit) => limit.textContent)).toEqual([
+      "5-hour limit58% left",
+      `Opus weekly limit45% leftResets ${new Date(
+        Date.UTC(2026, 10, 18, 3, 37),
+      ).toLocaleString(undefined, {
+        weekday: "short",
+        hour: "numeric",
+        minute: "2-digit",
+      })}`,
+    ]);
     expect(screen.getByRole("alert")).toHaveTextContent("Usage limit reached.");
-    expect(screen.getByText("Pro")).toBeVisible();
+    expect(screen.getByText("Pro plan")).toBeVisible();
     expect(read).toHaveBeenCalledWith(request);
 
     fireEvent.click(trigger);
@@ -182,9 +202,7 @@ describe("ComposerContext", () => {
       ["Total tokens", (100_000).toLocaleString()],
       ["Cost", expect.stringMatching(/0[.,]0125/)],
     ]);
-    expect(
-      screen.getByText("This session", { selector: "strong" }),
-    ).toBeVisible();
+    expect(screen.getByText("This session")).toBeVisible();
     expect(screen.queryByRole("progressbar", { name: /used$/ })).toBeNull();
     read.mockRestore();
   });
