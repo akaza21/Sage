@@ -162,6 +162,8 @@ async fn run_status_with_timeout(
             .await
             .map_err(|_| "Claude Code sign-in check failed.")?;
         // The leader is reaped, so its id may be reused: never signal it now.
+        // A descendant that closed stdout and outlives a normal exit is left
+        // alone; reaching it would need a non-reaping wait tokio lacks.
         #[cfg(unix)]
         {
             group.0 = None;
@@ -285,7 +287,8 @@ mod tests {
             &format!("sleep 30 & echo $! > '{}'; wait", marker.display()),
         );
         assert_eq!(
-            check(&forked, Duration::from_millis(300)),
+            // Long enough for a slow runner to start the shell and write the marker.
+            check(&forked, Duration::from_secs(2)),
             Err("Claude Code sign-in check timed out.")
         );
         let descendant: libc::pid_t = std::fs::read_to_string(&marker)
