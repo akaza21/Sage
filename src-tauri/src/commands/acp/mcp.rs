@@ -1,5 +1,6 @@
 //! `/mcp` for the chat's running session: list its MCP servers, reload
-//! their configuration, and start a server's sign-in in the system browser.
+//! their configuration, reconnect one, and start a server's sign-in in the
+//! system browser.
 
 use super::{
     session_control::control_error,
@@ -17,13 +18,35 @@ use serde::Deserialize;
 /// Names a server of one live runtime.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct McpSignInRequest {
+pub(crate) struct McpServerRequest {
     project_id: SageProjectId,
     project_generation: ProjectGeneration,
     chat_id: SageChatId,
     session_id: SageAgentSessionId,
     runtime_epoch: RuntimeEpoch,
     name: RequiredText<128>,
+}
+
+impl McpServerRequest {
+    /// The runtime, and the server's name in it.
+    fn split(self) -> (AcpUsageRequest, RequiredText<128>) {
+        let Self {
+            project_id,
+            project_generation,
+            chat_id,
+            session_id,
+            runtime_epoch,
+            name,
+        } = self;
+        let runtime = AcpUsageRequest {
+            project_id,
+            project_generation,
+            chat_id,
+            session_id,
+            runtime_epoch,
+        };
+        (runtime, name)
+    }
 }
 
 #[tauri::command]
@@ -46,6 +69,21 @@ pub(crate) async fn reload_acp_mcp_servers(
     blocking(app, move |state| state.acp.reload_mcp_servers(owner)).await
 }
 
+/// Connects one server again; answers with the list after it.
+#[tauri::command]
+pub(crate) async fn reconnect_acp_mcp_server(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    request: McpServerRequest,
+) -> Result<McpInventory, AcpIpcError> {
+    let (runtime, name) = request.split();
+    let owner = live_owner(&state, runtime).await?;
+    blocking(app, move |state| {
+        state.acp.reconnect_mcp_server(owner, name)
+    })
+    .await
+}
+
 /// Opens the server's sign-in page in the user's browser. The page itself
 /// never reaches the WebView; the list shows the result once the harness
 /// reconnects the server.
@@ -53,23 +91,9 @@ pub(crate) async fn reload_acp_mcp_servers(
 pub(crate) async fn sign_in_acp_mcp_server(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-    request: McpSignInRequest,
+    request: McpServerRequest,
 ) -> Result<(), AcpIpcError> {
-    let McpSignInRequest {
-        project_id,
-        project_generation,
-        chat_id,
-        session_id,
-        runtime_epoch,
-        name,
-    } = request;
-    let runtime = AcpUsageRequest {
-        project_id,
-        project_generation,
-        chat_id,
-        session_id,
-        runtime_epoch,
-    };
+    let (runtime, name) = request.split();
     // Codex starts a login only when Sage can open its page.
     if !crate::system_browser::available() {
         return Err(no_browser());
@@ -114,12 +138,12 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn a_sign_in_names_one_live_runtime_and_a_bounded_server_name() {
+    fn a_server_request_names_one_live_runtime_and_a_bounded_server_name() {
         let request = json!({
             "projectId":"project-one", "projectGeneration":"1", "chatId":"chat-one",
             "sessionId":"session-one", "runtimeEpoch":"1", "name":"notion"
         });
-        assert!(serde_json::from_value::<McpSignInRequest>(request.clone()).is_ok());
+        assert!(serde_json::from_value::<McpServerRequest>(request.clone()).is_ok());
         for (key, value) in [
             ("name", json!("")),
             ("name", json!("x".repeat(129))),
@@ -128,7 +152,7 @@ mod tests {
             let mut changed = request.clone();
             changed[key] = value;
             assert!(
-                serde_json::from_value::<McpSignInRequest>(changed).is_err(),
+                serde_json::from_value::<McpServerRequest>(changed).is_err(),
                 "{key}"
             );
         }

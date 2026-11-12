@@ -60,14 +60,25 @@ pub(crate) struct McpServer {
     pub(crate) origin: Option<String>,
 }
 
+/// What the user can ask of the listed servers through this harness.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct McpActions {
+    /// Read the whole MCP configuration again.
+    pub(crate) reload: bool,
+    /// Open a server's sign-in page, which Sage can do on this system.
+    pub(crate) sign_in: bool,
+    /// Connect one server again.
+    pub(crate) reconnect: bool,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct McpInventory {
     pub(crate) servers: Vec<McpServer>,
     /// The harness listed more servers than are shown.
     pub(crate) truncated: bool,
-    /// Sage can open a server's sign-in page on this system.
-    pub(crate) sign_in_available: bool,
+    pub(crate) actions: McpActions,
 }
 
 impl McpInventory {
@@ -75,33 +86,110 @@ impl McpInventory {
     /// name is left out; `None` when the result has no server list.
     pub(crate) fn from_codex(result: &Map<String, Value>) -> Option<Self> {
         let data = result.get("data")?.as_array()?;
-        let mut servers: Vec<McpServer> = data
+        let servers: Vec<McpServer> = data
             .iter()
             .filter_map(Value::as_object)
             .filter_map(codex_server)
             .collect();
-        let truncated = servers.len() > MAX_LISTED_SERVERS
-            || result
-                .get("nextCursor")
-                .is_some_and(|cursor| !cursor.is_null());
+        let more = result
+            .get("nextCursor")
+            .is_some_and(|cursor| !cursor.is_null());
+        let actions = McpActions {
+            reload: true,
+            sign_in: crate::system_browser::available(),
+            reconnect: false,
+        };
+        Some(Self::listed(servers, more, actions))
+    }
+
+    /// A Claude Code `mcp_status` reply. Its server configuration (URLs,
+    /// headers, OAuth settings) is never read past an HTTP origin.
+    pub(crate) fn from_claude(reply: &Value) -> Option<Self> {
+        let servers = reply
+            .get("mcpServers")?
+            .as_array()?
+            .iter()
+            .filter_map(Value::as_object)
+            .filter_map(claude_server)
+            .collect();
+        let actions = McpActions {
+            reload: false,
+            sign_in: false,
+            reconnect: true,
+        };
+        Some(Self::listed(servers, false, actions))
+    }
+
+    /// The first servers by name, and whether any were left out.
+    fn listed(mut servers: Vec<McpServer>, more: bool, actions: McpActions) -> Self {
+        let truncated = more || servers.len() > MAX_LISTED_SERVERS;
         servers.sort_by(|left, right| left.name.cmp(&right.name));
         servers.truncate(MAX_LISTED_SERVERS);
-        Some(Self {
+        Self {
             servers,
             truncated,
-            sign_in_available: crate::system_browser::available(),
-        })
+            actions,
+        }
     }
 }
 
-fn codex_server(server: &Map<String, Value>) -> Option<McpServer> {
-    // The name is how Codex knows the server, so it is shown as it is or
-    // not at all: a cleaned name would sign in to no server.
+/// The name a harness knows the server by, shown as it is or not at all:
+/// a cleaned name would act on no server.
+fn exact_name(server: &Map<String, Value>) -> Option<String> {
     let name = server.get("name")?.as_str()?;
-    if clean(name, MAX_NAME_BYTES).as_deref() != Some(name) {
-        return None;
-    }
-    let name = name.to_owned();
+    (clean(name, MAX_NAME_BYTES).as_deref() == Some(name)).then(|| name.to_owned())
+}
+
+fn claude_server(server: &Map<String, Value>) -> Option<McpServer> {
+    let name = exact_name(server)?;
+    let info = server.get("serverInfo").and_then(Value::as_object);
+    let text = |key: &str, max| {
+        info.and_then(|info| info.get(key))
+            .and_then(Value::as_str)
+            .and_then(|value| clean(value, max))
+    };
+    let status = server.get("status").and_then(Value::as_str);
+    let config = server.get("config").and_then(Value::as_object);
+    let remote = config
+        .and_then(|config| config.get("type"))
+        .and_then(Value::as_str)
+        .is_some_and(|kind| matches!(kind, "http" | "sse"));
+    Some(McpServer {
+        title: text("name", MAX_TITLE_BYTES).filter(|title| *title != name),
+        version: text("version", MAX_NAME_BYTES),
+        connection: match status {
+            Some("pending") => McpConnection::Starting,
+            Some("connected") => McpConnection::Connected,
+            Some("needs-auth") => McpConnection::SignInRequired,
+            Some("failed") => McpConnection::Failed,
+            Some("disabled") => McpConnection::Disabled,
+            _ => McpConnection::Unknown,
+        },
+        auth: if status == Some("needs-auth") {
+            McpAuth::SignedOut
+        } else {
+            McpAuth::Unknown
+        },
+        tools: server
+            .get("tools")
+            .and_then(Value::as_array)
+            .map_or(0, |tools| u32::try_from(tools.len()).unwrap_or(u32::MAX)),
+        resources: 0,
+        error: server
+            .get("error")
+            .and_then(Value::as_str)
+            .and_then(|error| clean(error, MAX_ERROR_BYTES)),
+        origin: config
+            .filter(|_| remote)
+            .and_then(|config| config.get("url"))
+            .and_then(Value::as_str)
+            .and_then(origin),
+        name,
+    })
+}
+
+fn codex_server(server: &Map<String, Value>) -> Option<McpServer> {
+    let name = exact_name(server)?;
     let info = server.get("serverInfo").and_then(Value::as_object);
     let text = |key: &str, max| {
         info.and_then(|info| info.get(key))

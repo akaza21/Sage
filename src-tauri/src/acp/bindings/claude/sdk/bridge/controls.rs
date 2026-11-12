@@ -1,6 +1,7 @@
 //! Session controls as SDK control requests: undoing a turn rewinds the
-//! files Claude Code checkpointed since that turn's message, and stopping a
-//! task ends one background task.
+//! files Claude Code checkpointed since that turn's message, stopping a
+//! task ends one background task, and `/mcp` lists the session's MCP
+//! servers or connects one again.
 
 use serde_json::{Value, json};
 
@@ -8,7 +9,14 @@ use super::{
     BridgeError, Inbound, Pending, SdkBridge,
     notices::{TASK_PREFIX, prose},
 };
-use crate::acp::{contract::SafeText, goal::NativeRpcReply, session_control::SessionControl};
+use crate::acp::{
+    contract::SafeText, goal::NativeRpcReply, mcp::inventory::McpInventory,
+    session_control::SessionControl,
+};
+
+/// MCP lists Claude Code has not answered after their callers gave up; at
+/// this many, further lists wait until one is answered.
+const MAX_ABANDONED_LISTS: usize = 4;
 
 impl SdkBridge {
     /// The control request for a session control; one at a time.
@@ -19,6 +27,7 @@ impl SdkBridge {
         if self.controlling() {
             return Err(BridgeError::Capacity);
         }
+        let mut pending = Pending::Control;
         let request = match control {
             SessionControl::UndoTurn { turn_id } => json!({
                 "subtype": "rewind_files",
@@ -31,19 +40,57 @@ impl SdkBridge {
                     .ok_or(BridgeError::Unsupported)?;
                 json!({"subtype": "stop_task", "task_id": task})
             }
+            SessionControl::ReadMcpServers => {
+                let abandoned = self
+                    .pending
+                    .values()
+                    .filter(|pending| matches!(pending, Pending::Abandoned))
+                    .count();
+                if abandoned >= MAX_ABANDONED_LISTS {
+                    return Err(BridgeError::Capacity);
+                }
+                pending = Pending::McpList;
+                json!({"subtype": "mcp_status"})
+            }
+            SessionControl::ReconnectMcpServer { name } => {
+                json!({"subtype": "mcp_reconnect", "serverName": name.as_str()})
+            }
+            // Claude Code reloads its MCP configuration only together with
+            // its plugins, and signs in to servers only in its own `/mcp`.
             SessionControl::SetTitle { .. }
-            | SessionControl::ReadMcpServers
             | SessionControl::ReloadMcpServers
             | SessionControl::SignInMcpServer { .. } => return Err(BridgeError::Unsupported),
         };
-        self.control(request, Pending::Control)
+        self.control(request, pending)
     }
 
     /// A session control is waiting on Claude Code's reply.
     pub(in crate::acp::bindings::claude::sdk) fn controlling(&self) -> bool {
-        self.pending
-            .values()
-            .any(|pending| matches!(pending, Pending::Control | Pending::Fork(_)))
+        self.pending.values().any(|pending| {
+            matches!(
+                pending,
+                Pending::Control | Pending::McpList | Pending::Fork(_)
+            )
+        })
+    }
+
+    /// Stops waiting for an MCP list whose caller gave up. Its request id
+    /// stays known, so the late reply is dropped rather than read as a
+    /// frame Sage never asked for.
+    pub(in crate::acp::bindings::claude::sdk) fn abandon_mcp_list(&mut self) {
+        for pending in self.pending.values_mut() {
+            if matches!(pending, Pending::McpList) {
+                *pending = Pending::Abandoned;
+            }
+        }
+    }
+
+    /// Claude Code's MCP servers; a reply without a list is refused.
+    pub(super) fn mcp_listed(reply: &Value, inbound: &mut Inbound) {
+        inbound.native = Some(
+            McpInventory::from_claude(reply)
+                .map_or(NativeRpcReply::Rejected, NativeRpcReply::McpServers),
+        );
     }
 
     /// A fork answers once Claude Code shows it is still running; the copy

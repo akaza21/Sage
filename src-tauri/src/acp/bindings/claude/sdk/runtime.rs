@@ -287,11 +287,7 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         &mut self,
         control: &crate::acp::session_control::SessionControl,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        let sdk = self
-            .bridge()?
-            .session_control(control)
-            .map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
-        self.control_egress(&sdk)
+        self.control_request(control)
     }
     /// A fork of this session through its latest reply, as Claude Code
     /// saved it.
@@ -310,6 +306,9 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     fn defer_fork_release(&mut self, _fork: &crate::acp::intent::ExternalId, _done: bool) -> bool {
         self.native = Some(crate::acp::goal::NativeRpcReply::Released);
         true
+    }
+    fn abandon_usage_read(&mut self) {
+        self.abandon_mcp_list();
     }
     fn native_rpc_pending(&self) -> bool {
         self.native.is_some()

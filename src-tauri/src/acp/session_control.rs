@@ -1,7 +1,7 @@
 //! Requests that act on a running harness session without starting a turn:
 //! undoing a turn's file changes, stopping one running activity, naming
-//! the session after its chat, and listing, reloading or signing in to its
-//! MCP servers.
+//! the session after its chat, and listing, reloading, reconnecting or
+//! signing in to its MCP servers.
 
 use super::{contract::SageTurnId, intent::ExternalId};
 
@@ -25,6 +25,10 @@ pub(crate) enum SessionControl {
     SignInMcpServer {
         name: super::contract::RequiredText<128>,
     },
+    /// Connects one MCP server again, without changing its configuration.
+    ReconnectMcpServer {
+        name: super::contract::RequiredText<128>,
+    },
 }
 
 impl SessionControl {
@@ -34,7 +38,9 @@ impl SessionControl {
             Self::StopActivity { activity_id } => activity_id.as_str().len(),
             Self::SetTitle { title } => title.as_str().len(),
             Self::ReadMcpServers | Self::ReloadMcpServers => 0,
-            Self::SignInMcpServer { name } => name.as_str().len(),
+            Self::SignInMcpServer { name } | Self::ReconnectMcpServer { name } => {
+                name.as_str().len()
+            }
         }
     }
 }

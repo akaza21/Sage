@@ -120,10 +120,10 @@ fn ready() -> ClaudeSdkRuntime {
             .as_ref()
             .map(|launch| launch.session_id.as_str())
     );
-    assert_eq!(
-        runtime.available_commands().snapshot().commands[0].name,
-        "review"
-    );
+    // Sage's panels come first, then Claude Code's own commands.
+    let listed = runtime.available_commands().snapshot().commands;
+    let names: Vec<_> = listed.iter().map(|command| command.name.as_str()).collect();
+    assert_eq!(names, ["status", "mcp", "review"]);
     assert!(runtime.session_config().is_some());
     runtime
 }
@@ -916,4 +916,40 @@ fn a_session_forks_through_claude_code_and_holds_nothing_to_release() {
         runtime.take_native_rpc_reply(),
         Some(crate::acp::goal::NativeRpcReply::Released)
     );
+}
+
+#[test]
+fn mcp_servers_list_through_claude_code_and_an_abandoned_list_frees_the_session() {
+    use crate::acp::{goal::NativeRpcReply, session_control::SessionControl};
+    let mut runtime = ready();
+    let list = |runtime: &mut ClaudeSdkRuntime| {
+        let egress = runtime
+            .session_control(&SessionControl::ReadMcpServers)
+            .unwrap();
+        let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+        runtime
+            .resolve_egress(egress.into_token(), EgressResolution::Written)
+            .unwrap();
+        assert_eq!(sdk["request"]["subtype"], "mcp_status");
+        sdk
+    };
+    let first = list(&mut runtime);
+    assert!(runtime.native_rpc_pending());
+    runtime.abandon_usage_read();
+    assert!(!runtime.native_rpc_pending());
+    // The late reply is dropped, not read as a frame Sage never asked for.
+    let late = reply(&mut runtime, &first, json!({"mcpServers": []}));
+    assert!(matches!(late[..], [AdapterEvent::Absorbed]), "{late:?}");
+    assert_eq!(runtime.take_native_rpc_reply(), None);
+    let second = list(&mut runtime);
+    reply(
+        &mut runtime,
+        &second,
+        json!({"mcpServers": [{"name": "files", "status": "connected", "tools": [{"name": "read"}]}]}),
+    );
+    let Some(NativeRpcReply::McpServers(inventory)) = runtime.take_native_rpc_reply() else {
+        panic!("a server list")
+    };
+    assert_eq!(inventory.servers[0].tools, 1);
+    assert!(inventory.actions.reconnect && !inventory.actions.reload);
 }

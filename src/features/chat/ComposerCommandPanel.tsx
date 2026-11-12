@@ -15,6 +15,7 @@ import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
 import type { AcpCommandPanel } from "../../domain/acpCommand";
 import {
+  mcpReconnectOffered,
   mcpSignInOffered,
   type McpConnection,
   type McpInventory,
@@ -229,28 +230,51 @@ function McpServers({ request }: { request: AcpUsageRequest | null }) {
   }, [start]);
   if (!request)
     return <p role="status">MCP servers appear once the session is running.</p>;
+  const actions = load.kind === "ready" ? load.inventory.actions : null;
   const reload = () => start("reload", acpMcpDesktop.reload);
   const signIn = (server: McpServer) =>
     start(
-      server.name,
+      `signIn:${server.name}`,
       (live) => acpMcpDesktop.signIn({ ...live, name: server.name }),
       () =>
         setNotice(
           `Finish signing in to ${server.title ?? server.name} in your browser.`,
         ),
     );
+  const reconnect = (server: McpServer) =>
+    start(`reconnect:${server.name}`, (live) =>
+      acpMcpDesktop.reconnect({ ...live, name: server.name }),
+    );
+  const serverAction = (
+    server: McpServer,
+    what: "signIn" | "reconnect",
+    label: string,
+    pending: string,
+  ) => (
+    <button
+      type="button"
+      className="button button--compact button--primary"
+      aria-disabled={busy !== null}
+      aria-label={`${what === "signIn" ? "Sign in to" : label} ${server.title ?? server.name}`}
+      onClick={() => (what === "signIn" ? signIn : reconnect)(server)}
+    >
+      {busy === `${what}:${server.name}` ? pending : label}
+    </button>
+  );
   return (
     <div className="composer-command-panel__mcp">
       <div className="composer-command-panel__heading">
         <strong>MCP servers</strong>
-        <button
-          type="button"
-          className="button button--compact"
-          aria-disabled={busy !== null}
-          onClick={reload}
-        >
-          {busy === "reload" ? "Reloading…" : "Reload"}
-        </button>
+        {actions?.reload ? (
+          <button
+            type="button"
+            className="button button--compact"
+            aria-disabled={busy !== null}
+            onClick={reload}
+          >
+            {busy === "reload" ? "Reloading…" : "Reload"}
+          </button>
+        ) : null}
       </div>
       {notice ? (
         <p role={load.kind === "error" ? "alert" : "status"}>{notice}</p>
@@ -288,16 +312,17 @@ function McpServers({ request }: { request: AcpUsageRequest | null }) {
                   {server.error}
                 </span>
               ) : null}
-              {load.inventory.signInAvailable && mcpSignInOffered(server) ? (
-                <button
-                  type="button"
-                  className="button button--compact button--primary"
-                  aria-disabled={busy !== null}
-                  aria-label={`Sign in to ${server.title ?? server.name}`}
-                  onClick={() => signIn(server)}
-                >
-                  {busy === server.name ? "Opening…" : "Sign in"}
-                </button>
+              {mcpSignInOffered(server) ? (
+                load.inventory.actions.signIn ? (
+                  serverAction(server, "signIn", "Sign in", "Opening…")
+                ) : (
+                  <span className="composer-command-panel__detail">
+                    Sign in to this server from a terminal.
+                  </span>
+                )
+              ) : load.inventory.actions.reconnect &&
+                mcpReconnectOffered(server) ? (
+                serverAction(server, "reconnect", "Reconnect", "Reconnecting…")
               ) : null}
             </li>
           ))}

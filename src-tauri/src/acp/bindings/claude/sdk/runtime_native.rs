@@ -31,6 +31,26 @@ impl ClaudeSdkRuntime {
         Ok(AdapterEgress::new(frame, token))
     }
 
+    /// The control frame for a session control Claude Code carries out.
+    pub(super) fn control_request(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let sdk = self
+            .bridge()?
+            .session_control(control)
+            .map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
+        self.control_egress(&sdk)
+    }
+
+    /// A passive read whose caller gave up: the MCP list, whose late reply
+    /// is then dropped.
+    pub(super) fn abandon_mcp_list(&mut self) {
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.abandon_mcp_list();
+        }
+    }
+
     /// A fork of this session through its latest reply, as Claude Code
     /// saved it (see `fork`).
     pub(super) fn fork_egress(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
