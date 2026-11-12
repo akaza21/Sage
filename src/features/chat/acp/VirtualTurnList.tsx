@@ -95,10 +95,13 @@ export function VirtualTurnList({
   const latestHeights = useRef(new Map<string, number>());
   const previousFirst = useRef<string | undefined>(undefined);
   const anchor = useRef<{ id: string; inset: number } | null>(null);
-  const pinnedAnchor = useRef<{ id: string; inset: number } | null>(null);
+  const pinnedAnchor = useRef<{
+    id: string;
+    inset: number;
+    scrollTop: number;
+  } | null>(null);
   const pinnedEnd = useRef(false);
   const navigationAnchor = useRef<VirtualTurnTarget | null>(null);
-  const releaseFrame = useRef<number | null>(null);
   const [viewport, setViewport] = useState({ top: Infinity, height: 700 });
   const latestViewport = useRef(viewport);
   const offsets = useMemo(() => {
@@ -135,7 +138,15 @@ export function VirtualTurnList({
     const list = listRef.current;
     const scrollport = list?.closest<HTMLElement>(".message-list");
     if (!list || !scrollport) return;
-    if (event && !navigationAnchor.current) {
+    // Scroll events from our own corrections arrive asynchronously, sometimes
+    // after another row has reflowed. They must not replace the saved anchor
+    // with that shifted layout. Keep it until the viewport actually moves away.
+    const pin = pinnedAnchor.current;
+    if (
+      !navigationAnchor.current &&
+      (event || pin) &&
+      scrollport.scrollTop !== pin?.scrollTop
+    ) {
       pinnedAnchor.current = null;
       pinnedEnd.current =
         scrollport.scrollHeight -
@@ -200,8 +211,19 @@ export function VirtualTurnList({
     const first = turns[0]?.id;
     const previous = previousFirst.current;
     previousFirst.current = first;
-    if (first && previous && first !== previous && !navigationAnchor.current)
-      pinnedAnchor.current ??= anchor.current;
+    const scrollport = listRef.current?.closest<HTMLElement>(".message-list");
+    if (
+      first &&
+      previous &&
+      first !== previous &&
+      !navigationAnchor.current &&
+      anchor.current &&
+      scrollport
+    )
+      pinnedAnchor.current ??= {
+        ...anchor.current,
+        scrollTop: scrollport.scrollTop,
+      };
   }, [turns]);
 
   useLayoutEffect(() => {
@@ -218,6 +240,12 @@ export function VirtualTurnList({
     const navigation = navigationAnchor.current;
     if (navigation)
       return navigation.align(list, scrollport, turns, offsets, readViewport);
+    // Reader scrolling changes scrollTop before its native event is delivered.
+    // A measurement commit in that interval must yield to the new viewport.
+    if (saved && scrollport.scrollTop !== saved.scrollTop) {
+      readViewport();
+      return;
+    }
     if (!saved) return;
     const row = [...list.querySelectorAll<HTMLElement>(".acp-turn")].find(
       (element) => element.dataset.turnId === saved.id,
@@ -229,36 +257,24 @@ export function VirtualTurnList({
         saved.inset;
       if (Math.abs(difference) >= 1) {
         scrollport.scrollTop += difference;
+        saved.scrollTop = scrollport.scrollTop;
         readViewport();
       }
     } else {
       const index = turns.findIndex((turn) => turn.id === saved.id);
-      if (index < 0) return;
+      if (index < 0) {
+        pinnedAnchor.current = null;
+        return;
+      }
       const listTop =
         list.getBoundingClientRect().top -
         scrollport.getBoundingClientRect().top +
         scrollport.scrollTop;
       scrollport.scrollTop = listTop + offsets[index]! - saved.inset;
+      saved.scrollTop = scrollport.scrollTop;
       readViewport();
     }
-    if (releaseFrame.current !== null)
-      cancelAnimationFrame(releaseFrame.current);
-    releaseFrame.current = requestAnimationFrame(() => {
-      releaseFrame.current = requestAnimationFrame(() => {
-        if (pinnedAnchor.current) anchor.current = pinnedAnchor.current;
-        pinnedAnchor.current = null;
-        releaseFrame.current = null;
-      });
-    });
   }, [end, measured, offsets, readViewport, start, turns, viewport]);
-
-  useLayoutEffect(
-    () => () => {
-      if (releaseFrame.current !== null)
-        cancelAnimationFrame(releaseFrame.current);
-    },
-    [],
-  );
 
   useLayoutEffect(() => {
     const list = listRef.current;
@@ -292,9 +308,14 @@ export function VirtualTurnList({
           !navigationAnchor.current &&
           !pinnedEnd.current &&
           !pinnedAnchor.current
-        )
-          pinnedAnchor.current =
-            anchor.current ?? visibleAnchor(list, scrollport);
+        ) {
+          const saved = anchor.current ?? visibleAnchor(list, scrollport);
+          if (saved)
+            pinnedAnchor.current = {
+              ...saved,
+              scrollTop: scrollport.scrollTop,
+            };
+        }
       }
       latestHeights.current.set(id, height);
       setMeasured((current) => {
