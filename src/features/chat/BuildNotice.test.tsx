@@ -72,7 +72,7 @@ it("says a newer release keeps every feature instead of calling it uncharacteris
   );
   const notice = screen.getByRole("status");
   expect(notice).toHaveTextContent(
-    "Build 1.2.3 is newer than the release Sage was tested with. Sage keeps the features it tested; report anything that misbehaves.",
+    "Build 1.2.3 is newer than Sage has tested. Tested features stay on.",
   );
   expect(notice).not.toHaveTextContent("Some features are unavailable");
 });

@@ -8,16 +8,6 @@ import {
 } from "../../domain/harness";
 import "./build-notice.css";
 
-const buildNoticeDetail: Record<
-  NonNullable<HarnessDefinition["characterisation"]>,
-  string | null
-> = {
-  characterised: null,
-  newerThanTested:
-    " is newer than the release Sage was tested with. Sage keeps the features it tested; report anything that misbehaves.",
-  uncharacterised: " hasn't been characterised. Some features are unavailable.",
-};
-
 const BoundBuildNotice = memo(function BoundBuildNotice({
   harness,
 }: {
@@ -39,14 +29,20 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
       </div>
     );
   }
-  const detail = buildNoticeDetail[harness.characterisation ?? "characterised"];
-  if (detail === null || dismissedBuild === build) return null;
+  const newer = harness.characterisation === "newerThanTested";
+  if (
+    (!newer && harness.characterisation !== "uncharacterised") ||
+    dismissedBuild === build
+  )
+    return null;
   return (
     <div className="build-notice" role="status">
       <Info aria-hidden="true" />
       <span>
         {harness.boundVersion ? `Build ${harness.boundVersion}` : "This build"}
-        {detail}
+        {newer
+          ? " is newer than Sage has tested. Tested features stay on."
+          : " hasn't been characterised. Some features are unavailable."}
       </span>
       <button
         type="button"

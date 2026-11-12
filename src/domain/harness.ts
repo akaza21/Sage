@@ -45,7 +45,7 @@ export function harnessUnavailableReason(
     case "platformUnsupported":
       return "This harness isn't supported on this platform.";
     case "versionTooOld":
-      return "The installed release is older than Sage supports. Update it, then refresh harness discovery in Settings.";
+      return "This version is too old. Update it, then refresh harness discovery in Settings.";
     default:
       return "Sage can't start this harness.";
   }

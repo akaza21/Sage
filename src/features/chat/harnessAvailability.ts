@@ -18,9 +18,7 @@ export function harnessAvailability(harness: HarnessDefinition): {
         label:
           harness.characterisation === "uncharacterised"
             ? "available — uncharacterised"
-            : harness.characterisation === "newerThanTested"
-              ? "available — newer than tested"
-              : "available",
+            : "available",
       };
     case "notInstalled":
       return {

@@ -17,9 +17,9 @@
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
-        "maxGzipBytes": 1083,
+        "maxGzipBytes": 1125,
         "maxCssGzipBytes": 490,
-        "reason": "Dismissible build/account notice, memoized during typing. Compact wrapping CSS measures 467 B. JS and CSS load only when attention is needed and stay off the ready first-Chat path."
+        "reason": "Build and account notice, including newer-than-tested builds; memoized while typing, off the ready first-Chat path. Measured 1121 B JS, 467 B CSS."
       },
       {
         "entry": "src/ui/tooltips.ts",
