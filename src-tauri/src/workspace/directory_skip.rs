@@ -16,30 +16,6 @@ pub(crate) fn protected_workspace_name(name: &str) -> bool {
         .any(|skip| name.eq_ignore_ascii_case(skip))
 }
 
-/// Windows reserves these device names in every directory: case-insensitively,
-/// whatever follows the first dot, and after trimming trailing spaces from the
-/// stem. Through a verbatim path they become literal files that Win32 tools and
-/// Git cannot handle, so write admission refuses them on every platform.
-pub(crate) fn windows_reserved_device_name(filename: &str) -> bool {
-    let stem = filename.split('.').next().unwrap_or(filename).trim_end();
-    let upper = stem.to_ascii_uppercase();
-    if matches!(
-        upper.as_str(),
-        "CON" | "PRN" | "AUX" | "NUL" | "CLOCK$" | "CONIN$" | "CONOUT$"
-    ) {
-        return true;
-    }
-    let suffix = upper
-        .strip_prefix("COM")
-        .or_else(|| upper.strip_prefix("LPT"));
-    suffix.is_some_and(|suffix| {
-        matches!(
-            suffix,
-            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
-        )
-    })
-}
-
 fn directory_names_match(name: &OsStr, expected: &str) -> bool {
     if cfg!(windows) {
         name.to_str()
