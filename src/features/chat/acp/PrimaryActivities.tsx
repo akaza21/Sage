@@ -1,9 +1,8 @@
-import { useContext, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { type AcpItem } from "../../../domain/acp";
 import { type AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { CollaborationItem } from "./CollaborationItem";
 import { ToolActivityRollup } from "./ToolActivityRollupView";
-import { WorkedActivityVisibility } from "./WorkedActivityVisibility";
 import { withSubagentNames } from "./subagentIdentities";
 import { groupPrimaryActivities } from "./toolActivityRollup";
 
@@ -20,7 +19,6 @@ export function PrimaryActivities({
   onOpenResource?: AgentArtifactOpenHandler;
   renderItem: (item: AcpItem) => ReactNode;
 }) {
-  const visible = useContext(WorkedActivityVisibility);
   const grouped = groupPrimaryActivities(withSubagentNames(items));
   const last = grouped.at(-1);
   const thinking =
@@ -37,11 +35,7 @@ export function PrimaryActivities({
             interactive={interactive}
             onOpenResource={onOpenResource}
           />
-        ) : // A steered message is the user's own words, never folded away.
-        !visible &&
-          !(
-            "item" in activity && activity.item.kind === "userPrompt"
-          ) ? null : activity.kind === "collaborationRollup" ? (
+        ) : activity.kind === "collaborationRollup" ? (
           <CollaborationItem
             key={activity.items[0].id}
             item={activity.items[0]}
