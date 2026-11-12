@@ -225,7 +225,6 @@ fn advertised_pi_read_only_policy_emits_only_admitted_prompt() {
     // Without its bridge Pi is read-only, whatever this build's resources hold.
     let capabilities = crate::acp::bindings::access_policy::admitted_modes(
         "pi-rpc",
-        crate::acp::bindings::pi::PI_VERSION,
         true,
         Err(crate::acp::bindings::pi::bridge::install::Unavailable::Missing),
     );

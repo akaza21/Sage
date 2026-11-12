@@ -1,10 +1,33 @@
-use crate::acp::{bindings::adapter::AdapterRuntimeError, slash_commands::CommandState};
+//! A harness's ACP command list, and the binding's own commands that join
+//! it: rows that open a panel in the chat instead of sending a prompt.
+
+use crate::acp::{
+    bindings::adapter::AdapterRuntimeError,
+    slash_commands::{
+        AvailableCommand, CommandDispatch, CommandPanel, CommandSource, CommandState,
+    },
+};
 use serde_json::Value;
 use std::sync::Arc;
+
+use super::command_list::{MAX_COMMAND_BYTES, MAX_COMMANDS};
+
 pub(crate) fn update_commands(
     value: &Value,
     session: &str,
     commands: &mut Arc<CommandState>,
+) -> Result<bool, AdapterRuntimeError> {
+    update_commands_with(value, session, commands, &[])
+}
+
+/// An `available_commands_update` for `session`, with the binding's own
+/// `first` rows ahead of the harness's; a harness row of the same name is
+/// left out.
+pub(crate) fn update_commands_with(
+    value: &Value,
+    session: &str,
+    commands: &mut Arc<CommandState>,
+    first: &[AvailableCommand],
 ) -> Result<bool, AdapterRuntimeError> {
     if value["params"]["update"]["sessionUpdate"] != "available_commands_update" {
         return Ok(false);
@@ -18,8 +41,46 @@ pub(crate) fn update_commands(
     {
         return Err(AdapterRuntimeError::Frame);
     }
-    commands.replace(super::command_list::parse_acp(
-        &value["params"]["update"]["availableCommands"],
-    ))?;
+    let parsed = super::command_list::parse_acp(&value["params"]["update"]["availableCommands"]);
+    commands.replace(parsed.map(|listed| {
+        if first.is_empty() {
+            listed
+        } else {
+            first_listed(first.iter().cloned().chain(listed))
+        }
+    }))?;
     Ok(true)
+}
+
+/// A built-in row that opens `panel` and sends nothing.
+pub(crate) fn panel(
+    name: &str,
+    description: &str,
+    panel: CommandPanel,
+) -> Result<AvailableCommand, AdapterRuntimeError> {
+    AvailableCommand::new(
+        name,
+        description,
+        None,
+        CommandSource::Builtin,
+        CommandDispatch::Panel(panel),
+    )
+}
+
+/// The first command of each name, ending at the first command past the
+/// shared count or byte bound.
+pub(crate) fn first_listed(
+    commands: impl IntoIterator<Item = AvailableCommand>,
+) -> Vec<AvailableCommand> {
+    let mut names = std::collections::HashSet::new();
+    let mut bytes = 0usize;
+    commands
+        .into_iter()
+        .filter(|command| names.insert(command.name.clone()))
+        .take(MAX_COMMANDS)
+        .take_while(|command| {
+            bytes += command.listed_bytes();
+            bytes <= MAX_COMMAND_BYTES
+        })
+        .collect()
 }

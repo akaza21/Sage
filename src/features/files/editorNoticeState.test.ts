@@ -40,7 +40,7 @@ describe("failureMessage", () => {
         "keep",
       ),
     ).toBe(
-      "Couldn't keep your version: Sage doesn't create Files there (inside protected folders such as .git, or through a link).",
+      "Couldn't keep your version: Sage doesn't create files there (inside protected folders such as .git, or through a link).",
     );
     expect(
       failureMessage(
@@ -50,7 +50,7 @@ describe("failureMessage", () => {
         "keep",
       ),
     ).toBe(
-      "Couldn't keep your version: too many Files have unsaved changes. Save or close some, then try again.",
+      "Couldn't keep your version: too many files have unsaved changes. Save or close some, then try again.",
     );
   });
 });

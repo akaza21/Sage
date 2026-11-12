@@ -14,7 +14,7 @@ export function archiveChatLayout(
   const index = chats.findIndex((tab) => tab.id === chatId);
   if (index < 0) throw new Error("archive target is not a Chat tab");
   const nextChat = chats[index + 1] ?? chats[index - 1];
-  if (!nextChat) throw new Error("the last attached Chat cannot be archived");
+  if (!nextChat) throw new Error("the last attached chat cannot be archived");
   return {
     ...current,
     tabs: current.tabs.filter((tab) => tab.id !== chatId),

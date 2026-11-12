@@ -50,7 +50,7 @@ function useConflictAction() {
 const UNSTORED_EDITS = "Your unsaved changes are not yet stored.";
 
 const KEPT_DELETED_FILE =
-  "This File was deleted outside Sage. Save to create it again, or close it.";
+  "This file was deleted outside Sage. Save to create it again, or close it.";
 
 /**
  * Names one File as it is on disk, so Compare ends by itself once disk
@@ -157,7 +157,7 @@ export default function FileConflictNotice({
                 className={button}
                 type="button"
                 disabled={off}
-                title="Revert File: drop your changes and load the File from disk"
+                title="Revert file: drop your changes and load the file from disk"
                 onClick={() => {
                   useWorkbenchStore.setState({ editorCompareKey: null });
                   // Back to typing once the conflict is resolved.
@@ -176,8 +176,8 @@ export default function FileConflictNotice({
               disabled={off}
               title={
                 deleted
-                  ? "Keep your version; saving creates the File again"
-                  : "Keep your version; saving writes it over the File on disk"
+                  ? "Keep your version; saving creates the file again"
+                  : "Keep your version; saving writes it over the file on disk"
               }
               onClick={() => {
                 useWorkbenchStore.setState({ editorCompareKey: null });
@@ -196,7 +196,7 @@ export default function FileConflictNotice({
                 className={`${button} editor-notice__toggle`}
                 type="button"
                 aria-pressed={comparing}
-                title="Compare the File on disk with your version"
+                title="Compare the file on disk with your version"
                 onClick={() =>
                   useWorkbenchStore.setState({
                     editorCompareKey: comparing ? null : key,
@@ -248,7 +248,7 @@ function CloseButton({
       className="button button--compact"
       type="button"
       disabled={busy}
-      title="Close the File without saving"
+      title="Close the file without saving"
       onClick={() => {
         const tabId = useWorkbenchStore.getState().activeTabId;
         if (tabId) {

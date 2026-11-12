@@ -13,6 +13,7 @@ mod construction;
 mod errors;
 mod goal;
 mod hook_runs;
+mod mcp;
 mod mcp_tools;
 #[cfg(test)]
 pub(crate) use mcp_tools::RUNNING_MCP_TOOLS_MAX;
@@ -39,6 +40,7 @@ pub(crate) use errors::{AdapterError, TurnStartedRejection};
 use command_snapshots::CommandItemSnapshots;
 pub(crate) use command_snapshots::MaterializedCommandItem;
 pub(crate) use turn_end::PlanEntries;
+pub(crate) use turn_starts::WarningKind;
 use turn_starts::{CorrelationMatch, TurnStartCorrelations};
 pub(in crate::acp::bindings::codex) use turns::SubagentLabels;
 
@@ -177,6 +179,10 @@ pub(crate) struct CodexAdapter {
     /// Thread-less notices that arrived before a thread was bound; at most
     /// `PENDING_NOTICES_MAX`, oldest dropped first.
     pending_session_notices: Vec<SessionScopedEvent>,
+    /// The latest configuration-warning texts (summary and details) and
+    /// generic warning messages, at most `REPEATED_WARNINGS_MAX`, so one
+    /// problem Codex reports both ways is shown once.
+    recent_warnings: Vec<(WarningKind, String)>,
     turn_start_correlations: TurnStartCorrelations,
     active_turn_id: Option<ExternalId>,
     provisional_turn: Option<ProvisionalTurn>,
@@ -206,6 +212,8 @@ pub(crate) struct CodexAdapter {
     pending_child_read: Option<(u64, String, String)>,
     child_read_tombstone: Option<u64>,
     rate_limits_abandoned: rate_limits::AbandonedReads,
+    /// An `/mcp` read whose caller gave up; its late answer is dropped.
+    mcp_read_tombstones: Vec<u64>,
     skills: skills::Skills,
     pending_fork: Option<u64>,
     forks: fork::ForkLedger,
@@ -277,7 +285,7 @@ impl CodexAdapter {
             self.pending_child_read = None;
         }
         if kind == RequestKind::SkillsList {
-            self.skills_changed();
+            self.skills_unsent();
         }
         if kind == RequestKind::Interrupt {
             self.active_turn_user_stop = self

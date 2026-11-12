@@ -41,6 +41,10 @@ pub struct QuickOpenRequest {
     /// Recently opened Files, most recent first, ranked higher.
     #[serde(default)]
     pub recent: Vec<ResourceRef>,
+    /// An empty query lists other Files after the recent ones, shortest
+    /// paths first, for pickers that browse rather than reopen.
+    #[serde(default)]
+    pub browse: bool,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -89,6 +93,7 @@ pub async fn quick_open_query(
             generation: request.generation,
             session: request.session,
             recent: &request.recent,
+            browse: request.browse,
         };
         respond(run(&inputs, &query, ticket))
     })

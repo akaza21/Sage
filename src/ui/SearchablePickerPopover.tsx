@@ -10,7 +10,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { isImeComposing } from "./imeComposition";
-import { listIndexForKey } from "./listNavigation";
+import { useActiveOption } from "./listNavigation";
 import { PickerOption } from "./PickerOption";
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
 import type { MenuPlacement } from "./menuPopoverPosition";
@@ -19,7 +19,6 @@ import type { SearchablePickerOption } from "./SearchablePicker";
 import {
   SEARCHABLE_PICKER_DEBOUNCE_MS,
   SEARCHABLE_PICKER_MAX_RENDERED,
-  SEARCHABLE_PICKER_PAGE_SIZE,
   searchablePickerOptionId as optionId,
 } from "./searchablePickerLoad";
 
@@ -92,9 +91,6 @@ export function SearchablePickerPopover({
   // A list that arrives after focus moved on leaves it there for this open.
   const [holdFocus, setHoldFocus] = useState(focusMoved);
   if (!open && holdFocus) setHoldFocus(false);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  // Every close clears the active row, whichever side closed the list.
-  if (!open && activeId !== null) setActiveId(null);
   const visible = useMemo(() => {
     if (!expanded) return EMPTY_CANDIDATES;
     const normalized = query.trim().toLocaleLowerCase();
@@ -110,8 +106,16 @@ export function SearchablePickerPopover({
     () => rendered.filter((candidate) => !candidate.disabledReason),
     [rendered],
   );
+  const selectableIds = useMemo(
+    () => selectable.map((candidate) => candidate.id),
+    [selectable],
+  );
+  const option = useActiveOption(selectableIds, "none");
+  const setActiveId = option.setActiveId;
+  // Every close clears the active row, whichever side closed the list.
+  if (!open && option.chosenId !== null) setActiveId(null);
   const active =
-    selectable.find((candidate) => candidate.id === activeId) ?? null;
+    option.activeIndex >= 0 ? selectable[option.activeIndex] : null;
 
   useEffect(() => {
     if (!open || disabled) return;
@@ -138,22 +142,10 @@ export function SearchablePickerPopover({
       setActiveId(null);
       close(reason);
     },
-    [close],
+    [close, setActiveId],
   );
   // `selectable` holds only the candidates that can be picked.
-  const moveActive = (key: string) => {
-    const next = listIndexForKey(
-      key,
-      selectable.findIndex((candidate) => candidate.id === activeId),
-      selectable.map(() => false),
-      {
-        orientation: "vertical",
-        wrap: true,
-        pageSize: SEARCHABLE_PICKER_PAGE_SIZE,
-      },
-    );
-    if (next !== null) setActiveId(selectable[next].id);
-  };
+  const moveActive = option.move;
   const selectCandidate = useCallback(
     (next: string) => {
       if (disabled) return;

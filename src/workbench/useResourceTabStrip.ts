@@ -11,6 +11,15 @@ function tabRow(tab: HTMLElement): HTMLElement {
   return tab.closest<HTMLElement>(".tab") ?? tab;
 }
 
+/** The strip's scroll padding, which keeps a revealed tab clear of a fade. */
+function scrollPadding(strip: HTMLElement) {
+  const style = getComputedStyle(strip);
+  return {
+    left: parseFloat(style.scrollPaddingLeft) || 0,
+    right: parseFloat(style.scrollPaddingRight) || 0,
+  };
+}
+
 /**
  * Scrolls only the strip, never its ancestors, so the row is fully in view.
  * `scrollIntoView` would also scroll any scrollable pane around the strip.
@@ -18,9 +27,49 @@ function tabRow(tab: HTMLElement): HTMLElement {
 function revealInStrip(strip: HTMLElement, row: HTMLElement) {
   const bounds = strip.getBoundingClientRect();
   const rect = row.getBoundingClientRect();
-  if (rect.left < bounds.left) strip.scrollLeft -= bounds.left - rect.left;
-  else if (rect.right > bounds.right)
-    strip.scrollLeft += rect.right - bounds.right;
+  const padding = scrollPadding(strip);
+  const left = bounds.left + padding.left;
+  const right = bounds.right - padding.right;
+  if (rect.left < left) strip.scrollLeft -= left - rect.left;
+  else if (rect.right > right) strip.scrollLeft += rect.right - right;
+}
+
+/** Scroll offsets within this many pixels of an end count as at that end. */
+const EDGE_TOLERANCE_PX = 1;
+
+/**
+ * Names the edges that hide tabs in `data-overflow` ("start", "end"), so the
+ * stylesheet can fade them. Absent while every tab fits.
+ */
+function markOverflowEdges(strip: HTMLElement) {
+  const hidden = strip.scrollWidth - strip.clientWidth;
+  const edges = [
+    strip.scrollLeft > EDGE_TOLERANCE_PX ? "start" : "",
+    strip.scrollLeft < hidden - EDGE_TOLERANCE_PX ? "end" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  // Scroll events call this per frame; write only on a change.
+  if ((strip.dataset.overflow ?? "") === edges) return;
+  if (edges) strip.dataset.overflow = edges;
+  else delete strip.dataset.overflow;
+}
+
+/**
+ * A vertical wheel scrolls the strip sideways, as in VS Code and Chromium;
+ * a trackpad's horizontal swipe scrolls it natively. A trackpad pinch
+ * arrives as a wheel with Ctrl held, and is left alone.
+ */
+function scrollWithWheel(event: WheelEvent) {
+  const strip = event.currentTarget as HTMLElement;
+  if (
+    event.ctrlKey ||
+    Math.abs(event.deltaY) <= Math.abs(event.deltaX) ||
+    strip.scrollWidth <= strip.clientWidth
+  )
+    return;
+  event.preventDefault();
+  strip.scrollLeft += event.deltaY;
 }
 
 /**
@@ -55,9 +104,10 @@ export interface ResourceTabStripOptions {
 }
 
 /**
- * A horizontal resource tab list: one Tab stop, arrow-key navigation, and the
- * selected tab kept in view as tabs open, close and the strip resizes. `ref`
- * is the scrolling element with `role="tablist"`.
+ * A horizontal resource tab list: one Tab stop, arrow-key navigation, the
+ * selected tab kept in view as tabs open, close and the strip resizes, wheel
+ * scrolling, and `data-overflow` naming the edges that hide tabs. `ref` is the
+ * scrolling element with `role="tablist"`.
  */
 export function useResourceTabStrip(
   ref: RefObject<HTMLElement | null>,
@@ -83,6 +133,7 @@ export function useResourceTabStrip(
         }
       }
       revealSelectedTab(strip);
+      markOverflowEdges(strip);
     };
     // A resize reveals only when it can move the tab the reader is on out of
     // view: the strip itself, or that tab's own row. A background tab growing
@@ -91,6 +142,7 @@ export function useResourceTabStrip(
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver((entries) => {
+            markOverflowEdges(strip);
             const shown = syncTabStop(strip);
             const row = shown ? tabRow(shown) : null;
             if (
@@ -102,6 +154,10 @@ export function useResourceTabStrip(
               revealInStrip(strip, row);
           });
     resize?.observe(strip);
+    const onScroll = () => markOverflowEdges(strip);
+    strip.addEventListener("scroll", onScroll, { passive: true });
+    // Not passive: a wheel the strip consumes must not also scroll the page.
+    strip.addEventListener("wheel", scrollWithWheel, { passive: false });
     reveal();
     const mutation = new MutationObserver((records) => {
       if (
@@ -125,13 +181,17 @@ export function useResourceTabStrip(
       attributeFilter: ["aria-selected"],
     });
     return () => {
+      strip.removeEventListener("scroll", onScroll);
+      strip.removeEventListener("wheel", scrollWithWheel);
       resize?.disconnect();
       mutation.disconnect();
     };
   }, [ref]);
 
   useLayoutEffect(() => {
-    if (ref.current) revealSelectedTab(ref.current);
+    if (!ref.current) return;
+    revealSelectedTab(ref.current);
+    markOverflowEdges(ref.current);
   }, [ref, revealKey]);
 
   return (event: KeyboardEvent<HTMLElement>) => {

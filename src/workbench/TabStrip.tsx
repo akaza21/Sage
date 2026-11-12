@@ -8,7 +8,7 @@ import {
   X,
 } from "../ui/leanIcons";
 
-import { useRef, type WheelEvent } from "react";
+import { useRef } from "react";
 
 import type { TabKind } from "../domain/workbench";
 import { orderedTabs } from "../app/tabState";
@@ -59,20 +59,6 @@ function PendingGitMark({ resource }: { resource: ResourceRef }) {
     resourceHasGitMark(state.repositories, resource),
   );
   return marked ? <span className="tab__git-slot" aria-hidden="true" /> : null;
-}
-
-/**
- * A vertical wheel scrolls the strip sideways, as in VS Code. A trackpad pinch
- * arrives as a wheel with Ctrl held, and is left alone.
- */
-function scrollTabsWithWheel(event: WheelEvent<HTMLDivElement>) {
-  const strip = event.currentTarget;
-  if (
-    !event.ctrlKey &&
-    Math.abs(event.deltaY) > Math.abs(event.deltaX) &&
-    strip.scrollWidth > strip.clientWidth
-  )
-    strip.scrollLeft += event.deltaY;
 }
 
 const icons: Record<TabKind, typeof MessageSquare> = {
@@ -135,7 +121,6 @@ export function TabStrip({
         role="tablist"
         aria-label="Tabs"
         onKeyDown={onTabKeyDown}
-        onWheel={scrollTabsWithWheel}
       >
         {visibleTabs.map((tab) => {
           const Icon = icons[tab.kind];

@@ -147,7 +147,7 @@ export function ComposerPaste({
   const transient = notice?.text === text ? notice.message : "";
   const reason =
     activeTurn && state.items.length
-      ? "Attached text goes with the next message you send, not a queued one. Send it once the Turn finishes."
+      ? "Attached text goes with the next message you send, not a queued one. Send it once the turn finishes."
       : "";
   return (
     <>

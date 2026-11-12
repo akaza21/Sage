@@ -25,6 +25,10 @@ const RECENT_STEP: i32 = 4;
 /// Bits in the filter that spares most matches a recent-File lookup.
 const RECENT_FILTER_BITS: usize = 8192;
 
+/// The score of a File an empty browsing query lists without it being
+/// recent, below any recent File's.
+const BROWSED: i32 = i32::MAX / 2;
+
 pub(crate) struct QuickOpenQuery<'a> {
     pub(crate) text: &'a str,
     pub(crate) limit: usize,
@@ -34,6 +38,8 @@ pub(crate) struct QuickOpenQuery<'a> {
     pub(crate) session: u64,
     /// Recently opened Files, most recent first.
     pub(crate) recent: &'a [ResourceRef],
+    /// An empty query also lists Files never opened, after the recent ones.
+    pub(crate) browse: bool,
 }
 
 #[derive(Debug)]
@@ -140,6 +146,7 @@ struct Ranking<'a> {
     recent_filter: Vec<u64>,
     limit: usize,
     generation: u64,
+    browse: bool,
 }
 
 impl<'a> Ranking<'a> {
@@ -160,6 +167,7 @@ impl<'a> Ranking<'a> {
             recent_filter,
             limit: query.limit,
             generation: query.generation,
+            browse: query.browse,
         }
     }
 
@@ -207,6 +215,8 @@ impl<'a> Ranking<'a> {
                     // Code does.
                     None => match self.recent_rank(&root.root_id, stored.path, stored.base) {
                         Some(rank) => -(rank as i32),
+                        // Browsing ranks the rest below every recent File.
+                        None if self.browse => -BROWSED,
                         None => continue,
                     },
                 };

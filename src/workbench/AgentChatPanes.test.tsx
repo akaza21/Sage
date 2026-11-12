@@ -469,13 +469,13 @@ describe("AgentTaskHeader working status", () => {
       await screen.findByRole("menuitem", { name: "Hand off chat" }),
     );
     expect(
-      await screen.findByRole("dialog", { name: "Hand off this Chat" }),
+      await screen.findByRole("dialog", { name: "Hand off this chat" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Chat actions for/ }),
     ).toHaveAttribute("aria-expanded", "false");
     fireEvent.keyDown(
-      screen.getByRole("dialog", { name: "Hand off this Chat" }),
+      screen.getByRole("dialog", { name: "Hand off this chat" }),
       { key: "Escape" },
     );
     await vi.waitFor(() =>

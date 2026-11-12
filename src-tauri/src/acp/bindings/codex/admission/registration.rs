@@ -71,10 +71,21 @@ impl CodexBindingRegistration {
         )?);
         let mut state = self.lock_state();
         match &*state {
+            // An updated CLI replaces the drifted or earlier observed build;
+            // a live session keeps the binding it started with.
             CodexRegistrationState::Unavailable(
-                CodexAdmissionUnavailable::IndependentAdmission,
-            )
-            | CodexRegistrationState::Unavailable(CodexAdmissionUnavailable::Platform) => {
+                CodexAdmissionUnavailable::IndependentAdmission
+                | CodexAdmissionUnavailable::Platform
+                | CodexAdmissionUnavailable::Drift,
+            ) => {
+                *state = CodexRegistrationState::Admitted(Arc::clone(&candidate));
+                Ok(candidate)
+            }
+            CodexRegistrationState::Admitted(binding)
+                if binding.is_observed()
+                    && (binding.artifact_digest() != candidate.artifact_digest()
+                        || binding.harness_version() != candidate.harness_version()) =>
+            {
                 *state = CodexRegistrationState::Admitted(Arc::clone(&candidate));
                 Ok(candidate)
             }

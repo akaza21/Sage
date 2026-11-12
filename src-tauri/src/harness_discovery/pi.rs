@@ -1,5 +1,6 @@
 //! Pi launch discovery: the npm-global Pi package and the Node
-//! runtime that hosts its `dist/cli.js`. Paths stay native-only.
+//! runtime that hosts the entrypoint its `pi` bin names. Paths stay
+//! native-only.
 
 use std::path::{Path, PathBuf};
 
@@ -14,7 +15,8 @@ use super::{
     validation::authentic_descendant_file,
 };
 
-const PI_ENTRY: &str = "dist/cli.js";
+/// Longest `bin.pi` entry read from the package manifest.
+const PI_ENTRY_BYTES_MAX: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DiscoveredPiLaunch {
@@ -44,7 +46,7 @@ pub(crate) fn discover_pi_launch() -> PiLaunchDiscovery {
     )
 }
 
-fn package_relative(name: &str) -> PathBuf {
+fn package_relative(name: impl AsRef<Path>) -> PathBuf {
     Path::new("node_modules")
         .join(crate::acp::bindings::pi::PI_PACKAGE)
         .join(name)
@@ -61,7 +63,7 @@ pub(super) fn discover_pi_launch_from(
     else {
         return PiLaunchDiscovery::Absent;
     };
-    let Some((package_version, node_engine)) = read_package(&npm_root) else {
+    let Some(package) = read_package(&npm_root) else {
         return PiLaunchDiscovery::PackageUnreadable;
     };
     // npm can install a private Node beside the shim; prefer it, then PATH.
@@ -75,7 +77,7 @@ pub(super) fn discover_pi_launch_from(
             PiLaunchDiscovery::NodeAbsent
         };
     };
-    let entrypoint_path = npm_root.join(package_relative(PI_ENTRY));
+    let entrypoint_path = npm_root.join(package_relative(&package.entry));
     let Some(entrypoint_sha256) = cached_sha256_file(&entrypoint_path) else {
         return PiLaunchDiscovery::PackageUnreadable;
     };
@@ -84,8 +86,8 @@ pub(super) fn discover_pi_launch_from(
     };
     PiLaunchDiscovery::Present(Box::new(DiscoveredPiLaunch {
         entrypoint_path,
-        package_version,
-        node_engine,
+        package_version: package.version,
+        node_engine: package.node_engine,
         node_path,
         node_version,
         entrypoint_sha256,
@@ -93,19 +95,28 @@ pub(super) fn discover_pi_launch_from(
     }))
 }
 
+struct PiPackage {
+    version: String,
+    node_engine: String,
+    /// The `pi` bin target, relative to the package root. Releases move it
+    /// (1.x ships `dist/bundle/cli.js`), so it is read rather than assumed.
+    entry: PathBuf,
+}
+
 /// Reads only the curated package identity: name, version, the `pi` bin
 /// entry and the Node engine. Nothing is inferred from the shim.
-fn read_package(npm_root: &Path) -> Option<(String, String)> {
-    if !authentic_descendant_file(npm_root, package_relative(PI_ENTRY)) {
-        return None;
-    }
+fn read_package(npm_root: &Path) -> Option<PiPackage> {
     let manifest = read_json(&npm_root.join(package_relative("package.json")))?;
     let name = manifest.get("name").and_then(Value::as_str)?;
-    let bin = manifest
+    if name != crate::acp::bindings::pi::PI_PACKAGE {
+        return None;
+    }
+    let entry = manifest
         .get("bin")
         .and_then(|bin| bin.get("pi"))
-        .and_then(Value::as_str)?;
-    if name != crate::acp::bindings::pi::PI_PACKAGE || bin.trim_start_matches("./") != PI_ENTRY {
+        .and_then(Value::as_str)
+        .and_then(package_entry)?;
+    if !authentic_descendant_file(npm_root, package_relative(&entry)) {
         return None;
     }
     let engine = manifest
@@ -113,10 +124,34 @@ fn read_package(npm_root: &Path) -> Option<(String, String)> {
         .and_then(|engines| engines.get("node"))
         .and_then(Value::as_str)
         .filter(|engine| !engine.is_empty() && engine.len() <= 64)?;
-    Some((
-        required_package_text(&manifest, "version")?,
-        engine.to_owned(),
-    ))
+    Some(PiPackage {
+        version: required_package_text(&manifest, "version")?,
+        node_engine: engine.to_owned(),
+        entry,
+    })
+}
+
+/// A bin target as a relative `/`-separated path naming a JavaScript module
+/// inside the package. Each component is a portable npm file name: ASCII
+/// letters, digits, `.`, `_` and `-`, never `.` or `..` alone, so no drive,
+/// stream, separator or parent can reach the path on any host.
+fn package_entry(bin: &str) -> Option<PathBuf> {
+    let relative = bin.strip_prefix("./").unwrap_or(bin);
+    if relative.is_empty() || relative.len() > PI_ENTRY_BYTES_MAX {
+        return None;
+    }
+    let plain = relative.split('/').all(|component| {
+        !matches!(component, "" | "." | "..")
+            && component
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    });
+    let path = Path::new(relative);
+    let module = matches!(
+        path.extension().and_then(std::ffi::OsStr::to_str),
+        Some("js" | "mjs" | "cjs")
+    );
+    (plain && module).then(|| path.to_path_buf())
 }
 
 #[cfg(test)]

@@ -175,11 +175,23 @@ impl CodexRuntime {
         &mut self,
         control: &crate::acp::session_control::SessionControl,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        let crate::acp::session_control::SessionControl::UndoTurn { turn_id } = control else {
-            return Err(AdapterRuntimeError::UnsupportedCommand);
-        };
+        use crate::acp::session_control::SessionControl;
         self.native_rpc_reply = None;
-        self.request(|adapter, id| adapter.revert(id, turn_id.as_str()))
+        match control {
+            SessionControl::UndoTurn { turn_id } => {
+                self.request(|adapter, id| adapter.revert(id, turn_id.as_str()))
+            }
+            SessionControl::ReadMcpServers
+            | SessionControl::ReloadMcpServers
+            | SessionControl::SignInMcpServer { .. } => {
+                self.request(|adapter, id| adapter.mcp_request(id, control))
+            }
+            SessionControl::StopActivity { .. }
+            | SessionControl::SetTitle { .. }
+            | SessionControl::ReconnectMcpServer { .. } => {
+                Err(AdapterRuntimeError::UnsupportedCommand)
+            }
+        }
     }
 
     pub(super) fn fork_request(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {

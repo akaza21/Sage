@@ -58,7 +58,12 @@ impl PiRuntime {
             SessionControl::StopActivity { activity_id } if self.is_current_retry(activity_id) => {
                 self.begin_native(NativeRequest::AbortRetry)
             }
-            SessionControl::UndoTurn { .. } | SessionControl::StopActivity { .. } => {
+            SessionControl::UndoTurn { .. }
+            | SessionControl::StopActivity { .. }
+            | SessionControl::ReadMcpServers
+            | SessionControl::ReloadMcpServers
+            | SessionControl::SignInMcpServer { .. }
+            | SessionControl::ReconnectMcpServer { .. } => {
                 Err(AdapterRuntimeError::UnsupportedCommand)
             }
         }

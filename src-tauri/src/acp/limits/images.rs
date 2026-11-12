@@ -101,6 +101,13 @@ pub const IMAGE_PREVIEW_BYTES: usize =
     (LIMITS.wire.normalized_item_bytes as usize - NORMALIZED_IMAGE_ENVELOPE_BYTES) / 4 * 3;
 /// A prompt intent's own fields beside its text, files, images and previews.
 pub const PROMPT_INTENT_OVERHEAD_BYTES: usize = 8192;
+/// The retained bytes of the largest prompt intent: every image, its
+/// preview, the text and files dispatch admits, and the intent's own fields.
+/// Each queue a prompt passes through holds one of this size.
+pub const PROMPT_INTENT_BYTES: usize = PROMPT_IMAGE_TOTAL_BYTES
+    + PROMPT_IMAGE_COUNT * IMAGE_PREVIEW_BYTES
+    + DISPATCH_BYTES
+    + PROMPT_INTENT_OVERHEAD_BYTES;
 
 const _: () = assert!(
     PROMPT_FRAME_BYTES > LIMITS.wire.frame_bytes as usize
@@ -123,11 +130,7 @@ const _: () = assert!(
         && IMAGE_WORK_PERMITS as u64 * IMAGE_NORMALIZE_PEAK_BYTES <= IMAGE_WORK_MEMORY_BYTES
         // A prompt with every image, its previews, text and files fits the
         // process driver's data lane.
-        && PROMPT_IMAGE_TOTAL_BYTES
-            + PROMPT_IMAGE_COUNT * IMAGE_PREVIEW_BYTES
-            + DISPATCH_BYTES
-            + PROMPT_INTENT_OVERHEAD_BYTES
-            < LIMITS.queues.driver_data_bytes as usize
+        && PROMPT_INTENT_BYTES < LIMITS.queues.driver_data_bytes as usize
         && base64_len(IMAGE_PREVIEW_BYTES) + NORMALIZED_IMAGE_ENVELOPE_BYTES
             <= LIMITS.wire.normalized_item_bytes as usize
 );

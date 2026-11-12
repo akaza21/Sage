@@ -2,7 +2,7 @@
 
 use crate::acp::{contract::SafeText, intent::NormalizedPayload, projection::TextRole};
 
-pub(crate) fn parse_legacy_text(
+pub(super) fn parse_legacy_text(
     value: &str,
 ) -> Result<(NormalizedPayload, Option<TextRole>), serde_json::Error> {
     #[derive(Debug, serde::Deserialize)]

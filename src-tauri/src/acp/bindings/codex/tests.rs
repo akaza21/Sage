@@ -1302,7 +1302,7 @@ fn request_ledger_is_bounded_and_rejects_duplicate_ids() {
 }
 
 #[test]
-fn initialize_requires_the_exact_runtime_home_and_windows_identity() {
+fn curated_initialize_requires_the_provisioned_home_originator_and_windows_host() {
     let mut incomplete = adapter();
     assert!(matches!(
         incomplete.effective_capabilities(),
@@ -1337,6 +1337,56 @@ fn initialize_requires_the_exact_runtime_home_and_windows_identity() {
             "/result/userAgent",
             json!(user_agent("Codex Desktop", "unknown")),
         ),
+        // The curated package must echo Sage's client identity and report
+        // the x86_64 Windows host it is built for.
+        (
+            "/result/userAgent",
+            json!(format!(
+                "sage/{PINNED_CODEX_VERSION} (Windows 10.0.26200; x86_64) unknown"
+            )),
+        ),
+        (
+            "/result/userAgent",
+            json!(format!(
+                "sage/{PINNED_CODEX_VERSION} (Windows 10.0.26200; x86_64) unknown (notsage; 0.1.0)"
+            )),
+        ),
+        (
+            "/result/userAgent",
+            json!(format!(
+                "sage/{PINNED_CODEX_VERSION} (Windows 10.0.26200; aarch64) unknown (sage; 0.1.0)"
+            )),
+        ),
+        (
+            "/result/userAgent",
+            json!(format!(
+                "sage/{PINNED_CODEX_VERSION} (Mac OS 15.0.0; x86_64) unknown (sage; 0.1.0)"
+            )),
+        ),
+        (
+            "/result/userAgent",
+            json!(format!(
+                "sage/{PINNED_CODEX_VERSION} (Windows 10..0; x86_64) unknown (sage; 0.1.0)"
+            )),
+        ),
+        (
+            "/result/userAgent",
+            json!(format!(
+                "sage/{PINNED_CODEX_VERSION} (Windows 10.0.; x86_64) unknown (sage; 0.1.0)"
+            )),
+        ),
+        (
+            "/result/userAgent",
+            json!(format!(
+                "sage/{PINNED_CODEX_VERSION} (Windows 10.0.26200; x86_64)  (sage; 0.1.0)"
+            )),
+        ),
+        (
+            "/result/userAgent",
+            json!(format!(
+                "sage/{PINNED_CODEX_VERSION}.5 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"
+            )),
+        ),
         ("/result/codexHome", json!(r"C:\Users\Username\.codex")),
         ("/result/platformFamily", json!("unix")),
         ("/result/platformOs", json!("linux")),
@@ -1351,87 +1401,77 @@ fn initialize_requires_the_exact_runtime_home_and_windows_identity() {
         ));
     }
 
+    // A later Codex adding `initialize` fields still starts.
     let mut extra = adapter();
     extra.initialize(3).unwrap();
     let mut response: Value = serde_json::from_slice(&initialize_result(3)).unwrap();
     response["result"]["capabilities"] = json!({"turnStart": true});
-    assert!(matches!(
-        extra.ingest(&serde_json::to_vec(&response).unwrap(), &Mapper),
-        Err(AdapterError::Ingress(IngressError::CapabilityUnavailable))
-    ));
-}
-
-#[test]
-fn observed_pinned_codex_initialize_accepts_its_cli_identity_and_home() {
-    let mut result = Map::from_iter([
-        ("userAgent".into(), json!(user_agent("sage", "unknown"))),
-        ("codexHome".into(), json!(r"C:\Users\Username\.codex")),
-        ("platformFamily".into(), json!("windows")),
-        ("platformOs".into(), json!("windows")),
-    ]);
-
-    assert!(super::state::capabilities::valid_initialize_result(
-        &result,
-        &version_line("codex-cli"),
-        "",
-        super::state::capabilities::InitializeIdentity::Observed,
-    ));
-    result.insert(
-        "userAgent".into(),
-        json!(format!(
-            "sage/{PINNED_CODEX_VERSION} (Windows 10.0; x86_64)"
-        )),
+    assert!(
+        extra
+            .ingest(&serde_json::to_vec(&response).unwrap(), &Mapper)
+            .is_ok()
     );
-    assert!(!super::state::capabilities::valid_initialize_result(
-        &result,
+}
+
+fn observed_initialize(user_agent: &str) -> Map<String, Value> {
+    Map::from_iter([
+        ("userAgent".into(), json!(user_agent)),
+        ("codexHome".into(), json!("/home/username/.codex")),
+    ])
+}
+
+fn observed_initialize_accepted(result: &Map<String, Value>) -> bool {
+    super::state::capabilities::valid_initialize_result(
+        result,
         &version_line("codex-cli"),
         "",
         super::state::capabilities::InitializeIdentity::Observed,
-    ));
+    )
 }
 
 #[test]
-fn the_user_agent_pinned_codex_actually_sends_is_accepted_and_forgeries_are_not() {
-    let observed = Map::from_iter([
-        (
-            "userAgent".into(),
-            json!(user_agent("Codex Desktop", "dumb")),
-        ),
-        (
-            "codexHome".into(),
-            json!(r"C:\Users\Username\AppData\Local\Temp\sage-codex-home-DoXG8r"),
-        ),
-        ("platformFamily".into(), json!("windows")),
-        ("platformOs".into(), json!("windows")),
-    ]);
-    assert!(super::state::capabilities::valid_initialize_result(
-        &observed,
-        &version_line("codex-cli"),
-        "",
-        super::state::capabilities::InitializeIdentity::Observed,
-    ));
-
+fn an_observed_codex_starts_on_every_host_and_with_fields_sage_does_not_read() {
     let pinned = PINNED_CODEX_VERSION;
-    for forged in [
-        "Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)".to_owned(),
-        format!("Codex Desktop/{pinned} (Windows 10.0.26200; x86_64) dumb (notsage; 0.1.0)"),
-        format!("Codex Desktop/{pinned} (Windows 10.0.26200; x86_64) dumb"),
-        format!("/{pinned} (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)"),
-        format!("Codex Desktop/{pinned} (Windows notaversion; x86_64) dumb (sage; 0.1.0)"),
-        format!("Codex Desktop/{pinned} (Windows 10.0.26200; x86_64)  (sage; 0.1.0)"),
+    for reported in [
+        user_agent("Codex Desktop", "dumb"),
+        format!("codex_cli_rs/{pinned} (Mac OS 15.1.0; arm64) iTerm.app/3.5.10 (sage; 0.1.0)"),
+        format!("codex_cli_rs/{pinned} (Ubuntu 24.4.0; x86_64) xterm-256color (sage; 0.1.0)"),
+        format!("codex_cli_rs/{pinned} (Windows 11.0.26100; aarch64) WindowsTerminal"),
+        format!("sage/{pinned}"),
     ] {
-        let mut drifted = observed.clone();
-        drifted.insert("userAgent".into(), json!(forged));
+        let mut result = observed_initialize(&reported);
+        assert!(observed_initialize_accepted(&result), "refused {reported}");
+        result.insert("platformFamily".into(), json!("unix"));
+        result.insert("platformOs".into(), json!("freebsd"));
+        result.insert("futureField".into(), json!({"nested": true}));
+        assert!(observed_initialize_accepted(&result), "refused {reported}");
+    }
+}
+
+#[test]
+fn an_observed_codex_user_agent_must_name_the_admitted_build() {
+    let pinned = PINNED_CODEX_VERSION;
+    for refused in [
+        "Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)".to_owned(),
+        format!("/{pinned} (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)"),
+        format!("Codex Desktop {pinned} (Windows 10.0.26200; x86_64)"),
+        "codex_cli_rs/unknown (Mac OS 15.1.0; arm64)".to_owned(),
+        format!("codex_cli_rs/{pinned} (Mac OS 15.1.0; arm64)\nforged"),
+        format!("codex_cli_rs/{pinned}.5 (Mac OS 15.1.0; arm64)"),
+        format!("codex_cli_rs/{pinned}-alpha (Mac OS 15.1.0; arm64)"),
+        String::new(),
+    ] {
         assert!(
-            !super::state::capabilities::valid_initialize_result(
-                &drifted,
-                &version_line("codex-cli"),
-                "",
-                super::state::capabilities::InitializeIdentity::Observed,
-            ),
-            "forged user agent accepted: {forged}"
+            !observed_initialize_accepted(&observed_initialize(&refused)),
+            "accepted {refused:?}"
         );
     }
+    let mut relative_home = observed_initialize(&user_agent("sage", "dumb"));
+    relative_home.insert("codexHome".into(), json!(".codex"));
+    assert!(!observed_initialize_accepted(&relative_home));
+    let mut missing_home = observed_initialize(&user_agent("sage", "dumb"));
+    missing_home.remove("codexHome");
+    assert!(!observed_initialize_accepted(&missing_home));
 }
 
 #[test]
@@ -2540,4 +2580,25 @@ fn codex_turns_and_steers_carry_attached_files_in_their_text_input() {
             serde_json::json!([{"type": "text", "text": expected}])
         );
     }
+}
+
+#[test]
+fn goals_follow_the_tested_release_or_a_later_one_and_the_curated_pin() {
+    use crate::acp::bindings::characterisation::Characterisation::{
+        Characterised, NewerThanTested, Uncharacterised,
+    };
+    for (version_line, characterisation, supported) in [
+        (version_line("codex-cli"), Characterised, true),
+        ("codex-cli 99.0.0".to_owned(), NewerThanTested, true),
+        ("codex-cli 0.1.0".to_owned(), Uncharacterised, false),
+    ] {
+        let mut observed = adapter();
+        negotiate(&mut observed);
+        observed.observe_build_for_test(&version_line, characterisation);
+        assert_eq!(observed.goal_supported(), supported, "{version_line}");
+    }
+    // The curated package is the pinned build; nothing else is curated.
+    let mut curated = adapter();
+    negotiate(&mut curated);
+    assert!(curated.goal_supported());
 }

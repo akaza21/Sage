@@ -10,11 +10,11 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct AcpUsageRequest {
-    project_id: SageProjectId,
-    project_generation: ProjectGeneration,
-    chat_id: SageChatId,
-    session_id: SageAgentSessionId,
-    runtime_epoch: RuntimeEpoch,
+    pub(super) project_id: SageProjectId,
+    pub(super) project_generation: ProjectGeneration,
+    pub(super) chat_id: SageChatId,
+    pub(super) session_id: SageAgentSessionId,
+    pub(super) runtime_epoch: RuntimeEpoch,
 }
 
 #[tauri::command]
@@ -35,7 +35,7 @@ pub(crate) async fn get_acp_usage(
 }
 
 /// The runtime the request names, while it is still the Chat's current one.
-async fn current_owner(
+pub(super) async fn current_owner(
     state: &AppState,
     request: AcpUsageRequest,
 ) -> Result<Option<RuntimeOwner>, AcpIpcError> {

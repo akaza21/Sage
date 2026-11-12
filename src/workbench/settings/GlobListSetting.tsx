@@ -18,7 +18,7 @@ function patternProblem(pattern: string, patterns: readonly string[]) {
     return `Patterns are at most ${MAX_PATH_GLOB_BYTES} bytes.`;
   }
   if (!validPathGlob(pattern)) {
-    return "Write the pattern relative to the Project, such as **/dist, without a leading or trailing slash, backslashes, colons, or . and .. folders.";
+    return "Write the pattern relative to the project, such as **/dist, without a leading or trailing slash, backslashes, colons, or . and .. folders.";
   }
   return null;
 }

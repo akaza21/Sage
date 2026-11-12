@@ -23,7 +23,7 @@ function ToolActivityRollup({
     />
   );
 }
-import { WorkedTurnTerminal } from "./WorkedActivityVisibility";
+import { WorkedTurnTerminal } from "./WorkedTurnTerminal";
 
 afterEach(cleanup);
 

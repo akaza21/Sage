@@ -8,6 +8,7 @@ pub(crate) mod edit_disposition;
 mod errors;
 pub(crate) mod file_reference;
 pub(crate) mod goal;
+pub(crate) mod mcp;
 pub(crate) mod permission;
 pub(crate) mod read_text_file;
 #[cfg(any(debug_assertions, feature = "diagnostics"))]

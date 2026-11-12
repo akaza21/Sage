@@ -319,7 +319,7 @@ mod tests {
         fixture.harness(" \u{feff}\n second line");
         assert_eq!(fixture.shown(), shown("Chat: Chat", "default"));
         fixture.harness("\u{7} Ship\u{202e}it\u{200b}\tnow\nignored");
-        assert_eq!(fixture.shown(), shown("Chat: Shipitnow", "harness"));
+        assert_eq!(fixture.shown(), shown("Chat: Shipit now", "harness"));
         fixture.harness(&"é".repeat(200));
         let (title, _, _) = fixture.shown();
         assert_eq!(

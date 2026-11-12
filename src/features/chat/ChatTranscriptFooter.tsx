@@ -5,10 +5,7 @@ import type { AcpChatPage, AcpItem, TurnProjection } from "../../domain/acp";
 import type { ChatMessage } from "../../domain/chat";
 import { TurnDaySeparator } from "./acp/AcpTurnDates";
 import { terminalTurnStates } from "./acp/statusSemantics";
-import {
-  WorkedActivityVisibility,
-  WorkedTurnTerminal,
-} from "./acp/WorkedActivityVisibility";
+import { WorkedTurnTerminal } from "./acp/WorkedTurnTerminal";
 import { AnswerActions } from "./AnswerActions";
 import {
   formatWorkedDuration,
@@ -38,12 +35,17 @@ export function ChatTranscriptTurnSummary({
   turn,
   hasActivities,
   children,
+  steered,
   thinkingPlaceholder = false,
 }: {
   turn: TurnProjection;
   hasActivities: boolean;
   children?: ReactNode;
-
+  /**
+   * Messages the user steered into the Turn. They sit at their place among
+   * the expanded activities and stay visible below a collapsed Worked row.
+   */
+  steered?: readonly ReactNode[];
   thinkingPlaceholder?: boolean;
 }) {
   const terminal = terminalTurnStates.has(turn.state);
@@ -66,13 +68,14 @@ export function ChatTranscriptTurnSummary({
       </div>
     );
   }
-  // Collapsed Worked shows no rows at all.
+  // Collapsed Worked shows only the user's own steered messages.
+  const open = !terminal || expanded;
   const groups =
-    children && (!terminal || expanded) ? (
+    (open && children) || steered?.length ? (
       <WorkedTurnTerminal value={terminal}>
-        <WorkedActivityVisibility value={!terminal || expanded}>
-          <div className="chat-transcript-work__groups">{children}</div>
-        </WorkedActivityVisibility>
+        <div className="chat-transcript-work__groups">
+          {open ? children : steered}
+        </div>
       </WorkedTurnTerminal>
     ) : null;
 

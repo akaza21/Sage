@@ -104,7 +104,7 @@ export function SessionNoticeStrip({
       {shown.length > 1 ? (
         <button
           type="button"
-          className="button--compact acp-session-notices__clear"
+          className="button button--compact acp-session-notices__clear"
           onClick={() => dismiss(shown.map(keyOf))}
         >
           Dismiss all

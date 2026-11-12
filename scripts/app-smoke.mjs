@@ -260,7 +260,7 @@ try {
   await reach("Search files", '[role="dialog"][aria-label="Quick Open"]');
   await shot("12-quick-open");
   await page
-    .getByRole("combobox", { name: "Search Files by name", exact: true })
+    .getByRole("combobox", { name: "Search files by name", exact: true })
     .press("Escape", { timeout: 4000 })
     .catch(() => misses.push("Dismiss Quick Open"));
 

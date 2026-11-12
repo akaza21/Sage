@@ -72,6 +72,11 @@
   margin: var(--space-2) 0 0;
 }
 
+/* A chat answer keeps its single line breaks, as the harness wrote them. */
+.acp-markdown :is(p, [data-markdown-inline]) {
+  white-space: pre-line;
+}
+
 .acp-markdown :is(h1, h2, h3, h4, h5, h6) {
   margin: var(--space-4) 0 var(--space-2);
   line-height: var(--line-height-tight);

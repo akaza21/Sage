@@ -3,7 +3,11 @@ import type { StateCreator } from "zustand";
 
 import type { GitProcessState } from "../domain/workbench";
 import { desktop } from "../services/desktop";
-import { idleAtEpoch, matchesProjectIntent } from "./projectIntent";
+import {
+  idleAtEpoch,
+  matchesProjectIntent,
+  repositoryBusy,
+} from "./projectIntent";
 import type { WorkbenchState } from "./store";
 
 export type RepositoryRemoteAction = "fetch" | "push" | "pull";
@@ -46,12 +50,7 @@ export const createRepositoryRemoteSlice: StateCreator<
     if (
       !projectId ||
       (action !== "pull" && !remote) ||
-      get().projectTransitioning ||
-      get().repositoryRefreshing ||
-      get().repositoryMutation ||
-      get().repositoryCommit ||
-      get().repositoryCheckout ||
-      get().repositoryRemote ||
+      repositoryBusy(get()) ||
       !get().project?.roots.some((candidate) => candidate.id === rootId)
     ) {
       return false;

@@ -206,7 +206,7 @@ impl CodexDiscoveryProtocol {
         let account = match result.get("account") {
             Some(Value::Null) if requires_auth => CodexAccountSnapshot::SignedOut,
             Some(Value::Null) => CodexAccountSnapshot::ProviderManaged,
-            Some(Value::Object(account)) if managed_chatgpt(account)? => {
+            Some(Value::Object(account)) if managed_chatgpt(account) => {
                 CodexAccountSnapshot::ManagedChatgpt
             }
             Some(Value::Object(account)) if api_key_account(account) => {
@@ -272,7 +272,9 @@ impl CodexDiscoveryProtocol {
             _ => return Err(CodexDiscoveryError::Protocol),
         };
         let result = response_result(frame, expected)?;
-        if result.len() != 2 || !result.contains_key("data") || !result.contains_key("nextCursor") {
+        // `nextCursor` is null on the last page. Requiring the member keeps a
+        // renamed cursor from silently truncating the catalog after one page.
+        if !result.contains_key("nextCursor") {
             return Err(CodexDiscoveryError::Protocol);
         }
         let data = result
@@ -289,7 +291,9 @@ impl CodexDiscoveryProtocol {
         let mut page_bytes = 0_usize;
         let mut page_default: Option<RequiredText<512>> = None;
         for value in data {
-            let model = parse_model(value)?;
+            let Some(model) = parse_model(value)? else {
+                continue;
+            };
             if self
                 .models
                 .iter()

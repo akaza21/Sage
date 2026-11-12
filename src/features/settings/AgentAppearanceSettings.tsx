@@ -24,7 +24,7 @@ export function AgentAppearanceSettings() {
           description="Adjust interface and chat text, not the code editor."
         >
           <select
-            className="input"
+            className="select"
             aria-label="Interface font size"
             disabled={!ready}
             value={appearance.fontSize}
@@ -47,7 +47,7 @@ export function AgentAppearanceSettings() {
           description={uiDensityCopy(appearance.density).description}
         >
           <select
-            className="input"
+            className="select"
             aria-label="Interface density"
             disabled={!ready}
             value={appearance.density}

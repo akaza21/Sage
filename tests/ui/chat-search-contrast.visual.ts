@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
-// The Search Chats dialog is translucent glass over a scrim, so what shows
+// The Search chats dialog is translucent glass over a scrim, so what shows
 // through decides its contrast. Every text role must stay WCAG AA (4.5:1)
 // over the worst underlays: white and black.
 
@@ -89,12 +89,12 @@ async function openSearchChats(page: Page) {
     .locator("header.title-bar")
     .getByRole("button", { name: "Search chats" })
     .click();
-  const dialog = page.getByRole("dialog", { name: "Search Chats" });
+  const dialog = page.getByRole("dialog", { name: "Search chats" });
   await expect(dialog).toBeVisible();
   return dialog;
 }
 
-test.describe("Search Chats contrast", () => {
+test.describe("Search chats contrast", () => {
   test.use({ reducedMotion: "reduce" });
 
   for (const underlay of ["white", "black"] as const) {
