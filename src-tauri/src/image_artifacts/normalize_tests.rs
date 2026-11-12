@@ -354,3 +354,28 @@ fn a_large_photo_for_any_harness_is_stored_at_the_store_bounds() {
     assert_eq!((raster.width, raster.height), (2048, 1366));
     assert!(image.bytes.len() <= STORED_IMAGE_BYTES);
 }
+
+#[test]
+fn a_normalized_image_allocates_only_its_length() {
+    // A prompt is charged for what it holds; an encoder that doubled its
+    // buffer would have the largest admitted image charged twice its size.
+    let photo = png_of(
+        3000,
+        2000,
+        png::ColorType::Rgb,
+        png::BitDepth::Eight,
+        &photo(3000, 2000),
+    );
+    let screenshot = crate::image_artifacts::screenshot_png(3840, 2160);
+    for source in [&photo, &screenshot] {
+        let image = normalize(ImageMediaType::Png, source, PROMPT).unwrap();
+        assert_eq!(image.bytes.capacity(), image.bytes.len());
+    }
+    let scaled = downscale(decode(ImageMediaType::Png, &photo).unwrap(), PROMPT.edge);
+    for encoded in [
+        encode_png(&scaled, true).unwrap(),
+        encode_jpeg(&scaled).unwrap(),
+    ] {
+        assert_eq!(encoded.capacity(), encoded.len());
+    }
+}

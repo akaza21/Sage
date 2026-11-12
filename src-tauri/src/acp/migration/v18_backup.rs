@@ -59,7 +59,8 @@ pub(super) fn admit_source(paths: &MigrationPaths, schema: SchemaClass) -> AppRe
         | SchemaClass::CurrentV22
         | SchemaClass::CurrentV23
         | SchemaClass::CurrentResumeLink
-        | SchemaClass::CurrentTitleSource => {
+        | SchemaClass::CurrentTitleSource
+        | SchemaClass::CurrentSessionFactsTurnIndex => {
             if let Some(backup) = reject_partial_backup_publication(&versioned)?
                 && !matches!(
                     backup.source.database.schema,

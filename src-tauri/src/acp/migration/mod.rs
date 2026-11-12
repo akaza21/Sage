@@ -19,6 +19,7 @@ mod portable_coverage_tests;
 mod probe;
 mod publish;
 mod schema_upgrade;
+mod session_facts_turn_index;
 mod session_resume_link;
 mod session_scope;
 mod stage_owner;
@@ -142,6 +143,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     config_choices::apply(&mut opened.connection)?;
     session_resume_link::apply(&mut opened.connection)?;
     title_source::apply(&mut opened.connection)?;
+    session_facts_turn_index::apply(&mut opened.connection)?;
     Ok(opened)
 }
 
@@ -199,7 +201,8 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
         | SchemaClass::CurrentV22
         | SchemaClass::CurrentV23
         | SchemaClass::CurrentResumeLink
-        | SchemaClass::CurrentTitleSource => {
+        | SchemaClass::CurrentTitleSource
+        | SchemaClass::CurrentSessionFactsTurnIndex => {
             let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
             if probe::classify_live(&paths)? != source_schema {
@@ -365,6 +368,7 @@ fn verify_current(connection: &Connection) -> AppResult<()> {
             | SchemaClass::CurrentV23
             | SchemaClass::CurrentResumeLink
             | SchemaClass::CurrentTitleSource
+            | SchemaClass::CurrentSessionFactsTurnIndex
     ) {
         return invalid("database did not reach an exact current schema");
     }

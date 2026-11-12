@@ -112,6 +112,8 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/app/browserPopupNative.ts",
   "src/app/agentWorkingDiffRepository.ts",
   "src/features/files/fileRenameResult.ts",
+  // File and folder rename load with the first rename.
+  "src/app/fileRenameActions.ts",
   "src/features/files/resourceTrashContract.ts",
   "src/features/browser/browserSuggestions.ts",
   "src/features/browser/browserClipboard.ts",

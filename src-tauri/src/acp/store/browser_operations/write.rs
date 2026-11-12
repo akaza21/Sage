@@ -62,11 +62,14 @@ pub(crate) fn start(
             resource: "browserOperationId",
         });
     }
+    // Every browser operation start, and so every collapse marker copied from
+    // one, carries its Turn, so `marker.turn_id=start.turn_id` never meets a
+    // NULL. Plain equality also lets these reads use the partial Turn index.
     let turn_count: i64 = tx.query_row(
         "SELECT COUNT(*) FROM session_facts start WHERE start.session_id=?1 AND start.turn_id=?2
          AND start.kind='browserOperation' AND NOT EXISTS (
            SELECT 1 FROM session_facts marker WHERE marker.session_id=start.session_id
-           AND marker.kind='browserOperationsCollapsed'
+           AND marker.turn_id=start.turn_id AND marker.kind='browserOperationsCollapsed'
            AND json_extract(marker.payload_json,'$.s')=start.sequence)",
         params![record.session_id.as_str(), record.turn_id.as_str()],
         |row| row.get(0),
@@ -75,7 +78,7 @@ pub(crate) fn start(
         "SELECT COUNT(*) FROM session_facts start WHERE start.project_id=?1 AND start.chat_id=?2
          AND start.kind='browserOperation' AND NOT EXISTS (
            SELECT 1 FROM session_facts marker WHERE marker.session_id=start.session_id
-           AND marker.kind='browserOperationsCollapsed'
+           AND marker.turn_id=start.turn_id AND marker.kind='browserOperationsCollapsed'
            AND json_extract(marker.payload_json,'$.s')=start.sequence)",
         params![record.project_id.as_str(), record.chat_id.as_str()],
         |row| row.get(0),
@@ -168,9 +171,13 @@ pub(crate) fn finish(
         });
     }
     let already_terminal: bool = tx.query_row(
-        "SELECT EXISTS(SELECT 1 FROM session_facts WHERE session_id=?1
-         AND kind='browserOperationTerminal' AND json_extract(payload_json,'$.s')=?2)",
-        params![record.session_id.as_str(), sequence],
+        "SELECT EXISTS(SELECT 1 FROM session_facts WHERE session_id=?1 AND turn_id=?2
+         AND kind='browserOperationTerminal' AND json_extract(payload_json,'$.s')=?3)",
+        params![
+            record.session_id.as_str(),
+            record.turn_id.as_str(),
+            sequence
+        ],
         |row| row.get(0),
     )?;
     if already_terminal {
@@ -312,7 +319,8 @@ fn collapse_oldest(
          WHERE start.project_id=?1 AND start.chat_id=?2 AND start.kind='browserOperation'
            AND (?3 IS NULL OR start.turn_id=?3)
            AND NOT EXISTS (SELECT 1 FROM session_facts marker
-             WHERE marker.session_id=start.session_id AND marker.kind='browserOperationsCollapsed'
+             WHERE marker.session_id=start.session_id AND marker.turn_id=start.turn_id
+             AND marker.kind='browserOperationsCollapsed'
              AND json_extract(marker.payload_json,'$.s')=start.sequence)
          ORDER BY start.created_at,start.session_id,start.sequence LIMIT 1",
         params![record.project_id.as_str(), record.chat_id.as_str(), turn],

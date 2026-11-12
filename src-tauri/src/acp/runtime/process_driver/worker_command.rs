@@ -114,6 +114,11 @@ impl WorkerCommand {
         }
     }
 
+    /// A command that holds a user prompt, with whatever images it carries.
+    fn carries_prompt(&self) -> bool {
+        matches!(self, Self::PreparePrompt(_) | Self::Steer { .. })
+    }
+
     fn is_control(&self) -> bool {
         matches!(
             self,
@@ -197,6 +202,7 @@ impl DriverMailbox {
     ) -> Result<mpsc::Receiver<Result<WorkerReply, HostError>>, MailboxError> {
         let bytes = command.actual_bytes().ok_or(MailboxError::Full)?;
         let control = command.is_control();
+        let prompt = command.carries_prompt();
         let deadline_millis = super::driver::monotonic_deadline_millis(
             deadline.saturating_duration_since(Instant::now()),
         );
@@ -214,7 +220,7 @@ impl DriverMailbox {
         if control {
             self.try_push_control(bytes, deadline_millis, build)?;
         } else {
-            self.try_push_data(bytes, build)?;
+            self.try_push_data(bytes, prompt, build)?;
         }
         response.ok_or(MailboxError::Closed)
     }
