@@ -10,11 +10,9 @@ describe("decodeSessionAction", () => {
       '{"kind":"review","target":{"kind":"baseBranch","branch":"main"}}',
       '{"kind":"review","target":{"kind":"commit","sha":"1a2b3c4"}}',
       '{"kind":"review","target":{"kind":"custom","instructions":"check the error paths"}}',
-      '{"kind":"review","target":{"kind":"baseBranch","branch":"feature/x-1.2"}}',
-      // U+FEFF is not whitespace to the native side, so these are not a
-      // branch review read back.
-      '{"kind":"review","target":{"kind":"custom","instructions":"base\ufeffmain"}}',
-      '{"kind":"review","target":{"kind":"custom","instructions":"base $(id)"}}',
+      // The native side owns what a target's text may say; a stored
+      // action is only shown, so any text it kept is shown as kept.
+      '{"kind":"review","target":{"kind":"baseBranch","branch":"two words"}}',
     ])
       expect(decodeSessionAction(JSON.parse(stored))).toEqual(
         JSON.parse(stored),
@@ -32,29 +30,12 @@ describe("decodeSessionAction", () => {
       { kind: "compact", extra: 1 },
       { kind: "review" },
       { kind: "review", target: { kind: "uncommittedChanges", extra: 1 } },
-      { kind: "review", target: { kind: "baseBranch", branch: "two words" } },
-      { kind: "review", target: { kind: "baseBranch", branch: "--force" } },
       { kind: "review", target: { kind: "baseBranch" } },
-      { kind: "review", target: { kind: "baseBranch", branch: "main\ufeff" } },
-      { kind: "review", target: { kind: "baseBranch", branch: 'x";sh;"' } },
-      { kind: "review", target: { kind: "baseBranch", branch: "a..b" } },
-      { kind: "review", target: { kind: "baseBranch", branch: "a@{u}" } },
+      { kind: "review", target: { kind: "baseBranch", branch: 7 } },
       { kind: "review", target: { kind: "commit", sha: "" } },
-      { kind: "review", target: { kind: "commit", sha: "HEAD~1" } },
-      { kind: "review", target: { kind: "commit", sha: "abc" } },
-      // Instructions that `/review` would read back as another target.
-      { kind: "review", target: { kind: "custom", instructions: "base main" } },
-      {
-        kind: "review",
-        target: { kind: "custom", instructions: "commit  abcd" },
-      },
-      { kind: "review", target: { kind: "custom", instructions: " padded" } },
-      { kind: "review", target: { kind: "commit", sha: "a".repeat(65) } },
+      { kind: "review", target: { kind: "commit", sha: "1a2b", extra: 1 } },
+      { kind: "review", target: { kind: "custom", branch: "main" } },
       { kind: "review", target: { kind: "custom", instructions: "" } },
-      {
-        kind: "review",
-        target: { kind: "custom", instructions: "x".repeat(16385) },
-      },
       { kind: "unrecognized" },
       { kind: "review", target: "uncommittedChanges" },
     ])
