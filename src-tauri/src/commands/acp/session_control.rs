@@ -135,6 +135,10 @@ pub(super) fn control_error(error: SessionControlError) -> AcpIpcError {
             reason: AcpUnavailableReason::CapabilityUnavailable,
             message: safe_message("This session cannot do that right now."),
         },
+        SessionControlError::Late => AcpIpcError::Unavailable {
+            reason: AcpUnavailableReason::CapabilityUnavailable,
+            message: safe_message("The agent did not answer in time; it may still finish."),
+        },
         SessionControlError::RecoveryRequired => AcpIpcError::RecoveryRequired {
             message: safe_message(
                 "The outcome is unknown; reload the session before trying again.",

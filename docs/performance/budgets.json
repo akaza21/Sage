@@ -45,9 +45,9 @@
       },
       {
         "entry": "src/features/chat/ComposerCommandPanel.tsx",
-        "maxGzipBytes": 2540,
+        "maxGzipBytes": 2730,
         "maxCssGzipBytes": 520,
-        "reason": "`/status` and `/mcp` panels with the MCP port and its bounded decoder. Load when a panel command first opens, off the first-Chat path. Measured 2507 B JS, 487 B CSS."
+        "reason": "`/status` and `/mcp` panels, the MCP port, its bounded decoder and per-harness server actions. Load when a panel opens, off the first-Chat path. Measured 2697 B JS, 487 B CSS."
       },
       {
         "entry": "src/workbench/AgentTaskResources.tsx",

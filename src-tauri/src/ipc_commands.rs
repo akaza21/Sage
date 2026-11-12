@@ -137,6 +137,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         commands::acp::mcp::read_acp_mcp_servers,
         commands::acp::mcp::reload_acp_mcp_servers,
         commands::acp::mcp::sign_in_acp_mcp_server,
+        commands::acp::mcp::reconnect_acp_mcp_server,
         commands::acp::session_action::run_session_action,
         image_artifacts::commands::upload_chat_image,
         image_artifacts::commands::remove_chat_image,

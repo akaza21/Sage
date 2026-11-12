@@ -730,6 +730,16 @@ fn a_native_rpc_that_cannot_begin_in_time_recovers_only_when_not_passive() {
             ),
             HostState::Idle,
         ),
+        // Reconnecting a server keeps its configuration; Claude Code may
+        // still finish it after Sage stops waiting.
+        (
+            crate::acp::goal::NativeRpcRequest::Control(
+                crate::acp::session_control::SessionControl::ReconnectMcpServer {
+                    name: crate::acp::contract::RequiredText::new("serverName", "linear").unwrap(),
+                },
+            ),
+            HostState::Idle,
+        ),
         (
             crate::acp::goal::NativeRpcRequest::Control(
                 crate::acp::session_control::SessionControl::ReloadMcpServers,
@@ -1635,6 +1645,22 @@ fn command_deadlines_use_the_frozen_operation_classes() {
     assert_eq!(
         HostCommand::Shutdown.deadline_millis(),
         LIMITS.deadlines_ms.explicit_close
+    );
+    // A list read is answered at once; a reconnect waits on the server.
+    let control = |control| {
+        HostCommand::NativeRpc(crate::acp::goal::NativeRpcIntent {
+            owner: runtime.clone(),
+            request: crate::acp::goal::NativeRpcRequest::Control(control),
+        })
+        .deadline_millis()
+    };
+    use crate::acp::session_control::SessionControl;
+    assert!(control(SessionControl::ReadMcpServers) < LIMITS.deadlines_ms.ordinary_rpc);
+    assert_eq!(
+        control(SessionControl::ReconnectMcpServer {
+            name: crate::acp::contract::RequiredText::new("serverName", "linear").unwrap(),
+        }),
+        LIMITS.deadlines_ms.ordinary_rpc
     );
 }
 

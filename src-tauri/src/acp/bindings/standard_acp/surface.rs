@@ -1,7 +1,7 @@
 use serde_json::Value;
 pub(crate) mod command_list;
 mod commands;
-pub(crate) use commands::update_commands;
+pub(crate) use commands::{first_listed, panel, update_commands, update_commands_with};
 
 use crate::acp::bindings::adapter::RefusalDetail;
 #[cfg(test)]

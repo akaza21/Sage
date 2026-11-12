@@ -52,7 +52,8 @@ impl PiRuntime {
             | SessionControl::StopActivity { .. }
             | SessionControl::ReadMcpServers
             | SessionControl::ReloadMcpServers
-            | SessionControl::SignInMcpServer { .. } => {
+            | SessionControl::SignInMcpServer { .. }
+            | SessionControl::ReconnectMcpServer { .. } => {
                 Err(AdapterRuntimeError::UnsupportedCommand)
             }
         }

@@ -13,6 +13,8 @@ pub(crate) enum SessionControlError {
     Refused(Option<SafeText<512>>),
     #[error("the session cannot take this control now")]
     Unavailable,
+    #[error("the harness did not answer in time and may still finish")]
+    Late,
     #[error("the session control outcome is unknown")]
     RecoveryRequired,
 }
@@ -32,14 +34,15 @@ impl AcpService {
     }
 
     /// Sends a session control and answers with the harness's reply; a
-    /// refusal is an error. A list read that missed its deadline was
-    /// abandoned by its binding, so it leaves the runtime as it was.
+    /// refusal is an error. A control that abandons at its deadline (see
+    /// `SessionControl::abandons_at_deadline`) is late, not a reason to
+    /// recover the runtime.
     pub(in crate::acp::service) fn session_control_reply(
         &self,
         owner: RuntimeOwner,
         control: SessionControl,
     ) -> Result<NativeRpcReply, SessionControlError> {
-        let abandons = matches!(control, SessionControl::ReadMcpServers);
+        let abandons = control.abandons_at_deadline();
         let lane = self
             .lane_for(&owner)
             .ok_or(SessionControlError::Unavailable)?;
@@ -61,14 +64,14 @@ impl AcpService {
             Ok(NativeRpcReply::Rejected) => Err(SessionControlError::Refused(None)),
             Ok(reply) => Ok(reply),
             Err(HostError::Intent | HostError::State) => Err(SessionControlError::Unavailable),
-            Err(HostError::Deadline) if abandons => Err(SessionControlError::Unavailable),
+            Err(HostError::Deadline) if abandons => Err(SessionControlError::Late),
             Err(_) => Err(SessionControlError::RecoveryRequired),
         }
     }
 }
 
-/// Whether a failed control leaves the runtime's state unknown. A read its
-/// binding abandons at the deadline changed nothing.
+/// Whether a failed control leaves the runtime's state unknown. A control
+/// its binding abandons at the deadline changed nothing Sage holds.
 fn needs_recovery(error: &HostError, abandons: bool) -> bool {
     match error {
         HostError::Unavailable
