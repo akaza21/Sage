@@ -969,6 +969,16 @@ fn answer_text_on_either_side_of_a_tool_call_stays_two_items() {
     assert_eq!(before, "msg_a:0");
     assert_eq!(after, "msg_b:0");
 
+    // Within one message, every delta of a block shares its item and a
+    // later block starts its own.
+    let delta = |bridge: &mut SdkBridge, index: u64, text: &str| {
+        let chunk = bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":index,"delta":{"type":"text_delta","text":text}}})).unwrap();
+        updates(&chunk)[0]["itemId"].clone()
+    };
+    assert_eq!(delta(&mut bridge, 0, " More."), "msg_b:0");
+    assert_eq!(delta(&mut bridge, 2, "Second block."), "msg_b:2");
+    assert_eq!(delta(&mut bridge, 2, " Continued."), "msg_b:2");
+
     // Text Claude Code wrote itself, never streamed, is keyed by its
     // message and block the same way.
     let unstreamed = bridge
