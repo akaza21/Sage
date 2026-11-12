@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
+import { useActiveOption } from "../../ui/listNavigation";
+
 import { useWorkbenchStore } from "../../app/store";
 
 import {
@@ -98,7 +100,6 @@ export default function QuickOpen({
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [indexing, setIndexing] = useState(false);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [session] = useState(() => nextQuickOpenStamp());
   const returnFocus = useRef<Element | null>(document.activeElement);
   const closed = useRef(false);
@@ -236,9 +237,12 @@ export default function QuickOpen({
     ? commands.map((command) => command.id)
     : results.map(matchKey);
   // The selection follows its File when a refreshed answer reorders the list.
-  const keyed = itemKeys.indexOf(selectedKey ?? "");
-  const active = keyed >= 0 ? keyed : 0;
-  const activeKey = itemKeys[active] ?? null;
+  const {
+    activeIndex: active,
+    activeId: activeKey,
+    move,
+    setActiveId: setSelectedKey,
+  } = useActiveOption(itemKeys, "first");
 
   useEffect(() => {
     list.current
@@ -279,13 +283,15 @@ export default function QuickOpen({
     } else if (event.key === "Escape") {
       event.preventDefault();
       close(true);
-    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    } else if (
+      event.key === "ArrowDown" ||
+      event.key === "ArrowUp" ||
+      event.key === "PageDown" ||
+      event.key === "PageUp"
+    ) {
+      // Home and End stay with the field's caret.
       event.preventDefault();
-      if (itemKeys.length === 0) return;
-      const step = event.key === "ArrowDown" ? 1 : -1;
-      setSelectedKey(
-        itemKeys[(active + step + itemKeys.length) % itemKeys.length],
-      );
+      move(event.key);
     } else if (event.key === "Enter") {
       // Ctrl/Cmd+Enter opens to the side where there is a split; there
       // isn't yet, so it opens in place too.

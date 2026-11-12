@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
+import { useActiveOption } from "./listNavigation";
 import { isImeComposing } from "./imeComposition";
 
 /** Rows rendered at once; the rest are counted and reached by typing more. */
@@ -47,8 +48,9 @@ export function suggestionOptionId(listboxId: string, id: string) {
 /**
  * Keyboard model for a list that pops up from a text field which keeps the
  * focus (the WAI-ARIA combobox pattern with aria-activedescendant). Up and
- * Down move, Enter or Tab pick, Escape dismisses; every other key edits the
- * field. The first row is active until the user moves.
+ * Down move, PageUp and PageDown move a page, Enter or Tab pick, Escape
+ * dismisses; every other key, Home and End included, edits the field. The
+ * first row is active until the user moves.
  */
 export function useSuggestionNavigation(
   candidates: readonly TextFieldSuggestion[],
@@ -59,8 +61,9 @@ export function useSuggestionNavigation(
     () => candidates.slice(0, TEXT_FIELD_SUGGESTIONS_MAX_RENDERED),
     [candidates],
   );
-  const [chosenId, setChosenId] = useState<string | null>(null);
-  const active = items.find((item) => item.id === chosenId) ?? items[0] ?? null;
+  const ids = useMemo(() => items.map((item) => item.id), [items]);
+  const { activeIndex, move, setActiveId } = useActiveOption(ids, "first");
+  const active = items[activeIndex] ?? null;
   const onKeyDown = useCallback(
     (event: SuggestionKeyEvent): boolean => {
       if (
@@ -77,11 +80,14 @@ export function useSuggestionNavigation(
         return true;
       }
       if (!active) return false;
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (
+        event.key === "ArrowDown" ||
+        event.key === "ArrowUp" ||
+        event.key === "PageDown" ||
+        event.key === "PageUp"
+      ) {
         event.preventDefault();
-        const index = items.indexOf(active);
-        const step = event.key === "ArrowDown" ? 1 : -1;
-        setChosenId(items[(index + step + items.length) % items.length]!.id);
+        move(event.key);
         return true;
       }
       if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
@@ -91,7 +97,7 @@ export function useSuggestionNavigation(
       }
       return false;
     },
-    [active, items, onDismiss, onPick],
+    [active, move, onDismiss, onPick],
   );
-  return { active, setActiveId: setChosenId, onKeyDown };
+  return { active, setActiveId, onKeyDown };
 }

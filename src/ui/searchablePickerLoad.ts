@@ -3,7 +3,6 @@ import type * as PopoverChunk from "./SearchablePickerPopover";
 export const SEARCHABLE_PICKER_MAX_CANDIDATES = 500;
 export const SEARCHABLE_PICKER_MAX_RENDERED = 200;
 export const SEARCHABLE_PICKER_DEBOUNCE_MS = 50;
-export const SEARCHABLE_PICKER_PAGE_SIZE = 10;
 
 export function searchablePickerOptionId(prefix: string, id: string) {
   return `${prefix}-option-${encodeURIComponent(id)}`;
