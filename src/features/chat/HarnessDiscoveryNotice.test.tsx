@@ -38,7 +38,7 @@ describe("HarnessDiscoveryNotice", () => {
     );
   });
 
-  it("names the bound build when Sage has not characterised it", () => {
+  it("names the harness and bound build when Sage has not characterised it", () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -62,9 +62,9 @@ describe("HarnessDiscoveryNotice", () => {
     render(<HarnessDiscoveryNotice />);
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Build 0.99.0 hasn't been characterised. Some features are unavailable.",
+      "Claude Code 0.99.0 hasn't been tested with Sage yet, so some features are off.",
     );
-    expect(screen.getByText(/Some features are unavailable\./)).toBeVisible();
+    expect(screen.getByText(/some features are off\./)).toBeVisible();
   });
 
   it("stays silent once the bound build is characterised", () => {

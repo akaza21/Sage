@@ -20,7 +20,7 @@ const harness: HarnessDefinition = {
 
 it("dismisses the current build notice and shows a different build", () => {
   const { rerender } = render(<HarnessDiscoveryNotice harness={harness} />);
-  expect(screen.getByRole("status")).toHaveTextContent("Build 1.2.3");
+  expect(screen.getByRole("status")).toHaveTextContent("Fixture agent 1.2.3");
   fireEvent.click(screen.getByRole("button", { name: "Dismiss build notice" }));
   expect(screen.queryByRole("status")).toBeNull();
   rerender(<HarnessDiscoveryNotice harness={{ ...harness }} />);
@@ -28,7 +28,7 @@ it("dismisses the current build notice and shows a different build", () => {
   rerender(
     <HarnessDiscoveryNotice harness={{ ...harness, boundVersion: "1.2.4" }} />,
   );
-  expect(screen.getByRole("status")).toHaveTextContent("Build 1.2.4");
+  expect(screen.getByRole("status")).toHaveTextContent("Fixture agent 1.2.4");
 });
 
 it("keeps an unavailable harness explanation visible after dismissing a build", () => {
@@ -53,7 +53,7 @@ it("shows another harness's notice even when the build label is identical", () =
   rerender(
     <HarnessDiscoveryNotice harness={{ ...harness, id: "another-agent" }} />,
   );
-  expect(screen.getByRole("status")).toHaveTextContent("Build 1.2.3");
+  expect(screen.getByRole("status")).toHaveTextContent("Fixture agent 1.2.3");
 });
 
 it("explains the build again when a chat pane is remounted", () => {
@@ -61,5 +61,5 @@ it("explains the build again when a chat pane is remounted", () => {
   fireEvent.click(screen.getByRole("button", { name: "Dismiss build notice" }));
   firstPane.unmount();
   render(<HarnessDiscoveryNotice harness={harness} />);
-  expect(screen.getByRole("status")).toHaveTextContent("Build 1.2.3");
+  expect(screen.getByRole("status")).toHaveTextContent("Fixture agent 1.2.3");
 });
