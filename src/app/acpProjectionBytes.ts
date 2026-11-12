@@ -8,31 +8,63 @@ import { utf8ByteLength } from "../domain/text";
  */
 const entryBytes = new WeakMap<object, number>();
 
+/**
+ * The same sizes keyed by entity id and revision. Each refresh decodes the
+ * newest window into fresh objects, so the WeakMap misses them; the store
+ * bumps an entity's revision on every content change, so an unchanged
+ * revision means unchanged bytes. Oldest entries are evicted past the cap.
+ */
+const revisionBytes = new Map<string, { revision: string; bytes: number }>();
+const MAX_REVISION_ENTRIES = 8_192;
+
+interface RevisionedEntry {
+  id: string;
+  revision: string;
+}
+
 function jsonBytes(value: unknown): number {
   return utf8ByteLength(JSON.stringify(value));
 }
 
-function entryByteLength(entry: object): number {
+function revisionedBytes(kind: string, entry: RevisionedEntry): number {
+  if (typeof entry.revision !== "string") return jsonBytes(entry);
+  const key = `${kind}:${entry.id}`;
+  const cached = revisionBytes.get(key);
+  if (cached?.revision === entry.revision) return cached.bytes;
+  const bytes = jsonBytes(entry);
+  revisionBytes.delete(key);
+  revisionBytes.set(key, { revision: entry.revision, bytes });
+  if (revisionBytes.size > MAX_REVISION_ENTRIES) {
+    const oldest = revisionBytes.keys().next();
+    if (!oldest.done) revisionBytes.delete(oldest.value);
+  }
+  return bytes;
+}
+
+function entryByteLength(kind: string, entry: RevisionedEntry): number {
   let bytes = entryBytes.get(entry);
   if (bytes === undefined) {
-    bytes = jsonBytes(entry);
+    bytes = revisionedBytes(kind, entry);
     entryBytes.set(entry, bytes);
   }
   return bytes;
 }
 
 /** Bytes the entries add inside an array literal: each entry and its comma. */
-function entriesByteLength(entries: readonly object[]): number {
+function entriesByteLength(
+  kind: string,
+  entries: readonly RevisionedEntry[],
+): number {
   let total = Math.max(0, entries.length - 1);
-  for (const entry of entries) total += entryByteLength(entry);
+  for (const entry of entries) total += entryByteLength(kind, entry);
   return total;
 }
 
 function turnByteLength(turn: TurnProjection): number {
   return (
     jsonBytes({ ...turn, items: [], activities: [] }) +
-    entriesByteLength(turn.items) +
-    entriesByteLength(turn.activities)
+    entriesByteLength("item", turn.items) +
+    entriesByteLength("activity", turn.activities)
   );
 }
 

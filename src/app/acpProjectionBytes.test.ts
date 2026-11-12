@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AcpChatPage } from "../domain/acp";
 import { utf8ByteLength } from "../domain/text";
@@ -53,5 +53,37 @@ describe("pageByteLength", () => {
     expect(pageByteLength(full)).toBe(exact(full));
     const trimmed = page([{ id: "t", items: items.slice(2), activities: [] }]);
     expect(pageByteLength(trimmed)).toBe(exact(trimmed));
+  });
+
+  it("reuses sizes for fresh copies at the same revision", () => {
+    const revised = (id: string, revision: string, text: string) => ({
+      ...item(id, text),
+      revision,
+    });
+    const first = page([
+      {
+        id: "t",
+        items: [revised("r1", "1", "same"), revised("r2", "1", "old")],
+        activities: [],
+      },
+    ]);
+    expect(pageByteLength(first)).toBe(exact(first));
+    const refreshed = page([
+      {
+        id: "t",
+        items: [revised("r1", "1", "same"), revised("r2", "2", "newer text")],
+        activities: [],
+      },
+    ]);
+    const expected = exact(refreshed);
+    const stringify = vi.spyOn(JSON, "stringify");
+    try {
+      expect(pageByteLength(refreshed)).toBe(expected);
+      const serialized = stringify.mock.calls.map(([value]) => value);
+      expect(serialized).not.toContainEqual(revised("r1", "1", "same"));
+      expect(serialized).toContainEqual(revised("r2", "2", "newer text"));
+    } finally {
+      stringify.mockRestore();
+    }
   });
 });
