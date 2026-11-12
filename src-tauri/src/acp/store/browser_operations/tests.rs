@@ -365,3 +365,193 @@ fn restart_recovers_more_than_one_batch_of_unterminated_operations() {
     assert_eq!(recovered, 8_193);
     assert_eq!(recover_started(&mut connection, 100_001).unwrap(), 0);
 }
+
+fn turn_row(id: &str) -> crate::acp::store::history::TurnRow {
+    crate::acp::store::history::TurnRow {
+        id: id.into(),
+        project_id: "project-one".into(),
+        chat_id: "chat-one".into(),
+        session_id: "session-one".into(),
+        session_ordinal: 0,
+        runtime_epoch: 1,
+        ordinal: 0,
+        state: "running".into(),
+        revision: 0,
+        created_at: 1,
+        updated_at: 1,
+        terminal_at: None,
+        item_before: None,
+    }
+}
+
+fn begin_turn(connection: &rusqlite::Connection, ordinal: i64) {
+    connection
+        .execute(
+            "UPDATE turns SET state='completed',terminal_at=1 WHERE state='running'",
+            [],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,state,delivery_state,revision,created_at,updated_at)
+             VALUES(?1,'project-one','chat-one','session-one',1,?2,?3,'running','completeBytes',0,1,1)",
+            rusqlite::params![format!("turn-{ordinal}"), ordinal, format!("intent-{ordinal}")],
+        )
+        .unwrap();
+}
+
+#[test]
+fn each_turn_projects_only_its_own_operations_in_order() {
+    let mut connection = setup();
+    let epoch = RuntimeEpoch::new(1).unwrap();
+    let mut started = Vec::new();
+    for (number, turn) in [
+        (1, None),
+        (2, None),
+        (3, Some(1)),
+        (4, Some(1)),
+        (5, Some(2)),
+    ] {
+        if number == 3 || number == 5 {
+            begin_turn(&connection, turn.unwrap());
+        }
+        let mut operation = record(number);
+        if let Some(turn) = turn {
+            operation.turn_id = SageTurnId::parse(format!("turn-{turn}")).unwrap();
+        }
+        start(&mut connection, epoch, &operation).unwrap();
+        started.push(operation);
+    }
+    // Terminals land after later Turns' facts; each still joins its own start.
+    for (index, phase) in [(0, "completed"), (3, "failed"), (1, "denied")] {
+        let operation = &mut started[index];
+        operation.phase = phase.into();
+        operation.result_summary = Some(format!("{phase} {index}"));
+        operation.updated_at += 10;
+        finish(&mut connection, operation).unwrap();
+    }
+
+    for (turn, expected) in [
+        ("turn-browser", &started[0..2]),
+        ("turn-1", &started[2..4]),
+        ("turn-2", &started[4..5]),
+    ] {
+        let (operations, collapsed) = load(&connection, &turn_row(turn)).unwrap();
+        assert_eq!(operations, expected, "{turn}");
+        assert_eq!(collapsed, 0);
+    }
+    assert_eq!(load(&connection, &turn_row("turn-9")).unwrap().0, vec![]);
+}
+
+fn start_in_turn(
+    connection: &mut rusqlite::Connection,
+    numbers: std::ops::RangeInclusive<u32>,
+    turn: &str,
+) -> Vec<BrowserOperationProjection> {
+    numbers
+        .map(|number| {
+            let mut operation = record(number);
+            operation.turn_id = SageTurnId::parse(turn).unwrap();
+            start(connection, RuntimeEpoch::new(1).unwrap(), &operation).unwrap();
+            operation
+        })
+        .collect()
+}
+
+#[test]
+fn turn_page_hides_operations_collapsed_past_the_turn_cap() {
+    let mut connection = setup();
+    let earlier = start_in_turn(&mut connection, 1..=2, "turn-browser");
+    begin_turn(&connection, 1);
+    // Two past the per-Turn cap of 32, so the Turn's two oldest collapse.
+    let crowded = start_in_turn(&mut connection, 3..=36, "turn-1");
+
+    assert_eq!(
+        load(&connection, &turn_row("turn-1")).unwrap(),
+        (crowded[2..].to_vec(), 2)
+    );
+    assert_eq!(
+        load(&connection, &turn_row("turn-browser")).unwrap(),
+        (earlier, 0)
+    );
+}
+
+#[test]
+fn turn_page_hides_operations_collapsed_past_the_chat_cap() {
+    let mut connection = setup();
+    let mut turns = vec![(
+        "turn-browser".to_owned(),
+        start_in_turn(&mut connection, 1..=4, "turn-browser"),
+    )];
+    // Five Turns of 25 stay under the per-Turn cap and bring the chat to 129
+    // operations, one past its cap of 128, so only the chat's oldest operation
+    // collapses, out of an earlier Turn.
+    for ordinal in 1_u32..=5 {
+        begin_turn(&connection, i64::from(ordinal));
+        let turn = format!("turn-{ordinal}");
+        let first = 5 + (ordinal - 1) * 25;
+        let operations = start_in_turn(&mut connection, first..=first + 24, &turn);
+        turns.push((turn, operations));
+    }
+    turns[0].1.remove(0);
+
+    for (index, (turn, operations)) in turns.into_iter().enumerate() {
+        let collapsed = u64::from(index == 0);
+        assert_eq!(
+            load(&connection, &turn_row(&turn)).unwrap(),
+            (operations, collapsed),
+            "{turn}"
+        );
+    }
+}
+
+fn plan(connection: &rusqlite::Connection, sql: &str, values: &[&dyn rusqlite::ToSql]) -> String {
+    connection
+        .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+        .unwrap()
+        .query_map(values, |row| row.get::<_, String>(3))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n")
+}
+
+#[test]
+fn per_turn_fact_lookups_seek_the_turn_index() {
+    let connection = setup();
+    let owner: [&dyn rusqlite::ToSql; 4] = [&"project-one", &"chat-one", &"session-one", &"turn"];
+    let cases = [
+        (
+            plan(&connection, super::TURN_OPERATIONS_SQL, &owner),
+            ["start", "marker"].as_slice(),
+        ),
+        (
+            plan(
+                &connection,
+                super::TERMINAL_SQL,
+                &[&"session-one", &"turn", &1_i64],
+            ),
+            ["session_facts"].as_slice(),
+        ),
+        (
+            plan(
+                &connection,
+                crate::acp::store::turn_activity_facts::TURN_FACTS_SQL,
+                &[&"session-one", &"turn", &"sessionActivity", &80_i64],
+            ),
+            ["session_facts"].as_slice(),
+        ),
+    ];
+    for (plan, tables) in cases {
+        for table in tables {
+            assert!(
+                plan.lines()
+                    .any(|step| step.split_whitespace().nth(1) == Some(table)
+                        && step.contains("idx_session_facts_turn")),
+                "{table} does not use the Turn index:\n{plan}"
+            );
+        }
+        assert!(!plan.contains("SCAN"), "{plan}");
+        assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+    }
+}
