@@ -6,15 +6,13 @@ use std::{
     },
 };
 
-use tauri::{AppHandle, Emitter};
-
 use super::{
-    WORKSPACE_NOTIFY_EVENT, WorkspaceNotifyError, apply_unwatch_if_generation,
-    deliver_workspace_notify_action, reject, unix_events,
+    WorkspaceNotifyError, apply_unwatch_if_generation, batch::NoticeSink, reject, unix_events,
+    watch::root_delivery,
 };
 
 pub(super) fn spawn_workspace_root_watch(
-    app: AppHandle,
+    sink: Arc<NoticeSink>,
     project_id: String,
     generation: u32,
     root_id: String,
@@ -23,23 +21,17 @@ pub(super) fn spawn_workspace_root_watch(
 ) -> Result<(), WorkspaceNotifyError> {
     let (directories, truncated) = unix_events::bounded_watch_directories(&path)?;
     let prepared = prepare_watch(&directories).map_err(|_| reject("notify-substituted"))?;
+    let mut deliver = root_delivery(
+        project_id.clone(),
+        generation,
+        root_id,
+        &path,
+        Arc::clone(&cancelled),
+        sink,
+    );
     std::thread::Builder::new()
         .name("sage-workspace-notify".into())
         .spawn(move || {
-            let mut deliver = |relative: String, action: u32| {
-                if cancelled.load(Ordering::Acquire) {
-                    return;
-                }
-                if let Ok(Some(notice)) = deliver_workspace_notify_action(
-                    &project_id,
-                    generation,
-                    &root_id,
-                    &relative,
-                    action,
-                ) {
-                    let _ = app.emit(WORKSPACE_NOTIFY_EVENT, notice);
-                }
-            };
             if truncated
                 && let Ok((relative, action)) =
                     unix_events::unix_watch_delivery(None, unix_events::UnixWatchKind::Overflow)

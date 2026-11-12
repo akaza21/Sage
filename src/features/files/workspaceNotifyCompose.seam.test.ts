@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { childResource, parentResource } from "../../domain/resourceIdentity";
 import {
   MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
+  MAX_NOTIFY_BATCH_NOTICES,
   MAX_NOTIFY_LISTING_WAITERS,
   MAX_NOTIFY_SEARCH_SUBSCRIBERS,
   acceptWorkspaceNotifyNotice,
@@ -17,6 +18,7 @@ import {
   syncLiveProjectWorkspaceNotify,
   type LiveProjectNotifyStamp,
   type WorkspaceNotifyNotice,
+  workspaceNotifyBatchNotices,
 } from "./workspaceNotifyCompose";
 
 const live: LiveProjectNotifyStamp = {
@@ -264,6 +266,22 @@ describe("workspace notify compose", () => {
       { ...notice, relativePath: "lost-notices", kind: "resync" },
       childResource("root-a"),
     );
+  });
+
+  it("reads the notices of a bounded native batch only", () => {
+    expect(workspaceNotifyBatchNotices({ notices: [notice] })).toEqual([
+      notice,
+    ]);
+    expect(workspaceNotifyBatchNotices(notice)).toEqual([]);
+    expect(workspaceNotifyBatchNotices({ notices: [], extra: 1 })).toEqual([]);
+    expect(
+      workspaceNotifyBatchNotices({
+        notices: Array.from(
+          { length: MAX_NOTIFY_BATCH_NOTICES + 1 },
+          () => notice,
+        ),
+      }),
+    ).toEqual([]);
   });
 
   it("rejects a listing-slot wait beyond the cache-sized waiter cap", async () => {

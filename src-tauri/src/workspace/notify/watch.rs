@@ -7,13 +7,15 @@ use std::{
     },
 };
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
-use crate::{persistence::Database, state::AppState};
+use crate::{persistence::Database, state::AppState, workspace::ignore_rules};
 
 use super::{
-    WorkspaceNotifyError, WorkspaceNotifyNotice, bounded_identifier, registry, reject,
-    relative_path,
+    OVERFLOW_NOTIFY_ACTION, WORKSPACE_NOTIFY_EVENT, WorkspaceNotifyError, WorkspaceNotifyNotice,
+    batch::{NoticeSink, spawn_notice_emitter},
+    bounded_identifier, registry, reject, relative_path,
+    relevance::NoticeRelevance,
 };
 
 #[cfg(windows)]
@@ -65,6 +67,35 @@ pub fn deliver_workspace_notify_action(
     watch.session.classify(root_id, relative, action)
 }
 
+/// The delivery of one watched root's records: each record the relevance
+/// filter admits is classified against the live watch and queued for the
+/// watch's next batch. Lost records always pass, and make the filter reload.
+pub(super) fn root_delivery(
+    project_id: String,
+    generation: u32,
+    root_id: String,
+    root: &Path,
+    cancelled: Arc<AtomicBool>,
+    sink: Arc<NoticeSink>,
+) -> impl FnMut(String, u32) + Send + 'static {
+    let mut relevance = NoticeRelevance::new(root, ignore_rules::global_excludes_path());
+    move |relative: String, action: u32| {
+        if cancelled.load(Ordering::Acquire) {
+            return;
+        }
+        if action == OVERFLOW_NOTIFY_ACTION {
+            relevance.forget();
+        } else if !relevance.admits(&relative) {
+            return;
+        }
+        if let Ok(Some(notice)) =
+            deliver_workspace_notify_action(&project_id, generation, &root_id, &relative, action)
+        {
+            sink.push(notice);
+        }
+    }
+}
+
 pub(super) fn workspace_notify_bound_roots(project_id: &str) -> Option<BTreeSet<String>> {
     registry()
         .watches
@@ -114,9 +145,15 @@ pub(super) fn start_workspace_notify_watchers(
     let Some(cancelled) = watch_cancel_flag(project_id, generation) else {
         return Err(reject("notify-substituted"));
     };
+    let sink = Arc::new(NoticeSink::default());
+    let emitter = app.clone();
+    spawn_notice_emitter(Arc::clone(&sink), Arc::clone(&cancelled), move |batch| {
+        let _ = emitter.emit(WORKSPACE_NOTIFY_EVENT, batch);
+    })
+    .map_err(|_| reject("notify-substituted"))?;
     for (root_id, path) in paths {
         spawn_workspace_root_watch(
-            app.clone(),
+            Arc::clone(&sink),
             project_id.to_string(),
             generation,
             root_id,
@@ -129,31 +166,31 @@ pub(super) fn start_workspace_notify_watchers(
 
 #[cfg(windows)]
 fn spawn_workspace_root_watch(
-    app: AppHandle,
+    sink: Arc<NoticeSink>,
     project_id: String,
     generation: u32,
     root_id: String,
     path: PathBuf,
     cancelled: Arc<AtomicBool>,
 ) -> Result<(), WorkspaceNotifyError> {
-    windows::spawn_workspace_root_watch(app, project_id, generation, root_id, path, cancelled)
+    windows::spawn_workspace_root_watch(sink, project_id, generation, root_id, path, cancelled)
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 fn spawn_workspace_root_watch(
-    app: AppHandle,
+    sink: Arc<NoticeSink>,
     project_id: String,
     generation: u32,
     root_id: String,
     path: PathBuf,
     cancelled: Arc<AtomicBool>,
 ) -> Result<(), WorkspaceNotifyError> {
-    super::unix::spawn_workspace_root_watch(app, project_id, generation, root_id, path, cancelled)
+    super::unix::spawn_workspace_root_watch(sink, project_id, generation, root_id, path, cancelled)
 }
 
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "linux"))))]
 fn spawn_workspace_root_watch(
-    _app: AppHandle,
+    _sink: Arc<NoticeSink>,
     _project_id: String,
     _generation: u32,
     _root_id: String,
@@ -165,7 +202,7 @@ fn spawn_workspace_root_watch(
 
 #[cfg(not(any(windows, unix)))]
 fn spawn_workspace_root_watch(
-    _app: AppHandle,
+    _sink: Arc<NoticeSink>,
     _project_id: String,
     _generation: u32,
     _root_id: String,

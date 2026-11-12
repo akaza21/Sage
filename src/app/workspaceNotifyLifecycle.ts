@@ -6,6 +6,7 @@ import {
   releaseNotifyListingSlot,
   WORKSPACE_NOTIFY_EVENT,
   syncLiveProjectWorkspaceNotify,
+  workspaceNotifyBatchNotices,
   type LiveProjectNotifyStamp,
   type WorkspaceNotifyHooks,
   type WorkspaceNotifyNotice,
@@ -166,7 +167,9 @@ export function createWorkspaceNotifyHooks(
       }
       const { listen } = await import("@tauri-apps/api/event");
       return listen(WORKSPACE_NOTIFY_EVENT, (event) => {
-        emit(event.payload);
+        for (const notice of workspaceNotifyBatchNotices(event.payload)) {
+          emit(notice);
+        }
       });
     },
     invalidate(notice, listing) {

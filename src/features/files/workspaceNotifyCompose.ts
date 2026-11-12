@@ -2,7 +2,9 @@ import { isShortId, safeOrdinal } from "../../domain/guards";
 import { parentResource } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
 
-export const WORKSPACE_NOTIFY_EVENT = "workspace-notify-v1";
+export const WORKSPACE_NOTIFY_EVENT = "workspace-notify-v2";
+/** The native watcher sends at most this many notices in one event. */
+export const MAX_NOTIFY_BATCH_NOTICES = 256;
 export const MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS = 8;
 export const MAX_NOTIFY_LISTING_WAITERS = 64;
 export const MAX_NOTIFY_SEARCH_SUBSCRIBERS = 8;
@@ -10,6 +12,28 @@ export const MAX_NOTIFY_SEARCH_SUBSCRIBERS = 8;
 /** A `.gitignore` or `.ignore` file: a change re-dims every listing below. */
 export function isIgnoreRuleFile(relativePath: string): boolean {
   return /(?:^|\/)\.(?:git)?ignore$/i.test(relativePath);
+}
+
+/**
+ * The notices of one native event, `{ notices: [...] }`. Each is still checked
+ * against the live Project by `acceptWorkspaceNotifyNotice`; an event that is
+ * not a bounded batch yields nothing.
+ */
+export function workspaceNotifyBatchNotices(value: unknown): unknown[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  const notices = record.notices;
+  if (
+    keys.length !== 1 ||
+    !Array.isArray(notices) ||
+    notices.length > MAX_NOTIFY_BATCH_NOTICES
+  ) {
+    return [];
+  }
+  return notices;
 }
 
 const NOTICE_KEYS = [

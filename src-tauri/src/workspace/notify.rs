@@ -12,6 +12,8 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::state::AppState;
 
+mod batch;
+mod relevance;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub(crate) mod unix;
 #[cfg(any(not(windows), test))]
@@ -20,7 +22,8 @@ mod watch;
 #[cfg(windows)]
 mod windows;
 
-pub use watch::{deliver_workspace_notify_action, relative_from_notify_name};
+pub use batch::WorkspaceNotifyBatch;
+pub use watch::relative_from_notify_name;
 
 const MAX_IDENTIFIER_BYTES: usize = 512;
 const MAX_RESOURCE_PATH_BYTES: usize = 16 * 1024;
@@ -31,7 +34,8 @@ const MAX_WATCHES: usize = 8;
 pub(crate) const OVERFLOW_NOTIFY_ACTION: u32 = 8;
 pub(crate) const OVERFLOW_RELATIVE_PATH: &str = "lost-notices";
 
-pub const WORKSPACE_NOTIFY_EVENT: &str = "workspace-notify-v1";
+/// Each event carries a [`WorkspaceNotifyBatch`].
+pub const WORKSPACE_NOTIFY_EVENT: &str = "workspace-notify-v2";
 
 #[derive(Debug)]
 pub struct WorkspaceNotifyError {
@@ -337,8 +341,9 @@ fn emit_queued_workspace_notices(app: &AppHandle, bind: &Value) {
     else {
         return;
     };
-    for notice in drain_queued_workspace_notices(project_id) {
-        let _ = app.emit(WORKSPACE_NOTIFY_EVENT, notice);
+    let notices = drain_queued_workspace_notices(project_id);
+    if !notices.is_empty() {
+        let _ = app.emit(WORKSPACE_NOTIFY_EVENT, WorkspaceNotifyBatch { notices });
     }
 }
 
@@ -435,7 +440,7 @@ impl WorkspaceNotifySession {
 
 #[cfg(test)]
 mod tests {
-    use super::watch::authenticate_workspace_notify_root;
+    use super::watch::{authenticate_workspace_notify_root, deliver_workspace_notify_action};
     use super::*;
     use serde_json::{Value, json};
     use std::sync::{Mutex, OnceLock};
@@ -870,8 +875,8 @@ mod tests {
     }
 
     #[test]
-    fn event_name_is_workspace_notify_v1() {
-        assert_eq!(workspace_notify_event_name(), "workspace-notify-v1");
+    fn event_name_is_workspace_notify_v2() {
+        assert_eq!(workspace_notify_event_name(), "workspace-notify-v2");
     }
 
     #[test]
@@ -1010,7 +1015,7 @@ mod tests {
             let notices = drain_queued_workspace_notices("project-a");
             assert_eq!(notices.len(), 1);
             assert_eq!(notices[0].kind, "changed");
-            assert_eq!(workspace_notify_event_name(), "workspace-notify-v1");
+            assert_eq!(workspace_notify_event_name(), "workspace-notify-v2");
             assert!(drain_queued_workspace_notices("project-a").is_empty());
         });
     }
