@@ -65,7 +65,7 @@ describe("HarnessActivity", () => {
     expect(
       screen.getByRole("group", {
         name: `Harness activity: ${activityLabel}`,
-        description: "Bounded read-only child activity in the originating Turn",
+        description: "Bounded read-only child activity in the originating turn",
       }),
     ).toBeInTheDocument();
     const tree = screen.getByRole("tree");

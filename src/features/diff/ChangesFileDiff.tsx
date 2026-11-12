@@ -65,7 +65,7 @@ export function ChangesFileDiff({ entry }: { entry: ChangesEntry }) {
           !admission.selectedSnapshotIsCurrent(getState(), ref)
         )
           throw new Error(
-            "The Chat changed while loading this edit. Refresh changes.",
+            "The chat changed while loading this edit. Refresh changes.",
           );
         setResult({
           key,

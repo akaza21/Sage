@@ -47,17 +47,20 @@ export function AgentHarnessSettings() {
   return (
     <>
       <p>
-        Installation and admission come from Sage's existing harness discovery.
-        Sage does not install harnesses from this page.
+        Sage finds the harnesses installed on this computer. Install a harness
+        outside Sage, then refresh discovery.
       </p>
-      <button
-        className="button button--compact"
-        type="button"
-        disabled={disabled}
-        onClick={() => void refresh()}
-      >
-        {refreshing ? "Checking harnesses..." : "Refresh discovery"}
-      </button>
+      {/* A block, so the button keeps its own width in the page column. */}
+      <div>
+        <button
+          className="button button--compact"
+          type="button"
+          disabled={disabled}
+          onClick={() => void refresh()}
+        >
+          {refreshing ? "Checking harnesses..." : "Refresh discovery"}
+        </button>
+      </div>
       {error ? <p role="alert">{error}</p> : null}
       <div className="agent-settings__card">
         {harnesses.slice(0, 32).map((harness) => {

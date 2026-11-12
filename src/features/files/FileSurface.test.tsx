@@ -250,7 +250,7 @@ describe("FileSurface durability cadence", () => {
     });
     expect(view.state.doc.toString()).toBe("base\n");
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "That edit was not applied: it would make this File larger than 1 MiB",
+      "That edit was not applied: it would make this file larger than 1 MiB",
     );
     act(() => {
       view.dispatch({ changes: { from: 0, insert: "y" } });
@@ -1353,7 +1353,7 @@ describe("FileSurface local symbol navigation", () => {
     fireEvent.keyDown(editor, { key: "F12" });
     await waitFor(() =>
       expect(screen.getByRole("status")).toHaveTextContent(
-        "No declaration in this File for that name.",
+        "No declaration in this file for that name.",
       ),
     );
     expect(editorSelection(editor)).toEqual({ start: 2, end: 2 });

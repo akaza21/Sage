@@ -72,7 +72,7 @@ export function TrashResourceControl({
     ? `${rootName ?? "Root"}/${displayTarget.source.relativePath}`
     : (rootName ?? "Root");
   const triggerTitle = sourceOpen
-    ? "Close File and Diff tabs for this resource and its descendants"
+    ? "Close file and diff tabs for this resource and its descendants"
     : source && kind
       ? moveLabel
       : "Select one visible closed file or empty folder";

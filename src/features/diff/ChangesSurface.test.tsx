@@ -58,7 +58,7 @@ it("offers real Git scopes and mounts at most one file diff", () => {
   fireEvent.change(screen.getByRole("combobox"), {
     target: { value: "unstaged" },
   });
-  expect(screen.getByText(/not attributed to this Chat/)).toBeVisible();
+  expect(screen.getByText(/not attributed to this chat/)).toBeVisible();
   expect(screen.getAllByRole("table")).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: /two.ts/ }));
   expect(screen.queryByRole("table", { name: "Diff one.ts" })).toBeNull();

@@ -450,7 +450,7 @@ describe("actual saved-edit card to shared Diff surface", () => {
       }),
     );
     expect(screen.queryByText("-old")).toBeNull();
-    expect(screen.getByRole("alert")).toHaveTextContent("current Chat session");
+    expect(screen.getByRole("alert")).toHaveTextContent("current chat session");
     expect(acpDesktop.getFileSnapshot).toHaveBeenCalledOnce();
   });
   it("adds a line comment only to the exact pinned Chat composer", async () => {

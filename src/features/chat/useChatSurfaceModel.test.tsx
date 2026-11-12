@@ -169,7 +169,7 @@ it("enables image input only when the selected session advertises it", () => {
   view.rerender({ ...args, page: { ...imagePage, sessions: [] } as never });
   expect(view.result.current.imageInput.available).toBe(false);
   expect(view.result.current.imageInput.reason).toMatch(
-    /once this chat's session has started/,
+    /once the session starts/,
   );
 });
 
@@ -226,7 +226,7 @@ it("blocks native submission on a failed Chat load and permits it after retry su
   );
   expect(result.current.composerEnabled).toBe(false);
   expect(result.current.disabledReason).toBe(
-    "This Chat failed to load. Retry to send a prompt.",
+    "This chat failed to load. Retry to send a prompt.",
   );
   const event = { preventDefault: vi.fn() } as unknown as FormEvent;
   result.current.submit(event);

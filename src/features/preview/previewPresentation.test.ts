@@ -29,7 +29,7 @@ describe("Preview presentation semantics", () => {
       })),
     ).toEqual([
       {
-        detail: "Finding runnable Preview targets for this Chat.",
+        detail: "Finding runnable preview targets for this chat.",
         label: "Discovering targets",
         tone: "starting",
       },

@@ -7,7 +7,7 @@ import {
   useRef,
   type RefObject,
 } from "react";
-import { Brain, ChevronDown, Sparkles } from "../../ui/leanIcons";
+import { ChevronDown, Sparkles } from "../../ui/leanIcons";
 import {
   type AcpConfigOption,
   type AcpConfigValue,
@@ -18,7 +18,10 @@ import {
 } from "../../domain/acpSessionConfigControls";
 import { type ComposerModelChoice } from "./ChatModelPicker";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
-import { ComposerEffortControl } from "./ComposerEffortControl";
+import {
+  ComposerEffortControl,
+  EffortTriggerFace,
+} from "./ComposerEffortControl";
 import type { DraftEffort } from "./DraftEffortControl";
 
 const ModelMenu = lazy(() => import("./ComposerModelMenu"));
@@ -204,12 +207,7 @@ export function ComposerModelControls({
             title="Available when the harness advertises effort controls for this session."
             disabled
           >
-            <Brain
-              className="composer__effort-icon"
-              size={16}
-              aria-hidden="true"
-            />
-            <span className="composer__effort-label">Thinking level</span>
+            <EffortTriggerFace label="Thinking level" />
           </button>
         ) : null}
         {contextWindow ? (
