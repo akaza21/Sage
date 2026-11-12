@@ -153,7 +153,7 @@ it("previews five chats per project and Show more expands the list in place", ()
     within(screen.getByRole("region", { name: "Projects" }));
   fireEvent.click(projects().getByRole("button", { name: "Show more" }));
   expect(rows()).toHaveLength(12);
-  expect(screen.queryByRole("searchbox", { name: "Search chats" })).toBeNull();
+  expect(screen.queryByRole("combobox", { name: "Search chats" })).toBeNull();
   fireEvent.click(projects().getByRole("button", { name: "Show less" }));
   expect(rows()).toHaveLength(5);
 });

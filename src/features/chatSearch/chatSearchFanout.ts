@@ -212,3 +212,7 @@ export async function runScopedChatSearch(args: {
     hasMore: page.hasMore,
   };
 }
+
+/** One result's identity in the results list. */
+export const chatSearchResultKey = (result: ChatSearchFanoutPick) =>
+  `${result.projectId}:${result.chatId}`;
