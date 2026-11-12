@@ -1852,6 +1852,7 @@ struct TestRuntime {
     blocking_prepare: Option<BlockingPrepareRecovery>,
     pending_steer: Option<Arc<Mutex<Option<crate::acp::runtime::SteerCompletionSink>>>>,
     steer_attempts: Option<Arc<AtomicUsize>>,
+    pending_native: Option<Arc<Mutex<Option<crate::acp::runtime::NativeRpcCompletionSink>>>>,
 }
 
 impl TestRuntime {
@@ -1862,6 +1863,7 @@ impl TestRuntime {
             blocking_prepare: None,
             pending_steer: None,
             steer_attempts: None,
+            pending_native: None,
         }
     }
 
@@ -1876,6 +1878,7 @@ impl TestRuntime {
             blocking_prepare: None,
             pending_steer: None,
             steer_attempts: None,
+            pending_native: None,
         }
     }
 
@@ -1889,6 +1892,7 @@ impl TestRuntime {
             }),
             pending_steer: None,
             steer_attempts: None,
+            pending_native: None,
         }
     }
 
@@ -1935,6 +1939,19 @@ fn test_capabilities() -> crate::acp::intent::CapabilitySnapshotV1 {
 
 impl crate::acp::runtime::RuntimeEngine for TestRuntime {
     fn activate(&mut self, _: &RuntimeOwner) -> Result<(), crate::acp::runtime::HostError> {
+        Ok(())
+    }
+
+    fn begin_native_rpc(
+        &mut self,
+        _: &crate::acp::goal::NativeRpcIntent,
+        _: Instant,
+        completion: crate::acp::runtime::NativeRpcCompletionSink,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        match &self.pending_native {
+            Some(pending) => *pending.lock().unwrap() = Some(completion),
+            None => completion.complete(Err(crate::acp::runtime::HostError::State)),
+        }
         Ok(())
     }
 
@@ -2293,6 +2310,15 @@ fn idle_runtime_fixture(
     resumable: bool,
     completed_turn: bool,
 ) -> (AcpService, RuntimeOwner) {
+    idle_runtime_fixture_with(label, resumable, completed_turn, TestRuntime::default())
+}
+
+fn idle_runtime_fixture_with(
+    label: &str,
+    resumable: bool,
+    completed_turn: bool,
+    runtime: TestRuntime,
+) -> (AcpService, RuntimeOwner) {
     let capabilities = crate::acp::intent::CapabilitySnapshotV1 {
         resume_session: resumable,
         ..test_capabilities()
@@ -2304,7 +2330,7 @@ fn idle_runtime_fixture(
     }
     let host = Arc::new(
         crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
-            TestRuntime::default(),
+            runtime,
             Arc::new(SuccessfulShutdownRecovery(owner.runtime_epoch.get())),
         )
         .unwrap(),
@@ -2385,6 +2411,47 @@ fn a_lane_held_by_an_activation_keeps_an_idle_chat_runtime() {
     // The refused sweep let go of nothing it did not hold.
     drop(service.claim_lane_activation_for_test(&owner));
     // Once let go, the next sweep releases it.
+    assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), Some(1));
+    assert!(service.lane_for(&owner).is_none());
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn an_idle_chat_whose_harness_is_answering_a_control_keeps_its_runtime() {
+    let pending = Arc::new(Mutex::new(None));
+    let runtime = TestRuntime {
+        pending_native: Some(Arc::clone(&pending)),
+        ..TestRuntime::default()
+    };
+    let (service, owner) = idle_runtime_fixture_with("idle-control", true, true, runtime);
+    let start = std::time::Instant::now();
+    service.set_shown_chats([]);
+    // A fork is a session control, not a Turn: the scheduler sees no Turn.
+    let host = service.host_for(&owner).unwrap();
+    let fork = {
+        let owner = owner.clone();
+        std::thread::spawn(move || {
+            host.native_rpc(crate::acp::goal::NativeRpcIntent {
+                owner,
+                request: crate::acp::goal::NativeRpcRequest::ForkSession,
+            })
+        })
+    };
+    let waiting = std::time::Instant::now();
+    while pending.lock().unwrap().is_none() {
+        assert!(waiting.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+    assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), Some(0));
+    assert!(service.lane_for(&owner).is_some());
+    let answer = pending.lock().unwrap().take().unwrap();
+    answer.complete(Ok(crate::acp::goal::NativeRpcReply::Rejected));
+    assert_eq!(
+        fork.join().unwrap(),
+        Ok(crate::acp::goal::NativeRpcReply::Rejected),
+        "the control was answered, not cut off"
+    );
+    // Once answered, the next sweep releases it.
     assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), Some(1));
     assert!(service.lane_for(&owner).is_none());
     service.shutdown_blocking().unwrap();

@@ -19,7 +19,7 @@ use super::super::{PiRuntime, RequestKind};
 use super::session::{SESSION_DIR_SCAN_LIMIT, session_path};
 
 /// Forks a runtime holds until their chats are committed or refused. A full
-/// ledger refuses the next fork, so no copy is ever left untracked.
+/// ledger refuses the next fork rather than make a copy it cannot track.
 const MAX_TRACKED_FORKS: usize = 8;
 
 /// A fork under way: its step, and the Pi command id that step waits on.
@@ -99,6 +99,11 @@ impl PiRuntime {
                 Some(None) => return Err(self.lost_fork()),
             },
             (ForkStep::Reading { home }, NativeCommand::ForkState) => {
+                // A failed `get_state` leaves the copy's file unknown: Pi's
+                // `clone` answer does not name it, and the session folder is
+                // shared with every other Pi chat, so no file can be safely
+                // picked as the copy. Pi is still moved back and the fork is
+                // refused; that copy stays in Pi's own session list.
                 let fork = data.as_ref().and_then(fork_key);
                 let path = home.clone();
                 (
@@ -184,8 +189,9 @@ impl PiRuntime {
 
     /// Lets go of a fork this runtime made. A committed fork is its chat's
     /// now; a refused one leaves only the copy's file, which is removed so
-    /// Pi does not list a chat Sage never opened. A copy that could not be
-    /// removed stays tracked, so its release can be tried again.
+    /// Pi does not list a chat Sage never opened. Nothing retries a release,
+    /// so a copy that could not be removed is let go too: the release
+    /// answers `Rejected`, and the copy no longer takes a fork's place.
     pub(in crate::acp::bindings::pi::runtime) fn release_fork_copy(
         &mut self,
         fork: &ExternalId,
@@ -196,9 +202,10 @@ impl PiRuntime {
             .iter()
             .position(|known| known == fork)
             .ok_or(AdapterRuntimeError::Operation)?;
+        self.forks.remove(index);
         let released = committed || self.remove_copy(fork);
-        if released {
-            self.forks.remove(index);
+        if !released {
+            tracing::warn!("a refused Pi fork's session copy could not be removed");
         }
         self.native_rpc_reply = Some(if released {
             NativeRpcReply::Released

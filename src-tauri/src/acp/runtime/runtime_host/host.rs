@@ -27,6 +27,7 @@ pub(crate) struct RuntimeHost {
     thread: Mutex<Option<BoundedThread>>,
     pub(crate) lifecycle: AtomicU8,
     shutdown_recovery: Option<Arc<dyn RuntimeShutdownRecovery>>,
+    controls: host_control_gate::ControlGate,
     #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     timeout_override: Option<TimeoutOverride>,
     #[cfg(test)]
@@ -52,6 +53,9 @@ enum TimeoutOverride {
 
 #[path = "host_session_config.rs"]
 mod host_session_config;
+
+#[path = "host_control_gate.rs"]
+mod host_control_gate;
 
 #[path = "host_dispatch.rs"]
 mod host_dispatch;
@@ -153,6 +157,7 @@ impl RuntimeHost {
             thread: Mutex::new(Some(thread)),
             lifecycle: AtomicU8::new(HOST_RUNNING),
             shutdown_recovery,
+            controls: host_control_gate::ControlGate::default(),
             #[cfg(any(test, all(windows, feature = "acp-fixture")))]
             timeout_override,
             #[cfg(test)]

@@ -63,7 +63,8 @@ impl Lane<'_> {
     /// replacement uses: the host drains, parks its session durably and
     /// exits, and a later activation resumes it. Ok(false) leaves the
     /// runtime as it was: no runtime, a reserved Turn, a host without
-    /// shutdown recovery, or a refused idle drain.
+    /// shutdown recovery, a session control still waiting for its answer,
+    /// or a refused idle drain.
     pub(crate) fn park_idle_runtime(
         &self,
         deadline: std::time::Instant,
@@ -81,6 +82,11 @@ impl Lane<'_> {
         if !host.has_shutdown_recovery() {
             return Ok(false);
         }
+        // Held until the host has shut down, so no session control starts
+        // mid-park; one already waiting for its answer keeps the runtime.
+        let Some(claim) = host.claim_idle_park() else {
+            return Ok(false);
+        };
         if self.scheduler.begin_idle_drain(&owner).is_err() {
             return Ok(false);
         }
@@ -88,7 +94,9 @@ impl Lane<'_> {
             let _ = self.scheduler.cancel_idle_drain(&owner);
             return Err(map_slot_error(error));
         }
-        if host.shutdown(deadline).is_ok()
+        let shut_down = host.shutdown(deadline).is_ok();
+        drop(claim);
+        if shut_down
             && self.scheduler.active().is_none()
             && self.runtime.release_recovered(&owner, &host).is_ok()
         {
@@ -109,7 +117,7 @@ impl Lane<'_> {
                 && self
                     .runtime
                     .for_owner(&allocation.tree)
-                    .is_ok_and(|host| host.has_shutdown_recovery())
+                    .is_ok_and(|host| host.has_shutdown_recovery() && host.controls_settled())
         })
     }
 

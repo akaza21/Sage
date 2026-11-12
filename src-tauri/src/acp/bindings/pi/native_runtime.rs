@@ -11,7 +11,7 @@ use crate::acp::{
         runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
     },
     contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
-    intent::CapabilitySnapshotV1,
+    intent::{CapabilitySnapshotV1, ExternalId},
     transport::Frame,
 };
 
@@ -69,7 +69,28 @@ impl LaunchableRuntime for PiNativeRuntime {
     }
 }
 
+/// Forwards every method `PiRuntime` implements; a method left out here
+/// silently falls back to the trait default in the shipped build.
 impl HarnessAdapter for PiNativeRuntime {
+    fn skips_oversize_frames(&self) -> bool {
+        self.adapter.skips_oversize_frames()
+    }
+    fn oversize_frame_skipped(&mut self) {
+        self.adapter.oversize_frame_skipped();
+    }
+    fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.adapter.fork_session()
+    }
+    fn release_fork(
+        &mut self,
+        fork: &ExternalId,
+        committed: bool,
+    ) -> crate::acp::bindings::adapter::AdapterOptionalEgress {
+        self.adapter.release_fork(fork, committed)
+    }
+    fn defer_fork_release(&mut self, fork: &ExternalId, committed: bool) -> bool {
+        self.adapter.defer_fork_release(fork, committed)
+    }
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
         self.adapter.available_commands()
     }

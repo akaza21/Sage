@@ -6,18 +6,18 @@ use crate::acp::goal::NativeRpcReply;
 const HOME: &str = "2026-11-11T10-00-00-000Z_019a2b3c-4d5e-7f00-8a9b-0c1d2e3f4a5b";
 const COPY: &str = "2026-11-11T10-05-00-000Z_019a2b3c-0000-7f00-8a9b-0c1d2e3f4a5c";
 
-struct Chat {
-    runtime: PiRuntime,
+struct Chat<R: HarnessAdapter = PiRuntime> {
+    runtime: R,
     dir: std::path::PathBuf,
 }
 
-impl Drop for Chat {
+impl<R: HarnessAdapter> Drop for Chat<R> {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 
-impl Chat {
+impl<R: HarnessAdapter> Chat<R> {
     fn file(&self, key: &str) -> std::path::PathBuf {
         self.dir.join(format!("{key}.jsonl"))
     }
@@ -25,9 +25,12 @@ impl Chat {
 
 /// A chat whose Pi session has a saved file, as after its first reply.
 fn saved_chat() -> Chat {
+    saved_chat_on(fixture_runtime(1))
+}
+
+fn saved_chat_on<R: HarnessAdapter>(mut runtime: R) -> Chat<R> {
     let dir = std::env::temp_dir().join(format!("sage-pi-fork-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
-    let mut runtime = fixture_runtime(1);
     let home = dir.join(format!("{HOME}.jsonl"));
     initialize_with(
         &mut runtime,
@@ -49,7 +52,7 @@ fn saved_chat() -> Chat {
 }
 
 /// Answers `request` and returns the next request the runtime wrote, if any.
-fn answer(chat: &mut Chat, request: &Value, data: Value) -> Option<Value> {
+fn answer(chat: &mut Chat<impl HarnessAdapter>, request: &Value, data: Value) -> Option<Value> {
     let batch = chat
         .runtime
         .ingest(&response(request, data), &Mapper)
@@ -60,7 +63,7 @@ fn answer(chat: &mut Chat, request: &Value, data: Value) -> Option<Value> {
 }
 
 /// Pi clones the chat; returns its `get_state` request for the copy.
-fn cloned(chat: &mut Chat) -> Value {
+fn cloned(chat: &mut Chat<impl HarnessAdapter>) -> Value {
     let fork = chat.runtime.fork_session().unwrap();
     let clone = deliver(&mut chat.runtime, fork);
     assert_eq!(clone, json!({"type":"clone","id":clone["id"]}));
@@ -70,7 +73,7 @@ fn cloned(chat: &mut Chat) -> Value {
 }
 
 /// Pi reports the copy it moved onto; returns the switch back to the chat.
-fn read_copy(chat: &mut Chat, state: &Value) -> Value {
+fn read_copy(chat: &mut Chat<impl HarnessAdapter>, state: &Value) -> Value {
     let copy = chat.file(COPY);
     std::fs::write(&copy, "{}\n").unwrap();
     let back = answer(chat, state, json!({"sessionFile":copy})).unwrap();
@@ -109,6 +112,75 @@ fn a_fork_clones_reads_the_copy_and_moves_pi_back_to_the_chat() {
     assert!(chat.file(COPY).is_file());
     // The chat is usable again.
     running(&mut chat.runtime);
+}
+
+/// The runtime the shipped build's registry constructs for an installed Pi.
+fn shipped_runtime(install: &std::path::Path) -> crate::acp::bindings::runtime::NativeRuntime {
+    use crate::acp::bindings::runtime::RuntimeFactory;
+    use crate::harness_discovery::{DiscoveredPiLaunch, PiLaunchDiscovery};
+    let entry = install.join("cli.js");
+    let node = install.join("node.exe");
+    std::fs::write(&entry, b"console.log('pi')\n").unwrap();
+    std::fs::write(&node, b"synthetic node").unwrap();
+    let digest = |path: &std::path::Path| crate::harness_discovery::sha256_file(path).unwrap();
+    let discovery = PiLaunchDiscovery::Present(Box::new(DiscoveredPiLaunch {
+        entrypoint_sha256: digest(&entry),
+        node_sha256: digest(&node),
+        entrypoint_path: entry,
+        package_version: PI_VERSION.into(),
+        node_engine: format!(">={PI_NODE_MINIMUM}"),
+        node_path: node,
+        node_version: PI_NODE_MINIMUM.into(),
+    }));
+    let binding =
+        crate::acp::bindings::pi::native_admission::PiBindingRegistration::from_discovery_for_test(
+            discovery,
+        )
+        .refresh()
+        .expect("an installed Pi is admitted");
+    let root = crate::project_registry::ProjectRootAuthority::for_test(
+        crate::acp::contract::SageProjectId::parse("project-pi-fork").unwrap(),
+        crate::acp::contract::ProjectGeneration::ZERO,
+        SageRootId::parse("root-pi-fork").unwrap(),
+        install,
+    )
+    .unwrap();
+    Box::new(
+        crate::acp::bindings::pi::native_runtime::PiNativeRuntimeFactory {
+            binding,
+            root,
+            mcp: crate::acp::mcp::McpAdmission::default(),
+        },
+    )
+    .construct(
+        RuntimeEpoch::new(1).unwrap(),
+        SageAgentSessionId::parse("session-pi-1").unwrap(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn the_shipped_pi_runtime_forks_and_releases_the_copy() {
+    let install = std::env::temp_dir().join(format!("sage-pi-install-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&install).unwrap();
+    let mut chat = saved_chat_on(shipped_runtime(&install));
+    assert!(chat.runtime.capabilities().unwrap().native_session_fork);
+    let state = cloned(&mut chat);
+    let back = read_copy(&mut chat, &state);
+    assert!(answer(&mut chat, &back, json!({"cancelled":false})).is_none());
+    let Some(NativeRpcReply::Forked(fork)) = chat.runtime.take_native_rpc_reply() else {
+        panic!("fork reply expected");
+    };
+    assert_eq!(fork.as_str(), COPY);
+    // A refused fork chat's copy is removed through the same runtime.
+    chat.runtime.release_fork(&fork, false).unwrap();
+    assert_eq!(
+        chat.runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::Released)
+    );
+    assert!(!chat.file(COPY).exists());
+    drop(chat);
+    std::fs::remove_dir_all(install).unwrap();
 }
 
 #[test]
@@ -287,4 +359,41 @@ fn forks_waiting_on_their_chats_are_bounded() {
         chat.runtime.fork_session(),
         Err(AdapterRuntimeError::BatchCount)
     ));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_copy_that_cannot_be_removed_is_reported_and_no_longer_takes_a_forks_place() {
+    use std::os::unix::fs::PermissionsExt;
+    let mut chat = saved_chat();
+    let state = cloned(&mut chat);
+    let back = read_copy(&mut chat, &state);
+    answer(&mut chat, &back, json!({"cancelled":false}));
+    let Some(NativeRpcReply::Forked(fork)) = chat.runtime.take_native_rpc_reply() else {
+        panic!("fork reply expected");
+    };
+    // Pi's session folder refuses the removal.
+    let writable = std::fs::metadata(&chat.dir).unwrap().permissions();
+    std::fs::set_permissions(&chat.dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let released = chat.runtime.release_fork(&fork, false);
+    std::fs::set_permissions(&chat.dir, writable).unwrap();
+    released.unwrap();
+    assert_eq!(
+        chat.runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::Rejected)
+    );
+    assert!(chat.file(COPY).is_file());
+    // Nothing retries it, so it is let go: every fork place is free again.
+    assert!(chat.runtime.release_fork(&fork, false).is_err());
+    for index in 0..8 {
+        let state = cloned(&mut chat);
+        let copy = chat.file(&format!("2026-11-11T12-00-0{index}-000Z_copy-{index}"));
+        std::fs::write(&copy, "{}\n").unwrap();
+        let back = answer(&mut chat, &state, json!({"sessionFile":copy})).unwrap();
+        answer(&mut chat, &back, json!({"cancelled":false}));
+        assert!(matches!(
+            chat.runtime.take_native_rpc_reply(),
+            Some(NativeRpcReply::Forked(_))
+        ));
+    }
 }

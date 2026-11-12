@@ -21,7 +21,7 @@ pub(crate) enum ChatForkError {
     #[error("The harness did not confirm the fork; try again.")]
     RecoveryRequired,
     #[error(
-        "This chat's harness still holds too many earlier forks. Let its current turn finish, then try again."
+        "This chat's harness still holds too many earlier forks. Try again once its current turn ends or the chat restarts."
     )]
     TooManyForks,
 }
