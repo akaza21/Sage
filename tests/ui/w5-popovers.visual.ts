@@ -101,13 +101,12 @@ for (const width of [1888, 720, 480]) {
       const projectFolded = async () =>
         (await composer.getByRole("button", { name: /^Project: / }).count()) ===
         0;
-      let foldedProject = await projectFolded();
       for (const [name, menuName, available] of [
         ["Access options", "Access mode", profile.access.length > 0],
         [
           "Composer options",
           "Composer options menu",
-          profile.modes.length > 0 || foldedProject,
+          profile.modes.length > 0 || (await projectFolded()),
         ],
       ] as const) {
         const trigger = composer.getByRole("button", { name, exact: true });
@@ -179,9 +178,8 @@ for (const width of [1888, 720, 480]) {
       );
       // The effort control takes toolbar room, so the project chip may have
       // folded into the Add menu since the options pass above.
-      foldedProject = await projectFolded();
       const hasAdd =
-        foldedProject ||
+        (await projectFolded()) ||
         (profile.effort && compactEffort) ||
         (!profile.effort && profile.modes.length > 0);
       if (hasAdd) {
@@ -191,7 +189,7 @@ for (const width of [1888, 720, 480]) {
         ).toHaveCount(profile.effort && compactEffort ? 1 : 0);
         await expect(
           page.getByRole("menuitem", { name: /^Project:/ }),
-        ).toHaveCount(foldedProject ? 1 : 0);
+        ).toHaveCount((await projectFolded()) ? 1 : 0);
         await page.keyboard.press("Escape");
       } else await expect(add).toBeDisabled();
       for (const [name, selector] of [
