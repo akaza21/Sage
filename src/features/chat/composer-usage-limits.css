@@ -11,8 +11,10 @@
   font-size: var(--font-size-xs);
 }
 
-/* The popover holds text rather than menu rows, so it pads its own content. */
+/* The popover holds text rather than menu rows, so it pads and spaces its
+   own content. */
 .composer__popover.composer-usage {
+  gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   font-size: var(--font-size-sm);
 }
