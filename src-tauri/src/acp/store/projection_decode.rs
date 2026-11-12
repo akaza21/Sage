@@ -39,6 +39,19 @@ pub(super) struct ItemRow {
     pub terminal_at: Option<i64>,
 }
 
+/// Decodes a stored item payload the one way every reader must: the
+/// normalized form, or a text row written before payloads were normalized,
+/// which also carries its role. Normalized text has no role and is
+/// assistant prose by definition.
+pub(crate) fn decode_payload(
+    payload_json: &str,
+) -> Result<(NormalizedPayload, Option<TextRole>), serde_json::Error> {
+    match serde_json::from_str::<NormalizedPayload>(payload_json) {
+        Ok(value) => Ok((value, None)),
+        Err(_) => parse_legacy_text(payload_json),
+    }
+}
+
 pub(super) fn decode_item(
     row: ItemRow,
     permission: Option<(
@@ -54,12 +67,8 @@ pub(super) fn decode_item(
     {
         return Err(StoreError::Corrupt("item payload integrity"));
     }
-    let (mut normalized, legacy_role) =
-        match serde_json::from_str::<NormalizedPayload>(&row.payload_json) {
-            Ok(value) => (value, None),
-            Err(_) => parse_legacy_text(&row.payload_json)
-                .map_err(|_| StoreError::Corrupt("normalized item payload"))?,
-        };
+    let (mut normalized, legacy_role) = decode_payload(&row.payload_json)
+        .map_err(|_| StoreError::Corrupt("normalized item payload"))?;
     if kind_text(normalized.kind()) != row.kind {
         return Err(StoreError::Corrupt("item kind mismatch"));
     }
@@ -333,7 +342,7 @@ mod file_pair;
 mod legacy_text;
 mod tool_presentation;
 use file_pair::admitted_pair_view;
-pub(crate) use legacy_text::parse_legacy_text;
+use legacy_text::parse_legacy_text;
 use tool_presentation::{presentation, retain_live_progress};
 
 fn summary_label(value: &str) -> Result<SafeText<512>, StoreError> {
