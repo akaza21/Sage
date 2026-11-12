@@ -668,6 +668,17 @@ test.describe("ED02 picker visual states", () => {
     // This narrow Chat lane has no room for every label beside the attach
     // button: access and harness yield to their icons while the model keeps
     // its name, and the harness trigger still names its selection.
+    expect(
+      await settledComposerFit(page.locator("form.composer").first()),
+    ).toEqual([
+      "placeholder",
+      "context",
+      "capacity",
+      "project",
+      "effort",
+      "access",
+      "harness",
+    ]);
     await expect(harnessTrigger).toHaveAccessibleName("Harness");
     await expect(harnessTrigger).toHaveAccessibleDescription("Codex");
     await expect(harnessTrigger).toHaveText("Codex");
