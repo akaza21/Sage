@@ -88,6 +88,8 @@ mod session_surface;
 mod turn_undo;
 pub(crate) use session_control::SessionControlError;
 pub(crate) use turn_undo::UndoneRelaunchError;
+#[cfg(test)]
+pub(crate) use turn_undo::stage_turn_undo;
 mod session_error;
 mod slash_commands;
 mod usage;

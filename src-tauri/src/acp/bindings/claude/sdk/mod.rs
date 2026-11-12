@@ -15,6 +15,7 @@ mod probe;
 mod runtime;
 mod tools;
 mod transcript;
+pub(crate) use transcript::{TranscriptError, resolve_undo};
 
 pub(crate) use admission::{
     AdmittedClaudeSdkBinding, CLAUDE_SDK_BINDING_ID, ClaudeSdkBindingRegistration,
@@ -26,3 +27,6 @@ pub(crate) use probe::{
 /// The session config option that holds Claude Code's thinking level.
 pub(crate) const EFFORT_CONFIG_ID: &str = config::EFFORT_ID;
 pub(crate) use runtime::ClaudeSdkRuntimeFactory;
+
+#[cfg(test)]
+mod undo_tests;

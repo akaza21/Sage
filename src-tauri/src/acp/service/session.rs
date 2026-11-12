@@ -2,7 +2,7 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
     bindings::runtime::NativeRuntime,
-    contract::{SafeText, SageTurnId},
+    contract::SafeText,
     intent::{ExternalId, ModelId},
     runtime::{ActivationIntent, ActivationMode},
     scheduler::RuntimeOwner,
@@ -171,8 +171,8 @@ impl AcpService {
         let native_root = project_root
             .native_root()
             .map_err(|_| CodexSessionError::Intent)?;
-        let rewind_before = pending_cut(&self.database, &owner)?;
-        let mode = activation_mode(session, native_root, model, rewind_before)?;
+        let rewind_at = pending_cut(&self.database, &owner)?;
+        let mode = activation_mode(session, native_root, model, rewind_at)?;
         let ceiling = admitted
             .supported_capabilities()
             .map_err(|error| CodexSessionError::Binding(error.into()))?;
@@ -269,20 +269,21 @@ fn load_durable_session(
 fn pending_cut(
     database: &crate::persistence::Database,
     owner: &RuntimeOwner,
-) -> Result<Option<SageTurnId>, CodexSessionError> {
+) -> Result<Option<String>, CodexSessionError> {
     let rewind =
         crate::acp::store::pending_thread_rewind(&database.connection(), owner.session_id.as_str())
             .map_err(|_| CodexSessionError::Intent)?;
-    Ok(rewind
+    rewind
         .filter(|rewind| rewind.thread == crate::acp::store::UndoneThread::Cut)
-        .map(|rewind| rewind.turn_id))
+        .map(|rewind| rewind.cut_at.ok_or(CodexSessionError::RewindUnavailable))
+        .transpose()
 }
 
 fn activation_mode(
     session: DurableSession,
     native_root: String,
     model: Option<ModelId>,
-    rewind_before: Option<SageTurnId>,
+    rewind_at: Option<String>,
 ) -> Result<ActivationMode, CodexSessionError> {
     let thread = |external: String| {
         ExternalId::new("externalSessionId", external).map_err(|_| CodexSessionError::Intent)
@@ -301,7 +302,7 @@ fn activation_mode(
                 external_session_id: thread(external)?,
                 native_root,
                 model,
-                rewind_before: None,
+                rewind_at: None,
             },
             // A parked session resumes its own thread, cut before a Turn the
             // user undid while one waits.
@@ -309,7 +310,7 @@ fn activation_mode(
                 external_session_id: thread(external)?,
                 native_root,
                 model,
-                rewind_before,
+                rewind_at,
             },
             _ => return Err(CodexSessionError::Intent),
         },

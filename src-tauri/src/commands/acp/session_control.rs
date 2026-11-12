@@ -90,18 +90,16 @@ pub(crate) async fn control_acp_session(
         session_id: request.session_id.clone(),
         runtime_epoch: request.runtime_epoch,
     };
-    let mut undone = None;
     let control = match request.control {
         ControlIntent::UndoTurn { turn_id } => {
-            // Rewinding also undoes every later turn, so only the latest,
-            // finished turn of this session is undone, as the page offers it.
-            let undo = state
+            let summary = state
                 .acp
-                .undoable_turn(&owner, &turn_id)
-                .map_err(|_| control_error(SessionControlError::RecoveryRequired))?
-                .ok_or(control_error(SessionControlError::Unavailable))?;
-            undone = Some((turn_id.clone(), undo));
-            SessionControl::UndoTurn { turn_id }
+                .undo_turn(&owner, turn_id)
+                .await
+                .map_err(control_error)?;
+            return Ok(SessionControlResponse {
+                summary: summary.map(|summary| summary.as_str().to_owned()),
+            });
         }
         ControlIntent::StopActivity { activity_key } => {
             let activity_id = crate::acp::store::session_surface::activity_id(
@@ -120,13 +118,6 @@ pub(crate) async fn control_acp_session(
         .acp
         .control_session(owner.clone(), control)
         .map_err(control_error)?;
-    if let Some((turn_id, undo)) = undone {
-        state
-            .acp
-            .record_turn_undone(&owner, turn_id, undo)
-            .await
-            .map_err(control_error)?;
-    }
     Ok(SessionControlResponse {
         summary: summary.map(|summary| summary.as_str().to_owned()),
     })

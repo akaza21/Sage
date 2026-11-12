@@ -34,8 +34,8 @@ fn a_parked_head_resumes_cut_before_an_undone_turn_or_restarts_without_history()
     assert!(!restarts_after_undo(&fixture.database, &load(&parked), &parked).unwrap());
     assert!(matches!(
         mode(&parked),
-        ActivationMode::Resume { external_session_id, rewind_before: Some(turn), .. }
-            if external_session_id.as_str() == "thread-a" && turn.as_str() == "turn-2"
+        ActivationMode::Resume { external_session_id, rewind_at: Some(turn), .. }
+            if external_session_id.as_str() == "thread-a" && turn == "00000000-0000-4000-8000-000000000002"
     ));
 
     // With its first turn undone too, the thread holds nothing to keep.

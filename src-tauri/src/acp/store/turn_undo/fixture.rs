@@ -11,10 +11,12 @@ use crate::{
     persistence::Database,
 };
 
+pub(crate) const CAPABILITIES: &str = super::super::sessions::PENDING_CAPABILITIES_JSON;
+
 const DIGEST: &str = "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2";
 
 pub(crate) struct Fixture {
-    root: std::path::PathBuf,
+    pub(crate) root: std::path::PathBuf,
     pub(crate) database: Database,
     pub(crate) project: SageProjectId,
     pub(crate) chat: SageChatId,
@@ -35,6 +37,10 @@ impl Fixture {
 
     /// The same Chat with `session-a` bound to `binding`.
     pub(crate) fn on(binding: &str) -> Self {
+        Self::with_thread(binding, "thread-a", CAPABILITIES)
+    }
+
+    pub(crate) fn with_thread(binding: &str, external: &str, capabilities: &str) -> Self {
         let root = std::env::temp_dir().join(format!("sage-undo-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let database = Database::open(&root.join("sage.db")).unwrap();
@@ -50,12 +56,11 @@ impl Fixture {
                    harness_version,model_id,external_session_id,capabilities_json,state,residency,
                    legacy,revision,projection_revision,created_at,updated_at,terminal_at)
                  VALUES('session-a','{project}','{chat}',0,'{binding}','{DIGEST}','2.1.319',
-                   'opus','thread-a','{capabilities}','ready','cold',0,1,1,1,1,NULL);
+                   'opus','{external}','{capabilities}','ready','cold',0,1,1,1,1,NULL);
                  INSERT INTO acp_session_usage VALUES('{project}','{chat}','session-a',1,0,0,0,0,0,0);
                  INSERT INTO chat_session_heads VALUES('{project}','{chat}','session-a',1,1);
                  INSERT INTO session_runtime_epochs VALUES('{project}','{chat}','session-a',1,
                    'exited',NULL,1,2,'userClose');",
-                capabilities = super::super::sessions::PENDING_CAPABILITIES_JSON,
             ))
             .unwrap();
         Self {
@@ -136,6 +141,9 @@ impl Fixture {
         turn: &str,
         harness_reverted: bool,
     ) -> Result<RecordedUndo, StoreError> {
+        // Any other visible turn precedes the undoable latest turn; the page
+        // itself lists turns newest first.
+        let has_prior = self.page_turns().iter().any(|id| id != turn);
         let command = TurnUndoneCommand {
             project_id: self.project.clone(),
             chat_id: self.chat.clone(),
@@ -143,6 +151,8 @@ impl Fixture {
             runtime_epoch: RuntimeEpoch::new(self.epoch() as u64).unwrap(),
             turn_id: SageTurnId::parse(turn.to_owned()).unwrap(),
             harness_reverted,
+            cut_at: (has_prior && !harness_reverted)
+                .then(|| "00000000-0000-4000-8000-000000000002".into()),
             now_millis: 50,
         };
         record_turn_undone(&mut self.database.connection(), &command)

@@ -45,6 +45,7 @@ impl AcpService {
             owner.session_id.as_str(),
         );
         let connection = self.database.connection();
+        crate::acp::store::turn_undo::intent::ensure_settled(&connection, project, chat)?;
         if !crate::acp::store::session_surface::is_undoable_turn(
             &connection,
             project,
@@ -67,37 +68,81 @@ impl AcpService {
         self.turn_undo(owner, &binding, turn.as_str(), turn_epoch)
     }
 
-    /// Records that the running session undid `turn`, which leaves the
-    /// chat's page with it. A runtime whose harness still holds the turn is
-    /// parked, so the next send resumes the thread without it; until then
-    /// no prompt is prepared for it (see `pending_thread_rewind`), and a
-    /// send relaunches it first (see `relaunch_without_undone_turn`). A
-    /// runtime with background tasks still running is left to that send,
-    /// so the undo does not stop them behind the user's back. The files
-    /// were already restored, so a park that does not settle is logged
-    /// rather than reported. A turn the store could not record leaves the
-    /// outcome unknown.
-    pub(crate) async fn record_turn_undone(
+    /// Persist the resolved plan before native IO, then settle the effect and
+    /// visibility in one store transaction. An unknown result keeps the intent
+    /// pending and hands the exact runtime to the existing recovery machinery.
+    pub(crate) async fn undo_turn(
         &self,
         owner: &RuntimeOwner,
         turn_id: SageTurnId,
-        undo: TurnUndo,
-    ) -> Result<(), SessionControlError> {
-        fn unknown<E>(_: E) -> SessionControlError {
-            SessionControlError::RecoveryRequired
-        }
-        let command = crate::acp::store::TurnUndoneCommand {
-            project_id: owner.project_id.clone(),
-            chat_id: owner.chat_id.clone(),
-            session_id: owner.session_id.clone(),
-            runtime_epoch: owner.runtime_epoch,
-            turn_id,
-            harness_reverted: undo.reverts_thread,
-            now_millis: crate::persistence::now_millis(),
+    ) -> Result<Option<crate::acp::contract::SafeText<512>>, SessionControlError> {
+        let claim = self.claim_undo_lane(owner)?;
+        let unknown = |_| SessionControlError::RecoveryRequired;
+        let undo = self
+            .undoable_turn(owner, &turn_id)
+            .map_err(unknown)?
+            .ok_or(SessionControlError::Unavailable)?;
+        let (binding, external): (String, String) = self
+            .database
+            .connection()
+            .query_row(
+                "SELECT binding_id,external_session_id FROM agent_sessions WHERE id=?1",
+                [owner.session_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|_| SessionControlError::RecoveryRequired)?;
+        let binding = crate::acp::intent::BindingId::new("bindingId", binding)
+            .map_err(|_| SessionControlError::RecoveryRequired)?;
+        let command = stage_turn_undo(
+            &self.database,
+            owner,
+            turn_id.clone(),
+            undo.reverts_thread,
+            || {
+                self.resolve_session_binding(&binding)
+                    .map_err(|_| crate::acp::bindings::claude::sdk::TranscriptError::Unreadable)?
+                    .undo_cut(&external, turn_id.as_str())
+            },
+        )?;
+        let summary = match self.control_session(
+            owner.clone(),
+            crate::acp::session_control::SessionControl::UndoTurn { turn_id },
+        ) {
+            Ok(summary) => summary,
+            Err(error) => {
+                if matches!(
+                    error,
+                    SessionControlError::Refused(_) | SessionControlError::Unavailable
+                ) {
+                    let rollback =
+                        self.database
+                            .write_connection()
+                            .ok()
+                            .and_then(|mut connection| {
+                                crate::acp::store::turn_undo::intent::rollback(
+                                    &mut connection,
+                                    &command,
+                                )
+                                .ok()
+                            });
+                    if rollback.is_some() {
+                        return Err(error);
+                    }
+                }
+                self.recover_undo_runtime(owner);
+                return Err(SessionControlError::RecoveryRequired);
+            }
         };
-        let recorded = {
-            let mut connection = self.database.write_connection().map_err(unknown)?;
-            crate::acp::store::record_turn_undone(&mut connection, &command).map_err(unknown)?
+        let recorded = self
+            .database
+            .write_connection()
+            .ok()
+            .and_then(|mut connection| {
+                crate::acp::store::record_turn_undone(&mut connection, &command).ok()
+            });
+        let Some(recorded) = recorded else {
+            self.recover_undo_runtime(owner);
+            return Err(SessionControlError::RecoveryRequired);
         };
         if let Some(projection_revision) = recorded.published {
             // Delivery is advisory: the page reloads from SQLite either way.
@@ -109,19 +154,33 @@ impl AcpService {
                 child_projection_epoch: 0,
             });
         }
+        drop(claim);
         if recorded.thread == UndoneThread::Reverted || self.runs_background_tasks(owner) {
-            return Ok(());
+            return Ok(summary);
         }
         if let Err(refusal) = self.park_undone_runtime(owner).await {
             tracing::warn!(?refusal, "the runtime that undid a turn is not yet parked");
         }
-        Ok(())
+        Ok(summary)
+    }
+
+    fn recover_undo_runtime(&self, owner: &RuntimeOwner) {
+        if let Some(lane) = self.lane_for(owner)
+            && let Ok(host) = lane.runtime.for_owner(owner)
+        {
+            self.retain_config_effect_recovery(owner.clone(), host);
+        }
     }
 
     /// Whether the runtime `owner` still holds a turn the user undid. A
     /// rewind that cannot be read counts as held, so no prompt reaches a
     /// runtime that might hold one.
     pub(crate) fn holds_undone_turn(&self, owner: &RuntimeOwner) -> Result<bool, StoreError> {
+        crate::acp::store::turn_undo::intent::ensure_settled(
+            &self.database.connection(),
+            owner.project_id.as_str(),
+            owner.chat_id.as_str(),
+        )?;
         let rewind = crate::acp::store::pending_thread_rewind(
             &self.database.connection(),
             owner.session_id.as_str(),
@@ -194,6 +253,45 @@ impl AcpService {
             .await
             .map_err(UndoneRelaunchError::Activation)
     }
+}
+
+/// Preparation boundary shared by native bindings: resolve first, then commit
+/// the intent. No native effect is admitted until this returns successfully.
+pub(crate) fn stage_turn_undo(
+    database: &crate::persistence::Database,
+    owner: &RuntimeOwner,
+    turn_id: SageTurnId,
+    harness_reverted: bool,
+    resolve_cut: impl FnOnce() -> Result<
+        Option<String>,
+        crate::acp::bindings::claude::sdk::TranscriptError,
+    >,
+) -> Result<crate::acp::store::TurnUndoneCommand, SessionControlError> {
+    let cut_at = if harness_reverted {
+        None
+    } else {
+        resolve_cut().map_err(|error| {
+            SessionControlError::Refused(
+                crate::acp::contract::SafeText::new("controlSummary", error.to_string()).ok(),
+            )
+        })?
+    };
+    let command = crate::acp::store::TurnUndoneCommand {
+        project_id: owner.project_id.clone(),
+        chat_id: owner.chat_id.clone(),
+        session_id: owner.session_id.clone(),
+        runtime_epoch: owner.runtime_epoch,
+        turn_id,
+        harness_reverted,
+        cut_at,
+        now_millis: crate::persistence::now_millis(),
+    };
+    let mut connection = database
+        .write_connection()
+        .map_err(|_| SessionControlError::RecoveryRequired)?;
+    crate::acp::store::turn_undo::intent::start(&mut connection, &command)
+        .map_err(|_| SessionControlError::RecoveryRequired)?;
+    Ok(command)
 }
 
 /// Why a prompt could not be moved off a runtime that holds an undone turn.

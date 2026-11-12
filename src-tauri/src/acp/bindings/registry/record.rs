@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+mod undo;
+
 use crate::acp::{
     bindings::{
         claude::{AdmittedClaudeBinding, ClaudeBindingRegistration},

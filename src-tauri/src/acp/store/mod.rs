@@ -126,7 +126,7 @@ pub(crate) use snapshots::{FilePairCommand, read_snapshot};
 #[cfg(test)]
 pub(crate) use terminal::apply_session_terminal;
 pub(crate) use terminal::apply_turn_terminal;
-pub(crate) use terminalize::terminalize_recovery_epoch;
+pub(crate) use terminalize::{terminalize_epoch, terminalize_recovery_epoch};
 pub(crate) use turn_undo::{
     TurnUndoneCommand, UndoneThread, pending_thread_rewind, record_turn_undone,
 };

@@ -63,7 +63,7 @@ fn a_fresh_runtime_resumes_the_stopped_chat_through_activation_and_sends_again()
             runtime_epoch: RuntimeEpoch::new(3).unwrap(),
             mode: ActivationMode::Resume {
                 external_session_id: ExternalId::new("external", "claude-session-1").unwrap(),
-                native_root: r"C:\fixture\root".into(), model:None, rewind_before: None,
+                native_root: r"C:\fixture\root".into(), model:None, rewind_at: None,
             }, curated_ceiling: ceiling.clone(), sage_policy: ceiling,
         };
         let mut pump = ActivationPump::new(ClaudeRuntime::fixture(), Journal, Mapper, intent).unwrap();

@@ -218,7 +218,7 @@ fn invalid_optional_thread_model_and_effort_do_not_fail_start_or_resume_activati
                             external_session_id: ExternalId::new("thread", "thread-catalog")
                                 .unwrap(),
                             model: Some(ModelId::new("model", "selected").unwrap()),
-                            rewind_before: None,
+                            rewind_at: None,
                         }
                     } else {
                         ActivationMode::New {

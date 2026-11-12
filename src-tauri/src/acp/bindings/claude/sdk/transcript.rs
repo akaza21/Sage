@@ -6,7 +6,7 @@
 
 use std::{
     collections::HashMap,
-    io::BufRead,
+    io::{BufRead, Read},
     path::{Path, PathBuf},
 };
 
@@ -19,7 +19,25 @@ const MAX_HOPS: usize = 16;
 
 /// Entries a cut remembers before giving up on the transcript; each costs
 /// a few dozen bytes, so the bound keeps a runaway file from growing Sage.
-const MAX_ENTRIES: usize = 200_000;
+pub(super) const MAX_ENTRIES: usize = 200_000;
+/// Tool results can be large; no single JSONL entry may exceed 8 MiB.
+pub(super) const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
+/// One transcript pass reads at most 64 MiB, including invalid entries.
+pub(super) const MAX_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum TranscriptError {
+    #[error("Cannot undo: the Claude transcript cannot be read.")]
+    Unreadable,
+    #[error("Cannot undo: a Claude transcript entry exceeds the 8 MiB limit.")]
+    LineLimit,
+    #[error("Cannot undo: the Claude transcript exceeds the 64 MiB limit.")]
+    ByteLimit,
+    #[error("Cannot undo: the Claude transcript exceeds the 200,000 entry limit.")]
+    EntryLimit,
+    #[error("Cannot undo: the Claude transcript parent chain cannot be resolved.")]
+    ParentChain,
+}
 
 /// The fields of a transcript entry Sage reads; the rest of the line,
 /// message content included, is skipped without being kept. Ids and types
@@ -31,9 +49,28 @@ struct Entry<'a> {
     #[serde(default)]
     uuid: Option<&'a str>,
     #[serde(rename = "parentUuid", default)]
-    parent: Option<&'a str>,
+    parent: Parent,
     #[serde(rename = "isSidechain", default)]
     sidechain: Option<bool>,
+}
+
+/// An omitted link is unresolved; only explicit null proves a root.
+#[derive(Clone, Copy, Default)]
+enum Parent {
+    #[default]
+    Missing,
+    Root,
+    Id(Uuid),
+    Invalid,
+}
+
+impl<'de> Deserialize<'de> for Parent {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(match Option::<&str>::deserialize(deserializer)? {
+            None => Self::Root,
+            Some(value) => parse_uuid(value).map_or(Self::Invalid, Self::Id),
+        })
+    }
 }
 
 impl Entry<'_> {
@@ -49,9 +86,13 @@ impl Entry<'_> {
 /// A session's transcript: Claude Code keeps each project's sessions in
 /// their own directory under `projects`.
 pub(super) fn transcript(config: &Path, session: &str) -> Option<PathBuf> {
+    if !is_uuid(session) {
+        return None;
+    }
     let name = format!("{session}.jsonl");
     std::fs::read_dir(config.join("projects"))
         .ok()?
+        .take(MAX_ENTRIES)
         .filter_map(Result::ok)
         .map(|project| project.path().join(&name))
         .find(|path| path.is_file())
@@ -77,58 +118,143 @@ pub(super) fn last_reply(path: &Path) -> Option<String> {
             last = entry.id().or(last);
         }
         true
-    })?;
+    })
+    .ok()?;
     last.map(|id| id.hyphenated().to_string())
 }
 
-/// The reply the resumed thread in `path` is cut at to drop the undone
-/// `prompt` and all after it: the nearest main-thread assistant message up
-/// the prompt's parent chain. None for a first prompt, or when the
-/// transcript cannot be read or the chain cannot be followed.
-///
-/// One forward pass records each entry's parent until the prompt is found;
-/// a parent always precedes its child, so the chain is then in the map.
-pub(super) fn cut_at(path: &Path, prompt: &str) -> Option<String> {
-    let prompt = parse_uuid(prompt)?;
-    // Each entry's parent, and whether it is a main-thread reply.
-    let mut entries: HashMap<Uuid, (Option<Uuid>, bool)> = HashMap::new();
+/// Resolve the cut during Undo. `None` proves this is the thread's first
+/// prompt; an unreadable or unresolved chain is never treated as a restart.
+pub(super) fn cut_at(path: &Path, prompt: &str) -> Result<Option<String>, TranscriptError> {
+    let prompt = parse_uuid(prompt).ok_or(TranscriptError::ParentChain)?;
+    let mut entries: HashMap<Uuid, (Option<Uuid>, bool, bool)> = HashMap::new();
     let mut start = None;
+    let mut invalid = false;
     for_each_entry(path, |entry| {
+        if start.is_some() {
+            return true;
+        }
         let Some(id) = entry.id() else {
             return true;
         };
-        let parent = entry.parent.and_then(parse_uuid);
+        let parent = match entry.parent {
+            Parent::Root => None,
+            Parent::Id(id) => Some(id),
+            _ => {
+                invalid = true;
+                None
+            }
+        };
         if id == prompt {
-            start = (entry.kind == Some("user")).then_some(parent).flatten();
-            return false;
+            if entry.kind == Some("user") && entry.sidechain != Some(true) {
+                start = Some(parent);
+            } else {
+                invalid = true;
+            }
+        } else if entries
+            .insert(
+                id,
+                (
+                    parent,
+                    entry.is_main_reply(),
+                    entry.kind == Some("user") && entry.sidechain != Some(true),
+                ),
+            )
+            .is_some()
+        {
+            invalid = true;
         }
-        entries.insert(id, (parent, entry.is_main_reply()));
-        entries.len() < MAX_ENTRIES
+        true
     })?;
-    let mut next = start?;
-    for _ in 0..MAX_HOPS {
-        let &(parent, is_reply) = entries.get(&next)?;
-        if is_reply {
-            return Some(next.hyphenated().to_string());
-        }
-        next = parent?;
+    if invalid {
+        return Err(TranscriptError::ParentChain);
     }
-    None
+    let mut next = start.ok_or(TranscriptError::ParentChain)?;
+    for _ in 0..MAX_HOPS {
+        let Some(id) = next else {
+            return Ok(None);
+        };
+        let &(parent, is_reply, is_prompt) =
+            entries.get(&id).ok_or(TranscriptError::ParentChain)?;
+        if is_reply {
+            return Ok(Some(id.hyphenated().to_string()));
+        }
+        if is_prompt {
+            return Err(TranscriptError::ParentChain);
+        }
+        next = parent;
+    }
+    Err(TranscriptError::ParentChain)
 }
 
-/// Calls `visit` with each parsed entry, one line at a time, until it
-/// returns false. A line that is not an entry is skipped; an unreadable one
-/// ends the pass. None when the file cannot be opened.
-fn for_each_entry(path: &Path, mut visit: impl FnMut(Entry<'_>) -> bool) -> Option<()> {
-    let mut reader = std::io::BufReader::new(std::fs::File::open(path).ok()?);
-    let mut line = String::new();
-    while reader.read_line(&mut line).is_ok_and(|read| read > 0) {
-        if let Ok(entry) = serde_json::from_str::<Entry<'_>>(&line)
+/// The bounded reader admits every physical entry, including malformed,
+/// duplicate and UUID-less entries. It never allocates an unbounded line.
+fn for_each_entry(
+    path: &Path,
+    mut visit: impl FnMut(Entry<'_>) -> bool,
+) -> Result<(), TranscriptError> {
+    let file = std::fs::File::open(path).map_err(|_| TranscriptError::Unreadable)?;
+    if file
+        .metadata()
+        .map_err(|_| TranscriptError::Unreadable)?
+        .len()
+        > MAX_TOTAL_BYTES
+    {
+        return Err(TranscriptError::ByteLimit);
+    }
+    let mut reader = std::io::BufReader::new(file.take(MAX_TOTAL_BYTES + 1));
+    let mut line = Vec::new();
+    let (mut total, mut count) = (0_u64, 0_usize);
+    loop {
+        line.clear();
+        let read = (&mut reader)
+            .take((MAX_LINE_BYTES + 1) as u64)
+            .read_until(b'\n', &mut line)
+            .map_err(|_| TranscriptError::Unreadable)?;
+        if read == 0 {
+            return Ok(());
+        }
+        total += read as u64;
+        if total > MAX_TOTAL_BYTES {
+            return Err(TranscriptError::ByteLimit);
+        }
+        if read > MAX_LINE_BYTES {
+            return Err(TranscriptError::LineLimit);
+        }
+        count += 1;
+        if count > MAX_ENTRIES {
+            return Err(TranscriptError::EntryLimit);
+        }
+        if let Ok(entry) = serde_json::from_slice::<Entry<'_>>(&line)
             && !visit(entry)
         {
-            break;
+            return Ok(());
         }
-        line.clear();
     }
-    Some(())
+}
+
+/// Revalidate a staged target on every launch; never silently resume past it.
+pub(super) fn validate_cut(path: &Path, at: &str) -> Result<(), TranscriptError> {
+    let at = parse_uuid(at).ok_or(TranscriptError::ParentChain)?;
+    let mut found = false;
+    for_each_entry(path, |entry| {
+        found |= entry.id() == Some(at) && entry.is_main_reply();
+        true
+    })?;
+    if found {
+        Ok(())
+    } else {
+        Err(TranscriptError::ParentChain)
+    }
+}
+
+pub(crate) fn resolve_undo(
+    config: &Path,
+    session: &str,
+    turn: &str,
+) -> Result<Option<String>, TranscriptError> {
+    let prompt = super::bridge::message_uuid(turn).ok_or(TranscriptError::ParentChain)?;
+    let session = super::fork::claude_session(session);
+    let path = transcript(config, session).ok_or(TranscriptError::Unreadable)?;
+    cut_at(&path, &prompt)
 }

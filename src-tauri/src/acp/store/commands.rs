@@ -94,6 +94,11 @@ pub(super) fn prepare_turn_in(
     transaction: &Transaction<'_>,
     command: PrepareTurnCommand,
 ) -> Result<PreparedTurn, StoreError> {
+    super::turn_undo::intent::ensure_settled(
+        transaction,
+        command.project_id.as_str(),
+        command.chat_id.as_str(),
+    )?;
     let user_payload = command.prompt.user_payload();
     let item_payload = user_item_payload(&user_payload)?;
     let item_bytes = i64::try_from(item_payload.len()).map_err(|_| StoreError::PayloadTooLarge)?;

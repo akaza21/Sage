@@ -255,7 +255,7 @@ impl AdmittedClaudeSdkBinding {
         self.revalidate().map_err(unavailable)?;
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         if let Some(selection) = &self.fixture {
-            let session = session.session_args(Some(&selection.durable_dir));
+            let session = session.session_args(Some(&selection.durable_dir))?;
             return self.fixture_launch(selection, epoch, root, session);
         }
         root.revalidate().map_err(unavailable)?;
@@ -280,7 +280,8 @@ impl AdmittedClaudeSdkBinding {
             binding_id: identity,
             runtime_epoch: epoch,
             artifact: artifact.map_err(unavailable)?,
-            fixed_args: BoundedOsArgs::new(session.args(config.as_deref())).map_err(unavailable)?,
+            fixed_args: BoundedOsArgs::new(session.args(config.as_deref())?)
+                .map_err(unavailable)?,
             environment: BoundedEnvironment::new(environment).map_err(unavailable)?,
             project_root: root,
             required_guarantee: if cfg!(windows) {
@@ -300,7 +301,7 @@ impl AdmittedClaudeSdkBinding {
 impl AdmittedClaudeSdkBinding {
     /// Claude Code's profile, where it keeps each session's transcript: a
     /// replay case's own profile, or the one the launch environment names.
-    pub(super) fn config_directory(&self) -> Option<PathBuf> {
+    pub(crate) fn config_directory(&self) -> Option<PathBuf> {
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         if let Some(selection) = &self.fixture {
             return Some(selection.durable_dir.clone());

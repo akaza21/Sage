@@ -61,7 +61,7 @@ fn replay_with(case: &str, prompts: &[Value]) -> Replay {
         session_id: SESSION.into(),
         resume: false,
         model: None,
-        rewind_before: None,
+        rewind_at: None,
     };
     let (config, cwd) = (profile.config(), profile.cwd());
     let launched = Launched {
@@ -140,7 +140,7 @@ fn replay_in(case: &str, prompts: &[Value], launched: &Launched) -> Replay {
     };
     crate::acp::fixture::claude_sdk_wire_for_test(
         case,
-        &launched.launch.session_args(Some(launched.config)),
+        &launched.launch.session_args(Some(launched.config)).unwrap(),
         launched.config,
         launched.cwd,
         client,
@@ -338,7 +338,7 @@ fn a_fork_chat_carries_the_first_chats_turn_from_its_saved_transcript() {
         session_id: SESSION.into(),
         resume: false,
         model: None,
-        rewind_before: None,
+        rewind_at: None,
     };
     let first = chat(&source, "Remember the synthetic example", true);
     assert!(said(&first.acp).contains(&format!("Claude Code session {SESSION}, new.")));
@@ -346,9 +346,9 @@ fn a_fork_chat_carries_the_first_chats_turn_from_its_saved_transcript() {
         session_id: first.forked.expect("the chat forks"),
         resume: true,
         model: None,
-        rewind_before: None,
+        rewind_at: None,
     };
-    let flags = fork.session_args(Some(&config));
+    let flags = fork.session_args(Some(&config)).unwrap();
     assert_eq!(
         flags[..2],
         ["--resume", SESSION],
@@ -369,7 +369,7 @@ fn a_fork_chat_carries_the_first_chats_turn_from_its_saved_transcript() {
     // Its first message saved the copy, so the fork chat now resumes it.
     let copy = super::fork::claude_session(&fork.session_id).to_owned();
     assert_eq!(
-        fork.session_args(Some(&config)),
+        fork.session_args(Some(&config)).unwrap(),
         ["--resume", copy.as_str()]
     );
     let resumed = said(&chat(&fork, "And now?", false).acp);
