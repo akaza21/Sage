@@ -22,7 +22,7 @@ impl AcpService {
     ) -> Result<(), CodexSessionError> {
         // Commits before the checks below; a refused activation leaves the
         // linked head `created`, and a retry naming either session resumes it.
-        let command = self.resume_earlier_codex_session(&admitted, command)?;
+        let command = self.resume_earlier_release_session(&admitted, command)?;
         let owner = RuntimeOwner {
             project_id: command.project_id.clone(),
             chat_id: command.chat_id.clone(),

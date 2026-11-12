@@ -1,4 +1,4 @@
-use super::{earlier_codex::continues_on_pinned_codex, *};
+use super::{earlier_release::continues_on_later_release, *};
 use crate::acp::bindings::codex::{CODEX_BINDING_ID, CODEX_PINNED_VERSION};
 
 fn session_at(version: &str) -> DurableSession {
@@ -22,10 +22,14 @@ fn next_minor() -> String {
 }
 
 #[test]
-fn only_an_earlier_parked_codex_session_continues_on_the_pinned_release() {
+fn an_earlier_parked_codex_session_continues_on_the_pinned_release() {
     for earlier in ["0.145.0", "0.146.0"] {
         assert!(
-            continues_on_pinned_codex(&session_at(earlier), CODEX_BINDING_ID, CODEX_PINNED_VERSION),
+            continues_on_later_release(
+                &session_at(earlier),
+                CODEX_BINDING_ID,
+                CODEX_PINNED_VERSION
+            ),
             "{earlier}"
         );
     }
@@ -36,7 +40,7 @@ fn only_an_earlier_parked_codex_session_continues_on_the_pinned_release() {
         "earlier".into(),
     ] {
         assert!(
-            !continues_on_pinned_codex(
+            !continues_on_later_release(
                 &session_at(&refused),
                 CODEX_BINDING_ID,
                 CODEX_PINNED_VERSION
@@ -50,13 +54,73 @@ fn only_an_earlier_parked_codex_session_continues_on_the_pinned_release() {
     unbound.external_session_id = None;
     let mut unversioned = session_at("0.146.0");
     unversioned.harness_version = None;
-    for session in [live, unbound, unversioned] {
-        assert!(!continues_on_pinned_codex(
+    let mut closed = session_at("0.146.0");
+    closed.state = "closed".into();
+    for session in [live, unbound, unversioned, closed] {
+        assert!(!continues_on_later_release(
             &session,
             CODEX_BINDING_ID,
             CODEX_PINNED_VERSION
         ));
     }
+}
+
+#[test]
+fn a_parked_session_continues_after_its_harness_updates_past_the_pin() {
+    // A self-installed Codex reports its full version line; the update is
+    // ordered by release, not by the pinned build.
+    let mut observed = session_at("codex-cli 0.166.0");
+    observed.binding_digest = "a".repeat(64);
+    assert!(continues_on_later_release(
+        &observed,
+        CODEX_BINDING_ID,
+        "codex-cli 0.167.1"
+    ));
+    assert!(continues_on_later_release(
+        &session_at(CODEX_PINNED_VERSION),
+        CODEX_BINDING_ID,
+        &next_minor()
+    ));
+    // Pi and other bindings continue the same way.
+    let mut pi = session_at("0.74.0");
+    pi.binding_id = "pi-rpc".into();
+    assert!(continues_on_later_release(&pi, "pi-rpc", "0.74.2"));
+    // A prerelease of the stored release precedes it.
+    let mut prerelease = session_at("0.74.0");
+    prerelease.binding_id = "pi-rpc".into();
+    assert!(!continues_on_later_release(
+        &prerelease,
+        "pi-rpc",
+        "0.74.0-rc.1"
+    ));
+}
+
+#[test]
+fn a_downgrade_another_binding_or_the_claude_sdk_never_links_a_session() {
+    assert!(!continues_on_later_release(
+        &session_at("codex-cli 0.167.1"),
+        CODEX_BINDING_ID,
+        "codex-cli 0.166.0"
+    ));
+    assert!(!continues_on_later_release(
+        &session_at("0.74.0"),
+        "pi-rpc",
+        "0.74.2"
+    ));
+    let mut claude = session_at("2.1.319");
+    claude.binding_id = "claude-code-sdk".into();
+    assert!(!continues_on_later_release(
+        &claude,
+        "claude-code-sdk",
+        "2.1.320"
+    ));
+    let mut custom = session_at("");
+    custom.binding_id = "custom-acp-1".into();
+    assert!(!continues_on_later_release(
+        &custom,
+        "custom-acp-1",
+        "1.0.0"
+    ));
 }
 
 #[test]
