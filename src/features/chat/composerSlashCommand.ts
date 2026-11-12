@@ -1,3 +1,5 @@
+import type { AcpCommandPanel } from "../../domain/acpCommand";
+
 /**
  * The composer's `/` command menu: which text opens it and what a pick
  * writes. The harness reads a command as prompt text whose first token is
@@ -28,6 +30,8 @@ export function slashCommandQuery(
 export interface PickedSlashCommand {
   name: string;
   inputHint: string | null;
+  /** Opens this panel in place of writing the command. */
+  panel?: AcpCommandPanel;
 }
 
 /** The name of a `/name …` prompt. */

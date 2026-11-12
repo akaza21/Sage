@@ -80,7 +80,8 @@ impl PiFixtureBinding {
         root.revalidate()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         self.revalidate()?;
-        let (binding_id, artifact, fixed_args) = self.selection.launch_metadata(self.digest)?;
+        let (binding_id, artifact, fixed_args) =
+            self.selection.launch_metadata(self.digest, Vec::new())?;
         let environment = BoundedEnvironment::new(
             [
                 ("USERPROFILE", &self.selection.profile_root),

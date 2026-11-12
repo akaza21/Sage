@@ -78,7 +78,7 @@ fn queued_steer_overtaken_by_cancel_never_writes() {
             session_recovery: None,
             zero_sequence: std::sync::atomic::AtomicU64::new(0),
         };
-        let mut state = FirstTurnWorkerState::Idle(completed);
+        let mut state = FirstTurnWorkerState::Idle(Box::new(completed));
         let prepare = mailbox
             .submit_worker(WorkerCommand::PreparePrompt(HostPromptIntent {
                 command: PrepareTurnCommand {

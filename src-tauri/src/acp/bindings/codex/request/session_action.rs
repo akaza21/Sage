@@ -20,17 +20,28 @@ impl OutgoingRequest {
                 RequestKind::Compact,
                 json!({"threadId": thread_id.as_str()}),
             ),
-            SessionAction::Review {
-                target: ReviewTarget::UncommittedChanges {},
-            } => Self::build(
+            SessionAction::Review { target } => Self::build(
                 id,
                 RequestKind::Review,
                 json!({
                     "threadId": thread_id.as_str(),
-                    "target": {"type": "uncommittedChanges"},
+                    "target": review_target(target),
                     "delivery": "inline"
                 }),
             ),
+        }
+    }
+}
+
+fn review_target(target: &ReviewTarget) -> serde_json::Value {
+    match target {
+        ReviewTarget::UncommittedChanges {} => json!({"type": "uncommittedChanges"}),
+        ReviewTarget::BaseBranch { branch } => {
+            json!({"type": "baseBranch", "branch": branch.as_str()})
+        }
+        ReviewTarget::Commit { sha } => json!({"type": "commit", "sha": sha.as_str()}),
+        ReviewTarget::Custom { instructions } => {
+            json!({"type": "custom", "instructions": instructions.as_str()})
         }
     }
 }
@@ -71,5 +82,24 @@ mod tests {
                 })
             )
         );
+        for (target, wire) in [
+            (
+                json!({"kind": "baseBranch", "branch": "main"}),
+                json!({"type": "baseBranch", "branch": "main"}),
+            ),
+            (
+                json!({"kind": "commit", "sha": "1a2b3c4"}),
+                json!({"type": "commit", "sha": "1a2b3c4"}),
+            ),
+            (
+                json!({"kind": "custom", "instructions": "check the error paths"}),
+                json!({"type": "custom", "instructions": "check the error paths"}),
+            ),
+        ] {
+            let (method, params) = params(json!({"kind": "review", "target": target}));
+            assert_eq!(method, "review/start");
+            assert_eq!(params["target"], wire);
+            assert_eq!(params["delivery"], "inline");
+        }
     }
 }

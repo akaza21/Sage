@@ -17,6 +17,7 @@ import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { useDocumentVisible } from "../ui/useDocumentVisible";
 import { useRetainedElement } from "../ui/useRetainedElement";
+import { whenIdle } from "../ui/whenIdle";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import "./harness-browser-mode.css";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
@@ -131,6 +132,11 @@ export function Workbench() {
     void useSessionAccessModeStore.getState().restore();
     void useUiAppearanceStore.getState().restore();
   }, []);
+  // The shared tooltip is not needed to paint the first frame.
+  useEffect(
+    () => whenIdle(() => void import("../ui/tooltips").catch(() => undefined)),
+    [],
+  );
   useWorkbenchKeys({
     resourceModal,
     windowMode,

@@ -5,13 +5,23 @@ use std::{
 
 use serde_json::{Value, json};
 
+use crate::acp::limits::LIMITS;
+
 use super::super::FixtureError;
 use super::{WireState, acp, codex};
+
+/// Most commands a replayed Pi lists.
+const MAX_COMMANDS: usize = 64;
+/// Most text fields one `piNative` step may fill.
+const MAX_FILLS: usize = 32;
 
 pub(super) struct PiWireState {
     model: &'static str,
     thinking: String,
     ids: BTreeSet<String>,
+    /// What `get_commands` lists: the extensions, prompt templates and
+    /// skills this Pi loaded at startup.
+    commands: Value,
 }
 
 impl PiWireState {
@@ -20,6 +30,7 @@ impl PiWireState {
             model: "fixture-model",
             thinking: "medium".into(),
             ids: BTreeSet::new(),
+            commands: json!([]),
         }
     }
 }
@@ -28,8 +39,22 @@ pub(super) fn await_request(
     input: &mut impl Read,
     output: &mut impl Write,
     state: &mut WireState,
-    kind: &str,
+    step: &Value,
 ) -> Result<(), FixtureError> {
+    let kind = step["kind"]
+        .as_str()
+        .ok_or(FixtureError::InvalidArguments)?;
+    // A journey names the commands Pi loads as it starts.
+    if let Some(commands) = step.get("commands") {
+        let listed = commands
+            .as_array()
+            .filter(|commands| kind == "piInitialize" && commands.len() <= MAX_COMMANDS)
+            .ok_or(FixtureError::InvalidArguments)?;
+        if !listed.iter().all(|command| command["name"].is_string()) {
+            return Err(FixtureError::InvalidArguments);
+        }
+        state.pi.commands = acp::substitute(commands.clone(), state, 0)?;
+    }
     let expected = match kind {
         "piInitialize" => "get_state",
         "piModels" => "get_available_models",
@@ -148,7 +173,7 @@ fn response_data(
             json!({"models":[model("fixture-model"),model("fixture-model-two")]})
         }
         "get_available_thinking_levels" => json!({"levels":["off","low","medium","high"]}),
-        "get_commands" => json!({"commands":[]}),
+        "get_commands" => json!({"commands":state.pi.commands}),
         "set_model" => {
             if request["provider"] != "openai" {
                 return Err(FixtureError::InvalidArguments);
@@ -175,6 +200,11 @@ fn response_data(
             if message.is_empty() {
                 return Err(FixtureError::InvalidArguments);
             }
+            let mut blocks = vec![json!({"type": "text", "text": message})];
+            if let Some(images) = request["images"].as_array() {
+                blocks.extend(images.iter().cloned());
+            }
+            state.prompt_echo = Some(super::prompt_echo::blocks(&blocks));
             state.turn_count = state
                 .turn_count
                 .checked_add(1)
@@ -199,9 +229,47 @@ pub(super) fn emit(
     state: &mut WireState,
     output: &mut impl Write,
 ) -> Result<(), FixtureError> {
-    let frame = acp::substitute(step["frame"].clone(), state, 0)?;
+    let mut frame = acp::substitute(step["frame"].clone(), state, 0)?;
     if !frame.is_object() || frame["type"].as_str().is_none() || frame["type"] == "response" {
         return Err(FixtureError::InvalidArguments);
     }
+    if let Some(fill) = step.get("fill") {
+        fill_text(&mut frame, fill)?;
+    }
     codex::emit_json(output, state, &frame)
+}
+
+/// Fills each text field `fill.pointers` names with `fill.unit` repeated to
+/// `fill.bytes`, so a journey can replay output as large as a real run's
+/// (a read tool's result, or `agent_end` repeating the whole run) without
+/// spelling it out. Each field stays within one frame, and all of them
+/// within the case's output budget.
+fn fill_text(frame: &mut Value, fill: &Value) -> Result<(), FixtureError> {
+    let pointers = fill["pointers"]
+        .as_array()
+        .filter(|pointers| !pointers.is_empty() && pointers.len() <= MAX_FILLS)
+        .ok_or(FixtureError::InvalidArguments)?;
+    let unit = fill["unit"]
+        .as_str()
+        .filter(|unit| !unit.is_empty() && unit.len() <= 256 && unit.is_ascii())
+        .ok_or(FixtureError::InvalidArguments)?;
+    let bytes = fill["bytes"]
+        .as_u64()
+        .filter(|bytes| *bytes <= LIMITS.wire.frame_bytes)
+        .ok_or(FixtureError::InvalidArguments)?;
+    if bytes.saturating_mul(pointers.len() as u64) > LIMITS.fixture.expanded_bytes_per_case {
+        return Err(FixtureError::ExpandedLimit);
+    }
+    let bytes = usize::try_from(bytes).map_err(|_| FixtureError::ExpandedLimit)?;
+    let mut text = unit.repeat(bytes.div_ceil(unit.len()));
+    text.truncate(bytes);
+    for pointer in pointers {
+        let field = pointer
+            .as_str()
+            .and_then(|pointer| frame.pointer_mut(pointer))
+            .filter(|field| field.is_string())
+            .ok_or(FixtureError::InvalidArguments)?;
+        *field = Value::String(text.clone());
+    }
+    Ok(())
 }

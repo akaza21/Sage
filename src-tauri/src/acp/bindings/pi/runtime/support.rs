@@ -7,12 +7,12 @@ use crate::acp::{
         ExternalId, NormalizedPayload,
         session_event::{SessionNotice, SessionScopedEvent},
     },
-    lifecycle::{ItemLifecycle, ToolState, TurnState},
+    lifecycle::{ItemLifecycle, TurnState},
     limits::LIMITS,
 };
 
 use super::PiRuntime;
-use crate::acp::bindings::pi::{AdapterOutput, TerminalOutcome, ToolOutcome};
+use crate::acp::bindings::pi::{AdapterOutput, TerminalOutcome};
 
 mod authority;
 mod bridge;
@@ -26,6 +26,7 @@ mod dialog;
 mod errors;
 mod identity;
 mod image;
+mod native;
 mod permission;
 mod requests;
 mod session;
@@ -34,6 +35,7 @@ pub(super) use steer::Steering;
 mod stream;
 mod thought;
 mod tool_cache;
+mod tool_output;
 use capabilities::capabilities;
 pub(super) use errors::map_pi;
 pub(super) use identity::unsupported;
@@ -269,55 +271,22 @@ impl PiRuntime {
                 external_id,
                 name,
                 path,
-            } => {
-                let id = external("piItemId", external_id.clone())?;
-                let payload = identity::tool_start_payload(name, path.as_deref(), resources)?;
-                self.cache_tool(external_id, payload.clone(), false)?;
-                (
-                    Some(self.item(
-                        id,
-                        ItemLifecycle::Started,
-                        Some(ToolState::InProgress),
-                        payload,
-                    )?),
-                    None,
-                )
-            }
+            } => (
+                Some(self.tool_started(external_id, name, path, resources)?),
+                None,
+            ),
             AdapterOutput::ToolUpdated {
                 external_id,
                 output,
-            } => {
-                let id = external("piItemId", external_id.clone())?;
-                let payload = self.update_tool(&external_id, output, false)?;
-                (
-                    Some(self.item(
-                        id,
-                        ItemLifecycle::Streaming,
-                        Some(ToolState::InProgress),
-                        payload,
-                    )?),
-                    None,
-                )
-            }
+            } => (Some(self.tool_updated(external_id, output)?), None),
             AdapterOutput::ToolTerminal {
                 external_id,
                 outcome,
                 output,
-            } => {
-                let id = external("piItemId", external_id.clone())?;
-                // A finished edit shows its diff; Pi's own success line adds nothing.
-                let output = output.filter(|_| {
-                    outcome != ToolOutcome::Completed || !self.is_edit_tool(&external_id)
-                });
-                let payload = self.update_tool(&external_id, output, true)?;
-                let (lifecycle, state) = match outcome {
-                    ToolOutcome::Completed => (ItemLifecycle::Completed, ToolState::Completed),
-                    ToolOutcome::Failed => (ItemLifecycle::Failed, ToolState::Failed),
-                    ToolOutcome::Declined => (ItemLifecycle::Cancelled, ToolState::Declined),
-                    ToolOutcome::Cancelled => (ItemLifecycle::Cancelled, ToolState::Cancelled),
-                };
-                (Some(self.item(id, lifecycle, Some(state), payload)?), None)
-            }
+            } => (
+                Some(self.tool_terminal(external_id, outcome, output)?),
+                None,
+            ),
             AdapterOutput::Usage {
                 input_tokens,
                 output_tokens,
@@ -394,6 +363,11 @@ impl PiRuntime {
                 )),
                 None,
             ),
+            AdapterOutput::NativeReply {
+                command_id,
+                command,
+                data,
+            } => (Some(self.native_reply(&command_id, command, data)), None),
             AdapterOutput::DuplicateIgnored => (Some(AdapterEvent::IgnoredDuplicate), None),
             AdapterOutput::LateIgnored => (Some(AdapterEvent::IgnoredLate), None),
             AdapterOutput::Absorbed => (Some(AdapterEvent::Absorbed), None),

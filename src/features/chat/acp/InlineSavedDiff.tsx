@@ -134,7 +134,7 @@ export function InlineSavedDiff({
   if (admission && !admitted) {
     return (
       <p role="alert">
-        This saved edit is unavailable for the current Chat session.
+        This saved edit is unavailable for the current chat session.
       </p>
     );
   }

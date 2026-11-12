@@ -36,6 +36,10 @@ const ROWS_PER_TURN: usize = SESSION_ACTIVITIES_MAX;
 const FACTS_PER_TURN: usize = 64;
 const FACTS_PER_TURN_MAX: usize = FACTS_PER_TURN + ROWS_PER_TURN;
 const HEADROOM_PERCENT: u64 = 90;
+/// One Turn's facts of one kind in order, sought through
+/// `idx_session_facts_turn`.
+pub(super) const TURN_FACTS_SQL: &str = "SELECT payload_json FROM session_facts
+     WHERE session_id=?1 AND turn_id=?2 AND kind=?3 ORDER BY sequence LIMIT ?4";
 /// Sessions whose dropped rows were already logged; the oldest is
 /// forgotten beyond [`WARNED_MAX`].
 static WARNED: Mutex<VecDeque<String>> = Mutex::new(VecDeque::new());
@@ -199,10 +203,7 @@ fn folded(
     session: &str,
     turn: &str,
 ) -> Result<(Vec<ActivityFact>, usize), StoreError> {
-    let mut statement = connection.prepare_cached(
-        "SELECT payload_json FROM session_facts WHERE session_id=?1 AND turn_id=?2 AND kind=?3
-         ORDER BY sequence LIMIT ?4",
-    )?;
+    let mut statement = connection.prepare_cached(TURN_FACTS_SQL)?;
     let limit = FACTS_PER_TURN_MAX as i64;
     let payloads = statement
         .query_map(params![session, turn, KIND, limit], |row| {

@@ -71,6 +71,7 @@ impl SdkBridge {
                 .unwrap_or("Claude Code refused the request");
             match &pending {
                 Pending::Control => Self::controlled(Err(message), inbound),
+                Pending::Passive(request) => request.answered(Err(message), inbound),
                 Pending::Fork(_) => self.forked(None, inbound),
                 Pending::Withdraw(uuid) => self.withdrawn(uuid, inbound),
                 _ => {}
@@ -146,6 +147,8 @@ impl SdkBridge {
             Pending::Interrupt => {}
             Pending::Withdraw(uuid) => self.withdrawn(&uuid, inbound),
             Pending::Control => Self::controlled(Ok(reply), inbound),
+            Pending::Passive(request) => request.answered(Ok(reply), inbound),
+            Pending::Abandoned => {}
             Pending::Fork(config) => self.forked(config.as_deref(), inbound),
         }
         Ok(())
@@ -188,9 +191,17 @@ impl SdkBridge {
                     _ => return,
                 };
                 if let Some(text) = text.and_then(Value::as_str).filter(|text| !text.is_empty()) {
-                    inbound.acp.push(self.update(
-                        json!({"sessionUpdate": kind, "content": {"type": "text", "text": text}}),
-                    ));
+                    let mut update =
+                        json!({"sessionUpdate": kind, "content": {"type": "text", "text": text}});
+                    // Each answer block is its own item, so text before and
+                    // after a tool call stays apart instead of running on.
+                    if kind == "agent_message_chunk" {
+                        let block = event.get("index").and_then(Value::as_u64);
+                        if let (Some(message), Some(block)) = (self.streamed.back(), block) {
+                            update["itemId"] = json!(format!("{message}:{block}"));
+                        }
+                    }
+                    inbound.acp.push(self.update(update));
                 }
             }
             _ => {}
@@ -209,16 +220,22 @@ impl SdkBridge {
             .get("id")
             .and_then(Value::as_str)
             .is_some_and(|id| self.streamed.iter().any(|streamed| streamed == id));
-        for block in message
+        let message_id = message.get("id").and_then(Value::as_str);
+        for (index, block) in message
             .get("content")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
+            .enumerate()
         {
             match block.get("type").and_then(Value::as_str) {
                 Some("text") if !streamed => {
                     if let Some(text) = block.get("text").and_then(Value::as_str) {
-                        inbound.acp.push(self.update(json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}})));
+                        let mut update = json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}});
+                        if let Some(message_id) = message_id {
+                            update["itemId"] = json!(format!("{message_id}:{index}"));
+                        }
+                        inbound.acp.push(self.update(update));
                     }
                 }
                 Some("tool_use") => self.tool_use(block, inbound),
@@ -371,7 +388,12 @@ impl Pending {
             | Self::Session(id)
             | Self::Mode { id, .. }
             | Self::Option { id, .. } => Some(id),
-            Self::Interrupt | Self::Withdraw(_) | Self::Control | Self::Fork(_) => None,
+            Self::Interrupt
+            | Self::Withdraw(_)
+            | Self::Control
+            | Self::Passive(_)
+            | Self::Abandoned
+            | Self::Fork(_) => None,
         }
     }
 }

@@ -343,3 +343,94 @@ test("a prompt that ran a listed command shows the command beside what was typed
   expect(input!.y).toBeGreaterThanOrEqual(name!.y + name!.height);
   await expectNoViewportOverflow(page);
 });
+
+test("a /review that named its target shows the command and the target", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 900 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  await page.evaluate(async () => {
+    const [{ acpProjectionStoreFor }, ids] = await Promise.all([
+      import("/src/app/acpProjectionRegistry.ts"),
+      import("/tests/ui/fixtures/visualFixtureIds.ts"),
+    ]);
+    const chatId = document.querySelector<HTMLElement>(
+      ".acp-chat-projection[data-chat-id]",
+    )!.dataset.chatId as never;
+    const store = acpProjectionStoreFor(chatId);
+    const chatPage = structuredClone(store.getState().page!);
+    const turn = chatPage.turns.reduce((a, b) =>
+      b.ordinal > a.ordinal ? b : a,
+    );
+    const prompt = turn.items.find(
+      (item) => item.kind === "text" && item.payload.role === "user",
+    );
+    if (prompt?.kind !== "text") throw new Error("Expected a prompt");
+    // As the host stores a `/review base main` picked from Codex's list.
+    prompt.payload.text = "/review base main";
+    turn.command = { name: "review", source: "builtin" };
+    turn.sessionAction = {
+      kind: "review",
+      target: { kind: "baseBranch", branch: "main" },
+    };
+    const next = <T extends string>(revision: T) =>
+      String(BigInt(revision) + 1n) as T;
+    turn.revision = next(turn.revision);
+    prompt.revision = next(prompt.revision);
+    chatPage.projectionRevision = next(chatPage.projectionRevision);
+    const applied = store.getState().applyAuthoritativePage(
+      {
+        projectId: ids.PROJECT_ID,
+        projectGeneration: ids.GENERATION,
+        chatId,
+      },
+      chatPage,
+    );
+    if (applied !== "accepted") throw new Error(applied);
+  });
+  const bubble = page.locator(".acp-message--user").last();
+  await expect(bubble.locator(".acp-message__command")).toHaveText(
+    "/review, Built-in",
+  );
+  await expect(bubble.locator(".acp-markdown")).toHaveText("base main");
+  await expectNoViewportOverflow(page);
+});
+
+test("picking Codex's /review shows its input hint", async ({ page }) => {
+  const field = await openComposer(page);
+  await page.evaluate(() =>
+    (
+      window as unknown as { __emitCommandsChanged: (next: unknown) => void }
+    ).__emitCommandsChanged([
+      {
+        name: "compact",
+        description:
+          "summarize conversation to prevent hitting the context limit",
+        inputHint: null,
+        source: "builtin",
+      },
+      {
+        name: "review",
+        description: "review my current changes and find issues",
+        inputHint: "base <branch>, commit <sha>, or what to check",
+        source: "builtin",
+      },
+      {
+        name: "pdf",
+        description: "Read PDFs",
+        inputHint: null,
+        source: "skill",
+      },
+    ]),
+  );
+  await field.fill("/rev");
+  const menu = page.getByRole("listbox");
+  await expect(menu.getByRole("option")).toHaveCount(1);
+  await expect(menu.getByRole("option").first()).toContainText("/review");
+  await field.press("Enter");
+  await expect(field).toHaveValue("/review ");
+  await expect(page.locator(".composer__command-hint")).toHaveText(
+    "/review base <branch>, commit <sha>, or what to check",
+  );
+});

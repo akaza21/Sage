@@ -6,8 +6,10 @@ mod custom_acp;
 mod discovery_state;
 mod install_state;
 mod persisted_binding;
-use catalog_definition::{CuratedProtocol, definition};
+mod published_releases;
+use catalog_definition::{CuratedProtocol, definition, safe_display_version};
 use discovery_state::DiscoveryState;
+use published_releases::PublishedReleases;
 
 use crate::{
     acp::bindings::{
@@ -40,6 +42,8 @@ fn simulator_admission(in_catalog: bool) -> Option<HarnessInstallState> {
 pub struct HarnessCatalog {
     registry: Arc<BindingRegistry>,
     discovered: DiscoveryState,
+    published: PublishedReleases,
+    rediscovery: Arc<std::sync::Mutex<()>>,
     #[cfg(test)]
     presence_override: Option<CodexHostPresence>,
     #[cfg(all(windows, feature = "acp-fixture"))]
@@ -57,6 +61,8 @@ impl HarnessCatalog {
         Self {
             registry,
             discovered: DiscoveryState::default(),
+            published: PublishedReleases::default(),
+            rediscovery: Arc::default(),
             #[cfg(test)]
             presence_override: None,
             #[cfg(all(windows, feature = "acp-fixture"))]
@@ -77,6 +83,8 @@ impl HarnessCatalog {
         Self {
             registry: Arc::new(BindingRegistry::with_codex(codex)),
             discovered: DiscoveryState::default(),
+            published: PublishedReleases::default(),
+            rediscovery: Arc::default(),
             presence_override: Some(presence),
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization_available: false,
@@ -107,6 +115,27 @@ impl HarnessCatalog {
         self.discovered.apply_presence(discovered);
     }
 
+    /// Held while one discovery runs, so a refresh and the startup discovery
+    /// never interleave and an earlier result never overwrites a later one.
+    pub(crate) fn lock_rediscovery(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.rediscovery
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Claims an update check of these harnesses; false while a recent one
+    /// covers them.
+    pub(crate) fn begin_update_check(&self, harness_ids: &[&'static str]) -> bool {
+        self.published.begin_check(harness_ids)
+    }
+
+    pub(crate) fn finish_update_check(
+        &self,
+        found: Option<Vec<crate::harness_discovery::PublishedRelease>>,
+    ) {
+        self.published.finish_check(found);
+    }
+
     #[cfg(test)]
     pub(crate) fn codex_registration(&self) -> CodexBindingRegistration {
         self.registry.codex_admission().clone()
@@ -129,6 +158,8 @@ impl HarnessCatalog {
         Self {
             registry,
             discovered: DiscoveryState::default(),
+            published: PublishedReleases::default(),
+            rediscovery: Arc::default(),
             #[cfg(test)]
             presence_override: None,
             characterization_available: true,
@@ -272,6 +303,9 @@ impl HarnessCatalog {
             if let Some(discovered) = self.discovered(&definition.id) {
                 definition.version = discovered.version.as_deref().and_then(safe_display_version);
             }
+            definition.update = self
+                .published
+                .update_for(&definition.id, definition.version.as_deref());
             definition.version_checking = self.discovered.is_version_checking(&definition.id);
             let Some(record) = self.registry.for_harness(&definition.id) else {
                 continue;
@@ -385,6 +419,9 @@ impl HarnessCatalog {
         {
             return Some("sage-characterization".into());
         }
+        if let Some(id) = self.registry.pending_claude_harness(binding_id) {
+            return Some(id.into());
+        }
         self.definitions()
             .into_iter()
             .find(|definition| {
@@ -394,40 +431,6 @@ impl HarnessCatalog {
             })
             .map(|definition| definition.id)
     }
-}
-
-/// Untrusted CLI version prose may contain paths or secrets. Project only a
-/// bounded dotted numeric token, never the executable identity or raw output.
-fn safe_display_version(version: &str) -> Option<String> {
-    version.split_ascii_whitespace().find_map(|token| {
-        let token = token.strip_prefix('v').unwrap_or(token);
-        let parts: Vec<_> = token.split('.').collect();
-        let numeric = token.len() <= 32
-            && (2..=4).contains(&parts.len())
-            && parts.iter().all(|part| {
-                !part.is_empty()
-                    && part.len() <= 8
-                    && part.bytes().all(|byte| byte.is_ascii_digit())
-            });
-        if numeric {
-            return Some(token.to_owned());
-        }
-        let (base, prerelease) = token.split_once('-')?;
-        let base_parts: Vec<_> = base.split('.').collect();
-        (token.len() <= 96
-            && base_parts.len() == 3
-            && base_parts.iter().all(|part| {
-                !part.is_empty()
-                    && part.len() <= 8
-                    && part.bytes().all(|byte| byte.is_ascii_digit())
-            })
-            && !prerelease.is_empty()
-            && prerelease.len() <= 64
-            && prerelease
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-'))
-        .then(|| token.to_owned())
-    })
 }
 
 #[cfg(test)]
@@ -599,25 +602,31 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn an_uncharacterised_opencode_build_never_borrows_the_characterised_claims() {
-        let root = std::env::temp_dir().join(format!(
-            "sage-opencode-uncharacterised-{}",
-            uuid::Uuid::new_v4()
-        ));
-        let catalog = admitted_opencode_catalog(&root, "1.19.0");
-        let opencode = by_id(&catalog.definitions(), "opencode");
-        fs::remove_dir_all(root).unwrap();
-        assert_eq!(
-            opencode.install_state,
-            HarnessInstallState::Available.as_str()
-        );
-        assert_eq!(opencode.binding_id.as_deref(), Some("opencode-acp"));
-        assert_eq!(opencode.bound_version.as_deref(), Some("1.19.0"));
-        assert_eq!(
-            opencode.characterisation,
-            Some(crate::domain::HarnessCharacterisation::Uncharacterised)
-        );
-        assert!(!opencode.account_model_discovery);
+    fn only_a_later_opencode_build_keeps_the_characterised_claims() {
+        for (version, characterisation) in [
+            (
+                "1.18.20",
+                crate::domain::HarnessCharacterisation::Uncharacterised,
+            ),
+            (
+                "1.19.0",
+                crate::domain::HarnessCharacterisation::NewerThanTested,
+            ),
+        ] {
+            let root = std::env::temp_dir()
+                .join(format!("sage-opencode-release-{}", uuid::Uuid::new_v4()));
+            let catalog = admitted_opencode_catalog(&root, version);
+            let opencode = by_id(&catalog.definitions(), "opencode");
+            fs::remove_dir_all(root).unwrap();
+            assert_eq!(
+                opencode.install_state,
+                HarnessInstallState::Available.as_str()
+            );
+            assert_eq!(opencode.binding_id.as_deref(), Some("opencode-acp"));
+            assert_eq!(opencode.bound_version.as_deref(), Some(version));
+            assert_eq!(opencode.characterisation, Some(characterisation));
+            assert!(!opencode.account_model_discovery);
+        }
     }
 
     #[test]
@@ -839,7 +848,8 @@ mod tests {
                     "characterisation",
                     "unavailableReason",
                     "signIn",
-                    "brand"
+                    "brand",
+                    "update"
                 ]
                 .into_iter()
                 .collect()
@@ -942,6 +952,38 @@ mod tests {
             Some(SIMULATOR_ID)
         );
         assert_eq!(catalog.harness_id_for_binding("unknown"), None);
+    }
+
+    #[test]
+    fn a_claude_chat_restored_before_discovery_keeps_its_harness() {
+        let registry = Arc::new(BindingRegistry::default());
+        let catalog = HarnessCatalog::with_registry(Arc::clone(&registry));
+        let sdk = crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID;
+        let acp = crate::acp::bindings::claude::CLAUDE_BINDING_ID;
+        let mut definitions = catalog.definitions();
+        // Either Claude binding keeps its harness until discovery settles.
+        for binding in [sdk, acp] {
+            assert_eq!(
+                catalog.restore_binding(binding, &mut definitions),
+                "claude-code"
+            );
+        }
+        assert!(
+            definitions
+                .iter()
+                .all(|entry| !entry.id.starts_with("unavailable-binding:"))
+        );
+        // Discovery that finds no CLI hands the harness to the ACP adapter;
+        // until the ACP side settles too, a restore still keeps the harness.
+        registry.claude_sdk_admission().apply_discovery(None);
+        assert_eq!(
+            catalog.harness_id_for_binding(sdk).as_deref(),
+            Some("claude-code")
+        );
+        registry.claude_admission().apply_discovery(
+            crate::harness_discovery::ClaudeLaunchDiscovery::AdapterVersionUnreadable,
+        );
+        assert_eq!(catalog.harness_id_for_binding(sdk), None);
     }
 
     #[cfg(all(windows, feature = "acp-fixture"))]
@@ -1122,7 +1164,7 @@ mod tests {
         let claude = ClaudeBindingRegistration::admitted_for_test(ClaudeLaunchDiscovery::Present(
             Box::new(DiscoveredClaudeLaunch {
                 adapter_path: adapter.clone(),
-                adapter_version: "0.99.0".into(),
+                adapter_version: "0.75.0".into(),
                 acp_sdk_version: "1.4.0".into(),
                 node_engine: ">=22".into(),
                 node_path: node.clone(),
@@ -1144,7 +1186,7 @@ mod tests {
             entry.characterisation,
             Some(crate::domain::HarnessCharacterisation::Uncharacterised)
         );
-        assert_eq!(entry.bound_version.as_deref(), Some("0.99.0"));
+        assert_eq!(entry.bound_version.as_deref(), Some("0.75.0"));
         assert!(entry.unavailable_reason.is_none());
     }
 

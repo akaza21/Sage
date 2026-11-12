@@ -86,6 +86,8 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   // menu with the first `/` typed.
   "src/features/chat/ComposerSlashController.tsx",
   "src/features/chat/ComposerSlashMenu.tsx",
+  // `/status` and `/mcp` load their panel when first opened.
+  "src/features/chat/ComposerCommandPanel.tsx",
   // The suggestion listbox both menus share loads with either controller.
   "src/ui/TextFieldSuggestions.tsx",
 ];
@@ -112,6 +114,8 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/app/browserPopupNative.ts",
   "src/app/agentWorkingDiffRepository.ts",
   "src/features/files/fileRenameResult.ts",
+  // File and folder rename load with the first rename.
+  "src/app/fileRenameActions.ts",
   "src/features/files/resourceTrashContract.ts",
   "src/features/browser/browserSuggestions.ts",
   "src/features/browser/browserClipboard.ts",
@@ -270,6 +274,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/TerminalDockShell.tsx",
   // Terminal controls load outside the shared workbench.
   "src/workbench/terminalDockCommands.tsx",
+  // The shared tooltip installs once the window is idle after startup.
+  "src/ui/tooltips.ts",
 ].sort();
 
 const ORDINARY_DYNAMIC_FACADES = [

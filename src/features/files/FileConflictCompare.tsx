@@ -68,14 +68,14 @@ export function FileConflictCompare({
       {state.phase === "error" ? (
         <ResourceStateNotice
           state="error"
-          title="Could not compare this File"
+          title="Could not compare this file"
           detail={state.message}
         />
       ) : null}
       {state.phase === "ready" && state.diff.hunks.length === 0 ? (
         <ResourceStateNotice
           state="idle"
-          title="Your version matches the File on disk."
+          title="Your version matches the file on disk."
         />
       ) : null}
       {state.phase === "ready" && state.diff.hunks.length > 0 ? (

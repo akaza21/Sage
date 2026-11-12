@@ -1,3 +1,5 @@
+import { useCallback, useState } from "react";
+
 /** Which arrow keys step through a list, following WAI-ARIA. */
 export type ListOrientation = "horizontal" | "vertical";
 
@@ -97,4 +99,53 @@ export function typeaheadIndex(
     if (labels[at].trim().toLocaleLowerCase().startsWith(search)) return at;
   }
   return -1;
+}
+
+/** Rows PageUp and PageDown move in a list that pops up from a field. */
+export const ACTIVE_OPTION_PAGE_SIZE = 10;
+
+/**
+ * The active row of a list that pops up from a text field which keeps the
+ * focus (the WAI-ARIA combobox with aria-activedescendant). The row is kept
+ * by id, so it follows its row when the list is reordered. When that id is
+ * gone, `fallback` decides: "first" makes the first row active, "none"
+ * leaves nothing active so Enter keeps its meaning in the field.
+ */
+export function useActiveOption(
+  ids: readonly string[],
+  fallback: "first" | "none",
+) {
+  const [chosenId, setActiveId] = useState<string | null>(null);
+  const chosen = chosenId === null ? -1 : ids.indexOf(chosenId);
+  const activeIndex =
+    chosen >= 0 ? chosen : fallback === "first" && ids.length > 0 ? 0 : -1;
+  /**
+   * Moves the active row for ArrowUp and ArrowDown (wrapping) and PageUp and
+   * PageDown (stopping at the ends). Home and End move to the ends; callers
+   * whose field is editable leave those keys to the caret.
+   */
+  const move = useCallback(
+    (key: string) => {
+      const next = listIndexForKey(
+        key,
+        activeIndex,
+        ids.map(() => false),
+        {
+          orientation: "vertical",
+          wrap: true,
+          pageSize: ACTIVE_OPTION_PAGE_SIZE,
+        },
+      );
+      if (next !== null) setActiveId(ids[next]);
+    },
+    [activeIndex, ids],
+  );
+  return {
+    activeId: activeIndex >= 0 ? ids[activeIndex] : null,
+    activeIndex,
+    /** The id last chosen, even while it is not in the list. */
+    chosenId,
+    move,
+    setActiveId,
+  };
 }

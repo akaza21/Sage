@@ -51,7 +51,7 @@ export function TurnFileActivity({
     changes.find((change) => editDiffAction(change).resource);
   const visible = expanded ? changes : changes.slice(0, 3);
   const unavailable = !open
-    ? "Changes cannot be opened from this Chat session."
+    ? "Changes cannot be opened from this chat session."
     : "No file baseline is available.";
   function view(change: (typeof changes)[number]) {
     const { resource } = editDiffAction(change);

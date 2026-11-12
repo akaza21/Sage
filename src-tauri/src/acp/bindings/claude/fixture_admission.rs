@@ -90,7 +90,8 @@ impl AdmittedClaudeBinding {
         }
         root.revalidate()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        let (binding_id, artifact, fixed_args) = selection.launch_metadata(self.binding_digest)?;
+        let (binding_id, artifact, fixed_args) =
+            selection.launch_metadata(self.binding_digest, Vec::new())?;
         let environment = BoundedEnvironment::new(self.launch_environment.clone())
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         selection

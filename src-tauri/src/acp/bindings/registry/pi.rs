@@ -77,7 +77,7 @@ pub(super) fn capabilities(
         multi_root_extension_schema_id: None,
         model_count: 2,
         prompt_resources: true,
-        prompt_images: false,
+        prompt_images: true,
         config_count: 2,
     })
 }

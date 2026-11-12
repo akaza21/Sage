@@ -163,6 +163,15 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     alt: "required",
   },
   {
+    id: "closeEditor",
+    label: "Close editor",
+    scope: "Editor",
+    key: "w",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "forbidden",
+  },
+  {
     id: "find",
     label: "Find in file",
     scope: "Editor",

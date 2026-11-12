@@ -14,6 +14,9 @@ use crate::acp::bindings::claude::sdk::tools::tool_fields;
 const ALLOW_ONCE: &str = "allow_once";
 const ANSWER: &str = "answer";
 const ALLOW_ALWAYS: &str = "allow_always";
+/// Allow-always on a file edit: Claude Code switches to accepting edits,
+/// which Sage's mode guard admits for the rest of the turn.
+const ALLOW_EDITS: &str = "allow-always-accept-edits";
 const REJECT: &str = "reject";
 /// Leaving plan mode, as the plan-exit options Sage's mode guard admits:
 /// back to asking before edits, or into accepting them.
@@ -73,8 +76,13 @@ impl SdkBridge {
         };
         let suggestions = request
             .get("permission_suggestions")
-            .filter(|value| value.as_array().is_some_and(|rules| !rules.is_empty()))
-            .cloned();
+            .and_then(Value::as_array)
+            .map(|rules| admitted_suggestions(rules))
+            .filter(|rules| !rules.is_empty());
+        let accepts_edits = suggestions
+            .as_ref()
+            .is_some_and(|rules| rules.iter().any(|rule| rule["type"] == "setMode"));
+        let suggestions = suggestions.map(Value::Array);
         let mut tool_call = tool_fields(name, &input);
         let tool_call_id = request
             .get("tool_use_id")
@@ -111,7 +119,11 @@ impl SdkBridge {
             texts
         });
         if suggestions.is_some() && questions.is_none() && name != "ExitPlanMode" {
-            options.push(json!({"optionId": ALLOW_ALWAYS, "name": "Yes, and don't ask again", "kind": "allow_always"}));
+            options.push(if accepts_edits {
+                json!({"optionId": ALLOW_EDITS, "name": "Yes, and accept edits for this turn", "kind": "allow_always"})
+            } else {
+                json!({"optionId": ALLOW_ALWAYS, "name": "Yes, and don't ask again", "kind": "allow_always"})
+            });
         }
         options.push(json!({"optionId": REJECT, "name": "No", "kind": "reject_once"}));
         self.next_permission += 1;
@@ -184,7 +196,7 @@ impl SdkBridge {
         }
         let response = match selected {
             Some(ALLOW_ONCE) => json!({"behavior": "allow", "updatedInput": permission.input}),
-            Some(ALLOW_ALWAYS) => json!({
+            Some(ALLOW_ALWAYS | ALLOW_EDITS) => json!({
                 "behavior": "allow",
                 "updatedInput": permission.input,
                 "updatedPermissions": permission.suggestions.unwrap_or_else(|| json!([])),
@@ -208,6 +220,16 @@ impl SdkBridge {
         self.answering.insert(permission.request_id.clone());
         Ok(decision(&permission.request_id, response))
     }
+}
+
+/// Claude Code's suggested rules without any mode switch other than into
+/// accepting edits, the only one a permission answer may widen a turn to.
+fn admitted_suggestions(rules: &[Value]) -> Vec<Value> {
+    rules
+        .iter()
+        .filter(|rule| rule["type"] != "setMode" || rule["mode"] == "acceptEdits")
+        .cloned()
+        .collect()
 }
 
 fn deny(message: &str) -> Value {

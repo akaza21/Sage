@@ -55,12 +55,26 @@ enum Token {
     },
 }
 
+/// An oversized frame, once scanned to its end.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Scanned {
+    /// A response to the request with this id.
+    Reply(u64),
+    /// One complete value with no top-level id; nothing waits on it.
+    Idless,
+    /// Malformed, or a request that a peer waits on.
+    Invalid,
+}
+
 pub(super) struct OversizeIdScanner {
     stack: Vec<Container>,
     expect: Expect,
     token: Token,
     key_is_id: bool,
     id: Option<u64>,
+    /// A top-level `method` key: the frame is a request or notification,
+    /// so its id never answers one of Sage's requests.
+    has_method: bool,
     bytes_seen: usize,
     utf8: Utf8Validator,
 }
@@ -73,6 +87,7 @@ impl OversizeIdScanner {
             token: Token::None,
             key_is_id: false,
             id: None,
+            has_method: false,
             bytes_seen: 0,
             utf8: Utf8Validator::new(),
         }
@@ -95,7 +110,7 @@ impl OversizeIdScanner {
                         self.utf8.feed(byte)?;
                         self.token = Token::String {
                             key,
-                            match_index: 3,
+                            match_index: NO_KEY,
                             escaped,
                             unicode_digits,
                             unicode_value,
@@ -132,7 +147,7 @@ impl OversizeIdScanner {
                         let next = match byte {
                             b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => {
                                 if key {
-                                    match_key(match_index, u16::from(byte))
+                                    match_key(match_index, unescaped(byte))
                                 } else {
                                     match_index
                                 }
@@ -161,7 +176,9 @@ impl OversizeIdScanner {
                             b'"' => {
                                 self.token = Token::None;
                                 if key {
-                                    self.key_is_id = self.stack.len() == 1 && match_index == 2;
+                                    let top = self.stack.len() == 1;
+                                    self.key_is_id = top && match_index == ID_KEY;
+                                    self.has_method |= top && match_index == METHOD_KEY;
                                     self.expect = Expect::Colon;
                                 } else {
                                     self.finish_value();
@@ -276,15 +293,21 @@ impl OversizeIdScanner {
         Ok(())
     }
 
-    pub(super) fn finish(&self) -> Result<u64, ()> {
+    /// What the whole frame was. A frame naming a `method` is a request or
+    /// a notification, never a reply, whatever its id.
+    pub(super) fn finish(&self) -> Scanned {
         if !self.is_complete() {
-            return Err(());
+            return Scanned::Invalid;
         }
-        self.id.ok_or(())
+        match (self.id, self.has_method) {
+            (Some(id), false) => Scanned::Reply(id),
+            (None, _) => Scanned::Idless,
+            (Some(_), true) => Scanned::Invalid,
+        }
     }
 
     /// The frame was one complete JSON value, whether or not it had an id.
-    pub(super) fn is_complete(&self) -> bool {
+    fn is_complete(&self) -> bool {
         matches!(self.token, Token::None)
             && matches!(self.expect, Expect::Done)
             && self.stack.is_empty()
@@ -292,10 +315,34 @@ impl OversizeIdScanner {
     }
 }
 
+/// The character a one-letter escape such as `\t` stands for.
+fn unescaped(letter: u8) -> u16 {
+    u16::from(match letter {
+        b'b' => 0x08,
+        b'f' => 0x0c,
+        b'n' => b'\n',
+        b'r' => b'\r',
+        b't' => b'\t',
+        other => other,
+    })
+}
+
+/// Key-matching states: a key so far reads `i`, `id`, a prefix of
+/// `method`, or none of them (`NO_KEY`, which never leaves).
+const ID_KEY: u8 = 2;
+const NO_KEY: u8 = 3;
+const METHOD_KEY: u8 = 9;
+
 fn match_key(index: u8, value: u16) -> u8 {
     match (index, value) {
-        (0, 105) => 1,
-        (1, 100) => 2,
-        _ => 3,
+        (0, 0x69) => 1,
+        (1, 0x64) => ID_KEY,
+        (0, 0x6d) => 4,
+        (4, 0x65) => 5,
+        (5, 0x74) => 6,
+        (6, 0x68) => 7,
+        (7, 0x6f) => 8,
+        (8, 0x64) => METHOD_KEY,
+        _ => NO_KEY,
     }
 }

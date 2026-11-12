@@ -45,7 +45,7 @@ where
     } else {
         failure.state
     };
-    FirstTurnWorkerState::Active(active)
+    FirstTurnWorkerState::Active(Box::new(active))
 }
 
 #[allow(clippy::type_complexity)]
@@ -85,7 +85,7 @@ where
         } else {
             failure.state
         };
-        FirstTurnWorkerState::Active(active)
+        FirstTurnWorkerState::Active(Box::new(active))
     }
 }
 
@@ -129,7 +129,7 @@ where
         } else {
             failure.state
         };
-        FirstTurnWorkerState::Active(active)
+        FirstTurnWorkerState::Active(Box::new(active))
     }
 }
 

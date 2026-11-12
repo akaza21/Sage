@@ -31,11 +31,18 @@ agent-client-protocol-schema = { version = "=1.4.0", optional = true, default-fe
 rusqlite = { version = "=0.41.0", features = ["backup", "bundled", "hooks", "modern_sqlite"] }
 regex = "=1.13.1"
 serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = "=1.0.151"
+# `preserve_order` keeps object keys in the order a harness sent them, which
+# Sage shows (an MCP form's questions, for one). The all-features test build
+# already turned it on through `acp-schema`, so declaring it here makes the
+# shipped build match the tested one. indexmap is already in the build.
+serde_json = { version = "=1.0.151", features = ["preserve_order"] }
 sha2 = "=0.10.9"
 tauri = { version = "=2.11.5", features = ["unstable"] }
 tauri-plugin-dialog = "=2.7.2"
 thiserror = "=2.0.19"
+# Reads the RFC 3339 reset times in Claude Code's usage report. Already in
+# the lock through Tauri's cookie support; `parsing` adds only its parser.
+time = { version = "=0.3.54", default-features = false, features = ["parsing"] }
 toml = "=0.8.2"
 tokio = { version = "=1.53.3", features = ["io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
 tracing = "=0.1.44"

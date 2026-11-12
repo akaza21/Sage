@@ -2,14 +2,14 @@
   "schemaVersion": 1,
   "bundle": {
     "webEntryJsGzipBytes": 130000,
-    "webInitialStaticClosureGzipBytes": 97598,
+    "webInitialStaticClosureGzipBytes": 97452,
     "webPathJsGzipBytes": {
-      "initial": 97598,
-      "agentOneChat": 208434,
-      "editorShell": 188119,
-      "editorDiff": 191294,
-      "editorSearch": 193942,
-      "editorFile": 290998
+      "initial": 97452,
+      "agentOneChat": 207088,
+      "editorShell": 187377,
+      "editorDiff": 190521,
+      "editorSearch": 193112,
+      "editorFile": 289989
     },
     "webTotalJsGzipBytes": 460850,
     "webTerminalLazyJsGzipBytes": 89516,
@@ -17,9 +17,15 @@
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
-        "maxGzipBytes": 1083,
+        "maxGzipBytes": 1300,
         "maxCssGzipBytes": 490,
-        "reason": "Dismissible build/account notice, memoized during typing. Compact wrapping CSS measures 467 B. JS and CSS load only when attention is needed and stay off the ready first-Chat path."
+        "reason": "Build, update and account notice (newer, too-old, update command); memoized while typing, off the ready first-Chat path. Measured 1284 B JS, 467 B CSS."
+      },
+      {
+        "entry": "src/ui/tooltips.ts",
+        "maxGzipBytes": 1040,
+        "maxCssGzipBytes": 420,
+        "reason": "Shared tooltip for icon buttons: one node and delegated listeners, installed once the window is idle, off the first-Chat path. Measured 982 B JS, 381 B CSS."
       },
       {
         "entry": "src/features/chat/ClaudeAuthActions.tsx",
@@ -30,12 +36,18 @@
         "entry": "src/features/chat/ComposerSlashController.tsx",
         "maxGzipBytes": 1800,
         "maxCssGzipBytes": 340,
-        "reason": "Composer `/` controller: key guard, picked-command hint and the menu's lazy mount. Loads on the field's first focus, keeping the first-Chat path to a stub. Measured 1680 B JS, 289 B CSS."
+        "reason": "Composer `/` controller: key guard, picked-command hint and the lazy menu and panel mounts. Loads on the field's first focus, keeping the first-Chat path to a stub. Measured 1783 B JS, 288 B CSS."
       },
       {
         "entry": "src/features/chat/ComposerSlashMenu.tsx",
-        "maxGzipBytes": 1888,
-        "reason": "Composer `/` command menu: the command list in sections by source and the command port; the shared listbox has its own entry. Loads with the first `/` typed. Measured 1764 B JS."
+        "maxGzipBytes": 1925,
+        "reason": "Composer `/` command menu: commands by source, the command port, and panel commands such as `/mcp` on Enter. Loads with the first `/` typed. Measured 1923-1925 B JS as shared-chunk aliases move."
+      },
+      {
+        "entry": "src/features/chat/ComposerCommandPanel.tsx",
+        "maxGzipBytes": 2730,
+        "maxCssGzipBytes": 520,
+        "reason": "`/status` and `/mcp` panels, the MCP port, its bounded decoder and per-harness server actions. Load when a panel opens, off the first-Chat path. Measured 2697 B JS, 487 B CSS."
       },
       {
         "entry": "src/workbench/AgentTaskResources.tsx",
@@ -239,8 +251,8 @@
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",
-        "maxGzipBytes": 3785,
-        "reason": "Chat search dialog, folder fan-out and native search adapter; loads on the first Search chats request (rail, title bar or Ctrl+K)."
+        "maxGzipBytes": 3990,
+        "reason": "Chat search dialog as a combobox with its results list, folder fan-out and native search adapter; loads on the first Search chats request (rail, title bar or Ctrl+K). Measured 3929 B JS."
       },
       {
         "entry": "src/features/chat/ForkChat.tsx",
@@ -275,14 +287,19 @@
         "reason": "Transcript of a chat without a native session, such as the development simulator's; native chats never load it. Measured 451 B, plus 7%."
       },
       {
+        "entry": "src/app/fileRenameActions.ts",
+        "maxGzipBytes": 1691,
+        "reason": "File and folder rename with its projection and intent checks; loads with the first rename. Measured 1580 B, plus 7%."
+      },
+      {
         "entry": "src/features/chat/ComposerQueuedPrompts.tsx",
         "maxGzipBytes": 1405,
         "reason": "Queued-message rows above the composer (status, Steer, delete and More options); loads with the first queued message."
       },
       {
         "entry": "src/workbench/AgentRailOptionsPopover.tsx",
-        "maxGzipBytes": 990,
-        "reason": "The open sidebar options menu (Organize sidebar, Sort chats by); loads on the first open."
+        "maxGzipBytes": 1500,
+        "reason": "The open sidebar options menu (Organize sidebar, Sort chats by) with the shared submenu and its pointer grace area; loads on the first open. Measured 1443 B (993 B before the grace area)."
       },
       {
         "entry": "src/workbench/AgentProjectMenu.tsx",
@@ -480,9 +497,9 @@
       },
       {
         "entry": "src/features/chat/ComposerUsageLimits.tsx",
-        "maxGzipBytes": 1520,
+        "maxGzipBytes": 2020,
         "maxCssGzipBytes": 400,
-        "reason": "Usage-limits popover and its bounded decoder; loads only when the context meter is clicked and unmounts when closed. Measured 1424 B."
+        "reason": "Usage popover, its bounded decoder and session token and cost rows; loads when the context meter is clicked or `/status` opens, and unmounts when closed. Measured 1915 B."
       }
     ],
     "windowsInstallerMb": 45,
@@ -539,16 +556,17 @@
     "webBundlePaths": {
       "baselineDate": "2026-10-12",
       "baselineCommit": "15cf4bf677ca16953063a5f0a9ced385da859bf3",
-      "margin": "floor(measured lane-base gzip bytes * 1.005), a 0.5% allowance per path; the baseline is pinned, not a moving main reference",
-      "metric": "Sum node:zlib.gzipSync defaults per unique JavaScript asset in the union of the named Vite manifest roots' static-import closures. CSS and optional dynamic children are excluded.",
+      "margin": "floor(measured lane-base gzip bytes * 1.005), a 0.5% allowance per path; the baseline is pinned, not a moving main reference. Caps were later rebased to hash-masked bytes with the same headroom (see hashMaskedRebase).",
+      "metric": "Sum node:zlib.gzipSync defaults per unique JavaScript asset, with hashed sibling chunk names masked, in the union of the named Vite manifest roots' static-import closures. CSS and optional dynamic children are excluded.",
       "roots": "initial: index.html; Editor shell: initial + Workbench; Agent + one chat: Editor shell + AgentWorkbenchBody + ChatSurface + AcpChatPresentation; Editor Diff/Search: Editor shell + the respective Surface; Editor File: Editor shell + FileSurface + CodeMirrorEditorRuntime (language parsers remain optional). Folded roots use named chunk ownership pinned by vite.config.test.ts.",
       "initialHeadroom": {
         "baselineCommit": "f5940ff9",
         "beforeGzipBytes": 104326,
         "measuredGzipBytes": 97113,
-        "margin": "floor(97113 * 1.005) = 97598 B: 485 B of margin, following the existing 0.5% path convention. Both initial-closure caps use this ceiling.",
+        "margin": "floor(97113 * 1.005) = 97598 B: 485 B of margin, following the existing 0.5% path convention. Both initial-closure caps use this ceiling, later rebased to hash-masked bytes (see hashMaskedRebase).",
         "reason": "Harness discovery imports only harness validation and shared command guards. Transcript, permission and preview adapters remain behind the existing Chat and Preview lazy surfaces. No new dynamic imports or dependencies."
       },
+      "hashMaskedRebase": "2026-11-12: path and initial-closure caps moved from emitted to hash-masked gzip bytes, so renaming an unrelated lazy chunk cannot move a startup path. Each cap was lowered by its path's masking difference on main (initial 146, agentOneChat 1346, editorShell 742, editorDiff 773, editorSearch 830, editorFile 1009 B), leaving headroom unchanged.",
       "desktopOptimization": "Desktop builds derive React/JSX named exports from the installed runtime and verify the resolved production/development export surface, eliminating repeated CommonJS property-call indirection without a fixed export allowlist. Missing or undefined virtual exports fail the build, and ESLint bans React namespace imports. jsx/jsxs share a binding only when the resolved production runtime exports the identical function. Development/browser builds keep normal resolution. AcpChatPresentation and shared chat helpers coalesce with eager tool presentation, excluding saved-diff/Mermaid renderers; saved diffs remain explicit-click lazy. CodeMirrorEditorRuntime coalesces with the base it always loads before any language facade. No language parser or Lezer LR engine enters the plain File closure."
     },
     "excludeHarnessProcesses": true,

@@ -3,7 +3,7 @@ use crate::acp::{
     transport::OutboundFrame,
 };
 
-use super::super::{DenyStage, PiRuntime, RequestKind};
+use super::super::{DeliveryPhase, DenyStage, PiRuntime, RequestKind};
 use crate::acp::bindings::pi::Operation;
 
 impl PiRuntime {
@@ -29,6 +29,8 @@ impl PiRuntime {
             RequestKind::ThinkingLevels => {
                 self.clear_thinking_request();
             }
+            // Never written, so its caller is answered by the write failure.
+            RequestKind::Native => self.native_pending = None,
             RequestKind::Models
             | RequestKind::RefreshState
             | RequestKind::SetModel
@@ -39,6 +41,66 @@ impl PiRuntime {
             | RequestKind::Cancel => {}
         }
         Ok(())
+    }
+
+    /// Settles a request's reservation once its frame was queued, written
+    /// or refused.
+    pub(in crate::acp::bindings::pi::runtime) fn resolve_request(
+        &mut self,
+        token: &EgressToken,
+        resolution: EgressResolution,
+    ) -> Result<(), AdapterRuntimeError> {
+        let id = token
+            .request_id()
+            .ok_or(AdapterRuntimeError::EgressIntent)?;
+        match resolution {
+            EgressResolution::QueueRejected | EgressResolution::WriteZeroBytes => self.rollback(id),
+            EgressResolution::Queued => {
+                let reservation = self
+                    .reservations
+                    .get_mut(&id)
+                    .ok_or(AdapterRuntimeError::EgressIntent)?;
+                reservation.phase = DeliveryPhase::Queued;
+                Ok(())
+            }
+            EgressResolution::Written => {
+                let reservation = self
+                    .reservations
+                    .get(&id)
+                    .ok_or(AdapterRuntimeError::EgressIntent)?;
+                if reservation.phase != DeliveryPhase::Queued
+                    && !matches!(
+                        reservation.kind,
+                        RequestKind::SetModel
+                            | RequestKind::SetThinkingLevel
+                            | RequestKind::Commands
+                            | RequestKind::Native
+                    )
+                {
+                    return Err(AdapterRuntimeError::EgressIntent);
+                }
+                if reservation.kind == RequestKind::Prompt {
+                    self.translator
+                        .mark_prompt_written(&reservation.command_id)
+                        .map_err(super::map_pi)?;
+                }
+                self.reservations.remove(&id);
+                Ok(())
+            }
+            EgressResolution::DeliveryUnknown => {
+                let reservation = self
+                    .reservations
+                    .remove(&id)
+                    .ok_or(AdapterRuntimeError::EgressIntent)?;
+                // No answer will come for it, so its caller stops waiting.
+                if self.native_pending.as_ref() == Some(&reservation.command_id) {
+                    self.native_pending = None;
+                }
+                self.staged_initialize = None;
+                self.poisoned = true;
+                Ok(())
+            }
+        }
     }
 
     pub(in crate::acp::bindings::pi::runtime) fn snapshot(

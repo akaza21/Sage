@@ -18,6 +18,12 @@ describe("native command list contract", () => {
       ],
     };
     expect(decodeCommandList(value)).toEqual(value);
+    // A command that opens a panel names it.
+    const status = { ...value.commands[0]!, name: "status", panel: "status" };
+    expect(
+      decodeCommandList({ revision: 2, commands: [status] })?.commands[0]
+        ?.panel,
+    ).toBe("status");
   });
   it("rejects duplicate names, malformed entries, unsafe revisions and oversized lists", () => {
     const command = {
@@ -34,6 +40,8 @@ describe("native command list contract", () => {
       { revision: 1, commands: [{ ...command, name: "/plan" }] },
       { revision: 1, commands: [{ ...command, source: "invented" }] },
       { revision: 1, commands: [{ ...command, source: undefined }] },
+      { revision: 1, commands: [{ ...command, panel: "settings" }] },
+      { revision: 1, commands: [{ ...command, panel: null }] },
       { revision: 1, commands: Array(513).fill(command) },
       {
         revision: 1,

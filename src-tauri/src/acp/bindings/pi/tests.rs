@@ -66,6 +66,7 @@ fn accept_prompt(translator: &mut PiTranslator, turn: &str) -> String {
         .begin(Operation::Prompt {
             turn_key: turn.into(),
             message: "Inspect without writing.".into(),
+            images: Vec::new(),
         })
         .unwrap()
         .remove(0);
@@ -458,6 +459,7 @@ fn id_less_events_require_the_exact_prompt_start_terminal_grammar() {
         .begin(Operation::Prompt {
             turn_key: "turn-old".into(),
             message: "read only".into(),
+            images: Vec::new(),
         })
         .unwrap()
         .remove(0);
@@ -537,6 +539,7 @@ fn correlated_failures_are_bounded_and_never_expose_provider_payloads() {
         .begin(Operation::Prompt {
             turn_key: "turn-failed".into(),
             message: "Read only".into(),
+            images: Vec::new(),
         })
         .unwrap()
         .remove(0);
@@ -813,7 +816,8 @@ fn malformed_unknown_foreign_and_unsupported_inputs_are_deterministic() {
     assert!(matches!(
         translator.begin(Operation::Prompt {
             turn_key: "turn".into(),
-            message: "hello".into()
+            message: "hello".into(),
+            images: Vec::new(),
         }),
         Err(AdapterError::LaunchNotAdmitted)
     ));

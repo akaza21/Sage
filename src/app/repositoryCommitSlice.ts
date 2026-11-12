@@ -1,6 +1,7 @@
 import { rejectedGitCommand } from "../domain/gitMutation";
 import type { StateCreator } from "zustand";
 
+import { errorMessage } from "../domain/errors";
 import {
   canAbortGitSequence,
   canCommitRepository,
@@ -15,7 +16,11 @@ import type {
   RootRepositoryStatus,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
-import { idleAtEpoch, matchesProjectIntent } from "./projectIntent";
+import {
+  idleAtEpoch,
+  matchesProjectIntent,
+  repositoryBusy,
+} from "./projectIntent";
 import type { WorkbenchState } from "./store";
 
 export interface RepositoryCommit {
@@ -62,12 +67,7 @@ async function runLockedSequenceCommand(
   if (
     !projectId ||
     !root ||
-    get().projectTransitioning ||
-    get().repositoryRefreshing ||
-    get().repositoryMutation ||
-    get().repositoryCommit ||
-    get().repositoryCheckout ||
-    get().repositoryRemote ||
+    repositoryBusy(get()) ||
     !eligible(root) ||
     !get().project?.roots.some((candidate) => candidate.id === rootId)
   ) {
@@ -137,13 +137,7 @@ export const createRepositoryCommitSlice: StateCreator<
       (projectId, epoch) =>
         desktop.abortGitInProgress({ projectId, rootId }, epoch),
     ),
-  commitRepository: async (rootId, message) => {
-    const generation = get().projectGeneration;
-    const projectId = get().project?.id;
-    const transitionEpoch = get().nativeTransitionEpoch;
-    const root = get().repositories.roots.find(
-      (candidate) => candidate.rootId === rootId,
-    );
+  commitRepository: (rootId, message) => {
     let normalizedMessage: string;
     try {
       normalizedMessage = normalizeGitCommitMessage(message);
@@ -155,66 +149,19 @@ export const createRepositoryCommitSlice: StateCreator<
           message: errorMessage(error),
         },
       });
-      return false;
+      return Promise.resolve(false);
     }
-    if (
-      !projectId ||
-      !root ||
-      get().projectTransitioning ||
-      get().repositoryRefreshing ||
-      get().repositoryMutation ||
-      get().repositoryCommit ||
-      get().repositoryCheckout ||
-      get().repositoryRemote ||
-      !canCommitRepository(root) ||
-      !get().project?.roots.some((candidate) => candidate.id === rootId)
-    ) {
-      return false;
-    }
-    const commit: RepositoryCommit = { rootId };
-    set({ repositoryCommit: commit, repositoryCommitError: null });
-    try {
-      const result = await desktop.commitGitRepository(
-        { projectId, rootId, message: normalizedMessage },
-        transitionEpoch,
-      );
-      if (
-        get().repositoryCommit !== commit ||
-        !idleAtEpoch(get(), transitionEpoch) ||
-        result.projectId !== projectId ||
-        result.rootId !== rootId ||
-        result.transitionEpoch !== transitionEpoch ||
-        !matchesProjectIntent(get(), generation, projectId) ||
-        !get().project?.roots.some((candidate) => candidate.id === rootId)
-      ) {
-        if (get().repositoryCommit === commit) {
-          set({ repositoryCommit: null });
-        }
-        return false;
-      }
-      set({
-        repositories: result.repositories,
-        repositoryCommit: null,
-        repositoryCommitError: result.error
-          ? { rootId, ...result.error }
-          : null,
-      });
-      return result.error === null;
-    } catch (error) {
-      if (
-        get().repositoryCommit === commit &&
-        idleAtEpoch(get(), transitionEpoch) &&
-        matchesProjectIntent(get(), generation, projectId)
-      ) {
-        set({
-          repositoryCommit: null,
-          repositoryCommitError: { rootId, ...rejectedGitCommand(error) },
-        });
-      } else if (get().repositoryCommit === commit) {
-        set({ repositoryCommit: null });
-      }
-      return false;
-    }
+    return runLockedSequenceCommand(
+      get,
+      set,
+      rootId,
+      canCommitRepository,
+      (projectId, epoch) =>
+        desktop.commitGitRepository(
+          { projectId, rootId, message: normalizedMessage },
+          epoch,
+        ),
+    );
   },
   continueCherryPick: (rootId) =>
     runLockedSequenceCommand(
@@ -244,4 +191,3 @@ export const createRepositoryCommitSlice: StateCreator<
         desktop.continueGitRevert({ projectId, rootId }, epoch),
     ),
 });
-import { errorMessage } from "../domain/errors";

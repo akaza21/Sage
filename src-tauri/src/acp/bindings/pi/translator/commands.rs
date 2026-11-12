@@ -75,7 +75,8 @@ impl PiTranslator {
             | PendingKind::Steer
             | PendingKind::ClearQueue
             | PendingKind::Messages
-            | PendingKind::Entries => {}
+            | PendingKind::Entries
+            | PendingKind::Native(_) => {}
         }
         Ok(())
     }
@@ -84,10 +85,14 @@ impl PiTranslator {
         &mut self,
         turn_key: String,
         message: String,
+        images: Vec<Value>,
     ) -> Result<Vec<Outbound>, AdapterError> {
         validate_message(&message)?;
         let mut fields = Map::new();
         fields.insert("message".into(), Value::String(message));
+        if !images.is_empty() {
+            fields.insert("images".into(), Value::Array(images));
+        }
         self.begin_turn(turn_key, PendingKind::Prompt, fields)
     }
 
@@ -197,12 +202,18 @@ impl PiTranslator {
         let id = format!("pi-{}-{}", self.epoch, self.next_command);
         fields.insert("type".into(), Value::String(kind.command().into()));
         fields.insert("id".into(), Value::String(id.clone()));
+        // A prompt with images is sent as a prompt frame.
+        let frame_bytes = if fields.contains_key("images") {
+            crate::acp::limits::PROMPT_FRAME_BYTES
+        } else {
+            super::super::decode::FRAME_BYTES
+        };
         let line =
             serde_json::to_string(&Value::Object(fields)).map_err(|_| AdapterError::Malformed)?;
         if line
             .len()
             .checked_add(1)
-            .is_none_or(|wire_bytes| wire_bytes > super::super::decode::FRAME_BYTES)
+            .is_none_or(|wire_bytes| wire_bytes > frame_bytes)
         {
             return Err(AdapterError::Limit("outbound frame bytes"));
         }

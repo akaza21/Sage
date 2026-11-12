@@ -67,7 +67,7 @@ fn a_turn_streams_text_runs_an_approved_tool_and_completes_with_usage() {
     assert_eq!(
         updates(&chunk),
         [
-            &json!({"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Writing"}})
+            &json!({"sessionUpdate":"agent_message_chunk","itemId":"msg_1:0","content":{"type":"text","text":"Writing"}})
         ]
     );
 
@@ -102,7 +102,12 @@ fn a_turn_streams_text_runs_an_approved_tool_and_completes_with_usage() {
         .collect();
     assert_eq!(kinds, ["allow_once", "allow_always", "reject_once"]);
 
-    let reply = bridge.outbound(&json!({"jsonrpc":"2.0","id":request["id"],"result":{"outcome":{"outcome":"selected","optionId":"allow_always"}}})).unwrap();
+    // Allow-always on an edit names the mode the guard lets the turn enter.
+    assert_eq!(
+        request["params"]["options"][1]["optionId"],
+        "allow-always-accept-edits"
+    );
+    let reply = bridge.outbound(&json!({"jsonrpc":"2.0","id":request["id"],"result":{"outcome":{"outcome":"selected","optionId":"allow-always-accept-edits"}}})).unwrap();
     assert_eq!(reply["response"]["request_id"], "cli-7");
     assert_eq!(reply["response"]["response"]["behavior"], "allow");
     assert_eq!(
@@ -642,6 +647,142 @@ fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
     );
 }
 
+#[test]
+fn mcp_servers_are_listed_and_reconnected_one_control_at_a_time() {
+    use crate::acp::{
+        contract::RequiredText, goal::NativeRpcReply, mcp::inventory::McpConnection,
+        session_control::SessionControl,
+    };
+    let mut bridge = initialized();
+    let list = bridge
+        .session_control(&SessionControl::ReadMcpServers)
+        .unwrap();
+    assert_eq!(list["request"], json!({"subtype": "mcp_status"}));
+    assert!(bridge.controlling());
+    let name = RequiredText::<128>::new("serverName", "linear").unwrap();
+    let reconnect = SessionControl::ReconnectMcpServer { name };
+    assert_eq!(
+        bridge.session_control(&reconnect),
+        Err(BridgeError::Capacity)
+    );
+    let listed = bridge
+        .inbound(success(
+            &list,
+            json!({"mcpServers": [{"name": "linear", "status": "failed", "error": "timed out",
+                "config": {"type": "http", "url": "https://mcp.linear.app/mcp", "headers": {"x": "y"}}}]}),
+        ))
+        .unwrap();
+    assert!(listed.acp.is_empty());
+    let Some(NativeRpcReply::McpServers(inventory)) = listed.native else {
+        panic!("a server list")
+    };
+    assert_eq!(inventory.servers[0].connection, McpConnection::Failed);
+    assert!(!bridge.controlling());
+    let again = bridge.session_control(&reconnect).unwrap();
+    assert_eq!(
+        again["request"],
+        json!({"subtype": "mcp_reconnect", "serverName": "linear"})
+    );
+    let refused = bridge
+        .inbound(
+            json!({"type":"control_response","response":{"subtype":"error",
+            "request_id":again["request_id"],"error":"Server not found: linear"}}),
+        )
+        .unwrap();
+    assert!(
+        matches!(&refused.native, Some(NativeRpcReply::ControlRefused(Some(text))) if text.as_str() == "Server not found: linear")
+    );
+    let again = bridge.session_control(&reconnect).unwrap();
+    let done = bridge.inbound(success(&again, json!({}))).unwrap();
+    assert_eq!(done.native, Some(NativeRpcReply::Controlled(None)));
+    // A reply that is not a list is refused rather than shown as empty.
+    let list = bridge
+        .session_control(&SessionControl::ReadMcpServers)
+        .unwrap();
+    let odd = bridge
+        .inbound(success(&list, json!({"servers": []})))
+        .unwrap();
+    assert_eq!(odd.native, Some(NativeRpcReply::Rejected));
+    // Reloading and signing in happen in Claude Code's own `/mcp`.
+    for control in [
+        SessionControl::ReloadMcpServers,
+        SessionControl::SignInMcpServer {
+            name: RequiredText::new("serverName", "linear").unwrap(),
+        },
+    ] {
+        assert_eq!(
+            bridge.session_control(&control),
+            Err(BridgeError::Unsupported)
+        );
+    }
+}
+
+#[test]
+fn an_abandoned_mcp_list_frees_the_session_and_its_late_reply_is_dropped() {
+    use crate::acp::session_control::SessionControl;
+    let mut bridge = initialized();
+    let mut abandoned = Vec::new();
+    for _ in 0..4 {
+        let list = bridge
+            .session_control(&SessionControl::ReadMcpServers)
+            .unwrap();
+        bridge.abandon_passive_requests();
+        assert!(!bridge.controlling(), "an abandoned list holds nothing");
+        abandoned.push(list);
+    }
+    // Four lists Claude Code never answered hold back further lists only.
+    assert_eq!(
+        bridge.session_control(&SessionControl::ReadMcpServers),
+        Err(BridgeError::Capacity)
+    );
+    let late = bridge
+        .inbound(success(&abandoned[0], json!({"mcpServers": []})))
+        .unwrap();
+    assert_eq!(late, Inbound::default());
+    let late = bridge
+        .inbound(
+            json!({"type":"control_response","response":{"subtype":"error",
+            "request_id":abandoned[1]["request_id"],"error":"too large"}}),
+        )
+        .unwrap();
+    assert_eq!(late, Inbound::default());
+    assert!(
+        bridge
+            .session_control(&SessionControl::ReadMcpServers)
+            .is_ok()
+    );
+}
+
+#[test]
+fn an_abandoned_reconnect_frees_the_session_and_counts_toward_the_bound() {
+    use crate::acp::{contract::RequiredText, session_control::SessionControl};
+    let mut bridge = initialized();
+    let reconnect = SessionControl::ReconnectMcpServer {
+        name: RequiredText::new("serverName", "linear").unwrap(),
+    };
+    let mut abandoned = Vec::new();
+    for _ in 0..4 {
+        abandoned.push(bridge.session_control(&reconnect).unwrap());
+        bridge.abandon_passive_requests();
+        assert!(
+            !bridge.controlling(),
+            "an abandoned reconnect holds nothing"
+        );
+    }
+    // Neither MCP request is sent past the bound; other controls still are.
+    assert_eq!(
+        bridge.session_control(&reconnect),
+        Err(BridgeError::Capacity)
+    );
+    assert_eq!(
+        bridge.session_control(&SessionControl::ReadMcpServers),
+        Err(BridgeError::Capacity)
+    );
+    let late = bridge.inbound(success(&abandoned[0], json!({}))).unwrap();
+    assert_eq!(late, Inbound::default());
+    assert!(bridge.session_control(&reconnect).is_ok());
+}
+
 /// The blocks `Mentions::blocks` sends for an `@` mention: the file's text
 /// when embedded context is offered, otherwise a sized link.
 #[test]
@@ -953,4 +1094,45 @@ fn a_fork_answers_once_claude_code_replies_and_never_mid_turn() {
     prompt(&mut bridge, 3);
     assert!(bridge.fork(None).is_err());
     let _ = std::fs::remove_dir_all(config);
+}
+
+#[test]
+fn answer_text_on_either_side_of_a_tool_call_stays_two_items() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let text = |bridge: &mut SdkBridge, message: &str, text: &str| {
+        bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"message_start","message":{"id":message}}})).unwrap();
+        let chunk = bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":text}}})).unwrap();
+        updates(&chunk)[0]["itemId"].clone()
+    };
+    let before = text(&mut bridge, "msg_a", "File exists.");
+    let after = text(&mut bridge, "msg_b", "I added a line.");
+    assert_eq!(before, "msg_a:0");
+    assert_eq!(after, "msg_b:0");
+
+    // Within one message, every delta of a block shares its item and a
+    // later block starts its own.
+    let delta = |bridge: &mut SdkBridge, index: u64, text: &str| {
+        let chunk = bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":index,"delta":{"type":"text_delta","text":text}}})).unwrap();
+        updates(&chunk)[0]["itemId"].clone()
+    };
+    assert_eq!(delta(&mut bridge, 0, " More."), "msg_b:0");
+    assert_eq!(delta(&mut bridge, 2, "Second block."), "msg_b:2");
+    assert_eq!(delta(&mut bridge, 2, " Continued."), "msg_b:2");
+
+    // Text Claude Code wrote itself, never streamed, is keyed by its
+    // message and block the same way.
+    let unstreamed = bridge
+        .inbound(
+            json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"msg_c","content":[
+                {"type":"text","text":"Signed out."},
+            ]}}),
+        )
+        .unwrap();
+    assert_eq!(
+        updates(&unstreamed),
+        [
+            &json!({"sessionUpdate":"agent_message_chunk","itemId":"msg_c:0","content":{"type":"text","text":"Signed out."}})
+        ]
+    );
 }

@@ -108,7 +108,7 @@ function DiffDocument({
   const diff = unavailable
     ? {
         phase: "error" as const,
-        message: "This saved edit is unavailable for the current Chat session.",
+        message: "This saved edit is unavailable for the current chat session.",
       }
     : cached;
   const loadDiff = useWorkbenchStore((state) => state.loadDiff);

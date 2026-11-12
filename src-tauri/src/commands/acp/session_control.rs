@@ -123,7 +123,7 @@ pub(crate) async fn control_acp_session(
     })
 }
 
-fn control_error(error: SessionControlError) -> AcpIpcError {
+pub(super) fn control_error(error: SessionControlError) -> AcpIpcError {
     match error {
         // The harness's own reason, already redacted and bounded.
         SessionControlError::Refused(reason) => AcpIpcError::Rejected {
@@ -134,6 +134,10 @@ fn control_error(error: SessionControlError) -> AcpIpcError {
         SessionControlError::Unavailable => AcpIpcError::Unavailable {
             reason: AcpUnavailableReason::CapabilityUnavailable,
             message: safe_message("This session cannot do that right now."),
+        },
+        SessionControlError::Late => AcpIpcError::Unavailable {
+            reason: AcpUnavailableReason::CapabilityUnavailable,
+            message: safe_message("The agent did not answer in time; it may still finish."),
         },
         SessionControlError::RecoveryRequired => AcpIpcError::RecoveryRequired {
             message: safe_message(

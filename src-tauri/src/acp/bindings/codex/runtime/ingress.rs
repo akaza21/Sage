@@ -170,6 +170,30 @@ fn ingest_disposition(
 impl CodexRuntime {
     /// `thread/fork`; a full fork ledger is a capacity refusal (BatchCount)
     /// the service turns into a reason the user can act on.
+    /// Undo removes the latest Turn from Codex's history; files stay.
+    pub(super) fn control_request(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        use crate::acp::session_control::SessionControl;
+        self.native_rpc_reply = None;
+        match control {
+            SessionControl::UndoTurn { turn_id } => {
+                self.request(|adapter, id| adapter.revert(id, turn_id.as_str()))
+            }
+            SessionControl::ReadMcpServers
+            | SessionControl::ReloadMcpServers
+            | SessionControl::SignInMcpServer { .. } => {
+                self.request(|adapter, id| adapter.mcp_request(id, control))
+            }
+            SessionControl::StopActivity { .. }
+            | SessionControl::SetTitle { .. }
+            | SessionControl::ReconnectMcpServer { .. } => {
+                Err(AdapterRuntimeError::UnsupportedCommand)
+            }
+        }
+    }
+
     pub(super) fn fork_request(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.native_rpc_reply = None;
         if self.inner.fork_ledger_full() {

@@ -6,11 +6,21 @@ pub(crate) fn hydrate_model_config<A: HarnessAdapter>(
     adapter: &mut A,
     transport: &mut impl EgressTransport,
 ) {
-    if let Ok(Some(egress)) = adapter.discover_commands() {
-        let resolution = EgressResolution::from(transport.write(egress.frame()));
-        let _ = adapter.resolve_egress(egress.into_token(), resolution);
-    }
+    write_discovered_commands(adapter, transport);
     let Ok(Some(egress)) = adapter.model_config_hydration() else {
+        return;
+    };
+    let resolution = EgressResolution::from(transport.write(egress.frame()));
+    let _ = adapter.resolve_egress(egress.into_token(), resolution);
+}
+
+/// Writes the harness's command-list read when its list is missing or
+/// stale. Idle background work, like the model catalog.
+pub(crate) fn write_discovered_commands<A: HarnessAdapter>(
+    adapter: &mut A,
+    transport: &mut impl EgressTransport,
+) {
+    let Ok(Some(egress)) = adapter.discover_commands() else {
         return;
     };
     let resolution = EgressResolution::from(transport.write(egress.frame()));

@@ -32,7 +32,7 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
     await expect(changes.getByText("No changes in this scope.")).toBeVisible();
     await scope.selectOption("unstaged");
     await expect(
-      changes.getByText("Project Git changes · not attributed to this Chat"),
+      changes.getByText("Project Git changes · not attributed to this chat"),
     ).toBeVisible();
     await expect(
       changes.getByText("src/workbench/AgentChatPanes.tsx", { exact: true }),

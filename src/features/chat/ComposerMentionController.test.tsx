@@ -94,6 +94,7 @@ describe("composer @ file picker", () => {
           projectId: "project-a",
           expectedTransitionEpoch: 4,
           query: "ma",
+          browse: true,
           limit: 20,
         }),
       }),

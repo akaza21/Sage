@@ -143,6 +143,7 @@ fn native_claude_revalidates_the_link_and_artifact_when_the_cli_updates() {
     fs::write(updated, b"changed artifact").unwrap();
     assert!(new.revalidate().is_err());
     fs::remove_file(profile.launcher()).unwrap();
-    symlink(profile.version("3.0.0"), profile.launcher()).unwrap();
+    // A downgrade below the supported minimum is refused.
+    symlink(profile.version("2.1.299"), profile.launcher()).unwrap();
     assert!(registration.refresh().is_err());
 }
