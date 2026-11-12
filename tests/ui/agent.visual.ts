@@ -871,7 +871,10 @@ test.describe("V6 Composer context meter", () => {
   test("renders runtime usage truthfully across unknown, known, and over-capacity states", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 720, height: 560 });
+    // The meter is the first control a narrow toolbar drops, and a 720px
+    // window's Chat lane no longer fits it beside the attach button: give
+    // the composer room for its whole row.
+    await page.setViewportSize({ width: 1280, height: 560 });
 
     const unknownWorkbench = await openScenario(
       page,
