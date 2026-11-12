@@ -966,8 +966,16 @@ mod tests {
                 .iter()
                 .all(|entry| !entry.id.starts_with("unavailable-binding:"))
         );
-        // Discovery that finds no CLI hands the harness to the ACP adapter.
+        // Discovery that finds no CLI hands the harness to the ACP adapter;
+        // until the ACP side settles too, a restore still keeps the harness.
         registry.claude_sdk_admission().apply_discovery(None);
+        assert_eq!(
+            catalog.harness_id_for_binding(sdk).as_deref(),
+            Some("claude-code")
+        );
+        registry.claude_admission().apply_discovery(
+            crate::harness_discovery::ClaudeLaunchDiscovery::AdapterVersionUnreadable,
+        );
         assert_eq!(catalog.harness_id_for_binding(sdk), None);
     }
 

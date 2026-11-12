@@ -244,12 +244,14 @@ impl BindingRegistry {
         admission
     }
 
-    /// The harness a Claude binding serves while discovery has not yet
-    /// said which of the two Claude Code runs on, so a Chat restored at
+    /// The harness a Claude binding serves until discovery has settled
+    /// which of the two Claude Code runs on, so a Chat restored at
     /// startup on either keeps its harness.
     pub(crate) fn pending_claude_harness(&self, binding_id: &str) -> Option<&'static str> {
+        // Either still pending counts: discovery settles the two one after
+        // the other, and a restore between them must not miss.
         let pending = self.claude_sdk_admission().discovery_pending()
-            && matches!(
+            || matches!(
                 self.claude_admission().unavailable(),
                 Some(ClaudeAdmissionUnavailable::DiscoveryPending)
             );
