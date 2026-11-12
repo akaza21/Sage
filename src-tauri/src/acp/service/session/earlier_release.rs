@@ -1,9 +1,9 @@
-//! Continues a Chat whose parked Codex session was started by an earlier
-//! release: the pinned binding resumes its native thread in a new session
-//! linked to it.
+//! Continues a Chat whose parked session was started by an earlier release
+//! of its harness: the updated binding resumes the native session in a new
+//! session linked to it.
 
 use crate::acp::{
-    bindings::codex::{CODEX_BINDING_ID, CODEX_PINNED_VERSION},
+    bindings::{claude::sdk::CLAUDE_SDK_BINDING_ID, release_version::ReleaseVersion},
     contract::SafeText,
     store::ActivateSessionCommand,
 };
@@ -12,11 +12,11 @@ use super::{super::AcpService, CodexSessionError, DurableSession, load_durable_s
 
 impl AcpService {
     /// Continues a Chat whose parked head session was started by an earlier
-    /// Codex release: a new head session on the pinned binding links to it,
-    /// and the activation is redirected to that session's first epoch, also
-    /// when a retry names the earlier session after a refused activation.
-    /// Any other activation passes through unchanged.
-    pub(in crate::acp::service) fn resume_earlier_codex_session(
+    /// release of its harness: a new head session on the updated binding
+    /// links to it, and the activation is redirected to that session's first
+    /// epoch, also when a retry names the earlier session after a refused
+    /// activation. Any other activation passes through unchanged.
+    pub(in crate::acp::service) fn resume_earlier_release_session(
         &self,
         admitted: &crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
         command: ActivateSessionCommand,
@@ -41,11 +41,12 @@ impl AcpService {
                 Some(linked) => linked,
                 None => return Ok(command),
             }
-        } else if continues_on_pinned_codex(
+        } else if continues_on_later_release(
             &session,
             admitted.binding_id(),
             identity.harness_version,
-        ) {
+        ) && resumes_sessions(admitted)?
+        {
             let mut connection = self
                 .database
                 .write_connection()
@@ -106,17 +107,29 @@ fn next_runtime_epoch(
         .ok_or(CodexSessionError::Intent)
 }
 
-/// Whether a parked session's native thread was started by an earlier Codex
-/// release than the pinned one, which resumes it in a new linked session.
-/// A later or unreadable version never qualifies.
-pub(super) fn continues_on_pinned_codex(
+/// Whether the admitted build can resume a native session. Linking a
+/// session it cannot resume would only defer the refusal to activation.
+fn resumes_sessions(
+    admitted: &crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
+) -> Result<bool, CodexSessionError> {
+    admitted
+        .supported_capabilities()
+        .map(|capabilities| capabilities.resume_session)
+        .map_err(|error| CodexSessionError::Binding(error.into()))
+}
+
+/// Whether a parked session's native session was started by an earlier
+/// release of the same binding than the admitted one, which resumes it in a
+/// new linked session. A later, equal or unreadable version never
+/// qualifies, so a downgrade or a different build of the same release is
+/// still refused. Claude Code SDK sessions follow the CLI in place instead.
+pub(super) fn continues_on_later_release(
     session: &DurableSession,
     binding_id: &str,
     harness_version: &str,
 ) -> bool {
-    session.binding_id == CODEX_BINDING_ID
-        && binding_id == CODEX_BINDING_ID
-        && harness_version == CODEX_PINNED_VERSION
+    session.binding_id == binding_id
+        && binding_id != CLAUDE_SDK_BINDING_ID
         && session
             .harness_version
             .as_deref()
@@ -126,15 +139,13 @@ pub(super) fn continues_on_pinned_codex(
         && session.external_session_id.is_some()
 }
 
-/// Whether `earlier` is a strictly lower `major.minor.patch` release than
-/// `later`. Unreadable versions are never ordered.
+/// Whether `earlier` is a strictly lower release than `later`. Unreadable
+/// versions and prereleases on either side are never ordered, so a chat only
+/// moves between final releases.
 fn precedes(earlier: &str, later: &str) -> bool {
-    let parse = |version: &str| {
-        let parts = version
-            .split('.')
-            .map(|part| part.parse::<u64>().ok())
-            .collect::<Option<Vec<_>>>()?;
-        (parts.len() == 3).then_some(parts)
-    };
-    matches!((parse(earlier), parse(later)), (Some(earlier), Some(later)) if earlier < later)
+    matches!(
+        (ReleaseVersion::parse(earlier), ReleaseVersion::parse(later)),
+        (Some(earlier), Some(later))
+            if !earlier.is_prerelease() && !later.is_prerelease() && earlier < later
+    )
 }
