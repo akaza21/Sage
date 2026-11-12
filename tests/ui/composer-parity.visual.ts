@@ -360,7 +360,9 @@ for (const width of [1888, 720, 480]) {
         "title",
         "Available when the harness advertises effort controls for this session.",
       );
-      await expectCompactComposerTargets(composer);
+      // A 480px window leaves the composer 200px: with the attach button
+      // and the disabled effort placeholder, even the compacted row wraps.
+      await expectCompactComposerTargets(composer, { wraps: width === 480 });
       await expect(
         composer.getByRole("button", { name: "Send message" }),
       ).toBeDisabled();
