@@ -5,7 +5,9 @@ import { ComposerEffortControl } from "./ComposerEffortControl";
 
 /** The thinking levels a chat may start its first session with. */
 export interface DraftEffort {
-  chatId: string;
+  chatId?: string;
+  value?: string | null;
+  onChange?: (value: string) => void;
   bindingId: string;
   modelId: string;
   levels: readonly string[];
@@ -27,11 +29,13 @@ export default function DraftEffortControl({
   const held = useChatEffortDraft((state) => state.draft);
   const { chatId, bindingId, modelId } = draft;
   const values = ["default", ...draft.levels];
-  const current =
-    held?.chatId === chatId &&
-    held.bindingId === bindingId &&
-    held.modelId === modelId &&
-    values.includes(held.effort)
+  const current = draft.onChange
+    ? (draft.value ?? "default")
+    : held &&
+        held.chatId === chatId &&
+        held.bindingId === bindingId &&
+        held.modelId === modelId &&
+        values.includes(held.effort)
       ? held.effort
       : "default";
   return (
@@ -49,10 +53,13 @@ export default function DraftEffortControl({
         })),
       }}
       onSetOption={(_, value) => {
-        if ("value" in value && typeof value.value === "string")
-          useChatEffortDraft.setState({
-            draft: { chatId, bindingId, modelId, effort: value.value },
-          });
+        if ("value" in value && typeof value.value === "string") {
+          if (draft.onChange) draft.onChange(value.value);
+          else if (chatId)
+            useChatEffortDraft.setState({
+              draft: { chatId, bindingId, modelId, effort: value.value },
+            });
+        }
         return Promise.resolve();
       }}
     />

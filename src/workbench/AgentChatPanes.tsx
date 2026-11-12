@@ -44,6 +44,11 @@ const SplitterPart = lazyParts<typeof SplitterChunk>(
   () => import("./AgentChatSplitter"),
 );
 
+import type * as DraftChunk from "../features/chat/NewChatDraftSurface";
+const DraftPart = lazyParts<typeof DraftChunk>(
+  () => import("../features/chat/NewChatDraftSurface"),
+);
+
 const AgentChatCenterHeader = memo(ChatCenterHeader);
 
 export function AgentChatPanes({
@@ -57,6 +62,9 @@ export function AgentChatPanes({
   navigationCollapsed?: boolean;
   onArtifactHeaderMount?: (node: HTMLDivElement | null) => void;
 }) {
+  const draftShown = useWorkbenchStore(
+    (state) => state.agentCenter === "draft",
+  );
   const runtime = useContext(AgentChatRuntimeContext);
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
@@ -100,21 +108,25 @@ export function AgentChatPanes({
         chatIds.includes(entry.parentChatId),
     ),
   );
-  const splitRequested = Boolean(
-    side &&
-    pairedId === side.id &&
-    (!activeTabId ||
-      !chatIds.includes(activeTabId) ||
-      activeTabId === side.id ||
-      activeTabId === side.parentChatId),
-  );
+  const splitRequested =
+    !draftShown &&
+    Boolean(
+      side &&
+      pairedId === side.id &&
+      (!activeTabId ||
+        !chatIds.includes(activeTabId) ||
+        activeTabId === side.id ||
+        activeTabId === side.parentChatId),
+    );
   const focusCandidates =
     splitRequested && side ? [side.parentChatId, side.id] : chatIds;
-  const focusedId = focusedAgentChatId(
-    focusCandidates,
-    activeTabId,
-    previousFocusedId ?? lastFocusedId,
-  );
+  const focusedId = draftShown
+    ? null
+    : focusedAgentChatId(
+        focusCandidates,
+        activeTabId,
+        previousFocusedId ?? lastFocusedId,
+      );
   if (lastFocusedId !== focusedId) setLastFocusedId(focusedId);
   const displayedIds = useMemo(
     () =>
@@ -211,6 +223,14 @@ export function AgentChatPanes({
     observer.observe(panes);
     return () => observer.disconnect();
   }, [compact, splitRequested, visible]);
+
+  if (draftShown)
+    return visible ? (
+      <DraftPart
+        part="NewChatDraftSurface"
+        navigationCollapsed={navigationCollapsed}
+      />
+    ) : null;
 
   if (!focusedId) {
     return (

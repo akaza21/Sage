@@ -1,4 +1,8 @@
 import { create } from "zustand";
+import {
+  createNewChatDraftSlice,
+  type NewChatDraftSlice,
+} from "./newChatDraftSlice";
 
 import { diffCacheKey } from "../domain/diffIdentity";
 import { childResource } from "../domain/resourceIdentity";
@@ -80,6 +84,7 @@ export type ResourceState<T> =
 export interface WorkbenchState
   extends
     ChatSlice,
+    NewChatDraftSlice,
     ChatArchiveSlice,
     ChatHandoffSlice,
     ChatOwnershipSlice,
@@ -165,6 +170,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     repositoryRequestGeneration: 0,
     ...createProjectSlice(set, get, store),
     ...createChatSlice(set, get, store),
+    ...createNewChatDraftSlice(set, get, store),
     ...createChatArchiveSlice(set, get, store),
     ...createChatHandoffSlice(set, get, store),
     ...createChatOwnershipSlice(set, get, store),
@@ -215,6 +221,16 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
         return;
       const tab = get().tabs.find((candidate) => candidate.id === tabId);
       if (!tab) {
+        return;
+      }
+      if (get().pendingFirstSend && get().pendingFirstSend?.chatId !== tab.id)
+        set({ pendingFirstSend: null });
+      if (
+        tab.kind === "chat" &&
+        get().agentCenter === "draft" &&
+        tab.id === get().activeTabId
+      ) {
+        set({ agentCenter: "chat", pendingFirstSend: null });
         return;
       }
       if (tab.id !== get().activeTabId) {

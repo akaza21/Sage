@@ -88,6 +88,7 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerSlashMenu.tsx",
   // `/status` and `/mcp` load their panel when first opened.
   "src/features/chat/ComposerCommandPanel.tsx",
+  "src/features/chat/ComposerMcpServers.tsx",
   // The suggestion listbox both menus share loads with either controller.
   "src/ui/TextFieldSuggestions.tsx",
 ];
@@ -96,6 +97,12 @@ const COMMAND_DYNAMIC_FACADES = [
   "src/features/chat/slashCommandTurn.ts",
 ];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
+  "src/app/newChatDraftNavigation.ts",
+  "src/app/runNewChatDraftSend.ts",
+  "src/app/runCreateChat.ts",
+  "src/features/chat/NewChatDraftSurface.tsx",
+  "src/features/chat/FirstChatSend.tsx",
+  "src/features/chat/ChatSessionHeader.tsx",
   // Only the question card sends answers.
   "src/services/acpDesktopUserInputAnswer.ts",
   "src/features/chat/acp/ChatMarkdown.tsx",

@@ -17,10 +17,9 @@ import {
   matchesRenameProjection,
   type ProjectionOutcome,
 } from "./chatTransitions";
-import { runCreateChat } from "./runCreateChat";
 
 export interface ChatSlice {
-  createChat: (projectId?: string) => Promise<void>;
+  createChat: (projectId?: string) => Promise<string | null>;
   pinChat: (chatId: string, projectId?: string) => Promise<void>;
   moveChat: (
     chatId: string,
@@ -61,6 +60,7 @@ export const createChatSlice: StateCreator<
       ) {
         return;
       }
+      set({ agentCenter: "chat", pendingFirstSend: null });
       const expectedTransitionEpoch = get().nativeTransitionEpoch;
       const requested = { ...current, tabs, activeTabId: chatId };
       const classify = (snapshot: BootstrapSnapshot) => {
@@ -292,7 +292,14 @@ export const createChatSlice: StateCreator<
     },
 
     createChat: async (projectId) => {
-      await runCreateChat(
+      const source = get();
+      const { runCreateChat } = await import("./runCreateChat");
+      if (
+        get().project?.id !== source.project?.id ||
+        get().chatOwnershipEpoch !== source.chatOwnershipEpoch
+      )
+        return null;
+      return runCreateChat(
         {
           set,
           get,

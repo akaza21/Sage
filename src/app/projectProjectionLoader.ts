@@ -1,3 +1,4 @@
+import { projectNewChatDraft } from "./newChatDraftSlice";
 import type { StoreApi } from "zustand";
 
 import { childResource } from "../domain/resourceIdentity";
@@ -29,6 +30,7 @@ export async function loadProjectProjection(
   if (get().projectGeneration !== generation) return;
   set({
     ...snapshotProjection(snapshot),
+    ...projectNewChatDraft(get(), snapshot.project?.id ?? null),
     ...projectChatOwnership(
       get(),
       snapshot,

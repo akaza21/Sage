@@ -1,3 +1,4 @@
+import { projectNewChatDraft } from "./newChatDraftSlice";
 import type { StoreApi } from "zustand";
 
 import { childResource } from "../domain/resourceIdentity";
@@ -119,6 +120,7 @@ export function createChatTransitionContext(
     const projectId = snapshot.project?.id ?? null;
     set({
       ...snapshotProjection(snapshot),
+      ...projectNewChatDraft(get(), snapshot.project?.id ?? null),
       ...projectChatOwnership(get(), snapshot, true),
       projectGeneration: generation,
       repositoryRequestGeneration: nextProjectGeneration(

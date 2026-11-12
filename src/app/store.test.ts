@@ -517,7 +517,7 @@ describe("workbench resource and project navigation", () => {
       vi.spyOn(projectPort, "getBootstrapSnapshot").mockRejectedValue(
         new TypeError("Cannot read properties of undefined (reading invoke)"),
       );
-      await useWorkbenchStore.getState().createChat();
+      expect(await useWorkbenchStore.getState().createChat()).toBeNull();
       expect(useWorkbenchStore.getState()).toMatchObject({
         phase: "ready",
         projectTransitioning: false,
@@ -576,7 +576,7 @@ describe("workbench resource and project navigation", () => {
       }),
     );
 
-    await useWorkbenchStore.getState().createChat();
+    expect(await useWorkbenchStore.getState().createChat()).toBe(newChat.id);
 
     expect(create).toHaveBeenCalledWith(
       {

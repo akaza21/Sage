@@ -6,7 +6,8 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { Profiler } from "react";
+import { AgentChatRuntimeContext } from "./AgentChatRuntimeContext";
+import { Profiler, useState } from "react";
 import {
   afterEach,
   beforeAll,
@@ -1102,13 +1103,19 @@ describe("AgentChatPanes temporary side chat routing", () => {
   });
 
   it("keeps New chat available with a solo side pane and hidden navigation", async () => {
-    const createChat = vi.fn(async () => undefined);
-    useWorkbenchStore.setState({ createChat });
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+    });
     render(<AgentChatPanes navigationCollapsed />);
     reportCenterWidth(859);
     await settleLazyModules();
+    const before = useWorkbenchStore.getState().tabs;
     fireEvent.click(await screen.findByRole("button", { name: "New chat" }));
-    expect(createChat).toHaveBeenCalledOnce();
+    await settleLazyModules();
+    expect(
+      screen.getByRole("heading", { name: "What should we work on?" }),
+    ).toBeVisible();
+    expect(useWorkbenchStore.getState().tabs).toEqual(before);
   });
 
   it("keeps the parent's own header and puts the side tab in the same row (Codex s2/f0244)", async () => {
@@ -1286,3 +1293,43 @@ it("keeps a parent's rename text and focus when pairing and unpairing its side c
   expect(screen.getByRole("textbox", { name: "New chat name" })).toBe(input);
   expect(input).toHaveFocus();
 });
+
+it.each([false, true])(
+  "Home withdraws visible ids and unmounts old panes (split=%s)",
+  async (split) => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+    });
+    if (split)
+      useSideChatState.setState({
+        sides: [
+          { id: "chat:b", parentChatId: "chat:a", projectId: "project-a" },
+        ],
+        pairedId: "chat:b",
+      });
+    function Center() {
+      const [ids, setIds] = useState<readonly string[]>([]);
+      return (
+        <AgentChatRuntimeContext value={setIds}>
+          <output aria-label="Displayed chats">{JSON.stringify(ids)}</output>
+          <AgentChatPanes />
+        </AgentChatRuntimeContext>
+      );
+    }
+    render(<Center />);
+    reportCenterWidth(1200);
+    const old = screen.getAllByRole("region", { name: /^Chat pane/ });
+    expect(old).toHaveLength(split ? 2 : 1);
+    expect(screen.getByLabelText("Displayed chats")).toHaveTextContent(
+      split ? '["chat:a","chat:b"]' : '["chat:b"]',
+    );
+    await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+    await settleLazyModules();
+    for (const pane of old) expect(pane).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Displayed chats")).toHaveTextContent("[]");
+    expect(pinnedAgentChatOwner()).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "What should we work on?" }),
+    ).toBeVisible();
+  },
+);

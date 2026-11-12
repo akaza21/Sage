@@ -1,3 +1,4 @@
+import type { ControlledDraftPickers } from "./chatHarnessControlsProps";
 import type { FormEvent, ReactNode, RefObject } from "react";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type { AcpGoalState } from "../../domain/acpGoal";
@@ -20,6 +21,8 @@ export interface ComposerAccessTarget {
 }
 
 export interface ChatComposerRegionProps {
+  sessionFeatures?: boolean;
+  draftPickers?: ControlledDraftPickers;
   /** Kept mounted while an approval holds the slot, so the draft survives. */
   hidden?: boolean;
   approvalSlot?: ReactNode;

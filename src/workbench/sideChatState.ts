@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useWorkbenchStore } from "../app/store";
 
 /** Rust owns temporary chats; this is the disposable mirror. */
 export interface SideChatEntry {
@@ -39,7 +40,11 @@ export function railChatIdIn(
 
 /** A focused side chat isn't in the rail; its parent retains window title/highlight. */
 export function useRailChatId(activeId: string | null) {
-  return useSideChatState((state) => railChatIdIn(state.sides, activeId));
+  const draftShown = useWorkbenchStore(
+    (state) => state.agentCenter === "draft",
+  );
+  const id = useSideChatState((state) => railChatIdIn(state.sides, activeId));
+  return draftShown ? null : id;
 }
 
 /** A parent Chat reads as working while one of its side chats runs. */

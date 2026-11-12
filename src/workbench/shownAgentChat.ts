@@ -17,11 +17,13 @@ import {
 } from "./workbenchWindowMode";
 
 export function shownAgentChatId(input: {
+  agentCenter?: "chat" | "draft";
   tabs: ReadonlyArray<AgentCenterScanTab>;
   activeTabId: string | null;
   agentFocusId: string | null;
   sides: readonly SideChatEntry[];
 }): string | null {
+  if (input.agentCenter === "draft") return null;
   return railChatIdIn(
     input.sides,
     focusedAgentChatId(
@@ -34,9 +36,10 @@ export function shownAgentChatId(input: {
 
 /** The shown chat now, read outside React. */
 export function currentShownAgentChatId(): string | null {
-  const { tabs, activeTabId } = useWorkbenchStore.getState();
+  const { tabs, activeTabId, agentCenter } = useWorkbenchStore.getState();
   return shownAgentChatId({
     tabs,
+    agentCenter,
     activeTabId,
     agentFocusId: agentChatFocus(),
     sides: useSideChatState.getState().sides,
@@ -45,9 +48,16 @@ export function currentShownAgentChatId(): string | null {
 
 /** The shown chat, kept current for a component. */
 export function useShownAgentChatId(): string | null {
+  const agentCenter = useWorkbenchStore((state) => state.agentCenter);
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const agentFocusId = useAgentChatFocus();
   const sides = useSideChatState((state) => state.sides);
-  return shownAgentChatId({ tabs, activeTabId, agentFocusId, sides });
+  return shownAgentChatId({
+    tabs,
+    activeTabId,
+    agentFocusId,
+    sides,
+    agentCenter,
+  });
 }

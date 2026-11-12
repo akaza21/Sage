@@ -1,4 +1,4 @@
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import {
@@ -50,12 +50,13 @@ beforeEach(() => {
     tabs: [seeded],
     activeTabId: seeded.id,
     sidebarOpen: true,
-    createChat: vi.fn(async () =>
+    createChat: vi.fn(async () => {
       useWorkbenchStore.setState({
         tabs: [seeded, { ...seeded, id: "chat:fresh", title: "New chat" }],
         activeTabId: "chat:fresh",
-      }),
-    ),
+      });
+      return "chat:fresh";
+    }),
   });
 });
 
@@ -66,7 +67,7 @@ afterEach(() => {
   useWorkbenchStore.setState(initialState, true);
 });
 
-it("creates one fresh Chat through the rail's New chat action and reads its id", async () => {
+it("opens an unsaved draft through the live probe's New chat action", async () => {
   render(<Workbench />);
   await settleLazyModules();
 
@@ -75,6 +76,10 @@ it("creates one fresh Chat through the rail's New chat action and reads its id",
   expect(evaluate(ui.createFreshChat)).toBe(true);
   await settleLazyModules();
 
-  expect(useWorkbenchStore.getState().createChat).toHaveBeenCalledTimes(1);
-  expect(evaluate(ui.seededChatId)).toBe("chat:fresh");
+  expect(
+    screen.getByRole("heading", { name: "What should we work on?" }),
+  ).toBeVisible();
+  expect(screen.getByRole("combobox", { name: "Message agent" })).toHaveFocus();
+  expect(useWorkbenchStore.getState().tabs).toEqual([seeded]);
+  expect(evaluate(freshChatReadyExpression(seeded.id))).toBe(false);
 });

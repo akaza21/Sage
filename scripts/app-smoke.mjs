@@ -220,6 +220,7 @@ function focusedComposer() {
   return page
     .getByRole("region", { name: /^Chat pane / })
     .and(page.locator(".agent-chat-pane--focused"))
+    .or(page.getByRole("region", { name: "New chat draft", exact: true }))
     .getByRole("combobox", { name: "Message agent", exact: true });
 }
 

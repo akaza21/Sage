@@ -34,6 +34,7 @@ export function EditorContinuityKeeper({
       windowMode === "editor" && previousMode.current !== "editor";
     previousMode.current = windowMode;
     if (!enteredEditor) return;
+    useWorkbenchStore.setState({ pendingFirstSend: null });
     const state = useWorkbenchStore.getState();
     const active =
       state.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
@@ -72,6 +73,9 @@ export function AgentCenterKeeper({
   const projectGeneration = useWorkbenchStore(
     (state) => state.projectGeneration,
   );
+  const draftShown = useWorkbenchStore(
+    (state) => state.agentCenter === "draft",
+  );
   const attemptedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -79,7 +83,7 @@ export function AgentCenterKeeper({
       attemptedRef.current = null;
       return;
     }
-    if (projectTransitioning) return;
+    if (projectTransitioning || draftShown) return;
     const state = useWorkbenchStore.getState();
     const decision = agentCenterChatAction(state.tabs, activeTabId);
     if (decision.action === "none") {
@@ -93,7 +97,13 @@ export function AgentCenterKeeper({
     if (attemptKey === null || attemptedRef.current === attemptKey) return;
     attemptedRef.current = attemptKey;
     void state.createChat();
-  }, [windowMode, activeTabId, projectTransitioning, projectGeneration]);
+  }, [
+    windowMode,
+    activeTabId,
+    projectTransitioning,
+    projectGeneration,
+    draftShown,
+  ]);
 
   return null;
 }

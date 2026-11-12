@@ -26,6 +26,8 @@ export interface AccessView {
 
 export interface ComposerAccessControlProps {
   bindingId: string;
+  value?: SessionAccessMode | null;
+  onChange?: (value: SessionAccessMode) => void;
   /** The chat whose access is drafted; given only while it has no session. */
   chatId?: string;
   capabilities: readonly SessionAccessModeCapability[] | undefined;

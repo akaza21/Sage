@@ -17,6 +17,7 @@ import {
   requestChatSearchInFolder,
 } from "../features/chatSearch/chatSearchScope";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
+import { NewChatDraftSurface } from "../features/chat/NewChatDraftSurface";
 import { LeftSidebar } from "./LeftSidebar";
 import { MAX_AGENT_RAIL_PROJECT_PREVIEW_CHATS } from "./agentChatRail";
 import { resetAgentRailInteractions } from "./agentRailInteractions";
@@ -31,8 +32,8 @@ it("leaves the brand and the window mode switch to the title bar", () => {
   expect(screen.queryByRole("radiogroup", { name: "Window mode" })).toBeNull();
 });
 
-it("provides a separate icon rail and sidebar header with reachable chat actions", () => {
-  const createChat = vi.fn(async () => undefined);
+it("provides a separate icon rail and sidebar header with reachable chat actions", async () => {
+  const createChat = vi.fn(async () => null);
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
     createChat,
@@ -51,9 +52,15 @@ it("provides a separate icon rail and sidebar header with reachable chat actions
       screen.getByRole("navigation", { name: "Primary navigation" }),
     ).getByRole("button", { name: "Home" }),
   );
-  expect(createChat).not.toHaveBeenCalled();
+  render(<NewChatDraftSurface />);
+  expect(
+    await screen.findByRole("heading", { name: "What should we work on?" }),
+  ).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-  expect(createChat).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("combobox", { name: "Message agent" })).toHaveValue(
+    "",
+  );
+  expect(useWorkbenchStore.getState().tabs).toEqual([]);
   expect(screen.queryByRole("searchbox", { name: "Search tasks" })).toBeNull();
   expect(screen.getByRole("button", { name: "Search chats" })).toBeEnabled();
   expect(
@@ -212,8 +219,24 @@ it("announces the New chat shortcut without printing it in the row", () => {
   expect(button).toHaveAttribute("aria-keyshortcuts", "Control+N");
 });
 
-it("keeps New chat available when no folder project is open", () => {
-  const createChat = vi.fn(async () => undefined);
+it("keeps New chat available when no folder project is open", async () => {
+  const createChat = vi.fn(async () => {
+    useWorkbenchStore.setState({
+      project: { id: "local", name: "Local", roots: [] },
+      tabs: [
+        {
+          id: "local-chat",
+          kind: "chat",
+          title: "Local chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "local-chat",
+    });
+    return "local-chat";
+  });
   useWorkbenchStore.setState({
     project: null,
     projects: [],
@@ -228,7 +251,9 @@ it("keeps New chat available when no folder project is open", () => {
     ),
   ).toBeInTheDocument();
   fireEvent.click(button);
-  expect(createChat).toHaveBeenCalledTimes(1);
+  expect(
+    await screen.findByRole("button", { name: "Open chat Local chat" }),
+  ).toBeVisible();
 });
 
 it("lists chats under every project folder and opens a foreign chat", () => {
@@ -395,7 +420,27 @@ it("restores a foreign-folder archived chat without switching first", async () =
 });
 
 it("creates a chat from a foreign project menu without switching first", async () => {
-  const createChat = vi.fn(async () => undefined);
+  const createChat = vi.fn(async (projectId?: string) => {
+    useWorkbenchStore.setState((state) => ({
+      projects: state.projects.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              railChats: [
+                ...(project.railChats ?? []),
+                {
+                  id: "foreign-created",
+                  title: "Created foreign chat",
+                  position: 1,
+                  pinned: false,
+                },
+              ],
+            }
+          : project,
+      ),
+    }));
+    return "foreign-created";
+  });
   const switchProject = vi.fn(async () => undefined);
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
@@ -439,8 +484,13 @@ it("creates a chat from a foreign project menu without switching first", async (
   fireEvent.click(
     screen.getByRole("menuitem", { name: "New chat in project" }),
   );
-  expect(createChat).toHaveBeenCalledWith("cross");
-  expect(switchProject).not.toHaveBeenCalled();
+  expect(
+    await screen.findByRole("button", {
+      name: "Open chat Created foreign chat",
+    }),
+  ).toBeVisible();
+  expect(useWorkbenchStore.getState().project?.id).toBe("sage");
+  expect(useWorkbenchStore.getState().activeTabId).toBe("chat:sage");
 });
 
 it("opens Chat search on a truncated foreign folder without switching", async () => {
