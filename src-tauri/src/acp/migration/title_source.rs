@@ -7,7 +7,9 @@ pub(super) const SQL: &str = include_str!("../../../migrations/025_chat_title_so
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentTitleSource | SchemaClass::CurrentSessionFactsTurnIndex => {
+        SchemaClass::CurrentTitleSource
+        | SchemaClass::CurrentSessionFactsTurnIndex
+        | SchemaClass::CurrentOperationTerminalIndex => {
             return Ok(());
         }
         SchemaClass::CurrentResumeLink => {}

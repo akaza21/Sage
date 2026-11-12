@@ -9,9 +9,18 @@ use super::{
 };
 
 fn setup() -> rusqlite::Connection {
-    let (connection, _) = crate::acp::migration::open_or_migrate(std::path::Path::new(":memory:"))
+    setup_at(std::path::Path::new(":memory:"))
+}
+
+fn open_at(path: &std::path::Path) -> rusqlite::Connection {
+    crate::acp::migration::open_or_migrate(path)
         .unwrap()
-        .into_parts();
+        .into_parts()
+        .0
+}
+
+fn setup_at(path: &std::path::Path) -> rusqlite::Connection {
+    let connection = open_at(path);
     connection.execute_batch(
         "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-one','Project',1,1,1);
          INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES('root-one','project-one','C:/project','c:/project',0);
@@ -517,21 +526,20 @@ fn plan(connection: &rusqlite::Connection, sql: &str, values: &[&dyn rusqlite::T
 }
 
 #[test]
-fn per_turn_fact_lookups_seek_the_turn_index() {
+fn fact_lookups_seek_their_index() {
+    const TURN: &str = "idx_session_facts_turn";
+    const TERMINAL: &str = "idx_session_facts_operation_terminal";
+    const START: &str = "idx_session_facts_operation_start";
     let connection = setup();
     let owner: [&dyn rusqlite::ToSql; 4] = [&"project-one", &"chat-one", &"session-one", &"turn"];
     let cases = [
         (
             plan(&connection, super::TURN_OPERATIONS_SQL, &owner),
-            ["start", "marker"].as_slice(),
+            [("start", TURN), ("marker", TURN)].as_slice(),
         ),
         (
-            plan(
-                &connection,
-                super::TERMINAL_SQL,
-                &[&"session-one", &"turn", &1_i64],
-            ),
-            ["session_facts"].as_slice(),
+            plan(&connection, super::TERMINAL_SQL, &[&"session-one", &1_i64]),
+            [("session_facts", TERMINAL)].as_slice(),
         ),
         (
             plan(
@@ -539,19 +547,87 @@ fn per_turn_fact_lookups_seek_the_turn_index() {
                 crate::acp::store::turn_activity_facts::TURN_FACTS_SQL,
                 &[&"session-one", &"turn", &"sessionActivity", &80_i64],
             ),
-            ["session_facts"].as_slice(),
+            [("session_facts", TURN)].as_slice(),
+        ),
+        (
+            plan(
+                &connection,
+                super::write::RECOVER_SQL,
+                &[&"session-one", &0_i64],
+            ),
+            [("start", START), ("terminal", TERMINAL)].as_slice(),
         ),
     ];
-    for (plan, tables) in cases {
-        for table in tables {
+    for (plan, seeks) in cases {
+        for (table, index) in seeks {
             assert!(
-                plan.lines()
-                    .any(|step| step.split_whitespace().nth(1) == Some(table)
-                        && step.contains("idx_session_facts_turn")),
-                "{table} does not use the Turn index:\n{plan}"
+                plan.lines().any(|step| {
+                    step.split_whitespace().nth(1) == Some(table)
+                        && step.contains(index)
+                        // A terminal is sought by its `$.s` key, not filtered after.
+                        && (*index != TERMINAL || step.contains("<expr>=?"))
+                }),
+                "{table} does not seek {index}:\n{plan}"
             );
         }
         assert!(!plan.contains("SCAN"), "{plan}");
         assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+        assert!(!plan.contains("MATERIALIZE"), "{plan}");
     }
+}
+
+#[test]
+fn upgraded_store_with_a_duplicate_terminal_recovers_only_the_unfinished_operation() {
+    let directory = std::env::temp_dir().join(format!(
+        "sage-browser-terminal-upgrade-{}",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("sage.db");
+    let mut finished = record(1);
+    let unfinished = record(2);
+    {
+        let mut connection = setup_at(&path);
+        for operation in [&finished, &unfinished] {
+            start(&mut connection, RuntimeEpoch::new(1).unwrap(), operation).unwrap();
+        }
+        finished.phase = "completed".into();
+        finished.result_summary = Some("Page inspected".into());
+        finished.updated_at += 1;
+        finish(&mut connection, &finished).unwrap();
+        // Return the file to schema 26, before the operation indexes, with its
+        // facts already written and a duplicate terminal an older store could
+        // hold, so the next open has to upgrade it.
+        connection
+            .execute_batch(
+                "INSERT INTO session_facts(project_id,chat_id,session_id,sequence,turn_id,kind,
+                   payload_json,payload_bytes,payload_digest,projection_revision,created_at)
+                 SELECT project_id,chat_id,session_id,sequence+1,turn_id,kind,
+                   payload_json,payload_bytes,payload_digest,projection_revision,created_at
+                 FROM session_facts WHERE kind='browserOperationTerminal';
+                 DROP INDEX idx_session_facts_operation_start;
+                 DROP INDEX idx_session_facts_operation_terminal;
+                 DELETE FROM schema_migrations WHERE version=27;
+                 PRAGMA user_version=26;",
+            )
+            .unwrap();
+    }
+
+    let mut connection = open_at(&path);
+    let version: u32 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, crate::acp::migration::CURRENT_SCHEMA_VERSION);
+    assert_eq!(recover_started(&mut connection, 100).unwrap(), 1);
+    assert_eq!(recover_started(&mut connection, 101).unwrap(), 0);
+    let mut unknown = unfinished;
+    unknown.phase = "outcomeUnknown".into();
+    unknown.result_summary = Some("Sage restarted before the browser result was known".into());
+    unknown.updated_at = 100;
+    assert_eq!(
+        load(&connection, &turn_row("turn-browser")).unwrap(),
+        (vec![finished, unknown], 0)
+    );
+    drop(connection);
+    std::fs::remove_dir_all(directory).unwrap();
 }

@@ -11,6 +11,7 @@ mod legacy_project;
 mod limits;
 mod manifest;
 mod notifications;
+mod operation_terminal_index;
 mod paths;
 mod platform;
 mod platform_anchor;
@@ -144,6 +145,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     session_resume_link::apply(&mut opened.connection)?;
     title_source::apply(&mut opened.connection)?;
     session_facts_turn_index::apply(&mut opened.connection)?;
+    operation_terminal_index::apply(&mut opened.connection)?;
     Ok(opened)
 }
 
@@ -194,15 +196,7 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
-        SchemaClass::CurrentV18
-        | SchemaClass::CurrentV19
-        | SchemaClass::CurrentV20
-        | SchemaClass::CurrentV21
-        | SchemaClass::CurrentV22
-        | SchemaClass::CurrentV23
-        | SchemaClass::CurrentResumeLink
-        | SchemaClass::CurrentTitleSource
-        | SchemaClass::CurrentSessionFactsTurnIndex => {
+        class if class.is_v18_or_later() => {
             let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
             if probe::classify_live(&paths)? != source_schema {
@@ -358,18 +352,7 @@ fn checkpoint_source(
 }
 
 fn verify_current(connection: &Connection) -> AppResult<()> {
-    if !matches!(
-        fingerprint::classify_connection(connection)?,
-        SchemaClass::CurrentV18
-            | SchemaClass::CurrentV19
-            | SchemaClass::CurrentV20
-            | SchemaClass::CurrentV21
-            | SchemaClass::CurrentV22
-            | SchemaClass::CurrentV23
-            | SchemaClass::CurrentResumeLink
-            | SchemaClass::CurrentTitleSource
-            | SchemaClass::CurrentSessionFactsTurnIndex
-    ) {
+    if !fingerprint::classify_connection(connection)?.is_v18_or_later() {
         return invalid("database did not reach an exact current schema");
     }
     verify_sqlite(connection)?;

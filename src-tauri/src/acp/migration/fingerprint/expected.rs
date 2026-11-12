@@ -240,5 +240,14 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
         )?;
         expected.pragma_update(None, "user_version", turn_index)?;
     }
+    let terminal_index = super::super::operation_terminal_index::VERSION;
+    if version >= terminal_index {
+        expected.execute_batch(super::super::operation_terminal_index::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [terminal_index],
+        )?;
+        expected.pragma_update(None, "user_version", terminal_index)?;
+    }
     Ok(expected)
 }
