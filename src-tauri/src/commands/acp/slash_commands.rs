@@ -130,6 +130,12 @@ fn command_prompt(
     revision: u64,
 ) -> Result<Prompt, AcpIpcError> {
     let mut prompt = match listed.dispatch {
+        // A panel opens in the chat; there is nothing to send.
+        CommandDispatch::Panel(_) => {
+            return Err(AcpIpcError::InvalidRequest {
+                message: safe_message("This command opens a panel and sends nothing."),
+            });
+        }
         CommandDispatch::Action => {
             let action = SessionAction::from_command(&listed.name, input).ok_or_else(|| {
                 AcpIpcError::InvalidRequest {
@@ -171,7 +177,7 @@ mod tests {
 #[cfg(test)]
 mod prompt_tests {
     use super::*;
-    use crate::acp::slash_commands::CommandSource;
+    use crate::acp::slash_commands::{CommandPanel, CommandSource};
 
     fn listed(name: &str, dispatch: CommandDispatch) -> AvailableCommand {
         AvailableCommand::new(name, "", None, CommandSource::Builtin, dispatch).unwrap()
@@ -198,6 +204,9 @@ mod prompt_tests {
         // `/compact` takes no input; nothing is sent.
         let compact = listed("compact", CommandDispatch::Action);
         assert!(command_prompt(&compact, Some("now"), "/compact now".into(), 3).is_err());
+        // A panel command is never sent.
+        let status = listed("status", CommandDispatch::Panel(CommandPanel::Status));
+        assert!(command_prompt(&status, None, "/status".into(), 3).is_err());
         // Any other route sends the text as typed, with no action.
         let plan = listed("plan", CommandDispatch::Prompt);
         let prompt = command_prompt(&plan, Some("it"), "/plan it".into(), 3).unwrap();

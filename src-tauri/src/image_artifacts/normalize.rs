@@ -420,6 +420,9 @@ fn encode_png(raster: &Raster, opaque: bool) -> AppResult<Vec<u8>> {
             .and_then(|mut writer| writer.write_image_data(data))
             .map_err(|_| invalid("image could not be re-encoded"))?;
     }
+    // The encoder grows its output by doubling, so a PNG can end with twice
+    // its length allocated; a prompt is charged what it holds.
+    output.shrink_to_fit();
     Ok(output)
 }
 
@@ -444,6 +447,7 @@ fn encode_jpeg(raster: &Raster) -> AppResult<Vec<u8>> {
     jpeg_encoder::Encoder::new(&mut output, PROMPT_IMAGE_JPEG_QUALITY)
         .encode(&rgb, width, height, jpeg_encoder::ColorType::Rgb)
         .map_err(|_| invalid("image could not be re-encoded"))?;
+    output.shrink_to_fit();
     Ok(output)
 }
 

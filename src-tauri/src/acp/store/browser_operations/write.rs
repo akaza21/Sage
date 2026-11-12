@@ -171,13 +171,9 @@ pub(crate) fn finish(
         });
     }
     let already_terminal: bool = tx.query_row(
-        "SELECT EXISTS(SELECT 1 FROM session_facts WHERE session_id=?1 AND turn_id=?2
-         AND kind='browserOperationTerminal' AND json_extract(payload_json,'$.s')=?3)",
-        params![
-            record.session_id.as_str(),
-            record.turn_id.as_str(),
-            sequence
-        ],
+        "SELECT EXISTS(SELECT 1 FROM session_facts WHERE session_id=?1
+         AND kind='browserOperationTerminal' AND json_extract(payload_json,'$.s')=?2)",
+        params![record.session_id.as_str(), sequence],
         |row| row.get(0),
     )?;
     if already_terminal {
@@ -199,27 +195,29 @@ pub(crate) fn finish(
     tx.commit().map_err(|_| StoreError::CommitUnknown)
 }
 
+/// One keyset page of starts that never reached a terminal fact. The page walks
+/// `idx_session_facts_operation_start`, which holds only starts, and each start
+/// seeks its own terminal through `idx_session_facts_operation_terminal`, so a
+/// restart reads neither other facts nor finished operations' terminals.
+/// The unary `+` drops `start.sequence`'s INTEGER column affinity; with it the
+/// comparison would convert the `$.s` key and could no longer seek the index.
+pub(super) const RECOVER_SQL: &str = "SELECT start.session_id,start.sequence,start.payload_json
+     FROM session_facts start
+     WHERE (start.session_id,start.sequence) > (?1,?2) AND start.kind='browserOperation'
+       AND NOT EXISTS (SELECT 1 FROM session_facts terminal
+         WHERE terminal.session_id=start.session_id
+         AND terminal.kind='browserOperationTerminal'
+         AND json_extract(terminal.payload_json,'$.s')=+start.sequence)
+     ORDER BY start.session_id,start.sequence LIMIT 512";
+
 pub(crate) fn recover_started(connection: &mut Connection, now: i64) -> Result<u64, StoreError> {
     let tx = connection.transaction()?;
     let mut cursor_session = String::new();
     let mut cursor_sequence = 0_i64;
     let mut recovered = 0_u64;
     loop {
-        // The primary key (session_id, sequence) bounds each keyset page. Skip
-        // already-terminal starts so normal restarts never replay old history.
         let rows = {
-            let mut statement = tx.prepare(
-                "WITH terminals AS MATERIALIZED (
-                   SELECT session_id,json_extract(payload_json,'$.s') AS started_sequence
-                   FROM session_facts WHERE kind='browserOperationTerminal'
-                 )
-                 SELECT start.session_id,start.sequence,start.payload_json FROM session_facts start
-                 LEFT JOIN terminals terminal ON terminal.session_id=start.session_id
-                   AND terminal.started_sequence=start.sequence
-                 WHERE (start.session_id,start.sequence) > (?1,?2)
-                   AND start.kind='browserOperation' AND terminal.started_sequence IS NULL
-                 ORDER BY start.session_id,start.sequence LIMIT 512",
-            )?;
+            let mut statement = tx.prepare_cached(RECOVER_SQL)?;
             statement
                 .query_map(params![cursor_session, cursor_sequence], |row| {
                     Ok((

@@ -13,6 +13,7 @@ mod construction;
 mod errors;
 mod goal;
 mod hook_runs;
+mod mcp;
 mod mcp_tools;
 #[cfg(test)]
 pub(crate) use mcp_tools::RUNNING_MCP_TOOLS_MAX;
@@ -211,6 +212,8 @@ pub(crate) struct CodexAdapter {
     pending_child_read: Option<(u64, String, String)>,
     child_read_tombstone: Option<u64>,
     rate_limits_abandoned: rate_limits::AbandonedReads,
+    /// An `/mcp` read whose caller gave up; its late answer is dropped.
+    mcp_read_tombstones: Vec<u64>,
     skills: skills::Skills,
     pending_fork: Option<u64>,
     forks: fork::ForkLedger,

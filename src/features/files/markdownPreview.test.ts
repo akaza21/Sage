@@ -312,7 +312,7 @@ describe("renderMarkdownPreview", () => {
         language: "",
         fenceClosed: true,
       },
-      { kind: "paragraph", text: "alert(1) diagram" },
+      { kind: "paragraph", text: "alert(1)\ndiagram" },
     ]);
     // An image is never fetched, and its address is not shown.
     expect(JSON.stringify(document)).not.toContain("a.png");
@@ -770,7 +770,7 @@ describe("CommonMark block syntax", () => {
         kind: "quote",
         children: [
           { kind: "paragraph", text: "one" },
-          { kind: "paragraph", text: "two text" },
+          { kind: "paragraph", text: "two\ntext" },
         ],
       },
     ]);
@@ -831,7 +831,7 @@ describe("fence indentation and empty list precedence", () => {
       ]);
       expect(
         renderMarkdownPreview(`Before\n    ${fence}js\ncode`).blocks,
-      ).toEqual([{ kind: "paragraph", text: `Before ${fence}js code` }]);
+      ).toEqual([{ kind: "paragraph", text: `Before\n${fence}js\ncode` }]);
     },
   );
   it.each(["-", "+", "*", "-   ", "+\t"])(
@@ -936,7 +936,10 @@ describe("ATX classification before setext", () => {
 describe("shared list interruption classification", () => {
   it("keeps a quote paragraph open across marked indented continuation", () => {
     expect(renderMarkdownPreview("> foo\n>     bar\nbaz\n").blocks).toEqual([
-      { kind: "quote", children: [{ kind: "paragraph", text: "foo bar baz" }] },
+      {
+        kind: "quote",
+        children: [{ kind: "paragraph", text: "foo\nbar\nbaz" }],
+      },
     ]);
   });
 
@@ -992,7 +995,7 @@ describe("shared list interruption classification", () => {
       expect(renderMarkdownPreview(`${prefix}\n  +\n  two`).blocks).toEqual([
         {
           kind: "list",
-          items: [{ children: [{ kind: "paragraph", text: "one + two" }] }],
+          items: [{ children: [{ kind: "paragraph", text: "one\n+\ntwo" }] }],
         },
       ]);
     },

@@ -6,7 +6,7 @@ impl HostCommand {
     pub(in crate::acp::runtime::runtime_host) fn deadline_millis(&self) -> u64 {
         use crate::acp::limits::LIMITS;
         match self {
-            Self::NativeRpc(intent) if intent.passive() => PASSIVE_RPC_DEADLINE_MS,
+            Self::NativeRpc(intent) if intent.answers_at_once() => PASSIVE_RPC_DEADLINE_MS,
             Self::ConfigureSession(_) | Self::NativeRpc(_) | Self::ResolvePermission { .. } => {
                 LIMITS.deadlines_ms.ordinary_rpc
             }
@@ -26,6 +26,11 @@ impl HostCommand {
             | Self::ProjectSwitched(_)
             | Self::State => LIMITS.deadlines_ms.ordinary_rpc,
         }
+    }
+
+    /// A command that holds a user prompt, with whatever images it carries.
+    pub(in crate::acp::runtime::runtime_host) fn carries_prompt(&self) -> bool {
+        matches!(self, Self::PreparePrompt(_) | Self::Steer(_))
     }
 
     pub(in crate::acp::runtime::runtime_host) fn is_control(&self) -> bool {

@@ -9,6 +9,7 @@ import {
 
 import { DISCONNECTED_TERMINAL } from "./terminalDockProjection";
 import { isTauriRuntime } from "../ports/nativeInvoke";
+import { closeActiveEditor } from "../app/closeActiveEditor";
 import { useWorkbenchStore } from "../app/store";
 import { errorMessage } from "../domain/errors";
 import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
@@ -77,6 +78,16 @@ export function useWorkbenchKeys({
           .catch((error: unknown) =>
             useWorkbenchStore.setState({ error: errorMessage(error) }),
           );
+      }
+      // A terminal keeps Ctrl+W as its own delete-word: xterm consumes it
+      // before it bubbles here. Cmd+W on macOS reaches here, as in VS Code.
+      if (
+        windowMode === "editor" &&
+        !event.defaultPrevented &&
+        matchesPlatformChord(keymapBinding("closeEditor"), event, apple)
+      ) {
+        event.preventDefault();
+        closeActiveEditor();
       }
       if (matchesPlatformChord(keymapBinding("newTask"), event, apple)) {
         event.preventDefault();

@@ -45,7 +45,7 @@ fn a_command_turn_reloads_as_the_command_it_ran() {
         source: CommandSource::Skill,
     });
     let stored = json!({"kind":"text","payload":command.user_payload()}).to_string();
-    assert!(crate::acp::store::parse_legacy_text(&stored).is_ok());
+    assert!(crate::acp::store::decode_payload(&stored).is_ok());
     prepare(&mut fixture, command, "command-turn");
     let page = load_chat_page(
         &fixture.connection,

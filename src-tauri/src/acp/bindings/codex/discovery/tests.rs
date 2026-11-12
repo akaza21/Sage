@@ -4,11 +4,11 @@ use serde_json::{Value, json};
 use super::{CodexAccountSnapshot, CodexDiscoveryError, CodexDiscoveryProtocol, ProtocolProgress};
 use crate::acp::{
     bindings::codex::{Platform, parse_packet_metadata},
-    contract::RuntimeEpoch,
+    contract::{RequiredText, RuntimeEpoch},
     transport::{Frame, IncrementalFrameDecoder},
 };
 
-mod pinned_shape_tests;
+mod account_read_tests;
 
 fn protocol() -> CodexDiscoveryProtocol {
     let packet = parse_packet_metadata(include_bytes!(
@@ -73,27 +73,6 @@ fn advance_to_account(protocol: &mut CodexDiscoveryProtocol) -> u64 {
     let value: Value = serde_json::from_slice(initialized.payload()).unwrap();
     assert_eq!(value, json!({"method":"initialized"}));
     protocol.account_request().unwrap().id()
-}
-
-#[test]
-fn discovery_model_efforts_keep_strict_fields_and_collection_limit() {
-    for efforts in [
-        json!([{"reasoningEffort":"high","description":"Deep","extra":true}]),
-        json!([{"reasoningEffort":"high","description":"Deep\0"}]),
-        json!((0..33).map(|index| json!({"reasoningEffort":format!("effort-{index}"),"description":"Deep"})).collect::<Vec<_>>()),
-    ] {
-        let mut protocol = protocol();
-        let account_id = advance_to_account(&mut protocol);
-        protocol.accept_account(&frame(json!({"id":account_id,"result":{
-            "account":{"type":"chatgpt","email":null,"planType":"plus","workspaceName":null},"requiresOpenaiAuth":true,"workspaceRouting":null
-        }}))).unwrap();
-        let request = protocol.model_request().unwrap();
-        let mut entry = model("model", "Model", true);
-        entry["supportedReasoningEfforts"] = efforts;
-        assert_eq!(protocol.accept_model_page(&frame(json!({"id":request.id(),"result":{
-            "data":[entry],"nextCursor":null
-        }}))).unwrap_err(), CodexDiscoveryError::ModelCatalog);
-    }
 }
 
 #[test]
@@ -186,7 +165,6 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
     );
 
     for rejected in [
-        json!({"account":{"type":"apiKey","key":"never-retain"},"requiresOpenaiAuth":true}),
         json!({"account":{"type":"amazonBedrock"},"requiresOpenaiAuth":true}),
         json!({"account":{"type":"amazonBedrock"},"requiresOpenaiAuth":true,"workspaceRouting":null}),
     ] {
@@ -200,17 +178,26 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
         );
     }
 
-    let mut extended = protocol();
-    let account_id = advance_to_account(&mut extended);
-    assert_eq!(
-        extended
+    // Account members Sage does not read never decide the sign-in state.
+    for (account, expected) in [
+        (
+            json!({"type":"chatgpt","email":"private@example.test","planType":"future_plan","token":"never-retain"}),
+            CodexAccountSnapshot::ManagedChatgpt,
+        ),
+        (
+            json!({"type":"apiKey","key":"never-retain"}),
+            CodexAccountSnapshot::ApiKey,
+        ),
+    ] {
+        let mut extended = protocol();
+        let account_id = advance_to_account(&mut extended);
+        let snapshot = extended
             .accept_account(&frame(json!({"id":account_id,"result":{
-                "account":{"type":"chatgpt","email":"private@example.test","planType":"plus","workspaceName":null,"token":"never-retain"},
-                "requiresOpenaiAuth":true,"workspaceRouting":null
+                "account":account,"requiresOpenaiAuth":true,"futureMember":{}
             }})))
-            .unwrap_err(),
-        CodexDiscoveryError::Protocol
-    );
+            .unwrap();
+        assert_eq!(snapshot, expected);
+    }
 }
 
 #[test]
@@ -260,26 +247,45 @@ fn model_pages_preserve_observed_order_and_default_only_after_a_complete_catalog
 }
 
 #[test]
-fn model_catalog_rejects_modalities_outside_the_pinned_enum() {
+fn a_model_described_with_metadata_sage_does_not_read_is_still_offered() {
     let mut protocol = protocol();
     let account_id = advance_to_account(&mut protocol);
     protocol
         .accept_account(&frame(json!({"id":account_id,"result":{
-            "account":{"type":"chatgpt","email":null,"planType":"plus","workspaceName":null},
-            "requiresOpenaiAuth":true,"workspaceRouting":null
+            "account":{"type":"chatgpt","email":null,"planType":"future_plan","workspaceName":null},
+            "requiresOpenaiAuth":true,"workspaceRouting":{"futureRoute":true}
         }})))
         .unwrap();
     let request = protocol.model_request().unwrap();
-    let mut invalid = model("future-model", "Future Model", false);
-    invalid["inputModalities"] = json!(["text", "video"]);
+    let mut future = model("future-model", "Future Model", true);
+    future["inputModalities"] = json!(["text", "video"]);
+    future["multiAgentVersion"] = json!("v3");
+    future["availableAccessPrograms"] = json!({"cyber":[],"research":["preview"]});
+    future["serviceTiers"] = json!([{"id":"flex","name":"Flex","description":"","latency":"slow"}]);
+    future["upgradeInfo"] = json!({"model":"next","futureCopy":"Try it"});
+    future["supportedReasoningEfforts"] =
+        json!([{"reasoningEffort":"ultra","description":"Deepest","budget":"large"}]);
+    future["futureMember"] = json!({"nested":[1, 2]});
+    let mut minimal = json!({"id":"minimal","displayName":"Minimal"});
+    minimal["futureMember"] = json!(true);
 
+    let ProtocolProgress::Complete(content) = protocol
+        .accept_model_page(&frame(json!({"id":request.id(),"jsonrpc":"2.0","result":{
+            "data":[future, minimal],"nextCursor":null,"futurePaging":{"total":2}
+        }})))
+        .unwrap()
+    else {
+        panic!("a single page without a cursor completes discovery");
+    };
+    let ids = content
+        .models
+        .iter()
+        .map(|model| model.id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(ids, ["future-model", "minimal"]);
     assert_eq!(
-        protocol
-            .accept_model_page(&frame(json!({"id":request.id(),"result":{
-                "data":[invalid],"nextCursor":null
-            }})))
-            .unwrap_err(),
-        CodexDiscoveryError::ModelCatalog
+        content.default_model_id.as_ref().map(RequiredText::as_str),
+        Some("future-model")
     );
 }
 
@@ -309,8 +315,9 @@ fn model_catalog_rejects_page_count_identity_default_hidden_and_empty_violations
     );
 
     for malformed_result in [
+        json!({"nextCursor":null}),
         json!({"data":[model("missing-cursor","Missing cursor",false)]}),
-        json!({"data":[model("extra-field","Extra field",false)],"nextCursor":null,"raw":"never-retain"}),
+        json!({"data":{"model":"not-a-list"},"nextCursor":null}),
     ] {
         let mut exact = ready();
         let request = exact.model_request().unwrap();
@@ -324,6 +331,8 @@ fn model_catalog_rejects_page_count_identity_default_hidden_and_empty_violations
         );
     }
 
+    // Hidden models are left out, as in Codex's own picker; a page of only
+    // hidden models leaves nothing to offer.
     let mut hidden = ready();
     let request = hidden.model_request().unwrap();
     let mut hidden_model = model("hidden", "Hidden", false);
@@ -331,16 +340,27 @@ fn model_catalog_rejects_page_count_identity_default_hidden_and_empty_violations
     assert_eq!(
         hidden
             .accept_model_page(&frame(json!({"id":request.id(),"result":{
-                "data":[hidden_model],"nextCursor":null
+                "data":[hidden_model.clone()],"nextCursor":null
             }})))
             .unwrap_err(),
-        CodexDiscoveryError::ModelCatalog
+        CodexDiscoveryError::EmptyCatalog
     );
+    let mut partly_hidden = ready();
+    let request = partly_hidden.model_request().unwrap();
+    let ProtocolProgress::Complete(content) = partly_hidden
+        .accept_model_page(&frame(json!({"id":request.id(),"result":{
+            "data":[hidden_model, model("shown","Shown",false)],"nextCursor":null
+        }})))
+        .unwrap()
+    else {
+        panic!("a single page without a cursor completes discovery");
+    };
+    assert_eq!(content.models.len(), 1);
+    assert_eq!(content.models[0].id.as_str(), "shown");
 
     let mut oversized = ready();
     let request = oversized.model_request().unwrap();
-    let mut oversized_model = model("oversized", "Oversized", false);
-    oversized_model["description"] = json!("x".repeat(8_193));
+    let oversized_model = model("oversized", &"x".repeat(513), false);
     assert_eq!(
         oversized
             .accept_model_page(&frame(json!({"id":request.id(),"result":{

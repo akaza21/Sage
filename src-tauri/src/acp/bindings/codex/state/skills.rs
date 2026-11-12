@@ -10,10 +10,12 @@ use super::{AdapterError, CodexAdapter, RequestKind};
 use crate::acp::{
     bindings::{
         codex::request::OutgoingRequest,
-        standard_acp::surface::command_list::{MAX_COMMAND_BYTES, MAX_COMMANDS},
+        standard_acp::surface::{first_listed, panel},
     },
     intent::{CapabilitySnapshotV1, Prompt},
-    slash_commands::{AvailableCommand, CommandDispatch, CommandSource, CommandState},
+    slash_commands::{
+        AvailableCommand, CommandDispatch, CommandPanel, CommandSource, CommandState,
+    },
 };
 
 /// A skill's harness path; a longer one is left out of the list.
@@ -98,7 +100,8 @@ fn parse(result: &Map<String, Value>) -> Option<Vec<AvailableCommand>> {
 }
 
 /// Codex's own commands that run through an app-server method this session
-/// negotiated, worded as Codex words them.
+/// negotiated, or open a panel of what the session reports, worded as Codex
+/// words them.
 fn builtins(capabilities: &CapabilitySnapshotV1) -> Vec<AvailableCommand> {
     let builtin = |name, description, hint| {
         AvailableCommand::new(
@@ -124,27 +127,17 @@ fn builtins(capabilities: &CapabilitySnapshotV1) -> Vec<AvailableCommand> {
                 Some("base <branch>, commit <sha>, or what to check"),
             )
         }),
+        Some(panel(
+            "status",
+            "show current session configuration and token usage",
+            CommandPanel::Status,
+        )),
+        Some(panel("mcp", "list configured MCP tools", CommandPanel::Mcp)),
     ]
     .into_iter()
     .flatten()
     .filter_map(Result::ok)
     .collect()
-}
-
-/// The built-ins, then the skills: first of each name, ending at the first
-/// command past the shared count or byte bound.
-fn bounded(commands: impl IntoIterator<Item = AvailableCommand>) -> Vec<AvailableCommand> {
-    let mut names = std::collections::HashSet::new();
-    let mut bytes = 0usize;
-    commands
-        .into_iter()
-        .filter(|command| names.insert(command.name.clone()))
-        .take(MAX_COMMANDS)
-        .take_while(|command| {
-            bytes += command.listed_bytes();
-            bytes <= MAX_COMMAND_BYTES
-        })
-        .collect()
 }
 
 impl CodexAdapter {
@@ -214,7 +207,7 @@ impl CodexAdapter {
         let _ = self
             .skills
             .list
-            .replace_if_changed(bounded(builtins.into_iter().chain(skills)));
+            .replace_if_changed(first_listed(builtins.into_iter().chain(skills)));
     }
 
     pub(crate) fn skills_read_pending(&self) -> bool {

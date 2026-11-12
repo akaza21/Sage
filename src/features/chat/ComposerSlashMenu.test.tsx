@@ -52,6 +52,15 @@ vi.mock("../../services/acpCommandsDesktop", async (original) => ({
     ),
   },
 }));
+const mcp = vi.hoisted(() => ({
+  read: vi.fn(),
+  reload: vi.fn(),
+  signIn: vi.fn(),
+  reconnect: vi.fn(),
+}));
+/** What Codex offers on a system where Sage can open the browser. */
+const CODEX_MCP = { reload: true, signIn: true, reconnect: false };
+vi.mock("../../services/acpMcpDesktop", () => ({ acpMcpDesktop: mcp }));
 vi.mock("./acp/useAcpChatActions", async (original) => ({
   ...(await original<object>()),
   currentContext: () => ({
@@ -523,6 +532,300 @@ describe("composer slash commands", () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
     // Not picked from the menu: the send path matches it against the list.
     expect(pickedCommandFor("chat-a")).toBeUndefined();
+  });
+
+  it("opens a panel command in place of sending it, typed or picked", async () => {
+    const notion = {
+      name: "notion",
+      title: "Notion",
+      version: null,
+      connection: "signInRequired",
+      auth: "signedOut",
+      tools: 0,
+      resources: 0,
+      error: null,
+      origin: "https://mcp.notion.com",
+    };
+    const files = {
+      ...notion,
+      name: "files",
+      title: null,
+      connection: "connected",
+      auth: "none",
+      tools: 2,
+      origin: null,
+    };
+    mcp.read.mockResolvedValue({
+      servers: [files, notion],
+      truncated: false,
+      actions: CODEX_MCP,
+    });
+    mcp.reload.mockResolvedValue({
+      servers: [files],
+      truncated: false,
+      actions: CODEX_MCP,
+    });
+    mcp.signIn.mockResolvedValue(undefined);
+    native.lists = [
+      {
+        revision: 1,
+        commands: [
+          ...commands,
+          {
+            name: "status",
+            description: "Show the session",
+            inputHint: null,
+            source: "builtin",
+            panel: "status",
+          },
+          {
+            name: "mcp",
+            description: "List MCP tools",
+            inputHint: null,
+            source: "builtin",
+            panel: "mcp",
+          },
+        ],
+      },
+    ];
+    render(<Composer />);
+    const { field } = await openMenu("/mcp");
+    fireEvent.keyDown(field, { key: "Enter" });
+    const panel = await screen.findByRole("dialog", { name: "MCP servers" });
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(field).toHaveValue("");
+    expect(mcp.read).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "session-a", runtimeEpoch: "3" }),
+    );
+    expect(await within(panel).findByText("Sign-in required")).toBeVisible();
+    expect(within(panel).getByText("files")).toBeVisible();
+    expect(within(panel).getByText("2 tools")).toBeVisible();
+    expect(
+      within(panel).getByText("notion · 0 tools · https://mcp.notion.com"),
+    ).toBeVisible();
+    // Only the server that needs it offers a sign-in.
+    expect(
+      within(panel).getAllByRole("button", { name: /^Sign in/u }),
+    ).toHaveLength(1);
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Sign in to Notion" }),
+    );
+    expect(mcp.signIn).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "notion", sessionId: "session-a" }),
+    );
+    expect(
+      await within(panel).findByText(
+        "Finish signing in to Notion in your browser.",
+      ),
+    ).toBeVisible();
+    fireEvent.click(within(panel).getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(within(panel).queryByText("Notion")).toBeNull());
+    expect(mcp.reload).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(panel, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // Picked from the menu, `/status` opens its panel the same way.
+    await openMenu("/sta");
+    fireEvent.click(screen.getByRole("option", { name: /^\/status/u }));
+    expect(
+      await screen.findByRole("dialog", { name: "Session status" }),
+    ).toBeInTheDocument();
+    expect(field).toHaveValue("");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("runs one MCP call at a time and keeps a shown list through a refusal", async () => {
+    const files = {
+      name: "files",
+      title: null,
+      version: null,
+      connection: "connected",
+      auth: "none",
+      tools: 2,
+      resources: 0,
+      error: null,
+      origin: null,
+    };
+    mcp.read.mockReset().mockResolvedValue({
+      servers: [files],
+      truncated: false,
+      actions: CODEX_MCP,
+    });
+    let reloaded: (value: unknown) => void = () => undefined;
+    mcp.reload
+      .mockReset()
+      .mockReturnValue(new Promise((resolve) => (reloaded = resolve)));
+    native.lists = [
+      {
+        revision: 1,
+        commands: [
+          {
+            name: "mcp",
+            description: "List MCP tools",
+            inputHint: null,
+            source: "builtin",
+            panel: "mcp",
+          },
+        ],
+      },
+    ];
+    render(<Composer />);
+    const { field } = await openMenu("/mcp");
+    fireEvent.keyDown(field, { key: "Enter" });
+    const panel = await screen.findByRole("dialog", { name: "MCP servers" });
+    expect(await within(panel).findByText("files")).toBeVisible();
+    fireEvent.click(within(panel).getByRole("button", { name: "Reload" }));
+    // Coming back to the window mid-reload starts no second call.
+    act(() => void window.dispatchEvent(new Event("focus")));
+    expect(mcp.read).toHaveBeenCalledTimes(1);
+    expect(
+      within(panel).getByRole("button", { name: "Reloading…" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    // It keeps the focus but starts nothing while the reload runs.
+    fireEvent.click(within(panel).getByRole("button", { name: "Reloading…" }));
+    expect(mcp.reload).toHaveBeenCalledTimes(1);
+    await act(async () =>
+      reloaded({ servers: [files], truncated: false, actions: CODEX_MCP }),
+    );
+    // A refused re-read leaves the list in place and says why.
+    mcp.read.mockRejectedValueOnce(
+      new Error("This session cannot do that right now."),
+    );
+    act(() => void window.dispatchEvent(new Event("focus")));
+    expect(
+      await within(panel).findByText("This session cannot do that right now."),
+    ).toBeVisible();
+    expect(within(panel).getByText("files")).toBeVisible();
+  });
+
+  it("reconnects a Claude Code server and points sign-in to a terminal", async () => {
+    const server = {
+      name: "linear",
+      title: null,
+      version: null,
+      connection: "failed",
+      auth: "unknown",
+      tools: 0,
+      resources: 0,
+      error: "timed out",
+      origin: "https://mcp.linear.app",
+    };
+    const notion = {
+      ...server,
+      name: "notion",
+      connection: "signInRequired",
+      auth: "signedOut",
+      error: null,
+    };
+    const actions = { reload: false, signIn: false, reconnect: true };
+    mcp.read.mockReset().mockResolvedValue({
+      servers: [server, notion],
+      truncated: false,
+      actions,
+    });
+    mcp.reconnect.mockReset().mockResolvedValue({
+      servers: [{ ...server, connection: "connected", error: null }, notion],
+      truncated: false,
+      actions,
+    });
+    native.lists = [
+      {
+        revision: 1,
+        commands: [
+          {
+            name: "mcp",
+            description: "Show MCP servers",
+            inputHint: null,
+            source: "builtin",
+            panel: "mcp",
+          },
+        ],
+      },
+    ];
+    render(<Composer />);
+    const { field } = await openMenu("/mcp");
+    fireEvent.keyDown(field, { key: "Enter" });
+    const panel = await screen.findByRole("dialog", { name: "MCP servers" });
+    expect(await within(panel).findByText("timed out")).toBeVisible();
+    // Claude Code reloads and signs in only in its own terminal.
+    expect(within(panel).queryByRole("button", { name: "Reload" })).toBeNull();
+    expect(
+      within(panel).queryByRole("button", { name: /^Sign in/u }),
+    ).toBeNull();
+    expect(
+      within(panel).getByText("Sign in to this server from a terminal."),
+    ).toBeVisible();
+    // Only the failed server offers a reconnect.
+    expect(
+      within(panel).getAllByRole("button", { name: /^Reconnect/u }),
+    ).toHaveLength(1);
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Reconnect linear" }),
+    );
+    expect(mcp.reconnect).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "linear", sessionId: "session-a" }),
+    );
+    expect(await within(panel).findByText("Connected")).toBeVisible();
+    expect(within(panel).queryByText("timed out")).toBeNull();
+    expect(
+      within(panel).queryByRole("button", { name: /^Reconnect/u }),
+    ).toBeNull();
+  });
+
+  it("offers another read when the first MCP list fails", async () => {
+    const files = {
+      name: "files",
+      title: null,
+      version: null,
+      connection: "connected",
+      auth: "none",
+      tools: 2,
+      resources: 0,
+      error: null,
+      origin: null,
+    };
+    mcp.read
+      .mockReset()
+      .mockRejectedValueOnce(
+        new Error("The agent did not answer in time; it may still finish."),
+      )
+      .mockResolvedValue({
+        servers: [files],
+        truncated: false,
+        actions: CODEX_MCP,
+      });
+    native.lists = [
+      {
+        revision: 1,
+        commands: [
+          {
+            name: "mcp",
+            description: "List MCP tools",
+            inputHint: null,
+            source: "builtin",
+            panel: "mcp",
+          },
+        ],
+      },
+    ];
+    render(<Composer />);
+    const { field } = await openMenu("/mcp");
+    fireEvent.keyDown(field, { key: "Enter" });
+    const panel = await screen.findByRole("dialog", { name: "MCP servers" });
+    expect(
+      await within(panel).findByText(
+        "The agent did not answer in time; it may still finish.",
+      ),
+    ).toBeVisible();
+    // With no list there is nothing to reload, only another read.
+    expect(within(panel).queryByRole("button", { name: "Reload" })).toBeNull();
+    fireEvent.click(within(panel).getByRole("button", { name: "Try again" }));
+    expect(await within(panel).findByText("files")).toBeVisible();
+    expect(mcp.read).toHaveBeenCalledTimes(2);
+    expect(within(panel).getByRole("button", { name: "Reload" })).toBeVisible();
+    expect(
+      within(panel).queryByRole("button", { name: "Try again" }),
+    ).toBeNull();
   });
 
   it("does not send a half-typed name while the list is loading", async () => {

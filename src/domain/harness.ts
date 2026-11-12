@@ -13,7 +13,8 @@ export type HarnessUnavailableReason =
   | "nodeEngineMismatch"
   | "nodeVersionUnreadable"
   | "observationOnly"
-  | "platformUnsupported";
+  | "platformUnsupported"
+  | "versionTooOld";
 
 export function harnessUnavailableReason(
   reason: HarnessUnavailableReason | null | undefined,
@@ -22,23 +23,23 @@ export function harnessUnavailableReason(
     case "admissionIncomplete":
       return "Sage hasn't finished checking this harness, so it won't start it yet.";
     case "adapterAbsent":
-      return "The ACP adapter this harness launches through is not installed.";
+      return "This harness's ACP adapter isn't installed.";
     case "adapterVersionUnreadable":
-      return "Sage could not read the adapter's version, so it will not launch it.";
+      return "Sage couldn't read the adapter's version, so it won't launch it.";
     case "candidateInvalid":
       return "The installed harness didn't pass Sage's safety checks.";
     case "capabilityProjectionUnavailable":
       return "Sage couldn't read which features this harness supports.";
     case "developmentOnly":
-      return "This is a development-only harness and is not part of this build.";
+      return "This development-only harness isn't part of this build.";
     case "driftDetected":
       return "This harness changed on disk after Sage checked it, so Sage stopped using it.";
     case "nodeAbsent":
-      return "Node.js is required to launch this harness and was not found.";
+      return "This harness needs Node.js, which isn't installed.";
     case "nodeEngineMismatch":
       return "The installed Node.js is older than this harness requires.";
     case "nodeVersionUnreadable":
-      return "Sage could not read the installed Node.js version.";
+      return "Sage couldn't read the installed Node.js version.";
     case "observationOnly":
       return "Sage found this harness but can't verify it on this computer.";
     case "platformUnsupported":
@@ -63,10 +64,18 @@ interface HarnessDefinitionBase {
   version?: string | null;
   versionChecking?: boolean;
   boundVersion?: string | null;
-  characterisation?: "characterised" | "uncharacterised" | null;
+  /**
+   * Where the bound release sits against the release Sage was tested with.
+   * A newer release keeps the tested features; an uncharacterised one (older
+   * or unreadable) loses them.
+   */
+  characterisation?:
+    "characterised" | "newerThanTested" | "uncharacterised" | null;
   unavailableReason?: HarnessUnavailableReason | null;
   signIn?: { command: string; hint: string } | null;
   brand?: HarnessBrand | null;
+  /** A newer published release and the command that installs it. */
+  update?: { latestVersion: string; command: string } | null;
 }
 
 export type HarnessDefinition = HarnessDefinitionBase &

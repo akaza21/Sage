@@ -17,10 +17,15 @@ pub(crate) enum TurnPolicySurface {
 }
 
 impl TurnPolicySurface {
+    /// An observed build that runs the tested features takes the tested turn
+    /// policy, including later releases; the curated package must be the
+    /// pinned one.
     pub(super) fn from_identity(observed: Option<Characterisation>, runtime_version: &str) -> Self {
-        if (observed == Some(Characterisation::Characterised) || observed.is_none())
-            && runtime_version == PINNED_CODEX_VERSION
-        {
+        let supported = match observed {
+            Some(characterisation) => characterisation.runs_tested_features(),
+            None => runtime_version == PINNED_CODEX_VERSION,
+        };
+        if supported {
             Self::Supported
         } else {
             Self::Unsupported
@@ -81,6 +86,37 @@ mod tests {
     use super::*;
     use crate::acp::{contract::RequiredText, intent::Prompt};
     use serde_json::Value;
+
+    #[test]
+    fn the_turn_policy_follows_the_tested_release_or_a_later_one() {
+        use Characterisation::{Characterised, NewerThanTested, Uncharacterised};
+        for (observed, runtime_version, expected) in [
+            (
+                Some(Characterised),
+                PINNED_CODEX_VERSION,
+                TurnPolicySurface::Supported,
+            ),
+            (
+                Some(NewerThanTested),
+                "99.0.0",
+                TurnPolicySurface::Supported,
+            ),
+            (
+                Some(Uncharacterised),
+                PINNED_CODEX_VERSION,
+                TurnPolicySurface::Unsupported,
+            ),
+            (None, PINNED_CODEX_VERSION, TurnPolicySurface::Supported),
+            // The curated package must be the pinned build.
+            (None, "99.0.0", TurnPolicySurface::Unsupported),
+        ] {
+            assert_eq!(
+                TurnPolicySurface::from_identity(observed, runtime_version),
+                expected,
+                "{observed:?} {runtime_version}"
+            );
+        }
+    }
 
     #[test]
     fn advertised_codex_policies_emit_the_enforced_sandbox() {

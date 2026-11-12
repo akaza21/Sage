@@ -48,7 +48,12 @@ impl PiRuntime {
             SessionControl::SetTitle { title } => self.begin_native(NativeRequest::SessionName {
                 name: title.as_str().to_owned(),
             }),
-            SessionControl::UndoTurn { .. } | SessionControl::StopActivity { .. } => {
+            SessionControl::UndoTurn { .. }
+            | SessionControl::StopActivity { .. }
+            | SessionControl::ReadMcpServers
+            | SessionControl::ReloadMcpServers
+            | SessionControl::SignInMcpServer { .. }
+            | SessionControl::ReconnectMcpServer { .. } => {
                 Err(AdapterRuntimeError::UnsupportedCommand)
             }
         }

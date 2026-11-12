@@ -7,7 +7,9 @@ pub(super) const SQL: &str = include_str!("../../../migrations/026_session_facts
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentSessionFactsTurnIndex => return Ok(()),
+        SchemaClass::CurrentSessionFactsTurnIndex | SchemaClass::CurrentOperationTerminalIndex => {
+            return Ok(());
+        }
         SchemaClass::CurrentTitleSource => {}
         _ => return invalid("the session facts Turn index requires the exact title source schema"),
     }

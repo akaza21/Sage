@@ -31,7 +31,7 @@ impl Lane<'_> {
             .map_err(crate::acp::service::PromptSendError::not_started)?;
         match host.send(intent) {
             Ok(outcome) => Ok(outcome),
-            Err(crate::acp::runtime::HostError::SignInRequired) => {
+            Err(failure) if failure.error == crate::acp::runtime::HostError::SignInRequired => {
                 // Refusal happened before the prompt was written. Settle the
                 // turn and release its lane instead of retaining a stuck turn.
                 self.settle_refused_prompt(owner, host);
@@ -39,11 +39,11 @@ impl Lane<'_> {
                     CodexSessionError::SignInRequired,
                 ))
             }
-            Err(error) => {
+            Err(failure) => {
                 crate::acp::runtime::prompt_diagnostics::failed(
                     "service.host_send",
                     started,
-                    &error,
+                    &failure.error,
                     (
                         "slot_error",
                         self.runtime.for_owner(&owner).err(),
@@ -51,14 +51,14 @@ impl Lane<'_> {
                         host.lifecycle.load(std::sync::atomic::Ordering::Acquire),
                     ),
                 );
-                Err(crate::acp::service::PromptSendError::unknown(
+                Err(failure.map(|error| {
                     self.retain_live_host_error(
                         owner,
                         host,
                         LiveHostRecoveryPhase::SendEffect,
                         error,
-                    ),
-                ))
+                    )
+                }))
             }
         }
     }

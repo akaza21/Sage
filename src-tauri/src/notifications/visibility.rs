@@ -18,6 +18,17 @@ pub struct VisibilityUpdate {
     pub chat_ids: Vec<String>,
 }
 
+impl VisibilityUpdate {
+    /// The Chats this update shows: none while the window is hidden.
+    pub(super) fn shown_chats(&self) -> Vec<crate::acp::contract::SageChatId> {
+        self.chat_ids
+            .iter()
+            .filter(|_| self.document_visible)
+            .filter_map(|id| crate::acp::contract::SageChatId::parse(id.clone()).ok())
+            .collect()
+    }
+}
+
 impl Visibility {
     pub(super) fn reset(&mut self) -> u64 {
         self.generation = self.generation.saturating_add(1);
@@ -86,5 +97,22 @@ mod tests {
         state.reset();
         assert!(state.update(update(4, &["a"])).is_err());
         assert!(!state.suppresses("a", true));
+    }
+
+    #[test]
+    fn an_update_shows_its_chats_only_while_the_window_is_visible() {
+        let update = |document_visible| VisibilityUpdate {
+            generation: 1,
+            revision: 1,
+            document_visible,
+            chat_ids: vec!["chat-a".into(), "chat-b".into()],
+        };
+        let shown: Vec<_> = update(true)
+            .shown_chats()
+            .iter()
+            .map(|chat| chat.as_str().to_owned())
+            .collect();
+        assert_eq!(shown, ["chat-a", "chat-b"]);
+        assert!(update(false).shown_chats().is_empty());
     }
 }
