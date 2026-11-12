@@ -36,6 +36,7 @@ fn a_missing_package_is_absent() {
 fn a_foreign_package_or_bin_is_never_admitted() {
     for (name, bin) in [
         ("@other/pi-coding-agent", "dist/cli.js"),
+        // A declared bin that is not installed.
         (crate::acp::bindings::pi::PI_PACKAGE, "dist/other.js"),
         (
             crate::acp::bindings::pi::PI_PACKAGE,
@@ -43,6 +44,8 @@ fn a_foreign_package_or_bin_is_never_admitted() {
         ),
         (crate::acp::bindings::pi::PI_PACKAGE, "/dist/cli.js"),
         (crate::acp::bindings::pi::PI_PACKAGE, "dist/cli.ts"),
+        (crate::acp::bindings::pi::PI_PACKAGE, "dist\\cli.js"),
+        (crate::acp::bindings::pi::PI_PACKAGE, "C:/dist/cli.js"),
         (crate::acp::bindings::pi::PI_PACKAGE, ""),
     ] {
         let root = npm_root(name, bin);
@@ -124,5 +127,27 @@ fn the_entrypoint_is_the_bin_the_installed_release_declares() {
             other => panic!("the declared bin must be found: {other:?}"),
         };
     assert!(found.entrypoint_path.ends_with("dist/bundle/cli.js"));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_declared_bin_that_is_a_symlink_is_never_admitted() {
+    let root = npm_root_with_entry(
+        crate::acp::bindings::pi::PI_PACKAGE,
+        "dist/bundle/cli.js",
+        "dist/cli.js",
+    );
+    let package = root.join(package_relative(""));
+    std::fs::create_dir_all(package.join("dist/bundle")).unwrap();
+    std::os::unix::fs::symlink(
+        package.join("dist/cli.js"),
+        package.join("dist/bundle/cli.js"),
+    )
+    .unwrap();
+    assert_eq!(
+        discover_pi_launch_from(vec![root.clone()], Vec::new(), ProbeLimits::PRODUCTION),
+        PiLaunchDiscovery::PackageUnreadable
+    );
     std::fs::remove_dir_all(root).unwrap();
 }

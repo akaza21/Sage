@@ -88,6 +88,37 @@ mod tests {
     use serde_json::Value;
 
     #[test]
+    fn the_turn_policy_follows_the_tested_release_or_a_later_one() {
+        use Characterisation::{Characterised, NewerThanTested, Uncharacterised};
+        for (observed, runtime_version, expected) in [
+            (
+                Some(Characterised),
+                PINNED_CODEX_VERSION,
+                TurnPolicySurface::Supported,
+            ),
+            (
+                Some(NewerThanTested),
+                "99.0.0",
+                TurnPolicySurface::Supported,
+            ),
+            (
+                Some(Uncharacterised),
+                PINNED_CODEX_VERSION,
+                TurnPolicySurface::Unsupported,
+            ),
+            (None, PINNED_CODEX_VERSION, TurnPolicySurface::Supported),
+            // The curated package must be the pinned build.
+            (None, "99.0.0", TurnPolicySurface::Unsupported),
+        ] {
+            assert_eq!(
+                TurnPolicySurface::from_identity(observed, runtime_version),
+                expected,
+                "{observed:?} {runtime_version}"
+            );
+        }
+    }
+
+    #[test]
     fn advertised_codex_policies_emit_the_enforced_sandbox() {
         for capability in crate::acp::bindings::access_policy::access_modes(
             "codex-app-server",

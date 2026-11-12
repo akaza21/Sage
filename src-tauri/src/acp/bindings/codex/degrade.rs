@@ -102,7 +102,7 @@ fn observed_capability_evidence(build: ObservedBuild<'_>) -> OptionalCapabilitie
                 .filter(|tested| *tested <= observed)
                 .map(|tested| (tested, evidence.optional))
         })
-        .max_by(|(left, _), (right, _)| left.cmp(right))
+        .max_by(|left, right| left.0.cmp(&right.0))
         .map(|(_, optional)| optional)
         .unwrap_or_default()
 }

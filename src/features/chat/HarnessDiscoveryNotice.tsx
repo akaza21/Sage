@@ -14,7 +14,7 @@ const buildNoticeDetail: Record<
 > = {
   characterised: null,
   newerThanTested:
-    " is newer than the release Sage was tested with. Everything stays available.",
+    " is newer than the release Sage was tested with. Sage keeps the features it tested; report anything that misbehaves.",
   uncharacterised: " hasn't been characterised. Some features are unavailable.",
 };
 

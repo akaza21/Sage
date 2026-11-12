@@ -304,6 +304,34 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn a_later_codex_release_keeps_workspace_edits_and_an_earlier_one_is_read_only() {
+        let [major, minor, patch] = CODEX_PINNED_VERSION
+            .split('.')
+            .map(|part| part.parse::<u32>().unwrap())
+            .collect::<Vec<_>>()[..]
+        else {
+            panic!("the pinned version has three components");
+        };
+        let ids = |version: &str| {
+            let characterised = crate::acp::bindings::characterisation::codex_characterisation(
+                &format!("codex-cli {version}"),
+            )
+            .runs_tested_features();
+            access_modes("codex-app-server", version, characterised)
+                .into_iter()
+                .map(|mode| mode.id)
+                .collect::<Vec<_>>()
+        };
+        use SessionAccessMode::{ReadOnly, WorkspaceWrite};
+        assert_eq!(ids(CODEX_PINNED_VERSION), [ReadOnly, WorkspaceWrite]);
+        assert_eq!(
+            ids(&format!("{major}.{minor}.{}", patch + 1)),
+            [ReadOnly, WorkspaceWrite]
+        );
+        assert_eq!(ids(&format!("{major}.{}.0", minor - 1)), [ReadOnly]);
+    }
+
+    #[test]
     fn uncharacterised_codex_cannot_offer_workspace_write() {
         let modes = access_modes("codex-app-server", CODEX_PINNED_VERSION, false);
         assert_eq!(modes.len(), 1);

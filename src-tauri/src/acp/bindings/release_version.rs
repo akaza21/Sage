@@ -66,17 +66,33 @@ impl ReleaseVersion {
     }
 }
 
+/// A numeric version component without leading zeros, as semantic versioning
+/// requires.
 fn component(value: &str) -> Option<u64> {
     (!value.is_empty()
         && value.len() <= COMPONENT_DIGITS_MAX
-        && value.bytes().all(|byte| byte.is_ascii_digit()))
+        && value.bytes().all(|byte| byte.is_ascii_digit())
+        && (value == "0" || !value.starts_with('0')))
     .then(|| value.parse().ok())
     .flatten()
 }
 
+/// Semantic-versioning precedence of two prerelease tags: identifiers
+/// compare left to right, numeric ones numerically and below alphanumeric
+/// ones, and a tag that is a prefix of the other sorts first.
+fn prerelease_order(left: &str, right: &str) -> Ordering {
+    let identifier = |part: &str| match part.parse::<u64>() {
+        Ok(number) if part.bytes().all(|byte| byte.is_ascii_digit()) => Ok(number),
+        _ => Err(part.to_owned()),
+    };
+    left.split('.')
+        .map(identifier)
+        .cmp(right.split('.').map(identifier))
+}
+
 impl Ord for ReleaseVersion {
     /// A prerelease sorts before its release; two prereleases of the same
-    /// release compare by tag.
+    /// release compare by semantic-versioning tag precedence.
     fn cmp(&self, other: &Self) -> Ordering {
         self.core
             .cmp(&other.core)
@@ -84,7 +100,7 @@ impl Ord for ReleaseVersion {
                 (None, None) => Ordering::Equal,
                 (None, Some(_)) => Ordering::Greater,
                 (Some(_), None) => Ordering::Less,
-                (Some(left), Some(right)) => left.cmp(right),
+                (Some(left), Some(right)) => prerelease_order(left, right),
             })
     }
 }
@@ -119,7 +135,11 @@ mod tests {
     fn versions_order_by_release_with_prereleases_before_their_release() {
         let ordered = [
             "0.166.9",
+            "0.167.0-alpha",
             "0.167.0-alpha.1",
+            "0.167.0-alpha.2",
+            "0.167.0-alpha.10",
+            "0.167.0-alpha.beta",
             "0.167.0-rc.1",
             "0.167.0",
             "0.167.1",
@@ -148,6 +168,8 @@ mod tests {
             "0.167.0-",
             "0.167.0-rc 1x",
             "00000000001.0.0",
+            "01.2.3",
+            "1.02.3",
         ] {
             assert_eq!(ReleaseVersion::parse(reported), None, "{reported:?}");
         }

@@ -14,10 +14,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     acp::{
-        bindings::{
-            adapter::AdapterRuntimeError,
-            release_version::{ReleaseVersion, characterise_against},
-        },
+        bindings::{adapter::AdapterRuntimeError, release_version::ReleaseVersion},
         process::{
             ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
             RequiredContainment, TreeLimits,
@@ -157,7 +154,7 @@ impl SessionLaunch {
 }
 
 fn version_admitted(version: &str) -> bool {
-    characterise_against(version, SUPPORTED_MINIMUM).runs_tested_features()
+    version_characterisation(version).runs_tested_features()
 }
 
 /// Where a release sits against the tested 2.1 line, which keeps the SDK

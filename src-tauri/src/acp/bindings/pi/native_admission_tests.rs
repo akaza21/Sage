@@ -1,11 +1,19 @@
 use super::*;
 
 #[test]
-fn every_readable_pi_release_is_admitted() {
-    for admitted in ["0.74.2", "1.4.9", "1.5.0", "1.5.2", "1.6.0", "2.0.0-beta.1"] {
+fn every_pi_release_of_the_launched_package_is_admitted() {
+    for admitted in [
+        "0.74.0",
+        "0.74.2",
+        "1.4.9",
+        "1.5.0",
+        "1.5.2",
+        "1.6.0",
+        "2.0.0-beta.1",
+    ] {
         assert!(version_admitted(admitted), "{admitted}");
     }
-    for refused in ["1.5", "garbage", ""] {
+    for refused in ["0.73.9", "0.74.0-rc.1", "1.5", "garbage", ""] {
         assert!(!version_admitted(refused), "{refused}");
     }
 }
@@ -102,20 +110,23 @@ fn an_installed_pi_in_range_is_admitted_and_drift_revokes_it() {
 }
 
 #[test]
-fn older_and_newer_pi_releases_are_admitted_and_an_unreadable_version_is_not() {
+fn older_and_newer_pi_releases_are_admitted_and_an_unreadable_or_too_old_one_is_not() {
     for version in ["0.74.2", "1.6.0"] {
         let (discovery, root) = discovered(version);
         let registration = PiBindingRegistration::from_discovery_for_test(discovery);
         assert_eq!(registration.unavailable(), None, "{version}");
         std::fs::remove_dir_all(root).unwrap();
     }
-    let (discovery, root) = discovered("1.6");
-    let registration = PiBindingRegistration::from_discovery_for_test(discovery);
-    assert_eq!(
-        registration.unavailable(),
-        Some(PiAdmissionUnavailable::VersionUnsupported)
-    );
-    std::fs::remove_dir_all(root).unwrap();
+    for version in ["1.6", "0.73.0"] {
+        let (discovery, root) = discovered(version);
+        let registration = PiBindingRegistration::from_discovery_for_test(discovery);
+        assert_eq!(
+            registration.unavailable(),
+            Some(PiAdmissionUnavailable::VersionUnsupported),
+            "{version}"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
 
 #[test]

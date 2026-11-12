@@ -18,10 +18,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     acp::{
-        bindings::{
-            adapter::AdapterRuntimeError,
-            release_version::{ReleaseVersion, characterise_against},
-        },
+        bindings::{adapter::AdapterRuntimeError, release_version::characterise_against},
         process::{
             ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
             RequiredContainment, TreeLimits,
@@ -82,7 +79,7 @@ pub(crate) enum PiAdmissionUnavailable {
     NodeVersionUnreadable,
     #[error("the discovered Node.js does not satisfy Pi's engine")]
     NodeEngineMismatch,
-    #[error("the installed Pi version could not be read")]
+    #[error("the installed Pi version is unreadable or older than Sage supports")]
     VersionUnsupported,
     #[error("the discovered Pi package or Node runtime changed after admission")]
     Drift,
@@ -105,12 +102,17 @@ fn engine_satisfied(engine: &str, node_version: &str) -> Option<bool> {
     Some(parse_version(node_version)? >= minimum)
 }
 
-/// Any readable Pi release is admitted. The tested release and later ones
-/// keep the tested features; an earlier one runs read-only (see
-/// [`AdmittedPiBinding::characterisation`]). Pi's RPC commands have been
-/// stable across the 0.7x and 1.x lines, so the version alone never refuses it.
+/// The first release of the Pi package Sage launches. It already honours
+/// every launch flag Sage relies on for read-only mode (`--tools`,
+/// `--no-builtin-tools`, `--no-extensions`, `--no-themes`) and answers every
+/// RPC command Sage sends, so nothing older can exist under this package.
+const PI_READ_ONLY_MINIMUM: &str = "0.74.0";
+
+/// Pi releases from [`PI_READ_ONLY_MINIMUM`] on are admitted. The tested
+/// release and later ones keep the tested features; an earlier one runs
+/// read-only (see [`AdmittedPiBinding::characterisation`]).
 pub(crate) fn version_admitted(version: &str) -> bool {
-    ReleaseVersion::parse(version).is_some()
+    characterise_against(version, PI_READ_ONLY_MINIMUM).runs_tested_features()
 }
 
 impl AdmittedPiBinding {
@@ -118,10 +120,10 @@ impl AdmittedPiBinding {
         if !version_admitted(&launch.package_version) {
             return Err(PiAdmissionUnavailable::VersionUnsupported);
         }
-        // The package's own engine is a real requirement. A range Sage cannot
-        // evaluate is left to Node and Pi to enforce.
-        if engine_satisfied(&launch.node_engine, &launch.node_version) == Some(false) {
-            return Err(PiAdmissionUnavailable::NodeEngineMismatch);
+        match engine_satisfied(&launch.node_engine, &launch.node_version) {
+            Some(true) => {}
+            Some(false) => return Err(PiAdmissionUnavailable::NodeEngineMismatch),
+            None => return Err(PiAdmissionUnavailable::PackageUnreadable),
         }
         let node_byte_len = std::fs::metadata(&launch.node_path)
             .map_err(|_| PiAdmissionUnavailable::NodeVersionUnreadable)?
