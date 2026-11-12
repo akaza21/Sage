@@ -224,8 +224,17 @@ for (const width of [1888, 720, 480]) {
         await expect(harness).toBeFocused();
         await expect(harness).toHaveCSS("outline-style", "none");
         await page.getByRole("combobox", { name: "Message agent" }).click();
-        await page.keyboard.press("Tab");
-        await page.keyboard.press("Tab");
+        // The toolbar's tab order leads to the harness picker.
+        for (const name of [
+          "Composer options",
+          "Attach files",
+          "Access options",
+        ]) {
+          await page.keyboard.press("Tab");
+          await expect(
+            page.getByRole("button", { name, exact: true }),
+          ).toBeFocused();
+        }
         await page.keyboard.press("Tab");
         await expect(harness).toBeFocused();
         expect(

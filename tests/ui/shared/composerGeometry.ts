@@ -60,7 +60,14 @@ export async function settledComposerFit(composer: Locator) {
   return fit.split(" ").filter(Boolean);
 }
 
+/**
+ * Every toolbar target is at least 24px, inside the composer and in order on
+ * one line. When the fit could not keep the row on one line even with every
+ * label compacted, it wraps: the send controls then share a line of their
+ * own below the rest.
+ */
 export async function expectCompactComposerTargets(composer: Locator) {
+  const wrapped = (await settledComposerFit(composer)).includes("wrap");
   const targets = await composer
     .locator(
       [
@@ -78,26 +85,42 @@ export async function expectCompactComposerTargets(composer: Locator) {
       elements
         .map((element) => {
           const { x, y, width, height } = element.getBoundingClientRect();
-          return { x, y, width, height };
+          return {
+            x,
+            y,
+            width,
+            height,
+            send: element.matches(".composer__mic, .send-button"),
+          };
         })
         .filter((box) => box.width > 0 && box.height > 0),
     );
   expect(targets.length).toBeGreaterThanOrEqual(5);
   const ordered = targets.sort((left, right) => left.x - right.x);
+  const rows = wrapped
+    ? [ordered.filter((box) => !box.send), ordered.filter((box) => box.send)]
+    : [ordered];
   const bounds = (await composer.boundingBox())!;
-  for (const [index, box] of ordered.entries()) {
-    expect(box.width).toBeGreaterThanOrEqual(24);
-    expect(box.height).toBeGreaterThanOrEqual(24);
-    expect(box.x).toBeGreaterThanOrEqual(bounds.x);
-    expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
-    expect(
-      Math.abs(box.y + box.height / 2 - (ordered[0].y + ordered[0].height / 2)),
-    ).toBeLessThanOrEqual(1);
-    if (index > 0)
-      expect(box.x).toBeGreaterThanOrEqual(
-        ordered[index - 1].x + ordered[index - 1].width,
-      );
+  for (const row of rows) {
+    expect(row.length).toBeGreaterThan(0);
+    for (const [index, box] of row.entries()) {
+      expect(box.width).toBeGreaterThanOrEqual(24);
+      expect(box.height).toBeGreaterThanOrEqual(24);
+      expect(box.x).toBeGreaterThanOrEqual(bounds.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+      expect(
+        Math.abs(box.y + box.height / 2 - (row[0].y + row[0].height / 2)),
+      ).toBeLessThanOrEqual(1);
+      if (index > 0)
+        expect(box.x).toBeGreaterThanOrEqual(
+          row[index - 1].x + row[index - 1].width,
+        );
+    }
   }
+  if (wrapped)
+    expect(Math.min(...rows[1].map((box) => box.y))).toBeGreaterThanOrEqual(
+      Math.max(...rows[0].map((box) => box.y + box.height)),
+    );
 }
 
 /**
