@@ -23,10 +23,8 @@ mod notices;
 mod outbound;
 mod permission;
 mod questions;
-mod reply_text;
 mod steer;
 mod subagents;
-use reply_text::TextBreak;
 
 /// Bounds on per-turn bookkeeping; the inner session caps pending requests.
 const MAX_PENDING: usize = 32;
@@ -128,9 +126,6 @@ pub(super) struct SdkBridge {
     streamed: VecDeque<String>,
     retrying: bool,
     compacting: bool,
-    /// The turn's reply text so far ended a message, so the next message's
-    /// text starts a new paragraph instead of running on.
-    text_break: TextBreak,
     /// Mid-turn messages Claude Code has not yet taken up.
     steers: Vec<String>,
     /// A run's `result` that did not end the turn, for when no waiting
@@ -171,7 +166,6 @@ impl SdkBridge {
             streamed: VecDeque::new(),
             retrying: false,
             compacting: false,
-            text_break: TextBreak::None,
             steers: Vec::new(),
             held: None,
         }
