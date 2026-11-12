@@ -25,6 +25,7 @@ import {
   runAgentCanonicalTest,
   revealWorkedContent,
 } from "./agentVisualHelpers";
+import { settledComposerFit } from "./shared/composerGeometry";
 
 async function expectOpenPickerContained(
   page: Page,
@@ -139,6 +140,9 @@ async function expectComposerControlRow(page: Page) {
 async function expectComposerToolbarLaidOut(form: Locator, projectChip = true) {
   const toolbar = form.locator(".composer__toolbar");
   await expect(toolbar).toBeVisible();
+  // A resized pane refits its toolbar a frame or more later; measure the
+  // fit it settles on.
+  await settledComposerFit(form);
   const geometry = await toolbar.evaluate((node) => {
     const toolbarBox = node.getBoundingClientRect();
     const buttons = [
