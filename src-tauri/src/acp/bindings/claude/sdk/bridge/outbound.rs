@@ -30,6 +30,7 @@ impl SdkBridge {
                 let content = prompt_content(params.get("prompt"))?;
                 self.prompt = Some(id);
                 self.interrupted = false;
+                self.text_break = super::TextBreak::None;
                 let mut user = json!({
                     "type": "user",
                     "session_id": self.session_id,

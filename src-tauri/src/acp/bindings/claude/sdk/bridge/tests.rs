@@ -959,3 +959,32 @@ fn a_fork_answers_once_claude_code_replies_and_never_mid_turn() {
     assert!(bridge.fork(None).is_err());
     let _ = std::fs::remove_dir_all(config);
 }
+
+#[test]
+fn text_after_a_tool_call_starts_a_new_paragraph() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let delta = |text: &str| json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":text}}});
+    let start = |id: &str| json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"message_start","message":{"id":id}}});
+    let text = |inbound: &Inbound| updates(inbound)[0]["content"]["text"].clone();
+    bridge.inbound(start("msg_1")).unwrap();
+    assert_eq!(
+        text(&bridge.inbound(delta("I wrote notes.txt.")).unwrap()),
+        "I wrote notes.txt."
+    );
+    assert_eq!(text(&bridge.inbound(delta(" Done")).unwrap()), " Done");
+    bridge.inbound(start("msg_2")).unwrap();
+    assert_eq!(
+        text(&bridge.inbound(delta("The file")).unwrap()),
+        "\n\nThe file"
+    );
+    // A new turn starts without a break.
+    bridge
+        .inbound(
+            json!({"type":"result","subtype":"success","is_error":false,"result":"","usage":{}}),
+        )
+        .unwrap();
+    prompt(&mut bridge, 4);
+    bridge.inbound(start("msg_3")).unwrap();
+    assert_eq!(text(&bridge.inbound(delta("Next")).unwrap()), "Next");
+}

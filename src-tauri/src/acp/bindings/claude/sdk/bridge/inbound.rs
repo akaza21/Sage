@@ -173,6 +173,7 @@ impl SdkBridge {
     fn stream_event(&mut self, event: &Value, inbound: &mut Inbound) {
         match event.get("type").and_then(Value::as_str) {
             Some("message_start") => {
+                self.end_text();
                 if let Some(id) = event.pointer("/message/id").and_then(Value::as_str) {
                     if self.streamed.len() >= RECENT_STREAMED_MESSAGES {
                         self.streamed.pop_front();
@@ -188,6 +189,11 @@ impl SdkBridge {
                     _ => return,
                 };
                 if let Some(text) = text.and_then(Value::as_str).filter(|text| !text.is_empty()) {
+                    let text = if kind == "agent_message_chunk" {
+                        self.reply_text(text)
+                    } else {
+                        text.to_owned()
+                    };
                     inbound.acp.push(self.update(
                         json!({"sessionUpdate": kind, "content": {"type": "text", "text": text}}),
                     ));
@@ -209,6 +215,9 @@ impl SdkBridge {
             .get("id")
             .and_then(Value::as_str)
             .is_some_and(|id| self.streamed.iter().any(|streamed| streamed == id));
+        if !streamed {
+            self.end_text();
+        }
         for block in message
             .get("content")
             .and_then(Value::as_array)
@@ -218,6 +227,7 @@ impl SdkBridge {
             match block.get("type").and_then(Value::as_str) {
                 Some("text") if !streamed => {
                     if let Some(text) = block.get("text").and_then(Value::as_str) {
+                        let text = self.reply_text(text);
                         inbound.acp.push(self.update(json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}})));
                     }
                 }
