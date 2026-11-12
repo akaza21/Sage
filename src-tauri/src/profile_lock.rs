@@ -9,7 +9,7 @@
 
 use std::{
     fmt,
-    fs::{self, File, OpenOptions, TryLockError},
+    fs::{File, OpenOptions, TryLockError},
     io,
     path::{Path, PathBuf},
 };
@@ -71,15 +71,15 @@ impl ProfileLock {
 }
 
 /// Opens the lock file itself, never what a link in its place points to: a
-/// link could aim the lock at a file another profile also uses. The check is
-/// made on the opened handle, so nothing can swap the entry in between.
+/// symbolic or hard link could tie the lock to a file another profile also
+/// uses. The checks are made on the opened handle, so nothing can swap the
+/// entry in between.
 fn open_plain_file(path: &Path) -> io::Result<File> {
     let mut options = OpenOptions::new();
     options.read(true).write(true).create(true).truncate(false);
-    no_follow(&mut options);
+    platform::restrict(&mut options);
     let file = options.open(path)?;
-    let metadata = file.metadata()?;
-    if !metadata.file_type().is_file() || is_reparse(&metadata) {
+    if !file.metadata()?.file_type().is_file() || !platform::is_single_plain_file(&file)? {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "the Sage profile lock is not a plain file",
@@ -89,36 +89,61 @@ fn open_plain_file(path: &Path) -> io::Result<File> {
 }
 
 #[cfg(windows)]
-fn no_follow(options: &mut OpenOptions) {
-    use std::os::windows::fs::OpenOptionsExt;
+mod platform {
+    use std::{
+        fs::{File, OpenOptions},
+        io,
+        os::windows::{fs::OpenOptionsExt, io::AsRawHandle},
+    };
 
-    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
-    options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    use windows_sys::Win32::Storage::FileSystem::{
+        BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, GetFileInformationByHandle,
+    };
+
+    /// Opens a reparse point itself rather than its target, and withholds
+    /// delete sharing so the file cannot be removed or renamed while this
+    /// process owns the profile.
+    pub(super) fn restrict(options: &mut OpenOptions) {
+        options
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
+    }
+
+    pub(super) fn is_single_plain_file(file: &File) -> io::Result<bool> {
+        let mut information: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+        if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut information) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(
+            information.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT == 0
+                && information.nNumberOfLinks == 1,
+        )
+    }
 }
 
 #[cfg(unix)]
-fn no_follow(options: &mut OpenOptions) {
-    use std::os::unix::fs::OpenOptionsExt;
+mod platform {
+    use std::{
+        fs::{File, OpenOptions},
+        io,
+        os::unix::fs::{MetadataExt, OpenOptionsExt},
+    };
 
-    options.custom_flags(libc::O_NOFOLLOW);
-}
+    /// Refuses a symbolic link at open.
+    pub(super) fn restrict(options: &mut OpenOptions) {
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
 
-#[cfg(windows)]
-fn is_reparse(metadata: &fs::Metadata) -> bool {
-    use std::os::windows::fs::MetadataExt;
-
-    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
-    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-}
-
-#[cfg(not(windows))]
-fn is_reparse(_metadata: &fs::Metadata) -> bool {
-    // `O_NOFOLLOW` already refused a symbolic link at open.
-    false
+    pub(super) fn is_single_plain_file(file: &File) -> io::Result<bool> {
+        Ok(file.metadata()?.nlink() == 1)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
     struct TestDir(PathBuf);
@@ -175,5 +200,31 @@ mod tests {
         assert!(matches!(error, ProfileLockError::Io(_)), "{error}");
         // The link's target was never locked on the refused profile's behalf.
         let _owner = ProfileLock::acquire(&elsewhere.0).unwrap();
+    }
+
+    #[test]
+    fn a_hard_link_in_place_of_the_lock_is_refused() {
+        let directory = TestDir::new();
+        let elsewhere = TestDir::new();
+        let target = elsewhere.0.join(LOCK_FILE_NAME);
+        fs::write(&target, b"").unwrap();
+        fs::hard_link(&target, directory.0.join(LOCK_FILE_NAME)).unwrap();
+
+        let error = ProfileLock::acquire(&directory.0).unwrap_err();
+        assert!(matches!(error, ProfileLockError::Io(_)), "{error}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_lock_file_cannot_be_deleted_while_a_process_owns_the_profile() {
+        let directory = TestDir::new();
+        let owner = ProfileLock::acquire(&directory.0).unwrap();
+
+        assert!(fs::remove_file(directory.0.join(LOCK_FILE_NAME)).is_err());
+        assert!(matches!(
+            ProfileLock::acquire(&directory.0),
+            Err(ProfileLockError::Held(_))
+        ));
+        drop(owner);
     }
 }

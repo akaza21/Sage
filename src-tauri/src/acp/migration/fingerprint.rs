@@ -197,16 +197,26 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
 
 /// Refuses a live database a newer Sage migrated before any recovery acts on
 /// the files beside it. Only that refusal is decided here: any other problem
-/// is left to the full classification after recovery, as before. A nonempty
-/// WAL may hold the newest rows and is read only through the bounded probe
-/// copy, so that case is also left to the full classification, which refuses
-/// it the same way.
+/// is left to the full classification after recovery, as before.
+///
+/// The main file's header `user_version` is read even beside a nonempty WAL:
+/// Sage only raises it, so a checkpointed value above this build's maximum is
+/// conclusive. A newer version still only in the WAL is read through the
+/// bounded probe copy by the full classification, which refuses it the same
+/// way. With no WAL, the migration history itself is checked here.
 pub(super) fn reject_newer_live(paths: &super::paths::MigrationPaths) -> AppResult<()> {
-    let bytes = |path: &Path| std::fs::metadata(path).map_or(0, |metadata| metadata.len());
-    if bytes(&paths.live) == 0 || bytes(&paths.live_wal) != 0 {
-        return Ok(());
-    }
     let newer = (|| {
+        if let Some(stored) = header_user_version(&paths.live)?
+            && i64::from(stored) > MAX_SCHEMA_VERSION as i64
+        {
+            return Err(AppError::NewerProfile {
+                stored_version: i64::from(stored),
+                supported_version: MAX_SCHEMA_VERSION as u32,
+            });
+        }
+        if std::fs::metadata(&paths.live_wal).map_or(0, |metadata| metadata.len()) != 0 {
+            return Ok(());
+        }
         let connection = open_read_only(&paths.live)?;
         let tracked: bool = connection.query_row(
             "SELECT EXISTS(
@@ -223,6 +233,31 @@ pub(super) fn reject_newer_live(paths: &super::paths::MigrationPaths) -> AppResu
     match newer {
         Err(error @ AppError::NewerProfile { .. }) => Err(error),
         _ => Ok(()),
+    }
+}
+
+/// The `user_version` in a SQLite file's 100-byte header, read without
+/// opening it as a database. `None` for a missing, empty or non-SQLite file.
+fn header_user_version(path: &Path) -> AppResult<Option<i32>> {
+    use std::io::Read;
+
+    const MAGIC: &[u8; 16] = b"SQLite format 3\0";
+    super::platform::reject_path_alias(path)?;
+    let mut header = [0_u8; 64];
+    match std::fs::File::open(path).and_then(|mut file| file.read_exact(&mut header)) {
+        Ok(()) if header.starts_with(MAGIC) => Ok(Some(i32::from_be_bytes([
+            header[60], header[61], header[62], header[63],
+        ]))),
+        Ok(()) => Ok(None),
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::UnexpectedEof
+            ) =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -408,6 +443,15 @@ mod tests {
 
     #[test]
     fn a_profile_migrated_by_a_newer_sage_is_refused_by_name_before_recovery_touches_it() {
+        refuses_newer_profile_untouched(false);
+    }
+
+    #[test]
+    fn a_checkpointed_newer_profile_is_refused_before_recovery_beside_a_nonempty_wal() {
+        refuses_newer_profile_untouched(true);
+    }
+
+    fn refuses_newer_profile_untouched(with_wal: bool) {
         let directory = TestDir(
             crate::test_paths::temp_dir()
                 .join(format!("sage-newer-profile-{}", uuid::Uuid::new_v4())),
@@ -432,6 +476,10 @@ mod tests {
         // resume it if the refusal came any later.
         let paths = super::super::paths::MigrationPaths::new(&path).unwrap();
         std::fs::write(&paths.replacement_build_intent, b"{\"newer\":true}").unwrap();
+        if with_wal {
+            // Frames the newer Sage had not checkpointed when it stopped.
+            std::fs::write(&paths.live_wal, [0x37_u8; 64]).unwrap();
+        }
         let before = snapshot(&directory.0);
 
         let error = match super::super::open_or_migrate(&path) {
