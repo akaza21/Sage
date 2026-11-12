@@ -195,6 +195,37 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
     invalid("Sage schema objects do not match the exact declared version")
 }
 
+/// Refuses a live database a newer Sage migrated before any recovery acts on
+/// the files beside it. Only that refusal is decided here: any other problem
+/// is left to the full classification after recovery, as before. A nonempty
+/// WAL may hold the newest rows and is read only through the bounded probe
+/// copy, so that case is also left to the full classification, which refuses
+/// it the same way.
+pub(super) fn reject_newer_live(paths: &super::paths::MigrationPaths) -> AppResult<()> {
+    let bytes = |path: &Path| std::fs::metadata(path).map_or(0, |metadata| metadata.len());
+    if bytes(&paths.live) == 0 || bytes(&paths.live_wal) != 0 {
+        return Ok(());
+    }
+    let newer = (|| {
+        let connection = open_read_only(&paths.live)?;
+        let tracked: bool = connection.query_row(
+            "SELECT EXISTS(
+               SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_migrations'
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+        if tracked {
+            reject_newer_history(&connection)?;
+        }
+        Ok(())
+    })();
+    match newer {
+        Err(error @ AppError::NewerProfile { .. }) => Err(error),
+        _ => Ok(()),
+    }
+}
+
 /// Only a newer Sage records a migration above this binary's maximum. Naming
 /// that case lets the person act on it; the database is still refused, and
 /// every lower history still has to match its exact fingerprint.
@@ -363,8 +394,20 @@ mod tests {
         }
     }
 
+    fn snapshot(directory: &Path) -> Vec<(std::ffi::OsString, Vec<u8>)> {
+        let mut entries = std::fs::read_dir(directory)
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                (entry.file_name(), std::fs::read(entry.path()).unwrap())
+            })
+            .collect::<Vec<_>>();
+        entries.sort();
+        entries
+    }
+
     #[test]
-    fn a_profile_migrated_by_a_newer_sage_is_refused_by_name_and_left_unchanged() {
+    fn a_profile_migrated_by_a_newer_sage_is_refused_by_name_before_recovery_touches_it() {
         let directory = TestDir(
             crate::test_paths::temp_dir()
                 .join(format!("sage-newer-profile-{}", uuid::Uuid::new_v4())),
@@ -385,7 +428,11 @@ mod tests {
                 .pragma_update(None, "user_version", newer)
                 .unwrap();
         }
-        let before = std::fs::read(&path).unwrap();
+        // A replacement left mid-flight by the newer Sage: recovery would
+        // resume it if the refusal came any later.
+        let paths = super::super::paths::MigrationPaths::new(&path).unwrap();
+        std::fs::write(&paths.replacement_build_intent, b"{\"newer\":true}").unwrap();
+        let before = snapshot(&directory.0);
 
         let error = match super::super::open_or_migrate(&path) {
             Ok(_) => panic!("a newer profile must not open"),
@@ -402,6 +449,6 @@ mod tests {
             "{error}"
         );
         assert!(error.to_string().contains("newer version of Sage"));
-        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(snapshot(&directory.0), before);
     }
 }

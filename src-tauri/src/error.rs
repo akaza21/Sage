@@ -80,10 +80,8 @@ pub enum AppError {
     /// Opening it would mean guessing at a schema this build does not know,
     /// so Sage refuses before changing anything.
     #[error(
-        "This Sage profile was last opened by a newer version of Sage (data version \
-         {stored_version}; this version reads up to {supported_version}). Sage has left it \
-         unchanged. Open it with that newer Sage. Test and development builds should run \
-         with their own profile (SAGE_DISPOSABLE_PROFILE_ROOT) so they never upgrade this one."
+        "this Sage profile was written by a newer version of Sage (data version \
+         {stored_version}; this version reads up to {supported_version}) and was left unchanged"
     )]
     NewerProfile {
         stored_version: i64,

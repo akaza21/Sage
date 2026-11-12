@@ -61,14 +61,7 @@ impl From<io::Error> for ProfileLockError {
 impl ProfileLock {
     /// Takes the profile without waiting. `durable_dir` must already exist.
     pub(crate) fn acquire(durable_dir: &Path) -> Result<Self, ProfileLockError> {
-        let path = durable_dir.join(LOCK_FILE_NAME);
-        reject_non_file(&path)?;
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&path)?;
+        let file = open_plain_file(&durable_dir.join(LOCK_FILE_NAME))?;
         match file.try_lock() {
             Ok(()) => Ok(Self { _file: file }),
             Err(TryLockError::WouldBlock) => Err(ProfileLockError::Held(durable_dir.to_owned())),
@@ -77,18 +70,37 @@ impl ProfileLock {
     }
 }
 
-/// A link or directory in the lock's place could point the lock somewhere
-/// another profile also uses, so only a plain file (or none yet) is accepted.
-fn reject_non_file(path: &Path) -> io::Result<()> {
-    match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_file() && !is_reparse(&metadata) => Ok(()),
-        Ok(_) => Err(io::Error::new(
+/// Opens the lock file itself, never what a link in its place points to: a
+/// link could aim the lock at a file another profile also uses. The check is
+/// made on the opened handle, so nothing can swap the entry in between.
+fn open_plain_file(path: &Path) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    no_follow(&mut options);
+    let file = options.open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file() || is_reparse(&metadata) {
+        return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "the Sage profile lock is not a plain file",
-        )),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error),
+        ));
     }
+    Ok(file)
+}
+
+#[cfg(windows)]
+fn no_follow(options: &mut OpenOptions) {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+}
+
+#[cfg(unix)]
+fn no_follow(options: &mut OpenOptions) {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    options.custom_flags(libc::O_NOFOLLOW);
 }
 
 #[cfg(windows)]
@@ -101,7 +113,7 @@ fn is_reparse(metadata: &fs::Metadata) -> bool {
 
 #[cfg(not(windows))]
 fn is_reparse(_metadata: &fs::Metadata) -> bool {
-    // `symlink_metadata` already reports a symbolic link as its own type.
+    // `O_NOFOLLOW` already refused a symbolic link at open.
     false
 }
 
@@ -160,9 +172,8 @@ mod tests {
         std::os::unix::fs::symlink(&target, directory.0.join(LOCK_FILE_NAME)).unwrap();
 
         let error = ProfileLock::acquire(&directory.0).unwrap_err();
-        assert!(
-            matches!(&error, ProfileLockError::Io(io) if io.kind() == io::ErrorKind::InvalidInput),
-            "{error}"
-        );
+        assert!(matches!(error, ProfileLockError::Io(_)), "{error}");
+        // The link's target was never locked on the refused profile's behalf.
+        let _owner = ProfileLock::acquire(&elsewhere.0).unwrap();
     }
 }

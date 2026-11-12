@@ -162,6 +162,7 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
     fs::create_dir_all(paths.parent())?;
     let _lock = MigrationLock::acquire(paths.parent())?;
     paths.validate_containment()?;
+    fingerprint::reject_newer_live(&paths)?;
     v18_backup::admit_recovery(&paths)?;
 
     if paths.replacement_manifest.exists() {

@@ -45,6 +45,7 @@ mod launch_profile;
 mod notifications;
 mod persistence;
 mod preview_lifecycle;
+mod profile_handoff;
 mod profile_lock;
 mod project_commands;
 mod project_create_commands;
@@ -140,6 +141,7 @@ use crate::{
     launch_profile::{reject_unavailable_fixture_environment_inputs, resolve_launch_profile},
     persistence::Database,
     profile_lock::{ProfileLock, ProfileLockError},
+    startup_refusal::Refusal,
     state::AppState,
     workspace::development_workspace_root,
 };
@@ -188,8 +190,7 @@ pub fn run() {
             let profile_lock = match ProfileLock::acquire(profile.durable_dir()) {
                 Ok(lock) => lock,
                 Err(ProfileLockError::Held(_)) => {
-                    let message = startup_refusal::profile_in_use(&profile);
-                    return Err(startup_refusal::refuse(&profile, message));
+                    startup_refusal::exit(Refusal::ProfileInUse, &profile)
                 }
                 Err(error) => return Err(error.into()),
             };
@@ -204,14 +205,13 @@ pub fn run() {
                     | DesktopFixtureMode::ClaudeFixture(_)
                     | DesktopFixtureMode::PiFixture(_)
             );
-            let database = Database::open(&profile.durable_dir().join("sage.db")).map_err(
-                |error| match error {
-                    AppError::NewerProfile { .. } => {
-                        startup_refusal::refuse(&profile, error.to_string())
-                    }
-                    other => other.into(),
-                },
-            )?;
+            let database = match Database::open(&profile.durable_dir().join("sage.db")) {
+                Ok(database) => database,
+                Err(error @ AppError::NewerProfile { .. }) => {
+                    startup_refusal::exit(Refusal::NewerProfile(error.to_string()), &profile)
+                }
+                Err(error) => return Err(error.into()),
+            };
             let seed_project_root = if profile.is_disposable() {
                 profile.project_root().map(ToOwned::to_owned)
             } else {
@@ -350,6 +350,14 @@ pub fn run() {
                 None => main_window,
             };
             main_window.build()?;
+            if !profile.is_disposable()
+                && let Err(error) = profile_handoff::listen(app.handle(), profile.durable_dir())
+            {
+                warn!(
+                    ?error,
+                    "a second launch will not bring this Sage to the front"
+                );
+            }
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
             if !native_fixture_mode {
                 AppState::refresh_harnesses_after_window_shown(app.handle().clone());
@@ -362,12 +370,7 @@ pub fn run() {
         })
         .invoke_handler(ipc_commands::handle_main_invoke)
         .build(tauri::generate_context!())
-        .unwrap_or_else(|error| {
-            // A setup refusal has already been shown where it belongs; exit
-            // without a panic so no crash report hides the message.
-            eprintln!("failed to build Sage: {error}");
-            std::process::exit(1)
-        })
+        .expect("failed to build Sage")
         .run(app_run_events::handle_run_event);
 }
 
