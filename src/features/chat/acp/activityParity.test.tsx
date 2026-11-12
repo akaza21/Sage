@@ -8,7 +8,7 @@ import {
 import { afterEach, expect, it } from "vitest";
 import type { AcpItem } from "../../../domain/acp";
 import { PrimaryActivities } from "./PrimaryActivities";
-import { WorkedActivityVisibility } from "./WorkedActivityVisibility";
+import { settleLazyModules } from "../../../test/settleLazyModules";
 import { parityTool } from "./activityParity.fixture";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import { page, textItem } from "./acpProjection.fixture";
@@ -354,33 +354,32 @@ it("expanding Worked lists three collapsed per-command Ran rows", () => {
   expect(screen.getAllByText("fixture output")).toHaveLength(1);
 });
 
-it("keeps a steered message visible once the turn's work is folded away", () => {
-  const steered = {
-    ...textItem(),
-    id: "steered-1",
-    kind: "userPrompt",
-    payload: { text: "Also update the README" },
-  } as unknown as AcpItem;
-  const hidden = {
-    ...textItem(),
-    id: "progress-1",
-    payload: { role: "assistant", text: "Checking the notes" },
-  } as unknown as AcpItem;
+it("keeps a steered message visible once the turn's work is folded away", async () => {
+  const at = (id: string, ordinal: number, payload: object, kind = "text") =>
+    ({ ...textItem(), id, kind, ordinal, payload }) as unknown as AcpItem;
+  const next = page("completed");
+  next.turns[0].items = [
+    at("prompt-1", 1, { role: "user", text: "Fix the build" }),
+    at("progress-1", 2, { role: "assistant", text: "Checking the notes" }),
+    at("steered-1", 3, { text: "Also update the README" }, "userPrompt"),
+    at("answer-1", 4, { role: "assistant", text: "Both are done" }),
+  ];
   render(
-    <WorkedActivityVisibility value={false}>
-      <PrimaryActivities
-        items={[hidden, steered]}
-        interactive
-        renderItem={(item) => (
-          <p key={item.id}>
-            {item.kind === "userPrompt" || item.kind === "text"
-              ? item.payload.text
-              : null}
-          </p>
-        )}
-      />
-    </WorkedActivityVisibility>,
+    <AcpChatPresentation
+      page={next}
+      hasEarlier={false}
+      loadingEarlier={false}
+      historyError={null}
+      projectRoots={[]}
+      retentionIncomplete={false}
+    />,
   );
+  await settleLazyModules();
   expect(screen.getByText("Also update the README")).toBeInTheDocument();
   expect(screen.queryByText("Checking the notes")).toBeNull();
+  expect(screen.getByText("Both are done")).toBeInTheDocument();
+  // Expanded, the steer sits once at its place among the activities.
+  fireEvent.click(screen.getByText(/^Worked/u));
+  expect(screen.getByText("Checking the notes")).toBeInTheDocument();
+  expect(screen.getAllByText("Also update the README")).toHaveLength(1);
 });

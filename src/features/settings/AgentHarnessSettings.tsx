@@ -32,7 +32,7 @@ export function AgentHarnessSettings() {
     setRefreshing(true);
     setError(null);
     try {
-      const inventory = await getWorkbenchPorts().agent.listHarnesses();
+      const inventory = await getWorkbenchPorts().agent.refreshHarnesses();
       const current = useWorkbenchStore.getState();
       if (current.harnesses === initialInventory)
         await current.applyHarnessDiscovery(inventory);
@@ -110,6 +110,14 @@ export function AgentHarnessSettings() {
               harness.accountModelDiscovery &&
               !availability.disabledReason ? (
                 <CodexAccountSettings disabled={disabled || !projectId} />
+              ) : null}
+              {harness.update ? (
+                <p>
+                  Update available: {harness.version} →{" "}
+                  {harness.update.latestVersion}. Run{" "}
+                  <code>{harness.update.command}</code> in a terminal, then
+                  choose Refresh discovery.
+                </p>
               ) : null}
               {harness.signIn && !availability.disabledReason ? (
                 <p>

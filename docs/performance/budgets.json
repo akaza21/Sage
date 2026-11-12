@@ -17,9 +17,9 @@
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
-        "maxGzipBytes": 1185,
+        "maxGzipBytes": 1300,
         "maxCssGzipBytes": 490,
-        "reason": "Build and account notice, incl. newer-than-tested and too-old builds; memoized while typing, off the ready first-Chat path. Measured 1175 B JS, 467 B CSS."
+        "reason": "Build, update and account notice (newer, too-old, update command); memoized while typing, off the ready first-Chat path. Measured 1284 B JS, 467 B CSS."
       },
       {
         "entry": "src/ui/tooltips.ts",
@@ -40,8 +40,8 @@
       },
       {
         "entry": "src/features/chat/ComposerSlashMenu.tsx",
-        "maxGzipBytes": 1944,
-        "reason": "Composer `/` command menu: commands in sections by source, matched by name or alias, the command port, and opening a panel command on Enter. Loads with the first `/` typed. Measured 1944 B JS."
+        "maxGzipBytes": 1946,
+        "reason": "Composer `/` menu: commands by source, matched by name or alias, the command port, and panel commands on Enter. Loads with the first `/`. Measured 1944-1946 B JS as shared-chunk aliases move."
       },
       {
         "entry": "src/features/chat/ComposerCommandPanel.tsx",

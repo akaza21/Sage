@@ -12,7 +12,7 @@ import {
   Workflow,
 } from "../../../ui/leanIcons";
 import { ToolItem } from "./ToolItem";
-import { WorkedTurnTerminal } from "./WorkedActivityVisibility";
+import { WorkedTurnTerminal } from "./WorkedTurnTerminal";
 import { toolStateLabels } from "./statusSemantics";
 import {
   liveToolItem,
