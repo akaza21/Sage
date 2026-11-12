@@ -25,7 +25,11 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
   if (harness.installState !== "available") {
     return (
       <div className="composer__notice" role="status">
-        {harnessUnavailableReason(harness.unavailableReason)}
+        {/* Explained here, off the first-chat path; the picker keeps the
+            short reason. */}
+        {harness.unavailableReason === "versionTooOld"
+          ? "This version is too old for Sage. Update it, then refresh harness discovery in Settings."
+          : harnessUnavailableReason(harness.unavailableReason)}
       </div>
     );
   }

@@ -74,7 +74,7 @@ it("says a newer release keeps the tested features instead of calling it unteste
   expect(notice).toHaveTextContent(
     "Fixture agent 1.2.3 is newer than Sage has tested. Tested features stay on.",
   );
-  expect(notice).not.toHaveTextContent("Some features are unavailable");
+  expect(notice).not.toHaveTextContent("some features are off");
 });
 
 it("shows no build notice for the tested release", () => {
@@ -84,4 +84,19 @@ it("shows no build notice for the tested release", () => {
     />,
   );
   expect(screen.queryByRole("status")).toBeNull();
+});
+
+it("tells the user to update a release older than Sage supports", () => {
+  render(
+    <HarnessDiscoveryNotice
+      harness={{
+        ...harness,
+        installState: "unavailable",
+        unavailableReason: "versionTooOld",
+      }}
+    />,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "This version is too old for Sage. Update it, then refresh harness discovery in Settings.",
+  );
 });

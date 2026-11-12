@@ -155,10 +155,6 @@ impl SessionLaunch {
     }
 }
 
-fn version_admitted(version: &str) -> bool {
-    version_characterisation(version).runs_tested_features()
-}
-
 /// Where a release sits against the tested 2.1 line, which keeps the SDK
 /// protocol this binding covers from [`SUPPORTED_MINIMUM`] on.
 fn version_characterisation(version: &str) -> HarnessCharacterisation {
@@ -188,7 +184,7 @@ impl AdmittedClaudeSdkBinding {
             .clone()
             .filter(|version| ReleaseVersion::parse(version).is_some())
             .ok_or(ClaudeSdkAdmissionUnavailable::VersionUnreadable)?;
-        if !version_admitted(&version) {
+        if !version_characterisation(&version).runs_tested_features() {
             return Err(ClaudeSdkAdmissionUnavailable::VersionUnsupported);
         }
         let executable = crate::harness_discovery::claude_sdk_executable(&installed.executable)
@@ -492,7 +488,11 @@ mod tests {
             ("2.1.300-rc.1", false),
             ("2.1", false),
         ] {
-            assert_eq!(version_admitted(version), admitted, "{version}");
+            assert_eq!(
+                version_characterisation(version).runs_tested_features(),
+                admitted,
+                "{version}"
+            );
         }
     }
 

@@ -53,9 +53,6 @@ it("uses the admission refusal text for unavailable harness controls", () => {
   expect(harnessUnavailableReason("nodeEngineMismatch")).toBe(
     "The installed Node.js is older than this harness requires.",
   );
-  expect(harnessUnavailableReason("versionTooOld")).toBe(
-    "This version is too old. Update it, then refresh harness discovery in Settings.",
-  );
   expect(harnessUnavailableReason("unknown" as never)).toBe(
     "Sage can't start this harness.",
   );
