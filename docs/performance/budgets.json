@@ -40,8 +40,8 @@
       },
       {
         "entry": "src/features/chat/ComposerSlashMenu.tsx",
-        "maxGzipBytes": 1923,
-        "reason": "Composer `/` command menu: commands in sections by source, the command port, and opening a panel command such as `/mcp` on Enter. Loads with the first `/` typed. Measured 1923 B JS."
+        "maxGzipBytes": 1944,
+        "reason": "Composer `/` command menu: commands in sections by source, matched by name or alias, the command port, and opening a panel command on Enter. Loads with the first `/` typed. Measured 1944 B JS."
       },
       {
         "entry": "src/features/chat/ComposerCommandPanel.tsx",

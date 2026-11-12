@@ -64,8 +64,9 @@ const SECTION_ROWS = 7;
 
 /**
  * With no query, the first commands of each source in sections, each in
- * advertised order. While typing, the exact name first, then prefix matches, then
- * other name matches, each in advertised order.
+ * advertised order. While typing, exact matches first, then prefix matches,
+ * then other matches, each in advertised order. A command matches by its
+ * name or any alias its harness gives it, by the closest of them.
  */
 function filterSlashCommands(
   commands: readonly AvailableAcpCommand[],
@@ -83,10 +84,13 @@ function filterSlashCommands(
   const prefix: AvailableAcpCommand[] = [];
   const inner: AvailableAcpCommand[] = [];
   for (const command of commands) {
-    const name = command.name.toLocaleLowerCase();
-    if (name === needle) exact.push(command);
-    else if (name.startsWith(needle)) prefix.push(command);
-    else if (name.includes(needle)) inner.push(command);
+    const names = [command.name, ...(command.aliases ?? [])].map((name) =>
+      name.toLocaleLowerCase(),
+    );
+    if (names.includes(needle)) exact.push(command);
+    else if (names.some((name) => name.startsWith(needle)))
+      prefix.push(command);
+    else if (names.some((name) => name.includes(needle))) inner.push(command);
   }
   return [...exact, ...prefix, ...inner];
 }

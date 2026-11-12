@@ -21,8 +21,9 @@ pub(crate) fn update_commands(
 }
 
 /// An `available_commands_update` for `session`, with the binding's own
-/// `first` rows ahead of the harness's; a harness row of the same name is
-/// left out.
+/// `first` rows ahead of the harness's. A `first` row the harness lists too
+/// keeps the harness's wording and takes only its route from the binding,
+/// so the menu shows the command as the harness describes it.
 pub(crate) fn update_commands_with(
     value: &Value,
     session: &str,
@@ -44,10 +45,21 @@ pub(crate) fn update_commands_with(
     let parsed = super::command_list::parse_acp(&value["params"]["update"]["availableCommands"]);
     commands.replace(parsed.map(|listed| {
         if first.is_empty() {
-            listed
-        } else {
-            first_listed(first.iter().cloned().chain(listed))
+            return listed;
         }
+        let routed: Vec<_> = first
+            .iter()
+            .map(
+                |own| match listed.iter().find(|harness| harness.name == own.name) {
+                    Some(harness) => AvailableCommand {
+                        dispatch: own.dispatch.clone(),
+                        ..harness.clone()
+                    },
+                    None => own.clone(),
+                },
+            )
+            .collect();
+        first_listed(routed.into_iter().chain(listed))
     }))?;
     Ok(true)
 }

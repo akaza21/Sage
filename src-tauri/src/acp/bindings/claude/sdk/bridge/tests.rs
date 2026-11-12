@@ -560,9 +560,9 @@ fn commands_sharing_a_name_list_the_row_that_runs() {
             json!({"type":"system","subtype":"commands_changed","commands":[
                 {"name":"review","description":"Project review","argumentHint":""},
                 {"name":"review","description":"Review a PR","argumentHint":"<pr>","builtin":true},
-                {"name":"deploy","description":"Ship it","argumentHint":""},
+                {"name":"deploy","description":"Ship it","argumentHint":"","aliases":["ship"]},
                 {"name":"deploy","description":"Other deploy","argumentHint":""},
-                {"name":"cost","description":"Cost","argumentHint":"","builtin":true},
+                {"name":"cost","description":"Cost","argumentHint":"","builtin":true,"aliases":["usage"]},
                 {"name":"cost","description":"Later cost","argumentHint":"","builtin":true},
             ]}),
         )
@@ -572,8 +572,8 @@ fn commands_sharing_a_name_list_the_row_that_runs() {
         listed,
         &json!([
             {"name":"review","description":"Review a PR","input":{"hint":"<pr>"},"_meta":{"source":"builtin"}},
-            {"name":"deploy","description":"Ship it","input":null},
-            {"name":"cost","description":"Cost","input":null,"_meta":{"source":"builtin"}},
+            {"name":"deploy","description":"Ship it","input":null,"_meta":{"aliases":["ship"]}},
+            {"name":"cost","description":"Cost","input":null,"_meta":{"source":"builtin","aliases":["usage"]}},
         ])
     );
 }
