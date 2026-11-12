@@ -28,6 +28,9 @@ pub(super) struct Skills {
     /// Codex said the skills changed, so reads skip its cache until one
     /// succeeds.
     reload: bool,
+    /// The pending read skips the cache and was sent after the last change,
+    /// so its success ends `reload`.
+    reloading: bool,
     /// A refused read was already retried once; reset by a good read.
     retried: bool,
     /// The bound thread's root, whose skills the menu lists.
@@ -37,8 +40,8 @@ pub(super) struct Skills {
 impl PartialEq for Skills {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.list, &other.list)
-            && (self.wanted, self.reload, self.retried)
-                == (other.wanted, other.reload, other.retried)
+            && (self.wanted, self.reload, self.reloading, self.retried)
+                == (other.wanted, other.reload, other.reloading, other.retried)
             && self.root == other.root
     }
 }
@@ -58,6 +61,7 @@ impl Default for Skills {
             list: Arc::new(CommandState::default()),
             wanted: true,
             reload: false,
+            reloading: false,
             retried: false,
             root: None,
         }
@@ -173,6 +177,7 @@ impl CodexAdapter {
         let request = OutgoingRequest::skills_list(id, &root, self.skills.reload)?;
         let request = self.reserve(request)?;
         self.skills.wanted = false;
+        self.skills.reloading = self.skills.reload;
         Ok(request)
     }
 
@@ -182,8 +187,12 @@ impl CodexAdapter {
     pub(crate) fn skills_result(&mut self, result: Option<&Map<String, Value>>) {
         let skills = result.and_then(parse);
         match &skills {
-            // A good read has skipped the cache; a retry still skips it.
-            Some(_) => (self.skills.retried, self.skills.reload) = (false, false),
+            // A read sent after the last change has skipped the cache; a
+            // retry, or a read sent before the change, leaves it to skip.
+            Some(_) => {
+                self.skills.retried = false;
+                self.skills.reload &= !self.skills.reloading;
+            }
             None if !self.skills.retried => {
                 self.skills.retried = true;
                 self.skills.wanted = true;
@@ -231,7 +240,14 @@ impl CodexAdapter {
     pub(crate) fn skills_changed(&mut self) {
         self.skills.wanted = true;
         self.skills.reload = true;
+        // A read already out may answer with the list from before.
+        self.skills.reloading = false;
         self.skills.retried = false;
+    }
+
+    /// A read that never reached Codex is sent again as it was.
+    pub(crate) fn skills_unsent(&mut self) {
+        self.skills.wanted = true;
     }
 
     /// The listed skill this prompt runs, as its name and path.

@@ -277,7 +277,7 @@ impl CodexAdapter {
             self.pending_child_read = None;
         }
         if kind == RequestKind::SkillsList {
-            self.skills_changed();
+            self.skills_unsent();
         }
         if kind == RequestKind::Interrupt {
             self.active_turn_user_stop = self

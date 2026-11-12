@@ -386,3 +386,39 @@ fn a_changed_skills_read_skips_the_cache_until_one_succeeds() {
     skills_changed(&mut runtime);
     assert_eq!(params(&mut runtime)["forceReload"], true);
 }
+
+#[test]
+fn a_change_during_a_read_keeps_the_next_read_off_the_cache() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    read_skills(&mut runtime, json!([]));
+    skills_changed(&mut runtime);
+    let egress = runtime.discover_commands().unwrap().expect("skills/list");
+    let id = request_id(&egress);
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Queued)
+        .unwrap();
+    // Codex changes the skills again while that read is out, then answers
+    // it with what may be the list from before.
+    skills_changed(&mut runtime);
+    runtime
+        .ingest(&skills_reply(id, json!([])), &Mapper)
+        .unwrap();
+    let egress = runtime.discover_commands().unwrap().expect("skills/list");
+    let wire: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    assert_eq!(wire["params"]["forceReload"], true);
+}
+
+#[test]
+fn a_read_that_never_left_keeps_the_one_retry_spent() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    refuse_read(&mut runtime);
+    let egress = runtime.discover_commands().unwrap().expect("skills/list");
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::QueueRejected)
+        .unwrap();
+    // The unsent retry goes out again, and its refusal is the last.
+    refuse_read(&mut runtime);
+    assert!(runtime.discover_commands().unwrap().is_none());
+}
