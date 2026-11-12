@@ -359,7 +359,11 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
       titleBar.getByRole("button", { name: "Search chats" }),
     ).toHaveCount(1);
     await expect(
-      titleBar.getByRole("searchbox").or(titleBar.getByRole("textbox")),
+      // The chat search field is a combobox (#339), so absence covers it too.
+      titleBar
+        .getByRole("searchbox")
+        .or(titleBar.getByRole("textbox"))
+        .or(titleBar.getByRole("combobox")),
       "T3: the titlebar still has no search field",
     ).toHaveCount(0);
   });
@@ -382,7 +386,7 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     });
     await expect(filter).toBeVisible();
     await filter.click();
-    const search = page.getByRole("searchbox", { name: "Search chats" });
+    const search = page.getByRole("combobox", { name: "Search chats" });
     await expect(search).toBeVisible();
     await expect(search).toBeFocused();
     await expect(
