@@ -2,10 +2,12 @@
 //!
 //! Watcher threads push accepted notices; one emitter thread per watch
 //! sends them as a single batch once the window that the first notice opened
-//! has passed. Within a batch a path appears once, with its latest kind. A
-//! batch never holds more than [`MAX_BATCH_NOTICES`] notices: past that, the
-//! root that overflowed is sent as one resync notice in place of its paths,
-//! as a lost watcher queue is, and the WebView reloads that root's listings.
+//! has passed. Within a batch a path appears once per meaning (its own
+//! change, or a change inside it when it is an ignored folder), with its
+//! latest kind. A batch never holds more than [`MAX_BATCH_NOTICES`] entries,
+//! resyncs included: when one more would pass that, the root holding the
+//! most paths is sent as one resync notice in their place, as a lost
+//! watcher queue is, and the WebView reloads that root's listings.
 
 use std::{
     collections::HashMap,
@@ -18,21 +20,27 @@ use std::{
 
 use serde::Serialize;
 
-use super::{OVERFLOW_RELATIVE_PATH, WorkspaceNotifyNotice};
+use super::{MAX_ROOTS, OVERFLOW_RELATIVE_PATH, WorkspaceNotifyNotice};
 
 /// How long the first notice of a batch waits for others. The WebView's Git
 /// refresh settles for 300 ms anyway, so 100 ms adds no visible delay while
 /// capping a build's writes at ten events a second.
 pub(super) const NOTICE_BATCH_WINDOW: Duration = Duration::from_millis(100);
-/// The most notices one event carries. A folder refresh per notice is the
-/// WebView's cost, and a root with more changes than this in 100 ms is
-/// cheaper to resync once.
+/// The most notices one event carries; the WebView refuses a larger event
+/// (`MAX_NOTIFY_BATCH_NOTICES` in `workspaceNotifyCompose.ts`, which must stay
+/// equal). A folder refresh per notice is the WebView's cost, and a root
+/// with more changes than this in 100 ms is cheaper to resync once.
 pub(super) const MAX_BATCH_NOTICES: usize = 256;
 /// How often an idle emitter checks whether its watch was cancelled, which
 /// matches the watcher threads' own wait.
 const CANCEL_CHECK: Duration = Duration::from_millis(100);
 
+// A full batch spreads its paths over at most MAX_ROOTS roots, so its
+// largest root holds several and resyncing it always makes room.
+const _: () = assert!(MAX_ROOTS * 2 <= MAX_BATCH_NOTICES);
+
 const RESYNC_KIND: &str = "resync";
+const IGNORED_KIND: &str = "ignored";
 
 /// The payload of one WebView event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -40,12 +48,24 @@ pub struct WorkspaceNotifyBatch {
     pub notices: Vec<WorkspaceNotifyNotice>,
 }
 
+/// A queued path: its root, its path, and whether it stands for changes
+/// inside an ignored folder rather than for the path itself.
+type PathKey = (String, String, bool);
+
+fn path_key(notice: &WorkspaceNotifyNotice) -> PathKey {
+    (
+        notice.root_id.clone(),
+        notice.relative_path.clone(),
+        notice.kind == IGNORED_KIND,
+    )
+}
+
 /// Notices gathered since the last event.
 #[derive(Debug, Default)]
 pub(super) struct NoticeBatch {
     notices: Vec<WorkspaceNotifyNotice>,
-    /// Each queued notice's index, by root and path.
-    index: HashMap<(String, String), usize>,
+    /// Each queued notice's index.
+    index: HashMap<PathKey, usize>,
     /// The resync notice of each root that overflowed or lost records. Its
     /// paths are dropped, since the resync reloads every listing they touch.
     resyncs: Vec<WorkspaceNotifyNotice>,
@@ -56,25 +76,37 @@ impl NoticeBatch {
         self.notices.is_empty() && self.resyncs.is_empty()
     }
 
+    fn len(&self) -> usize {
+        self.notices.len() + self.resyncs.len()
+    }
+
     pub(super) fn push(&mut self, notice: WorkspaceNotifyNotice) {
         if self.resyncing(&notice.root_id) {
             return;
         }
         if notice.kind == RESYNC_KIND {
             self.resync(notice);
-            return;
+        } else {
+            let key = path_key(&notice);
+            if let Some(&slot) = self.index.get(&key) {
+                self.notices[slot].kind = notice.kind;
+                return;
+            }
+            self.index.insert(key, self.notices.len());
+            self.notices.push(notice);
         }
-        let key = (notice.root_id.clone(), notice.relative_path.clone());
-        if let Some(&slot) = self.index.get(&key) {
-            self.notices[slot].kind = notice.kind;
-            return;
+        while self.len() > MAX_BATCH_NOTICES {
+            let Some(fullest) = self.fullest_root() else {
+                break;
+            };
+            let template = self
+                .notices
+                .iter()
+                .find(|queued| queued.root_id == fullest)
+                .cloned()
+                .expect("the fullest root has a queued path");
+            self.resync(template);
         }
-        if self.notices.len() >= MAX_BATCH_NOTICES {
-            self.resync(notice);
-            return;
-        }
-        self.index.insert(key, self.notices.len());
-        self.notices.push(notice);
     }
 
     /// The batch to send, leaving this one empty.
@@ -89,6 +121,18 @@ impl NoticeBatch {
         self.resyncs.iter().any(|resync| resync.root_id == root_id)
     }
 
+    /// The root with the most queued paths.
+    fn fullest_root(&self) -> Option<String> {
+        let mut counts = HashMap::<&str, usize>::new();
+        for queued in &self.notices {
+            *counts.entry(queued.root_id.as_str()).or_default() += 1;
+        }
+        counts
+            .into_iter()
+            .max_by(|left, right| left.1.cmp(&right.1).then(right.0.cmp(left.0)))
+            .map(|(root, _)| root.to_string())
+    }
+
     /// Replaces the root's queued paths with one resync notice.
     fn resync(&mut self, mut notice: WorkspaceNotifyNotice) {
         notice.relative_path = OVERFLOW_RELATIVE_PATH.to_string();
@@ -99,7 +143,7 @@ impl NoticeBatch {
             .notices
             .iter()
             .enumerate()
-            .map(|(slot, queued)| ((queued.root_id.clone(), queued.relative_path.clone()), slot))
+            .map(|(slot, queued)| (path_key(queued), slot))
             .collect();
         self.resyncs.push(notice);
     }
@@ -124,10 +168,13 @@ impl NoticeSink {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    /// Sends a batch for each window that held notices, until `cancelled`.
-    pub(super) fn run_emitter(
+    /// Sends one batch per window that held notices, until `cancelled`. A
+    /// window opens with its first notice and lasts as long as `window`
+    /// blocks.
+    fn run_emitter(
         &self,
         cancelled: &AtomicBool,
+        mut window: impl FnMut(),
         mut emit: impl FnMut(WorkspaceNotifyBatch),
     ) {
         loop {
@@ -143,7 +190,7 @@ impl NoticeSink {
                     .0;
             }
             drop(batch);
-            std::thread::sleep(NOTICE_BATCH_WINDOW);
+            window();
             if cancelled.load(Ordering::Acquire) {
                 return;
             }
@@ -161,7 +208,9 @@ pub(super) fn spawn_notice_emitter(
 ) -> std::io::Result<()> {
     std::thread::Builder::new()
         .name("sage-workspace-notify-emit".into())
-        .spawn(move || sink.run_emitter(&cancelled, emit))
+        .spawn(move || {
+            sink.run_emitter(&cancelled, || std::thread::sleep(NOTICE_BATCH_WINDOW), emit)
+        })
         .map(|_| ())
 }
 
@@ -181,6 +230,10 @@ mod tests {
         }
     }
 
+    fn resync(root: &str) -> WorkspaceNotifyNotice {
+        notice(root, OVERFLOW_RELATIVE_PATH, RESYNC_KIND)
+    }
+
     #[test]
     fn repeated_paths_coalesce_to_their_latest_kind() {
         let mut batch = NoticeBatch::default();
@@ -188,12 +241,17 @@ mod tests {
         batch.push(notice("root-a", "src/lib.rs", "changed"));
         batch.push(notice("root-a", "src/main.rs", "changed"));
         batch.push(notice("root-b", "src/main.rs", "deleted"));
+        batch.push(notice("root-a", "target", "created"));
+        batch.push(notice("root-a", "target", IGNORED_KIND));
+        batch.push(notice("root-a", "target", IGNORED_KIND));
         assert_eq!(
             batch.take().notices,
             vec![
                 notice("root-a", "src/main.rs", "changed"),
                 notice("root-a", "src/lib.rs", "changed"),
                 notice("root-b", "src/main.rs", "deleted"),
+                notice("root-a", "target", "created"),
+                notice("root-a", "target", IGNORED_KIND),
             ]
         );
         assert!(batch.is_empty());
@@ -206,13 +264,37 @@ mod tests {
         for index in 0..10_000 {
             batch.push(notice("root-a", &format!("gen/file-{index}.rs"), "created"));
         }
-        let sent = batch.take().notices;
         assert_eq!(
-            sent,
-            vec![
-                notice("root-b", "README.md", "changed"),
-                notice("root-a", OVERFLOW_RELATIVE_PATH, RESYNC_KIND),
-            ]
+            batch.take().notices,
+            vec![notice("root-b", "README.md", "changed"), resync("root-a")]
+        );
+    }
+
+    #[test]
+    fn two_roots_at_the_bound_stay_within_it() {
+        let mut batch = NoticeBatch::default();
+        let half = MAX_BATCH_NOTICES / 2;
+        for index in 0..half {
+            batch.push(notice("root-a", &format!("a-{index}"), "changed"));
+            batch.push(notice("root-b", &format!("b-{index}"), "changed"));
+        }
+        batch.push(notice("root-c", "c-0", "changed"));
+        batch.push(resync("root-d"));
+        for index in 0..MAX_BATCH_NOTICES {
+            batch.push(notice("root-b", &format!("b-more-{index}"), "changed"));
+        }
+        let sent = batch.take().notices;
+        assert!(sent.len() <= MAX_BATCH_NOTICES, "{} notices", sent.len());
+        let resyncs = sent
+            .iter()
+            .filter(|sent| sent.kind == RESYNC_KIND)
+            .map(|sent| sent.root_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(resyncs, ["root-a", "root-d", "root-b"]);
+        assert!(sent.contains(&notice("root-c", "c-0", "changed")));
+        assert!(
+            sent.iter()
+                .all(|sent| sent.kind == RESYNC_KIND || sent.root_id == "root-c")
         );
     }
 
@@ -220,25 +302,38 @@ mod tests {
     fn a_lost_queue_replaces_the_roots_paths_with_one_resync() {
         let mut batch = NoticeBatch::default();
         batch.push(notice("root-a", "src/main.rs", "changed"));
-        batch.push(notice("root-a", OVERFLOW_RELATIVE_PATH, RESYNC_KIND));
+        batch.push(resync("root-a"));
         batch.push(notice("root-a", "src/lib.rs", "changed"));
-        batch.push(notice("root-a", OVERFLOW_RELATIVE_PATH, RESYNC_KIND));
-        assert_eq!(
-            batch.take().notices,
-            vec![notice("root-a", OVERFLOW_RELATIVE_PATH, RESYNC_KIND)]
-        );
+        batch.push(resync("root-a"));
+        assert_eq!(batch.take().notices, vec![resync("root-a")]);
     }
 
     #[test]
-    fn a_burst_reaches_the_webview_as_one_bounded_event() {
+    fn a_burst_within_one_window_reaches_the_webview_as_one_event() {
         let sink = Arc::new(NoticeSink::default());
         let cancelled = Arc::new(AtomicBool::new(false));
+        let (window_open, window_opened) = mpsc::channel();
+        let (close_window, window_closes) = mpsc::channel::<()>();
         let (sent, received) = mpsc::channel();
-        spawn_notice_emitter(Arc::clone(&sink), Arc::clone(&cancelled), move |batch| {
-            let _ = sent.send(batch);
-        })
-        .expect("start emitter");
+        let emitter = {
+            let sink = Arc::clone(&sink);
+            let cancelled = Arc::clone(&cancelled);
+            std::thread::spawn(move || {
+                sink.run_emitter(
+                    &cancelled,
+                    || {
+                        window_open.send(()).unwrap();
+                        let _ = window_closes.recv();
+                    },
+                    |batch| sent.send(batch).unwrap(),
+                )
+            })
+        };
 
+        sink.push(notice("root-a", "src/file-0.rs", "changed"));
+        window_opened
+            .recv()
+            .expect("the first notice opens a window");
         for index in 0..1_000 {
             sink.push(notice(
                 "root-a",
@@ -246,17 +341,25 @@ mod tests {
                 "changed",
             ));
         }
-        let first = received
-            .recv_timeout(Duration::from_secs(2))
-            .expect("one event for the burst");
+        close_window.send(()).unwrap();
+        let first = received.recv().expect("one event for the window");
         assert_eq!(first.notices.len(), 50);
-        assert!(
-            received.recv_timeout(NOTICE_BATCH_WINDOW * 3).is_err(),
-            "the burst should not send a second event"
+
+        sink.push(notice("root-a", "src/late.rs", "changed"));
+        window_opened
+            .recv()
+            .expect("a later notice opens a new window");
+        close_window.send(()).unwrap();
+        assert_eq!(
+            received
+                .recv()
+                .expect("one event for the next window")
+                .notices,
+            vec![notice("root-a", "src/late.rs", "changed")]
         );
 
         cancelled.store(true, Ordering::Release);
-        sink.push(notice("root-a", "src/late.rs", "changed"));
-        assert!(received.recv_timeout(NOTICE_BATCH_WINDOW * 3).is_err());
+        emitter.join().expect("the emitter stops once cancelled");
+        assert!(received.try_recv().is_err());
     }
 }

@@ -67,6 +67,15 @@ impl RuleFiles {
         self.repository |= is(".git");
     }
 
+    /// These names without `.ignore`, which only ripgrep-style tools read:
+    /// what Git itself ignores.
+    pub(crate) fn git_only(self) -> Self {
+        Self {
+            ignore: false,
+            ..self
+        }
+    }
+
     /// The rule-bearing names in `directory`, found without listing it.
     /// Only a missing name is absent: a name that cannot be inspected (access
     /// denied, say) counts as present, so reading it fails as a skipped source

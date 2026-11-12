@@ -12,10 +12,11 @@ use tauri::{AppHandle, Emitter};
 use crate::{persistence::Database, state::AppState, workspace::ignore_rules};
 
 use super::{
-    OVERFLOW_NOTIFY_ACTION, WORKSPACE_NOTIFY_EVENT, WorkspaceNotifyError, WorkspaceNotifyNotice,
+    IGNORED_BELOW_NOTIFY_ACTION, OVERFLOW_NOTIFY_ACTION, WORKSPACE_NOTIFY_EVENT,
+    WorkspaceNotifyError, WorkspaceNotifyNotice,
     batch::{NoticeSink, spawn_notice_emitter},
     bounded_identifier, registry, reject, relative_path,
-    relevance::NoticeRelevance,
+    relevance::{NoticeRelevance, Relevance},
 };
 
 #[cfg(windows)]
@@ -67,9 +68,11 @@ pub fn deliver_workspace_notify_action(
     watch.session.classify(root_id, relative, action)
 }
 
-/// The delivery of one watched root's records: each record the relevance
-/// filter admits is classified against the live watch and queued for the
-/// watch's next batch. Lost records always pass, and make the filter reload.
+/// The delivery of one watched root's records. Each record is weighed by the
+/// root's relevance filter, classified against the live watch and queued for
+/// the watch's next batch; a record inside an ignored folder is queued as
+/// one notice for that folder. Lost records always pass, and make the filter
+/// reload.
 pub(super) fn root_delivery(
     project_id: String,
     generation: u32,
@@ -83,11 +86,16 @@ pub(super) fn root_delivery(
         if cancelled.load(Ordering::Acquire) {
             return;
         }
-        if action == OVERFLOW_NOTIFY_ACTION {
+        let (relative, action) = if action == OVERFLOW_NOTIFY_ACTION {
             relevance.forget();
-        } else if !relevance.admits(&relative) {
-            return;
-        }
+            (relative, action)
+        } else {
+            match relevance.classify(&relative) {
+                Relevance::Keep => (relative, action),
+                Relevance::Drop => return,
+                Relevance::IgnoredBelow(folder) => (folder, IGNORED_BELOW_NOTIFY_ACTION),
+            }
+        };
         if let Ok(Some(notice)) =
             deliver_workspace_notify_action(&project_id, generation, &root_id, &relative, action)
         {
