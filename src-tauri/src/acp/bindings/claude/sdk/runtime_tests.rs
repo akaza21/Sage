@@ -137,7 +137,10 @@ fn ready() -> ClaudeSdkRuntime {
     assert_eq!(mcp.aliases, ["servers"]);
     // A user's command of a panel's name is not the built-in, so the panel
     // keeps its own wording.
-    assert_ne!(listed[0].description, "A user skill");
+    assert_eq!(
+        listed[0].description,
+        "Show the session's model, access, context and usage"
+    );
     assert_eq!(
         mcp.dispatch,
         crate::acp::slash_commands::CommandDispatch::Panel(
