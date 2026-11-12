@@ -41,12 +41,7 @@ pub fn report_notification_visibility(
     update: VisibilityUpdate,
 ) -> Result<(), String> {
     // The Chats shown are also those whose idle runtime is kept longest.
-    let shown: Vec<_> = update
-        .chat_ids
-        .iter()
-        .filter(|_| update.document_visible)
-        .filter_map(|id| crate::acp::contract::SageChatId::parse(id.clone()).ok())
-        .collect();
+    let shown = update.shown_chats();
     state
         .visibility
         .lock()

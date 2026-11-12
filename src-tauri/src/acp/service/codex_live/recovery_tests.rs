@@ -2285,13 +2285,23 @@ fn runtime_epoch_is_live(service: &AcpService, owner: &RuntimeOwner) -> bool {
 }
 
 fn idle_release_fixture(label: &str) -> (AcpService, RuntimeOwner) {
-    let resumable = crate::acp::intent::CapabilitySnapshotV1 {
-        resume_session: true,
+    idle_runtime_fixture(label, true, true)
+}
+
+fn idle_runtime_fixture(
+    label: &str,
+    resumable: bool,
+    completed_turn: bool,
+) -> (AcpService, RuntimeOwner) {
+    let capabilities = crate::acp::intent::CapabilitySnapshotV1 {
+        resume_session: resumable,
         ..test_capabilities()
     };
     let (service, owner) =
-        tauri::async_runtime::block_on(ready_runtime_fixture_with(label, resumable));
-    complete_a_turn(&service, &owner);
+        tauri::async_runtime::block_on(ready_runtime_fixture_with(label, capabilities));
+    if completed_turn {
+        complete_a_turn(&service, &owner);
+    }
     let host = Arc::new(
         crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
             TestRuntime::default(),
@@ -2393,4 +2403,26 @@ fn a_chat_shown_again_is_kept_and_sweeping_ends_at_shutdown() {
 
     service.shutdown_blocking().unwrap();
     assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), None);
+}
+
+#[test]
+fn a_session_that_cannot_resume_or_never_completed_a_turn_is_kept() {
+    for (label, resumable, completed_turn) in [
+        ("idle-unresumable", false, true),
+        ("idle-unused", true, false),
+    ] {
+        let (service, owner) = idle_runtime_fixture(label, resumable, completed_turn);
+        let start = std::time::Instant::now();
+        service.set_shown_chats([]);
+        assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
+        // Parking would lose the conversation, or nothing proves it resumes.
+        assert_eq!(
+            service.release_idle_runtimes(start + 30 * MINUTE),
+            Some(0),
+            "{label}"
+        );
+        assert!(service.lane_for(&owner).is_some(), "{label}");
+        assert!(runtime_epoch_is_live(&service, &owner), "{label}");
+        service.shutdown_blocking().unwrap();
+    }
 }

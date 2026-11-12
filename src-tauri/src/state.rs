@@ -76,7 +76,9 @@ impl AppState {
                 match swept {
                     Ok(Some(0)) => {}
                     Ok(Some(parked)) => tracing::info!(parked, "released idle Chats' runtimes"),
-                    Ok(None) | Err(_) => break,
+                    // A sweep that panicked leaves the next one to try again.
+                    Err(_) => tracing::warn!("an idle-release sweep failed"),
+                    Ok(None) => break,
                 }
             }
         });

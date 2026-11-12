@@ -108,13 +108,13 @@ impl AcpService {
         if release.is_stopped() {
             return None;
         }
-        let due = self.idle_runtimes_due(now);
-        let deadline = explicit_close_deadline();
         let mut parked = 0;
-        for (index, owner, idle_since) in due {
-            if release.is_stopped() || Instant::now() >= deadline {
+        for (index, owner, idle_since) in self.idle_runtimes_due(now) {
+            if release.is_stopped() {
                 break;
             }
+            // Each park has the whole close budget, as an eviction does.
+            let deadline = explicit_close_deadline();
             parked += usize::from(self.park_idle_lane(index, &owner, idle_since, deadline));
         }
         Some(parked)
