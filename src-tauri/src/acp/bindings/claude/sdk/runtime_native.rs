@@ -1,5 +1,6 @@
 //! What Claude Code offers beyond Claude's ACP surface, and the native
-//! requests answered by a control round trip: session controls and forks.
+//! requests answered by a control round trip: session controls, forks and
+//! usage reads.
 
 use serde_json::Value;
 

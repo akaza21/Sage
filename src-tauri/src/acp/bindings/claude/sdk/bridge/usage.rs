@@ -11,13 +11,14 @@ use crate::acp::{goal::NativeRpcReply, usage::UsageSnapshot};
 const FIVE_HOURS: i64 = 5 * 60;
 const SEVEN_DAYS: i64 = 7 * 24 * 60;
 
-/// Claude Code's plan windows, in its `/usage` order, with the label that
-/// tells a model-specific window apart from the plan-wide one.
-const WINDOWS: [(&str, Option<&str>, i64); 4] = [
-    ("five_hour", None, FIVE_HOURS),
-    ("seven_day", None, SEVEN_DAYS),
-    ("seven_day_opus", Some("Opus"), SEVEN_DAYS),
-    ("seven_day_sonnet", Some("Sonnet"), SEVEN_DAYS),
+/// Claude Code's plan windows, in its `/usage` order: the label that tells
+/// a model's own window apart from a plan-wide one, the window's length, and
+/// whether reaching it stops every model.
+const WINDOWS: [(&str, Option<&str>, i64, bool); 4] = [
+    ("five_hour", None, FIVE_HOURS, true),
+    ("seven_day", None, SEVEN_DAYS, true),
+    ("seven_day_opus", Some("Opus"), SEVEN_DAYS, false),
+    ("seven_day_sonnet", Some("Sonnet"), SEVEN_DAYS, false),
 ];
 
 /// What a usage read learned about the account.
@@ -64,7 +65,10 @@ fn limits(reply: &Value) -> Option<UsageSnapshot> {
     }
     let named = WINDOWS
         .iter()
-        .filter_map(|&(key, label, minutes)| Some((limits.get(key)?, label, minutes)));
+        .filter_map(|&(key, label, minutes, plan_wide)| {
+            Some((limits.get(key)?, label, minutes, plan_wide))
+        });
+    // A model's weekly window can be listed both by its key and by name.
     let scoped = limits
         .get("model_scoped")
         .and_then(Value::as_array)
@@ -72,20 +76,24 @@ fn limits(reply: &Value) -> Option<UsageSnapshot> {
         .flatten()
         .filter_map(|window| {
             let label = window.get("display_name")?.as_str()?;
-            Some((window, Some(label), SEVEN_DAYS))
+            let listed = WINDOWS.iter().any(|&(key, known, ..)| {
+                known == Some(label) && limits.get(key).is_some_and(|value| !value.is_null())
+            });
+            (!listed).then_some((window, Some(label), SEVEN_DAYS, false))
         });
-    for (window, label, minutes) in named.chain(scoped) {
+    for (window, label, minutes, plan_wide) in named.chain(scoped) {
         let Some(used) = window.get("utilization").and_then(Value::as_f64) else {
             continue;
         };
-        let used = used.round() as i64;
-        snapshot.limit_reached |= used >= 100;
+        snapshot.limit_reached |= plan_wide && used >= 100.0;
         let resets_at = window
             .get("resets_at")
             .and_then(Value::as_str)
             .and_then(|at| OffsetDateTime::parse(at, &Rfc3339).ok())
             .map(OffsetDateTime::unix_timestamp);
-        snapshot.push(label, used, Some(minutes), resets_at);
+        // Whole percent used, rounded down so a window short of its cap
+        // never shows as fully used.
+        snapshot.push(label, used.floor() as i64, Some(minutes), resets_at);
     }
     Some(snapshot)
 }
@@ -112,11 +120,14 @@ mod tests {
                 "subscription_type": "max",
                 "rate_limits_available": true,
                 "rate_limits": {
-                    "five_hour": {"utilization": 12.6, "resets_at": "2026-11-12T17:20:00Z"},
+                    "five_hour": {"utilization": 99.6, "resets_at": "2026-11-12T17:20:00Z"},
                     "seven_day": {"utilization": 55.0, "resets_at": "2026-11-18T03:37:00+00:00"},
                     "seven_day_opus": null,
                     "seven_day_sonnet": {"utilization": 100.0, "resets_at": null},
-                    "model_scoped": [{"display_name": "Fable", "utilization": 3, "resets_at": "2026-11-18T03:37:00.250Z"}],
+                    "model_scoped": [
+                        {"display_name": "Sonnet", "utilization": 100.0, "resets_at": null},
+                        {"display_name": "Fable", "utilization": 3, "resets_at": "2026-11-18T03:37:00.250Z"},
+                    ],
                     "extra_usage": {"is_enabled": false},
                 },
             })),
@@ -127,11 +138,12 @@ mod tests {
             panic!("limits");
         };
         assert_eq!(snapshot.plan.as_deref(), Some("Max"));
-        assert!(snapshot.limit_reached);
+        // Nearly used, and one model at its cap, still leave the plan open.
+        assert!(!snapshot.limit_reached);
         assert_eq!(
             snapshot.windows,
             [
-                window(None, 13, 300, Some(1_794_504_000)),
+                window(None, 99, 300, Some(1_794_504_000)),
                 window(None, 55, 10_080, Some(1_794_973_020)),
                 window(Some("Sonnet"), 100, 10_080, None),
                 window(Some("Fable"), 3, 10_080, Some(1_794_973_020)),
