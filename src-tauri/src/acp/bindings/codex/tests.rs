@@ -2541,3 +2541,24 @@ fn codex_turns_and_steers_carry_attached_files_in_their_text_input() {
         );
     }
 }
+
+#[test]
+fn goals_follow_the_tested_release_or_a_later_one_and_the_curated_pin() {
+    use crate::acp::bindings::characterisation::Characterisation::{
+        Characterised, NewerThanTested, Uncharacterised,
+    };
+    for (version_line, characterisation, supported) in [
+        (version_line("codex-cli"), Characterised, true),
+        ("codex-cli 99.0.0".to_owned(), NewerThanTested, true),
+        ("codex-cli 0.1.0".to_owned(), Uncharacterised, false),
+    ] {
+        let mut observed = adapter();
+        negotiate(&mut observed);
+        observed.observe_build_for_test(&version_line, characterisation);
+        assert_eq!(observed.goal_supported(), supported, "{version_line}");
+    }
+    // The curated package is the pinned build; nothing else is curated.
+    let mut curated = adapter();
+    negotiate(&mut curated);
+    assert!(curated.goal_supported());
+}

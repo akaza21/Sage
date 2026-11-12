@@ -602,25 +602,33 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn an_uncharacterised_opencode_build_never_borrows_the_characterised_claims() {
-        let root = std::env::temp_dir().join(format!(
-            "sage-opencode-uncharacterised-{}",
-            uuid::Uuid::new_v4()
-        ));
-        let catalog = admitted_opencode_catalog(&root, "1.19.0");
-        let opencode = by_id(&catalog.definitions(), "opencode");
-        fs::remove_dir_all(root).unwrap();
-        assert_eq!(
-            opencode.install_state,
-            HarnessInstallState::Available.as_str()
-        );
-        assert_eq!(opencode.binding_id.as_deref(), Some("opencode-acp"));
-        assert_eq!(opencode.bound_version.as_deref(), Some("1.19.0"));
-        assert_eq!(
-            opencode.characterisation,
-            Some(crate::domain::HarnessCharacterisation::Uncharacterised)
-        );
-        assert!(!opencode.account_model_discovery);
+    fn an_older_opencode_build_never_borrows_the_characterised_claims() {
+        for (version, characterisation) in [
+            (
+                "1.18.20",
+                crate::domain::HarnessCharacterisation::Uncharacterised,
+            ),
+            (
+                "1.19.0",
+                crate::domain::HarnessCharacterisation::NewerThanTested,
+            ),
+        ] {
+            let root = std::env::temp_dir().join(format!(
+                "sage-opencode-uncharacterised-{}",
+                uuid::Uuid::new_v4()
+            ));
+            let catalog = admitted_opencode_catalog(&root, version);
+            let opencode = by_id(&catalog.definitions(), "opencode");
+            fs::remove_dir_all(root).unwrap();
+            assert_eq!(
+                opencode.install_state,
+                HarnessInstallState::Available.as_str()
+            );
+            assert_eq!(opencode.binding_id.as_deref(), Some("opencode-acp"));
+            assert_eq!(opencode.bound_version.as_deref(), Some(version));
+            assert_eq!(opencode.characterisation, Some(characterisation));
+            assert!(!opencode.account_model_discovery);
+        }
     }
 
     #[test]
@@ -1157,7 +1165,7 @@ mod tests {
         let claude = ClaudeBindingRegistration::admitted_for_test(ClaudeLaunchDiscovery::Present(
             Box::new(DiscoveredClaudeLaunch {
                 adapter_path: adapter.clone(),
-                adapter_version: "0.99.0".into(),
+                adapter_version: "0.75.0".into(),
                 acp_sdk_version: "1.4.0".into(),
                 node_engine: ">=22".into(),
                 node_path: node.clone(),
@@ -1179,7 +1187,7 @@ mod tests {
             entry.characterisation,
             Some(crate::domain::HarnessCharacterisation::Uncharacterised)
         );
-        assert_eq!(entry.bound_version.as_deref(), Some("0.99.0"));
+        assert_eq!(entry.bound_version.as_deref(), Some("0.75.0"));
         assert!(entry.unavailable_reason.is_none());
     }
 

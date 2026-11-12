@@ -25,12 +25,17 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
   if (harness.installState !== "available") {
     return (
       <div className="composer__notice" role="status">
-        {harnessUnavailableReason(harness.unavailableReason)}
+        {/* Explained here, off the first-chat path; the picker keeps the
+            short reason. */}
+        {harness.unavailableReason === "versionTooOld"
+          ? "This version is too old for Sage. Update it, then refresh harness discovery in Settings."
+          : harnessUnavailableReason(harness.unavailableReason)}
       </div>
     );
   }
+  const newer = harness.characterisation === "newerThanTested";
   if (
-    harness.characterisation !== "uncharacterised" ||
+    (!newer && harness.characterisation !== "uncharacterised") ||
     dismissedBuild === build
   )
     return null;
@@ -38,8 +43,10 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
     <div className="build-notice" role="status">
       <Info aria-hidden="true" />
       <span>
-        {harness.name} {harness.boundVersion} hasn't been tested with Sage yet,
-        so some features are off.
+        {harness.name} {harness.boundVersion}
+        {newer
+          ? " is newer than Sage has tested. Tested features stay on."
+          : " hasn't been tested with Sage yet, so some features are off."}
       </span>
       <button
         type="button"
