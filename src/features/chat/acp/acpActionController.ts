@@ -186,8 +186,8 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         resource: "queue",
         limit: scopeBusy ? 1 : MAX_CONCURRENT_CHAT_ACTIONS,
         message: scopeBusy
-          ? "Another action is already in progress for this Chat."
-          : "Too many Chat actions are already in progress.",
+          ? "Another action is already in progress for this chat."
+          : "Too many chat actions are already in progress.",
       });
       emitState(captured, origin, {
         busy: false,
@@ -248,7 +248,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     }
     if (!captured) {
       dependencies.onUnscopedRefusal?.(
-        "This Chat is not ready to send. Reload it and try again.",
+        "This chat is not ready to send. Reload it and try again.",
       );
       return Promise.resolve("rejected");
     }
@@ -265,7 +265,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         busy: false,
         cancellingTurnId: null,
         error: localFailure(
-          "Wait for the current Turn to finish before sending a follow-up.",
+          "Wait for the current turn to finish before sending a follow-up.",
         ),
       });
       return Promise.resolve("rejected");

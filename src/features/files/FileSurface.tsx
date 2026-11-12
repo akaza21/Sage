@@ -45,7 +45,7 @@ const MixedEolFileView = lazy(() =>
 );
 
 const LIMIT_EXCEEDED_STATUS =
-  "That edit was not applied: it would make this File larger than 1 MiB, the editor's limit.";
+  "That edit was not applied: it would make this file larger than 1 MiB, the editor's limit.";
 
 export function FileSurface({
   tab,

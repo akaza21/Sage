@@ -68,7 +68,7 @@ it("dismisses the live palette without hiding persistent Agent navigation", asyn
   render(<LeftSidebar />);
 
   fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
-  const search = await screen.findByRole("searchbox", { name: "Search Chats" });
+  const search = await screen.findByRole("searchbox", { name: "Search chats" });
   fireEvent.change(search, { target: { value: "example" } });
   fireEvent.keyDown(search, { key: "Escape" });
 
@@ -84,7 +84,7 @@ it("dismisses the live palette without hiding persistent Agent navigation", asyn
   );
 
   fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
-  expect(screen.getByRole("searchbox", { name: "Search Chats" })).toHaveValue(
+  expect(screen.getByRole("searchbox", { name: "Search chats" })).toHaveValue(
     "",
   );
 });
@@ -534,18 +534,18 @@ it("mounts the lazy Chat search dialog only for a folder request, including one 
   });
   const { unmount } = render(<LeftSidebar />);
   await Promise.resolve();
-  expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Search chats" })).toBeNull();
   unmount();
 
   requestChatSearchInFolder("sage");
   render(<LeftSidebar />);
-  const dialog = await screen.findByRole("dialog", { name: "Search Chats" });
+  const dialog = await screen.findByRole("dialog", { name: "Search chats" });
   expect(within(dialog).getByRole("searchbox")).toHaveFocus();
   expect(hasChatSearchFolderRequest()).toBe(false);
   fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-  expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Search chats" })).toBeNull();
   act(() => requestChatSearchInFolder("sage"));
-  expect(screen.getByRole("dialog", { name: "Search Chats" })).toBeTruthy();
+  expect(screen.getByRole("dialog", { name: "Search chats" })).toBeTruthy();
 });
 
 it("organizes the sidebar by project or in one list, in either sort order", async () => {

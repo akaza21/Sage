@@ -476,7 +476,7 @@ test.describe("ED02 picker visual states", () => {
       listbox.getByRole("option", { name: "Codex — test only", exact: true }),
     ).toHaveAttribute("aria-selected", "true");
     const unavailable = listbox.getByRole("option", {
-      name: /Unavailable Codex.*Sage did not admit this harness and will not start it\./,
+      name: /Unavailable Codex.*Sage can't start this harness\./,
     });
     await expect(unavailable).toHaveAttribute("aria-disabled", "true");
     await expect(page.getByRole("combobox", { name: "Harness" })).toHaveCount(
@@ -498,7 +498,7 @@ test.describe("ED02 picker visual states", () => {
     const modelTrigger = page.getByLabel("Model", { exact: true });
     await expect(modelTrigger).toBeDisabled();
     await expect(
-      page.getByText("Wait while Sage checks the selected Harness."),
+      page.getByText("Wait while Sage checks the selected harness."),
     ).toBeVisible();
     await releasePickerHarnessReadiness(page);
     await expect(modelTrigger).toBeEnabled();
@@ -562,12 +562,12 @@ test.describe("ED02 picker visual states", () => {
     });
     await expect(handoffTrigger).toBeEnabled();
     await handoffTrigger.click();
-    const dialog = page.getByRole("dialog", { name: "Hand off this Chat" });
-    const trigger = dialog.getByRole("button", { name: "Target Chat" });
+    const dialog = page.getByRole("dialog", { name: "Hand off this chat" });
+    const trigger = dialog.getByRole("button", { name: "Target chat" });
     await expect(trigger).toHaveText("Target chat");
     await trigger.click();
-    const input = dialog.getByRole("combobox", { name: "Target Chat" });
-    const listbox = dialog.getByRole("listbox", { name: "Target Chat" });
+    const input = dialog.getByRole("combobox", { name: "Target chat" });
+    const listbox = dialog.getByRole("listbox", { name: "Target chat" });
     await expect(input).toBeFocused();
     await expect(
       listbox.getByRole("option", { name: "Target chat", exact: true }),
@@ -1705,12 +1705,12 @@ test.describe("Wave 2 200% zoom state", () => {
     await expect(handoffTrigger).toBeEnabled();
     await handoffTrigger.click();
     await page
-      .getByRole("button", { name: "Target Chat", exact: true })
+      .getByRole("button", { name: "Target chat", exact: true })
       .click();
     await expectOpenPickerContained(
       page,
-      page.getByRole("combobox", { name: "Target Chat" }),
-      page.getByRole("listbox", { name: "Target Chat" }),
+      page.getByRole("combobox", { name: "Target chat" }),
+      page.getByRole("listbox", { name: "Target chat" }),
     );
     await expectNoViewportOverflow(page);
 
@@ -1719,7 +1719,7 @@ test.describe("Wave 2 200% zoom state", () => {
       .locator("header.title-bar")
       .getByRole("button", { name: "Search chats" });
     await titleSearch.click();
-    const searchDialog = page.getByRole("dialog", { name: "Search Chats" });
+    const searchDialog = page.getByRole("dialog", { name: "Search chats" });
     await expect(searchDialog).toBeVisible();
     const folderTrigger = searchDialog.getByRole("button", {
       name: "Search in",

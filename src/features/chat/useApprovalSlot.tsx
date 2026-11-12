@@ -117,7 +117,7 @@ function ApprovalFallback({
       <p>Loading the approval…</p>
       {state === "failed" ? (
         <p className="acp-permission__error" role="alert">
-          The denial could not be sent. Try again, or stop the Turn.
+          The denial could not be sent. Try again, or stop the turn.
         </p>
       ) : null}
       {onCancelTurn ? (
@@ -220,7 +220,7 @@ export function useApprovalSlot(
     awaiting: holdsSlot,
     slot: !first ? null : failed ? (
       <p className="composer__notice" role="alert">
-        The approval could not load. Stop the Turn, or reopen the Chat to try
+        The approval could not load. Stop the turn, or reopen the chat to try
         again.
       </p>
     ) : (

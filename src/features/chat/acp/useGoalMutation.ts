@@ -27,7 +27,7 @@ export function createGoalMutationController(deps: {
     unknown = true;
     return {
       kind: "outcomeUnknown",
-      message: "Goal outcome unknown. Reload this Chat to verify.",
+      message: "Goal outcome unknown. Reload this chat to verify.",
     };
   };
   return async (action: Action): Promise<GoalMutationOutcome> => {

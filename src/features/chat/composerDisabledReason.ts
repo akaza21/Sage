@@ -27,22 +27,22 @@ export function composerDisabledReason({
   selectedHarness,
   useNativeAcp,
 }: ComposerAvailability): string | null {
-  if (projectTransitioning) return "Wait for the Project to finish loading.";
+  if (projectTransitioning) return "Wait for the project to finish loading.";
   if (actionBusy) return "Wait for the current action to finish.";
   if (activeTurn)
-    return "Wait for the active Turn to finish, or cancel it when available.";
-  if (!selectedHarness) return "Choose an available Harness before sending.";
+    return "Wait for the active turn to finish, or cancel it when available.";
+  if (!selectedHarness) return "Choose an available harness before sending.";
   if (harnessDiscoveryPhase === "checking")
-    return "Wait while Sage checks the selected Harness.";
+    return "Wait while Sage checks the selected harness.";
   if (["signInRequired", "consent", "waiting"].includes(harnessDiscoveryPhase))
     return "Finish signing in before sending.";
-  if (!harnessAvailable) return "The selected Harness is unavailable.";
+  if (!harnessAvailable) return "The selected harness is unavailable.";
   if (useNativeAcp && !availableBinding)
-    return "No reviewed local binding is available for this Harness.";
+    return "No reviewed local binding is available for this harness.";
   if (chatLoadFailed)
-    return "This Chat failed to load. Retry to send a prompt.";
+    return "This chat failed to load. Retry to send a prompt.";
   if (!canPrompt)
-    return "The selected Harness cannot accept prompts in this session.";
+    return "The selected harness cannot accept prompts in this session.";
   return null;
 }
 

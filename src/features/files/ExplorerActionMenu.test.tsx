@@ -377,7 +377,7 @@ describe("ExplorerActionMenu", () => {
     const { menu } = openMenu();
     expect(
       within(menu).getByRole("menuitem", {
-        name: "Save or revert this File before renaming or recycling it.",
+        name: "Save or revert this file before renaming or recycling it.",
       }),
     ).toHaveAttribute("aria-disabled", "true");
   });

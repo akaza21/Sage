@@ -155,7 +155,7 @@ it.each(["button", "shortcut"])(
       fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
     else fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(
-      await screen.findByRole("dialog", { name: "Search Chats" }),
+      await screen.findByRole("dialog", { name: "Search chats" }),
     ).toBeVisible();
     expect(useAgentSettingsState.getState().page).toBeNull();
     expect(screen.queryByRole("dialog", { name: "Agent settings" })).toBeNull();

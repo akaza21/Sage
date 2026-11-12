@@ -298,16 +298,16 @@ export default function QuickOpen({
   let status = "";
   if (commandMode) {
     status = commands.length === 0 ? "No matching commands." : "";
-  } else if (!projectId) status = "Open a Project to find its Files.";
+  } else if (!projectId) status = "Open a project to find its files.";
   else if (bareLine) {
     status = activeFile()
-      ? `Press Enter to go to line ${line} in the active File.`
-      : "Open a File to go to a line in it.";
+      ? `Press Enter to go to line ${line} in the active file.`
+      : "Open a file to go to a line in it.";
   } else if (error) status = error;
   else if (!answer) status = indexing ? "Indexing…" : "";
   else if (results.length === 0) {
     status =
-      query === "" ? "Type to find a File by name." : "No matching Files.";
+      query === "" ? "Type to find a file by name." : "No matching files.";
   }
 
   return (
@@ -337,7 +337,7 @@ export default function QuickOpen({
         <input
           className="quick-open__input"
           role="combobox"
-          aria-label={commandMode ? "Run a command" : "Search Files by name"}
+          aria-label={commandMode ? "Run a command" : "Search files by name"}
           aria-autocomplete="list"
           aria-expanded={itemKeys.length > 0}
           aria-controls={listId}
@@ -365,7 +365,7 @@ export default function QuickOpen({
           aria-hidden="true"
           hidden={text !== ""}
         >
-          Search Files by name (:line goes to a line, &gt; runs a command)
+          Search files by name (:line goes to a line, &gt; runs a command)
         </span>
         <ul
           ref={list}
@@ -429,7 +429,7 @@ export default function QuickOpen({
         </p>
         {answer?.truncated && !bareLine && !commandMode ? (
           <p className="quick-open__status">
-            Only the first {answer.indexedFiles.toLocaleString()} Files are
+            Only the first {answer.indexedFiles.toLocaleString()} files are
             searched.
           </p>
         ) : null}

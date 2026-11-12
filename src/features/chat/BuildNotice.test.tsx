@@ -40,7 +40,7 @@ it("keeps an unavailable harness explanation visible after dismissing a build", 
     />,
   );
   expect(screen.getByRole("status")).toHaveTextContent(
-    "Sage did not admit this harness",
+    "Sage can't start this harness",
   );
   expect(
     screen.queryByRole("button", { name: "Dismiss build notice" }),

@@ -20,19 +20,19 @@ export function harnessUnavailableReason(
 ): string {
   switch (reason) {
     case "admissionIncomplete":
-      return "This harness has not completed admission, so Sage will not start it.";
+      return "Sage hasn't finished checking this harness, so it won't start it yet.";
     case "adapterAbsent":
       return "The ACP adapter this harness launches through is not installed.";
     case "adapterVersionUnreadable":
       return "Sage could not read the adapter's version, so it will not launch it.";
     case "candidateInvalid":
-      return "The discovered launch candidate did not pass Sage's checks.";
+      return "The installed harness didn't pass Sage's safety checks.";
     case "capabilityProjectionUnavailable":
-      return "Sage could not safely project this harness's supported capabilities.";
+      return "Sage couldn't read which features this harness supports.";
     case "developmentOnly":
       return "This is a development-only harness and is not part of this build.";
     case "driftDetected":
-      return "The admitted build changed on disk after admission. Sage stopped using it.";
+      return "This harness changed on disk after Sage checked it, so Sage stopped using it.";
     case "nodeAbsent":
       return "Node.js is required to launch this harness and was not found.";
     case "nodeEngineMismatch":
@@ -40,11 +40,11 @@ export function harnessUnavailableReason(
     case "nodeVersionUnreadable":
       return "Sage could not read the installed Node.js version.";
     case "observationOnly":
-      return "Sage can observe this harness's signature but cannot independently admit it on this workstation.";
+      return "Sage found this harness but can't verify it on this computer.";
     case "platformUnsupported":
-      return "Sage cannot admit this harness on this platform.";
+      return "This harness isn't supported on this platform.";
     default:
-      return "Sage did not admit this harness and will not start it.";
+      return "Sage can't start this harness.";
   }
 }
 

@@ -175,7 +175,7 @@ export const ItemView = memo(
       case "fileChangeDiff":
         return interactive ? (
           <p className="acp-activity__edit-reference">
-            Edit included in the Turn changed-file summary
+            Edit included in the turn changed-file summary
           </p>
         ) : (
           <article

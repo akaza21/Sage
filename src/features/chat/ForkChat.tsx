@@ -111,7 +111,7 @@ export async function forkChat({
   const { setState: set, getState: get } = useWorkbenchStore;
   const layout = currentProjectLayout(get());
   if (!layout || get().projectTransitioning)
-    return "Wait for the current Project operation.";
+    return "Wait for the current project operation.";
   const context = createChatTransitionContext(set, get);
   // The native fork keeps the parent's model and effort.
   const parentConfig =

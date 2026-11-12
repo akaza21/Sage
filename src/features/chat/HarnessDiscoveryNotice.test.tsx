@@ -34,7 +34,7 @@ describe("HarnessDiscoveryNotice", () => {
     render(<HarnessDiscoveryNotice />);
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Sage did not admit this harness and will not start it.",
+      "Sage can't start this harness.",
     );
   });
 
@@ -169,7 +169,7 @@ describe("HarnessDiscoveryNotice", () => {
     render(<HarnessDiscoveryNotice />);
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Sage did not admit this harness and will not start it.",
+      "Sage can't start this harness.",
     );
     expect(screen.queryByText("someFutureReason")).toBeNull();
   });
@@ -198,7 +198,7 @@ describe("HarnessDiscoveryNotice", () => {
 
     expect(screen.getAllByRole("status")).toHaveLength(1);
     expect(screen.getByRole("status")).toHaveTextContent(
-      "This harness has not completed admission",
+      "Sage hasn't finished checking this harness",
     );
   });
 });

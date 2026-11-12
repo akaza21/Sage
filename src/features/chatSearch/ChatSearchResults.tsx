@@ -36,7 +36,7 @@ export function ChatSearchResults({
         <>
           {response.results.length === 0 ? (
             <p className="chat-search-dialog__empty">
-              No Chats matched “{response.query}”.
+              No chats matched “{response.query}”.
             </p>
           ) : (
             <div
