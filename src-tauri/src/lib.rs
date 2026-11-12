@@ -109,6 +109,7 @@ mod test_wait;
 mod turn_workspace;
 pub mod user_terminal;
 mod voice_input;
+mod win32_path;
 #[cfg(windows)]
 mod window_frame;
 mod window_memory;
