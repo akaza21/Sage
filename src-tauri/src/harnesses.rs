@@ -602,7 +602,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn an_older_opencode_build_never_borrows_the_characterised_claims() {
+    fn only_a_later_opencode_build_keeps_the_characterised_claims() {
         for (version, characterisation) in [
             (
                 "1.18.20",
@@ -613,10 +613,8 @@ mod tests {
                 crate::domain::HarnessCharacterisation::NewerThanTested,
             ),
         ] {
-            let root = std::env::temp_dir().join(format!(
-                "sage-opencode-uncharacterised-{}",
-                uuid::Uuid::new_v4()
-            ));
+            let root = std::env::temp_dir()
+                .join(format!("sage-opencode-release-{}", uuid::Uuid::new_v4()));
             let catalog = admitted_opencode_catalog(&root, version);
             let opencode = by_id(&catalog.definitions(), "opencode");
             fs::remove_dir_all(root).unwrap();
