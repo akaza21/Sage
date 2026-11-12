@@ -960,6 +960,13 @@ test.describe("V6 Composer context meter", () => {
       knownWorkbench,
       "agent-composer-context-known",
     );
+    // In a 720px window the fit drops the meter before any label.
+    await page.setViewportSize({ width: 720, height: 560 });
+    expect(
+      await settledComposerFit(page.locator("form.composer").first()),
+    ).toContain("context");
+    await expect(knownContext).toHaveCount(0);
+    await page.setViewportSize({ width: 1280, height: 560 });
 
     const overCapacityWorkbench = await openScenario(
       page,
