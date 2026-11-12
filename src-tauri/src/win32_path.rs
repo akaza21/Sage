@@ -22,6 +22,22 @@ pub(crate) fn simplified(path: &Path) -> PathBuf {
     }
 }
 
+/// A program and its arguments as a child process should receive them: each
+/// verbatim path that has an equivalent ordinary spelling is rewritten, and
+/// every other argument is kept as it is.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn ordinary_invocation(
+    program: &Path,
+    args: &[std::ffi::OsString],
+) -> (PathBuf, Vec<std::ffi::OsString>) {
+    (
+        simplified(program),
+        args.iter()
+            .map(|arg| simplified(Path::new(arg)).into_os_string())
+            .collect(),
+    )
+}
+
 /// The ordinary spelling of a verbatim local-drive or UNC path, or `None` when
 /// `text` is not verbatim or Win32 would read its ordinary form differently: a
 /// component ending in `.` or a space, or a path of `MAX_PATH` or more.
@@ -63,6 +79,23 @@ mod tests {
         assert_eq!(simplified_text(r"C:\already\plain"), None);
         let long = format!(r"\\?\C:\{}", "a".repeat(300));
         assert_eq!(simplified_text(&long), None);
+    }
+
+    #[test]
+    fn a_child_receives_ordinary_program_and_path_arguments() {
+        let (program, args) = ordinary_invocation(
+            Path::new(r"\\?\C:\nodejs\node.exe"),
+            &[
+                r"\\?\C:\npm\cli.js".into(),
+                "--mode=rpc".into(),
+                r"\\?\C:\odd.\keep".into(),
+            ],
+        );
+        assert_eq!(program, PathBuf::from(r"C:\nodejs\node.exe"));
+        assert_eq!(
+            args,
+            [r"C:\npm\cli.js", "--mode=rpc", r"\\?\C:\odd.\keep"].map(std::ffi::OsString::from)
+        );
     }
 
     #[test]

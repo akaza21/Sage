@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use super::super::supervisor::{BoundedEnvironment, BoundedOsArgs, LaunchError};
 use super::artifact::VerifiedArtifact;
 
-const NPM_CODEX_EXECUTION_LINE: &str = r#"endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\node_modules\@openai\codex\bin\codex.js" %*"#;
+/// Every npm shim for the package names its folder; the rest of the shim
+/// is npm's template, which changes between npm releases.
+const CODEX_PACKAGE_DIRECTORY: &str = r"\node_modules\@openai\codex\";
 const MAX_LAUNCHER_BYTES: u64 = 16 * 1024;
 
 pub(super) struct BatchLaunchPlan {
@@ -25,10 +27,11 @@ pub(super) fn parse_npm_codex_launcher(
         .canonical_path
         .parent()
         .ok_or(LaunchError::InvalidAbsolutePath)?;
-    let script = codex_script_path(&artifact.canonical_path)?;
-    if !script.is_file() {
-        return Err(LaunchError::IdentityMismatch);
-    }
+    // The module the installed release's `bin.codex` names, never a path
+    // read from the shim, so an npm or Codex upgrade keeps launching.
+    let script =
+        crate::harness_discovery::npm_package_bin(launcher_directory, "@openai/codex", "codex")
+            .ok_or(LaunchError::IdentityMismatch)?;
     let adjacent_node = launcher_directory.join("node.exe");
     let node = if adjacent_node.is_file() {
         adjacent_node
@@ -42,37 +45,20 @@ pub(super) fn parse_npm_codex_launcher(
         node_from_path(path)?
     };
     let mut args = Vec::with_capacity(fixed_args.as_slice().len().saturating_add(1));
-    // The script comes from the verbatim canonical launcher path, which Node
-    // cannot load as its main module; hand it the same file's ordinary name.
-    args.push(crate::win32_path::simplified(&script).into_os_string());
+    // Launch rewrites the verbatim script path to its ordinary spelling.
+    args.push(script.into_os_string());
     args.extend(fixed_args.as_slice().iter().cloned());
     Ok(BatchLaunchPlan { node, args })
 }
 
+/// Whether the shim is npm's launcher for the Codex package, whatever
+/// template the installing npm release used. Sage never runs the shim.
 fn observed_npm_codex_launcher(contents: &[u8]) -> bool {
-    let Ok(contents) = std::str::from_utf8(contents) else {
-        return false;
-    };
-    contents
-        .lines()
-        .any(|line| line.trim_end_matches('\r') == NPM_CODEX_EXECUTION_LINE)
-        && contents
-            .lines()
-            .any(|line| line.trim_end_matches('\r') == "SETLOCAL")
-        && contents
-            .lines()
-            .any(|line| line.trim_end_matches('\r') == "CALL :find_dp0")
-}
-
-fn codex_script_path(launcher: &std::path::Path) -> Result<PathBuf, LaunchError> {
-    Ok(launcher
-        .parent()
-        .ok_or(LaunchError::InvalidAbsolutePath)?
-        .join("node_modules")
-        .join("@openai")
-        .join("codex")
-        .join("bin")
-        .join("codex.js"))
+    std::str::from_utf8(contents).is_ok_and(|contents| {
+        contents
+            .to_ascii_lowercase()
+            .contains(&CODEX_PACKAGE_DIRECTORY.to_ascii_lowercase())
+    })
 }
 
 fn node_from_path(path: &std::ffi::OsStr) -> Result<PathBuf, LaunchError> {
@@ -88,14 +74,12 @@ fn node_from_path(path: &std::ffi::OsStr) -> Result<PathBuf, LaunchError> {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::Path;
 
     use super::*;
 
     #[test]
-    fn accepts_the_observed_npm_codex_launcher_and_resolves_node_from_path() {
-        let launcher = Path::new(r"C:\Users\name\AppData\Roaming\npm\codex.cmd");
-        let contents = concat!(
+    fn accepts_npm_codex_shims_from_any_npm_template() {
+        let current = concat!(
             "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n",
             ":start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST \"%dp0%\\node.exe\" (\r\n",
             "  SET \"_prog=%dp0%\\node.exe\"\r\n) ELSE (\r\n  SET \"_prog=node\"\r\n",
@@ -103,16 +87,11 @@ mod tests {
             "endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & \"%_prog%\"  ",
             "\"%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js\" %*\r\n"
         );
-        assert!(observed_npm_codex_launcher(contents.as_bytes()));
-        assert_eq!(
-            codex_script_path(launcher).unwrap(),
-            PathBuf::from(r"C:\Users\name\AppData\Roaming\npm")
-                .join("node_modules")
-                .join("@openai")
-                .join("codex")
-                .join("bin")
-                .join("codex.js")
-        );
+        // A different template, as a later npm might write it.
+        let rewritten =
+            "@echo off\r\nnode \"%~dp0\\node_modules\\@OpenAI\\Codex\\bin\\codex.js\" %*\r\n";
+        assert!(observed_npm_codex_launcher(current.as_bytes()));
+        assert!(observed_npm_codex_launcher(rewritten.as_bytes()));
     }
 
     #[test]

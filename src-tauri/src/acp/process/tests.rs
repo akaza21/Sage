@@ -397,6 +397,11 @@ fn windows_npm_codex_launcher_hands_node_ordinary_script_and_working_directory_p
         b"process.stdout.write([process.argv[1], process.argv[2], process.cwd()].join('|'));\n",
     )
     .unwrap();
+    std::fs::write(
+        script_directory.parent().unwrap().join("package.json"),
+        br#"{"name":"@openai/codex","bin":{"codex":"bin/codex.js"}}"#,
+    )
+    .unwrap();
     let launcher = directory.join("codex.cmd");
     let contents = concat!(
         "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n",
