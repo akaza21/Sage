@@ -5,10 +5,7 @@ import { CollaborationItem } from "./CollaborationItem";
 import { ToolActivityRollup } from "./ToolActivityRollupView";
 import { WorkedActivityVisibility } from "./WorkedActivityVisibility";
 import { withSubagentNames } from "./subagentIdentities";
-import {
-  groupPrimaryActivities,
-  type PrimaryActivityItem,
-} from "./toolActivityRollup";
+import { groupPrimaryActivities } from "./toolActivityRollup";
 
 export function PrimaryActivities({
   items,
@@ -40,8 +37,11 @@ export function PrimaryActivities({
             interactive={interactive}
             onOpenResource={onOpenResource}
           />
-        ) : !visible && !isSteeredMessage(activity) ? null : activity.kind ===
-          "collaborationRollup" ? (
+        ) : // A steered message is the user's own words, never folded away.
+        !visible &&
+          !(
+            "item" in activity && activity.item.kind === "userPrompt"
+          ) ? null : activity.kind === "collaborationRollup" ? (
           <CollaborationItem
             key={activity.items[0].id}
             item={activity.items[0]}
@@ -61,9 +61,4 @@ export function PrimaryActivities({
       ) : null}
     </>
   );
-}
-
-/** A steered message is the user's own words, never folded away. */
-function isSteeredMessage(activity: PrimaryActivityItem) {
-  return activity.kind === "item" && activity.item.kind === "userPrompt";
 }

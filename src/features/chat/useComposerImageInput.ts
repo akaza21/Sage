@@ -24,7 +24,7 @@ export function composerImageAvailability(
     return {
       available: false,
       reason:
-        "Images can be attached once this chat's session has started and the harness has said it accepts them. Send a first message to start the session.",
+        "Images can be attached once the session starts and the harness accepts them. Send a message to start it.",
     };
   if (session.capabilities.promptImages !== true)
     return {
@@ -51,13 +51,9 @@ export function useComposerImageInput({
 }) {
   // An error is kept with the availability it was raised under, so one
   // about images being unavailable clears once the session takes them.
-  const [raised, setRaised] = useState<{
-    text: string;
-    available: boolean;
-  } | null>(null);
-  const setError = (text: string | null) =>
-    setRaised(text === null ? null : { text, available });
-  const error = raised?.available === available ? raised.text : null;
+  const [raised, setRaised] = useState<[string, boolean] | null>(null);
+  const setError = (text: string) => setRaised([text, available]);
+  const error = raised?.[1] === available ? raised[0] : null;
   const chooserRef = useRef<HTMLInputElement>(null);
   const images = contexts.filter((context) => context.kind === "image");
   const count = images.length;
@@ -79,7 +75,7 @@ export function useComposerImageInput({
       )
     )
       return setError(imageUploadLimitMessage);
-    setError(null);
+    setRaised(null);
     onAddImages?.(files);
   };
   return {

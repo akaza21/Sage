@@ -354,8 +354,6 @@ export function matchesPlatformChord(
     (event.key.toLowerCase() === chord.key ||
       // Shift turns "-" into "_" on most layouts.
       (chord.key === "-" && event.shiftKey && event.key === "_") ||
-      // Layouts where ` is a dead key report "Dead"; match the physical key.
-      (chord.key === "`" && event.code === "Backquote") ||
       (apple && event.altKey && optionLetter(event.code) === chord.key))
   );
 }
