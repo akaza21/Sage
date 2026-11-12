@@ -95,6 +95,10 @@ fn await_request_inner(
             }
             if method == "turn/start" {
                 state.codex_turn_config = Some(super::codex_catalog::turn_config(&request));
+                state.prompt_echo = request
+                    .pointer("/params/input")
+                    .and_then(Value::as_array)
+                    .map(|items| super::prompt_echo::blocks(items));
             }
             return Ok(());
         }
@@ -315,7 +319,12 @@ pub(super) fn emit_known(
     match shape {
         "codexError" => emit_notification("error", state, output),
         "codexInitializeResult" => emit_response("initialize", state, output),
-        "codexInitializeResultObserved" => emit_response("initializeObserved", state, output),
+        // The install's skills, from its start (see `background`).
+        "codexInitializeResultObserved" => {
+            background::install(step, state)?;
+            emit_response("initializeObserved", state, output)
+        }
+        "codexSkillsChanged" => background::skills_changed(step, state, output),
         "codexThreadResult" => emit_response("thread", state, output),
         "codexThreadEffortResult" => emit_response("effortThread", state, output),
         "codexModelListResult" => emit_response("models", state, output),

@@ -412,3 +412,42 @@ fn an_idle_skills_read_is_answered_with_no_skills_and_the_case_goes_on() {
     );
     assert_eq!(state.last_request_id, Some(7));
 }
+
+#[test]
+fn installed_skills_must_be_bounded_and_complete() {
+    let skill = |name: &str| json!({"name":name,"path":"$ROOT/s/SKILL.md","enabled":true});
+    let installs = |skills: Value| {
+        let step = json!({"op":"emitKnownFrame","shape":"codexSkillsChanged","skills":skills});
+        execute_with_io(
+            &step,
+            &mut WireState::new(),
+            &mut Cursor::new(""),
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+    };
+    assert!(installs(json!([skill("pdf")])).is_ok());
+    let many: Vec<Value> = (0..17).map(|n| skill(&format!("s{n}"))).collect();
+    for refused in [
+        json!(many),
+        json!([{"name":"pdf","path":"p"}]),
+        json!({"name":"pdf"}),
+    ] {
+        assert_eq!(
+            installs(refused.clone()),
+            Err(FixtureError::InvalidArguments),
+            "{refused}"
+        );
+    }
+    let unnamed = json!({"op":"emitKnownFrame","shape":"codexSkillsChanged"});
+    assert_eq!(
+        execute_with_io(
+            &unnamed,
+            &mut WireState::new(),
+            &mut Cursor::new(""),
+            &mut Vec::new(),
+            &mut Vec::new()
+        ),
+        Err(FixtureError::InvalidArguments)
+    );
+}
