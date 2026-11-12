@@ -5,7 +5,7 @@
 use super::*;
 use crate::acp::slash_commands::CommandSource;
 
-const LONG: &str = "review-release-notes-for-the-synthetic-example-project";
+const LONG: &str = "review-release-notes-for-the-synthetic-example-project-checklist";
 
 fn wire(egress: &AdapterEgress) -> Value {
     serde_json::from_slice(egress.frame().payload()).unwrap()
@@ -75,6 +75,10 @@ fn the_skills_journey_lists_enabled_skills_and_reloads_them_after_a_change() {
     ready(&mut runtime);
     let first = read(&mut runtime, None);
     assert_eq!(first["params"]["cwds"], json!([r"C:\repo"]));
+    assert!(
+        first["params"].get("forceReload").is_none(),
+        "Codex's cache serves the first read"
+    );
     assert_eq!(
         skills(&runtime),
         ["pdf", LONG],
@@ -111,11 +115,11 @@ fn a_picked_skill_reaches_the_journeys_turn_as_its_skill_input() {
         .find(|frame| frame["method"] == "item/completed")
         .expect("the turn answers");
     let echo = answer["params"]["item"]["text"].as_str().unwrap();
-    assert!(
-        echo.starts_with("Synthetic replay received 2 prompt blocks:"),
-        "{echo}"
-    );
-    assert!(echo.contains("Skill pdf at "), "{echo}");
-    assert!(echo.contains("/.codex/skills/pdf/SKILL.md"), "{echo}");
-    assert!(echo.contains("```text\nsummarise it\n```"), "{echo}");
+    // The skill comes first, then the text typed after its name.
+    let blocks: Vec<&str> = echo.split("\n\n").collect();
+    assert_eq!(blocks.len(), 3, "{echo}");
+    assert_eq!(blocks[0], "Synthetic replay received 2 prompt blocks:");
+    assert!(blocks[1].starts_with("Skill pdf at "), "{echo}");
+    assert!(blocks[1].ends_with("/.codex/skills/pdf/SKILL.md"), "{echo}");
+    assert_eq!(blocks[2], "Text:\n```text\nsummarise it\n```");
 }

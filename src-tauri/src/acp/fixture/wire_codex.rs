@@ -321,7 +321,7 @@ pub(super) fn emit_known(
         "codexInitializeResult" => emit_response("initialize", state, output),
         // The install's skills, from its start (see `background`).
         "codexInitializeResultObserved" => {
-            background::install(step, state)?;
+            background::install(step, state, true)?;
             emit_response("initializeObserved", state, output)
         }
         "codexSkillsChanged" => background::skills_changed(step, state, output),

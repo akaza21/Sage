@@ -21,9 +21,10 @@ const skill = (name, description, extra = {}) => ({
   ...extra,
 });
 
-/** A name near the menu's bound, so the real-app check sees it fit. */
+/** A long name, at Codex's 64-character skill-name limit, so the real-app
+ * check sees one fit the / menu. */
 export const CODEX_LONG_SKILL =
-  "review-release-notes-for-the-synthetic-example-project";
+  "review-release-notes-for-the-synthetic-example-project-checklist";
 
 const INSTALLED = [
   skill("pdf", "Read and summarise PDF files", {

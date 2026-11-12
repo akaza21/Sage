@@ -14,10 +14,15 @@ use super::{WireState, acp};
 const MAX_SKILLS: usize = 16;
 const MAX_CWDS: usize = 4;
 
-/// The skills the replayed Codex install holds, in Codex's `SkillMetadata`
-/// shape; none until a step installs some.
+/// The skills the replayed Codex install holds on disk, in Codex's
+/// `SkillMetadata` shape, and the list Codex has cached from them: a change
+/// on disk reaches only a read that skips the cache (`forceReload`). None
+/// until a step installs some.
 #[derive(Default)]
-pub(super) struct Skills(Vec<Value>);
+pub(super) struct Skills {
+    on_disk: Vec<Value>,
+    cached: Vec<Value>,
+}
 
 /// Answers `request` when it is a background read, and says whether it was.
 pub(super) fn answer(
@@ -30,7 +35,7 @@ pub(super) fn answer(
         "thread/read" => child_read(request, output, state)?,
         "skills/list" => {
             let id = request_id(request)?;
-            let data = listed(request, &state.codex_skills)?;
+            let data = listed(request, &mut state.codex_skills)?;
             emit_json(
                 output,
                 state,
@@ -78,10 +83,16 @@ fn child_read(
     )
 }
 
-/// One entry per cwd the read names, each holding the installed skills, as
-/// Codex scopes repo skills to a cwd. An install with none lists nothing.
-fn listed(request: &Value, skills: &Skills) -> Result<Vec<Value>, FixtureError> {
-    if skills.0.is_empty() {
+/// One entry per cwd the read names, each holding the cached skills, as
+/// Codex scopes repo skills to a cwd; a read that skips the cache reads the
+/// disk first. An install with none lists nothing. The skills' paths are
+/// under the case's project, where Sage launches the replay, which is the
+/// cwd Sage asks about.
+fn listed(request: &Value, skills: &mut Skills) -> Result<Vec<Value>, FixtureError> {
+    if request.pointer("/params/forceReload") == Some(&json!(true)) {
+        skills.cached = skills.on_disk.clone();
+    }
+    if skills.cached.is_empty() {
         return Ok(Vec::new());
     }
     let cwds = request
@@ -91,12 +102,17 @@ fn listed(request: &Value, skills: &Skills) -> Result<Vec<Value>, FixtureError> 
         .ok_or(FixtureError::InvalidArguments)?;
     Ok(cwds
         .iter()
-        .map(|cwd| json!({"cwd": cwd, "skills": skills.0, "errors": []}))
+        .map(|cwd| json!({"cwd": cwd, "skills": skills.cached, "errors": []}))
         .collect())
 }
 
-/// Installs the skills a step names (`skills`), with `$ROOT` filled in.
-pub(super) fn install(step: &Value, state: &mut WireState) -> Result<(), FixtureError> {
+/// Puts the skills a step names (`skills`) on disk, with `$ROOT` filled
+/// in; `start` says Codex is starting, so it caches them as it loads.
+pub(super) fn install(
+    step: &Value,
+    state: &mut WireState,
+    start: bool,
+) -> Result<(), FixtureError> {
     let Some(skills) = step.get("skills") else {
         return Ok(());
     };
@@ -112,12 +128,16 @@ pub(super) fn install(step: &Value, state: &mut WireState) -> Result<(), Fixture
             })
         })
         .ok_or(FixtureError::InvalidArguments)?;
-    state.codex_skills = Skills(skills.clone());
+    state.codex_skills.on_disk = skills.clone();
+    if start {
+        state.codex_skills.cached = skills.clone();
+    }
     Ok(())
 }
 
-/// The skills changed on disk: the step's list replaces the installed one,
-/// and Codex says so with `skills/changed`.
+/// The skills changed on disk: the step's list replaces what is there, and
+/// Codex says so with `skills/changed`, keeping its cache until a read
+/// skips it.
 pub(super) fn skills_changed(
     step: &Value,
     state: &mut WireState,
@@ -126,7 +146,7 @@ pub(super) fn skills_changed(
     if step.get("skills").is_none() {
         return Err(FixtureError::InvalidArguments);
     }
-    install(step, state)?;
+    install(step, state, false)?;
     emit_json(
         output,
         state,

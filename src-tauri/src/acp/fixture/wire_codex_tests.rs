@@ -451,3 +451,88 @@ fn installed_skills_must_be_bounded_and_complete() {
         Err(FixtureError::InvalidArguments)
     );
 }
+
+#[test]
+fn installed_skills_list_per_cwd_and_a_change_reaches_only_a_read_that_skips_the_cache() {
+    let skill = |name: &str| json!({"name":name,"path":"$ROOT/s/SKILL.md","enabled":true});
+    let mut state = WireState::new();
+    // The initialize the observed result answers.
+    state.last_request_id = Some(1);
+    let step =
+        |shape: &str, skills: Value| json!({"op":"emitKnownFrame","shape":shape,"skills":skills});
+    let mut run = |step: &Value, requests: &str| {
+        let mut output = Vec::new();
+        execute_with_io(
+            step,
+            &mut state,
+            &mut Cursor::new(requests.to_owned()),
+            &mut output,
+            &mut Vec::new(),
+        )
+        .map(|()| {
+            output
+                .split(|byte| *byte == b'\n')
+                .filter(|line| !line.is_empty())
+                .map(|line| serde_json::from_slice::<Value>(line).unwrap())
+                .collect::<Vec<_>>()
+        })
+    };
+    let names = |reply: &Value, entry: usize| -> Vec<String> {
+        reply["result"]["data"][entry]["skills"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|skill| skill["name"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let read = |id: u64, params: Value| {
+        format!(
+            "{}\n",
+            json!({"id":id,"method":"skills/list","params":params})
+        )
+    };
+    let wait = json!({"op":"awaitClient","kind":"codexModelList"});
+    let models = r#"{"id":99,"method":"model/list","params":{"cursor":null}}"#.to_owned() + "\n";
+    run(
+        &step("codexInitializeResultObserved", json!([skill("pdf")])),
+        "",
+    )
+    .unwrap();
+    let replies = run(&wait, &(read(1, json!({"cwds":["C:/a","C:/b"]})) + &models)).unwrap();
+    assert_eq!(replies[0]["result"]["data"][1]["cwd"], "C:/b");
+    assert_eq!(names(&replies[0], 1), ["pdf"]);
+
+    let changed = run(
+        &step("codexSkillsChanged", json!([skill("pdf"), skill("lint")])),
+        "",
+    )
+    .unwrap();
+    assert_eq!(
+        changed,
+        [json!({"jsonrpc":"2.0","method":"skills/changed","params":{}})]
+    );
+    let cached = run(&wait, &(read(2, json!({"cwds":["C:/a"]})) + &models)).unwrap();
+    assert_eq!(
+        names(&cached[0], 0),
+        ["pdf"],
+        "the cache still serves the old list"
+    );
+    let reloaded = run(
+        &wait,
+        &(read(3, json!({"cwds":["C:/a"],"forceReload":true})) + &models),
+    )
+    .unwrap();
+    assert_eq!(names(&reloaded[0], 0), ["pdf", "lint"]);
+
+    for refused in [
+        json!({}),
+        json!({"cwds":[]}),
+        json!({"cwds":["1","2","3","4","5"]}),
+    ] {
+        assert_eq!(
+            run(&wait, &(read(4, refused.clone()) + &models)).err(),
+            Some(FixtureError::InvalidArguments),
+            "{refused}"
+        );
+    }
+}
