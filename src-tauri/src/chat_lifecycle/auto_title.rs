@@ -13,15 +13,31 @@ fn is_hidden_format_character(value: char) -> bool {
     )
 }
 
-/// The first line of `text` as display text for a title: control and hidden
-/// format characters removed, then trimmed and cut at a character boundary
-/// within `max_bytes`. `None` when nothing printable is left.
+/// Characters that end a line of text: the ones `str::lines` honours plus a
+/// lone carriage return, vertical tab, form feed and the Unicode line and
+/// paragraph separators, so no line break is ever read as part of a title.
+fn is_line_break(value: char) -> bool {
+    matches!(
+        value,
+        '\n' | '\r' | '\u{000b}' | '\u{000c}' | '\u{0085}' | '\u{2028}' | '\u{2029}'
+    )
+}
+
+/// The first line of `text` as display text for a title: whitespace control
+/// characters such as tabs become spaces so words stay apart, other control
+/// and hidden format characters are removed, then the text is trimmed and cut
+/// at a character boundary within `max_bytes`. `None` when nothing printable
+/// is left.
 pub(crate) fn title_line(text: &str, max_bytes: usize) -> Option<String> {
     let visible = text
-        .lines()
+        .split(is_line_break)
         .next()?
         .chars()
-        .filter(|value| !value.is_control() && !is_hidden_format_character(*value))
+        .filter_map(|value| match value {
+            value if value.is_control() && value.is_whitespace() => Some(' '),
+            value if value.is_control() || is_hidden_format_character(value) => None,
+            value => Some(value),
+        })
         .collect::<String>();
     let mut title = String::new();
     for character in visible
@@ -95,7 +111,11 @@ mod tests {
         );
         assert_eq!(
             first_line_title("hello\tworld"),
-            Some("Chat: helloworld".into())
+            Some("Chat: hello world".into())
+        );
+        assert_eq!(
+            first_line_title("line one\rHow many lines"),
+            Some("Chat: line one".into())
         );
     }
 

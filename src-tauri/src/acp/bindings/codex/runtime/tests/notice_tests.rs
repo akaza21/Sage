@@ -464,3 +464,58 @@ fn missing_or_wrongly_typed_required_fields_are_rejected() {
         );
     }
 }
+
+const IGNORED_SETTING: &str = "Codex is ignoring 1 unrecognized configuration setting. \
+Check for typos or deprecated settings.";
+const IGNORED_SETTING_DETAILS: &str =
+    "user [path] `computer_use.windows.always_allowed_app_ids` is ignored.";
+
+#[test]
+fn one_config_problem_reported_both_ways_is_shown_once_in_either_order() {
+    let config = json!({"summary": IGNORED_SETTING, "details": IGNORED_SETTING_DETAILS});
+    let generic = json!({"message": format!("{IGNORED_SETTING}\n  {IGNORED_SETTING_DETAILS}")});
+
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let first = one_notice(&notify(&mut runtime, "configWarning", config.clone()));
+    assert_eq!(first.source.unwrap().as_str(), "codex config");
+    assert!(matches!(
+        notify(&mut runtime, "warning", generic.clone()).as_slice(),
+        [AdapterEvent::IgnoredLate]
+    ));
+
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let first = one_notice(&notify(&mut runtime, "warning", generic));
+    assert_eq!(first.source.unwrap().as_str(), "codex");
+    assert!(matches!(
+        notify(&mut runtime, "configWarning", config).as_slice(),
+        [AdapterEvent::IgnoredLate]
+    ));
+}
+
+#[test]
+fn different_warnings_are_each_shown() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    one_notice(&notify(
+        &mut runtime,
+        "configWarning",
+        json!({"summary": IGNORED_SETTING, "details": null}),
+    ));
+    let other = one_notice(&notify(
+        &mut runtime,
+        "warning",
+        json!({"message": "Model metadata is missing; using defaults."}),
+    ));
+    assert_eq!(
+        other.text.as_str(),
+        "Codex warning: Model metadata is missing; using defaults."
+    );
+    let second = one_notice(&notify(
+        &mut runtime,
+        "configWarning",
+        json!({"summary": "Invalid configuration; using defaults.", "details": null}),
+    ));
+    assert_eq!(second.source.unwrap().as_str(), "codex config");
+}

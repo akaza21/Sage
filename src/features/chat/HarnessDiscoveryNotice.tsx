@@ -38,8 +38,11 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
     <div className="build-notice" role="status">
       <Info aria-hidden="true" />
       <span>
-        {harness.boundVersion ? `Build ${harness.boundVersion}` : "This build"}
-        {" hasn't been characterised. Some features are unavailable."}
+        {`Sage hasn't been tested with ${
+          harness.boundVersion
+            ? `${harness.name} ${harness.boundVersion}`
+            : `this version of ${harness.name}`
+        } yet, so some features are off.`}
       </span>
       <button
         type="button"

@@ -38,7 +38,10 @@ mod tests {
     #[test]
     fn keeps_the_first_printable_line_within_the_cap() {
         assert_eq!(title("  Fix login \nsecond"), Some("Fix login".into()));
-        assert_eq!(title("Tab\there\u{1b}"), Some("Tabhere".into()));
+        assert_eq!(title("Tab\there\u{1b}"), Some("Tab here".into()));
+        assert_eq!(title("line one\rHow many"), Some("line one".into()));
+        assert_eq!(title("line one\u{2028}second"), Some("line one".into()));
+        assert_eq!(title("line one\u{85}second"), Some("line one".into()));
         assert_eq!(title("\u{7} \u{202e}Spoof"), Some("Spoof".into()));
         assert_eq!(title(""), None);
         assert_eq!(title(" \u{7} "), None);

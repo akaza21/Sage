@@ -39,6 +39,7 @@ pub(crate) use errors::{AdapterError, TurnStartedRejection};
 use command_snapshots::CommandItemSnapshots;
 pub(crate) use command_snapshots::MaterializedCommandItem;
 pub(crate) use turn_end::PlanEntries;
+pub(crate) use turn_starts::WarningKind;
 use turn_starts::{CorrelationMatch, TurnStartCorrelations};
 pub(in crate::acp::bindings::codex) use turns::SubagentLabels;
 
@@ -177,6 +178,10 @@ pub(crate) struct CodexAdapter {
     /// Thread-less notices that arrived before a thread was bound; at most
     /// `PENDING_NOTICES_MAX`, oldest dropped first.
     pending_session_notices: Vec<SessionScopedEvent>,
+    /// The latest configuration-warning summaries and thread-less warning
+    /// messages, at most `REPEATED_WARNINGS_MAX`, so one problem Codex
+    /// reports both ways is shown once.
+    recent_warnings: Vec<(WarningKind, String)>,
     turn_start_correlations: TurnStartCorrelations,
     active_turn_id: Option<ExternalId>,
     provisional_turn: Option<ProvisionalTurn>,
