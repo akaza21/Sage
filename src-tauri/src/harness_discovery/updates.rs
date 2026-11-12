@@ -29,11 +29,12 @@ const NPM_PACKAGES: &[(&str, &str)] = &[
 ];
 
 /// npm starts Node and reaches the registry; its own fetch timeout is
-/// shorter, so the deadline only catches a stalled process.
+/// shorter, so the deadline only catches a stalled process. npm config
+/// warnings on stderr can be long, and truncated output reads as a failure.
 const LOOKUP_LIMITS: ProbeLimits = ProbeLimits {
     command_deadline: Duration::from_secs(20),
     reap_deadline: Duration::from_millis(500),
-    output_bytes_max: 4 * 1024,
+    output_bytes_max: 16 * 1024,
 };
 
 /// The newest published release of an installed harness, and the command
@@ -45,32 +46,47 @@ pub(crate) struct PublishedRelease {
     pub(crate) command: String,
 }
 
-/// Looks up each attributable install in turn, one npm process at a time.
-pub(crate) fn published_releases(installed: &[InstalledHarness]) -> Vec<PublishedRelease> {
-    let owned: Vec<_> = installed
+/// An installed harness whose owner Sage can name, with the package to look
+/// up and the command that updates it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct UpdateSource {
+    pub(crate) harness_id: &'static str,
+    package: &'static str,
+    command: String,
+}
+
+/// The installs whose newest release Sage can look up. Reads only the file
+/// system; no process runs.
+pub(crate) fn update_sources(installed: &[InstalledHarness]) -> Vec<UpdateSource> {
+    installed
         .iter()
         .filter_map(|harness| {
             let package = npm_package(harness.id)?;
-            let command = update_command(harness.id, package, &harness.executable)?;
-            Some((harness.id, package, command))
-        })
-        .collect();
-    if owned.is_empty() {
-        return Vec::new();
-    }
-    let Some((node, npm_cli)) = npm_cli() else {
-        return Vec::new();
-    };
-    owned
-        .into_iter()
-        .filter_map(|(harness_id, package, command)| {
-            Some(PublishedRelease {
-                harness_id,
-                version: latest_version(&node, &npm_cli, package)?,
-                command,
+            Some(UpdateSource {
+                harness_id: harness.id,
+                package,
+                command: update_command(harness.id, package, &harness.executable)?,
             })
         })
         .collect()
+}
+
+/// Looks up each source in turn, one npm process at a time. `None` when no
+/// lookup could run or every lookup failed (offline, no npm), so the caller
+/// can try again rather than wait out the check interval.
+pub(crate) fn published_releases(sources: &[UpdateSource]) -> Option<Vec<PublishedRelease>> {
+    let (node, npm_cli) = npm_cli()?;
+    let found: Vec<_> = sources
+        .iter()
+        .filter_map(|source| {
+            Some(PublishedRelease {
+                harness_id: source.harness_id,
+                version: latest_version(&node, &npm_cli, source.package)?,
+                command: source.command.clone(),
+            })
+        })
+        .collect();
+    (!found.is_empty()).then_some(found)
 }
 
 fn npm_package(harness_id: &str) -> Option<&'static str> {
@@ -91,27 +107,17 @@ fn update_command(harness_id: &str, package: &str, executable: &Path) -> Option<
     }
 }
 
-/// Whether the executable is the bin of a global npm install of `package`:
-/// a shim beside `node_modules` (Windows), or a link from `<prefix>/bin` into
-/// `<prefix>/lib/node_modules/<package>` (Unix).
+/// Whether the executable is npm's global shim for `package`, which npm
+/// writes beside the `node_modules` folder that holds the package. On Unix
+/// npm links its bins, and discovery does not follow links, so only the
+/// Windows layout reaches this.
 fn npm_owned(executable: &Path, package: &str) -> bool {
-    let package_dir = Path::new("node_modules").join(package);
-    let manifest = package_dir.join("package.json");
-    let Some(bin) = executable.parent() else {
-        return false;
-    };
-    if authentic_descendant_file(bin, &manifest) {
-        return true;
-    }
-    let (Some(prefix), Ok(target)) = (bin.parent(), executable.canonicalize()) else {
-        return false;
-    };
-    let root = prefix.join("lib");
-    authentic_descendant_file(&root, &manifest)
-        && root
-            .join(&package_dir)
-            .canonicalize()
-            .is_ok_and(|package_root| target.starts_with(package_root))
+    executable.parent().is_some_and(|bin| {
+        authentic_descendant_file(
+            bin,
+            Path::new("node_modules").join(package).join("package.json"),
+        )
+    })
 }
 
 /// The native installer's launcher in `~/.local/bin`.
@@ -158,15 +164,26 @@ fn latest_version(node: &Path, npm_cli: &Path, package: &str) -> Option<String> 
         OsStr::new("version"),
         OsStr::new("--fetch-retries=0"),
         OsStr::new("--fetch-timeout=15000"),
+        // One registry request, and no log file per lookup.
+        OsStr::new("--no-update-notifier"),
+        OsStr::new("--logs-max=0"),
     ];
-    let output = run_bounded_command(node, &args, LOOKUP_LIMITS)?;
+    // Outside any project, so no project `.npmrc` (and its registry tokens)
+    // applies; the user's own and global npm config still do.
+    let output = run_bounded_command(node, &args, Some(&std::env::temp_dir()), LOOKUP_LIMITS)?;
     parse_published_version(&output.stdout.bytes)
 }
 
+/// The version on npm's last output line, alone on that line.
 fn parse_published_version(stdout: &[u8]) -> Option<String> {
-    let version = std::str::from_utf8(stdout).ok()?.trim();
+    let version = std::str::from_utf8(stdout)
+        .ok()?
+        .trim()
+        .lines()
+        .next_back()?
+        .trim();
     ReleaseVersion::parse(version)
-        .filter(|parsed| !parsed.is_prerelease())
+        .filter(|parsed| !parsed.is_prerelease() && !version.contains(char::is_whitespace))
         .map(|_| version.to_owned())
 }
 

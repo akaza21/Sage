@@ -149,3 +149,12 @@ it("tells a too-old install the exact update command when one is known", () => {
     "This version is too old for Sage. Run npm install -g fixture-agent@latest, then refresh discovery in Settings.",
   );
 });
+
+it("keeps a dismissed build explanation away when an update is found later", () => {
+  const { rerender } = render(<HarnessDiscoveryNotice harness={harness} />);
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss build notice" }));
+  rerender(<HarnessDiscoveryNotice harness={{ ...harness, update }} />);
+  const notice = screen.getByRole("status");
+  expect(notice).toHaveTextContent("Fixture agent 1.3.0 is available.");
+  expect(notice).not.toHaveTextContent("hasn't been tested");
+});

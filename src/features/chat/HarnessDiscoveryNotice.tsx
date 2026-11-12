@@ -15,14 +15,17 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
 }) {
   // Dismissal is disposable pane state. A remounted pane explains the build
   // again; no durable preference or protocol admission decision is changed.
-  const [dismissedBuild, setDismissedBuild] = useState<string | null>(null);
+  // The build and the update are dismissed apart, so a check that finds an
+  // update never brings back a dismissed build explanation, and a later
+  // release is announced again.
+  const [dismissed, setDismissed] = useState<readonly string[]>([]);
   const update = harness?.update;
   const build = JSON.stringify([
     harness?.id,
     harness?.bindingId,
     harness?.boundVersion,
-    update?.latestVersion,
   ]);
+  const release = JSON.stringify([harness?.id, update?.latestVersion]);
   if (harness?.transport !== "acp") return null;
   // The exact command, when Sage knows who owns the install.
   const howToUpdate = update ? (
@@ -46,13 +49,16 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
     );
   }
   const newer = harness.characterisation === "newerThanTested";
-  const untested = harness.characterisation === "uncharacterised";
-  if ((!newer && !untested && !update) || dismissedBuild === build) return null;
+  const showBuild =
+    (newer || harness.characterisation === "uncharacterised") &&
+    !dismissed.includes(build);
+  const showUpdate = update && !dismissed.includes(release);
+  if (!showBuild && !showUpdate) return null;
   return (
     <div className="build-notice" role="status">
       <Info aria-hidden="true" />
       <span>
-        {newer || untested ? (
+        {showBuild ? (
           <>
             {harness.name} {harness.boundVersion}
             {newer
@@ -60,7 +66,7 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
               : " hasn't been tested with Sage yet, so some features are off. "}
           </>
         ) : null}
-        {update ? (
+        {showUpdate ? (
           <>
             {harness.name} {update.latestVersion} is available. {howToUpdate}
           </>
@@ -70,7 +76,7 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
         type="button"
         aria-label="Dismiss build notice"
         title="Dismiss"
-        onClick={() => setDismissedBuild(build)}
+        onClick={() => setDismissed([build, release])}
       >
         <X aria-hidden="true" />
       </button>

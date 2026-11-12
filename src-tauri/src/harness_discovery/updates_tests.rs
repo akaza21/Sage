@@ -12,13 +12,20 @@ fn write(path: &Path, contents: &str) {
 }
 
 #[test]
-fn only_a_final_release_on_the_latest_tag_counts() {
-    assert_eq!(
-        parse_published_version(b"0.168.0\n"),
-        Some("0.168.0".into())
-    );
-    for refused in [&b"1.0.0-beta.1\n"[..], b"", b"npm warn config\n0.1"] {
-        assert_eq!(parse_published_version(refused), None);
+fn only_a_final_release_alone_on_the_last_line_counts() {
+    for (stdout, expected) in [
+        (&b"0.168.0\n"[..], Some("0.168.0")),
+        (b"npm warn config something\n0.168.0\n", Some("0.168.0")),
+        (b"1.0.0-beta.1\n", None),
+        (b"", None),
+        (b"npm warn config\n0.1", None),
+        (b"latest 0.168.0\n", None),
+    ] {
+        assert_eq!(
+            parse_published_version(stdout).as_deref(),
+            expected,
+            "{stdout:?}"
+        );
     }
 }
 
@@ -32,8 +39,16 @@ fn a_shim_beside_its_npm_package_updates_through_npm() {
         "{}",
     );
     assert_eq!(
-        update_command("codex", "@openai/codex", &shim).as_deref(),
-        Some("npm install -g @openai/codex@latest")
+        update_sources(&[InstalledHarness {
+            id: "codex",
+            executable: shim.clone(),
+            version: None,
+        }]),
+        [UpdateSource {
+            harness_id: "codex",
+            package: "@openai/codex",
+            command: "npm install -g @openai/codex@latest".into(),
+        }]
     );
     // Another package's shim in the same folder is not attributed to it.
     assert_eq!(
@@ -51,34 +66,13 @@ fn an_install_sage_cannot_attribute_gets_no_command() {
     assert_eq!(update_command("codex", "@openai/codex", &executable), None);
     assert_eq!(npm_package("cursor-agent"), None);
     assert!(
-        published_releases(&[InstalledHarness {
+        update_sources(&[InstalledHarness {
             id: "codex",
             executable,
             version: Some("0.167.1".into()),
         }])
         .is_empty()
     );
-    std::fs::remove_dir_all(root).unwrap();
-}
-
-#[cfg(unix)]
-#[test]
-fn a_prefix_bin_link_into_its_package_updates_through_npm() {
-    let root = temp_root();
-    let package = root.join("lib/node_modules/@openai/codex");
-    write(&package.join("package.json"), "{}");
-    write(&package.join("bin/codex.js"), "");
-    std::fs::create_dir_all(root.join("bin")).unwrap();
-    let link = root.join("bin/codex");
-    std::os::unix::fs::symlink(package.join("bin/codex.js"), &link).unwrap();
-    assert!(npm_owned(&link, "@openai/codex"));
-
-    // A link elsewhere (a Homebrew cask) is not the npm copy beside it.
-    let cask = root.join("Caskroom/codex/codex");
-    write(&cask, "");
-    let other = root.join("bin/codex-cask");
-    std::os::unix::fs::symlink(&cask, &other).unwrap();
-    assert!(!npm_owned(&other, "@openai/codex"));
     std::fs::remove_dir_all(root).unwrap();
 }
 

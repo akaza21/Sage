@@ -39,7 +39,7 @@ use parsing::parse_harness_display_version;
 #[cfg(test)]
 use parsing::parse_harness_version;
 pub(crate) use pi::{DiscoveredPiLaunch, PiLaunchDiscovery, discover_pi_launch};
-pub(crate) use updates::{PublishedRelease, published_releases};
+pub(crate) use updates::{PublishedRelease, published_releases, update_sources};
 use validation::authentic_harness_file as validate_harness_file;
 use version_probe::run_version_command;
 

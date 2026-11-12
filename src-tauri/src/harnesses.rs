@@ -43,6 +43,7 @@ pub struct HarnessCatalog {
     registry: Arc<BindingRegistry>,
     discovered: DiscoveryState,
     published: PublishedReleases,
+    rediscovery: Arc<std::sync::Mutex<()>>,
     #[cfg(test)]
     presence_override: Option<CodexHostPresence>,
     #[cfg(all(windows, feature = "acp-fixture"))]
@@ -61,6 +62,7 @@ impl HarnessCatalog {
             registry,
             discovered: DiscoveryState::default(),
             published: PublishedReleases::default(),
+            rediscovery: Arc::default(),
             #[cfg(test)]
             presence_override: None,
             #[cfg(all(windows, feature = "acp-fixture"))]
@@ -82,6 +84,7 @@ impl HarnessCatalog {
             registry: Arc::new(BindingRegistry::with_codex(codex)),
             discovered: DiscoveryState::default(),
             published: PublishedReleases::default(),
+            rediscovery: Arc::default(),
             presence_override: Some(presence),
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization_available: false,
@@ -112,16 +115,25 @@ impl HarnessCatalog {
         self.discovered.apply_presence(discovered);
     }
 
-    /// Claims the next update check; false while a recent one stands.
-    pub(crate) fn begin_update_check(&self) -> bool {
-        self.published.begin_check()
+    /// Held while one discovery runs, so a refresh and the startup discovery
+    /// never interleave and an earlier result never overwrites a later one.
+    pub(crate) fn lock_rediscovery(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.rediscovery
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    pub(crate) fn apply_published_releases(
+    /// Claims an update check of these harnesses; false while a recent one
+    /// covers them.
+    pub(crate) fn begin_update_check(&self, harness_ids: &[&'static str]) -> bool {
+        self.published.begin_check(harness_ids)
+    }
+
+    pub(crate) fn finish_update_check(
         &self,
-        releases: Vec<crate::harness_discovery::PublishedRelease>,
+        found: Option<Vec<crate::harness_discovery::PublishedRelease>>,
     ) {
-        self.published.replace(releases);
+        self.published.finish_check(found);
     }
 
     #[cfg(test)]
@@ -147,6 +159,7 @@ impl HarnessCatalog {
             registry,
             discovered: DiscoveryState::default(),
             published: PublishedReleases::default(),
+            rediscovery: Arc::default(),
             #[cfg(test)]
             presence_override: None,
             characterization_available: true,

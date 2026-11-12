@@ -17,9 +17,9 @@
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
-        "maxGzipBytes": 1280,
+        "maxGzipBytes": 1300,
         "maxCssGzipBytes": 490,
-        "reason": "Build, update and account notice (newer, too-old, update command); memoized while typing, off the ready first-Chat path. Measured 1267 B JS, 467 B CSS."
+        "reason": "Build, update and account notice (newer, too-old, update command); memoized while typing, off the ready first-Chat path. Measured 1284 B JS, 467 B CSS."
       },
       {
         "entry": "src/ui/tooltips.ts",
