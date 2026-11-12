@@ -6,7 +6,9 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
+import type { AcpItem } from "../../../domain/acp";
 import { PrimaryActivities } from "./PrimaryActivities";
+import { WorkedActivityVisibility } from "./WorkedActivityVisibility";
 import { parityTool } from "./activityParity.fixture";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import { page, textItem } from "./acpProjection.fixture";
@@ -350,4 +352,35 @@ it("expanding Worked lists three collapsed per-command Ran rows", () => {
   expect(screen.getAllByText("Shell")).toHaveLength(1);
   expect(screen.getAllByLabelText("Command line")).toHaveLength(1);
   expect(screen.getAllByText("fixture output")).toHaveLength(1);
+});
+
+it("keeps a steered message visible once the turn's work is folded away", () => {
+  const steered = {
+    ...textItem(),
+    id: "steered-1",
+    kind: "userPrompt",
+    payload: { text: "Also update the README" },
+  } as unknown as AcpItem;
+  const hidden = {
+    ...textItem(),
+    id: "progress-1",
+    payload: { role: "assistant", text: "Checking the notes" },
+  } as unknown as AcpItem;
+  render(
+    <WorkedActivityVisibility value={false}>
+      <PrimaryActivities
+        items={[hidden, steered]}
+        interactive
+        renderItem={(item) => (
+          <p key={item.id}>
+            {item.kind === "userPrompt" || item.kind === "text"
+              ? item.payload.text
+              : null}
+          </p>
+        )}
+      />
+    </WorkedActivityVisibility>,
+  );
+  expect(screen.getByText("Also update the README")).toBeInTheDocument();
+  expect(screen.queryByText("Checking the notes")).toBeNull();
 });

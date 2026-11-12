@@ -71,6 +71,8 @@ function useMentionMatches(query: string): Load | null {
         generation: nextQuickOpenStamp(),
         session,
         recent: recentFiles(projectId),
+        // A bare "@" lists files to pick from, not only recent ones.
+        browse: true,
       }).then(
         (response) => {
           if (!current) return;

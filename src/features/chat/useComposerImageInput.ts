@@ -49,7 +49,15 @@ export function useComposerImageInput({
   uploading?: boolean;
   onAddImages?: (files: File[]) => void;
 }) {
-  const [error, setError] = useState<string | null>(null);
+  // An error is kept with the availability it was raised under, so one
+  // about images being unavailable clears once the session takes them.
+  const [raised, setRaised] = useState<{
+    text: string;
+    available: boolean;
+  } | null>(null);
+  const setError = (text: string | null) =>
+    setRaised(text === null ? null : { text, available });
+  const error = raised?.available === available ? raised.text : null;
   const chooserRef = useRef<HTMLInputElement>(null);
   const images = contexts.filter((context) => context.kind === "image");
   const count = images.length;

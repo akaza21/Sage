@@ -118,3 +118,19 @@ it("leaves Save All's Control+Alt+S to AltGr when AltGr is down", () => {
   };
   expect(matchesPlatformChord(saveAll, altGraph, false)).toBe(false);
 });
+
+it("toggles the terminal from the backquote key on dead-key layouts", () => {
+  const terminal = keymapBinding("agent.terminal");
+  const event = {
+    key: "Dead",
+    code: "Backquote",
+    ctrlKey: true,
+    metaKey: false,
+    shiftKey: false,
+    altKey: false,
+  };
+  expect(matchesPlatformChord(terminal, event, false)).toBe(true);
+  expect(
+    matchesPlatformChord(terminal, { ...event, code: "KeyA" }, false),
+  ).toBe(false);
+});
