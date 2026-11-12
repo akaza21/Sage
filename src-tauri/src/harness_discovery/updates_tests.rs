@@ -80,13 +80,22 @@ fn an_install_sage_cannot_attribute_gets_no_command() {
 #[test]
 fn the_lookup_reads_what_npm_reports_and_nothing_else() {
     let root = temp_root();
-    let npm_cli = root.join("npm-cli.js");
+    let npm_cli = root.join("lib/node_modules/npm/bin/npm-cli.js");
+    std::fs::create_dir_all(npm_cli.parent().unwrap()).unwrap();
+    // npm runs from the folder that holds it, never a shared one.
+    let npm_root = root.join("lib");
     for (printed, expected) in [
         ("0.168.0", Some("0.168.0")),
         ("0.169.0-alpha.2", None),
         ("", None),
     ] {
-        write(&npm_cli, &format!("printf '%s\\n' '{printed}'\n"));
+        write(
+            &npm_cli,
+            &format!(
+                "[ \"$(pwd -P)\" = \"$(cd '{}' && pwd -P)\" ] && printf '%s\\n' '{printed}'\n",
+                npm_root.display()
+            ),
+        );
         assert_eq!(
             latest_version(Path::new("/bin/sh"), &npm_cli, "@openai/codex").as_deref(),
             expected,

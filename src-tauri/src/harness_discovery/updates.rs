@@ -168,9 +168,12 @@ fn latest_version(node: &Path, npm_cli: &Path, package: &str) -> Option<String> 
         OsStr::new("--no-update-notifier"),
         OsStr::new("--logs-max=0"),
     ];
-    // Outside any project, so no project `.npmrc` (and its registry tokens)
-    // applies; the user's own and global npm config still do.
-    let output = run_bounded_command(node, &args, Some(&std::env::temp_dir()), LOOKUP_LIMITS)?;
+    // From the folder that holds npm itself, so the only project config npm
+    // can load is one beside the trusted runtime: never a project's
+    // `.npmrc` (and its registry tokens), nor a file another user planted in
+    // a shared temporary folder. The user's own and global config still apply.
+    let npm_root = npm_cli.ancestors().nth(4)?;
+    let output = run_bounded_command(node, &args, Some(npm_root), LOOKUP_LIMITS)?;
     parse_published_version(&output.stdout.bytes)
 }
 

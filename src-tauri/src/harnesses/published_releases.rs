@@ -46,13 +46,16 @@ impl PublishedReleases {
 
     /// Records what a check found. A failed check leaves the earlier results
     /// and lets the next refresh try again; a harness whose lookup failed
-    /// keeps its earlier result.
+    /// keeps its earlier result and is looked up again on the next refresh.
     pub(super) fn finish_check(&self, found: Option<Vec<PublishedRelease>>) {
         let mut checked = self.0.write().unwrap_or_else(|error| error.into_inner());
         let Some(found) = found else {
             checked.started = None;
             return;
         };
+        checked
+            .covered
+            .retain(|id| found.iter().any(|release| release.harness_id == *id));
         for release in found {
             checked
                 .releases
@@ -137,5 +140,8 @@ mod tests {
         releases.finish_check(Some(vec![release("pi", "0.75.0")]));
         assert!(releases.update_for("codex", Some("0.167.1")).is_some());
         assert!(releases.update_for("pi", Some("0.74.2")).is_some());
+        // Codex's lookup failed, so the next refresh tries it again.
+        assert!(!releases.begin_check(&["pi"]));
+        assert!(releases.begin_check(&["codex", "pi"]));
     }
 }
