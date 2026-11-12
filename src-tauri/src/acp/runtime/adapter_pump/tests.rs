@@ -62,7 +62,8 @@ fn goal_active_response_first_mismatch_never_commits_the_provisional_turn() {
     });
 }
 
-fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, Shared, u64) {
+/// A Codex runtime whose session `thread-1` is ready for a prompt.
+fn ready_codex() -> CodexRuntime {
     let mut codex = CodexRuntime::fixture(Platform::WindowsX86_64);
     let init = codex.command(AdapterCommand::Initialize).unwrap();
     codex
@@ -98,6 +99,11 @@ fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, 
             &Mapper,
         )
         .unwrap();
+    codex
+}
+
+fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, Shared, u64) {
+    let mut codex = ready_codex();
     codex.enable_observed_goal_for_test();
     let prompt = codex
         .command(AdapterCommand::Prompt {
@@ -2450,6 +2456,9 @@ mod steer_journal_tests;
 
 #[path = "terminal_error_tests.rs"]
 mod terminal_error_tests;
+
+#[path = "undo_control_tests.rs"]
+mod undo_control_tests;
 
 fn question_pump(
     auto_resolution_ms: Option<u64>,

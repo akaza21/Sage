@@ -5,7 +5,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
-use super::{admission::SessionLaunch, bridge::SdkBridge};
+use super::{bridge::SdkBridge, launch::SessionLaunch};
 use crate::acp::{goal::NativeRpcReply, intent::session_event::SessionScopedEvent};
 
 const SESSION: &str = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
@@ -61,6 +61,7 @@ fn replay_with(case: &str, prompts: &[Value]) -> Replay {
         session_id: SESSION.into(),
         resume: false,
         model: None,
+        rewind_before: None,
     };
     let (config, cwd) = (profile.config(), profile.cwd());
     let launched = Launched {
@@ -337,6 +338,7 @@ fn a_fork_chat_carries_the_first_chats_turn_from_its_saved_transcript() {
         session_id: SESSION.into(),
         resume: false,
         model: None,
+        rewind_before: None,
     };
     let first = chat(&source, "Remember the synthetic example", true);
     assert!(said(&first.acp).contains(&format!("Claude Code session {SESSION}, new.")));
@@ -344,6 +346,7 @@ fn a_fork_chat_carries_the_first_chats_turn_from_its_saved_transcript() {
         session_id: first.forked.expect("the chat forks"),
         resume: true,
         model: None,
+        rewind_before: None,
     };
     let flags = fork.session_args(Some(&config));
     assert_eq!(

@@ -215,6 +215,7 @@ fn run_resume_case(case: ResumeCase) {
                     external_session_id: external_session,
                     native_root: project_root.to_string_lossy().into_owned(),
                     model: None,
+                    rewind_before: None,
                 },
                 curated_ceiling: capabilities.clone(),
                 sage_policy: capabilities,

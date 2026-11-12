@@ -161,8 +161,8 @@ pub(crate) fn activity_id(
         .and_then(|(surface, _)| surface.activity_id(key).cloned()))
 }
 
-/// Whether `turn` is the chat's latest turn, ran in `session` and has
-/// finished: the only turn whose files a session undoes.
+/// Whether `turn` is the chat's latest visible turn, ran in `session` and
+/// has finished: the only turn a session undoes.
 pub(crate) fn is_undoable_turn(
     connection: &rusqlite::Connection,
     project: &str,
@@ -172,8 +172,12 @@ pub(crate) fn is_undoable_turn(
 ) -> Result<bool, StoreError> {
     let latest: Option<(String, String, Option<i64>)> = connection
         .query_row(
-            "SELECT id,session_id,terminal_at FROM turns WHERE project_id=?1 AND chat_id=?2
-             ORDER BY created_at DESC, ordinal DESC LIMIT 1",
+            concat!(
+                "SELECT t.id,t.session_id,t.terminal_at FROM turns t
+                 WHERE t.project_id=?1 AND t.chat_id=?2 AND ",
+                super::turn_undo::visible_turn!("t.session_id", "t.id"),
+                " ORDER BY t.created_at DESC, t.ordinal DESC LIMIT 1"
+            ),
             params![project, chat],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )

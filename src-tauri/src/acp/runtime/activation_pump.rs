@@ -8,7 +8,7 @@ use crate::acp::{
     },
     contract::{
         ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
-        SageProjectId,
+        SageProjectId, SageTurnId,
     },
     intent::{
         CapabilitySnapshotV1, ExternalId, ModelId, PageCursor,
@@ -46,6 +46,9 @@ pub(crate) enum ActivationMode {
         external_session_id: ExternalId,
         native_root: String,
         model: Option<ModelId>,
+        /// Resume the native thread as it stood before this Turn, which the
+        /// user undid but the harness still holds.
+        rewind_before: Option<SageTurnId>,
     },
     #[allow(dead_code, reason = "only tests construct this variant so far")]
     Load { external_session_id: ExternalId },
@@ -390,6 +393,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                 external_session_id,
                 native_root,
                 model,
+                ..
             } => AdapterCommand::ResumeSession {
                 external_session_id: external_session_id.clone(),
                 native_root: native_root.clone(),

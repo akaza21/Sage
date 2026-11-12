@@ -24,6 +24,8 @@ use crate::{
     harness_discovery::InstalledHarness,
 };
 
+use super::launch::SessionLaunch;
+
 pub(crate) const CLAUDE_SDK_BINDING_ID: &str = "claude-code-sdk";
 /// The Claude Code release the recorded fixtures replay.
 #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
@@ -107,52 +109,6 @@ pub(crate) struct AdmittedClaudeSdkBinding {
         expect(dead_code, reason = "only desktop fixture builds launch a replay case")
     )]
     fixture: Fixture,
-}
-
-/// The session a launch opens: a fresh one with a Sage-chosen id, or an
-/// existing one to resume.
-pub(crate) struct SessionLaunch {
-    pub(crate) session_id: String,
-    pub(crate) resume: bool,
-    pub(crate) model: Option<String>,
-}
-
-impl SessionLaunch {
-    /// `config` is Claude Code's profile, where a fork's copy is looked for.
-    fn args(&self, config: Option<&std::path::Path>) -> Vec<OsString> {
-        let mut args: Vec<OsString> = SDK_ARGS.map(OsString::from).into();
-        args.extend(self.session_args(config));
-        args
-    }
-
-    /// The arguments that open this session, after the fixed SDK ones.
-    pub(super) fn session_args(&self, config: Option<&std::path::Path>) -> Vec<OsString> {
-        let mut args = Vec::new();
-        let fork = self
-            .resume
-            .then(|| super::fork::Fork::parse(&self.session_id))
-            .flatten();
-        match (fork, config) {
-            (Some(fork), Some(config)) => args.extend(fork.launch_args(config)),
-            (Some(fork), None) => args.extend(["--resume".into(), fork.session.into()]),
-            (None, _) => {
-                args.push(
-                    if self.resume {
-                        "--resume"
-                    } else {
-                        "--session-id"
-                    }
-                    .into(),
-                );
-                args.push(self.session_id.clone().into());
-            }
-        }
-        // `default` is the picker's name for Claude Code's own choice.
-        if let Some(model) = self.model.as_ref().filter(|model| *model != "default") {
-            args.extend(["--model".into(), model.into()]);
-        }
-        args
-    }
 }
 
 /// Where a release sits against the tested 2.1 line, which keeps the SDK
@@ -509,63 +465,6 @@ mod tests {
             ("2.1.299", Uncharacterised),
         ] {
             assert_eq!(version_characterisation(version), expected, "{version}");
-        }
-    }
-
-    #[test]
-    fn new_sessions_take_sages_id_and_resumes_name_theirs() {
-        let mut launch = SessionLaunch {
-            session_id: "s-1".into(),
-            resume: false,
-            model: Some("opus".into()),
-        };
-        let args = launch.args(None);
-        let tail: Vec<_> = args[SDK_ARGS.len()..]
-            .iter()
-            .map(|a| a.to_str().unwrap())
-            .collect();
-        assert_eq!(tail, ["--session-id", "s-1", "--model", "opus"]);
-        launch.resume = true;
-        launch.model = None;
-        let args = launch.args(None);
-        assert_eq!(
-            args[SDK_ARGS.len()..],
-            [OsString::from("--resume"), "s-1".into()]
-        );
-    }
-
-    #[test]
-    fn a_fork_launches_from_its_source_until_without_a_profile_it_resumes_itself() {
-        let session = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
-        let source = "1c8e7d9f-4d2b-4a8f-8b62-3a7e9d2f5ca1";
-        let at = "2d9f8e0a-5e3c-4b9a-9c73-4b8fae306db2";
-        let launch = SessionLaunch {
-            session_id: format!("{session}~{source}~{at}"),
-            resume: true,
-            model: None,
-        };
-        let empty = std::env::temp_dir().join(format!("sage-empty-profile-{session}"));
-        std::fs::create_dir_all(empty.join("projects")).unwrap();
-        assert_eq!(
-            launch.args(Some(&empty))[SDK_ARGS.len()..],
-            [
-                "--resume",
-                source,
-                "--resume-session-at",
-                at,
-                "--fork-session",
-                "--session-id",
-                session
-            ]
-            .map(OsString::from)
-        );
-        let _ = std::fs::remove_dir_all(&empty);
-        // A profile Sage cannot read, or none, resumes the copy.
-        for config in [Some(empty.as_path()), None] {
-            assert_eq!(
-                launch.args(config)[SDK_ARGS.len()..],
-                ["--resume", session].map(OsString::from)
-            );
         }
     }
 

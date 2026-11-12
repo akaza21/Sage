@@ -383,6 +383,7 @@ fn resume_and_load_bind_only_the_persisted_external_session() {
                     external_session_id: ExternalId::new("externalSessionId", "persisted").unwrap(),
                     native_root: "/repo".into(),
                     model: None,
+                    rewind_before: None,
                 },
                 false,
             ),

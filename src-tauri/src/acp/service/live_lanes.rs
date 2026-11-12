@@ -391,6 +391,7 @@ impl AcpService {
 
 mod idle_release;
 pub(crate) use idle_release::IdleRelease;
+mod release_retry;
 
 #[cfg(test)]
 #[path = "live_lanes_tests.rs"]

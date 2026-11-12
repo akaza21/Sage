@@ -109,6 +109,9 @@ impl HarnessAdapter for CodexRuntime {
         self.inner.oversize_recoverable()
     }
 
+    fn answered_control(&mut self, control: &crate::acp::session_control::SessionControl) -> bool {
+        self.answered_undo(control)
+    }
     fn session_control(
         &mut self,
         control: &crate::acp::session_control::SessionControl,

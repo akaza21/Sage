@@ -10,9 +10,11 @@ mod config;
 #[cfg(all(test, feature = "acp-fixture"))]
 mod fixture_tests;
 mod fork;
+mod launch;
 mod probe;
 mod runtime;
 mod tools;
+mod transcript;
 
 pub(crate) use admission::{
     AdmittedClaudeSdkBinding, CLAUDE_SDK_BINDING_ID, ClaudeSdkBindingRegistration,
