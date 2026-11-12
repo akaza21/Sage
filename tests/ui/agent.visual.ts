@@ -187,9 +187,18 @@ async function expectComposerToolbarLaidOut(form: Locator, projectChip = true) {
   // Measured fitting moves Project into options only after lower-priority labels compact.
   // Wave 6: a new chat (such as a fresh side chat) shows Project on its home
   // rather than in the composer.
-  expect(geometry.buttons).toHaveLength(
-    !projectChip || geometry.fit.includes("project-menu") ? 6 : 7,
-  );
+  expect(geometry.buttons.map((button) => button.name)).toEqual([
+    "Composer options",
+    "Attach files",
+    "Access options",
+    "Harness",
+    "Model",
+    ...(!projectChip || geometry.fit.includes("project-menu")
+      ? []
+      : ["Project: Sage"]),
+    "Start dictation",
+    "Send message",
+  ]);
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   expect(
     geometry.harnessContained,
@@ -652,13 +661,15 @@ test.describe("ED02 picker visual states", () => {
     });
     await expectComposerControlsLaidOut(page);
     const harnessTrigger = page.getByRole("button", { name: "Harness" });
-    // The content-sized trigger keeps its complete label when the measured
-    // toolbar has room, even in this narrow Chat lane.
+    // This narrow Chat lane has no room for every label beside the attach
+    // button: access and harness yield to their icons while the model keeps
+    // its name, and the harness trigger still names its selection.
     await expect(harnessTrigger).toHaveAccessibleName("Harness");
+    await expect(harnessTrigger).toHaveAccessibleDescription("Codex");
     await expect(harnessTrigger).toHaveText("Codex");
     await expect(
       harnessTrigger.locator(".searchable-picker__trigger-label"),
-    ).toBeVisible();
+    ).toBeHidden();
     await expectComposerPickerValue(
       page.getByLabel("Model", { exact: true }),
       "Model",
