@@ -8,6 +8,7 @@ use crate::acp::{
         },
     },
     intent::Prompt,
+    session_action::SessionAction,
 };
 
 use super::super::{PiRuntime, RequestKind};
@@ -82,21 +83,42 @@ impl PiRuntime {
             let text = prompt.as_str();
             let listed = listed.find(revision, text)?;
             let rest = text[1..].trim_start().strip_prefix(&listed.name)?.trim();
-            Some((listed.dispatch, listed.name.as_str(), rest))
+            Some((listed.dispatch.clone(), listed.name.as_str(), rest))
         });
+        let command_turn =
+            prompt.action.is_none() && matches!(command, Some((CommandDispatch::CommandTurn, ..)));
         let turn_key = turn_key.to_owned();
-        let operation = match command {
-            Some((CommandDispatch::Builtin, COMPACT, instructions)) => Operation::Compact {
+        let operation = match (&prompt.action, command) {
+            // The composer's Compact action is Pi's own compaction, as `/compact` is.
+            (Some(SessionAction::Compact {}), _) => Operation::Compact {
+                turn_key,
+                instructions: None,
+            },
+            (Some(SessionAction::Review { .. }), _) => {
+                return Err(AdapterRuntimeError::UnsupportedCommand);
+            }
+            (None, Some((CommandDispatch::Builtin, COMPACT, instructions))) => Operation::Compact {
                 turn_key,
                 instructions: (!instructions.is_empty()).then(|| instructions.to_owned()),
             },
-            _ => Operation::Prompt {
+            (None, _) => Operation::Prompt {
                 turn_key,
                 message: prompt.resources.inline(prompt.as_str()),
+                // Pi repeats the images in its own events, so they take the
+                // echoed bound.
+                images: prompt
+                    .images
+                    .echoed()
+                    .map_err(|_| AdapterRuntimeError::UnsupportedCommand)?
+                    .into_iter()
+                    .map(|(media_type, data)| {
+                        serde_json::json!({"type": "image", "data": data, "mimeType": media_type})
+                    })
+                    .collect(),
             },
         };
         let egress = self.begin_one(operation, RequestKind::Prompt)?;
-        if matches!(command, Some((CommandDispatch::CommandTurn, ..))) {
+        if command_turn {
             self.translator.mark_command_turn().map_err(super::map_pi)?;
         }
         Ok(egress)

@@ -1,5 +1,10 @@
 use super::*;
-use crate::acp::{contract::RequiredText, intent::Prompt, slash_commands::CommandList};
+use crate::acp::{
+    contract::RequiredText,
+    intent::Prompt,
+    session_action::SessionAction,
+    slash_commands::{AvailableCommand, CommandDispatch, CommandList, CommandMark},
+};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -84,20 +89,16 @@ pub(crate) async fn run(
     {
         return Err(prompt_not_dispatched(unavailable()));
     }
-    let text = match request.input {
-        Some(input) => format!("/{name} {}", input.as_str()),
+    let input = request.input.as_ref().map(RequiredText::as_str);
+    let text = match input {
+        Some(input) => format!("/{name} {input}"),
         None => format!("/{name}"),
     };
-    let source = commands
-        .source(request.expected_commands_revision, &text)
+    let listed = commands
+        .command(request.expected_commands_revision, &text)
         .map_err(|_| prompt_not_dispatched(unavailable()))?;
-    let mut prompt =
-        Prompt::new("command", text).map_err(|_| prompt_not_dispatched(unavailable()))?;
-    prompt.command_revision = Some(request.expected_commands_revision);
-    prompt.command = Some(crate::acp::slash_commands::CommandMark {
-        name: name.to_owned(),
-        source,
-    });
+    let prompt = command_prompt(&listed, input, text, request.expected_commands_revision)
+        .map_err(prompt_not_dispatched)?;
     let r = request.session;
     session_operations::send_acp_turn_inner(
         state,
@@ -118,6 +119,44 @@ pub(crate) async fn run(
     .await
 }
 
+/// The Turn a listed command runs. A command its binding runs as a session
+/// action becomes that action, through the same capability gate as the
+/// chat's own buttons; any other is its `/name input` text. Either way the
+/// Turn keeps the command beside its prompt.
+fn command_prompt(
+    listed: &AvailableCommand,
+    input: Option<&str>,
+    text: String,
+    revision: u64,
+) -> Result<Prompt, AcpIpcError> {
+    let mut prompt = match listed.dispatch {
+        // A panel opens in the chat; there is nothing to send.
+        CommandDispatch::Panel(_) => {
+            return Err(AcpIpcError::InvalidRequest {
+                message: safe_message("This command opens a panel and sends nothing."),
+            });
+        }
+        CommandDispatch::Action => {
+            let action = SessionAction::from_command(&listed.name, input).ok_or_else(|| {
+                AcpIpcError::InvalidRequest {
+                    message: safe_message("This command does not take that input."),
+                }
+            })?;
+            let mut prompt =
+                Prompt::new("sessionAction", action.prompt_text()).map_err(|_| unavailable())?;
+            prompt.action = Some(action);
+            prompt
+        }
+        _ => Prompt::new("command", text).map_err(|_| unavailable())?,
+    };
+    prompt.command_revision = Some(revision);
+    prompt.command = Some(CommandMark {
+        name: listed.name.clone(),
+        source: listed.source,
+    });
+    Ok(prompt)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,5 +171,48 @@ mod tests {
         let mut oversized = value;
         oversized["input"] = serde_json::json!("x".repeat(16385));
         assert!(serde_json::from_value::<RunCommandRequest>(oversized).is_err());
+    }
+}
+
+#[cfg(test)]
+mod prompt_tests {
+    use super::*;
+    use crate::acp::slash_commands::{CommandPanel, CommandSource};
+
+    fn listed(name: &str, dispatch: CommandDispatch) -> AvailableCommand {
+        AvailableCommand::new(name, "", None, CommandSource::Builtin, dispatch).unwrap()
+    }
+
+    #[test]
+    fn an_action_command_runs_as_its_session_action_and_keeps_its_mark() {
+        let review = listed("review", CommandDispatch::Action);
+        let prompt =
+            command_prompt(&review, Some("base main"), "/review base main".into(), 3).unwrap();
+        assert_eq!(prompt.as_str(), "/review base main");
+        assert_eq!(
+            serde_json::to_value(prompt.action.as_ref().unwrap()).unwrap(),
+            serde_json::json!({"kind":"review","target":{"kind":"baseBranch","branch":"main"}})
+        );
+        assert_eq!(prompt.command_revision, Some(3));
+        assert_eq!(
+            prompt.command,
+            Some(CommandMark {
+                name: "review".into(),
+                source: CommandSource::Builtin
+            })
+        );
+        // `/compact` takes no input; nothing is sent.
+        let compact = listed("compact", CommandDispatch::Action);
+        assert!(command_prompt(&compact, Some("now"), "/compact now".into(), 3).is_err());
+        // A panel command is never sent.
+        let status = listed("status", CommandDispatch::Panel(CommandPanel::Status));
+        assert!(command_prompt(&status, None, "/status".into(), 3).is_err());
+        // Any other route sends the text as typed, with no action.
+        let plan = listed("plan", CommandDispatch::Prompt);
+        let prompt = command_prompt(&plan, Some("it"), "/plan it".into(), 3).unwrap();
+        assert_eq!(
+            (prompt.as_str(), prompt.action.is_none()),
+            ("/plan it", true)
+        );
     }
 }

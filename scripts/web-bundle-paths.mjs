@@ -62,7 +62,16 @@ export function validateWebBundleManifest(manifest) {
   return keys;
 }
 
-export function measureWebBundlePaths(root, manifest) {
+/**
+ * Measures each path's static closure. `gzipJs` sizes one chunk's contents;
+ * the verifier passes one that masks hashed sibling chunk names, so a rename
+ * elsewhere cannot move a path's size.
+ */
+export function measureWebBundlePaths(
+  root,
+  manifest,
+  gzipJs = (contents) => gzipSync(contents).length,
+) {
   const keys = validateWebBundleManifest(manifest);
   const reachable = new Set();
   const pending = ["index.html"];
@@ -119,7 +128,7 @@ export function measureWebBundlePaths(root, manifest) {
     if (!file.endsWith(".js") || contents.length === 0)
       fail(`path asset is empty or not JavaScript: ${file}`);
     const result = {
-      gzipBytes: gzipSync(contents).length,
+      gzipBytes: gzipJs(contents),
       rawBytes: contents.length,
     };
     measurements.set(file, result);

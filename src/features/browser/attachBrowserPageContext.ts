@@ -15,14 +15,14 @@ export async function attachBrowserPageContext(
 ) {
   const before = await browserStatus(tabId);
   if (useWorkbenchStore.getState().activeTabId !== tabId)
-    throw new Error("Browser page or focused Chat changed; try again.");
+    throw new Error("Browser page or focused chat changed; try again.");
   if (before.loading || before.error || !before.url)
     throw new Error("Browser page unavailable; try again.");
   const captured = parseBrowserPageContext(
     await browserPageContext(tabId, before.revision),
   );
   if (useWorkbenchStore.getState().activeTabId !== tabId)
-    throw new Error("Browser page or focused Chat changed; try again.");
+    throw new Error("Browser page or focused chat changed; try again.");
   const current = await browserStatus(tabId);
   if (
     !captured ||
@@ -34,8 +34,8 @@ export async function attachBrowserPageContext(
     useWorkbenchStore.getState().activeTabId !== tabId ||
     pinnedAgentChatOwner() !== focusedChatId
   )
-    throw new Error("Browser page or focused Chat changed; try again.");
+    throw new Error("Browser page or focused chat changed; try again.");
   if (!useWorkbenchStore.getState().attachChatContext(intent, captured)) {
-    throw new Error("Could not attach the page to the focused Chat.");
+    throw new Error("Could not attach the page to the focused chat.");
   }
 }

@@ -135,7 +135,7 @@ export function BrowserAnnotatePopover({
 }
 
 const NO_SINK = "The composer cannot take page elements yet";
-const FULL = "Open an Agent Chat whose message has room for this element";
+const FULL = "Open an Agent chat whose message has room for this element";
 
 /**
  * Loads the frozen frame and turns the comment into an element item. The

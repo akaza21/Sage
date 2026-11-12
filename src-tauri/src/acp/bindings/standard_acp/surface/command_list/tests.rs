@@ -248,12 +248,15 @@ fn acp_commands_carry_the_source_an_adapter_names_and_list_as_prompts() {
     let state = CommandState::default();
     state.replace(Ok(list.commands)).unwrap();
     assert_eq!(
-        state.source(1, "/review the diff"),
+        state.command(1, "/review the diff").map(|c| c.source),
         Ok(CommandSource::Skill)
     );
-    assert_eq!(state.source(1, "/plan"), Ok(CommandSource::Harness));
-    assert!(state.source(0, "/review").is_err());
-    assert!(state.source(1, "/missing").is_err());
+    assert_eq!(
+        state.command(1, "/plan").map(|c| c.source),
+        Ok(CommandSource::Harness)
+    );
+    assert!(state.command(0, "/review").map(|c| c.source).is_err());
+    assert!(state.command(1, "/missing").map(|c| c.source).is_err());
 }
 
 #[test]

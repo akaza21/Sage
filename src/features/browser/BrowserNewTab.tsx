@@ -88,7 +88,7 @@ export function BrowserNewTab({
                     available
                       ? undefined
                       : !chatAvailable
-                        ? "Open a Chat in Agent mode first"
+                        ? "Open a chat in Agent mode first"
                         : tool === "sideChat"
                           ? "Select an answer or open a side chat first"
                           : "Terminal requires the desktop app"

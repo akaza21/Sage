@@ -99,3 +99,50 @@ fn worker_commands_use_the_frozen_operation_deadlines() {
         LIMITS.deadlines_ms.explicit_close
     );
 }
+
+#[test]
+fn a_prompt_with_the_largest_admitted_images_queues_while_harness_output_fills_the_lane() {
+    use crate::acp::{
+        attached_context::files::images::{ImagePreview, PromptImage, PromptImages},
+        contract::{ClientIntentId, ProjectGeneration, ProjectionRevision},
+        intent::{ImageMediaType, Prompt},
+        limits::{IMAGE_PREVIEW_BYTES, PROMPT_IMAGE_TOTAL_BYTES},
+    };
+    let mailbox = DriverMailbox::new().unwrap();
+    // Harness output, in the reader's largest chunks, takes the data lane.
+    let mut chunks = 0;
+    while mailbox.try_push_chunk(vec![0; 8 * 1024]).is_ok() {
+        chunks += 1;
+    }
+    assert!(chunks > 0);
+    let owner = owner();
+    let mut prompt = Prompt::new("prompt", "describe these").unwrap();
+    let image = |bytes| PromptImage {
+        media_type: ImageMediaType::Png,
+        bytes: vec![0; bytes],
+        preview: ImagePreview::Thumbnail(ImageMediaType::Png, vec![0; IMAGE_PREVIEW_BYTES]),
+    };
+    prompt.images = PromptImages(Arc::new(vec![
+        image(PROMPT_IMAGE_TOTAL_BYTES / 2),
+        image(PROMPT_IMAGE_TOTAL_BYTES / 2),
+    ]));
+    let intent = HostPromptIntent {
+        command: crate::acp::store::PrepareTurnCommand {
+            project_id: owner.project_id.clone(),
+            project_generation: ProjectGeneration::new(1).unwrap(),
+            chat_id: owner.chat_id.clone(),
+            session_id: owner.session_id.clone(),
+            runtime_epoch: owner.runtime_epoch,
+            expected_projection_revision: ProjectionRevision::ZERO,
+            client_intent_id: ClientIntentId::parse("intent-images").unwrap(),
+            prompt,
+            now_millis: crate::persistence::now_millis(),
+        },
+        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+    };
+    assert!(
+        mailbox
+            .submit_worker(WorkerCommand::PreparePrompt(intent))
+            .is_ok()
+    );
+}

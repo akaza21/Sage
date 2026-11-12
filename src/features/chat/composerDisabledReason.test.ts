@@ -30,13 +30,13 @@ describe("composerDisabledReason", () => {
       canPrompt: false,
       chatLoadFailed: true,
     });
-    expect(reason).toBe("This Chat failed to load. Retry to send a prompt.");
+    expect(reason).toBe("This chat failed to load. Retry to send a prompt.");
     expect(reason).not.toContain("Harness");
   });
 
   it("keeps blaming the harness only when the chat itself loaded", () => {
     expect(composerDisabledReason({ ...healthy, canPrompt: false })).toBe(
-      "The selected Harness cannot accept prompts in this session.",
+      "The selected harness cannot accept prompts in this session.",
     );
   });
 
@@ -48,12 +48,12 @@ describe("composerDisabledReason", () => {
         chatLoadFailed: true,
         harnessAvailable: false,
       }),
-    ).toBe("The selected Harness is unavailable.");
+    ).toBe("The selected harness is unavailable.");
   });
 
   it("explains the disabled composer while a turn is already running", () => {
     expect(composerDisabledReason({ ...healthy, activeTurn: true })).toBe(
-      "Wait for the active Turn to finish, or cancel it when available.",
+      "Wait for the active turn to finish, or cancel it when available.",
     );
   });
 
@@ -66,7 +66,7 @@ describe("composerDisabledReason", () => {
         chatLoadFailed: true,
         harnessAvailable: false,
       }),
-    ).toBe("Wait for the active Turn to finish, or cancel it when available.");
+    ).toBe("Wait for the active turn to finish, or cancel it when available.");
   });
 });
 

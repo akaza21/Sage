@@ -209,3 +209,53 @@ fn a_compact_pi_rejects_outright_still_reports_the_failure() {
         [crate::acp::lifecycle::TurnState::Failed]
     );
 }
+
+#[test]
+fn the_compact_action_runs_pis_compaction_without_a_listed_command() {
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    assert!(runtime.capabilities().unwrap().native_session_compact);
+    // The composer's Compact button sends the action with its `/compact`
+    // prompt text and no command revision, even before commands are listed.
+    let action = crate::acp::session_action::SessionAction::Compact {};
+    let mut prompt = Prompt::new("prompt", action.prompt_text()).unwrap();
+    prompt.action = Some(action);
+    let send = runtime
+        .command(AdapterCommand::Prompt {
+            prompt,
+            client_message_id: RequiredText::new("client", "compact-action").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .unwrap();
+    let request = deliver(&mut runtime, send);
+    assert_eq!(request, json!({"type":"compact","id":request["id"]}));
+    let done = runtime
+        .ingest(&response(&request, json!({"summary":"s"})), &Mapper)
+        .unwrap();
+    assert_eq!(
+        turn_states(&done),
+        [crate::acp::lifecycle::TurnState::Completed]
+    );
+}
+
+#[test]
+fn a_review_action_is_refused_since_pi_has_no_review() {
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    assert!(!runtime.capabilities().unwrap().native_review);
+    let action = crate::acp::session_action::SessionAction::Review {
+        target: crate::acp::session_action::ReviewTarget::UncommittedChanges {},
+    };
+    let mut prompt = Prompt::new("prompt", action.prompt_text()).unwrap();
+    prompt.action = Some(action);
+    assert!(matches!(
+        runtime.command(AdapterCommand::Prompt {
+            prompt,
+            client_message_id: RequiredText::new("client", "review-action").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        }),
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    ));
+    // Nothing was reserved: the session still takes a prompt.
+    running(&mut runtime);
+}

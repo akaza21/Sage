@@ -103,11 +103,14 @@
   clip-path: inset(50%);
 }
 
+/* The header row paints the chat card's surface once, so every cell (task
+   header, side tab, right-pane toggle) and the split gap above the pane
+   splitter read as one surface. */
 .agent-chat-center__header {
   display: flex;
   min-width: 0;
   min-height: 44px;
-  background: var(--color-panel);
+  background: var(--workbench-card-fill);
 }
 
 .agent-chat-center__header > .agent-task-header {

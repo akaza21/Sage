@@ -1,4 +1,7 @@
-use super::super::{request::OutgoingRequest, state::CodexAdapter};
+use super::super::{
+    request::{OutgoingRequest, RequestKind},
+    state::CodexAdapter,
+};
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterEgress, AdapterEvent, AdapterIdentity, AdapterModel,
@@ -33,7 +36,12 @@ impl super::CodexRuntime {
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         let id = self.next_id()?;
         let request = build(&mut self.inner, id).map_err(map_adapter)?;
-        match OutboundFrame::new(request.bytes) {
+        let frame = if request.kind == RequestKind::TurnStart {
+            OutboundFrame::new_prompt(request.bytes)
+        } else {
+            OutboundFrame::new(request.bytes)
+        };
+        match frame {
             Ok(frame) => Ok(AdapterEgress::new(
                 frame,
                 if control {

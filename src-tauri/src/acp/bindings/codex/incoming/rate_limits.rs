@@ -147,15 +147,7 @@ fn bucket(value: &Map<String, Value>, key: Option<&str>) -> Option<RateLimitBuck
         id: text(value, "limitId")
             .or_else(|| key.filter(|key| key.len() <= 128).map(str::to_owned)),
         name: text(value, "limitName"),
-        plan: text(value, "planType")
-            .filter(|plan| plan != "unknown")
-            .map(|plan| {
-                let mut words = plan.replace('_', " ");
-                if let Some(first) = words.get_mut(..1) {
-                    first.make_ascii_uppercase();
-                }
-                words
-            }),
+        plan: text(value, "planType").filter(|plan| plan != "unknown"),
         windows,
         reached,
     })

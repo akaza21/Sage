@@ -136,3 +136,24 @@ export function matchesRequestIntent(
 ): boolean {
   return state.requestGenerations[key] === generation;
 }
+
+interface RepositoryWorkState {
+  projectTransitioning: boolean;
+  repositoryRefreshing: boolean;
+  repositoryMutation: unknown;
+  repositoryCommit: unknown;
+  repositoryCheckout: unknown;
+  repositoryRemote: unknown;
+}
+
+/** True while a project switch or any repository operation is running. */
+export function repositoryBusy(state: RepositoryWorkState): boolean {
+  return Boolean(
+    state.projectTransitioning ||
+    state.repositoryRefreshing ||
+    state.repositoryMutation ||
+    state.repositoryCommit ||
+    state.repositoryCheckout ||
+    state.repositoryRemote,
+  );
+}

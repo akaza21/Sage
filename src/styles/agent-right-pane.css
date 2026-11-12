@@ -3,16 +3,6 @@
   overflow: hidden;
 }
 
-.agent-artifact-pane .tab-strip__scroll {
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.agent-artifact-pane .tab-strip__scroll::-webkit-scrollbar {
-  display: block;
-  height: var(--space-1);
-}
-
 .agent-artifact-header {
   display: grid;
   gap: var(--space-1);

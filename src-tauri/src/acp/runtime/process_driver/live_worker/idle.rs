@@ -51,7 +51,7 @@ where
     match state.begin(command).await {
         Ok(closing) => {
             responder.respond(Ok(WorkerReply::Unit));
-            FirstTurnWorkerState::IdleDraining(closing)
+            FirstTurnWorkerState::IdleDraining(Box::new(closing))
         }
         Err(failure) => {
             responder.respond(Err(map_error(&failure.error)));
@@ -61,7 +61,7 @@ where
 }
 
 pub(super) async fn handle_draining<A, R, T, C, Auth>(
-    closing: IdleClosingState<A, R, T, C>,
+    closing: Box<IdleClosingState<A, R, T, C>>,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>
@@ -88,7 +88,7 @@ where
     match closing.converge_zero(token) {
         Ok(zero) => {
             envelope.respond(Ok(WorkerReply::Zero(zero.receipt().clone())));
-            FirstTurnWorkerState::IdleZero(zero)
+            FirstTurnWorkerState::IdleZero(Box::new(zero))
         }
         Err(failure) => {
             envelope.respond(Err(map_error(&failure.error)));
@@ -98,7 +98,7 @@ where
 }
 
 pub(super) async fn handle_zero<A, R, T, C, Auth>(
-    zero: IdleZeroState<A, R, T, C>,
+    zero: Box<IdleZeroState<A, R, T, C>>,
     _context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>

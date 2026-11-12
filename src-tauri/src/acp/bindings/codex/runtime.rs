@@ -158,6 +158,10 @@ impl CodexRuntime {
             IngressDisposition::GoalMutationRejected => {
                 Err(AdapterRuntimeError::GoalMutationRejected)
             }
+            IngressDisposition::Controlled(reply) => {
+                self.native_rpc_reply = Some(reply);
+                one(AdapterEvent::IgnoredLate)
+            }
             IngressDisposition::GoalMutationApplied => {
                 self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::GoalApplied);
                 one(AdapterEvent::IgnoredLate)

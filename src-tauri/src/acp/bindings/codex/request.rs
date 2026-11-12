@@ -12,7 +12,14 @@ use super::manifest::Platform;
 use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
 use super::turn_policy::{TurnPolicySurface, TurnSettings, turn_policy, validate_turn_policy};
 
+mod goal;
+mod mcp;
+mod prompt_input;
 mod session_action;
+mod skills;
+mod thread_revert;
+
+use prompt_input::prompt_input;
 
 // The shared writer owns the single LF delimiter. Keeping the payload one
 // byte below the wire ceiling makes the eventual payload + LF write fit the
@@ -51,7 +58,7 @@ impl NativeProjectRoot {
         Ok(Self(value))
     }
 
-    fn as_str(&self) -> &str {
+    pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
 }
@@ -81,6 +88,16 @@ pub(crate) enum RequestKind {
     GoalPause,
     GoalClear,
     RateLimitsRead,
+    /// `skills/list` for the `/` menu.
+    SkillsList,
+    /// `thread/revert`: drops the latest Turn from the thread's history.
+    ThreadRevert,
+    /// `mcpServerStatus/list` for `/mcp`.
+    McpList,
+    /// `config/mcpServer/reload`.
+    McpReload,
+    /// `mcpServer/oauth/login`.
+    McpSignIn,
 }
 
 impl RequestKind {
@@ -127,12 +144,21 @@ impl OutgoingRequest {
             RequestKind::GoalPause => "thread/goal/set",
             RequestKind::GoalClear => "thread/goal/clear",
             RequestKind::RateLimitsRead => "account/rateLimits/read",
+            RequestKind::SkillsList => "skills/list",
+            RequestKind::ThreadRevert => "thread/revert",
+            RequestKind::McpList => "mcpServerStatus/list",
+            RequestKind::McpReload => "config/mcpServer/reload",
+            RequestKind::McpSignIn => "mcpServer/oauth/login",
         };
         let bytes = serde_json::to_vec(&json!({"id": id, "method": method, "params": params}))
             .map_err(|_| RequestError::Encoding)?;
-        if bytes.len() > JSON_PAYLOAD_BYTES
-            || bytes.iter().any(|byte| matches!(byte, b'\n' | b'\r'))
-        {
+        // A turn may carry images, so it is sent as a prompt frame.
+        let limit = if kind == RequestKind::TurnStart {
+            crate::acp::limits::PROMPT_FRAME_BYTES - 1
+        } else {
+            JSON_PAYLOAD_BYTES
+        };
+        if bytes.len() > limit || bytes.iter().any(|byte| matches!(byte, b'\n' | b'\r')) {
             return Err(RequestError::FrameBytes);
         }
         Ok(Self { id, kind, bytes })
@@ -229,30 +255,6 @@ impl OutgoingRequest {
         )
     }
 
-    pub(crate) fn goal_get(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
-        Self::build(
-            id,
-            RequestKind::GoalGet,
-            json!({"threadId": thread_id.as_str()}),
-        )
-    }
-
-    pub(crate) fn goal_pause(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
-        Self::build(
-            id,
-            RequestKind::GoalPause,
-            json!({"threadId": thread_id.as_str(), "status": "paused"}),
-        )
-    }
-
-    pub(crate) fn goal_clear(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
-        Self::build(
-            id,
-            RequestKind::GoalClear,
-            json!({"threadId": thread_id.as_str()}),
-        )
-    }
-
     pub(crate) fn rate_limits_read(id: u64) -> Result<Self, RequestError> {
         Self::build(id, RequestKind::RateLimitsRead, Value::Null)
     }
@@ -303,7 +305,7 @@ impl OutgoingRequest {
         let mut params = json!({
             "threadId": thread_id.as_str(),
             "clientUserMessageId": client_message_id.as_str(),
-            "input": [{"type": "text", "text": prompt.resources.inline(prompt.as_str())}],
+            "input": prompt_input(prompt)?,
             "approvalPolicy": policy.approval,
             "sandboxPolicy": {
                 "type": policy.sandbox,

@@ -3,6 +3,11 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
+
+use crate::acp::bindings::release_version::characterise_against;
+/// The Pi release whose extension API the bridge was tested against. Later
+/// releases load it too; if a release stops loading it, Pi starts with no
+/// tools rather than unguarded ones.
 const BRIDGE_PI_VERSION: &str = "1.5.0";
 pub(crate) const SOURCE: &[u8] = include_bytes!("extension.mjs");
 /// The bridge's path under Sage's resource directory. `bundle.resources` in
@@ -12,7 +17,7 @@ pub(crate) const RESOURCE: &str = "src/acp/bindings/pi/bridge/extension.mjs";
 /// Why the bridge cannot be enabled; Pi then runs with read-only tools.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum Unavailable {
-    #[error("the Sage bridge supports only Pi {BRIDGE_PI_VERSION}")]
+    #[error("the Sage bridge needs Pi {BRIDGE_PI_VERSION} or later")]
     UnsupportedVersion,
     #[error("this Sage build is missing its Pi bridge resource")]
     Missing,
@@ -21,7 +26,7 @@ pub(crate) enum Unavailable {
 }
 
 pub(crate) fn installed(version: &str) -> Result<PathBuf, Unavailable> {
-    if version != super::super::PI_VERSION || version != BRIDGE_PI_VERSION {
+    if !characterise_against(version, BRIDGE_PI_VERSION).runs_tested_features() {
         return Err(Unavailable::UnsupportedVersion);
     }
     let root = resource_root().ok_or(Unavailable::Missing)?;

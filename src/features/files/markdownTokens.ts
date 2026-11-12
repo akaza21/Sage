@@ -290,7 +290,12 @@ export function adaptMarkdownTokens(
           };
         if (raw.kind === "code") return { ...raw, text: literal(raw.text) };
         if (raw.kind === "rule") return raw;
-        const text = inline(raw.text, nested ? slot : undefined);
+        // A heading is one line: its soft breaks read as spaces. A
+        // paragraph keeps them for the surface to break or join.
+        const text = inline(
+          raw.kind === "heading" ? raw.text.replace(/\n/gu, " ") : raw.text,
+          nested ? slot : undefined,
+        );
         if (raw.kind === "paragraph" && !text) {
           remainingBlocks++;
           remainingComponents += cost;

@@ -46,7 +46,10 @@ export function decodeSessionSurface(
   return {
     activities: activities as SessionActivity[],
     ...(typeof value.undoTurn === "string" && TURN_ID.test(value.undoTurn)
-      ? { undoTurn: value.undoTurn }
+      ? {
+          undoTurn: value.undoTurn,
+          ...(value.undoKeepsFiles === true ? { undoKeepsFiles: true } : {}),
+        }
       : {}),
   };
 }

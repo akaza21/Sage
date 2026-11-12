@@ -62,11 +62,14 @@ pub(crate) fn start(
             resource: "browserOperationId",
         });
     }
+    // Every browser operation start, and so every collapse marker copied from
+    // one, carries its Turn, so `marker.turn_id=start.turn_id` never meets a
+    // NULL. Plain equality also lets these reads use the partial Turn index.
     let turn_count: i64 = tx.query_row(
         "SELECT COUNT(*) FROM session_facts start WHERE start.session_id=?1 AND start.turn_id=?2
          AND start.kind='browserOperation' AND NOT EXISTS (
            SELECT 1 FROM session_facts marker WHERE marker.session_id=start.session_id
-           AND marker.kind='browserOperationsCollapsed'
+           AND marker.turn_id=start.turn_id AND marker.kind='browserOperationsCollapsed'
            AND json_extract(marker.payload_json,'$.s')=start.sequence)",
         params![record.session_id.as_str(), record.turn_id.as_str()],
         |row| row.get(0),
@@ -75,7 +78,7 @@ pub(crate) fn start(
         "SELECT COUNT(*) FROM session_facts start WHERE start.project_id=?1 AND start.chat_id=?2
          AND start.kind='browserOperation' AND NOT EXISTS (
            SELECT 1 FROM session_facts marker WHERE marker.session_id=start.session_id
-           AND marker.kind='browserOperationsCollapsed'
+           AND marker.turn_id=start.turn_id AND marker.kind='browserOperationsCollapsed'
            AND json_extract(marker.payload_json,'$.s')=start.sequence)",
         params![record.project_id.as_str(), record.chat_id.as_str()],
         |row| row.get(0),
@@ -192,27 +195,29 @@ pub(crate) fn finish(
     tx.commit().map_err(|_| StoreError::CommitUnknown)
 }
 
+/// One keyset page of starts that never reached a terminal fact. The page walks
+/// `idx_session_facts_operation_start`, which holds only starts, and each start
+/// seeks its own terminal through `idx_session_facts_operation_terminal`, so a
+/// restart reads neither other facts nor finished operations' terminals.
+/// The unary `+` drops `start.sequence`'s INTEGER column affinity; with it the
+/// comparison would convert the `$.s` key and could no longer seek the index.
+pub(super) const RECOVER_SQL: &str = "SELECT start.session_id,start.sequence,start.payload_json
+     FROM session_facts start
+     WHERE (start.session_id,start.sequence) > (?1,?2) AND start.kind='browserOperation'
+       AND NOT EXISTS (SELECT 1 FROM session_facts terminal
+         WHERE terminal.session_id=start.session_id
+         AND terminal.kind='browserOperationTerminal'
+         AND json_extract(terminal.payload_json,'$.s')=+start.sequence)
+     ORDER BY start.session_id,start.sequence LIMIT 512";
+
 pub(crate) fn recover_started(connection: &mut Connection, now: i64) -> Result<u64, StoreError> {
     let tx = connection.transaction()?;
     let mut cursor_session = String::new();
     let mut cursor_sequence = 0_i64;
     let mut recovered = 0_u64;
     loop {
-        // The primary key (session_id, sequence) bounds each keyset page. Skip
-        // already-terminal starts so normal restarts never replay old history.
         let rows = {
-            let mut statement = tx.prepare(
-                "WITH terminals AS MATERIALIZED (
-                   SELECT session_id,json_extract(payload_json,'$.s') AS started_sequence
-                   FROM session_facts WHERE kind='browserOperationTerminal'
-                 )
-                 SELECT start.session_id,start.sequence,start.payload_json FROM session_facts start
-                 LEFT JOIN terminals terminal ON terminal.session_id=start.session_id
-                   AND terminal.started_sequence=start.sequence
-                 WHERE (start.session_id,start.sequence) > (?1,?2)
-                   AND start.kind='browserOperation' AND terminal.started_sequence IS NULL
-                 ORDER BY start.session_id,start.sequence LIMIT 512",
-            )?;
+            let mut statement = tx.prepare_cached(RECOVER_SQL)?;
             statement
                 .query_map(params![cursor_session, cursor_sequence], |row| {
                     Ok((
@@ -312,7 +317,8 @@ fn collapse_oldest(
          WHERE start.project_id=?1 AND start.chat_id=?2 AND start.kind='browserOperation'
            AND (?3 IS NULL OR start.turn_id=?3)
            AND NOT EXISTS (SELECT 1 FROM session_facts marker
-             WHERE marker.session_id=start.session_id AND marker.kind='browserOperationsCollapsed'
+             WHERE marker.session_id=start.session_id AND marker.turn_id=start.turn_id
+             AND marker.kind='browserOperationsCollapsed'
              AND json_extract(marker.payload_json,'$.s')=start.sequence)
          ORDER BY start.created_at,start.session_id,start.sequence LIMIT 1",
         params![record.project_id.as_str(), record.chat_id.as_str(), turn],

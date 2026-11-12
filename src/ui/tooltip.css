@@ -1,0 +1,41 @@
+/* The shared tooltip; see tooltipLayer.ts. */
+.tooltip {
+  position: fixed;
+  z-index: var(--z-alert);
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 4px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  box-shadow: var(--elevation-popover);
+  font-size: var(--type-size-caption);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  animation: tooltip-enter var(--motion-duration-fast) ease-out;
+}
+
+.tooltip[hidden] {
+  display: none;
+}
+
+@keyframes tooltip-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tooltip {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .tooltip {
+    border-color: CanvasText;
+    color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+  }
+}

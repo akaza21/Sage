@@ -278,7 +278,6 @@ export function ChatTranscript({
           className="chat-follow-end"
           type="button"
           hidden={!showJumpToLatest}
-
           data-mode={showJumpToLatest === "activity" ? "activity" : undefined}
           aria-label={jumpLabel}
           title={jumpLabel}

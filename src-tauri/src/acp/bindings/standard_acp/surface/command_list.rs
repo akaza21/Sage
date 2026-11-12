@@ -61,7 +61,7 @@ pub(crate) struct CommandMark {
 /// How the binding that advertised a command runs it. Native only: the
 /// WebView names a command and the binding looks its dispatch up in the
 /// live list, so a prompt can never choose its own route.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommandDispatch {
     /// Sent as `/name input` prompt text, which the harness parses.
     Prompt,
@@ -70,6 +70,25 @@ pub(crate) enum CommandDispatch {
     CommandTurn,
     /// Run by the binding's own method for this name (Pi's `compact`).
     Builtin,
+    /// Sent with the skill attached by its harness path (Codex skills).
+    Skill { path: String },
+    /// Run by the host as the session action its name and input name, with
+    /// the action's capability gate (Codex's `compact` and `review`).
+    Action,
+    /// Opens a panel in the chat and sends nothing (Codex's `status` and
+    /// `mcp`). The WebView learns the panel from the list, since it opens
+    /// the panel without running the command.
+    Panel(CommandPanel),
+}
+
+/// A panel a command opens in the chat, named on the list it came with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum CommandPanel {
+    /// The session's model, effort, access and usage.
+    Status,
+    /// The session's MCP servers.
+    Mcp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -79,8 +98,27 @@ pub(crate) struct AvailableCommand {
     pub(crate) description: String,
     pub(crate) input_hint: Option<String>,
     pub(crate) source: CommandSource,
-    #[serde(skip)]
+    #[serde(
+        rename = "panel",
+        serialize_with = "serialize_panel",
+        skip_serializing_if = "opens_no_panel"
+    )]
     pub(crate) dispatch: CommandDispatch,
+}
+
+fn opens_no_panel(dispatch: &CommandDispatch) -> bool {
+    !matches!(dispatch, CommandDispatch::Panel(_))
+}
+
+/// Only a panel is named; every other route stays native.
+fn serialize_panel<S: serde::Serializer>(
+    dispatch: &CommandDispatch,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match dispatch {
+        CommandDispatch::Panel(panel) => panel.serialize(serializer),
+        _ => serializer.serialize_none(),
+    }
 }
 
 impl AvailableCommand {
@@ -108,6 +146,19 @@ impl AvailableCommand {
             source,
             dispatch,
         })
+    }
+
+    /// What this command counts toward a list's `MAX_COMMAND_BYTES`,
+    /// including the native route it keeps, such as a skill's path.
+    pub(crate) fn listed_bytes(&self) -> usize {
+        let route = match &self.dispatch {
+            CommandDispatch::Skill { path } => path.len(),
+            _ => 0,
+        };
+        self.name.len()
+            + self.description.len()
+            + self.input_hint.as_ref().map_or(0, String::len)
+            + route
     }
 
     /// An ACP `AvailableCommand`. ACP has no source field, so an adapter
@@ -172,9 +223,7 @@ fn admit(commands: Vec<AvailableCommand>) -> Result<Vec<AvailableCommand>, Adapt
         if !names.insert(command.name.as_str()) {
             return Err(AdapterRuntimeError::Frame);
         }
-        bytes += command.name.len()
-            + command.description.len()
-            + command.input_hint.as_ref().map_or(0, String::len);
+        bytes += command.listed_bytes();
         if bytes > MAX_COMMAND_BYTES {
             return Err(AdapterRuntimeError::BatchBytes);
         }
@@ -243,6 +292,22 @@ impl CommandState {
             .ok_or(AdapterRuntimeError::Operation)?
             .replace(parsed)
     }
+    /// Takes a binding's new list unless it equals the shown one, so an
+    /// unchanged list keeps its revision and a pick made from it still runs.
+    pub(crate) fn replace_if_changed(
+        &self,
+        commands: Vec<AvailableCommand>,
+    ) -> Result<(), AdapterRuntimeError> {
+        let mut list = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let list = list.as_mut().ok_or(AdapterRuntimeError::Operation)?;
+        if list.commands == commands {
+            return Ok(());
+        }
+        list.replace(Ok(commands))
+    }
     pub(crate) fn snapshot(&self) -> CommandList {
         self.0
             .lock()
@@ -267,18 +332,18 @@ impl CommandState {
     }
     /// The source of the listed command a `/name …` prompt runs at this
     /// revision, which the Turn keeps beside its prompt.
-    pub(crate) fn source(
+    pub(crate) fn command(
         &self,
         revision: u64,
         text: &str,
-    ) -> Result<CommandSource, AdapterRuntimeError> {
+    ) -> Result<AvailableCommand, AdapterRuntimeError> {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
             .ok_or(AdapterRuntimeError::Operation)?
             .find(revision, text)
-            .map(|command| command.source)
+            .cloned()
             .ok_or(AdapterRuntimeError::UnsupportedCommand)
     }
     fn close(&self) {

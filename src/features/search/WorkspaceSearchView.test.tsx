@@ -795,7 +795,7 @@ describe("Workspace Search view", () => {
       screen.getByRole("searchbox", { name: "Search text" }),
     ).toBeDisabled();
     expect(
-      screen.getByText("Open a Project to search its files."),
+      screen.getByText("Open a project to search its files."),
     ).toBeVisible();
   });
 

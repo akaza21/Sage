@@ -19,6 +19,8 @@ export const KEYMAP_DESCRIPTIONS: Readonly<Record<string, string>> = {
   newline: "Adds a new line in the composer instead of sending.",
   save: "Writes the active editor buffer to disk.",
   saveAll: "Saves every open file with unsaved changes.",
+  closeEditor:
+    "Closes the active editor tab, asking first if it has unsaved changes.",
   find: "Opens the find bar for the active file.",
   replace: "Opens the find bar with its replace row.",
   findNext: "Moves to the next match of the find bar's text.",

@@ -46,7 +46,7 @@ where
     match active.retry_send_projection() {
         Ok((active, write)) => {
             envelope.respond(Ok(WorkerReply::Write(write)));
-            FirstTurnWorkerState::Active(active)
+            FirstTurnWorkerState::Active(Box::new(active))
         }
         Err(failure) => {
             envelope.respond(Err(map_write(&failure.error)));
@@ -93,7 +93,7 @@ where
     match active.dispatch_once(context.clock.now_millis()).await {
         Ok((active, write)) => {
             envelope.respond(Ok(WorkerReply::Write(write)));
-            FirstTurnWorkerState::Active(active)
+            FirstTurnWorkerState::Active(Box::new(active))
         }
         Err(failure) => classify_begin_send_failure(failure, owner, turn_id, envelope),
     }
@@ -160,7 +160,7 @@ where
             ) =>
         {
             envelope.respond(Err(HostError::Intent));
-            return FirstTurnWorkerState::Active(failure.state);
+            return FirstTurnWorkerState::Active(Box::new(failure.state));
         }
         Err(failure) => {
             envelope.respond(Err(map_write(&failure.error)));
@@ -175,7 +175,7 @@ where
     match active.try_into_completed(context.mailbox.as_ref()) {
         Ok(completed) => {
             envelope.respond(Ok(WorkerReply::Unit));
-            FirstTurnWorkerState::Reusable(completed)
+            FirstTurnWorkerState::Reusable(Box::new(completed))
         }
         Err(failure) => {
             envelope.respond(Err(map_write(&failure.error)));
@@ -226,7 +226,7 @@ where
     match active.retry_observation_projection(observation) {
         Ok(active) => {
             envelope.respond(Ok(WorkerReply::Unit));
-            FirstTurnWorkerState::Active(active)
+            FirstTurnWorkerState::Active(Box::new(active))
         }
         Err(failure) => {
             envelope.respond(Err(map_write(&failure.error)));
@@ -282,7 +282,7 @@ where
     {
         Ok(active) => {
             envelope.respond(Ok(WorkerReply::Unit));
-            FirstTurnWorkerState::Active(active)
+            FirstTurnWorkerState::Active(Box::new(active))
         }
         Err(failure) => classify_observe_failure(failure, owner, turn_id, observation, envelope),
     }
@@ -313,11 +313,11 @@ where
     match active.begin_cancel(&intent).await {
         Ok(active) => {
             envelope.respond(Ok(WorkerReply::Unit));
-            FirstTurnWorkerState::Active(active)
+            FirstTurnWorkerState::Active(Box::new(active))
         }
         Err(failure) if durable_commit_unknown(&failure.error) => {
             envelope.respond(Err(map_write(&failure.error)));
-            FirstTurnWorkerState::Active(failure.state.mark_durable_mutation_unknown())
+            FirstTurnWorkerState::Active(Box::new(failure.state.mark_durable_mutation_unknown()))
         }
         Err(failure) => {
             envelope.respond(Err(map_write(&failure.error)));

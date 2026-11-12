@@ -244,18 +244,18 @@ export function WorkspaceSearchView({
         )}
         {!projectId ? (
           <p className="workspace-search__empty">
-            Open a Project to search its files.
+            Open a project to search its files.
           </p>
         ) : null}
         {state.phase === "idle" && projectId ? (
           <p className="workspace-search__empty">
-            Search all roots in the active Project.
+            Search all roots in the active project.
           </p>
         ) : null}
         {state.phase === "searching" ? (
           <p className="workspace-search__empty workspace-search__progress">
             <LoaderCircle size={14} aria-hidden="true" />
-            Searching the Project...
+            Searching the project...
           </p>
         ) : null}
         {state.phase === "error" ? (

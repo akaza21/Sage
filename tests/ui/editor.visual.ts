@@ -187,7 +187,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await settings
       .getByRole("combobox", { name: "Tab size" })
       .selectOption("8");
-    await settings.getByRole("checkbox", { name: "Show whitespace" }).check();
+    await settings.getByRole("switch", { name: "Show whitespace" }).check();
     await expect
       .poll(() =>
         page.evaluate(async () => {
@@ -212,10 +212,10 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       settings.getByRole("combobox", { name: "Tab size" }),
     ).toHaveValue("8");
     await expect(
-      settings.getByRole("checkbox", { name: "Show whitespace" }),
+      settings.getByRole("switch", { name: "Show whitespace" }),
     ).toBeChecked();
     await expect(
-      settings.getByRole("checkbox", { name: "Line numbers" }),
+      settings.getByRole("switch", { name: "Line numbers" }),
     ).toBeChecked();
     await expect(settings.getByRole("group", { name: "Text" })).toBeVisible();
     await expect(
@@ -241,16 +241,16 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     });
     await expect(reset).toBeDisabled();
     await expect(
-      settings.getByRole("checkbox", { name: "Line numbers" }),
+      settings.getByRole("switch", { name: "Line numbers" }),
     ).toBeChecked();
     await expect(
-      settings.getByRole("checkbox", { name: "Show whitespace" }),
+      settings.getByRole("switch", { name: "Show whitespace" }),
     ).not.toBeChecked();
     await settings
       .getByRole("combobox", { name: "Font size" })
       .selectOption("16");
-    await settings.getByRole("checkbox", { name: "Line numbers" }).uncheck();
-    await settings.getByRole("checkbox", { name: "Show whitespace" }).check();
+    await settings.getByRole("switch", { name: "Line numbers" }).uncheck();
+    await settings.getByRole("switch", { name: "Show whitespace" }).check();
     await expect(reset).toBeEnabled();
     await page.getByRole("button", { name: "Close Settings" }).click();
     await expect(page.locator(".cm-lineNumbers")).toHaveCount(0);
@@ -261,17 +261,17 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       settings.getByRole("combobox", { name: "Font size" }),
     ).toHaveValue("13");
     await expect(
-      settings.getByRole("checkbox", { name: "Line numbers" }),
+      settings.getByRole("switch", { name: "Line numbers" }),
     ).toBeChecked();
     await expect(
-      settings.getByRole("checkbox", { name: "Show whitespace" }),
+      settings.getByRole("switch", { name: "Show whitespace" }),
     ).not.toBeChecked();
     await expect(workbench).toHaveScreenshot("editor-settings.png");
 
     const settingsSearch = settings.getByRole("searchbox");
     await settingsSearch.fill("whitespace");
     await expect(
-      settings.getByRole("checkbox", { name: "Show whitespace" }),
+      settings.getByRole("switch", { name: "Show whitespace" }),
     ).toBeVisible();
     await expect(
       settings.getByRole("combobox", { name: "Font size" }),
@@ -315,11 +315,11 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       reducedMotion: "reduce",
     });
     await expect(settings.getByRole("searchbox")).toBeVisible();
-    const wordWrap = settings.getByRole("checkbox", { name: "Word wrap" });
+    const wordWrap = settings.getByRole("switch", { name: "Word wrap" });
     await wordWrap.focus();
     await page.keyboard.press("Space");
     await expect(
-      settings.getByRole("checkbox", { name: "Word wrap" }),
+      settings.getByRole("switch", { name: "Word wrap" }),
     ).toBeChecked();
     expect(
       await settings

@@ -13,7 +13,10 @@ use crate::{
         },
         contract::SageAgentSessionId,
         intent::{AcpUnavailableReason, ImageMediaType, Prompt},
-        limits::{IMAGE_PREVIEW_BYTES, PROMPT_IMAGE_COUNT},
+        limits::{
+            ECHOED_PROMPT_IMAGE_TOTAL_BYTES, IMAGE_PREVIEW_BYTES, PROMPT_IMAGE_COUNT,
+            PROMPT_IMAGE_TOTAL_BYTES,
+        },
     },
     image_attachment::ImageAttachedContext,
 };
@@ -72,14 +75,15 @@ pub(super) async fn attach(
         .acp
         .load_chat_page(project_id.clone(), chat_id.clone(), None)
         .map_err(store_error)?;
-    if !page
+    let Some(session) = page
         .sessions
         .as_slice()
         .iter()
-        .any(|session| &session.id == session_id && session.capabilities.prompt_images)
-    {
+        .find(|session| &session.id == session_id && session.capabilities.prompt_images)
+    else {
         return Err(unsupported());
-    }
+    };
+    let (bounds, total_bytes) = prompt_bounds(session.binding_id.as_str());
     if images.len() > PROMPT_IMAGE_COUNT {
         return Err(refused(ImageRefusal::TooMany));
     }
@@ -92,16 +96,37 @@ pub(super) async fn attach(
     // Decoding and re-encoding take a blocking thread, not the async runtime,
     // and an image-work permit shared with uploads (`IMAGE_WORK_PERMITS`).
     let permit = crate::image_artifacts::image_work_permit().await;
-    let normalized = tauri::async_runtime::spawn_blocking(move || normalize(stored))
+    let normalized = tauri::async_runtime::spawn_blocking(move || normalize(stored, bounds))
         .await
         .map_err(|_| internal_error())??;
     drop(permit);
-    admit_sizes(normalized.iter().map(|image| image.bytes.len())).map_err(refused)?;
+    admit_sizes(
+        normalized.iter().map(|image| image.bytes.len()),
+        total_bytes,
+    )
+    .map_err(refused)?;
     prompt.images = PromptImages(Arc::new(normalized));
     Ok(images
         .iter()
         .map(|image| image.artifact_id.clone())
         .collect())
+}
+
+/// Codex and Pi repeat each prompt image in their own events, so their
+/// images are normalised to, and admitted against, the echoed bound.
+fn prompt_bounds(binding_id: &str) -> (crate::image_artifacts::Bounds, usize) {
+    use crate::acp::bindings::{codex::CODEX_BINDING_ID, pi::native_admission::PI_BINDING_ID};
+    if matches!(binding_id, CODEX_BINDING_ID | PI_BINDING_ID) {
+        (
+            crate::image_artifacts::ECHOED_PROMPT_IMAGE_BOUNDS,
+            ECHOED_PROMPT_IMAGE_TOTAL_BYTES,
+        )
+    } else {
+        (
+            crate::image_artifacts::PROMPT_IMAGE_BOUNDS,
+            PROMPT_IMAGE_TOTAL_BYTES,
+        )
+    }
 }
 
 /// A refusal built from the `limits.rs` numbers.
@@ -150,23 +175,26 @@ fn load(
 }
 
 /// Each image as the prompt sends it: at most `PROMPT_IMAGE_EDGE_PX` on the
-/// long edge and `PROMPT_IMAGE_TOTAL_BYTES`, with a transcript preview.
-fn normalize(stored: Vec<(ImageMediaType, Vec<u8>)>) -> Result<Vec<PromptImage>, AcpIpcError> {
+/// long edge and the harness's image bound, with a transcript preview.
+fn normalize(
+    stored: Vec<(ImageMediaType, Vec<u8>)>,
+    bounds: crate::image_artifacts::Bounds,
+) -> Result<Vec<PromptImage>, AcpIpcError> {
     stored
         .into_iter()
         .map(|(media_type, bytes)| {
-            let normalized = crate::image_artifacts::normalize_image(
-                media_type,
-                &bytes,
-                crate::image_artifacts::PROMPT_IMAGE_BOUNDS,
-            )
-            .map_err(|error| match error {
-                crate::error::AppError::ResourceLimit(_) => refused(ImageRefusal::TooLarge),
-                crate::error::AppError::InvalidRequest(message) => AcpIpcError::InvalidRequest {
-                    message: text(format!("An attached image cannot be sent: {message}.")),
-                },
-                _ => gone(),
-            })?;
+            let normalized = crate::image_artifacts::normalize_image(media_type, &bytes, bounds)
+                .map_err(|error| match error {
+                    crate::error::AppError::ResourceLimit(_) => {
+                        refused(ImageRefusal::TooLarge(bounds.bytes))
+                    }
+                    crate::error::AppError::InvalidRequest(message) => {
+                        AcpIpcError::InvalidRequest {
+                            message: text(format!("An attached image cannot be sent: {message}.")),
+                        }
+                    }
+                    _ => gone(),
+                })?;
             drop(bytes);
             let preview = if normalized.bytes.len() <= IMAGE_PREVIEW_BYTES {
                 ImagePreview::Full
@@ -196,7 +224,10 @@ fn read(
     chat_id: &str,
     images: &[&ImageAttachedContext],
 ) -> Result<Vec<PromptImage>, AcpIpcError> {
-    normalize(load(database, project_id, chat_id, images)?)
+    normalize(
+        load(database, project_id, chat_id, images)?,
+        crate::image_artifacts::PROMPT_IMAGE_BOUNDS,
+    )
 }
 
 /// Best effort: a failed retirement only delays cleanup to the next start.

@@ -32,6 +32,12 @@ pub(super) fn class_for_version(version: u32) -> AppResult<SchemaClass> {
         version if version == super::super::title_source::VERSION => {
             SchemaClass::CurrentTitleSource
         }
+        version if version == super::super::session_facts_turn_index::VERSION => {
+            SchemaClass::CurrentSessionFactsTurnIndex
+        }
+        version if version == super::super::operation_terminal_index::VERSION => {
+            SchemaClass::CurrentOperationTerminalIndex
+        }
         _ => return invalid("Sage schema version is above the supported maximum"),
     })
 }

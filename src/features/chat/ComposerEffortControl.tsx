@@ -12,6 +12,22 @@ type Props = Omit<
   "triggerRef" | "panelId"
 > & { onToggle: () => void; triggerVisible?: boolean; restored?: string };
 
+/** The Thinking level trigger's icon, label and chevron, the same whether
+ * the control is open to choose or disabled until levels are known. */
+export function EffortTriggerFace({ label }: { label: string }) {
+  return (
+    <>
+      <Brain className="composer__effort-icon" size={14} aria-hidden="true" />
+      <span className="composer__effort-label">{label}</span>
+      <ChevronDown
+        className="composer__effort-chevron"
+        size={12}
+        aria-hidden="true"
+      />
+    </>
+  );
+}
+
 export function ComposerEffortControl(props: Props) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
@@ -37,13 +53,7 @@ export function ComposerEffortControl(props: Props) {
           onPointerDown={(event) => event.currentTarget.blur()}
           onClick={props.onToggle}
         >
-          <Brain
-            className="composer__effort-icon"
-            size={14}
-            aria-hidden="true"
-          />
-          <span className="composer__effort-label">{label}</span>
-          <ChevronDown size={12} aria-hidden="true" />
+          <EffortTriggerFace label={label} />
         </button>
       )}
       {props.open ? (

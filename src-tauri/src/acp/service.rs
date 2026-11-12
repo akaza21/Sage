@@ -82,6 +82,7 @@ pub(crate) mod runtime_identity;
 mod runtime_slot;
 mod session_config;
 pub(crate) use session_config::QueueError;
+mod mcp;
 mod session_control;
 mod session_surface;
 pub(crate) use session_control::SessionControlError;
@@ -110,35 +111,7 @@ use page_bytes::PageBytes;
 use runtime_identity::CodexRuntimeIdentityLedger;
 use runtime_slot::RuntimeSlot;
 
-/// Carries positive pre-invocation proof without inferring it from an error kind.
-#[derive(Debug)]
-pub(crate) struct PromptSendError<E> {
-    pub error: E,
-    pub prompt_dispatch: crate::acp::intent::PromptDispatch,
-}
-
-impl<E> PromptSendError<E> {
-    pub(crate) fn not_started(error: E) -> Self {
-        Self {
-            error,
-            prompt_dispatch: crate::acp::intent::PromptDispatch::NotStarted,
-        }
-    }
-
-    pub(crate) fn unknown(error: E) -> Self {
-        Self {
-            error,
-            prompt_dispatch: crate::acp::intent::PromptDispatch::Unknown,
-        }
-    }
-
-    pub(crate) fn map<F>(self, map: impl FnOnce(E) -> F) -> PromptSendError<F> {
-        PromptSendError {
-            error: map(self.error),
-            prompt_dispatch: self.prompt_dispatch,
-        }
-    }
-}
+pub(crate) use crate::acp::intent::PromptSendError;
 
 pub(crate) struct AcpService {
     pub(crate) file_stages: Arc<Mutex<crate::acp::attached_context::files::FileStages>>,
@@ -149,6 +122,7 @@ pub(crate) struct AcpService {
     /// Starts durable sessions; it never reserves a runtime tree.
     session_starts: SessionCoordinator,
     lanes: Box<[live_lanes::LiveLane]>,
+    idle_release: live_lanes::IdleRelease,
     publisher: Arc<dyn ProjectionPublisher>,
     notifier: Option<Arc<ProjectionNotifier>>,
     page_reads: PageReadAdmission,

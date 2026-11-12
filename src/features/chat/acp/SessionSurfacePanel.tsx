@@ -3,6 +3,9 @@ import { decodeSessionSurface } from "../../../services/acpSessionSurface";
 import "./session-surface.css";
 import { useSessionControl } from "./useSessionControl";
 
+/** Turns this app removed from their conversation. */
+const rewoundTurns = new Set<string>();
+
 const STATE_LABEL = {
   running: "Running",
   completed: "Done",
@@ -22,10 +25,17 @@ export function SessionSurfacePanel({
 }) {
   const { status, run } = useSessionControl(chatId || undefined);
   const [confirming, setConfirming] = useState(false);
+  // A turn removed from the conversation cannot be removed again; the
+  // session keeps offering it, so the app remembers it was removed.
+  const [undoing, setUndoing] = useState<string>();
+  if (status.kind === "done" && undoing) rewoundTurns.add(undoing);
   const decoded = decodeSessionSurface(surface);
   const activities = decoded?.activities ?? [];
-  const undoTurn = decoded?.undoTurn;
-  if (!activities.length && !undoTurn) return null;
+  const keepsFiles = decoded?.undoKeepsFiles === true;
+  const offered = decoded?.undoTurn;
+  const undoTurn =
+    keepsFiles && offered && rewoundTurns.has(offered) ? undefined : offered;
+  if (!activities.length && !offered) return null;
   return (
     <section className="acp-session-surface" aria-label="Session activity">
       {activities.length ? (
@@ -47,12 +57,13 @@ export function SessionSurfacePanel({
                 <button
                   type="button"
                   disabled={status.kind === "pending"}
-                  onClick={() =>
+                  onClick={() => {
+                    setUndoing(undefined);
                     void run(
                       { kind: "stopActivity", activityKey: activity.key },
                       `Stopping ${activity.label}`,
-                    )
-                  }
+                    );
+                  }}
                 >
                   Stop
                 </button>
@@ -66,11 +77,21 @@ export function SessionSurfacePanel({
           type="button"
           className="acp-session-surface__undo"
           disabled={status.kind === "pending"}
-          title="Restore the files the last turn changed to how they were before it"
+          title={
+            keepsFiles
+              ? "Remove the last turn from the chat; files stay as they are"
+              : "Restore the files the last turn changed to how they were before it"
+          }
           onClick={() => {
             if (!confirming) return setConfirming(true);
             setConfirming(false);
-            void run({ kind: "undoTurn", turnId: undoTurn }, "Changes undone");
+            setUndoing(keepsFiles ? undoTurn : undefined);
+            void run(
+              { kind: "undoTurn", turnId: undoTurn },
+              keepsFiles
+                ? "Last turn removed; files unchanged"
+                : "Changes undone",
+            );
           }}
           onBlur={() => setConfirming(false)}
         >

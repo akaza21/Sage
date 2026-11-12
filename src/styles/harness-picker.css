@@ -192,6 +192,17 @@
   white-space: nowrap;
 }
 
+/* Why a harness cannot be picked is the row's point, so it wraps to a
+   second line instead of being cut to a few words; a longer reason ends in
+   an ellipsis there and stays whole in the row's tooltip and description. */
+.composer__harness-menu .searchable-picker__reason {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+}
+
 .composer__harness-menu .searchable-picker__option:hover,
 .composer__harness-menu .searchable-picker__option:focus-visible {
   background: var(--composer-control-hover);

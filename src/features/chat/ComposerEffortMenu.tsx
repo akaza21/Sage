@@ -101,7 +101,9 @@ export default function ComposerEffortMenu({
       void onSetOption(option.id, { value: level.value });
   };
   if (index < 0) return null;
-  const label = levels[index].name;
+  // The heading names the level under the thumb, so a drag previews the
+  // harness's own level name before the release commits it.
+  const label = capitalizeLabel(levels[position].name);
   return (
     <>
       <MenuPopover
@@ -120,9 +122,7 @@ export default function ComposerEffortMenu({
         <div className="composer-effort__heading">
           <Brain size={13} aria-hidden="true" />
           <div className="composer-effort__identity">
-            <span className="composer-effort__level">
-              {capitalizeLabel(label)}
-            </span>
+            <span className="composer-effort__level">{label}</span>
             {modelAvailable ? (
               <button
                 type="button"
@@ -168,7 +168,7 @@ export default function ComposerEffortMenu({
             ref={sliderRef}
             type="range"
             aria-label="Thinking level"
-            aria-valuetext={capitalizeLabel(levels[position].name)}
+            aria-valuetext={label}
             aria-disabled={disabled || pending}
             min={0}
             max={levels.length - 1}

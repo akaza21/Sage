@@ -5,7 +5,12 @@ import type {
 import { AcpDesktopError, invokeAcp } from "./acpDesktopCommand";
 import { utf8ByteLength } from "../domain/text";
 import { isRecord } from "./acpDesktopGuards";
-import { isCommandSource, type AcpCommandSource } from "../domain/acpCommand";
+import {
+  isCommandPanel,
+  isCommandSource,
+  type AcpCommandPanel,
+  type AcpCommandSource,
+} from "../domain/acpCommand";
 import { safeAcpMutationResponse } from "./acpDesktopResponses";
 
 export type { AcpCommandSource };
@@ -26,6 +31,8 @@ export interface AvailableAcpCommand {
   description: string;
   inputHint: string | null;
   source: AcpCommandSource;
+  /** Opens this panel in the chat and sends nothing. */
+  panel?: AcpCommandPanel;
 }
 
 // The native list's bounds.
@@ -70,7 +77,8 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
       names.has(c.name) ||
       !text(c.description, 1024) ||
       (c.inputHint !== null && !text(c.inputHint, 256)) ||
-      !isCommandSource(c.source)
+      !isCommandSource(c.source) ||
+      (c.panel !== undefined && !isCommandPanel(c.panel))
     )
       return null;
     names.add(c.name);
@@ -81,6 +89,7 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
       description: c.description,
       inputHint: c.inputHint,
       source: c.source,
+      ...(c.panel ? { panel: c.panel } : {}),
     });
   }
   return { revision: value.revision as number, commands };

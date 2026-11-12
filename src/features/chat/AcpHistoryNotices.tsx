@@ -42,7 +42,7 @@ export function AcpHistoryNotices({
       ) : null}
       {retentionIncomplete ? (
         <p className="acp-history-notice">
-          Some Chat history was discarded to stay within memory limits.
+          Some chat history was discarded to stay within memory limits.
           Changed-file summaries show retained records only.
         </p>
       ) : null}

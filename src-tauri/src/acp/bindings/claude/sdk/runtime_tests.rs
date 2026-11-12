@@ -51,6 +51,7 @@ fn runtime() -> ClaudeSdkRuntime {
         bridge: None,
         children: Default::default(),
         native: None,
+        usage: Arc::default(),
         sent: Vec::new(),
         steering: Default::default(),
         launch: None,
@@ -120,10 +121,10 @@ fn ready() -> ClaudeSdkRuntime {
             .as_ref()
             .map(|launch| launch.session_id.as_str())
     );
-    assert_eq!(
-        runtime.available_commands().snapshot().commands[0].name,
-        "review"
-    );
+    // Sage's panels come first, then Claude Code's own commands.
+    let listed = runtime.available_commands().snapshot().commands;
+    let names: Vec<_> = listed.iter().map(|command| command.name.as_str()).collect();
+    assert_eq!(names, ["status", "mcp", "review"]);
     assert!(runtime.session_config().is_some());
     runtime
 }
@@ -224,6 +225,64 @@ fn a_tool_approval_round_trips_to_claude_code() {
         sdk["response"],
         json!({"subtype":"success","request_id":"cli-1","response":{"behavior":"allow","updatedInput":{"command":"cargo test"}}})
     );
+}
+
+#[test]
+fn always_allowing_an_edit_keeps_the_turn_running_in_accept_edits() {
+    let mut runtime = ready();
+    send(
+        &mut runtime,
+        AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Write notes").unwrap(),
+            client_message_id: RequiredText::new("client", "client-1").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::Ask,
+        },
+    );
+    let input = json!({"file_path":"/w/notes.txt","content":"x\n"});
+    feed(
+        &mut runtime,
+        json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[
+        {"type":"tool_use","id":"w1","name":"Write","input":input}]}}),
+    );
+    let events = feed(
+        &mut runtime,
+        json!({"type":"control_request","request_id":"cli-w","request":{
+        "subtype":"can_use_tool","tool_name":"Write","tool_use_id":"w1","input":input,
+        "permission_suggestions":[
+            {"type":"setMode","mode":"acceptEdits","destination":"session"},
+            {"type":"setMode","mode":"bypassPermissions","destination":"session"}]}}),
+    );
+    let request_id = events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::PermissionRequest {
+                external_request_id,
+                ..
+            } => Some(external_request_id.clone()),
+            _ => None,
+        })
+        .expect("edit card");
+    let egress = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse(request_id.as_str()).unwrap(),
+            decision: crate::acp::runtime::permissions::PermissionDecision::AllowAlways,
+        })
+        .unwrap();
+    let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    // Only the switch into accepting edits is passed on.
+    assert_eq!(
+        sdk["response"]["response"]["updatedPermissions"],
+        json!([{"type":"setMode","mode":"acceptEdits","destination":"session"}])
+    );
+    let status =
+        json!({"type":"system","subtype":"status","status":null,"permissionMode":"acceptEdits"});
+    let (events, egress) = runtime
+        .ingest(&frame(status), &Mapper)
+        .unwrap()
+        .into_parts();
+    // The user's own answer must not cancel the turn with a notice.
+    assert!(egress.is_empty(), "the turn was cancelled");
+    assert!(!format!("{events:?}").contains("Notice"), "{events:?}");
 }
 
 #[test]
@@ -858,4 +917,83 @@ fn a_session_forks_through_claude_code_and_holds_nothing_to_release() {
         runtime.take_native_rpc_reply(),
         Some(crate::acp::goal::NativeRpcReply::Released)
     );
+}
+
+#[test]
+fn mcp_servers_list_through_claude_code_and_an_abandoned_list_frees_the_session() {
+    use crate::acp::{goal::NativeRpcReply, session_control::SessionControl};
+    let mut runtime = ready();
+    let list = |runtime: &mut ClaudeSdkRuntime| {
+        let egress = runtime
+            .session_control(&SessionControl::ReadMcpServers)
+            .unwrap();
+        let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+        runtime
+            .resolve_egress(egress.into_token(), EgressResolution::Written)
+            .unwrap();
+        assert_eq!(sdk["request"]["subtype"], "mcp_status");
+        sdk
+    };
+    let first = list(&mut runtime);
+    assert!(runtime.native_rpc_pending());
+    runtime.abandon_usage_read();
+    assert!(!runtime.native_rpc_pending());
+    // The late reply is dropped, not read as a frame Sage never asked for.
+    let late = reply(&mut runtime, &first, json!({"mcpServers": []}));
+    assert!(matches!(late[..], [AdapterEvent::Absorbed]), "{late:?}");
+    assert_eq!(runtime.take_native_rpc_reply(), None);
+    let second = list(&mut runtime);
+    reply(
+        &mut runtime,
+        &second,
+        json!({"mcpServers": [{"name": "files", "status": "connected", "tools": [{"name": "read"}]}]}),
+    );
+    let Some(NativeRpcReply::McpServers(inventory)) = runtime.take_native_rpc_reply() else {
+        panic!("a server list")
+    };
+    assert_eq!(inventory.servers[0].tools, 1);
+    assert!(inventory.actions.reconnect && !inventory.actions.reload);
+}
+
+#[test]
+fn usage_limits_read_through_claude_code_and_an_api_key_account_reports_none() {
+    use crate::acp::{goal::NativeRpcReply, usage::UsageState};
+    let mut runtime = ready();
+    let usage = runtime.usage().expect("Claude Code reports usage");
+    let read = |runtime: &mut ClaudeSdkRuntime| {
+        let egress = runtime.read_usage().unwrap();
+        let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+        runtime
+            .resolve_egress(egress.into_token(), EgressResolution::Written)
+            .unwrap();
+        assert_eq!(
+            sdk["request"],
+            json!({"subtype": "get_usage", "skip_behaviors": true})
+        );
+        sdk
+    };
+    let first = read(&mut runtime);
+    reply(
+        &mut runtime,
+        &first,
+        json!({"subscription_type": "pro", "rate_limits_available": true, "rate_limits": {
+            "five_hour": {"utilization": 1, "resets_at": "2026-11-12T17:20:00Z"},
+        }}),
+    );
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::UsageRead)
+    );
+    let UsageState::Usage { snapshot } = usage.state() else {
+        panic!("a usage snapshot")
+    };
+    assert_eq!(snapshot.plan.as_deref(), Some("Pro"));
+    assert_eq!(snapshot.windows[0].resets_at, Some(1_794_504_000));
+    let second = read(&mut runtime);
+    reply(
+        &mut runtime,
+        &second,
+        json!({"subscription_type": null, "rate_limits_available": false, "rate_limits": null}),
+    );
+    assert_eq!(usage.state(), UsageState::Unsupported);
 }

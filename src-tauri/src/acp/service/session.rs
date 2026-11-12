@@ -344,7 +344,7 @@ fn validate_session_identity(
     Ok(())
 }
 
-mod earlier_codex;
+mod earlier_release;
 
 #[cfg(test)]
 mod version_tests;
