@@ -333,6 +333,7 @@ pub fn run() {
             }
             #[cfg(not(all(windows, feature = "acp-fixture", debug_assertions)))]
             AppState::refresh_harnesses_after_window_shown(app.handle().clone());
+            AppState::release_idle_runtimes_periodically(app.handle().clone());
             info!("Sage application state initialized");
             Ok(())
         })

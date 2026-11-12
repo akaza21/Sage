@@ -36,14 +36,24 @@ pub fn begin_notification_visibility(state: State<'_, Notifications>) -> u64 {
 }
 #[tauri::command]
 pub fn report_notification_visibility(
+    app_state: State<'_, AppState>,
     state: State<'_, Notifications>,
     update: VisibilityUpdate,
 ) -> Result<(), String> {
+    // The Chats shown are also those whose idle runtime is kept longest.
+    let shown: Vec<_> = update
+        .chat_ids
+        .iter()
+        .filter(|_| update.document_visible)
+        .filter_map(|id| crate::acp::contract::SageChatId::parse(id.clone()).ok())
+        .collect();
     state
         .visibility
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .update(update)
+        .update(update)?;
+    app_state.acp.set_shown_chats(shown);
+    Ok(())
 }
 #[tauri::command]
 pub fn take_notification_chat(
