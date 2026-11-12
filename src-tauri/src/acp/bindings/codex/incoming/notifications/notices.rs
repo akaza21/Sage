@@ -135,11 +135,16 @@ pub(super) fn config_warning(
             let _ = write!(message, ", line {line}");
         }
     }
-    if let Some(details) = optional_human(params, "details")? {
+    let details = optional_human(params, "details")?;
+    if let Some(details) = &details {
         let _ = write!(message, "\n{details}");
     }
     let notice = notice(SessionNoticeLevel::Warning, "codex config", message)?;
-    if !adapter.note_warning(WarningKind::Config, &summary) {
+    let reported = match &details {
+        Some(details) => format!("{summary}\n{details}"),
+        None => summary,
+    };
+    if !adapter.note_warning(WarningKind::Config, &reported) {
         return Ok(IngressDisposition::IgnoredLate);
     }
     thread_less(adapter, notice)

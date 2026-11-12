@@ -24,21 +24,21 @@ fn is_line_break(value: char) -> bool {
 }
 
 /// The first line of `text` as display text for a title: whitespace control
-/// characters such as tabs become spaces so words stay apart, other control
+/// characters such as tabs become a single space so words stay apart, other control
 /// and hidden format characters are removed, then the text is trimmed and cut
 /// at a character boundary within `max_bytes`. `None` when nothing printable
 /// is left.
 pub(crate) fn title_line(text: &str, max_bytes: usize) -> Option<String> {
-    let visible = text
-        .split(is_line_break)
-        .next()?
-        .chars()
-        .filter_map(|value| match value {
-            value if value.is_control() && value.is_whitespace() => Some(' '),
-            value if value.is_control() || is_hidden_format_character(value) => None,
-            value => Some(value),
-        })
-        .collect::<String>();
+    let mut visible = String::new();
+    for value in text.split(is_line_break).next()?.chars() {
+        if value.is_control() && value.is_whitespace() {
+            if !visible.ends_with(' ') {
+                visible.push(' ');
+            }
+        } else if !value.is_control() && !is_hidden_format_character(value) {
+            visible.push(value);
+        }
+    }
     let mut title = String::new();
     for character in visible
         .trim_matches(super::is_chat_title_trim_character)
@@ -111,6 +111,10 @@ mod tests {
         );
         assert_eq!(
             first_line_title("hello\tworld"),
+            Some("Chat: hello world".into())
+        );
+        assert_eq!(
+            first_line_title("hello \t\tworld"),
             Some("Chat: hello world".into())
         );
         assert_eq!(

@@ -16,6 +16,15 @@ pub(crate) enum WarningKind {
     Generic,
 }
 
+/// `text` with each line trimmed and blank lines dropped.
+fn warning_lines(text: &str) -> String {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 impl CodexAdapter {
     pub(crate) fn learn_bound_child(&mut self, child: &str) {
         if self
@@ -121,25 +130,24 @@ impl CodexAdapter {
 
     /// Remembers a warning's harness text and says whether it is new. Codex
     /// reports an unreadable configuration both as a `configWarning` (its
-    /// summary, details apart) and as a generic `warning` whose message is
-    /// that summary followed by the details, in either order. The second of
-    /// the pair is not new.
+    /// summary and details) and as a generic `warning` whose message is that
+    /// summary followed by the details, in either order. The second of the
+    /// pair is not new. Texts are compared line by line with each line
+    /// trimmed and blank lines dropped, so indentation does not matter but
+    /// every word, the details included, must agree.
     pub(crate) fn note_warning(&mut self, kind: WarningKind, text: &str) -> bool {
+        let text = warning_lines(text);
         let repeated = self
             .recent_warnings
             .iter()
-            .any(|(seen, seen_text)| match (kind, *seen) {
-                (WarningKind::Generic, WarningKind::Config) => text.starts_with(seen_text.as_str()),
-                (WarningKind::Config, WarningKind::Generic) => seen_text.starts_with(text),
-                _ => false,
-            });
+            .any(|(seen, seen_text)| *seen != kind && *seen_text == text);
         if repeated {
             return false;
         }
         if self.recent_warnings.len() == REPEATED_WARNINGS_MAX {
             self.recent_warnings.remove(0);
         }
-        self.recent_warnings.push((kind, text.to_owned()));
+        self.recent_warnings.push((kind, text));
         true
     }
 

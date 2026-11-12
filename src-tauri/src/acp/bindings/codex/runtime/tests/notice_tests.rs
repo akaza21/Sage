@@ -519,3 +519,42 @@ fn different_warnings_are_each_shown() {
     ));
     assert_eq!(second.source.unwrap().as_str(), "codex config");
 }
+
+#[test]
+fn another_setting_with_the_same_summary_is_still_shown() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    one_notice(&notify(
+        &mut runtime,
+        "warning",
+        json!({"message": format!("{IGNORED_SETTING}\n  {IGNORED_SETTING_DETAILS}")}),
+    ));
+    let other = one_notice(&notify(
+        &mut runtime,
+        "configWarning",
+        json!({"summary": IGNORED_SETTING, "details": "user [path] `model_verbosity_level` is ignored."}),
+    ));
+    assert!(
+        other
+            .text
+            .as_str()
+            .ends_with("`model_verbosity_level` is ignored.")
+    );
+}
+
+#[test]
+fn a_warning_that_only_begins_like_a_config_summary_is_still_shown() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    one_notice(&notify(
+        &mut runtime,
+        "configWarning",
+        json!({"summary": "Invalid configuration", "details": null}),
+    ));
+    let other = one_notice(&notify(
+        &mut runtime,
+        "warning",
+        json!({"message": "Invalid configuration in the MCP server list; skipping it."}),
+    ));
+    assert_eq!(other.source.unwrap().as_str(), "codex");
+}

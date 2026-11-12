@@ -178,9 +178,9 @@ pub(crate) struct CodexAdapter {
     /// Thread-less notices that arrived before a thread was bound; at most
     /// `PENDING_NOTICES_MAX`, oldest dropped first.
     pending_session_notices: Vec<SessionScopedEvent>,
-    /// The latest configuration-warning summaries and thread-less warning
-    /// messages, at most `REPEATED_WARNINGS_MAX`, so one problem Codex
-    /// reports both ways is shown once.
+    /// The latest configuration-warning texts (summary and details) and
+    /// generic warning messages, at most `REPEATED_WARNINGS_MAX`, so one
+    /// problem Codex reports both ways is shown once.
     recent_warnings: Vec<(WarningKind, String)>,
     turn_start_correlations: TurnStartCorrelations,
     active_turn_id: Option<ExternalId>,
