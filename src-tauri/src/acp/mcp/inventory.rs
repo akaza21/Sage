@@ -66,6 +66,8 @@ pub(crate) struct McpInventory {
     pub(crate) servers: Vec<McpServer>,
     /// The harness listed more servers than are shown.
     pub(crate) truncated: bool,
+    /// Sage can open a server's sign-in page on this system.
+    pub(crate) sign_in_available: bool,
 }
 
 impl McpInventory {
@@ -84,7 +86,11 @@ impl McpInventory {
                 .is_some_and(|cursor| !cursor.is_null());
         servers.sort_by(|left, right| left.name.cmp(&right.name));
         servers.truncate(MAX_LISTED_SERVERS);
-        Some(Self { servers, truncated })
+        Some(Self {
+            servers,
+            truncated,
+            sign_in_available: crate::system_browser::available(),
+        })
     }
 }
 

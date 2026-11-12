@@ -15,11 +15,22 @@ const server = {
 
 describe("native MCP server list contract", () => {
   it("admits the bounded inventory as the native side sends it", () => {
-    const value = { servers: [server], truncated: false };
+    const value = {
+      servers: [server],
+      truncated: false,
+      signInAvailable: true,
+    };
     expect(decodeMcpInventory(value)).toEqual(value);
-    expect(decodeMcpInventory({ servers: [], truncated: true })).toEqual({
+    expect(
+      decodeMcpInventory({
+        servers: [],
+        truncated: true,
+        signInAvailable: false,
+      }),
+    ).toEqual({
       servers: [],
       truncated: true,
+      signInAvailable: false,
     });
   });
 
@@ -41,11 +52,19 @@ describe("native MCP server list contract", () => {
         decodeMcpInventory({
           servers: [{ ...server, ...changed }],
           truncated: false,
+          signInAvailable: true,
         }),
       ).toBeNull();
     expect(
-      decodeMcpInventory({ servers: Array(65).fill(server), truncated: true }),
+      decodeMcpInventory({
+        servers: Array(65).fill(server),
+        truncated: true,
+        signInAvailable: false,
+      }),
     ).toBeNull();
     expect(decodeMcpInventory({ servers: [server] })).toBeNull();
+    expect(
+      decodeMcpInventory({ servers: [server], truncated: false }),
+    ).toBeNull();
   });
 });

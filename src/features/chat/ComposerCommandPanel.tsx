@@ -246,7 +246,7 @@ function McpServers({ request }: { request: AcpUsageRequest | null }) {
         <button
           type="button"
           className="button button--compact"
-          disabled={busy !== null}
+          aria-disabled={busy !== null}
           onClick={reload}
         >
           {busy === "reload" ? "Reloading…" : "Reload"}
@@ -288,11 +288,11 @@ function McpServers({ request }: { request: AcpUsageRequest | null }) {
                   {server.error}
                 </span>
               ) : null}
-              {mcpSignInOffered(server) ? (
+              {load.inventory.signInAvailable && mcpSignInOffered(server) ? (
                 <button
                   type="button"
                   className="button button--compact button--primary"
-                  disabled={busy !== null}
+                  aria-disabled={busy !== null}
                   aria-label={`Sign in to ${server.title ?? server.name}`}
                   onClick={() => signIn(server)}
                 >

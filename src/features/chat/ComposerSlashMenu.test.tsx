@@ -552,8 +552,16 @@ describe("composer slash commands", () => {
       tools: 2,
       origin: null,
     };
-    mcp.read.mockResolvedValue({ servers: [files, notion], truncated: false });
-    mcp.reload.mockResolvedValue({ servers: [files], truncated: false });
+    mcp.read.mockResolvedValue({
+      servers: [files, notion],
+      truncated: false,
+      signInAvailable: true,
+    });
+    mcp.reload.mockResolvedValue({
+      servers: [files],
+      truncated: false,
+      signInAvailable: true,
+    });
     mcp.signIn.mockResolvedValue(undefined);
     native.lists = [
       {
@@ -635,9 +643,11 @@ describe("composer slash commands", () => {
       error: null,
       origin: null,
     };
-    mcp.read
-      .mockReset()
-      .mockResolvedValue({ servers: [files], truncated: false });
+    mcp.read.mockReset().mockResolvedValue({
+      servers: [files],
+      truncated: false,
+      signInAvailable: true,
+    });
     let reloaded: (value: unknown) => void = () => undefined;
     mcp.reload
       .mockReset()
@@ -667,8 +677,13 @@ describe("composer slash commands", () => {
     expect(mcp.read).toHaveBeenCalledTimes(1);
     expect(
       within(panel).getByRole("button", { name: "Reloading…" }),
-    ).toBeDisabled();
-    await act(async () => reloaded({ servers: [files], truncated: false }));
+    ).toHaveAttribute("aria-disabled", "true");
+    // It keeps the focus but starts nothing while the reload runs.
+    fireEvent.click(within(panel).getByRole("button", { name: "Reloading…" }));
+    expect(mcp.reload).toHaveBeenCalledTimes(1);
+    await act(async () =>
+      reloaded({ servers: [files], truncated: false, signInAvailable: true }),
+    );
     // A refused re-read leaves the list in place and says why.
     mcp.read.mockRejectedValueOnce(
       new Error("This session cannot do that right now."),

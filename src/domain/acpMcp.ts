@@ -42,6 +42,8 @@ export interface McpInventory {
   servers: McpServer[];
   /** The harness listed more servers than are shown. */
   truncated: boolean;
+  /** Sage can open a server's sign-in page on this system. */
+  signInAvailable: boolean;
 }
 
 /** One live runtime's server, by name. */

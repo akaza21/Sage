@@ -61,6 +61,7 @@ export function decodeMcpInventory(value: unknown): McpInventory | null {
   if (
     !isRecord(value) ||
     typeof value.truncated !== "boolean" ||
+    typeof value.signInAvailable !== "boolean" ||
     !Array.isArray(value.servers) ||
     value.servers.length > MAX_SERVERS
   )
@@ -71,7 +72,11 @@ export function decodeMcpInventory(value: unknown): McpInventory | null {
     if (!server) return null;
     servers.push(server);
   }
-  return { servers, truncated: value.truncated };
+  return {
+    servers,
+    truncated: value.truncated,
+    signInAvailable: value.signInAvailable,
+  };
 }
 
 function inventory(value: unknown): McpInventory {
