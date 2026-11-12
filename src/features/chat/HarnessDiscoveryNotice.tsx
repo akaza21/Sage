@@ -15,44 +15,68 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
 }) {
   // Dismissal is disposable pane state. A remounted pane explains the build
   // again; no durable preference or protocol admission decision is changed.
-  const [dismissedBuild, setDismissedBuild] = useState<string | null>(null);
+  // The build and the update are dismissed apart, so a check that finds an
+  // update never brings back a dismissed build explanation, and a later
+  // release is announced again.
+  const [dismissed, setDismissed] = useState<readonly string[]>([]);
+  const update = harness?.update;
   const build = JSON.stringify([
     harness?.id,
     harness?.bindingId,
     harness?.boundVersion,
   ]);
+  const release = JSON.stringify([harness?.id, update?.latestVersion]);
   if (harness?.transport !== "acp") return null;
+  // The exact command, when Sage knows who owns the install.
+  const howToUpdate = update ? (
+    <>
+      Run <code>{update.command}</code>, then refresh discovery in Settings.
+    </>
+  ) : (
+    "Update it, then refresh harness discovery in Settings."
+  );
   if (harness.installState !== "available") {
     return (
       <div className="composer__notice" role="status">
         {/* Explained here, off the first-chat path; the picker keeps the
             short reason. */}
-        {harness.unavailableReason === "versionTooOld"
-          ? "This version is too old for Sage. Update it, then refresh harness discovery in Settings."
-          : harnessUnavailableReason(harness.unavailableReason)}
+        {harness.unavailableReason === "versionTooOld" ? (
+          <>This version is too old for Sage. {howToUpdate}</>
+        ) : (
+          harnessUnavailableReason(harness.unavailableReason)
+        )}
       </div>
     );
   }
   const newer = harness.characterisation === "newerThanTested";
-  if (
-    (!newer && harness.characterisation !== "uncharacterised") ||
-    dismissedBuild === build
-  )
-    return null;
+  const showBuild =
+    (newer || harness.characterisation === "uncharacterised") &&
+    !dismissed.includes(build);
+  const showUpdate = update && !dismissed.includes(release);
+  if (!showBuild && !showUpdate) return null;
   return (
     <div className="build-notice" role="status">
       <Info aria-hidden="true" />
       <span>
-        {harness.name} {harness.boundVersion}
-        {newer
-          ? " is newer than Sage has tested. Tested features stay on."
-          : " hasn't been tested with Sage yet, so some features are off."}
+        {showBuild ? (
+          <>
+            {harness.name} {harness.boundVersion}
+            {newer
+              ? " is newer than Sage has tested. Tested features stay on. "
+              : " hasn't been tested with Sage yet, so some features are off. "}
+          </>
+        ) : null}
+        {showUpdate ? (
+          <>
+            {harness.name} {update.latestVersion} is available. {howToUpdate}
+          </>
+        ) : null}
       </span>
       <button
         type="button"
         aria-label="Dismiss build notice"
         title="Dismiss"
-        onClick={() => setDismissedBuild(build)}
+        onClick={() => setDismissed([build, release])}
       >
         <X aria-hidden="true" />
       </button>
