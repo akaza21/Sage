@@ -67,7 +67,7 @@ export function EditorWelcome({ onOpenAgent }: { onOpenAgent: () => void }) {
           Open Agent
         </button>
       </div>
-      <p>Use Settings to tune how every File is displayed.</p>
+      <p>Use Settings to tune how every file is displayed.</p>
     </section>
   );
 }

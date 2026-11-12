@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
+import { useActiveOption } from "../../ui/listNavigation";
+
 import { useWorkbenchStore } from "../../app/store";
 
 import {
@@ -98,7 +100,6 @@ export default function QuickOpen({
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [indexing, setIndexing] = useState(false);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [session] = useState(() => nextQuickOpenStamp());
   const returnFocus = useRef<Element | null>(document.activeElement);
   const closed = useRef(false);
@@ -236,9 +237,12 @@ export default function QuickOpen({
     ? commands.map((command) => command.id)
     : results.map(matchKey);
   // The selection follows its File when a refreshed answer reorders the list.
-  const keyed = itemKeys.indexOf(selectedKey ?? "");
-  const active = keyed >= 0 ? keyed : 0;
-  const activeKey = itemKeys[active] ?? null;
+  const {
+    activeIndex: active,
+    activeId: activeKey,
+    move,
+    setActiveId: setSelectedKey,
+  } = useActiveOption(itemKeys, "first");
 
   useEffect(() => {
     list.current
@@ -279,13 +283,15 @@ export default function QuickOpen({
     } else if (event.key === "Escape") {
       event.preventDefault();
       close(true);
-    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    } else if (
+      event.key === "ArrowDown" ||
+      event.key === "ArrowUp" ||
+      event.key === "PageDown" ||
+      event.key === "PageUp"
+    ) {
+      // Home and End stay with the field's caret.
       event.preventDefault();
-      if (itemKeys.length === 0) return;
-      const step = event.key === "ArrowDown" ? 1 : -1;
-      setSelectedKey(
-        itemKeys[(active + step + itemKeys.length) % itemKeys.length],
-      );
+      move(event.key);
     } else if (event.key === "Enter") {
       // Ctrl/Cmd+Enter opens to the side where there is a split; there
       // isn't yet, so it opens in place too.
@@ -298,16 +304,16 @@ export default function QuickOpen({
   let status = "";
   if (commandMode) {
     status = commands.length === 0 ? "No matching commands." : "";
-  } else if (!projectId) status = "Open a Project to find its Files.";
+  } else if (!projectId) status = "Open a project to find its files.";
   else if (bareLine) {
     status = activeFile()
-      ? `Press Enter to go to line ${line} in the active File.`
-      : "Open a File to go to a line in it.";
+      ? `Press Enter to go to line ${line} in the active file.`
+      : "Open a file to go to a line in it.";
   } else if (error) status = error;
   else if (!answer) status = indexing ? "Indexing…" : "";
   else if (results.length === 0) {
     status =
-      query === "" ? "Type to find a File by name." : "No matching Files.";
+      query === "" ? "Type to find a file by name." : "No matching files.";
   }
 
   return (
@@ -337,7 +343,7 @@ export default function QuickOpen({
         <input
           className="quick-open__input"
           role="combobox"
-          aria-label={commandMode ? "Run a command" : "Search Files by name"}
+          aria-label={commandMode ? "Run a command" : "Search files by name"}
           aria-autocomplete="list"
           aria-expanded={itemKeys.length > 0}
           aria-controls={listId}
@@ -365,7 +371,7 @@ export default function QuickOpen({
           aria-hidden="true"
           hidden={text !== ""}
         >
-          Search Files by name (:line goes to a line, &gt; runs a command)
+          Search files by name (:line goes to a line, &gt; runs a command)
         </span>
         <ul
           ref={list}
@@ -429,7 +435,7 @@ export default function QuickOpen({
         </p>
         {answer?.truncated && !bareLine && !commandMode ? (
           <p className="quick-open__status">
-            Only the first {answer.indexedFiles.toLocaleString()} Files are
+            Only the first {answer.indexedFiles.toLocaleString()} files are
             searched.
           </p>
         ) : null}

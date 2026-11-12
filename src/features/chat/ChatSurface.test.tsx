@@ -2206,7 +2206,7 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeNull();
     expect(
       screen.queryByText(
-        "The selected Harness cannot accept prompts in this session.",
+        "The selected harness cannot accept prompts in this session.",
       ),
     ).toBeNull();
   });
@@ -2241,7 +2241,7 @@ describe("ChatSurface ACP resource integration", () => {
     ).toHaveAttribute("placeholder", "This session cannot accept prompts.");
     expect(
       screen.getByText(
-        "The selected Harness cannot accept prompts in this session.",
+        "The selected harness cannot accept prompts in this session.",
       ),
     ).toBeInTheDocument();
   });
@@ -2811,7 +2811,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(options[0]).toHaveTextContent(/^Simulator$/);
     expect(options[0]).toHaveAccessibleName("Simulator — test only");
     expect(options[1]).toHaveAccessibleName(
-      "Codex — unavailable. Sage did not admit this harness and will not start it.",
+      "Codex — unavailable. Sage can't start this harness.",
     );
     expect(options[1]).toBeDisabled();
     expect(options[2]).toHaveAccessibleName(
@@ -3291,18 +3291,18 @@ describe("ChatSurface ACP resource integration", () => {
     // The dialog loads in its own lazy chunk on the first Hand off: wait for
     // it rather than race a cold import against findByRole's clock.
     await settleLazyModules();
-    const dialog = screen.getByRole("dialog", { name: "Hand off this Chat" });
+    const dialog = screen.getByRole("dialog", { name: "Hand off this chat" });
     // Query inside the dialog and name only the options used: a role query
     // by name computes each candidate's name through jsdom's style cascade,
     // across the whole Chat surface or all 63 targets.
-    const target = within(dialog).getByRole("button", { name: "Target Chat" });
+    const target = within(dialog).getByRole("button", { name: "Target chat" });
     expect(target).toHaveTextContent("Testing");
     fireEvent.click(target);
     const targetPicker = screen.getByRole("combobox", {
-      name: "Target Chat",
+      name: "Target chat",
     });
     const targetListbox = screen.getByRole("listbox", {
-      name: "Target Chat",
+      name: "Target chat",
     });
     expect(dialog).toContainElement(targetPicker);
     expect(dialog).toContainElement(targetListbox);
@@ -3338,12 +3338,12 @@ describe("ChatSurface ACP resource integration", () => {
     expect(handoffChat).not.toHaveBeenCalled();
     act(() => useWorkbenchStore.setState({ projectTransitioning: false }));
     fireEvent.click(trigger);
-    const reopened = screen.getByRole("dialog", { name: "Hand off this Chat" });
+    const reopened = screen.getByRole("dialog", { name: "Hand off this chat" });
     fireEvent.click(
-      within(reopened).getByRole("button", { name: "Target Chat" }),
+      within(reopened).getByRole("button", { name: "Target chat" }),
     );
     const reopenedTargetPicker = screen.getByRole("combobox", {
-      name: "Target Chat",
+      name: "Target chat",
     });
     fireEvent.keyDown(reopenedTargetPicker, { key: "ArrowDown" });
     fireEvent.keyDown(reopenedTargetPicker, { key: "ArrowDown" });
@@ -3476,21 +3476,21 @@ describe("ChatSurface ACP resource integration", () => {
     const trigger = screen.getByRole("button", { name: "Hand off chat" });
     fireEvent.click(trigger);
     const dialog = await screen.findByRole("dialog", {
-      name: "Hand off this Chat",
+      name: "Hand off this chat",
     });
-    const first = screen.getByRole("button", { name: "Target Chat" });
+    const first = screen.getByRole("button", { name: "Target chat" });
     const last = screen.getByRole("button", { name: "Place in target" });
     fireEvent.click(first);
-    const pickerInput = screen.getByRole("combobox", { name: "Target Chat" });
+    const pickerInput = screen.getByRole("combobox", { name: "Target chat" });
     expect(dialog.contains(pickerInput)).toBe(true);
     await waitFor(() => expect(pickerInput).toHaveFocus());
     const forwardTab = createEvent.keyDown(pickerInput, { key: "Tab" });
     fireEvent(pickerInput, forwardTab);
     expect(forwardTab.defaultPrevented).toBe(false);
-    expect(screen.queryByRole("combobox", { name: "Target Chat" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Target chat" })).toBeNull();
     expect(first).toHaveFocus();
     fireEvent.click(first);
-    const reverseInput = screen.getByRole("combobox", { name: "Target Chat" });
+    const reverseInput = screen.getByRole("combobox", { name: "Target chat" });
     await waitFor(() => expect(reverseInput).toHaveFocus());
     const reverseTab = createEvent.keyDown(reverseInput, {
       key: "Tab",
@@ -3498,13 +3498,13 @@ describe("ChatSurface ACP resource integration", () => {
     });
     fireEvent(reverseInput, reverseTab);
     expect(reverseTab.defaultPrevented).toBe(true);
-    expect(screen.queryByRole("combobox", { name: "Target Chat" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Target chat" })).toBeNull();
     expect(last).toHaveFocus();
     fireEvent.click(first);
-    const escapeInput = screen.getByRole("combobox", { name: "Target Chat" });
+    const escapeInput = screen.getByRole("combobox", { name: "Target chat" });
     await waitFor(() => expect(escapeInput).toHaveFocus());
     fireEvent.keyDown(escapeInput, { key: "Escape" });
-    expect(screen.queryByRole("combobox", { name: "Target Chat" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Target chat" })).toBeNull();
     expect(dialog).toBeVisible();
     expect(first).toHaveFocus();
     first.focus();
@@ -3516,17 +3516,17 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(trigger).toHaveFocus());
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("button", { name: "Target Chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Target chat" }));
     await waitFor(() =>
       expect(
-        screen.getByRole("combobox", { name: "Target Chat" }),
+        screen.getByRole("combobox", { name: "Target chat" }),
       ).toHaveFocus(),
     );
     act(() => useWorkbenchStore.setState({ projectGeneration: 5 }));
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
-    expect(screen.queryByRole("combobox", { name: "Target Chat" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Target chat" })).toBeNull();
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
@@ -3889,7 +3889,7 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     expect(
       screen.getByRole("option", {
-        name: "Unavailable harness — unavailable. Sage did not admit this harness and will not start it.",
+        name: "Unavailable harness — unavailable. Sage can't start this harness.",
       }),
     ).toBeDisabled();
     fireEvent.click(screen.getByRole("option", { name: "Codex — available" }));
@@ -3910,7 +3910,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByLabelText("Model")).toBeDisabled();
     expect(
       screen.queryByText(
-        "Wait for the active Turn to finish, or cancel it when available.",
+        "Wait for the active turn to finish, or cancel it when available.",
       ),
     ).toBeNull();
     expect(
@@ -3988,7 +3988,7 @@ describe("ChatSurface ACP resource integration", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     const option = screen.getByRole("option", {
-      name: "Claude Code — available — uncharacterised",
+      name: "Claude Code — available — untested version",
     });
     expect(option).toBeEnabled();
     fireEvent.click(option);

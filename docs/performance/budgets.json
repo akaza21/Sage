@@ -245,8 +245,8 @@
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",
-        "maxGzipBytes": 3785,
-        "reason": "Chat search dialog, folder fan-out and native search adapter; loads on the first Search chats request (rail, title bar or Ctrl+K)."
+        "maxGzipBytes": 3990,
+        "reason": "Chat search dialog as a combobox with its results list, folder fan-out and native search adapter; loads on the first Search chats request (rail, title bar or Ctrl+K). Measured 3929 B JS."
       },
       {
         "entry": "src/features/chat/ForkChat.tsx",

@@ -2,6 +2,7 @@ import { Search, X } from "../../ui/leanIcons";
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -12,12 +13,18 @@ import {
 import { chatPlacement, openChat } from "../../app/openChat";
 import { useWorkbenchStore } from "../../app/store";
 import { boundedError } from "../../domain/errors";
+import { isImeComposing } from "../../ui/imeComposition";
+import {
+  hasNavigationModifier,
+  useActiveOption,
+} from "../../ui/listNavigation";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
 import {
   admitChatSearchFolder,
   chatSearchFolderOptions,
+  chatSearchResultKey,
   matchesChatSearchScope,
   runScopedChatSearch,
   type ChatSearchFanoutPick,
@@ -247,7 +254,7 @@ export function ChatSearchControl({
       requestGeneration.current += 1;
       setResponse(null);
       setPhase("error");
-      setError("This Chat result changed. Search again to continue.");
+      setError("This chat result changed. Search again to continue.");
       return;
     }
     close(false);
@@ -269,6 +276,22 @@ export function ChatSearchControl({
     [scope],
   );
   const folders = useMemo(() => chatSearchFolderOptions(projects), [projects]);
+  const listboxId = useId();
+  const shown = phase === "results" ? response : null;
+  const shownKeys = useMemo(
+    () => shown?.results.map(chatSearchResultKey) ?? [],
+    [shown],
+  );
+  // Nothing is active until the user moves, so Enter searches until then.
+  // Each new answer (or none) starts again from nothing active.
+  const option = useActiveOption(shownKeys, "none");
+  const [answered, setAnswered] = useState(shown);
+  if (answered !== shown) {
+    setAnswered(shown);
+    option.setActiveId(null);
+  }
+  const activeResult =
+    option.activeIndex >= 0 ? shown?.results[option.activeIndex] : undefined;
   const folderCandidates = useMemo(
     () => folders.map((folder) => ({ id: folder.id, label: folder.name })),
     [folders],
@@ -285,7 +308,7 @@ export function ChatSearchControl({
           onDismiss={() => close()}
         >
           <form className="chat-search-dialog__form" onSubmit={submit}>
-            <h2 id="chat-search-title">Search Chats</h2>
+            <h2 id="chat-search-title">Search chats</h2>
             {/* Dismiss sits in the header, as in the other dialogs, so it
                 stays put while results and errors come and go. */}
             <button
@@ -298,29 +321,48 @@ export function ChatSearchControl({
               <X size={16} aria-hidden="true" />
             </button>
             <p>
-              Search durable titles and primary conversation text in the
-              selected folder, or across listed folders.
+              Search chat titles and messages in the selected folder, or across
+              listed folders.
             </p>
             <label className="chat-search-dialog__query">
-              <span>Search Chats</span>
+              <span>Search chats</span>
               <input
                 ref={queryRef}
                 autoFocus
-                aria-label="Search Chats"
+                aria-label="Search chats"
+                aria-activedescendant={
+                  option.activeId
+                    ? `${listboxId}-${option.activeIndex}`
+                    : undefined
+                }
+                aria-autocomplete="list"
+                aria-controls={shownKeys.length > 0 ? listboxId : undefined}
+                aria-expanded={shownKeys.length > 0}
                 disabled={projectTransitioning}
                 maxLength={MAX_CHAT_SEARCH_QUERY_BYTES}
-                role="searchbox"
+                role="combobox"
                 type="search"
                 value={query}
                 onChange={(event) => editQuery(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key !== "ArrowDown") return;
-                  const result = event.currentTarget
-                    .closest("form")
-                    ?.querySelector<HTMLButtonElement>('[role="option"]');
-                  if (result) {
+                  if (
+                    isImeComposing(event) ||
+                    hasNavigationModifier(event) ||
+                    shownKeys.length === 0
+                  )
+                    return;
+                  if (
+                    event.key === "ArrowDown" ||
+                    event.key === "ArrowUp" ||
+                    event.key === "PageDown" ||
+                    event.key === "PageUp"
+                  ) {
+                    // Home and End stay with the field's caret.
                     event.preventDefault();
-                    result.focus();
+                    option.move(event.key);
+                  } else if (event.key === "Enter" && activeResult) {
+                    event.preventDefault();
+                    void selectResult(activeResult);
                   }
                 }}
               />
@@ -340,11 +382,12 @@ export function ChatSearchControl({
               {searchStatus(phase, response)}
             </p>
             <ChatSearchResults
-              response={phase === "results" ? response : null}
+              response={shown}
               error={error}
               scope={scope}
               folders={folders}
-              onFocusQuery={() => queryRef.current?.focus()}
+              listboxId={listboxId}
+              activeIndex={option.activeIndex}
               onSelect={selectResult}
             />
           </form>

@@ -342,6 +342,25 @@ describe("composer image input", () => {
     );
   });
 
+  it("clears the unavailable warning once the session takes images", () => {
+    const { rerenderComposer } = renderComposer({
+      imageInputAvailable: false,
+      imageInputDisabledReason:
+        "Images become available once the session starts.",
+    });
+    fireEvent.paste(screen.getByRole("combobox", { name: "Message agent" }), {
+      clipboardData: { files: [png()] },
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "once the session starts",
+    );
+    rerenderComposer({
+      imageInputAvailable: true,
+      imageInputDisabledReason: null,
+    });
+    expect(screen.queryByText(/once the session starts/)).toBeNull();
+  });
+
   it("passes large screenshots on for native resizing and refuses files over 10 MiB", () => {
     const { onAddImages } = renderComposer({ imageInputAvailable: true });
     const screenshot = new File([new Uint8Array(6 * 1024 * 1024)], "4k.png", {

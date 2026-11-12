@@ -56,7 +56,7 @@ describe("HarnessBrowserSurface", () => {
     expect(screen.getByText("Preview is idle")).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Preview shows loopback development servers started from this Chat/,
+        /Preview shows loopback development servers started from this chat/,
       ),
     ).toBeInTheDocument();
   });

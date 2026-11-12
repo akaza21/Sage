@@ -158,7 +158,7 @@ test("AP-C sidebar search and Ctrl+K share a focused live palette", async ({
     exact: true,
   });
   await trigger.click();
-  const query = page.getByRole("searchbox", { name: "Search Chats" });
+  const query = page.getByRole("searchbox", { name: "Search chats" });
   await expect(query).toBeFocused();
   await expect(
     page
@@ -178,7 +178,7 @@ test("AP-C sidebar search and Ctrl+K share a focused live palette", async ({
   await expect(query).toHaveValue("");
 });
 
-test("Search Chats keeps Close reachable when a pending search fails", async ({
+test("Search chats keeps Close reachable when a pending search fails", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 690, height: 440 });
@@ -197,7 +197,7 @@ test("Search Chats keeps Close reachable when a pending search fails", async ({
     .locator("header.title-bar")
     .getByRole("button", { name: "Search chats" });
   await trigger.click();
-  const dialog = page.getByRole("dialog", { name: "Search Chats" });
+  const dialog = page.getByRole("dialog", { name: "Search chats" });
   await page.clock.runFor(250);
   await expect(dialog.getByRole("status")).toHaveText("Searching…");
   const cancel = dialog.getByRole("button", { name: "Close", exact: true });
@@ -274,7 +274,7 @@ test("AP-C Show more lists a project's hidden chats in place", async ({
   });
   await expect(hidden).toHaveCount(0);
   await projects.getByRole("button", { name: "Show more" }).first().click();
-  await expect(page.getByRole("dialog", { name: "Search Chats" })).toHaveCount(
+  await expect(page.getByRole("dialog", { name: "Search chats" })).toHaveCount(
     0,
   );
   await hidden.click();

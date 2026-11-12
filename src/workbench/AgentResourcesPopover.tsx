@@ -137,8 +137,8 @@ export function AgentResourcesPopover({
           disabled={!validPage || !page?.currentSessionId}
           title={
             !validPage || !page?.currentSessionId
-              ? "No current Chat session"
-              : "View this Chat's changes"
+              ? "No current chat session"
+              : "View this chat's changes"
           }
           onClick={() => {
             launch("changes", chatId);

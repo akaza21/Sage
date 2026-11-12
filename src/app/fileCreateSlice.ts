@@ -216,7 +216,7 @@ export const createFileCreateSlice: StateCreator<
         creationError(
           kind,
           validationError ??
-            `Select one available Project root to create a ${kind}.`,
+            `Select one available project root to create a ${kind}.`,
         ),
       );
       return false;

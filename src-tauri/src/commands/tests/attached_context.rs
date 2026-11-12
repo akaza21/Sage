@@ -432,7 +432,10 @@ fn attached_context_corrupt_and_out_of_range_fail_without_dispatch_or_user_item(
 fn image_attachment_is_typed_not_dispatched_for_every_send_target() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         for new_session in [false, true] {
-            let fixture = Fixture::new().await;
+            // A session that did not negotiate image input; a Windows desktop
+            // fixture's Codex ceiling advertises it.
+            let fixture =
+                Fixture::with_capabilities(|capabilities| capabilities.prompt_images = false).await;
             let (calls, _) = fixture.install_host();
             let before = fixture.counts();
             let image = serde_json::json!({
@@ -581,7 +584,11 @@ fn staged_files_are_refused_without_dispatch_and_retained_for_retry() {
     use crate::acp::attached_context::files::{Resource, Resources};
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         for new_session in [false, true] {
-            let fixture = Fixture::new().await;
+            // A session without embedded-resource prompts; a Windows desktop
+            // fixture's Codex ceiling advertises them.
+            let fixture =
+                Fixture::with_capabilities(|capabilities| capabilities.prompt_resources = false)
+                    .await;
             let (calls, _) = fixture.install_host();
             let before = fixture.counts();
             let revision = fixture

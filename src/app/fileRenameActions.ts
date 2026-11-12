@@ -190,8 +190,8 @@ export async function renameProjectResource(
     set({
       fileRenameError:
         kind === "file"
-          ? "Select one visible regular file in an available Project root to rename."
-          : "Select one visible empty folder in an available Project root to rename.",
+          ? "Select one visible regular file in an available project root to rename."
+          : "Select one visible empty folder in an available project root to rename.",
     });
     return false;
   }
@@ -204,7 +204,7 @@ export async function renameProjectResource(
   if (hasResourceTab(state, source, target, kind) || activeEditorConflict) {
     set({
       fileRenameError:
-        "Close File and Diff tabs for the source and target before renaming.",
+        "Close file and diff tabs for the source and target before renaming.",
     });
     return false;
   }
@@ -237,7 +237,7 @@ export async function renameProjectResource(
     const currentLayout = currentProjectLayout(get());
     if (!currentLayout || hasResourceTab(get(), source, target, kind)) {
       throw new Error(
-        "Close File and Diff tabs for the source and target before renaming.",
+        "Close file and diff tabs for the source and target before renaming.",
       );
     }
     await getWorkbenchPorts().project.persistProjectLayout(

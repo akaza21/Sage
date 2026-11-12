@@ -294,11 +294,11 @@
   background: transparent;
   color: var(--search-dialog-text-primary);
   padding: var(--space-2);
-  text-align: left;
+  cursor: default;
 }
 
 .chat-search-result:hover,
-.chat-search-result:focus-visible {
+.chat-search-result[aria-selected="true"] {
   border-color: var(--color-border-strong);
   background: var(--color-surface-hover);
   outline: none;

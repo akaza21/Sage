@@ -449,6 +449,10 @@ impl ClaudeSdkBindingRegistration {
         matches!(*self.lock_state(), RegistrationState::Admitted(_))
     }
 
+    pub(crate) fn discovery_pending(&self) -> bool {
+        matches!(*self.lock_state(), RegistrationState::Pending)
+    }
+
     pub(crate) fn admitted(&self) -> Option<Arc<AdmittedClaudeSdkBinding>> {
         match &*self.lock_state() {
             RegistrationState::Admitted(binding) => Some(Arc::clone(binding)),

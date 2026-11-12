@@ -99,7 +99,7 @@ afterEach(() => {
 });
 
 const input = () =>
-  screen.getByRole("combobox", { name: "Search Files by name" });
+  screen.getByRole("combobox", { name: "Search files by name" });
 const options = () =>
   screen.queryAllByRole("option").map((option) => option.textContent);
 
@@ -196,7 +196,7 @@ describe("Quick Open", () => {
     render(<QuickOpen onClose={vi.fn()} />);
     await waitFor(() => expect(sent).toHaveLength(1));
     fireEvent.change(input(), { target: { value: ":30" } });
-    await screen.findByText("Press Enter to go to line 30 in the active File.");
+    await screen.findByText("Press Enter to go to line 30 in the active file.");
     // Nothing is asked for a bare line; the opening query was the only one.
     expect(sent.map((request) => request.query)).toEqual([""]);
     fireEvent.keyDown(input(), { key: "Enter" });
@@ -215,7 +215,7 @@ describe("Quick Open", () => {
     fireEvent.change(input(), { target: { value: "zzz" } });
     expect(await screen.findByText("Indexing…")).toBeInTheDocument();
     expect(
-      await screen.findByText("No matching Files.", {}, { timeout: 2000 }),
+      await screen.findByText("No matching files.", {}, { timeout: 2000 }),
     ).toBeInTheDocument();
   });
 
@@ -413,7 +413,7 @@ describe("Quick Open", () => {
     useWorkbenchStore.setState({ project: null });
     const { unmount } = render(<QuickOpen onClose={vi.fn()} />);
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Open a Project to find its Files.",
+      "Open a project to find its files.",
     );
     unmount();
     useWorkbenchStore.setState({
@@ -492,5 +492,34 @@ describe("Quick Open's commands (ED-2a)", () => {
     expect(input()).toHaveValue("");
     fireEvent.change(input(), { target: { value: "app" } });
     await waitFor(() => expect(options()).toHaveLength(2));
+  });
+
+  it("pages through the list and leaves Home and End to the caret", async () => {
+    const files = Array.from(
+      { length: 15 },
+      (_, index) => `f${String(index).padStart(2, "0")}.ts`,
+    );
+    fakeNative({ files: () => files });
+    render(<QuickOpen onClose={vi.fn()} />);
+    fireEvent.change(input(), { target: { value: "f" } });
+    await waitFor(() => expect(options()).toHaveLength(15));
+    const selected = () =>
+      screen
+        .getAllByRole("option")
+        .findIndex((option) => option.getAttribute("aria-selected") === "true");
+
+    fireEvent.keyDown(input(), { key: "PageDown" });
+    expect(selected()).toBe(10);
+    expect(input()).toHaveAttribute(
+      "aria-activedescendant",
+      screen.getAllByRole("option")[10].id,
+    );
+    fireEvent.keyDown(input(), { key: "PageDown" });
+    expect(selected()).toBe(14);
+    fireEvent.keyDown(input(), { key: "PageUp" });
+    expect(selected()).toBe(4);
+    expect(fireEvent.keyDown(input(), { key: "Home" })).toBe(true);
+    expect(fireEvent.keyDown(input(), { key: "End" })).toBe(true);
+    expect(selected()).toBe(4);
   });
 });

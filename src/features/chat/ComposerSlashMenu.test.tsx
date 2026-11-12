@@ -270,6 +270,15 @@ describe("composer slash commands", () => {
     fireEvent.keyDown(field, { key: "ArrowUp" });
     fireEvent.keyDown(field, { key: "ArrowUp" });
     expect(active()).toHaveTextContent("/mcp:docs:search");
+    // PageUp and PageDown move a page and stop at the ends.
+    fireEvent.keyDown(field, { key: "PageUp" });
+    expect(active()).toHaveTextContent("/compact");
+    fireEvent.keyDown(field, { key: "PageDown" });
+    expect(active()).toHaveTextContent("/mcp:docs:search");
+    // Home and End move the caret in the composer.
+    expect(fireEvent.keyDown(field, { key: "Home" })).toBe(true);
+    expect(fireEvent.keyDown(field, { key: "End" })).toBe(true);
+    expect(active()).toHaveTextContent("/mcp:docs:search");
     expect(listbox).toBeInTheDocument();
 
     fireEvent.keyDown(field, { key: "Enter" });

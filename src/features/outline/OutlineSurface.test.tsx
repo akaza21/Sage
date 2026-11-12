@@ -270,7 +270,7 @@ describe("OutlineSurface", () => {
     render(<OutlineSurface />);
 
     expect(
-      await screen.findByText("No Outline for this File type."),
+      await screen.findByText("No outline for this file type."),
     ).toBeInTheDocument();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
@@ -280,7 +280,7 @@ describe("OutlineSurface", () => {
     setContent("x".repeat(MAX_OUTLINE_SOURCE_CHARS + 1));
     render(<OutlineSurface />);
     expect(
-      await screen.findByText("This File is too large for an Outline."),
+      await screen.findByText("This file is too large for an outline."),
     ).toBeInTheDocument();
   });
 
@@ -297,7 +297,7 @@ describe("OutlineSurface", () => {
     setContent('import "./side-effect";\n');
     render(<OutlineSurface />);
     expect(
-      await screen.findByText("No symbols for the active File."),
+      await screen.findByText("No symbols for the active file."),
     ).toBeInTheDocument();
   });
 
@@ -308,6 +308,6 @@ describe("OutlineSurface", () => {
     expect(await screen.findByText("1 Symbol")).toBeInTheDocument();
 
     act(() => useWorkbenchStore.setState({ activeEditor: null }));
-    expect(screen.getByText("No File is open.")).toBeInTheDocument();
+    expect(screen.getByText("No file is open.")).toBeInTheDocument();
   });
 });

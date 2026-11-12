@@ -271,7 +271,7 @@ describe("file rename store transaction", () => {
         useWorkbenchStore.getState().renameProjectFile(source, "new.ts"),
       ).resolves.toBe(false);
       expect(useWorkbenchStore.getState().fileRenameError).toContain(
-        "Close File and Diff tabs",
+        "Close file and diff tabs",
       );
     }
     expect(rename).not.toHaveBeenCalled();
