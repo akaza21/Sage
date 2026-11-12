@@ -380,11 +380,11 @@ fn windows_batch_launcher_rejects_npm_shim_drift_before_cmd_executes_it() {
 
 #[cfg(windows)]
 #[test]
-fn windows_npm_codex_launcher_hands_node_the_script_by_its_ordinary_name() {
+fn windows_npm_codex_launcher_hands_node_ordinary_script_and_working_directory_paths() {
     use sha2::{Digest, Sha256};
 
     // Node 22.23 cannot load a main script named by a verbatim `\\?\` path,
-    // and the launcher's canonical path is verbatim.
+    // and the launcher's canonical path is verbatim; the project root is too.
     let directory = std::env::temp_dir().join(format!("sage-npm-codex-{}", Uuid::new_v4()));
     let script_directory = directory
         .join("node_modules")
@@ -394,7 +394,7 @@ fn windows_npm_codex_launcher_hands_node_the_script_by_its_ordinary_name() {
     std::fs::create_dir_all(&script_directory).unwrap();
     std::fs::write(
         script_directory.join("codex.js"),
-        b"process.stdout.write(process.argv[1] + '|' + process.argv[2]);\n",
+        b"process.stdout.write([process.argv[1], process.argv[2], process.cwd()].join('|'));\n",
     )
     .unwrap();
     let launcher = directory.join("codex.cmd");
@@ -460,9 +460,13 @@ fn windows_npm_codex_launcher_hands_node_the_script_by_its_ordinary_name() {
             .unwrap()
             .join(r"node_modules\@openai\codex\bin\codex.js"),
     );
+    // Pi names its session folder after the working directory, and a
+    // verbatim prefix there produced an illegal file name.
+    let cwd = crate::win32_path::simplified(spec.project_root.as_path());
+    assert!(!cwd.to_string_lossy().starts_with(r"\\?\"));
     assert_eq!(
         String::from_utf8(output).unwrap(),
-        format!("{}|app-server", script.display())
+        format!("{}|app-server|{}", script.display(), cwd.display())
     );
     assert_eq!(pool.usage(), (0, 0));
     std::fs::remove_dir_all(directory).unwrap();
