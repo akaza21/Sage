@@ -87,9 +87,9 @@ enum Pending {
     Withdraw(String),
     /// A session control; its reply completes the native request.
     Control,
-    /// A read of the session's MCP servers.
-    McpList,
-    /// A read whose caller gave up: its late reply is dropped.
+    /// An MCP request Sage stops waiting for at its deadline.
+    Mcp(controls::McpRequest),
+    /// An MCP request whose caller gave up: its late reply is dropped.
     Abandoned,
     /// A fork, with Claude Code's profile to read the cut point from once
     /// its reply confirms the turn's transcript is written.

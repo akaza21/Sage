@@ -726,7 +726,7 @@ fn an_abandoned_mcp_list_frees_the_session_and_its_late_reply_is_dropped() {
         let list = bridge
             .session_control(&SessionControl::ReadMcpServers)
             .unwrap();
-        bridge.abandon_mcp_list();
+        bridge.abandon_mcp_requests();
         assert!(!bridge.controlling(), "an abandoned list holds nothing");
         abandoned.push(list);
     }
@@ -751,6 +751,36 @@ fn an_abandoned_mcp_list_frees_the_session_and_its_late_reply_is_dropped() {
             .session_control(&SessionControl::ReadMcpServers)
             .is_ok()
     );
+}
+
+#[test]
+fn an_abandoned_reconnect_frees_the_session_and_counts_toward_the_bound() {
+    use crate::acp::{contract::RequiredText, session_control::SessionControl};
+    let mut bridge = initialized();
+    let reconnect = SessionControl::ReconnectMcpServer {
+        name: RequiredText::new("serverName", "linear").unwrap(),
+    };
+    let mut abandoned = Vec::new();
+    for _ in 0..4 {
+        abandoned.push(bridge.session_control(&reconnect).unwrap());
+        bridge.abandon_mcp_requests();
+        assert!(
+            !bridge.controlling(),
+            "an abandoned reconnect holds nothing"
+        );
+    }
+    // Neither MCP request is sent past the bound; other controls still are.
+    assert_eq!(
+        bridge.session_control(&reconnect),
+        Err(BridgeError::Capacity)
+    );
+    assert_eq!(
+        bridge.session_control(&SessionControl::ReadMcpServers),
+        Err(BridgeError::Capacity)
+    );
+    let late = bridge.inbound(success(&abandoned[0], json!({}))).unwrap();
+    assert_eq!(late, Inbound::default());
+    assert!(bridge.session_control(&reconnect).is_ok());
 }
 
 /// The blocks `Mentions::blocks` sends for an `@` mention: the file's text

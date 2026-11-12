@@ -32,6 +32,14 @@ pub(crate) enum SessionControl {
 }
 
 impl SessionControl {
+    /// Whether a control missing its deadline leaves Sage's state as it
+    /// was: the binding stops waiting and drops the late reply, and the
+    /// harness may still finish the work. Reading the MCP servers changes
+    /// nothing, and reconnecting a server keeps its configuration.
+    pub(crate) fn abandons_at_deadline(&self) -> bool {
+        matches!(self, Self::ReadMcpServers | Self::ReconnectMcpServer { .. })
+    }
+
     pub(crate) fn actual_bytes(&self) -> usize {
         match self {
             Self::UndoTurn { turn_id } => turn_id.as_str().len(),

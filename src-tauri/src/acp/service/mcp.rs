@@ -58,7 +58,7 @@ impl AcpService {
 
     /// A control that changes the servers, then the list after it. A list
     /// that misses its deadline is reported as late, not as the change
-    /// failing.
+    /// failing; a change that misses its deadline is late itself.
     fn change_then_read(
         &self,
         owner: RuntimeOwner,
@@ -68,7 +68,7 @@ impl AcpService {
         match self.session_control_reply(owner.clone(), control)? {
             NativeRpcReply::Controlled(_) => {
                 self.read_mcp_servers(owner).map_err(|error| match error {
-                    SessionControlError::Unavailable => {
+                    SessionControlError::Late => {
                         SessionControlError::Refused(SafeText::new("controlSummary", late).ok())
                     }
                     other => other,

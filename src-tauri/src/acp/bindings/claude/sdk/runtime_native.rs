@@ -43,11 +43,11 @@ impl ClaudeSdkRuntime {
         self.control_egress(&sdk)
     }
 
-    /// A passive read whose caller gave up: the MCP list, whose late reply
-    /// is then dropped.
-    pub(super) fn abandon_mcp_list(&mut self) {
+    /// MCP requests whose caller gave up (a list or a reconnect); their late
+    /// replies are then dropped.
+    pub(super) fn abandon_mcp_requests(&mut self) {
         if let Some(bridge) = self.bridge.as_mut() {
-            bridge.abandon_mcp_list();
+            bridge.abandon_mcp_requests();
         }
     }
 

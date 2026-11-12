@@ -221,13 +221,13 @@ function McpServers({ request }: { request: AcpUsageRequest | null }) {
     },
     [request],
   );
+  const read = useCallback(() => start("read", acpMcpDesktop.read), [start]);
   useEffect(() => {
-    const read = () => start("read", acpMcpDesktop.read);
     read();
     // A sign-in finishes in the browser; coming back shows its result.
     window.addEventListener("focus", read);
     return () => window.removeEventListener("focus", read);
-  }, [start]);
+  }, [read]);
   if (!request)
     return <p role="status">MCP servers appear once the session is running.</p>;
   const actions = load.kind === "ready" ? load.inventory.actions : null;
@@ -273,6 +273,16 @@ function McpServers({ request }: { request: AcpUsageRequest | null }) {
             onClick={reload}
           >
             {busy === "reload" ? "Reloading…" : "Reload"}
+          </button>
+        ) : load.kind === "error" ? (
+          // No list arrived, so there is nothing to reload or reconnect yet.
+          <button
+            type="button"
+            className="button button--compact"
+            aria-disabled={busy !== null}
+            onClick={read}
+          >
+            {busy === "read" ? "Reading…" : "Try again"}
           </button>
         ) : null}
       </div>

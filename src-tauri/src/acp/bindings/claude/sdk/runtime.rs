@@ -308,7 +308,7 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         true
     }
     fn abandon_usage_read(&mut self) {
-        self.abandon_mcp_list();
+        self.abandon_mcp_requests();
     }
     fn native_rpc_pending(&self) -> bool {
         self.native.is_some()

@@ -772,6 +772,62 @@ describe("composer slash commands", () => {
     ).toBeNull();
   });
 
+  it("offers another read when the first MCP list fails", async () => {
+    const files = {
+      name: "files",
+      title: null,
+      version: null,
+      connection: "connected",
+      auth: "none",
+      tools: 2,
+      resources: 0,
+      error: null,
+      origin: null,
+    };
+    mcp.read
+      .mockReset()
+      .mockRejectedValueOnce(
+        new Error("The agent did not answer in time; it may still finish."),
+      )
+      .mockResolvedValue({
+        servers: [files],
+        truncated: false,
+        actions: CODEX_MCP,
+      });
+    native.lists = [
+      {
+        revision: 1,
+        commands: [
+          {
+            name: "mcp",
+            description: "List MCP tools",
+            inputHint: null,
+            source: "builtin",
+            panel: "mcp",
+          },
+        ],
+      },
+    ];
+    render(<Composer />);
+    const { field } = await openMenu("/mcp");
+    fireEvent.keyDown(field, { key: "Enter" });
+    const panel = await screen.findByRole("dialog", { name: "MCP servers" });
+    expect(
+      await within(panel).findByText(
+        "The agent did not answer in time; it may still finish.",
+      ),
+    ).toBeVisible();
+    // With no list there is nothing to reload, only another read.
+    expect(within(panel).queryByRole("button", { name: "Reload" })).toBeNull();
+    fireEvent.click(within(panel).getByRole("button", { name: "Try again" }));
+    expect(await within(panel).findByText("files")).toBeVisible();
+    expect(mcp.read).toHaveBeenCalledTimes(2);
+    expect(within(panel).getByRole("button", { name: "Reload" })).toBeVisible();
+    expect(
+      within(panel).queryByRole("button", { name: "Try again" }),
+    ).toBeNull();
+  });
+
   it("does not send a half-typed name while the list is loading", async () => {
     native.hold = new Promise(() => undefined);
     render(<Composer />);
