@@ -84,7 +84,14 @@ impl Lane<'_> {
         }
         // Held until the host has shut down, so no session control starts
         // mid-park; one already waiting for its answer keeps the runtime.
-        let Some(claim) = host.claim_idle_park() else {
+        // An eviction claimed it when it chose this lane.
+        let evicting = self
+            .eviction
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+            .filter(|claim| claim.is_for(&host));
+        let Some(claim) = evicting.or_else(|| host.claim_idle_park()) else {
             return Ok(false);
         };
         if self.scheduler.begin_idle_drain(&owner).is_err() {

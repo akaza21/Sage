@@ -9,7 +9,7 @@
 //! starts first and keeps the runtime, or finds the park under way and is
 //! refused before anything reaches the harness.
 
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use super::super::types::HostError;
 use super::RuntimeHost;
@@ -41,13 +41,20 @@ impl Drop for ControlHold<'_> {
     }
 }
 
-/// An idle park under way; session controls are refused until it is
-/// dropped.
-pub(crate) struct IdleParkClaim<'a>(&'a ControlGate);
+/// An idle park under way, from the moment its runtime is chosen until the
+/// park ends; session controls are refused until it is dropped.
+pub(crate) struct IdleParkClaim(Arc<RuntimeHost>);
 
-impl Drop for IdleParkClaim<'_> {
+impl IdleParkClaim {
+    /// Whether this claim is on `host`.
+    pub(crate) fn is_for(&self, host: &Arc<RuntimeHost>) -> bool {
+        Arc::ptr_eq(&self.0, host)
+    }
+}
+
+impl Drop for IdleParkClaim {
     fn drop(&mut self) {
-        self.0.lock().parking = false;
+        self.0.controls.lock().parking = false;
     }
 }
 
@@ -70,12 +77,13 @@ impl RuntimeHost {
 
     /// Claims the runtime for an idle park, or None while a session control
     /// is waiting for its answer or another park holds it.
-    pub(crate) fn claim_idle_park(&self) -> Option<IdleParkClaim<'_>> {
+    pub(crate) fn claim_idle_park(self: &Arc<Self>) -> Option<IdleParkClaim> {
         let mut state = self.controls.lock();
         if state.in_flight > 0 || state.parking {
             return None;
         }
         state.parking = true;
-        Some(IdleParkClaim(&self.controls))
+        drop(state);
+        Some(IdleParkClaim(Arc::clone(self)))
     }
 }

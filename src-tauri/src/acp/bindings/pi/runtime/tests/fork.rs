@@ -361,10 +361,8 @@ fn forks_waiting_on_their_chats_are_bounded() {
     ));
 }
 
-#[cfg(unix)]
 #[test]
 fn a_copy_that_cannot_be_removed_is_reported_and_no_longer_takes_a_forks_place() {
-    use std::os::unix::fs::PermissionsExt;
     let mut chat = saved_chat();
     let state = cloned(&mut chat);
     let back = read_copy(&mut chat, &state);
@@ -372,12 +370,9 @@ fn a_copy_that_cannot_be_removed_is_reported_and_no_longer_takes_a_forks_place()
     let Some(NativeRpcReply::Forked(fork)) = chat.runtime.take_native_rpc_reply() else {
         panic!("fork reply expected");
     };
-    // Pi's session folder refuses the removal.
-    let writable = std::fs::metadata(&chat.dir).unwrap().permissions();
-    std::fs::set_permissions(&chat.dir, std::fs::Permissions::from_mode(0o555)).unwrap();
-    let released = chat.runtime.release_fork(&fork, false);
-    std::fs::set_permissions(&chat.dir, writable).unwrap();
-    released.unwrap();
+    // The file system refuses the removal.
+    chat.runtime.remove_file = |_| Err(std::io::ErrorKind::PermissionDenied.into());
+    chat.runtime.release_fork(&fork, false).unwrap();
     assert_eq!(
         chat.runtime.take_native_rpc_reply(),
         Some(NativeRpcReply::Rejected)

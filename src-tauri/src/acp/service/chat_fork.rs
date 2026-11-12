@@ -64,6 +64,13 @@ impl AcpService {
     /// fork Chat is committed or refused. Nothing durable depends on it: a
     /// release that cannot run leaves the fork loaded in the source runtime,
     /// bounded per runtime by the binding, until that runtime exits.
+    ///
+    /// The fork's answer and this release are two session controls with the
+    /// fork Chat's commit between them, and no control is in flight in that
+    /// window, so an idle park may end the source runtime there. That costs
+    /// only the release: a harness that keeps forks in memory drops them as
+    /// it exits, and a refused Pi fork's copy stays in Pi's own session
+    /// list, as it does whenever its removal fails.
     pub(crate) fn release_native_fork(
         &self,
         source: &ForkSource,

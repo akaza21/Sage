@@ -140,7 +140,9 @@ async fn release_until(
     loop {
         let outcome = crate::blocking::in_place(attempt);
         match outcome {
-            Err(ChatRuntimeRelease::LaneBusy) if Instant::now() + LANE_BUSY_RETRY < deadline => {
+            Err(ChatRuntimeRelease::LaneBusy | ChatRuntimeRelease::ControlRunning)
+                if Instant::now() + LANE_BUSY_RETRY < deadline =>
+            {
                 tokio::time::sleep(LANE_BUSY_RETRY).await;
             }
             outcome => return outcome,

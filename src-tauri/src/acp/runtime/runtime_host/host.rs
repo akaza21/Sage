@@ -56,6 +56,7 @@ mod host_session_config;
 
 #[path = "host_control_gate.rs"]
 mod host_control_gate;
+pub(crate) use host_control_gate::IdleParkClaim;
 
 #[path = "host_dispatch.rs"]
 mod host_dispatch;

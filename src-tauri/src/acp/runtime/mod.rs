@@ -101,8 +101,8 @@ pub(crate) use projection_publisher::{ProjectionPublishStatus, ProjectionPublish
 pub(crate) use runtime_host::HostState;
 pub(crate) use runtime_host::{
     ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostOutcome,
-    HostPromptIntent, HostSteerIntent, NativeRpcCompletionSink, PromptWrite, RuntimeEngine,
-    RuntimeHost, RuntimeShutdownRecovery, SteerCompletionSink, TerminalNotification,
+    HostPromptIntent, HostSteerIntent, IdleParkClaim, NativeRpcCompletionSink, PromptWrite,
+    RuntimeEngine, RuntimeHost, RuntimeShutdownRecovery, SteerCompletionSink, TerminalNotification,
 };
 pub(crate) use session_coordinator::{
     ActivationRecovery, SessionCoordinator, SessionCoordinatorError, SessionTreeLease,

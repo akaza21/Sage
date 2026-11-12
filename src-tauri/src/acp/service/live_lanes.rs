@@ -44,6 +44,9 @@ pub(crate) enum ChatRuntimeRelease {
     /// The park did not settle before its deadline; retrying now does not
     /// help.
     Unsettled,
+    /// The harness is still answering a session control (a fork, a usage
+    /// read, a setting change); once it answers, a retry may succeed.
+    ControlRunning,
 }
 
 impl ChatRuntimeRelease {
@@ -53,6 +56,9 @@ impl ChatRuntimeRelease {
             Self::TurnRunning => format!("Stop this Chat's running turn before {action} it"),
             Self::LaneBusy | Self::Unsettled => {
                 format!("This Chat's agent is still shutting down; try {action} it again")
+            }
+            Self::ControlRunning => {
+                format!("This Chat's agent is still answering a request; try {action} it again")
             }
         }
     }
@@ -140,6 +146,10 @@ pub(super) struct Lane<'a> {
     pub(super) scheduler: Scheduler,
     pub(super) sessions: SessionCoordinator,
     pub(super) codex_recovery: RecoveryCell,
+    /// The idle park claimed on another Chat's runtime when this lane was
+    /// chosen to evict it; its park takes it, and dropping it lets that
+    /// runtime's session controls through again.
+    pub(super) eviction: Mutex<Option<crate::acp::runtime::IdleParkClaim>>,
 }
 
 impl Deref for Lane<'_> {
@@ -182,6 +192,7 @@ impl AcpService {
             scheduler: lane.scheduler.clone(),
             sessions: lane.sessions.clone(),
             codex_recovery: Arc::clone(&lane.codex_recovery),
+            eviction: Mutex::new(None),
         }
     }
 
@@ -218,7 +229,10 @@ impl AcpService {
     /// dropped, so concurrent activations never race for one lane. Order:
     /// a lane already holding this session, a free lane, a lane with
     /// resumable idle runtime, then a lane retaining recovery
-    /// (which activation parks). Busy lanes are never chosen.
+    /// (which activation parks). Busy lanes are never chosen. Choosing a lane
+    /// that holds another Chat's idle runtime claims that runtime's idle park
+    /// at once; one whose harness is answering a session control is passed
+    /// over for the next candidate.
     pub(super) fn claim_activation_lane(
         &self,
         owner: &RuntimeOwner,
@@ -235,14 +249,31 @@ impl AcpService {
             if lane
                 .activating
                 .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                .is_ok()
+                .is_err()
             {
-                lane.last_activation.store(
-                    crate::persistence::now_millis().max(0) as u64,
-                    Ordering::Release,
-                );
-                return Ok((self.lane_at(index), ActivationClaim { lane }));
+                continue;
             }
+            let claim = ActivationClaim { lane };
+            let view = self.lane_at(index);
+            let evicted = lane
+                .scheduler
+                .active()
+                .filter(|_| !lane.holds_session(owner) && !lane.has_recovery())
+                .and_then(|active| lane.runtime.for_owner(&active.tree).ok());
+            if let Some(host) = evicted {
+                let Some(park) = host.claim_idle_park() else {
+                    continue;
+                };
+                *view
+                    .eviction
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(park);
+            }
+            lane.last_activation.store(
+                crate::persistence::now_millis().max(0) as u64,
+                Ordering::Release,
+            );
+            return Ok((view, claim));
         }
         Err(CodexSessionError::Capacity)
     }
@@ -299,6 +330,14 @@ impl AcpService {
             // A prompt that won the idle-drain race keeps its runtime running.
             if held.as_ref().is_some_and(|active| active.turn_reserved) {
                 return Err(ChatRuntimeRelease::TurnRunning);
+            }
+            // So does a session control the harness is still answering.
+            if held.as_ref().is_some_and(|active| {
+                view.runtime
+                    .for_owner(&active.tree)
+                    .is_ok_and(|host| !host.controls_settled())
+            }) {
+                return Err(ChatRuntimeRelease::ControlRunning);
             }
             if held.is_some() || lane.recovery_owner().as_ref().is_some_and(same) {
                 return Err(ChatRuntimeRelease::Unsettled);

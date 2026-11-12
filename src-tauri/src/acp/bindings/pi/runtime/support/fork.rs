@@ -222,7 +222,7 @@ impl PiRuntime {
             return false;
         };
         session_path(dir, fork.as_str(), SESSION_DIR_SCAN_LIMIT)
-            .is_none_or(|file| std::fs::remove_file(file).is_ok())
+            .is_none_or(|file| (self.remove_file)(&file).is_ok())
     }
 }
 
