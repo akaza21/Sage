@@ -102,7 +102,12 @@ fn a_turn_streams_text_runs_an_approved_tool_and_completes_with_usage() {
         .collect();
     assert_eq!(kinds, ["allow_once", "allow_always", "reject_once"]);
 
-    let reply = bridge.outbound(&json!({"jsonrpc":"2.0","id":request["id"],"result":{"outcome":{"outcome":"selected","optionId":"allow_always"}}})).unwrap();
+    // Allow-always on an edit names the mode the guard lets the turn enter.
+    assert_eq!(
+        request["params"]["options"][1]["optionId"],
+        "allow-always-accept-edits"
+    );
+    let reply = bridge.outbound(&json!({"jsonrpc":"2.0","id":request["id"],"result":{"outcome":{"outcome":"selected","optionId":"allow-always-accept-edits"}}})).unwrap();
     assert_eq!(reply["response"]["request_id"], "cli-7");
     assert_eq!(reply["response"]["response"]["behavior"], "allow");
     assert_eq!(
