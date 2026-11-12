@@ -85,14 +85,19 @@ fn a_parked_session_continues_after_its_harness_updates_past_the_pin() {
     let mut pi = session_at("0.74.0");
     pi.binding_id = "pi-rpc".into();
     assert!(continues_on_later_release(&pi, "pi-rpc", "0.74.2"));
-    // A prerelease of the stored release precedes it.
-    let mut prerelease = session_at("0.74.0");
-    prerelease.binding_id = "pi-rpc".into();
-    assert!(!continues_on_later_release(
-        &prerelease,
-        "pi-rpc",
-        "0.74.0-rc.1"
-    ));
+    // A prerelease on either side never links, even when it orders first.
+    for (stored, current) in [
+        ("0.74.0", "0.74.0-rc.1"),
+        ("0.74.0-rc.1", "0.74.0"),
+        ("0.74.2", "1.6.0-beta.1"),
+    ] {
+        let mut prerelease = session_at(stored);
+        prerelease.binding_id = "pi-rpc".into();
+        assert!(
+            !continues_on_later_release(&prerelease, "pi-rpc", current),
+            "{stored} -> {current}"
+        );
+    }
 }
 
 #[test]

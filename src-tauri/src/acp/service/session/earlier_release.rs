@@ -140,10 +140,12 @@ pub(super) fn continues_on_later_release(
 }
 
 /// Whether `earlier` is a strictly lower release than `later`. Unreadable
-/// versions are never ordered.
+/// versions and prereleases on either side are never ordered, so a chat only
+/// moves between final releases.
 fn precedes(earlier: &str, later: &str) -> bool {
     matches!(
         (ReleaseVersion::parse(earlier), ReleaseVersion::parse(later)),
-        (Some(earlier), Some(later)) if earlier < later
+        (Some(earlier), Some(later))
+            if !earlier.is_prerelease() && !later.is_prerelease() && earlier < later
     )
 }
