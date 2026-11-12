@@ -47,8 +47,8 @@ export function AgentHarnessSettings() {
   return (
     <>
       <p>
-        Installation and admission come from Sage's existing harness discovery.
-        Sage does not install harnesses from this page.
+        Sage finds the harnesses installed on this computer. Install a harness
+        outside Sage, then refresh discovery.
       </p>
       {/* A block, so the button keeps its own width in the page column. */}
       <div>

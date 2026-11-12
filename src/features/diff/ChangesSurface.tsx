@@ -126,7 +126,7 @@ export const ChangesSurface = memo(function ChangesSurface({
       <p className="changes-surface__hint">
         {scope === "lastTurn"
           ? "Last turn snapshot · Refresh to update"
-          : "Project Git changes · not attributed to this Chat"}
+          : "Project Git changes · not attributed to this chat"}
       </p>
       {error ? <p role="alert">{error}</p> : null}
       {result.entries.length === 0 && !result.truncated ? (

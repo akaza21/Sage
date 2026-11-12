@@ -382,7 +382,7 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     });
     await expect(filter).toBeVisible();
     await filter.click();
-    const search = page.getByRole("searchbox", { name: "Search Chats" });
+    const search = page.getByRole("searchbox", { name: "Search chats" });
     await expect(search).toBeVisible();
     await expect(search).toBeFocused();
     await expect(

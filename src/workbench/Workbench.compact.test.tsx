@@ -1099,7 +1099,7 @@ describe("compact Workbench project tools", () => {
     fireEvent.click(globalSearch);
     await settleLazyModules();
     expect(
-      await screen.findByRole("dialog", { name: "Search Chats" }),
+      await screen.findByRole("dialog", { name: "Search chats" }),
     ).toBeInTheDocument();
   });
 

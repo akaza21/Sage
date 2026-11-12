@@ -2,7 +2,7 @@ import { sameResource } from "../domain/resourceIdentity";
 import type { ResourceRef, WorkbenchTab } from "../domain/workbench";
 
 export const UNSAVED_FILE_REASON =
-  "Save or revert this File before renaming or recycling it.";
+  "Save or revert this file before renaming or recycling it.";
 
 /** File and Diff tabs that show exactly this File. */
 export function tabsShowing(

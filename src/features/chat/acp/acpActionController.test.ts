@@ -459,7 +459,7 @@ describe("ACP action controller", () => {
       origin: "mode",
       busy: false,
       error: {
-        message: "Another action is already in progress for this Chat.",
+        message: "Another action is already in progress for this chat.",
       },
     });
 
@@ -933,7 +933,7 @@ describe("ACP action controller", () => {
     expect(test.states.at(-1)?.error?.failure).toMatchObject({
       kind: "invalidRequest",
       message:
-        "Wait for the current Turn to finish before sending a follow-up.",
+        "Wait for the current turn to finish before sending a follow-up.",
     });
 
     test.setContext({

@@ -90,8 +90,8 @@ export function RenameResourceControl({
     : (rootName ?? "Root");
   const triggerTitle = sourceOpen
     ? folder
-      ? "Close File and Diff tabs for the folder and its descendants before renaming"
-      : "Close the source File and Diff tabs before renaming"
+      ? "Close file and diff tabs for the folder and its descendants before renaming"
+      : "Close the source file and diff tabs before renaming"
     : source
       ? `Rename ${kind}`
       : folder

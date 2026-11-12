@@ -67,7 +67,7 @@ fn a_turn_streams_text_runs_an_approved_tool_and_completes_with_usage() {
     assert_eq!(
         updates(&chunk),
         [
-            &json!({"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Writing"}})
+            &json!({"sessionUpdate":"agent_message_chunk","itemId":"msg_1:0","content":{"type":"text","text":"Writing"}})
         ]
     );
 
@@ -958,4 +958,45 @@ fn a_fork_answers_once_claude_code_replies_and_never_mid_turn() {
     prompt(&mut bridge, 3);
     assert!(bridge.fork(None).is_err());
     let _ = std::fs::remove_dir_all(config);
+}
+
+#[test]
+fn answer_text_on_either_side_of_a_tool_call_stays_two_items() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let text = |bridge: &mut SdkBridge, message: &str, text: &str| {
+        bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"message_start","message":{"id":message}}})).unwrap();
+        let chunk = bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":text}}})).unwrap();
+        updates(&chunk)[0]["itemId"].clone()
+    };
+    let before = text(&mut bridge, "msg_a", "File exists.");
+    let after = text(&mut bridge, "msg_b", "I added a line.");
+    assert_eq!(before, "msg_a:0");
+    assert_eq!(after, "msg_b:0");
+
+    // Within one message, every delta of a block shares its item and a
+    // later block starts its own.
+    let delta = |bridge: &mut SdkBridge, index: u64, text: &str| {
+        let chunk = bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":index,"delta":{"type":"text_delta","text":text}}})).unwrap();
+        updates(&chunk)[0]["itemId"].clone()
+    };
+    assert_eq!(delta(&mut bridge, 0, " More."), "msg_b:0");
+    assert_eq!(delta(&mut bridge, 2, "Second block."), "msg_b:2");
+    assert_eq!(delta(&mut bridge, 2, " Continued."), "msg_b:2");
+
+    // Text Claude Code wrote itself, never streamed, is keyed by its
+    // message and block the same way.
+    let unstreamed = bridge
+        .inbound(
+            json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"msg_c","content":[
+                {"type":"text","text":"Signed out."},
+            ]}}),
+        )
+        .unwrap();
+    assert_eq!(
+        updates(&unstreamed),
+        [
+            &json!({"sessionUpdate":"agent_message_chunk","itemId":"msg_c:0","content":{"type":"text","text":"Signed out."}})
+        ]
+    );
 }

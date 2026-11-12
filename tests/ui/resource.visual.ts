@@ -156,7 +156,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(diff).toHaveAccessibleDescription("New resource");
     await expect(
       resources.getByRole("button", {
-        name: "Pinned resource, new File or Diff available",
+        name: "Pinned resource, new file or diff available",
       }),
     ).toContainText("New");
   });
@@ -874,7 +874,7 @@ test.describe("V6a Agent right-resource state shell", () => {
       page.getByRole("region", { name: "Chat changes", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Waiting for this Chat" }),
+      page.getByRole("heading", { name: "Waiting for this chat" }),
     ).toHaveCount(0);
     // The pane change reflows the transcript; capture it settled at its end.
     await settleTranscriptAtEnd(page);
@@ -1087,11 +1087,11 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
       0,
     );
     await expect(
-      resources.getByRole("heading", { name: "Waiting for this Chat" }),
+      resources.getByRole("heading", { name: "Waiting for this chat" }),
     ).toBeVisible();
     await expect(
       resources.getByText(
-        "Open a file or change from the conversation. Preview will appear when this Chat starts a loopback server.",
+        "Open a file or change from the conversation. Preview will appear when this chat starts a loopback server.",
         { exact: true },
       ),
     ).toBeVisible();
@@ -1101,7 +1101,7 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
     ).toHaveCount(0);
     await expect(page.getByTitle("Sage browser")).toHaveCount(0);
     const waiting = resources.getByRole("region", {
-      name: "Waiting for this Chat",
+      name: "Waiting for this chat",
     });
     expect(
       await waiting.evaluate((node) => {

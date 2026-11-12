@@ -282,7 +282,7 @@ export function AgentToolPanel({
     try {
       if (entry.intent) {
         if (!(await openAgentArtifact(entry.intent))) {
-          setError("This resource is no longer available for this Chat.");
+          setError("This resource is no longer available for this chat.");
           return;
         }
       } else if (entry.tabId) {
@@ -309,7 +309,7 @@ export function AgentToolPanel({
       <div className="dialog-body">
         <h2 id={titleId}>{request.tool === "changes" ? "Changes" : "Files"}</h2>
         <p id={`${titleId}-description`}>
-          Only this Chat's resources · up to 128 recent files
+          Only this chat's files · up to 128 recent files
         </p>
         <input
           ref={input}
@@ -355,7 +355,7 @@ export function AgentToolPanel({
           {rows.length === 0 ? (
             <p>
               {resources.length === 0
-                ? "No resources available for this Chat yet."
+                ? "No resources available for this chat yet."
                 : "No matching chat files."}
             </p>
           ) : null}
