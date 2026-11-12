@@ -43,29 +43,7 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
         crate::acp::service::CodexSessionError::Recovery => AcpIpcError::RecoveryRequired {
             message: safe_message("The native runtime requires authoritative recovery."),
         },
-        crate::acp::service::CodexSessionError::LaunchFailure(
-            crate::acp::process::LaunchError::IdentityMismatch,
-        ) => AcpIpcError::Unavailable {
-            reason: AcpUnavailableReason::CapabilityUnavailable,
-            message: safe_message("Native launch identity check failed safely; retry the session."),
-        },
-        crate::acp::service::CodexSessionError::LaunchFailure(
-            crate::acp::process::LaunchError::Io,
-        ) => AcpIpcError::Unavailable {
-            reason: AcpUnavailableReason::CapabilityUnavailable,
-            message: safe_message(
-                "Native launch transport setup failed safely; retry the session.",
-            ),
-        },
         crate::acp::service::CodexSessionError::LaunchFailure(error) => launch_failed(error.step()),
-        crate::acp::service::CodexSessionError::LaunchSetup(
-            crate::acp::service::CodexLaunchSetupError::ActiveOperation,
-        ) => AcpIpcError::Unavailable {
-            reason: AcpUnavailableReason::CapabilityUnavailable,
-            message: safe_message(
-                "Native launch operation setup failed safely; retry the session.",
-            ),
-        },
         crate::acp::service::CodexSessionError::LaunchSetup(error) => launch_failed(error.step()),
         crate::acp::service::CodexSessionError::Session(
             crate::acp::runtime::SessionCoordinatorError::BootstrapRequired,
@@ -352,7 +330,7 @@ mod tests {
             error,
             AcpIpcError::Unavailable { message, .. }
                 if message.as_str()
-                    == "Native launch identity check failed safely; retry the session."
+                    == "Native launch failed safely while checking the harness identity; retry the session."
         ));
     }
 
@@ -389,7 +367,7 @@ mod tests {
             error,
             AcpIpcError::Unavailable { message, .. }
                 if message.as_str()
-                    == "Native launch operation setup failed safely; retry the session."
+                    == "Native launch failed safely while claiming the launch; retry the session."
         ));
     }
 }
