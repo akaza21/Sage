@@ -337,32 +337,7 @@ impl HarnessAdapter for CodexRuntime {
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
         if let Some(request_id) = token.request_id() {
-            if resolution == EgressResolution::DeliveryUnknown {
-                match self.inner.pending_kind(request_id) {
-                    Some(RequestKind::GoalGet) => self.inner.goal_get_delivery_unknown(request_id),
-                    Some(RequestKind::GoalPause | RequestKind::GoalClear) => {
-                        self.inner.goal_mutation_delivery_unknown(request_id)
-                    }
-                    _ => {}
-                }
-            }
-            if matches!(
-                resolution,
-                EgressResolution::QueueRejected | EgressResolution::WriteZeroBytes
-            ) {
-                let kind = self.inner.pending_kind(request_id);
-                self.inner
-                    .reject_before_write(request_id)
-                    .map_err(map_adapter)?;
-                if kind.is_some_and(RequestKind::starts_turn) {
-                    self.snapshots.clear();
-                }
-                // The catalogue is read as far as it will be.
-                if kind == Some(RequestKind::Models) {
-                    self.refresh_model_config();
-                }
-            }
-            return Ok(());
+            return self.resolve_request_egress(request_id, resolution);
         }
         if token.is_notification() {
             return match resolution {
@@ -430,4 +405,5 @@ impl HarnessAdapter for CodexRuntime {
 
 mod browser_failure;
 mod command_method;
+mod request_egress;
 use command_method::command_method;

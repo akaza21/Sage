@@ -6,7 +6,7 @@ use std::{
 use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterIdentity, EgressToken},
     contract::{RequiredText, SafeText, SchemaVersionV1},
-    intent::{NormalizedPayload, SafeResourceRef},
+    intent::{ModelId, NormalizedPayload, SafeResourceRef},
     transport::Frame,
 };
 
