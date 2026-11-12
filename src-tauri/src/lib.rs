@@ -45,6 +45,7 @@ mod launch_profile;
 mod notifications;
 mod persistence;
 mod preview_lifecycle;
+mod profile_lock;
 mod project_commands;
 mod project_create_commands;
 mod project_migration;
@@ -98,6 +99,7 @@ mod settings_commands;
 mod settings_store;
 mod side_chat;
 mod side_chat_storage;
+mod startup_refusal;
 mod state;
 mod system_browser;
 #[cfg(test)]
@@ -134,8 +136,10 @@ use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 #[cfg(all(windows, feature = "acp-fixture"))]
 use crate::launch_profile::{DesktopFixtureMode, resolve_desktop_fixture_mode_from_environment};
 use crate::{
+    error::AppError,
     launch_profile::{reject_unavailable_fixture_environment_inputs, resolve_launch_profile},
     persistence::Database,
+    profile_lock::{ProfileLock, ProfileLockError},
     state::AppState,
     workspace::development_workspace_root,
 };
@@ -178,6 +182,18 @@ pub fn run() {
                 app.path().app_data_dir()?,
                 app.path().app_local_data_dir()?,
             )?;
+            // Nothing below may touch the profile until this process owns it:
+            // startup recovery would otherwise rewrite a running Sage's state.
+            fs::create_dir_all(profile.durable_dir())?;
+            let profile_lock = match ProfileLock::acquire(profile.durable_dir()) {
+                Ok(lock) => lock,
+                Err(ProfileLockError::Held(_)) => {
+                    let message = startup_refusal::profile_in_use(&profile);
+                    return Err(startup_refusal::refuse(&profile, message));
+                }
+                Err(error) => return Err(error.into()),
+            };
+            app.manage(profile_lock);
             reject_unavailable_fixture_environment_inputs()?;
             #[cfg(all(windows, feature = "acp-fixture"))]
             let fixture_mode = resolve_desktop_fixture_mode_from_environment(&profile)?;
@@ -188,8 +204,14 @@ pub fn run() {
                     | DesktopFixtureMode::ClaudeFixture(_)
                     | DesktopFixtureMode::PiFixture(_)
             );
-            fs::create_dir_all(profile.durable_dir())?;
-            let database = Database::open(&profile.durable_dir().join("sage.db"))?;
+            let database = Database::open(&profile.durable_dir().join("sage.db")).map_err(
+                |error| match error {
+                    AppError::NewerProfile { .. } => {
+                        startup_refusal::refuse(&profile, error.to_string())
+                    }
+                    other => other.into(),
+                },
+            )?;
             let seed_project_root = if profile.is_disposable() {
                 profile.project_root().map(ToOwned::to_owned)
             } else {
@@ -340,7 +362,12 @@ pub fn run() {
         })
         .invoke_handler(ipc_commands::handle_main_invoke)
         .build(tauri::generate_context!())
-        .expect("failed to build Sage")
+        .unwrap_or_else(|error| {
+            // A setup refusal has already been shown where it belongs; exit
+            // without a panic so no crash report hides the message.
+            eprintln!("failed to build Sage: {error}");
+            std::process::exit(1)
+        })
         .run(app_run_events::handle_run_event);
 }
 

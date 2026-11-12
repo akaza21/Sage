@@ -162,6 +162,7 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
         }
         return invalid("nonempty database has no exact Sage migration schema");
     }
+    reject_newer_history(connection)?;
     let versions = connection
         .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT ?1")?
         .query_map([MAX_SCHEMA_VERSION as i64 + 1], |row| row.get::<_, i64>(0))?
@@ -192,6 +193,25 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
         return Ok(SchemaClass::CurrentV10LegacySessionEvents);
     }
     invalid("Sage schema objects do not match the exact declared version")
+}
+
+/// Only a newer Sage records a migration above this binary's maximum. Naming
+/// that case lets the person act on it; the database is still refused, and
+/// every lower history still has to match its exact fingerprint.
+fn reject_newer_history(connection: &Connection) -> AppResult<()> {
+    let newest: Option<i64> =
+        connection.query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })?;
+    match newest {
+        Some(stored_version) if stored_version > MAX_SCHEMA_VERSION as i64 => {
+            Err(AppError::NewerProfile {
+                stored_version,
+                supported_version: MAX_SCHEMA_VERSION as u32,
+            })
+        }
+        _ => Ok(()),
+    }
 }
 
 pub(super) fn database_fingerprint(connection: &Connection) -> AppResult<DatabaseFingerprint> {
@@ -329,4 +349,59 @@ fn invalid<T>(message: &str) -> AppResult<T> {
 
 fn limit<T>(message: &str) -> AppResult<T> {
     Err(AppError::ResourceLimit(message.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestDir(std::path::PathBuf);
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn a_profile_migrated_by_a_newer_sage_is_refused_by_name_and_left_unchanged() {
+        let directory = TestDir(
+            crate::test_paths::temp_dir()
+                .join(format!("sage-newer-profile-{}", uuid::Uuid::new_v4())),
+        );
+        std::fs::create_dir_all(&directory.0).unwrap();
+        let path = directory.0.join("sage.db");
+        drop(super::super::open_or_migrate(&path).unwrap());
+        let newer = MAX_SCHEMA_VERSION as i64 + 1;
+        {
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .execute(
+                    "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+                    [newer],
+                )
+                .unwrap();
+            connection
+                .pragma_update(None, "user_version", newer)
+                .unwrap();
+        }
+        let before = std::fs::read(&path).unwrap();
+
+        let error = match super::super::open_or_migrate(&path) {
+            Ok(_) => panic!("a newer profile must not open"),
+            Err(error) => error,
+        };
+
+        assert!(
+            matches!(
+                error,
+                AppError::NewerProfile { stored_version, supported_version }
+                    if stored_version == newer
+                        && supported_version as usize == MAX_SCHEMA_VERSION
+            ),
+            "{error}"
+        );
+        assert!(error.to_string().contains("newer version of Sage"));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
 }
