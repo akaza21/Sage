@@ -44,6 +44,12 @@ export function ModalDialog({
   labelledBy: string;
   describedBy?: string;
   initialFocusRef?: RefObject<HTMLElement | null>;
+  /**
+   * Puts the focus back on what had it when the dialog opened. Off by
+   * default because most dialogs choose where the focus goes when they close
+   * (their trigger, the editor they opened, the chat they picked); turn it on
+   * when nothing else does.
+   */
   restoreFocus?: boolean;
   onDismiss: () => void;
 }) {

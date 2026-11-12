@@ -46,6 +46,9 @@ function DirtyTabConfirmation({
     <ModalDialog
       className="dirty-dialog--editor"
       labelledBy="dirty-dialog-title"
+      // Cancel puts the focus back where the close began, such as the
+      // editor; after Save or Discard that tab and its editor are gone.
+      restoreFocus
       onDismiss={dismiss}
     >
       <h2 id="dirty-dialog-title">Save changes to {title}?</h2>

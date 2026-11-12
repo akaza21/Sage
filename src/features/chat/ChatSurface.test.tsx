@@ -3988,7 +3988,7 @@ describe("ChatSurface ACP resource integration", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     const option = screen.getByRole("option", {
-      name: "Claude Code — available — uncharacterised",
+      name: "Claude Code — available — untested version",
     });
     expect(option).toBeEnabled();
     fireEvent.click(option);

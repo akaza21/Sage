@@ -56,6 +56,7 @@ impl CodexAdapter {
             browser_mcp_failure_reported: false,
             pending_browser_mcp_failure_threads: Vec::new(),
             pending_session_notices: Vec::new(),
+            recent_warnings: Vec::new(),
             turn_start_correlations: TurnStartCorrelations::new(),
             active_turn_id: None,
             provisional_turn: None,
