@@ -14,8 +14,6 @@ const OPENCODE_TESTED_VERSION: &str = "1.18.21";
 
 pub(crate) const NODE_ENGINE_FLOOR_MAJOR: u32 = 22;
 
-const ENGINE_RANGE_BYTES_MAX: usize = 64;
-
 pub(crate) fn valid_numeric_version(
     value: &str,
     minimum_components: usize,
@@ -58,25 +56,13 @@ pub(crate) fn claude_characterisation(
     }
 }
 
-pub(crate) fn node_engine_minimum_major(declared_range: &str) -> Option<u32> {
-    if declared_range.len() > ENGINE_RANGE_BYTES_MAX {
-        return None;
-    }
-    let rest = declared_range.trim().strip_prefix(">=")?.trim_start();
-    let major = rest.split('.').next()?;
-    if major.is_empty() || major.len() > 10 || !major.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    let valid_tail = rest
-        .split('.')
-        .skip(1)
-        .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()));
-    valid_tail.then(|| major.parse().ok()).flatten()
-}
-
-pub(crate) fn node_satisfies_declared_engine(node_major: u32, declared_range: &str) -> bool {
-    node_engine_minimum_major(declared_range)
-        .is_some_and(|declared| node_major >= declared.max(NODE_ENGINE_FLOOR_MAJOR))
+/// Whether a Node release meets both Sage's own floor and the range a
+/// package declares in `engines.node`.
+pub(crate) fn node_satisfies_declared_engine(node_version: &str, declared_range: &str) -> bool {
+    super::node_engine::parse_node_version(node_version).is_some_and(|node| {
+        node.0 >= u64::from(NODE_ENGINE_FLOOR_MAJOR)
+            && super::node_engine::satisfies(declared_range, node) == Some(true)
+    })
 }
 
 #[cfg(test)]
@@ -192,29 +178,36 @@ mod tests {
     }
 
     #[test]
-    fn the_engine_range_this_adapter_actually_declares_parses_to_its_major() {
-        assert_eq!(node_engine_minimum_major(">=22"), Some(22));
-        assert_eq!(node_engine_minimum_major(">=22.0.0"), Some(22));
-        assert_eq!(node_engine_minimum_major(">= 24.1"), Some(24));
+    fn the_engine_ranges_adapters_declare_are_honoured() {
+        assert!(node_satisfies_declared_engine("22.0.0", ">=22"));
+        assert!(node_satisfies_declared_engine("24.1.0", ">= 24.1"));
+        assert!(node_satisfies_declared_engine("22.23.5", "^22"));
+        assert!(node_satisfies_declared_engine(
+            "22.23.5",
+            "^20.19.0 || >=22.12.0"
+        ));
+        assert!(!node_satisfies_declared_engine(
+            "22.11.0",
+            "^20.19.0 || >=22.12.0"
+        ));
     }
 
     #[test]
     fn an_engine_range_sage_cannot_evaluate_is_not_treated_as_a_pass() {
-        for declared in ["^22", "~22.1", "22.x", ">=22 || >=20", "*", "", ">=", ">=a"] {
-            assert_eq!(
-                node_engine_minimum_major(declared),
-                None,
+        for declared in ["*", "", ">=", ">=a", ">=22 ||", "^22.0.0-rc.1"] {
+            assert!(
+                !node_satisfies_declared_engine("24.0.0", declared),
                 "{declared} must not be silently accepted"
             );
-            assert!(!node_satisfies_declared_engine(24, declared));
         }
+        assert!(!node_satisfies_declared_engine("garbage", ">=22"));
     }
 
     #[test]
     fn sages_own_node_floor_outranks_a_lower_declared_engine() {
-        assert!(!node_satisfies_declared_engine(20, ">=18"));
-        assert!(node_satisfies_declared_engine(22, ">=18"));
-        assert!(!node_satisfies_declared_engine(22, ">=24"));
-        assert!(node_satisfies_declared_engine(24, ">=24"));
+        assert!(!node_satisfies_declared_engine("20.19.0", ">=18"));
+        assert!(node_satisfies_declared_engine("22.0.0", ">=18"));
+        assert!(!node_satisfies_declared_engine("22.0.0", ">=24"));
+        assert!(node_satisfies_declared_engine("24.0.0", ">=24"));
     }
 }
