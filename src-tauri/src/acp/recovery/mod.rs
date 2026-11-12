@@ -140,12 +140,16 @@ fn recover_candidate(
         return Err(StoreError::Corrupt("live epoch has invalid session state"));
     }
     let transaction = connection.transaction()?;
-    crate::acp::store::turn_undo::recovery::settle_live(&transaction, &candidate, now_millis)?;
-    let park =
-        matches!(
+    let undo_rolled_back =
+        crate::acp::store::turn_undo::recovery::settle_live(&transaction, &candidate, now_millis)?;
+    // An earlier committed rewind must not revive a session whose latest
+    // native effect is uncertain, even though that earlier cut stays pending.
+    let park = !undo_rolled_back
+        && matches!(
             candidate.session_state,
             SessionState::Ready | SessionState::Active
-        ) && crate::acp::store::pending_thread_rewind(&transaction, candidate.session_id.as_str())?
+        )
+        && crate::acp::store::pending_thread_rewind(&transaction, candidate.session_id.as_str())?
             .is_some();
     let projection = next_projection_revision(
         &transaction,

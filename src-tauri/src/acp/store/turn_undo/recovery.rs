@@ -1,21 +1,30 @@
 //! Reconcile undo plans only across a proven zero-process boundary.
+//!
+//! An intent proves preparation, not dispatch or completion. Claude's
+//! `rewind_files` acknowledges completion only in its live control response;
+//! the binding has no durable receipt or verified replay contract. Restores
+//! can be partial (including skipped paths), so neither exit nor a repeated
+//! request proves all files were restored. Roll back an unsettled intent:
+//! keep the turn visible and its transcript uncut, and retire the uncertain
+//! session rather than resuming it or claiming a completed workspace restore.
+//! SDK contract: https://code.claude.com/docs/en/agent-sdk/typescript#rewindfilesresult
 use super::*;
 
 /// Reconcile the exact owner's plan inside runtime recovery's transaction.
-/// Native-only uncertainty rolls back while that session is still mutable;
+/// Returns whether an unsettled intent was rolled back while still mutable;
 /// the same transaction retires it before any send can pass the intent gate.
 pub(crate) fn settle_live(
     tx: &Transaction<'_>,
     candidate: &super::super::RecoveryCandidate,
     now: i64,
-) -> Result<(), StoreError> {
+) -> Result<bool, StoreError> {
     let Some(mut intent) = intent::pending(
         tx,
         candidate.project_id.as_str(),
         candidate.chat_id.as_str(),
     )?
     else {
-        return Ok(());
+        return Ok(false);
     };
     if intent.command.session_id != candidate.session_id
         || intent.command.runtime_epoch != candidate.runtime_epoch
@@ -23,11 +32,8 @@ pub(crate) fn settle_live(
         return Err(StoreError::Corrupt("undo recovery owner"));
     }
     intent.command.now_millis = now;
-    if intent.command.harness_reverted {
-        intent::rollback_in(tx, &intent.command)
-    } else {
-        super::record_turn_undone_in(tx, &intent.command).map(|_| ())
-    }
+    intent::rollback_in(tx, &intent.command)?;
+    Ok(true)
 }
 
 /// Shutdown may park a runtime between its native reply and settlement.
@@ -70,39 +76,34 @@ pub(crate) fn recover_parked(
             ],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
-        let revision = if state == "ready" && residency == "cold" && !command.harness_reverted {
-            super::record_turn_undone_in(&tx, command)?
-                .published
-                .ok_or(StoreError::Corrupt("parked undo publication"))?
-        } else {
-            // Uncertain native-only context is never resumed. A terminal
-            // session already supplies that boundary and stays immutable.
-            let terminal = matches!(state.as_str(), "failed" | "closed" | "incompatible");
-            if !terminal && (state != "ready" || residency != "cold") {
-                return Err(StoreError::Corrupt("parked undo owner"));
-            }
-            intent::release_reservation(&tx, command)?;
-            let revision = next_projection_revision(&tx, &project, &chat)?;
-            intent::append_settled(&tx, &intent, "rolledBack", revision, now)?;
-            if !terminal {
-                tx.execute(
-                    "DELETE FROM chat_session_heads WHERE session_id=?1",
-                    [intent.command.session_id.as_str()],
-                )?;
-                tx.execute(
-                    "UPDATE agent_sessions SET state='failed',revision=revision+1,
+        // Uncertain native effects are never resumed. A terminal
+        // session already supplies that boundary and stays immutable.
+        let terminal = matches!(state.as_str(), "failed" | "closed" | "incompatible");
+        if !terminal && (state != "ready" || residency != "cold") {
+            return Err(StoreError::Corrupt("parked undo owner"));
+        }
+        intent::release_reservation(&tx, command)?;
+        let revision = next_projection_revision(&tx, &project, &chat)?;
+        intent::append_settled(&tx, &intent, "rolledBack", revision, now)?;
+        if !terminal {
+            tx.execute(
+                "DELETE FROM chat_session_heads WHERE session_id=?1",
+                [intent.command.session_id.as_str()],
+            )?;
+            tx.execute(
+                "UPDATE agent_sessions SET state='failed',revision=revision+1,
                     projection_revision=?2,updated_at=?3,terminal_at=?3 WHERE id=?1",
-                    params![
-                        intent.command.session_id.as_str(),
-                        revision.get() as i64,
-                        now
-                    ],
-                )?;
-            }
-            tx.execute("UPDATE chats SET projection_revision=?3,updated_at=?4 WHERE project_id=?1 AND id=?2",
-                params![project, chat, revision.get() as i64, now])?;
-            revision
-        };
+                params![
+                    intent.command.session_id.as_str(),
+                    revision.get() as i64,
+                    now
+                ],
+            )?;
+        }
+        tx.execute(
+            "UPDATE chats SET projection_revision=?3,updated_at=?4 WHERE project_id=?1 AND id=?2",
+            params![project, chat, revision.get() as i64, now],
+        )?;
         tx.commit().map_err(|_| StoreError::CommitUnknown)?;
         recovered += 1;
         latest = Some(revision);
