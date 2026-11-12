@@ -60,6 +60,7 @@ import {
 import { fixtureTabs, visualSnapshotDiffRef } from "./visualDocumentFixtures";
 import { applyVisualWorkbenchState } from "./visualWorkbenchState";
 import { useAcpChatProjection } from "../../../src/features/chat/acp/useAcpChatProjection";
+import { settleLazyModules } from "../../../src/test/settleLazyModules";
 
 const initialState = useWorkbenchStore.getState();
 
@@ -502,7 +503,12 @@ describe("visual scenario surface ownership", () => {
         createElement(AgentArtifactPane),
       ),
     );
-    await installVisualScenario("preview");
+    await act(async () => {
+      await installVisualScenario("preview");
+    });
+    // Installation commits the Chat first; that render starts the artifact
+    // tab strip's import. Flush both stages before asserting its selection.
+    await settleLazyModules();
     await waitFor(() =>
       expect(harnessBrowseOwner()).toMatchObject({
         projectId: PROJECT_ID,
@@ -518,9 +524,6 @@ describe("visual scenario surface ownership", () => {
         "true",
       ),
     );
-    await act(async () => {
-      await vi.dynamicImportSettled();
-    });
     await waitFor(() =>
       expect(view.getByTitle("Sage browser")).toBeInTheDocument(),
     );
