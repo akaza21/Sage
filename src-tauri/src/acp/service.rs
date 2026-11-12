@@ -121,6 +121,7 @@ pub(crate) struct AcpService {
     /// Starts durable sessions; it never reserves a runtime tree.
     session_starts: SessionCoordinator,
     lanes: Box<[live_lanes::LiveLane]>,
+    idle_release: live_lanes::IdleRelease,
     publisher: Arc<dyn ProjectionPublisher>,
     notifier: Option<Arc<ProjectionNotifier>>,
     page_reads: PageReadAdmission,

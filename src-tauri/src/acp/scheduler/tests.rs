@@ -153,3 +153,30 @@ fn final_window_recovery_clears_only_the_exact_owner_and_is_idempotent() {
     assert!(scheduler.active().is_none());
     scheduler.recover_owner_after_zero_process(&exact).unwrap();
 }
+
+#[test]
+fn idle_since_restarts_when_a_turn_ends_and_is_absent_while_one_runs() {
+    let scheduler = Scheduler::new();
+    let before_tree = Instant::now();
+    let tree = scheduler.reserve_tree(owner("one", 1)).unwrap();
+    let reserved_idle = scheduler.active().unwrap().idle_since.unwrap();
+    assert!(reserved_idle >= before_tree);
+
+    let turn = tree
+        .reserve_turn()
+        .unwrap()
+        .bind(SageTurnId::parse("turn-one").unwrap())
+        .unwrap();
+    assert_eq!(scheduler.active().unwrap().idle_since, None);
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    turn.terminal_committed().unwrap();
+    let after_turn = scheduler.active().unwrap().idle_since.unwrap();
+    assert!(after_turn > reserved_idle);
+
+    // A Turn refused before it committed also ends the busy stretch.
+    let refused = tree.reserve_turn().unwrap();
+    assert_eq!(scheduler.active().unwrap().idle_since, None);
+    refused.abort_before_durable_commit().unwrap();
+    assert!(scheduler.active().unwrap().idle_since.unwrap() >= after_turn);
+    tree.zero_process_converged().unwrap();
+}

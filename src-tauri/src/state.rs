@@ -57,6 +57,33 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Every sweep interval, parks the harness runtimes of Chats left idle,
+    /// until the lanes shut down.
+    pub(crate) fn release_idle_runtimes_periodically(app: tauri::AppHandle) {
+        tauri::async_runtime::spawn(async move {
+            let interval = crate::acp::service::AcpService::IDLE_SWEEP_INTERVAL;
+            let mut sweeps =
+                tokio::time::interval_at(tokio::time::Instant::now() + interval, interval);
+            sweeps.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                sweeps.tick().await;
+                let app = app.clone();
+                let swept = tauri::async_runtime::spawn_blocking(move || {
+                    let now = std::time::Instant::now();
+                    app.state::<AppState>().acp.release_idle_runtimes(now)
+                })
+                .await;
+                match swept {
+                    Ok(Some(0)) => {}
+                    Ok(Some(parked)) => tracing::info!(parked, "released idle Chats' runtimes"),
+                    // A sweep that panicked leaves the next one to try again.
+                    Err(_) => tracing::warn!("an idle-release sweep failed"),
+                    Ok(None) => break,
+                }
+            }
+        });
+    }
+
     pub(crate) fn refresh_harnesses_after_window_shown(app: tauri::AppHandle) {
         tauri::async_runtime::spawn_blocking(move || {
             let state = app.state::<AppState>();
