@@ -443,3 +443,19 @@ describe("ChatMarkdown code blocks", () => {
     expect(parse).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("ChatMarkdown line breaks", () => {
+  it("keeps an answer's single line breaks inside its paragraph", () => {
+    const { container } = render(
+      <ChatMarkdown
+        text={"Roses are red,  \nviolets are blue,\n  **sugar** is sweet"}
+      />,
+    );
+    const paragraphs = container.querySelectorAll(".acp-markdown p");
+    expect(paragraphs).toHaveLength(1);
+    expect(paragraphs[0].textContent).toBe(
+      "Roses are red,\nviolets are blue,\nsugar is sweet",
+    );
+    expect(paragraphs[0].querySelector("strong")).toHaveTextContent("sugar");
+  });
+});

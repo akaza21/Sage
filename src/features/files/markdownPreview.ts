@@ -48,7 +48,7 @@ export interface MarkdownPreviewDocument {
 }
 
 const inlinePattern =
-  /`([^`]+)`|(!?)\[([^\]\n]{1,128})\]\(([^)\n]+)\)|(\*{1,2}|_{1,2})/gu;
+  /`([^`]+)`|(!?)\[([^\]]{1,128})\]\(([^)\n]+)\)|(\*{1,2}|_{1,2})/gu;
 
 function delimiterFlanks(value: string, index: number, marker: string) {
   const characterClass = (character: string) =>
@@ -182,7 +182,11 @@ export function renderMarkdownPreview(
         .replace(/`[^`]+`|<\/?[a-z][\w-]*(?:\s[^<>]*)?\/?>/giu, (value) =>
           value[0] === "`" ? value : "",
         )
-        .replace(/`[^`]+`|\s+/gu, (value) => (value[0] === "`" ? value : " "))
+        // A soft line break stays a newline; each surface decides whether it
+        // breaks the line (chat) or reads as a space (CommonMark preview).
+        .replace(/`[^`]+`|[^\S\n]*\n\s*|\s+/gu, (value) =>
+          value[0] === "`" ? value : value.includes("\n") ? "\n" : " ",
+        )
         .trim(),
       0,
     );

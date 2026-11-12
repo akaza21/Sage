@@ -37,11 +37,7 @@ export function PrimaryActivities({
             interactive={interactive}
             onOpenResource={onOpenResource}
           />
-        ) : // A steered message is the user's own words, never folded away.
-        !visible &&
-          !(
-            "item" in activity && activity.item.kind === "userPrompt"
-          ) ? null : activity.kind === "collaborationRollup" ? (
+        ) : !visible ? null : activity.kind === "collaborationRollup" ? (
           <CollaborationItem
             key={activity.items[0].id}
             item={activity.items[0]}

@@ -38,12 +38,17 @@ export function ChatTranscriptTurnSummary({
   turn,
   hasActivities,
   children,
+  steered,
   thinkingPlaceholder = false,
 }: {
   turn: TurnProjection;
   hasActivities: boolean;
   children?: ReactNode;
-
+  /**
+   * Messages the user steered into the Turn. They sit at their place among
+   * the expanded activities and stay visible below a collapsed Worked row.
+   */
+  steered?: ReactNode;
   thinkingPlaceholder?: boolean;
 }) {
   const terminal = terminalTurnStates.has(turn.state);
@@ -115,7 +120,7 @@ export function ChatTranscriptTurnSummary({
           />
         </summary>
       </details>
-      {groups}
+      {groups ?? steered}
     </>
   );
 }
