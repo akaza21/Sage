@@ -74,6 +74,8 @@ interface HarnessDefinitionBase {
   unavailableReason?: HarnessUnavailableReason | null;
   signIn?: { command: string; hint: string } | null;
   brand?: HarnessBrand | null;
+  /** A newer published release and the command that installs it. */
+  update?: { latestVersion: string; command: string } | null;
 }
 
 export type HarnessDefinition = HarnessDefinitionBase &

@@ -44,6 +44,7 @@ test("frozen workbench transport types have an explicit field freeze", () => {
     "source",
     "transport",
     "unavailableReason",
+    "update",
     "version",
     "versionChecking",
   ]);
