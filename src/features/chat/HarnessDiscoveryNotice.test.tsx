@@ -62,7 +62,7 @@ describe("HarnessDiscoveryNotice", () => {
     render(<HarnessDiscoveryNotice />);
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Sage hasn't been tested with Claude Code 0.99.0 yet, so some features are off.",
+      "Claude Code 0.99.0 hasn't been tested with Sage yet, so some features are off.",
     );
     expect(screen.getByText(/some features are off\./)).toBeVisible();
   });
