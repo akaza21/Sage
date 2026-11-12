@@ -55,6 +55,7 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
             bridge: None,
             children: Children::default(),
             native: None,
+            usage: Arc::default(),
             sent: Vec::new(),
             steering: Steering::default(),
             launch: None,
@@ -71,6 +72,8 @@ struct ClaudeSdkRuntime {
     children: Children,
     /// The reply to a session control, until the host takes it.
     native: Option<crate::acp::goal::NativeRpcReply>,
+    /// The plan's usage limits as last read, lent to the runtime lane.
+    usage: Arc<crate::acp::usage::UsageCell>,
     /// Written frames whose delivery is still open, with what they started.
     sent: Vec<(EgressToken, Sent)>,
     steering: Steering,
@@ -147,9 +150,7 @@ impl ClaudeSdkRuntime {
             observed = true;
             batch.push_event(event)?;
         }
-        if let Some(reply) = inbound.native {
-            self.native = Some(reply);
-        }
+        self.answered(inbound.native, inbound.usage);
         if let Some(questions) = inbound.questions {
             self.session.offer_user_input(questions);
         }
@@ -197,20 +198,6 @@ impl ClaudeSdkRuntime {
             batch.push_event(AdapterEvent::Absorbed)?;
         }
         Ok(batch.finish())
-    }
-}
-
-/// Paths in a frame read without its structure checks are not mapped into
-/// the project; they show as unavailable.
-struct NoResources;
-
-impl ResourceMapper for NoResources {
-    fn map_existing(
-        &self,
-        _absolute_path: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
-        Err(crate::acp::intent::UnavailableResourceReason::Foreign)
     }
 }
 
@@ -307,8 +294,15 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         self.native = Some(crate::acp::goal::NativeRpcReply::Released);
         true
     }
+    fn usage(&self) -> Option<Arc<crate::acp::usage::UsageCell>> {
+        Some(Arc::clone(&self.usage))
+    }
+    fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.usage_request()
+    }
+    /// A passive read whose caller gave up: a usage or MCP read.
     fn abandon_usage_read(&mut self) {
-        self.abandon_mcp_requests();
+        self.abandon_passive_requests();
     }
     fn native_rpc_pending(&self) -> bool {
         self.native.is_some()
@@ -381,30 +375,7 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         &mut self,
         frame: &Frame,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        let mut sdk: Value =
-            serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
-        let object = sdk.as_object_mut().ok_or(AdapterRuntimeError::Frame)?;
-        object.remove("tool_use_result");
-        object.remove("tool_result_meta");
-        let reduced = serde_json::to_vec(&sdk).map_err(|_| AdapterRuntimeError::Frame)?;
-        if let Ok(sdk) = decode_frame(&reduced) {
-            return self.ingest_sdk(sdk, &NoResources);
-        }
-        if let Some(essentials) = SdkBridge::essentials(&sdk)
-            && let Ok(essentials) = serde_json::to_vec(&essentials)
-            && let Ok(sdk) = decode_frame(&essentials)
-        {
-            return self.ingest_sdk(sdk, &NoResources);
-        }
-        let mut batch = AdapterBatchBuilder::new();
-        if let Some(reply) = SdkBridge::refusal(&sdk) {
-            batch.push_egress(AdapterEgress::new(
-                sdk_frame(&reply)?,
-                EgressToken::protocol_notification(),
-            ))?;
-        }
-        batch.push_event(AdapterEvent::Absorbed)?;
-        Ok(batch.finish())
+        self.ingest_oversize(frame)
     }
 
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
@@ -446,6 +417,8 @@ impl HarnessAdapter for ClaudeSdkRuntime {
 #[path = "runtime_native.rs"]
 mod native;
 use native::sdk_capabilities;
+#[path = "runtime_oversize.rs"]
+mod oversize;
 #[path = "runtime_steer.rs"]
 mod steering;
 use steering::Steering;
