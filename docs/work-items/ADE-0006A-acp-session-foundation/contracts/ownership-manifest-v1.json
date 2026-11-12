@@ -489,6 +489,7 @@
         "src-tauri/src/acp/bindings/registry/record_reason.rs",
         "src-tauri/src/acp/bindings/registry/record_root.rs",
         "src-tauri/src/acp/bindings/registry/test_support.rs",
+        "src-tauri/src/acp/bindings/release_version.rs",
         "src-tauri/src/acp/ipc.rs",
         "src-tauri/src/acp/ipc/intent_validation.rs",
         "src-tauri/src/acp/mod.rs",

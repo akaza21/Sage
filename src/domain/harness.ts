@@ -13,7 +13,8 @@ export type HarnessUnavailableReason =
   | "nodeEngineMismatch"
   | "nodeVersionUnreadable"
   | "observationOnly"
-  | "platformUnsupported";
+  | "platformUnsupported"
+  | "versionTooOld";
 
 export function harnessUnavailableReason(
   reason: HarnessUnavailableReason | null | undefined,
@@ -43,6 +44,8 @@ export function harnessUnavailableReason(
       return "Sage found this harness but can't verify it on this computer.";
     case "platformUnsupported":
       return "This harness isn't supported on this platform.";
+    case "versionTooOld":
+      return "The installed release is older than Sage supports. Update it, then refresh harness discovery in Settings.";
     default:
       return "Sage can't start this harness.";
   }
@@ -63,7 +66,13 @@ interface HarnessDefinitionBase {
   version?: string | null;
   versionChecking?: boolean;
   boundVersion?: string | null;
-  characterisation?: "characterised" | "uncharacterised" | null;
+  /**
+   * Where the bound release sits against the release Sage was tested with.
+   * A newer release keeps the tested features; an uncharacterised one (older
+   * or unreadable) loses them.
+   */
+  characterisation?:
+    "characterised" | "newerThanTested" | "uncharacterised" | null;
   unavailableReason?: HarnessUnavailableReason | null;
   signIn?: { command: string; hint: string } | null;
   brand?: HarnessBrand | null;

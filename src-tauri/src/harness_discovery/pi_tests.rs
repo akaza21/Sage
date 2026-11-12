@@ -1,10 +1,15 @@
 use super::*;
 
 fn npm_root(name: &str, bin: &str) -> PathBuf {
+    npm_root_with_entry(name, bin, "dist/cli.js")
+}
+
+fn npm_root_with_entry(name: &str, bin: &str, entry: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("sage-pi-discovery-{}", uuid::Uuid::new_v4()));
     let package = root.join(package_relative(""));
-    std::fs::create_dir_all(package.join("dist")).unwrap();
-    std::fs::write(package.join("dist/cli.js"), b"#!/usr/bin/env node\n").unwrap();
+    let entry = package.join(entry);
+    std::fs::create_dir_all(entry.parent().unwrap()).unwrap();
+    std::fs::write(entry, b"#!/usr/bin/env node\n").unwrap();
     std::fs::write(
         package.join("package.json"),
         serde_json::to_vec(&serde_json::json!({
@@ -32,6 +37,13 @@ fn a_foreign_package_or_bin_is_never_admitted() {
     for (name, bin) in [
         ("@other/pi-coding-agent", "dist/cli.js"),
         (crate::acp::bindings::pi::PI_PACKAGE, "dist/other.js"),
+        (
+            crate::acp::bindings::pi::PI_PACKAGE,
+            "../pi-coding-agent/dist/cli.js",
+        ),
+        (crate::acp::bindings::pi::PI_PACKAGE, "/dist/cli.js"),
+        (crate::acp::bindings::pi::PI_PACKAGE, "dist/cli.ts"),
+        (crate::acp::bindings::pi::PI_PACKAGE, ""),
     ] {
         let root = npm_root(name, bin);
         assert_eq!(
@@ -91,5 +103,26 @@ fn the_curated_package_with_node_is_present_with_digests() {
     assert_eq!(found.node_version, "22.12.0");
     assert_eq!(found.entrypoint_sha256.len(), 64);
     assert!(found.entrypoint_path.ends_with("dist/cli.js"));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn the_entrypoint_is_the_bin_the_installed_release_declares() {
+    // Pi 1.x moved its `pi` bin to the bundled build.
+    let root = npm_root_with_entry(
+        crate::acp::bindings::pi::PI_PACKAGE,
+        "dist/bundle/cli.js",
+        "dist/bundle/cli.js",
+    );
+    let Some(node) = admissible_node(&root) else {
+        std::fs::remove_dir_all(root).unwrap();
+        return;
+    };
+    let found =
+        match discover_pi_launch_from(vec![root.clone()], vec![node], ProbeLimits::PRODUCTION) {
+            PiLaunchDiscovery::Present(found) => found,
+            other => panic!("the declared bin must be found: {other:?}"),
+        };
+    assert!(found.entrypoint_path.ends_with("dist/bundle/cli.js"));
     std::fs::remove_dir_all(root).unwrap();
 }

@@ -1,5 +1,4 @@
 use super::pi::bridge::install::Unavailable;
-use crate::acp::bindings::codex::CODEX_PINNED_VERSION;
 use crate::settings_store::SessionAccessMode;
 
 pub(crate) const CODEX_ASK_NATIVE_APPROVAL_PROVEN: bool = false;
@@ -64,14 +63,13 @@ pub(crate) fn access_modes(
         "pi-rpc" => super::pi::bridge::install::installed(version).map(drop),
         _ => Err(Unavailable::UnsupportedVersion),
     };
-    admitted_modes(binding, version, characterised, pi_bridge)
+    admitted_modes(binding, characterised, pi_bridge)
 }
 
 /// The modes Sage enforces for a binding, given whether the Pi bridge that
 /// carries Pi's workspace edits is available.
 pub(crate) fn admitted_modes(
     binding: &str,
-    version: &str,
     characterised: bool,
     pi_bridge: Result<(), Unavailable>,
 ) -> Vec<AccessModeCapability> {
@@ -91,7 +89,7 @@ pub(crate) fn admitted_modes(
             .collect();
     }
     let rows: &[(SessionAccessMode, &str, &str)] = match binding {
-        "codex-app-server" if version == CODEX_PINNED_VERSION && characterised => &[
+        "codex-app-server" if characterised => &[
             (
                 ReadOnly,
                 "Read-only",
@@ -230,7 +228,7 @@ pub(crate) fn turn_mode_for_binding(
     turn_mode(
         record.access_policy_binding_id(),
         &bound.reported_version,
-        bound.characterisation.is_characterised(),
+        bound.characterisation.runs_tested_features(),
         chat,
         default,
     )
@@ -302,6 +300,7 @@ pub(crate) fn session_mode_for_binding(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::acp::bindings::codex::CODEX_PINNED_VERSION;
     use serde_json::json;
 
     #[test]
@@ -362,7 +361,6 @@ mod tests {
                 CODEX_PINNED_VERSION,
                 vec!["readOnly", "workspaceWrite"],
             ),
-            ("codex-app-server", "0.145.0", vec!["readOnly"]),
             (
                 "claude-agent-acp",
                 "1",
@@ -548,7 +546,7 @@ mod tests {
     fn pi_offers_workspace_edits_only_with_its_bridge_and_says_why_not() {
         use SessionAccessMode::{ReadOnly, WorkspaceWrite};
         let modes = |bridge| {
-            admitted_modes("pi-rpc", crate::acp::bindings::pi::PI_VERSION, true, bridge)
+            admitted_modes("pi-rpc", true, bridge)
                 .into_iter()
                 .map(|mode| (mode.id, mode.description))
                 .collect::<Vec<_>>()
@@ -576,15 +574,10 @@ mod tests {
             )]
         );
         assert_eq!(
-            admitted_modes(
-                "pi-rpc",
-                crate::acp::bindings::pi::PI_VERSION,
-                false,
-                Ok(())
-            )
-            .into_iter()
-            .map(|mode| mode.id)
-            .collect::<Vec<_>>(),
+            admitted_modes("pi-rpc", false, Ok(()))
+                .into_iter()
+                .map(|mode| mode.id)
+                .collect::<Vec<_>>(),
             vec![ReadOnly]
         );
     }

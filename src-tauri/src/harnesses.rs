@@ -1122,7 +1122,7 @@ mod tests {
         let claude = ClaudeBindingRegistration::admitted_for_test(ClaudeLaunchDiscovery::Present(
             Box::new(DiscoveredClaudeLaunch {
                 adapter_path: adapter.clone(),
-                adapter_version: "0.99.0".into(),
+                adapter_version: "0.75.0".into(),
                 acp_sdk_version: "1.4.0".into(),
                 node_engine: ">=22".into(),
                 node_path: node.clone(),
@@ -1144,7 +1144,7 @@ mod tests {
             entry.characterisation,
             Some(crate::domain::HarnessCharacterisation::Uncharacterised)
         );
-        assert_eq!(entry.bound_version.as_deref(), Some("0.99.0"));
+        assert_eq!(entry.bound_version.as_deref(), Some("0.75.0"));
         assert!(entry.unavailable_reason.is_none());
     }
 

@@ -17,10 +17,15 @@ pub(crate) enum TurnPolicySurface {
 }
 
 impl TurnPolicySurface {
+    /// An observed build that runs the tested features takes the tested turn
+    /// policy, including later releases; the curated package must be the
+    /// pinned one.
     pub(super) fn from_identity(observed: Option<Characterisation>, runtime_version: &str) -> Self {
-        if (observed == Some(Characterisation::Characterised) || observed.is_none())
-            && runtime_version == PINNED_CODEX_VERSION
-        {
+        let supported = match observed {
+            Some(characterisation) => characterisation.runs_tested_features(),
+            None => runtime_version == PINNED_CODEX_VERSION,
+        };
+        if supported {
             Self::Supported
         } else {
             Self::Unsupported

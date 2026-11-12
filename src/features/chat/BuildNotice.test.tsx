@@ -63,3 +63,25 @@ it("explains the build again when a chat pane is remounted", () => {
   render(<HarnessDiscoveryNotice harness={harness} />);
   expect(screen.getByRole("status")).toHaveTextContent("Build 1.2.3");
 });
+
+it("says a newer release keeps every feature instead of calling it uncharacterised", () => {
+  render(
+    <HarnessDiscoveryNotice
+      harness={{ ...harness, characterisation: "newerThanTested" }}
+    />,
+  );
+  const notice = screen.getByRole("status");
+  expect(notice).toHaveTextContent(
+    "Build 1.2.3 is newer than the release Sage was tested with. Everything stays available.",
+  );
+  expect(notice).not.toHaveTextContent("Some features are unavailable");
+});
+
+it("shows no build notice for the tested release", () => {
+  render(
+    <HarnessDiscoveryNotice
+      harness={{ ...harness, characterisation: "characterised" }}
+    />,
+  );
+  expect(screen.queryByRole("status")).toBeNull();
+});

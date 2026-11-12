@@ -196,6 +196,7 @@ export function LazyHarnessNotice(
       harness?.transport === "acp" &&
       (harness.installState !== "available" ||
         harness.characterisation === "uncharacterised" ||
+        harness.characterisation === "newerThanTested" ||
         (harness.accountModelDiscovery && discoveryPhase !== "ready"))
     )
   )
