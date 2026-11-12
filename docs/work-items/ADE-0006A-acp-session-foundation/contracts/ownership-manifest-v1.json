@@ -228,6 +228,7 @@
         "src-tauri/src/acp/intent/capability.rs",
         "src-tauri/src/acp/intent/error_kind.rs",
         "src-tauri/src/acp/intent/file_change.rs",
+        "src-tauri/src/acp/intent/prompt_send.rs",
         "src-tauri/src/acp/intent/session_event.rs",
         "src-tauri/src/acp/intent/session_event_fixtures.rs",
         "src-tauri/src/acp/intent/session_event_tests.rs",

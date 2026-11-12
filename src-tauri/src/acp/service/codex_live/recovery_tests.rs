@@ -997,7 +997,8 @@ fn steer_ack_timeout_keeps_runtime_live_for_an_explicit_retry() {
         host.send(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
             access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
-        })?;
+        })
+        .map_err(|failure| failure.error)?;
         Ok::<(), crate::acp::runtime::HostError>(())
     })
     .unwrap();
@@ -2165,7 +2166,9 @@ fn cancel_settles_a_turn_whose_host_failed_closed() {
             command: prepare_turn(&owner),
             access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         }),
-        Err(crate::acp::runtime::HostError::SignInRequired)
+        Err(crate::acp::intent::PromptSendError::unknown(
+            crate::acp::runtime::HostError::SignInRequired
+        ))
     );
     assert!(matches!(
         host.cancel(cancel_intent(&owner)),

@@ -1067,7 +1067,12 @@ fn possible_bytes_are_terminally_recorded_without_prompt_replay() {
     let runtime = owner("project-a");
     host.activate(runtime.clone()).unwrap();
 
-    assert_eq!(host.send(prompt(&runtime)), Err(HostError::DeliveryUnknown));
+    assert_eq!(
+        host.send(prompt(&runtime)),
+        Err(crate::acp::intent::PromptSendError::unknown(
+            HostError::DeliveryUnknown
+        ))
+    );
     assert_eq!(host.state().unwrap(), HostState::Recovery);
     assert_eq!(
         observed.events(),
@@ -1115,7 +1120,12 @@ fn failed_zero_byte_retry_enters_recovery_and_cannot_replay() {
     let runtime = owner("project-a");
     host.activate(runtime.clone()).unwrap();
 
-    assert_eq!(host.send(prompt(&runtime)), Err(HostError::Unavailable));
+    assert_eq!(
+        host.send(prompt(&runtime)),
+        Err(crate::acp::intent::PromptSendError::unknown(
+            HostError::Unavailable
+        ))
+    );
     assert_eq!(host.state().unwrap(), HostState::Recovery);
     assert_eq!(
         observed.events(),
@@ -1135,7 +1145,9 @@ fn failed_delivery_unknown_record_enters_recovery_without_replay() {
 
     assert_eq!(
         host.send(prompt(&runtime)),
-        Err(HostError::RecoveryRequired)
+        Err(crate::acp::intent::PromptSendError::unknown(
+            HostError::RecoveryRequired
+        ))
     );
     assert_eq!(host.state().unwrap(), HostState::Recovery);
     assert_eq!(
@@ -1181,7 +1193,12 @@ fn zero_byte_retry_cannot_substitute_a_different_store_minted_turn() {
     let runtime = owner("project-a");
     host.activate(runtime.clone()).unwrap();
 
-    assert_eq!(host.send(prompt(&runtime)), Err(HostError::Intent));
+    assert_eq!(
+        host.send(prompt(&runtime)),
+        Err(crate::acp::intent::PromptSendError::unknown(
+            HostError::Intent
+        ))
+    );
     assert_eq!(host.state().unwrap(), HostState::Recovery);
     host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
@@ -1197,7 +1214,12 @@ fn zero_bytes_retry_once_and_second_failure_is_durable() {
     let runtime = owner("project-a");
     host.activate(runtime.clone()).unwrap();
 
-    assert_eq!(host.send(prompt(&runtime)), Err(HostError::RetryExhausted));
+    assert_eq!(
+        host.send(prompt(&runtime)),
+        Err(crate::acp::intent::PromptSendError::unknown(
+            HostError::RetryExhausted
+        ))
+    );
     assert_eq!(host.state().unwrap(), HostState::Recovery);
     assert_eq!(
         observed.events(),
@@ -1601,4 +1623,47 @@ fn command_deadlines_use_the_frozen_operation_classes() {
         HostCommand::Shutdown.deadline_millis(),
         LIMITS.deadlines_ms.explicit_close
     );
+}
+
+#[test]
+fn a_prompt_carrying_the_largest_admitted_images_is_prepared() {
+    use crate::acp::attached_context::files::images::{ImagePreview, PromptImage, PromptImages};
+
+    let host = RuntimeHost::start(FakeEngine::new([])).unwrap();
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+    let mut intent = prompt(&runtime);
+    // Two images at the echoed bound, each with a thumbnail, as a Codex or Pi
+    // prompt can carry once admitted.
+    let image = |bytes| PromptImage {
+        media_type: crate::acp::intent::ImageMediaType::Png,
+        bytes: vec![0; bytes],
+        preview: ImagePreview::Thumbnail(
+            crate::acp::intent::ImageMediaType::Png,
+            vec![0; crate::acp::limits::IMAGE_PREVIEW_BYTES],
+        ),
+    };
+    let half = crate::acp::limits::PROMPT_IMAGE_TOTAL_BYTES / 2;
+    intent.command.prompt.images = PromptImages(Arc::new(vec![image(half), image(half)]));
+    assert!(
+        host.prepare_prompt(intent).is_ok(),
+        "a prompt within the image bounds must reach the engine"
+    );
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn a_prompt_refused_before_it_is_prepared_is_known_not_to_have_started() {
+    use crate::acp::intent::PromptSendError;
+    let host =
+        RuntimeHost::start(FakeEngine::new([]).with_prepare_error(HostError::Capacity)).unwrap();
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+    // The chat offers the draft back only on this proof.
+    assert_eq!(
+        host.send(prompt(&runtime)),
+        Err(PromptSendError::not_started(HostError::Capacity))
+    );
+    assert_eq!(host.state().unwrap(), HostState::Idle);
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }

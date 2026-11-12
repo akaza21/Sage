@@ -28,6 +28,11 @@ impl HostCommand {
         }
     }
 
+    /// A command that holds a user prompt, with whatever images it carries.
+    pub(in crate::acp::runtime::runtime_host) fn carries_prompt(&self) -> bool {
+        matches!(self, Self::PreparePrompt(_) | Self::Steer(_))
+    }
+
     pub(in crate::acp::runtime::runtime_host) fn is_control(&self) -> bool {
         matches!(
             self,
