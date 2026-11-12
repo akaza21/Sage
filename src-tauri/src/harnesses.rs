@@ -385,6 +385,9 @@ impl HarnessCatalog {
         {
             return Some("sage-characterization".into());
         }
+        if let Some(id) = self.registry.pending_claude_harness(binding_id) {
+            return Some(id.into());
+        }
         self.definitions()
             .into_iter()
             .find(|definition| {
@@ -945,19 +948,23 @@ mod tests {
     }
 
     #[test]
-    fn a_claude_sdk_chat_restored_before_discovery_keeps_its_harness() {
+    fn a_claude_chat_restored_before_discovery_keeps_its_harness() {
         let registry = Arc::new(BindingRegistry::default());
         let catalog = HarnessCatalog::with_registry(Arc::clone(&registry));
         let sdk = crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID;
+        let acp = crate::acp::bindings::claude::CLAUDE_BINDING_ID;
         let mut definitions = catalog.definitions();
-        assert_eq!(
-            catalog.restore_binding(sdk, &mut definitions),
-            "claude-code"
-        );
+        // Either Claude binding keeps its harness until discovery settles.
+        for binding in [sdk, acp] {
+            assert_eq!(
+                catalog.restore_binding(binding, &mut definitions),
+                "claude-code"
+            );
+        }
         assert!(
             definitions
                 .iter()
-                .all(|entry| entry.id != format!("unavailable-binding:{sdk}"))
+                .all(|entry| !entry.id.starts_with("unavailable-binding:"))
         );
         // Discovery that finds no CLI hands the harness to the ACP adapter.
         registry.claude_sdk_admission().apply_discovery(None);

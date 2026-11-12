@@ -244,6 +244,19 @@ impl BindingRegistry {
         admission
     }
 
+    /// The harness a Claude binding serves while discovery has not yet
+    /// said which of the two Claude Code runs on, so a Chat restored at
+    /// startup on either keeps its harness.
+    pub(crate) fn pending_claude_harness(&self, binding_id: &str) -> Option<&'static str> {
+        let pending = self.claude_sdk_admission().discovery_pending()
+            && matches!(
+                self.claude_admission().unavailable(),
+                Some(ClaudeAdmissionUnavailable::DiscoveryPending)
+            );
+        (pending && [self.claude.binding_id(), self.claude_sdk.binding_id()].contains(&binding_id))
+            .then_some("claude-code")
+    }
+
     pub(crate) fn for_harness(&self, id: &str) -> Option<&BindingRecord> {
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         if let Some(record) = self.pi.as_ref().filter(|record| record.harness_id() == id) {
@@ -251,14 +264,7 @@ impl BindingRegistry {
         }
         // Claude Code runs over its SDK protocol once that binding is
         // admitted; the ACP adapter serves only installs it cannot admit.
-        // Until discovery finishes the SDK binding stays the harness's, so a
-        // Chat restored at startup keeps its harness instead of a placeholder.
-        let discovery_pending = self.claude_sdk_admission().discovery_pending()
-            && matches!(
-                self.claude_admission().unavailable(),
-                Some(ClaudeAdmissionUnavailable::DiscoveryPending)
-            );
-        let claude = if self.claude_sdk.admission_available() || discovery_pending {
+        let claude = if self.claude_sdk.admission_available() {
             &self.claude_sdk
         } else {
             self.claude()

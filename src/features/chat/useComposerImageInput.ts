@@ -53,6 +53,8 @@ export function useComposerImageInput({
   // about images being unavailable clears once the session takes them.
   const [raised, setRaised] = useState<[string, boolean] | null>(null);
   const setError = (text: string) => setRaised([text, available]);
+  // Dropped, not hidden, so it cannot return if availability flips back.
+  if (raised && raised[1] !== available) setRaised(null);
   const error = raised?.[1] === available ? raised[0] : null;
   const chooserRef = useRef<HTMLInputElement>(null);
   const images = contexts.filter((context) => context.kind === "image");
