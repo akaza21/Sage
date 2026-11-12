@@ -4,6 +4,10 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BrowserError {
     /// This system has no way to open the user's browser from Sage.
+    #[cfg_attr(
+        windows,
+        expect(dead_code, reason = "Windows always has a way to open the browser")
+    )]
     Unavailable,
     /// The system refused to open the page.
     Failed,
