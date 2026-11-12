@@ -82,6 +82,7 @@ pub(crate) mod runtime_identity;
 mod runtime_slot;
 mod session_config;
 pub(crate) use session_config::QueueError;
+mod mcp;
 mod session_control;
 mod session_surface;
 pub(crate) use session_control::SessionControlError;

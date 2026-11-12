@@ -123,7 +123,7 @@ pub(crate) async fn control_acp_session(
     })
 }
 
-fn control_error(error: SessionControlError) -> AcpIpcError {
+pub(super) fn control_error(error: SessionControlError) -> AcpIpcError {
     match error {
         // The harness's own reason, already redacted and bounded.
         SessionControlError::Refused(reason) => AcpIpcError::Rejected {

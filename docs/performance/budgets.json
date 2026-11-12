@@ -36,12 +36,18 @@
         "entry": "src/features/chat/ComposerSlashController.tsx",
         "maxGzipBytes": 1800,
         "maxCssGzipBytes": 340,
-        "reason": "Composer `/` controller: key guard, picked-command hint and the menu's lazy mount. Loads on the field's first focus, keeping the first-Chat path to a stub. Measured 1680 B JS, 289 B CSS."
+        "reason": "Composer `/` controller: key guard, picked-command hint and the lazy menu and panel mounts. Loads on the field's first focus, keeping the first-Chat path to a stub. Measured 1783 B JS, 288 B CSS."
       },
       {
         "entry": "src/features/chat/ComposerSlashMenu.tsx",
-        "maxGzipBytes": 1889,
-        "reason": "Composer `/` command menu: commands in sections by source and the command port. Loads with the first `/` typed. Measured 1888-1889 B JS; the byte is minifier renaming of shared exports."
+        "maxGzipBytes": 1923,
+        "reason": "Composer `/` command menu: commands in sections by source, the command port, and opening a panel command such as `/mcp` on Enter. Loads with the first `/` typed. Measured 1923 B JS."
+      },
+      {
+        "entry": "src/features/chat/ComposerCommandPanel.tsx",
+        "maxGzipBytes": 2500,
+        "maxCssGzipBytes": 520,
+        "reason": "`/status` and `/mcp` panels with the MCP port and its bounded decoder. Load when a panel command first opens, off the first-Chat path. Measured 2444 B JS, 487 B CSS."
       },
       {
         "entry": "src/workbench/AgentTaskResources.tsx",
@@ -493,7 +499,7 @@
         "entry": "src/features/chat/ComposerUsageLimits.tsx",
         "maxGzipBytes": 2020,
         "maxCssGzipBytes": 400,
-        "reason": "Usage popover, its bounded decoder and session token and cost rows; loads only when the context meter is clicked and unmounts when closed. Measured 1895 B."
+        "reason": "Usage popover, its bounded decoder and session token and cost rows; loads when the context meter is clicked or `/status` opens, and unmounts when closed. Measured 1915 B."
       }
     ],
     "windowsInstallerMb": 45,

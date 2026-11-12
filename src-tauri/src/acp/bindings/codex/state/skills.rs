@@ -13,7 +13,9 @@ use crate::acp::{
         standard_acp::surface::command_list::{MAX_COMMAND_BYTES, MAX_COMMANDS},
     },
     intent::{CapabilitySnapshotV1, Prompt},
-    slash_commands::{AvailableCommand, CommandDispatch, CommandSource, CommandState},
+    slash_commands::{
+        AvailableCommand, CommandDispatch, CommandPanel, CommandSource, CommandState,
+    },
 };
 
 /// A skill's harness path; a longer one is left out of the list.
@@ -98,7 +100,8 @@ fn parse(result: &Map<String, Value>) -> Option<Vec<AvailableCommand>> {
 }
 
 /// Codex's own commands that run through an app-server method this session
-/// negotiated, worded as Codex words them.
+/// negotiated, or open a panel of what the session reports, worded as Codex
+/// words them.
 fn builtins(capabilities: &CapabilitySnapshotV1) -> Vec<AvailableCommand> {
     let builtin = |name, description, hint| {
         AvailableCommand::new(
@@ -107,6 +110,15 @@ fn builtins(capabilities: &CapabilitySnapshotV1) -> Vec<AvailableCommand> {
             hint,
             CommandSource::Builtin,
             CommandDispatch::Action,
+        )
+    };
+    let panel = |name, description, panel| {
+        AvailableCommand::new(
+            name,
+            description,
+            None,
+            CommandSource::Builtin,
+            CommandDispatch::Panel(panel),
         )
     };
     [
@@ -124,6 +136,12 @@ fn builtins(capabilities: &CapabilitySnapshotV1) -> Vec<AvailableCommand> {
                 Some("base <branch>, commit <sha>, or what to check"),
             )
         }),
+        Some(panel(
+            "status",
+            "show current session configuration and token usage",
+            CommandPanel::Status,
+        )),
+        Some(panel("mcp", "list configured MCP tools", CommandPanel::Mcp)),
     ]
     .into_iter()
     .flatten()

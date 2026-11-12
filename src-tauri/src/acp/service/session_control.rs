@@ -25,6 +25,21 @@ impl AcpService {
         owner: RuntimeOwner,
         control: SessionControl,
     ) -> Result<Option<SafeText<512>>, SessionControlError> {
+        match self.session_control_reply(owner, control)? {
+            NativeRpcReply::Controlled(summary) => Ok(summary),
+            _ => Err(SessionControlError::RecoveryRequired),
+        }
+    }
+
+    /// Sends a session control and answers with the harness's reply; a
+    /// refusal is an error. A list read that missed its deadline was
+    /// abandoned by its binding, so it leaves the runtime as it was.
+    pub(in crate::acp::service) fn session_control_reply(
+        &self,
+        owner: RuntimeOwner,
+        control: SessionControl,
+    ) -> Result<NativeRpcReply, SessionControlError> {
+        let abandons = matches!(control, SessionControl::ReadMcpServers);
         let lane = self
             .lane_for(&owner)
             .ok_or(SessionControlError::Unavailable)?;
@@ -40,18 +55,18 @@ impl AcpService {
             result,
             Err(HostError::Unavailable
                 | HostError::Closed
-                | HostError::Deadline
                 | HostError::DeliveryUnknown
                 | HostError::RecoveryRequired)
-        ) {
+        ) || (!abandons && matches!(result, Err(HostError::Deadline)))
+        {
             self.retain_config_effect_recovery(owner, host);
         }
         match result {
-            Ok(NativeRpcReply::Controlled(summary)) => Ok(summary),
             Ok(NativeRpcReply::ControlRefused(reason)) => Err(SessionControlError::Refused(reason)),
             Ok(NativeRpcReply::Rejected) => Err(SessionControlError::Refused(None)),
-            Ok(_) => Err(SessionControlError::RecoveryRequired),
+            Ok(reply) => Ok(reply),
             Err(HostError::Intent | HostError::State) => Err(SessionControlError::Unavailable),
+            Err(HostError::Deadline) if abandons => Err(SessionControlError::Unavailable),
             Err(_) => Err(SessionControlError::RecoveryRequired),
         }
     }

@@ -59,6 +59,10 @@ pub(crate) enum NativeRpcReply {
     Controlled(Option<crate::acp::contract::SafeText<512>>),
     /// The harness declined a session control, with its reason if it gave one.
     ControlRefused(Option<crate::acp::contract::SafeText<512>>),
+    /// The session's MCP servers as the harness listed them.
+    McpServers(crate::acp::mcp::inventory::McpInventory),
+    /// Where the user signs in to the MCP server named in the request.
+    McpSignIn(crate::acp::mcp::inventory::McpAuthUrl),
 }
 
 impl NativeRpcIntent {
@@ -71,6 +75,7 @@ impl NativeRpcIntent {
             NativeRpcRequest::UsageRead
                 | NativeRpcRequest::Control(
                     crate::acp::session_control::SessionControl::SetTitle { .. }
+                        | crate::acp::session_control::SessionControl::ReadMcpServers
                 )
         )
     }

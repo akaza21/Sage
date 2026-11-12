@@ -75,6 +75,20 @@ pub(crate) enum CommandDispatch {
     /// Run by the host as the session action its name and input name, with
     /// the action's capability gate (Codex's `compact` and `review`).
     Action,
+    /// Opens a panel in the chat and sends nothing (Codex's `status` and
+    /// `mcp`). The WebView learns the panel from the list, since it opens
+    /// the panel without running the command.
+    Panel(CommandPanel),
+}
+
+/// A panel a command opens in the chat, named on the list it came with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum CommandPanel {
+    /// The session's model, effort, access and usage.
+    Status,
+    /// The session's MCP servers.
+    Mcp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -84,8 +98,27 @@ pub(crate) struct AvailableCommand {
     pub(crate) description: String,
     pub(crate) input_hint: Option<String>,
     pub(crate) source: CommandSource,
-    #[serde(skip)]
+    #[serde(
+        rename = "panel",
+        serialize_with = "serialize_panel",
+        skip_serializing_if = "opens_no_panel"
+    )]
     pub(crate) dispatch: CommandDispatch,
+}
+
+fn opens_no_panel(dispatch: &CommandDispatch) -> bool {
+    !matches!(dispatch, CommandDispatch::Panel(_))
+}
+
+/// Only a panel is named; every other route stays native.
+fn serialize_panel<S: serde::Serializer>(
+    dispatch: &CommandDispatch,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match dispatch {
+        CommandDispatch::Panel(panel) => panel.serialize(serializer),
+        _ => serializer.serialize_none(),
+    }
 }
 
 impl AvailableCommand {

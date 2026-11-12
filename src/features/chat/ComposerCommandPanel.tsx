@@ -1,0 +1,290 @@
+import { useCallback, useEffect, useId, useState, type RefObject } from "react";
+import { useStore } from "zustand";
+import "../../styles/composer-command-panel.css";
+import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
+import { useChatAccessStore } from "../../app/sessionAccessActions";
+import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
+import { useWorkbenchStore } from "../../app/store";
+import type { AcpChatPage } from "../../domain/acp";
+import type { AcpCommandPanel } from "../../domain/acpCommand";
+import {
+  mcpSignInOffered,
+  type McpConnection,
+  type McpInventory,
+  type McpServer,
+} from "../../domain/acpMcp";
+import type { AcpUsageRequest } from "../../domain/acpUsage";
+import { errorMessage } from "../../domain/errors";
+import { acpMcpDesktop } from "../../services/acpMcpDesktop";
+import { MenuPopover } from "../../ui/MenuPopover";
+import { currentSession } from "./acp/acpTurnState";
+import { currentChatUsage } from "./acp/chatUsage";
+import { currentContext } from "./acp/useAcpChatActions";
+import { chatAccessCandidates, chatAccessEffective } from "./chatAccessMode";
+import { confirmedComposerModel } from "./inheritedComposerModel";
+import type * as LimitsChunk from "./ComposerUsageLimits";
+import { lazyParts } from "./lazyParts";
+
+const Usage = lazyParts<typeof LimitsChunk>(
+  () => import("./ComposerUsageLimits"),
+);
+
+/** The chat's running session, as the native reads name it. */
+function liveRequest(
+  boundChatId: string | undefined,
+  page: AcpChatPage | null,
+): AcpUsageRequest | null {
+  const session = page ? currentSession(page) : null;
+  const context = currentContext(boundChatId);
+  if (!session?.runtimeEpoch || session.residency !== "hot" || !context)
+    return null;
+  return {
+    ...context.scope,
+    projectGeneration: context.commandProjectGeneration,
+    sessionId: session.id,
+    runtimeEpoch: session.runtimeEpoch,
+  };
+}
+
+/** What `/status` and `/mcp` open beside the composer. */
+export function ComposerCommandPanel({
+  kind,
+  boundChatId,
+  fieldRef,
+  onClose,
+}: {
+  kind: AcpCommandPanel;
+  boundChatId?: string;
+  fieldRef: RefObject<HTMLTextAreaElement | null>;
+  onClose: () => void;
+}) {
+  const id = useId();
+  const page = useStore(
+    acpProjectionStoreFor(boundChatId),
+    (state) => state.page,
+  );
+  // Read once per opening: a session that changes closes nothing, but a
+  // new runtime is named by the next opening.
+  const [request] = useState(() => liveRequest(boundChatId, page));
+  return (
+    <MenuPopover
+      id={id}
+      role="dialog"
+      ariaLabel={kind === "mcp" ? "MCP servers" : "Session status"}
+      className="composer__popover composer-command-panel"
+      placement="above-start"
+      open
+      triggerRef={fieldRef}
+      onDismiss={onClose}
+    >
+      {kind === "mcp" ? (
+        <McpServers request={request} />
+      ) : (
+        <SessionStatus page={page} request={request} />
+      )}
+    </MenuPopover>
+  );
+}
+
+function useAccessLabel(page: AcpChatPage | null): string | null {
+  const session = page ? currentSession(page) : null;
+  const config = page?.sessionConfig;
+  const capabilities = useWorkbenchStore(
+    (state) =>
+      state.harnesses.find(
+        (harness) => harness.bindingId === session?.bindingId,
+      )?.accessModes,
+  );
+  const stored = useSessionAccessModeStore((state) =>
+    session ? state.modes[session.bindingId] : undefined,
+  );
+  const chat = useChatAccessStore((state) =>
+    config ? state.modes[config.sageAgentSessionId] : undefined,
+  );
+  const candidates = chatAccessCandidates(
+    capabilities,
+    config?.modes?.availableModes.map((mode) => mode.id) ?? null,
+  );
+  const effective = chatAccessEffective(stored, candidates, chat);
+  return candidates.find(({ id }) => id === effective)?.label ?? null;
+}
+
+function SessionStatus({
+  page,
+  request,
+}: {
+  page: AcpChatPage | null;
+  request: AcpUsageRequest | null;
+}) {
+  const model = confirmedComposerModel(page?.sessionConfig);
+  const access = useAccessLabel(page);
+  const context = currentChatUsage(page);
+  const rows = (
+    [
+      ["Model", model?.model],
+      ["Effort", model?.effort],
+      ["Access", access],
+      [
+        "Context",
+        context?.contextWindow
+          ? `${context.totalTokens.toLocaleString()} / ${context.contextWindow.toLocaleString()} tokens`
+          : null,
+      ],
+    ] satisfies [string, string | null | undefined][]
+  ).filter((row): row is [string, string] => Boolean(row[1]));
+  return (
+    <>
+      {rows.length ? (
+        <dl className="composer-command-panel__status">
+          {rows.map(([term, value]) => (
+            <div key={term}>
+              <dt>{term}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p role="status">Status appears once the session is running.</p>
+      )}
+      {request && page?.usage ? (
+        <div className="composer-usage">
+          <Usage part="UsageReport" request={request} />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+const CONNECTION: Record<McpConnection, string> = {
+  notStarted: "Not started",
+  starting: "Starting",
+  connected: "Connected",
+  signInRequired: "Sign-in required",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  disabled: "Disabled",
+  unknown: "Status unknown",
+};
+
+const plural = (count: number, one: string) =>
+  `${count.toLocaleString()} ${one}${count === 1 ? "" : "s"}`;
+
+type McpLoad =
+  | { kind: "loading" }
+  | { kind: "ready"; inventory: McpInventory }
+  | { kind: "error"; message: string };
+
+function McpServers({ request }: { request: AcpUsageRequest | null }) {
+  const [load, setLoad] = useState<McpLoad>({ kind: "loading" });
+  // The reload or the server whose sign-in is starting.
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const run = useCallback(
+    (read: (request: AcpUsageRequest) => Promise<McpInventory>) => {
+      if (!request) return Promise.resolve();
+      return read(request).then(
+        (inventory) => setLoad({ kind: "ready", inventory }),
+        (error: unknown) =>
+          setLoad({ kind: "error", message: errorMessage(error) }),
+      );
+    },
+    [request],
+  );
+  useEffect(() => {
+    void run(acpMcpDesktop.read);
+    // A sign-in finishes in the browser; coming back shows its result.
+    const reread = () => void run(acpMcpDesktop.read);
+    window.addEventListener("focus", reread);
+    return () => window.removeEventListener("focus", reread);
+  }, [run]);
+  if (!request)
+    return <p role="status">MCP servers appear once the session is running.</p>;
+  const reload = () => {
+    setBusy("reload");
+    setNotice(null);
+    void run(acpMcpDesktop.reload).finally(() => setBusy(null));
+  };
+  const signIn = (server: McpServer) => {
+    setBusy(server.name);
+    setNotice(null);
+    acpMcpDesktop
+      .signIn({ ...request, name: server.name })
+      .then(
+        () =>
+          setNotice(
+            `Finish signing in to ${server.title ?? server.name} in your browser.`,
+          ),
+        (error: unknown) => setNotice(errorMessage(error)),
+      )
+      .finally(() => setBusy(null));
+  };
+  return (
+    <div className="composer-command-panel__mcp">
+      <div className="composer-command-panel__heading">
+        <strong>MCP servers</strong>
+        <button
+          type="button"
+          className="button button--compact"
+          disabled={busy !== null}
+          onClick={reload}
+        >
+          {busy === "reload" ? "Reloading…" : "Reload"}
+        </button>
+      </div>
+      {notice ? <p role="status">{notice}</p> : null}
+      {load.kind === "loading" ? (
+        <p role="status">Loading MCP servers…</p>
+      ) : load.kind === "error" ? (
+        <p role="alert">{load.message}</p>
+      ) : load.inventory.servers.length === 0 ? (
+        <p role="status">This session has no MCP servers.</p>
+      ) : (
+        <ul className="composer-command-panel__servers">
+          {load.inventory.servers.map((server) => (
+            <li key={server.name}>
+              <span className="composer-command-panel__server">
+                <strong>{server.title ?? server.name}</strong>
+                <span
+                  className={`composer-command-panel__state composer-command-panel__state--${server.connection}`}
+                >
+                  {CONNECTION[server.connection]}
+                </span>
+              </span>
+              <span className="composer-command-panel__detail">
+                {[
+                  server.title ? server.name : null,
+                  plural(server.tools, "tool"),
+                  server.resources
+                    ? plural(server.resources, "resource")
+                    : null,
+                  server.origin,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+              {server.error ? (
+                <span className="composer-command-panel__error">
+                  {server.error}
+                </span>
+              ) : null}
+              {mcpSignInOffered(server) ? (
+                <button
+                  type="button"
+                  className="button button--compact button--primary"
+                  disabled={busy !== null}
+                  aria-label={`Sign in to ${server.title ?? server.name}`}
+                  onClick={() => signIn(server)}
+                >
+                  {busy === server.name ? "Opening…" : "Sign in"}
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+      {load.kind === "ready" && load.inventory.truncated ? (
+        <p>Only the first {load.inventory.servers.length} servers are shown.</p>
+      ) : null}
+    </div>
+  );
+}
