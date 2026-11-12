@@ -83,7 +83,7 @@ export function WorkspaceReplaceDialog({
             </ol>
             {file.linesTruncated ? (
               <p className="workspace-replace-dialog__more">
-                More changes in this File are not shown.
+                More changes in this file are not shown.
               </p>
             ) : null}
           </section>

@@ -429,7 +429,7 @@ export default function QuickOpen({
         </p>
         {answer?.truncated && !bareLine && !commandMode ? (
           <p className="quick-open__status">
-            Only the first {answer.indexedFiles.toLocaleString()} Files are
+            Only the first {answer.indexedFiles.toLocaleString()} files are
             searched.
           </p>
         ) : null}

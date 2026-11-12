@@ -162,7 +162,7 @@ export async function searchChatFolders(args: {
     }
   }
   if (pages.length === 0) {
-    throw new Error("Project Chat search requires a valid Project ID");
+    throw new Error("Project chat search requires a valid project ID");
   }
   return mergeChatSearchFanout(pages, visited, args.listedCount);
 }
