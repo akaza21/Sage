@@ -281,6 +281,11 @@
         "reason": "Transcript of a chat without a native session, such as the development simulator's; native chats never load it. Measured 451 B, plus 7%."
       },
       {
+        "entry": "src/app/fileRenameActions.ts",
+        "maxGzipBytes": 1691,
+        "reason": "File and folder rename with its projection and intent checks; loads with the first rename. Measured 1580 B, plus 7%."
+      },
+      {
         "entry": "src/features/chat/ComposerQueuedPrompts.tsx",
         "maxGzipBytes": 1405,
         "reason": "Queued-message rows above the composer (status, Steer, delete and More options); loads with the first queued message."

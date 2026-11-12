@@ -118,6 +118,22 @@ afterEach(() => {
 });
 
 describe("file rename store transaction", () => {
+  it("sends one of two renames asked for together, even before its code loads", async () => {
+    const rename = vi
+      .spyOn(projectPort, "renameProjectFile")
+      .mockResolvedValue(result());
+    const { renameProjectFile } = useWorkbenchStore.getState();
+    const first = renameProjectFile(source, "new.ts");
+    const second = renameProjectFile(source, "other.ts");
+
+    await expect(second).resolves.toBe(false);
+    await expect(first).resolves.toBe(true);
+    expect(rename).toHaveBeenCalledTimes(1);
+    expect(rename).toHaveBeenCalledWith(
+      expect.objectContaining({ basename: "new.ts" }),
+    );
+  });
+
   it("sends the closed-resource layout and adopts snapshot plus exact parent", async () => {
     const rename = vi
       .spyOn(projectPort, "renameProjectFile")

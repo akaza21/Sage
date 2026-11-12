@@ -126,9 +126,16 @@ it("keeps a Turn whose stored session action the chat cannot run, without it", (
   const compact = safeTurn({ ...turn, sessionAction: { kind: "compact" } });
   expect(compact?.sessionAction).toEqual({ kind: "compact" });
   expect(compact?.unrecognizedAction).toBeUndefined();
+  const review = {
+    kind: "review",
+    target: { kind: "baseBranch", branch: "main" },
+  };
+  expect(safeTurn({ ...turn, sessionAction: review })?.sessionAction).toEqual(
+    review,
+  );
   for (const sessionAction of [
     { kind: "unrecognized" },
-    { kind: "review", target: { kind: "baseBranch", branch: "main" } },
+    { kind: "review", target: { kind: "pullRequest", number: 7 } },
     "compact",
   ]) {
     const kept = safeTurn({ ...turn, sessionAction });
