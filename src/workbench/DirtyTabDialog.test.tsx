@@ -7,7 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import { DirtyTabDialog } from "./DirtyTabDialog";
@@ -65,6 +65,23 @@ describe("DirtyTabDialog", () => {
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(useWorkbenchStore.getState().pendingCloseTabId).toBeNull();
+  });
+
+  it("returns the focus to where the close began when it is cancelled", () => {
+    const editor = document.createElement("textarea");
+    document.body.append(editor);
+    onTestFinished(() => editor.remove());
+    editor.focus();
+    useWorkbenchStore.setState({ pendingCloseTabId: "file-a", tabs: fileTabs });
+    render(<DirtyTabDialog />);
+    const dialog = screen.getByRole("dialog", {
+      name: "Save changes to main.ts?",
+    });
+    within(dialog).getByRole("button", { name: "Cancel" }).focus();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(editor).toHaveFocus();
   });
 
   it("owns a pending Save by tab and refuses every dismissal until it settles", async () => {
