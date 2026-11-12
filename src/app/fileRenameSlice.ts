@@ -38,24 +38,20 @@ export const createFileRenameSlice: StateCreator<
 
   clearFileRenameError: () => set({ fileRenameError: null }),
 
-  // Each rename reads the store as it was asked for, before its code loads.
+  // The loaded rename reads the store itself, so its in-flight check and
+  // claim stay in one synchronous step.
   renameProjectFile: async (source, basename, releaseOpenFile = false) => {
-    const state = get();
     const loaded = await actions();
     return releaseOpenFile
       ? loaded.renameReleasingFile(get, set, source, basename)
-      : loaded.renameProjectResource(get, set, state, "file", source, basename);
+      : loaded.renameProjectResource(get, set, "file", source, basename);
   },
-  renameProjectFolder: async (source, basename) => {
-    const state = get();
-    const loaded = await actions();
-    return loaded.renameProjectResource(
+  renameProjectFolder: async (source, basename) =>
+    (await actions()).renameProjectResource(
       get,
       set,
-      state,
       "folder",
       source,
       basename,
-    );
-  },
+    ),
 });

@@ -121,18 +121,17 @@ function renameProjection(
 }
 
 /**
- * Renames a File or folder. `state` is the store as the rename was asked
- * for, before this module loaded; a project switch since then is caught by
- * the same intent checks that guard the rename's own awaits.
+ * Renames a File or folder. It reads the store and claims the rename before
+ * its first await, so a second rename asked for meanwhile is refused.
  */
 export async function renameProjectResource(
   get: Get,
   set: Set,
-  state: WorkbenchState,
   kind: RenameKind,
   source: ResourceRef,
   basename: string,
 ): Promise<boolean> {
+  const state = get();
   const project = state.project;
   const projectGeneration = state.projectGeneration;
   const transitionEpoch = state.nativeTransitionEpoch;
@@ -341,8 +340,7 @@ export async function renameProjectResource(
 }
 
 /** Renames a File, closing a clean open copy for the rename and reopening
- * it at the new name. The rename reads the store as it is once the File
- * is released. */
+ * it at the new name. */
 export async function renameReleasingFile(
   get: Get,
   set: Set,
@@ -350,7 +348,7 @@ export async function renameReleasingFile(
   basename: string,
 ): Promise<boolean> {
   const rename = () =>
-    renameProjectResource(get, set, get(), "file", source, basename);
+    renameProjectResource(get, set, "file", source, basename);
   let target: ResourceRef;
   try {
     target = renameTargetResource(source, basename);
