@@ -9,7 +9,7 @@ use std::{
 
 use tauri::{AppHandle, Emitter};
 
-use crate::{persistence::Database, state::AppState, workspace::ignore_rules};
+use crate::{persistence::Database, state::AppState};
 
 use super::{
     IGNORED_BELOW_NOTIFY_ACTION, OVERFLOW_NOTIFY_ACTION, WORKSPACE_NOTIFY_EVENT,
@@ -81,7 +81,7 @@ pub(super) fn root_delivery(
     cancelled: Arc<AtomicBool>,
     sink: Arc<NoticeSink>,
 ) -> impl FnMut(String, u32) + Send + 'static {
-    let mut relevance = NoticeRelevance::new(root, ignore_rules::global_excludes_path());
+    let mut relevance = NoticeRelevance::new(root);
     move |relative: String, action: u32| {
         if cancelled.load(Ordering::Acquire) {
             return;

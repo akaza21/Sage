@@ -42,6 +42,7 @@ use super::{GitOutput, GitProcessPolicy, GitRootAuthority, parallel_limits};
 mod cache;
 mod discovery;
 mod fingerprint;
+pub(super) mod ignore;
 mod layout;
 mod paths;
 mod policy;

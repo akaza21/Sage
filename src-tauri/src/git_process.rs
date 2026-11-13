@@ -29,6 +29,7 @@ use readers::{ReaderTask, ReaderTasks};
 #[cfg(test)]
 mod test_support;
 
+pub(crate) use repository_config::ignore::{GitRuleSources, IgnoreConfig};
 #[cfg(test)]
 pub(crate) use repository_config::trust_for_test as trust_repository_config_for_test;
 pub(crate) use root_authority::GitRootAuthority;
