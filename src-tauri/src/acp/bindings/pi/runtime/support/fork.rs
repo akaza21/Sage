@@ -39,11 +39,27 @@ pub(in crate::acp::bindings::pi::runtime) struct Fork {
 
 /// Each step keeps the path of the chat's own session file (`home`), which
 /// Pi is moved back onto and which a copy must never be mistaken for.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum ForkStep {
     Cloning { home: String },
     Reading { home: String },
     Returning { home: String, fork: Option<String> },
+}
+
+impl Drop for PiRuntime {
+    fn drop(&mut self) {
+        // Recovery can outlive the process. Retry refused-copy deletions
+        // once when ownership ends, including EOF before a return reply.
+        // Confirmed forks awaiting their Chat's commit remain untouched.
+        self.retry_fork_cleanup();
+        if let Some(Fork {
+            step: ForkStep::Returning { home, fork },
+            ..
+        }) = self.fork.take()
+        {
+            let _ = self.settle_fork(&home, fork, false);
+        }
+    }
 }
 
 impl PiRuntime {
@@ -96,12 +112,18 @@ impl PiRuntime {
         data: Option<Value>,
         awaited: bool,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
-        let fork = self.fork.take().ok_or(AdapterRuntimeError::Frame)?;
+        let step = self
+            .fork
+            .as_ref()
+            .ok_or(AdapterRuntimeError::Frame)?
+            .step
+            .clone();
         let cancelled = data.as_ref().map(|data| data["cancelled"].as_bool());
-        let (step, request) = match (fork.step, command) {
+        let (step, request) = match (step, command) {
             (ForkStep::Cloning { home }, NativeCommand::Clone) => match cancelled {
                 // Pi refused or cancelled the clone and stayed where it was.
                 None | Some(Some(true)) => {
+                    self.fork = None;
                     return Ok(self.answer_fork(awaited, NativeRpcReply::Rejected));
                 }
                 Some(Some(false)) => (ForkStep::Reading { home }, NativeRequest::ForkState),
@@ -125,10 +147,14 @@ impl PiRuntime {
                 if cancelled != Some(Some(false)) {
                     return Err(self.lost_fork());
                 }
+                self.fork = None;
                 return Ok(self.settle_fork(&home, fork, awaited));
             }
             _ => return Err(self.lost_fork()),
         };
+        // Keep ownership of the copy across reserving/writing the next step.
+        // A failed return must not discard the only record of Pi's clone.
+        self.fork.as_mut().ok_or(AdapterRuntimeError::Frame)?.step = step;
         let Ok(egress) = self.begin_one(Operation::Native(request), RequestKind::Native) else {
             return Err(self.lost_fork());
         };
@@ -138,7 +164,10 @@ impl PiRuntime {
         if awaited {
             self.native_pending = Some(command_id.clone());
         }
-        self.fork = Some(Fork { step, command_id });
+        self.fork
+            .as_mut()
+            .ok_or(AdapterRuntimeError::Frame)?
+            .command_id = command_id;
         Ok(Some(egress))
     }
 
@@ -179,7 +208,20 @@ impl PiRuntime {
     /// Pi may be left on the copy: the chat's session can no longer be
     /// trusted to be the one Pi runs, so the runtime stops here.
     fn lost_fork(&mut self) -> AdapterRuntimeError {
-        self.fork = None;
+        if let Some(fork) = self.fork.take() {
+            if let ForkStep::Returning { home, fork } = fork.step {
+                // No Chat can own this failed fork. Remove its known copy,
+                // retaining failed deletions in the bounded cleanup ledger.
+                let _ = self.settle_fork(&home, fork, false);
+            } else {
+                // Pi may have cloned before we could read the copy's name.
+                self.forks.push(ForkCopy {
+                    key: None,
+                    cleanup_pending: false,
+                });
+            }
+        }
+        self.native_pending = None;
         self.poison();
         AdapterRuntimeError::Operation
     }

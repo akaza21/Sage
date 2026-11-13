@@ -195,6 +195,7 @@ pub(crate) struct EgressToken(EgressIntent);
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum EgressIntent {
     Request(u64),
+    NativeRpcContinuation(u64),
     ProtocolNotification,
     CancelRequest(u64),
     CancelNotification,
@@ -214,6 +215,16 @@ enum EgressIntent {
 impl EgressToken {
     pub(crate) fn request(id: u64) -> Self {
         Self(EgressIntent::Request(id))
+    }
+
+    /// A binding-reserved next step of an already admitted native RPC.
+    /// Idle pumps may write it without admitting an ordinary Turn request.
+    pub(crate) fn native_rpc_continuation(id: u64) -> Self {
+        Self(EgressIntent::NativeRpcContinuation(id))
+    }
+
+    pub(crate) fn is_native_rpc_continuation(&self) -> bool {
+        matches!(self.0, EgressIntent::NativeRpcContinuation(_))
     }
 
     pub(crate) fn protocol_notification() -> Self {
@@ -266,7 +277,9 @@ impl EgressToken {
 
     pub(crate) fn request_id(&self) -> Option<u64> {
         match self.0 {
-            EgressIntent::Request(id) | EgressIntent::CancelRequest(id) => Some(id),
+            EgressIntent::Request(id)
+            | EgressIntent::NativeRpcContinuation(id)
+            | EgressIntent::CancelRequest(id) => Some(id),
             _ => None,
         }
     }

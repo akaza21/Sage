@@ -264,6 +264,26 @@ fn pi_left_on_the_copy_stops_the_runtime() {
 }
 
 #[test]
+fn recovery_retains_a_known_copy_when_its_cleanup_fails() {
+    let mut chat = saved_chat();
+    let state = cloned(&mut chat);
+    let back = read_copy(&mut chat, &state);
+    chat.runtime.remove_file_for_test = |_| Err(std::io::ErrorKind::PermissionDenied.into());
+    assert!(
+        chat.runtime
+            .ingest(&response(&back, json!({"cancelled":true})), &Mapper)
+            .is_err()
+    );
+    assert!(chat.file(COPY).is_file());
+    // Recovery kept the copy's identity. Teardown retries deletion even
+    // though this runtime can no longer run another turn or answer an RPC.
+    chat.runtime.remove_file_for_test = |path| std::fs::remove_file(path);
+    drop(std::mem::replace(&mut chat.runtime, fixture_runtime(2)));
+    assert!(!chat.file(COPY).exists());
+    assert!(chat.file(HOME).is_file());
+}
+
+#[test]
 fn a_chat_pi_never_saved_has_nothing_to_fork() {
     let mut runtime = fixture_runtime(1);
     ready(&mut runtime);
