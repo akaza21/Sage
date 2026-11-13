@@ -68,6 +68,7 @@ impl CodexAdapter {
             active_item_terminals: Vec::new(),
             active_terminal_id_bytes: 0,
             active_unretried_error_fingerprints: Vec::new(),
+            active_approval_reviews: Vec::new(),
             active_turn_user_stop: false,
             active_turn_plan: None,
             previous_turn: None,
