@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
+import { useActiveOption } from "../../ui/listNavigation";
+
 import { useWorkbenchStore } from "../../app/store";
 
 import {
@@ -15,6 +17,7 @@ import {
   matchesPlatformChord,
 } from "../../domain/keymapRegistry";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
+import { FileKindIcon } from "../files/FileKindIcon";
 import {
   filterCommands,
   paletteCommands,
@@ -22,6 +25,7 @@ import {
 } from "./paletteCommands";
 import { queryQuickOpen } from "./quickOpenGateway";
 import { recentFiles } from "./quickOpenState";
+import { ShortcutKeys } from "./ShortcutKeys";
 import "./quick-open.css";
 
 /** While the index is being refreshed, the same query is asked again. */
@@ -96,11 +100,10 @@ export default function QuickOpen({
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [indexing, setIndexing] = useState(false);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [session] = useState(() => nextQuickOpenStamp());
   const returnFocus = useRef<Element | null>(document.activeElement);
   const closed = useRef(false);
-  /** Enter pressed before the answer for the current query arrived. */
+  /** A File was confirmed before the current query's answer arrived. */
   const pendingEnter = useRef(false);
   const list = useRef<HTMLUListElement | null>(null);
   const projectId = project?.id ?? null;
@@ -234,9 +237,12 @@ export default function QuickOpen({
     ? commands.map((command) => command.id)
     : results.map(matchKey);
   // The selection follows its File when a refreshed answer reorders the list.
-  const keyed = itemKeys.indexOf(selectedKey ?? "");
-  const active = keyed >= 0 ? keyed : 0;
-  const activeKey = itemKeys[active] ?? null;
+  const {
+    activeIndex: active,
+    activeId: activeKey,
+    move,
+    setActiveId: setSelectedKey,
+  } = useActiveOption(itemKeys, "first");
 
   useEffect(() => {
     list.current
@@ -244,6 +250,13 @@ export default function QuickOpen({
       ?.scrollIntoView?.({ block: "nearest" });
     // A refreshed answer can move the selected File without changing it.
   }, [activeKey, active]);
+
+  const confirmFile = (match: QuickOpenMatch | undefined) => {
+    if (bareLine || answer?.key === key) open(match);
+    // The list on screen answers an earlier request: open the first match
+    // for this one once it arrives.
+    else if (!error) pendingEnter.current = true;
+  };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     // keyCode 229 is the key that ends a composition, which WebKit (macOS)
@@ -270,38 +283,37 @@ export default function QuickOpen({
     } else if (event.key === "Escape") {
       event.preventDefault();
       close(true);
-    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    } else if (
+      event.key === "ArrowDown" ||
+      event.key === "ArrowUp" ||
+      event.key === "PageDown" ||
+      event.key === "PageUp"
+    ) {
+      // Home and End stay with the field's caret.
       event.preventDefault();
-      if (itemKeys.length === 0) return;
-      const step = event.key === "ArrowDown" ? 1 : -1;
-      setSelectedKey(
-        itemKeys[(active + step + itemKeys.length) % itemKeys.length],
-      );
+      move(event.key);
     } else if (event.key === "Enter") {
       // Ctrl/Cmd+Enter opens to the side where there is a split; there
       // isn't yet, so it opens in place too.
       event.preventDefault();
       if (commandMode) runCommand(commands[active]);
-      else if (bareLine || answer?.key === key) open(results[active]);
-      // The list on screen answers an earlier request: open the first match
-      // for this one once it arrives.
-      else if (!error) pendingEnter.current = true;
+      else confirmFile(results[active]);
     }
   };
 
   let status = "";
   if (commandMode) {
     status = commands.length === 0 ? "No matching commands." : "";
-  } else if (!projectId) status = "Open a Project to find its Files.";
+  } else if (!projectId) status = "Open a project to find its files.";
   else if (bareLine) {
     status = activeFile()
-      ? `Press Enter to go to line ${line} in the active File.`
-      : "Open a File to go to a line in it.";
+      ? `Press Enter to go to line ${line} in the active file.`
+      : "Open a file to go to a line in it.";
   } else if (error) status = error;
   else if (!answer) status = indexing ? "Indexing…" : "";
   else if (results.length === 0) {
     status =
-      query === "" ? "Type to find a File by name." : "No matching Files.";
+      query === "" ? "Type to find a file by name." : "No matching files.";
   }
 
   return (
@@ -315,7 +327,7 @@ export default function QuickOpen({
       }}
     >
       <div
-        className="quick-open"
+        className="quick-open popup-material"
         role="dialog"
         aria-modal="true"
         aria-label="Quick Open"
@@ -326,10 +338,12 @@ export default function QuickOpen({
           }
         }}
       >
+        {/* Chromium drops a focused input's placeholder ellipsis, and this
+            input always has focus, so the hint is drawn over it instead. */}
         <input
           className="quick-open__input"
           role="combobox"
-          aria-label={commandMode ? "Run a command" : "Search Files by name"}
+          aria-label={commandMode ? "Run a command" : "Search files by name"}
           aria-autocomplete="list"
           aria-expanded={itemKeys.length > 0}
           aria-controls={listId}
@@ -339,7 +353,7 @@ export default function QuickOpen({
           autoFocus
           spellCheck={false}
           autoComplete="off"
-          placeholder="Search Files by name (:line goes to a line, > runs a command)"
+          aria-describedby={`${listId}-hint`}
           value={text}
           onChange={(event) => {
             const next = event.target.value;
@@ -351,6 +365,14 @@ export default function QuickOpen({
           onKeyDown={onKeyDown}
           onBlur={() => close(false)}
         />
+        <span
+          id={`${listId}-hint`}
+          className="quick-open__hint"
+          aria-hidden="true"
+          hidden={text !== ""}
+        >
+          Search files by name (:line goes to a line, &gt; runs a command)
+        </span>
         <ul
           ref={list}
           className="quick-open__list"
@@ -370,7 +392,7 @@ export default function QuickOpen({
             >
               <span className="quick-open__name">{command.label}</span>
               {command.shortcut ? (
-                <kbd className="quick-open__shortcut">{command.shortcut}</kbd>
+                <ShortcutKeys label={command.shortcut} />
               ) : null}
             </li>
           ))}
@@ -383,8 +405,11 @@ export default function QuickOpen({
                 className="quick-open__row"
                 role="option"
                 aria-selected={index === active}
-                onClick={() => open(match)}
+                onClick={() => confirmFile(match)}
               >
+                <span className="quick-open__icon">
+                  <FileKindIcon path={match.relativePath} size={16} />
+                </span>
                 <span className="quick-open__name">
                   <Highlighted
                     text={match.relativePath.slice(base)}
@@ -410,7 +435,7 @@ export default function QuickOpen({
         </p>
         {answer?.truncated && !bareLine && !commandMode ? (
           <p className="quick-open__status">
-            Only the first {answer.indexedFiles.toLocaleString()} Files are
+            Only the first {answer.indexedFiles.toLocaleString()} files are
             searched.
           </p>
         ) : null}

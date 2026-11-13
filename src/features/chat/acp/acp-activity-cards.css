@@ -83,6 +83,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+.acp-tool-card__progress {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .acp-tool-card__raw-kind {
   display: inline-block;
   padding: 0 var(--space-1);
@@ -247,7 +256,7 @@
   min-width: 0;
   grid-template-columns: 10px minmax(0, 1fr);
   align-items: start;
-  gap: 4px;
+  gap: var(--space-1);
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
@@ -269,7 +278,7 @@
 .acp-plan__pulse {
   width: 4px;
   height: 4px;
-  margin-top: 4px;
+  margin-top: var(--space-1);
   border-radius: var(--radius-pill);
   background: var(--color-accent);
   animation: sage-working-pulse var(--motion-duration-pulse) ease-in-out
@@ -278,7 +287,7 @@
 
 .acp-plan__activity .acp-plan__working-more {
   display: block;
-  margin-left: 16px;
+  margin-left: var(--space-4);
   color: var(--color-text-disabled);
   font-style: italic;
 }
@@ -292,13 +301,6 @@
   .acp-activity-card > summary,
   .acp-activity-card__header {
     gap: var(--space-2);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .acp-activity-card * {
-    animation-duration: 0s !important;
-    animation-iteration-count: 1 !important;
   }
 }
 
@@ -325,7 +327,7 @@
   }
 }
 .acp-lifecycle-notice {
-  margin: 4px 0;
+  margin: var(--space-1) 0;
   color: var(--composer-muted-text);
   font-size: 12px;
 }
@@ -339,6 +341,24 @@
   margin: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
+}
+
+.acp-session-activities {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acp-session-activity > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acp-session-activity__detail {
+  flex: 1 1 auto;
 }
 
 .acp-activity-row > svg {

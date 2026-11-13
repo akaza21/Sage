@@ -1,27 +1,32 @@
-/* Quick Open (EP-08): a box at the top of the window, as in VS Code. */
+/*
+ * Quick Open: a box at the top of the window, as in VS Code. It opens
+ * over the title bar's Search files control, the way VS Code's opens over its
+ * command centre, so its input lands where the user clicked or looked.
+ */
 
 .quick-open-backdrop {
   position: fixed;
-  z-index: 40;
+  z-index: var(--z-modal);
   inset: 0;
   display: flex;
   justify-content: center;
-  padding: var(--space-6) var(--space-4) 0;
+  padding: calc((var(--chrome-row-height) - var(--control-height-compact)) / 2)
+    var(--space-4) 0;
   pointer-events: auto;
 }
 
+/* Rows, the input and its hint share the small size; notes go smaller. */
 .quick-open {
+  position: relative;
   display: flex;
   flex-direction: column;
-  width: min(600px, 100%);
-  max-height: min(480px, 60vh);
+  width: min(var(--quick-open-width), var(--quick-open-width-ratio));
   align-self: flex-start;
   overflow: hidden;
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
   color: var(--color-text-primary);
-  background: var(--color-surface);
   box-shadow: var(--elevation-popover);
+  font-size: var(--font-size-sm);
 }
 
 .quick-open__input {
@@ -32,7 +37,21 @@
   color: var(--color-text-primary);
   background: var(--color-canvas);
   font: inherit;
-  font-size: var(--font-size-sm);
+}
+
+/* The input's placeholder: it lies over the input, inside the input's 1px
+   border, and ends in an ellipsis rather than mid-word. */
+.quick-open__hint {
+  position: absolute;
+  inset: 1px 1px auto;
+  overflow: hidden;
+  margin: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Clicks, including the context menu, go to the input beneath. */
+  pointer-events: none;
 }
 
 .quick-open__input:focus-visible {
@@ -41,7 +60,7 @@
 }
 
 .quick-open__list {
-  min-height: 0;
+  max-height: var(--quick-open-list-max-height);
   margin: 0;
   padding: 0 var(--space-1) var(--space-1);
   overflow-y: auto;
@@ -50,15 +69,21 @@
 
 .quick-open__row {
   display: flex;
-  align-items: baseline;
+  height: var(--popup-row-height);
+  align-items: center;
   gap: var(--space-2);
-  min-width: 0;
-  padding: var(--space-1) var(--space-2);
+  padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-  line-height: 1.4;
+  line-height: var(--popup-row-height);
   white-space: nowrap;
   cursor: pointer;
+}
+
+.quick-open__icon {
+  display: inline-flex;
+  flex: none;
+  width: var(--popup-icon-slot);
+  justify-content: center;
 }
 
 .quick-open__row:hover {
@@ -73,8 +98,8 @@
   flex: none;
 }
 
+/* Clipping already lets this flex item shrink below its text width. */
 .quick-open__folder {
-  min-width: 0;
   overflow: hidden;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
@@ -82,10 +107,17 @@
 }
 
 .quick-open__shortcut {
+  flex: none;
   margin-left: auto;
   color: var(--color-text-muted);
   font: inherit;
   font-size: var(--font-size-xs);
+}
+
+.quick-open__shortcut-part {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--keycap-gap);
 }
 
 .quick-open__match {

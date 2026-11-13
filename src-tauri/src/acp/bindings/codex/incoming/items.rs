@@ -22,7 +22,13 @@ use super::{
 
 type ItemNormalization = (NormalizedPayload, Option<ToolState>, Option<ItemLifecycle>);
 
+mod file_change;
 mod presentation;
+mod runtime_rows;
+
+pub(super) use file_change::{
+    edit_tool as file_change_edit_tool, normalize as normalize_file_change,
+};
 mod tool_kinds;
 
 use tool_kinds::{explore_presentation, mcp_tool, web_search};
@@ -39,12 +45,16 @@ pub(super) fn normalize_materialized_command(
         command.explore.as_ref(),
         command.activity,
         command.command.as_deref(),
+        &command.locations,
     );
     let (payload, tool_state, terminal) = tool_with_summary_status(ToolPresentationInput {
         category,
         label: &label,
         tool_state: parse_tool_state(command.status.as_str()).ok_or(IngressError::Malformed)?,
-        input_summary: command.command.clone(),
+        input_summary: command
+            .command
+            .clone()
+            .filter(|_| category != ToolCategory::Read),
         output_summary: command.output.clone(),
         locations: command.locations.clone(),
         command_activity: command.activity,
@@ -92,11 +102,14 @@ pub(super) fn normalize_item<M: ResourceMapper>(
         "webSearch" => web_search(item, lifecycle).map(Some),
         "collabAgentToolCall" | "subAgentActivity" => presentation::collaboration(item).map(Some),
         "fileChange" if !lifecycle.is_terminal() => Ok(None),
-        "fileChange" => file_change(item, mapper).map(Some),
+        "fileChange" => normalize_file_change(item, mapper, false).map(|(item, _)| Some(item)),
         "imageGeneration" => image_generation(item, lifecycle),
         "imageView" => image_view(item, mapper, lifecycle).map(Some),
-        "enteredReviewMode" => review_mode(item, "Entered review mode", lifecycle).map(Some),
-        "exitedReviewMode" => review_mode(item, "Exited review mode", lifecycle).map(Some),
+        "enteredReviewMode" => runtime_rows::entered_review(item, lifecycle).map(Some),
+        "exitedReviewMode" => runtime_rows::exited_review(item),
+        "sleep" => runtime_rows::sleep(item, lifecycle).map(Some),
+        "functionCallOutput" => runtime_rows::function_call_output(item, lifecycle).map(Some),
+        "hookPrompt" => runtime_rows::hook_prompt(item, lifecycle).map(Some),
         other => other_item(item, other, lifecycle).map(Some),
     }
 }
@@ -122,26 +135,6 @@ fn image_view<M: ResourceMapper>(
         input_summary: None,
         output_summary: None,
         locations,
-        command_activity: CommandActivity::Ordinary,
-        execution: ToolExecution::default(),
-    })
-}
-
-fn review_mode(
-    item: &Map<String, Value>,
-    label: &str,
-    lifecycle: ItemLifecycle,
-) -> Result<ItemNormalization, IngressError> {
-    tool_with_summary_status(ToolPresentationInput {
-        category: ToolCategory::SwitchMode,
-        label,
-        tool_state: lenient_tool_state(item, lifecycle),
-        input_summary: item
-            .get("review")
-            .and_then(Value::as_str)
-            .and_then(bounded_summary),
-        output_summary: None,
-        locations: BoundedVec::default(),
         command_activity: CommandActivity::Ordinary,
         execution: ToolExecution::default(),
     })
@@ -244,14 +237,6 @@ fn command_execution<M: ResourceMapper>(
             })
         })
         .transpose()?;
-    let explore = item
-        .get("commandActions")
-        .and_then(crate::acp::bindings::codex::state::command_explore::classify);
-    let (category, label) = explore_presentation(
-        explore.as_ref(),
-        CommandActivity::Ordinary,
-        command.as_deref(),
-    );
     let locations = item
         .get("commandActions")
         .and_then(Value::as_array)
@@ -265,11 +250,20 @@ fn command_execution<M: ResourceMapper>(
         .transpose()
         .map_err(content)?
         .unwrap_or_default();
+    let explore = item
+        .get("commandActions")
+        .and_then(crate::acp::bindings::codex::state::command_explore::classify);
+    let (category, label) = explore_presentation(
+        explore.as_ref(),
+        CommandActivity::Ordinary,
+        command.as_deref(),
+        &locations,
+    );
     tool_with_summary_status(ToolPresentationInput {
         category,
         label: &label,
         tool_state: declared_tool_state(item)?,
-        input_summary: command,
+        input_summary: command.filter(|_| category != ToolCategory::Read),
         output_summary: output,
         locations,
         command_activity: CommandActivity::Ordinary,
@@ -323,94 +317,6 @@ fn rejected_image(
         None,
         Some(ItemLifecycle::Unsupported),
     )))
-}
-
-fn file_change<M: ResourceMapper>(
-    item: &Map<String, Value>,
-    mapper: &M,
-) -> Result<ItemNormalization, IngressError> {
-    let changes = item
-        .get("changes")
-        .and_then(Value::as_array)
-        .ok_or(IngressError::Malformed)?;
-    if changes.len() != 1 {
-        return Ok((
-            unsupported("fileChange", "File change spans multiple resources")?,
-            None,
-            Some(ItemLifecycle::Unsupported),
-        ));
-    }
-    let change = changes[0].as_object().ok_or(IngressError::Malformed)?;
-    let absolute = text(
-        change,
-        "path",
-        LIMITS.wire.absolute_path_bytes_native_only as usize,
-    )?;
-    let operation = match change
-        .get("kind")
-        .and_then(Value::as_object)
-        .and_then(|kind| kind.get("type"))
-        .and_then(Value::as_str)
-    {
-        Some("add") => crate::acp::intent::FileChangeOperation::Created,
-        Some("delete") => crate::acp::intent::FileChangeOperation::Deleted,
-        _ => crate::acp::intent::FileChangeOperation::Updated,
-    };
-    let resource = match mapper.map_existing(absolute) {
-        Ok(resource) => crate::acp::intent::SafeResourceLocation::Resource { resource },
-        Err(crate::acp::intent::UnavailableResourceReason::Missing)
-            if operation == crate::acp::intent::FileChangeOperation::Deleted =>
-        {
-            match mapper.map_missing_display(absolute) {
-                Some(display) => {
-                    crate::acp::intent::SafeResourceLocation::unavailable_with_display(
-                        crate::acp::intent::UnavailableResourceReason::Missing,
-                        display,
-                    )
-                }
-                None => crate::acp::intent::SafeResourceLocation::unavailable(
-                    crate::acp::intent::UnavailableResourceReason::Missing,
-                ),
-            }
-        }
-        Err(reason) => crate::acp::intent::SafeResourceLocation::unavailable(reason),
-    };
-    let verb = match operation {
-        crate::acp::intent::FileChangeOperation::Created => "Created",
-        crate::acp::intent::FileChangeOperation::Updated => "Edited",
-        crate::acp::intent::FileChangeOperation::Deleted => "Deleted",
-    };
-    let display = match &resource {
-        crate::acp::intent::SafeResourceLocation::Resource { resource }
-            if resource.relative_path.as_str().len() <= 480
-                && !resource
-                    .relative_path
-                    .as_str()
-                    .chars()
-                    .any(char::is_control) =>
-        {
-            resource.relative_path.as_str()
-        }
-        _ => "file",
-    };
-    let summary = SafeText::new("fileSummary", format!("{verb} {display}")).map_err(content)?;
-    // Codex `fileChange` wire evidence carries a single opaque `diff` string,
-    // never a bounded old/new pair. Map to typed unavailable metadata without
-    // inventing text from disk or Git; the card still opens its summary.
-    Ok((
-        NormalizedPayload::file_summary_only(
-            crate::acp::intent::FileChangeFacts {
-                resource,
-                summary,
-                additions: None,
-                deletions: None,
-                operation,
-            },
-            false,
-        ),
-        None,
-        None,
-    ))
 }
 
 #[cfg(test)]

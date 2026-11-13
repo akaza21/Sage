@@ -1,18 +1,15 @@
-import { editorLanguageForPath } from "./editorLanguage";
-import { utf8Bytes } from "../../domain/text";
-import { readMarkdownList, type MarkdownListBlock } from "./markdownList";
+import { truncateUtf8, utf8Bytes } from "../../domain/text";
+import { markdownTextLocations } from "./markdownTextLocations";
+import { adaptMarkdownTokens } from "./markdownTokens";
+import type { MarkdownBlock } from "./markdownBlockTypes";
 
 import {
-  MAX_MARKDOWN_PREVIEW_BLOCKS,
   MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
   MAX_MARKDOWN_PREVIEW_SOURCE_BYTES,
-  MAX_MARKDOWN_TABLE_ROWS,
-  MAX_MARKDOWN_TABLE_COLUMNS,
   MAX_MARKDOWN_INLINE_FORMATS,
   MAX_CHAT_FILE_LINKS,
   MAX_CHAT_FILE_LINK_PATH_BYTES,
 } from "./markdownLimits";
-export type { ListItemShape } from "./markdownList";
 export {
   MAX_MARKDOWN_PREVIEW_BLOCKS,
   MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
@@ -25,17 +22,7 @@ export {
   MAX_CHAT_FILE_LINK_PATH_BYTES,
 } from "./markdownLimits";
 
-export type MarkdownPreviewBlock =
-  | { kind: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
-  | { kind: "paragraph"; text: string }
-  | { kind: "quote"; text: string }
-  | MarkdownListBlock
-  | { kind: "code"; text: string; language: string; fenceClosed: boolean }
-  | {
-      kind: "table";
-      align: ("left" | "center" | "right" | undefined)[];
-      rows: string[][];
-    };
+export type MarkdownPreviewBlock = MarkdownBlock;
 
 export type InlineFormat =
   | string
@@ -60,16 +47,8 @@ export interface MarkdownPreviewDocument {
   sourceLimitExceeded: boolean;
 }
 
-export function canPreviewMarkdown(path: string): boolean {
-  return editorLanguageForPath(path) === "markdown";
-}
-
-export function canPreviewDiagram(path: string): boolean {
-  return /\.(?:mmd|mermaid)$/iu.test(path);
-}
-
 const inlinePattern =
-  /`([^`]+)`|(!?)\[([^\]\n]{1,128})\]\(([^)\n]+)\)|(\*{1,2}|_{1,2})/gu;
+  /`([^`]+)`|(!?)\[([^\]]{1,128})\]\(([^)\n]+)\)|(\*{1,2}|_{1,2})/gu;
 
 function delimiterFlanks(value: string, index: number, marker: string) {
   const characterClass = (character: string) =>
@@ -89,22 +68,18 @@ function delimiterFlanks(value: string, index: number, marker: string) {
   ];
 }
 
-export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
-  const encoded = utf8Bytes(source);
-  let end = Math.min(encoded.length, MAX_MARKDOWN_PREVIEW_SOURCE_BYTES);
-  while (end < encoded.length && end > 0 && (encoded[end] & 0xc0) === 0x80)
-    end--;
-  const windowed =
-    encoded.length > end
-      ? new TextDecoder().decode(encoded.slice(0, end))
-      : source;
-  const lines = windowed.replace(/\r\n/gu, "\n").split("\n");
+export function renderMarkdownPreview(
+  source: string,
+  prefix?: MarkdownPreviewDocument,
+  sourceOffset = 0,
+): MarkdownPreviewDocument {
+  const windowed = truncateUtf8(source, MAX_MARKDOWN_PREVIEW_SOURCE_BYTES);
   const document: MarkdownPreviewDocument = {
-    blocks: [],
-    formats: [],
-    fileLinks: [],
-    truncated: false,
-    sourceLimitExceeded: encoded.length > end,
+    blocks: [...(prefix?.blocks ?? [])],
+    formats: [...(prefix?.formats ?? [])],
+    fileLinks: [...(prefix?.fileLinks ?? [])],
+    truncated: prefix?.truncated ?? false,
+    sourceLimitExceeded: windowed.length < source.length,
   };
   const blocks = document.blocks as MarkdownPreviewBlock[];
   const links =
@@ -113,7 +88,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
   let formatCount = 0;
   let scanBudget = MAX_MARKDOWN_PREVIEW_SOURCE_BYTES;
 
-  const inline = (raw: string, itemIndex?: number) => {
+  const inline = (value: string, itemIndex?: number) => {
     let text = "";
     const append = (value: string) => {
       if (text.length + value.length > remaining) document.truncated = true;
@@ -203,11 +178,20 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       return spans;
     };
     const spans = parse(
-      raw
-        .replace(/`[^`]+`|<\/?[a-z][\w-]*(?:\s[^<>]*)?\/?>/giu, (part) =>
-          part.startsWith("`") ? part : "",
+      value
+        .replace(/`[^`]+`|<\/?[a-z][\w-]*(?:\s[^<>]*)?\/?>/giu, (value) =>
+          value[0] === "`" ? value : "",
         )
-        .replace(/`[^`]+`|\s+/gu, (part) => (part.startsWith("`") ? part : " "))
+        // A soft line break stays a newline; each surface decides whether it
+        // breaks the line (chat) or reads as a space (CommonMark preview).
+        // A code span's line ending is a space, as CommonMark reads it.
+        .replace(/`[^`]+`|[^\S\n]*\n\s*|\s+/gu, (value) =>
+          value[0] === "`"
+            ? value.replace(/\n/gu, " ")
+            : value.includes("\n")
+              ? "\n"
+              : " ",
+        )
         .trim(),
       0,
     );
@@ -217,117 +201,24 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     return text;
   };
 
-  for (let cursor = 0; cursor < lines.length;) {
-    const line = lines[cursor].trimEnd();
-    if (!line) {
-      cursor++;
-      continue;
-    }
-    if (blocks.length === MAX_MARKDOWN_PREVIEW_BLOCKS) {
-      document.truncated = true;
-      break;
-    }
-    remaining = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS;
-    formatCount = 0;
-    scanBudget = MAX_MARKDOWN_PREVIEW_SOURCE_BYTES;
-    const fence = /^( *)(`{3,})(.*)$/u.exec(line);
-    if (fence) {
-      const language = fence[3].trim().split(/\s/u)[0];
-      const closing = new RegExp(`^ *\`{${fence[2].length},}[ \\t]*$`, "u");
-      const start = ++cursor;
-      while (cursor < lines.length && !closing.test(lines[cursor])) cursor++;
-      const fenceClosed = cursor < lines.length;
-      const indentation = new RegExp(`^ {0,${fence[1].length}}`, "u");
-      const text = lines
-        .slice(start, cursor)
-        .map((part) => part.replace(indentation, ""))
-        .join("\n");
+  adaptMarkdownTokens(
+    windowed,
+    document,
+    inline,
+    () => {
+      remaining = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS;
+      formatCount = 0;
+      scanBudget = MAX_MARKDOWN_PREVIEW_SOURCE_BYTES;
+    },
+    (text) => {
       if (text.length > remaining) document.truncated = true;
-      blocks.push({
-        kind: "code",
-        language,
-        text: text.slice(0, remaining),
-        fenceClosed,
-      });
-      if (fenceClosed) cursor++;
-      continue;
-    }
-    const heading = /^(#{1,6}) (.+)$/u.exec(line);
-    if (heading) {
-      blocks.push({
-        kind: "heading",
-        level: heading[1].length as 1,
-        text: inline(heading[2]),
-      });
-      cursor++;
-      continue;
-    }
-    const header = tableCells(line);
-    const separator = tableCells(lines[cursor + 1] ?? "");
-    if (
-      header.length &&
-      separator.length === header.length &&
-      separator.every((cell) => /^:?-+:?$/u.test(cell))
-    ) {
-      const align = separator
-        .slice(0, MAX_MARKDOWN_TABLE_COLUMNS)
-        .map((cell) =>
-          cell.endsWith(":")
-            ? cell.startsWith(":")
-              ? ("center" as const)
-              : ("right" as const)
-            : cell.startsWith(":")
-              ? ("left" as const)
-              : undefined,
-        );
-      const rows: string[][] = [];
-      cursor += 2;
-      let cells = header;
-      do {
-        if (rows.length <= MAX_MARKDOWN_TABLE_ROWS) {
-          if (cells.length > MAX_MARKDOWN_TABLE_COLUMNS)
-            document.truncated = true;
-          const rowIndex = rows.length;
-          rows.push(
-            align.map((_, column) =>
-              inline(cells[column] ?? "", rowIndex * align.length + column),
-            ),
-          );
-        } else document.truncated = true;
-        cells = tableCells(lines[cursor] ?? "");
-        if (cells.length) cursor++;
-      } while (cells.length);
-      blocks.push({ kind: "table", align, rows });
-      continue;
-    }
-    const list = readMarkdownList(lines, cursor, (text, itemIndex) => {
-      if (remaining > 0) return inline(text, itemIndex);
-      document.truncated = true;
-      return "";
-    });
-    if (list) {
-      blocks.push(list.block);
-      cursor = list.cursor;
-      continue;
-    }
-    const quoted = line.startsWith("> ");
-    const parts = [quoted ? line.slice(2) : line];
-    cursor++;
-    while (
-      cursor < lines.length &&
-      lines[cursor].trim() &&
-      (quoted
-        ? lines[cursor].startsWith("> ")
-        : !/^(?: *```|#{1,6} | {0,3}(?:[-*+]|\d{1,9}[.)]) |> |\|)/u.test(
-            lines[cursor],
-          ))
-    ) {
-      parts.push(quoted ? lines[cursor].slice(2) : lines[cursor]);
-      cursor++;
-    }
-    const text = inline(parts.join(" "));
-    if (text) blocks.push({ kind: quoted ? "quote" : "paragraph", text });
-  }
+      const retained = text.slice(0, remaining);
+      remaining -= retained.length;
+      return retained;
+    },
+    prefix,
+    sourceOffset,
+  );
   return document;
 }
 
@@ -340,16 +231,6 @@ function webLink(destination: string): string | null {
   return /^(?:https?:\/\/|mailto:)[^\s<>\p{Cc}\p{Cf}]+$/iu.test(url)
     ? url
     : null;
-}
-
-function tableCells(line: string): string[] {
-  if (!line.includes("|")) return [];
-  return line
-    .trim()
-    .replace(/^\|/u, "")
-    .replace(/(?<!\\)\|$/u, "")
-    .split(/(?<!\\)\|/u)
-    .map((cell) => cell.trim().replace(/\\\|/gu, "|"));
 }
 
 function fileLinkCandidate(destination: string): boolean {
@@ -376,12 +257,7 @@ export function latestMarkdownLine(source: string): string {
     const line = rawLine.trim().replace(/^\d+[.)]\s+/u, "");
     if (!line) continue;
     const block = renderMarkdownPreview(line).blocks[0];
-    const text =
-      block?.kind === "list"
-        ? block.items[0]
-        : block && "text" in block
-          ? block.text
-          : "";
+    const text = block ? markdownTextLocations(block).next().value?.text : "";
     if (text) return text;
   }
   return "";

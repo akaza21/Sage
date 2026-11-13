@@ -1,6 +1,9 @@
 use crate::{
     acp::{
-        bindings::codex::{policy_0146::TurnPolicySurface, request::OutgoingRequest},
+        bindings::codex::{
+            request::OutgoingRequest,
+            turn_policy::{TurnPolicySurface, TurnSettings},
+        },
         contract::RequiredText,
         intent::Prompt,
     },
@@ -50,16 +53,22 @@ impl CodexAdapter {
         client_message_id: &RequiredText<512>,
         access_mode: SessionAccessMode,
     ) -> Result<OutgoingRequest, AdapterError> {
-        self.prompt_with_effort(id, prompt, client_message_id, access_mode, None)
+        self.prompt_with_settings(
+            id,
+            prompt,
+            client_message_id,
+            access_mode,
+            TurnSettings::default(),
+        )
     }
 
-    pub(crate) fn prompt_with_effort(
+    pub(crate) fn prompt_with_settings(
         &mut self,
         id: u64,
         prompt: &Prompt,
         client_message_id: &RequiredText<512>,
         access_mode: SessionAccessMode,
-        effort: Option<&RequiredText<512>>,
+        settings: TurnSettings<'_>,
     ) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.prompt)?;
         if self.turn_start_correlations.has_pending()
@@ -72,18 +81,30 @@ impl CodexAdapter {
             .external_thread_id
             .clone()
             .ok_or(AdapterError::SessionUnavailable)?;
-        let request = self.reserve(OutgoingRequest::turn_start_with_access_mode(
-            id,
-            &thread,
-            prompt,
-            client_message_id,
-            access_mode,
-            TurnPolicySurface::from_identity(
-                self.observed_build_characterisation,
-                &self.runtime_version,
-            ),
-            effort,
-        )?)?;
+        let request = match &prompt.action {
+            Some(action) => {
+                self.require_method(|methods| action.admitted_by(&methods.snapshot))?;
+                OutgoingRequest::session_action(id, &thread, action)?
+            }
+            None => OutgoingRequest::turn_start_with_access_mode(
+                id,
+                &thread,
+                prompt,
+                client_message_id,
+                access_mode,
+                TurnPolicySurface::from_identity(
+                    self.observed_build_characterisation,
+                    &self.runtime_version,
+                ),
+                settings,
+            )?,
+        };
+        // A listed skill runs attached; its typed text follows it.
+        let request = match self.skill_input(prompt) {
+            Some((name, path)) if prompt.action.is_none() => request.with_skill(&name, &path)?,
+            _ => request,
+        };
+        let request = self.reserve(request)?;
         self.turn_start_correlations
             .register(id, client_message_id.clone());
         Ok(request)

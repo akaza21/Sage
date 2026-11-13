@@ -33,10 +33,11 @@ function rememberSideChat(side: SideChatEntry) {
     .getState()
     .sides.filter((entry) => entry.projectId !== side.projectId);
   if (sides.length >= MAX_SIDE_CHATS)
-    throw new Error("Up to eight Projects may own a side chat");
+    throw new Error("Up to eight projects may own a side chat");
   useSideChatState.setState({
     sides: [...sides, side],
     split: SIDE_CHAT_SPLIT,
+    pairedId: side.id,
   });
 }
 
@@ -88,7 +89,7 @@ async function nativeTransition(
 
 async function exclusive<T>(work: () => Promise<T>): Promise<T> {
   if (pending || useWorkbenchStore.getState().projectTransitioning)
-    throw new Error("Wait for the current Project operation");
+    throw new Error("Wait for the current project operation");
   pending = true;
   useWorkbenchStore.setState({ projectTransitioning: true });
   try {
@@ -105,7 +106,7 @@ export async function openSideChat(
 ) {
   const state = useWorkbenchStore.getState();
   const layout = currentProjectLayout(state);
-  if (!layout) throw new Error("Open a Project before starting a side chat");
+  if (!layout) throw new Error("Open a project before starting a side chat");
   const existing = useSideChatState
     .getState()
     .sides.find((entry) => entry.projectId === layout.projectId);
@@ -212,7 +213,7 @@ export async function closeSideChat(id: string, dontAskAgain: boolean) {
     .sides.find((entry) => entry.id === id);
   if (!side || state.project?.id !== side.projectId)
     throw new Error(
-      "Side chat owner changed; return to its Project before closing",
+      "Side chat owner changed; return to its project before closing",
     );
   const expected = state.nativeTransitionEpoch;
   await exclusive(async () => {
@@ -232,7 +233,7 @@ export async function closeSideChat(id: string, dontAskAgain: boolean) {
       await applyTransition(result, expected);
     } else {
       const layout = currentProjectLayout(state);
-      if (!layout) throw new Error("Open a Project before closing side chat");
+      if (!layout) throw new Error("Open a project before closing side chat");
       await getWorkbenchPorts().project.persistProjectLayout(
         {
           ...layout,
@@ -250,6 +251,7 @@ export async function closeSideChat(id: string, dontAskAgain: boolean) {
     useSideChatState.setState((current) => ({
       sides: current.sides.filter((entry) => entry.id !== id),
       pendingClose: null,
+      pairedId: current.pairedId === id ? null : current.pairedId,
     }));
   });
   if (next) await openSideChat(next.parent, next.quote);

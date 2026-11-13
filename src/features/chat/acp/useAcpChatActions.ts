@@ -11,6 +11,7 @@ import type {
   CuratedModelId,
   ProjectGeneration,
   SageTurnId,
+  StagedSelection,
 } from "../../../domain/acp";
 import type { ChatOwnershipIntent } from "../../../domain/chatOwnership";
 import {
@@ -206,7 +207,9 @@ export function useAcpChatActions(boundChatId?: string | null) {
       attachedContext: readonly AttachedContext[],
       bindingId: CuratedBindingId,
       modelId: CuratedModelId | null,
-    ) => controller.submit(prompt, attachedContext, bindingId, modelId),
+      staged?: StagedSelection,
+    ) => controller.submit(prompt, attachedContext, bindingId, modelId, staged),
+    runSessionAction: controller.runSessionAction,
     steer: (
       prompt: string,
       attachedContext: readonly AttachedContext[],
@@ -241,6 +244,7 @@ export function useAcpChatActions(boundChatId?: string | null) {
     modeChanging: boolean;
     cancellableTurnId: SageTurnId | null;
     submit: typeof controller.submit;
+    runSessionAction: typeof controller.runSessionAction;
     steer: typeof controller.steer;
     cancel: typeof controller.cancel;
     close: typeof controller.close;

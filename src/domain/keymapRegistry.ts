@@ -5,7 +5,6 @@ export type KeymapScope = "Global" | "Agent" | "Agent chat" | "Editor";
 export interface KeymapBinding {
   id: string;
   label: string;
-  description: string;
   scope: KeymapScope;
   key: string;
   ctrlOrMeta: KeymapModifier;
@@ -42,13 +41,14 @@ export interface KeymapChordEvent {
   ctrlKey: boolean;
   metaKey: boolean;
   shiftKey: boolean;
+  /** Reports AltGr, which Windows sends as Control+Alt. */
+  getModifierState?: (key: "AltGraph") => boolean;
 }
 
 export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   ...(
     [
       ["agent.changes", "Changes", "g", "required", "forbidden"],
-      ["agent.terminal", "Terminal", "`", "forbidden", "forbidden"],
       ["agent.files", "Files", "p", "forbidden", "forbidden"],
       ["agent.sideChat", "Side chat", "s", "forbidden", "required"],
     ] as const
@@ -58,14 +58,21 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     key,
     shift,
     alt,
-    description: `Open ${label.toLowerCase()} for the focused chat.`,
     scope: "Agent" as const,
     ctrlOrMeta: "required" as const,
   })),
   {
+    id: "agent.terminal",
+    label: "Toggle terminal",
+    scope: "Global",
+    key: "`",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "forbidden",
+  },
+  {
     id: "newTask",
-    label: "New task",
-    description: "Starts a new chat and switches to Agents.",
+    label: "New chat",
     scope: "Global",
     key: "n",
     ctrlOrMeta: "required",
@@ -73,9 +80,17 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     alt: "forbidden",
   },
   {
+    id: "toggleSidebar",
+    label: "Toggle sidebar",
+    scope: "Global",
+    key: "b",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "forbidden",
+  },
+  {
     id: "openSettings",
     label: "Open settings",
-    description: "Opens the Settings tab and switches to Editor.",
     scope: "Global",
     key: ",",
     ctrlOrMeta: "required",
@@ -85,7 +100,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "chatSearch",
     label: "Search chats",
-    description: "Focuses the title bar chat search.",
     scope: "Agent",
     key: "k",
     ctrlOrMeta: "required",
@@ -95,7 +109,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "chat.findInChat",
     label: "Find in chat",
-    description: "Search the visible chat's messages.",
     scope: "Agent chat",
     key: "f",
     ctrlOrMeta: "required",
@@ -105,7 +118,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "focusComposer",
     label: "Focus composer",
-    description: "Moves the caret into the message composer.",
     scope: "Agent",
     key: "l",
     ctrlOrMeta: "required",
@@ -115,7 +127,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "sendMessage",
     label: "Send message",
-    description: "Sends the composer contents to the agent.",
     scope: "Agent",
     key: "enter",
     ctrlOrMeta: "allowed",
@@ -125,7 +136,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "newline",
     label: "Insert a line break",
-    description: "Adds a new line in the composer instead of sending.",
     scope: "Agent",
     key: "enter",
     ctrlOrMeta: "forbidden",
@@ -135,7 +145,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "save",
     label: "Save file",
-    description: "Writes the active editor buffer to disk.",
     scope: "Editor",
     key: "s",
     ctrlOrMeta: "required",
@@ -143,9 +152,28 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     alt: "forbidden",
   },
   {
+    // VS Code's Save All is the two-step Ctrl+K S; this keymap has no
+    // two-step chords, so it takes VS Code's macOS chord on every platform.
+    id: "saveAll",
+    label: "Save all files",
+    scope: "Editor",
+    key: "s",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "required",
+  },
+  {
+    id: "closeEditor",
+    label: "Close editor",
+    scope: "Editor",
+    key: "w",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "forbidden",
+  },
+  {
     id: "find",
     label: "Find in file",
-    description: "Opens the find bar for the active file.",
     scope: "Editor",
     key: "f",
     ctrlOrMeta: "required",
@@ -155,7 +183,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "replace",
     label: "Replace in file",
-    description: "Opens the find bar with its replace row.",
     scope: "Editor",
     key: "h",
     ctrlOrMeta: "required",
@@ -166,7 +193,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "findNext",
     label: "Find next",
-    description: "Moves to the next match of the find bar's text.",
     scope: "Editor",
     key: "f3",
     ctrlOrMeta: "forbidden",
@@ -182,7 +208,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "findPrevious",
     label: "Find previous",
-    description: "Moves to the previous match of the find bar's text.",
     scope: "Editor",
     key: "f3",
     ctrlOrMeta: "forbidden",
@@ -198,7 +223,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "goToLine",
     label: "Go to line",
-    description: "Jumps to a line number in the active file.",
     scope: "Editor",
     key: "g",
     ctrlOrMeta: "required",
@@ -209,7 +233,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "quickOpen",
     label: "Quick Open",
-    description: "Opens a file in the project by typing part of its name.",
     scope: "Editor",
     key: "p",
     ctrlOrMeta: "required",
@@ -219,7 +242,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "commandPalette",
     label: "Show all commands",
-    description: "Lists the editor's commands to run one by name.",
     scope: "Editor",
     key: "p",
     ctrlOrMeta: "required",
@@ -229,8 +251,7 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "navigateBack",
     label: "Go back",
-    description: "Returns to the previous place in the editor.",
-    scope: "Editor",
+    scope: "Global",
     key: "arrowleft",
     ctrlOrMeta: "forbidden",
     shift: "forbidden",
@@ -246,8 +267,7 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "navigateForward",
     label: "Go forward",
-    description: "Undoes a Go back.",
-    scope: "Editor",
+    scope: "Global",
     key: "arrowright",
     ctrlOrMeta: "forbidden",
     shift: "forbidden",
@@ -263,7 +283,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "goToSymbol",
     label: "Go to symbol",
-    description: "Jumps to a symbol defined in the active file.",
     scope: "Editor",
     key: "f12",
     ctrlOrMeta: "forbidden",
@@ -273,7 +292,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "dismiss",
     label: "Dismiss",
-    description: "Closes the preview, go to line, or find bar.",
     scope: "Editor",
     key: "escape",
     ctrlOrMeta: "forbidden",
@@ -283,7 +301,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "commit",
     label: "Commit staged changes",
-    description: "Submits the commit message in Source Control.",
     scope: "Editor",
     key: "enter",
     ctrlOrMeta: "required",
@@ -335,8 +352,11 @@ export function matchesPlatformChord(
   const primary = useControl ? event.ctrlKey : event.metaKey;
   const other = useControl ? event.metaKey : event.ctrlKey;
   const chord = platformChord(binding, apple);
+  // AltGr types characters (AltGr+S is "ś" on a Polish layout); on Windows it
+  // arrives as Control+Alt, which must not run a chord.
   return (
     !other &&
+    !(!apple && event.getModifierState?.("AltGraph")) &&
     admits(chord.ctrlOrMeta, primary) &&
     admits(chord.shift, event.shiftKey) &&
     admits(chord.alt, event.altKey) &&

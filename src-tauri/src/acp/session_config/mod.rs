@@ -1,4 +1,5 @@
-//! Bounded ACP v1 session configuration. This state is never journaled.
+//! Bounded ACP v1 session configuration. The live state is never journaled;
+//! only the last confirmed choice per option is stored (see `choices`).
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
@@ -7,11 +8,17 @@ use serde_json::Value;
 use super::contract::{BoundedVec, RequiredText, SafeText};
 use super::limits::LIMITS;
 
+pub(crate) mod choices;
 mod kind;
+mod mode_select;
+pub(crate) mod notices;
 mod overlay;
+pub(crate) mod reported;
 pub(crate) use kind::ConfigKind;
+pub(crate) use mode_select::ModeSelection;
 pub(crate) use overlay::{
-    ConfigChannel, ConfigIntent, ConfigMutation, ConfigRevision, NoticeSink, SessionConfigOverlay,
+    ChoiceRecorder, ConfigChannel, ConfigIntent, ConfigMutation, ConfigRevision, NoticeSink,
+    SessionConfigOverlay, SnapshotRecorder,
 };
 
 pub(crate) type ConfigId = RequiredText<1024>;
@@ -80,6 +87,11 @@ pub(crate) struct SessionConfig {
     pub confirmed_model: Option<ConfirmedModel>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confirmed_effort: Option<RequiredText<512>>,
+    /// Options the session takes but whose current value it has not
+    /// reported, so it shows none of them; a stored choice for one is kept
+    /// until it does. Local to Sage, never on the wire.
+    #[serde(skip)]
+    pub unreported: BoundedVec<ConfigId, 128>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -241,6 +253,9 @@ impl SessionConfig {
     pub(crate) fn set_current_mode(&mut self, mode: ConfigId) -> Result<(), String> {
         self.validate_mode(mode.as_str())?;
         let mut candidate = self.clone();
+        // The option restating the modes moves with them, so the two
+        // sources a mode is read from never disagree.
+        candidate.set_mode_option(&mode);
         if let Some(modes) = &mut candidate.modes {
             modes.current_mode_id = mode;
         }

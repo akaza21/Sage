@@ -14,6 +14,17 @@ async function assertEditorLandmarks(page: Page) {
   await expect(page.getByRole("tabpanel")).toBeVisible();
 }
 
+/**
+ * The scenario's File differs from the text the fixture stages for it, so its
+ * Git gutter settles with change markers once the staged text has loaded and
+ * been diffed. Captures of an open File wait for that settled gutter.
+ */
+export async function settleEditorGutter(page: Page) {
+  await expect(
+    page.locator(".file-surface .git-gutter-marker").first(),
+  ).toBeVisible();
+}
+
 export async function expectFindContained(page: Page) {
   expect(
     await page.locator(".editor-find--overlay").evaluate((find) => {

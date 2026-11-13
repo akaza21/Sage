@@ -1,12 +1,15 @@
 use std::{
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, mpsc},
+    time::Duration,
 };
 
 use super::*;
 use crate::{persistence::Database, state::AppState};
 
 mod lifecycle;
+
+const HOLD_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Default)]
 struct FixtureRecord {
@@ -17,6 +20,8 @@ struct FixtureRecord {
     fail_terminate: bool,
     fail_spawn_retained: bool,
     outputs: Vec<TerminalOutputSink>,
+    /// Spawn reports its arrival on the sender, then waits on the receiver.
+    spawn_hold: Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>,
 }
 
 struct FixtureProcess(Arc<Mutex<FixtureRecord>>);
@@ -53,6 +58,12 @@ impl TerminalFactory for FixtureFactory {
         _rows: u16,
         output: TerminalOutputSink,
     ) -> Result<Box<dyn TerminalProcess>, TerminalSpawnFailure> {
+        let hold = self.0.lock().unwrap().spawn_hold.take();
+        if let Some((arrived, release)) = hold {
+            arrived.send(()).unwrap();
+            // Bounded, so a broken fix fails the test instead of hanging it.
+            let _ = release.recv_timeout(HOLD_TIMEOUT);
+        }
         let mut record = self.0.lock().unwrap();
         record.roots.push(root.as_path().to_owned());
         record.outputs.push(output);
@@ -205,26 +216,85 @@ fn input_and_resize_accept_exact_bounds_and_reject_plus_one_without_effect() {
         );
         fixture
             .port
-            .resize(&fixture.authority(), &fixture.scope, handle, 500, 300)
+            .resize(
+                &fixture.authority(),
+                &fixture.scope,
+                handle,
+                MAX_COLUMNS,
+                MAX_ROWS,
+            )
             .await
             .unwrap();
         assert_eq!(
             fixture
                 .port
-                .resize(&fixture.authority(), &fixture.scope, handle, 501, 300)
+                .resize(
+                    &fixture.authority(),
+                    &fixture.scope,
+                    handle,
+                    MAX_COLUMNS + 1,
+                    MAX_ROWS
+                )
                 .await,
             Err(TerminalError::InvalidDimensions)
         );
         assert_eq!(
             fixture
                 .port
-                .resize(&fixture.authority(), &fixture.scope, handle, 500, 0)
+                .resize(&fixture.authority(), &fixture.scope, handle, MAX_COLUMNS, 0)
                 .await,
             Err(TerminalError::InvalidDimensions)
         );
         let record = fixture.record.lock().unwrap();
         assert_eq!(record.writes, vec![exact.into_bytes()]);
-        assert_eq!(record.sizes, vec![(500, 300)]);
+        assert_eq!(record.sizes, vec![(MAX_COLUMNS, MAX_ROWS)]);
+    });
+}
+
+#[test]
+fn create_and_resize_admit_only_a_one_to_500_by_one_to_300_grid() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let rejected = [(0, 24), (80, 0), (501, 24), (80, 301)];
+        for (columns, rows) in rejected {
+            assert_eq!(
+                fixture
+                    .port
+                    .create(&fixture.authority(), &fixture.scope, columns, rows)
+                    .await,
+                Err(TerminalError::InvalidDimensions),
+                "create {columns}x{rows}"
+            );
+        }
+        assert!(fixture.record.lock().unwrap().roots.is_empty());
+        let handle = fixture
+            .port
+            .create(&fixture.authority(), &fixture.scope, 500, 300)
+            .await
+            .unwrap();
+        fixture
+            .port
+            .create(&fixture.authority(), &fixture.scope, 1, 1)
+            .await
+            .unwrap();
+        for (columns, rows) in rejected {
+            assert_eq!(
+                fixture
+                    .port
+                    .resize(&fixture.authority(), &fixture.scope, handle, columns, rows)
+                    .await,
+                Err(TerminalError::InvalidDimensions),
+                "resize {columns}x{rows}"
+            );
+        }
+        fixture
+            .port
+            .resize(&fixture.authority(), &fixture.scope, handle, 1, 1)
+            .await
+            .unwrap();
+        let record = fixture.record.lock().unwrap();
+        assert_eq!(record.roots.len(), 2);
+        assert_eq!(record.sizes, vec![(1, 1)]);
     });
 }
 
@@ -273,6 +343,32 @@ fn output_ring_rejects_oversized_chunks_and_discloses_byte_and_line_truncation()
             4_095
         );
         assert!(lines.truncations > overflow.truncations);
+    });
+}
+
+#[test]
+fn create_rejects_a_chat_without_a_tab_in_the_project_before_spawn() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let unknown = TerminalScope {
+            chat: SageChatId::new(),
+            ..fixture.scope.clone()
+        };
+        assert_eq!(
+            fixture
+                .port
+                .create(&fixture.authority(), &unknown, 80, 24)
+                .await,
+            Err(TerminalError::InvalidScope)
+        );
+        assert!(fixture.record.lock().unwrap().roots.is_empty());
+        assert!(
+            fixture
+                .port
+                .create(&fixture.authority(), &fixture.scope, 80, 24)
+                .await
+                .is_ok()
+        );
     });
 }
 
@@ -396,4 +492,32 @@ fn explicit_close_and_project_change_kill_and_reject_late_effects() {
         assert_eq!(fixture.record.lock().unwrap().terminated, 2);
         assert_eq!(fixture.port.shutdown(), Ok(()));
     });
+}
+
+#[test]
+fn a_shutdown_during_a_spawn_ends_the_new_shell_instead_of_orphaning_it() {
+    let fixture = Fixture::new();
+    let (arrived_tx, arrived) = mpsc::channel();
+    let (release, release_rx) = mpsc::channel();
+    fixture.record.lock().unwrap().spawn_hold = Some((arrived_tx, release_rx));
+    let created = std::thread::scope(|scope| {
+        let create = scope.spawn(|| {
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(
+                    fixture
+                        .port
+                        .create(&fixture.authority(), &fixture.scope, 80, 24),
+                )
+        });
+        arrived
+            .recv_timeout(HOLD_TIMEOUT)
+            .expect("create reaches the spawn");
+        assert_eq!(fixture.port.shutdown(), Ok(()));
+        release.send(()).unwrap();
+        create.join().unwrap()
+    });
+    assert_eq!(created, Err(TerminalError::Ended));
+    assert_eq!(fixture.record.lock().unwrap().terminated, 1);
+    assert!(fixture.port.sessions.lock().unwrap().is_empty());
 }

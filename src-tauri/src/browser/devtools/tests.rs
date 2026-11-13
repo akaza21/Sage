@@ -14,6 +14,27 @@ use crate::acp::{
 use std::sync::{Arc, Mutex};
 
 #[test]
+fn suspended_diagnostics_drop_history_and_ignore_late_events() {
+    let mut rings = DiagnosticRings::default();
+    rings.push_console("log", "before sleep");
+    rings.push_network("GET", "https://example.com", 200);
+    rings.suspend();
+    rings.push_console("log", "late event");
+    rings.push_network("GET", "https://example.com/late", 200);
+    assert!(rings.console(None, 10).unwrap().1.is_empty());
+    assert!(rings.network(None, 10).unwrap().1.is_empty());
+    let mut resumed = rings.resumed();
+    resumed.push_console("log", "after wake");
+    resumed.push_network("GET", "https://example.com/wake", 200);
+    let (cursor, entries) = resumed.console(Some(1), 10).unwrap();
+    assert_eq!(cursor, 2);
+    assert_eq!(entries[0].text, "after wake");
+    let (cursor, entries) = resumed.network(Some(1), 10).unwrap();
+    assert_eq!(cursor, 2);
+    assert_eq!(entries[0].url, "https://example.com/wake");
+}
+
+#[test]
 fn diagnostic_ring_bounds_entries_and_rejects_a_lost_cursor() {
     let mut ring = DiagnosticRings::default();
     for index in 0..=BROWSER_LIMITS.diagnostic_entries {
@@ -409,13 +430,6 @@ fn snapshot_handles_survive_a_dispatch_clone() {
     );
 }
 
-#[cfg(windows)]
-#[test]
-fn native_port_implements_the_same_browser_capability_seam() {
-    fn assert_capability<T: BrowserCapability>() {}
-    assert_capability::<super::native::NativeDevtools>();
-}
-
 /// A page that never shows the text and whose dispatch the user stops
 /// after `stop_after` probes.
 #[derive(Clone)]
@@ -473,4 +487,6 @@ fn a_wait_stops_probing_the_page_once_the_user_stops_or_takes_over() {
     assert!(started.elapsed() < std::time::Duration::from_secs(2));
 }
 
+mod developer_objects;
 mod handle_invalidation;
+mod mutation_outcomes;

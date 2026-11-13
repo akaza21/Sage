@@ -100,6 +100,7 @@ impl Fixture {
             dirty: false,
             status: None,
             updated_at: None,
+            finished_at: None,
             resource: Some(ResourceRef {
                 root_id: self.root_id.clone(),
                 relative_path: "src/empty/ghost.rs".into(),
@@ -429,5 +430,42 @@ fn unsupported_platform_returns_typed_unchanged_result() {
         assert!(result.parent_listing.is_none());
         assert!(result.snapshot.is_none());
         assert!(fixture.root.join("src/closed.rs").is_file());
+    });
+}
+
+#[test]
+fn committed_trash_stops_the_previous_epoch_preview_but_a_stale_one_does_not() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let preview = crate::app_preview_commands::ServingPreview::start(0);
+
+        let mut stale = fixture.file_request();
+        stale.expected_transition_epoch = 1;
+        let rejected = execute_with_operation(
+            &fixture.state,
+            stale,
+            trash_with_fixture,
+            |_| Ok(()),
+            || Ok(()),
+        )
+        .await;
+        assert!(rejected.is_err());
+        assert!(
+            preview.is_serving(),
+            "a stale trash request must not stop the current Preview"
+        );
+
+        let result = execute_with_operation(
+            &fixture.state,
+            fixture.file_request(),
+            trash_with_fixture,
+            |_| Ok(()),
+            || Ok(()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.outcome, ResourceTrashOutcome::Committed);
+        assert_eq!(result.transition_epoch, 1);
+        assert!(!preview.is_serving());
     });
 }

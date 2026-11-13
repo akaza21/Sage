@@ -10,6 +10,7 @@ import { isSnapshotDiffTab } from "../../domain/agentDiffIdentity";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { DiffLineCommentContext } from "../../domain/attachedContext";
 import type { WorkbenchTab } from "../../domain/workbench";
+import type { CanvasSurfaceOptions } from "../../workbench/surfaceRegistry";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 import { DiffHunks } from "./DiffHunks";
 import { DiffLineCommentComposer } from "./DiffLineCommentComposer";
@@ -17,23 +18,34 @@ import { DiffLineCommentComposer } from "./DiffLineCommentComposer";
 export function DiffSurface({
   tab,
   readOnly = false,
+  hostHeader = false,
 }: {
   tab: WorkbenchTab;
-  readOnly?: boolean;
-}) {
+} & CanvasSurfaceOptions) {
   return tab.diffRef ? (
-    <SnapshotDiffSurface tab={tab} commentEnabled={readOnly} />
+    <SnapshotDiffSurface
+      tab={tab}
+      commentEnabled={readOnly}
+      hostHeader={hostHeader}
+    />
   ) : (
-    <DiffDocument tab={tab} unavailable={isSnapshotDiffTab(tab)} />
+    <DiffDocument
+      tab={tab}
+      unavailable={isSnapshotDiffTab(tab)}
+      workingTreeNotice={readOnly && !isSnapshotDiffTab(tab)}
+      hostHeader={hostHeader}
+    />
   );
 }
 
 function SnapshotDiffSurface({
   tab,
   commentEnabled,
+  hostHeader,
 }: {
   tab: WorkbenchTab;
   commentEnabled: boolean;
+  hostHeader: boolean;
 }) {
   const project = useWorkbenchStore((state) => state.project);
   const projectGeneration = useWorkbenchStore(
@@ -56,6 +68,7 @@ function SnapshotDiffSurface({
       tab={tab}
       unavailable={!current}
       commentEnabled={commentEnabled && current}
+      hostHeader={hostHeader}
     />
   );
 }
@@ -64,10 +77,14 @@ function DiffDocument({
   tab,
   unavailable = false,
   commentEnabled = false,
+  workingTreeNotice = false,
+  hostHeader = false,
 }: {
   tab: WorkbenchTab;
   unavailable?: boolean;
   commentEnabled?: boolean;
+  workingTreeNotice?: boolean;
+  hostHeader?: boolean;
 }) {
   const focusedChatId = usePinnedAgentChatOwner();
   const captureChatOwnership = useWorkbenchStore(
@@ -91,7 +108,7 @@ function DiffDocument({
   const diff = unavailable
     ? {
         phase: "error" as const,
-        message: "This saved edit is unavailable for the current Chat session.",
+        message: "This saved edit is unavailable for the current chat session.",
       }
     : cached;
   const loadDiff = useWorkbenchStore((state) => state.loadDiff);
@@ -118,6 +135,13 @@ function DiffDocument({
   // which can be older than the diff or come from a fixture with no hunks.
   const additions = visibleCounts?.additions ?? change?.additions;
   const deletions = visibleCounts?.deletions ?? change?.deletions;
+
+  const counts = (
+    <div className="diff-header__counts">
+      <span>{additions == null ? "" : `+${additions}`}</span>
+      <span>{deletions == null ? "" : `-${deletions}`}</span>
+    </div>
+  );
 
   const canComment =
     commentEnabled &&
@@ -154,23 +178,32 @@ function DiffDocument({
       className="diff-surface resource-document"
       aria-label={`Diff for ${path}`}
     >
-      <header className="diff-header">
-        <div className="diff-header__path">
-          <FileDiff size={16} aria-hidden="true" />
-          <span>{path}</span>
-        </div>
-        <div className="diff-header__counts">
-          <span>{additions == null ? "" : `+${additions}`}</span>
-          <span>{deletions == null ? "" : `-${deletions}`}</span>
-        </div>
-      </header>
+      {workingTreeNotice ? (
+        <p role="status">
+          Current working-tree changes against Git; may include edits from other
+          turns.
+        </p>
+      ) : null}
+      {hostHeader ? null : (
+        <header className="diff-header">
+          <div className="diff-header__path">
+            <FileDiff size={16} aria-hidden="true" />
+            <span>{path}</span>
+          </div>
+          {counts}
+        </header>
+      )}
       <div className="diff-toolbar">
         <span className="diff-toolbar__scope">
           {isSnapshotDiffTab(tab)
             ? "Saved agent change"
             : "Changes since HEAD (or initial tree)"}
         </span>
-        <span className="diff-toolbar__hint">Read-only</span>
+        {hostHeader ? (
+          counts
+        ) : (
+          <span className="diff-toolbar__hint">Read-only</span>
+        )}
         <div
           className="diff-toolbar__actions"
           role="group"
@@ -224,6 +257,7 @@ function DiffDocument({
           <DiffHunks
             diff={diff.value}
             label="Unified file diff"
+            maxLines={1200}
             limitMessage="Diff capped at 1,200 lines to protect UI responsiveness."
             renderComment={
               canComment && tab.diffRef

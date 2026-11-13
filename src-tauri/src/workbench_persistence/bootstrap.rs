@@ -2,12 +2,44 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::{
     acp::intent::CapabilitySnapshotV1,
-    domain::{BootstrapSnapshot, ProjectListItem, ProjectRepositoryStatus},
+    domain::{
+        BootstrapSnapshot, HarnessDefinition, ProjectListItem, ProjectRepositoryStatus,
+        WorkbenchTab,
+    },
     error::{AppError, AppResult},
+    harnesses::HarnessCatalog,
     persistence::Database,
     project_registry::MAX_PROJECTS,
     workbench_restore::MAX_RESTORED_TABS,
 };
+
+pub(super) fn restore_harnesses(
+    connection: &rusqlite::Connection,
+    project_id: &str,
+    tabs: &[WorkbenchTab],
+    catalog: &HarnessCatalog,
+) -> AppResult<Vec<HarnessDefinition>> {
+    let mut definitions = catalog.definitions();
+    // The restored layout is capped at MAX_RESTORED_TABS. Resolve at most one
+    // binding per Chat, preferring its head over its latest historical session.
+    let mut statement = connection.prepare(
+        "SELECT s.binding_id FROM chat_tabs t
+         JOIN agent_sessions s ON s.project_id=t.project_id AND s.chat_id=t.chat_id
+         LEFT JOIN chat_session_heads h ON h.project_id=s.project_id AND h.chat_id=s.chat_id
+         WHERE t.project_id=?1 AND t.tab_id=?2 AND s.legacy=0
+         ORDER BY CASE WHEN s.id=h.session_id THEN 0 ELSE 1 END, s.ordinal DESC
+         LIMIT 1",
+    )?;
+    for tab in tabs.iter().filter(|tab| tab.kind == "chat") {
+        let binding: Option<String> = statement
+            .query_row(params![project_id, tab.id], |row| row.get(0))
+            .optional()?;
+        if let Some(binding) = binding {
+            catalog.restore_binding(&binding, &mut definitions);
+        }
+    }
+    Ok(definitions)
+}
 
 impl Database {
     pub(crate) fn next_browser_tab_number(&self) -> AppResult<u64> {

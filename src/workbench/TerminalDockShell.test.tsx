@@ -6,40 +6,49 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { StrictMode } from "react";
+import { StrictMode, useState } from "react";
 
 const native = vi.hoisted(() => ({
   create: vi.fn(),
   close: vi.fn(),
 }));
 
-vi.mock("../services/userTerminalDesktop", () => ({
+vi.mock(import("../services/userTerminalDesktop"), async (importOriginal) => ({
+  ...(await importOriginal()),
   createUserTerminal: native.create,
   closeUserTerminal: native.close,
   terminalErrorLabel: () => "Terminal operation failed.",
 }));
 
 vi.mock("./TerminalDock", () => ({
-  TerminalDock: ({
+  default: ({
     session,
     ended,
     onStatus,
+    visible = true,
   }: {
     session: { sessionId: string };
     ended: boolean;
     onStatus: (status: string, ended?: boolean) => void;
-  }) => (
-    <div>
-      Active session {session.sessionId}
-      <span data-testid="terminal-ended-state">{ended ? "ended" : "live"}</span>
-      <button type="button" onClick={() => onStatus("Session ended", false)}>
-        Report status text only
-      </button>
-    </div>
-  ),
+    visible?: boolean;
+  }) =>
+    visible ? (
+      <div>
+        Active session {session.sessionId}
+        <span data-testid="terminal-ended-state">
+          {ended ? "ended" : "live"}
+        </span>
+        <button type="button" onClick={() => onStatus("Session ended", false)}>
+          Report status text only
+        </button>
+      </div>
+    ) : null,
 }));
 
-import { TerminalDockShell } from "./TerminalDockShell";
+import TerminalDockForWorkbench, {
+  TerminalDockShell,
+} from "./TerminalDockShell";
+import { useWorkbenchStore } from "../app/store";
 
 const scope = {
   projectId: "project-1",
@@ -63,17 +72,100 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
+it("releases the terminal placeholder while its host is covered and restores it on reveal", () => {
+  const original = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({ project: null, tabs: [] });
+  const props = {
+    container: document.body,
+    pinnedChatId: null,
+    setOpen: () => undefined,
+    open: true,
+  };
+  const { rerender, unmount } = render(
+    <TerminalDockForWorkbench {...props} visible />,
+  );
+  try {
+    expect(screen.getByText("Open a chat first.")).toBeVisible();
+    rerender(<TerminalDockForWorkbench {...props} visible={false} />);
+    expect(screen.queryByText("Open a chat first.")).not.toBeInTheDocument();
+    rerender(<TerminalDockForWorkbench {...props} visible />);
+    expect(screen.getByText("Open a chat first.")).toBeVisible();
+  } finally {
+    unmount();
+    useWorkbenchStore.setState(original, true);
+  }
+});
+
+it("opens a usable replacement after the last terminal tab was explicitly ended", async () => {
+  function Host() {
+    const [visible, setVisible] = useState(true);
+    return (
+      <>
+        <button onClick={() => setVisible(true)}>Show dock</button>
+        <TerminalDockShell
+          open
+          scope={scope}
+          visible={visible}
+          onClose={() => setVisible(false)}
+        />
+      </>
+    );
+  }
+  render(<Host />);
+  await screen.findByText(`Active session ${session(1).sessionId}`);
+  fireEvent.click(screen.getByRole("button", { name: "Close terminal tab" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("region", { name: "Terminal" }),
+    ).not.toBeInTheDocument(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Show dock" }));
+  expect(
+    await screen.findByText(`Active session ${session(2).sessionId}`),
+  ).toBeVisible();
+});
+
+it("hides and reopens the dock with its selected sessions intact", async () => {
+  const onClose = () => undefined;
+  const { rerender } = render(
+    <TerminalDockShell open scope={scope} onClose={onClose} visible />,
+  );
+  await screen.findByText(`Active session ${session(1).sessionId}`);
+  fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+  await screen.findByText(`Active session ${session(2).sessionId}`);
+  rerender(
+    <TerminalDockShell open scope={scope} onClose={onClose} visible={false} />,
+  );
+  expect(
+    screen.queryByRole("region", { name: "Terminal" }),
+  ).not.toBeInTheDocument();
+  rerender(<TerminalDockShell open scope={scope} onClose={onClose} visible />);
+  expect(
+    await screen.findByText(`Active session ${session(2).sessionId}`),
+  ).toBeVisible();
+  expect(screen.getAllByRole("tab")).toHaveLength(2);
+  fireEvent.click(screen.getAllByRole("tab")[0]);
+  expect(
+    await screen.findByText(`Active session ${session(1).sessionId}`),
+  ).toBeVisible();
+});
+
 it("creates a second tab, switches sessions, and closes only the selected tab", async () => {
   const onClose = vi.fn();
-  render(<TerminalDockShell scope={scope} onClose={onClose} />);
+  render(<TerminalDockShell visible open scope={scope} onClose={onClose} />);
   expect(
     await screen.findByText(`Active session ${session(1).sessionId}`),
   ).toBeInTheDocument();
+  // A lone tab is named after its shell; numbers only tell tabs apart.
+  expect(screen.getByRole("tab")).toHaveTextContent(/^cmd\.exe$/);
   fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
   expect(
     await screen.findByText(`Active session ${session(2).sessionId}`),
   ).toBeInTheDocument();
-  expect(screen.getAllByRole("tab")).toHaveLength(2);
+  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+    "cmd.exe 1",
+    "cmd.exe 2",
+  ]);
   fireEvent.click(screen.getAllByRole("tab")[0]);
   expect(
     screen.getByText(`Active session ${session(1).sessionId}`),
@@ -91,7 +183,9 @@ it("creates a second tab, switches sessions, and closes only the selected tab", 
 });
 
 it("collapses without closing sessions and blocks a fifth tab locally", async () => {
-  render(<TerminalDockShell scope={scope} onClose={() => undefined} />);
+  render(
+    <TerminalDockShell visible open scope={scope} onClose={() => undefined} />,
+  );
   await screen.findByRole("tab");
   for (let index = 0; index < 3; index++) {
     fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
@@ -113,7 +207,9 @@ it("collapses without closing sessions and blocks a fifth tab locally", async ()
 });
 
 it("does not infer native ended state from status display text", async () => {
-  render(<TerminalDockShell scope={scope} onClose={() => undefined} />);
+  render(
+    <TerminalDockShell visible open scope={scope} onClose={() => undefined} />,
+  );
   fireEvent.click(
     await screen.findByRole("button", { name: "Report status text only" }),
   );
@@ -129,7 +225,9 @@ it("selects a remaining tab when the closing tab was selected during native clos
         finishClose = resolve;
       }),
   );
-  render(<TerminalDockShell scope={scope} onClose={() => undefined} />);
+  render(
+    <TerminalDockShell visible open scope={scope} onClose={() => undefined} />,
+  );
   await screen.findByRole("tab");
   fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
   await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(2));
@@ -154,7 +252,7 @@ it("dismisses after a pending replacement creation fails following last-tab clos
       }),
   );
   const onClose = vi.fn();
-  render(<TerminalDockShell scope={scope} onClose={onClose} />);
+  render(<TerminalDockShell visible open scope={scope} onClose={onClose} />);
   await screen.findByRole("tab");
   fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
   await waitFor(() => expect(native.create).toHaveBeenCalledTimes(2));
@@ -172,7 +270,7 @@ it("does not retain a stale creation across a StrictMode remount", async () => {
   );
   render(
     <StrictMode>
-      <TerminalDockShell scope={scope} onClose={() => undefined} />
+      <TerminalDockShell visible open scope={scope} onClose={() => undefined} />
     </StrictMode>,
   );
   await waitFor(() => expect(native.create).toHaveBeenCalledTimes(1));

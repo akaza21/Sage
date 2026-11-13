@@ -381,14 +381,14 @@ function SubagentChild({
                   ))}
                 </div>
               )}
-              {/* Codex s4/f0485: a settled child's answer keeps Copy only. */}
+
               {answer ? <AnswerActions text={answer} /> : null}
             </>
           ) : null}
         </div>
       ) : (
         <p>
-          Bounded activity recorded in the originating Turn. A full child
+          Bounded activity recorded in the originating turn. A full child
           transcript is not available in this harness projection.
         </p>
       )}

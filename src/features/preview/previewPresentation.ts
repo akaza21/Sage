@@ -15,6 +15,10 @@ const FAILURE_PRESENTATION = {
     label: "Unsafe origin",
     detail: "Preview did not provide a safe loopback address.",
   },
+  originUnsupported: {
+    label: "Unsupported origin",
+    detail: "Preview supports http:// loopback origins only.",
+  },
   startupTimeout: {
     label: "Startup timeout",
     detail: "Preview did not start before its deadline.",
@@ -47,7 +51,7 @@ const PHASE_PRESENTATION: Record<
     tone: "active",
   },
   discovering: {
-    detail: "Finding runnable Preview targets for this Chat.",
+    detail: "Finding runnable preview targets for this chat.",
     label: "Discovering targets",
     tone: "starting",
   },

@@ -6,7 +6,7 @@ use std::{
 use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterIdentity, EgressToken},
     contract::{RequiredText, SafeText, SchemaVersionV1},
-    intent::{NormalizedPayload, SafeResourceRef},
+    intent::{ModelId, NormalizedPayload, SafeResourceRef},
     transport::Frame,
 };
 
@@ -14,6 +14,9 @@ use super::*;
 
 #[path = "tests/model_catalog.rs"]
 mod model_catalog;
+
+#[path = "tests/session_events.rs"]
+mod session_events;
 
 #[path = "tests/initialization.rs"]
 mod initialization;
@@ -380,6 +383,7 @@ fn resume_and_load_bind_only_the_persisted_external_session() {
                     external_session_id: ExternalId::new("externalSessionId", "persisted").unwrap(),
                     native_root: "/repo".into(),
                     model: None,
+                    rewind_at: None,
                 },
                 false,
             ),
@@ -953,12 +957,16 @@ fn capabilities(prompt: bool, cancel: bool) -> CapabilitySnapshotV1 {
         prompt,
         cancel,
         native_session_fork: false,
+        native_session_compact: false,
+        native_review: false,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 128,
+        prompt_resources: false,
+        prompt_images: false,
         config_count: 0,
     }
 }

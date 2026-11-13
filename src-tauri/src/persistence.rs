@@ -51,8 +51,9 @@ impl WalConvergenceReceipt {
 #[derive(Debug, Clone)]
 pub struct Database {
     connection: Arc<Mutex<Connection>>,
+    search_reader: Option<Arc<Mutex<Connection>>>,
     physical_storage: Arc<PhysicalStorage>,
-    _live_path_anchor: Arc<migration::LivePathAnchor>,
+    live_path_anchor: Arc<migration::LivePathAnchor>,
     image_artifact_root: Option<Arc<PathBuf>>,
 }
 
@@ -63,6 +64,9 @@ impl Database {
 
     fn open_with_limits(path: &Path, limits: StorageLimits) -> AppResult<Self> {
         let (connection, live_path_anchor) = migration::open_or_migrate(path)?.into_parts();
+        crate::turn_workspace::invalidate_active(&connection).map_err(|_| {
+            crate::error::AppError::InvalidRequest("workspace summary recovery failed".into())
+        })?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "busy_timeout", 5_000)?;
@@ -79,8 +83,21 @@ impl Database {
         });
         let database = Self {
             connection: Arc::new(Mutex::new(connection)),
+            search_reader: if path == Path::new(":memory:") {
+                None
+            } else {
+                live_path_anchor.verify_path(path)?;
+                let reader = Connection::open_with_flags(
+                    path,
+                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                        | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                )?;
+                reader.busy_timeout(crate::chat_search::READER_BUSY_TIMEOUT)?;
+                live_path_anchor.verify_path(path)?;
+                Some(Arc::new(Mutex::new(reader)))
+            },
             physical_storage,
-            _live_path_anchor: Arc::new(live_path_anchor),
+            live_path_anchor: Arc::new(live_path_anchor),
             image_artifact_root,
         };
         // Like the exit path: a failed purge never blocks startup; the
@@ -103,10 +120,43 @@ impl Database {
             })
     }
 
+    /// A read-only connection holding an open read transaction, so it keeps
+    /// seeing the store as it was at this call while writers go on. Cheap: it
+    /// only fixes the WAL snapshot. `None` for an in-memory store.
+    pub(crate) fn pinned_reader(&self) -> AppResult<Option<Connection>> {
+        let Some(path) = self.physical_storage.path() else {
+            return Ok(None);
+        };
+        self.live_path_anchor.verify_path(path)?;
+        let reader = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        self.live_path_anchor.verify_path(path)?;
+        // A deferred transaction takes its snapshot at the first read.
+        reader.execute_batch("BEGIN; SELECT count(*) FROM sqlite_schema;")?;
+        Ok(Some(reader))
+    }
+
     pub(crate) fn connection(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.connection
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    pub(crate) fn chat_search_reader(
+        &self,
+    ) -> AppResult<Option<std::sync::MutexGuard<'_, Connection>>> {
+        self.search_reader
+            .as_ref()
+            .map(|reader| {
+                reader.try_lock().map_err(|_| {
+                    crate::error::AppError::ResourceLimit(
+                        "Chat search is already reading a snapshot".into(),
+                    )
+                })
+            })
+            .transpose()
     }
 
     #[cfg(test)]
@@ -178,7 +228,10 @@ mod tests {
         let project_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(migration_count, 18);
+        assert_eq!(
+            migration_count,
+            i64::from(crate::acp::migration::CURRENT_SCHEMA_VERSION)
+        );
         assert_eq!(project_count, 0);
     }
 
@@ -194,6 +247,35 @@ mod tests {
             .unwrap();
         assert_eq!(auto_checkpoint, 256);
         assert_eq!(journal_size_limit, 8 * 1024 * 1024);
+    }
+
+    #[test]
+    fn a_pinned_reader_keeps_seeing_the_store_as_it_was_when_pinned() {
+        let directory =
+            std::env::temp_dir().join(format!("sage-pinned-reader-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let database = Database::open(&directory.join("sage.db")).unwrap();
+        let projects = |connection: &Connection| -> i64 {
+            connection
+                .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
+                .unwrap()
+        };
+        let reader = database.pinned_reader().unwrap().unwrap();
+
+        database.create_project_from_root(&directory).unwrap();
+
+        assert_eq!(projects(&database.connection()), 1);
+        assert_eq!(projects(&reader), 0);
+        drop(reader);
+        assert!(
+            Database::open(Path::new(":memory:"))
+                .unwrap()
+                .pinned_reader()
+                .unwrap()
+                .is_none()
+        );
+        drop(database);
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]
@@ -378,5 +460,34 @@ mod tests {
         drop(clone);
         std::fs::rename(&path, &moved).unwrap();
         let _ = std::fs::remove_dir_all(directory);
+    }
+    #[test]
+    fn cached_search_reader_refuses_concurrent_search_without_waiting() {
+        let root =
+            std::env::temp_dir().join(format!("sage-search-reader-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let database = Database::open(&root.join("sage.db")).unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let held = database.chat_search_reader().unwrap().unwrap();
+        let shared = database.clone();
+        let (send, receive) = std::sync::mpsc::sync_channel(1);
+        let worker = std::thread::spawn(move || {
+            let result = crate::chat_search::search_project_chats(
+                &shared,
+                &crate::chat_search::ProjectChatSearchRequest {
+                    project_id: project.id,
+                    project_generation: 0,
+                    expected_transition_epoch: 0,
+                    query: String::new(),
+                },
+            );
+            send.send(result.is_err()).unwrap();
+        });
+        let refused = receive.recv_timeout(std::time::Duration::from_secs(1));
+        drop(held);
+        worker.join().unwrap();
+        assert_eq!(refused, Ok(true));
+        drop(database);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

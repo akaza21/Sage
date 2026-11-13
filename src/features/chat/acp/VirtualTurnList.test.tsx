@@ -168,6 +168,7 @@ function History({
               renderTurn={(turn) => (
                 <article className="acp-turn" data-turn-id={turn.id}>
                   {turn.id}
+                  <p>{streamedText(turn)}</p>
                 </article>
               )}
             />
@@ -229,16 +230,6 @@ function scrollTo(top: number) {
   act(() => vi.advanceTimersByTime(50));
 }
 
-it("preserves the measured visible short Turn when earlier Turns arrive", () => {
-  const current = turns();
-  const view = render(<History turns={current} />);
-  scrollTo(scrollHeight() / 2);
-  const before = visibleAnchor();
-  view.rerender(<History turns={[...turns(-9, 10), ...current]} />);
-  expect(visibleAnchor()).toEqual(before);
-  expect(document.querySelectorAll(".acp-turn").length).toBeLessThanOrEqual(40);
-});
-
 it("Jump to latest lands at the true end after short Turn estimates are measured", () => {
   render(<History turns={turns()} />);
   scrollTo(0);
@@ -259,10 +250,26 @@ it("retains the settled anchor after a correction scroll event and another histo
   const older = [...turns(-9, 10), ...current];
   view.rerender(<History turns={older} />);
   expect(visibleAnchor()).toEqual(before);
-  act(() => fireEvent.scroll(document.querySelector(".message-list")!));
-  act(() => vi.advanceTimersByTime(50));
-  view.rerender(<History turns={[...turns(-19, 10), ...older]} />);
+  expect(document.querySelectorAll(".acp-turn").length).toBeLessThanOrEqual(40);
+  // A late layout can land before the native event for the correction's
+  // scrollTop write. That event must not capture the already-shifted anchor.
+  const overscan = document.querySelector<HTMLElement>(".acp-turn")!;
+  expect(overscan.dataset.turnId).not.toBe(before.id);
+  rowHeights.set(overscan.dataset.turnId!, 120);
+  act(() => {
+    fireEvent.scroll(document.querySelector(".message-list")!);
+    for (const observer of [...observers]) observer([], {} as ResizeObserver);
+  });
   expect(visibleAnchor()).toEqual(before);
+  act(() => vi.advanceTimersByTime(50));
+  const all = [...turns(-19, 10), ...older];
+  view.rerender(<History turns={all} />);
+  expect(visibleAnchor()).toEqual(before);
+  // Reader movement wins even when another commit beats its native event.
+  document.querySelector<HTMLElement>(".message-list")!.scrollTop = 0;
+  view.rerender(<History turns={[...all]} />);
+  expect(scrollTop).toBe(0);
+  expect(visibleAnchor().id).toBe("turn--19");
 });
 
 it("keeps the same visible Turn when a measured overscan row grows", () => {
@@ -278,19 +285,77 @@ it("keeps the same visible Turn when a measured overscan row grows", () => {
   expect(visibleAnchor()).toEqual(before);
 });
 
-it("keeps height-stable end-pinned streaming to one commit per delta", () => {
+it("yields to reader movement before its scroll event after a row below the viewport grows", () => {
+  const current = turns();
+  const view = render(<History turns={current} />);
+  scrollTo(scrollHeight() / 2);
+  // Release any pin from settling the window's initial measurements.
+  scrollTo(scrollTop + 1);
+  const before = visibleAnchor();
+  const pinnedTop = scrollTop;
+  const below = [...document.querySelectorAll<HTMLElement>(".acp-turn")].at(
+    -1,
+  )!;
+  expect(below.getBoundingClientRect().top).toBeGreaterThanOrEqual(400);
+  rowHeights.set(below.dataset.turnId!, 240);
+  act(() => {
+    for (const observer of [...observers]) observer([], {} as ResizeObserver);
+  });
+  expect(scrollTop).toBe(pinnedTop);
+  expect(visibleAnchor()).toEqual(before);
+
+  // The browser moves first; another commit beats the native scroll event.
+  document.querySelector<HTMLElement>(".message-list")!.scrollTop = 0;
+  view.rerender(<History turns={[...current]} />);
+  expect(scrollTop).toBe(0);
+  expect(visibleAnchor().id).toBe("turn-1");
+});
+
+function streamedText(turn: TurnProjection) {
+  const [item] = turn.items;
+  return item?.kind === "text" ? item.payload.text : "";
+}
+
+function withText(turn: TurnProjection, text: string, revision: number) {
+  const [item] = turn.items;
+  return {
+    ...turn,
+    revision: String(revision) as TurnProjection["revision"],
+    items: [{ ...item, payload: { role: "assistant", text } }],
+  } as TurnProjection;
+}
+
+it("streams each delta into the pinned final Turn in one commit, staying at the end", () => {
   let current = turns();
-  const commits = vi.fn();
-  const view = render(<History turns={current} onCommit={commits} />);
+  let commits = 0;
+  const view = render(
+    <History turns={current} onCommit={() => (commits += 1)} />,
+  );
   scrollTo(scrollHeight());
-  commits.mockClear();
-  for (let index = 0; index < 30; index += 1) {
-    const last = current.at(-1)!;
+  const pinnedTop = scrollTop;
+  expect(scrollHeight() - pinnedTop - 400).toBeLessThanOrEqual(1);
+  commits = 0;
+
+  let streamed = "";
+  for (let delta = 1; delta <= 30; delta += 1) {
+    streamed += `delta ${delta} `;
     current = [
       ...current.slice(0, -1),
-      { ...last, revision: String(index + 2) as TurnProjection["revision"] },
+      withText(current.at(-1)!, streamed, delta + 1),
     ];
-    view.rerender(<History turns={current} onCommit={commits} />);
+    view.rerender(<History turns={current} onCommit={() => (commits += 1)} />);
+
+    const last = document.querySelector('[data-turn-id="turn-100"]');
+    expect(last).toHaveTextContent(streamed.trim());
+    // The row keeps its height, so following the end leaves the scroll put.
+    expect(scrollTop).toBe(pinnedTop);
+    // No extra layout or measurement pass rides along with a delta.
+    expect(commits).toBe(delta);
   }
-  expect(commits).toHaveBeenCalledTimes(30);
+  act(() => vi.advanceTimersByTime(50));
+  expect(scrollHeight() - scrollTop - 400).toBeLessThanOrEqual(1);
+  expect(
+    document.querySelector('[data-turn-id="turn-100"]')!.getBoundingClientRect()
+      .bottom,
+  ).toBeLessThanOrEqual(400);
 });

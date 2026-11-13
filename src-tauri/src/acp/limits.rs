@@ -4,7 +4,9 @@ pub(crate) use preview::PREVIEW_LIMITS;
 mod browser;
 pub use browser::{BROWSER_LIMITS, BrowserLimits};
 mod fixture;
+mod images;
 pub use fixture::{FIXTURE_LIMITS, FixtureLimits};
+pub use images::*;
 
 pub(crate) const RETAINED_TOOL_OUTPUT_LINES: usize = 200;
 /// Raw UTF-8 bytes admitted per immutable file-diff side, before JSON escaping.
@@ -16,6 +18,12 @@ pub const COMMAND_RESOURCE_LIMIT: usize = 64;
 pub const ATTACHED_CONTEXT_LIMIT: usize = 8;
 /// One attached user note is capped at one quarter of the WebView composer budget.
 pub const ATTACHED_CONTEXT_NOTE_BYTES: usize = 4 * 1024;
+/// Stored session config choices per agent session: one per config option a
+/// session may advertise (`models_or_config_entries`) plus its mode.
+pub(crate) const SESSION_CONFIG_CHOICES_PER_SESSION: usize = 129;
+/// Serialized bytes of one stored session config choice; the schema enforces
+/// the same cap.
+pub(crate) const SESSION_CONFIG_CHOICE_BYTES: usize = 8_192;
 /// A one-byte sensitive token may expand to this replacement in command output.
 pub(crate) const COMMAND_OUTPUT_REDACTION_BYTES: usize = "[redacted]".len();
 
@@ -289,14 +297,14 @@ pub const LIMITS: Limits = Limits {
         environment_value_bytes: 8_192,
         environment_bytes_total: 32_768,
         descendants_per_tree: 32,
-        descendants_global: 64,
+        descendants_global: 128,
         windows_job_root_processes: 1,
         windows_job_active_process_limit: 33,
         stderr_ring_bytes: 262_144,
         stderr_line_bytes: 16_384,
         terminal_tail_bytes: 32_768,
-        operational_live_trees: 1,
-        operational_running_turns: 1,
+        operational_live_trees: 4,
+        operational_running_turns: 4,
         disabled_contract_tree_ceiling: 4,
         disabled_contract_turn_ceiling: 2,
         warm_trees: 0,

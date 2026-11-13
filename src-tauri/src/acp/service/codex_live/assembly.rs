@@ -1,46 +1,45 @@
 use super::*;
 
-impl AcpService {
-    #[cfg(all(test, windows))]
-    pub(crate) async fn activate_codex_session(
-        &self,
-        command: ActivateSessionCommand,
-        project_root: crate::acp::bindings::codex::CodexProjectRootAuthority,
-    ) -> Result<(), CodexSessionError> {
-        let admitted = self
-            .refresh_codex_binding()
-            .map_err(CodexSessionError::Binding)?;
-        self.activate_session(
-            admitted,
-            command,
-            crate::acp::bindings::registry::BindingProjectRoot::Codex(project_root),
-        )
-        .await
-    }
-
+impl Lane<'_> {
     pub(crate) async fn activate_session(
         &self,
         admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
         command: ActivateSessionCommand,
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
+        deadlines: (Instant, Instant),
     ) -> Result<(), CodexSessionError> {
         let root = project_root.configured_resource_root();
         let (command, mut prepared) =
             self.prepare_session_activation(admitted, command, project_root)?;
         let abort = ActivationAbortIntent::from_prepared(&prepared);
         let resources = NativeResourceMapper::new([root]).map_err(|_| CodexSessionError::Intent)?;
-        let (operation_deadline, cleanup_deadline) = deadlines()?;
+        let (operation_deadline, cleanup_deadline) = deadlines;
         self.reclaim_zero_process_capacity(cleanup_deadline)
             .map_err(|_| CodexSessionError::Recovery)?;
         self.park_idle_runtime_for_replacement(cleanup_deadline)?;
         self.runtime
             .reserve_start(prepared.owner.clone())
             .map_err(map_slot_error)?;
+        if matches!(
+            prepared.intent.mode,
+            crate::acp::runtime::ActivationMode::New { .. }
+        ) {
+            self.runtime.config.mark_new_session(&prepared.owner);
+        }
+        prepared.runtime.bind_activation(&prepared.intent.mode);
         let mut spec = match prepared.runtime.launch_spec() {
             Ok(spec) => spec,
-            Err(_) => {
+            Err(error) => {
                 let _ = self.runtime.abandon_start(&prepared.owner);
-                return Err(CodexSessionError::Intent);
+                return Err(
+                    if error
+                        == crate::acp::bindings::adapter::AdapterRuntimeError::RewindUnavailable
+                    {
+                        CodexSessionError::RewindUnavailable
+                    } else {
+                        CodexSessionError::Intent
+                    },
+                );
             }
         };
         spec.absolute_cleanup_deadline = Some(cleanup_deadline);
@@ -148,10 +147,16 @@ impl AcpService {
         };
         prepared
             .runtime
+            .attach_commands(abort.owner.clone(), Arc::clone(&self.runtime.commands));
+        prepared
+            .runtime
             .attach_config(abort.owner.clone(), Arc::clone(&self.runtime.config));
         prepared
             .runtime
             .attach_goal(abort.owner.clone(), Arc::clone(&self.runtime.goal));
+        prepared
+            .runtime
+            .attach_usage(abort.owner.clone(), Arc::clone(&self.runtime.usage));
         let pump = match ActivationPump::new_retained(
             prepared.runtime,
             CoordinatorActivationJournal::new(session_lease),
@@ -317,6 +322,7 @@ impl AcpService {
             &runner,
             &self.codex_recovery,
             Arc::clone(&active),
+            Arc::clone(&self.file_stages),
             #[cfg(any(debug_assertions, feature = "diagnostics"))]
             Arc::clone(&self.codex_runtime_identity),
         );
@@ -351,13 +357,5 @@ impl AcpService {
             guard.commit();
         }
         Ok(())
-    }
-
-    #[cfg(all(test, windows))]
-    pub(crate) fn fail_next_runtime_port_finish_park(&self) {
-        *self
-            .runtime_port_finish_park_failure
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
     }
 }

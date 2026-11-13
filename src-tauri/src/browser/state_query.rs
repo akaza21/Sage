@@ -13,6 +13,7 @@ pub(crate) async fn browser_live_tabs(
     Ok(tabs.entries.keys().cloned().collect())
 }
 
+/// The live tab's navigation stack, distinct from persistent browsing visits.
 #[tauri::command]
 pub(crate) async fn browser_history(
     state: State<'_, BrowserState>,

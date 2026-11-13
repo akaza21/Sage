@@ -17,7 +17,9 @@ use crate::acp::{
 use super::{
     coordinator::{PrepareDispatch, ProjectIntentAuthority, SendCoordinator},
     journal::{JournalError, JournalHandle, JournalLane, now_millis},
-    projection_publisher::{ProjectionPublishError, ProjectionPublishStatus, ProjectionPublisher},
+    projection_publisher::{
+        ProjectionPublishError, ProjectionPublishStatus, ProjectionPublisher, TurnNotice,
+    },
 };
 
 mod lease;
@@ -102,7 +104,6 @@ impl std::fmt::Debug for ActivationFailure {
 }
 
 impl ActivationRecovery {
-    #[cfg(test)]
     pub(crate) fn owner(&self) -> &RuntimeOwner {
         &self.owner
     }

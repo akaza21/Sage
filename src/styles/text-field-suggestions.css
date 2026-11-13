@@ -1,0 +1,81 @@
+/* A listbox that opens above a text field which keeps the focus. */
+.text-field-suggestions.menu-popover {
+  display: flex;
+  flex-direction: column;
+  max-height: min(320px, calc(100vh - 16px));
+  overflow: hidden;
+}
+
+.text-field-suggestions > .resource-state {
+  flex: 0 0 auto;
+}
+
+.text-field-suggestions__list {
+  display: grid;
+  min-height: 0;
+  gap: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.text-field-suggestions__list:empty {
+  display: none;
+}
+
+.text-field-suggestions__option.menu-item {
+  display: grid;
+  min-height: var(--row-height-emphasis);
+  grid-template-columns: fit-content(45%) minmax(0, 1fr);
+}
+
+.text-field-suggestions__label {
+  font-weight: var(--font-weight-medium);
+}
+
+.text-field-suggestions__label > svg {
+  margin-inline-end: var(--space-2);
+  vertical-align: middle;
+}
+
+.text-field-suggestions__hint,
+.text-field-suggestions__description,
+.text-field-suggestions__footer {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+}
+
+.text-field-suggestions__hint {
+  margin-left: var(--space-1);
+}
+
+.text-field-suggestions__footer {
+  flex: 0 0 auto;
+  margin: var(--space-1) var(--space-2);
+  line-height: 1.4;
+}
+
+@media (forced-colors: active) {
+  .text-field-suggestions__option[data-active="true"] span {
+    color: inherit;
+  }
+}
+
+.text-field-suggestions__list > [role="group"] {
+  display: grid;
+  gap: 2px;
+}
+
+.text-field-suggestions__list > [role="group"] > [aria-hidden="true"] {
+  padding: var(--space-1) var(--space-2) 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* One line per command, cut with an ellipsis; the full text stays in the
+   row's accessible label. */
+.text-field-suggestions__description {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

@@ -36,6 +36,26 @@ pub(crate) enum LaunchError {
     StdioLimit,
 }
 
+impl LaunchError {
+    /// The launch step that failed, as the chat names it.
+    pub(crate) fn step(self) -> &'static str {
+        match self {
+            Self::ArgumentLimit | Self::InvalidArgument => "preparing the harness arguments",
+            Self::CapacityUnavailable => "claiming a process slot",
+            Self::ContainmentFailure => "containing the harness process",
+            Self::Deadline => "waiting for the harness process",
+            Self::EnvironmentLimit | Self::InvalidEnvironment => {
+                "preparing the harness environment"
+            }
+            Self::IdentityMismatch => "checking the harness identity",
+            Self::InvalidAbsolutePath => "resolving the harness path",
+            Self::Io => "setting up the harness transport",
+            Self::PlatformUnavailable => "using this platform's process support",
+            Self::StdioLimit => "opening the harness pipes",
+        }
+    }
+}
+
 pub(crate) struct ArtifactExpectation {
     #[cfg_attr(not(windows), allow(dead_code, reason = "Windows-only"))]
     pub(crate) artifact_id: Uuid,

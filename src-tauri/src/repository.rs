@@ -14,7 +14,7 @@ pub(crate) use crate::repository_status::canonicalize_numstat_paths;
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path, process::Command as StdCommand};
+    use std::{fs, path::Path};
 
     use uuid::Uuid;
 
@@ -26,7 +26,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            StdCommand::new("git")
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -66,6 +66,64 @@ mod tests {
         assert_eq!(diff.hunks.len(), 1);
         assert_eq!(diff.hunks[0].lines[0].kind, "removed");
         assert_eq!(diff.hunks[0].lines[1].kind, "added");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn diff_view_reports_repository_textconv_refusal_without_running_the_driver() {
+        let root = std::env::temp_dir().join(format!("sage-git-textconv-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        git(&root, &["config", "user.email", "sage@example.invalid"]);
+        git(&root, &["config", "user.name", "Sage Test"]);
+        fs::write(root.join(".gitattributes"), "*.txt diff=sentinel\n").unwrap();
+        fs::write(root.join("notes.txt"), "old\n").unwrap();
+        git(&root, &["add", "--", ".gitattributes", "notes.txt"]);
+        git(&root, &["commit", "-q", "-m", "fixture"]);
+        fs::write(root.join("notes.txt"), "new\n").unwrap();
+        let sentinel = root.join("textconv-ran");
+        git(
+            &root,
+            &[
+                "config",
+                "diff.sentinel.textconv",
+                "echo ran > textconv-ran; cat",
+            ],
+        );
+
+        // Plain Git runs the driver: the sentinel is a live execution witness.
+        git(&root, &["diff", "--", "notes.txt"]);
+        assert!(sentinel.exists());
+        fs::remove_file(&sentinel).unwrap();
+
+        let workspace = Workspace::open("project-test", "root-test", &root).unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let error = runtime
+            .block_on(file_diff(
+                &workspace,
+                &workspace.resource("notes.txt").unwrap(),
+            ))
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            crate::error::AppError::UnsafeRepositoryConfig(_)
+        ));
+        let message = error.to_string();
+        assert!(message.contains("Sage did not run Git here"), "{message}");
+        assert!(message.contains("diff.sentinel.textconv"), "{message}");
+        assert!(
+            message.contains("Remove them from the repository config, or use the terminal"),
+            "{message}"
+        );
+        let projection =
+            runtime.block_on(project_status(vec![("root-test".into(), Ok(workspace))]));
+        assert_eq!(projection.roots[0].state, "unavailable");
+        assert_eq!(
+            projection.roots[0].message.as_deref(),
+            Some(message.as_str())
+        );
+        assert!(!sentinel.exists());
         fs::remove_dir_all(root).unwrap();
     }
 

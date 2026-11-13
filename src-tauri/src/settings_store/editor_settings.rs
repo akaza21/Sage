@@ -1,8 +1,8 @@
-//! The editor settings catalogue (EDIT-0005 AD-2). One closed registry lists
-//! each key with its type, default, range and owning ticket, and the values
-//! live as versioned key/value rows. `src/domain/editorSettingsCatalogue.ts`
-//! mirrors the registry, and a parity test keeps the two equal, so adding a
-//! setting is one entry on each side and never a schema change.
+//! The editor settings catalogue. One closed registry lists each key with its
+//! type, default and range, and the values live as versioned key/value rows.
+//! `src/domain/editorSettingsCatalogue.ts` mirrors the registry, and a parity
+//! test keeps the two equal, so adding a setting is one entry on each side and
+//! never a schema change.
 
 use std::{
     collections::{BTreeMap, HashSet},
@@ -93,13 +93,6 @@ pub struct SettingSpec {
     pub key: &'static str,
     pub kind: SettingKind,
     pub default: SettingValue,
-    /// The ticket that owns the setting. Only tests and the TypeScript mirror
-    /// read it.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "documents ownership for the parity test")
-    )]
-    pub ticket: &'static str,
 }
 
 pub const EDITOR_SETTINGS: &[SettingSpec] = &[
@@ -111,25 +104,21 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
             choices: &[12, 13, 14, 16],
         },
         default: SettingValue::Int(13),
-        ticket: "EP-02",
     },
     SettingSpec {
         key: "editor.lineNumbers",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-02",
     },
     SettingSpec {
         key: "editor.wordWrap",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(false),
-        ticket: "EP-02",
     },
     SettingSpec {
         key: "editor.renderWhitespace",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(false),
-        ticket: "EP-02",
     },
     SettingSpec {
         key: "editor.tabSize",
@@ -139,31 +128,26 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
             choices: &[2, 4, 8],
         },
         default: SettingValue::Int(2),
-        ticket: "EP-02",
     },
     SettingSpec {
         key: "editor.matchBrackets",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-03",
     },
     SettingSpec {
         key: "editor.autoClosingBrackets",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-03",
     },
     SettingSpec {
         key: "editor.folding",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-03",
     },
     SettingSpec {
         key: "editor.occurrencesHighlight",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-03",
     },
     SettingSpec {
         key: "editor.multiCursorModifier",
@@ -171,13 +155,11 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
             choices: &["alt", "ctrlCmd"],
         },
         default: SettingValue::Text("alt"),
-        ticket: "EP-03",
     },
     SettingSpec {
         key: "search.useIgnoreFiles",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-06",
     },
     SettingSpec {
         key: "explorer.showIgnored",
@@ -185,7 +167,6 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
             choices: &["dimmed", "hidden"],
         },
         default: SettingValue::Text("dimmed"),
-        ticket: "EP-06",
     },
     SettingSpec {
         key: "files.exclude",
@@ -198,13 +179,21 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
             "**/.DS_Store",
             "**/Thumbs.db",
         ]),
-        ticket: "EP-06",
     },
     SettingSpec {
         key: "git.autoRefresh",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-12",
+    },
+    SettingSpec {
+        key: "git.decorations",
+        kind: SettingKind::Bool,
+        default: SettingValue::Bool(true),
+    },
+    SettingSpec {
+        key: "editor.gitGutter",
+        kind: SettingKind::Bool,
+        default: SettingValue::Bool(true),
     },
 ];
 
@@ -458,11 +447,6 @@ mod tests {
                     .iter()
                     .any(|prefix| spec.key.starts_with(prefix)),
                 "{}",
-                spec.key
-            );
-            assert!(
-                spec.ticket.len() == 5 && spec.ticket.starts_with("EP-"),
-                "{} has no owning ticket",
                 spec.key
             );
             let default = EditorValue::from(spec.default);
@@ -730,8 +714,47 @@ mod tests {
                     "**/Thumbs.db",
                 ],
                 "git.autoRefresh": true,
+                "git.decorations": true,
+                "editor.gitGutter": true,
             })
         );
+    }
+
+    /// The cases `src/domain/editorSettingsCatalogue.test.ts` also runs, so
+    /// what this store sends and admits is what the webview reads.
+    #[test]
+    fn sends_and_admits_the_cases_shared_with_the_webview_catalogue() {
+        let cases: Value = serde_json::from_str(include_str!("editor_settings_cases.json"))
+            .expect("shared editor settings cases");
+        let defaults = &cases["defaults"];
+        let wire =
+            |store: &SettingsStore| serde_json::to_value(store.editor_settings().unwrap()).unwrap();
+        assert_eq!(wire(&SettingsStore::in_memory().unwrap()), *defaults);
+        for case in cases["writes"].as_array().expect("writes") {
+            let store = SettingsStore::in_memory().unwrap();
+            let written = store
+                .set_editor_settings(&changes(case["changes"].clone()))
+                .unwrap();
+            let mut expected = defaults.clone();
+            for (key, value) in case["stored"].as_object().expect("stored") {
+                expected[key.as_str()] = value.clone();
+            }
+            assert_eq!(
+                serde_json::to_value(written).unwrap(),
+                expected,
+                "{}",
+                case["changes"]
+            );
+            assert_eq!(wire(&store), expected, "{}", case["changes"]);
+        }
+        for change in cases["rejected"].as_array().expect("rejected") {
+            let store = SettingsStore::in_memory().unwrap();
+            assert!(
+                store.set_editor_settings(&changes(change.clone())).is_err(),
+                "{change}"
+            );
+            assert_eq!(wire(&store), *defaults, "{change}");
+        }
     }
 
     #[test]

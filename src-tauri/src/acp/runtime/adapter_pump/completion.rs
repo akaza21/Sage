@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::intent::session_event::PendingSessionEvents;
 
 pub(crate) struct CompletedPumpParts<A, J, R> {
     pub(super) adapter: A,
@@ -14,6 +15,19 @@ pub(crate) struct CompletedPumpParts<A, J, R> {
 type PumpHandoff<T, P> = Result<T, Box<(P, AdapterPumpError)>>;
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPumpParts<A, J, R> {
+    pub(crate) fn validate_command_prompt(
+        &self,
+        prompt: &crate::acp::intent::Prompt,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        if let Some(revision) = prompt.command_revision {
+            self.adapter
+                .available_commands()
+                .validate(revision, prompt.as_str())
+                .map_err(|_| crate::acp::runtime::HostError::Intent)?;
+        }
+        Ok(())
+    }
+
     pub(crate) async fn accept_idle_stdout_chunk(
         &mut self,
         chunk: &[u8],
@@ -25,11 +39,18 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         } else {
             self.idle_decoder.disable_recoverable_oversize();
         }
+        // Between turns the skip follows the adapter again, so a read sent
+        // after the turn cannot have its oversized answer dropped.
+        self.idle_decoder
+            .set_oversize_skip(self.adapter.skips_oversize_frames());
         let mut frame = self
             .idle_decoder
             .push_chunk(chunk)
             .map_err(|_| AdapterPumpError::Frame)?;
         let mut nonfatal_refusal = None;
+        // Session events in one chunk coalesce into one commit and at most
+        // one projection notice, so a burst of progress costs one write.
+        let mut session_events = PendingSessionEvents::default();
         loop {
             if let Some(id) = self.idle_decoder.take_oversize_id() {
                 self.adapter
@@ -124,6 +145,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                                         .map_err(AdapterPumpError::Journal)?;
                                     self.publish_child_epoch(&receipt);
                                 }
+                                AdapterEvent::Session { id, event } => {
+                                    // A foreign identity is dropped, as the Turn pump drops it.
+                                    if self.session_intent.owns(&id) {
+                                        session_events.push(event);
+                                    }
+                                }
                                 AdapterEvent::IgnoredLate
                                 | AdapterEvent::IgnoredDuplicate
                                 | AdapterEvent::Absorbed => {}
@@ -146,8 +173,52 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 .drain_pending()
                 .map_err(|_| AdapterPumpError::Frame)?;
         }
+        self.commit_session_events(session_events, chunk.len(), now_millis)
+            .await?;
         nonfatal_refusal.map_or(Ok(()), Err)
     }
+
+    /// Commits the session-scoped facts that arrived after the Turn terminal.
+    /// The same exact-session rule as the Turn pump applies; a foreign
+    /// identity is dropped, as the Turn pump drops it.
+    async fn commit_session_events(
+        &mut self,
+        mut events: PendingSessionEvents,
+        chunk_bytes: usize,
+        now_millis: i64,
+    ) -> Result<(), AdapterPumpError> {
+        let events = events.take();
+        if events.is_empty() {
+            return Ok(());
+        }
+        let scope = self.session_intent.session_scope();
+        let facts = events
+            .into_iter()
+            .map(|event| {
+                super::normalize::session_fact(scope.clone(), event, now_millis)
+                    .map(|fact| fact.event)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let receipt = self
+            .journal
+            .commit(facts, chunk_bytes.max(1))
+            .await
+            .map_err(AdapterPumpError::Journal)?;
+        if !receipt.applied() {
+            return Ok(());
+        }
+        let _ = self
+            .publisher
+            .publish_committed(crate::acp::intent::ProjectionChangedV1 {
+                project_id: self.session_intent.project_id.clone(),
+                chat_id: self.session_intent.chat_id.clone(),
+                session_id: self.session_intent.session_id.clone(),
+                projection_revision: receipt.projection_revision,
+                child_projection_epoch: 0,
+            });
+        Ok(())
+    }
+
     /// Publishes an idle child change through the projection-changed event.
     /// Only the child epoch moves; the projection revision is unchanged, so
     /// a user action keyed to it stays current. A dropped notice is
@@ -226,6 +297,44 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
 }
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
+    /// Stdout still queued behind a durable terminal may cross the reusable
+    /// handoff only when the adapter proves every frame in it, read in order
+    /// as idle ingestion would, repeats that terminal and changes nothing.
+    /// Unknown frames, a frame error, or bytes left mid-frame keep the Turn
+    /// active so it reads them itself.
+    pub(crate) fn queued_stdout_repeats_terminal(&self, chunks: &[Vec<u8>]) -> bool {
+        let mut decoder = IncrementalFrameDecoder::new();
+        let mut frames = Vec::new();
+        for chunk in chunks {
+            let mut frame = match decoder.push_chunk(chunk) {
+                Ok(frame) => frame,
+                Err(_) => return false,
+            };
+            loop {
+                // The same structural check idle ingestion applies first: a
+                // frame it would discard is never a proven duplicate.
+                if let Some(frame) = frame {
+                    if validate_structure(&frame).is_err() {
+                        return false;
+                    }
+                    frames.push(frame);
+                }
+                if !decoder.has_pending_input() {
+                    break;
+                }
+                frame = match decoder.drain_pending() {
+                    Ok(frame) => frame,
+                    Err(_) => return false,
+                };
+            }
+        }
+        decoder.is_frame_aligned()
+            && (frames.is_empty()
+                || self
+                    .adapter
+                    .frames_repeat_terminal(&frames, &self.resources))
+    }
+
     pub(crate) fn completed_turn_ready(&self) -> bool {
         let data_empty = self.egress.data_usage().0 == 0;
         let control_empty = self.egress.control_usage().0 == 0;

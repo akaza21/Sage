@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 
 use crate::{
     acp::{
@@ -20,8 +21,8 @@ fn goal_active_response_mismatch_reaches_sqlite_only_after_client_verification()
         let init = codex.command(AdapterCommand::Initialize).unwrap();
         codex.resolve_egress(init.into_token(), EgressResolution::Queued).unwrap();
         let initialized = codex.ingest(&codex_frame(serde_json::json!({"id":1,"result":{
-            "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-            "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+            "userAgent":user_agent("sage", "unknown"),
+            "codexHome":MANAGED_CODEX_HOME,
             "platformFamily":"windows","platformOs":"windows"
         }})), &Mapper).unwrap();
         codex.resolve_egress(initialized.egress()[0].token().clone(), EgressResolution::Queued).unwrap();
@@ -196,12 +197,16 @@ fn pending_capabilities() -> CapabilitySnapshotV1 {
         prompt: true,
         cancel: true,
         native_session_fork: false,
+        native_session_compact: false,
+        native_review: false,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 0,
+        prompt_resources: false,
+        prompt_images: false,
         config_count: 0,
     }
 }

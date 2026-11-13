@@ -7,12 +7,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::acp::{scheduler::RuntimeOwner, store::AdapterTurnCursor};
+use crate::acp::{intent::PromptSendError, scheduler::RuntimeOwner, store::AdapterTurnCursor};
 
 use super::super::bounded_thread::{BoundedThread, ThreadWaitError};
 pub(crate) use super::types::TerminalNotification;
 
-#[cfg(test)]
 use super::types::HostState;
 use super::{
     actor::Actor,
@@ -210,10 +209,43 @@ impl RuntimeHost {
         self.outcome(HostCommand::DispatchPrompt { owner, turn_id })
     }
 
-    pub(crate) fn send(&self, intent: HostPromptIntent) -> Result<HostOutcome, HostError> {
+    /// Prepares and dispatches a prompt. A prompt the mailbox or the idle
+    /// actor refused before preparing it is known not to have started, so
+    /// its draft can be offered again; any later failure is unknown.
+    pub(crate) fn send(
+        &self,
+        intent: HostPromptIntent,
+    ) -> Result<HostOutcome, PromptSendError<HostError>> {
+        let started = Instant::now();
         let owner = intent.owner();
-        let turn_id = self.prepare_prompt(intent)?;
+        let turn_id = self.prepare_prompt(intent).map_err(|error| {
+            crate::acp::runtime::prompt_diagnostics::failed(
+                "host.prepare",
+                started,
+                &error,
+                self.lifecycle.load(Ordering::Acquire),
+            );
+            match error {
+                HostError::Capacity | HostError::Intent => PromptSendError::not_started(error),
+                _ => PromptSendError::unknown(error),
+            }
+        })?;
+        let prepared_ms = started.elapsed().as_millis();
         self.dispatch_prepared(owner, turn_id)
+            .inspect_err(|error| {
+                crate::acp::runtime::prompt_diagnostics::failed(
+                    "host.dispatch",
+                    started,
+                    error,
+                    (
+                        "prepared_ms",
+                        prepared_ms,
+                        "lifecycle",
+                        self.lifecycle.load(Ordering::Acquire),
+                    ),
+                );
+            })
+            .map_err(PromptSendError::unknown)
     }
 
     pub(crate) fn cancel(&self, intent: HostCancelIntent) -> Result<HostOutcome, HostError> {
@@ -255,7 +287,6 @@ impl RuntimeHost {
         self.outcome_until(HostCommand::ProjectSwitched(project), deadline)
     }
 
-    #[cfg(test)]
     pub(crate) fn state(&self) -> Result<HostState, HostError> {
         match self.submit(HostCommand::State)? {
             HostReply::State(state) => Ok(state),

@@ -40,6 +40,7 @@ pub(crate) fn capture_user_png(
         .cloned()
         .ok_or("browser tab unavailable")?;
     NativePort::new(NativeTransport {
+        developer: None,
         webview,
         permit: None,
         issued: Arc::new(AtomicBool::new(false)),
@@ -60,6 +61,7 @@ pub(crate) fn capture_page_context(
         .cloned()
         .ok_or("browser tab unavailable")?;
     let mut port = NativePort::new(NativeTransport {
+        developer: None,
         webview,
         permit: None,
         issued: Arc::new(AtomicBool::new(false)),
@@ -72,13 +74,18 @@ pub(crate) fn capture_page_context(
 }
 
 /// Clears the Agent's act marker, trying every step even after a failure,
-/// and turns the overlay off again unless the tab annotates.
+/// and turns the overlay off again unless the tab annotates. Also releases
+/// any developer-mode evaluation results still held (ADR-0009b), since this
+/// runs when the Agent's control of the tab ends.
 pub(crate) fn clear_agent_highlight(webview: &Webview) {
-    highlight::clear(&NativeTransport {
+    let transport = NativeTransport {
+        developer: None,
         webview: webview.clone(),
         permit: None,
         issued: Arc::new(AtomicBool::new(false)),
-    });
+    };
+    highlight::clear(&transport);
+    super::cdp_port::release_developer_objects(&transport);
 }
 
 /// Removes the user's Annotate hover outline, outside any Agent permit.
@@ -92,6 +99,7 @@ pub(crate) fn clear_annotate_outline(webview: &Webview) -> Result<(), BrowserFai
 /// permit.
 pub(crate) fn set_annotate(webview: &Webview, on: bool) -> Result<(), BrowserFailure> {
     let port = NativePort::new(NativeTransport {
+        developer: None,
         webview: webview.clone(),
         permit: None,
         issued: Arc::new(AtomicBool::new(false)),
@@ -106,6 +114,7 @@ pub(crate) fn set_annotate(webview: &Webview, on: bool) -> Result<(), BrowserFai
 /// Reads the element the user clicked in Annotate and freezes its frame.
 pub(crate) fn pick_element(webview: &Webview, backend_node_id: u64) -> Result<PickedNode, String> {
     NativePort::new(NativeTransport {
+        developer: None,
         webview: webview.clone(),
         permit: None,
         issued: Arc::new(AtomicBool::new(false)),
@@ -117,59 +126,26 @@ pub(crate) fn pick_element(webview: &Webview, backend_node_id: u64) -> Result<Pi
     })
 }
 
+pub(super) mod capture_scale;
+mod dispatch;
+
 pub(crate) type NativePort = CdpPort<NativeTransport>;
 pub(crate) type NativeDevtools = DevtoolsCapability<NativePort>;
-
-impl BrowserCapabilityDispatch for &mut NativeDevtools {
-    fn dispatch(
-        &mut self,
-        request: &BrowserRequest,
-        permit: BrowserDispatchPermit,
-    ) -> Result<PendingBrowserResult, BrowserFailure> {
-        let mut capability = (**self).clone();
-        let timeout_permit = permit.clone();
-        let issued = Arc::new(AtomicBool::new(false));
-        capability.port_mut().transport.issued = issued.clone();
-        capability.port_mut().transport.permit = Some(permit);
-        let request = request.clone();
-        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-        std::thread::spawn(move || {
-            let _ = sender.send(capability.perform(&request));
-        });
-        Ok(Box::new(move || {
-            let deadline = Instant::now() + Duration::from_secs(35);
-            loop {
-                if !timeout_permit.is_live() && !timeout_permit.was_invalidated_by_navigation() {
-                    return Err(timeout_permit.revoked_failure());
-                }
-                let remaining = deadline.saturating_duration_since(Instant::now());
-                if remaining.is_zero() {
-                    timeout_permit.revoke();
-                    return Err(dispatch_timeout_failure(issued.load(Ordering::Acquire)));
-                }
-                match receiver.recv_timeout(remaining.min(Duration::from_millis(25))) {
-                    Ok(result) => return result,
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                        return Err(dispatch_disconnected_failure(
-                            issued.load(Ordering::Acquire),
-                        ));
-                    }
-                }
-            }
-        }))
-    }
-}
 
 /// Carries Agent CDP commands to one WebView2 browser tab.
 #[derive(Clone)]
 pub(crate) struct NativeTransport {
     webview: Webview,
+    developer: Option<Arc<super::developer_session::Session>>,
     permit: Option<BrowserDispatchPermit>,
     issued: Arc<AtomicBool>,
 }
 
 impl CdpTransport for NativeTransport {
+    fn screenshot_scale(&self, timeout: Duration) -> Result<f64, BrowserFailure> {
+        capture_scale::read(&self.webview, timeout)
+    }
+
     fn call(
         &self,
         method: &str,
@@ -184,8 +160,41 @@ impl CdpTransport for NativeTransport {
             max_result_bytes,
             timeout,
             self.permit.clone(),
-            Some(self.issued.clone()),
+            cdp::Dispatch {
+                issued: Some(self.issued.clone()),
+                session: None,
+            },
         )
+    }
+
+    fn raw(
+        &self,
+        method: &str,
+        params: &str,
+        max_result_bytes: usize,
+        timeout: Duration,
+    ) -> Result<String, BrowserFailure> {
+        let session = self.developer.clone().ok_or(BrowserFailure::Denied)?;
+        cdp::call_with_permit(
+            &self.webview,
+            method,
+            params,
+            max_result_bytes,
+            timeout,
+            self.permit.clone(),
+            cdp::Dispatch {
+                issued: Some(self.issued.clone()),
+                session: Some(session),
+            },
+        )
+    }
+
+    // The evaluation and serializer share the group until the whole operation
+    // finishes. Late completions and detach also clean up after timeouts.
+    fn release_raw_objects(&self) {
+        if let Some(session) = &self.developer {
+            session.release_objects();
+        }
     }
 
     fn observe(
@@ -267,9 +276,56 @@ impl CdpTransport for NativeTransport {
 }
 
 impl DevtoolsCapability<NativePort> {
+    pub(crate) fn for_attachment(
+        state: &BrowserState,
+        scope: BrowserScope,
+        lease: &crate::acp::browser::attachment::AttachmentLease,
+        generation: u64,
+        permit: &BrowserDispatchPermit,
+    ) -> Result<Self, BrowserFailure> {
+        let capability = Self::for_tab_with_diagnostics(state, scope, false)?;
+        let release = capability.release_buffers();
+        lease
+            .bind_resources(generation, || permit.is_live(), Box::new(release))
+            .map_err(|_| BrowserFailure::Denied)?;
+        Ok(capability)
+    }
+
+    pub(crate) fn wake_diagnostics(
+        &mut self,
+        lease: &crate::acp::browser::attachment::AttachmentLease,
+        permit: &BrowserDispatchPermit,
+    ) -> Result<(), BrowserFailure> {
+        let previous = self.diagnostic_rings();
+        let initial = {
+            let previous = previous.lock().map_err(|_| BrowserFailure::Unavailable)?;
+            if !previous.is_suspended() {
+                return Ok(());
+            }
+            previous.resumed()
+        };
+        let scope = lease
+            .diagnostic_scope()
+            .ok_or(BrowserFailure::Unavailable)?;
+        let webview = self.port_mut().transport.webview.clone();
+        let rings = events::attach(&webview, Some(scope.clone()), Some(permit.clone()), initial)?;
+        self.set_diagnostic_rings(rings.clone());
+        // Setup registered its scoped cleanup before releasing the wake lock.
+        Ok(())
+    }
+
+    #[cfg(feature = "native-lane")]
     pub(crate) fn for_tab(
         state: &BrowserState,
         scope: BrowserScope,
+    ) -> Result<Self, BrowserFailure> {
+        Self::for_tab_with_diagnostics(state, scope, true)
+    }
+
+    fn for_tab_with_diagnostics(
+        state: &BrowserState,
+        scope: BrowserScope,
+        attach: bool,
     ) -> Result<Self, BrowserFailure> {
         let label = format!("browser-{}", scope.tab_id);
         let webview = state
@@ -279,17 +335,33 @@ impl DevtoolsCapability<NativePort> {
             .handle(&label)
             .cloned()
             .ok_or(BrowserFailure::Unavailable)?;
-        Self::from_webview(scope, webview)
+        Self::from_webview(scope, webview, attach)
     }
 
-    fn from_webview(scope: BrowserScope, webview: Webview) -> Result<Self, BrowserFailure> {
+    fn from_webview(
+        scope: BrowserScope,
+        webview: Webview,
+        attach: bool,
+    ) -> Result<Self, BrowserFailure> {
         if webview.label() != format!("browser-{}", scope.tab_id) {
             return Err(BrowserFailure::Denied);
         }
-        let diagnostics = events::attach(&webview)?;
+        let diagnostics = if attach {
+            events::attach(
+                &webview,
+                None,
+                None,
+                super::diagnostics::DiagnosticRings::default(),
+            )?
+        } else {
+            let mut rings = super::diagnostics::DiagnosticRings::default();
+            rings.suspend();
+            Arc::new(std::sync::Mutex::new(rings))
+        };
         Ok(Self::with_diagnostics(
             scope,
             NativePort::new(NativeTransport {
+                developer: None,
                 webview,
                 permit: None,
                 issued: Arc::new(AtomicBool::new(false)),

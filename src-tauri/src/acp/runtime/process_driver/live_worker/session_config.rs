@@ -66,6 +66,15 @@ where
         }
     }
 
+    pub(crate) fn abandon_usage_read(&mut self) {
+        match self {
+            Self::Idle(idle) => idle.parts.abandon_usage_read(),
+            Self::Reusable(parts) => parts.completed.abandon_usage_read(),
+            Self::Active(active) => active.turn.driver.abandon_usage_read(),
+            _ => {}
+        }
+    }
+
     pub(crate) fn begin_native_rpc<Auth>(
         &mut self,
         context: &FirstTurnWorkerContext<Auth>,
@@ -109,6 +118,12 @@ where
                 crate::acp::goal::NativeRpcRequest::ReleaseFork { fork, committed } => idle
                     .parts
                     .write_release_fork(&mut idle.transport, fork, *committed),
+                crate::acp::goal::NativeRpcRequest::UsageRead => {
+                    idle.parts.write_usage_read(&mut idle.transport)
+                }
+                crate::acp::goal::NativeRpcRequest::Control(control) => {
+                    idle.parts.write_control(&mut idle.transport, control)
+                }
             },
             Self::Reusable(parts) => match &intent.request {
                 crate::acp::goal::NativeRpcRequest::Goal(action) => {
@@ -128,6 +143,12 @@ where
                 crate::acp::goal::NativeRpcRequest::ReleaseFork { fork, committed } => parts
                     .completed
                     .write_release_fork(&mut parts.transport, fork, *committed),
+                crate::acp::goal::NativeRpcRequest::UsageRead => {
+                    parts.completed.write_usage_read(&mut parts.transport)
+                }
+                crate::acp::goal::NativeRpcRequest::Control(control) => {
+                    parts.completed.write_control(&mut parts.transport, control)
+                }
             },
             Self::Active(active) if active.stdout_allowed() => {
                 active.turn.driver.begin_native_rpc(intent)

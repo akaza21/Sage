@@ -1,7 +1,8 @@
-import { Search } from "../../ui/leanIcons";
+import { Search, X } from "../../ui/leanIcons";
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -9,17 +10,21 @@ import {
   type RefObject,
 } from "react";
 
+import { chatPlacement, openChat } from "../../app/openChat";
 import { useWorkbenchStore } from "../../app/store";
 import { boundedError } from "../../domain/errors";
+import { isImeComposing } from "../../ui/imeComposition";
+import {
+  hasNavigationModifier,
+  useActiveOption,
+} from "../../ui/listNavigation";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
 import {
   admitChatSearchFolder,
-  chatSearchAttachment,
   chatSearchFolderOptions,
-  chatSearchResultFolderName,
-  isChatSearchFanout,
+  chatSearchResultKey,
   matchesChatSearchScope,
   runScopedChatSearch,
   type ChatSearchFanoutPick,
@@ -34,7 +39,22 @@ import {
   type ChatSearchScope,
 } from "./chatSearchScope";
 
+import { ChatSearchResults } from "./ChatSearchResults";
+
 type SearchPhase = "idle" | "searching" | "results" | "error";
+
+/** The live status: progress, then how many chats were found, including
+    none, since the empty results list is not announced. */
+function searchStatus(
+  phase: SearchPhase,
+  response: ChatSearchFanoutView | null,
+): string {
+  if (phase === "searching") return "Searching…";
+  if (phase !== "results" || !response) return "";
+  const count = response.results.length;
+  const more = response.hasMore;
+  return `${count}${more ? "+" : ""} ${count === 1 && !more ? "chat" : "chats"}`;
+}
 
 function matchesScope(scope: ChatSearchScope) {
   return matchesChatSearchScope(useWorkbenchStore.getState(), scope);
@@ -79,9 +99,6 @@ export function ChatSearchControl({
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
-  const activateChat = useWorkbenchStore((state) => state.activateChat);
-  const openRailChat = useWorkbenchStore((state) => state.openRailChat);
-  const restoreChat = useWorkbenchStore((state) => state.restoreChat);
   const projects = useWorkbenchStore((state) => state.projects);
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState<ChatSearchScope | null>(null);
@@ -90,6 +107,9 @@ export function ChatSearchControl({
   const [response, setResponse] = useState<ChatSearchFanoutView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestGeneration = useRef(0);
+  const searching = useRef(false);
+  const [settledRequest, setSettledRequest] = useState(0);
+  const queryRef = useRef<HTMLInputElement>(null);
   const localTriggerRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = suppliedTriggerRef ?? localTriggerRef;
   const focusReturnRef = useRef<(() => void) | null>(null);
@@ -130,6 +150,7 @@ export function ChatSearchControl({
   ) => {
     const state = useWorkbenchStore.getState();
     if (!state.project || state.projectTransitioning) return;
+    requestGeneration.current += 1;
     focusReturnRef.current = focusReturn ?? null;
     setScope({
       activeProjectId: state.project.id,
@@ -146,6 +167,7 @@ export function ChatSearchControl({
     setResponse(null);
     setError(null);
     setOpen(true);
+    queryRef.current?.focus();
   };
 
   useEffect(() => {
@@ -168,22 +190,16 @@ export function ChatSearchControl({
     setError(null);
   };
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!scope || phase === "searching") return;
+  const searchQuery = useCallback(async () => {
+    if (!scope || searching.current) return;
     const normalized = query.trim();
-    if (!normalized) {
-      setPhase("error");
-      setError("Enter text to search for.");
-      return;
-    }
     if (!matchesScope(scope)) {
       close(false);
       return;
     }
     const intent = requestGeneration.current + 1;
     requestGeneration.current = intent;
-    setQuery(normalized);
+    searching.current = true;
     setPhase("searching");
     setResponse(null);
     setError(null);
@@ -203,7 +219,21 @@ export function ChatSearchControl({
       if (requestGeneration.current !== intent || !matchesScope(scope)) return;
       setError(boundedError(searchError, 2_048, "utf8"));
       setPhase("error");
+    } finally {
+      searching.current = false;
+      setSettledRequest((value) => value + 1);
     }
+  }, [close, query, scope]);
+
+  useEffect(() => {
+    if (!open || phase !== "idle") return;
+    const timer = setTimeout(() => void searchQuery(), 200);
+    return () => clearTimeout(timer);
+  }, [open, phase, query, searchQuery, settledRequest]);
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    void searchQuery();
   };
 
   const selectResult = async (result: ChatSearchFanoutPick) => {
@@ -212,28 +242,26 @@ export function ChatSearchControl({
       return;
     }
     const state = useWorkbenchStore.getState();
-    const { attached, archived } = chatSearchAttachment(
+    const { attached, archived } = chatPlacement(
       state,
       result.projectId,
       result.chatId,
     );
-    if (result.attached !== attached || (!attached && !archived)) {
+    if (
+      result.projectId === state.project?.id &&
+      (result.attached !== attached || (!attached && !archived))
+    ) {
       requestGeneration.current += 1;
       setResponse(null);
       setPhase("error");
-      setError("This Chat result changed. Search again to continue.");
+      setError("This chat result changed. Search again to continue.");
       return;
     }
     close(false);
-    if (attached) {
-      if (result.projectId === state.project?.id) {
-        await activateChat(result.chatId);
-      } else {
-        await openRailChat(result.projectId, result.chatId);
-      }
-      return;
-    }
-    await restoreChat(result.chatId, result.projectId);
+    await openChat(result.projectId, result.chatId, {
+      attached: result.attached,
+      revealRestored: false,
+    });
   };
 
   const chooseFolder = useCallback(
@@ -248,6 +276,22 @@ export function ChatSearchControl({
     [scope],
   );
   const folders = useMemo(() => chatSearchFolderOptions(projects), [projects]);
+  const listboxId = useId();
+  const shown = phase === "results" ? response : null;
+  const shownKeys = useMemo(
+    () => shown?.results.map(chatSearchResultKey) ?? [],
+    [shown],
+  );
+  // Nothing is active until the user moves, so Enter searches until then.
+  // Each new answer (or none) starts again from nothing active.
+  const option = useActiveOption(shownKeys, "none");
+  const [answered, setAnswered] = useState(shown);
+  if (answered !== shown) {
+    setAnswered(shown);
+    option.setActiveId(null);
+  }
+  const activeResult =
+    option.activeIndex >= 0 ? shown?.results[option.activeIndex] : undefined;
   const folderCandidates = useMemo(
     () => folders.map((folder) => ({ id: folder.id, label: folder.name })),
     [folders],
@@ -260,104 +304,92 @@ export function ChatSearchControl({
         <ModalDialog
           className="chat-search-dialog"
           labelledBy="chat-search-title"
+          initialFocusRef={queryRef}
           onDismiss={() => close()}
         >
           <form className="chat-search-dialog__form" onSubmit={submit}>
-            <h2 id="chat-search-title">Search Chats</h2>
+            <h2 id="chat-search-title">Search chats</h2>
+            {/* Dismiss sits in the header, as in the other dialogs, so it
+                stays put while results and errors come and go. */}
+            <button
+              className="icon-button chat-search-dialog__close"
+              type="button"
+              aria-label="Close"
+              title="Close"
+              onClick={() => close()}
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
             <p>
-              Search durable titles and primary conversation text in the
-              selected folder, or across listed folders.
+              Search chat titles and messages in the selected folder, or across
+              listed folders.
             </p>
+            <label className="chat-search-dialog__query">
+              <span>Search chats</span>
+              <input
+                ref={queryRef}
+                autoFocus
+                aria-label="Search chats"
+                aria-activedescendant={
+                  option.activeId
+                    ? `${listboxId}-${option.activeIndex}`
+                    : undefined
+                }
+                aria-autocomplete="list"
+                aria-controls={shownKeys.length > 0 ? listboxId : undefined}
+                aria-expanded={shownKeys.length > 0}
+                disabled={projectTransitioning}
+                maxLength={MAX_CHAT_SEARCH_QUERY_BYTES}
+                role="combobox"
+                type="search"
+                value={query}
+                onChange={(event) => editQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    isImeComposing(event) ||
+                    hasNavigationModifier(event) ||
+                    shownKeys.length === 0
+                  )
+                    return;
+                  if (
+                    event.key === "ArrowDown" ||
+                    event.key === "ArrowUp" ||
+                    event.key === "PageDown" ||
+                    event.key === "PageUp"
+                  ) {
+                    // Home and End stay with the field's caret.
+                    event.preventDefault();
+                    option.move(event.key);
+                  } else if (event.key === "Enter" && activeResult) {
+                    event.preventDefault();
+                    void selectResult(activeResult);
+                  }
+                }}
+              />
+            </label>
             <label className="chat-search-dialog__query">
               <span>Search in</span>
               <SearchablePicker
                 ariaLabel="Search in"
                 candidates={folderCandidates}
-                disabled={phase === "searching" || projectTransitioning}
+                disabled={projectTransitioning}
                 onSelect={chooseFolder}
                 portalTarget="closest-dialog"
                 selectedId={scope.searchProjectId}
               />
             </label>
-            <label className="chat-search-dialog__query">
-              <span>Search Chats</span>
-              <input
-                autoFocus
-                aria-label="Search Chats"
-                disabled={phase === "searching" || projectTransitioning}
-                maxLength={MAX_CHAT_SEARCH_QUERY_BYTES}
-                role="searchbox"
-                type="search"
-                value={query}
-                onChange={(event) => editQuery(event.target.value)}
-              />
-            </label>
-            <div className="chat-search-dialog__actions">
-              <button className="button" type="button" onClick={() => close()}>
-                Cancel
-              </button>
-              <button
-                className="button button--primary"
-                type="submit"
-                disabled={phase === "searching" || projectTransitioning}
-              >
-                {phase === "searching" ? "Searching…" : "Search"}
-              </button>
-            </div>
-            {error ? (
-              <div className="composer__error" role="alert">
-                {error}
-              </div>
-            ) : null}
-            {phase === "results" && response ? (
-              <div className="chat-search-dialog__results">
-                {response.results.length === 0 ? (
-                  <p className="chat-search-dialog__empty">
-                    No Chats matched “{response.query}”.
-                  </p>
-                ) : (
-                  <div role="listbox" aria-label="Chat search results">
-                    {response.results.map((result) => {
-                      const folderName = chatSearchResultFolderName(
-                        folders,
-                        result.projectId,
-                      );
-                      const showFolder =
-                        Boolean(folderName) &&
-                        (isChatSearchFanout(scope.searchProjectId) ||
-                          result.projectId !== scope.activeProjectId);
-                      return (
-                        <button
-                          className="chat-search-result"
-                          key={`${result.projectId}:${result.chatId}`}
-                          type="button"
-                          role="option"
-                          aria-selected="false"
-                          aria-label={`${result.title} — ${result.attached ? "Attached" : "Archived"}`}
-                          onClick={() => void selectResult(result)}
-                        >
-                          <span className="chat-search-result__heading">
-                            <strong>{result.title}</strong>
-                            <span>
-                              {result.attached ? "Attached" : "Archived"}
-                              {showFolder ? ` · ${folderName}` : ""}
-                            </span>
-                          </span>
-                          {result.snippet ? (
-                            <span>{result.snippet}</span>
-                          ) : null}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {response.hasMore ? (
-                  <p className="chat-search-dialog__more">
-                    More matches exist. Refine the query to narrow the results.
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
+            <p className="chat-search-dialog__status" role="status">
+              {searchStatus(phase, response)}
+            </p>
+            <ChatSearchResults
+              response={shown}
+              error={error}
+              scope={scope}
+              folders={folders}
+              listboxId={listboxId}
+              activeIndex={option.activeIndex}
+              onSelect={selectResult}
+            />
           </form>
         </ModalDialog>
       ) : null}

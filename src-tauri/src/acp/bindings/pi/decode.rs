@@ -4,7 +4,10 @@ use super::protocol::AdapterError;
 
 pub(super) const FRAME_BYTES: usize = 1_048_576;
 pub(super) const EXTERNAL_ID_BYTES: usize = 512;
-pub(super) const PROMPT_BYTES: usize = 100_000;
+/// A prompt's text with its attached files inlined: everything one dispatch
+/// admits, plus each file's `<context>` wrapper.
+pub(super) const PROMPT_BYTES: usize = crate::acp::service::prompt_files::DISPATCH_BYTES
+    + crate::acp::service::prompt_files::FILE_COUNT * 512;
 pub(super) const ITEM_BYTES: usize = 262_144;
 pub(super) const MODEL_ENTRIES: usize = 128;
 pub(super) const MODEL_BYTES: usize = 262_144;
@@ -33,6 +36,16 @@ pub(super) enum Record {
 }
 
 pub(super) fn decode_record(bytes: &[u8]) -> Result<Record, AdapterError> {
+    decode_record_with_optional_request(bytes, |_| None)
+}
+
+/// Older Pi versions omit correlation IDs only for unknown commands. The
+/// runtime may supply the sole pending optional-discovery request for that
+/// method; every other response still requires its wire ID.
+pub(super) fn decode_record_with_optional_request<'a>(
+    bytes: &[u8],
+    optional_request_id: impl FnOnce(&str) -> Option<&'a str>,
+) -> Result<Record, AdapterError> {
     if bytes.len() > FRAME_BYTES + 2 {
         return Err(AdapterError::Limit("frame bytes"));
     }
@@ -55,6 +68,13 @@ pub(super) fn decode_record(bytes: &[u8]) -> Result<Record, AdapterError> {
     let object = value.as_object_mut().ok_or(AdapterError::Malformed)?;
     let kind = bounded_field(object.get("type"), "record type", 128)?;
     if kind == "response" {
+        if !object.contains_key("id")
+            && object.get("success").and_then(Value::as_bool) == Some(false)
+            && let Some(command) = object.get("command").and_then(Value::as_str)
+            && let Some(id) = optional_request_id(command)
+        {
+            object.insert("id".into(), Value::String(id.to_owned()));
+        }
         return Ok(Record::Response(Response {
             id: bounded_field(object.get("id"), "command ID", EXTERNAL_ID_BYTES)?,
             command: bounded_field(object.get("command"), "command", 128)?,

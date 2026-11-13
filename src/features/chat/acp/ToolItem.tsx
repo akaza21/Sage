@@ -1,34 +1,34 @@
 import { useId } from "react";
+import { type AcpItem } from "../../../domain/acp";
+import { type ResourceRef } from "../../../domain/workbench";
+import type { AgentArtifactOpenIntent } from "../../../domain/agentArtifact";
 import {
   ArrowRightLeft,
   Bot,
   Brain,
+  Command,
   FilePen,
   FileSymlink,
   FileText,
   Globe,
   Image,
-  Command,
   Search,
   TerminalSquare,
   Trash2,
   Wrench,
 } from "../../../ui/leanIcons";
-
-import type { AcpItem } from "../../../domain/acp";
-import type { ResourceRef } from "../../../domain/workbench";
-import { ToolItemDetails } from "./ToolItemDetails";
 import { extractAdmittedBrowseUrl } from "../../preview/harnessBrowse";
-import { terminalToolStates, toolStateLabels } from "./statusSemantics";
-import { toolDurationLabel } from "./toolActivityRollup";
-import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { CompactToolItem } from "./CompactToolItem";
-import { ToolCommandFrame } from "./ToolCommandFrame";
+import { terminalToolStates, toolStateLabels } from "./statusSemantics";
+import { liveToolProgress, toolDurationLabel } from "./toolActivityRollup";
 import { compactToolLabels, toolCommandContent } from "./toolCommandContent";
+import { ToolCommandFrame } from "./ToolCommandFrame";
+import { ToolItemDetails } from "./ToolItemDetails";
+import { ToolRunningIndicator } from "./ToolRunningIndicator";
 
 type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
-export type OpenResourceTarget = "file" | "diff";
+export type OpenResourceTarget = AgentArtifactOpenIntent["target"];
 
 type ToolKind = ToolProjectionItem["payload"]["presentation"]["kind"];
 
@@ -85,6 +85,7 @@ export function ToolItem({
         ? presentation.toolLabel
         : `${presentation.serverLabel} · ${presentation.toolLabel}`
       : presentation.label;
+  const progress = liveToolProgress(item);
   const status = toolStateLabels[visualState];
   const terminal = terminalToolStates.has(visualState);
   const toolOutput =
@@ -141,6 +142,7 @@ export function ToolItem({
           </span>
         ) : null}
       </header>
+      {progress ? <p className="acp-tool-card__progress">{progress}</p> : null}
       {kind === "execute" && (commandLine || outputSummary !== null) ? (
         <ToolCommandFrame
           label="Shell"

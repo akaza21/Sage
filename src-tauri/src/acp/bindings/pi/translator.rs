@@ -2,6 +2,7 @@ mod commands;
 mod events;
 mod fingerprint;
 mod initialization;
+mod lifecycle;
 mod payload;
 mod responses;
 
@@ -9,27 +10,27 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use serde_json::{Map, Value};
 
+use crate::acp::intent::{PermissionOptionKind, user_input::UserInputRequest};
+
 use self::fingerprint::response_fingerprint;
 use self::initialization::InitializationIntent;
+use self::lifecycle::{TurnLifecycle, TurnPhase};
 use self::payload::{parse_entries, parse_messages, parse_models, parse_state};
 use super::{
     decode::{EXTERNAL_ID_BYTES, Record, Response, decode_record, validate_opaque_text},
     manifest::LaunchAdmission,
-    protocol::{AdapterError, AdapterOutput, Operation, Outbound, TerminalOutcome, ToolOutcome},
+    protocol::{
+        AdapterError, AdapterOutput, NativeCommand, NativeRequest, Operation, Outbound,
+        TerminalOutcome, ToolOutcome, is_allow_option,
+    },
 };
 
 const PENDING_COMMANDS: usize = 16;
 const COMPLETED_COMMANDS: usize = 32;
 const TOOLS_PER_TURN: usize = 512;
 const UNKNOWN_KINDS_PER_TURN: usize = 32;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EventPhase {
-    PromptIssued,
-    PromptAccepted,
-    AgentRunning,
-    AgentEnded,
-}
+/// Sage sends at most a chat title, whose cap this mirrors.
+const SESSION_NAME_BYTES: usize = crate::acp::intent::session_event::SESSION_TITLE_BYTES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PendingKind {
@@ -37,19 +38,35 @@ enum PendingKind {
     Models,
     SetModel,
     ThinkingLevels,
+    Commands,
     SetThinkingLevel,
+    SetAutoCompaction,
     NewSession,
+    Resume,
     Prompt,
+    Compact,
+    Steer,
+    ClearQueue,
     Abort,
     Messages,
     Entries,
+    Native(NativeCommand),
 }
 
 impl PendingKind {
+    /// Requests that open a Turn the user sees.
+    const fn starts_turn(self) -> bool {
+        matches!(self, Self::Prompt | Self::Compact)
+    }
+
     const fn is_config(self) -> bool {
         matches!(
             self,
-            Self::State | Self::SetModel | Self::ThinkingLevels | Self::SetThinkingLevel
+            Self::State
+                | Self::SetModel
+                | Self::ThinkingLevels
+                | Self::SetThinkingLevel
+                | Self::SetAutoCompaction
         )
     }
 
@@ -58,13 +75,22 @@ impl PendingKind {
             Self::State => "get_state",
             Self::Models => "get_available_models",
             Self::SetModel => "set_model",
+            Self::Commands => "get_commands",
             Self::ThinkingLevels => "get_available_thinking_levels",
             Self::SetThinkingLevel => "set_thinking_level",
-            Self::NewSession => "new_session",
+            Self::SetAutoCompaction => "set_auto_compaction",
+            // Pi opens a fresh session at launch and Sage runs one session
+            // per process, so a new chat takes that session by its id.
+            Self::NewSession => "get_state",
+            Self::Resume => "switch_session",
             Self::Prompt => "prompt",
+            Self::Compact => "compact",
+            Self::Steer => "steer",
+            Self::ClearQueue => "clear_queue",
             Self::Abort => "abort",
             Self::Messages => "get_messages",
             Self::Entries => "get_entries",
+            Self::Native(command) => command.wire(),
         }
     }
 }
@@ -73,12 +99,12 @@ impl PendingKind {
 struct ActiveTurn {
     turn_key: String,
     prompt_command_id: String,
-    event_phase: EventPhase,
-    abort_requested: bool,
+    lifecycle: TurnLifecycle,
     authority_denied: bool,
-    terminal: Option<TerminalOutcome>,
     tools: BTreeMap<String, Option<ToolOutcome>>,
     compaction_active: bool,
+    /// Pi's reason for a failed compaction has reached the user.
+    compaction_failure_shown: bool,
     thought_active: bool,
     settlement_outcome: TerminalOutcome,
     settlement_message: Option<String>,
@@ -86,8 +112,25 @@ struct ActiveTurn {
     retry_notices: u8,
     retry_failed: bool,
     retry_final_error: Option<String>,
+    /// Pi is waiting to retry, as the chat's retry activity shows.
+    retry_waiting: Option<u64>,
     unknown_kinds: BTreeSet<String>,
     unknown_suppression_emitted: bool,
+    /// The last assistant reply's stop reason, error and usage, kept from
+    /// its `message_end` in case the run's `agent_end` is too large to read.
+    last_reply: Option<Box<Value>>,
+    /// An oversized event of this run was dropped unread.
+    dropped_frame: bool,
+    /// An assistant reply has started and not yet ended.
+    reply_open: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PendingRequest {
+    kind: PendingKind,
+    // Ownership survives settlement and replacement of the active turn, within
+    // the same 16-entry pending bound as every other command.
+    owner: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,16 +142,20 @@ struct CompletedResponse {
 
 #[derive(Debug)]
 pub struct PiTranslator {
+    pub(crate) bridge_tools: bool,
     epoch: u64,
     next_command: u64,
     launch_admission: Option<LaunchAdmission>,
-    pending: BTreeMap<String, PendingKind>,
+    pending: BTreeMap<String, PendingRequest>,
     completed: BTreeMap<String, CompletedResponse>,
     completed_order: VecDeque<String>,
     active: Option<ActiveTurn>,
     initialization: Option<InitializationIntent>,
     pending_ui: Option<PendingUiRequest>,
     pending_thinking: Option<(String, String)>,
+    /// The auto-compaction setting asked for, by its request.
+    pending_auto_compaction: Option<(String, bool)>,
+    resuming: Option<String>,
     closed_config_requests: BTreeSet<String>,
 }
 
@@ -117,13 +164,72 @@ pub(crate) struct PendingUiRequest {
     pub id: String,
     pub method: String,
     pub options: Vec<String>,
+    /// An extension question shown on the shared question card.
+    pub form: Option<Box<UserInputRequest>>,
+    /// Pi drops a dialog with a timeout on its own, without telling Sage.
+    pub expires: bool,
 }
 
+impl PendingUiRequest {
+    /// The answers Sage can deliver for this dialog: a single approval where
+    /// the dialog has an allow answer, and always a denial. Pi has no standing
+    /// approval, so "always allow" is never offered.
+    pub(crate) fn offered_option_kinds(&self) -> Vec<PermissionOptionKind> {
+        use PermissionOptionKind::{AllowOnce, RejectOnce};
+        let allows = match self.method.as_str() {
+            BRIDGE_WRITE_METHOD | "confirm" => true,
+            "select" => self.options.iter().any(|option| is_allow_option(option)),
+            _ => false,
+        };
+        if allows {
+            vec![AllowOnce, RejectOnce]
+        } else {
+            vec![RejectOnce]
+        }
+    }
+}
+
+/// The field an extension question's answer is read from.
+pub(crate) const ANSWER_ID: &str = "answer";
+
+/// The pending dialog of a bridged workspace edit awaiting the user's decision.
+pub(crate) const BRIDGE_WRITE_METHOD: &str = "sage-write";
+
 impl PiTranslator {
+    /// Whether an answer may still arrive that could outgrow a frame: any
+    /// read, as opposed to the turn commands Pi answers in a few bytes.
+    pub(crate) fn awaits_large_response(&self) -> bool {
+        self.pending.values().any(|request| {
+            !matches!(
+                request.kind,
+                PendingKind::Prompt
+                    | PendingKind::Compact
+                    | PendingKind::Steer
+                    | PendingKind::ClearQueue
+                    | PendingKind::Abort
+                    | PendingKind::SetModel
+                    | PendingKind::SetThinkingLevel
+                    | PendingKind::SetAutoCompaction
+                    | PendingKind::Native(_)
+            )
+        })
+    }
+
+    /// Pi is waiting before it retries the running Turn's failed reply.
+    pub(crate) fn waiting_to_retry(&self) -> bool {
+        self.active
+            .as_ref()
+            .is_some_and(|turn| turn.retry_waiting.is_some())
+    }
+
     pub(crate) fn permission_waiting_for(&self, id: &str) -> bool {
         self.pending_ui
             .as_ref()
             .is_some_and(|request| request.id == id)
+    }
+
+    pub(crate) fn pending_ui(&self) -> Option<&PendingUiRequest> {
+        self.pending_ui.as_ref()
     }
 
     pub(crate) fn take_pending_ui(&mut self) -> Option<PendingUiRequest> {
@@ -140,6 +246,10 @@ impl PiTranslator {
         Self::new(epoch, Some(admission))
     }
 
+    pub(crate) fn native_admitted(epoch: u64) -> Self {
+        Self::admitted(epoch, LaunchAdmission::read_only())
+    }
+
     #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
     pub(crate) fn fixture_admitted(epoch: u64) -> Self {
         Self::admitted(epoch, LaunchAdmission::fixture())
@@ -152,6 +262,7 @@ impl PiTranslator {
 
     fn new(epoch: u64, launch_admission: Option<LaunchAdmission>) -> Self {
         Self {
+            bridge_tools: false,
             epoch,
             next_command: 0,
             launch_admission,
@@ -162,6 +273,8 @@ impl PiTranslator {
             initialization: None,
             pending_ui: None,
             pending_thinking: None,
+            pending_auto_compaction: None,
+            resuming: None,
             closed_config_requests: BTreeSet::new(),
         }
     }
@@ -178,6 +291,7 @@ impl PiTranslator {
                 fields.insert("modelId".into(), Value::String(id));
                 self.one(PendingKind::SetModel, fields)
             }
+            Operation::GetCommands => self.one(PendingKind::Commands, Map::new()),
             Operation::GetThinkingLevels => self.one(PendingKind::ThinkingLevels, Map::new()),
             Operation::SetThinkingLevel { level } => {
                 if self.pending_thinking.is_some() || !valid_thinking_level(&level) {
@@ -189,24 +303,53 @@ impl PiTranslator {
                 self.pending_thinking = Some((outbound.command_id.clone(), level));
                 Ok(vec![outbound])
             }
-            Operation::NewSession => {
+            Operation::SetAutoCompaction { enabled } => {
+                if self.pending_auto_compaction.is_some() {
+                    return Err(AdapterError::Malformed);
+                }
+                let mut fields = Map::new();
+                fields.insert("enabled".into(), Value::Bool(enabled));
+                let outbound = self.issue(PendingKind::SetAutoCompaction, fields)?;
+                self.pending_auto_compaction = Some((outbound.command_id.clone(), enabled));
+                Ok(vec![outbound])
+            }
+            Operation::NewSession | Operation::Resume { .. } => {
                 if !self.pending.is_empty()
                     || self
                         .active
                         .as_ref()
-                        .is_some_and(|turn| turn.terminal.is_none())
+                        .is_some_and(|turn| turn.lifecycle.terminal().is_none())
                 {
                     return Err(AdapterError::SessionTransitionBusy);
                 }
-                self.one(PendingKind::NewSession, Map::new())
+                let Operation::Resume { session_id, path } = operation else {
+                    return self.one(PendingKind::NewSession, Map::new());
+                };
+                validate_id("session ID", &session_id)?;
+                let mut fields = Map::new();
+                fields.insert("sessionPath".into(), Value::String(path));
+                let outbound = self.one(PendingKind::Resume, fields)?;
+                self.resuming = Some(session_id);
+                Ok(outbound)
             }
-            Operation::Prompt { turn_key, message } => self.begin_prompt(turn_key, message),
+            Operation::Prompt {
+                turn_key,
+                message,
+                images,
+            } => self.begin_prompt(turn_key, message, images),
+            Operation::Compact {
+                turn_key,
+                instructions,
+            } => self.begin_compact(turn_key, instructions),
+            Operation::Steer { message } => self.begin_steer(message),
+            Operation::ClearQueue => self.one(PendingKind::ClearQueue, Map::new()),
             Operation::Abort => {
                 if self
                     .active
                     .as_ref()
                     .ok_or(AdapterError::StaleIntent)?
-                    .terminal
+                    .lifecycle
+                    .terminal()
                     .is_some()
                 {
                     return Err(AdapterError::StaleIntent);
@@ -217,7 +360,8 @@ impl PiTranslator {
                 self.active
                     .as_mut()
                     .ok_or(AdapterError::StaleIntent)?
-                    .abort_requested = true;
+                    .lifecycle
+                    .request_abort();
                 Ok(outbound)
             }
             Operation::GetState => self.one(PendingKind::State, Map::new()),
@@ -230,11 +374,20 @@ impl PiTranslator {
                 }
                 self.one(PendingKind::Entries, fields)
             }
-            Operation::Resume => Err(AdapterError::UnsupportedOperation("resume")),
             Operation::Load => Err(AdapterError::UnsupportedOperation("load")),
             Operation::Close => Err(AdapterError::UnsupportedOperation("close")),
             Operation::MultiRoot => Err(AdapterError::UnsupportedOperation("multi-root")),
             Operation::ForkOrClone => Err(AdapterError::UnsupportedOperation("fork or clone")),
+            Operation::Native(request) => {
+                if let NativeRequest::SessionName { name } = &request {
+                    validate_opaque_text(name, SESSION_NAME_BYTES)
+                        .map_err(|_| AdapterError::Limit("session name"))?;
+                }
+                self.one(
+                    PendingKind::Native(request.command()),
+                    request.into_fields(),
+                )
+            }
         }
     }
 
@@ -257,16 +410,31 @@ impl PiTranslator {
     }
 
     pub(crate) fn model_config_pending(&self) -> bool {
-        self.pending
-            .iter()
-            .any(|(id, kind)| kind.is_config() && !self.is_closed_config_read(id, *kind))
+        self.pending.iter().any(|(id, request)| {
+            request.kind.is_config() && !self.is_closed_config_read(id, request.kind)
+        })
     }
 
     pub(crate) fn thinking_levels_request_id(&self) -> Option<&str> {
-        self.pending.iter().find_map(|(id, kind)| {
-            (*kind == PendingKind::ThinkingLevels && !self.is_closed_config_read(id, *kind))
-                .then_some(id.as_str())
+        self.pending.iter().find_map(|(id, request)| {
+            (request.kind == PendingKind::ThinkingLevels
+                && !self.is_closed_config_read(id, request.kind))
+            .then_some(id.as_str())
         })
+    }
+
+    pub(crate) fn sole_optional_discovery_request_id(&self, command: &str) -> Option<&str> {
+        let kind = match command {
+            "get_available_thinking_levels" => PendingKind::ThinkingLevels,
+            "get_commands" => PendingKind::Commands,
+            _ => return None,
+        };
+        let mut requests = self
+            .pending
+            .iter()
+            .filter(|(_, request)| request.kind == kind);
+        let (id, _) = requests.next()?;
+        requests.next().is_none().then_some(id.as_str())
     }
 
     fn is_closed_config_read(&self, id: &str, kind: PendingKind) -> bool {

@@ -6,9 +6,10 @@ impl PiTranslator {
         response: Response,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
         let fingerprint = response_fingerprint(&response);
-        let Some(kind) = self.pending.remove(&response.id) else {
+        let Some(request) = self.pending.remove(&response.id) else {
             return self.classify_repeated_response(&response, fingerprint);
         };
+        let kind = request.kind;
         let closed = self.closed_config_requests.remove(&response.id)
             || (kind.is_config()
                 && self
@@ -16,36 +17,70 @@ impl PiTranslator {
                     .as_ref()
                     .is_some_and(|turn| turn.authority_denied));
         if response.command != kind.command() {
-            if kind == PendingKind::SetThinkingLevel {
-                self.pending_thinking = None;
-            }
+            self.clear_pending_setting(kind);
             if matches!(kind, PendingKind::State | PendingKind::Models) {
                 self.reset_initialization();
             }
             return Err(AdapterError::Correlation);
         }
         self.remember_response(&response, fingerprint);
-        if closed {
-            if kind == PendingKind::SetThinkingLevel {
-                self.pending_thinking = None;
-            }
+        if request.owner.is_some()
+            && self.active.as_ref().is_none_or(|turn| {
+                request.owner != Some(turn.lifecycle.owner) || turn.lifecycle.terminal().is_some()
+            })
+        {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
-        if !response.success {
-            if kind == PendingKind::SetThinkingLevel {
-                self.pending_thinking = None;
+        if closed {
+            self.clear_pending_setting(kind);
+            return Ok(vec![AdapterOutput::LateIgnored]);
+        }
+        // A native reply goes back to the caller that asked for it; Pi's
+        // refusal is that caller's to report, not a transcript error.
+        if let (PendingKind::Native(command), false) = (kind, response.success) {
+            return Ok(vec![AdapterOutput::NativeReply {
+                command_id: response.id,
+                command,
+                data: None,
+            }]);
+        }
+        if !response.success && kind == PendingKind::Commands {
+            return Ok(vec![AdapterOutput::Commands(serde_json::json!([]))]);
+        }
+        if !response.success && !matches!(kind, PendingKind::Steer | PendingKind::ClearQueue) {
+            if kind == PendingKind::Resume {
+                self.resuming = None;
             }
-            if matches!(kind, PendingKind::SetModel | PendingKind::SetThinkingLevel) {
+            self.clear_pending_setting(kind);
+            if matches!(
+                kind,
+                PendingKind::SetModel
+                    | PendingKind::SetThinkingLevel
+                    | PendingKind::SetAutoCompaction
+            ) {
                 return Err(AdapterError::ConfigMutationRejected);
             }
-            let mut output = vec![AdapterOutput::Error {
-                code: "command_failed",
-            }];
-            if kind == PendingKind::Prompt {
-                output.extend(self.finish_turn(TerminalOutcome::Failed)?);
+            // A compaction whose `compaction_end` gave Pi's reason needs no
+            // second, generic failure.
+            let explained = kind == PendingKind::Compact
+                && self
+                    .active
+                    .as_ref()
+                    .is_some_and(|turn| turn.compaction_failure_shown);
+            let mut output = Vec::new();
+            if !explained {
+                output.push(AdapterOutput::Error {
+                    code: "command_failed",
+                });
+            }
+            if kind.starts_turn() {
+                let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
+                if active.lifecycle.acknowledged(false, false)? {
+                    output.extend(self.finish_turn(TerminalOutcome::Failed)?);
+                }
             } else if kind == PendingKind::Abort {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-                active.abort_requested = false;
+                active.lifecycle.resolve_abort(false);
             } else if matches!(kind, PendingKind::State | PendingKind::Models) {
                 self.reset_initialization();
             }
@@ -79,6 +114,9 @@ impl PiTranslator {
             PendingKind::SetModel => Ok(vec![AdapterOutput::ModelSelected(
                 self::payload::parse_model(&response.data)?,
             )]),
+            PendingKind::Commands => Ok(vec![AdapterOutput::Commands(
+                response.data["commands"].clone(),
+            )]),
             PendingKind::ThinkingLevels => Ok(vec![AdapterOutput::ThinkingLevels(
                 self::payload::parse_thinking_levels(&response.data)?,
             )]),
@@ -92,31 +130,72 @@ impl PiTranslator {
                 }
                 Ok(vec![AdapterOutput::ThinkingSelected(level)])
             }
-            PendingKind::NewSession => {
-                self.active = None;
-                Ok(vec![AdapterOutput::SessionReset])
-            }
-            PendingKind::Prompt => {
-                let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-                if active.prompt_command_id != response.id {
+            PendingKind::SetAutoCompaction => {
+                let (id, enabled) = self
+                    .pending_auto_compaction
+                    .take()
+                    .ok_or(AdapterError::Correlation)?;
+                if id != response.id {
                     return Err(AdapterError::Correlation);
                 }
-                if active.terminal.is_some() {
-                    return Ok(vec![AdapterOutput::LateIgnored]);
+                Ok(vec![AdapterOutput::AutoCompactionSelected(enabled)])
+            }
+            PendingKind::NewSession => {
+                let id = parse_state(&response.data)?
+                    .session_key()
+                    .ok_or(AdapterError::Malformed)?;
+                validate_id("session ID", &id)?;
+                self.active = None;
+                Ok(vec![AdapterOutput::SessionOpened(id)])
+            }
+            PendingKind::Resume => {
+                let id = self.resuming.take().ok_or(AdapterError::Correlation)?;
+                if response.data.get("cancelled").and_then(Value::as_bool) == Some(true) {
+                    return Ok(vec![AdapterOutput::Error {
+                        code: "session_switch_cancelled",
+                    }]);
                 }
-                if active.event_phase != EventPhase::PromptIssued {
-                    return Err(AdapterError::EventSequence);
+                self.active = None;
+                Ok(vec![AdapterOutput::SessionOpened(id)])
+            }
+            PendingKind::Prompt | PendingKind::Compact => {
+                let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
+                let handled = kind == PendingKind::Compact
+                    || response.data.get("disposition").and_then(Value::as_str) == Some("handled");
+                if active.lifecycle.acknowledged(true, handled)? {
+                    return self.finish_turn(TerminalOutcome::Completed);
                 }
-                active.event_phase = EventPhase::PromptAccepted;
                 Ok(vec![AdapterOutput::CommandAccepted { command: "prompt" }])
             }
-            PendingKind::Abort => Ok(vec![AdapterOutput::CommandAccepted { command: "abort" }]),
+            PendingKind::Steer => Ok(vec![AdapterOutput::SteerResolved {
+                accepted: response.success
+                    && self
+                        .active
+                        .as_ref()
+                        .is_some_and(|turn| !turn.authority_denied),
+                command_id: response.id,
+            }]),
+            // Clearing only guards the next prompt; there is nothing to show.
+            PendingKind::ClearQueue => Ok(vec![AdapterOutput::Absorbed]),
+            PendingKind::Abort => {
+                self.active
+                    .as_mut()
+                    .ok_or(AdapterError::StaleIntent)?
+                    .lifecycle
+                    .resolve_abort(true);
+                Ok(vec![AdapterOutput::CommandAccepted { command: "abort" }])
+            }
             PendingKind::Messages => Ok(vec![AdapterOutput::Messages(parse_messages(
                 &response.data,
             )?)]),
             PendingKind::Entries => {
                 Ok(vec![AdapterOutput::Entries(parse_entries(&response.data)?)])
             }
+            PendingKind::Native(command) => Ok(vec![AdapterOutput::NativeReply {
+                command_id: response.id,
+                command,
+                data: Some(response.data),
+            }]),
         }
     }
 
@@ -131,17 +210,16 @@ impl PiTranslator {
                     && completed.success == response.success
                     && completed.payload_fingerprint == fingerprint =>
             {
-                let closed = self
-                    .active
-                    .as_ref()
-                    .is_some_and(|turn| turn.terminal.is_some() || turn.authority_denied)
-                    && matches!(
-                        response.command.as_str(),
-                        "set_model"
-                            | "set_thinking_level"
-                            | "get_available_thinking_levels"
-                            | "get_state"
-                    );
+                let closed = self.active.as_ref().is_some_and(|turn| {
+                    turn.lifecycle.terminal().is_some() || turn.authority_denied
+                }) && matches!(
+                    response.command.as_str(),
+                    "set_model"
+                        | "set_thinking_level"
+                        | "set_auto_compaction"
+                        | "get_available_thinking_levels"
+                        | "get_state"
+                );
                 Ok(vec![if closed {
                     AdapterOutput::LateIgnored
                 } else {

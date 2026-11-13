@@ -140,7 +140,7 @@ fn resolve_permission_decision_reaches_live_runtime_port() {
     assert_eq!(
         decisions
             .iter()
-            .map(|(_, decision)| *decision)
+            .map(|(_, decision)| decision.clone())
             .collect::<Vec<_>>(),
         vec![
             PermissionDecision::Deny,
@@ -214,4 +214,50 @@ fn every_forged_decision_identity_field_has_zero_durable_or_runtime_side_effects
         assert!(commands.lock().unwrap().is_empty(), "{field}");
     }
     service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn only_matching_answers_resolve_a_question_and_approvals_never_take_answers() {
+    use crate::acp::{
+        contract::{BoundedVec, SafeText},
+        intent::{NormalizedPayload, PermissionOptionKind, ToolCategory},
+    };
+    use serde_json::json;
+
+    let request =
+        |offered: Vec<PermissionOptionKind>, user_input| NormalizedPayload::PermissionRequest {
+            category: ToolCategory::Other,
+            summary: SafeText::new("summary", "request").unwrap(),
+            offered_option_kinds: Some(BoundedVec::new("offered", offered).unwrap()),
+            reason: None,
+            user_input,
+        };
+    let approval = request(
+        vec![
+            PermissionOptionKind::AllowOnce,
+            PermissionOptionKind::RejectOnce,
+        ],
+        None,
+    );
+    let question = request(
+        vec![PermissionOptionKind::RejectOnce],
+        Some(Box::new(
+            serde_json::from_value(json!({"questions": [{
+                "id": "q", "header": "", "question": "?",
+                "options": [{"label": "A", "description": ""}]
+            }]}))
+            .unwrap(),
+        )),
+    );
+    let answer = |value| PermissionDecision::Answer(serde_json::from_value(value).unwrap());
+    let matching = answer(json!([{"questionId": "q", "selectedOption": "A"}]));
+    let unoffered = answer(json!([{"questionId": "q", "selectedOption": "B"}]));
+
+    assert!(super::admits(&PermissionDecision::AllowOnce, &approval));
+    assert!(!super::admits(&PermissionDecision::AllowAlways, &approval));
+    assert!(!super::admits(&matching, &approval));
+    assert!(super::admits(&matching, &question));
+    assert!(!super::admits(&unoffered, &question));
+    assert!(!super::admits(&PermissionDecision::AllowOnce, &question));
+    assert!(super::admits(&PermissionDecision::Deny, &question));
 }

@@ -1,5 +1,3 @@
-import { ListChecks, Folder, Pencil } from "../ui/leanIcons";
-
 import {
   useId,
   useLayoutEffect,
@@ -9,10 +7,9 @@ import {
   useContext,
   useCallback,
 } from "react";
-import { useStore } from "zustand";
 
-import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../app/store";
+import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { chatDisplayTitle } from "../domain/chatTitle";
 import type { WorkbenchTab } from "../domain/workbench";
 import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
@@ -23,10 +20,15 @@ import {
 } from "./ProjectChatActionMenu";
 import "./agent-subagent-summary.css";
 
+import { useDismissLayer } from "../ui/dismissLayer";
 import { AgentTaskStatus } from "./AgentTaskStatus";
 import { isSideChatId } from "./sideChatState";
 import { AgentTaskResourcesPart } from "./agentTaskHeaderLazy";
 import { AgentToolsContext } from "./AgentToolsProvider";
+import { AgentNavigationPart } from "./agentNavigationLazy";
+
+/** Delay after mount before preloading the resources panel, off the first frame. */
+const RESOURCES_PRELOAD_DELAY_MS = 1000;
 
 function preloadResources() {
   void AgentTaskResourcesPart.preload().catch(() => undefined);
@@ -37,11 +39,13 @@ export function AgentTaskHeader({
   chatCount,
   snapshot,
   sessionChrome,
+  showNewChat = false,
 }: {
   tab: WorkbenchTab | null;
   chatCount: number;
   snapshot: ChatLiveSnapshot | null;
   sessionChrome?: AgentSessionChrome | null;
+  showNewChat?: boolean;
 }) {
   const project = useWorkbenchStore((state) => state.project);
   const { launch } = useContext(AgentToolsContext);
@@ -53,8 +57,9 @@ export function AgentTaskHeader({
   const [renaming, setRenaming] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [showAllSources, setShowAllSources] = useState(false);
+  const resourcesSession = useRef("");
   useEffect(() => {
-    const timer = setTimeout(preloadResources, 1000);
+    const timer = setTimeout(preloadResources, RESOURCES_PRELOAD_DELAY_MS);
     return () => clearTimeout(timer);
   }, []);
   const resourcesTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -64,31 +69,16 @@ export function AgentTaskHeader({
     if (!document.getElementById(resourcesId)) setResourcesOpen(false);
     if (!document.getElementById(renameId)) setRenaming(false);
   }, [resourcesId, renameId]);
-  useEffect(() => {
-    if (!resourcesOpen && !renaming) return;
-    const dismissOutside = (event: Event) => {
-      if (
-        event.target instanceof Node &&
-        resourcesTriggerRef.current?.contains(event.target)
-      )
-        return;
-      dismissPending();
-    };
-    document.addEventListener("pointerdown", dismissOutside, true);
-    return () =>
-      document.removeEventListener("pointerdown", dismissOutside, true);
-  }, [resourcesOpen, renaming, dismissPending]);
-  const page = useStore(
-    acpProjectionStoreFor(tab?.id ?? null),
-    (state) => state.page,
-  );
+  // Until their lazy parts load, the trigger stands in for the popover and
+  // the rename form.
+  useDismissLayer(resourcesOpen || renaming, {
+    inside: [resourcesTriggerRef],
+    onOutside: dismissPending,
+  });
   const resourcesScope = [
     project?.id,
     generation,
     tab?.id,
-    page?.currentSessionId,
-    page?.sessions.find((session) => session.id === page.currentSessionId)
-      ?.runtimeEpoch,
     projectTransitioning,
   ].join("\u0000");
   const [[previousScope, restoreFocus], setPreviousScope] = useState<
@@ -130,18 +120,9 @@ export function AgentTaskHeader({
         dismissPending();
       }}
     >
-      <button
-        className="agent-task-header__pencil"
-        type="button"
-        aria-label="Rename chat"
-        title="Rename chat"
-        disabled={projectTransitioning || renaming}
-        onClick={() => setRenaming(true)}
-      >
-        <Pencil size={15} aria-hidden="true" />
-      </button>
+      {showNewChat ? <AgentNavigationPart part="AgentNewChatButton" /> : null}
       <div className="agent-task-header__breadcrumb" aria-label="Chat location">
-        <Folder size={15} aria-hidden="true" />
+        <span className="agent-task-header__folder" aria-hidden="true" />
         {renaming ? (
           <AgentTaskResourcesPart
             part="AgentTaskRenameForm"
@@ -158,7 +139,9 @@ export function AgentTaskHeader({
         )}
       </div>
       <AgentTaskStatus
+        chatId={tab.id}
         snapshot={snapshot}
+        status={tab.status}
         harnessStatus={sessionChrome?.harnessStatus}
       />
       {isSideChatId(tab?.id) ? null : (
@@ -179,7 +162,11 @@ export function AgentTaskHeader({
             archiveDisabled={projectTransitioning || chatCount <= 1}
             projectId={currentProject.id}
             onOpenChange={setMenuOpen}
-            onRename={() => setRenaming(true)}
+            onRename={() => {
+              setRenaming(true);
+              // Keep keyboard dismissal available while the rename form loads.
+              resourcesTriggerRef.current?.focus();
+            }}
             sessionChrome={sessionChrome}
             triggerLabel={`More chat actions in ${currentProject.name}`}
             triggerRole="menuitem"
@@ -194,22 +181,31 @@ export function AgentTaskHeader({
           aria-controls={resourcesId}
           aria-haspopup="dialog"
           aria-expanded={resourcesOpen}
-          title="Outputs, Subagents, and Sources"
-          onClick={() => setResourcesOpen((open) => !open)}
-        >
-          <ListChecks size={16} aria-hidden="true" />
-        </button>
+          title="Changes, Subagents, Background processes, and Sources"
+          onClick={() => {
+            const page = acpProjectionStoreFor(currentTab.id).getState().page;
+            const session = page?.sessions.find(
+              (entry) => entry.id === page.currentSessionId,
+            );
+            const scope = [
+              resourcesScope,
+              page?.currentSessionId,
+              session?.runtimeEpoch,
+            ].join("\u0000");
+            if (resourcesSession.current !== scope) setShowAllSources(false);
+            resourcesSession.current = scope;
+            setResourcesOpen((open) => !open);
+          }}
+        ></button>
         {resourcesOpen ? (
           <AgentTaskResourcesPart
             part="AgentTaskResources"
-            page={page}
             chatId={currentTab.id}
-            projectId={currentProject.id}
-            id={resourcesId}
-            triggerRef={resourcesTriggerRef}
+            resourcesId={resourcesId}
+            resourcesTriggerRef={resourcesTriggerRef}
             showAllSources={showAllSources}
             onToggleSources={() => setShowAllSources((shown) => !shown)}
-            onClose={() => setResourcesOpen(false)}
+            onDismiss={() => setResourcesOpen(false)}
           />
         ) : null}
       </div>

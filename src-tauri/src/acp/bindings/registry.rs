@@ -9,17 +9,24 @@ use crate::acp::bindings::{
         CodexBindingRegistration, startup_codex_binding_registration,
     },
     standard_acp::{
-        OPENCODE_BINDING_ID, OpenCodeAdmissionUnavailable, OpenCodeBindingRegistration,
+        CustomAcpRegistration, CustomAcpUnavailable, OPENCODE_BINDING_ID,
+        OpenCodeAdmissionUnavailable, OpenCodeBindingRegistration,
     },
 };
+use crate::settings_store::MAX_CUSTOM_ACP_AGENTS;
 
 mod claude;
+mod claude_sdk;
 mod codex;
-mod opencode;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+mod fixtures;
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 mod pi;
+mod pi_native;
 mod record;
+mod record_reason;
 mod record_root;
+mod standard_acp;
 use record::{Admission, AdmittedBinding, RootPolicy};
 pub(crate) use record::{AdmittedBindingRecord, BindingProjectRoot, BindingRecord};
 #[cfg(all(test, windows))]
@@ -58,6 +65,8 @@ pub(crate) enum RegistryAdmissionUnavailable {
     Claude(ClaudeAdmissionUnavailable),
     #[error(transparent)]
     OpenCode(OpenCodeAdmissionUnavailable),
+    #[error("the user-defined ACP agent is not admitted: {0:?}")]
+    CustomAcp(CustomAcpUnavailable),
     #[error("binding wire identity drifted after admission")]
     Drift,
 }
@@ -68,6 +77,7 @@ impl From<RegistryAdmissionUnavailable> for CodexAdmissionUnavailable {
             RegistryAdmissionUnavailable::Codex(reason) => reason,
             RegistryAdmissionUnavailable::Claude(_)
             | RegistryAdmissionUnavailable::OpenCode(_)
+            | RegistryAdmissionUnavailable::CustomAcp(_)
             | RegistryAdmissionUnavailable::Drift => CodexAdmissionUnavailable::Drift,
         }
     }
@@ -82,7 +92,11 @@ pub(crate) enum RegistryUnavailable {
 pub(crate) struct BindingRegistry {
     codex: BindingRecord,
     claude: BindingRecord,
+    claude_sdk: BindingRecord,
     opencode: BindingRecord,
+    pi_native: BindingRecord,
+    /// One fixed record per live user-defined agent.
+    custom: Vec<BindingRecord>,
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     pi: Option<BindingRecord>,
     #[cfg(test)]
@@ -99,56 +113,6 @@ impl Default for BindingRegistry {
 }
 
 impl BindingRegistry {
-    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-    pub(crate) fn desktop_pi_fixture(
-        selection: crate::launch_profile::FixtureSelection,
-    ) -> Result<Self, crate::acp::bindings::adapter::AdapterRuntimeError> {
-        let binding =
-            crate::acp::bindings::pi::fixture_admission::PiFixtureBinding::admit(selection)?;
-        let mut registry = Self::new(
-            CodexBindingRegistration::fixture_disabled(),
-            ClaudeBindingRegistration::fixture_disabled(),
-        );
-        registry.isolate_fixture_records("pi");
-        registry.pi = Some(pi::record(binding));
-        Ok(registry)
-    }
-
-    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-    pub(crate) fn desktop_codex_fixture(
-        selection: crate::launch_profile::CodexFixtureSelection,
-    ) -> Result<Self, CodexAdmissionUnavailable> {
-        let codex = CodexBindingRegistration::desktop_fixture(selection)?;
-        let mut registry = Self::new(codex, ClaudeBindingRegistration::fixture_disabled());
-        registry.codex.model_provider = ModelProvider::NoAccountModels;
-        registry.codex.auth_provider = AuthProvider::None;
-        registry.isolate_fixture_records(registry.codex.harness_id);
-        Ok(registry)
-    }
-
-    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-    pub(crate) fn desktop_claude_fixture(
-        selection: crate::launch_profile::FixtureSelection,
-    ) -> Result<Self, ClaudeAdmissionUnavailable> {
-        let claude = ClaudeBindingRegistration::desktop_fixture(selection)?;
-        let mut registry = Self::new(CodexBindingRegistration::fixture_disabled(), claude);
-        registry.claude.model_provider = ModelProvider::NoAccountModels;
-        registry.claude.auth_provider = AuthProvider::None;
-        registry.isolate_fixture_records(registry.claude.harness_id);
-        Ok(registry)
-    }
-
-    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-    fn isolate_fixture_records(&mut self, active_harness: &str) {
-        for record in [&mut self.codex, &mut self.claude, &mut self.opencode] {
-            if record.harness_id != active_harness {
-                record.session_operations_enabled = false;
-                record.model_provider = ModelProvider::NoAccountModels;
-                record.auth_provider = AuthProvider::None;
-            }
-        }
-    }
-
     pub(crate) fn new(codex: CodexBindingRegistration, claude: ClaudeBindingRegistration) -> Self {
         Self::new_with_opencode(codex, claude, OpenCodeBindingRegistration::startup())
     }
@@ -192,21 +156,31 @@ impl BindingRegistry {
                 model_provider: ModelProvider::ClaudeAdapter,
                 auth_provider: AuthProvider::Claude,
             },
+            claude_sdk: claude_sdk::record(Arc::new(
+                crate::acp::bindings::claude::sdk::ClaudeSdkBindingRegistration::startup(),
+            )),
             opencode: BindingRecord {
                 harness_id: "opencode",
                 binding_id: OPENCODE_BINDING_ID,
                 wire: None,
-                root_policy: RootPolicy::OpenCode,
+                root_policy: RootPolicy::StandardAcp,
                 session_operations_enabled: true,
                 admission: Admission::OpenCode(Arc::new(opencode)),
-                launch_factory: opencode::launch_factory,
-                supported_capabilities: opencode::capabilities,
+                launch_factory: standard_acp::launch_factory,
+                supported_capabilities: standard_acp::capabilities,
                 turn_dispatch: crate::acp::service::AcpService::send_session_turn,
                 cancel_dispatch: crate::acp::service::AcpService::cancel_session_turn,
                 close_dispatch: crate::acp::service::AcpService::close_session,
                 model_provider: ModelProvider::NoAccountModels,
                 auth_provider: AuthProvider::None,
             },
+            pi_native: pi_native::record(Arc::new(
+                crate::acp::bindings::pi::native_admission::PiBindingRegistration::startup(),
+            )),
+            custom: (1..=MAX_CUSTOM_ACP_AGENTS)
+                .filter_map(CustomAcpRegistration::startup)
+                .map(|registration| standard_acp::custom_record(Arc::new(registration)))
+                .collect(),
             #[cfg(test)]
             test_binding: None,
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
@@ -241,8 +215,26 @@ impl BindingRegistry {
         &self.claude
     }
 
+    pub(crate) fn claude_sdk_admission(
+        &self,
+    ) -> &Arc<crate::acp::bindings::claude::sdk::ClaudeSdkBindingRegistration> {
+        let Admission::ClaudeSdk(admission) = &self.claude_sdk.admission else {
+            unreachable!()
+        };
+        admission
+    }
+
     pub(crate) fn opencode(&self) -> &BindingRecord {
         &self.opencode
+    }
+
+    pub(crate) fn pi_admission(
+        &self,
+    ) -> &Arc<crate::acp::bindings::pi::native_admission::PiBindingRegistration> {
+        let Admission::PiNative(admission) = &self.pi_native.admission else {
+            unreachable!()
+        };
+        admission
     }
 
     pub(crate) fn opencode_admission(&self) -> &Arc<OpenCodeBindingRegistration> {
@@ -252,14 +244,37 @@ impl BindingRegistry {
         admission
     }
 
+    /// The harness a Claude binding serves until discovery has settled
+    /// which of the two Claude Code runs on, so a Chat restored at
+    /// startup on either keeps its harness.
+    pub(crate) fn pending_claude_harness(&self, binding_id: &str) -> Option<&'static str> {
+        // Either still pending counts: discovery settles the two one after
+        // the other, and a restore between them must not miss.
+        let pending = self.claude_sdk_admission().discovery_pending()
+            || matches!(
+                self.claude_admission().unavailable(),
+                Some(ClaudeAdmissionUnavailable::DiscoveryPending)
+            );
+        (pending && [self.claude.binding_id(), self.claude_sdk.binding_id()].contains(&binding_id))
+            .then_some("claude-code")
+    }
+
     pub(crate) fn for_harness(&self, id: &str) -> Option<&BindingRecord> {
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         if let Some(record) = self.pi.as_ref().filter(|record| record.harness_id() == id) {
             return Some(record);
         }
-        [self.codex(), self.claude(), self.opencode()]
+        // Claude Code runs over its SDK protocol once that binding is
+        // admitted; the ACP adapter serves only installs it cannot admit.
+        let claude = if self.claude_sdk.admission_available() {
+            &self.claude_sdk
+        } else {
+            self.claude()
+        };
+        [self.codex(), claude, self.opencode(), &self.pi_native]
             .into_iter()
-            .find(|record| record.harness_id() == id)
+            .chain(self.custom.iter())
+            .find(|record| record.serves_harness(id))
             .or({
                 #[cfg(test)]
                 {
@@ -292,22 +307,29 @@ impl BindingRegistry {
         {
             return Ok(record);
         }
-        [&self.codex, &self.claude, &self.opencode]
-            .into_iter()
-            .find(|record| record.binding_id() == binding_id)
-            .or({
-                #[cfg(test)]
-                {
-                    self.test_binding
-                        .as_ref()
-                        .filter(|record| record.binding_id() == binding_id)
-                }
-                #[cfg(not(test))]
-                {
-                    None
-                }
-            })
-            .ok_or(RegistryUnavailable::UnknownBinding)
+        [
+            &self.codex,
+            &self.claude,
+            &self.claude_sdk,
+            &self.opencode,
+            &self.pi_native,
+        ]
+        .into_iter()
+        .chain(self.custom.iter())
+        .find(|record| record.serves_binding(binding_id))
+        .or({
+            #[cfg(test)]
+            {
+                self.test_binding
+                    .as_ref()
+                    .filter(|record| record.binding_id() == binding_id)
+            }
+            #[cfg(not(test))]
+            {
+                None
+            }
+        })
+        .ok_or(RegistryUnavailable::UnknownBinding)
     }
 }
 
@@ -363,265 +385,12 @@ impl BindingRegistry {
     pub(crate) fn test_registration(&self) -> Option<CodexBindingRegistration> {
         match self.test_binding.as_ref()?.admission {
             Admission::Codex(ref admission) => Some(admission.clone()),
-            Admission::Claude(_) | Admission::OpenCode(_) => None,
-            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-            Admission::Pi(_) => None,
+            _ => None,
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[cfg(windows)]
-    use std::{ffi::OsStr, fs};
-
-    #[cfg(windows)]
-    use crate::{
-        acp::{
-            bindings::standard_acp::OpenCodeBindingRegistration,
-            contract::{
-                ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
-            },
-            process::RequiredContainment,
-        },
-        project_registry::ProjectRootAuthority,
-    };
-
-    #[test]
-    fn registry_resolves_claude_record_only_when_injectable_admission_is_present() {
-        // This discriminates because the registry must route the Claude binding
-        // and invoke its real registration, rather than merely cataloguing an ID.
-        let registry = BindingRegistry::default();
-        assert!(
-            matches!(registry.route(CLAUDE_BINDING_ID), Ok(record) if record.harness_id() == "claude-code")
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn opencode_registry_resolution_constructs_an_exact_direct_native_launch() {
-        let root =
-            std::env::temp_dir().join(format!("sage-opencode-registry-{}", uuid::Uuid::new_v4()));
-        let npm = root.join("npm");
-        let shim = npm.join("opencode.cmd");
-        let executable = npm
-            .join("node_modules")
-            .join("opencode-ai")
-            .join("bin")
-            .join("opencode.exe");
-        fs::create_dir_all(executable.parent().expect("runtime parent")).expect("create layout");
-        fs::write(&shim, "@echo off\r\necho 1.18.21\r\n").expect("write shim");
-        fs::write(&executable, b"native-opencode").expect("write runtime");
-        fs::write(
-            npm.join("node_modules")
-                .join("opencode-ai")
-                .join("package.json"),
-            r#"{"name":"opencode-ai","version":"1.18.21","bin":{"opencode":"./bin/opencode.exe"}}"#,
-        )
-        .expect("write manifest");
-        let registration = OpenCodeBindingRegistration::admitted_for_test(&shim, "1.18.21");
-        let registry = BindingRegistry::new_with_opencode_for_test(
-            CodexBindingRegistration::unavailable_for_test(),
-            ClaudeBindingRegistration::absent_for_test(),
-            registration,
-        );
-        let shim_marker = root.join("shim-ran");
-        fs::write(
-            &shim,
-            format!(
-                "@echo off\r\necho executed>\"{}\"\r\necho 1.18.21\r\n",
-                shim_marker.display()
-            ),
-        )
-        .expect("replace shim after admission");
-        let admitted = registry.resolve("opencode-acp").expect("resolve OpenCode");
-        let (expected_binding_digest, expected_artifact_digest) = {
-            let identity = admitted.identity();
-            (identity.binding_digest, identity.artifact_digest.to_owned())
-        };
-        let project_root = ProjectRootAuthority::for_test(
-            SageProjectId::parse("project-opencode-registry").expect("project"),
-            ProjectGeneration::ZERO,
-            SageRootId::parse("root-opencode-registry").expect("root"),
-            &root,
-        )
-        .expect("project root");
-        let mut runtime = admitted
-            .into_factory(
-                BindingProjectRoot::OpenCode(project_root),
-                crate::acp::mcp::McpAdmission::default(),
-            )
-            .construct(
-                RuntimeEpoch::new(17).expect("epoch"),
-                SageAgentSessionId::parse("session-opencode-registry").expect("session"),
-            )
-            .expect("construct runtime");
-        let spec = runtime.launch_spec().expect("launch spec");
-
-        assert_eq!(spec.binding_id.as_bytes(), &expected_binding_digest[..16]);
-        assert_eq!(spec.artifact.canonical_absolute_path, executable);
-        assert_eq!(
-            spec.artifact
-                .sha256
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>(),
-            expected_artifact_digest
-        );
-        assert_eq!(spec.fixed_args.as_slice(), [OsStr::new("acp")]);
-        let mut expected_environment: Vec<_> = [
-            "APPDATA",
-            "ComSpec",
-            "LOCALAPPDATA",
-            "PATH",
-            "PATHEXT",
-            "SystemRoot",
-            "TEMP",
-            "TMP",
-            "USERPROFILE",
-            "WINDIR",
-        ]
-        .into_iter()
-        .filter_map(|key| {
-            std::env::var_os(key)
-                .filter(|value| !value.is_empty())
-                .map(|value| (std::ffi::OsString::from(key), value))
-        })
-        .collect();
-        let (policy_key, policy_content) = spec
-            .environment
-            .as_slice()
-            .last()
-            .expect("OpenCode policy environment");
-        assert_eq!(policy_key, "OPENCODE_CONFIG_CONTENT");
-        let policy_text = policy_content.to_str().expect("UTF-8 OpenCode policy");
-        let policy: serde_json::Value = serde_json::from_str(policy_text).expect("policy JSON");
-        let expected_policy = serde_json::json!({"permission":{
-            "*":"ask", "bash":"ask", "edit":"ask", "read":"allow",
-            "task":"ask", "webfetch":"ask", "write":"ask"
-        }});
-        assert_eq!(policy, expected_policy);
-        assert_eq!(
-            policy_text,
-            serde_json::to_string(&expected_policy).unwrap()
-        );
-        expected_environment.push((
-            std::ffi::OsString::from("OPENCODE_CONFIG_CONTENT"),
-            std::ffi::OsString::from(policy_text),
-        ));
-        assert_eq!(spec.environment.as_slice(), expected_environment);
-        assert_eq!(spec.required_guarantee, RequiredContainment::EnforcedTree);
-        assert!(!shim_marker.exists());
-        drop(spec);
-        fs::remove_dir_all(root).expect("remove root");
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn opencode_factory_refuses_runtime_drift_immediately_before_launch() {
-        let root = std::env::temp_dir().join(format!(
-            "sage-opencode-registry-drift-{}",
-            uuid::Uuid::new_v4()
-        ));
-        let npm = root.join("npm");
-        let shim = npm.join("opencode.cmd");
-        let executable = npm
-            .join("node_modules")
-            .join("opencode-ai")
-            .join("bin")
-            .join("opencode.exe");
-        fs::create_dir_all(executable.parent().expect("runtime parent")).expect("create layout");
-        fs::write(&shim, "@echo off\r\necho 1.18.21\r\n").expect("write shim");
-        fs::write(&executable, b"native-opencode").expect("write runtime");
-        fs::write(
-            npm.join("node_modules")
-                .join("opencode-ai")
-                .join("package.json"),
-            r#"{"name":"opencode-ai","version":"1.18.21","bin":{"opencode":"./bin/opencode.exe"}}"#,
-        )
-        .expect("write manifest");
-        let registry = BindingRegistry::new_with_opencode_for_test(
-            CodexBindingRegistration::unavailable_for_test(),
-            ClaudeBindingRegistration::absent_for_test(),
-            OpenCodeBindingRegistration::admitted_for_test(&shim, "1.18.21"),
-        );
-        let admitted = registry.resolve("opencode-acp").expect("resolve OpenCode");
-        let project_root = ProjectRootAuthority::for_test(
-            SageProjectId::parse("project-opencode-registry-drift").expect("project"),
-            ProjectGeneration::ZERO,
-            SageRootId::parse("root-opencode-registry-drift").expect("root"),
-            &root,
-        )
-        .expect("project root");
-        let mut runtime = admitted
-            .into_factory(
-                BindingProjectRoot::OpenCode(project_root),
-                crate::acp::mcp::McpAdmission::default(),
-            )
-            .construct(
-                RuntimeEpoch::new(18).expect("epoch"),
-                SageAgentSessionId::parse("session-opencode-registry-drift").expect("session"),
-            )
-            .expect("construct runtime");
-        fs::write(&executable, b"changed-opencode").expect("change runtime");
-
-        assert!(matches!(
-            runtime.launch_spec(),
-            Err(crate::acp::bindings::adapter::AdapterRuntimeError::LaunchUnavailable)
-        ));
-        fs::remove_dir_all(root).expect("remove root");
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn admitted_opencode_offers_the_observed_mandatory_session_core() {
-        let root = std::env::temp_dir().join(format!(
-            "sage-opencode-mandatory-core-{}",
-            uuid::Uuid::new_v4()
-        ));
-        let npm = root.join("npm");
-        let shim = npm.join("opencode.cmd");
-        let executable = npm
-            .join("node_modules")
-            .join("opencode-ai")
-            .join("bin")
-            .join("opencode.exe");
-        fs::create_dir_all(executable.parent().expect("runtime parent")).expect("create layout");
-        fs::write(&shim, "@echo off\r\necho 1.18.21\r\n").expect("write shim");
-        fs::write(&executable, b"native-opencode").expect("write runtime");
-        fs::write(
-            npm.join("node_modules")
-                .join("opencode-ai")
-                .join("package.json"),
-            r#"{"name":"opencode-ai","version":"1.18.21","bin":{"opencode":"./bin/opencode.exe"}}"#,
-        )
-        .expect("write manifest");
-        let registry = BindingRegistry::new_with_opencode_for_test(
-            CodexBindingRegistration::unavailable_for_test(),
-            ClaudeBindingRegistration::absent_for_test(),
-            OpenCodeBindingRegistration::admitted_for_test(&shim, "1.18.21"),
-        );
-        let admitted = registry.resolve("opencode-acp").expect("resolve OpenCode");
-        let snapshot = admitted
-            .supported_capabilities()
-            .expect("an admitted OpenCode build projects the mandatory session core");
-
-        assert!(snapshot.new_session);
-        assert!(snapshot.prompt);
-        assert!(snapshot.cancel);
-        assert!(snapshot.close_session);
-        assert!(!snapshot.resume_session);
-        assert!(!snapshot.load_session);
-        assert_eq!(snapshot.model_count, 0);
-        assert_eq!(snapshot.config_count, 0);
-        assert!(
-            registry
-                .route("opencode-acp")
-                .expect("route OpenCode")
-                .session_operations_enabled()
-        );
-        drop(admitted);
-        fs::remove_dir_all(root).expect("remove root");
-    }
-}
+mod pi_native_tests;
+#[cfg(test)]
+mod tests;

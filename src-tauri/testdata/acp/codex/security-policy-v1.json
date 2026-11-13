@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "bindingId": "codex-app-server",
-  "protocolIdentity": "codex-app-server-0.146.0-d3992fec",
-  "codexSourceCommit": "e363b08c9175ac1cbe5893615dd2cb9ddf95043b",
-  "codexRuntimeVersion": "0.146.0",
-  "appServerSchemaSha256": "d3992fec1398afdbec658da2c720c6993fbf3c1ce4900785694d2196679eddfc",
-  "codexHome": "C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+  "protocolIdentity": "codex-app-server-0.167.0-486c7c8d",
+  "codexSourceCommit": "086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a",
+  "codexRuntimeVersion": "0.167.0",
+  "appServerSchemaSha256": "486c7c8daa5dc7f3ab2a1fb56de5316804caf7a4210fda1dc28d3f0f4e90cfe1",
+  "codexHome": "C:\\SageHarnesses\\CodexState\\codex-app-server-0.167.0-486c7c8d",
   "state": {
     "isolation": "isolatedBindingDirectory",
     "inheritAmbientConfig": false,

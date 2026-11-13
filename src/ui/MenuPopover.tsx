@@ -11,15 +11,26 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { DismissLayerContext, useDismissLayer } from "./dismissLayer";
+import { useNativePageLayer } from "./nativePageLayers";
 import {
   exitPopoverDialogOnTab,
   focusPopoverDialog,
 } from "./menuPopoverDialogFocus";
 import {
+  inFixedContainingBlock,
   type MenuPlacement,
   menuPopoverPosition,
   PopoverPlacementContext,
 } from "./menuPopoverPosition";
+import {
+  hasNavigationModifier,
+  listIndexForKey,
+  typeaheadIndex,
+} from "./listNavigation";
+
+/** Pause after which typed letters start a new typeahead search. */
+const TYPEAHEAD_RESET_MS = 500;
 
 const ITEM_SELECTOR = [
   '[role="menuitem"]',
@@ -28,6 +39,16 @@ const ITEM_SELECTOR = [
   '[role="option"]',
 ].join(",");
 const POPOVER_GAP = 4;
+/** The style keys the placement functions set. */
+const POSITION_KEYS = [
+  "left",
+  "top",
+  "minWidth",
+  "maxWidth",
+  "maxHeight",
+  "visibility",
+] as const;
+const MAX_POSITION_UPDATES_PER_FRAME = 4;
 
 type InitialFocus = "first" | "last" | "selected";
 type PopoverRole = "menu" | "listbox" | "dialog" | "none";
@@ -43,6 +64,22 @@ function menuItems(container: HTMLElement) {
 
 function enabledMenuItems(container: HTMLElement) {
   return menuItems(container).filter((item) => !item.hasAttribute("disabled"));
+}
+
+const MENU_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End"]);
+
+/**
+ * The enabled item a key moves to. `items` holds only enabled items: natively
+ * disabled ones cannot take focus, while `aria-disabled` ones stay focusable
+ * so a screen reader can say why they are unavailable.
+ */
+function menuIndexForKey(key: string, items: HTMLElement[]) {
+  return listIndexForKey(
+    key,
+    items.indexOf(document.activeElement as HTMLElement),
+    items.map(() => false),
+    { orientation: "vertical", wrap: true },
+  );
 }
 
 function activateMenuItem(container: HTMLElement, next: number) {
@@ -79,6 +116,7 @@ export function MenuPopover({
   className,
   focusKey,
   focusStrategy = "roving",
+  holdFocus = false,
   id,
   initialFocus = "first",
   keepMounted = false,
@@ -87,6 +125,7 @@ export function MenuPopover({
   onDismiss,
   open,
   placement: preferredPlacement = "below-end",
+  positionAt,
   portalTarget = "document",
   restoreFocusOnTab = false,
   role = "menu",
@@ -99,6 +138,11 @@ export function MenuPopover({
   className?: string;
   focusKey?: string | number | boolean;
   focusStrategy?: FocusStrategy;
+  /**
+   * Leaves focus where it is when the menu opens, for a body that arrived
+   * after its open and found that focus had moved on meanwhile.
+   */
+  holdFocus?: boolean;
   id: string;
   initialFocus?: InitialFocus;
   keepMounted?: boolean;
@@ -108,6 +152,12 @@ export function MenuPopover({
   open: boolean;
   /** Top-level menus only; nested menus follow their parent. */
   placement?: MenuPlacement;
+  /**
+   * Places the popover itself, for example at a right-click's pointer
+   * (`pointerPopoverPosition`), instead of beside the trigger. The trigger
+   * still takes the focus back when the menu closes.
+   */
+  positionAt?: (popover: HTMLElement) => CSSProperties;
   portalTarget?: PortalTarget;
   restoreFocusOnTab?: boolean;
   role?: PopoverRole;
@@ -122,10 +172,12 @@ export function MenuPopover({
   const [portalRoot, setPortalRoot] = useState<HTMLElement>(
     () => document.body,
   );
+  useNativePageLayer(popoverRef, { open, portalRoot });
   const [position, setPosition] = useState<CSSProperties>(() =>
     focusStrategy === "none" ? {} : { visibility: "hidden" },
   );
   const positionRef = useRef(position);
+  const settleRef = useRef({ frame: 0, count: 0 });
   const measureRef = useRef<() => void>(() => {});
   const hiddenTriggerRef = useRef<() => void>(() => {});
   const placement = useMemo(
@@ -140,24 +192,31 @@ export function MenuPopover({
     if (!popover || !trigger) return;
 
     const updatePosition = () => {
-      const next = menuPopoverPosition(
-        trigger,
+      const next = inFixedContainingBlock(
+        positionAt
+          ? positionAt(popover)
+          : menuPopoverPosition(
+              trigger,
+              popover,
+              originRef.current ?? trigger,
+              gap,
+              matchTriggerWidth,
+              preferredPlacement,
+            ),
         popover,
-        originRef.current ?? trigger,
-        gap,
-        matchTriggerWidth,
-        preferredPlacement,
       );
       const current = positionRef.current;
-      if (
-        current.left === next.left &&
-        current.top === next.top &&
-        current.minWidth === next.minWidth &&
-        current.maxWidth === next.maxWidth &&
-        current.maxHeight === next.maxHeight &&
-        current.visibility === next.visibility
-      )
-        return;
+      if (POSITION_KEYS.every((key) => current[key] === next[key])) return;
+      // Two placements can each make the other the better fit (a flip that
+      // changes the room left for the list), so bound synchronous
+      // re-measures per frame instead of looping until React gives up.
+      const guard = settleRef.current;
+      if (guard.count >= MAX_POSITION_UPDATES_PER_FRAME) return;
+      guard.count += 1;
+      guard.frame ||= requestAnimationFrame(() => {
+        guard.frame = 0;
+        guard.count = 0;
+      });
       positionRef.current = next;
       setPosition(next);
     };
@@ -215,15 +274,16 @@ export function MenuPopover({
     setPortalRoot((current) => (current === nextRoot ? current : nextRoot));
   }, [open, portalTarget, triggerRef]);
 
+  const placeFocus = open && !holdFocus;
   useLayoutEffect(() => {
-    if (!open || portalTarget === "document") return;
+    if (!placeFocus || portalTarget === "document") return;
     popoverRef.current
       ?.querySelector<HTMLElement>('[role="combobox"]')
       ?.focus();
-  }, [open, portalRoot, portalTarget]);
+  }, [placeFocus, portalRoot, portalTarget]);
 
   useLayoutEffect(() => {
-    if (!open || focusStrategy === "none") return;
+    if (!placeFocus || focusStrategy === "none") return;
     const popover = popoverRef.current;
     if (!popover) return;
     if (role === "dialog") {
@@ -245,25 +305,20 @@ export function MenuPopover({
     });
     // portalRoot: a nested menu first renders into the body, then moves into
     // its parent popover; the move remounts it, so focus is placed again.
-  }, [focusKey, focusStrategy, initialFocus, open, role, portalRoot]);
+  }, [focusKey, focusStrategy, initialFocus, placeFocus, role, portalRoot]);
 
-  useEffect(() => {
-    if (!open) return;
-    const dismissOutside = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (
-        !target ||
-        popoverRef.current?.contains(target) ||
-        triggerRef.current?.contains(target)
-      ) {
-        return;
-      }
-      onDismiss("outside");
-    };
-    document.addEventListener("pointerdown", dismissOutside, true);
-    return () =>
-      document.removeEventListener("pointerdown", dismissOutside, true);
-  }, [onDismiss, open, triggerRef]);
+  const { layer, onKeyDown: layerKeyDown } = useDismissLayer(open, {
+    inside: [popoverRef, triggerRef],
+    onOutside: () => onDismiss("outside"),
+    // Without roving focus, focus stays in a field that owns Escape.
+    onEscape:
+      focusStrategy === "none"
+        ? undefined
+        : () => {
+            triggerRef.current?.focus();
+            onDismiss("escape");
+          },
+  });
 
   useEffect(
     () => () => {
@@ -281,10 +336,7 @@ export function MenuPopover({
     const popover = event.currentTarget;
     const items = enabledMenuItems(popover);
     if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      triggerRef.current?.focus();
-      onDismiss("escape");
+      layerKeyDown(event);
       return;
     }
     if (event.key === "Tab") {
@@ -296,14 +348,11 @@ export function MenuPopover({
       }
       if (trapFocus && items.length > 0) {
         event.preventDefault();
-        const current = Math.max(
-          0,
-          items.indexOf(document.activeElement as HTMLElement),
+        const next = menuIndexForKey(
+          event.shiftKey ? "ArrowUp" : "ArrowDown",
+          items,
         );
-        activateMenuItem(
-          popover,
-          (current + (event.shiftKey ? -1 : 1) + items.length) % items.length,
-        );
+        if (next !== null) activateMenuItem(popover, next);
       } else {
         if (restoreFocusOnTab) {
           event.preventDefault();
@@ -314,23 +363,12 @@ export function MenuPopover({
       return;
     }
     if (role === "dialog") return;
-    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-      if (items.length === 0) return;
+    if (MENU_KEYS.has(event.key)) {
+      if (items.length === 0 || hasNavigationModifier(event)) return;
       event.preventDefault();
       event.stopPropagation();
-      const current = Math.max(
-        0,
-        items.indexOf(document.activeElement as HTMLElement),
-      );
-      const next =
-        event.key === "Home"
-          ? 0
-          : event.key === "End"
-            ? items.length - 1
-            : event.key === "ArrowDown"
-              ? (current + 1) % items.length
-              : (current - 1 + items.length) % items.length;
-      activateMenuItem(popover, next);
+      const next = menuIndexForKey(event.key, items);
+      if (next !== null) activateMenuItem(popover, next);
       return;
     }
     if (
@@ -348,48 +386,49 @@ export function MenuPopover({
     typeaheadTimerRef.current = window.setTimeout(() => {
       typeaheadRef.current = "";
       typeaheadTimerRef.current = null;
-    }, 500);
-    const match = items.findIndex((item) =>
-      (item.textContent ?? "")
-        .trim()
-        .toLocaleLowerCase()
-        .startsWith(typeaheadRef.current),
+    }, TYPEAHEAD_RESET_MS);
+    const match = typeaheadIndex(
+      items.map((item) => item.textContent ?? ""),
+      items.indexOf(document.activeElement as HTMLElement),
+      typeaheadRef.current,
     );
     if (match >= 0) activateMenuItem(popover, match);
   };
 
   return createPortal(
     <PopoverPlacementContext value={placement}>
-      <div
-        ref={popoverRef}
-        id={id}
-        className={[
-          "menu-popover",
-          position.maxHeight === undefined ? null : "menu-popover--bounded",
-          className,
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        role={role === "none" ? undefined : role}
-        tabIndex={role === "dialog" ? -1 : undefined}
-        aria-label={role === "none" ? undefined : ariaLabel}
-        aria-describedby={ariaDescribedBy}
-        hidden={!open}
-        style={position}
-        onKeyDown={moveFocus}
-        onFocus={(event) => {
-          if (focusStrategy === "none") return;
-          const item = (event.target as HTMLElement).closest<HTMLElement>(
-            ITEM_SELECTOR,
-          );
-          if (!item || item.hasAttribute("disabled")) return;
-          const items = enabledMenuItems(event.currentTarget);
-          const index = items.indexOf(item);
-          if (index >= 0) activateMenuItem(event.currentTarget, index);
-        }}
-      >
-        {children}
-      </div>
+      <DismissLayerContext value={layer}>
+        <div
+          ref={popoverRef}
+          id={id}
+          className={[
+            "menu-popover",
+            position.maxHeight === undefined ? null : "menu-popover--bounded",
+            className,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          role={role === "none" ? undefined : role}
+          tabIndex={role === "dialog" ? -1 : undefined}
+          aria-label={role === "none" ? undefined : ariaLabel}
+          aria-describedby={ariaDescribedBy}
+          hidden={!open}
+          style={position}
+          onKeyDown={moveFocus}
+          onFocus={(event) => {
+            if (focusStrategy === "none") return;
+            const item = (event.target as HTMLElement).closest<HTMLElement>(
+              ITEM_SELECTOR,
+            );
+            if (!item || item.hasAttribute("disabled")) return;
+            const items = enabledMenuItems(event.currentTarget);
+            const index = items.indexOf(item);
+            if (index >= 0) activateMenuItem(event.currentTarget, index);
+          }}
+        >
+          {children}
+        </div>
+      </DismissLayerContext>
     </PopoverPlacementContext>,
     portalRoot,
   );

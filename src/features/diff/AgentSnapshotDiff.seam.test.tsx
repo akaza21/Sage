@@ -117,7 +117,7 @@ describe("actual saved-edit card to shared Diff surface", () => {
         page={page}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
-        onOpenDiff={openDiff}
+        onOpenResource={openDiff}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
@@ -150,7 +150,7 @@ describe("actual saved-edit card to shared Diff surface", () => {
         page={{ ...page }}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
-        onOpenDiff={openDiff}
+        onOpenResource={openDiff}
       />,
     );
     expect(acpDesktop.getFileSnapshot).toHaveBeenCalledOnce();
@@ -379,7 +379,7 @@ describe("actual saved-edit card to shared Diff surface", () => {
         page={page}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
-        onOpenDiff={vi.fn()}
+        onOpenResource={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
@@ -406,7 +406,7 @@ describe("actual saved-edit card to shared Diff surface", () => {
           page={page}
           rootLabels={{ "root-a": "Root" }}
           countIncomplete={false}
-          onOpenDiff={(selected, diffRef) => {
+          onOpenResource={(selected, target, owner, diffRef) => {
             void openAgentArtifact({
               owner: ref,
               target: "diff",
@@ -450,7 +450,7 @@ describe("actual saved-edit card to shared Diff surface", () => {
       }),
     );
     expect(screen.queryByText("-old")).toBeNull();
-    expect(screen.getByRole("alert")).toHaveTextContent("current Chat session");
+    expect(screen.getByRole("alert")).toHaveTextContent("current chat session");
     expect(acpDesktop.getFileSnapshot).toHaveBeenCalledOnce();
   });
   it("adds a line comment only to the exact pinned Chat composer", async () => {
@@ -589,7 +589,7 @@ describe("actual saved-edit card to shared Diff surface", () => {
     expect(useWorkbenchStore.getState().tabs).toHaveLength(0);
     expect(acpDesktop.getFileSnapshot).not.toHaveBeenCalled();
   });
-  it("keeps legacy summary-only edits visible without promising a snapshot action", () => {
+  it("offers a working-tree Diff for legacy summary-only edits without a saved preview", () => {
     const page = snapshotPage();
     const item = page.turns[0].items[0];
     if (item.kind !== "fileChangeDiff") throw new Error("fixture");
@@ -606,11 +606,14 @@ describe("actual saved-edit card to shared Diff surface", () => {
         page={page}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
-        onOpenDiff={vi.fn()}
+        onOpenResource={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
     expect(screen.getByText("Saved edit")).toBeVisible();
-    expect(screen.queryByRole("button", { name: /Open diff/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Open diff/ })).toHaveAttribute(
+      "title",
+      "Open current working-tree changes against Git",
+    );
   });
 });

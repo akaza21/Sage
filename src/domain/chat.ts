@@ -33,6 +33,8 @@ export interface WorkbenchTab {
   openerTabId?: string;
   status?: SessionStatus;
   updatedAt?: number;
+  /** When the latest Turn finished; read marks compare against it. */
+  finishedAt?: number;
   resource?: ResourceRef;
   repository?: RepositoryRef;
   diffRef?: AgentDiffRef;
@@ -49,6 +51,12 @@ export interface ChatLifecycleRequest {
   projectId: string;
   chatId: string;
   currentLayout: ProjectLayoutRequest;
+}
+
+/** Permanently deletes an archived Chat; the attached layout is unchanged. */
+export interface ChatDeleteRequest {
+  projectId: string;
+  chatId: string;
 }
 
 export interface PinChatRequest {

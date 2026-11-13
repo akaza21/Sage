@@ -1,5 +1,6 @@
 import type { MouseEvent } from "react";
 
+import { SageMark } from "../ui/leanIconCore";
 import { Files, MessageSquare, Search } from "../ui/leanIcons";
 
 import { useWorkbenchStore, type SidebarView } from "../app/store";
@@ -51,9 +52,7 @@ export function EditorWelcome({ onOpenAgent }: { onOpenAgent: () => void }) {
 
   return (
     <section className="editor-welcome" aria-label="Editor welcome">
-      <div className="editor-welcome__mark" aria-hidden="true">
-        S
-      </div>
+      <SageMark className="editor-welcome__mark" />
       <div className="editor-welcome__actions">
         <button type="button" onClick={browseFiles}>
           <Files size={16} aria-hidden="true" />
@@ -68,7 +67,7 @@ export function EditorWelcome({ onOpenAgent }: { onOpenAgent: () => void }) {
           Open Agent
         </button>
       </div>
-      <p>Use Settings to tune how every File is displayed.</p>
+      <p>Use Settings to tune how every file is displayed.</p>
     </section>
   );
 }

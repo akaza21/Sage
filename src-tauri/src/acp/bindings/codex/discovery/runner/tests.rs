@@ -1,6 +1,6 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use std::{
     collections::VecDeque,
-    thread,
     time::{Duration, Instant},
 };
 
@@ -22,7 +22,7 @@ struct ScriptTransport {
     cleanup: Result<u64, CodexDiscoveryRunError>,
     read_timeouts: Vec<Duration>,
     cleanup_end: Option<Instant>,
-    silent_after_write: Option<usize>,
+    now: Instant,
 }
 
 impl ScriptTransport {
@@ -31,8 +31,8 @@ impl ScriptTransport {
             reads: VecDeque::from([
                 Ok(Some(frame(json!({"id":1,"result":initialize_result()})))),
                 Ok(Some(frame(json!({"id":2,"result":{
-                    "account":{"type":"chatgpt","email":"secret@example.test","planType":"plus"},
-                    "requiresOpenaiAuth":false
+                    "account":{"type":"chatgpt","email":"secret@example.test","planType":"plus","workspaceName":null},
+                    "requiresOpenaiAuth":false,"workspaceRouting":null
                 }})))),
                 Ok(Some(frame(json!({"id":3,"result":{
                     "data":[model("gpt-a", "GPT A", true)],"nextCursor":null
@@ -46,12 +46,16 @@ impl ScriptTransport {
             cleanup: Ok(71),
             read_timeouts: Vec::new(),
             cleanup_end: None,
-            silent_after_write: None,
+            now: Instant::now(),
         }
     }
 }
 
 impl DiscoveryTransport for ScriptTransport {
+    fn now(&self) -> Instant {
+        self.now
+    }
+
     fn write(&mut self, frame: &OutboundFrame) -> FrameWriteOutcome {
         self.writes
             .push(serde_json::from_slice(frame.payload()).unwrap());
@@ -64,13 +68,10 @@ impl DiscoveryTransport for ScriptTransport {
 
     fn read_frame(&mut self, timeout: Duration) -> Result<Option<Frame>, CodexDiscoveryRunError> {
         self.read_timeouts.push(timeout);
-        if self.silent_after_write == Some(self.writes.len()) {
-            thread::sleep(timeout);
-            return Err(CodexDiscoveryRunError::Timeout);
-        }
-        self.reads
-            .pop_front()
-            .unwrap_or(Err(CodexDiscoveryRunError::Timeout))
+        self.reads.pop_front().unwrap_or_else(|| {
+            self.now += timeout;
+            Err(CodexDiscoveryRunError::Timeout)
+        })
     }
 
     fn revalidate(&self, checkpoint: RevalidationCheckpoint) -> Result<(), CodexDiscoveryRunError> {
@@ -113,7 +114,7 @@ fn success_is_returned_only_after_stdin_close_and_matching_zero_process_proof() 
 }
 
 #[test]
-fn codex_0146_notification_between_initialize_and_account_response_is_ignored() {
+fn pinned_codex_notification_between_initialize_and_account_response_is_ignored() {
     let mut protocol = protocol();
     let mut transport = ScriptTransport::happy();
     transport.reads.insert(
@@ -158,7 +159,7 @@ fn recognized_codex_notifications_are_skipped_before_the_model_response() {
 }
 
 #[test]
-fn codex_0146_model_response_before_account_response_is_correlated_by_id() {
+fn pinned_codex_model_response_before_account_response_is_correlated_by_id() {
     let mut protocol = protocol();
     let mut transport = ScriptTransport::happy();
     transport.reads.swap(1, 2);
@@ -170,10 +171,56 @@ fn codex_0146_model_response_before_account_response_is_correlated_by_id() {
 }
 
 #[test]
-fn four_recognized_notifications_before_a_response_fails_closed() {
+fn a_config_warning_and_unknown_notifications_during_discovery_are_skipped() {
     let mut protocol = protocol();
     let mut transport = ScriptTransport::happy();
-    for index in 0..4 {
+    transport.reads.insert(
+        1,
+        Ok(Some(frame(json!({
+            "method": "configWarning",
+            "params": {"summary": "unknown key", "details": null}
+        })))),
+    );
+    transport.reads.insert(
+        2,
+        Ok(Some(frame(json!({"method": "future/event", "params": {}})))),
+    );
+    transport
+        .reads
+        .insert(3, Ok(Some(frame(json!({"method": "future/bare"})))));
+
+    let content = run_discovery_protocol(&mut protocol, &mut transport, 71, deadline()).unwrap();
+
+    assert_eq!(content.models[0].id.as_str(), "gpt-a");
+    assert_eq!(transport.terminated, Some(false));
+}
+
+#[test]
+fn a_server_request_during_discovery_fails_closed() {
+    let mut protocol = protocol();
+    let mut transport = ScriptTransport::happy();
+    transport.reads.insert(
+        1,
+        Ok(Some(frame(json!({
+            "id": 900,
+            "method": "item/commandExecution/requestApproval",
+            "params": {}
+        })))),
+    );
+
+    assert_eq!(
+        run_discovery_protocol(&mut protocol, &mut transport, 71, deadline()),
+        Err(CodexDiscoveryRunError::Protocol)
+    );
+    assert!(transport.closed);
+    assert_eq!(transport.terminated, Some(true));
+}
+
+#[test]
+fn sixteen_notifications_before_a_response_fails_closed() {
+    let mut protocol = protocol();
+    let mut transport = ScriptTransport::happy();
+    for index in 0..16 {
         transport.reads.insert(
             0,
             Ok(Some(frame(json!({
@@ -216,34 +263,38 @@ fn every_transport_protocol_eof_timeout_and_drift_failure_tears_down() {
     }
 
     let mut protocol = protocol();
-    let mut unknown = ScriptTransport::happy();
-    unknown.reads[0] = Ok(Some(frame(json!({"method":"future/event","params":{}}))));
+    let mut malformed = ScriptTransport::happy();
+    malformed.reads[0] = Ok(Some(frame(
+        json!({"method":"future/event","params":"text"}),
+    )));
     assert_eq!(
-        run_discovery_protocol(&mut protocol, &mut unknown, 71, deadline()),
+        run_discovery_protocol(&mut protocol, &mut malformed, 71, deadline()),
         Err(CodexDiscoveryRunError::Protocol)
     );
-    assert!(unknown.closed);
-    assert_eq!(unknown.terminated, Some(true));
+    assert!(malformed.closed);
+    assert_eq!(malformed.terminated, Some(true));
 }
 
 #[test]
 fn a_model_list_that_never_answers_expires_its_read_budget_and_tears_down() {
-    let deadline = CodexDiscoveryDeadline::from_budgets(
-        Instant::now(),
-        Duration::from_millis(20),
-        Duration::from_millis(20),
-    )
-    .unwrap();
+    let admitted = Instant::now();
+    let budget = Duration::from_millis(20);
+    let deadline =
+        CodexDiscoveryDeadline::from_budgets(admitted, budget, Duration::from_millis(20)).unwrap();
     let mut protocol = protocol();
     let mut transport = ScriptTransport::happy();
-    transport.silent_after_write = Some(4);
-    let started = Instant::now();
+    transport.now = admitted;
+    transport.reads.pop_back(); // initialize and account answer; model/list never does.
 
     assert_eq!(
         run_discovery_protocol(&mut protocol, &mut transport, 71, deadline),
         Err(CodexDiscoveryRunError::Timeout)
     );
-    assert!(started.elapsed() < Duration::from_millis(100));
+    assert_eq!(transport.read_timeouts, vec![budget; 3]);
+    assert_eq!(transport.now, deadline.operation_end());
+    assert_eq!(transport.writes.len(), 4);
+    assert_eq!(transport.writes[3]["method"], "model/list");
+    assert_eq!(transport.cleanup_end, Some(deadline.cleanup_end()));
     assert!(transport.closed);
     assert_eq!(transport.terminated, Some(true));
 }
@@ -349,8 +400,8 @@ fn frame(value: Value) -> Frame {
 
 fn initialize_result() -> Value {
     json!({
-        "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) terminal (sage; 0.1.0)",
-        "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+        "userAgent":user_agent("sage", "terminal"),
+        "codexHome":MANAGED_CODEX_HOME,
         "platformFamily":"windows",
         "platformOs":"windows"
     })
@@ -365,6 +416,6 @@ fn model(id: &str, name: &str, is_default: bool) -> Value {
         }],
         "defaultReasoningEffort":"medium","inputModalities":["text"],
         "supportsPersonality":false,"additionalSpeedTiers":[],"serviceTiers":[],
-        "defaultServiceTier":null,"isDefault":is_default
+        "defaultServiceTier":null,"modelSpecialty":null,"multiAgentVersion":null,"availableAccessPrograms":null,"isDefault":is_default
     })
 }

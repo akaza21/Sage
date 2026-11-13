@@ -7,9 +7,27 @@ import { AcpChatPresentation } from "./AcpChatPresentation";
 import { TurnActivityItem } from "./TurnActivityItem";
 import { page, textItem } from "./acpProjection.fixture";
 import { parityTool } from "./activityParity.fixture";
-import { CompactToolItem } from "./CompactToolItem";
+
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
-import { ToolActivityRollup } from "./ToolActivityRollupView";
+import { ToolItem } from "./ToolItem";
+import { PrimaryActivities } from "./PrimaryActivities";
+import type { ComponentProps } from "react";
+import type { ToolRollup } from "./toolActivityRollup";
+function ToolActivityRollup({
+  rollup,
+  ...props
+}: Pick<
+  ComponentProps<typeof PrimaryActivities>,
+  "interactive" | "onOpenResource"
+> & { rollup: ToolRollup }) {
+  return (
+    <PrimaryActivities
+      {...props}
+      items={rollup.items}
+      renderItem={() => null}
+    />
+  );
+}
 
 afterEach(cleanup);
 
@@ -19,23 +37,19 @@ it("removes dead partial chrome and reveals rollup chevrons only on interaction"
     "src/features/chat/acp/acp-activity-details.css",
     "utf8",
   );
-  const polishCss = await readFile(
-    "src/features/chat/chat-transcript-polish.css",
-    "utf8",
-  );
   expect(css).not.toContain(".acp-message__partial");
   expect(detailCss).toMatch(
     /\.acp-tool-rollup__chevron\s*\{[^}]*opacity:\s*0/s,
   );
-  expect(polishCss).toMatch(
-    /\.chat-transcript-work__groups \.acp-tool-rollup__chevron\s*\{[^}]*opacity:\s*0/s,
+  expect(detailCss).toMatch(
+    /\.acp-tool-rollup > summary:focus-visible[^}]*opacity:\s*1/s,
   );
-  expect(polishCss).toMatch(
+  expect(detailCss).toMatch(
     /\.acp-tool-rollup\[open\]\s*> summary\s+\.acp-tool-rollup__chevron/,
   );
 });
 
-it("shows no rows under a collapsed Worked and reveals its groups collapsed", () => {
+it("shows no rows under a collapsed Worked and reveals its groups collapsed", async () => {
   // Codex s2/f0011 (collapsed: answer only) and f0012-f0015 (groups closed).
   const projection = page("completed");
   projection.turns[0].items = [
@@ -69,7 +83,7 @@ it("shows no rows under a collapsed Worked and reveals its groups collapsed", ()
   const read = container.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
   expect(read).not.toHaveAttribute("open");
   expect(screen.queryByText("fixture output")).toBeNull();
-  expect(screen.getByText("Intro prose")).toBeVisible();
+  expect(await screen.findByText("Intro prose")).toBeVisible();
   // Prose streamed before the tool sits above its row (s2/f0015), and the
   // final answer stays after Worked.
   expect(
@@ -77,7 +91,7 @@ it("shows no rows under a collapsed Worked and reveals its groups collapsed", ()
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   expect(
-    read.compareDocumentPosition(screen.getByText("Normalized answer")) &
+    read.compareDocumentPosition(await screen.findByText("Normalized answer")) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   read.open = true;
@@ -266,7 +280,7 @@ it.each([
   ["interrupted", undefined, "Interrupted"],
 ] as const)(
   "places the %s notice after the stopped answer, never above the prompt",
-  (state, reason, label) => {
+  async (state, reason, label) => {
     const projection = page(state, reason);
     projection.turns[0].items = [
       {
@@ -289,7 +303,7 @@ it.each([
     );
     const notice = screen.getByRole("status", { name: label });
     expect(screen.queryByText("Partial answer retained")).toBeNull();
-    const answer = screen.getByText("Normalized answer");
+    const answer = await screen.findByText("Normalized answer");
     expect(
       answer.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -438,7 +452,7 @@ it.each(["completed", "failed"] as const)(
   "puts the %s tool outcome after output in the card footer",
   (state) => {
     const { container } = render(
-      <CompactToolItem item={parityTool("execute", 1, state)} />,
+      <ToolItem compact item={parityTool("execute", 1, state)} />,
     );
     const frame = container.querySelector(".acp-tool-command-frame")!;
     expect(frame.lastElementChild).toHaveAttribute("role", "status");

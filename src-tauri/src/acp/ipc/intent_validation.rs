@@ -1,7 +1,7 @@
 use crate::acp::{
     contract::{
         EntityRevision, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageAgentSessionId,
-        SageChatId, SageProjectId, SageTurnId,
+        SageChatId, SageProjectId, SageTurnId, admits_projection,
     },
     lifecycle::TurnState,
 };
@@ -14,6 +14,9 @@ pub struct IntentSnapshot {
     pub project_generation: ProjectGeneration,
     pub chat_id: SageChatId,
     pub projection_revision: ProjectionRevision,
+    /// Projection revision of the chat's latest send-relevant change. Views
+    /// at or after it are still current; later changes are session-neutral.
+    pub intent_revision: ProjectionRevision,
     pub session_id: Option<SageAgentSessionId>,
     pub runtime_epoch: Option<RuntimeEpoch>,
     pub turn_id: Option<SageTurnId>,
@@ -61,7 +64,11 @@ pub fn validate_base_intent(
     if chat_id != &snapshot.chat_id {
         return Err(IntentError::ForeignChat);
     }
-    if expected_projection_revision != snapshot.projection_revision {
+    if !admits_projection(
+        snapshot.intent_revision,
+        snapshot.projection_revision,
+        expected_projection_revision,
+    ) {
         return Err(IntentError::StaleProjectionRevision);
     }
     Ok(())

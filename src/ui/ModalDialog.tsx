@@ -1,5 +1,13 @@
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
+import { DismissLayerContext, useDismissLayer } from "./dismissLayer";
+import { useNativePageLayer } from "./nativePageLayers";
 
 const FOCUSABLE_SELECTOR = [
   'a[href]:not([tabindex="-1"])',
@@ -26,35 +34,62 @@ export function ModalDialog({
   children,
   className,
   labelledBy,
+  describedBy,
+  initialFocusRef,
+  restoreFocus = false,
   onDismiss,
 }: {
   children: ReactNode;
   className?: string;
   labelledBy: string;
+  describedBy?: string;
+  initialFocusRef?: RefObject<HTMLElement | null>;
+  /**
+   * Puts the focus back on what had it when the dialog opened. Off by
+   * default because most dialogs choose where the focus goes when they close
+   * (their trigger, the editor they opened, the chat they picked); turn it on
+   * when nothing else does.
+   */
+  restoreFocus?: boolean;
   onDismiss: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const previousFocusRef = useRef(document.activeElement);
+  useNativePageLayer(dialogRef, { coverage: "window" });
+  // A modal keeps presses on it from dismissing the layers it opened over.
+  const { layer, onKeyDown: layerKeyDown } = useDismissLayer(true, {
+    inside: [dialogRef],
+    onEscape: onDismiss,
+    modal: true,
+  });
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
+    const previousFocus = previousFocusRef.current;
     if (typeof dialog.showModal === "function") {
       if (!dialog.open) dialog.showModal();
     } else {
       dialog.setAttribute("open", "");
     }
+    initialFocusRef?.current?.focus();
     return () => {
       if (typeof dialog.close === "function" && dialog.open) dialog.close();
       else dialog.removeAttribute("open");
+      if (
+        restoreFocus &&
+        previousFocus instanceof HTMLElement &&
+        previousFocus.isConnected
+      ) {
+        previousFocus.focus();
+      }
     };
-  }, []);
+  }, [initialFocusRef, restoreFocus]);
 
   const containFocus = (event: KeyboardEvent<HTMLDialogElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onDismiss();
-      return;
-    }
+    layerKeyDown(event);
+    event.stopPropagation();
+    if (event.key === "Escape") return;
     if (event.key !== "Tab") return;
 
     const focusable = focusableElements(event.currentTarget);
@@ -83,13 +118,14 @@ export function ModalDialog({
       className={["dirty-dialog", className].filter(Boolean).join(" ")}
       aria-modal="true"
       aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
       onCancel={(event) => {
         event.preventDefault();
         onDismiss();
       }}
       onKeyDown={containFocus}
     >
-      {children}
+      <DismissLayerContext value={layer}>{children}</DismissLayerContext>
     </dialog>,
     document.body,
   );

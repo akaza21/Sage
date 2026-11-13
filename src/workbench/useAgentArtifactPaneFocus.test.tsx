@@ -1,10 +1,87 @@
-import { useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
+import { BrowserNavigationControls } from "../features/browser/BrowserNavigationControls";
+import { createCodeMirrorEditorRuntime } from "../features/files/CodeMirrorEditorRuntime";
 
 afterEach(cleanup);
+
+function BrowserResourceFixture({
+  overlay,
+  onExpandedChange,
+}: {
+  overlay: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+}) {
+  const paneRef = useRef<HTMLElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const addressField = useRef<HTMLInputElement>(null);
+  const [expanded, setExpanded] = useState(true);
+  const onKeyDown = useAgentArtifactPaneFocus({
+    expanded,
+    overlay,
+    paneRef,
+    triggerRef,
+    onExpandedChange: (next) => {
+      setExpanded(next);
+      onExpandedChange(next);
+    },
+  });
+  const noop = () => undefined;
+  return expanded ? (
+    <aside ref={paneRef} tabIndex={-1} onKeyDown={onKeyDown}>
+      <BrowserNavigationControls
+        navigation={null}
+        page={null}
+        address=""
+        addressField={addressField}
+        onAddressChange={noop}
+        onNavigate={noop}
+        onControl={noop}
+        onError={noop}
+        onFind={noop}
+        onPrint={noop}
+        onScreenshot={noop}
+        onZoom={noop}
+        onZoomReset={noop}
+        deviceOpen={false}
+        onDevice={noop}
+        onDownloads={noop}
+        onHistory={noop}
+        onSettings={noop}
+        onCopy={noop}
+        onExternal={noop}
+        clearDataControl={null}
+      />
+    </aside>
+  ) : null;
+}
+
+it.each([false, true])(
+  "closes the real browser More menu before the resource pane (overlay=%s)",
+  (overlay) => {
+    const onExpandedChange = vi.fn();
+    render(
+      <BrowserResourceFixture
+        overlay={overlay}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "More options" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole("menu", { name: "Browser menu" }), {
+      key: "Escape",
+    });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(trigger).toHaveFocus();
+    expect(onExpandedChange).not.toHaveBeenCalled();
+    fireEvent.keyDown(trigger, { key: "Escape" });
+    expect(onExpandedChange).toHaveBeenCalledOnce();
+    expect(onExpandedChange).toHaveBeenCalledWith(false);
+  },
+);
 
 it("focuses resources when an expanded overlay is initially restored", () => {
   render(<ResourceFocusFixture overlay />);
@@ -38,6 +115,13 @@ function ResourceFocusFixture({
       {expanded ? (
         <aside ref={paneRef} tabIndex={-1} onKeyDown={onKeyDown}>
           <button>First resource control</button>
+          <button
+            onKeyDown={(event) => {
+              if (event.key === "Escape") event.preventDefault();
+            }}
+          >
+            Nested layer
+          </button>
           <iframe title="Preview" />
         </aside>
       ) : null}
@@ -52,6 +136,42 @@ it("does not steal composer focus when inline resources become an overlay", () =
   view.rerender(<ResourceFocusFixture overlay />);
   expect(composer).toHaveFocus();
 });
+
+it("restores an automatically collapsed pane when inline space returns", () => {
+  function ResizablePane({ overlay }: { overlay: boolean }) {
+    const [expanded, setExpanded] = useState(true);
+    return (
+      <ResourceFocusFixture
+        expanded={expanded}
+        overlay={overlay}
+        onExpandedChange={setExpanded}
+      />
+    );
+  }
+  const view = render(<ResizablePane overlay={false} />);
+  const composer = screen.getByRole("textbox", { name: "Composer" });
+  composer.focus();
+  view.rerender(<ResizablePane overlay />);
+  expect(screen.queryByRole("complementary")).toBeNull();
+  view.rerender(<ResizablePane overlay={false} />);
+  expect(screen.getByRole("complementary")).toBeVisible();
+  expect(composer).toHaveFocus();
+});
+
+it.each([false, true])(
+  "Escape in the browser address stays in the address control (overlay=%s)",
+  (overlay) => {
+    render(
+      <BrowserResourceFixture overlay={overlay} onExpandedChange={() => {}} />,
+    );
+    const address = screen.getByRole("textbox", { name: "Address or search" });
+    address.focus();
+    fireEvent.change(address, { target: { value: "draft" } });
+    fireEvent.keyDown(address, { key: "Escape" });
+    expect(screen.getByRole("complementary")).toBeVisible();
+    expect(address).not.toHaveFocus();
+  },
+);
 
 it("moves pane focus on resize only when a resource control was focused", () => {
   const view = render(<ResourceFocusFixture overlay={false} />);
@@ -88,7 +208,7 @@ it("keeps forward and reverse Tab inside the overlay including Preview", () => {
 });
 
 it.each([false, true])(
-  "only stops Escape propagation for overlay=%s",
+  "consumes Escape after closing the pane for overlay=%s",
   (overlay) => {
     const onParentKeyDown = vi.fn();
     const onExpandedChange = vi.fn();
@@ -101,6 +221,80 @@ it.each([false, true])(
     );
     fireEvent.keyDown(screen.getByRole("complementary"), { key: "Escape" });
     expect(onExpandedChange).toHaveBeenCalledWith(false);
-    expect(onParentKeyDown).toHaveBeenCalledTimes(overlay ? 0 : 1);
+    expect(onParentKeyDown).not.toHaveBeenCalled();
   },
 );
+
+it.each([false, true])(
+  "leaves the pane open when an inner layer consumes Escape (overlay=%s)",
+  (overlay) => {
+    const onExpandedChange = vi.fn();
+    render(
+      <ResourceFocusFixture
+        overlay={overlay}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole("button", { name: "Nested layer" }), {
+      key: "Escape",
+    });
+    expect(onExpandedChange).not.toHaveBeenCalled();
+  },
+);
+
+function FileResourceFixture({ readOnly }: { readOnly: boolean }) {
+  const paneRef = useRef<HTMLElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(true);
+  const onKeyDown = useAgentArtifactPaneFocus({
+    expanded,
+    overlay: true,
+    paneRef,
+    triggerRef,
+    onExpandedChange: setExpanded,
+  });
+  useLayoutEffect(() => {
+    if (!expanded) return;
+    const runtime = createCodeMirrorEditorRuntime({
+      parent: editorRef.current!,
+      ariaLabel: "Edit notes.md",
+      path: "notes.md",
+      content: "hello",
+      disabled: readOnly,
+      maxContentLength: 1024,
+      onChange: () => undefined,
+    });
+    return runtime.destroy;
+  }, [expanded, readOnly]);
+  return (
+    <div>
+      <button ref={triggerRef}>Show files and preview</button>
+      {expanded ? (
+        <aside ref={paneRef} tabIndex={-1} onKeyDown={onKeyDown}>
+          <div ref={editorRef} />
+        </aside>
+      ) : null}
+    </div>
+  );
+}
+
+it("closes the overlay on Escape from a read-only File, not an editable one", () => {
+  const view = render(<FileResourceFixture readOnly />);
+  let editor = screen.getByRole("textbox", { name: "Edit notes.md" });
+  editor.focus();
+  expect(editor).toHaveFocus();
+  fireEvent.keyDown(editor, { key: "Escape" });
+  expect(screen.queryByRole("complementary")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Show files and preview" }),
+  ).toHaveFocus();
+  view.unmount();
+
+  render(<FileResourceFixture readOnly={false} />);
+  editor = screen.getByRole("textbox", { name: "Edit notes.md" });
+  editor.focus();
+  fireEvent.keyDown(editor, { key: "Escape" });
+  expect(screen.getByRole("complementary")).toBeVisible();
+  expect(editor).toHaveFocus();
+});

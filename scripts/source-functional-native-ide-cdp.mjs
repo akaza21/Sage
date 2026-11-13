@@ -9,14 +9,15 @@ const MAX_VALUE_DEPTH = 32;
 const PNG_SIGNATURE = Buffer.from("89504e470d0a1a0a", "hex");
 
 export class CdpError extends Error {
-  constructor(code) {
-    super(`journey-cdp-${code}`);
+  constructor(code, deadline, options) {
+    super(`journey-cdp-${code}`, options);
     this.name = "CdpError";
+    if (deadline !== undefined) this.deadline = deadline;
   }
 }
 
-function fail(code) {
-  return new CdpError(code);
+function fail(code, deadline) {
+  return new CdpError(code, deadline);
 }
 
 function exactKeys(value, keys) {
@@ -29,8 +30,8 @@ function exactKeys(value, keys) {
 }
 
 function deadlineAt(deadline) {
-  if (!Number.isSafeInteger(deadline) || deadline <= Date.now())
-    throw fail("deadline");
+  if (!Number.isSafeInteger(deadline)) throw fail("deadline");
+  if (deadline <= Date.now()) throw fail("deadline", deadline);
   return deadline;
 }
 
@@ -271,7 +272,9 @@ export async function connectCdp({
   };
   const terminate = (error) => {
     if (terminal) return;
-    terminal = error;
+    // Only the in-flight operation receives its failure. Later operations
+    // fail because the connection is dead, not because their deadline fired.
+    terminal = new CdpError("terminated", undefined, { cause: error });
     if (pending) {
       const waiter = pending;
       pending = null;
@@ -351,7 +354,7 @@ export async function connectCdp({
 
   await new Promise((resolve, reject) => {
     const timer = timeoutAt(socketOpenDeadline, () => {
-      const error = fail("deadline");
+      const error = fail("deadline", socketOpenDeadline);
       terminate(error);
       reject(error);
     });
@@ -384,7 +387,7 @@ export async function connectCdp({
     requestCount += 1;
     return new Promise((resolve, reject) => {
       const timer = timeoutAt(operationDeadline, () =>
-        terminate(fail("deadline")),
+        terminate(fail("deadline", operationDeadline)),
       );
       pending = { id, timer, resolve, reject };
       maxInFlight = Math.max(maxInFlight, 1);

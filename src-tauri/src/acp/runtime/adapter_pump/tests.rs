@@ -1,3 +1,4 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use std::{collections::VecDeque, future::Future, pin::Pin, sync::Mutex};
 
 use crate::acp::{
@@ -9,7 +10,7 @@ use crate::acp::{
     },
     lifecycle::{ActivityLifecycle, DeliveryState, ServerRequestState},
     projection::ActivityRole,
-    runtime::ProjectionPublishError,
+    runtime::{ProjectionPublishError, TurnNotice},
 };
 
 use super::coalescer::{NormalizedFact, PendingIngress};
@@ -46,6 +47,13 @@ fn goal_active_response_first_mismatch_never_commits_the_provisional_turn() {
             match event { DurableAdapterEvent::Turn { state, .. } => Some(*state), _ => None }
         }).collect::<Vec<_>>();
         assert_eq!(states, [TurnState::Running, TurnState::Completed]);
+        let notices = shared.0.lock().unwrap().turn_notices.clone();
+        assert_eq!(
+            notices.last(),
+            Some(&TurnNotice::Possible),
+            "only the completion may admit a notice"
+        );
+        assert!(notices[..notices.len() - 1].iter().all(|notice| *notice == TurnNotice::None));
         assert!(shared.0.lock().unwrap().durable_batches.iter().flatten().any(|event| matches!(
             event,
             DurableAdapterEvent::Item { external_item_id, .. } if external_item_id.as_str() == "reply-1"
@@ -54,7 +62,8 @@ fn goal_active_response_first_mismatch_never_commits_the_provisional_turn() {
     });
 }
 
-fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, Shared, u64) {
+/// A Codex runtime whose session `thread-1` is ready for a prompt.
+fn ready_codex() -> CodexRuntime {
     let mut codex = CodexRuntime::fixture(Platform::WindowsX86_64);
     let init = codex.command(AdapterCommand::Initialize).unwrap();
     codex
@@ -63,8 +72,8 @@ fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, 
     let initialized = codex
         .ingest(
             &codex_frame(serde_json::json!({"id":1,"result":{
-                "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+                "userAgent":user_agent("sage", "unknown"),
+                "codexHome":MANAGED_CODEX_HOME,
                 "platformFamily":"windows","platformOs":"windows"
             }})),
             &Mapper,
@@ -90,6 +99,11 @@ fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, 
             &Mapper,
         )
         .unwrap();
+    codex
+}
+
+fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, Shared, u64) {
+    let mut codex = ready_codex();
     codex.enable_observed_goal_for_test();
     let prompt = codex
         .command(AdapterCommand::Prompt {
@@ -515,8 +529,10 @@ struct FakeState {
     resolved_request_ids: Vec<String>,
     permission_failure: Option<(ServerRequestState, PumpJournalError)>,
     log: Vec<&'static str>,
+    turn_notices: Vec<TurnNotice>,
     ingest_error: Option<AdapterRuntimeError>,
     refusal_detail: Option<RefusalDetail>,
+    turn_unnamed: bool,
 }
 
 #[derive(Clone)]
@@ -534,6 +550,10 @@ impl HarnessAdapter for FakeAdapter {
 
     fn refusal_detail(&self) -> Option<RefusalDetail> {
         self.shared.0.lock().unwrap().refusal_detail.clone()
+    }
+
+    fn defer_cancel(&mut self) -> bool {
+        self.shared.0.lock().unwrap().turn_unnamed
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -555,7 +575,8 @@ impl HarnessAdapter for FakeAdapter {
                     EgressToken::protocol_notification()
                 }
                 crate::acp::runtime::permissions::PermissionDecision::AllowOnce
-                | crate::acp::runtime::permissions::PermissionDecision::AllowAlways => {
+                | crate::acp::runtime::permissions::PermissionDecision::AllowAlways
+                | crate::acp::runtime::permissions::PermissionDecision::Answer(_) => {
                     EgressToken::permission_allow(request_id)
                 }
                 crate::acp::runtime::permissions::PermissionDecision::Deny => {
@@ -738,9 +759,20 @@ struct FakePublisher {
 impl ProjectionPublisher for FakePublisher {
     fn publish_committed(
         &self,
-        _: crate::acp::intent::ProjectionChangedV1,
+        event: crate::acp::intent::ProjectionChangedV1,
     ) -> Result<ProjectionPublishStatus, ProjectionPublishError> {
-        self.shared.0.lock().unwrap().log.push("publish");
+        self.publish_committed_with(event, TurnNotice::None)
+    }
+
+    fn publish_committed_with(
+        &self,
+        _: crate::acp::intent::ProjectionChangedV1,
+        turn_notice: TurnNotice,
+    ) -> Result<ProjectionPublishStatus, ProjectionPublishError> {
+        let mut state = self.shared.0.lock().unwrap();
+        state.log.push("publish");
+        state.turn_notices.push(turn_notice);
+        drop(state);
         self.outcomes
             .lock()
             .unwrap()
@@ -1408,6 +1440,28 @@ fn cancellation_requires_the_exact_live_turn_tuple() {
         QueueDisposition::Queued
     );
     assert_eq!(shared.0.lock().unwrap().commands, ["cancel"]);
+}
+
+#[test]
+fn a_cancel_for_a_turn_the_harness_has_not_named_is_held_by_the_adapter() {
+    let (mut pump, shared) = build_pump(Vec::new());
+    shared.0.lock().unwrap().turn_unnamed = true;
+    assert_eq!(
+        pump.queue_cancel_notification(
+            &session("one"),
+            RuntimeEpoch::new(1).unwrap(),
+            &turn("one"),
+            &message()
+        )
+        .unwrap(),
+        QueueDisposition::Deferred
+    );
+    assert!(shared.0.lock().unwrap().commands.is_empty());
+    let mut transport = CountingTransport::default();
+    assert_eq!(
+        pump.flush_one(&mut transport).unwrap(),
+        FlushDisposition::Idle
+    );
 }
 
 #[test]
@@ -2328,6 +2382,7 @@ fn unsupported() -> AdapterEvent {
 
 fn permission() -> NormalizedPayload {
     NormalizedPayload::PermissionRequest {
+        user_input: None,
         category: ToolCategory::Other,
         summary: SafeText::new("summary", "denied by policy").unwrap(),
         offered_option_kinds: None,
@@ -2396,5 +2451,165 @@ mod idle_egress_tests;
 #[path = "sign_in_tests.rs"]
 mod sign_in_tests;
 
+#[path = "steer_journal_tests.rs"]
+mod steer_journal_tests;
+
 #[path = "terminal_error_tests.rs"]
 mod terminal_error_tests;
+
+#[path = "undo_control_tests.rs"]
+mod undo_control_tests;
+
+fn question_pump(
+    auto_resolution_ms: Option<u64>,
+) -> (AdapterPump<FakeAdapter, FakeJournal, Mapper>, Shared) {
+    let request = serde_json::from_value(serde_json::json!({
+        "questions": [{"id": "q", "header": "Q", "question": "Which?"}],
+        "autoResolutionMs": auto_resolution_ms
+    }))
+    .unwrap();
+    let event = AdapterEvent::PermissionRequest {
+        turn_id: identity("turn-envelope"),
+        item_id: identity("external-request"),
+        external_request_id: ExternalId::new("permissionRequest", "external-request").unwrap(),
+        payload: NormalizedPayload::PermissionRequest {
+            category: ToolCategory::Other,
+            summary: SafeText::new("summary", "Answer the agent's questions").unwrap(),
+            offered_option_kinds: None,
+            reason: None,
+            user_input: Some(Box::new(request)),
+        },
+        request_payload_digest: [1; 32],
+    };
+    build_pump(vec![owned(vec![event], Vec::new())])
+}
+
+#[test]
+fn an_expired_question_declines_itself_exactly_like_a_cancel() {
+    runtime().block_on(async {
+        let (mut pump, shared) = question_pump(Some(1_000));
+        pump.push_stdout_chunk(b"{}\n", 20).await.unwrap();
+        assert_eq!(pump.next_auto_resolution_deadline_millis(), Some(1_020));
+        assert!(!pump.auto_resolve_due(1_019).await.unwrap());
+        assert!(shared.0.lock().unwrap().commands.is_empty());
+
+        assert!(pump.auto_resolve_due(1_020).await.unwrap());
+        assert_eq!(pump.next_auto_resolution_deadline_millis(), None);
+        let mut transport = ScriptTransport(VecDeque::from([FrameWriteOutcome::Complete]));
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Written
+        );
+        assert!(pump.settle_written_permission(1_021).await.unwrap());
+        let state = shared.0.lock().unwrap();
+        assert_eq!(
+            state.request_states,
+            [
+                ServerRequestState::DeclinePending,
+                ServerRequestState::DeclineCommitted,
+                ServerRequestState::ResponseQueued,
+                ServerRequestState::ResolvedDeclined
+            ]
+        );
+        assert_eq!(state.commands, ["permission"]);
+    });
+}
+
+#[test]
+fn a_question_the_user_answered_first_keeps_the_answer_when_its_window_passes() {
+    runtime().block_on(async {
+        let (mut pump, shared) = question_pump(Some(1_000));
+        pump.push_stdout_chunk(b"{}\n", 20).await.unwrap();
+        let request_id = permission_request_id(&shared);
+        // The service committed the user's answer before the worker saw it,
+        // so the store refuses the late decline.
+        shared.0.lock().unwrap().permission_failure = Some((
+            ServerRequestState::DeclinePending,
+            PumpJournalError::Rejected,
+        ));
+        assert!(!pump.auto_resolve_due(1_020).await.unwrap());
+        assert!(!pump.teardown_required());
+        assert!(shared.0.lock().unwrap().commands.is_empty());
+
+        let answers = serde_json::from_value(serde_json::json!([
+            {"questionId": "q", "text": "this one"}
+        ]))
+        .unwrap();
+        pump.resolve_permission(
+            &request_id,
+            crate::acp::runtime::permissions::PermissionDecision::Answer(answers),
+            1_021,
+        )
+        .await
+        .unwrap();
+        assert!(!pump.auto_resolve_due(5_000).await.unwrap());
+        let state = shared.0.lock().unwrap();
+        assert_eq!(
+            state.request_states,
+            [
+                ServerRequestState::AllowCommitted,
+                ServerRequestState::ResponseQueued
+            ]
+        );
+        assert_eq!(state.commands, ["permission"]);
+    });
+}
+
+#[test]
+fn approvals_and_questions_without_a_window_never_resolve_themselves() {
+    runtime().block_on(async {
+        for (mut pump, shared) in [permission_pump(), question_pump(None)] {
+            pump.push_stdout_chunk(b"{}\n", 20).await.unwrap();
+            assert_eq!(pump.next_auto_resolution_deadline_millis(), None);
+            assert!(!pump.auto_resolve_due(i64::MAX).await.unwrap());
+            assert!(shared.0.lock().unwrap().request_states.is_empty());
+        }
+    });
+}
+
+#[path = "codex_server_request_tests.rs"]
+mod codex_server_request_tests;
+
+#[cfg(feature = "acp-fixture")]
+#[path = "codex_user_input_journey_tests.rs"]
+mod codex_user_input_journey_tests;
+
+#[path = "session_event_tests.rs"]
+mod session_event_tests;
+
+#[test]
+fn a_prompt_frame_takes_its_reserve_while_the_data_lane_is_full() {
+    let (mut pump, shared) = pump_with_queue(Vec::new(), super::egress::queue().unwrap());
+    let frame = |bytes: usize, prompt: bool| {
+        let mut payload = b"{\"x\":\"".to_vec();
+        payload.resize(bytes - 2, b'a');
+        payload.extend_from_slice(b"\"}");
+        let frame = if prompt {
+            OutboundFrame::new_prompt(payload)
+        } else {
+            OutboundFrame::new(payload)
+        };
+        AdapterEgress::new(frame.unwrap(), EgressToken::request(1))
+    };
+    let largest = LIMITS.wire.frame_bytes as usize;
+    let mut queued = 0;
+    while pump.enqueue(frame(largest, false)).is_ok() {
+        queued += 1;
+    }
+    assert!(queued >= 1);
+    assert!(matches!(
+        pump.enqueue(frame(largest, false)),
+        Err(AdapterPumpError::Backpressure)
+    ));
+
+    let prompt = crate::acp::limits::PROMPT_FRAME_BYTES;
+    assert_eq!(
+        pump.enqueue(frame(prompt, true)).unwrap(),
+        QueueDisposition::Queued
+    );
+    assert!(!pump.teardown_required());
+    assert_eq!(
+        shared.0.lock().unwrap().resolutions.last(),
+        Some(&EgressResolution::Queued)
+    );
+}

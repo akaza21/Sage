@@ -2,7 +2,16 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 
 import { browserOperationFixture } from "../../../domain/browserOperation.fixture";
-import { BrowserOperationItem } from "./BrowserOperationItem";
+import { BrowserOperations } from "./BrowserOperations";
+import type { BrowserOperationProjection } from "../../../domain/browserOperation";
+
+function BrowserOperationItem({
+  operation,
+}: {
+  operation: BrowserOperationProjection;
+}) {
+  return <BrowserOperations operations={[operation]} collapsed={0} />;
+}
 
 afterEach(cleanup);
 
@@ -200,3 +209,22 @@ it.each([
     ).toBeInTheDocument();
   },
 );
+
+it("shows a developer-mode call as page use with its CDP method in the detail", () => {
+  render(
+    <BrowserOperationItem
+      operation={{
+        ...browserOperationFixture,
+        operation: "cdp",
+        summary: "CDP Runtime.evaluate",
+        resultSummary: "CDP command completed",
+      }}
+    />,
+  );
+  expect(
+    screen.getByRole("group", {
+      name: "Used page on example.com · Completed",
+    }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("CDP Runtime.evaluate")).toBeInTheDocument();
+});

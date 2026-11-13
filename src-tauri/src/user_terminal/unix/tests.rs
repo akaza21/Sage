@@ -1,13 +1,9 @@
 use std::{
-    ffi::OsString,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
-use super::{
-    shell::{environment_from, listed_shell},
-    *,
-};
+use super::{shell::listed_shell, *};
 use crate::user_terminal::INPUT_BYTES;
 
 const DEADLINE: Duration = Duration::from_secs(10);
@@ -77,7 +73,9 @@ fn alive(pid: libc::pid_t) -> bool {
 
 /// Starts a background job that prints its pid, and returns that pid.
 fn start_job(process: &mut UnixPtyProcess, output: &TerminalOutputSink, job: &str) -> libc::pid_t {
-    let command = format!("{job} & printf 'job=%s.\\n' \"$!\"\n");
+    // `$!` ends the line: an interactive bash (macOS `/bin/sh`) would read
+    // `!"` as a history event, but never a `!` before a newline.
+    let command = format!("{job} & printf 'job=%s.\\n' $!\n");
     process.write(command.as_bytes()).unwrap();
     let text = wait_for(output, ".\r\n");
     let pid = text
@@ -99,18 +97,56 @@ fn assert_ended(pid: libc::pid_t) {
     }
 }
 
+/// Set in the copy of the test binary that the PTY environment test starts.
+const HOST_SET_MARKER: &str = "SAGE_PTY_TEST_HOST_ENVIRONMENT";
+const RUNTIME_DIR: &str = "/run/user/4242";
+
 #[test]
 fn runs_a_login_shell_in_the_project_root_with_an_allowlisted_environment() {
+    if std::env::var_os(HOST_SET_MARKER).is_none() {
+        // Setting variables in this multithreaded process would race other
+        // tests, so the test reruns itself alone in a child process whose
+        // host environment has a session variable and an unlisted secret.
+        let module = module_path!()
+            .split_once("::")
+            .map_or(module_path!(), |(_, path)| path);
+        let name = format!(
+            "{module}::runs_a_login_shell_in_the_project_root_with_an_allowlisted_environment"
+        );
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([name.as_str(), "--exact", "--test-threads=1", "--nocapture"])
+            .env(HOST_SET_MARKER, "1")
+            .env("XDG_RUNTIME_DIR", RUNTIME_DIR)
+            .env("AWS_SECRET_ACCESS_KEY", "not-for-the-shell")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&child.stdout);
+        assert!(
+            child.status.success() && stdout.contains("1 passed"),
+            "{stdout}\n{}",
+            String::from_utf8_lossy(&child.stderr)
+        );
+        return;
+    }
     let root = root();
     let (mut process, output) = start(&root);
     // The format string keeps the echoed command from matching the marker.
     process
-        .write(b"printf 'cwd=%s;term=%s;cargo=[%s]\\n' \"$PWD\" \"$TERM\" \"$CARGO\"\n")
+        .write(
+            b"printf 'cwd=%s;term=%s;cargo=[%s];runtime=[%s];secret=[%s];marker=[%s]\\n' \
+              \"$PWD\" \"$TERM\" \"$CARGO\" \"$XDG_RUNTIME_DIR\" \"$AWS_SECRET_ACCESS_KEY\" \
+              \"$SAGE_PTY_TEST_HOST_ENVIRONMENT\"\n",
+        )
         .unwrap();
     let text = wait_for(&output, "cwd=/");
+    let runtime = if cfg!(target_os = "linux") {
+        RUNTIME_DIR
+    } else {
+        ""
+    };
     assert!(
         text.contains(&format!(
-            "cwd={};term=xterm-256color;cargo=[]",
+            "cwd={};term=xterm-256color;cargo=[];runtime=[{runtime}];secret=[];marker=[]",
             root.display()
         )),
         "{text:?}"
@@ -241,33 +277,4 @@ fn accepts_only_shells_listed_in_etc_shells() {
     assert!(!listed_shell("bin/sh\n", Path::new("bin/sh"), &sh));
 }
 
-#[test]
-fn environment_is_an_allowlist_with_a_utf8_default() {
-    let host = |name: &str| match name {
-        "HOME" => Some(OsString::from("/home/sage")),
-        "SSH_AUTH_SOCK" => Some(OsString::from("/tmp/agent.sock")),
-        "CARGO" => Some(OsString::from("/opt/cargo")),
-        _ => None,
-    };
-    let entries = environment_from(Path::new("/bin/zsh"), host).unwrap();
-    let names = entries.iter().map(|(name, _)| *name).collect::<Vec<_>>();
-    assert_eq!(
-        names,
-        [
-            "TERM",
-            "COLORTERM",
-            "SHELL",
-            "HOME",
-            "SSH_AUTH_SOCK",
-            "LC_CTYPE"
-        ]
-    );
-    assert_eq!(entries[2].1, "/bin/zsh");
-
-    let with_locale = |name: &str| (name == "LANG").then(|| OsString::from("en_GB.UTF-8"));
-    let entries = environment_from(Path::new("/bin/zsh"), with_locale).unwrap();
-    assert!(!entries.iter().any(|(name, _)| *name == "LC_CTYPE"));
-
-    let oversized = |name: &str| (name == "PATH").then(|| OsString::from("/".repeat(9_000)));
-    assert!(environment_from(Path::new("/bin/zsh"), oversized).is_err());
-}
+mod environment;

@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../app/store";
+import { sameResource } from "../domain/resourceIdentity";
+import { requestEditorFocus } from "../features/files/editorFocusRequest";
 import { ModalDialog } from "../ui/ModalDialog";
 
 type PendingCloseAction = "discard" | "save";
@@ -8,15 +10,9 @@ type PendingCloseAction = "discard" | "save";
 function DirtyTabConfirmation({
   tabId,
   title,
-  cancel,
-  discard,
-  save,
 }: {
   tabId: string;
   title: string;
-  cancel: () => void;
-  discard: () => Promise<void>;
-  save: () => Promise<void>;
 }) {
   const [pendingAction, setPendingAction] = useState<PendingCloseAction | null>(
     null,
@@ -24,30 +20,40 @@ function DirtyTabConfirmation({
   const pendingActionRef = useRef<PendingCloseAction | null>(null);
   const pending = pendingAction !== null;
 
-  const dismiss = () => {
-    if (
-      pendingActionRef.current ||
-      useWorkbenchStore.getState().pendingCloseTabId !== tabId
-    ) {
-      return;
-    }
-    cancel();
+  const activeCommands = () => {
+    const state = useWorkbenchStore.getState();
+    return !pendingActionRef.current && state.pendingCloseTabId === tabId
+      ? state
+      : null;
   };
-
-  const run = async (
-    action: PendingCloseAction,
-    operation: () => Promise<void>,
-  ) => {
+  const dismiss = () => {
+    const state = activeCommands();
+    if (!state) return;
+    state.cancelCloseTab();
+    // Cancel goes back to typing in the active File, whether the close began
+    // in its editor (Ctrl+W) or on a tab's close button.
+    // Only an editor that is open can take the request, so a stale one never
+    // steals the focus later.
+    const editor = state.activeEditor;
+    const active = state.tabs.find((tab) => tab.id === state.activeTabId);
     if (
-      pendingActionRef.current ||
-      useWorkbenchStore.getState().pendingCloseTabId !== tabId
+      active?.kind === "file" &&
+      active.resource &&
+      editor?.phase === "ready" &&
+      sameResource(editor.resource, active.resource)
     ) {
-      return;
+      requestEditorFocus(active.resource);
     }
+  };
+  const run = async (action: PendingCloseAction) => {
+    const commands = activeCommands();
+    if (!commands) return;
     pendingActionRef.current = action;
     setPendingAction(action);
     try {
-      await operation();
+      await (action === "save"
+        ? commands.saveAndCloseTab()
+        : commands.discardAndCloseTab());
     } finally {
       if (useWorkbenchStore.getState().pendingCloseTabId === tabId) {
         pendingActionRef.current = null;
@@ -60,6 +66,11 @@ function DirtyTabConfirmation({
     <ModalDialog
       className="dirty-dialog--editor"
       labelledBy="dirty-dialog-title"
+      // With no File to type in (a Diff or Settings tab is active), Cancel
+      // puts the focus back where the close began. The editor's own focus
+      // request runs after this restore, as React runs every effect cleanup
+      // before the next effects. After Save or Discard the tab is gone.
+      restoreFocus
       onDismiss={dismiss}
     >
       <h2 id="dirty-dialog-title">Save changes to {title}?</h2>
@@ -80,7 +91,7 @@ function DirtyTabConfirmation({
           className="button button--danger"
           type="button"
           disabled={pending}
-          onClick={() => void run("discard", discard)}
+          onClick={() => void run("discard")}
         >
           {pendingAction === "discard" ? "Discarding…" : "Discard"}
         </button>
@@ -88,7 +99,7 @@ function DirtyTabConfirmation({
           className="button button--primary"
           type="button"
           disabled={pending}
-          onClick={() => void run("save", save)}
+          onClick={() => void run("save")}
         >
           {pendingAction === "save" ? "Saving…" : "Save"}
         </button>
@@ -98,29 +109,15 @@ function DirtyTabConfirmation({
 }
 
 export function DirtyTabDialog() {
-  const pendingCloseTabId = useWorkbenchStore(
-    (state) => state.pendingCloseTabId,
+  const tab = useWorkbenchStore((state) =>
+    state.tabs.find((candidate) => candidate.id === state.pendingCloseTabId),
   );
-  const tabs = useWorkbenchStore((state) => state.tabs);
-  const cancelCloseTab = useWorkbenchStore((state) => state.cancelCloseTab);
-  const saveAndCloseTab = useWorkbenchStore((state) => state.saveAndCloseTab);
-  const discardAndCloseTab = useWorkbenchStore(
-    (state) => state.discardAndCloseTab,
-  );
-  const tab = tabs.find((candidate) => candidate.id === pendingCloseTabId);
 
   if (!tab) {
     return null;
   }
 
-  return (
-    <DirtyTabConfirmation
-      key={tab.id}
-      tabId={tab.id}
-      title={tab.title}
-      cancel={cancelCloseTab}
-      discard={discardAndCloseTab}
-      save={saveAndCloseTab}
-    />
-  );
+  return <DirtyTabConfirmation key={tab.id} tabId={tab.id} title={tab.title} />;
 }
+
+export default DirtyTabDialog;

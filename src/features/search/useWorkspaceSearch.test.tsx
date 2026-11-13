@@ -1,10 +1,16 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { pathGlobMatcher } from "../../domain/pathGlobMatcher";
 import { resetWorkspaceNotifyComposeForTests } from "../files/workspaceNotifyCompose";
 
 import type { WorkspaceSearchResponse } from "./workspaceSearchDomain";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
+import { loadWorkspaceSearchChecks } from "./workspaceSearchDesktop";
+
+// The panel preloads the Search checks on mount; load them once up front so
+// each Search settles within one act().
+beforeAll(() => loadWorkspaceSearchChecks());
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -276,5 +282,118 @@ describe("workspace Search state", () => {
       await Promise.resolve();
     });
     expect(search).not.toHaveBeenCalled();
+  });
+  describe("include and exclude patterns", () => {
+    async function sentFilters(include: string, exclude = "") {
+      const search = vi.fn().mockResolvedValue(response("needle"));
+      const { result } = renderHook(() =>
+        useWorkspaceSearch({
+          projectId: "project-a",
+          transitionEpoch: 4,
+          indexGeneration: 0,
+          gateway: { search },
+        }),
+      );
+      act(() => result.current.setQuery("needle"));
+      act(() => result.current.setIncludePatternText(include));
+      act(() => result.current.setExcludePatternText(exclude));
+      await act(async () => void (await result.current.submit()));
+      return { search, state: result.current.state };
+    }
+
+    async function sentPatterns(include: string) {
+      const { search } = await sentFilters(include);
+      expect(search).toHaveBeenCalledTimes(1);
+      return search.mock.calls[0][0].includePatterns as string[];
+    }
+
+    it.each([
+      ["*.ts", ["**/*.ts"]],
+      ["src", ["**/src", "**/src/**"]],
+      ["dist/", ["dist/**"]],
+      ["./src", ["src", "src/**"]],
+      ["./*.md", ["*.md"]],
+      ["src/**/*.ts", ["src/**/*.ts"]],
+      ["*.{ts,tsx}", ["**/*.ts", "**/*.tsx"]],
+      ["{src,lib}/*.ts, *.md", ["src/*.ts", "lib/*.ts", "**/*.md"]],
+      ["src, ./src/", ["**/src", "**/src/**", "src/**"]],
+    ])("sends %j as %j", async (field, expected) => {
+      expect(await sentPatterns(field)).toEqual(expected);
+    });
+
+    it.each([
+      ["*.ts", ["a.ts", "a/b/c.ts"], ["a.tsx", "a/b/c.js"]],
+      [
+        "src",
+        ["src", "src/a.ts", "x/src/deep/b.ts"],
+        ["srcs/a.ts", "a/src.ts"],
+      ],
+      [
+        "node_modules",
+        ["node_modules/p/index.js", "x/node_modules/p/index.js"],
+        ["x/node_modules_old/p.js"],
+      ],
+      ["dist/", ["dist/a.js", "dist/b/c.js"], ["x/dist/a.js", "distx/a.js"]],
+      ["./src", ["src/a.ts", "src/b/c.ts"], ["x/src/a.ts"]],
+      ["*.{ts,tsx}", ["a.ts", "b/c.tsx"], ["a.js", "b/c.tsxx"]],
+      ["src/**/*.ts", ["src/a.ts", "src/b/c.ts"], ["x/src/a.ts"]],
+    ])(
+      "makes %j match what VS Code matches",
+      async (field, matching, other) => {
+        const matches = pathGlobMatcher(await sentPatterns(field));
+        for (const path of matching) expect(matches(path), path).toBe(true);
+        for (const path of other) expect(matches(path), path).toBe(false);
+      },
+    );
+
+    it("expands exclude patterns by the same rules", async () => {
+      const { search } = await sentFilters("", "node_modules, *.min.js");
+      const sent = search.mock.calls[0][0];
+      expect(sent.includePatterns).toEqual([]);
+      expect(sent.excludePatterns).toEqual([
+        "**/node_modules",
+        "**/node_modules/**",
+        "**/*.min.js",
+      ]);
+      const hidden = pathGlobMatcher(sent.excludePatterns);
+      expect(hidden("node_modules/a/index.js")).toBe(true);
+      expect(hidden("packages/x/node_modules/p/index.js")).toBe(true);
+      expect(hidden("web/app.min.js")).toBe(true);
+      expect(hidden("src/app.js")).toBe(false);
+    });
+
+    it.each([
+      ["more than 16 patterns", "a, b, c, d, e, f, g, h, i", ""],
+      [
+        "more than 16 patterns from braces",
+        "*.{a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q}",
+        "",
+      ],
+      [
+        "more than 2 KiB in total",
+        `${"a".repeat(200)}/x`,
+        Array.from({ length: 10 }, (_, i) => `${"b".repeat(200)}${i}/x`).join(
+          ",",
+        ),
+      ],
+      [
+        "17 differently spaced copies of one name before another",
+        `{${Array.from({ length: 17 }, (_, i) => `${" ".repeat(i)}a`).join(",")},b}`,
+        "",
+      ],
+      ["20,000 brace groups", "{a}".repeat(20_000), ""],
+      ["20,000 brace groups in exclude", "", "{a}".repeat(20_000)],
+    ])(
+      "refuses an expansion with %s and sends nothing",
+      async (_reason, include, exclude) => {
+        const { search, state } = await sentFilters(include, exclude);
+        expect(search).not.toHaveBeenCalled();
+        expect(state).toMatchObject({
+          phase: "error",
+          response: null,
+          error: "workspace Search path filters are invalid",
+        });
+      },
+    );
   });
 });

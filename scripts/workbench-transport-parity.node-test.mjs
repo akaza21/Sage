@@ -34,6 +34,7 @@ test("frozen workbench transport types have an explicit field freeze", () => {
     "accountModelDiscovery",
     "bindingId",
     "boundVersion",
+    "brand",
     "characterisation",
     "description",
     "id",
@@ -43,6 +44,7 @@ test("frozen workbench transport types have an explicit field freeze", () => {
     "source",
     "transport",
     "unavailableReason",
+    "update",
     "version",
     "versionChecking",
   ]);

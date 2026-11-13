@@ -3,6 +3,15 @@ import path from "node:path";
 import { gzipSync } from "node:zlib";
 
 const workbench = "src/workbench/Workbench.tsx";
+// Every Editor view loads these with it: the tab strip, and Explorer with its
+// glob matcher, which registeredSurfaces starts loading as the Editor opens.
+const editorBase = [
+  "index.html",
+  workbench,
+  "src/workbench/TabStrip.tsx",
+  "src/features/files/ExplorerSurface.tsx",
+  "src/domain/pathGlobMatcher.ts",
+];
 const MAX_MANIFEST_RECORDS = 4096;
 const MAX_MANIFEST_IMPORTS = 16384;
 export const WEB_BUNDLE_PATH_ROOTS = {
@@ -14,16 +23,11 @@ export const WEB_BUNDLE_PATH_ROOTS = {
     "src/features/chat/ChatSurface.tsx",
     "src/features/chat/acp/AcpChatPresentation.tsx",
   ],
-  editorShell: ["index.html", workbench],
-  editorDiff: ["index.html", workbench, "src/features/diff/DiffSurface.tsx"],
-  editorSearch: [
-    "index.html",
-    workbench,
-    "src/features/search/SearchSurface.tsx",
-  ],
+  editorShell: editorBase,
+  editorDiff: [...editorBase, "src/features/diff/DiffSurface.tsx"],
+  editorSearch: [...editorBase, "src/features/search/SearchSurface.tsx"],
   editorFile: [
-    "index.html",
-    workbench,
+    ...editorBase,
     "src/features/files/FileSurface.tsx",
     "src/features/files/CodeMirrorEditorRuntime.ts",
   ],
@@ -58,7 +62,16 @@ export function validateWebBundleManifest(manifest) {
   return keys;
 }
 
-export function measureWebBundlePaths(root, manifest) {
+/**
+ * Measures each path's static closure. `gzipJs` sizes one chunk's contents;
+ * the verifier passes one that masks hashed sibling chunk names, so a rename
+ * elsewhere cannot move a path's size.
+ */
+export function measureWebBundlePaths(
+  root,
+  manifest,
+  gzipJs = (contents) => gzipSync(contents).length,
+) {
   const keys = validateWebBundleManifest(manifest);
   const reachable = new Set();
   const pending = ["index.html"];
@@ -115,7 +128,7 @@ export function measureWebBundlePaths(root, manifest) {
     if (!file.endsWith(".js") || contents.length === 0)
       fail(`path asset is empty or not JavaScript: ${file}`);
     const result = {
-      gzipBytes: gzipSync(contents).length,
+      gzipBytes: gzipJs(contents),
       rawBytes: contents.length,
     };
     measurements.set(file, result);

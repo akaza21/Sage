@@ -84,7 +84,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
     process.exitCode = 1;
   } else {
     try {
-      console.log(JSON.stringify(observeCuratedRedaction(inputPath)));
+      process.stdout.write(
+        `${JSON.stringify(observeCuratedRedaction(inputPath))}\n`,
+        (error) => {
+          if (!error) process.stderr.write("sage-redaction:sink-emitted\n");
+        },
+      );
     } catch (error) {
       console.error(`redaction-observer: ${error.message}`);
       process.exitCode = 1;

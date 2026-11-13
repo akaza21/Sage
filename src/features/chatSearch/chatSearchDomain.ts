@@ -1,3 +1,5 @@
+import { isRecord } from "../../domain/guards";
+import { utf8ByteLength } from "../../domain/text";
 import { MAX_CHAT_SEARCH_QUERY_BYTES } from "./chatSearchScope";
 
 export { MAX_CHAT_SEARCH_QUERY_BYTES };
@@ -75,20 +77,22 @@ export function validateProjectChatSearchRequest(
   request: ProjectChatSearchRequest,
 ): void {
   if (!boundedString(request.projectId, MAX_IDENTIFIER_BYTES)) {
-    throw new Error("Project Chat search requires a valid Project ID");
+    throw new Error("Project chat search requires a valid project ID");
   }
   if (
     !safeCount(request.projectGeneration) ||
     !safeCount(request.expectedTransitionEpoch)
   ) {
-    throw new Error("Project Chat search requires a valid intent generation");
+    throw new Error("Project chat search requires a valid intent generation");
   }
   const query = request.query.trim();
   if (
-    !boundedString(query, MAX_CHAT_SEARCH_QUERY_BYTES) ||
+    utf8ByteLength(query) > MAX_CHAT_SEARCH_QUERY_BYTES ||
     containsControl(query)
   ) {
-    throw new Error("Project Chat search query must be 1-256 UTF-8 bytes");
+    throw new Error(
+      "Project chat search query must be at most 256 UTF-8 bytes without control characters",
+    );
   }
 }
 
@@ -127,7 +131,7 @@ function searchResult(
 export function parseProjectChatSearchResponse(
   value: unknown,
 ): ProjectChatSearchResponse {
-  const invalid = () => new Error("invalid Project Chat search response");
+  const invalid = () => new Error("invalid project chat search response");
   if (
     !isNonArrayRecord(value) ||
     !hasExactKeys(value, [
@@ -142,7 +146,9 @@ export function parseProjectChatSearchResponse(
     !boundedString(value.projectId, MAX_IDENTIFIER_BYTES) ||
     !safeCount(value.projectGeneration) ||
     !safeCount(value.transitionEpoch) ||
-    !boundedString(value.query, MAX_CHAT_SEARCH_QUERY_BYTES) ||
+    typeof value.query !== "string" ||
+    utf8ByteLength(value.query) > MAX_CHAT_SEARCH_QUERY_BYTES ||
+    containsControl(value.query) ||
     value.query !== value.query.trim() ||
     !Array.isArray(value.results) ||
     value.results.length > MAX_CHAT_SEARCH_RESULTS ||
@@ -169,5 +175,3 @@ export function parseProjectChatSearchResponse(
   }
   return value as unknown as ProjectChatSearchResponse;
 }
-import { isRecord } from "../../domain/guards";
-import { utf8ByteLength } from "../../domain/text";

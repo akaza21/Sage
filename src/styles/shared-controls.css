@@ -1,3 +1,20 @@
+/* One key of a shortcut, drawn as a keycap. */
+.keycap {
+  display: inline-flex;
+  min-width: var(--keycap-height);
+  height: var(--keycap-height);
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-keycap);
+  color: var(--color-text-secondary);
+  background: var(--color-canvas);
+  box-shadow: inset 0 -1px 0 var(--color-border-strong);
+  font: inherit;
+  line-height: 1;
+}
+
 .button,
 .input,
 .select {
@@ -53,14 +70,51 @@
   color: var(--color-text-muted);
 }
 
-.input--compact,
-.select--compact {
-  min-height: var(--control-height-compact);
-  font-size: var(--font-size-xs);
+/*
+ * A native select drawn like the composer's chevron dropdowns: the OS arrow
+ * is replaced by a chevron painted from the colour tokens, so it follows the
+ * text colour on hover and needs no image. Fills are set with
+ * background-color so the chevron layer survives local overrides.
+ */
+.select {
+  --select-chevron-color: var(--color-text-muted);
+  --select-chevron-arm: var(--space-1);
+  --select-chevron-stroke: calc(var(--border-width) * 1.5);
+  --select-chevron-inset: var(--space-2);
+
+  overflow: hidden;
+  padding-inline-end: calc(
+    var(--select-chevron-inset) * 2 + var(--select-chevron-arm) * 2
+  );
+  appearance: none;
+  color-scheme: dark;
+  background-image:
+    linear-gradient(
+      45deg,
+      transparent calc(50% - var(--select-chevron-stroke) / 2),
+      var(--select-chevron-color) calc(50% - var(--select-chevron-stroke) / 2),
+      var(--select-chevron-color) calc(50% + var(--select-chevron-stroke) / 2),
+      transparent calc(50% + var(--select-chevron-stroke) / 2)
+    ),
+    linear-gradient(
+      -45deg,
+      transparent calc(50% - var(--select-chevron-stroke) / 2),
+      var(--select-chevron-color) calc(50% - var(--select-chevron-stroke) / 2),
+      var(--select-chevron-color) calc(50% + var(--select-chevron-stroke) / 2),
+      transparent calc(50% + var(--select-chevron-stroke) / 2)
+    );
+  background-position:
+    right calc(var(--select-chevron-inset) + var(--select-chevron-arm)) center,
+    right var(--select-chevron-inset) center;
+  background-repeat: no-repeat;
+  background-size: var(--select-chevron-arm) var(--select-chevron-arm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
-.select {
-  color-scheme: dark;
+.select:hover:not(:disabled) {
+  --select-chevron-color: var(--color-text-primary);
 }
 
 .select option {
@@ -68,12 +122,70 @@
   background: var(--color-surface);
 }
 
+/*
+ * A boolean setting: a styled native checkbox with role="switch", so its
+ * label, keyboard and checked state stay native.
+ */
+.switch {
+  --switch-height: var(--icon-size-md);
+  --switch-width: calc(var(--switch-height) * 2 - var(--space-1));
+  --switch-inset: calc(var(--border-width) * 2);
+  --switch-thumb: calc(var(--switch-height) - var(--switch-inset) * 2);
+  --switch-track: var(--color-panel-raised-hover);
+  --switch-knob: var(--color-text-secondary);
+
+  position: relative;
+  display: inline-block;
+  width: var(--switch-width);
+  height: var(--switch-height);
+  flex: none;
+  margin: 0;
+  border-radius: var(--radius-pill);
+  appearance: none;
+  background-color: var(--switch-track);
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) ease;
+}
+
+.switch::before {
+  position: absolute;
+  top: var(--switch-inset);
+  left: var(--switch-inset);
+  width: var(--switch-thumb);
+  height: var(--switch-thumb);
+  border-radius: var(--radius-circle);
+  background-color: var(--switch-knob);
+  content: "";
+  transition:
+    translate var(--motion-duration-fast) ease,
+    background-color var(--motion-duration-fast) ease;
+}
+
+.switch:checked {
+  --switch-track: var(--color-accent);
+  --switch-knob: var(--color-text-emphasis);
+}
+
+.switch:checked::before {
+  translate: calc(var(--switch-width) - var(--switch-height)) 0;
+}
+
+.switch:hover:not(:disabled, :checked) {
+  --switch-knob: var(--color-text-primary);
+}
+
+.switch:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
 .menu-popover {
   --menu-focus-edge: var(--color-focus-ring);
   --menu-selected-fill: var(--color-accent-muted);
 
   position: fixed;
-  z-index: 80;
+  z-index: var(--z-popover);
   display: grid;
   width: min(260px, calc(100vw - 16px));
   max-width: calc(100vw - 16px);
@@ -93,6 +205,71 @@
     display var(--motion-duration-exit) allow-discrete;
 }
 
+/* MenuSubmenu: its trigger's trailing chevron and the nested item column. */
+.menu-item > .menu-submenu__chevron {
+  margin-left: auto;
+}
+
+.menu-submenu__items {
+  display: grid;
+}
+
+/*
+ * The Editor's floating surfaces (Quick Open, its menus), after VS Code's
+ * modern UI (frostedGlass.css, contextview.ts, menu.ts): a frosted fill, a
+ * slower eased opening, and their row metrics. Agent menus keep their own
+ * Codex-derived finish.
+ */
+.popup-material {
+  --radius-popup: 8px;
+  --radius-keycap: 3px;
+  --popup-fill-opacity: 92%;
+  --popup-blur: 12px;
+  --popup-duration-open: 250ms;
+  --popup-duration-close: 150ms;
+  --popup-easing: cubic-bezier(0.22, 1, 0.36, 1);
+  --popup-row-height: 22px;
+  --popup-icon-slot: 16px;
+  --menu-row-height: 24px;
+  --keycap-height: 18px;
+  --keycap-gap: 2px;
+  --quick-open-width: 600px;
+  --quick-open-width-ratio: 62vw;
+  --quick-open-list-max-height: 40vh;
+  --popup-fill: color-mix(
+    in srgb,
+    var(--color-surface) var(--popup-fill-opacity),
+    transparent
+  );
+
+  border-radius: var(--radius-popup);
+  background: var(--popup-fill);
+  backdrop-filter: blur(var(--popup-blur));
+  animation: menu-popover-enter var(--popup-duration-open) var(--popup-easing);
+}
+
+/* Solid where transparency is unwanted or unsupported. */
+@supports not (backdrop-filter: blur(1px)) {
+  .popup-material {
+    --popup-fill-opacity: 100%;
+    --popup-blur: 0px;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .popup-material {
+    --popup-fill-opacity: 100%;
+    --popup-blur: 0px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popup-material {
+    --popup-duration-open: 0ms;
+    --popup-duration-close: 0ms;
+  }
+}
+
 .menu-popover[hidden] {
   display: none;
   opacity: 0;
@@ -103,24 +280,48 @@
   animation: none;
 }
 
+.menu-popover:where(
+  .composer__popover,
+  :not(.menu-popover--editor, .editor-menu, .popup-material)
+) {
+  --menu-row-text: var(--color-text-emphasis);
+  --menu-row-hover: color-mix(
+    in srgb,
+    var(--color-text-emphasis) 8%,
+    transparent
+  );
+  --radius-menu-row: var(--radius-md);
+  --menu-row-size: var(--font-size-sm);
+  --menu-row-height: var(--row-height-compact);
+  --menu-focus-edge: var(--highlight-focus-edge);
+  --menu-selected-fill: var(--menu-row-hover);
+  border-color: color-mix(in srgb, var(--color-text-primary) 12%, transparent);
+  border-radius: var(--radius-xl);
+  background: var(--color-plane-raised);
+  font-family: var(--font-family-agent);
+}
+
 .menu-item {
   display: flex;
   width: 100%;
   min-width: 0;
-  min-height: var(--control-height-compact);
+  min-height: var(--menu-row-height, var(--control-height-compact));
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
   overflow: hidden;
   border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-secondary);
+  border-radius: var(--radius-menu-row);
+  color: var(--menu-row-text, var(--color-text-secondary));
   background: transparent;
   font: inherit;
-  font-size: var(--font-size-xs);
+  font-size: var(--menu-row-size, var(--font-size-xs));
   line-height: 1.35;
   text-align: left;
   cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) ease-out,
+    color var(--motion-duration-fast) ease-out;
 }
 
 .menu-item > :where(span, strong) {
@@ -130,21 +331,25 @@
   white-space: nowrap;
 }
 
-.menu-item:hover:not(:disabled):not([aria-disabled="true"]) {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
+/* Forced colors paint no hover fill, so a row under the pointer keeps the
+   Highlight of its keyboard focus or selection. */
+@media (forced-colors: none) {
+  .menu-item:hover:not(:disabled):not([aria-disabled="true"]) {
+    color: var(--menu-row-text, var(--color-text-primary));
+    background: var(--menu-row-hover, var(--color-surface-hover));
+  }
 }
 
 .menu-item:focus-visible {
   outline: 0;
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-  box-shadow: inset 0 0 0 1px var(--menu-focus-edge);
+  color: var(--menu-row-text, var(--color-text-primary));
+  background: var(--menu-row-hover, var(--color-surface-hover));
+  box-shadow: inset 0 0 0 1px var(--menu-focus-edge, var(--color-focus-ring));
 }
 
 .menu-item[aria-checked="true"],
 .menu-item[aria-selected="true"] {
-  color: var(--color-text-primary);
+  color: var(--menu-row-text, var(--color-text-primary));
   background: var(--menu-selected-fill);
 }
 
@@ -152,6 +357,37 @@
 .menu-item[aria-disabled="true"] {
   cursor: default;
   opacity: var(--opacity-disabled);
+}
+
+/* Editor menus: VS Code's density, with an icon column beside the label. */
+.menu-popover.editor-menu {
+  gap: 0;
+  padding: var(--space-1) 0;
+  transition-duration: var(--popup-duration-close);
+}
+
+.editor-menu .menu-item {
+  width: auto;
+  min-height: var(--menu-row-height);
+  margin: 0 var(--space-1);
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+}
+
+.editor-menu .menu-item:has(> svg) {
+  display: grid;
+  grid-template-columns: [icon] var(--popup-icon-slot) [label] minmax(0, 1fr);
+  column-gap: var(--space-2);
+}
+
+.editor-menu .menu-item > svg {
+  grid-column: icon;
+  justify-self: center;
+}
+
+.editor-menu .menu-item > :not(svg) {
+  grid-column: label;
 }
 
 .menu-group-label {
@@ -163,9 +399,73 @@
   text-transform: uppercase;
 }
 
+.menu-popover:where(
+    .composer__popover,
+    :not(.menu-popover--editor, .editor-menu, .popup-material)
+  )
+  .menu-group-label {
+  margin-inline: var(--space-2);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 .menu-group {
   display: grid;
   gap: 2px;
+}
+
+/* Agent settings set selects in the Agent type, as before. */
+.agent-settings .select {
+  color: var(--color-text-emphasis);
+  font-size: var(--font-size-sm);
+}
+
+@supports (appearance: base-select) {
+  @media (forced-colors: none) {
+    .select,
+    .select::picker(select) {
+      appearance: base-select;
+    }
+
+    .select {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .select::picker-icon {
+      display: none;
+    }
+
+    .select::picker(select) {
+      margin-block: var(--space-1);
+      padding: var(--space-1);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-xl);
+      color: var(--color-text-emphasis);
+      background: var(--color-plane-raised);
+      box-shadow: var(--elevation-popover);
+    }
+
+    .select option {
+      min-height: var(--row-height-compact);
+      padding-inline: var(--space-2);
+      border-radius: var(--radius-md);
+      color: inherit;
+      background: transparent;
+      font-size: var(--font-size-sm);
+    }
+
+    .select option:is(:hover, :focus-visible) {
+      background: var(--color-panel-raised-hover);
+    }
+
+    .select option::checkmark {
+      order: 1;
+      margin-inline-start: auto;
+    }
+  }
 }
 
 .menu-empty {
@@ -174,108 +474,6 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   line-height: 1.4;
-}
-
-.searchable-picker {
-  min-width: 0;
-}
-
-.searchable-picker__trigger,
-.searchable-picker__input {
-  width: 100%;
-  min-width: 0;
-  min-height: var(--control-height-compact);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  background: var(--color-surface);
-  font: inherit;
-  font-size: var(--font-size-xs);
-}
-
-.searchable-picker__trigger {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-1);
-  padding: 0 8px;
-  overflow: hidden;
-  text-align: left;
-}
-
-.searchable-picker__trigger-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.searchable-picker__chevron {
-  flex: 0 0 auto;
-}
-
-.searchable-picker__popover {
-  display: block;
-  overflow: hidden;
-}
-
-.searchable-picker__input {
-  padding: 0 8px;
-}
-
-.searchable-picker__popover > [role="listbox"] {
-  max-height: min(224px, calc(100vh - 148px));
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.searchable-picker__current,
-.searchable-picker__footer,
-.searchable-picker__limit,
-.searchable-picker__reason {
-  margin: 4px 8px;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-}
-
-.searchable-picker__footer {
-  padding-top: var(--space-1);
-  border-top: 1px solid var(--color-border-subtle);
-  line-height: 1.4;
-}
-
-.searchable-picker__current {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.searchable-picker__option[data-active="true"] {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-  box-shadow: inset 0 0 0 1px var(--menu-focus-edge);
-}
-
-.searchable-picker__option {
-  display: grid;
-  gap: 2px;
-}
-
-.searchable-picker__option:has([data-harness-icon]) {
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-}
-
-.searchable-picker__option:has([data-harness-icon]) .searchable-picker__reason {
-  grid-column: 2;
-}
-
-.searchable-picker__reason {
-  margin: 0;
 }
 
 @keyframes menu-popover-enter {
@@ -302,11 +500,55 @@
     forced-color-adjust: auto;
   }
 
-  .searchable-picker__trigger,
-  .searchable-picker__input {
-    border-color: ButtonText;
-    color: ButtonText;
+  .keycap {
+    border-color: CanvasText;
+    box-shadow: none;
+  }
+
+  /* The system draws the select and its arrow. */
+  .select {
+    padding-inline-end: var(--space-2);
+    appearance: auto;
+    background-image: none;
+  }
+
+  .switch {
+    border: 1px solid ButtonText;
+    background-color: Canvas;
+    forced-color-adjust: none;
+  }
+
+  .switch::before {
+    top: var(--border-width);
+    left: var(--border-width);
+    background-color: ButtonText;
+  }
+
+  .switch:checked {
+    border-color: Highlight;
+    background-color: Highlight;
+  }
+
+  .switch:checked::before {
+    background-color: HighlightText;
+  }
+
+  .switch:disabled {
+    border-color: GrayText;
+  }
+
+  .switch:disabled::before {
+    background-color: GrayText;
+  }
+
+  /* The switch opts out of forced colours, so its ring must be set here. */
+  .switch:focus-visible {
+    outline-color: Highlight;
+  }
+
+  .popup-material {
     background: Canvas;
+    backdrop-filter: none;
   }
 
   .menu-item:focus-visible,
@@ -316,18 +558,14 @@
     background: Highlight;
     box-shadow: none;
   }
-
-  .searchable-picker__option[data-active="true"] {
-    color: HighlightText;
-    background: Highlight;
-    box-shadow: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .button,
   .input,
-  .select {
+  .select,
+  .switch,
+  .switch::before {
     transition: none;
   }
 
@@ -335,14 +573,10 @@
     animation: none;
     transition: none;
   }
-
-  .searchable-picker__trigger,
-  .searchable-picker__input {
-    transition: none;
-  }
 }
 
 .select-control {
+  --radius-select-control-trigger: var(--radius-sm);
   position: relative;
   display: inline-grid;
   min-width: 0;
@@ -367,8 +601,7 @@
   color: var(--color-danger);
 }
 
-.select-control select,
-.select-control .searchable-picker__trigger {
+.select-control select {
   width: 100%;
   min-width: 0;
   min-height: var(--control-height-compact);
@@ -390,8 +623,7 @@
   background: var(--color-surface-hover);
 }
 
-.select-control select:disabled,
-.select-control .searchable-picker__trigger:disabled {
+.select-control select:disabled {
   color: var(--color-text-disabled);
   cursor: not-allowed;
 }

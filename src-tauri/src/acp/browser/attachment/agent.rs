@@ -76,6 +76,11 @@ impl BrowserAttachments {
                 retired: Arc::default(),
                 last_session: Arc::default(),
                 opener: opener.map(|(label, _)| label.to_owned()),
+                developer: Arc::new(developer::DeveloperAccess::new(
+                    self.developer_registry.clone(),
+                    tab_label,
+                )),
+                resources: Arc::default(),
             },
         );
         Ok(())
@@ -109,15 +114,17 @@ impl BrowserAttachments {
         tab_number: u64,
     ) {
         let lease = self.agent_entries.lock().ok().and_then(|mut entries| {
-            entries.remove(&(
+            let key = (
                 project.clone(),
                 chat.clone(),
                 session.to_owned(),
                 tab_number,
-            ))
+            );
+            // As with user detach, revoke before unpublishing the grant.
+            entries.get(&key)?.stop_or_hand_off();
+            entries.remove(&key)
         });
         if let Some(lease) = lease {
-            lease.stop();
             self.drop_joined_popups(&lease.tab_label);
         }
     }
@@ -248,6 +255,18 @@ impl BrowserAttachments {
                 chats.into_iter().collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Revoke authority synchronously, independently of who owns native
+    /// cleanup. Retain leases and sweep claims until that cleanup finishes.
+    pub(crate) fn retire_agent_chat(&self, project: &SageProjectId, chat: &SageChatId) {
+        if let Ok(entries) = self.agent_entries.lock() {
+            for ((p, c, _, _), lease) in entries.iter() {
+                if p == project && c == chat {
+                    lease.retire();
+                }
+            }
+        }
     }
 
     pub(crate) fn revoke_agent_chat(&self, project: &SageProjectId, chat: &SageChatId) {

@@ -1,13 +1,17 @@
 import type { QueuedChatPrompt } from "../domain/chatOwnership";
 import type {
   BootstrapSnapshot,
+  BufferRebaseRequest,
   BufferSnapshotAck,
   BufferSnapshotRequest,
+  ChatDeleteRequest,
   ChatLifecycleRequest,
   MoveChatRequest,
   PinChatRequest,
   DiscoverProjectRepositoriesRequest,
   DiscoverProjectRepositoriesResult,
+  ResolveResourceRepositoryRequest,
+  ResolveResourceRepositoryResult,
   EditorWatchSubscription,
   NestedRepositoryFileDiffRequest,
   NestedRepositoryFileDiffResult,
@@ -21,6 +25,7 @@ import type {
   EditorDocument,
   EditorSaveResult,
   FileDiff,
+  FileGitBase,
   GitFileMutationRequest,
   GitFileMutationResult,
   GitRepositoryCommitRequest,
@@ -43,6 +48,8 @@ import type {
   ProjectLayoutRequest,
   ProjectRepositoryStatus,
   ProjectSwitchRequest,
+  CreateProjectRequest,
+  ProjectSourceFolder,
   ProjectTransitionResult,
   RenameChatRequest,
   RenameProjectFileRequest,
@@ -56,6 +63,10 @@ import type {
   TrashProjectResourceResult,
 } from "../domain/workbench";
 import type { HarnessDefinition } from "../domain/harness";
+import type {
+  NewChatDefaults,
+  NewChatDefaultsState,
+} from "../domain/newChatDefaults";
 import type { EditorSettings } from "../domain/editorSettingsCatalogue";
 import type { SessionAccessModes } from "../domain/sessionAccessMode";
 import type { UiAppearance } from "../domain/uiAppearance";
@@ -77,7 +88,9 @@ export interface ProjectPort {
     chatId: string,
     prompts: readonly QueuedChatPrompt[],
   ): Promise<void>;
-  createProjectFromPicker(
+  pickProjectSourceFolder(): Promise<ProjectSourceFolder | null>;
+  createProject(
+    request: CreateProjectRequest,
     expectedActiveProjectId: string | null,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
@@ -134,15 +147,34 @@ export interface EditorPort {
     request: BufferSnapshotRequest,
   ): Promise<BufferSnapshotAck>;
   saveEditorDocument(resource: ResourceRef): Promise<EditorSaveResult>;
-  discardEditorBuffer(resource: ResourceRef): Promise<EditorDocument>;
+  /**
+   * Drops the buffer for the File on disk. With `keepIfAbsent` (Reload), a
+   * File that is gone keeps its buffer and comes back deleted.
+   */
+  discardEditorBuffer(
+    resource: ResourceRef,
+    keepIfAbsent?: boolean,
+  ): Promise<EditorDocument>;
+  rebaseEditorBuffer(request: BufferRebaseRequest): Promise<EditorSaveResult>;
   watchEditorDocument(resource: ResourceRef): Promise<EditorWatchSubscription>;
 }
 
 export interface RepositoryPort {
+  resolveResourceRepository(
+    request: ResolveResourceRepositoryRequest,
+  ): Promise<ResolveResourceRepositoryResult>;
   getRepositoryStatus(): Promise<ProjectRepositoryStatus>;
   /** Changes when Git state may have changed outside Sage (EP-12). */
   getRepositoryChangeStamp(): Promise<string>;
-  getFileDiff(resource: ResourceRef): Promise<FileDiff>;
+  getFileDiff(
+    resource: ResourceRef,
+    scope?: "staged" | "unstaged",
+  ): Promise<FileDiff>;
+  /** The staged text the gutter compares against (EP-14). */
+  getFileGitBase(
+    resource: ResourceRef,
+    knownOid: string | null,
+  ): Promise<FileGitBase>;
   mutateGitFile(
     request: GitFileMutationRequest,
     expectedTransitionEpoch: number,
@@ -228,6 +260,11 @@ export interface ChatPort {
     request: ChatLifecycleRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
+  /** Permanently deletes an archived Chat and its history. */
+  deleteChat(
+    request: ChatDeleteRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult>;
   moveChat(
     request: MoveChatRequest,
     expectedTransitionEpoch: number,
@@ -249,6 +286,8 @@ export interface ForkChatRequest {
 
 export interface AgentPort {
   listHarnesses(): Promise<HarnessDefinition[]>;
+  /** Discovers the installed harnesses again, picking up updates. */
+  refreshHarnesses(): Promise<HarnessDefinition[]>;
   listHarnessModels(harnessId: string): Promise<ModelOption[]>;
   sendPrompt(request: SendPromptRequest): Promise<SimulatorTurnResult>;
 }
@@ -256,11 +295,13 @@ export interface AgentPort {
 export interface SettingsPort {
   /** Every stored Editor setting, still to be admitted against the catalogue. */
   getEditorSettings(): Promise<Record<string, unknown>>;
+  getNewChatDefaults(): Promise<NewChatDefaultsState>;
   getSessionAccessModes(): Promise<SessionAccessModes>;
   getUiAppearance(): Promise<UiAppearance>;
   setEditorSettings(
     changes: Partial<EditorSettings>,
   ): Promise<Record<string, unknown>>;
+  setNewChatDefaults(defaults: NewChatDefaults): Promise<NewChatDefaultsState>;
   setSessionAccessModes(modes: SessionAccessModes): Promise<SessionAccessModes>;
   setUiAppearance(appearance: UiAppearance): Promise<UiAppearance>;
 }
@@ -278,13 +319,14 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
   project: [
     "addProjectRootFromPicker",
     "createProjectFile",
+    "createProject",
     "createProjectFolder",
-    "createProjectFromPicker",
     "ensureLocalProject",
     "getBootstrapSnapshot",
     "listDirectory",
     "persistProjectLayout",
     "persistProjectLayoutAndClose",
+    "pickProjectSourceFolder",
     "renameProjectFile",
     "renameProjectFolder",
     "switchProject",
@@ -296,6 +338,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "discardEditorBuffer",
     "openEditorDocument",
     "readTextFile",
+    "rebaseEditorBuffer",
     "saveEditorDocument",
     "snapshotEditorBuffer",
     "watchEditorDocument",
@@ -310,8 +353,10 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "createGitLocalBranch",
     "deleteGitLocalBranch",
     "discoverProjectRepositories",
+    "resolveResourceRepository",
     "fetchGitRemote",
     "getFileDiff",
+    "getFileGitBase",
     "getNestedRepositoryFileDiff",
     "getNestedRepositoryStatus",
     "getRepositoryChangeStamp",
@@ -325,17 +370,25 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "activateChat",
     "archiveChat",
     "createChat",
+    "deleteChat",
     "moveChat",
     "pinChat",
     "renameChat",
     "restoreChat",
   ],
-  agent: ["listHarnesses", "listHarnessModels", "sendPrompt"],
+  agent: [
+    "listHarnesses",
+    "listHarnessModels",
+    "refreshHarnesses",
+    "sendPrompt",
+  ],
   settings: [
     "getEditorSettings",
+    "getNewChatDefaults",
     "getSessionAccessModes",
     "getUiAppearance",
     "setEditorSettings",
+    "setNewChatDefaults",
     "setSessionAccessModes",
     "setUiAppearance",
   ],

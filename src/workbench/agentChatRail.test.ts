@@ -6,11 +6,10 @@ import {
   MAX_AGENT_RAIL_PIN_IDS,
   MAX_AGENT_RAIL_RECENT_CHATS,
   agentChatMoveDestinations,
-  collectAgentRailPinIds,
   compareAgentRailChats,
   deriveAgentRailSections,
-  filterAgentRailGroups,
   groupAgentRailProjects,
+  visibleProjectChats,
 } from "./agentChatRail";
 
 describe("agent chat rail", () => {
@@ -228,22 +227,19 @@ describe("agent chat rail", () => {
     expect(sections.projects[0]?.chats).toEqual([
       expect.objectContaining({ id: "pin:64", pinned: true }),
       expect.objectContaining({ id: "pin:65", pinned: true }),
-      ...Array.from({ length: 10 }, (_, index) =>
+      ...Array.from({ length: MAX_AGENT_RAIL_RECENT_CHATS + 2 }, (_, index) =>
         expect.objectContaining({ id: `recent:${index}`, pinned: false }),
       ),
     ]);
-    expect(sections.recent).toHaveLength(MAX_AGENT_RAIL_RECENT_CHATS);
-    expect(sections.recent.map((item) => item.chat.id)).toEqual([
-      "recent:9",
-      "recent:8",
-      "recent:7",
-      "recent:6",
-      "recent:5",
-      "recent:4",
-      "recent:3",
-      "recent:2",
-    ]);
-    expect(sections.recent.some((item) => item.chat.pinned)).toBe(false);
+    expect(sections.recent).toHaveLength(MAX_AGENT_RAIL_RECENT_CHATS + 1);
+    expect(sections.projects[0]?.truncated).toBe(false);
+    expect(sections.recent.map((item) => item.chat.id)).toEqual(
+      Array.from(
+        { length: MAX_AGENT_RAIL_RECENT_CHATS + 1 },
+        (_, index) => `recent:${MAX_AGENT_RAIL_RECENT_CHATS + 1 - index}`,
+      ),
+    );
+    expect(sections.recent.every((item) => !item.chat.pinned)).toBe(true);
     expect(
       deriveAgentRailSections([
         {
@@ -261,40 +257,25 @@ describe("agent chat rail", () => {
     ).toEqual([]);
   });
 
-  it("filters admitted rail groups locally while preserving matching project caps", () => {
-    const groups = [
-      {
-        id: "cross",
-        name: "Cross",
-        rootCount: 1,
-        chats: [
-          { id: "chat:x", title: "Research", pinned: false, position: 0 },
-        ],
-        archived: [{ id: "old:x", title: "Archived research" }],
-        truncated: true,
-      },
-      {
-        id: "sage",
-        name: "Sage",
-        rootCount: 1,
-        chats: [
-          { id: "chat:s", title: "Implement rail", pinned: false, position: 0 },
-        ],
-        archived: [],
-        truncated: false,
-      },
+  it("keeps a folder-named project's whole name past the typed-name limit", () => {
+    // A project added from a folder is named after it, with no 64-character
+    // cap; the rail shortens it with a CSS ellipsis, so the name stays whole.
+    const name =
+      "cross-platform-desktop-shell-with-an-extraordinarily-long-project-name-for-tests";
+    const projects = [
+      { id: "project:long", name, rootCount: 1, lastOpenedAt: 1 },
+      { id: "project:other", name: "Other", rootCount: 1, lastOpenedAt: 2 },
     ];
-
-    expect(filterAgentRailGroups(groups, "research")).toEqual([groups[0]]);
-    expect(filterAgentRailGroups(groups, "cross")).toEqual([groups[0]]);
-    expect(filterAgentRailGroups(groups, "archived")).toEqual([
-      {
-        ...groups[0],
-        chats: [],
-        archived: [{ id: "old:x", title: "Archived research" }],
-      },
+    expect(
+      groupAgentRailProjects({
+        projects,
+        currentProjectId: "project:other",
+        currentChats: [],
+      })[0]?.name,
+    ).toBe(name);
+    expect(agentChatMoveDestinations(projects, "project:other")).toEqual([
+      { id: "project:long", name, kind: "folder" },
     ]);
-    expect(filterAgentRailGroups(groups, "missing")).toEqual([]);
   });
 
   it("keeps the last native-admitted project in the bounded window", () => {
@@ -368,7 +349,7 @@ describe("agent chat rail", () => {
     ]);
   });
 
-  it("caps foreign project chats and pins the current project first", () => {
+  it("caps foreign project chats and keeps the current project first", () => {
     const overflow = Array.from(
       { length: MAX_AGENT_RAIL_CHATS_PER_PROJECT + 2 },
       (_, index) => ({
@@ -402,11 +383,69 @@ describe("agent chat rail", () => {
     });
     expect(groups[0]?.chats).toHaveLength(MAX_AGENT_RAIL_CHATS_PER_PROJECT);
     expect(groups[0]?.truncated).toBe(true);
-    expect(collectAgentRailPinIds(groups, "local")).toEqual([
-      "chat:local",
-      ...overflow
-        .slice(0, MAX_AGENT_RAIL_CHATS_PER_PROJECT)
-        .map((chat) => chat.id),
-    ]);
+  });
+
+  it("previews a foreign project's first chats in either order from what Rust sends", () => {
+    // Rust sends the eight newest and the eight first by position: here the
+    // newest are positions 12 to 19 and the first by position are 0 to 7.
+    const railChats = [...Array(8).keys()]
+      .map((index) => 19 - index)
+      .concat([...Array(8).keys()])
+      .map((position) => ({
+        id: `chat:${position}`,
+        title: `Chat ${position}`,
+        pinned: false,
+        position,
+        updatedAt: 1_000 + position,
+      }));
+    const [group] = groupAgentRailProjects({
+      projects: [
+        {
+          id: "work",
+          name: "Work",
+          rootCount: 1,
+          lastOpenedAt: 1,
+          railChats,
+          railChatsTruncated: true,
+        },
+      ],
+      currentProjectId: null,
+      currentChats: [],
+    });
+    const preview = (ordering: "recency" | "manual") =>
+      visibleProjectChats(group?.chats ?? [], null, ordering, false).map(
+        (chat) => chat.position,
+      );
+    expect(preview("recency")).toEqual([19, 18, 17, 16, 15]);
+    expect(preview("manual")).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("names where In one list continues when a folder was admitted only in part", () => {
+    const groups = groupAgentRailProjects({
+      projects: [
+        {
+          id: "work",
+          name: "Work",
+          rootCount: 1,
+          lastOpenedAt: 1,
+          railChats: [{ id: "chat:w", title: "W", pinned: false, position: 0 }],
+          railChatsTruncated: true,
+        },
+        {
+          id: "home",
+          name: "Home",
+          rootCount: 1,
+          lastOpenedAt: 0,
+          railChats: [{ id: "chat:h", title: "H", pinned: false, position: 0 }],
+        },
+      ],
+      currentProjectId: null,
+      currentChats: [],
+    });
+    expect(deriveAgentRailSections(groups).allOverflowProjectId).toBe("work");
+    expect(
+      deriveAgentRailSections(groups.filter((group) => group.id === "home"))
+        .allOverflowProjectId,
+    ).toBeNull();
   });
 });

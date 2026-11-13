@@ -1,118 +1,11 @@
+/* Codex-style plain control: brand mark and name on the composer fill, with
+   the shared control hover. The name shows whole or not at all:
+   the measured toolbar steps hide it when only the mark fits. */
 .composer__harness.composer__control-trigger {
-  height: 40px;
-  min-width: 28px;
-  max-width: 128px;
-  flex: 0 1 128px;
-}
-
-.composer__harness .searchable-picker {
-  min-width: 0;
-  width: 100%;
-}
-
-.composer__harness .searchable-picker__trigger {
-  width: 100%;
-  height: 40px;
-  padding: 4px 8px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--composer-control-text);
-  background: var(--composer-control-hover);
-}
-
-.composer__harness[data-keyboard-focus="false"] .searchable-picker__trigger {
-  outline: none;
-  box-shadow: none;
-}
-
-.composer__harness .searchable-picker__trigger > img,
-.composer__harness-menu .searchable-picker__option > img {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
-}
-
-.composer__harness .searchable-picker__trigger-label,
-.composer__harness-menu .searchable-picker__option-copy {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 1px;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.composer__harness .searchable-picker__trigger-label {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.composer__harness .searchable-picker__chevron {
-  width: 12px;
-  height: 12px;
-}
-
-.composer__harness-menu.menu-popover {
-  display: flex;
-  flex-direction: column;
-  width: min(232px, calc(100vw - 32px));
-  border-radius: var(--radius-composer-menu);
-  background: var(--color-plane-raised);
-  backdrop-filter: none;
-}
-
-.composer__harness-menu .searchable-picker__current,
-.composer__harness-menu .searchable-picker__section-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  border: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-
-.composer__harness-menu .searchable-picker__option {
-  min-height: 32px;
-  grid-template-columns: 20px minmax(0, 1fr) 16px;
-  gap: 8px;
-  padding: 4px 8px;
-  border-radius: var(--radius-md);
-}
-
-.composer__harness-menu > [role="listbox"] {
-  min-height: 0;
-  flex: 1 1 auto;
-  overflow-y: auto;
-}
-
-.composer__harness-menu .searchable-picker__subtitle {
-  overflow: hidden;
-  color: var(--composer-muted-text);
-  font-size: 11px;
-  font-weight: 400;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.composer__harness-menu .searchable-picker__option:hover,
-.composer__harness-menu .searchable-picker__option:focus-visible {
-  background: var(--composer-control-hover);
-  box-shadow: var(--glass-highlight);
-}
-
-.composer__harness-menu .searchable-picker__selected-check {
-  grid-column: 3;
-  color: var(--composer-control-text);
-}
-
-.composer__popover.menu-popover,
-.composer__harness-menu.menu-popover {
-  --menu-focus-edge: var(--color-border-strong);
-  --menu-selected-fill: var(--color-surface-hover);
+  --picker-trigger-icon-size: var(--icon-size-md);
+  height: var(--control-height-compact);
+  min-width: var(--control-height-compact);
+  flex: none;
 }
 
 .composer-access-menu.menu-popover {
@@ -148,7 +41,6 @@
   grid-row: 1;
 }
 
-/* Beats the shared uppercase .menu-group-label wherever the cascade puts it. */
 .menu-group-label.composer__add-heading {
   text-transform: none;
   letter-spacing: normal;
@@ -174,6 +66,11 @@
   grid-column: 3;
 }
 
+.composer-access-menu__option--full > svg:first-child,
+.composer-access-menu__warning {
+  color: var(--composer-access-full);
+}
+
 .composer-access-menu__description {
   grid-column: 2 / -1;
   color: var(--text-muted);
@@ -181,12 +78,140 @@
   white-space: normal;
 }
 
-.composer__harness-menu .searchable-picker__reason {
+.composer__harness .searchable-picker {
+  height: 100%;
+}
+
+.composer__harness .searchable-picker__trigger {
+  display: inline-flex;
+  height: var(--picker-trigger-height, 100%);
+  min-height: 0;
+  padding: var(--picker-trigger-padding, 0 var(--space-1));
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--composer-control-text);
+  background: transparent;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.composer__harness[data-keyboard-focus="false"] .searchable-picker__trigger {
+  outline: none;
+  box-shadow: none;
+}
+
+.composer__harness .searchable-picker__trigger-label {
+  display: var(--picker-label-display, block);
+  line-height: 1.2;
+}
+
+.composer__harness .searchable-picker__chevron {
+  display: var(--picker-chevron-display, block);
+  width: var(--picker-chevron-size, var(--space-3));
+  height: var(--picker-chevron-size, var(--space-3));
+}
+
+.composer__harness-menu.menu-popover {
+  display: flex;
+  flex-direction: column;
+  width: min(var(--picker-harness-menu-width), calc(100vw - var(--space-8)));
+}
+
+.composer__harness-menu .searchable-picker__current,
+.composer__harness-menu .searchable-picker__section-label {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  width: var(--border-width);
+  height: var(--border-width);
+  padding: 0;
+  border: 0;
   overflow: hidden;
   clip-path: inset(50%);
+}
+
+.composer__harness-menu {
+  --picker-option-inline-padding: var(--space-2);
+  --picker-option-icon-size: var(--icon-size-lg);
+  --picker-option-gap: var(--space-2);
+}
+
+.composer__harness-menu .searchable-picker__option {
+  min-height: var(--control-height-default);
+  grid-template-columns:
+    var(--picker-option-icon-size) minmax(0, 1fr)
+    var(--icon-size-md);
+  gap: var(--picker-option-gap);
+  padding: var(--space-1) var(--picker-option-inline-padding);
+  border-radius: var(--radius-md);
+}
+
+/* A sign-in action sits on its own line under the harness name and detail,
+   aligned with them, so it never takes their width in the narrow menu. */
+.composer__harness-menu .searchable-picker__option-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.composer__harness-menu .searchable-picker__option-action {
+  align-self: flex-start;
+  margin: 0 0 var(--space-1)
+    calc(
+      var(--picker-option-inline-padding) + var(--picker-option-icon-size) +
+        var(--picker-option-gap)
+    );
+}
+
+/* The list grows to the popover's own height cap instead of the shared
+   picker's shorter one, so a full harness catalogue needs no scrollbar while
+   the window has room above the composer. */
+.composer__harness-menu.searchable-picker__popover > [role="listbox"] {
+  max-height: none;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.composer__harness-menu .searchable-picker__option-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--border-width);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.2;
+}
+
+.composer__harness-menu
+  :is(.searchable-picker__subtitle, .searchable-picker__reason) {
+  overflow: hidden;
+  color: var(--composer-muted-text);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Why a harness cannot be picked is the row's point, so it wraps to a
+   second line instead of being cut to a few words; a longer reason ends in
+   an ellipsis there and stays whole in the row's tooltip and description. */
+.composer__harness-menu .searchable-picker__reason {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+}
+
+.composer__harness-menu .searchable-picker__option:hover,
+.composer__harness-menu .searchable-picker__option:focus-visible {
+  background: var(--composer-control-hover);
+  box-shadow: var(--glass-highlight);
+}
+
+.composer__harness-menu .searchable-picker__selected-check {
+  grid-column: 3;
+  color: var(--composer-control-text);
 }
 
 @media (forced-colors: active) {
@@ -211,4 +236,10 @@
   .composer__harness-menu .searchable-picker__selected-check {
     color: inherit;
   }
+}
+
+.composer__harness-menu .searchable-picker__option > :is(svg, img) {
+  width: var(--picker-option-icon-size);
+  height: var(--picker-option-icon-size);
+  flex: none;
 }

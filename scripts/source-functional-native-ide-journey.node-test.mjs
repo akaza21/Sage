@@ -47,9 +47,14 @@ import {
   verificationFor,
   writePendingJourneyReceipt,
 } from "./source-functional-native-ide-journey.mjs";
+import {
+  HELPER_DIAGNOSTIC_CHARS_MAX,
+  processIdentityHelperOutput,
+} from "./source-functional-native-ide-bounded-tool.mjs";
 import { revalidateFreshProfile } from "./source-functional-acp04-evidence.mjs";
 import { parseAcp04ProbeArguments } from "./source-functional-acp04-live-contract.mjs";
 import { parseAv01PreviewArguments } from "./source-functional-av01-preview-contract.mjs";
+import { OWNED_RUNTIME_CLEANUP_FUNCTIONS } from "./lib/owned-runtime-cleanup-functions.mjs";
 
 function evaluateBrowserExpression(expression, globals) {
   const names = Object.keys(globals);
@@ -335,7 +340,7 @@ test("Windows startup diagnostics exercise wrapper seams and preserve failures",
       "try { Update-OwnedRuntimeTree $runtime } catch { $results += [ordered]@{ seam = 'update-root'; sameException = [object]::ReferenceEquals($_.Exception, $rootFailure.Exception); message = $_.Exception.Message; type = $_.Exception.GetType().FullName; fact = Get-ValidatedStartupIncompleteIdentityFact $_ } }",
       "$descendant = $childRow",
       "function Get-FootprintRootIdentity { return $identity }",
-      "function Get-FootprintDescendants { param($id, $rows) @($descendant) }",
+      "function Get-FootprintDescendants { param($id, $rows, $RootCreationDate) @($descendant) }",
       "$descendantFailure = New-Incomplete $childRow",
       "function Add-FootprintRememberedIdentity { param($store, $value) throw $script:descendantFailure }",
       "try { Update-OwnedRuntimeTree $runtime } catch { $results += [ordered]@{ seam = 'update-descendant'; sameException = [object]::ReferenceEquals($_.Exception, $descendantFailure.Exception); message = $_.Exception.Message; type = $_.Exception.GetType().FullName; fact = Get-ValidatedStartupIncompleteIdentityFact $_ } }",
@@ -1980,7 +1985,10 @@ test("Windows verbatim executable paths match their canonical filesystem form", 
   assert.deepEqual(actual, { path: verbatim, ...expected });
 });
 
-test("bounded Playwright helper settles overflow and timeout when child never closes", async () => {
+test("bounded Playwright helper settles overflow and timeout when child never closes", async (context) => {
+  // This test exercises a running child's timeout, not preflight scheduling.
+  // Keep its five-millisecond deadline from expiring before the runner starts.
+  context.mock.method(Date, "now", () => 1_000);
   for (const mode of ["overflow", "timeout"]) {
     const child = new EventEmitter();
     child.stdout = new PassThrough();
@@ -2061,7 +2069,7 @@ test("Windows bounded tool handshake preserves quoted cmd arguments after exact 
   const fixture = path.join(root, "Codex Fixture.cmd");
   const command = path.join(process.env.SystemRoot, "System32", "cmd.exe");
   try {
-    writeFileSync(fixture, "@echo off\r\necho codex-cli 0.146.0\r\n", "utf8");
+    writeFileSync(fixture, "@echo off\r\necho codex-cli 0.167.0\r\n", "utf8");
     const output = await runBoundedTool(
       command,
       [
@@ -2080,7 +2088,7 @@ test("Windows bounded tool handshake preserves quoted cmd arguments after exact 
         windowsVerbatimArguments: true,
       },
     );
-    assert.equal(output.trim(), "codex-cli 0.146.0");
+    assert.equal(output.trim(), "codex-cli 0.167.0");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -3380,7 +3388,12 @@ test("Windows owned Vite fixture becomes ready and reaches terminal-zero cleanup
       "Write-RuntimeCleanupQuarantine",
       "Stop-OwnedRuntimeTree",
     ];
-    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${functions.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=[ordered]@{port=${port};origin='http://127.0.0.1:${port}/'};$runtime=$null;$cleanup=$null;$startupDeadline=[DateTime]::UtcNow.AddSeconds(12);$script:ownedViteClock=[Diagnostics.Stopwatch]::StartNew();$monotonic={return [long]$script:ownedViteClock.ElapsedMilliseconds};$deadlineMilliseconds=[long](&$monotonic)+12000;try{$runtime=Start-OwnedVite ${quote(root)} $contract ${quote(root)} $deadlineMilliseconds $monotonic;$ready=Wait-OwnedFrontendReady $runtime $contract $startupDeadline;$ownedIds=@($runtime.store.Values|ForEach-Object {[int]$_.processId}|Sort-Object -Unique);$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};Start-Sleep -Milliseconds 200;$alive=@($ownedIds|Where-Object {Get-Process -Id $_ -ErrorAction SilentlyContinue}).Count;[ordered]@{port=$contract.port;mode=$ready.mode;frontendReady=$ready.frontendReady;identityCount=$ownedIds.Count;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount;alive=$alive}|ConvertTo-Json -Compress}finally{if($null -ne $runtime -and $null -eq $cleanup){try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{}}}`;
+    // Each owned process's handle is opened before cleanup, so the exit wait
+    // observes that exact process (never a reused PID) and returns on exit.
+    // A process still alive at the deadline fails the test, and the finally
+    // block still tears down whatever survived.
+    const ownedTeardownMs = 5000;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${functions.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=[ordered]@{port=${port};origin='http://127.0.0.1:${port}/'};$runtime=$null;$cleanup=$null;$owned=@();$alive=0;$startupDeadline=[DateTime]::UtcNow.AddSeconds(12);$script:ownedViteClock=[Diagnostics.Stopwatch]::StartNew();$monotonic={return [long]$script:ownedViteClock.ElapsedMilliseconds};$deadlineMilliseconds=[long](&$monotonic)+12000;try{$runtime=Start-OwnedVite ${quote(root)} $contract ${quote(root)} $deadlineMilliseconds $monotonic;$ready=Wait-OwnedFrontendReady $runtime $contract $startupDeadline;$ownedIds=@($runtime.store.Values|ForEach-Object {[int]$_.processId}|Sort-Object -Unique);$owned=@($ownedIds|ForEach-Object {Get-Process -Id $_ -ErrorAction SilentlyContinue}|Where-Object {$null -ne $_.Handle});$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};$alive=@($owned|Where-Object {-not $_.WaitForExit(${ownedTeardownMs})}).Count;[ordered]@{port=$contract.port;mode=$ready.mode;frontendReady=$ready.frontendReady;identityCount=$ownedIds.Count;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount;alive=$alive}|ConvertTo-Json -Compress}finally{if($null -ne $runtime -and ($null -eq $cleanup -or $alive -gt 0)){try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{}};foreach($process in $owned){if(-not $process.HasExited){try{$process.Kill()}catch{}}}}`;
     const encoded = Buffer.from(source, "utf16le").toString("base64");
     const result = spawnSync(
       powershell,
@@ -3555,10 +3568,18 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
   );
   let ambientIdentity;
   let cleanupFailure;
+  // The controller records the owned root's identity with one small write as
+  // soon as it is known, so a controller killed by its timeout still leaves
+  // the tree reachable.
+  const ownedRuntimeFile = path.join(root, "owned-root.txt");
+  let ownedCleanupProven = false;
   try {
     await waitForText(ambient.stdout, "ready", 5000);
     ambientIdentity = processIdentityHelper("capture", ambient.pid);
     const quote = (value) => `'${value.replaceAll("'", "''")}'`;
+    // The listener is up before readiness starts and the deadline has already
+    // expired, so only an ownership decision on first sight can reject it as
+    // not owned; a deadline-driven outcome surfaces as a timeout instead.
     const names = [
       "Resolve-FrontendPortContract",
       "New-OwnedRuntime",
@@ -3573,7 +3594,7 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
       "Write-RuntimeCleanupQuarantine",
       "Stop-OwnedRuntimeTree",
     ];
-    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${names.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=[ordered]@{port=${port};origin='http://127.0.0.1:${port}/'};$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};$runtime=New-OwnedRuntime $process ${quote(powershell)} $identity;try{$rejected=$false;try{[void](Wait-OwnedFrontendReady $runtime $contract ([DateTime]::UtcNow.AddSeconds(5)))}catch{$rejected=$_.Exception.Message -match 'not owned'};$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};[ordered]@{rejected=$rejected;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount}|ConvertTo-Json -Compress}finally{if($null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)){Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue}}`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${names.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=[ordered]@{port=${port};origin='http://127.0.0.1:${port}/'};$process=$null;$identity=$null;try{$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};[IO.File]::WriteAllLines(${quote(ownedRuntimeFile)},[string[]]@([string]$identity.processId,[string]$identity.executablePath,[string]$identity.creationDate));$runtime=New-OwnedRuntime $process ${quote(powershell)} $identity;$outcome='accepted';try{[void](Wait-OwnedFrontendReady $runtime $contract ([DateTime]::UtcNow.AddMilliseconds(-1)))}catch{$outcome=$_.Exception.Message};$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};[ordered]@{outcome=$outcome;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount}|ConvertTo-Json -Compress}finally{if($null -ne $process){try{if(-not $process.HasExited){$process.Kill()}}catch{}}}`;
     const result = spawnSync(
       powershell,
       [
@@ -3585,8 +3606,17 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
       { encoding: "utf8", windowsHide: true, timeout: 15000 },
     );
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    assert.deepEqual(JSON.parse(result.stdout.trim()), {
-      rejected: true,
+    const observed = JSON.parse(result.stdout.trim());
+    ownedCleanupProven =
+      observed.identityLost === false && observed.remainingCount === 0;
+    assert.doesNotMatch(
+      observed.outcome,
+      /startup deadline/,
+      `readiness timed out instead of rejecting the unowned listener: ${observed.outcome}`,
+    );
+    assert.deepEqual(observed, {
+      outcome:
+        "The frontend listener is not owned by the captured runtime tree.",
       identityLost: false,
       remainingCount: 0,
     });
@@ -3596,6 +3626,13 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
       await waitForChild(ambient, ambientIdentity);
     } catch (error) {
       failures.push(error);
+    }
+    if (!ownedCleanupProven) {
+      try {
+        cleanupRecordedRuntime(root);
+      } catch (error) {
+        failures.push(error);
+      }
     }
     try {
       assertWindowsPortFree(port);
@@ -3609,7 +3646,108 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
   if (cleanupFailure) throw cleanupFailure;
 });
 
-test("Windows Vite cleanup quarantines post-teardown identity loss with the exact root tuple", () => {
+test("Windows frontend readiness admits an owned grandchild listener that appears after the tree snapshot", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-vite-grandchild-race-"));
+  const port = await availableLoopbackPort();
+  // The controller records the owned root's identity with one small write as
+  // soon as it is known, and each node descendant records its own identity
+  // when it starts, so a controller killed by its timeout still leaves the
+  // whole tree reachable without spending the readiness deadline on it.
+  const ownedRuntimeFile = path.join(root, "owned-root.txt");
+  let ownedCleanupProven = false;
+  let cleanupFailure;
+  const powershell = path.join(
+    process.env.SystemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  const wrapper = path.resolve(
+    "scripts",
+    "run-source-functional-native-ide-journey.ps1",
+  );
+  const identityModule = path.resolve(
+    "scripts",
+    "footprint",
+    "ProcessIdentity.psm1",
+  );
+  try {
+    writeFileSync(
+      path.join(root, "child.cjs"),
+      `require("node:fs").writeFileSync("child-identity.json",JSON.stringify({processId:process.pid,executablePath:process.execPath,startedAt:performance.timeOrigin}));require("node:child_process").spawn(process.execPath,["grandchild.cjs"],{stdio:"ignore",windowsHide:true});setTimeout(()=>process.exit(0),30000);`,
+    );
+    writeFileSync(
+      path.join(root, "grandchild.cjs"),
+      `require("node:fs").writeFileSync("grandchild-identity.json",JSON.stringify({processId:process.pid,executablePath:process.execPath,startedAt:performance.timeOrigin}));const server=require("node:http").createServer((_q,r)=>r.end("ready"));server.listen(${port},"127.0.0.1",()=>require("node:fs").writeFileSync("listening",""));setTimeout(()=>process.exit(0),30000);`,
+    );
+    const quote = (value) => `'${value.replaceAll("'", "''")}'`;
+    const names = [
+      "New-OwnedRuntime",
+      "Update-OwnedRuntimeTree",
+      "Get-FrontendListenerIdentity",
+      "Test-OwnedRuntimeProcessIdentity",
+      "Test-SameProcessIdentity",
+      "Wait-OwnedFrontendReady",
+      "Get-CleanupRootTuple",
+      "Resolve-CleanupFailureClass",
+      "Write-RuntimeCleanupQuarantine",
+      "Stop-OwnedRuntimeTree",
+    ];
+    // The owned root starts its child, which starts the listening grandchild,
+    // only when the first listener probe runs. Readiness has already taken its
+    // first tree snapshot by then, so the listener is first seen outside the
+    // captured tree and must be admitted on that same pass: exactly the
+    // before and after probes, with no second loop iteration.
+    const ownedTeardownMs = 5000;
+    const rootCommand = `for($i=0;$i -lt 1500 -and -not (Test-Path -LiteralPath 'signal');$i++){Start-Sleep -Milliseconds 20};if(Test-Path -LiteralPath 'signal'){& ${quote(process.execPath)} 'child.cjs'}`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${names.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=[ordered]@{port=${port};origin='http://127.0.0.1:${port}/'};$process=$null;$identity=$null;$runtime=$null;$cleanup=$null;$owned=@();$alive=0;try{$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command',${quote(rootCommand)}) -WorkingDirectory ${quote(root)} -WindowStyle Hidden -PassThru;$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};[IO.File]::WriteAllLines(${quote(ownedRuntimeFile)},[string[]]@([string]$identity.processId,[string]$identity.executablePath,[string]$identity.creationDate));$runtime=New-OwnedRuntime $process ${quote(powershell)} $identity;$script:probe=0;$listener={param($value)$script:probe++;if($script:probe-eq1){[IO.File]::WriteAllText(${quote(path.join(root, "signal"))},'');$fixture=[Diagnostics.Stopwatch]::StartNew();while(-not [IO.File]::Exists(${quote(path.join(root, "listening"))})){if($fixture.ElapsedMilliseconds -ge 10000){throw 'The grandchild fixture did not start listening.'};Start-Sleep -Milliseconds 20}};Get-FrontendListenerIdentity $value};$http={param($ignored,$timeout)$true};$outcome='';$ready=$null;try{$ready=Wait-OwnedFrontendReady $runtime $contract ([DateTime]::UtcNow.AddSeconds(5)) $listener $http;$outcome='accepted'}catch{$outcome=$_.Exception.Message};$ownedIds=@($runtime.store.Values|ForEach-Object {[int]$_.processId}|Sort-Object -Unique);$owned=@($ownedIds|ForEach-Object {Get-Process -Id $_ -ErrorAction SilentlyContinue}|Where-Object {$null -ne $_.Handle});$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};$alive=@($owned|Where-Object {-not $_.WaitForExit(${ownedTeardownMs})}).Count;[ordered]@{outcome=$outcome;readyMode=$(if($null-ne$ready){$ready.mode}else{$null});frontendReady=$(if($null-ne$ready){$ready.frontendReady}else{$false});probeCount=$script:probe;identityCount=$ownedIds.Count;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount;alive=$alive}|ConvertTo-Json -Compress}finally{if($null -ne $runtime -and ($null -eq $cleanup -or $alive -gt 0)){try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{}};foreach($owner in $owned){if(-not $owner.HasExited){try{$owner.Kill()}catch{}}};if($null -ne $process){try{if(-not $process.HasExited){$process.Kill()}}catch{}}}`;
+    const result = spawnSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(source, "utf16le").toString("base64"),
+      ],
+      { encoding: "utf8", windowsHide: true, timeout: 25000 },
+    );
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const observed = JSON.parse(result.stdout.trim());
+    ownedCleanupProven =
+      observed.identityLost === false &&
+      observed.remainingCount === 0 &&
+      observed.alive === 0;
+    assert.equal(observed.outcome, "accepted");
+    assert.equal(observed.readyMode, "tauri-dev-split");
+    assert.equal(observed.frontendReady, true);
+    assert.equal(observed.probeCount, 2);
+    assert.ok(observed.identityCount >= 3);
+    assert.equal(observed.identityLost, false);
+    assert.equal(observed.remainingCount, 0);
+    assert.equal(observed.alive, 0);
+  } finally {
+    const failures = [];
+    if (!ownedCleanupProven) {
+      try {
+        cleanupRecordedRuntime(root);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    try {
+      assertWindowsPortFree(port);
+    } catch (error) {
+      failures.push(error);
+    }
+    rmSync(root, { recursive: true, force: true });
+    if (failures.length)
+      cleanupFailure = new AggregateError(failures, "fixture cleanup failed");
+  }
+  if (cleanupFailure) throw cleanupFailure;
+});
+
+test("Windows Vite cleanup treats a newer process at a tracked PID as exited and promotes its receipt", () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-vite-identity-loss-"));
   const powershell = path.join(
     process.env.SystemRoot,
@@ -3629,7 +3767,11 @@ test("Windows Vite cleanup quarantines post-teardown identity loss with the exac
   );
   try {
     const quote = (value) => `'${value.replaceAll("'", "''")}'`;
-    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @('Get-CleanupRootTuple','Resolve-CleanupFailureClass','Update-OwnedRuntimeTree','Write-RuntimeCleanupQuarantine','Stop-OwnedRuntimeTree')){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;try{$actual=Get-FootprintLaunchIdentity $process ${quote(powershell)};$forged=[ordered]@{processId=$actual.processId;executablePath=$actual.executablePath;creationDate='1900-01-01T00:00:00.000Z'};$runtime=[ordered]@{process=$process;identity=$forged;store=(New-FootprintIdentityStore)};$failed=$false;try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{$failed=$true};$alive=$null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue);$record=Get-Content -LiteralPath (Join-Path ${quote(root)} 'runtime-cleanup-quarantine-vite.json') -Raw|ConvertFrom-Json;[ordered]@{failed=$failed;alive=$alive;record=$record;expectedRoot=$forged}|ConvertTo-Json -Depth 4 -Compress}finally{Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue;[void]$process.WaitForExit(5000)}`;
+    // Each phase writes its elapsed time to stderr, which the status
+    // assertion prints, so a slow run names the phase it spent its time in.
+    const phase = (name) =>
+      `[Console]::Error.WriteLine('phase ${name} '+$phaseClock.ElapsedMilliseconds);`;
+    const source = `$phaseClock=[Diagnostics.Stopwatch]::StartNew();$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;${phase("module-imported")}$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${OWNED_RUNTIME_CLEANUP_FUNCTIONS.map((name) => `'${name}'`).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};${phase("functions-loaded")}$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;${phase("process-started")}try{$actual=Get-FootprintLaunchIdentity $process ${quote(powershell)};${phase("identity-captured")}$forged=[ordered]@{processId=$actual.processId;executablePath=$actual.executablePath;creationDate='1900-01-01T00:00:00.000Z'};$runtime=[ordered]@{process=$process;identity=$forged;store=(New-FootprintIdentityStore)};$pending=Join-Path ${quote(root)} 'machine-receipt.pending.json';$final=Join-Path ${quote(root)} 'machine-receipt.json';[IO.File]::WriteAllText($pending,'{}');$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};${phase("tree-stopped")}Publish-PendingJourneyReceipt $pending $final $cleanup $cleanup;${phase("receipt-published")}$alive=$null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue);[ordered]@{identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount;alive=$alive;published=(Test-Path -LiteralPath $final);pending=(Test-Path -LiteralPath $pending);quarantined=(Test-Path -LiteralPath (Join-Path ${quote(root)} 'runtime-cleanup-quarantine-vite.json'))}|ConvertTo-Json -Depth 4 -Compress}finally{Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue;[void]$process.WaitForExit(5000)}`;
     const encoded = Buffer.from(source, "utf16le").toString("base64");
     const result = spawnSync(
       powershell,
@@ -3638,16 +3780,14 @@ test("Windows Vite cleanup quarantines post-teardown identity loss with the exac
     );
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     const observed = JSON.parse(result.stdout.trim());
-    assert.equal(observed.failed, true);
-    assert.equal(observed.alive, true);
-    assert.equal(observed.record.schemaVersion, 2);
-    assert.equal(observed.record.runtimeRole, "vite");
-    assert.equal(observed.record.category, "cleanup-unproven");
-    assert.equal(observed.record.stage, "post-teardown");
-    assert.equal(observed.record.failureClass, "terminal-zero-invalid");
-    assert.equal(observed.record.identityLost, true);
-    assert.equal(observed.record.remainingCount, 0);
-    assert.deepEqual(observed.record.root, observed.expectedRoot);
+    assert.deepEqual(observed, {
+      identityLost: false,
+      remainingCount: 0,
+      alive: true,
+      published: true,
+      pending: false,
+      quarantined: false,
+    });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -3673,7 +3813,7 @@ test("Windows Vite cleanup records an injected stop failure and blocks receipt p
   );
   try {
     const quote = (value) => `'${value.replaceAll("'", "''")}'`;
-    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @('Get-CleanupRootTuple','Resolve-CleanupFailureClass','Update-OwnedRuntimeTree','Write-RuntimeCleanupQuarantine','Stop-OwnedRuntimeTree','Publish-PendingJourneyReceipt')){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};function Stop-FootprintTree {param($Identity,$Store,$Grace)throw [UnauthorizedAccessException]::new('injected cleanup stop failure')};$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;try{$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};$runtime=[ordered]@{process=$process;identity=$identity;store=(New-FootprintIdentityStore)};$pending=Join-Path ${quote(root)} 'machine-receipt.pending.json';$final=Join-Path ${quote(root)} 'machine-receipt.json';Set-Content -LiteralPath $pending -Value '{}' -NoNewline -Encoding utf8;$failed=$false;try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{$failed=$_.Exception.Message -eq 'The vite runtime cleanup could not be proven.'};$published=$true;try{Publish-PendingJourneyReceipt $pending $final $null ([ordered]@{identityLost=$false;remainingCount=0})}catch{$published=$false};$recordText=Get-Content -LiteralPath (Join-Path ${quote(root)} 'runtime-cleanup-quarantine-vite.json') -Raw;$record=$recordText|ConvertFrom-Json;$expectedRoot=[ordered]@{processId=$identity.processId;executablePath=$identity.executablePath;creationDate=$identity.creationDate};[ordered]@{failed=$failed;published=$published;pending=(Test-Path -LiteralPath $pending -PathType Leaf);final=(Test-Path -LiteralPath $final -PathType Leaf);alive=($null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue));record=$record;recordLeakedInjectedMessage=$recordText.Contains('injected cleanup stop failure');expectedRoot=$expectedRoot}|ConvertTo-Json -Depth 4 -Compress}finally{Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue;[void]$process.WaitForExit(5000)}`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${OWNED_RUNTIME_CLEANUP_FUNCTIONS.map((name) => `'${name}'`).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};function Stop-FootprintTree {param($Identity,$Store,$Grace)throw [UnauthorizedAccessException]::new('injected cleanup stop failure')};$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;try{$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};$runtime=[ordered]@{process=$process;identity=$identity;store=(New-FootprintIdentityStore)};$pending=Join-Path ${quote(root)} 'machine-receipt.pending.json';$final=Join-Path ${quote(root)} 'machine-receipt.json';Set-Content -LiteralPath $pending -Value '{}' -NoNewline -Encoding utf8;$failed=$false;try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{$failed=$_.Exception.Message -eq 'The vite runtime cleanup could not be proven.'};$published=$true;try{Publish-PendingJourneyReceipt $pending $final $null ([ordered]@{identityLost=$false;remainingCount=0})}catch{$published=$false};$recordText=Get-Content -LiteralPath (Join-Path ${quote(root)} 'runtime-cleanup-quarantine-vite.json') -Raw;$record=$recordText|ConvertFrom-Json;$expectedRoot=[ordered]@{processId=$identity.processId;executablePath=$identity.executablePath;creationDate=$identity.creationDate};[ordered]@{failed=$failed;published=$published;pending=(Test-Path -LiteralPath $pending -PathType Leaf);final=(Test-Path -LiteralPath $final -PathType Leaf);alive=($null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue));record=$record;recordLeakedInjectedMessage=$recordText.Contains('injected cleanup stop failure');expectedRoot=$expectedRoot}|ConvertTo-Json -Depth 4 -Compress}finally{Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue;[void]$process.WaitForExit(5000)}`;
     const result = spawnSync(
       powershell,
       [
@@ -3791,6 +3931,7 @@ test("Windows wrapper emits strict ACP-04 and AV01 collector vectors from actual
 
 test("normal wrapper passes clean Git status with a canonical helper fixture and fails safely before evidence or launch", () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-clean-preflight-"));
+  const executable = path.join(root, "sage.cmd");
   const powershell = path.join(
     process.env.SystemRoot,
     "System32",
@@ -3802,7 +3943,27 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
     "scripts",
     "run-source-functional-native-ide-journey.ps1",
   );
+  // Observe only processes owned by this fixture, and fail closed if the
+  // process snapshot itself fails. Other lanes may start or stop Sage.
+  const ownedProcesses = () => {
+    const result = spawnSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `$ErrorActionPreference='Stop'; @(Get-CimInstance Win32_Process|Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.Contains('${root.replaceAll("'", "''")}') }|ForEach-Object { "$($_.Name):$($_.ProcessId)" }|Sort-Object)-join ','`,
+      ],
+      { encoding: "utf8", windowsHide: true, timeout: 60_000 },
+    );
+    assert.equal(result.status, 0, `${result.error ?? ""}\n${result.stderr}`);
+    return result.stdout.trim();
+  };
   try {
+    writeFileSync(
+      executable,
+      '@echo off\r\n> "%~dp0launched.txt" echo launched\r\nexit /b 71\r\n',
+    );
     mkdirSync(path.join(root, "src-tauri"));
     writeFileSync(
       path.join(root, "src-tauri", "tauri.conf.json"),
@@ -3824,15 +3985,7 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
         0,
       );
     }
-    const before = spawnSync(
-      powershell,
-      [
-        "-NoProfile",
-        "-Command",
-        "@(Get-Process|? ProcessName -match '^(sage|playwright)'|%{\"$($_.ProcessName):$($_.Id)\"}|sort)-join ','",
-      ],
-      { encoding: "utf8", windowsHide: true },
-    ).stdout.trim();
+    const before = ownedProcesses();
     const result = spawnSync(
       powershell,
       [
@@ -3841,7 +3994,7 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
         "-File",
         wrapper,
         "-SageExecutable",
-        wrapper,
+        executable,
         "-SourceRoot",
         root,
         "-EvidenceRoot",
@@ -3858,16 +4011,10 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
       `${result.stdout}\n${result.stderr}`,
       /EvidenceRoot must be an absolute canonical path/,
     );
-    const after = spawnSync(
-      powershell,
-      [
-        "-NoProfile",
-        "-Command",
-        "@(Get-Process|? ProcessName -match '^(sage|playwright)'|%{\"$($_.ProcessName):$($_.Id)\"}|sort)-join ','",
-      ],
-      { encoding: "utf8", windowsHide: true },
-    ).stdout.trim();
+    const after = ownedProcesses();
+    assert.equal(before, "");
     assert.equal(after, before);
+    assert.equal(existsSync(path.join(root, "launched.txt")), false);
     assert.equal(existsSync(path.resolve("relative-evidence")), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -4175,6 +4322,69 @@ function waitForChildClose(child, timeoutMs) {
   ]);
 }
 
+// Tears down a runtime tree whose controller did not prove its own cleanup,
+// for example when its timeout killed it. The root's recorded identity stops
+// only that exact process and its live descendants. A node descendant records
+// its PID, executable and start time; it is stopped only when the live process
+// under that PID runs the same executable and was created no later than the
+// recorded start, which a reused PID cannot satisfy.
+function cleanupRecordedRuntime(root) {
+  const failures = [];
+  const rootFile = path.join(root, "owned-root.txt");
+  if (existsSync(rootFile)) {
+    const [processId, executablePath, creationDate] = readFileSync(
+      rootFile,
+      "utf8",
+    ).split(/\r?\n/);
+    try {
+      if (!processId || !executablePath || !creationDate)
+        throw new Error("owned root record is incomplete");
+      const identity = {
+        processId: Number(processId),
+        executablePath,
+        creationDate,
+        remembered: [],
+      };
+      const cleanup = processIdentityHelper("cleanup", identity);
+      if (cleanup.identityLost || cleanup.remaining.length !== 0)
+        throw new Error(
+          `runtime cleanup unproven for ${identity.processId}/${identity.creationDate}`,
+        );
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  for (const name of ["child", "grandchild"]) {
+    const file = path.join(root, `${name}-identity.json`);
+    if (!existsSync(file)) continue;
+    try {
+      const recorded = JSON.parse(readFileSync(file, "utf8"));
+      let live;
+      try {
+        live = processIdentityHelper("capture", recorded.processId);
+      } catch {
+        continue;
+      }
+      const created = Date.parse(live.creationDate);
+      if (
+        path.resolve(live.executablePath).toLowerCase() !==
+          path.resolve(recorded.executablePath).toLowerCase() ||
+        !(created <= recorded.startedAt)
+      )
+        continue;
+      const cleanup = processIdentityHelper("cleanup", live);
+      if (cleanup.identityLost || cleanup.remaining.length !== 0)
+        throw new Error(
+          `${name} cleanup unproven for ${live.processId}/${live.creationDate}`,
+        );
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length)
+    throw new AggregateError(failures, "recorded runtime cleanup failed");
+}
+
 function assertWindowsPortFree(port) {
   const powershell = path.join(
     process.env.SystemRoot,
@@ -4195,3 +4405,103 @@ function assertWindowsPortFree(port) {
   );
   assert.equal(result.status, 0, `port ${port} retained a listener`);
 }
+
+test("process identity helper failures keep the stable code and carry what PowerShell reported", () => {
+  const failure = (result) => {
+    try {
+      processIdentityHelperOutput(result);
+    } catch (error) {
+      assert.equal(error.message, "journey-tool-cleanup-unproven");
+      return error.cause;
+    }
+    assert.fail("the helper result was accepted");
+  };
+
+  assert.deepEqual(
+    processIdentityHelperOutput({ status: 0, stdout: '{"processId":7}\n' }),
+    { processId: 7 },
+  );
+  assert.equal(
+    failure({ status: 1, signal: null, stderr: "  Access is denied.\r\n" })
+      .message,
+    "process identity helper exited with status 1: Access is denied.",
+  );
+  assert.equal(
+    failure({ status: null, signal: "SIGTERM", stderr: "" }).message,
+    "process identity helper exited with status null (SIGTERM): ",
+  );
+  const oversized = failure({
+    status: 1,
+    signal: null,
+    stderr: "x".repeat(HELPER_DIAGNOSTIC_CHARS_MAX + 1),
+  }).message;
+  assert.equal(
+    oversized,
+    `process identity helper exited with status 1: ${"x".repeat(HELPER_DIAGNOSTIC_CHARS_MAX)}`,
+  );
+  const spawnError = Object.assign(
+    new Error("spawnSync powershell ETIMEDOUT"),
+    {
+      code: "ETIMEDOUT",
+    },
+  );
+  assert.equal(failure({ error: spawnError, status: null }), spawnError);
+  assert.ok(failure({ status: 0, stdout: "not json" }) instanceof SyntaxError);
+});
+
+function fakeBoundedToolChild(pid) {
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.pid = pid;
+  return child;
+}
+
+test("bounded tool rejection carries the identity capture failure as its cause", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-tool-capture-cause-"));
+  try {
+    const captureFailure = new Error(
+      "process identity helper exited with status 1: denied",
+    );
+    await assert.rejects(
+      runBoundedTool("tool", [], Date.now() + 5_000, root, {
+        spawn: () => fakeBoundedToolChild(71),
+        captureIdentity: () => {
+          throw captureFailure;
+        },
+      }),
+      (error) => {
+        assert.equal(error.message, "playwright-cli-cleanup-unproven");
+        assert.equal(error.cause, captureFailure);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("bounded tool rejection carries the cleanup failure as its cause", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-tool-cleanup-cause-"));
+  try {
+    const child = fakeBoundedToolChild(72);
+    const cleanupFailure = new Error(
+      "process identity helper exited with status 1: denied",
+    );
+    const promise = runBoundedTool("tool", [], Date.now() + 5_000, root, {
+      spawn: () => child,
+      captureIdentity: () => ({ processId: 72, creationDate: "exact" }),
+      cleanupIdentity: () => {
+        throw cleanupFailure;
+      },
+    });
+    child.stdout.write(Buffer.alloc(64 * 1024 + 1));
+    await assert.rejects(promise, (error) => {
+      assert.equal(error.message, "playwright-cli-cleanup-unproven");
+      assert.equal(error.cause, cleanupFailure);
+      return true;
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -1,5 +1,6 @@
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
+pub(crate) mod chat_status;
 pub(crate) mod child_transcript;
 pub(crate) mod claude_auth;
 pub(crate) mod codex_auth;
@@ -7,19 +8,27 @@ pub(crate) mod edit_disposition;
 mod errors;
 pub(crate) mod file_reference;
 pub(crate) mod goal;
+pub(crate) mod mcp;
 pub(crate) mod permission;
 pub(crate) mod read_text_file;
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 pub(crate) mod runtime_identity;
+pub(crate) mod session_access;
+pub(crate) mod session_action;
 pub(crate) mod session_config;
+pub(crate) mod session_control;
 mod session_operations;
 mod session_routes;
+pub(crate) mod slash_commands;
+pub(crate) mod turn_workspace;
+pub(crate) mod usage;
+pub(crate) mod user_input;
 
 pub(crate) use session_routes::{activate_acp_session_inner, start_acp_session_inner};
 
 use errors::{
-    binding_unavailable, codex_discovery_error, dispatch_error, intent_error, internal_error,
-    page_admission_error, safe_message, session_error, store_error,
+    archived_chat, binding_unavailable, codex_discovery_error, dispatch_error, intent_error,
+    internal_error, page_admission_error, safe_message, session_error, store_error,
 };
 
 use tauri::State;
@@ -144,16 +153,7 @@ pub(crate) async fn get_acp_chat_page_inner(
     Ok(page)
 }
 
-#[tauri::command]
-pub async fn get_acp_file_snapshot(
-    state: State<'_, AppState>,
-    request: GetAcpFileSnapshotRequest,
-) -> Result<AcpFileSnapshotResponse, AcpIpcError> {
-    get_acp_file_snapshot_inner(&state, request).await
-}
-
-mod file_snapshot;
-pub(crate) use file_snapshot::get_acp_file_snapshot_inner;
+pub(crate) mod file_snapshot;
 
 #[tauri::command]
 pub async fn start_acp_session(

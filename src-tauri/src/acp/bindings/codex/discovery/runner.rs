@@ -10,7 +10,9 @@ use crate::acp::{
 use super::{CodexDiscoveryContent, CodexDiscoveryError, CodexDiscoveryProtocol, ProtocolProgress};
 
 const DISCOVERY_MODEL_PAGE_LIMIT: u32 = 4;
-const DISCOVERY_INTERLEAVED_NOTIFICATION_LIMIT: usize = 4;
+/// Reads allowed per expected response, so at most fifteen notifications may
+/// precede it. The operation deadline still bounds the whole exchange.
+const DISCOVERY_INTERLEAVED_NOTIFICATION_LIMIT: usize = 16;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CodexDiscoveryDeadline {
@@ -78,7 +80,11 @@ impl CodexDiscoveryDeadline {
     }
 
     pub(crate) fn ensure_operation(self) -> Result<(), CodexDiscoveryRunError> {
-        self.operation_remaining(Duration::MAX).map(drop)
+        self.ensure_operation_at(Instant::now())
+    }
+
+    fn ensure_operation_at(self, now: Instant) -> Result<(), CodexDiscoveryRunError> {
+        self.operation_remaining_at(now, Duration::MAX).map(drop)
     }
 
     pub(crate) fn ensure_total(self) -> Result<(), CodexDiscoveryRunError> {
@@ -170,13 +176,17 @@ impl DiscoveryZeroProcess {
         self.runtime_epoch
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
     pub(crate) fn fixture(runtime_epoch: u64) -> Self {
         Self { runtime_epoch }
     }
 }
 
 pub(crate) trait DiscoveryTransport {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+
     fn write(&mut self, frame: &OutboundFrame) -> FrameWriteOutcome;
     fn read_frame(&mut self, timeout: Duration) -> Result<Option<Frame>, CodexDiscoveryRunError>;
     fn revalidate(&self, checkpoint: RevalidationCheckpoint) -> Result<(), CodexDiscoveryRunError>;
@@ -212,7 +222,7 @@ fn execute(
     transport: &mut dyn DiscoveryTransport,
     deadline: CodexDiscoveryDeadline,
 ) -> Result<CodexDiscoveryContent, CodexDiscoveryRunError> {
-    deadline.ensure_operation()?;
+    deadline.ensure_operation_at(transport.now())?;
     let request = protocol.initialize_request()?;
     write(transport, request.into_frame(), deadline)?;
     let initialized = protocol.accept_initialize(&read(
@@ -222,13 +232,13 @@ fn execute(
     )?)?;
     write(transport, initialized, deadline)?;
 
-    deadline.ensure_operation()?;
+    deadline.ensure_operation_at(transport.now())?;
     transport.revalidate(RevalidationCheckpoint::Account)?;
     let request = protocol.account_request()?;
     let account_id = request.id();
     write(transport, request.into_frame(), deadline)?;
 
-    deadline.ensure_operation()?;
+    deadline.ensure_operation_at(transport.now())?;
     transport.revalidate(RevalidationCheckpoint::ModelPage)?;
     let request = protocol.model_request()?;
     let first_model_id = request.id();
@@ -247,7 +257,7 @@ fn execute(
                 protocol.accept_account(&frame)?;
                 awaiting_account = false;
                 if first_model_completed_before_account {
-                    deadline.ensure_operation()?;
+                    deadline.ensure_operation_at(transport.now())?;
                     transport.revalidate(RevalidationCheckpoint::Publish)?;
                     return protocol.take_completed_content().map_err(Into::into);
                 }
@@ -259,7 +269,7 @@ fn execute(
                         first_model_completed_before_account = true;
                     }
                     ProtocolProgress::Complete(content) => {
-                        deadline.ensure_operation()?;
+                        deadline.ensure_operation_at(transport.now())?;
                         transport.revalidate(RevalidationCheckpoint::Publish)?;
                         return Ok(content);
                     }
@@ -271,7 +281,7 @@ fn execute(
     }
 
     loop {
-        deadline.ensure_operation()?;
+        deadline.ensure_operation_at(transport.now())?;
         transport.revalidate(RevalidationCheckpoint::ModelPage)?;
         let request = protocol.model_request()?;
         write(transport, request.into_frame(), deadline)?;
@@ -283,7 +293,7 @@ fn execute(
             ProtocolProgress::More => {}
             ProtocolProgress::AwaitingAccount => return Err(CodexDiscoveryRunError::Protocol),
             ProtocolProgress::Complete(content) => {
-                deadline.ensure_operation()?;
+                deadline.ensure_operation_at(transport.now())?;
                 transport.revalidate(RevalidationCheckpoint::Publish)?;
                 return Ok(content);
             }
@@ -310,11 +320,12 @@ fn read(
     timeout_ms: u64,
 ) -> Result<Frame, CodexDiscoveryRunError> {
     for _ in 0..DISCOVERY_INTERLEAVED_NOTIFICATION_LIMIT {
-        let timeout = deadline.operation_remaining(Duration::from_millis(timeout_ms))?;
+        let timeout =
+            deadline.operation_remaining_at(transport.now(), Duration::from_millis(timeout_ms))?;
         let frame = transport
             .read_frame(timeout)?
             .ok_or(CodexDiscoveryRunError::Eof)?;
-        if is_interleaved_account_notification(&frame) {
+        if is_interleaved_notification(&frame) {
             continue;
         }
         return Ok(frame);
@@ -322,30 +333,50 @@ fn read(
     Err(CodexDiscoveryRunError::Protocol)
 }
 
-fn is_interleaved_account_notification(frame: &Frame) -> bool {
+/// Discovery only needs responses, so it skips any server notification that
+/// arrives in between. Codex emits several while it starts up (account and
+/// remote-control status, `configWarning` for a stale config key), and newer
+/// releases add more. A server request carries an `id` and is not skipped.
+fn is_interleaved_notification(frame: &Frame) -> bool {
     let Ok(value) = serde_json::from_slice::<Value>(frame.as_bytes()) else {
         return false;
     };
     let Some(object) = value.as_object() else {
         return false;
     };
-    let notification = (object.len() == 2 || object.len() == 3)
-        && matches!(
-            object.get("method").and_then(Value::as_str),
-            Some("account/updated" | "remoteControl/status/changed")
+    let Some(method) = object.get("method").and_then(Value::as_str) else {
+        return false;
+    };
+    let notification = object.keys().all(|key| {
+        matches!(
+            key.as_str(),
+            "method" | "params" | "emittedAtMs" | "jsonrpc"
         )
-        && object.get("params").is_some_and(Value::is_object)
+    }) && object
+        .get("params")
+        .is_none_or(|params| params.is_object() || params.is_array())
         && object
             .get("emittedAtMs")
             .is_none_or(|emitted_at| emitted_at.as_u64().is_some());
-    if notification {
+    if !notification {
+        return false;
+    }
+    if matches!(method, "account/updated" | "remoteControl/status/changed") {
         tracing::info!(
-            json_rpc_method = ?object.get("method"),
+            json_rpc_method = method,
             json_rpc_params = ?object.get("params"),
             "Codex discovery ignored an interleaved Codex notification"
         );
+    } else {
+        // Other notifications may carry user configuration, so only their
+        // method and size are recorded.
+        tracing::info!(
+            json_rpc_method = method,
+            notification_bytes = frame.as_bytes().len(),
+            "Codex discovery ignored an interleaved Codex notification"
+        );
     }
-    notification
+    true
 }
 
 fn write(
@@ -353,7 +384,7 @@ fn write(
     frame: OutboundFrame,
     deadline: CodexDiscoveryDeadline,
 ) -> Result<(), CodexDiscoveryRunError> {
-    deadline.ensure_operation()?;
+    deadline.ensure_operation_at(transport.now())?;
     log_request(&frame);
     match transport.write(&frame) {
         FrameWriteOutcome::Complete => Ok(()),

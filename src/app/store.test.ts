@@ -14,9 +14,14 @@ import type {
   ResourceRef,
   WorkbenchTab,
 } from "../domain/workbench";
+import {
+  chatReadThrough,
+  markChatRead,
+  resetChatReadMarks,
+} from "../features/chat/acp/chatReadMarks";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { desktop } from "../services/desktop";
-import { acpDesktop } from "../services/acpDesktop";
+import { acpHarnessDesktop } from "../services/acpHarnessDesktop";
 import { useWorkbenchStore } from "./store";
 import { useAcpProjectionStore } from "./acpProjectionStore";
 import {
@@ -277,7 +282,10 @@ describe("workbench resource and project navigation", () => {
     );
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   it("addresses simulator prompts by Chat and adopts the durable session head", async () => {
     const messages = [
@@ -491,6 +499,38 @@ describe("workbench resource and project navigation", () => {
     });
   });
 
+  it.each([false, true])(
+    "keeps a failed New chat local when projection recovery is unavailable (committed: %s)",
+    async (committed) => {
+      const creation = vi.spyOn(getWorkbenchPorts().chat, "createChat");
+      if (committed)
+        creation.mockResolvedValueOnce({
+          committed: true,
+          transitionEpoch: 1,
+          snapshot: null,
+          recoveryError: null,
+        });
+      else
+        creation.mockRejectedValueOnce(
+          new TypeError("Cannot read properties of undefined (reading invoke)"),
+        );
+      vi.spyOn(projectPort, "getBootstrapSnapshot").mockRejectedValue(
+        new TypeError("Cannot read properties of undefined (reading invoke)"),
+      );
+      await useWorkbenchStore.getState().createChat();
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        phase: "ready",
+        projectTransitioning: false,
+        activeTabId: chatTab.id,
+        error: expect.stringContaining("Chat creation"),
+      });
+      expect(useWorkbenchStore.getState().tabs).toEqual([chatTab]);
+      expect(useWorkbenchStore.getState().error).not.toMatch(
+        /invoke|undefined|properties/,
+      );
+    },
+  );
+
   it("creates a Chat from the current layout and adopts its authoritative projection", async () => {
     const newChat: WorkbenchTab = {
       id: "chat:new",
@@ -580,7 +620,9 @@ describe("workbench resource and project navigation", () => {
     };
     const pending = deferred<CodexDiscoveryResponse>();
     useWorkbenchStore.setState({ harnesses: [codex] });
-    vi.spyOn(acpDesktop, "discoverCodex").mockReturnValue(pending.promise);
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockReturnValue(
+      pending.promise,
+    );
     vi.spyOn(getWorkbenchPorts().chat, "createChat").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
@@ -827,15 +869,22 @@ describe("workbench resource and project navigation", () => {
                   position: 0,
                 },
               ],
+              railArchived: [{ id: "chat:cross", title: "Research" }],
             },
           ],
         },
         recoveryError: null,
       });
 
+    markChatRead("chat:cross", 5_000);
+    expect(chatReadThrough("chat:cross")).toBe(5_000);
+
     expect(
       await useWorkbenchStore.getState().archiveChat("chat:cross", "cross"),
     ).toBe(true);
+    // The store forgets an archived chat's read mark, and so does the rail.
+    expect(chatReadThrough("chat:cross")).toBeUndefined();
+    resetChatReadMarks();
     expect(archive).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: "cross",
@@ -946,7 +995,12 @@ describe("workbench resource and project navigation", () => {
     };
     const snapshot = vi
       .spyOn(editorPort, "snapshotEditorBuffer")
-      .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
+      .mockResolvedValue({
+        revision: 1,
+        applied: true,
+        persistedAt: 1,
+        dirty: true,
+      });
     const pendingRename = deferred<RenameChatResult>();
     const rename = vi
       .spyOn(getWorkbenchPorts().chat, "renameChat")
@@ -1034,6 +1088,66 @@ describe("workbench resource and project navigation", () => {
       messages: [],
       projectTransitioning: false,
     });
+  });
+
+  it("renames a Chat with a newly opened Diff after native nullable status round-trips", async () => {
+    useWorkbenchStore.setState({ tabs: [{ ...chatTab, status: "idle" }] });
+    const target = resource("src/example.ts");
+    vi.spyOn(repositoryPort, "getFileDiff").mockResolvedValue({
+      resource: target,
+      hunks: [],
+      binary: false,
+      truncated: false,
+    });
+    vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
+      resource: resource(""),
+      entries: [],
+      truncated: false,
+    });
+    await useWorkbenchStore.getState().openDiff(target);
+    const opened = useWorkbenchStore.getState().activeTabId!;
+    expect(
+      useWorkbenchStore.getState().tabs.find((tab) => tab.id === opened),
+    ).toMatchObject({ kind: "diff", resource: target });
+    vi.spyOn(getWorkbenchPorts().chat, "renameChat").mockImplementation(
+      async (request, epoch) => ({
+        committed: true,
+        transitionEpoch: epoch + 1,
+        snapshot: chatProjection(
+          // Serde serializes WorkbenchTab.status: None as JSON null.
+          JSON.parse(
+            JSON.stringify(
+              request.currentLayout.tabs.map((tab) => ({
+                ...tab,
+                title: tab.id === request.chatId ? "Chat: Focus" : tab.title,
+                status: tab.status ?? null,
+              })),
+            ),
+          ),
+          opened,
+          epoch + 1,
+          null,
+          [],
+          "root-a",
+          target,
+        ),
+        recoveryError: null,
+      }),
+    );
+
+    expect(
+      await useWorkbenchStore.getState().renameChat(chatTab.id, "Focus"),
+    ).toBe(true);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      phase: "ready",
+      error: null,
+      activeTabId: opened,
+      selectedResource: target,
+    });
+    expect(
+      useWorkbenchStore.getState().tabs.find((tab) => tab.id === chatTab.id)
+        ?.title,
+    ).toBe("Chat: Focus");
   });
 
   it("blocks Chat rename when the newest editor snapshot fails", async () => {
@@ -1144,7 +1258,12 @@ describe("workbench resource and project navigation", () => {
     };
     const snapshot = vi
       .spyOn(editorPort, "snapshotEditorBuffer")
-      .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
+      .mockResolvedValue({
+        revision: 1,
+        applied: true,
+        persistedAt: 1,
+        dirty: true,
+      });
     const pendingArchive = deferred<ArchiveChatResult>();
     const archive = vi
       .spyOn(getWorkbenchPorts().chat, "archiveChat")
@@ -1796,6 +1915,8 @@ describe("workbench resource and project navigation", () => {
 
     useWorkbenchStore.getState().closeTab(chatTab.id);
 
+    // The archive action loads with its first use.
+    await vi.waitFor(() => expect(archive).toHaveBeenCalled());
     await vi.waitFor(() => {
       expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
     });
@@ -1833,6 +1954,10 @@ describe("workbench resource and project navigation", () => {
 
     useWorkbenchStore.getState().closeTab(chatTab.id);
 
+    // The archive action loads with its first use.
+    await vi.waitFor(() =>
+      expect(getWorkbenchPorts().chat.archiveChat).toHaveBeenCalled(),
+    );
     await vi.waitFor(() => {
       expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
     });
@@ -1878,6 +2003,10 @@ describe("workbench resource and project navigation", () => {
 
     useWorkbenchStore.getState().closeTab(chatTab.id);
 
+    // The archive action loads with its first use.
+    await vi.waitFor(() =>
+      expect(getWorkbenchPorts().chat.archiveChat).toHaveBeenCalled(),
+    );
     await vi.waitFor(() => {
       expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
     });
@@ -1929,7 +2058,12 @@ describe("workbench resource and project navigation", () => {
     };
     const snapshot = vi
       .spyOn(editorPort, "snapshotEditorBuffer")
-      .mockResolvedValue({ revision: 2, persistedAt: 1, dirty: true });
+      .mockResolvedValue({
+        revision: 2,
+        applied: true,
+        persistedAt: 1,
+        dirty: true,
+      });
     vi.spyOn(editorPort, "openEditorDocument").mockResolvedValue(
       document(right, "fn needle() {}\n", 0, false),
     );
@@ -2022,6 +2156,31 @@ describe("workbench resource and project navigation", () => {
     expect(useWorkbenchStore.getState().fileNavigationTarget).toBeNull();
   });
 
+  it.each([true, false])(
+    "reveals new and existing files with compact drawer dismissal (%s)",
+    async (compact) => {
+      vi.stubGlobal("matchMedia", () => ({ matches: compact }));
+      const target = resource("src/new-file.ts");
+      vi.spyOn(editorPort, "openEditorDocument").mockResolvedValue(
+        document(target, "export const value = 1;", 0, false),
+      );
+      await useWorkbenchStore.getState().openFile(target);
+      expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+        phase: "ready",
+        resource: target,
+      });
+      expect(useWorkbenchStore.getState().sidebarOpen).toBe(!compact);
+
+      useWorkbenchStore.setState({ sidebarOpen: true });
+      await useWorkbenchStore.getState().openFile(target);
+      expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+        phase: "ready",
+        resource: target,
+      });
+      expect(useWorkbenchStore.getState().sidebarOpen).toBe(!compact);
+    },
+  );
+
   it("opens a changed resource as a diff and focuses Explorer", async () => {
     const target = resource("src/app/store.ts");
     await useWorkbenchStore.getState().openDiff(target);
@@ -2092,6 +2251,7 @@ describe("workbench resource and project navigation", () => {
           ? first.promise
           : {
               revision: request.revision,
+              applied: true,
               persistedAt: 2,
               dirty: true,
             };
@@ -2127,7 +2287,7 @@ describe("workbench resource and project navigation", () => {
     await vi.waitFor(() => expect(requests).toEqual(["first\n"]));
     useWorkbenchStore.getState().updateEditorContent("latest\n");
     const save = useWorkbenchStore.getState().saveActiveEditor();
-    first.resolve({ revision: 1, persistedAt: 1, dirty: true });
+    first.resolve({ revision: 1, applied: true, persistedAt: 1, dirty: true });
     await Promise.all([timerFlush, save]);
     expect(requests).toEqual(["first\n", "latest\n"]);
   });
@@ -2333,7 +2493,12 @@ describe("workbench resource and project navigation", () => {
     const activation = useWorkbenchStore.getState().activateTab(chatTab.id);
     await vi.waitFor(() => expect(snapshot).toHaveBeenCalledOnce());
     expect(useWorkbenchStore.getState().activeTabId).toBe(fileTab.id);
-    pending.resolve({ revision: 1, persistedAt: 1, dirty: true });
+    pending.resolve({
+      revision: 1,
+      applied: true,
+      persistedAt: 1,
+      dirty: true,
+    });
     await activation;
     expect(useWorkbenchStore.getState().activeTabId).toBe(chatTab.id);
   });
@@ -2351,6 +2516,7 @@ describe("workbench resource and project navigation", () => {
     };
     vi.spyOn(editorPort, "snapshotEditorBuffer").mockResolvedValue({
       revision: 1,
+      applied: true,
       persistedAt: 1,
       dirty: true,
     });
@@ -3188,7 +3354,7 @@ describe("workbench resource and project navigation", () => {
         },
       ],
     });
-    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue({
       projectId: "project-a",
       projectGeneration: "0",
       rootId: "root-a",
@@ -3242,7 +3408,7 @@ describe("workbench resource and project navigation", () => {
       ],
     });
     const genericModels = vi.spyOn(desktop, "listHarnessModels");
-    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue({
       projectId: "project-a",
       projectGeneration: "0",
       rootId: "root-a",
@@ -3281,7 +3447,7 @@ describe("workbench resource and project navigation", () => {
         },
       ],
     });
-    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue({
       projectId: "project-a",
       projectGeneration: "0",
       rootId: "root-a",
@@ -3321,7 +3487,7 @@ describe("workbench resource and project navigation", () => {
       ],
     });
     const discover = vi
-      .spyOn(acpDesktop, "discoverCodex")
+      .spyOn(acpHarnessDesktop, "discoverCodex")
       .mockResolvedValueOnce({
         projectId: "project-a",
         projectGeneration: "0",
@@ -3343,8 +3509,10 @@ describe("workbench resource and project navigation", () => {
         defaultModelId: "gpt-auth",
       } as never);
     const login =
-      deferred<Awaited<ReturnType<typeof acpDesktop.startCodexAuth>>>();
-    vi.spyOn(acpDesktop, "startCodexAuth").mockReturnValue(login.promise);
+      deferred<Awaited<ReturnType<typeof acpHarnessDesktop.startCodexAuth>>>();
+    vi.spyOn(acpHarnessDesktop, "startCodexAuth").mockReturnValue(
+      login.promise,
+    );
 
     await useWorkbenchStore.getState().selectHarness("account-harness");
     useWorkbenchStore.getState().requestHarnessSignIn();
@@ -3388,13 +3556,15 @@ describe("workbench resource and project navigation", () => {
       selectedHarnessId: "future-auth",
       harnessDiscoveryPhase: "waiting",
     });
-    const cancel = vi.spyOn(acpDesktop, "cancelCodexAuth").mockResolvedValue({
-      projectId: "project-a",
-      projectGeneration: "0",
-      bindingId: "future-auth-binding",
-      phase: "waiting",
-      revision: "2",
-    } as never);
+    const cancel = vi
+      .spyOn(acpHarnessDesktop, "cancelCodexAuth")
+      .mockResolvedValue({
+        projectId: "project-a",
+        projectGeneration: "0",
+        bindingId: "future-auth-binding",
+        phase: "waiting",
+        revision: "2",
+      } as never);
     await useWorkbenchStore.getState().cancelHarnessSignIn();
     expect(cancel).toHaveBeenCalledWith({
       projectId: "project-a",
@@ -3402,19 +3572,25 @@ describe("workbench resource and project navigation", () => {
       bindingId: "future-auth-binding",
     });
 
-    useWorkbenchStore.setState({ harnessDiscoveryPhase: "ready" });
-    const logout = vi.spyOn(acpDesktop, "logoutCodexAuth").mockResolvedValue({
-      projectId: "project-a",
-      projectGeneration: "0",
-      bindingId: "future-auth-binding",
-      phase: "signedOut",
-      revision: "3",
-    } as never);
+    useWorkbenchStore.setState({
+      harnessDiscoveryPhase: "ready",
+      harnessAccount: "apiKey",
+    });
+    const logout = vi
+      .spyOn(acpHarnessDesktop, "logoutCodexAuth")
+      .mockResolvedValue({
+        projectId: "project-a",
+        projectGeneration: "0",
+        bindingId: "future-auth-binding",
+        phase: "signedOut",
+        revision: "3",
+      } as never);
     await useWorkbenchStore.getState().logoutHarness();
     expect(logout).toHaveBeenCalledOnce();
     expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe(
       "signInRequired",
     );
+    expect(useWorkbenchStore.getState().harnessAccount).toBeNull();
   });
 
   it("ignores a completed auth request after the native project epoch changes", async () => {
@@ -3435,9 +3611,11 @@ describe("workbench resource and project navigation", () => {
       harnessDiscoveryPhase: "consent",
     });
     const pending =
-      deferred<Awaited<ReturnType<typeof acpDesktop.startCodexAuth>>>();
-    vi.spyOn(acpDesktop, "startCodexAuth").mockReturnValue(pending.promise);
-    const discover = vi.spyOn(acpDesktop, "discoverCodex");
+      deferred<Awaited<ReturnType<typeof acpHarnessDesktop.startCodexAuth>>>();
+    vi.spyOn(acpHarnessDesktop, "startCodexAuth").mockReturnValue(
+      pending.promise,
+    );
+    const discover = vi.spyOn(acpHarnessDesktop, "discoverCodex");
 
     const signingIn = useWorkbenchStore.getState().confirmHarnessSignIn();
     useWorkbenchStore.setState({ nativeTransitionEpoch: 1 });
@@ -3470,7 +3648,9 @@ describe("workbench resource and project navigation", () => {
         },
       ],
     });
-    vi.spyOn(acpDesktop, "discoverCodex").mockReturnValue(pending.promise);
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockReturnValue(
+      pending.promise,
+    );
 
     const selecting = useWorkbenchStore.getState().selectHarness("codex");
     useWorkbenchStore.setState({ nativeTransitionEpoch: 1 });
@@ -3512,7 +3692,7 @@ describe("workbench resource and project navigation", () => {
         },
       ],
     });
-    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue({
       projectId: "project-a",
       projectGeneration: "0",
       rootId: "root-foreign",
@@ -3828,7 +4008,7 @@ describe("workbench resource and project navigation", () => {
   });
 
   it("blocks the workbench if projection recovery fails after project creation", async () => {
-    vi.spyOn(projectPort, "createProjectFromPicker").mockResolvedValue({
+    vi.spyOn(projectPort, "createProject").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: null,
@@ -3838,7 +4018,9 @@ describe("workbench resource and project navigation", () => {
       .spyOn(projectPort, "getBootstrapSnapshot")
       .mockRejectedValue(new Error("bootstrap unavailable"));
 
-    await useWorkbenchStore.getState().createProject();
+    await useWorkbenchStore
+      .getState()
+      .createProject({ name: "Project", sourceTokens: [] });
 
     const state = useWorkbenchStore.getState();
     expect(bootstrap).toHaveBeenCalledTimes(2);
@@ -3895,18 +4077,21 @@ describe("workbench resource and project navigation", () => {
       });
       const snapshot = vi
         .spyOn(editorPort, "snapshotEditorBuffer")
-        .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
+        .mockResolvedValue({
+          revision: 1,
+          applied: true,
+          persistedAt: 1,
+          dirty: true,
+        });
       const persist = vi
         .spyOn(projectPort, "persistProjectLayout")
         .mockResolvedValue();
-      const create = vi
-        .spyOn(projectPort, "createProjectFromPicker")
-        .mockResolvedValue({
-          committed: false,
-          transitionEpoch: 0,
-          snapshot: null,
-          recoveryError: null,
-        });
+      const create = vi.spyOn(projectPort, "createProject").mockResolvedValue({
+        committed: false,
+        transitionEpoch: 0,
+        snapshot: null,
+        recoveryError: null,
+      });
       const addRoot = vi
         .spyOn(projectPort, "addProjectRootFromPicker")
         .mockResolvedValue({
@@ -3917,7 +4102,9 @@ describe("workbench resource and project navigation", () => {
         });
 
       if (operation === "create") {
-        await useWorkbenchStore.getState().createProject();
+        await useWorkbenchStore
+          .getState()
+          .createProject({ name: "Project", sourceTokens: [] });
       } else {
         await useWorkbenchStore.getState().addProjectRoot();
       }
@@ -4156,10 +4343,12 @@ describe("workbench resource and project navigation", () => {
         );
         await useWorkbenchStore.getState().switchProject("project-b");
       } else if (operation === "create") {
-        vi.spyOn(projectPort, "createProjectFromPicker").mockRejectedValue(
+        vi.spyOn(projectPort, "createProject").mockRejectedValue(
           new Error("response lost"),
         );
-        await useWorkbenchStore.getState().createProject();
+        await useWorkbenchStore
+          .getState()
+          .createProject({ name: "Project", sourceTokens: [] });
       } else {
         vi.spyOn(projectPort, "addProjectRootFromPicker").mockRejectedValue(
           new Error("response lost"),
@@ -4228,7 +4417,12 @@ describe("workbench resource and project navigation", () => {
     );
     await useWorkbenchStore.getState().openFile(resource("another-old.txt"));
     expect(open).not.toHaveBeenCalled();
-    pending.resolve({ revision: 1, persistedAt: 1, dirty: true });
+    pending.resolve({
+      revision: 1,
+      applied: true,
+      persistedAt: 1,
+      dirty: true,
+    });
     await switching;
     expect(useWorkbenchStore.getState().project?.id).toBe("project-b");
   });

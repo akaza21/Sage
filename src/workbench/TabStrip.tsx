@@ -8,15 +8,22 @@ import {
   X,
 } from "../ui/leanIcons";
 
-import { useLayoutEffect, useRef, type WheelEvent } from "react";
+import { useRef } from "react";
 
 import type { TabKind } from "../domain/workbench";
 import { orderedTabs } from "../app/tabState";
 import { useWorkbenchStore } from "../app/store";
+import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { FileKindIcon } from "../features/files/FileKindIcon";
 import { useBrowserAgentPresence } from "../app/browserAgentActivityStore";
 import type { WorkbenchTab } from "../domain/workbench";
 import { BrowserFavicon } from "../features/browser/browserFavicon";
+import {
+  resourceHasGitMark,
+  useGitDecorationsUi,
+} from "../features/git/gitDecorationsGate";
+import type { ResourceRef } from "../domain/workbench";
+import { useResourceTabStrip } from "./useResourceTabStrip";
 
 function BrowserTabPresence({
   tabId,
@@ -46,18 +53,12 @@ function BrowserTabPresence({
   );
 }
 
-/**
- * A vertical wheel scrolls the strip sideways, as in VS Code. A trackpad pinch
- * arrives as a wheel with Ctrl held, and is left alone.
- */
-function scrollTabsWithWheel(event: WheelEvent<HTMLDivElement>) {
-  const strip = event.currentTarget;
-  if (
-    !event.ctrlKey &&
-    Math.abs(event.deltaY) > Math.abs(event.deltaX) &&
-    strip.scrollWidth > strip.clientWidth
-  )
-    strip.scrollLeft += event.deltaY;
+/** The room a File tab's Git mark will take, held while the marks load. */
+function PendingGitMark({ resource }: { resource: ResourceRef }) {
+  const marked = useWorkbenchStore((state) =>
+    resourceHasGitMark(state.repositories, resource),
+  );
+  return marked ? <span className="tab__git-slot" aria-hidden="true" /> : null;
 }
 
 const icons: Record<TabKind, typeof MessageSquare> = {
@@ -72,55 +73,74 @@ const icons: Record<TabKind, typeof MessageSquare> = {
   browser: Globe2,
 };
 
+export interface TabStripProps {
+  kinds?: ReadonlyArray<TabKind>;
+  showNewChat?: boolean;
+  label?: string;
+}
+
 export function TabStrip({
   kinds,
   showNewChat = true,
   label = "Open tabs",
-}: {
-  kinds?: ReadonlyArray<TabKind>;
-  showNewChat?: boolean;
-  label?: string;
-} = {}) {
+}: TabStripProps = {}) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const closeTab = useWorkbenchStore((state) => state.closeTab);
   const createChat = useWorkbenchStore((state) => state.createChat);
   const project = useWorkbenchStore((state) => state.project);
+  const decorate = useEditorSettingsStore(
+    (store) => store.settings["git.decorations"],
+  );
+  // The marks load only while on and a repository root is open.
+  const wantGit = useWorkbenchStore(
+    (state) =>
+      decorate &&
+      state.repositories.roots.some((root) => root.state === "repository"),
+  );
+  const git = useGitDecorationsUi(wantGit);
   const attachedChatCount = tabs.filter((tab) => tab.kind === "chat").length;
   const visibleTabs = kinds
     ? orderedTabs(tabs).filter((tab) => kinds.includes(tab.kind))
     : orderedTabs(tabs);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Keep the active tab in view when it changes or tabs open and close.
-  useLayoutEffect(() => {
-    const strip = scrollRef.current;
-    const active = strip?.querySelector(".tab--active");
-    if (!strip || !active) return;
-    const bounds = strip.getBoundingClientRect();
-    const tab = active.getBoundingClientRect();
-    if (tab.left < bounds.left) strip.scrollLeft -= bounds.left - tab.left;
-    else if (tab.right > bounds.right)
-      strip.scrollLeft += tab.right - bounds.right;
-  }, [activeTabId, visibleTabs.length]);
+  // Selecting a tab opens its resource, so arrowing past a tab only moves
+  // focus; Enter or Space selects it.
+  const onTabKeyDown = useResourceTabStrip(scrollRef, {
+    activation: "manual",
+    revealKey: activeTabId,
+  });
 
   return (
     <nav className="tab-strip" aria-label={label}>
       <div
         className="tab-strip__scroll"
         ref={scrollRef}
-        onWheel={scrollTabsWithWheel}
+        role="tablist"
+        aria-label="Tabs"
+        onKeyDown={onTabKeyDown}
       >
         {visibleTabs.map((tab) => {
           const Icon = icons[tab.kind];
           const active = tab.id === activeTabId;
+          const closeDisabled = tab.kind === "chat" && attachedChatCount <= 1;
 
           return (
             <div
               className={`tab ${active ? "tab--active" : ""}`}
               key={tab.id}
               role="presentation"
+              onMouseDown={(event) => {
+                // Prevent WebView2 autoscroll before the auxiliary click arrives.
+                if (event.button === 1) event.preventDefault();
+              }}
+              onAuxClick={(event) => {
+                if (event.button !== 1) return;
+                event.preventDefault();
+                if (!tab.pinned && !closeDisabled) closeTab(tab.id);
+              }}
             >
               <button
                 className="tab__activate"
@@ -147,7 +167,16 @@ export function TabStrip({
                 ) : (
                   <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
                 )}
-                <span>{tab.title}</span>
+                {git && tab.kind === "file" && tab.resource ? (
+                  <git.GitTabTitle title={tab.title} resource={tab.resource} />
+                ) : (
+                  <>
+                    <span>{tab.title}</span>
+                    {wantGit && tab.kind === "file" && tab.resource ? (
+                      <PendingGitMark resource={tab.resource} />
+                    ) : null}
+                  </>
+                )}
                 {tab.kind === "browser" ? (
                   <BrowserTabPresence
                     tabId={tab.id}
@@ -167,7 +196,7 @@ export function TabStrip({
                   className="tab__close"
                   type="button"
                   aria-label={`${tab.kind === "chat" ? "Archive" : "Close"} ${tab.title}`}
-                  disabled={tab.kind === "chat" && attachedChatCount <= 1}
+                  disabled={closeDisabled}
                   onClick={() => closeTab(tab.id)}
                 >
                   <X size={14} aria-hidden="true" />
@@ -192,3 +221,5 @@ export function TabStrip({
     </nav>
   );
 }
+
+export default TabStrip;

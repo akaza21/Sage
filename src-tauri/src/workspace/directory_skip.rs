@@ -8,6 +8,14 @@ pub(crate) fn skip_workspace_directory_name(name: &OsStr) -> bool {
         .any(|skip| directory_names_match(name, skip))
 }
 
+/// Write admission folds case on every platform: macOS and Windows volumes are
+/// usually case-insensitive, so `.GIT` can still name the repository metadata.
+pub(crate) fn protected_workspace_name(name: &str) -> bool {
+    SKIP_DIRECTORY_NAMES
+        .iter()
+        .any(|skip| name.eq_ignore_ascii_case(skip))
+}
+
 fn directory_names_match(name: &OsStr, expected: &str) -> bool {
     if cfg!(windows) {
         name.to_str()

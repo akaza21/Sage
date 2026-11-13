@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import { renderMarkdownPreview } from "../../files/markdownPreview";
+import {
+  renderMarkdownStream,
+  type MarkdownStream,
+} from "../../files/markdownStream";
+import { markdownListMarkerWidth } from "../../files/markdownTextLocations";
 import { MarkdownBlocks } from "../../files/MarkdownBlocks";
 import type { ResourceRef } from "../../../domain/workbench";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
@@ -52,7 +57,25 @@ export function ChatMarkdown({
   streaming?: boolean;
   fileReferenceOwner?: AgentArtifactOwner;
 }) {
-  const document = useMemo(() => renderMarkdownPreview(text), [text]);
+  const [parsed, setParsed] = useState<MarkdownStream & { input: string }>(
+    () => ({
+      input: text,
+      ...(streaming
+        ? renderMarkdownStream(text)
+        : { source: text, document: renderMarkdownPreview(text) }),
+    }),
+  );
+  let current = parsed;
+  if (parsed.input !== text) {
+    current = {
+      input: text,
+      ...(streaming
+        ? renderMarkdownStream(text, parsed)
+        : { source: text, document: renderMarkdownPreview(text) }),
+    };
+    setParsed(current);
+  }
+  const document = current.document;
   // One record per answer/chunk; retain appended spans so older fades finish while new words trail.
   const [stream, setStream] = useState<{
     text: string;
@@ -71,17 +94,7 @@ export function ChatMarkdown({
     if (streaming) void loadStreamRuns();
   }, [streaming]);
   const listMarkerWidth = useMemo(
-    () =>
-      document.blocks.reduce(
-        (digits, block) =>
-          block.kind === "list" && block.ordered
-            ? Math.max(
-                digits,
-                String((block.start ?? 1) + block.items.length - 1).length,
-              )
-            : digits,
-        1,
-      ),
+    () => markdownListMarkerWidth(document.blocks),
     [document],
   );
   const ownerKey = fileReferenceOwner

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { chatPlacement } from "../../app/openChat";
 import {
   parseProjectChatSearchResponse,
   validateProjectChatSearchRequest,
@@ -7,7 +8,6 @@ import {
 } from "./chatSearchDomain";
 import {
   admitChatSearchFolder,
-  chatSearchAttachment,
   chatSearchFolderOptions,
 } from "./chatSearchFanout";
 
@@ -37,6 +37,36 @@ const valid: ProjectChatSearchResponse = {
 };
 
 describe("Project Chat search domain", () => {
+  it("admits empty-query browsing without relaxing response identity or match validation", () => {
+    expect(() =>
+      validateProjectChatSearchRequest({
+        projectId: "project-a",
+        projectGeneration: 4,
+        expectedTransitionEpoch: 3,
+        query: "",
+      }),
+    ).not.toThrow();
+    const browse = {
+      ...valid,
+      query: "",
+      results: [{ ...valid.results[0], matchedTitle: true }],
+    };
+    expect(parseProjectChatSearchResponse(browse)).toEqual(browse);
+    expect(() =>
+      parseProjectChatSearchResponse({
+        ...browse,
+        results: [{ ...browse.results[0], matchedTitle: false }],
+      }),
+    ).toThrow("invalid project chat search response");
+    expect(() =>
+      validateProjectChatSearchRequest({
+        projectId: "",
+        projectGeneration: 4,
+        expectedTransitionEpoch: 3,
+        query: "",
+      }),
+    ).toThrow("valid project ID");
+  });
   it("accepts a bounded literal response with attached and archived results", () => {
     expect(parseProjectChatSearchResponse(valid)).toEqual(valid);
   });
@@ -47,19 +77,19 @@ describe("Project Chat search domain", () => {
         ...valid,
         results: [valid.results[0], valid.results[0]],
       }),
-    ).toThrow("invalid Project Chat search response");
+    ).toThrow("invalid project chat search response");
     expect(() =>
       parseProjectChatSearchResponse({
         ...valid,
         results: [{ ...valid.results[0], matchedTitle: false }],
       }),
-    ).toThrow("invalid Project Chat search response");
+    ).toThrow("invalid project chat search response");
     expect(() =>
       parseProjectChatSearchResponse({
         ...valid,
         results: [{ ...valid.results[1], snippet: "x".repeat(2_049) }],
       }),
-    ).toThrow("invalid Project Chat search response");
+    ).toThrow("invalid project chat search response");
     expect(() =>
       parseProjectChatSearchResponse({
         ...valid,
@@ -68,7 +98,7 @@ describe("Project Chat search domain", () => {
           chatId: `chat-${index}`,
         })),
       }),
-    ).toThrow("invalid Project Chat search response");
+    ).toThrow("invalid project chat search response");
   });
 
   it("measures the query in UTF-8 bytes at the exact 256-byte boundary", () => {
@@ -87,7 +117,7 @@ describe("Project Chat search domain", () => {
         expectedTransitionEpoch: 3,
         query: `${"é".repeat(128)}a`,
       }),
-    ).toThrow("1-256 UTF-8 bytes");
+    ).toThrow("at most 256 UTF-8 bytes");
   });
 });
 
@@ -105,7 +135,7 @@ describe("Chat search folder scope", () => {
       { id: "cross", name: "Cross" },
     ]);
     expect(
-      chatSearchAttachment(
+      chatPlacement(
         {
           project: { id: "sage", name: "Sage", roots: [] },
           tabs: [],

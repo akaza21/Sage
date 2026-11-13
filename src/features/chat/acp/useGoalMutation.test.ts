@@ -1,15 +1,11 @@
 import { expect, it, vi } from "vitest";
 import type { AcpActionContext } from "./acpActionController";
-import {
-  agentSessionFixture,
-  capabilitySetFixture,
-} from "../../../domain/acpProjection.fixture";
+import { agentSessionFixture } from "../../../domain/acpProjection.fixture";
 import { AcpDesktopError } from "../../../services/acpDesktop";
-import { canMutateGoal, createGoalMutationController } from "./useGoalMutation";
+import { canMutateGoal } from "./goalMutability";
+import { createGoalMutationController } from "./useGoalMutation";
 
-function context(
-  protocolVersion = "codex-app-server-observed-0.146.0",
-): AcpActionContext {
+function context(runtimeEpoch: string | null = "9"): AcpActionContext {
   return {
     scope: { projectId: "project-1", projectGeneration: "3", chatId: "chat-1" },
     ownershipEpoch: 2,
@@ -25,8 +21,7 @@ function context(
       sessions: [
         agentSessionFixture({
           id: "session-1" as never,
-          runtimeEpoch: "9" as never,
-          capabilities: capabilitySetFixture({ protocolVersion }),
+          runtimeEpoch: runtimeEpoch as never,
         }),
       ],
       goal: {
@@ -45,12 +40,16 @@ function context(
   } as unknown as AcpActionContext;
 }
 
-it("allows native Goal mutation only for the observed protocol and current Goal", () => {
+it("allows native Goal mutation only for a live session's current Goal", () => {
   expect(canMutateGoal(context().page)).toBe(true);
-  expect(canMutateGoal(context("other-protocol").page)).toBe(false);
-  expect(canMutateGoal({ ...context().page, goal: { kind: "noGoal" } })).toBe(
-    false,
-  );
+  expect(canMutateGoal(context(null).page)).toBe(false);
+  for (const goal of [
+    { kind: "noGoal" },
+    { kind: "unsupported" },
+    { kind: "offline" },
+  ] as const) {
+    expect(canMutateGoal({ ...context().page, goal })).toBe(false);
+  }
 });
 
 it("sends the current scoped revision and applies only the authoritative response", async () => {

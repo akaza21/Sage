@@ -212,6 +212,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     }
 
     fn configure_oversize_mode(&mut self) {
+        self.decoder
+            .set_oversize_skip(self.adapter.skips_oversize_frames());
         if self.adapter.child_read_pending() {
             self.decoder.enable_recoverable_oversize();
         } else {
@@ -220,6 +222,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     }
 
     fn accept_oversize_event(&mut self) -> Result<(), AdapterPumpError> {
+        if self.decoder.take_skipped_oversize() {
+            self.adapter.oversize_frame_skipped();
+            self.oversize_event = true;
+        }
         if let Some(id) = self.decoder.take_oversize_id() {
             self.adapter
                 .accept_oversized_response(id)

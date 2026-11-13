@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { harnessAvailability } from "../features/chat/harnessAvailability";
 import type { HarnessDefinition } from "../domain/harness";
-import type * as AcpDesktopModule from "../services/acpDesktop";
+import type * as AcpHarnessDesktopModule from "../services/acpHarnessDesktop";
 import { App } from "./App";
 import { useWorkbenchStore } from "./store";
 
@@ -41,7 +41,7 @@ const invoke = vi.fn(
 );
 
 vi.mock("../workbench/Workbench", () => ({
-  Workbench: () => <main>Workbench</main>,
+  default: () => <main>Workbench</main>,
 }));
 
 vi.mock("../services/desktop", () => ({
@@ -50,12 +50,12 @@ vi.mock("../services/desktop", () => ({
 
 const discoverCodex = vi.fn();
 
-vi.mock("../services/acpDesktop", async (importOriginal) => {
-  const actual = await importOriginal<typeof AcpDesktopModule>();
+vi.mock("../services/acpHarnessDesktop", async (importOriginal) => {
+  const actual = await importOriginal<typeof AcpHarnessDesktopModule>();
   return {
     ...actual,
-    acpDesktop: {
-      ...actual.acpDesktop,
+    acpHarnessDesktop: {
+      ...actual.acpHarnessDesktop,
       discoverCodex: (request: unknown) => discoverCodex(request),
     },
   };
@@ -129,7 +129,7 @@ describe("App harness discovery event", () => {
     expect(
       harnessAvailability(useWorkbenchStore.getState().harnesses[0])
         .disabledReason,
-    ).toBe("Detecting harnesses…");
+    ).toBe("Sage is still checking which harnesses are installed.");
     act(() =>
       listeners.get("harness-discovery-changed-v1")?.({
         payload: [discovered],

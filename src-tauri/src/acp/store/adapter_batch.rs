@@ -103,6 +103,8 @@ pub(crate) enum AdapterInboundEvent {
         now_millis: i64,
     },
     PermissionResolved(RequestStateCommand),
+    /// Session-scoped fact; owned by the session and epoch, not the Turn.
+    Session(super::SessionEventCommand),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -215,6 +217,18 @@ impl AdapterInboundBatchCommand {
 
     pub(crate) fn retained_bytes(&self) -> usize {
         self.retained_bytes
+    }
+
+    /// Read-only view of the store-verified owner of this batch.
+    pub(crate) fn owner(&self) -> &AdapterStoreOwner {
+        &self.owner
+    }
+
+    /// Whether any event in this batch moves the owner Turn to a terminal state.
+    pub(crate) fn ends_turn(&self) -> bool {
+        self.events.iter().any(
+            |event| matches!(event, AdapterInboundEvent::Turn { state, .. } if state.is_terminal()),
+        )
     }
 }
 
@@ -356,6 +370,9 @@ fn apply_event(
             let declined = super::requests::commit_decline_in(transaction, intent, *now_millis)?;
             Ok(received.disposition == MutationDisposition::Applied
                 || declined == crate::acp::runtime::permissions::DeclineCommit::Applied)
+        }
+        AdapterInboundEvent::Session(command) => {
+            super::session_surface::apply_in(transaction, owner, command)
         }
         AdapterInboundEvent::PermissionResolved(command) => {
             scope::verify_request_scope(owner, command)?;

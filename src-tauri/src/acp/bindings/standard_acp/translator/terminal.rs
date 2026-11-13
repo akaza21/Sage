@@ -132,6 +132,11 @@ impl StandardAcpTranslator {
             });
         }
         events.extend(usage);
+        // A prompt that ended for any reason but a stop or an error delivered
+        // its output whole; a stopped or failed prompt leaves it to the sweep.
+        if frame.get("error").is_none() && terminal != PromptTerminal::Cancelled {
+            self.close_open_items(&mut events);
+        }
         self.drain_diffs(
             terminal == PromptTerminal::Completed,
             MAX_EVENTS_PER_FRAME.saturating_sub(1),

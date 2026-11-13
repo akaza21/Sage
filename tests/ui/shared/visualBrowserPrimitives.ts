@@ -8,7 +8,9 @@
 // `agentVisualHelpers.ts` / `editorVisualHelpers.ts` /
 // `resourceVisualHelpers.ts`, composed from these primitives.
 import { expect, type Locator, type Page } from "@playwright/test";
+import { fileURLToPath } from "node:url";
 
+import { VISUAL_PREVIEW_URL } from "../fixtures/visualPreviewFixture";
 import type {
   VisualScenarioMode,
   VisualScenarioName,
@@ -18,6 +20,9 @@ const FIXED_TIME = "2026-08-31T09:30:00.000Z";
 
 export async function installFixedClock(page: Page, time: string = FIXED_TIME) {
   await page.clock.install({ time: new Date(time) });
+  // Freeze displayed dates without stopping timers, animation frames, or
+  // explicit runFor/pauseAt controls used by interaction specs.
+  await page.clock.setFixedTime(new Date(time));
 }
 
 export async function installLayoutMode(page: Page, mode: VisualScenarioMode) {
@@ -41,6 +46,14 @@ async function gotoWorkbench(page: Page): Promise<Locator> {
 }
 
 export async function installScenario(page: Page, name: VisualScenarioName) {
+  // Serve the checked-in page directly so neither its address nor its content
+  // depends on the dev server (including Vite's injected client scripts).
+  await page.route(`${VISUAL_PREVIEW_URL}*`, async (route) => {
+    await route.fulfill({
+      path: fileURLToPath(new URL("../fixtures/preview.html", import.meta.url)),
+      contentType: "text/html",
+    });
+  });
   await page.evaluate(async (scenarioName) => {
     const fixtures = await import("/tests/ui/fixtures/visualScenarios.ts");
     await fixtures.installVisualScenario(scenarioName);
@@ -91,23 +104,54 @@ export async function settleChatProjections(page: Page) {
       page.evaluate(async () => {
         const { acpProjectionStoreFor } =
           await import("/src/app/acpProjectionRegistry.ts");
-        return [
+        const projections = [
           ...document.querySelectorAll<HTMLElement>(
             ".acp-chat-projection[data-chat-id]",
           ),
-        ].every((projection) => {
-          const state = acpProjectionStoreFor(
-            projection.dataset.chatId as never,
-          ).getState();
-          return (
-            state.requestSequence > 0 &&
-            state.activeLoad === null &&
-            !projection.querySelector(':scope > p[role="status"]')
-          );
-        });
+        ];
+        // The chat canvas loads lazily. An empty list is still loading, and
+        // a split must settle both canvases before fixtures can mutate them.
+        const panes = [...document.querySelectorAll(".agent-chat-pane")];
+        return (
+          projections.length > 0 &&
+          panes.every(
+            (pane) =>
+              pane.querySelector(".acp-chat-projection[data-chat-id]") !== null,
+          ) &&
+          projections.every((projection) => {
+            const state = acpProjectionStoreFor(
+              projection.dataset.chatId as never,
+            ).getState();
+            return (
+              state.requestSequence > 0 &&
+              state.activeLoad === null &&
+              state.page !== null &&
+              state.scope !== null &&
+              !projection.querySelector(':scope > p[role="status"]') &&
+              // Message text renders through the lazily loaded Markdown
+              // renderer; until it arrives the transcript is still growing.
+              [...projection.querySelectorAll("article.acp-message")].every(
+                (message) => message.querySelector(".acp-markdown") !== null,
+              )
+            );
+          })
+        );
       }),
     )
     .toBe(true);
+}
+
+// Scope this to the measured surface. Panels with perpetual status indicators
+// can wait for their own entry animation without waiting for those descendants.
+export async function waitForAnimations(
+  locator: Locator,
+  { subtree = true }: { subtree?: boolean } = {},
+) {
+  await locator.evaluate(
+    (el, subtree) =>
+      Promise.all(el.getAnimations({ subtree }).map((a) => a.finished)),
+    subtree,
+  );
 }
 
 async function settleTranscriptScroll(page: Page, edge: "start" | "end") {

@@ -25,7 +25,6 @@ describe("workbench layout storage", () => {
 
     expect(readWorkbenchLayout()).toEqual({
       editorToolRailWidth: 333,
-      agentChatSplitPercent: 61,
       windowMode: "agent",
     });
   });
@@ -35,12 +34,11 @@ describe("workbench layout storage", () => {
 
     expect(readWorkbenchLayout()).toEqual({
       editorToolRailWidth: 272,
-      agentChatSplitPercent: 50,
-      windowMode: "editor",
+      windowMode: "agent",
     });
   });
 
-  it("fails closed to Editor when persisted window mode is invalid", () => {
+  it("falls back to Agent when persisted window mode is invalid", () => {
     localStorage.setItem(
       WORKBENCH_LAYOUT_STORAGE_KEY,
       JSON.stringify({
@@ -52,15 +50,19 @@ describe("workbench layout storage", () => {
 
     expect(readWorkbenchLayout()).toEqual({
       editorToolRailWidth: 300,
-      agentChatSplitPercent: 55,
-      windowMode: "editor",
+      windowMode: "agent",
     });
+  });
+
+  it("defaults a fresh profile to Agent and preserves an explicit Editor preference", () => {
+    expect(readWorkbenchLayout().windowMode).toBe("agent");
+    writeWorkbenchLayout({ windowMode: "editor" });
+    expect(readWorkbenchLayout().windowMode).toBe("editor");
   });
 
   it("writes only the bounded layout record to WebView storage", () => {
     writeWorkbenchLayout({
       editorToolRailWidth: 300,
-      agentChatSplitPercent: 55,
       windowMode: "agent",
     });
 
@@ -68,7 +70,6 @@ describe("workbench layout storage", () => {
       JSON.parse(localStorage.getItem(WORKBENCH_LAYOUT_STORAGE_KEY)!),
     ).toEqual({
       editorToolRailWidth: 300,
-      agentChatSplitPercent: 55,
       windowMode: "agent",
     });
   });

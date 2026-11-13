@@ -43,6 +43,7 @@ struct FakeEngine {
     terminal_gate: Option<TerminalGate>,
     config_completion: Option<ConfigCompletion>,
     native_completion: Option<NativeCompletion>,
+    native_begin_error: Option<HostError>,
     steer_completion: Option<ConfigCompletion>,
     steer_port: Option<Arc<Mutex<crate::acp::runtime::process_driver::ProcessLivePort>>>,
 }
@@ -66,6 +67,7 @@ impl FakeEngine {
             terminal_gate: None,
             config_completion: None,
             native_completion: None,
+            native_begin_error: None,
             steer_completion: None,
             steer_port: None,
         }
@@ -137,6 +139,11 @@ impl FakeEngine {
         self
     }
 
+    fn with_native_begin_error(mut self, error: HostError) -> Self {
+        self.native_begin_error = Some(error);
+        self
+    }
+
     fn with_steer_completion(mut self, completion: ConfigCompletion) -> Self {
         self.steer_completion = Some(completion);
         self
@@ -167,6 +174,9 @@ impl RuntimeEngine for FakeEngine {
         completion: NativeRpcCompletionSink,
     ) -> Result<(), HostError> {
         self.push("beginNativeRpc");
+        if let Some(error) = self.native_begin_error.clone() {
+            return Err(error);
+        }
         *self.native_completion.as_ref().unwrap().lock().unwrap() = Some(completion);
         Ok(())
     }
@@ -665,6 +675,99 @@ fn late_native_rpc_completion_cannot_escape_its_deadline() {
 }
 
 #[test]
+fn a_passive_read_that_misses_its_deadline_is_abandoned_without_recovery() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([]).with_native_completion(Arc::clone(&completion));
+    let observed = engine.clone();
+    let host = RuntimeHost::start_with_timeout(engine, Duration::from_millis(100)).unwrap();
+    let runtime = owner("project-a");
+    host.without_timeout_override(|| host.activate(runtime.clone()))
+        .unwrap();
+    assert_eq!(
+        host.native_rpc(crate::acp::goal::NativeRpcIntent {
+            owner: runtime,
+            request: crate::acp::goal::NativeRpcRequest::UsageRead,
+        }),
+        Err(HostError::Deadline)
+    );
+    let started = Instant::now();
+    while !observed.events().contains(&"abandonConfiguration") {
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+    completion
+        .lock()
+        .unwrap()
+        .take()
+        .unwrap()
+        .complete(Ok(crate::acp::goal::NativeRpcReply::UsageRead));
+    host.without_timeout_override(|| assert_eq!(host.state(), Ok(HostState::Idle)));
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn a_native_rpc_that_cannot_begin_in_time_recovers_only_when_not_passive() {
+    for (request, settled) in [
+        (
+            crate::acp::goal::NativeRpcRequest::UsageRead,
+            HostState::Idle,
+        ),
+        // Renaming the harness session is cosmetic: a slow one never
+        // costs the chat its runtime.
+        (
+            crate::acp::goal::NativeRpcRequest::Control(
+                crate::acp::session_control::SessionControl::SetTitle {
+                    title: crate::acp::contract::RequiredText::new("sessionTitle", "Renamed")
+                        .unwrap(),
+                },
+            ),
+            HostState::Idle,
+        ),
+        // Listing MCP servers is a read; reloading them changes the session.
+        (
+            crate::acp::goal::NativeRpcRequest::Control(
+                crate::acp::session_control::SessionControl::ReadMcpServers,
+            ),
+            HostState::Idle,
+        ),
+        // Reconnecting a server keeps its configuration; Claude Code may
+        // still finish it after Sage stops waiting.
+        (
+            crate::acp::goal::NativeRpcRequest::Control(
+                crate::acp::session_control::SessionControl::ReconnectMcpServer {
+                    name: crate::acp::contract::RequiredText::new("serverName", "linear").unwrap(),
+                },
+            ),
+            HostState::Idle,
+        ),
+        (
+            crate::acp::goal::NativeRpcRequest::Control(
+                crate::acp::session_control::SessionControl::ReloadMcpServers,
+            ),
+            HostState::Recovery,
+        ),
+        (
+            crate::acp::goal::NativeRpcRequest::Goal(crate::acp::goal::GoalAction::PauseExisting),
+            HostState::Recovery,
+        ),
+    ] {
+        let engine = FakeEngine::new([]).with_native_begin_error(HostError::Deadline);
+        let host = RuntimeHost::start(engine).unwrap();
+        let runtime = owner("project-a");
+        host.activate(runtime.clone()).unwrap();
+        assert_eq!(
+            host.native_rpc(crate::acp::goal::NativeRpcIntent {
+                owner: runtime,
+                request,
+            }),
+            Err(HostError::Deadline)
+        );
+        assert_eq!(host.state(), Ok(settled));
+        host.shutdown(RuntimeHost::close_deadline()).unwrap();
+    }
+}
+
+#[test]
 fn close_settles_pending_native_rpc_and_ignores_its_late_reply() {
     let completion = Arc::new(Mutex::new(None));
     let engine = FakeEngine::new([]).with_native_completion(Arc::clone(&completion));
@@ -987,7 +1090,12 @@ fn possible_bytes_are_terminally_recorded_without_prompt_replay() {
     let runtime = owner("project-a");
     host.activate(runtime.clone()).unwrap();
 
-    assert_eq!(host.send(prompt(&runtime)), Err(HostError::DeliveryUnknown));
+    assert_eq!(
+        host.send(prompt(&runtime)),
+        Err(crate::acp::intent::PromptSendError::unknown(
+            HostError::DeliveryUnknown
+        ))
+    );
     assert_eq!(host.state().unwrap(), HostState::Recovery);
     assert_eq!(
         observed.events(),
@@ -1035,7 +1143,12 @@ fn failed_zero_byte_retry_enters_recovery_and_cannot_replay() {
     let runtime = owner("project-a");
     host.activate(runtime.clone()).unwrap();
 
-    assert_eq!(host.send(prompt(&runtime)), Err(HostError::Unavailable));
+    assert_eq!(
+        host.send(prompt(&runtime)),
+        Err(crate::acp::intent::PromptSendError::unknown(
+            HostError::Unavailable
+        ))
+    );
     assert_eq!(host.state().unwrap(), HostState::Recovery);
     assert_eq!(
         observed.events(),
@@ -1055,7 +1168,9 @@ fn failed_delivery_unknown_record_enters_recovery_without_replay() {
 
     assert_eq!(
         host.send(prompt(&runtime)),
-        Err(HostError::RecoveryRequired)
+        Err(crate::acp::intent::PromptSendError::unknown(
+            HostError::RecoveryRequired
+        ))
     );
     assert_eq!(host.state().unwrap(), HostState::Recovery);
     assert_eq!(
@@ -1101,7 +1216,12 @@ fn zero_byte_retry_cannot_substitute_a_different_store_minted_turn() {
     let runtime = owner("project-a");
     host.activate(runtime.clone()).unwrap();
 
-    assert_eq!(host.send(prompt(&runtime)), Err(HostError::Intent));
+    assert_eq!(
+        host.send(prompt(&runtime)),
+        Err(crate::acp::intent::PromptSendError::unknown(
+            HostError::Intent
+        ))
+    );
     assert_eq!(host.state().unwrap(), HostState::Recovery);
     host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
@@ -1117,7 +1237,12 @@ fn zero_bytes_retry_once_and_second_failure_is_durable() {
     let runtime = owner("project-a");
     host.activate(runtime.clone()).unwrap();
 
-    assert_eq!(host.send(prompt(&runtime)), Err(HostError::RetryExhausted));
+    assert_eq!(
+        host.send(prompt(&runtime)),
+        Err(crate::acp::intent::PromptSendError::unknown(
+            HostError::RetryExhausted
+        ))
+    );
     assert_eq!(host.state().unwrap(), HostState::Recovery);
     assert_eq!(
         observed.events(),
@@ -1521,4 +1646,63 @@ fn command_deadlines_use_the_frozen_operation_classes() {
         HostCommand::Shutdown.deadline_millis(),
         LIMITS.deadlines_ms.explicit_close
     );
+    // A list read is answered at once; a reconnect waits on the server.
+    let control = |control| {
+        HostCommand::NativeRpc(crate::acp::goal::NativeRpcIntent {
+            owner: runtime.clone(),
+            request: crate::acp::goal::NativeRpcRequest::Control(control),
+        })
+        .deadline_millis()
+    };
+    use crate::acp::session_control::SessionControl;
+    assert!(control(SessionControl::ReadMcpServers) < LIMITS.deadlines_ms.ordinary_rpc);
+    assert_eq!(
+        control(SessionControl::ReconnectMcpServer {
+            name: crate::acp::contract::RequiredText::new("serverName", "linear").unwrap(),
+        }),
+        LIMITS.deadlines_ms.ordinary_rpc
+    );
+}
+
+#[test]
+fn a_prompt_carrying_the_largest_admitted_images_is_prepared() {
+    use crate::acp::attached_context::files::images::{ImagePreview, PromptImage, PromptImages};
+
+    let host = RuntimeHost::start(FakeEngine::new([])).unwrap();
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+    let mut intent = prompt(&runtime);
+    // Two images at the echoed bound, each with a thumbnail, as a Codex or Pi
+    // prompt can carry once admitted.
+    let image = |bytes| PromptImage {
+        media_type: crate::acp::intent::ImageMediaType::Png,
+        bytes: vec![0; bytes],
+        preview: ImagePreview::Thumbnail(
+            crate::acp::intent::ImageMediaType::Png,
+            vec![0; crate::acp::limits::IMAGE_PREVIEW_BYTES],
+        ),
+    };
+    let half = crate::acp::limits::PROMPT_IMAGE_TOTAL_BYTES / 2;
+    intent.command.prompt.images = PromptImages(Arc::new(vec![image(half), image(half)]));
+    assert!(
+        host.prepare_prompt(intent).is_ok(),
+        "a prompt within the image bounds must reach the engine"
+    );
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn a_prompt_refused_before_it_is_prepared_is_known_not_to_have_started() {
+    use crate::acp::intent::PromptSendError;
+    let host =
+        RuntimeHost::start(FakeEngine::new([]).with_prepare_error(HostError::Capacity)).unwrap();
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+    // The chat offers the draft back only on this proof.
+    assert_eq!(
+        host.send(prompt(&runtime)),
+        Err(PromptSendError::not_started(HostError::Capacity))
+    );
+    assert_eq!(host.state().unwrap(), HostState::Idle);
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }

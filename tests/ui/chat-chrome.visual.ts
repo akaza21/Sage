@@ -45,7 +45,8 @@ async function openChrome(
     { harness, state, status, tone, harnessStatus },
   );
   await chooseWindowMode(page, "Editor");
-  await expect(page.locator(".agent-task-header")).toHaveCount(0);
+  await expect(page.locator(".agent-task-header")).toHaveCount(1);
+  await expect(page.locator(".agent-task-header")).toBeHidden();
   await chooseWindowMode(page, "Agent");
   await settleChatProjections(page);
   const profile =
@@ -75,6 +76,28 @@ async function chooseWindowMode(page: Page, mode: "Agent" | "Editor") {
   await expect(radio).toBeChecked();
 }
 
+test("transcript replacement keeps following through a queued old-layout scroll", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 1000 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  const transcript = page.locator(".message-list");
+  const remaining = () =>
+    transcript.evaluate(
+      (element) =>
+        element.scrollHeight - element.clientHeight - element.scrollTop,
+    );
+  await expect.poll(remaining).toBeLessThanOrEqual(1);
+  const revisions = await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/chatChromeReplacementRace.ts");
+    return fixture.replaceChatChromeWithQueuedScroll();
+  });
+  await expect.poll(remaining).toBeLessThanOrEqual(1);
+  expect(revisions).toEqual({ before: "42", after: "43" });
+});
+
 async function expectSingleHeaderRow(page: Page, width: number) {
   await expect(page.locator(".agent-task-header__title")).toBeVisible();
   const header = page.locator(".agent-task-header");
@@ -103,7 +126,7 @@ async function expectSingleHeaderRow(page: Page, width: number) {
       truncated: title.scrollWidth > title.clientWidth,
     };
   });
-  expect(geometry.height).toBe(44);
+  expect(geometry.height).toBe(48);
   expect(geometry.oneRow).toBe(true);
   expect(geometry.contained).toBe(true);
   expect(geometry.titleWidth).toBeGreaterThanOrEqual(24);
@@ -115,6 +138,10 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
     test(`${harness} header and Archived row at ${width}`, async ({ page }) => {
       await openChrome(page, harness, width);
       await expectSingleHeaderRow(page, width);
+      if (width <= 600)
+        await page
+          .getByRole("button", { name: "Show projects and chats" })
+          .click();
       const archived = page.getByRole("button", { name: "Archived chats: 1" });
       await expect(archived).toHaveText("Archived 1");
       await expect(archived).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
@@ -162,12 +189,15 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
       await expect(
         page.getByRole("region", { name: "Archived chats" }),
       ).toBeVisible();
+      // The row's "…" stays keyboard-only, as in the target; a pointer opens
+      // the same chat actions by right click.
       await page
         .getByRole("button", {
-          name: "Chat actions for A long chat title that must truncate instead of wrapping the header",
+          name: "Open chat A long chat title that must truncate instead of wrapping the header, pinned",
           exact: true,
         })
-        .click();
+        .first()
+        .click({ button: "right" });
       await expect(
         page.getByRole("menuitem", { name: "Close session", exact: true }),
       ).toHaveCount(0);
@@ -194,12 +224,25 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
           ),
         )
         .toBeLessThanOrEqual(1);
+      const followingBox = (await transcript.boundingBox())!;
+      const composerBox = (await page.locator("form.composer").boundingBox())!;
       await transcript.evaluate((element) => element.scrollTo(0, 0));
       const jump = page.getByRole("button", {
         name: "Jump to latest",
         exact: true,
       });
       await expect(jump).toBeVisible();
+      // The control overlays the transcript: neither the transcript nor the
+      // composer row moves when it appears.
+      expect(await transcript.boundingBox()).toEqual(followingBox);
+      expect(await page.locator("form.composer").boundingBox()).toEqual(
+        composerBox,
+      );
+      const overlay = (await jump.boundingBox())!;
+      expect(overlay.y).toBeGreaterThanOrEqual(followingBox.y);
+      expect(overlay.y + overlay.height).toBeLessThanOrEqual(
+        followingBox.y + followingBox.height,
+      );
       await expect(jump).toHaveText("");
       await expect(jump.locator('svg[aria-hidden="true"]')).toHaveCount(1);
       await expect(jump).toHaveCSS("border-radius", "50%");
@@ -259,11 +302,11 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
 for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
   for (const width of [1888, 720, 480]) {
     test(`${harness} compact status variants at ${width}`, async ({ page }) => {
-      for (const [status, tone, harnessStatus] of [
-        ["Running", "working", "Live"],
-        ["Waiting for approval", "waiting", "Live"],
-        ["Failed", "failed", "Live"],
-        ["Queued", "working", "Sign in required"],
+      for (const [status, tone, harnessStatus, label] of [
+        ["Running", "working", "Live", "Working…"],
+        ["Waiting for approval", "waiting", "Live", "Awaiting approval"],
+        ["Failed", "failed", "Live", "Failed"],
+        ["Queued", "working", "Sign in required", "Working…"],
       ]) {
         await openChrome(
           page,
@@ -276,39 +319,47 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
         );
         await expectSingleHeaderRow(page, width);
         const indicator = page.getByRole("status", {
-          name: `Chat status: ${status}`,
+          name: `Chat status: ${label}`,
           exact: true,
         });
-        await expect(indicator).toHaveAttribute("title", status);
-        await expect(
-          page.getByLabel(`Harness status: ${harnessStatus}`, { exact: true }),
-        ).toHaveAttribute("title", harnessStatus);
-        await expect(
-          indicator.locator(".agent-chat-chip__spinner"),
-        ).toHaveCount(tone === "working" ? 1 : 0);
-        await indicator.focus();
-        await expect(indicator).toBeFocused();
-        if (tone === "waiting" || tone === "failed")
-          await expect(indicator.locator("svg")).toBeVisible();
+        await expect(indicator).toHaveAttribute("title", label);
+        await expect(indicator).toHaveText(label);
+        const announcementBounds = await indicator.boundingBox();
+        expect(announcementBounds!.width).toBeLessThanOrEqual(1);
+        expect(announcementBounds!.height).toBeLessThanOrEqual(1);
         const harnessIndicator = page.getByLabel(
           `Harness status: ${harnessStatus}`,
           { exact: true },
         );
-        await harnessIndicator.focus();
-        await page.keyboard.press("Enter");
-        await expect(
-          page.locator(".agent-task-header__harness-status > p"),
-        ).toHaveText(harnessStatus);
+        await page
+          .locator(".agent-task-header")
+          .getByRole("button", { name: /^Chat actions for / })
+          .focus();
+        await page.keyboard.press("Shift+Tab");
+        if (harnessStatus === "Live") {
+          await expect(harnessIndicator).toHaveCount(0);
+          await expect(indicator).not.toBeFocused();
+        } else {
+          await expect(harnessIndicator).toHaveAttribute(
+            "title",
+            harnessStatus,
+          );
+          await expect(harnessIndicator).toBeFocused();
+          await page.keyboard.press("Enter");
+          await expect(
+            page.locator(".agent-task-header__harness-status > p"),
+          ).toHaveText(harnessStatus);
+        }
         await expectNoOverflow(page);
       }
     });
   }
-  test(`${harness} split home keeps both project names visible`, async ({
+  test(`${harness} multiple open chats show only the selected home`, async ({
     page,
   }) => {
     await openChrome(page, harness, 1888, "home-split");
     const homes = page.getByRole("region", { name: "New chat", exact: true });
-    await expect(homes).toHaveCount(2);
+    await expect(homes).toHaveCount(1);
     for (const home of await homes.all()) {
       await expect(
         home.getByText("Sage project with a long name", { exact: true }),
@@ -317,6 +368,43 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
     await expectNoOverflow(page);
   });
 }
+
+test("header title compacts with its chat column, not the window", async ({
+  page,
+}) => {
+  await openChrome(page, "codex", 1888);
+  const center = page.locator(".agent-chat-center");
+  const header = page.locator(".agent-task-header");
+  for (const width of [401, 400, 160]) {
+    // Size the column's content box, which is what the container query reads.
+    await center.evaluate((element, width) => {
+      const style = getComputedStyle(element);
+      (element as HTMLElement).style.width = `${
+        width +
+        Number.parseFloat(style.borderLeftWidth) +
+        Number.parseFloat(style.borderRightWidth)
+      }px`;
+    }, width);
+    await expectSingleHeaderRow(page, width);
+    const geometry = await header.evaluate((element) => {
+      const title = element.querySelector(".agent-task-header__title")!;
+      return {
+        padding: getComputedStyle(element).paddingLeft,
+        title: title.getBoundingClientRect().width,
+        em: Number.parseFloat(getComputedStyle(title).fontSize),
+      };
+    });
+    // The window stays 1888px wide; only the chat column decides.
+    expect(geometry.padding, `at ${width}px`).toBe(
+      width > 400 ? "16px" : "8px",
+    );
+    // A squeezed column keeps at least three characters of the title.
+    if (width <= 400)
+      expect(geometry.title, `at ${width}px`).toBeGreaterThanOrEqual(
+        3 * geometry.em - 0.5,
+      );
+  }
+});
 
 async function expectNoOverflow(page: Page) {
   expect(

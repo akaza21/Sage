@@ -164,3 +164,27 @@ fn page_text_filter_removes_controls_and_bounds_multibyte_text() {
     assert_eq!(safe_page_text("A\u{2066}B\nC\t", 16, false), "ABC");
     assert_eq!(safe_page_text("ééé", 5, true), "éé");
 }
+
+#[test]
+fn raw_cdp_results_redact_secret_fields_and_token_strings_but_stay_json() {
+    let mut result = BrowserResult::Cdp {
+        result: serde_json::json!({
+            "result": {"type": "string", "value": format!("Bearer {JWT}")},
+            "headers": {"authorization": "Basic abc", "accept": "text/html"},
+            "nested": [{"password": "hunter2"}, "https://x.example/cb?code=abc&page=2"],
+            "count": 3
+        }),
+    };
+    redact_result(&mut result);
+    let BrowserResult::Cdp { result } = result else {
+        unreachable!()
+    };
+    let text = result.to_string();
+    assert!(!text.contains(JWT) && !text.contains("hunter2") && !text.contains("Basic abc"));
+    assert_eq!(result["headers"]["accept"], "text/html");
+    assert_eq!(
+        result["nested"][1],
+        "https://x.example/cb?code=[redacted]&page=2"
+    );
+    assert_eq!(result["count"], 3);
+}

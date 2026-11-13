@@ -107,9 +107,6 @@ test.describe("Editor editing essentials", () => {
     await expect(line(page, 3)).toHaveText("/* const x = total([x, x]); */");
   });
 
-  // Folding leaves the buffer clean, so this test keeps the fixture's own
-  // document: the browser lane cannot store edits to it, and Sage will not
-  // leave a File for Settings while its edits cannot be kept.
   test("folds from the keyboard and the gutter, and Settings switch it off", async ({
     page,
   }) => {
@@ -150,19 +147,22 @@ test.describe("Editor editing essentials", () => {
 
     await page.getByRole("button", { name: "Open settings" }).click();
     const settings = page.getByRole("region", { name: "Settings" });
-    await settings.getByRole("checkbox", { name: "Code folding" }).uncheck();
+    await settings.getByRole("switch", { name: "Code folding" }).uncheck();
     await settings
-      .getByRole("checkbox", { name: "Auto-close brackets" })
+      .getByRole("switch", { name: "Auto-close brackets" })
       .uncheck();
     await page.getByRole("button", { name: "Close Settings" }).click();
     await expect(page.locator(".cm-foldGutter")).toHaveCount(0);
     await expect(page.locator(".cm-foldPlaceholder")).toHaveCount(0);
-    // The browser lane reopens the File from its own one-line disk copy.
-    await expect(lines).toHaveCount(2);
+    // Settings round-trips preserve the seeded File on the browser disk.
+    await expect(lines).toHaveCount(9);
+    await expect(line(page, 2)).toHaveText(
+      "export function AgentChatPanes() {",
+    );
     await page.locator(".cm-content").click();
     await page.keyboard.press("ControlOrMeta+End");
     await page.keyboard.type("(");
-    await expect(line(page, 1)).toHaveText("(");
+    await expect(line(page, 8)).toHaveText("}(");
   });
 
   // CodeMirror reads the platform when it loads; on macOS Shift+Option+A

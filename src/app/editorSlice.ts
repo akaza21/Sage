@@ -1,29 +1,28 @@
-import type { StateCreator } from "zustand";
-
+import { type StateCreator, type StoreApi } from "zustand";
+import { errorMessage } from "../domain/errors";
 import {
   parentResource,
   resourceKey,
   sameResource,
 } from "../domain/resourceIdentity";
-import type { ResourceRef } from "../domain/workbench";
-import type {
-  EditorContent,
-  EditorContentBase,
+import { type ResourceRef } from "../domain/workbench";
+import {
+  type EditorContent,
+  type EditorContentBase,
 } from "../features/files/editorContent";
 import {
   getFileEditorController,
   type ActiveEditorState,
   type EditorStateBridge,
 } from "../features/files/fileEditorController";
-import { errorMessage } from "../domain/errors";
 import { enqueueEditorOperation } from "./editorOperations";
 import {
+  issueRequestIntent,
   matchesActiveTabIntent,
   matchesProjectIntent,
   matchesRequestIntent,
-  issueRequestIntent,
 } from "./projectIntent";
-import type { WorkbenchState } from "./store";
+import { type WorkbenchState } from "./store";
 
 export type { ActiveEditorState } from "../features/files/fileEditorController";
 
@@ -50,15 +49,7 @@ export const createEditorSlice: StateCreator<
   EditorSlice
 > = (set, get) => {
   const editorController = getFileEditorController();
-  const editorState: EditorStateBridge = {
-    getActiveEditor: () => get().activeEditor,
-    setActiveEditor: (editor, update) => {
-      set((state) => ({
-        activeEditor: editor,
-        tabs: tabsWithEditorUpdate(state.tabs, editor.resource, update),
-      }));
-    },
-  };
+  const editorState = storeEditorBridge(set, get);
 
   const closePending = async (discard: boolean) => {
     const tabId = get().pendingCloseTabId;
@@ -212,9 +203,9 @@ export const createEditorSlice: StateCreator<
         return true;
       } catch (error) {
         if (!matchesProjectIntent(get(), generation, projectId)) return false;
-        const message = errorMessage(error);
-        editorController.saveError(editorState, error);
-        set({ error: message });
+        const { actionFailed } =
+          await import("../features/files/editorNoticeState");
+        set({ error: actionFailed(editorState, error) });
         return false;
       }
     },
@@ -248,6 +239,7 @@ export const createEditorSlice: StateCreator<
         });
       } catch (error) {
         if (matchesProjectIntent(get(), generation, projectId)) {
+          editorController.saveError(editorState, error);
           set({ error: errorMessage(error) });
         }
         return false;
@@ -255,6 +247,22 @@ export const createEditorSlice: StateCreator<
     },
   };
 };
+
+/** The active editor as the store holds it, with its tabs kept in step. */
+export function storeEditorBridge(
+  set: StoreApi<WorkbenchState>["setState"],
+  get: StoreApi<WorkbenchState>["getState"],
+): EditorStateBridge {
+  return {
+    getActiveEditor: () => get().activeEditor,
+    setActiveEditor: (editor, update) => {
+      set((state) => ({
+        activeEditor: editor,
+        tabs: tabsWithEditorUpdate(state.tabs, editor.resource, update),
+      }));
+    },
+  };
+}
 
 /**
  * Applies a dirty or status change to the editor's tab. The tabs array keeps

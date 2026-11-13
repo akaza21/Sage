@@ -1,3 +1,4 @@
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import {
   act,
   cleanup,
@@ -27,6 +28,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   useSettingsPageRequest.setState({ page: null });
+  useAgentSettingsState.getState().close();
   useEditorSettingsStore.setState(initial, true);
   vi.restoreAllMocks();
 });
@@ -39,7 +41,7 @@ describe("SettingsSurface", () => {
       within(nav)
         .getAllByRole("tab")
         .map((tab) => tab.textContent),
-    ).toEqual(["Editor", "Keyboard", "Browser"]);
+    ).toEqual(["Editor", "Keyboard", "Browser", "Passwords"]);
     expect(within(nav).getByRole("tab", { name: "Editor" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -47,14 +49,14 @@ describe("SettingsSurface", () => {
   });
 
   it("opens on a requested page and follows a request while open", async () => {
-    useSettingsPageRequest.setState({ page: "browser" });
+    useSettingsPageRequest.setState({ page: "keyboard" });
     render(<SettingsSurface />);
-    expect(screen.getByRole("tab", { name: "Browser" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "Keyboard" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
     expect(
-      await screen.findByRole("heading", { name: "Browser" }),
+      await screen.findByRole("heading", { name: "Keyboard Shortcuts" }),
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(useSettingsPageRequest.getState().page).toBeNull(),
@@ -72,17 +74,27 @@ describe("SettingsSurface", () => {
     expect(useSettingsPageRequest.getState().page).toBeNull();
   });
 
-  it("loads the Browser page on demand", async () => {
+  it("opens Browser in the shared Agent settings dialog", async () => {
     render(<SettingsSurface />);
-    expect(screen.queryByRole("heading", { name: "Browser" })).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Browser" }));
-    expect(
-      await screen.findByRole("heading", { name: "Browser" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Browser" })).toHaveAttribute(
-      "aria-selected",
-      "true",
+    await waitFor(() =>
+      expect(useAgentSettingsState.getState().page).toBe("Browser"),
     );
+    expect(screen.queryByRole("heading", { name: "Browser" })).toBeNull();
+  });
+
+  it("moves between pages with the arrows without opening Browser", () => {
+    render(<SettingsSurface />);
+    const tabs = screen.getAllByRole("tab");
+    const browser = screen.getByRole("tab", { name: "Browser" });
+    const before = tabs[tabs.indexOf(browser) - 1];
+    expect(tabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1);
+    before.focus();
+    fireEvent.keyDown(before, { key: "ArrowRight" });
+    expect(browser).toHaveFocus();
+    expect(useAgentSettingsState.getState().page).not.toBe("Browser");
+    fireEvent.keyDown(browser, { key: "Home" });
+    expect(tabs[0]).toHaveFocus();
   });
 
   it("shows the real chord for each shortcut on the Keyboard page", () => {
@@ -102,7 +114,7 @@ describe("SettingsSurface", () => {
   it("keeps the Keyboard page read-only", () => {
     render(<SettingsSurface />);
     fireEvent.click(screen.getByRole("tab", { name: "Keyboard" }));
-    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("switch")).toBeNull();
     expect(screen.queryByRole("combobox")).toBeNull();
   });
 
@@ -140,7 +152,7 @@ describe("SettingsSurface", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Default: 13px")).toBeInTheDocument();
     expect(screen.getByText("Default: 2 spaces")).toBeInTheDocument();
-    expect(screen.getAllByText("Default: On")).toHaveLength(7);
+    expect(screen.getAllByText("Default: On")).toHaveLength(9);
     expect(screen.getAllByText("Default: Off")).toHaveLength(2);
     expect(screen.getByText("Default: Alt")).toBeInTheDocument();
     expect(screen.getByText("Default: Dimmed")).toBeInTheDocument();
@@ -149,6 +161,8 @@ describe("SettingsSurface", () => {
     expect(within(search).getByLabelText("Use ignore files")).toBeChecked();
     const git = screen.getByRole("group", { name: "Git" });
     expect(within(git).getByLabelText("Auto refresh")).toBeChecked();
+    expect(within(git).getByLabelText("Decorations")).toBeChecked();
+    expect(within(git).getByLabelText("Change markers")).toBeChecked();
     const ignored = within(files).getByLabelText("Ignored files in Explorer");
     expect(
       within(ignored)
@@ -268,7 +282,7 @@ describe("SettingsSurface", () => {
 
     for (const [pattern, message] of [
       ["**/dist", "That pattern is already listed."],
-      ["/dist", "Write the pattern relative to the Project"],
+      ["/dist", "Write the pattern relative to the project"],
       ["", "Enter a pattern."],
     ] as const) {
       fireEvent.change(input, { target: { value: pattern } });

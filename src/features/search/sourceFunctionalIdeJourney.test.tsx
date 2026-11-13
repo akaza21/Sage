@@ -13,7 +13,7 @@ import { diffCacheKey } from "../../domain/diffIdentity";
 import type { EditorDocument, ResourceRef } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { desktop } from "../../services/desktop";
-import { EditSummary } from "../chat/EditSummary";
+import { ChatLegacyTranscript } from "../chat/ChatLegacyTranscript";
 import { ExplorerSurface } from "../files/ExplorerSurface";
 import { FileEditorHeader } from "../files/FileEditorHeader";
 import { OutlineSurface } from "../outline/OutlineSurface";
@@ -109,6 +109,7 @@ describe("source-functional IDE journey", () => {
     );
     vi.spyOn(editor, "snapshotEditorBuffer").mockResolvedValue({
       revision: 1,
+      applied: true,
       persistedAt: 1,
       dirty: true,
     });
@@ -221,7 +222,7 @@ describe("source-functional IDE journey", () => {
     search.unmount();
     const outline = render(<OutlineSurface />);
     expect(
-      await screen.findByRole("button", {
+      await screen.findByRole("treeitem", {
         name: "Variable: x. src/main.ts, line 1, column 5",
       }),
     ).toBeInTheDocument();
@@ -264,7 +265,7 @@ describe("source-functional IDE journey", () => {
         },
       ],
     });
-    render(<EditSummary />);
+    render(<ChatLegacyTranscript messages={[]} developmentSimulator />);
     expect(screen.queryByRole("button", { name: "Source Control" })).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: "Open diff for src/main.ts" }),

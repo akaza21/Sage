@@ -1,6 +1,6 @@
 import { Eye, FilePenLine } from "../../ui/leanIcons";
-
 import { usesMetaModifier } from "../../ui/shortcutLabel";
+import { WATCH_LIMIT_MESSAGE } from "./editorExternalWatch";
 import { FilePathChips } from "./FilePathChips";
 import { unsavedState } from "./fileSurfaceCommands";
 
@@ -9,6 +9,8 @@ interface FileEditorHeaderProps {
   projectName?: string;
   lineEnding: string;
   diskByteLen: number;
+  /** Why the File is not watched for changes on disk, said quietly. */
+  unwatched?: string;
   persisting: boolean;
   dirty: boolean;
   saving: boolean;
@@ -24,6 +26,7 @@ export function FileEditorHeader({
   projectName,
   lineEnding,
   diskByteLen,
+  unwatched,
   persisting,
   dirty,
   saving,
@@ -50,8 +53,18 @@ export function FileEditorHeader({
         <FilePathChips path={path} projectName={projectName} />
       </span>
       <span className="file-header__metadata">
-        UTF-8 · {lineEnding.toUpperCase()} · {diskByteLen.toLocaleString()} disk
-        bytes
+        UTF-8 · {lineEnding.toUpperCase()}
+        <span className="file-header__disk">
+          {` · ${diskByteLen.toLocaleString()} disk bytes`}
+        </span>
+        {unwatched ? (
+          // Beside the size, which a deleted File hides, not inside it.
+          <span className="file-header__unwatched" title={unwatched}>
+            {unwatched === WATCH_LIMIT_MESSAGE
+              ? " · Not watched: watch limit reached"
+              : " · Not watched"}
+          </span>
+        ) : null}
       </span>
       {saveState || canPreview ? (
         <span className="file-header__actions">

@@ -1,5 +1,5 @@
 //! A cheap fingerprint of the Git files that change when a commit, checkout,
-//! stage, merge, fetch or push happens outside Sage (EP-12). The Workbench
+//! stage, merge, fetch or push happens outside Sage. The Workbench
 //! asks for it every second while it is visible, so it only reads metadata of
 //! a few files per root and never runs Git.
 
@@ -32,28 +32,26 @@ const CHECKOUT_FILES: &[&str] = &[
 
 #[tauri::command]
 pub async fn get_repository_change_stamp(state: State<'_, AppState>) -> Result<String, String> {
-    let project_id = state
-        .database
-        .active_project_id()
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "no project is active".to_owned())?;
-    let roots = state
-        .database
-        .root_records(&project_id)
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .map(|root| (root.id, root.absolute_path))
-        .collect::<Vec<_>>();
+    // SQLite and the file system both block, so neither runs on the async
+    // runtime that this once-a-second poll would otherwise hold up.
+    let database = state.database.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let project_id = database
+            .active_project_id()
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "no project is active".to_owned())?;
         let mut hasher = DefaultHasher::new();
-        for (root_id, path) in roots {
-            root_id.hash(&mut hasher);
-            change_stamp(&path).hash(&mut hasher);
+        for root in database
+            .root_records(&project_id)
+            .map_err(|error| error.to_string())?
+        {
+            root.id.hash(&mut hasher);
+            change_stamp(&root.absolute_path).hash(&mut hasher);
         }
-        format!("{:016x}", hasher.finish())
+        Ok(format!("{:016x}", hasher.finish()))
     })
     .await
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?
 }
 
 /// Changes whenever `HEAD`, the index, the config, a branch, a remote branch,
@@ -171,11 +169,41 @@ fn safe_ref_path(branch: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{Duration, SystemTime};
+
     use super::*;
+
+    static NEXT_WRITE: AtomicU64 = AtomicU64::new(1);
 
     fn write(path: &Path, text: &str) {
         fs::create_dir_all(path.parent().expect("parent")).expect("dir");
         fs::write(path, text).expect("write");
+        // This fingerprint observes metadata. Back-to-back ref creations can
+        // share a filesystem clock tick, so supply distinct observable times.
+        let tick = NEXT_WRITE.fetch_add(1, Ordering::Relaxed);
+        let modified = UNIX_EPOCH + Duration::from_secs(1_600_000_000 + tick * 4);
+        set_modified(path, modified);
+        set_modified(path.parent().expect("parent"), modified);
+    }
+
+    fn set_modified(path: &Path, modified: SystemTime) {
+        #[cfg(windows)]
+        let file = {
+            use std::os::windows::fs::OpenOptionsExt;
+            use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
+
+            // FILE_WRITE_ATTRIBUTES; BACKUP_SEMANTICS also admits directories.
+            fs::OpenOptions::new()
+                .access_mode(0x0000_0100)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(path)
+                .expect("open fixture timestamps")
+        };
+        #[cfg(not(windows))]
+        let file = fs::File::open(path).expect("open fixture timestamps");
+        file.set_times(fs::FileTimes::new().set_modified(modified))
+            .expect("set fixture timestamps");
     }
 
     struct TempTree(PathBuf);
@@ -215,6 +243,10 @@ mod tests {
         assert_eq!(change_stamp(temp.path()), change_stamp(temp.path()));
     }
 
+    // NTFS may coalesce directory timestamps within a clock tick; production
+    // polls a second apart. Keep each fixture write on a distinct metadata tick.
+    const METADATA_TICK: std::time::Duration = std::time::Duration::from_millis(20);
+
     #[test]
     fn stamp_changes_with_head_index_branch_and_remote_branch() {
         let (temp, git) = repository();
@@ -230,6 +262,7 @@ mod tests {
             ("MERGE_HEAD", "c\n"),
             ("HEAD", "ref: refs/heads/topic\n"),
         ] {
+            std::thread::sleep(METADATA_TICK);
             write(&git.join(path), text);
             let next = change_stamp(temp.path());
             assert_ne!(next, last, "{path} did not change the stamp");

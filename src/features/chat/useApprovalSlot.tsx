@@ -16,7 +16,7 @@ import type {
 import { acpDesktop } from "../../services/acpDesktop";
 import { awaitingPermission } from "./acp/statusSemantics";
 import { setChatAwaitingApproval } from "./acp/awaitingApproval";
-import { ApprovalPart } from "./lazyParts";
+import { ApprovalPart, QuestionPart } from "./lazyParts";
 
 type PermissionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
@@ -117,7 +117,7 @@ function ApprovalFallback({
       <p>Loading the approval…</p>
       {state === "failed" ? (
         <p className="acp-permission__error" role="alert">
-          The denial could not be sent. Try again, or stop the Turn.
+          The denial could not be sent. Try again, or stop the turn.
         </p>
       ) : null}
       {onCancelTurn ? (
@@ -145,7 +145,7 @@ function ApprovalFallback({
   );
 }
 
-/** A chunk that fails to load hands the slot back to the composer. */
+/** A card that fails to render hands the slot back to the composer. */
 class ApprovalBoundary extends Component<
   { onError: () => void; children: ReactNode },
   { failed: boolean }
@@ -213,25 +213,46 @@ export function useApprovalSlot(
       composerRef.current?.focus();
     wasAwaiting.current = holdsSlot;
   }, [holdsSlot, composerRef]);
+  // A card whose chunk fails to load, or that fails to render, hands the
+  // slot back to the composer.
+  const giveWay = () => first && setFailedFor(first.id);
   return {
     awaiting: holdsSlot,
     slot: !first ? null : failed ? (
       <p className="composer__notice" role="alert">
-        The approval could not load. Stop the Turn, or reopen the Chat to try
+        The approval could not load. Stop the turn, or reopen the chat to try
         again.
       </p>
     ) : (
-      <ApprovalBoundary key={first.id} onError={() => setFailedFor(first.id)}>
-        <ApprovalPart
-          part="PermissionPrompt"
-          fallback={
-            <ApprovalFallback item={first} onCancelTurn={onCancelTurn} />
-          }
-          items={pending}
-          focused={focused}
-          canTakeFocus={canTakeFocus}
-          onCancelTurn={onCancelTurn}
-        />
+      <ApprovalBoundary key={first.id} onError={giveWay}>
+        {first.payload.userInput ? (
+          // A harness asking the user questions gets the question card.
+          <QuestionPart
+            part="UserInputPrompt"
+            fallback={
+              <ApprovalFallback item={first} onCancelTurn={onCancelTurn} />
+            }
+            onLoadFailed={giveWay}
+            item={first}
+            userInput={first.payload.userInput}
+            items={pending}
+            focused={focused}
+            canTakeFocus={canTakeFocus}
+            onCancelTurn={onCancelTurn}
+          />
+        ) : (
+          <ApprovalPart
+            part="PermissionPrompt"
+            fallback={
+              <ApprovalFallback item={first} onCancelTurn={onCancelTurn} />
+            }
+            onLoadFailed={giveWay}
+            items={pending}
+            focused={focused}
+            canTakeFocus={canTakeFocus}
+            onCancelTurn={onCancelTurn}
+          />
+        )}
       </ApprovalBoundary>
     ),
   };

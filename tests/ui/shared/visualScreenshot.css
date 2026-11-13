@@ -1,0 +1,6 @@
+/* Playwright hides carets with caret-color, which forced colors overrides.
+   Hold any remaining native caret at its visible phase during capture only;
+   focus, selection, and the product's system colors remain intact. */
+* {
+  caret-animation: manual !important;
+}

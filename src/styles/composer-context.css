@@ -49,3 +49,14 @@
     mask: none;
   }
 }
+.composer__context-slot {
+  grid-area: meter;
+  width: 24px;
+}
+
+button.composer__context-usage {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}

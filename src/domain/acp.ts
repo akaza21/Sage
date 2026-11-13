@@ -9,15 +9,23 @@ export type {
   SafeResourceLocation,
   ToolPresentation,
   TurnProjection,
+  TurnSessionActivity,
 } from "./acpProjection";
 import type { AcpChatPage } from "./acpProjection";
+import type { AcpSessionAction } from "./acpSessionAction";
 import type { AttachedContext } from "./attachedContext";
+export type { AcpReviewTarget, AcpSessionAction } from "./acpSessionAction";
 
 export type {
+  AnswerUserInputRequest,
+  AnswerUserInputResponse,
   PermissionDecision,
   PermissionState,
   ResolvePermissionDecisionRequest,
   ResolvePermissionDecisionResponse,
+  UserInputAnswer,
+  UserInputQuestion,
+  UserInputRequest,
 } from "./acpPermission";
 
 type Brand<Value, Name extends string> = Value & {
@@ -55,6 +63,18 @@ export interface SetAcpSessionConfigOptionRequest extends AcpSessionMutationInte
   expectedConfigRevision: string;
   configId: string;
   value: AcpConfigValue;
+}
+/**
+ * A choice for a session with no live runtime: stored, shown as restored,
+ * and applied before the session's next prompt.
+ */
+export interface QueueAcpSessionConfigChoiceRequest {
+  projectId: SageProjectId;
+  projectGeneration: ProjectGeneration;
+  chatId: SageChatId;
+  expectedProjectionRevision: ProjectionRevision;
+  sessionId: SageAgentSessionId;
+  choice: { modeId: string } | { configId: string; value: AcpConfigValue };
 }
 export type EntityRevision = Brand<string, "EntityRevision">;
 
@@ -140,8 +160,16 @@ export interface AcpCapabilitySet {
   loadSession: boolean;
   closeSession: boolean;
   prompt: boolean;
+  /** Absent in older sessions; native admission treats absence as unsupported. */
+  promptResources?: boolean;
+  /** Standard ACP `promptCapabilities.image`; absent means unsupported. */
+  promptImages?: boolean;
   cancel: boolean;
   nativeSessionFork: boolean;
+  /** Absent unless the harness negotiated it. */
+  nativeSessionCompact?: boolean;
+  /** Absent unless the harness negotiated it. */
+  nativeReview?: boolean;
   activeTurnSteer: boolean;
   childConversationProjection: boolean;
   childTranscriptRead: boolean;
@@ -170,13 +198,16 @@ export interface CodexDiscoveryModel {
   isDefault: boolean;
 }
 
+export type CodexAccount =
+  "managedChatgpt" | "apiKey" | "providerManaged" | "signedOut";
+
 export interface CodexDiscoveryResponse {
   projectId: SageProjectId;
   projectGeneration: ProjectGeneration;
   rootId: string;
   bindingId: CuratedBindingId;
   runtimeEpoch: RuntimeEpoch;
-  account: "managedChatgpt" | "providerManaged" | "signedOut";
+  account: CodexAccount;
   models: readonly CodexDiscoveryModel[];
   defaultModelId: CuratedModelId | null;
 }
@@ -207,9 +238,15 @@ export interface AcpSessionMutationIntent extends AcpMutationIntent {
   runtimeEpoch: RuntimeEpoch;
 }
 
+export interface RunAcpSessionActionRequest extends AcpSessionMutationIntent {
+  action: AcpSessionAction;
+}
+
 export interface StartAcpSessionRequest extends AcpMutationIntent {
   bindingId: CuratedBindingId;
   modelId: CuratedModelId | null;
+  /** A thinking level chosen before the session existed. */
+  effort?: string;
 }
 
 interface AcpTurnContent {
@@ -217,8 +254,16 @@ interface AcpTurnContent {
   attachedContext?: readonly AttachedContext[];
 }
 
+/**
+ * The staged prompt files a send carries: the chat's batch at a revision, or
+ * for Retry of a turn the files that turn's prompt carried. Native refuses a
+ * Retry whose files are no longer held rather than sending it without them.
+ */
+export type StagedSelection = { revision: string } | { retryOf: SageTurnId };
+
 export type SendAcpTurnRequest =
-  | (AcpSessionMutationIntent & AcpTurnContent & { target: "session" })
+  | (AcpSessionMutationIntent &
+      AcpTurnContent & { target: "session"; staged?: StagedSelection })
   | (AcpMutationIntent &
       AcpTurnContent & {
         target: "newSession";
@@ -301,3 +346,16 @@ type AcpCommandFailureDetail =
 export type AcpCommandFailure = AcpCommandFailureDetail & {
   promptDispatch?: "notStarted" | "unknown";
 };
+
+/** A rail read contains no transcript items, activities or session pages. */
+export interface AcpChatStatus {
+  projectId: SageProjectId;
+  chatId: SageChatId;
+  title: string;
+  latestTurn: {
+    state: TurnState;
+    updatedAt: number;
+    createdAt: number;
+    terminalAt: number | null;
+  } | null;
+}

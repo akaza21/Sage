@@ -1,0 +1,19 @@
+.composer-model-picker .searchable-picker__option-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.composer-model-picker .searchable-picker__subtitle {
+  color: var(--composer-muted-text);
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+@media (forced-colors: active) {
+  .composer-model-picker .searchable-picker__subtitle {
+    color: inherit;
+  }
+}

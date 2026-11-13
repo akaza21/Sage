@@ -253,3 +253,60 @@ fn absent_or_null_terminal_error_does_not_invent_an_error_item() {
         }
     }
 }
+
+fn interrupted() -> Vec<u8> {
+    serde_json::to_vec(&json!({"method":"turn/completed","params":{
+        "threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted"}
+    }}))
+    .unwrap()
+}
+
+#[test]
+fn an_interrupt_sage_never_wrote_leaves_the_codex_stop_interrupted() {
+    let mut adapter = running_adapter();
+    adapter.cancel(3).unwrap();
+    adapter.reject_before_write(3).unwrap();
+    let IngressDisposition::Events(events) = adapter.ingest(&interrupted(), &Mapper).unwrap()
+    else {
+        panic!()
+    };
+    assert!(matches!(
+        events.as_slice(),
+        [IncomingEvent::Turn {
+            state: TurnState::Interrupted,
+            ..
+        }]
+    ));
+}
+
+#[test]
+fn a_user_stop_closes_the_plan_and_settles_the_turn_cancelled() {
+    let mut adapter = running_adapter();
+    let plan = json!({"method":"turn/plan/updated","params":{
+        "threadId":"thread-1","turnId":"turn-1","explanation":null,
+        "plan":[{"step":"Inspect","status":"inProgress"}]
+    }});
+    adapter
+        .ingest(&serde_json::to_vec(&plan).unwrap(), &Mapper)
+        .unwrap();
+    adapter.cancel(3).unwrap();
+    let IngressDisposition::Events(events) = adapter.ingest(&interrupted(), &Mapper).unwrap()
+    else {
+        panic!()
+    };
+    assert!(matches!(
+        events.as_slice(),
+        [
+            IncomingEvent::Item {
+                id,
+                lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
+                payload: NormalizedPayload::PlanEntries { entries },
+                ..
+            },
+            IncomingEvent::Turn {
+                state: TurnState::Cancelled,
+                ..
+            },
+        ] if id.external_id.as_str() == "sage:turn-plan" && entries.as_slice().len() == 1
+    ));
+}

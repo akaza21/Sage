@@ -1,6 +1,10 @@
 use crate::acp::{
+    bindings::standard_acp::elicitation::accepted, intent::user_input::UserInputAnswers,
     lifecycle::ServerRequestState, limits::LIMITS, runtime::permissions::PermissionDecision,
 };
+
+/// The Codex server request that asks the user questions.
+pub(in crate::acp::bindings::codex) const USER_INPUT_METHOD: &str = "item/tool/requestUserInput";
 
 use super::{
     AdapterError, CodexAdapter, ExternalKind, PermissionRegistration, PermissionRequestEntry,
@@ -20,6 +24,7 @@ impl CodexAdapter {
             turn_id,
             item_id,
             response,
+            form,
         } = params;
         self.expect_turn(turn_id)?;
         if let Some(existing) = self
@@ -86,6 +91,7 @@ impl CodexAdapter {
             item_id: item_id.to_owned(),
             response: response.to_vec(),
             state: ServerRequestState::Received,
+            form,
         });
         Ok(PermissionRegistration::New(external))
     }
@@ -143,7 +149,7 @@ impl CodexAdapter {
     pub(crate) fn resolve_pending_permission(
         &mut self,
         request_id: &str,
-        decision: PermissionDecision,
+        decision: &PermissionDecision,
     ) -> Result<Option<(String, Vec<u8>, String)>, AdapterError> {
         let Some(entry) = self
             .permission_requests
@@ -158,23 +164,35 @@ impl CodexAdapter {
         ) {
             return Err(AdapterError::PermissionTeardownRequired);
         }
+        let asks_user = entry.method == USER_INPUT_METHOD || entry.form.is_some();
         match decision {
             PermissionDecision::Ask => {
                 entry.state = ServerRequestState::Asked;
                 Ok(None)
             }
-            PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => {
-                if decision == PermissionDecision::AllowAlways && !entry.allow_always {
+            PermissionDecision::AllowOnce
+            | PermissionDecision::AllowAlways
+            | PermissionDecision::Answer(_) => {
+                if (*decision == PermissionDecision::AllowAlways && !entry.allow_always)
+                    || asks_user != matches!(decision, PermissionDecision::Answer(_))
+                {
                     return Err(AdapterError::PermissionTeardownRequired);
                 }
                 entry.state = ServerRequestState::AllowPending;
                 entry.state = ServerRequestState::AllowCommitted;
                 let mut value: serde_json::Value = serde_json::from_slice(&entry.response)
                     .map_err(|_| AdapterError::PermissionTeardownRequired)?;
-                let result = if entry.method == "item/permissions/requestApproval" {
-                    serde_json::json!({"permissions": {}})
-                } else {
-                    serde_json::json!({"decision": if decision == PermissionDecision::AllowAlways { "acceptForSession" } else { "accept" }})
+                let result = match decision {
+                    PermissionDecision::Answer(answers) => match &entry.form {
+                        Some(form) => accepted(form, answers),
+                        None => user_input_result(answers),
+                    },
+                    _ if entry.method == "item/permissions/requestApproval" => {
+                        serde_json::json!({"permissions": {}})
+                    }
+                    _ => {
+                        serde_json::json!({"decision": if *decision == PermissionDecision::AllowAlways { "acceptForSession" } else { "accept" }})
+                    }
                 };
                 value
                     .as_object_mut()
@@ -197,4 +215,27 @@ impl CodexAdapter {
             }
         }
     }
+}
+
+/// Codex `ToolRequestUserInputResponse`, shaped as Codex's own client sends
+/// it: the chosen option label, then any free text as a `user_note:` entry.
+fn user_input_result(answers: &UserInputAnswers) -> serde_json::Value {
+    let answers = answers
+        .as_slice()
+        .iter()
+        .map(|answer| {
+            let mut values = Vec::with_capacity(2);
+            if let Some(label) = &answer.selected_option {
+                values.push(label.as_str().to_owned());
+            }
+            if let Some(text) = &answer.text {
+                values.push(format!("user_note: {}", text.as_str().trim()));
+            }
+            (
+                answer.question_id.as_str().to_owned(),
+                serde_json::json!({"answers": values}),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
+    serde_json::json!({"answers": answers})
 }

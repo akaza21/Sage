@@ -16,19 +16,160 @@
   flex: none;
 }
 
+/* Toolbar controls keep their natural width. ChatHarnessControls measures the
+   row and takes the steps below, lowest priority first, only as far as the
+   row needs, so each label is either whole or replaced by its icon. */
+.composer .composer__controls {
+  --composer-icon-target: var(--control-height-compact);
+  --composer-label-min: 8ch;
+}
+
+.composer .composer__controls > * {
+  flex-shrink: 0;
+}
+
+/* Session status and errors take only the room the controls leave, so a
+   transient message never compacts the control the person is using. */
+.composer .composer__controls > .select-control__reason {
+  min-width: 0;
+  flex: 1 1 0;
+  padding-inline: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer
+  [data-fit~="placeholder"]
+  .composer__effort-picker:not([aria-controls]),
+.composer [data-fit~="access"] .composer__access-label,
+.composer [data-fit~="harness"] .composer__harness,
+.composer [data-fit~="project"] .project-scope,
+.composer [data-fit~="effort"] .composer__effort-picker,
+.composer [data-fit~="model"] .composer__model-trigger {
+  width: var(--composer-icon-target);
+  min-width: var(--composer-icon-target);
+  flex: none;
+  justify-content: center;
+  padding: 0;
+}
+
+.composer
+  [data-fit~="placeholder"]
+  .composer__effort-picker:not([aria-controls])
+  :is(.composer__effort-label, .composer__effort-chevron),
+.composer [data-fit~="capacity"] .composer__capacity,
+.composer [data-fit~="access"] .composer__access-text,
+.composer
+  [data-fit~="harness"]
+  .composer__harness
+  :is(.searchable-picker__trigger-label, .searchable-picker__chevron),
+.composer
+  [data-fit~="project"]
+  .project-scope
+  :is(
+    .searchable-picker__trigger-label,
+    .searchable-picker__chevron,
+    .project-scope__label
+  ),
+.composer
+  [data-fit~="effort"]
+  .composer__effort-picker
+  :is(.composer__effort-label, .composer__effort-chevron),
+.composer [data-fit~="effort"] .composer__model-effort,
+.composer
+  [data-fit~="model"]
+  .composer__model-trigger
+  :is(.composer__model-label, svg:last-child),
+.composer [data-fit~="effort-menu"] .composer__effort-picker,
+.composer [data-fit~="project-menu"] > .project-scope {
+  display: none;
+}
+
+.composer
+  [data-fit~="placeholder"]
+  .composer__effort-picker:not([aria-controls])
+  .composer__effort-icon,
+.composer [data-fit~="effort"] .composer__effort-icon,
+.composer [data-fit~="model"] .composer__model-icon {
+  display: block;
+}
+
+.composer [data-fit~="harness"] .composer__harness .searchable-picker__trigger,
+.composer [data-fit~="project"] .project-scope .searchable-picker__trigger {
+  min-width: var(--composer-icon-target);
+  justify-content: center;
+  padding: 0;
+}
+
+.composer [data-fit~="project"] .project-scope {
+  border: 0;
+}
+
+.composer [data-fit~="project"] .project-scope .searchable-picker {
+  width: 100%;
+  margin: 0;
+}
+
+/* The model name takes the room the other controls leave and truncates no
+   shorter than a readable prefix. Its base width is that prefix, capped at
+   the whole name, and it never shrinks below it, so a name shorter than the
+   prefix needs no more room than before this step. Once the model step
+   replaces the name with its icon, the trigger keeps the icon target. */
+.composer
+  [data-fit~="model-shrink"]:not([data-fit~="model"])
+  > .composer__model-group {
+  flex: 1 1 0;
+}
+
+.composer
+  [data-fit~="model-shrink"]:not([data-fit~="model"])
+  .composer__model-trigger {
+  min-width: min-content;
+  flex: 1 1 auto;
+}
+
+.composer [data-fit~="model-shrink"] .composer__model-label {
+  width: var(--composer-label-min);
+  max-width: max-content;
+  flex: 1 0 auto;
+}
+
+.composer [data-fit~="dense"] {
+  --composer-icon-target: var(--space-6);
+
+  gap: 0;
+}
+
+.composer [data-fit~="dense"] .composer__model-group {
+  gap: 0;
+}
+
+/* The densest step also tightens the toolbar around the row, so the actions
+   beside it give the controls their room before anything wraps. */
+.composer__toolbar:has([data-fit~="dense"]) {
+  gap: 2px;
+  padding-inline: 4px;
+}
+
+/* The context step frees the meter's column for the controls in the same
+   measurement pass; the meter itself unmounts once the step is settled. */
+.composer__toolbar:has([data-fit~="context"]) .composer__context-slot {
+  display: none;
+}
+
+.composer__toolbar:has([data-fit~="dense"]) :is(.composer__mic, .send-button) {
+  width: var(--space-6);
+  min-width: var(--space-6);
+}
+
+.composer__toolbar:has([data-fit~="dense"]) .send-button {
+  height: var(--space-6);
+}
+
 @container composer (max-width: 520px) {
   .composer .composer__body {
     scrollbar-gutter: stable;
-  }
-
-  .composer .composer__plus {
-    width: 24px;
-  }
-
-  .composer .composer__queued {
-    position: static;
-    max-height: min(160px, 24vh);
-    padding: var(--space-1);
   }
 
   .composer .composer__queued-row {
@@ -45,116 +186,9 @@
     overflow-wrap: anywhere;
     white-space: normal;
   }
-
-  .composer .composer__access-text,
-  .composer .composer__capacity {
-    display: none;
-  }
-
-  .composer .composer__access-label {
-    width: 28px;
-    flex: none;
-  }
-}
-
-@container composer (max-width: 400px) {
-  .composer .project-scope {
-    width: 28px;
-    flex: none;
-    justify-content: center;
-    padding: 0;
-  }
-
-  .composer .project-scope .searchable-picker__trigger {
-    justify-content: center;
-    padding: 0;
-  }
-
-  .composer .project-scope .searchable-picker {
-    width: 100%;
-    margin: 0;
-  }
-
-  .composer .project-scope {
-    border: 0;
-  }
-
-  .composer .project-scope .searchable-picker__trigger-label,
-  .composer .project-scope .searchable-picker__chevron,
-  .composer .project-scope__label {
-    display: none;
-  }
-
-  .composer .composer__harness .searchable-picker__trigger-label,
-  .composer .composer__harness .searchable-picker__chevron {
-    display: none;
-  }
-
-  .composer__controls .composer__harness.composer__control-trigger {
-    flex: 0 1 28px;
-  }
-
-  .composer__controls .composer__harness .searchable-picker__trigger {
-    justify-content: center;
-    padding: 0;
-  }
-
-  .composer .composer__model-group {
-    max-width: 100%;
-    flex: 1 1 auto;
-    flex-wrap: nowrap;
-  }
-
-  .composer__effort-picker {
-    max-width: min(80px, 100%);
-  }
-}
-
-@container composer (max-width: 320px) {
-  .composer .composer__effort-picker {
-    width: 24px;
-    min-width: 24px;
-    flex: none;
-  }
-
-  .composer .composer__effort-label,
-  .composer .composer__effort-picker > svg:last-child {
-    display: none;
-  }
-
-  .composer .composer__effort-icon {
-    display: block;
-  }
-
-  .composer .composer__model-group {
-    min-width: 28px;
-  }
-
-  /* The label may truncate to nothing beside a long effort level; the icon
-     keeps the model trigger identifiable instead of a bare chevron. */
-  .composer__model-icon {
-    display: block;
-    flex: none;
-  }
 }
 
 @container composer (max-width: 280px) {
-  .composer .composer__model-label,
-  .composer .composer__model-effort,
-  .composer .composer__model-trigger > svg:last-child {
-    display: none;
-  }
-
-  .composer__model-icon {
-    display: block;
-  }
-
-  .composer__controls .composer__model-group .composer__model-trigger {
-    width: 28px;
-    flex: none;
-    justify-content: center;
-  }
-
   .composer .chat-goal-strip__row {
     height: auto;
     flex-wrap: wrap;
@@ -172,67 +206,20 @@
   }
 }
 
-@container composer (max-width: 280px) {
-  .composer .composer__toolbar {
-    gap: 2px;
-    padding-inline: 4px;
-  }
-
-  .composer .composer__controls {
-    gap: 0;
-  }
-
-  .composer .composer__model-group {
-    min-width: 24px;
-    flex: none;
-    gap: 0;
-  }
-
-  .composer .composer__context {
-    display: none;
-  }
-
-  .composer .composer__harness.composer__control-trigger {
-    min-width: 24px;
-    height: 28px;
-    flex-basis: 24px;
-  }
-
-  .composer .composer__harness .searchable-picker__trigger {
-    height: 28px;
-  }
-
-  .composer .project-scope,
-  .composer .composer__plus,
-  .composer .composer__effort-picker,
-  .composer .project-scope .searchable-picker__trigger,
-  .composer .composer__model-group .composer__model-trigger,
-  .composer .composer__mic,
-  .composer .composer__access-label,
-  .composer .send-button {
-    min-width: 24px;
-    width: 24px;
-  }
-
-  .composer .send-button {
-    height: 24px;
-  }
+/* Only when every control is already an icon does the row wrap, with the
+   dictation and send actions on a row of their own. */
+.composer [data-fit~="wrap"] {
+  flex-wrap: wrap;
 }
 
-@container composer (width < 182px) {
-  .composer .composer__controls {
-    flex-wrap: wrap;
-  }
+.composer__toolbar:has([data-fit~="wrap"]) {
+  grid-template-areas: "controls controls controls" "mic meter send";
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--space-1);
+}
 
-  .composer .composer__toolbar {
-    grid-template-areas: "controls controls controls" "mic meter send";
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: var(--space-1);
-  }
-
-  .composer .composer__mic {
-    justify-self: end;
-  }
+.composer__toolbar:has([data-fit~="wrap"]) .composer__mic {
+  justify-self: end;
 }
 
 /* Short viewports (such as 200% zoom): the transcript yields its 120px floor

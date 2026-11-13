@@ -1,40 +1,5 @@
-// Agent Panel V1 conformance.
-//
-// This spec is NOT a regression test. The rest of `tests/ui/*.visual.ts`
-// compares the UI against screenshots the project saved earlier, which answers
-// "did this change since last time?" and never "does this match the target?".
-// This file answers the second question, against
-// `docs/design/agent-panel-references/agent-panel-v1-target.png` as read by
-// `docs/design/AGENT-PANEL-V1-REFERENCE.md`.
-//
-// It deliberately takes no screenshot and makes no pixel comparison against the
-// mockup: Sage's palette is its own, so a pixel compare would fail forever and
-// teach everyone to ignore this file.
-//
-// Two halves, and both must be able to fail:
-//
-//   1. Elements the target requires that Sage renders today are asserted by
-//      role, accessible name, DOM order and geometry. Some assertions
-//      deliberately pin today's *divergent* placement — notably the
-//      titlebar-hosted mode segment — so that closing a gap forces this file
-//      and `docs/design/agent-panel-conformance.md` to be updated together.
-//   2. Elements the target requires that Sage does NOT render yet are listed
-//      once, in `PENDING_CONFORMANCE_ITEMS`, each with a probe asserting the
-//      element is still absent. When a lane builds one, its probe fails and the
-//      entry must move into part 1. A pending entry is therefore a
-//      currently-false assertion, never a silent pass.
-//
-// The pending list is the ordered work queue for the lanes that follow, and it
-// shrinks to empty as they land. Its order mirrors the queue table in
-// `docs/design/agent-panel-conformance.md`.
-//
-// An element that shipped and was then *lost* is a third case: it is written in
-// the target's direction and marked `test.fail()`, so it reports as a known
-// failure and flips to "expected to fail but passed" the moment it is restored.
-// There are none open right now — `M12` was the first and it is fixed — but the
-// pattern is the one to reach for, not the pending queue, which means "never
-// built".
-//
+// Agent Panel V1 conformance: controls, geometry, and pending target elements.
+// The fixture contract records expected presence and pending queue order.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
@@ -118,11 +83,11 @@ async function composerControlOrder(page: Page): Promise<string[]> {
 async function anchorScenario(page: Page, scenario: PendingScenario) {
   await expect(page.locator("main.workbench")).toBeVisible();
   await expect(
-    rail(page).getByRole("button", { name: "New task", exact: true }),
+    rail(page).getByRole("button", { name: "New chat", exact: true }),
   ).toBeVisible();
   await expect(composer(page)).toHaveCount(1);
   await expect(
-    page.getByRole("textbox", { name: "Message agent" }),
+    page.getByRole("combobox", { name: "Message agent" }),
   ).toBeVisible();
   await expect(
     composer(page).getByRole("button", { name: "Send message" }),
@@ -161,7 +126,7 @@ async function boundsOf(locator: Locator) {
 type PendingScenario = "agent-single" | "agent-declared-test" | "diff";
 
 interface PendingConformanceItem {
-  /** Row id in `docs/design/agent-panel-conformance.md`. */
+  /** Row id in the conformance fixture contract. */
   readonly id: string;
   readonly region: string;
   readonly element: string;
@@ -273,7 +238,7 @@ function registerPendingTests(scenario: PendingScenario) {
       await expect(
         item.probe(page),
         `${item.id} (${item.region}) — ${item.element} — is on the pending ` +
-          `queue in docs/design/agent-panel-conformance.md, but the UI now ` +
+          `queue in the conformance fixture contract, but the UI now ` +
           `renders it. That is good news: move ${item.id} out of ` +
           `PENDING_CONFORMANCE_ITEMS into an asserted check and mark the ` +
           `inventory row present.` +
@@ -286,31 +251,27 @@ function registerPendingTests(scenario: PendingScenario) {
 test.describe("Agent Panel V1 conformance — pending target elements", () => {
   test.use({ viewport: AGENT_VIEWPORT });
 
-  test("keeps the pending queue and the inventory document in step", async () => {
+  test("keeps the pending queue and the conformance contract in step", async () => {
     // Guards the list itself: duplicate or empty ids would let an item drop out
     // of the queue silently.
     const ids = PENDING_CONFORMANCE_ITEMS.map((item) => item.id);
     expect(new Set(ids).size, "pending ids are unique").toBe(ids.length);
     expect(ids.every((id) => /^[A-Z]\d+$/.test(id))).toBe(true);
-    const inventory = await readFile(
-      new URL("../../docs/design/agent-panel-conformance.md", import.meta.url),
-      "utf8",
+    const inventory = JSON.parse(
+      await readFile(
+        new URL("./fixtures/agentConformanceContract.json", import.meta.url),
+        "utf8",
+      ),
+    ) as {
+      pendingQueue: string[];
+      statuses: Record<string, "present" | "different" | "absent">;
+    };
+    const queue = inventory.pendingQueue;
+    expect(queue, "inventory has a pending queue").toBeDefined();
+    expect(ids, "pending probes mirror the contract's ordered queue").toEqual(
+      queue,
     );
-    const queue = inventory.split(/^## Pending queue\s*$/m)[1];
-    expect(queue, "inventory has a pending queue section").toBeDefined();
-    const documentedIds = [
-      ...queue!.matchAll(/^\|\s*\d+\s*\|\s*`([A-Z]\d+)`/gm),
-    ].map((match) => match[1]);
-    expect(ids, "pending probes mirror the document's ordered queue").toEqual(
-      documentedIds,
-    );
-    const statuses = new Map(
-      [
-        ...inventory.matchAll(
-          /^\|\s*([A-Z]\d+)\s*\|.*?\|\s*(present|different|absent)\s*\|/gm,
-        ),
-      ].map((match) => [match[1], match[2]]),
-    );
+    const statuses = new Map(Object.entries(inventory.statuses));
     for (const id of ids)
       expect(statuses.get(id), `${id} is inventoried as absent`).toBe("absent");
     expect(statuses.get("M11")).toBe("present");
@@ -359,14 +320,14 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     ).toBeLessThan(artifactBox.x);
   });
 
-  test("renders the titlebar brand, and pins the mode segment's current region", async ({
+  test("omits the titlebar brand, and pins the mode segment's current region", async ({
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
     const titleBar = page.locator("header.title-bar");
 
-    // T1 — present.
-    await expect(titleBar.getByText("Sage", { exact: true })).toBeVisible();
+    // The reference keeps the app name in navigation, with no title-bar brand.
+    await expect(titleBar.getByText("Sage", { exact: true })).toHaveCount(0);
 
     // T2 — different. The target and the reference's region map both put the
     // mode segment inside the left rail; Sage hosts it in the titlebar. Pinned
@@ -385,7 +346,7 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     // Anchored on the rail having mounted, so the absence is the rail's and
     // not the renderer's.
     await expect(
-      rail(page).getByRole("button", { name: "New task", exact: true }),
+      rail(page).getByRole("button", { name: "New chat", exact: true }),
     ).toBeVisible();
     await expect(
       rail(page).getByRole("radiogroup"),
@@ -398,7 +359,11 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
       titleBar.getByRole("button", { name: "Search chats" }),
     ).toHaveCount(1);
     await expect(
-      titleBar.getByRole("searchbox").or(titleBar.getByRole("textbox")),
+      // The chat search field is a combobox (#339), so absence covers it too.
+      titleBar
+        .getByRole("searchbox")
+        .or(titleBar.getByRole("textbox"))
+        .or(titleBar.getByRole("combobox")),
       "T3: the titlebar still has no search field",
     ).toHaveCount(0);
   });
@@ -412,52 +377,48 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     // L2 — the button exists with the right name. Its plate is the gap, and a
     // plate is a style change this structural spec does not adjudicate.
     await expect(
-      sidebar.getByRole("button", { name: "New task", exact: true }),
+      sidebar.getByRole("button", { name: "New chat", exact: true }),
     ).toBeVisible();
 
     const filter = sidebar.getByRole("button", {
-      name: "Filter tasks",
+      name: "Search chats",
       exact: true,
     });
-    const search = sidebar.getByRole("searchbox", { name: "Search tasks" });
     await expect(filter).toBeVisible();
-    await expect(filter).toHaveAttribute("aria-expanded", "false");
-    await expect(search).toHaveCount(0);
     await filter.click();
-    await expect(filter).toHaveAttribute("aria-expanded", "true");
+    const search = page.getByRole("combobox", { name: "Search chats" });
     await expect(search).toBeVisible();
     await expect(search).toBeFocused();
     await expect(
-      sidebar.getByRole("button", { name: "Search all chats" }),
-    ).toBeVisible();
+      sidebar.locator(".project-sidebar__icon-rail button"),
+    ).toHaveCount(3);
     await search.press("Escape");
-    await expect(filter).toHaveAttribute("aria-expanded", "false");
     await expect(search).toHaveCount(0);
     await expect(filter).toBeFocused();
 
-    // L5, L6, L13 — present, and in the target's top-to-bottom order.
+    // L5, L6 — present, and in the target's top-to-bottom order; both fold.
+    // This fixture's only chat is pinned, so Recents (L13) has nothing to
+    // list and, as in the target, is left out.
     const sections = sidebar.getByRole("region");
-    await expect(sections).toHaveCount(3);
+    await expect(sections).toHaveCount(2);
     await expect(sections.nth(0)).toHaveAccessibleName("Projects");
     await expect(sections.nth(1)).toHaveAccessibleName("Pinned");
-    await expect(sections.nth(2)).toHaveAccessibleName("Recent");
-    for (let index = 0; index < 3; index += 1) {
+    for (let index = 0; index < 2; index += 1) {
       await expect(
         sections.nth(index).getByRole("button", { expanded: true }).first(),
-        "each rail section is collapsible with a disclosure control",
+        "Projects and Pinned fold with a disclosure control",
       ).toBeVisible();
     }
 
-    // L7, L10 — the project tree's active row and its branch chip. The rows
-    // carry no role beyond `button`, so `aria-current` is the only semantic
-    // handle on "this is the active project".
+    // L7 — the project tree's active row. The rows carry no role beyond
+    // `button`, so `aria-current` is the only semantic handle on "this is the
+    // active project".
     const projects = sections.nth(0);
     const activeProject = projects.locator('button[aria-current="page"]');
     await expect(activeProject).toHaveCount(1);
-    await expect(activeProject.locator(".project-row__branch")).toHaveCount(1);
 
-    // L11, L12 — worktree and PR chips are decided omissions; the branch chip
-    // is the one repository fact the projection actually supplies.
+    // L10, L11, L12 — like the target, the rail shows no branch, worktree or
+    // PR chips.
     await expect(
       projects.getByText(/worktree/i),
       "L11: no worktree chip may be invented",
@@ -466,14 +427,14 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     // L14 — the footer identity line, below every section.
     const footer = sidebar.locator(".project-sidebar__account");
     await expect(footer).toBeVisible();
-    const [recentBox, footerBox] = await Promise.all([
-      boundsOf(sections.nth(2)),
+    const [lastBox, footerBox] = await Promise.all([
+      boundsOf(sections.last()),
       boundsOf(footer),
     ]);
     expect(
       footerBox.y,
-      "the identity footer sits below Recent",
-    ).toBeGreaterThan(recentBox.y);
+      "the identity footer sits below every section",
+    ).toBeGreaterThan(lastBox.y);
   });
 
   test("opens Settings from the rail footer gear", async ({ page }) => {
@@ -486,24 +447,27 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     await gear.click();
 
     await expect(
-      page.getByRole("radio", { name: "Editor" }),
-      "L15: the rail gear leaves Agent mode so Settings is actually reachable",
+      page.getByRole("radio", { name: "Agent" }),
+      "G1: the rail gear opens Settings inside the Agent window",
     ).toBeChecked();
+    await expect(
+      page.getByRole("dialog", { name: "Agent settings" }),
+    ).toBeVisible();
   });
 
-  test("creates a task from the chord the rail advertises", async ({
-    page,
-  }) => {
+  test("announces the New chat chord the keymap binds", async ({ page }) => {
     await openScenario(page, "agent-single", "agent");
 
     const newTask = rail(page).getByRole("button", {
-      name: "New task",
+      name: "New chat",
       exact: true,
     });
-    await expect(
-      newTask,
-      "L3: the rail advertises the chord the keymap actually binds",
-    ).toContainText(/Ctrl\+N|⌘N/);
+    // L3 — like the target, the row does not print the chord; it announces it.
+    await expect(newTask).toHaveAttribute(
+      "aria-keyshortcuts",
+      /Control\+N|Meta\+N/,
+    );
+    await expect(newTask).not.toContainText(/Ctrl\+N|⌘N/);
   });
 
   test("keeps a pinned chat's title legible without redundant metadata", async ({
@@ -513,11 +477,9 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     const pinned = rail(page).getByRole("region", { name: "Pinned" });
     const row = pinned.locator(".project-chat-row").first();
     const label = row.locator(".project-chat__title-label");
-    const context = row.locator(".project-chat__context");
 
     await expect(label).toBeVisible();
-    await expect(context).toHaveCount(1);
-    await expect(context).toBeHidden();
+    await expect(row.locator(".project-chat__context")).toHaveCount(0);
 
     expect(
       await label.evaluate((node) => node.scrollWidth - node.clientWidth),
@@ -540,20 +502,19 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
   });
 
   test("renders Recent entries carrying a trailing state", async ({ page }) => {
-    // L13, partly. The target's Recent list is relative-timestamped, and
-    // `ProjectChatRailGlyph` does append ` ago` — but only for a chat whose
-    // trailing state resolves to `time`, which needs a terminal status, no
-    // unread badge and an `updatedAt`. Live status outranks the stamp, and no
-    // visual fixture reaches that combination, so the ` ago` suffix itself is
-    // unit-covered only (`src/workbench/agentRailStatusView.test.ts`). What is
-    // reachable here — that Recent lists real entries, each with a trailing
-    // state — is asserted; the stamp is recorded as a fixture gap in
-    // docs/design/agent-panel-conformance.md rather than faked.
+    // L13. Like the target, Recents rows carry no timestamp; a row shows a
+    // trailing glyph only while it runs, waits or has unread updates.
     await openScenario(page, "agent-dual", "agent");
-    const recent = rail(page).getByRole("region", { name: "Recent" });
+    const recent = rail(page).getByRole("region", { name: "Recents" });
 
     const entries = recent.locator(".project-chat-row");
     await expect(entries).toHaveCount(1);
+    await expect(
+      recent.getByRole("button", {
+        name: "Open chat Agent navigation polish",
+        exact: true,
+      }),
+    ).toHaveCount(0);
     await expect(entries.first().locator(".project-chat__state")).toHaveCount(
       1,
     );
@@ -577,17 +538,21 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     // `Project /` segment; the project name lives in the header "…" menu.
     const location = header.locator('[aria-label="Chat location"]');
     await expect(location).toHaveCount(1);
-    await expect(location.locator("svg.lucide-folder")).toHaveCount(1);
+    const folder = location.locator(".agent-task-header__folder");
+    await expect(folder).toBeVisible();
+    await expect(folder).toHaveCSS("width", "16px");
+    await expect(folder).toHaveCSS("height", "16px");
+    await expect(folder).not.toHaveCSS("mask-image", "none");
     await expect(header.locator(".agent-task-header__separator")).toHaveCount(
       0,
     );
     await expect(header.locator(".agent-task-header__title")).toBeVisible();
 
-    // C2 — different. The status is announced, but renders as bare coloured
-    // text rather than the target's pill with a leading icon.
+    // Chat surface: status is announced without adding visible header chrome.
     const status = header.getByRole("status");
     await expect(status).toHaveCount(1);
     await expect(status).toHaveAccessibleName(/^Chat status: /);
+    await expect(status).toHaveClass("sr-only");
     await expect(
       status.locator("svg"),
       "C2: the status still has no leading icon",
@@ -630,7 +595,7 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
       }),
     ).toBeVisible();
     await expect(
-      rail(page).getByRole("button", { name: "New task", exact: true }),
+      rail(page).getByRole("button", { name: "New chat", exact: true }),
     ).toBeVisible();
   });
 
@@ -969,7 +934,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
   test("frames the composer and pins its placeholder", async ({ page }) => {
     await openScenario(page, "agent-single", "agent");
     await expect(composer(page)).toHaveCount(1);
-    const input = page.getByRole("textbox", { name: "Message agent" });
+    const input = page.getByRole("combobox", { name: "Message agent" });
     await expect(input).toHaveAttribute("placeholder", "Do anything");
     await expect(input).toHaveAccessibleDescription(/Ctrl\+L|⌘L/);
   });
@@ -986,10 +951,13 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       exact: true,
     });
     // This binding advertises no image input, Goal or session modes, so the
-    // Add menu has nothing truthful to offer and no image chooser exists.
+    // Add menu has nothing truthful to offer: "+" keeps its place disabled
+    // and no image chooser exists.
     await expect(options).toBeDisabled();
-    await expect(options).toHaveAttribute("aria-haspopup", "menu");
-    await expect(options).toHaveAttribute("aria-expanded", "false");
+    await expect(options).toHaveAttribute(
+      "title",
+      "No options for this harness",
+    );
     await expect(
       toolbar.getByRole("button", { name: "Add images", exact: true }),
     ).toHaveCount(0);
@@ -1006,9 +974,13 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "title",
       "Speech may be processed by an online service",
     );
-    await expect(toolbar.getByRole("button")).toHaveCount(7);
+    // Any usable binding takes attached files.
+    await expect(
+      toolbar.getByRole("button", { name: "Attach files", exact: true }),
+    ).toBeEnabled();
+    await expect(toolbar.getByRole("button")).toHaveCount(8);
     const [inputBox, toolbarBox] = await Promise.all([
-      boundsOf(form.getByRole("textbox", { name: "Message agent" })),
+      boundsOf(form.getByRole("combobox", { name: "Message agent" })),
       boundsOf(toolbar),
     ]);
     expect(toolbarBox.y).toBeGreaterThanOrEqual(
@@ -1021,19 +993,27 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     await expect(
       composer(page).getByRole("button", { name: "Send message" }),
     ).toBeVisible();
-    const inventory = await composer(page).evaluate((form) =>
-      [
-        ...form.querySelectorAll<HTMLElement>(
-          'button, textarea, input, select, [role="button"], [role="combobox"]',
+    await expect(
+      page.getByRole("button", { name: /^2 files changed/ }),
+    ).toBeVisible();
+    const inventory = await page
+      .locator(".chat-dock")
+      .first()
+      .evaluate((dock) =>
+        [
+          ...dock.querySelectorAll<HTMLElement>(
+            'button, textarea, input, select, [role="button"], [role="combobox"]',
+          ),
+        ].map(
+          (node) =>
+            node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "",
         ),
-      ].map(
-        (node) =>
-          node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "",
-      ),
-    );
+      );
     expect(inventory).toEqual([
+      "2 files changed+44-18",
       "Message agent",
       "Composer options",
+      "Attach files",
       "Access options",
       "Harness",
       "Model",
@@ -1048,9 +1028,11 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    await expect(options).toHaveAttribute("aria-controls", /\S+/);
-    const optionsId = await options.getAttribute("aria-controls");
-    await expect(page.locator(`[id="${optionsId}"]`)).toHaveCount(0);
+    // "+" keeps its place even when this harness offers no options.
+    await expect(options).toBeDisabled();
+    await expect(
+      page.getByRole("menu", { name: "Composer options menu" }),
+    ).toHaveCount(0);
   });
 
   test("orders toolbar actions, harness and model with send trailing", async ({
@@ -1062,6 +1044,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     ).toBeVisible();
     expect(await composerControlOrder(page)).toEqual([
       "Composer options",
+      "Attach files",
       "Access options",
       "Harness",
       "Model",
@@ -1069,20 +1052,13 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "Start dictation",
       "Send message",
     ]);
-    const [options, access, harness, send] = await Promise.all([
-      boundsOf(
-        composer(page).getByRole("button", {
-          name: "Composer options",
-          exact: true,
-        }),
-      ),
+    const [access, harness, send] = await Promise.all([
       boundsOf(composer(page).locator(".composer__access-label")),
       boundsOf(
         composer(page).getByRole("button", { name: "Harness", exact: true }),
       ),
       boundsOf(composer(page).getByRole("button", { name: "Send message" })),
     ]);
-    expect(access.x).toBeGreaterThanOrEqual(options.x + options.width - 1);
     expect(access.x + access.width).toBeLessThanOrEqual(harness.x + 1);
     expect(Math.abs(send.width - send.height)).toBeLessThanOrEqual(1);
   });
@@ -1104,7 +1080,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
           return bounds.top + bounds.height / 2;
         }),
       );
-    expect(centres).toHaveLength(7);
+    expect(centres).toHaveLength(8);
     expect(Math.max(...centres) - Math.min(...centres)).toBeLessThanOrEqual(1);
   });
 
@@ -1116,7 +1092,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    await expect(options).toBeVisible();
+    // "+" keeps its place even when this harness offers no options.
     await expect(options).toBeDisabled();
     const project = composer(page).getByRole("button", {
       name: "Project: Sage",
@@ -1132,7 +1108,25 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     });
     await expect(permission).toBeVisible();
     await expect(permission).toHaveText("Read-only");
-    await expect(options).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("drops the context meter from a narrow composer before any control label (Codex ref 37)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 480, height: 900 });
+    await openScenario(page, "agent-composer-context-known", "agent");
+    await settleChatProjections(page);
+    await expect(
+      composer(page).getByLabel("Composer context", { exact: true }),
+    ).toHaveCount(0);
+    await expect(composer(page).locator(".composer__controls")).toHaveAttribute(
+      "data-fit",
+      /(^| )context( |$)/,
+    );
+    await page.setViewportSize({ width: 1888, height: 900 });
+    await expect(
+      composer(page).getByLabel("Composer context", { exact: true }),
+    ).toBeVisible();
   });
 
   test("keeps reported context in the toolbar without overlapping the prompt", async ({
@@ -1162,7 +1156,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       ),
     ).toBe(true);
     const [inputBox, contextBox, micBox, sendBox] = await Promise.all([
-      boundsOf(composer(page).getByRole("textbox", { name: "Message agent" })),
+      boundsOf(composer(page).getByRole("combobox", { name: "Message agent" })),
       boundsOf(context),
       boundsOf(
         composer(page).getByRole("button", {
@@ -1189,7 +1183,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
   }) => {
     await openScenario(page, "agent-composer-context-unknown", "agent");
     await expect(
-      composer(page).getByRole("textbox", { name: "Message agent" }),
+      composer(page).getByRole("combobox", { name: "Message agent" }),
     ).toBeVisible();
     await expect(
       composer(page).getByLabel("Composer context", { exact: true }),
@@ -1339,7 +1333,7 @@ test.describe("Agent Panel V1 conformance — right tab region", () => {
     ).toBe(true);
     const [chipBox, inputBox, toolbarBox, formBox] = await Promise.all([
       boundsOf(attachments),
-      boundsOf(page.getByRole("textbox", { name: "Message agent" })),
+      boundsOf(page.getByRole("combobox", { name: "Message agent" })),
       boundsOf(composer(page).locator(".composer__toolbar")),
       boundsOf(composer(page)),
     ]);

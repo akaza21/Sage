@@ -3,9 +3,10 @@ import {
   cleanup,
   fireEvent,
   render,
+  waitFor,
   screen,
 } from "@testing-library/react";
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
@@ -13,6 +14,7 @@ import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
 import { AgentToolsContext, AgentToolsProvider } from "./AgentToolsProvider";
 import { useSideChatState } from "./sideChatState";
 import { BrowserNewTab } from "../features/browser/BrowserNewTab";
+import { useAgentChangesState } from "./agentChangesState";
 
 vi.mock(import("../ports/nativeInvoke"), async (importOriginal) => ({
   ...(await importOriginal()),
@@ -39,36 +41,48 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  useAgentChangesState.getState().close();
   clearAgentChatOwner();
   clearAcpProjectionRegistry();
   useWorkbenchStore.setState(initial, true);
-  useSideChatState.setState({ sides: [] });
+  useSideChatState.setState({ sides: [], pairedId: null });
 });
 function Launcher() {
   const { launch } = useContext(AgentToolsContext);
-  return <button onClick={() => launch("changes")}>Changes launcher</button>;
-}
-it("routes real Agent keybindings to the resource picker and terminal dock", async () => {
-  const terminal = vi.fn();
-  render(
-    <AgentToolsProvider onOpenTerminal={terminal}>
-      <Launcher />
-    </AgentToolsProvider>,
+  return (
+    <>
+      <button onClick={() => launch("changes")}>Changes launcher</button>
+      <button onClick={() => launch("terminal")}>Terminal launcher</button>
+    </>
   );
+}
+it("routes Agent keybindings to the resource picker and the terminal menu to its command", async () => {
+  function Host() {
+    const [terminalOpen, setTerminalOpen] = useState(false);
+    return (
+      <AgentToolsProvider onOpenTerminal={() => setTerminalOpen(true)}>
+        <Launcher />
+        {terminalOpen ? <section aria-label="Opened terminal" /> : null}
+      </AgentToolsProvider>
+    );
+  }
+  render(<Host />);
   const trigger = screen.getByRole("button", { name: "Changes launcher" });
   trigger.focus();
   fireEvent.keyDown(window, { key: "G", ctrlKey: true, shiftKey: true });
-  expect(await screen.findByRole("dialog", { name: "Changes" })).toBeVisible();
-  expect(
-    screen.getByText("No resources available for this Chat yet."),
-  ).toBeVisible();
-  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-  expect(trigger).toHaveFocus();
+  await waitFor(() =>
+    expect(useAgentChangesState.getState()).toMatchObject({
+      selected: true,
+      generation: 7,
+      owner: { projectId: "project-a", chatId: "chat-a", sessionId: null },
+    }),
+  );
+  expect(screen.queryByRole("dialog", { name: "Changes" })).toBeNull();
   fireEvent.keyDown(window, { key: "p", ctrlKey: true });
   expect(await screen.findByRole("dialog", { name: "Files" })).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
-  fireEvent.keyDown(window, { key: "`", ctrlKey: true });
-  expect(terminal).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Terminal launcher" }));
+  expect(screen.getByRole("region", { name: "Opened terminal" })).toBeVisible();
 });
 it("offers Side chat only for a selected answer or an existing side chat", () => {
   render(
@@ -96,8 +110,8 @@ it("dismisses an open picker when its project generation changes", async () => {
       <Launcher />
     </AgentToolsProvider>,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Changes launcher" }));
-  await screen.findByRole("dialog", { name: "Changes" });
+  fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+  await screen.findByRole("dialog", { name: "Files" });
   act(() => useWorkbenchStore.setState({ projectGeneration: 8 }));
   expect(screen.queryByRole("dialog")).toBeNull();
 });
@@ -107,8 +121,8 @@ it("does not resurrect a dismissed picker when returning to its Chat", async () 
       <Launcher />
     </AgentToolsProvider>,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Changes launcher" }));
-  await screen.findByRole("dialog", { name: "Changes" });
+  fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+  await screen.findByRole("dialog", { name: "Files" });
   act(() => pinAgentChatOwner("other-chat"));
   act(() => pinAgentChatOwner("chat-a"));
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -131,6 +145,7 @@ it("reopens only this Chat's existing side chat", async () => {
   }));
   useSideChatState.setState({
     sides: [{ id: "side-a", projectId: "project-a", parentChatId: "chat-a" }],
+    pairedId: null,
   });
   render(
     <AgentToolsProvider>
@@ -139,4 +154,5 @@ it("reopens only this Chat's existing side chat", async () => {
   );
   fireEvent.keyDown(window, { key: "s", ctrlKey: true, altKey: true });
   await vi.waitFor(() => expect(activateTab).toHaveBeenCalledWith("side-a"));
+  expect(useSideChatState.getState().pairedId).toBe("side-a");
 });

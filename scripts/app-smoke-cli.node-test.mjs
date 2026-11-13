@@ -86,7 +86,7 @@ const requiredControls = [
   "Search files",
   "Open settings",
   "Agent",
-  "New task",
+  "New chat",
 ];
 
 function serveUnready(t) {
@@ -112,7 +112,11 @@ function runSmoke(
   t,
   args,
   environment = {},
-  { timeoutMs = CHILD_TIMEOUT_MS, entry = smokeEntry } = {},
+  {
+    timeoutMs = CHILD_TIMEOUT_MS,
+    entry = smokeEntry,
+    armWatchdogOnOutput = false,
+  } = {},
 ) {
   const directory = resolve(runRoot, `test-${randomUUID()}`);
   t.after(() => removeRun(directory));
@@ -128,7 +132,8 @@ function runSmoke(
       },
     );
     let surrender;
-    const watchdog = setTimeout(async () => {
+    let watchdog;
+    const reap = async () => {
       const reaped = await killProcessTree(child.pid);
       if (!reaped) child.kill("SIGKILL");
       surrender = setTimeout(() => {
@@ -138,7 +143,21 @@ function runSmoke(
           ),
         );
       }, WATCHDOG_GRACE_MS);
-    }, timeoutMs);
+    };
+    // A run's start-up time varies by machine, so a watchdog meant to cut a
+    // run short mid-flight starts counting once the run has made its output
+    // directory, within the normal child budget.
+    const armedAt = Date.now();
+    const arm = () => {
+      if (!armWatchdogOnOutput || existsSync(directory)) {
+        watchdog = setTimeout(reap, timeoutMs);
+      } else if (Date.now() - armedAt >= CHILD_TIMEOUT_MS) {
+        reap();
+      } else {
+        watchdog = setTimeout(arm, 25);
+      }
+    };
+    arm();
     t.after(() => {
       clearTimeout(watchdog);
       clearTimeout(surrender);
@@ -265,14 +284,14 @@ test(
   async (t) => {
     const site = await servePage(
       t,
-      `${inertControls(["Editor", ...requiredControls])}<section aria-label="Chat pane Existing" class="agent-chat-pane--focused"><textarea aria-label="Message agent"></textarea></section>`,
+      `${inertControls(["Editor", ...requiredControls])}<section aria-label="Chat pane Existing" class="agent-chat-pane--focused"><textarea role="combobox" aria-expanded="false" aria-label="Message agent"></textarea></section>`,
     );
     const run = await runSmoke(t, [`--url=http://127.0.0.1:${site.port}/`]);
 
     assert.equal(run.summary.fatal, null);
     assert.ok(
       run.summary.requiredMisses.some((entry) =>
-        entry.startsWith("New task -> "),
+        entry.startsWith("New chat -> "),
       ),
     );
     assert.equal(run.code, 1);
@@ -285,17 +304,17 @@ test(
   async (t) => {
     const site = await servePage(
       t,
-      `${inertControls(["Editor", ...requiredControls.filter((label) => label !== "New task")])}
-      <button onclick="document.getElementById('existing').className = ''; document.getElementById('old-composer').readOnly = true; document.getElementById('next').hidden = false">New task</button>
-      <section id="existing" aria-label="Chat pane Existing" class="agent-chat-pane--focused"><textarea id="old-composer" aria-label="Message agent"></textarea></section>
-      <section id="next" aria-label="Chat pane New chat" class="agent-chat-pane--focused" hidden><textarea aria-label="Message agent"></textarea></section>`,
+      `${inertControls(["Editor", ...requiredControls.filter((label) => label !== "New chat")])}
+      <button onclick="document.getElementById('existing').className = ''; document.getElementById('old-composer').readOnly = true; document.getElementById('next').hidden = false">New chat</button>
+      <section id="existing" aria-label="Chat pane Existing" class="agent-chat-pane--focused"><textarea id="old-composer" role="combobox" aria-expanded="false" aria-label="Message agent"></textarea></section>
+      <section id="next" aria-label="Chat pane New chat" class="agent-chat-pane--focused" hidden><textarea role="combobox" aria-expanded="false" aria-label="Message agent"></textarea></section>`,
     );
     const run = await runSmoke(t, [`--url=http://127.0.0.1:${site.port}/`]);
 
     assert.equal(run.summary.fatal, null);
     assert.ok(!run.summary.misses.includes("composer"));
     assert.ok(
-      !run.summary.requiredMisses.some((entry) => entry.startsWith("New task")),
+      !run.summary.requiredMisses.some((entry) => entry.startsWith("New chat")),
     );
     assert.ok(run.summary.shots.includes("22-agent-composer-typed"));
   },
@@ -306,7 +325,7 @@ test(
   { timeout: 180_000 },
   async (t) => {
     const decoys =
-      '<textarea aria-label="Message agent" style="display:none"></textarea>'.repeat(
+      '<textarea role="combobox" aria-expanded="false" aria-label="Message agent" style="display:none"></textarea>'.repeat(
         3_000,
       );
     const site = await servePage(
@@ -319,7 +338,7 @@ test(
     assert.equal(run.summary.fatal, null);
     assert.ok(
       run.summary.requiredMisses.some((entry) =>
-        entry.startsWith("New task -> "),
+        entry.startsWith("New chat -> "),
       ),
     );
     assert.equal(run.code, 1);
@@ -360,7 +379,7 @@ test(
       t,
       [`--url=http://127.0.0.1:${site.port}/`],
       {},
-      { timeoutMs: 500 },
+      { timeoutMs: 500, armWatchdogOnOutput: true },
     ).catch((error) => error);
 
     assert.ok(Date.now() - started < 60_000);

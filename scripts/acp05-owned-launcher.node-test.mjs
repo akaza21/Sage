@@ -22,6 +22,15 @@ const powershell = path.join(
   "powershell.exe",
 );
 
+// Hang guard for each Windows PowerShell run below, not a speed budget. Every
+// run compiles the launcher's C# helpers with Add-Type, which starts csc.exe
+// from C:. Hosted runners reload Defender security intelligence partway
+// through a job, and C: page-ins stall for about 30 s while that happens; a
+// cold first compile then takes about 9 s on its own (10.98 s for a whole
+// -ValidateOnly run against about 1.2 s warm). A guard of 10 s killed healthy
+// runs, so the guard covers that stall with margin.
+const POWERSHELL_RUN_GUARD_MS = 60_000;
+
 function gitFixture(prefix) {
   const temp = mkdtempSync(path.join(os.tmpdir(), prefix));
   execFileSync("git", ["init", "--quiet", temp]);
@@ -127,7 +136,7 @@ test("ACP-05 owned launcher accepts a clean exact source and exact executable wi
         path.join(evidenceParent, "run"),
         "-ValidateOnly",
       ],
-      { encoding: "utf8", windowsHide: true, timeout: 10000 },
+      { encoding: "utf8", windowsHide: true, timeout: POWERSHELL_RUN_GUARD_MS },
     );
     assert.equal(result.status, 0, result.stderr);
     assert.equal(JSON.parse(result.stdout).executable.sha256, hash);
@@ -169,7 +178,7 @@ test("ACP-05 owned launcher rejects a dirty source before any GUI launch", () =>
         path.join(temp, "local-evidence", "run"),
         "-ValidateOnly",
       ],
-      { encoding: "utf8", windowsHide: true, timeout: 10000 },
+      { encoding: "utf8", windowsHide: true, timeout: POWERSHELL_RUN_GUARD_MS },
     );
     assert.notEqual(result.status, 0);
     assert.match(`${result.stdout}\n${result.stderr}`, /repo must be clean/u);
@@ -217,6 +226,11 @@ test("launcher accepts zero-exit collected receipt only as collection-only incom
   assert.equal(output.trim(), "ok");
 });
 
+// The leased image runs as the whole process tree and exits on its own when
+// its stdin closes. Launching it with Start-Process gave it a new console, so
+// a conhost.exe child (which opens the image while it starts) and a ping.exe
+// grandchild outlived Process.Kill() and could still be starting when the
+// test deleted the image.
 test("deny-write/delete executable lease rejects B-in and blocks launch/restore-A swap", () => {
   const temp = mkdtempSync(path.join(os.tmpdir(), "sage-acp05-lease-"));
   const executable = path.join(temp, "sage.exe");
@@ -243,7 +257,7 @@ test("deny-write/delete executable lease rejects B-in and blocks launch/restore-
         "Open-ExactExecutableLease",
         "Get-FileLeaseBinding",
       ],
-      "$path=$env:LEASE_EXE;[IO.File]::WriteAllText($path,'B');$threw=$false;try{$bad=Open-ExactExecutableLease $path $env:A_HASH 'image'}catch{$threw=$true};if(-not $threw){$bad.Dispose();throw 'B-in accepted'};[IO.File]::Copy($env:A_SOURCE,$path,$true);$lease=Open-ExactExecutableLease $path $env:A_HASH 'image';$p=$null;try{$p=Start-Process -FilePath $path -ArgumentList @('/d','/c','ping -n 4 127.0.0.1 >nul') -PassThru;$threw=$false;try{[IO.File]::WriteAllText($path,'B')}catch{$threw=$true};if(-not $threw){throw 'leased launched image was writable'};$threw=$false;try{[IO.File]::Copy($env:A_SOURCE,$path,$true)}catch{$threw=$true};if(-not $threw){throw 'restore-A swap was accepted'};$binding=Get-FileLeaseBinding $lease;if($binding.binding -ne 'deny-write-delete-lease'){throw 'lease not recorded'}}finally{if($null-ne $p){try{$p.Kill();$p.WaitForExit()}catch{}};$lease.Dispose()};[IO.File]::WriteAllText($path,'B');'ok'",
+      "$path=$env:LEASE_EXE;[IO.File]::WriteAllText($path,'B');$threw=$false;try{$bad=Open-ExactExecutableLease $path $env:A_HASH 'image'}catch{$threw=$true};if(-not $threw){$bad.Dispose();throw 'B-in accepted'};[IO.File]::Copy($env:A_SOURCE,$path,$true);$lease=Open-ExactExecutableLease $path $env:A_HASH 'image';$p=$null;try{$start=[Diagnostics.ProcessStartInfo]::new($path,'/d /q /k');$start.UseShellExecute=$false;$start.RedirectStandardInput=$true;$start.RedirectStandardOutput=$true;$p=[Diagnostics.Process]::Start($start);$threw=$false;try{[IO.File]::WriteAllText($path,'B')}catch{$threw=$true};if(-not $threw){throw 'leased launched image was writable'};$threw=$false;try{[IO.File]::Copy($env:A_SOURCE,$path,$true)}catch{$threw=$true};if(-not $threw){throw 'restore-A swap was accepted'};$binding=Get-FileLeaseBinding $lease;if($binding.binding -ne 'deny-write-delete-lease'){throw 'lease not recorded'}}finally{if($null-ne $p){$p.StandardInput.Close();$p.WaitForExit();$p.Dispose()};$lease.Dispose()};[IO.File]::WriteAllText($path,'B');'ok'",
       {
         ownedTypes: true,
         env: {
@@ -329,7 +343,7 @@ test("log cap is rechecked after Job terminal zero", () => {
           PS_EXE: powershell,
           EXIT_LOG: log,
         },
-        timeout: 10000,
+        timeout: POWERSHELL_RUN_GUARD_MS,
       },
     );
     assert.equal(output.trim(), "ok");
@@ -381,7 +395,7 @@ test("owned Job cleanup reaches a verified terminal zero within the caller deadl
     `$module=$env:JOB_MODULE;Import-Module $module -Force;$info=[Diagnostics.ProcessStartInfo]::new();$info.FileName=$env:PS_EXE;$info.WorkingDirectory=$env:TEMP;$info.UseShellExecute=$false;$info.Arguments='';$command='$child=Start-Process powershell.exe -ArgumentList @(''-NoProfile'',''-NonInteractive'',''-Command'',''Start-Sleep -Seconds 30'') -PassThru;Start-Sleep -Seconds 30';$launch=Start-FootprintJobProcess -StartInfo $info -ArgumentList @('-NoProfile','-NonInteractive','-Command',$command) -ActiveProcessLimit 3;Start-Sleep -Milliseconds 300;$deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](5*[Diagnostics.Stopwatch]::Frequency);$result=Stop-Acp05OwnedJob $launch $deadline;if(-not $result.treeBoundaryVerified -or $result.orphanProcessesAfterClose -ne 0){throw 'not terminal zero'};'ok'`,
     {
       env: { ...process.env, JOB_MODULE: module, PS_EXE: powershell },
-      timeout: 10000,
+      timeout: POWERSHELL_RUN_GUARD_MS,
     },
   );
   assert.equal(output.trim(), "ok");

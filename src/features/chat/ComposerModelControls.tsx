@@ -1,23 +1,38 @@
-import { useEffect, type RefObject } from "react";
-import { ChevronDown, Sparkles } from "../../ui/leanIcons";
-import { ComposerEffortControl } from "./ComposerEffortControl";
-import { MenuPopover } from "../../ui/MenuPopover";
-import type {
-  AcpConfigOption,
-  AcpConfigValue,
-} from "../../domain/acpSessionConfig";
-import { flattenChoices } from "../../domain/acpSessionConfigControls";
 import {
-  ChatModelPicker,
-  MAX_VISIBLE_MODELS,
-  type ComposerModelChoice,
-} from "./ChatModelPicker";
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type RefObject,
+} from "react";
+import { ChevronDown, Sparkles } from "../../ui/leanIcons";
+import {
+  type AcpConfigOption,
+  type AcpConfigValue,
+} from "../../domain/acpSessionConfig";
+import {
+  flattenChoices,
+  selectedConfigChoice,
+} from "../../domain/acpSessionConfigControls";
+import { type ComposerModelChoice } from "./ChatModelPicker";
+import { ComposerMenuLoading } from "./ComposerMenuLoading";
+import {
+  ComposerEffortControl,
+  EffortTriggerFace,
+} from "./ComposerEffortControl";
+import type { DraftEffort } from "./DraftEffortControl";
+
+const ModelMenu = lazy(() => import("./ComposerModelMenu"));
+const DraftEffortControl = lazy(() => import("./DraftEffortControl"));
 
 export function ComposerModelControls({
   triggerRef,
   panelId,
   open,
   effortOpen,
+  effortSuspended = false,
   onToggle,
   onToggleEffort,
   effortAnchorRef,
@@ -28,7 +43,12 @@ export function ComposerModelControls({
   effortLabel,
   contextWindow,
   effortOption,
+  draftEffort,
+  restored,
+  notice,
+  awaitingSession = false,
   disabled,
+  effortDisabled = disabled,
   pending,
   readOnlyLabel,
   onSelectModel,
@@ -38,39 +58,75 @@ export function ComposerModelControls({
   panelId: string;
   open: boolean;
   effortOpen: boolean;
+  effortSuspended?: boolean;
   onToggle: () => void;
   onToggleEffort: () => void;
   effortAnchorRef?: RefObject<HTMLButtonElement | null>;
   onDismiss: () => void;
-  choices: readonly ComposerModelChoice[];
+  choices:
+    | readonly ComposerModelChoice[]
+    | Extract<AcpConfigOption, { type: "select" }>;
   selectedId: string | null;
   modelLabel: string;
   effortLabel: string | null;
   contextWindow: string | null;
   effortOption: AcpConfigOption | undefined;
+  /** Levels to choose before the chat's first session, when listed. */
+  draftEffort?: DraftEffort;
+  /** The note on values that are the chat's stored choices, not yet
+   * reapplied to the session. */
+  restored?: string;
+  /** What the session could not take back of the stored choices. */
+  notice?: string;
+  awaitingSession?: boolean;
   disabled: boolean;
+  effortDisabled?: boolean;
   pending: boolean;
   readOnlyLabel?: boolean;
   onSelectModel: (modelId: string) => void;
   onSetOption: (configId: string, value: AcpConfigValue) => Promise<unknown>;
 }) {
-  const available = !disabled && !pending && choices.length > 0;
+  const count =
+    "type" in choices ? flattenChoices(choices).length : choices.length;
+  // The model is always a picker, so it reads as one control in every chat;
+  // with a single advertised model its menu shows that model as selected.
+  const available = !disabled && !pending && count > 0;
+  // Callers pass a fresh handler on every render; a stable one lets the menu's
+  // memoised options skip re-rendering on each focus or selection change.
+  const latestSelect = useRef(onSelectModel);
+  useLayoutEffect(() => {
+    latestSelect.current = onSelectModel;
+  });
+  const selectModel = useCallback(
+    (modelId: string) => latestSelect.current(modelId),
+    [],
+  );
   const hasEffortControl =
-    effortOption?.type === "select" &&
-    flattenChoices(effortOption).some(
-      (choice) => choice.value === effortOption.currentValue,
-    );
+    !!selectedConfigChoice(effortOption) || (!effortOption && !!draftEffort);
   const modelDescription =
     modelLabel === "Model"
       ? undefined
-      : `${modelLabel}${effortLabel ? ` ${effortLabel}` : ""}`;
+      : [
+          `${modelLabel}${effortLabel ? ` ${effortLabel}` : ""}`,
+          restored,
+          notice,
+        ]
+          .filter(Boolean)
+          .join(". ");
   useEffect(() => {
     if (
       (open && !available) ||
-      (effortOpen && (disabled || effortOption?.type !== "select"))
+      (effortOpen && (effortDisabled || !hasEffortControl))
     )
       onDismiss();
-  }, [available, disabled, effortOpen, effortOption?.type, onDismiss, open]);
+  }, [
+    available,
+    effortDisabled,
+    effortOpen,
+    hasEffortControl,
+    onDismiss,
+    open,
+  ]);
   return (
     <>
       <div className="composer__model-group">
@@ -80,8 +136,10 @@ export function ComposerModelControls({
           type="button"
           aria-label="Model"
           aria-description={modelDescription}
+          data-selected-id={selectedId ?? undefined}
           title={modelDescription}
           data-readonly-label={(readOnlyLabel && !pending) || undefined}
+          data-restored={restored ? true : undefined}
           aria-controls={panelId}
           aria-haspopup="listbox"
           aria-expanded={open && available}
@@ -100,49 +158,87 @@ export function ComposerModelControls({
           ) : null}
           <ChevronDown size={12} aria-hidden="true" />
         </button>
-        {effortOption?.type === "select" ? (
+        {effortSuspended && !effortOpen ? (
+          <span
+            className="composer__control-trigger composer__effort-picker"
+            data-overflow-control="effort"
+            data-suspended
+          />
+        ) : effortOption?.type === "select" ? (
           <ComposerEffortControl
+            triggerVisible={!effortSuspended}
             anchorRef={effortAnchorRef}
             fallbackRef={triggerRef}
             option={effortOption}
+            restored={restored}
             modelLabel={modelLabel}
             open={effortOpen}
             onToggle={onToggleEffort}
             onDismiss={onDismiss}
             onOpenModel={onToggle}
             modelAvailable={available}
-            disabled={disabled}
+            disabled={effortDisabled}
             pending={pending}
             onSetOption={onSetOption}
           />
+        ) : draftEffort && !effortOption ? (
+          <Suspense fallback={null}>
+            <DraftEffortControl
+              draft={draftEffort}
+              triggerVisible={!effortSuspended}
+              anchorRef={effortAnchorRef}
+              fallbackRef={triggerRef}
+              modelLabel={modelLabel}
+              open={effortOpen}
+              onToggle={onToggleEffort}
+              onDismiss={onDismiss}
+              onOpenModel={onToggle}
+              modelAvailable={available}
+              disabled={effortDisabled}
+              pending={pending}
+            />
+          </Suspense>
+        ) : awaitingSession ? (
+          <button
+            type="button"
+            className="composer__control-trigger composer__effort-picker"
+            aria-label="Thinking level"
+            aria-description="Available when the harness advertises effort controls for this session."
+            title="Available when the harness advertises effort controls for this session."
+            disabled
+          >
+            <EffortTriggerFace label="Thinking level" />
+          </button>
         ) : null}
         {contextWindow ? (
           <span className="composer__capacity">{contextWindow} context</span>
         ) : null}
+        {notice ? (
+          <span className="composer__config-notice" role="status">
+            {notice}
+          </span>
+        ) : null}
       </div>
-      <MenuPopover
-        open={open && available}
-        onDismiss={onDismiss}
-        restoreFocusOnTab
-        triggerRef={triggerRef}
-        initialFocus="selected"
-        focusKey={choices
-          .slice(0, MAX_VISIBLE_MODELS)
-          .map((model) => model.id)
-          .join("\0")}
-        id={`${panelId}-popover`}
-        role="none"
-        className="composer__popover composer__model-menu composer-model-picker"
-        ariaLabel="Select model"
-      >
-        <ChatModelPicker
-          listboxId={panelId}
-          models={choices}
-          selectedId={selectedId}
-          disabled={disabled || pending}
-          onSelect={onSelectModel}
-        />
-      </MenuPopover>
+      {open && available ? (
+        <Suspense
+          fallback={
+            <ComposerMenuLoading
+              triggerRef={triggerRef}
+              onDismiss={onDismiss}
+            />
+          }
+        >
+          <ModelMenu
+            triggerRef={triggerRef}
+            panelId={panelId}
+            choices={choices}
+            selectedId={selectedId}
+            disabled={disabled || pending}
+            onDismiss={onDismiss}
+            onSelect={selectModel}
+          />
+        </Suspense>
+      ) : null}
     </>
   );
 }

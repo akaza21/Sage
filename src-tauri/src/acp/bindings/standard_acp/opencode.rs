@@ -11,16 +11,6 @@ use sha2::{Digest, Sha256};
 use crate::harness_discovery::{
     InstalledHarness, authentic_harness_file, authentic_npm_global_descendant, sha256_file,
 };
-use crate::{
-    acp::{
-        bindings::{
-            adapter::AdapterRuntimeError,
-            runtime::{NativeRuntime, RuntimeFactory},
-        },
-        contract::{RuntimeEpoch, SageAgentSessionId},
-    },
-    project_registry::ProjectRootAuthority,
-};
 
 use super::{
     AdmittedStandardAcpBinding, NpmPackageManifestRequirement, StandardAcpAdmissionError,
@@ -174,60 +164,9 @@ impl OpenCodeBindingRegistration {
     }
 }
 
-pub(crate) struct OpenCodeRuntimeFactory {
-    registration: Arc<OpenCodeBindingRegistration>,
-    binding_digest: [u8; 32],
-    project_root: ProjectRootAuthority,
-    mcp: crate::acp::mcp::McpAdmission,
-}
-
-impl OpenCodeRuntimeFactory {
-    #[cfg(test)]
-    pub(crate) fn from_admitted_binding(
-        registration: Arc<OpenCodeBindingRegistration>,
-        binding: Arc<AdmittedStandardAcpBinding>,
-        project_root: ProjectRootAuthority,
-    ) -> Self {
-        Self::with_mcp(registration, binding, project_root, Default::default())
-    }
-
-    pub(crate) fn with_mcp(
-        registration: Arc<OpenCodeBindingRegistration>,
-        binding: Arc<AdmittedStandardAcpBinding>,
-        project_root: ProjectRootAuthority,
-        mcp: crate::acp::mcp::McpAdmission,
-    ) -> Self {
-        Self {
-            registration,
-            binding_digest: binding.binding_digest(),
-            project_root,
-            mcp,
-        }
-    }
-}
-
-impl RuntimeFactory for OpenCodeRuntimeFactory {
-    fn construct(
-        self: Box<Self>,
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Result<NativeRuntime, AdapterRuntimeError> {
-        let Self {
-            registration,
-            binding_digest,
-            project_root,
-            mcp,
-        } = *self;
-        Ok(NativeRuntime::new(
-            super::opencode_runtime::OpenCodeRuntime::new(
-                registration,
-                binding_digest,
-                runtime_epoch,
-                session_id,
-                project_root,
-                mcp,
-            )?,
-        ))
+impl super::StandardAcpBindingSource for OpenCodeBindingRegistration {
+    fn refresh_binding(&self) -> Option<Arc<AdmittedStandardAcpBinding>> {
+        self.refresh().ok()
     }
 }
 
@@ -377,11 +316,16 @@ mod tests {
             SageRootId,
         },
         intent::{CapabilitySnapshotV1, NormalizedPayload, Prompt},
-        lifecycle::TurnState,
+        lifecycle::{ItemLifecycle, TurnState},
         transport::{Frame, IncrementalFrameDecoder},
     };
+    use crate::project_registry::ProjectRootAuthority;
     use serde_json::Value;
     use std::path::PathBuf;
+
+    fn temp_root() -> PathBuf {
+        crate::test_paths::temp_dir()
+    }
 
     struct TempRoot(PathBuf);
 
@@ -422,7 +366,7 @@ mod tests {
 
     fn scoped_permission_id(label: &str, epoch: u64) -> crate::acp::contract::SageServerRequestId {
         let session = SageAgentSessionId::parse(format!("session-{label}")).expect("session");
-        let scoped = super::super::opencode_runtime::scoped_permission_id(
+        let scoped = super::super::runtime::scoped_permission_id(
             &session,
             RuntimeEpoch::new(epoch).expect("epoch"),
             "number:0",
@@ -472,6 +416,26 @@ mod tests {
         advertise_build: bool,
         current_mode: &str,
     ) -> crate::acp::bindings::runtime::NativeRuntime {
+        configured_runtime(
+            root,
+            epoch,
+            label,
+            version,
+            advertise_build,
+            current_mode,
+            false,
+        )
+    }
+
+    fn configured_runtime(
+        root: &TempRoot,
+        epoch: u64,
+        label: &str,
+        version: &str,
+        advertise_build: bool,
+        current_mode: &str,
+        resources: bool,
+    ) -> crate::acp::bindings::runtime::NativeRuntime {
         let project_root = ProjectRootAuthority::for_test(
             SageProjectId::parse(format!("project-{label}")).expect("project"),
             ProjectGeneration::ZERO,
@@ -503,11 +467,13 @@ mod tests {
         runtime
             .resolve_egress(initialize.into_token(), EgressResolution::Written)
             .expect("initialize written");
+        let mut initialize_response = inbound.next().expect("initialize response");
+        if resources {
+            initialize_response["result"]["agentCapabilities"]["promptCapabilities"] =
+                serde_json::json!({"embeddedContext":true});
+        }
         runtime
-            .ingest(
-                &frame(inbound.next().expect("initialize response")),
-                &Mapper,
-            )
+            .ingest(&frame(initialize_response), &Mapper)
             .expect("initialize response");
         let session = runtime
             .command(AdapterCommand::NewSession {
@@ -534,6 +500,43 @@ mod tests {
         runtime
     }
 
+    #[test]
+    fn advertised_prompt_files_reach_the_opencode_wire_as_resources() {
+        use crate::acp::attached_context::files::{Resource, Resources};
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-files-{}", uuid::Uuid::new_v4())));
+        std::fs::create_dir_all(&root.0).unwrap();
+        let mut runtime = configured_runtime(
+            &root,
+            1,
+            "files",
+            OPENCODE_OBSERVED_VERSION,
+            true,
+            "build",
+            true,
+        );
+        assert!(runtime.capabilities().unwrap().prompt_resources);
+        let mut prompt = Prompt::new("prompt", "Inspect this file").unwrap();
+        prompt.resources = Resources(Arc::new(vec![Resource {
+            id: "file-1".into(),
+            name: "one.txt".into(),
+            bytes: b"resource content".to_vec(),
+        }]));
+        let egress = runtime
+            .command(AdapterCommand::Prompt {
+                prompt,
+                client_message_id: RequiredText::new("client", "file-message").unwrap(),
+                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            })
+            .unwrap();
+        let value = egress_value(&egress);
+        assert_eq!(value["method"], "session/prompt");
+        assert_eq!(
+            value["params"]["prompt"][1]["resource"]["text"],
+            "resource content"
+        );
+    }
+
     fn inbound_smoke_frames() -> Vec<Value> {
         include_str!("../../../../tests/fixtures/harness-traces/opencode/smoke/frames.jsonl")
             .lines()
@@ -547,7 +550,7 @@ mod tests {
         root: &TempRoot,
         version: &str,
         project_root: ProjectRootAuthority,
-    ) -> OpenCodeRuntimeFactory {
+    ) -> super::super::StandardAcpRuntimeFactory {
         let npm = root.0.join("npm");
         let runtime = npm
             .join("node_modules")
@@ -569,14 +572,17 @@ mod tests {
             &shim, version,
         ));
         let binding = registration.admitted().expect("admitted binding");
-        OpenCodeRuntimeFactory::from_admitted_binding(registration, binding, project_root)
+        super::super::StandardAcpRuntimeFactory::from_admitted_binding(
+            registration,
+            binding,
+            project_root,
+        )
     }
 
     #[test]
     fn factory_runtime_accepts_the_observed_initialize_command() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-runtime-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-runtime-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let project_root = ProjectRootAuthority::for_test(
             SageProjectId::parse("project-opencode-runtime").expect("project"),
@@ -602,9 +608,8 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn opencode_launch_spec_carries_the_windows_process_baseline_environment() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-env-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-env-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let project_root = ProjectRootAuthority::for_test(
             SageProjectId::parse("project-opencode-env").expect("project"),
@@ -638,9 +643,8 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn opencode_launch_spec_forces_a_client_permission_round_trip() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-policy-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-policy-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let project_root = ProjectRootAuthority::for_test(
             SageProjectId::parse("project-opencode-policy").expect("project"),
@@ -676,9 +680,8 @@ mod tests {
 
     #[test]
     fn factory_runtime_replays_the_synthetic_open_code_smoke_turn() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-runtime-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-runtime-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let project_root = ProjectRootAuthority::for_test(
             SageProjectId::parse("project-opencode-smoke").expect("project"),
@@ -789,18 +792,25 @@ mod tests {
                 ..
             }
         )));
+        // Three thought snapshots, then the answer text ends the thought block.
         assert_eq!(
             events
                 .iter()
-                .filter(|event| matches!(
-                    event,
+                .filter_map(|event| match event {
                     AdapterEvent::Item {
+                        lifecycle,
                         payload: NormalizedPayload::ThoughtSummary { .. },
                         ..
-                    }
-                ))
-                .count(),
-            3
+                    } => Some(*lifecycle),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+            [
+                ItemLifecycle::Streaming,
+                ItemLifecycle::Streaming,
+                ItemLifecycle::Streaming,
+                ItemLifecycle::Completed
+            ]
         );
         assert!(events.iter().any(|event| matches!(
             event,
@@ -831,7 +841,7 @@ mod tests {
 
     #[test]
     fn an_uncharacterised_admitted_build_still_attempts_the_mandatory_session_core() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-uncharacterised-{}",
             uuid::Uuid::new_v4()
         )));
@@ -886,9 +896,8 @@ mod tests {
 
     #[test]
     fn new_session_auth_refusal_is_not_reported_as_a_protocol_error() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-sign-in-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-sign-in-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let project_root = ProjectRootAuthority::for_test(
             SageProjectId::parse("project-opencode-sign-in").expect("project"),
@@ -913,16 +922,16 @@ mod tests {
         runtime
             .resolve_egress(initialize.into_token(), EgressResolution::Written)
             .expect("initialize written");
+        // Even when OpenCode lists a method that needs no input, Sage does not
+        // call `authenticate` for it: OpenCode keeps its own sign-in guidance.
+        let mut initialized = inbound_smoke_frames()
+            .into_iter()
+            .next()
+            .expect("initialize response");
+        initialized["result"]["authMethods"] =
+            serde_json::json!([{"id": "opencode-login", "name": "Login"}]);
         runtime
-            .ingest(
-                &frame(
-                    inbound_smoke_frames()
-                        .into_iter()
-                        .next()
-                        .expect("initialize response"),
-                ),
-                &Mapper,
-            )
+            .ingest(&frame(initialized), &Mapper)
             .expect("initialize response");
         let new_session = runtime
             .command(AdapterCommand::NewSession {
@@ -945,13 +954,16 @@ mod tests {
             ),
             Err(AdapterRuntimeError::SignInRequired)
         ));
+        assert!(
+            runtime.refusal_detail().is_none(),
+            "OpenCode's refusal carries no generic sign-in notice"
+        );
     }
 
     #[test]
     fn an_admitted_opencode_turn_cancels_through_the_standard_acp_notification() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-cancel-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-cancel-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let mut runtime = ready_runtime(&root, 5, "opencode-cancel", OPENCODE_OBSERVED_VERSION);
         let prompt = runtime
@@ -998,7 +1010,7 @@ mod tests {
 
     #[test]
     fn read_only_mode_is_acknowledged_before_opencode_receives_the_prompt() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-read-only-mode-{}",
             uuid::Uuid::new_v4()
         )));
@@ -1078,7 +1090,7 @@ mod tests {
 
     #[test]
     fn read_only_opencode_declines_the_real_binary_write_permission_request() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-read-only-permission-{}",
             uuid::Uuid::new_v4()
         )));
@@ -1164,7 +1176,7 @@ mod tests {
 
     #[test]
     fn workspace_write_asks_before_an_edit_outside_the_project() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-workspace-outside-{}",
             uuid::Uuid::new_v4()
         )));
@@ -1293,7 +1305,7 @@ mod tests {
 
     #[test]
     fn numeric_permission_ids_are_distinct_across_opencode_sessions() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-request-scope-{}",
             uuid::Uuid::new_v4()
         )));
@@ -1323,7 +1335,7 @@ mod tests {
     #[test]
     fn advertised_access_policies_drive_permission_wire_outcomes() {
         use crate::settings_store::SessionAccessMode;
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-admitted-policy-{}",
             uuid::Uuid::new_v4()
         )));
@@ -1360,13 +1372,19 @@ mod tests {
                     egress_value(&batch.egress()[0])["result"]["outcome"]["optionId"],
                     "once"
                 ),
+                mode @ (SessionAccessMode::AcceptEdits
+                | SessionAccessMode::Plan
+                | SessionAccessMode::Auto
+                | SessionAccessMode::FullAccess) => {
+                    panic!("OpenCode must not offer {mode:?}")
+                }
             }
         }
     }
 
     #[test]
     fn maximum_length_wire_permission_id_has_bounded_durable_identity() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-long-request-{}",
             uuid::Uuid::new_v4()
         )));
@@ -1424,9 +1442,8 @@ mod tests {
 
     #[test]
     fn workspace_write_auto_allows_an_inside_edit_once() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-inside-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-inside-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let path = root.0.join("inside.txt");
         assert!(!path.exists(), "this is a new-file request");
@@ -1456,7 +1473,7 @@ mod tests {
 
     #[test]
     fn workspace_write_never_approves_an_edit_for_a_foreign_session() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-foreign-session-{}",
             uuid::Uuid::new_v4()
         )));
@@ -1499,9 +1516,8 @@ mod tests {
 
     #[test]
     fn workspace_write_asks_for_parent_traversal() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-traversal-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-traversal-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let path = root.0.join("..").join("outside.txt");
         let permission = workspace_permission_case(
@@ -1523,7 +1539,7 @@ mod tests {
     #[test]
     fn workspace_write_asks_for_an_ads_or_device_filename() {
         for filename in ["safe.txt:alternate", "CON.txt"] {
-            let root = TempRoot(std::env::temp_dir().join(format!(
+            let root = TempRoot(temp_root().join(format!(
                 "sage-opencode-unsafe-name-{}",
                 uuid::Uuid::new_v4()
             )));
@@ -1548,9 +1564,8 @@ mod tests {
 
     #[test]
     fn workspace_write_asks_when_an_edit_request_has_no_target_path() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-no-target-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-no-target-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let permission = workspace_permission_case(
             &root,
@@ -1570,11 +1585,11 @@ mod tests {
 
     #[test]
     fn workspace_write_asks_when_an_inside_file_is_hard_linked_outside() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-hardlink-root-{}",
             uuid::Uuid::new_v4()
         )));
-        let outside = TempRoot(std::env::temp_dir().join(format!(
+        let outside = TempRoot(temp_root().join(format!(
             "sage-opencode-hardlink-outside-{}",
             uuid::Uuid::new_v4()
         )));
@@ -1603,11 +1618,11 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn workspace_write_asks_when_an_inside_junction_points_outside() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-junction-root-{}",
             uuid::Uuid::new_v4()
         )));
-        let outside = TempRoot(std::env::temp_dir().join(format!(
+        let outside = TempRoot(temp_root().join(format!(
             "sage-opencode-junction-outside-{}",
             uuid::Uuid::new_v4()
         )));
@@ -1642,7 +1657,7 @@ mod tests {
     fn workspace_write_asks_for_non_edit_tools() {
         for kind in ["execute", "fetch", "task", "other"] {
             let root = TempRoot(
-                std::env::temp_dir().join(format!("sage-opencode-{kind}-{}", uuid::Uuid::new_v4())),
+                temp_root().join(format!("sage-opencode-{kind}-{}", uuid::Uuid::new_v4())),
             );
             std::fs::create_dir_all(&root.0).expect("create root");
             let permission = workspace_permission_case(
@@ -1665,9 +1680,8 @@ mod tests {
 
     #[test]
     fn ask_mode_sends_an_edit_to_the_user_permission_card() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-ask-edit-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-ask-edit-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let path = root.0.join("ask-edit.txt");
         let permission = workspace_permission_case(
@@ -1733,9 +1747,8 @@ mod tests {
 
     #[test]
     fn ask_mode_approval_sends_allow_once_and_accepts_the_tool_completion() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-ask-allow-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-ask-allow-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let mut runtime = ask_edit_runtime(&root, "ask-allow");
         let selected = runtime
@@ -1781,7 +1794,7 @@ mod tests {
     #[test]
     fn ask_mode_always_allow_selects_the_native_opencode_option() {
         let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-ask-always-{}", uuid::Uuid::new_v4())),
+            temp_root().join(format!("sage-opencode-ask-always-{}", uuid::Uuid::new_v4())),
         );
         std::fs::create_dir_all(&root.0).expect("create root");
         let mut runtime = ask_edit_runtime(&root, "ask-always");
@@ -1799,7 +1812,7 @@ mod tests {
 
     #[test]
     fn approved_real_opencode_client_write_is_bounded_to_its_permission_target() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-client-write-{}",
             uuid::Uuid::new_v4()
         )));
@@ -1847,7 +1860,7 @@ mod tests {
 
     #[test]
     fn captured_opencode_allow_and_client_write_frame_shape_round_trips() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-captured-fs-{}",
             uuid::Uuid::new_v4()
         )));
@@ -1916,7 +1929,7 @@ mod tests {
 
     #[test]
     fn client_write_refuses_wrong_session_target_and_duplicate_without_teardown() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-client-write-refusal-{}",
             uuid::Uuid::new_v4()
         )));
@@ -1994,7 +2007,7 @@ mod tests {
 
     #[test]
     fn client_fs_read_and_unknown_methods_receive_errors() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-client-fs-unknown-{}",
             uuid::Uuid::new_v4()
         )));
@@ -2015,7 +2028,7 @@ mod tests {
 
     #[test]
     fn client_write_refuses_when_another_tool_is_pending() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-client-write-concurrent-{}",
             uuid::Uuid::new_v4()
         )));
@@ -2066,9 +2079,8 @@ mod tests {
 
     #[test]
     fn ask_mode_denial_sends_cancelled_and_leaves_the_target_absent() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-ask-deny-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-ask-deny-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let mut runtime = ask_edit_runtime(&root, "ask-deny");
         let denied = runtime
@@ -2096,9 +2108,8 @@ mod tests {
 
     #[test]
     fn ask_mode_sends_bash_to_the_user_permission_card() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-ask-bash-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-ask-bash-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let permission = workspace_permission_case(
             &root,
@@ -2120,7 +2131,7 @@ mod tests {
         mode: crate::settings_store::SessionAccessMode,
         label: &str,
     ) -> Result<crate::acp::bindings::adapter::AdapterBatch, AdapterRuntimeError> {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-reject-only-{label}-{}",
             uuid::Uuid::new_v4()
         )));
@@ -2205,7 +2216,7 @@ mod tests {
     #[test]
     fn ask_mode_flags_an_edit_that_completed_without_user_approval() {
         let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-ask-unsafe-{}", uuid::Uuid::new_v4())),
+            temp_root().join(format!("sage-opencode-ask-unsafe-{}", uuid::Uuid::new_v4())),
         );
         std::fs::create_dir_all(&root.0).expect("create root");
         let mut runtime = ready_runtime(&root, 39, "ask-unsafe", OPENCODE_OBSERVED_VERSION);
@@ -2234,7 +2245,7 @@ mod tests {
 
     #[test]
     fn read_only_unpermitted_edit_completion_raises_a_visible_safety_alert() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-unsafe-completion-{}",
             uuid::Uuid::new_v4()
         )));
@@ -2285,7 +2296,7 @@ mod tests {
 
     #[test]
     fn rejected_read_only_mode_never_emits_an_opencode_prompt() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-mode-reject-{}",
             uuid::Uuid::new_v4()
         )));
@@ -2317,9 +2328,8 @@ mod tests {
 
     #[test]
     fn stop_before_mode_ack_cancels_the_deferred_turn_without_prompting() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-stop-mode-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-stop-mode-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let mut runtime =
             switching_runtime(&root, 16, "opencode-stop-mode", OPENCODE_OBSERVED_VERSION);
@@ -2361,7 +2371,7 @@ mod tests {
 
     #[test]
     fn stop_after_mode_ack_cancels_the_released_prompt() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-stop-after-mode-{}",
             uuid::Uuid::new_v4()
         )));
@@ -2426,8 +2436,7 @@ mod tests {
     fn close_before_mode_ack_never_releases_a_prompt_in_either_response_order() {
         for close_first in [false, true] {
             let root = TempRoot(
-                std::env::temp_dir()
-                    .join(format!("sage-opencode-close-mode-{}", uuid::Uuid::new_v4())),
+                temp_root().join(format!("sage-opencode-close-mode-{}", uuid::Uuid::new_v4())),
             );
             std::fs::create_dir_all(&root.0).expect("create root");
             let mut runtime =
@@ -2478,7 +2487,7 @@ mod tests {
 
     #[test]
     fn rejected_close_egress_does_not_release_a_deferred_prompt() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-close-rejected-{}",
             uuid::Uuid::new_v4()
         )));
@@ -2524,7 +2533,7 @@ mod tests {
 
     #[test]
     fn missing_read_only_mode_cannot_send_an_opencode_prompt() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-mode-missing-{}",
             uuid::Uuid::new_v4()
         )));
@@ -2558,9 +2567,8 @@ mod tests {
 
     #[test]
     fn an_admitted_opencode_session_closes_through_the_native_session_close_request() {
-        let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-close-{}", uuid::Uuid::new_v4())),
-        );
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-close-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).expect("create root");
         let mut runtime = ready_runtime(&root, 6, "opencode-close", OPENCODE_OBSERVED_VERSION);
 
@@ -2593,9 +2601,8 @@ mod tests {
 
     #[test]
     fn the_negotiated_opencode_surface_matches_the_curated_registry_snapshot() {
-        let characterised = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-agree-{}", uuid::Uuid::new_v4())),
-        );
+        let characterised =
+            TempRoot(temp_root().join(format!("sage-opencode-agree-{}", uuid::Uuid::new_v4())));
         std::fs::create_dir_all(&characterised.0).expect("create root");
         let observed = ready_runtime(
             &characterised,
@@ -2610,7 +2617,7 @@ mod tests {
         );
 
         let uncharacterised = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-agree-next-{}", uuid::Uuid::new_v4())),
+            temp_root().join(format!("sage-opencode-agree-next-{}", uuid::Uuid::new_v4())),
         );
         std::fs::create_dir_all(&uncharacterised.0).expect("create root");
         let next = ready_runtime(&uncharacterised, 8, "opencode-agree-next", "1.18.22");
@@ -2624,7 +2631,7 @@ mod tests {
     #[test]
     fn an_opencode_close_acknowledged_before_the_prompt_response_still_settles_the_turn() {
         let root = TempRoot(
-            std::env::temp_dir().join(format!("sage-opencode-close-race-{}", uuid::Uuid::new_v4())),
+            temp_root().join(format!("sage-opencode-close-race-{}", uuid::Uuid::new_v4())),
         );
         std::fs::create_dir_all(&root.0).expect("create root");
         let mut runtime = ready_runtime(&root, 9, "opencode-close-race", OPENCODE_OBSERVED_VERSION);
@@ -2692,7 +2699,7 @@ mod tests {
 
     #[test]
     fn an_opencode_prompt_response_before_the_close_acknowledgement_settles_both() {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-close-settled-{}",
             uuid::Uuid::new_v4()
         )));

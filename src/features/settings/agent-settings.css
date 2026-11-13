@@ -1,0 +1,292 @@
+.agent-settings-layer {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: var(--space-6);
+}
+.agent-settings {
+  display: grid;
+  grid-template-columns: 256px minmax(0, 1fr);
+  width: min(1280px, 100%);
+  height: min(960px, 100%);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--bg);
+  box-shadow: var(--elevation-floating);
+  font-family: var(--font-family-agent);
+}
+
+.agent-settings__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 0;
+  padding: var(--space-3) var(--space-2);
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+.agent-settings__search:focus-within {
+  border-color: var(--color-accent);
+}
+.agent-settings__search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.agent-settings__search input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  background: none;
+  font: inherit;
+}
+.agent-settings__nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.agent-settings__nav-group h2 {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+.agent-settings__nav h2,
+.agent-settings__nav svg,
+.agent-settings__nav > p {
+  color: var(--text-muted);
+}
+.agent-settings__nav-group button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  text-align: left;
+  color: inherit;
+  background: transparent;
+}
+.agent-settings__nav-group button:hover,
+.agent-settings__nav-group button[aria-current] {
+  background: var(--surface-hover);
+}
+.agent-settings__nav > p {
+  margin: 0;
+  text-align: center;
+}
+
+.agent-settings__content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.agent-settings__header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+  height: 48px;
+  padding: 0 8px 0 20px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.agent-settings__header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-md);
+  font-weight: 500;
+}
+.agent-settings__header button {
+  margin-left: auto;
+}
+/*
+ * Every page is one column whose blocks are spaced by gaps alone: intro
+ * copy, cards, toolbars and titled sections. Margins on the blocks
+ * themselves are cleared, so no page can fuse a control to the card below.
+ */
+.agent-settings__page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--settings-content-gap);
+  min-height: 0;
+  padding: 32px max(24px, calc((100% - 720px) / 2));
+  overflow: auto;
+}
+
+@media (max-width: 640px) {
+  .agent-settings-layer {
+    padding: 0;
+  }
+  .agent-settings {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+  .agent-settings__nav {
+    max-height: 208px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .agent-settings__page {
+    padding: var(--space-6) var(--space-4);
+  }
+}
+
+/* Blocks are spaced by gaps alone. A titled group (Agent's own sections
+   and the Editor settings blocks some pages embed) keeps its heading closer
+   to its content than to the block above it. */
+.agent-settings__page > *,
+.agent-settings
+  :is(
+    .settings-surface__section,
+    .settings-surface__section-header,
+    .settings-surface__group,
+    .settings-surface__copy
+  )
+  > * {
+  margin-block: 0;
+}
+
+.agent-settings__page > p {
+  color: var(--text-muted);
+}
+
+.agent-settings__page h3 {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.agent-settings
+  :is(
+    .settings-surface__section,
+    .settings-surface__section-header,
+    .settings-surface__group
+  ) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.agent-settings .settings-surface__group {
+  margin-top: var(--space-2);
+}
+
+/* A card of rows. The Editor's Browser rows, padded by their own
+   variables in the Editor, take the card's inset here. */
+.agent-settings__card,
+.agent-settings .settings-surface__rows {
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+
+.agent-settings .settings-surface__rows {
+  padding: var(--space-4);
+}
+
+/* A row: title, description and default hint on the left, control on the
+   right. */
+.agent-settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+}
+
+.agent-settings__row + .agent-settings__row {
+  border-top: 1px solid var(--border);
+}
+
+/* The copy gives way; the control keeps its size up to half the row. */
+.agent-settings__copy {
+  min-width: 0;
+}
+
+.agent-settings__row p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.agent-settings__control {
+  flex-shrink: 0;
+  max-width: 48%;
+}
+
+.agent-settings__control .select {
+  min-width: calc(var(--space-8) * 3);
+}
+
+.agent-settings__inline-form {
+  display: flex;
+  gap: var(--space-2);
+}
+.agent-settings__page :where(button) {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  background: var(--surface-hover);
+}
+.agent-settings__page :where(ul) {
+  max-width: 100%;
+  padding-left: 20px;
+  overflow-wrap: anywhere;
+}
+.agent-settings__pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.agent-settings .browser-clear-data {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0;
+}
+.agent-settings .browser-site-permissions {
+  background: transparent;
+  border: 0;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) 0;
+}
+.agent-settings :is(.browser-site-permissions, .browser-downloads__list) li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.agent-settings .browser-site-permissions li {
+  align-items: center;
+}
+.agent-settings .browser-downloads__list li {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.agent-settings .settings-surface__keymap td {
+  width: auto;
+  max-width: 168px;
+}
+.agent-settings .settings-surface__keymap {
+  table-layout: fixed;
+}
+.agent-settings .settings-surface__keymap th {
+  overflow-wrap: anywhere;
+}
+.agent-settings .settings-surface__section-header h2 {
+  display: none;
+}

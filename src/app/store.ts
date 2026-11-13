@@ -14,6 +14,10 @@ import type {
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
 import { createEditorSlice, type EditorSlice } from "./editorSlice";
+import {
+  createEditorConflictSlice,
+  type EditorConflictSlice,
+} from "./editorConflictSlice";
 import { createFileCreateSlice, type FileCreateSlice } from "./fileCreateSlice";
 import { createFileRenameSlice, type FileRenameSlice } from "./fileRenameSlice";
 import { createHarnessSlice, type HarnessSlice } from "./harnessSlice";
@@ -65,7 +69,6 @@ import { closeWorkbenchTab } from "./tabClosing";
 import { shareRepositoryStatus } from "./shareRepositoryStatus";
 import { createBrowserSlice, type BrowserSlice } from "./browserSlice";
 import type { SettingsPageId } from "../domain/settingsNavigation";
-import { requestSettingsPage } from "./settingsPageRequest";
 
 export type SidebarView =
   "explorer" | "search" | "sourceControl" | "preview" | "outline";
@@ -81,6 +84,7 @@ export interface WorkbenchState
     ChatHandoffSlice,
     ChatOwnershipSlice,
     EditorSlice,
+    EditorConflictSlice,
     FileCreateSlice,
     FileRenameSlice,
     HarnessSlice,
@@ -123,7 +127,7 @@ export interface WorkbenchState
   refreshRepository: () => Promise<void>;
   setSidebarView: (view: SidebarView) => void;
   toggleSidebar: () => void;
-  /** Opens the Settings tab, on `page` when given (otherwise where it was). */
+  /** Opens Editor settings, or the shared Agent dialog for Browser. */
   openSettings: (page?: SettingsPageId) => Promise<void>;
 }
 
@@ -172,6 +176,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createResourceSlice(set, get, store),
     ...createFileNavigationSlice(set, get, store),
     ...createEditorSlice(set, get, store),
+    ...createEditorConflictSlice(set, get, store),
     ...createFileCreateSlice(set, get, store),
     ...createFileRenameSlice(set, get, store),
     ...createResourceTrashSlice(set, get, store),
@@ -270,66 +275,22 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     },
 
     openSettings: async (page) => {
-      const id = "settings:appearance";
-      const sourceActiveTabId = get().activeTabId;
-      const sourceActiveTab = get().tabs.find(
-        (tab) => tab.id === sourceActiveTabId,
+      if (page === "browser") {
+        const { useAgentSettingsState } =
+          await import("../features/settings/agentSettingsState");
+        useAgentSettingsState.getState().open("Browser");
+        return;
+      }
+      const source = get();
+      const { default: openEditorSettings } =
+        await import("../features/settings/openEditorSettings");
+      return openEditorSettings(
+        set,
+        get,
+        source,
+        (tabId) => (settingsReturnTabId = tabId),
+        page,
       );
-      if (sourceActiveTab?.id === id) {
-        requestSettingsPage(page);
-        return;
-      }
-      const sourceProjectId = get().project?.id ?? null;
-      const sourceGeneration = get().projectGeneration;
-      try {
-        await get().flushActiveEditor();
-      } catch (error) {
-        if (
-          get().projectGeneration === sourceGeneration &&
-          (get().project?.id ?? null) === sourceProjectId &&
-          get().activeTabId === sourceActiveTabId
-        ) {
-          set({ error: errorMessage(error) });
-        }
-        return;
-      }
-      if (
-        get().projectTransitioning ||
-        get().fileRenameInFlight ||
-        get().resourceTrashInFlight ||
-        get().projectGeneration !== sourceGeneration ||
-        (get().project?.id ?? null) !== sourceProjectId ||
-        get().activeTabId !== sourceActiveTabId
-      ) {
-        return;
-      }
-      settingsReturnTabId =
-        sourceActiveTab?.kind === "file" || sourceActiveTab?.kind === "diff"
-          ? sourceActiveTab.id
-          : null;
-      if (!get().tabs.some((tab) => tab.id === id)) {
-        set((state) => ({
-          tabs: [
-            ...state.tabs,
-            {
-              id,
-              kind: "settings",
-              title: "Settings",
-              position: state.tabs.length,
-              pinned: false,
-              dirty: false,
-            },
-          ],
-          activeTabId: id,
-          activeEditor: null,
-        }));
-      } else {
-        set({ activeTabId: id, activeEditor: null });
-      }
-      requestSettingsPage(page);
-      void get()
-        .persistLayout()
-        .catch((error) => set({ error: errorMessage(error) }));
     },
 
     refreshRepository: async () => {

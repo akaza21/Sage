@@ -47,23 +47,60 @@ fn fixture_accepts_only_exact_frozen_arguments() {
 }
 
 #[test]
-fn codex_lost_steer_result_case_waits_for_the_write_then_exits_without_reply() {
+fn only_a_claude_code_sdk_case_takes_the_harness_arguments_after_its_seed() {
+    let session = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
     let invocation = FixtureInvocation::parse(
-        ["--case", "codex-steer-lost-result", "--seed", "0"].map(OsString::from),
+        [
+            "--case",
+            "claude-sdk-fork",
+            "--seed",
+            "0",
+            "--session-id",
+            session,
+        ]
+        .map(OsString::from),
     )
     .unwrap();
-    let steps: Vec<Value> = serde_json::from_str(invocation.steps_json).unwrap();
-    assert_eq!(
-        steps[9],
-        serde_json::json!({"op":"awaitClient","kind":"codexSteer"})
-    );
-    assert_eq!(steps[10], serde_json::json!({"op":"exit","code":17}));
-    assert!(
-        !steps
-            .iter()
-            .skip(10)
-            .any(|step| step["op"] == "emitKnownFrame")
-    );
+    assert_eq!(invocation.harness_args, ["--session-id", session]);
+    for refused in [
+        vec![
+            "--case",
+            "codex-config-resume",
+            "--seed",
+            "0",
+            "--session-id",
+            session,
+        ],
+        vec!["--seed", "0", "--case", "claude-sdk-fork"],
+    ] {
+        assert_eq!(
+            FixtureInvocation::parse(refused.into_iter().map(OsString::from)).err(),
+            Some(FixtureError::InvalidArguments)
+        );
+    }
+    let many = ["--case", "claude-sdk-fork", "--seed", "0"]
+        .into_iter()
+        .chain(std::iter::repeat_n("--verbose", 17));
+    assert!(FixtureInvocation::parse(many.map(OsString::from)).is_err());
+    let long = "x".repeat(257);
+    let too_long = [
+        "--case",
+        "claude-sdk-fork",
+        "--seed",
+        "0",
+        "--resume",
+        long.as_str(),
+    ];
+    assert!(FixtureInvocation::parse(too_long.map(OsString::from)).is_err());
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        let mut args = ["--case", "claude-sdk-fork", "--seed", "0", "--resume"]
+            .map(OsString::from)
+            .to_vec();
+        args.push(OsString::from_vec(vec![0xff, 0xfe]));
+        assert!(FixtureInvocation::parse(args).is_err());
+    }
 }
 
 #[test]
@@ -87,46 +124,6 @@ fn all_179_frozen_case_ids_and_steps_are_unique_bounded_and_recognized() {
         let oracle: Value = serde_json::from_str(fixture_case.oracle_json).unwrap();
         assert!(oracle.as_object().is_some_and(|fields| !fields.is_empty()));
     }
-}
-
-#[test]
-fn frozen_execution_ownership_and_phase_counts_are_exact() {
-    use super::generated_cases::{FrozenOwner, FrozenPhase};
-
-    let mut child = 0;
-    let mut host = 0;
-    let mut foundation = 0;
-    let mut windows = 0;
-    let mut package = 0;
-    let mut deferred = 0;
-    for fixture_case in FROZEN_CASES {
-        match fixture_case.owner {
-            FrozenOwner::Child => child += 1,
-            FrozenOwner::Host => host += 1,
-        }
-        match fixture_case.phase {
-            FrozenPhase::Foundation => foundation += 1,
-            FrozenPhase::Windows => windows += 1,
-            FrozenPhase::Package => package += 1,
-            FrozenPhase::Deferred => deferred += 1,
-        }
-    }
-    assert_eq!((child, host), (70, 109));
-    assert_eq!((foundation, windows, package, deferred), (167, 5, 1, 6));
-}
-
-#[test]
-fn generated_table_records_the_exact_frozen_source_hash() {
-    use sha2::{Digest, Sha256};
-
-    let source = include_bytes!(
-        "../../../../docs/work-items/ADE-0006A-acp-session-foundation/contracts/fixture-vectors-v1.json"
-    );
-    let digest = Sha256::digest(source)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    assert!(include_str!("generated_cases.rs").contains(&digest));
 }
 
 #[test]

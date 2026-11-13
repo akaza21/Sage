@@ -1,3 +1,4 @@
+import { acpHarnessDesktop } from "./acpHarnessDesktop";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -27,6 +28,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: listenMock }));
 
 import { AcpDesktopError, acpDesktop, safeFailure } from "./acpDesktop";
+import { safePreviewProjectionChanged } from "./acpDesktopPreview";
 import { acknowledgeReadTextFileFlush } from "./acpDesktopReadText";
 import { safeTurn } from "./acpDesktopResponseTurns";
 
@@ -71,6 +73,110 @@ it("decodes persisted quote context only within the eight-entry UTF-8 bounds", (
   expect(
     safeTurn({ ...turn, attachedContext: [{ ...quote, kind: "unknown" }] }),
   ).toBeNull();
+});
+
+it("decodes a Turn's hook rows within the native caps", () => {
+  const turn = {
+    id: "turn",
+    sessionId: "session",
+    runtimeEpoch: "1",
+    ordinal: 0,
+    revision: "0",
+    state: "running",
+    createdAt: 1,
+    updatedAt: 2,
+    terminalAt: null,
+    items: [],
+    activities: [],
+  };
+  const hook = {
+    kind: "hook",
+    label: "PostToolUse hook #1 (project)",
+    state: "failed",
+    progress: "Synthetic lint hook exited with status 1",
+  };
+  expect(safeTurn(turn)?.sessionActivities).toBeUndefined();
+  expect(
+    safeTurn({ ...turn, sessionActivities: [hook] })?.sessionActivities,
+  ).toEqual([hook]);
+  for (const sessionActivities of [
+    null,
+    Array.from({ length: 17 }, () => hook),
+    [{ ...hook, state: "blocked" }],
+    [{ ...hook, progress: "" }],
+    [{ ...hook, label: "x".repeat(257) }],
+  ])
+    expect(safeTurn({ ...turn, sessionActivities })).toBeNull();
+});
+
+it("keeps a Turn whose stored session action the chat cannot run, without it", () => {
+  const turn = {
+    id: "turn",
+    sessionId: "session",
+    runtimeEpoch: "1",
+    ordinal: 0,
+    revision: "0",
+    state: "completed",
+    createdAt: 1,
+    updatedAt: 2,
+    terminalAt: 2,
+    items: [],
+    activities: [],
+  };
+  const compact = safeTurn({ ...turn, sessionAction: { kind: "compact" } });
+  expect(compact?.sessionAction).toEqual({ kind: "compact" });
+  expect(compact?.unrecognizedAction).toBeUndefined();
+  const review = {
+    kind: "review",
+    target: { kind: "baseBranch", branch: "main" },
+  };
+  expect(safeTurn({ ...turn, sessionAction: review })?.sessionAction).toEqual(
+    review,
+  );
+  for (const sessionAction of [
+    { kind: "unrecognized" },
+    { kind: "review", target: { kind: "pullRequest", number: 7 } },
+    "compact",
+  ]) {
+    const kept = safeTurn({ ...turn, sessionAction });
+    expect(kept?.id).toBe("turn");
+    expect(kept?.sessionAction).toBeUndefined();
+    expect(kept?.unrecognizedAction).toBe(true);
+  }
+  expect(safeTurn(turn)?.unrecognizedAction).toBeUndefined();
+});
+
+it("keeps the listed command a Turn ran and drops a mark it cannot show", () => {
+  const turn = {
+    id: "turn",
+    sessionId: "session",
+    runtimeEpoch: "1",
+    ordinal: 1,
+    state: "completed",
+    revision: "1",
+    createdAt: 1,
+    updatedAt: 2,
+    terminalAt: 2,
+    items: [],
+    activities: [],
+  };
+  const command = { name: "deploy", source: "skill" };
+  expect(safeTurn({ ...turn, command })?.command).toEqual(command);
+  for (const invalid of [
+    { name: "deploy", source: "invented" },
+    { name: "two words", source: "skill" },
+    { name: "a/b", source: "skill" },
+    { name: "", source: "skill" },
+    { name: "x".repeat(129), source: "skill" },
+    { name: "deploy", source: "skill", extra: 1 },
+    { name: "deploy" },
+    "deploy",
+    null,
+  ]) {
+    const kept = safeTurn({ ...turn, command: invalid });
+    expect(kept?.id).toBe("turn");
+    expect(kept && "command" in kept).toBe(false);
+  }
 });
 
 const request: StartAcpSessionRequest = {
@@ -274,7 +380,7 @@ describe("ACP desktop bridge", () => {
       email: "never-forward@example.test",
     });
 
-    const response = await acpDesktop.startCodexAuth(authRequest);
+    const response = await acpHarnessDesktop.startCodexAuth(authRequest);
 
     expect(invokeMock).toHaveBeenCalledWith("start_codex_auth", {
       request: { ...authRequest, consent: true },
@@ -307,11 +413,11 @@ describe("ACP desktop bridge", () => {
       phase: "consent",
       revision: "0",
     });
-    await expect(acpDesktop.cancelCodexAuth(authRequest)).rejects.toMatchObject(
-      {
-        failure: { kind: "internal" },
-      },
-    );
+    await expect(
+      acpHarnessDesktop.cancelCodexAuth(authRequest),
+    ).rejects.toMatchObject({
+      failure: { kind: "internal" },
+    });
   });
 
   it("accepts only the sanitized auth recovery projection", async () => {
@@ -323,7 +429,9 @@ describe("ACP desktop bridge", () => {
       error: "never-forward",
     });
 
-    await expect(acpDesktop.cancelCodexAuth(authRequest)).resolves.toEqual({
+    await expect(
+      acpHarnessDesktop.cancelCodexAuth(authRequest),
+    ).resolves.toEqual({
       ...authRequest,
       phase: "recovery",
       revision: "4",
@@ -347,7 +455,7 @@ describe("ACP desktop bridge", () => {
       rawFrame: "never-retain",
     });
 
-    const response = await acpDesktop.discoverCodex(discoveryRequest);
+    const response = await acpHarnessDesktop.discoverCodex(discoveryRequest);
 
     expect(invokeMock).toHaveBeenCalledWith("get_codex_discovery", {
       request: discoveryRequest,
@@ -373,7 +481,7 @@ describe("ACP desktop bridge", () => {
     });
 
     await expect(
-      acpDesktop.discoverCodex(discoveryRequest),
+      acpHarnessDesktop.discoverCodex(discoveryRequest),
     ).rejects.toMatchObject({
       failure: { kind: "internal" },
     });
@@ -393,7 +501,7 @@ describe("ACP desktop bridge", () => {
       email: "never-retain@example.test",
     });
 
-    const response = await acpDesktop.discoverCodex(discoveryRequest);
+    const response = await acpHarnessDesktop.discoverCodex(discoveryRequest);
     expect(response).toEqual({
       projectId: "project-a",
       projectGeneration: "7",
@@ -422,7 +530,7 @@ describe("ACP desktop bridge", () => {
     });
 
     await expect(
-      acpDesktop.discoverCodex(discoveryRequest),
+      acpHarnessDesktop.discoverCodex(discoveryRequest),
     ).resolves.toMatchObject({
       account: "providerManaged",
       defaultModelId: "provider-model",
@@ -443,7 +551,7 @@ describe("ACP desktop bridge", () => {
     });
 
     await expect(
-      acpDesktop.discoverCodex(discoveryRequest),
+      acpHarnessDesktop.discoverCodex(discoveryRequest),
     ).rejects.toMatchObject({
       failure: { kind: "internal" },
     });
@@ -463,7 +571,7 @@ describe("ACP desktop bridge", () => {
     });
 
     await expect(
-      acpDesktop.discoverCodex(discoveryRequest),
+      acpHarnessDesktop.discoverCodex(discoveryRequest),
     ).rejects.toMatchObject({
       failure: { kind: "internal" },
     });
@@ -809,6 +917,47 @@ describe("ACP desktop bridge", () => {
     expect(onPreview).toHaveBeenCalledWith({ kind: "preview", preview });
     dispose();
     expect(unlisten).toHaveBeenCalledOnce();
+  });
+
+  it("admits an unsupported https origin failure and still rejects unknown failures", () => {
+    const failed = {
+      projectId: "project-a",
+      projectGeneration: "7",
+      transitionEpoch: 7,
+      chatId: "chat-a",
+      sessionId: "session-a",
+      runtimeEpoch: "3",
+      previewRevision: "4",
+      phase: "healthFailed",
+      failure: "originUnsupported",
+      target: {
+        projectId: "project-a",
+        projectGeneration: "7",
+        expectedTransitionEpoch: 7,
+        chatId: "chat-a",
+        sessionId: "session-a",
+        runtimeEpoch: "3",
+        rootId: "root-a",
+        scriptName: "dev",
+      },
+      origin: null,
+    };
+
+    expect(
+      safePreviewProjectionChanged({ kind: "preview", preview: failed }),
+    ).toEqual({ kind: "preview", preview: failed });
+    expect(
+      safePreviewProjectionChanged({
+        kind: "preview",
+        preview: { ...failed, failure: "tlsUnsupported" },
+      }),
+    ).toBeNull();
+    expect(
+      safePreviewProjectionChanged({
+        kind: "preview",
+        preview: { ...failed, phase: "exited" },
+      }),
+    ).toBeNull();
   });
 
   it("invokes the exact native P-02 acknowledgement envelope", async () => {

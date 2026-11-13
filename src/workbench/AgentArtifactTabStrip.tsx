@@ -1,6 +1,7 @@
 import { Eye, GitCompareArrows, Globe2, Pin, X } from "../ui/leanIcons";
 
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
+import { useResourceTabStrip } from "./useResourceTabStrip";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 
 import {
@@ -17,6 +18,10 @@ import { FileKindIcon } from "../features/files/FileKindIcon";
 import { BrowserFavicon } from "../features/browser/browserFavicon";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { artifactTabParts } from "./agentArtifactTabPresentation";
+import { useAgentChangesState } from "./agentChangesState";
+import "./AgentArtifactPaneTabs.css";
+
+export { AgentArtifactEmptyState } from "./AgentArtifactPaneEmptyState";
 
 type AgentArtifactTabStripProps = {
   artifacts: readonly WorkbenchTab[];
@@ -32,6 +37,7 @@ type AgentArtifactTabStripProps = {
   availableTargets: readonly AgentArtifactTarget[];
   activateTab: (tabId: string) => Promise<void> | void;
   closeTab: (tabId: string) => void;
+  changesTab?: ReactNode;
 };
 
 export function AgentArtifactTabStrip({
@@ -48,8 +54,10 @@ export function AgentArtifactTabStrip({
   availableTargets,
   activateTab,
   closeTab,
+  changesTab,
 }: AgentArtifactTabStripProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const onTabKeyDown = useResourceTabStrip(scrollRef);
   const pendingTargets = agentArtifactPendingTargets(record);
   const latestPendingTarget = pendingTargets.at(-1) ?? null;
   const following = record?.mode !== "pinned";
@@ -64,14 +72,21 @@ export function AgentArtifactTabStrip({
     `agent-artifact-pending-${index}`;
   const modeLabel = following ? "Following latest" : "Pinned";
   const followTitle = following
-    ? "Following the newest resource from this Chat"
+    ? "Following the newest resource from this chat"
     : latestPendingTarget
       ? "A newer resource arrived. Select to follow it."
       : "Pinned to this resource. Select to follow the newest resource.";
   return (
     <>
       <nav className="tab-strip" aria-label="Agent artifact tabs">
-        <div ref={scrollRef} className="tab-strip__scroll">
+        <div
+          ref={scrollRef}
+          className="tab-strip__scroll"
+          role="tablist"
+          aria-label="Resources"
+          onKeyDown={onTabKeyDown}
+        >
+          {changesTab}
           {artifacts.map((tab, index) => {
             const selected =
               selectedTarget?.kind === "tab" && tab.id === selectedTarget.tabId;
@@ -115,6 +130,7 @@ export function AgentArtifactTabStrip({
                   data-resource-relative-path={tab.resource?.relativePath}
                   title={accessibleName}
                   onClick={() => {
+                    useAgentChangesState.getState().select(false);
                     useSubagentPaneStore.getState().select(false);
                     if (focusedOwner) {
                       useAgentArtifactFollowStore.getState().pin(focusedOwner, {
@@ -207,6 +223,7 @@ export function AgentArtifactTabStrip({
                   previewPending ? "preview-new-resource" : undefined
                 }
                 onClick={() => {
+                  useAgentChangesState.getState().select(false);
                   useSubagentPaneStore.getState().select(false);
                   useAgentArtifactFollowStore
                     .getState()
@@ -270,16 +287,17 @@ export function AgentArtifactTabStrip({
             following
               ? "Following latest resource"
               : previewPending && fileOrDiffPending
-                ? "Pinned resource, new File, Diff, and Preview available"
+                ? "Pinned resource, new file, diff, and preview available"
                 : previewPending
                   ? "Pinned resource, new Preview available"
                   : fileOrDiffPending
-                    ? "Pinned resource, new File or Diff available"
+                    ? "Pinned resource, new file or diff available"
                     : "Pinned resource"
           }
           aria-pressed={following}
           title={followTitle}
           onClick={() => {
+            useAgentChangesState.getState().select(false);
             useAgentArtifactFollowStore.getState().followLatest(focusedOwner);
             requestAnimationFrame(() => {
               scrollRef.current

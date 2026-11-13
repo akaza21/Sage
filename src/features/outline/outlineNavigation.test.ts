@@ -39,4 +39,24 @@ describe("localSymbolNavigation", () => {
       ),
     ).toBeNull();
   });
+
+  it("prefers a top-level declaration over a class member of the same name", async () => {
+    const source = "class A {\n  run() {}\n}\nfunction run() {}\nrun();\n";
+    const outline = await syntaxOutline("src/example.ts", source);
+    const call = source.lastIndexOf("run();");
+    const topLevel = source.indexOf("run() {}", source.indexOf("function"));
+    expect(
+      localSymbolNavigation(source, { start: call, end: call }, outline),
+    ).toEqual({ start: topLevel, end: topLevel });
+  });
+
+  it("still reaches a member when nothing at the top level declares it", async () => {
+    const source = "class A {\n  run() {}\n}\nnew A().run();\n";
+    const outline = await syntaxOutline("src/example.ts", source);
+    const call = source.lastIndexOf("run();");
+    const member = source.indexOf("run() {}");
+    expect(
+      localSymbolNavigation(source, { start: call, end: call }, outline),
+    ).toEqual({ start: member, end: member });
+  });
 });

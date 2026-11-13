@@ -16,6 +16,15 @@ export function flattenChoices(option: AcpConfigOption): AcpConfigChoice[] {
   );
 }
 
+/** A select is usable only when its current value is among its choices. */
+export function selectedConfigChoice(option: AcpConfigOption | undefined) {
+  return option?.type === "select"
+    ? flattenChoices(option).find(
+        (choice) => choice.value === option.currentValue,
+      )
+    : undefined;
+}
+
 function restatesModes(
   option: AcpConfigOption,
   config: AcpSessionConfig,

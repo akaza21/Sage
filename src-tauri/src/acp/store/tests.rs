@@ -19,7 +19,7 @@ mod request_identity_tests;
 pub(super) fn setup() -> Connection {
     let connection = Connection::open_in_memory().unwrap();
     connection.execute_batch(
-        "CREATE TABLE chats(id TEXT PRIMARY KEY, project_id TEXT, projection_revision INTEGER, updated_at INTEGER);
+        "CREATE TABLE chats(id TEXT PRIMARY KEY, project_id TEXT, projection_revision INTEGER, updated_at INTEGER, title TEXT NOT NULL DEFAULT 'Chat: Fixture');
          CREATE TABLE chat_lineage(child_project_id TEXT, child_chat_id TEXT PRIMARY KEY, parent_project_id TEXT, parent_chat_id TEXT, source_turn_id TEXT, relation TEXT);
          CREATE TABLE acp_child_thread_transcripts(native_child_thread_id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, updated_at INTEGER);
          CREATE TABLE agent_sessions(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, state TEXT, residency TEXT, revision INTEGER, projection_revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
@@ -33,7 +33,7 @@ pub(super) fn setup() -> Connection {
          CREATE TABLE acp_session_usage(session_id TEXT PRIMARY KEY, turn_count INTEGER, item_count INTEGER, item_bytes INTEGER, fact_count INTEGER, fact_bytes INTEGER, payload_bytes INTEGER, revision INTEGER);
          CREATE TABLE acp_project_usage(project_id TEXT PRIMARY KEY, turn_count INTEGER, item_count INTEGER, fact_count INTEGER, payload_bytes INTEGER, revision INTEGER);
          CREATE TABLE acp_store_usage(singleton INTEGER PRIMARY KEY, turn_count INTEGER, item_count INTEGER, item_bytes INTEGER, fact_count INTEGER, fact_bytes INTEGER, shared_payload_bytes INTEGER, revision INTEGER);
-         INSERT INTO chats VALUES('chat-one','project-one',0,0);
+         INSERT INTO chats(id,project_id,projection_revision,updated_at,title) VALUES('chat-one','project-one',0,0,'Chat: Fixture');
          INSERT INTO agent_sessions VALUES('session-one','project-one','chat-one','ready','hot',0,0,0,NULL);
          INSERT INTO chat_session_heads VALUES('session-one');
          INSERT INTO session_runtime_epochs VALUES('session-one',1,'running',NULL,NULL,0);
@@ -52,6 +52,17 @@ pub(super) fn setup() -> Connection {
             "../../../migrations/010_acp_file_change_snapshots.sql"
         ))
         .unwrap();
+    // The handmade sessions table lacks the owner key v21 references.
+    connection
+        .execute_batch(
+            "CREATE UNIQUE INDEX fixture_session_owner ON agent_sessions(project_id,chat_id,id);",
+        )
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/021_acp_session_scope.sql"
+        ))
+        .unwrap();
     connection
         .execute_batch(
             "CREATE TABLE acp_turn_usage_snapshots(project_id TEXT,chat_id TEXT,session_id TEXT,turn_id TEXT,runtime_epoch INTEGER,input_tokens INTEGER,output_tokens INTEGER,context_window INTEGER,revision INTEGER,created_at INTEGER,updated_at INTEGER,PRIMARY KEY(session_id,runtime_epoch,turn_id));",
@@ -61,6 +72,31 @@ pub(super) fn setup() -> Connection {
         .execute_batch(
             "CREATE TABLE acp_turn_terminal_reasons(project_id TEXT,chat_id TEXT,session_id TEXT,turn_id TEXT,runtime_epoch INTEGER,kind TEXT,message TEXT,remediation TEXT,created_at INTEGER,PRIMARY KEY(session_id,runtime_epoch,turn_id));",
         )
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/019_turn_workspace_changes.sql"
+        ))
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/020_chat_title_provenance.sql"
+        ))
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/025_chat_title_source.sql"
+        ))
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/026_session_facts_turn_index.sql"
+        ))
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/027_browser_operation_terminal_index.sql"
+        ))
         .unwrap();
     connection
 }
@@ -732,4 +768,28 @@ fn every_durable_terminal_family_is_idempotent_and_conflict_safe() {
     )
     .unwrap();
     assert_eq!(duplicate.disposition, MutationDisposition::Duplicate);
+}
+
+#[test]
+fn turn_is_terminal_reads_the_scoped_turn_row() {
+    let mut connection = setup();
+    let prepared = prepare_turn(&mut connection, command("terminal")).unwrap();
+    let project = SageProjectId::parse("project-one").unwrap();
+    let chat = SageChatId::parse("chat-one").unwrap();
+    let session = SageAgentSessionId::parse("session-one").unwrap();
+    let probe = |connection: &Connection, session: &SageAgentSessionId, turn: &SageTurnId| {
+        turn_is_terminal(connection, &project, &chat, session, turn).unwrap()
+    };
+    assert!(!probe(&connection, &session, &prepared.turn_id));
+    connection
+        .execute(
+            "UPDATE turns SET state='completed', terminal_at=13 WHERE id=?1",
+            [prepared.turn_id.as_str()],
+        )
+        .unwrap();
+    assert!(probe(&connection, &session, &prepared.turn_id));
+    let other_session = SageAgentSessionId::parse("session-two").unwrap();
+    assert!(!probe(&connection, &other_session, &prepared.turn_id));
+    let missing = SageTurnId::parse("turn-missing").unwrap();
+    assert!(!probe(&connection, &session, &missing));
 }

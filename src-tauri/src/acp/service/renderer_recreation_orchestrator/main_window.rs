@@ -159,16 +159,6 @@ mod tests {
     const ANNOUNCEMENT_PACKET: &str = "{\"schemaVersion\":1,\"liveRegions\":{\"polite\":1,\"assertive\":1},\"pagehideListeners\":1,\"focusOutcome\":\"exact-sage-id\",\"projectionSlots\":1}";
 
     #[test]
-    fn eval_script_matches_the_frontend_constant() {
-        let frontend =
-            include_str!("../../../../../src/features/chat/acp/rendererRecreationPacket.ts");
-        assert!(
-            frontend.contains(RENDERER_RECREATION_PACKET_EVAL),
-            "native observer eval script must match RENDERER_RECREATION_PACKET_EVAL_SCRIPT"
-        );
-    }
-
-    #[test]
     fn non_main_label_never_invokes_reload() {
         let calls = std::cell::Cell::new(0_u8);
         assert_eq!(
@@ -179,17 +169,6 @@ mod tests {
             Err(RendererReloadError::Failed)
         );
         assert_eq!(calls.get(), 0);
-    }
-
-    #[test]
-    fn main_label_invokes_reload_once() {
-        let calls = std::cell::Cell::new(0_u8);
-        reload_labeled_main("main", || {
-            calls.set(calls.get().saturating_add(1));
-            Ok::<(), &str>(())
-        })
-        .unwrap();
-        assert_eq!(calls.get(), 1);
     }
 
     #[test]

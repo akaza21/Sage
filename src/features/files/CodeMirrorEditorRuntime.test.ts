@@ -1,11 +1,5 @@
 import { undo } from "@codemirror/commands";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import {
-  defaultHighlightStyle,
-  syntaxTree,
-  type TagStyle,
-} from "@codemirror/language";
+import { syntaxTree, type TagStyle } from "@codemirror/language";
 import { EditorState, Text, type Extension } from "@codemirror/state";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -547,254 +541,89 @@ describe("CodeMirrorEditorRuntime controlled identity", () => {
   });
 });
 
-describe("documentSyntaxHighlightStyle token wiring", () => {
-  const syntaxTokens = [
-    "--doc-syntax-meta",
-    "--doc-syntax-keyword",
-    "--doc-syntax-atom",
-    "--doc-syntax-literal",
-    "--doc-syntax-string",
-    "--doc-syntax-regexp",
-    "--doc-syntax-variable-definition",
-    "--doc-syntax-variable-local",
-    "--doc-syntax-type",
-    "--doc-syntax-class",
-    "--doc-syntax-variable-special",
-    "--doc-syntax-property-definition",
-    "--doc-syntax-comment",
-    "--doc-syntax-invalid",
-  ];
-
-  function tokenDrivenColors(): string[] {
-    const found: string[] = [];
-    for (const sheet of Array.from(document.styleSheets)) {
-      let rules: CSSRuleList | undefined;
-      try {
-        rules = sheet.cssRules;
-      } catch {
-        continue;
-      }
-      for (const rule of Array.from(rules)) {
-        if (!(rule instanceof CSSStyleRule)) {
-          continue;
-        }
-        const color = rule.style.getPropertyValue("color");
-        if (color.includes("var(--doc-syntax-")) {
-          found.push(color);
-        }
-      }
-    }
-    return found;
-  }
-
-  const expectedSpecFingerprint = [
-    "meta::1000159661",
-    "link::2608474521",
-    "heading::543165884",
-    "emphasis::1849161160",
-    "strong::1092292736",
-    "strikethrough::2460384273",
-    "keyword::4094803337",
-    "atom|bool|url|contentSeparator|labelName::3049790944",
-    "literal|inserted::3643890061",
-    "string|deleted::1766536593",
-    "regexp|escape|special(string)::717015775",
-    "definition(variableName)::682143542",
-    "local(variableName)::1717408810",
-    "typeName|namespace::3885285675",
-    "className::3593557204",
-    "special(variableName)|macroName::886169641",
-    "definition(propertyName)::766031637",
-    "comment::3104485131",
-    "invalid::290080614",
-  ];
-
-  function stableStringFingerprint(value: string): number {
-    let fingerprint = 0x811c9dc5;
-    for (let index = 0; index < value.length; index += 1) {
-      fingerprint ^= value.charCodeAt(index);
-      fingerprint = Math.imul(fingerprint, 0x01000193);
-    }
-    return fingerprint >>> 0;
-  }
-
-  function specDescriptor(spec: TagStyle): string {
-    const tagIdentity = (Array.isArray(spec.tag) ? spec.tag : [spec.tag])
-      .map((tag) => String(tag))
-      .join("|");
-    const treatments = Object.entries(spec)
-      .filter(([key]) => key !== "tag")
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, value]) => `${key}=${String(value)}`)
-      .join(",");
-    return `${tagIdentity}::${stableStringFingerprint(treatments)}`;
-  }
-
-  function assertDefaultSpecFingerprint(specs: readonly TagStyle[]): void {
-    expect(specs.map(specDescriptor)).toEqual(expectedSpecFingerprint);
-  }
-
-  const expectedTokenTable = [
-    "var(--doc-syntax-meta)",
-    "null",
-    "null",
-    "null",
-    "null",
-    "null",
-    "var(--doc-syntax-keyword)",
-    "var(--doc-syntax-atom)",
-    "var(--doc-syntax-literal)",
-    "var(--doc-syntax-string)",
-    "var(--doc-syntax-regexp)",
-    "var(--doc-syntax-variable-definition)",
-    "var(--doc-syntax-variable-local)",
-    "var(--doc-syntax-type)",
-    "var(--doc-syntax-class)",
-    "var(--doc-syntax-variable-special)",
-    "var(--doc-syntax-property-definition)",
-    "var(--doc-syntax-comment)",
-    "var(--doc-syntax-invalid)",
-  ];
-
-  function tokenTableEntries(source: string): string[] {
-    const table = source.match(
-      /const DOCUMENT_SYNTAX_TOKENS_BY_SPEC_INDEX: readonly \(string \| null\)\[\] = \[([^\]]*)\];/,
-    );
-    expect(table).not.toBeNull();
-    return (table?.[1] ?? "")
-      .split(",")
-      .map((entry) => entry.trim().replace(/^"|"$/g, ""))
-      .filter((entry) => entry.length > 0);
-  }
-
-  function assertTokenTableMatchesSpecs(source: string): void {
-    const entries = tokenTableEntries(source);
-    expect(entries).toHaveLength(expectedSpecFingerprint.length);
-    expect(entries).toEqual(expectedTokenTable);
-  }
-
-  function runtimeSource(): Promise<string> {
-    return readFile(
-      resolve("src/features/files/CodeMirrorEditorRuntime.ts"),
-      "utf8",
-    );
-  }
-
-  it("pins the runtime token table to the default spec count and order in CI", async () => {
-    assertTokenTableMatchesSpecs(await runtimeSource());
-    expect(expectedTokenTable).toHaveLength(defaultHighlightStyle.specs.length);
-  });
-
-  it("rejects an inserted runtime token table entry", async () => {
-    const inserted = (await runtimeSource()).replace(
-      '"var(--doc-syntax-meta)",',
-      '"var(--doc-syntax-meta)",\n  null,',
-    );
-    expect(() => assertTokenTableMatchesSpecs(inserted)).toThrow();
-  });
-
-  it("rejects a deleted runtime token table entry", async () => {
-    const deleted = (await runtimeSource()).replace(
-      '"var(--doc-syntax-keyword)",',
-      "",
-    );
-    expect(() => assertTokenTableMatchesSpecs(deleted)).toThrow();
-  });
-
-  it("rejects a reordered runtime token table entry", async () => {
-    const reordered = (await runtimeSource()).replace(
-      '"var(--doc-syntax-type)",\n  "var(--doc-syntax-class)",',
-      '"var(--doc-syntax-class)",\n  "var(--doc-syntax-type)",',
-    );
-    expect(reordered).not.toEqual(await runtimeSource());
-    expect(() => assertTokenTableMatchesSpecs(reordered)).toThrow();
-  });
-
-  it("mounts token-driven syntax declarations for every syntax token", () => {
+describe("document selection colours", () => {
+  it("mounts the selection colors from the document tokens", () => {
     const { runtime } = runtimeForPath("notes.txt");
-    const colors = tokenDrivenColors();
-    for (const token of syntaxTokens) {
-      expect(colors.join("\n")).toContain(`var(${token})`);
-    }
+    const selection = Array.from(document.styleSheets)
+      .flatMap((sheet) => Array.from(sheet.cssRules))
+      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+      .filter((rule) => rule.selectorText.includes(".cm-selectionBackground"))
+      .map((rule) => [
+        rule.style.getPropertyValue("background"),
+        rule.style.getPropertyValue("color"),
+      ]);
+    expect(selection).toContainEqual([
+      "var(--resource-document-selection)",
+      "var(--resource-document-selection-foreground)",
+    ]);
     runtime.destroy();
   });
+});
 
-  it("mounts no raw default palette colors", () => {
-    const { runtime } = runtimeForPath("notes.txt");
-    const colors = tokenDrivenColors();
-    expect(colors.length).toBeGreaterThan(0);
-    for (const color of colors) {
-      expect(color).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-    }
-    runtime.destroy();
-  });
-
-  it("pins the installed default spec count, order, and treatments in CI", () => {
-    assertDefaultSpecFingerprint(defaultHighlightStyle.specs);
-  });
-
-  it("keeps the editor module importable when the test-owned spec guard sees drift", async () => {
+// The effective colours and treatments of highlighted syntax are asserted
+// in a real browser by tests/ui/editor-syntax.visual.ts.
+describe("documentSyntaxHighlightStyle after a dependency drift", () => {
+  it("keeps the editor usable and token-coloured when the default specs change", async () => {
     vi.resetModules();
     vi.doMock("@codemirror/language", async (importOriginal) => {
       const actual = (await importOriginal()) as Record<string, unknown> & {
-        defaultHighlightStyle: typeof defaultHighlightStyle;
+        defaultHighlightStyle: { specs: readonly TagStyle[] };
       };
+      const keyword = actual.defaultHighlightStyle.specs.find(
+        (spec) => String(spec.tag) === "keyword",
+      )!.tag;
       return {
         ...actual,
+        // A new release that reorders and shrinks the default table, with
+        // its own raw palette colour.
         defaultHighlightStyle: {
-          specs: [
-            {
-              tag: actual.defaultHighlightStyle.specs[0].tag,
-              color: "currentColor",
-            },
-          ],
+          specs: [{ tag: keyword, color: "#123456" }],
         },
       };
     });
     try {
-      await expect(import("./CodeMirrorEditorRuntime")).resolves.toBeDefined();
+      const { createCodeMirrorEditorRuntime: createDrifted } =
+        await import("./CodeMirrorEditorRuntime");
+      const parent = document.createElement("div");
+      document.body.append(parent);
+      const onChange = vi.fn();
+      const runtime = createDrifted({
+        parent,
+        ariaLabel: "Edit main.ts",
+        path: "main.ts",
+        content: "const value = 1;\n",
+        disabled: false,
+        maxContentLength: 1024,
+        onChange,
+      });
+      const content = parent.querySelector<HTMLElement>(".cm-content")!;
+      expect(content.textContent).toBe("const value = 1;");
+
+      const keyword = await vi.waitFor(() => {
+        const span = [...content.querySelectorAll("span[class]")].find(
+          (node) => node.textContent === "const",
+        );
+        expect(span).toBeDefined();
+        return span!;
+      });
+      expect(getComputedStyle(keyword).color).toMatch(/^var\(--doc-syntax-/);
+
+      // The view class of the same fresh module graph as the editor.
+      const { EditorView: DriftedView } = await import("@codemirror/view");
+      DriftedView.findFromDOM(content)!.dispatch({
+        changes: { from: 0, to: 5, insert: "let" },
+      });
+      expect(content.textContent).toBe("let value = 1;");
+      expect(String(onChange.mock.lastCall?.[0])).toBe("let value = 1;\n");
+      runtime.destroy();
     } finally {
       vi.doUnmock("@codemirror/language");
       vi.resetModules();
     }
   });
-
-  it("rejects a same-count reorder of specs with matching style shapes", () => {
-    const reordered = [...defaultHighlightStyle.specs];
-    [reordered[11], reordered[12]] = [reordered[12], reordered[11]];
-    expect(() => assertDefaultSpecFingerprint(reordered)).toThrow();
-  });
-
-  it("rejects drift in a non-color style value", () => {
-    expect(() =>
-      assertDefaultSpecFingerprint(
-        defaultHighlightStyle.specs.map((spec, index) =>
-          index === 1 ? { ...spec, textDecoration: "overline" } : spec,
-        ),
-      ),
-    ).toThrow();
-  });
-
-  it("rejects a changed default spec count", () => {
-    expect(() =>
-      assertDefaultSpecFingerprint([
-        { tag: defaultHighlightStyle.specs[0].tag, color: "currentColor" },
-      ]),
-    ).toThrow();
-  });
-
-  it("rejects drift in a default palette value", () => {
-    expect(() =>
-      assertDefaultSpecFingerprint(
-        defaultHighlightStyle.specs.map((spec, index) =>
-          index === 6 ? { ...spec, color: "currentColor" } : spec,
-        ),
-      ),
-    ).toThrow();
-  });
 });
 
-describe("CodeMirrorEditorRuntime focus across a save", () => {
+describe("CodeMirrorEditorRuntime read-only editor", () => {
   const props = (disabled: boolean) => ({
     ariaLabel: "Edit notes.md",
     path: "notes.md",
@@ -804,46 +633,121 @@ describe("CodeMirrorEditorRuntime focus across a save", () => {
     onChange: vi.fn(),
   });
 
-  it("gives focus back when a save that disabled the focused editor ends", () => {
-    const { runtime, view } = runtimeForPath("notes.md", undefined, "hello");
-    view.focus();
+  function mountReadOnly() {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const onChange = vi.fn();
+    const runtime = createCodeMirrorEditorRuntime({
+      parent,
+      ...props(true),
+      onChange,
+    });
+    const view = EditorView.findFromDOM(
+      parent.querySelector<HTMLElement>(".cm-content")!,
+    )!;
+    return { onChange, runtime, view };
+  }
+
+  /** jsdom has no DataTransfer; CodeMirror reads and writes plain text only. */
+  function transfer(text = "") {
+    const data = new Map<string, string>(text ? [["text/plain", text]] : []);
+    return {
+      files: [],
+      types: [...data.keys()],
+      clearData: () => data.clear(),
+      getData: (type: string) => data.get(type) ?? "",
+      setData: (type: string, value: string) => void data.set(type, value),
+    };
+  }
+
+  const press = (view: EditorView, key: string, init: KeyboardEventInit = {}) =>
+    runScopeHandlers(
+      view,
+      new KeyboardEvent("keydown", { key, ...init }),
+      "editor",
+    );
+
+  it("stays focusable and announces itself read-only", () => {
+    const { runtime, view } = mountReadOnly();
+    expect(view.contentDOM).toHaveAttribute("contenteditable", "true");
+    expect(view.contentDOM).toHaveAttribute("aria-readonly", "true");
+    view.contentDOM.focus();
     expect(view.hasFocus).toBe(true);
-    runtime.update(props(true));
-    // The browser drops focus from content that stops being editable.
-    view.contentDOM.blur();
-    expect(view.hasFocus).toBe(false);
-    runtime.update(props(false));
-    expect(view.hasFocus).toBe(true);
+    runtime.destroy();
   });
 
-  it("leaves focus alone when the user moved it or the editor was not focused", () => {
-    const { runtime, view } = runtimeForPath("notes.md", undefined, "hello");
-    const elsewhere = document.createElement("button");
-    document.body.append(elsewhere);
+  it("moves the caret and selects without changing the document", () => {
+    const { onChange, runtime, view } = mountReadOnly();
     view.focus();
-    runtime.update(props(true));
-    elsewhere.focus();
-    runtime.update(props(false));
-    expect(document.activeElement).toBe(elsewhere);
+    press(view, "ArrowRight");
+    press(view, "ArrowRight");
+    expect(view.state.selection.main.head).toBe(2);
+    press(view, "ArrowRight", { shiftKey: true });
+    expect(runtime.selection()).toEqual({ start: 2, end: 3 });
+    expect(view.state.sliceDoc(2, 3)).toBe("l");
 
-    elsewhere.blur();
-    runtime.update(props(true));
-    runtime.update(props(false));
-    expect(view.hasFocus).toBe(false);
-    elsewhere.remove();
+    press(view, "Backspace");
+    press(view, "Delete");
+    press(view, "Enter");
+    expect(view.state.doc.toString()).toBe("hello");
+    expect(onChange).not.toHaveBeenCalled();
+    runtime.destroy();
   });
 
-  it("leaves focus on the page after a click elsewhere that does not take it", () => {
+  it("refuses typing, paste, cut, drop and undo", () => {
+    const { onChange, runtime, view } = mountReadOnly();
+    view.focus();
+    runtime.setSelection(0, 5);
+
+    view.contentDOM.dispatchEvent(
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        data: "x",
+        inputType: "insertText",
+      }),
+    );
+    view.contentDOM.querySelector(".cm-line")!.append("x");
+    (view as unknown as { observer: { flush: () => void } }).observer.flush();
+
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.assign(paste, { clipboardData: transfer("pasted") });
+    view.contentDOM.dispatchEvent(paste);
+    const cut = new Event("cut", { bubbles: true, cancelable: true });
+    Object.assign(cut, { clipboardData: transfer() });
+    view.contentDOM.dispatchEvent(cut);
+    const drop = new Event("drop", { bubbles: true, cancelable: true });
+    Object.assign(drop, { dataTransfer: transfer("dropped") });
+    view.contentDOM.dispatchEvent(drop);
+    expect(undo(view)).toBe(false);
+
+    expect(view.state.doc.toString()).toBe("hello");
+    expect(onChange).not.toHaveBeenCalled();
+    runtime.destroy();
+  });
+
+  it("copies the selection", () => {
+    const { runtime, view } = mountReadOnly();
+    view.focus();
+    runtime.setSelection(1, 4);
+    const data = transfer();
+    const copy = new Event("copy", { bubbles: true, cancelable: true });
+    Object.assign(copy, { clipboardData: data });
+    view.contentDOM.dispatchEvent(copy);
+    expect(data.getData("text/plain")).toBe("ell");
+    runtime.destroy();
+  });
+
+  it("keeps focus while a save briefly locks the editor", () => {
     const { runtime, view } = runtimeForPath("notes.md", undefined, "hello");
-    const elsewhere = document.createElement("button");
-    document.body.append(elsewhere);
     view.focus();
     runtime.update(props(true));
-    view.contentDOM.blur();
-    // WKWebView leaves focus on the page when a button is clicked.
-    elsewhere.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    // Content that stayed editable does not lose the browser's focus.
+    expect(view.contentDOM).toHaveAttribute("contenteditable", "true");
+    expect(view.hasFocus).toBe(true);
     runtime.update(props(false));
-    expect(view.hasFocus).toBe(false);
-    elsewhere.remove();
+    expect(view.contentDOM).toHaveAttribute("aria-readonly", "false");
+    expect(view.hasFocus).toBe(true);
+    runtime.destroy();
   });
 });

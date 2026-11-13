@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
   settleTranscriptAtEnd,
@@ -35,6 +36,8 @@ test("CP-43: Branch in new chat forks above the parent and links back", async ({
   await expect(menu.getByRole("menuitem")).toHaveCount(1);
   const item = menu.getByRole("menuitem", { name: "Branch in new chat" });
   await expect(item).toBeVisible();
+  await waitForAnimations(page.locator(".chat-transcript-actions").last());
+  await waitForAnimations(menu);
   const menuBox = (await menu.boundingBox())!;
   const triggerBox = (await more.boundingBox())!;
   expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(triggerBox.y);
@@ -51,7 +54,9 @@ test("CP-43: Branch in new chat forks above the parent and links back", async ({
   expect(
     Math.abs(box.y + box.height / 2 - viewport.height / 2),
   ).toBeLessThanOrEqual(4);
-  const options = dialog.getByRole("menuitem");
+  const options = dialog
+    .getByRole("group", { name: "Fork chat from here" })
+    .getByRole("button");
   await expect(options).toHaveCount(1);
   await expect(options.first()).toContainText("Fork in this workspace");
   await expect(options.first()).toContainText(

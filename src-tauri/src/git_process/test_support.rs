@@ -157,6 +157,12 @@ impl GitProcessPolicy {
         )
     }
 
+    /// Records Git's trace2 events, from this call and every Git it starts.
+    pub(crate) fn with_trace2_event(mut self, target: std::path::PathBuf) -> Self {
+        self.trace2_event = Some(target);
+        self
+    }
+
     pub(crate) fn nonconvergent_reap(command_timeout: Duration) -> Self {
         Self {
             reap_timeout: None,
@@ -178,7 +184,9 @@ impl GitProcessPolicy {
             containment_registry: None,
             before_spawn_hook: None,
             after_process_hook: None,
+            spawned_hook: None,
             deadline_wait_gate: None,
+            trace2_event: None,
         }
     }
 
@@ -202,7 +210,9 @@ impl GitProcessPolicy {
             containment_registry: None,
             before_spawn_hook: None,
             after_process_hook: None,
+            spawned_hook: None,
             deadline_wait_gate: None,
+            trace2_event: None,
         }
     }
 
@@ -220,7 +230,9 @@ impl GitProcessPolicy {
             containment_registry: None,
             before_spawn_hook: None,
             after_process_hook: None,
+            spawned_hook: None,
             deadline_wait_gate: None,
+            trace2_event: None,
         }
     }
 
@@ -237,6 +249,13 @@ impl GitProcessPolicy {
         hook: impl Fn() + Send + Sync + 'static,
     ) -> Self {
         self.after_process_hook = Some(Arc::new(hook));
+        self
+    }
+
+    /// Receives the Git child's process id right after it spawns, so a test
+    /// can observe the child's lifecycle from outside the code under test.
+    pub(crate) fn with_spawned_hook(mut self, hook: impl Fn(u32) + Send + Sync + 'static) -> Self {
+        self.spawned_hook = Some(Arc::new(hook));
         self
     }
 
@@ -292,6 +311,15 @@ impl GitProcessTestHarness {
         }
     }
 
+    /// [`GitProcessPolicy::nonconvergent_reap`] charged to this harness, so a
+    /// test can observe when the background reaper confirms the exit.
+    pub(crate) fn nonconvergent_reap_policy(&self, command_timeout: Duration) -> GitProcessPolicy {
+        GitProcessPolicy {
+            containment_registry: Some(Arc::clone(&self.registry)),
+            ..GitProcessPolicy::nonconvergent_reap(command_timeout)
+        }
+    }
+
     pub(crate) fn observation(&self) -> GitContainmentTestObservation {
         let (unconfirmed_exits, quarantined_owners, active_reapers, available_reaper_permits) =
             self.registry.observation();
@@ -334,7 +362,9 @@ impl GitProcessTestHarness {
                 containment_registry: Some(Arc::clone(&self.registry)),
                 before_spawn_hook: None,
                 after_process_hook: None,
+                spawned_hook: None,
                 deadline_wait_gate: None,
+                trace2_event: None,
             },
             GitReaperTestHandle {
                 registry: Arc::clone(&self.registry),

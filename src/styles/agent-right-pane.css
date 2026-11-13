@@ -1,3 +1,8 @@
+.workbench--agent .agent-artifact-pane__header > .tab-strip {
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
 .agent-artifact-header {
   display: grid;
   gap: var(--space-1);
@@ -9,6 +14,8 @@
 .agent-artifact-header__provenance,
 .agent-artifact-header__view-only {
   width: max-content;
+  flex: none;
+  white-space: nowrap;
   padding: 2px 4px;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-pill);
@@ -28,12 +35,15 @@
   align-items: center;
 }
 
+/* A narrow pane wraps the controls below the name rather than cutting the
+   name down to a letter. */
 .agent-artifact-header__title-row {
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
 }
 
 .agent-artifact-header__identity {
-  min-width: 0;
+  min-width: min(100%, 9rem);
   flex: 1 1 auto;
   gap: 4px;
   color: var(--color-text-secondary);
@@ -168,19 +178,10 @@
   background: var(--color-text-muted);
 }
 
-.workbench--agent .agent-artifact-pane .tab[data-resource-kind="preview"] {
-  min-width: 112px;
-}
-
-/* Codex s4/f0244: the Subagents label starts beside its icon. */
 .agent-artifact-pane .tab[data-resource-kind="subagent"] .tab__activate {
   text-align: left;
 }
 
-/*
- * Codex s4/f0244: a person outline marks the Subagents tab. It is drawn here,
- * so the Agent chunk carries no icon for it: a head ring over a shoulder arc.
- */
 .tab__person {
   position: relative;
   width: 16px;
@@ -373,7 +374,9 @@
   color: var(--color-success);
 }
 
-@container agent-workbench (max-width: 760px) {
+/* The header's own width decides when its action labels fold to icons, so
+   a narrow pane beside a wide window keeps the file name readable. */
+@container agent-artifact-pane (max-width: 520px) {
   .agent-artifact-header__editor-label,
   .agent-artifact-header__copy > span {
     position: absolute;
@@ -390,11 +393,9 @@
   .agent-artifact-header__title-row {
     gap: var(--space-1);
   }
+}
 
-  .workbench--agent .agent-artifact-pane .tab[data-resource-kind="preview"] {
-    min-width: 104px;
-  }
-
+@container agent-workbench (max-width: 760px) {
   .harness-browser__connection-label {
     position: absolute;
     width: 1px;

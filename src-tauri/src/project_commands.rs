@@ -41,45 +41,6 @@ pub fn trace_close_stage(stage: CloseStage, status: CloseStageStatus) {
 const MAX_TRANSITION_EPOCH: u64 = 9_007_199_254_740_991;
 
 #[tauri::command]
-pub async fn create_project_from_picker(
-    app: AppHandle,
-    window: Window,
-    state: State<'_, AppState>,
-    browser: State<'_, BrowserState>,
-    expected_active_project_id: Option<String>,
-    expected_transition_epoch: u64,
-) -> Result<ProjectTransitionResult, String> {
-    let selected = pick_folder(&app, &window, "Open folder as project").await?;
-    let Some(root) = selected else {
-        return Ok(cancelled_transition(&state).await);
-    };
-    let database = state.database.clone();
-    let preflight_root = root.clone();
-    let operations = state.editor_operations.clone();
-    let ticket = operations
-        .issue_ticket()
-        .map_err(|error| error.to_string())?;
-    Ok(execute_committed_transition_checked(
-        &state,
-        expected_transition_epoch,
-        || {
-            browser
-                .validate_project_roots(std::slice::from_ref(&preflight_root))
-                .map_err(AppError::InvalidRequest)
-        },
-        move || {
-            operations.execute_project_transition(ticket, || {
-                database.create_project_from_root_if_active(
-                    &root,
-                    expected_active_project_id.as_deref(),
-                )
-            })
-        },
-    )
-    .await)
-}
-
-#[tauri::command]
 pub async fn add_project_root_from_picker(
     app: AppHandle,
     window: Window,
@@ -185,7 +146,11 @@ pub(crate) async fn persist_project_layout_inner(
     let database = state.database.clone();
     tauri::async_runtime::spawn_blocking(move || database.persist_project_layout(&request))
         .await
-        .map_err(|error| crate::error::AppError::InvalidRequest(error.to_string()))?
+        .map_err(|error| crate::error::AppError::InvalidRequest(error.to_string()))??;
+    // A layout without a chat tab ends that tab's staged attachments now,
+    // rather than at the next attachment command.
+    crate::acp::attached_context::files::release_detached(&state.acp.file_stages, &state.database);
+    Ok(())
 }
 
 #[tauri::command]
@@ -229,7 +194,7 @@ async fn execute_committed_transition<T: Send + 'static>(
         .await
 }
 
-async fn execute_committed_transition_checked<T: Send + 'static>(
+pub(crate) async fn execute_committed_transition_checked<T: Send + 'static>(
     state: &AppState,
     expected_transition_epoch: u64,
     preflight: impl FnOnce() -> AppResult<()>,
@@ -246,15 +211,15 @@ async fn execute_committed_transition_checked<T: Send + 'static>(
         return failed_transition(*transition_epoch, "project transition epoch exhausted");
     }
     if let Err(error) = preflight() {
-        return failed_transition(*transition_epoch, error);
+        return failed_transition(*transition_epoch, logged_public_message(&error));
     }
     let committed_epoch = *transition_epoch + 1;
     let mutation = tauri::async_runtime::spawn_blocking(operation)
         .await
-        .map_err(|error| crate::error::AppError::InvalidRequest(error.to_string()))
+        .map_err(|error| crate::error::AppError::TaskInterrupted(error.to_string()))
         .and_then(std::convert::identity);
     if let Err(error) = mutation {
-        return failed_transition(*transition_epoch, error);
+        return failed_transition(*transition_epoch, logged_public_message(&error));
     }
     *transition_epoch = committed_epoch;
     on_committed_project_transition_epoch(*transition_epoch);
@@ -302,7 +267,7 @@ async fn committed_projection(state: &AppState, transition_epoch: u64) -> Projec
     }
 }
 
-async fn cancelled_transition(state: &AppState) -> ProjectTransitionResult {
+pub(crate) async fn cancelled_transition(state: &AppState) -> ProjectTransitionResult {
     let transition_epoch = *state.project_transitions.lock().await;
     ProjectTransitionResult {
         committed: false,
@@ -310,6 +275,14 @@ async fn cancelled_transition(state: &AppState) -> ProjectTransitionResult {
         snapshot: None,
         recovery_error: None,
     }
+}
+
+/// The failure's public text; detail it leaves out goes to the log.
+fn logged_public_message(error: &crate::error::AppError) -> String {
+    if error.hides_detail() {
+        tracing::warn!(%error, "project transition failed");
+    }
+    error.public_message()
 }
 
 fn failed_transition(transition_epoch: u64, error: impl ToString) -> ProjectTransitionResult {
@@ -321,7 +294,7 @@ fn failed_transition(transition_epoch: u64, error: impl ToString) -> ProjectTran
     }
 }
 
-async fn pick_folder(
+pub(crate) async fn pick_folder(
     app: &AppHandle,
     window: &Window,
     title: &str,
@@ -337,15 +310,6 @@ async fn pick_folder(
     selection
         .map(|path| path.into_path().map_err(|error| error.to_string()))
         .transpose()
-}
-
-#[cfg(test)]
-fn apply_create_selection(database: &Database, selected: Option<PathBuf>) -> AppResult<bool> {
-    let Some(root) = selected else {
-        return Ok(false);
-    };
-    database.create_project_from_root(&root)?;
-    Ok(true)
 }
 
 #[cfg(test)]
@@ -376,7 +340,6 @@ mod tests {
     fn window_commands_accept_multi_webview_hosts() {
         let source = include_str!("project_commands.rs");
         for command in [
-            "create_project_from_picker",
             "add_project_root_from_picker",
             "persist_project_layout_and_close",
         ] {
@@ -397,7 +360,6 @@ mod tests {
     #[test]
     fn picker_cancellation_does_not_create_or_mutate_projects() {
         let database = Database::open(Path::new(":memory:")).unwrap();
-        assert!(!apply_create_selection(&database, None).unwrap());
         assert!(!apply_add_root_selection(&database, "unused", None).unwrap());
         assert_eq!(database.project_count().unwrap(), 0);
     }
@@ -614,6 +576,39 @@ mod tests {
             assert!(!result.committed);
             assert_eq!(result.transition_epoch, 0);
             assert!(result.recovery_error.unwrap().contains("overlaps"));
+            std::fs::remove_dir_all(root).unwrap();
+        });
+    }
+
+    #[test]
+    fn committed_project_transition_stops_the_previous_epoch_preview_but_a_failed_one_does_not() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let state = AppState::new(Database::open(Path::new(":memory:")).unwrap());
+            let root =
+                std::env::temp_dir().join(format!("sage-transition-preview-{}", Uuid::new_v4()));
+            std::fs::create_dir_all(&root).unwrap();
+            let preview = crate::app_preview_commands::ServingPreview::start(0);
+
+            let failed = execute_committed_transition(&state, 0, || -> AppResult<()> {
+                Err(AppError::InvalidRequest("injected mutation failure".into()))
+            })
+            .await;
+            assert!(!failed.committed);
+            assert!(
+                preview.is_serving(),
+                "a transition that did not commit must not stop the current Preview"
+            );
+
+            let database = state.database.clone();
+            let operation_root = root.clone();
+            let committed = execute_committed_transition(&state, 0, move || {
+                database.create_project_from_root(&operation_root)
+            })
+            .await;
+            assert!(committed.committed);
+            assert_eq!(committed.transition_epoch, 1);
+            assert!(!preview.is_serving());
             std::fs::remove_dir_all(root).unwrap();
         });
     }

@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
 import type {
-  AcpChatPage,
   AcpMutationResult,
   AcpSessionMutationIntent,
 } from "../../../domain/acp";
@@ -11,19 +10,7 @@ import { createClientIntentFactory } from "./clientIntent";
 import { currentContext } from "./useAcpChatActions";
 import type { AcpActionContext } from "./acpActionController";
 import { sameScope } from "./acpActionProjection";
-
-const GOAL_PROTOCOL = "codex-app-server-observed-0.146.0";
-
-export function canMutateGoal(page: AcpChatPage | null | undefined): boolean {
-  const session = page?.sessions.find(
-    (item) => item.id === page.currentSessionId,
-  );
-  return (
-    page?.goal?.kind === "goal" &&
-    !!session?.runtimeEpoch &&
-    session.capabilities.protocolVersion === GOAL_PROTOCOL
-  );
-}
+import { canMutateGoal } from "./goalMutability";
 
 type Action = "pause" | "clear";
 
@@ -40,7 +27,7 @@ export function createGoalMutationController(deps: {
     unknown = true;
     return {
       kind: "outcomeUnknown",
-      message: "Goal outcome unknown. Reload this Chat to verify.",
+      message: "Goal outcome unknown. Reload this chat to verify.",
     };
   };
   return async (action: Action): Promise<GoalMutationOutcome> => {

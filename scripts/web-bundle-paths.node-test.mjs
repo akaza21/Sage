@@ -29,6 +29,39 @@ async function fixture() {
   return { root, manifest, files };
 }
 
+test("every Editor path counts what each Editor view loads eagerly", async () => {
+  // Written out, not taken from the roots: the tab strip loads with every
+  // Editor view, and registeredSurfaces starts Explorer, which imports the
+  // glob matcher, as soon as the Editor registers its surfaces.
+  const eager = [
+    "src/workbench/TabStrip.tsx",
+    "src/features/files/ExplorerSurface.tsx",
+    "src/domain/pathGlobMatcher.ts",
+  ];
+  const registered = await readFile(
+    new URL("../src/workbench/registeredSurfaces.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(registered, /void loadExplorerSurface\(\)/);
+  const explorer = await readFile(
+    new URL("../src/features/files/ExplorerSurface.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(explorer, /import\("\.\.\/\.\.\/domain\/pathGlobMatcher"\)/);
+  for (const name of [
+    "editorShell",
+    "editorDiff",
+    "editorSearch",
+    "editorFile",
+  ]) {
+    for (const root of eager)
+      assert.ok(
+        WEB_BUNDLE_PATH_ROOTS[name].includes(root),
+        `${name} is missing ${root}`,
+      );
+  }
+});
+
 test("path closures include static transitive imports once, not dynamic details", async () => {
   const { root, manifest, files } = await fixture();
   try {
@@ -66,7 +99,9 @@ test("path closures include static transitive imports once, not dynamic details"
       expected.reduce((sum, file) => sum + gzipSync(files.get(file)).length, 0),
     );
     assert.equal(paths.initial.files.length, 1);
-    assert.equal(paths.editorFile.files.length, 5);
+    // index, Workbench, TabStrip, Explorer, its glob matcher, FileSurface,
+    // CodeMirror runtime, shared.
+    assert.equal(paths.editorFile.files.length, 8);
     assert.ok(!paths.agentOneChat.files.includes("assets/details.js"));
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -139,7 +174,8 @@ test("named workbench groups resolve folded facades without counting the shared 
     manifest["index.html"].dynamicImports = Object.keys(manifest).slice(1);
     const paths = measureWebBundlePaths(root, manifest);
     assert.equal(paths.agentOneChat.files.length, 4);
-    assert.equal(paths.editorShell.files.length, 2);
+    // index, the workbench group, TabStrip, Explorer and its glob matcher.
+    assert.equal(paths.editorShell.files.length, 5);
     manifest._ambiguous = { ...manifest[group], file: "assets/other.js" };
     assert.throws(
       () => measureWebBundlePaths(root, manifest),
@@ -183,7 +219,7 @@ test("folded chat presentation and editor runtime roots retain their static clos
     manifest["index.html"].dynamicImports = Object.keys(manifest).slice(1);
     const paths = measureWebBundlePaths(root, manifest);
     assert.equal(paths.agentOneChat.files.length, 5);
-    assert.equal(paths.editorFile.files.length, 4);
+    assert.equal(paths.editorFile.files.length, 7);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -287,32 +323,42 @@ test("manifest traversal accepts bounded deep graphs and rejects the next record
   }
 });
 
-test("committed path caps pin lane-base measurements with only a 0.5 percent margin", async () => {
-  const baseline = {
-    initial: 103957,
-    agentOneChat: 210654,
-    editorShell: 187184,
-    editorDiff: 190343,
-    editorSearch: 192978,
-    editorFile: 289551,
-  };
+test("committed path caps keep their headroom over hash-masked measurements", async () => {
+  // Caps were rebased from emitted to hash-masked bytes by subtracting each
+  // path's masking difference on main, so headroom is unchanged.
   const budgets = JSON.parse(
     await readFile(
       new URL("../docs/performance/budgets.json", import.meta.url),
       "utf8",
     ),
   );
-  assert.deepEqual(
-    budgets.bundle.webPathJsGzipBytes,
-    Object.fromEntries(
-      Object.entries(baseline).map(([name, bytes]) => [
-        name,
-        Math.floor(bytes * 1.005),
-      ]),
-    ),
+  assert.deepEqual(budgets.bundle.webPathJsGzipBytes, {
+    initial: 97452,
+    agentOneChat: 207088,
+    editorShell: 187377,
+    editorDiff: 190521,
+    editorSearch: 193112,
+    editorFile: 289989,
+  });
+  assert.equal(
+    budgets.measurement.webBundlePaths.integrationAdjustment,
+    undefined,
   );
-  assert.equal(budgets.bundle.webTotalJsGzipBytes, 461000);
-  // Codex §7 Subagents (w8sub): measured 5,101 B + 10%.
-  assert.equal(budgets.bundle.webSubagentLazyJsGzipBytes, 5612);
-  assert.equal(budgets.bundle.webTerminalLazyJsGzipBytes, 89500);
+  const browserSurface = budgets.bundle.lazyFeatureChunks.find(
+    (feature) => feature.entry === "src/features/browser/BrowserSurface.tsx",
+  );
+  // The combined History/overflow host receives 150 B from core; the
+  // approved aggregate allowance stays fixed.
+  assert.equal(budgets.bundle.webTotalJsGzipBytes, 460850);
+  assert.equal(browserSurface.maxGzipBytes, 8785);
+  assert.equal(
+    budgets.bundle.webTotalJsGzipBytes + browserSurface.maxGzipBytes,
+    469635,
+  );
+  // Codex §7 Subagents (w8sub): measured 5,101 B + 10%, less the 32 B that
+  // hashed import names added to the emitted chunk.
+  assert.equal(budgets.bundle.webSubagentLazyJsGzipBytes, 5580);
+  // The terminal follows forced-colors palette changes (89,516 B measured
+  // with hashed import names normalized; 89,579 B as emitted before).
+  assert.equal(budgets.bundle.webTerminalLazyJsGzipBytes, 89516);
 });

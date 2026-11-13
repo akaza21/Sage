@@ -13,15 +13,25 @@ use crate::acp::{
 use super::{
     StoreError,
     facts::{append_fact_payload, next_projection_revision},
-    sessions::{ensure_one, ensure_session_capacity, increment_session_usage, update_chat},
+    session_head::{HeadSession, install_head_session},
+    sessions::{ensure_one, ensure_session_capacity, update_chat},
 };
 
 const FORK_CAPABILITY: &str = "nativeSessionFork";
 
-/// A session negotiated before its harness's fork method was characterised
-/// stored `nativeSessionFork: false`; the same harness now negotiates `true`.
-/// That single upgrade still resumes the session. Its stored snapshot stays
-/// immutable, so such a session keeps reporting no fork (fail closed).
+/// Capabilities a harness may gain once Sage learns to drive them, with
+/// whether a snapshot records them when false.
+const UPGRADES: [(&str, bool); 4] = [
+    (FORK_CAPABILITY, true),
+    ("activeTurnSteer", true),
+    ("nativeSessionCompact", false),
+    ("promptImages", false),
+];
+
+/// A session negotiated before Sage drove one of its harness's methods
+/// stored that capability as off; the same harness now negotiates it on.
+/// Such upgrades still resume the session. Its stored snapshot stays
+/// immutable, so the session keeps reporting them off (fail closed).
 pub(crate) fn resumable_capabilities(stored: &str, negotiated: &str) -> bool {
     if stored == negotiated {
         return true;
@@ -32,9 +42,15 @@ pub(crate) fn resumable_capabilities(stored: &str, negotiated: &str) -> bool {
     ) else {
         return false;
     };
-    stored.remove(FORK_CAPABILITY) == Some(Value::Bool(false))
-        && negotiated.remove(FORK_CAPABILITY) == Some(Value::Bool(true))
-        && stored == negotiated
+    UPGRADES.iter().all(|(key, recorded)| {
+        let (was, now) = (stored.remove(*key), negotiated.remove(*key));
+        let off = match was {
+            Some(Value::Bool(false)) => true,
+            None => !recorded,
+            _ => false,
+        };
+        was == now || (off && now == Some(Value::Bool(true)))
+    }) && stored == negotiated
 }
 
 /// The Turn a fork is taken through: the latest completed Turn of the Chat's
@@ -57,7 +73,9 @@ pub(crate) fn fork_source(
     chat_id: &SageChatId,
     turn_id: &SageTurnId,
 ) -> Result<ForkSource, StoreError> {
-    if chat_id.as_str().starts_with("side-") {
+    if crate::side_chat_storage::is_temporary(connection, chat_id.as_str())
+        .map_err(|_| StoreError::Corrupt("temporary Chat metadata"))?
+    {
         return Err(StoreError::Conflict {
             resource: "forkSource",
         });
@@ -110,14 +128,26 @@ pub(crate) fn fork_source(
     })
 }
 
+/// The fork is cut at the native thread's latest reply, so the Turn must be
+/// the session's latest visible one and no undone Turn may still wait in
+/// that thread for its rewind.
 fn require_latest_completed(
     connection: &Connection,
     session: &str,
     turn_id: &SageTurnId,
 ) -> Result<(), StoreError> {
+    if super::turn_undo::pending_thread_rewind(connection, session)?.is_some() {
+        return Err(StoreError::Conflict {
+            resource: "forkTurn",
+        });
+    }
     let latest: Option<(String, String)> = connection
         .query_row(
-            "SELECT id,state FROM turns WHERE session_id=?1 ORDER BY ordinal DESC LIMIT 1",
+            concat!(
+                "SELECT t.id,t.state FROM turns t WHERE t.session_id=?1 AND ",
+                super::turn_undo::visible_turn!("t.session_id", "t.id"),
+                " ORDER BY t.ordinal DESC LIMIT 1"
+            ),
             [session],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -176,38 +206,27 @@ pub(crate) fn install_fork(
     let project = source.project_id.as_str();
     let child = child_chat_id.as_str();
     let projection = next_projection_revision(transaction, project, child)?;
-    let session_id = SageAgentSessionId::new();
-    transaction.execute(
-        "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,
-           harness_version,model_id,external_session_id,capabilities_json,state,residency,
-           legacy,revision,projection_revision,created_at,updated_at,terminal_at)
-         VALUES(?1,?2,?3,0,?4,?5,?6,?7,?8,?9,'ready','cold',0,0,?10,?11,?11,NULL)",
-        params![
-            session_id.as_str(),
+    let session_id = install_head_session(
+        transaction,
+        HeadSession {
             project,
-            child,
-            binding_id,
-            binding_digest,
-            harness_version,
-            model_id,
-            external_session_id.as_str(),
-            capabilities,
-            projection.get() as i64,
-            now_millis
-        ],
+            chat: child,
+            ordinal: 0,
+            binding_id: &binding_id,
+            binding_digest: &binding_digest,
+            harness_version: harness_version.as_deref(),
+            model_id: model_id.as_deref(),
+            external_session_id: Some(external_session_id.as_str()),
+            resumes_session_id: None,
+            capabilities_json: &capabilities,
+            state: "ready",
+        },
+        projection,
+        now_millis,
     )?;
-    transaction.execute(
-        "INSERT INTO acp_session_usage(project_id,chat_id,session_id,turn_count,item_count,
-           item_bytes,fact_count,fact_bytes,payload_bytes,revision)
-         VALUES(?1,?2,?3,0,0,0,0,0,0,0)",
-        params![project, child, session_id.as_str()],
-    )?;
-    increment_session_usage(transaction, project)?;
-    transaction.execute(
-        "INSERT INTO chat_session_heads(project_id,chat_id,session_id,installed_revision,installed_at)
-         VALUES(?1,?2,?3,?4,?5)",
-        params![project, child, session_id.as_str(), projection.get() as i64, now_millis],
-    )?;
+    // The fork continues the parent's session, so it keeps the parent's
+    // confirmed config choices.
+    crate::acp::session_config::choices::copy(transaction, &source.session_id, &session_id)?;
     let payload = serde_json::json!({
         "kind": "sessionForked",
         "entityId": session_id.as_str(),
@@ -301,5 +320,31 @@ mod tests {
             r#"{"schemaVersion":1,"protocolVersion":"p","prompt":false,"nativeSessionFork":true}"#
         ));
         assert!(!resumable_capabilities(STORED, "not json"));
+    }
+
+    #[test]
+    fn steer_and_compact_upgrades_still_resume_but_never_a_downgrade() {
+        let stored = r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false,"activeTurnSteer":false}"#;
+        let upgraded = r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false,"nativeSessionCompact":true,"activeTurnSteer":true}"#;
+        assert!(resumable_capabilities(stored, upgraded));
+        assert!(!resumable_capabilities(upgraded, stored));
+        // A recorded flag cannot go missing.
+        assert!(!resumable_capabilities(
+            stored,
+            r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false}"#
+        ));
+        assert!(!resumable_capabilities(
+            stored,
+            r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false,"activeTurnSteer":"yes"}"#
+        ));
+    }
+
+    #[test]
+    fn a_session_from_before_prompt_images_still_resumes_with_them() {
+        let stored = r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":true}"#;
+        let upgraded =
+            r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":true,"promptImages":true}"#;
+        assert!(resumable_capabilities(stored, upgraded));
+        assert!(!resumable_capabilities(upgraded, stored));
     }
 }

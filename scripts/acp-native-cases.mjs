@@ -148,7 +148,7 @@ export function nativeCases() {
           harness === "codex"
             ? [
                 wait("codexInitialize"),
-                emit("codexInitializeResult0146"),
+                emit("codexInitializeResultObserved"),
                 wait("codexStart"),
                 emit(
                   ["effort-menu", "model-menu"].includes(state)

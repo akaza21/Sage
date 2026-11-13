@@ -19,6 +19,31 @@ use super::{
 };
 
 mod active;
+#[cfg(test)]
+pub(in crate::acp::runtime::process_driver) async fn active_step_for_test<A, R, T, Auth, C>(
+    state: WorkerState<A, R, T, C>,
+    context: &FirstTurnWorkerContext<Auth>,
+    deadline_millis: i64,
+) -> Result<WorkerState<A, R, T, C>, TreeExit>
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport,
+    Auth: ProjectIntentAuthority,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
+{
+    let FirstTurnWorkerState::Active(active) = state else {
+        panic!("active runner step");
+    };
+    let mut pending = None;
+    let mut deadline = Some(deadline_millis);
+    match active::step(active, context, &mut pending, &mut deadline).await {
+        Ok((RunnerAction::Continue(next), None)) => Ok(next),
+        Ok(_) => panic!("expected a nonterminal runner step"),
+        Err(exit) => Err(exit.reason),
+    }
+}
 
 pub(super) async fn drive<A, R, T, Auth, C>(
     mut state: WorkerState<A, R, T, C>,
@@ -38,8 +63,14 @@ where
     let mut pending_config: Option<PendingConfig> = None;
     let mut eof_deadline_millis = None;
     loop {
-        if let FirstTurnWorkerState::Reusable(parts) = &mut state {
-            parts.completed.hydrate_model_config(&mut parts.transport);
+        match &mut state {
+            FirstTurnWorkerState::Reusable(parts) => {
+                parts.completed.hydrate_model_config(&mut parts.transport);
+            }
+            FirstTurnWorkerState::Idle(parts) => {
+                parts.parts.write_discovered_commands(&mut parts.transport);
+            }
+            _ => {}
         }
         if let FirstTurnWorkerState::Active(active) = &mut state {
             active.settle_steer();
@@ -52,12 +83,14 @@ where
         } else {
             None
         };
-        settle_pending_config(
+        if settle_pending_config(
             &mut pending_config,
             state.config_pending(),
             state.native_rpc_pending(),
             native_reply,
-        );
+        ) {
+            state.abandon_usage_read();
+        }
         if let Err(error) = terminal::queue(&state, &host, &notified, &mut pending) {
             fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
             tracing::warn!(
@@ -329,18 +362,7 @@ where
             }
             RunnerAction::Shutdown(state, envelope) => {
                 fail_pending_config(&mut pending_config, HostError::Closed);
-                let reason = if state.has_durable_completed_cursor()
-                    || state.has_durable_cancelled_cursor()
-                {
-                    TreeExit::Cancelled
-                } else {
-                    TreeExit::ParentShutdown
-                };
-                return RunnerExit {
-                    state: *state,
-                    shutdown: Some(envelope),
-                    reason,
-                };
+                return super::requested_shutdown(*state, envelope);
             }
         }
     }

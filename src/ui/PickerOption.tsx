@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { Check } from "./leanIcons";
+import { PickerLogo } from "./PickerLogo";
 import type { SearchablePickerOption } from "./SearchablePicker";
 
 export const PickerOption = memo(function PickerOption({
@@ -9,7 +10,6 @@ export const PickerOption = memo(function PickerOption({
   id,
   onSelect,
   onActivate,
-  onOptionElement,
   onRender,
   selected,
   showSelectedCheck = false,
@@ -19,7 +19,6 @@ export const PickerOption = memo(function PickerOption({
   disabled?: boolean;
   id: string;
   onActivate?: (id: string) => void;
-  onOptionElement?: (id: string, element: HTMLButtonElement | null) => void;
   onRender?: (id: string) => void;
   onSelect: (id: string) => void;
   selected: boolean;
@@ -27,12 +26,9 @@ export const PickerOption = memo(function PickerOption({
 }) {
   onRender?.(candidate.id);
   const unavailable = disabled || Boolean(candidate.disabledReason);
-  const logo =
-    candidate.logo ??
-    (candidate.icon ? `/harness-${candidate.icon}.svg` : null);
-  return (
+  const logo = candidate.logo ?? candidate.icon;
+  const option = (
     <button
-      ref={(element) => onOptionElement?.(candidate.id, element)}
       id={id}
       type="button"
       role="option"
@@ -49,19 +45,17 @@ export const PickerOption = memo(function PickerOption({
       onMouseMove={() => !unavailable && onActivate?.(candidate.id)}
       onClick={() => !unavailable && onSelect(candidate.id)}
     >
-      {logo ? (
-        <img
-          src={logo}
-          alt=""
-          aria-hidden="true"
-          data-harness-icon={candidate.icon ?? "generic"}
-        />
-      ) : null}
+      {logo ? <PickerLogo logo={candidate.logo} icon={candidate.icon} /> : null}
       <span className="searchable-picker__option-copy">
         <span>{candidate.label}</span>
         {candidate.subtitle ? (
           <span className="searchable-picker__subtitle">
             {candidate.subtitle}
+          </span>
+        ) : null}
+        {candidate.disabledReason ? (
+          <span id={`${id}-reason`} className="searchable-picker__reason">
+            {candidate.disabledReason}
           </span>
         ) : null}
       </span>
@@ -72,11 +66,26 @@ export const PickerOption = memo(function PickerOption({
           aria-hidden="true"
         />
       ) : null}
-      {candidate.disabledReason ? (
-        <span id={`${id}-reason`} className="searchable-picker__reason">
-          {candidate.disabledReason}
-        </span>
-      ) : null}
     </button>
+  );
+  const action = candidate.action;
+  return action ? (
+    <div className="searchable-picker__option-row" role="none">
+      {option}
+      <button
+        type="button"
+        className="searchable-picker__option-action"
+        aria-label={action.accessibleLabel ?? action.label}
+        disabled={disabled}
+        onClick={(event) => {
+          event.stopPropagation();
+          action.onAction();
+        }}
+      >
+        {action.label}
+      </button>
+    </div>
+  ) : (
+    option
   );
 });

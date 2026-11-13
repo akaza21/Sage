@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -6,33 +7,35 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import { useQuickOpenStore } from "../features/quickOpen/quickOpenState";
 import { clearChatSearchFolderRequest } from "../features/chatSearch/chatSearchScope";
 import { LeftSidebar } from "./LeftSidebar";
 import { TitleBar } from "./TitleBar";
+import { preloadSearchablePicker } from "../ui/searchablePickerLoad";
 import { useSideChatState } from "./sideChatState";
+import { resetAgentChatHistory } from "./agentChatHistory";
+
+// The picker list loads when the window first idles.
+beforeAll(() => preloadSearchablePicker());
 
 const initialState = useWorkbenchStore.getState();
 
-it("draws the Sage leaf mark as an inline shape that inherits the neutral text colour", () => {
+it("keeps brand artwork and the wordmark out of the title bar", () => {
   const { container } = render(
     <TitleBar mode="agent" onModeChange={vi.fn()} />,
   );
-  const mark = container.querySelector("svg.title-bar__mark");
-  expect(mark).not.toBeNull();
-  expect(mark!.getAttribute("fill")).toBe("currentColor");
-  expect(mark!.getAttribute("aria-hidden")).toBe("true");
-  expect(mark!.querySelectorAll("path").length).toBe(2);
-  expect(mark!.outerHTML).not.toMatch(/#[0-9a-fA-F]{3,8}|rgb|green/);
-  expect(screen.getByText("Sage")).toBeTruthy();
-  expect(container.querySelector(".title-bar__logo")).toBeNull();
+  expect(
+    container.querySelector(".title-bar__mark, .title-bar__brand"),
+  ).toBeNull();
+  expect(screen.queryByText("Sage")).toBeNull();
 });
 
 afterEach(() => {
   cleanup();
+  resetAgentChatHistory();
   clearChatSearchFolderRequest();
   vi.restoreAllMocks();
   useWorkbenchStore.setState(initialState, true);
@@ -102,7 +105,7 @@ describe("TitleBar center chrome", () => {
       rerender(<TitleBar mode={mode} onModeChange={vi.fn()} />);
       const modes = screen.getByRole("radiogroup", { name: "Window mode" });
       expect(start()).toContainElement(modes);
-      expect(screen.getByText("Sage")).toBeTruthy();
+      expect(screen.queryByText("Sage")).toBeNull();
     }
 
     rerender(<TitleBar mode="agent" onModeChange={vi.fn()} />);
@@ -113,21 +116,20 @@ describe("TitleBar center chrome", () => {
     ).toBeEnabled();
   });
 
-  it("shows the focused session title in Agent and Quick Open's Search files in Editor", () => {
+  it("shows Back and Forward in Agent, Quick Open's Search files in Editor, and no chat title (Codex)", () => {
     seedChats();
     const { rerender } = render(
       <TitleBar mode="agent" onModeChange={vi.fn()} />,
     );
-
-    expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
+    const banner = screen.getByRole("banner");
+    // The chat header names the chat; the title bar does not repeat it.
+    expect(within(banner).queryByText("Review")).toBeNull();
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Forward" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Search files" })).toBeNull();
 
-    useWorkbenchStore.setState({ activeTabId: "file:app" });
-    rerender(<TitleBar mode="agent" onModeChange={vi.fn()} />);
-    expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
-
     rerender(<TitleBar mode="editor" onModeChange={vi.fn()} />);
-    expect(screen.queryByRole("heading", { name: "Review" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Search files" }));
     expect(useQuickOpenStore.getState().open).toBe(true);
     useQuickOpenStore.setState({ open: false });
@@ -138,7 +140,7 @@ describe("TitleBar center chrome", () => {
     ).toBeNull();
   });
 
-  it("keeps the parent's window title while its side chat has focus (Codex s2/f0244)", () => {
+  it("offers Back once another chat is shown, and a side chat counts as its parent", () => {
     seedChats();
     const { tabs } = useWorkbenchStore.getState();
     useWorkbenchStore.setState({
@@ -152,16 +154,27 @@ describe("TitleBar center chrome", () => {
           pinned: false,
           dirty: false,
         },
+        {
+          id: "chat:c",
+          kind: "chat",
+          title: "Chat: Other",
+          position: 3,
+          pinned: false,
+          dirty: false,
+        },
       ],
-      activeTabId: "side-1",
     });
     useSideChatState.setState({
       sides: [{ id: "side-1", projectId: "project-a", parentChatId: "chat:b" }],
     });
     try {
       render(<TitleBar mode="agent" onModeChange={vi.fn()} />);
-      expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
-      expect(screen.queryByRole("heading", { name: "Side chat" })).toBeNull();
+      const back = screen.getByRole("button", { name: "Back" });
+      act(() => useWorkbenchStore.setState({ activeTabId: "side-1" }));
+      expect(back).toBeDisabled();
+      act(() => useWorkbenchStore.setState({ activeTabId: "chat:c" }));
+      expect(back).toBeEnabled();
+      expect(back).toHaveAttribute("title", "Back (Alt+Left)");
     } finally {
       useSideChatState.setState({ sides: [] });
     }
@@ -180,12 +193,12 @@ describe("TitleBar center chrome", () => {
     });
     expect(titleSearch).toHaveTextContent("Ctrl+K");
     expect(titleSearch).toHaveAttribute("aria-keyshortcuts", "Control+K");
-    expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Search chats" })).toBeNull();
 
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
 
     expect(
-      await screen.findByRole("dialog", { name: "Search Chats" }),
+      await screen.findByRole("dialog", { name: "Search chats" }),
     ).toBeTruthy();
   });
 
@@ -218,7 +231,7 @@ describe("TitleBar center chrome", () => {
     });
     expect(titleSearch).toBeEnabled();
     fireEvent.click(titleSearch);
-    const dialog = screen.getByRole("dialog", { name: "Search Chats" });
+    const dialog = screen.getByRole("dialog", { name: "Search chats" });
     expect(screen.getByRole("button", { name: "Search in" })).toHaveTextContent(
       "Workspace",
     );
@@ -248,7 +261,7 @@ describe("TitleBar center chrome", () => {
     expect(screen.getByRole("button", { name: "New chat" })).toBeVisible();
     titleSearch.focus();
     fireEvent.click(titleSearch);
-    const dialog = screen.getByRole("dialog", { name: "Search Chats" });
+    const dialog = screen.getByRole("dialog", { name: "Search chats" });
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     fireEvent.click(within(dialog).getByRole("button", { name: "Search in" }));
     const folderInput = within(dialog).getByRole("combobox", {
@@ -259,7 +272,7 @@ describe("TitleBar center chrome", () => {
     expect(
       within(dialog).getByRole("button", { name: "Search in" }),
     ).toHaveTextContent("All folders");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(titleSearch).toHaveFocus());
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByRole("button", { name: "New chat" })).toBeVisible();
@@ -283,9 +296,9 @@ describe("TitleBar center chrome", () => {
         <LeftSidebar />
       </>,
     );
-    const dialog = screen.getByRole("dialog", { name: "Search Chats" });
+    const dialog = screen.getByRole("dialog", { name: "Search chats" });
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     await waitFor(() =>
       expect(
         within(screen.getByRole("banner")).getByRole("button", {
@@ -309,30 +322,12 @@ describe("TitleBar center chrome", () => {
         name: "Search chats",
       }),
     );
-    const dialog = screen.getByRole("dialog", { name: "Search Chats" });
+    const dialog = screen.getByRole("dialog", { name: "Search chats" });
     for (const width of [720, 1280, 480]) {
       rerender(view(width));
-      expect(screen.getAllByRole("dialog", { name: "Search Chats" })).toEqual([
+      expect(screen.getAllByRole("dialog", { name: "Search chats" })).toEqual([
         dialog,
       ]);
     }
-  });
-
-  it("hides an invalid session title instead of painting it", () => {
-    useWorkbenchStore.setState({
-      tabs: [
-        {
-          id: "chat:bad",
-          kind: "chat",
-          title: "Chat: bad\ntitle",
-          position: 0,
-          pinned: false,
-          dirty: false,
-        },
-      ],
-      activeTabId: "chat:bad",
-    });
-    render(<TitleBar mode="agent" onModeChange={vi.fn()} />);
-    expect(screen.queryByRole("heading")).toBeNull();
   });
 });

@@ -31,13 +31,14 @@ pub(crate) async fn search_project_chats_inner(
         ));
     }
     require_existing_project(&state.database, &request.project_id)?;
+    drop(transition_epoch);
     let database = state.database.clone();
     let response = tauri::async_runtime::spawn_blocking(move || {
         execute_project_chat_search(&database, &request)
     })
     .await
     .map_err(|_| AppError::InvalidRequest("Chat search worker stopped unexpectedly".into()))??;
-    if response.transition_epoch != *transition_epoch {
+    if response.transition_epoch != *state.project_transitions.lock().await {
         return Err(AppError::InvalidRequest(
             "project changed before Chat search completed".into(),
         ));

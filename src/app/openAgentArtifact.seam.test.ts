@@ -10,6 +10,8 @@ import {
   useAgentArtifactFollowStore,
 } from "./agentArtifactFollowStore";
 import { openAgentArtifact } from "./openAgentArtifact";
+import { useAgentChangesState } from "../workbench/agentChangesState";
+import { useSubagentPaneStore } from "./subagentPaneStore";
 import { useWorkbenchStore } from "./store";
 import type { AcpChatPage, ProjectGeneration } from "../domain/acp";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
@@ -82,6 +84,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  useAgentChangesState.getState().close();
+  useSubagentPaneStore.getState().clear();
   useAgentArtifactAdmissionStore.getState().clear();
   useAgentArtifactFollowStore.getState().clear();
   clearAcpProjectionRegistry();
@@ -89,6 +93,66 @@ afterEach(() => {
 });
 
 describe("openAgentArtifact", () => {
+  it("reveals successful transcript resources over Changes and an earlier Subagent", async () => {
+    useAgentChangesState.getState().show(ownerA, 1);
+    useSubagentPaneStore
+      .getState()
+      .show({ owner: ownerA, itemId: "child", agentKey: "child-a" }, true);
+    useAgentArtifactFollowStore
+      .getState()
+      .pin(ownerA, { kind: "tab", tabId: "other-file" });
+    useWorkbenchStore.setState({
+      openFile: vi.fn(async () => {
+        useWorkbenchStore.setState({
+          tabs: [fileTab()],
+          activeTabId: fileTab().id,
+        });
+      }),
+    });
+    expect(
+      await openAgentArtifact({ owner: ownerA, target: "file", resource }),
+    ).toBe(true);
+    expect(useAgentChangesState.getState().selected).toBe(false);
+    expect(useSubagentPaneStore.getState().selected).toBe(false);
+    expect(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        ownerA,
+      )?.selected,
+    ).toEqual({ kind: "tab", tabId: fileTab().id });
+  });
+  it("reveals a resource over its Chat's sessionless Changes tab", async () => {
+    useAgentChangesState
+      .getState()
+      .show(
+        { projectId: ownerA.projectId, chatId: ownerA.chatId, sessionId: null },
+        1,
+      );
+    useWorkbenchStore.setState({
+      openFile: vi.fn(async () => {
+        useWorkbenchStore.setState({
+          tabs: [fileTab()],
+          activeTabId: fileTab().id,
+        });
+      }),
+    });
+    expect(
+      await openAgentArtifact({ owner: ownerA, target: "file", resource }),
+    ).toBe(true);
+    expect(useAgentChangesState.getState().selected).toBe(false);
+  });
+
+  it("does not dismiss Changes for a rejected resource open", async () => {
+    useAgentChangesState.getState().show(ownerA, 1);
+    expect(
+      await openAgentArtifact({
+        owner: { ...ownerA, sessionId: "old-session" } as AgentArtifactOwner,
+        target: "file",
+        resource,
+      }),
+    ).toBe(false);
+    expect(useAgentChangesState.getState().selected).toBe(true);
+  });
   it("shares one Editor tab while keeping independent Chat admissions", async () => {
     const openFile = vi.fn(async () => {
       useWorkbenchStore.setState({

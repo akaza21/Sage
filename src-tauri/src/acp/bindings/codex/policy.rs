@@ -6,11 +6,7 @@ use super::manifest::{MetadataValidatedPacket, StatePolicy};
 
 pub(super) const SECURITY_POLICY_BYTES: usize = 16 * 1024;
 pub(super) const APPROVAL_POLICY_NEVER: &str = "never";
-pub(super) const APPROVAL_POLICY_ON_REQUEST: &str = "on-request";
 pub(super) const SANDBOX_READ_ONLY: &str = "read-only";
-pub(super) const SANDBOX_WORKSPACE_WRITE: &str = "workspace-write";
-pub(super) const SANDBOX_POLICY_READ_ONLY: &str = "readOnly";
-pub(super) const SANDBOX_POLICY_WORKSPACE_WRITE: &str = "workspaceWrite";
 pub(super) const SANDBOX_NETWORK_ACCESS: bool = false;
 pub(super) const CONFIG_SHA256: &str =
     "cda4ac431cf5f9c615c36513e2831d159bdfc0b3d106cb475012d1677748afd3";
@@ -24,22 +20,6 @@ pub(super) const STATE_CREDENTIAL_FILE_BYTES_MAX: u64 = 262_144;
 pub(super) const STATE_RELATIVE_PATH_BYTES_MAX: u64 = 16_384;
 pub(super) const STATE_NATIVE_PATH_BYTES_MAX: u64 = 32_768;
 pub(super) const TEMPORARY_RESIDUE_RETENTION_HOURS: u16 = 24;
-
-pub(super) fn turn_request_policy(
-    access_mode: crate::settings_store::SessionAccessMode,
-) -> (&'static str, &'static str) {
-    match access_mode {
-        crate::settings_store::SessionAccessMode::ReadOnly => {
-            (APPROVAL_POLICY_NEVER, SANDBOX_POLICY_READ_ONLY)
-        }
-        crate::settings_store::SessionAccessMode::Ask => {
-            (APPROVAL_POLICY_ON_REQUEST, SANDBOX_POLICY_WORKSPACE_WRITE)
-        }
-        crate::settings_store::SessionAccessMode::WorkspaceWrite => {
-            (APPROVAL_POLICY_NEVER, SANDBOX_POLICY_WORKSPACE_WRITE)
-        }
-    }
-}
 
 const ALLOWED_ENVIRONMENT_KEYS: [&str; 6] =
     ["CODEX_HOME", "PATH", "SystemRoot", "TEMP", "TMP", "WINDIR"];

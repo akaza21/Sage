@@ -47,6 +47,7 @@ struct SharedState {
     rebound_turns: Vec<SageTurnId>,
     ingest_error: Option<AdapterRuntimeError>,
     command_error: Option<AdapterRuntimeError>,
+    turn_unnamed: bool,
     commit_error: Option<PumpJournalError>,
     rejected_ingests: usize,
     ingest_outcomes: VecDeque<Result<(), AdapterRuntimeError>>,
@@ -65,6 +66,10 @@ struct FakeAdapter {
 impl HarnessAdapter for FakeAdapter {
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         None
+    }
+
+    fn defer_cancel(&mut self) -> bool {
+        self.shared.0.lock().expect("shared").turn_unnamed
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -86,9 +91,9 @@ impl HarnessAdapter for FakeAdapter {
                 .map_err(|_| AdapterRuntimeError::Frame)?;
             let token = match decision {
                 PermissionDecision::Ask => EgressToken::protocol_notification(),
-                PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => {
-                    EgressToken::permission_allow(external)
-                }
+                PermissionDecision::AllowOnce
+                | PermissionDecision::AllowAlways
+                | PermissionDecision::Answer(_) => EgressToken::permission_allow(external),
                 PermissionDecision::Deny => EgressToken::mandatory_deny(external, false),
             };
             return Ok(AdapterEgress::new(
@@ -946,6 +951,7 @@ fn permission_write_settles_the_durable_decision() {
             external_request_id: ExternalId::new("permissionRequest", "request-allow")
                 .expect("request"),
             payload: NormalizedPayload::PermissionRequest {
+                user_input: None,
                 category: crate::acp::intent::ToolCategory::Other,
                 summary: SafeText::new("summary", "permission").expect("summary"),
                 offered_option_kinds: None,
@@ -1008,6 +1014,7 @@ fn raw_external_permission_id_tears_down_without_writing_a_decision() {
             external_request_id: ExternalId::new("permissionRequest", "request-allow")
                 .expect("request"),
             payload: NormalizedPayload::PermissionRequest {
+                user_input: None,
                 category: crate::acp::intent::ToolCategory::Other,
                 summary: SafeText::new("summary", "permission").expect("summary"),
                 offered_option_kinds: None,
@@ -1640,6 +1647,7 @@ fn permission_resolution_after_process_exit_never_writes_to_dead_stdin() {
             external_request_id: ExternalId::new("permissionRequest", "request-allow")
                 .expect("request"),
             payload: NormalizedPayload::PermissionRequest {
+                user_input: None,
                 category: crate::acp::intent::ToolCategory::Other,
                 summary: SafeText::new("summary", "permission").expect("summary"),
                 offered_option_kinds: None,

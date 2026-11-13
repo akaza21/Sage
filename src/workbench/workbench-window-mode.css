@@ -59,14 +59,11 @@
       280px,
       40%
     );
+  position: relative;
 }
 
 .workbench--agent .center-region {
   grid-template-rows: minmax(0, 1fr);
-}
-
-.workbench--agent .workbench__body {
-  position: relative;
 }
 
 .agent-artifact-surface {
@@ -74,14 +71,14 @@
 }
 .workbench--agent .workbench__body .agent-artifact-pane--maximized {
   position: absolute;
-  z-index: 12;
+  z-index: var(--z-overlay);
   inset: 0;
-  width: 100%;
+  width: auto;
 }
 
 .workbench__body--artifact-overlay .agent-artifact-pane {
   position: absolute;
-  z-index: 12;
+  z-index: var(--z-overlay);
   top: 0;
   right: 0;
   bottom: 0;
@@ -91,7 +88,7 @@
 
 .agent-artifact-backdrop {
   position: absolute;
-  z-index: 11;
+  z-index: var(--z-overlay-backdrop);
   inset: 0;
   padding: 0;
   border: 0;
@@ -106,11 +103,14 @@
   clip-path: inset(50%);
 }
 
+/* The header row paints the chat card's surface once, so every cell (task
+   header, side tab, right-pane toggle) and the split gap above the pane
+   splitter read as one surface. */
 .agent-chat-center__header {
   display: flex;
   min-width: 0;
   min-height: 44px;
-  background: var(--color-panel);
+  background: var(--workbench-card-fill);
 }
 
 .agent-chat-center__header > .agent-task-header {
@@ -130,7 +130,6 @@
   grid-column: 1;
 }
 
-/* About 8 px from the divider, which sits mid-splitter (Codex s2/f0244). */
 .agent-chat-center__header--split > .agent-chat-center__side-tab {
   grid-column: 2;
   padding-inline-start: var(--space-1);
@@ -139,6 +138,7 @@
 .agent-chat-center__header--panes > .agent-artifact-header-slot {
   grid-column: -2;
   justify-self: end;
+  align-self: center;
   /* Clear of the side tab's bottom rule, which already spans the cell. */
   border-bottom: 0;
 }
@@ -175,69 +175,61 @@
   min-height: 28px;
   padding: 0;
   place-content: center;
+  align-self: center;
+  background: transparent;
   border: 0;
   border-radius: var(--radius-sm);
 }
 
-@container chat (max-width: 520px) {
-  /* The approval card holds the composer slot at the composer's width. */
-  .workbench--agent .acp-permission-prompt,
-  .workbench--agent .chat-follow-end,
-  .workbench--agent .message-list,
-  .workbench--agent .composer {
-    --chat-column-trailing: 0px;
-  }
-
-  .workbench--agent .message-list {
-    padding-inline-end: calc(
-      var(--chat-column-gutter) + var(--chat-column-trailing) -
-        var(--scrollbar-size)
-    );
-  }
-
-  .workbench--agent .acp-turn {
-    column-gap: 0;
-  }
-
-  .workbench--agent
-    .message-list__content:has(> .acp-chat-projection)
-    > .chat-transcript-actions,
-  .workbench--agent .message-list__content > .chat-fork-divider,
-  .workbench--agent .chat-fork-inherited > .chat-transcript-actions {
-    width: min(100%, var(--reading-measure));
-    margin-inline-start: max(0px, calc((100% - var(--reading-measure)) / 2));
-  }
-}
-
 .workbench-sidebar-splitter {
   position: relative;
-  z-index: 2;
+  z-index: var(--z-sticky);
   min-width: 8px;
   cursor: col-resize;
   touch-action: none;
   outline: none;
 }
 
+/* The rail reads role tokens per state; a mode sets the tokens. Hover and
+   drag keep the idle width unless a mode gives them their own. A pointer
+   drag keeps the rail hovered, so hover carries no extra specificity and
+   the drag state after it wins. */
 .workbench-sidebar-splitter::after {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 3px;
-  width: 2px;
+  width: var(--sidebar-splitter-width, 2px);
   border-radius: var(--radius-pill);
-  background: var(--color-border-subtle);
+  background: var(--sidebar-splitter-fill, var(--color-border-subtle));
   content: "";
 }
 
-.workbench-sidebar-splitter:hover::after,
+.workbench-sidebar-splitter:where(:hover)::after {
+  width: var(
+    --sidebar-splitter-state-width,
+    var(--sidebar-splitter-width, 2px)
+  );
+  background: var(--sidebar-splitter-hover-fill, var(--color-accent));
+  box-shadow: var(--sidebar-splitter-hover-shadow, none);
+}
+
 .workbench-sidebar-splitter--active::after {
-  background: var(--color-accent);
+  width: var(
+    --sidebar-splitter-state-width,
+    var(--sidebar-splitter-width, 2px)
+  );
+  background: var(--sidebar-splitter-active-fill, var(--color-accent));
+  box-shadow: var(--sidebar-splitter-active-shadow, none);
 }
 
 /* The Agent artifact edge keeps its generous pointer target without painting it. */
+.workbench-sidebar-splitter--trailing {
+  --sidebar-splitter-width: 1px;
+}
+
 .workbench-sidebar-splitter--trailing::after {
   left: calc(50% - 0.5px);
-  width: 1px;
 }
 
 .workbench-sidebar-splitter:focus-visible {
@@ -251,8 +243,8 @@
 }
 
 @media (forced-colors: active) {
-  .workbench-sidebar-splitter::after {
-    width: 2px;
+  .workbench-sidebar-splitter--trailing {
+    --sidebar-splitter-width: 2px;
   }
 
   .workbench-sidebar-splitter--trailing::after {
@@ -270,28 +262,26 @@
   }
 }
 
-@media (max-width: 760px) {
-  .workbench--editor .workbench__body {
-    grid-template-columns: var(--editor-activity-width) minmax(0, 1fr);
-  }
-}
-
 .agent-artifact-pane {
+  --agent-pane-header-height: 46px;
+  --agent-pane-control-width: var(--control-height-compact);
+  --agent-pane-summary-inset: 6px;
+  --color-diff-add: var(--agent-pane-additions);
+  --color-diff-delete: var(--agent-pane-deletions);
   display: grid;
   min-width: 0;
   min-height: 0;
   container-name: agent-artifact-pane;
   container-type: inline-size;
-  grid-template-rows: 44px minmax(0, 1fr);
-  background: var(--color-panel);
+  grid-template-rows: var(--agent-pane-header-height) minmax(0, 1fr);
 }
 
 .agent-artifact-pane--empty {
-  grid-template-rows: 44px minmax(0, 1fr);
+  grid-template-rows: var(--agent-pane-header-height) minmax(0, 1fr);
 }
 
 .agent-artifact-pane--with-header {
-  grid-template-rows: 44px auto minmax(0, 1fr);
+  grid-template-rows: var(--agent-pane-header-height) auto minmax(0, 1fr);
 }
 
 .agent-artifact-pane__header {
@@ -301,7 +291,6 @@
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
-/* Codex 67: "+" follows the last tab; the other controls stay at the end. */
 .agent-artifact-pane__header > .tab-strip {
   width: auto;
   min-width: 0;
@@ -327,8 +316,8 @@
 
 .agent-artifact-pane__collapse {
   display: grid;
-  width: 36px;
-  flex: 0 0 36px;
+  width: var(--agent-pane-control-width);
+  flex: 0 0 var(--agent-pane-control-width);
   place-items: center;
   padding: 0;
   border: 0;
@@ -420,6 +409,7 @@
 }
 
 .agent-artifact-pane .tab__basename {
+  text-align: left;
   min-width: 0;
   flex: 1 1 auto;
 }
@@ -527,7 +517,7 @@
 .subagent-surface header {
   margin-bottom: var(--space-3);
 }
-/* Codex child header: back, avatar, name, and the model at the far right. */
+
 .subagent-surface__bar {
   display: flex;
   align-items: center;
@@ -584,7 +574,7 @@
   display: block;
   color: var(--color-text-muted);
 }
-/* Codex child transcripts carry no author row (s4/f0485, spec section 7). */
+
 .subagent-surface__transcript .acp-message__meta {
   display: none;
 }

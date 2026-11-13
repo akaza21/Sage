@@ -1,11 +1,14 @@
 use serde_json::{Value, json};
 
 use super::*;
+mod mode_guard;
+mod session_info;
+mod slash_commands;
 use crate::acp::{
     bindings::adapter::{AdapterCommand, AdapterRuntimeError, EgressResolution, HarnessAdapter},
     contract::{RequiredText, SageRootId, SageServerRequestId},
     intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef, ToolCategory},
-    lifecycle::{ToolState, TurnState},
+    lifecycle::{ItemLifecycle, ToolState, TurnState},
     transport::FrameReader,
 };
 
@@ -45,6 +48,13 @@ pub(super) fn request_id(egress: &AdapterEgress) -> u64 {
 }
 
 pub(super) fn initialize(runtime: &mut ClaudeRuntime) {
+    initialize_with(
+        runtime,
+        json!({"loadSession":true,"sessionCapabilities":{"resume":{},"close":{}}}),
+    );
+}
+
+pub(super) fn initialize_with(runtime: &mut ClaudeRuntime, agent_capabilities: Value) {
     let egress = runtime
         .command(AdapterCommand::Initialize)
         .expect("initialize command");
@@ -58,10 +68,7 @@ pub(super) fn initialize(runtime: &mut ClaudeRuntime) {
             &frame(json!({
                 "jsonrpc":"2.0","id":id,"result":{
                     "protocolVersion":1,
-                    "agentCapabilities":{
-                        "loadSession":true,
-                        "sessionCapabilities":{"resume":{},"close":{}}
-                    },
+                    "agentCapabilities":agent_capabilities,
                     "models":[{"id":"claude-reviewed","name":"Claude reviewed"}]
                 }
             })),
@@ -78,6 +85,10 @@ pub(super) fn initialize(runtime: &mut ClaudeRuntime) {
 
 fn ready(runtime: &mut ClaudeRuntime) {
     initialize(runtime);
+    open_session(runtime);
+}
+
+pub(super) fn open_session(runtime: &mut ClaudeRuntime) {
     let egress = runtime
         .command(AdapterCommand::NewSession {
             native_root: r"C:\fixture\root".into(),
@@ -90,7 +101,12 @@ fn ready(runtime: &mut ClaudeRuntime) {
         .expect("written");
     let batch = runtime
         .ingest(
-            &frame(json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":"claude-session-1"}})),
+            // Claude reports its permission modes, starting in "default".
+            &frame(
+                json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":"claude-session-1",
+                "modes":{"currentModeId":"default","availableModes":[
+                    {"id":"default","name":"Default"},{"id":"plan","name":"Plan"}]}}}),
+            ),
             &Mapper,
         )
         .expect("session response");
@@ -105,7 +121,7 @@ fn prompt(runtime: &mut ClaudeRuntime) -> (u64, EgressToken) {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-message-1").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::settings_store::SessionAccessMode::Ask,
         })
         .expect("prompt command");
     let id = request_id(&egress);
@@ -294,8 +310,13 @@ fn a_real_claude_turn_correlates_before_its_items_and_snapshots_usage_off_the_it
             &Mapper,
         )
         .expect("prompt result carrying vendor _meta and usage");
+    // The completed prompt closes the answer ACP never ends, before the turn.
     let [
         SharedEvent::Usage { payload, .. },
+        SharedEvent::Item {
+            lifecycle: ItemLifecycle::Completed,
+            ..
+        },
         SharedEvent::Turn {
             state: TurnState::Completed,
             ..
@@ -381,7 +402,7 @@ fn prompt_zero_byte_rejection_rolls_back_and_delivery_unknown_is_not_replayed() 
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "must not replay").expect("prompt"),
                 client_message_id: RequiredText::new("client", "client-message-2").expect("client"),
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::settings_store::SessionAccessMode::Ask,
             })
             .is_err()
     );
@@ -1021,7 +1042,7 @@ fn a_signed_out_harness_refuses_the_prompt_instead_of_sending_it() {
         runtime.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-message-1").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::settings_store::SessionAccessMode::Ask,
         }),
         Err(AdapterRuntimeError::SignInRequired)
     ));
@@ -1072,7 +1093,7 @@ fn an_authentication_refusal_costs_one_turn_and_never_a_second() {
         runtime.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-message-2").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::settings_store::SessionAccessMode::Ask,
         }),
         Err(AdapterRuntimeError::SignInRequired)
     ));
@@ -1097,3 +1118,38 @@ mod browser_permission_regression_tests;
 
 #[path = "resume_regression_tests.rs"]
 mod resume_regression_tests;
+
+#[path = "image_prompt_tests.rs"]
+mod image_prompt_tests;
+
+#[test]
+fn prompt_files_are_refused_without_capability_and_encoded_when_advertised() {
+    use crate::acp::attached_context::files::{Resource, Resources};
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    let mut prompt = Prompt::new("prompt", "inspect").unwrap();
+    prompt.resources = Resources(std::sync::Arc::new(vec![Resource {
+        id: "resource-1".into(),
+        name: "one.txt".into(),
+        bytes: b"snapshot content".to_vec(),
+    }]));
+    let command = || AdapterCommand::Prompt {
+        prompt: prompt.clone(),
+        client_message_id: RequiredText::new("client", "file-prompt").unwrap(),
+        access_mode: crate::settings_store::SessionAccessMode::Ask,
+    };
+    assert!(matches!(
+        runtime.command(command()),
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    ));
+    assert!(runtime.active.as_ref().unwrap().turn.is_none());
+    runtime.capabilities.as_mut().unwrap().prompt_resources = true;
+    let egress = runtime.command(command()).unwrap();
+    let value: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    assert_eq!(value["method"], "session/prompt");
+    assert_eq!(value["params"]["prompt"][1]["type"], "resource");
+    assert_eq!(
+        value["params"]["prompt"][1]["resource"]["text"],
+        "snapshot content"
+    );
+}

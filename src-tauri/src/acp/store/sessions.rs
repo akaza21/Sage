@@ -3,7 +3,7 @@ use rusqlite::{OptionalExtension, Transaction, params};
 use crate::acp::{
     contract::{
         ClientIntentId, EntityRevision, ProjectionRevision, RuntimeEpoch, SafeText,
-        SageAgentSessionId, SageChatId, SageProjectId,
+        SageAgentSessionId, SageChatId, SageProjectId, admits_projection,
     },
     intent::{BindingId, ModelId},
     lifecycle::SessionState,
@@ -14,7 +14,10 @@ pub(super) const PENDING_CAPABILITIES_JSON: &str = r#"{"schemaVersion":1,"protoc
 
 use super::{
     MutationDisposition, StoreError,
-    facts::{append_fact_payload, check_add, entity_revision_from_i64, next_projection_revision},
+    facts::{
+        append_fact_payload, check_add, entity_revision_from_i64, next_projection_revision,
+        projection_from_i64,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -166,13 +169,25 @@ pub(crate) fn activate_session(
         }
     };
     let head:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM chat_session_heads WHERE project_id=?1 AND chat_id=?2 AND session_id=?3)",params![command.project_id.as_str(),command.chat_id.as_str(),command.session_id.as_str()],|row|row.get(0))?;
-    let open:i64=transaction.query_row("SELECT COUNT(*) FROM session_runtime_epochs WHERE state IN ('starting','running','terminating')",[],|row|row.get(0))?;
+    // Bounded concurrency: at most `operational_live_trees` live
+    // epochs exist at once, and never two for one session.
+    let (open, open_for_session): (i64, i64) = transaction.query_row(
+        "SELECT COUNT(*), COALESCE(SUM(session_id=?1),0) FROM session_runtime_epochs
+         WHERE state IN ('starting','running','terminating')",
+        [command.session_id.as_str()],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let capacity_available = open_for_session == 0
+        && open < crate::acp::limits::LIMITS.process.operational_live_trees as i64;
     let maximum: i64 = transaction.query_row(
         "SELECT COALESCE(MAX(runtime_epoch),0) FROM session_runtime_epochs WHERE session_id=?1",
         [command.session_id.as_str()],
         |row| row.get(0),
     )?;
-    if !head || open != 0 || maximum.checked_add(1) != Some(command.runtime_epoch.get() as i64) {
+    if !head
+        || !capacity_available
+        || maximum.checked_add(1) != Some(command.runtime_epoch.get() as i64)
+    {
         return Err(StoreError::Conflict {
             resource: "runtimeEpoch",
         });
@@ -229,21 +244,28 @@ fn validate_start(command: &StartSessionCommand) -> Result<(), StoreError> {
     Ok(())
 }
 
+/// Admits an intent built on the `expected` view of the chat. The view stays
+/// current across session-neutral changes (notices, titles, activity rows)
+/// but not across the latest send-relevant one, and may not be ahead.
 pub(super) fn validate_chat_revision(
     transaction: &Transaction<'_>,
     project: &SageProjectId,
     chat: &SageChatId,
     expected: ProjectionRevision,
 ) -> Result<(), StoreError> {
-    let current: i64 = transaction
+    let (intent, current): (i64, i64) = transaction
         .query_row(
-            "SELECT projection_revision FROM chats WHERE project_id=?1 AND id=?2",
+            "SELECT intent_revision,projection_revision FROM chats WHERE project_id=?1 AND id=?2",
             params![project.as_str(), chat.as_str()],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?
         .ok_or(StoreError::Conflict { resource: "chat" })?;
-    if current != expected.get() as i64 {
+    if !admits_projection(
+        projection_from_i64(intent)?,
+        projection_from_i64(current)?,
+        expected,
+    ) {
         return Err(StoreError::Conflict {
             resource: "projectionRevision",
         });

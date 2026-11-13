@@ -1,0 +1,52 @@
+{
+  "id": 31,
+  "method": "mcpServer/elicitation/request",
+  "params": {
+    "threadId": "thread-1",
+    "turnId": "turn-1",
+    "serverName": "tickets",
+    "_meta": null,
+    "mode": "form",
+    "message": "Fill in the ticket before it is filed.",
+    "requestedSchema": {
+      "$schema": null,
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "title": "Title",
+          "description": "One line summary",
+          "minLength": 1,
+          "maxLength": 80,
+          "format": null,
+          "default": null
+        },
+        "priority": {
+          "type": "string",
+          "title": "Priority",
+          "description": null,
+          "default": null,
+          "oneOf": [
+            { "const": "p1", "title": "Urgent" },
+            { "const": "p2", "title": "Normal" }
+          ]
+        },
+        "notify": {
+          "type": "boolean",
+          "title": "Notify the team",
+          "description": null,
+          "default": false
+        },
+        "estimate": {
+          "type": "integer",
+          "title": "Estimate (hours)",
+          "description": null,
+          "minimum": 1,
+          "maximum": 40,
+          "default": null
+        }
+      },
+      "required": ["title", "priority"]
+    }
+  }
+}

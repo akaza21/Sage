@@ -1,14 +1,13 @@
-use std::io::Write;
-use std::sync::{Arc, Mutex};
-
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use serde_json::{Value, json};
-use tracing_subscriber::fmt::MakeWriter;
 
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     intent::{NormalizedPayload, Prompt, SafeResourceRef, UnavailableResourceReason},
-    lifecycle::ServerRequestState,
+    lifecycle::{ItemLifecycle, ServerRequestState},
 };
+
+use crate::test_diagnostics::capture_diagnostics;
 
 use super::incoming::{ItemUpdateMode, UNPROJECTED_DIAGNOSTIC};
 use super::state::CodexAdapter;
@@ -17,22 +16,19 @@ use super::{IncomingEvent, IngressDisposition, ResourceMapper, parse_packet_meta
 const PACKET_FIXTURE: &[u8] =
     include_bytes!("../../../../testdata/acp/codex/candidate-windows.json");
 
-const UNIMPLEMENTED_SERVER_REQUESTS: [&str; 7] = [
-    "item/tool/requestUserInput",
-    "mcpServer/elicitation/request",
+const UNIMPLEMENTED_SERVER_REQUESTS: [&str; 4] = [
     "account/chatgptAuthTokens/refresh",
     "attestation/generate",
-    "currentTime/read",
     "applyPatchApproval",
     "execCommandApproval",
 ];
 
 const UNPROJECTED_NOTIFICATIONS: [&str; 5] = [
     "fs/changed",
-    "hook/started",
+    "item/fileChange/outputDelta",
+    "item/fileChange/patchUpdated",
     "thread/realtime/started",
     "turn/diff/updated",
-    "warning",
 ];
 
 struct Mapper;
@@ -43,43 +39,7 @@ impl ResourceMapper for Mapper {
     }
 }
 
-#[derive(Clone)]
-struct Capture(Arc<Mutex<Vec<u8>>>);
-
-impl Write for Capture {
-    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buffer);
-        Ok(buffer.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a> MakeWriter<'a> for Capture {
-    type Writer = Self;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        self.clone()
-    }
-}
-
-pub(super) fn with_captured_diagnostics<T>(body: impl FnOnce() -> T) -> (T, String) {
-    let bytes = Arc::new(Mutex::new(Vec::new()));
-    let subscriber = tracing_subscriber::fmt()
-        .without_time()
-        .with_ansi(false)
-        .with_target(false)
-        .with_max_level(tracing::Level::TRACE)
-        .with_writer(Capture(Arc::clone(&bytes)))
-        .finish();
-    let value = tracing::subscriber::with_default(subscriber, body);
-    let captured = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
-    (value, captured)
-}
-
-fn adapter() -> CodexAdapter {
+pub(super) fn adapter() -> CodexAdapter {
     let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
     CodexAdapter::from_metadata_packet(
         &packet,
@@ -93,8 +53,8 @@ fn initialize_result(id: u64) -> Vec<u8> {
     serde_json::to_vec(&json!({
         "id": id,
         "result": {
-            "userAgent": "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-            "codexHome": "C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+            "userAgent": user_agent("sage", "unknown"),
+            "codexHome": MANAGED_CODEX_HOME,
             "platformFamily": "windows",
             "platformOs": "windows"
         }
@@ -102,7 +62,7 @@ fn initialize_result(id: u64) -> Vec<u8> {
     .unwrap()
 }
 
-fn ready(adapter: &mut CodexAdapter) {
+pub(super) fn ready(adapter: &mut CodexAdapter) {
     adapter.initialize(900).unwrap();
     adapter.ingest(&initialize_result(900), &Mapper).unwrap();
     adapter.initialized().unwrap();
@@ -117,7 +77,7 @@ fn ready(adapter: &mut CodexAdapter) {
         .unwrap();
 }
 
-fn running_turn(adapter: &mut CodexAdapter) {
+pub(super) fn running_turn(adapter: &mut CodexAdapter) {
     let prompt = Prompt::new("prompt", "inspect").unwrap();
     let client = RequiredText::new("client", "client-hard-failure").unwrap();
     adapter.prompt(2, &prompt, &client).unwrap();
@@ -129,7 +89,7 @@ fn running_turn(adapter: &mut CodexAdapter) {
         .unwrap();
 }
 
-fn ingest(adapter: &mut CodexAdapter, frame: &Value) -> IngressDisposition {
+pub(super) fn ingest(adapter: &mut CodexAdapter, frame: &Value) -> IngressDisposition {
     adapter
         .ingest(&serde_json::to_vec(frame).unwrap(), &Mapper)
         .unwrap()
@@ -166,7 +126,7 @@ fn unimplemented_server_requests_are_answered_rather_than_tearing_the_runtime_do
 fn an_unimplemented_server_request_leaves_the_session_able_to_run_a_turn() {
     let mut adapter = adapter();
     ready(&mut adapter);
-    let frame = json!({"id": 4242, "method": "currentTime/read", "params": {}});
+    let frame = json!({"id": 4242, "method": "attestation/generate", "params": {}});
     ingest(&mut adapter, &frame);
     running_turn(&mut adapter);
     let completed = json!({"method":"turn/completed","params":{
@@ -202,7 +162,7 @@ fn malformed_thread_goal_updated_is_ignored_without_failing_the_managed_session(
         "threadId":"thread-1","goal":{"text":"ship the release"}
     }});
     let (disposition, captured) =
-        with_captured_diagnostics(|| adapter.ingest(&serde_json::to_vec(&frame).unwrap(), &Mapper));
+        capture_diagnostics(|| adapter.ingest(&serde_json::to_vec(&frame).unwrap(), &Mapper));
     assert!(
         matches!(disposition, Ok(IngressDisposition::IgnoredLate)),
         "thread/goal/updated must not kill the session: {disposition:?}"
@@ -216,9 +176,8 @@ fn unprojected_notifications_are_recorded_and_ignored_without_transcript_items()
     ready(&mut adapter);
     for method in UNPROJECTED_NOTIFICATIONS {
         let frame = json!({"method": method, "params": {"threadId": "thread-1"}});
-        let (disposition, captured) = with_captured_diagnostics(|| {
-            adapter.ingest(&serde_json::to_vec(&frame).unwrap(), &Mapper)
-        });
+        let (disposition, captured) =
+            capture_diagnostics(|| adapter.ingest(&serde_json::to_vec(&frame).unwrap(), &Mapper));
         assert!(
             matches!(disposition, Ok(IngressDisposition::IgnoredLate)),
             "{method} must be ignored rather than projected: {disposition:?}"
@@ -319,6 +278,7 @@ fn reasoning_summary_deltas_coalesce_into_one_thought_and_complete() {
         let [
             IncomingEvent::Item {
                 payload: NormalizedPayload::ThoughtSummary { summary },
+                lifecycle: ItemLifecycle::Streaming,
                 update_mode,
                 ..
             },
@@ -341,6 +301,7 @@ fn reasoning_summary_deltas_coalesce_into_one_thought_and_complete() {
     let [
         IncomingEvent::Item {
             payload: NormalizedPayload::ThoughtSummary { summary },
+            lifecycle: ItemLifecycle::Completed,
             ..
         },
     ] = events.as_slice()
@@ -416,9 +377,8 @@ fn an_unknown_dynamic_tool_call_is_refused_without_tearing_the_runtime_down() {
         "threadId":"thread-1","turnId":"turn-1","callId":"call-1",
         "tool":"mystery_tool","arguments":{"url":"http://127.0.0.1:43124/proof"}
     }});
-    let (disposition, diagnostics) = with_captured_diagnostics(|| {
-        adapter.ingest(&serde_json::to_vec(&request).unwrap(), &Mapper)
-    });
+    let (disposition, diagnostics) =
+        capture_diagnostics(|| adapter.ingest(&serde_json::to_vec(&request).unwrap(), &Mapper));
     let IngressDisposition::Events(events) = disposition
         .unwrap_or_else(|error| panic!("an unknown tool must not tear the runtime down: {error}"))
     else {

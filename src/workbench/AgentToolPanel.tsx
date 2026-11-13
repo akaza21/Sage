@@ -16,15 +16,6 @@ import {
 } from "../app/subagentPaneStore";
 import { ModalDialog } from "../ui/ModalDialog";
 import { resourceKey } from "../domain/resourceIdentity";
-import type { AcpChatPage } from "../domain/acp";
-import {
-  sameAgentArtifactOwner,
-  type AgentArtifactAdmission,
-  type AgentArtifactOpenIntent,
-  type AgentArtifactOwner,
-} from "../domain/agentArtifact";
-import type { ResourceRef, WorkbenchTab } from "../domain/workbench";
-import { projectAgentEditSummary } from "../features/chat/acp/agentEditSummary";
 import {
   pinAgentChatOwner,
   pinnedAgentChatOwner,
@@ -33,78 +24,15 @@ import {
 import { useSideChatState } from "./sideChatState";
 import type { AgentToolLaunch, AgentToolRequest } from "./AgentToolsProvider";
 import "./agent-tool-panel.css";
+import { useAgentChangesState } from "./agentChangesState";
+import { useSubagentPaneStore } from "../app/subagentPaneStore";
 
 // Lazy tool launch host: scoped Changes/Files picker, bounded resources and side chat.
 
-export type AgentToolResource = {
-  resource: ResourceRef;
-  label: string;
-  intent?: AgentArtifactOpenIntent;
-  tabId?: string;
-};
-export function agentToolResources(
-  tool: "changes" | "files",
-  page: AcpChatPage | null,
-  owner: AgentArtifactOwner | null,
-  tabs: readonly WorkbenchTab[],
-  admissions: readonly AgentArtifactAdmission[],
-): AgentToolResource[] {
-  if (
-    !page ||
-    !owner ||
-    page.projectId !== owner.projectId ||
-    page.chatId !== owner.chatId ||
-    page.currentSessionId !== owner.sessionId
-  )
-    return [];
-  const entries = new Map<string, AgentToolResource>();
-  for (const turn of page.turns.slice(-32).reverse()) {
-    if (turn.sessionId !== owner.sessionId) continue;
-    for (const change of projectAgentEditSummary(page, turn).changes) {
-      if (change.resource.kind !== "resource") continue;
-      const resource = change.resource.resource;
-      const key = resourceKey(resource);
-      if (entries.has(key)) continue;
-      const available =
-        tool === "changes"
-          ? Boolean(change.diffRef)
-          : change.operation !== "deleted";
-      entries.set(key, {
-        resource,
-        label: resource.relativePath,
-        ...(available
-          ? {
-              intent: {
-                owner,
-                target: tool === "changes" ? "diff" : "file",
-                resource,
-                ...(tool === "changes" && change.diffRef
-                  ? { diffRef: change.diffRef }
-                  : {}),
-              } as AgentArtifactOpenIntent,
-            }
-          : {}),
-      });
-      if (entries.size === 128) return [...entries.values()];
-    }
-  }
-  for (const admission of admissions.slice(-32)) {
-    if (!sameAgentArtifactOwner(admission.owner, owner)) continue;
-    const tab = tabs.find(
-      (candidate) =>
-        candidate.id === admission.tabId &&
-        candidate.kind === (tool === "changes" ? "diff" : "file"),
-    );
-    if (!tab?.resource || entries.has(resourceKey(tab.resource))) continue;
-    entries.set(resourceKey(tab.resource), {
-      resource: tab.resource,
-      label: tab.resource.relativePath,
-      tabId: tab.id,
-    });
-    if (entries.size === 128) break;
-  }
-  return [...entries.values()];
-}
+import {
+  agentToolResources,
+  type AgentToolResource,
+} from "./agentToolResources";
 
 export async function launchSideChat(
   chatId: string,
@@ -127,6 +55,7 @@ export async function launchSideChat(
         (side.parentChatId === chatId || side.id === chatId),
     );
   if (existing && state.tabs.some((tab) => tab.id === existing.id)) {
+    useSideChatState.setState({ pairedId: existing.id });
     await state.activateTab(existing.id);
     return;
   }
@@ -227,6 +156,27 @@ export function AgentToolHost({ launch }: { launch: AgentToolLaunch }) {
       ? request
       : null;
   if (request && !currentRequest) setRequest(null);
+  useEffect(() => {
+    if (currentRequest?.tool !== "changes") return;
+    const projection = acpProjectionStoreFor(currentRequest.chatId).getState();
+    const valid = validFocusedSubagentPage(
+      projection.page,
+      projection.scope,
+      currentRequest.projectId,
+      currentRequest.chatId,
+      currentRequest.generation,
+      transitioning,
+    );
+    const owner = ownerFromFocusedPage(projection.page, valid);
+    useAgentChangesState.getState().show(
+      owner ?? {
+        projectId: currentRequest.projectId,
+        chatId: currentRequest.chatId,
+        sessionId: null,
+      },
+      currentRequest.generation,
+    );
+  }, [currentRequest, transitioning]);
   // Restore launcher focus only after unmount closes the modal dialog's inertness.
   const restoreFocus = useRef(false);
   useEffect(() => {
@@ -236,7 +186,7 @@ export function AgentToolHost({ launch }: { launch: AgentToolLaunch }) {
   }, [currentRequest, launch]);
   return (
     <>
-      {currentRequest ? (
+      {currentRequest?.tool === "files" ? (
         <AgentToolPanel
           request={currentRequest}
           onDismiss={() => {
@@ -332,7 +282,7 @@ export function AgentToolPanel({
     try {
       if (entry.intent) {
         if (!(await openAgentArtifact(entry.intent))) {
-          setError("This resource is no longer available for this Chat.");
+          setError("This resource is no longer available for this chat.");
           return;
         }
       } else if (entry.tabId) {
@@ -341,68 +291,82 @@ export function AgentToolPanel({
           .pin(owner, { kind: "tab", tabId: entry.tabId });
         await activateTab(entry.tabId);
       }
+      useAgentChangesState.getState().select(false);
+      useSubagentPaneStore.getState().select(false);
       onDismiss();
     } catch (cause) {
       setError(String(cause).slice(0, 512));
     }
   }
+  const multiRoot = (project?.roots.length ?? 0) > 1;
   return (
     <ModalDialog
       labelledBy={titleId}
+      describedBy={`${titleId}-description`}
       className="agent-tool-panel"
       onDismiss={onDismiss}
     >
-      <h2 id={titleId}>{request.tool === "changes" ? "Changes" : "Files"}</h2>
-      <p>Only this Chat's resources · up to 128 recent files</p>
-      <input
-        ref={input}
-        aria-label="Filter chat files"
-        placeholder="Search chat files"
-        maxLength={256}
-        value={query}
-        onChange={(event) => setQuery(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            const first = rows.find((entry) => entry.intent || entry.tabId);
-            if (first) void select(first);
-          }
-        }}
-      />
-      <div
-        className="agent-tool-panel__list"
-        role="group"
-        aria-label="Chat files"
-      >
-        {rows.map((entry) => (
-          <button
-            type="button"
-            key={resourceKey(entry.resource)}
-            disabled={!entry.intent && !entry.tabId}
-            title={
-              !entry.intent && !entry.tabId
-                ? "No saved resource is available"
-                : entry.label
+      <div className="dialog-body">
+        <h2 id={titleId}>{request.tool === "changes" ? "Changes" : "Files"}</h2>
+        <p id={`${titleId}-description`}>
+          Only this chat's files · up to 128 recent files
+        </p>
+        <input
+          ref={input}
+          className="input"
+          aria-label="Filter chat files"
+          placeholder="Search chat files"
+          maxLength={256}
+          value={query}
+          onChange={(event) => setQuery(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              const first = rows.find((entry) => entry.intent || entry.tabId);
+              if (first) void select(first);
             }
-            onClick={() => void select(entry)}
-          >
-            {(project?.roots.length ?? 0) > 1
-              ? `${project?.roots.find((root) => root.id === entry.resource.rootId)?.name ?? entry.resource.rootId} / `
-              : ""}
-            {entry.label}
+          }}
+        />
+        <div
+          className="agent-tool-panel__list"
+          role="group"
+          aria-label="Chat files"
+        >
+          {rows.map((entry) => (
+            <button
+              type="button"
+              className="menu-item"
+              key={resourceKey(entry.resource)}
+              disabled={!entry.intent && !entry.tabId}
+              title={
+                !entry.intent && !entry.tabId
+                  ? "No saved resource is available"
+                  : entry.label
+              }
+              onClick={() => void select(entry)}
+            >
+              <span>
+                {multiRoot
+                  ? `${project?.roots.find((root) => root.id === entry.resource.rootId)?.name ?? entry.resource.rootId} / `
+                  : ""}
+                {entry.label}
+              </span>
+            </button>
+          ))}
+          {rows.length === 0 ? (
+            <p>
+              {resources.length === 0
+                ? "No resources available for this chat yet."
+                : "No matching chat files."}
+            </p>
+          ) : null}
+        </div>
+        {error ? <p role="alert">{error}</p> : null}
+        <div className="dirty-dialog__actions">
+          <button className="button" type="button" onClick={onDismiss}>
+            Close
           </button>
-        ))}
-        {rows.length === 0 ? (
-          <p>
-            {resources.length === 0
-              ? "No resources available for this Chat yet."
-              : "No matching chat files."}
-          </p>
-        ) : null}
+        </div>
       </div>
-      {error ? <p role="alert">{error}</p> : null}
-      <button type="button" onClick={onDismiss}>
-        Close
-      </button>
     </ModalDialog>
   );
 }

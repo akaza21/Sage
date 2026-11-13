@@ -26,7 +26,17 @@ pub(super) fn parse_model(model: &Value) -> Result<ModelSummary, AdapterError> {
     let id = opaque_id(model.get("id").or_else(|| model.get("modelId")), 512)?
         .ok_or(AdapterError::Malformed)?;
     let name = bounded_string(model.get("name"), MODEL_NAME_BYTES)?.unwrap_or_else(|| id.clone());
-    Ok(ModelSummary { provider, id, name })
+    let context_window = model
+        .get("contextWindow")
+        .and_then(Value::as_u64)
+        .and_then(|tokens| u32::try_from(tokens).ok())
+        .filter(|tokens| *tokens > 0);
+    Ok(ModelSummary {
+        provider,
+        id,
+        name,
+        context_window,
+    })
 }
 
 pub(super) fn parse_thinking_levels(value: &Value) -> Result<Vec<String>, AdapterError> {
@@ -51,15 +61,8 @@ pub(super) fn parse_thinking_levels(value: &Value) -> Result<Vec<String>, Adapte
 pub(super) fn parse_state(value: &Value) -> Result<StateSnapshot, AdapterError> {
     let model = value
         .get("model")
-        .and_then(Value::as_object)
-        .map(|model| {
-            let provider = opaque_id(model.get("provider"), 512)?.unwrap_or_default();
-            let id = opaque_id(model.get("id").or_else(|| model.get("modelId")), 512)?
-                .ok_or(AdapterError::Malformed)?;
-            let name =
-                bounded_string(model.get("name"), MODEL_NAME_BYTES)?.unwrap_or_else(|| id.clone());
-            Ok(ModelSummary { provider, id, name })
-        })
+        .filter(|model| model.is_object())
+        .map(parse_model)
         .transpose()?;
     Ok(StateSnapshot {
         model,
@@ -69,16 +72,25 @@ pub(super) fn parse_state(value: &Value) -> Result<StateSnapshot, AdapterError> 
                 .or_else(|| value.get("thinking_level")),
             128,
         )?,
-        has_session: value
+        session_id: opaque_id(value.get("sessionId"), 128)?,
+        // A local path Sage hands back to Pi to reopen the chat; never shown.
+        session_file: value
             .get("sessionFile")
-            .or_else(|| value.get("session_file"))
             .and_then(Value::as_str)
-            .is_some(),
+            .filter(|file| {
+                file.len()
+                    <= crate::acp::limits::LIMITS
+                        .wire
+                        .absolute_path_bytes_native_only as usize
+                    && !file.contains('\0')
+            })
+            .map(str::to_owned),
         is_streaming: value
             .get("isStreaming")
             .or_else(|| value.get("is_streaming"))
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        auto_compaction: value.get("autoCompactionEnabled").and_then(Value::as_bool),
     })
 }
 

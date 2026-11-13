@@ -1,6 +1,11 @@
 use super::*;
 use crate::acp::bindings::codex::state::{TurnBinding, TurnStartFailure};
 
+/// Codex refuses a rate-limit read as an invalid request both when the
+/// account is signed out and when it signed in without ChatGPT (an API
+/// key); a backend failure is an internal error.
+const INVALID_REQUEST: i64 = -32600;
+
 pub(super) fn response(
     adapter: &mut CodexAdapter,
     object: &Map<String, Value>,
@@ -9,6 +14,9 @@ pub(super) fn response(
         .get("id")
         .and_then(Value::as_u64)
         .ok_or(IngressError::Malformed)?;
+    if adapter.take_rate_limits_tombstone(id) || adapter.take_mcp_tombstone(id) {
+        return Ok(IngressDisposition::IgnoredLate);
+    }
     let kind = adapter.pending_kind(id).ok_or(IngressError::Uncorrelated)?;
     if kind == RequestKind::Models {
         let removed = adapter.take_pending(id);
@@ -28,6 +36,44 @@ pub(super) fn response(
                 None => IngressDisposition::IgnoredLate,
             },
         );
+    }
+    if kind == RequestKind::SkillsList {
+        adapter.take_pending(id);
+        let result = object.get("result").and_then(Value::as_object);
+        adapter.skills_result(result.filter(|_| !object.contains_key("error")));
+        return Ok(IngressDisposition::IgnoredLate);
+    }
+    if matches!(
+        kind,
+        RequestKind::McpList | RequestKind::McpReload | RequestKind::McpSignIn
+    ) {
+        return Ok(IngressDisposition::Controlled(
+            adapter.complete_mcp(id, kind, object),
+        ));
+    }
+    if kind == RequestKind::ThreadRevert {
+        let error = object.get("error");
+        return Ok(IngressDisposition::Controlled(
+            adapter.complete_revert(id, error),
+        ));
+    }
+    if kind == RequestKind::RateLimitsRead {
+        adapter.take_pending(id);
+        if let Some(error) = object.get("error") {
+            return Ok(
+                if error.get("code").and_then(Value::as_i64) == Some(INVALID_REQUEST) {
+                    IngressDisposition::UsageRefused
+                } else {
+                    IngressDisposition::UsageRead(None)
+                },
+            );
+        }
+        return Ok(IngressDisposition::UsageRead(
+            object
+                .get("result")
+                .and_then(Value::as_object)
+                .and_then(super::rate_limits::RateLimits::read),
+        ));
     }
     if let Some(error) = object.get("error") {
         if matches!(
@@ -53,21 +99,23 @@ pub(super) fn response(
             .and_then(Value::as_str)
             .unwrap_or("Codex request failed");
         let payload = error_payload("codexRpc", message, false)?;
-        if kind != RequestKind::TurnStart {
+        if !kind.starts_turn() {
             let removed = adapter.take_pending(id);
             debug_assert_eq!(removed, Some(kind));
         }
         return match kind {
-            RequestKind::TurnStart => match adapter.fail_turn_start(id).map_err(identity)? {
-                TurnStartFailure::Failed(turn) => Ok(IngressDisposition::Events(vec![
-                    IncomingEvent::Error(payload),
-                    IncomingEvent::Turn {
-                        id: turn,
-                        state: TurnState::Failed,
-                    },
-                ])),
-                TurnStartFailure::Late => Ok(IngressDisposition::DuplicateTerminal),
-            },
+            RequestKind::TurnStart | RequestKind::Review | RequestKind::Compact => {
+                match adapter.fail_turn_start(id).map_err(identity)? {
+                    TurnStartFailure::Failed(turn) => Ok(IngressDisposition::Events(vec![
+                        IncomingEvent::Error(payload),
+                        IncomingEvent::Turn {
+                            id: turn,
+                            state: TurnState::Failed,
+                        },
+                    ])),
+                    TurnStartFailure::Late => Ok(IngressDisposition::DuplicateTerminal),
+                }
+            }
             RequestKind::Interrupt => {
                 let turn = adapter.fail_interrupt().map_err(identity)?;
                 Ok(IngressDisposition::Events(vec![
@@ -117,7 +165,7 @@ pub(super) fn response(
         .get("result")
         .and_then(Value::as_object)
         .ok_or(IngressError::Malformed)?;
-    if kind != RequestKind::TurnStart {
+    if !kind.starts_turn() {
         let removed = adapter.take_pending(id);
         debug_assert_eq!(removed, Some(kind));
     }
@@ -155,7 +203,11 @@ pub(super) fn response(
             let id = adapter.bind_thread(external).map_err(identity)?;
             IncomingEvent::SessionLoaded { id }
         }
-        RequestKind::TurnStart => {
+        RequestKind::Compact => {
+            adapter.accept_compact_response(id).map_err(identity)?;
+            return Ok(IngressDisposition::IgnoredLate);
+        }
+        RequestKind::TurnStart | RequestKind::Review => {
             let turn = result
                 .get("turn")
                 .and_then(Value::as_object)
@@ -196,6 +248,10 @@ pub(super) fn response(
         }
         RequestKind::Unsubscribe => {
             adapter.clear_command_items();
+            adapter.clear_running_mcp_tools();
+            // The session closes and the next runtime epoch starts with no
+            // activity rows, so running hooks need no cancelled restatement.
+            adapter.clear_running_hooks();
             IncomingEvent::Acknowledged {
                 closes_session: true,
             }
@@ -207,7 +263,13 @@ pub(super) fn response(
         | RequestKind::ChildRead
         | RequestKind::Fork
         | RequestKind::ForkRelease
-        | RequestKind::ForkDelete => {
+        | RequestKind::ForkDelete
+        | RequestKind::RateLimitsRead
+        | RequestKind::SkillsList
+        | RequestKind::ThreadRevert
+        | RequestKind::McpList
+        | RequestKind::McpReload
+        | RequestKind::McpSignIn => {
             unreachable!("handled above")
         }
     };
@@ -221,12 +283,20 @@ pub(super) fn response(
             .and_then(|thread| thread.get("id"))
             .and_then(Value::as_str)
             .ok_or(IngressError::Malformed)?;
+        let mut events = vec![event];
         if adapter.take_browser_mcp_failure_for_thread(external) {
-            return Ok(IngressDisposition::Events(vec![
-                event,
-                browser_mcp_unavailable()?,
-            ]));
+            events.push(browser_mcp_unavailable()?);
         }
+        // Thread-less notices that arrived before this bind belong to it.
+        let notices = adapter.take_session_notices();
+        if !notices.is_empty() {
+            let session = adapter.thread_session_id(external).map_err(identity)?;
+            events.extend(notices.into_iter().map(|event| IncomingEvent::Session {
+                id: session.clone(),
+                event,
+            }));
+        }
+        return Ok(IngressDisposition::Events(events));
     }
     Ok(event.into())
 }

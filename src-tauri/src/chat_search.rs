@@ -1,3 +1,6 @@
+// Search must not wait behind long writers before its progress deadline starts.
+pub(crate) const READER_BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
+
 use std::{
     collections::HashMap,
     time::{Duration, Instant},
@@ -8,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
+    acp::{intent::NormalizedPayload, store::decode_payload},
     error::{AppError, AppResult},
     persistence::Database,
 };
@@ -23,6 +27,7 @@ const MAX_CHAT_SEARCH_DURATION: Duration = Duration::from_millis(250);
 const MAX_SAFE_JAVASCRIPT_INTEGER: u64 = 9_007_199_254_740_991;
 
 mod legacy_welcome;
+mod reader;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -87,26 +92,6 @@ struct ChatRow {
     snippet: Option<String>,
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TaggedText {
-    kind: String,
-    payload: TextBody,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TextBody {
-    text: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LegacyText {
-    role: String,
-    text: String,
-}
-
 pub fn validate_chat_search_request(request: &ProjectChatSearchRequest) -> AppResult<String> {
     if request.project_id.is_empty()
         || request.project_id.len() > 512
@@ -124,11 +109,6 @@ pub fn validate_chat_search_request(request: &ProjectChatSearchRequest) -> AppRe
         ));
     }
     let query = request.query.trim();
-    if query.is_empty() {
-        return Err(AppError::InvalidRequest(
-            "Chat search query must not be empty".into(),
-        ));
-    }
     if query.len() > MAX_CHAT_SEARCH_QUERY_BYTES {
         return Err(AppError::ResourceLimit(format!(
             "Chat search query exceeds the {MAX_CHAT_SEARCH_QUERY_BYTES}-byte limit"
@@ -156,72 +136,66 @@ fn search_with_limits(
 ) -> AppResult<ProjectChatSearchResponse> {
     let query = validate_chat_search_request(request)?;
     let started = Instant::now();
-    let deadline = started + limits.deadline;
-    let connection = database.connection();
-    connection.progress_handler(1_000, Some(move || Instant::now() >= deadline))?;
-    struct ResetProgress<'a>(&'a rusqlite::Connection);
-    impl Drop for ResetProgress<'_> {
-        fn drop(&mut self) {
-            let _ = self.0.progress_handler(0, None::<fn() -> bool>);
-        }
-    }
-    let _reset = ResetProgress(&connection);
-    ensure_deadline(started, limits.deadline)?;
+    reader::with_snapshot(database, started + limits.deadline, |connection| {
+        ensure_deadline(started, limits.deadline)?;
 
-    let mut chats = load_chats(&connection, &request.project_id, &query, limits)?;
-    preflight_items(&connection, &request.project_id, limits)?;
-    load_primary_text_matches(
-        &connection,
-        &request.project_id,
-        &query,
-        &mut chats,
-        started,
-        limits.deadline,
-    )?;
-    ensure_deadline(started, limits.deadline)?;
-
-    let mut results = Vec::with_capacity(limits.max_results);
-    let mut has_more = false;
-    for chat in chats {
-        if !chat.matched_title && chat.snippet.is_none() {
-            continue;
-        }
-        let result = ProjectChatSearchResult {
-            chat_id: chat.id,
-            title: chat.title,
-            attached: chat.attached,
-            matched_title: chat.matched_title,
-            snippet: chat.snippet,
-        };
-        if results.len() == limits.max_results
-            || !fits_response_budget(
-                request,
+        let mut chats = load_chats(connection, &request.project_id, &query, limits)?;
+        if !query.is_empty() {
+            preflight_items(connection, &request.project_id, limits)?;
+            load_primary_text_matches(
+                connection,
+                &request.project_id,
                 &query,
-                &results,
-                &result,
-                limits.max_response_bytes,
-            )?
-        {
-            has_more = true;
-            continue;
+                &mut chats,
+                started,
+                limits.deadline,
+            )?;
         }
-        results.push(result);
-    }
-    let response = ProjectChatSearchResponse {
-        project_id: request.project_id.clone(),
-        project_generation: request.project_generation,
-        transition_epoch: request.expected_transition_epoch,
-        query,
-        results,
-        has_more,
-        elapsed_ms: started.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
-    };
-    if response_bytes(&response)? > limits.max_response_bytes {
-        return Err(AppError::ResourceLimit(
-            "Chat search response exceeds its byte ceiling".into(),
-        ));
-    }
-    Ok(response)
+        ensure_deadline(started, limits.deadline)?;
+
+        let mut results = Vec::with_capacity(limits.max_results);
+        let mut has_more = false;
+        for chat in chats {
+            if !chat.matched_title && chat.snippet.is_none() {
+                continue;
+            }
+            let result = ProjectChatSearchResult {
+                chat_id: chat.id,
+                title: chat.title,
+                attached: chat.attached,
+                matched_title: chat.matched_title,
+                snippet: chat.snippet,
+            };
+            if results.len() == limits.max_results
+                || !fits_response_budget(
+                    request,
+                    &query,
+                    &results,
+                    &result,
+                    limits.max_response_bytes,
+                )?
+            {
+                has_more = true;
+                continue;
+            }
+            results.push(result);
+        }
+        let response = ProjectChatSearchResponse {
+            project_id: request.project_id.clone(),
+            project_generation: request.project_generation,
+            transition_epoch: request.expected_transition_epoch,
+            query,
+            results,
+            has_more,
+            elapsed_ms: started.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
+        };
+        if response_bytes(&response)? > limits.max_response_bytes {
+            return Err(AppError::ResourceLimit(
+                "Chat search response exceeds its byte ceiling".into(),
+            ));
+        }
+        Ok(response)
+    })
 }
 
 fn load_chats(
@@ -230,12 +204,17 @@ fn load_chats(
     query: &str,
     limits: SearchLimits,
 ) -> AppResult<Vec<ChatRow>> {
-    let limit = i64::try_from(limits.max_chat_rows.saturating_add(1)).unwrap_or(i64::MAX);
+    let row_limit = if query.is_empty() {
+        limits.max_results
+    } else {
+        limits.max_chat_rows
+    };
+    let limit = i64::try_from(row_limit.saturating_add(1)).unwrap_or(i64::MAX);
     let mut statement = connection.prepare(
         "SELECT c.id,c.title,EXISTS(
            SELECT 1 FROM chat_tabs a WHERE a.project_id=c.project_id AND a.chat_id=c.id
          )
-         FROM chats c WHERE c.project_id=?1 AND c.id NOT GLOB 'side-*'
+         FROM chats c WHERE c.project_id=?1 AND c.id NOT IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1)
          ORDER BY c.updated_at DESC,c.ordinal DESC,c.id ASC LIMIT ?2",
     )?;
     let rows = statement.query_map(params![project_id, limit], |row| {
@@ -249,7 +228,7 @@ fn load_chats(
         })
     })?;
     let chats = rows.collect::<Result<Vec<_>, _>>()?;
-    if chats.len() > limits.max_chat_rows {
+    if !query.is_empty() && chats.len() > limits.max_chat_rows {
         return Err(AppError::ResourceLimit(
             "Chat search Chat-row ceiling was exceeded".into(),
         ));
@@ -298,14 +277,15 @@ fn load_primary_text_matches(
         .enumerate()
         .map(|(index, chat)| (chat.id.clone(), index))
         .collect::<HashMap<_, _>>();
-    let mut statement = connection.prepare(
+    let mut statement = connection.prepare(concat!(
         "SELECT i.chat_id,i.payload_json,i.payload_bytes,i.payload_digest
          FROM items i JOIN chats c ON c.project_id=i.project_id AND c.id=i.chat_id
          WHERE i.project_id=?1 AND i.origin='primary' AND i.kind='text'
-           AND i.turn_id NOT IN (SELECT value FROM json_each(?2))
-         ORDER BY c.updated_at DESC,c.ordinal DESC,c.id ASC,
-                  i.created_at DESC,i.ordinal DESC,i.id ASC",
-    )?;
+           AND i.turn_id NOT IN (SELECT value FROM json_each(?2)) AND ",
+        crate::acp::store::turn_undo::visible_turn!("i.session_id", "i.turn_id"),
+        " ORDER BY c.updated_at DESC,c.ordinal DESC,c.id ASC,
+                  i.created_at DESC,i.ordinal DESC,i.id ASC"
+    ))?;
     let mut rows = statement.query(params![project_id, excluded_turns])?;
     while let Some(row) = map_deadline(rows.next(), started, deadline)? {
         let chat_id: String = row.get(0)?;
@@ -333,20 +313,16 @@ fn load_primary_text_matches(
     Ok(())
 }
 
+/// Reads a primary text row through the store's own payload decoder, so
+/// search admits exactly the rows the transcript renders and rejects the
+/// rows the transcript would report as corrupt.
 fn decode_primary_text(payload: &str) -> AppResult<String> {
-    if let Ok(tagged) = serde_json::from_str::<TaggedText>(payload)
-        && tagged.kind == "text"
-    {
-        return Ok(tagged.payload.text);
+    match decode_payload(payload) {
+        Ok((NormalizedPayload::Text { text }, _)) => Ok(text.as_str().to_owned()),
+        _ => Err(AppError::InvalidRequest(
+            "Chat search found an invalid primary text payload".into(),
+        )),
     }
-    if let Ok(legacy) = serde_json::from_str::<LegacyText>(payload)
-        && matches!(legacy.role.as_str(), "user" | "assistant" | "system")
-    {
-        return Ok(legacy.text);
-    }
-    Err(AppError::InvalidRequest(
-        "Chat search found an invalid primary text payload".into(),
-    ))
 }
 
 fn snippet(text: &str, match_start: usize) -> String {

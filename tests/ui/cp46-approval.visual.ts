@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -8,18 +9,25 @@ import {
 /** A running command gated by a pending Codex-shaped approval. */
 async function applyApproval(page: Page, state: "received" | "declinePending") {
   await page.evaluate(async (state) => {
-    const [{ buildVisualScenario }, { acpProjectionStoreFor }, ids] =
+    const [{ useWorkbenchStore }, { acpProjectionStoreFor }] =
       await Promise.all([
-        import("/tests/ui/fixtures/visualScenarioShell.ts"),
+        import("/src/app/store.ts"),
         import("/src/app/acpProjectionRegistry.ts"),
-        import("/tests/ui/fixtures/visualFixtureIds.ts"),
       ]);
-    const scenario = buildVisualScenario("waiting");
-    const chatPage = scenario.pages[0];
-    const turn = chatPage.turns[0];
+    const store = acpProjectionStoreFor(
+      useWorkbenchStore.getState().activeTabId,
+    );
+    const { page: current, scope } = store.getState();
+    if (!current || !scope) throw new Error("Expected a loaded chat");
+    const chatPage = structuredClone(current);
+    const turn = chatPage.turns.at(-1)!;
     const prompt = turn.items[0];
     turn.state = "running";
     turn.terminalAt = null;
+    turn.items = turn.items.filter(
+      (item) =>
+        item.id !== "approval-command" && item.id !== "approval-request",
+    );
     turn.items.push(
       {
         ...prompt,
@@ -66,16 +74,128 @@ async function applyApproval(page: Page, state: "received" | "declinePending") {
         },
       } as never,
     );
-    acpProjectionStoreFor(chatPage.chatId).getState().applyAuthoritativePage(
-      {
-        projectId: ids.PROJECT_ID,
-        projectGeneration: ids.GENERATION,
-        chatId: chatPage.chatId,
-      },
-      chatPage,
-    );
+    store.getState().applyAuthoritativePage(scope, chatPage);
   }, state);
 }
+
+for (const width of [480, 1280]) {
+  test(`approval load failure keeps the toolbar reachable with a full queue and long draft at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 560 });
+    await page.route(
+      "**/src/features/chat/acp/PermissionPrompt.tsx*",
+      (route) => route.abort("failed"),
+    );
+    await openScenario(page, "diff", "agent");
+    await settleChatProjections(page);
+    await page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const { MAX_QUEUED_CHAT_PROMPTS } =
+        await import("/src/domain/chatOwnership.ts");
+      useWorkbenchStore.setState((state) => ({
+        chatUiById: {
+          ...state.chatUiById,
+          [state.activeTabId!]: {
+            ...state.chatUiById[state.activeTabId!],
+            queuedPrompts: Array.from(
+              { length: MAX_QUEUED_CHAT_PROMPTS },
+              (_, index) => ({
+                id: `queue-${index}`,
+                text: `Follow-up ${index}`,
+                attachedContext: [],
+                bindingId: "fixture",
+                modelId: null,
+                status: "blocked" as const,
+              }),
+            ),
+          },
+        },
+      }));
+    });
+    const draft = "Keep this draft while approval recovers.\n".repeat(40);
+    const input = page.getByRole("combobox", { name: "Message agent" });
+    await input.fill(draft);
+    await applyApproval(page, "received");
+    const dock = page.locator(".chat-dock");
+    await expect(dock.getByRole("alert")).toContainText(
+      "The approval could not load",
+    );
+    await expect(input).toHaveValue(draft);
+    await expect(
+      dock.getByLabel("Queued messages", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      dock.getByRole("region", { name: "Files edited in this chat" }),
+    ).toBeVisible();
+    expect(
+      await dock
+        .locator(".composer__body")
+        .evaluate((body) => body.scrollHeight > body.clientHeight),
+    ).toBe(true);
+    const bounds = (await dock.boundingBox())!;
+    const toolbar = dock.locator(".composer__toolbar");
+    const row = (await toolbar.boundingBox())!;
+    expect(row.y).toBeGreaterThanOrEqual(bounds.y);
+    expect(row.y + row.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+    expect(row.x).toBeGreaterThanOrEqual(bounds.x);
+    expect(row.x + row.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+    for (const control of [
+      toolbar.getByRole("button", { name: "Harness", exact: true }),
+      toolbar.getByRole("button", { name: "Access options", exact: true }),
+      toolbar.getByRole("button", { name: "Cancel turn", exact: true }),
+    ]) {
+      const box = (await control.boundingBox())!;
+      expect(box.y).toBeGreaterThanOrEqual(bounds.y);
+      expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+    }
+    await toolbar
+      .getByRole("button", { name: "Cancel turn", exact: true })
+      .click({ trial: true });
+  });
+}
+
+test("edited files and saved diffs stay usable when approval replaces the composer", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openScenario(page, "diff", "agent");
+  await settleChatProjections(page);
+  const summary = page.getByRole("region", {
+    name: "Files edited in this chat",
+  });
+  await expect(summary).toBeVisible();
+  await summary.getByRole("button", { name: /^1 file changed/ }).click();
+  const openDiff = summary.getByRole("button", { name: /^Open diff / });
+  await expect(openDiff).toBeVisible();
+  await expect(
+    summary.getByRole("button", { name: /^Preview saved diff/ }),
+  ).toBeVisible();
+
+  await applyApproval(page, "received");
+  const prompt = page.getByRole("group", {
+    name: "Permission request",
+    exact: true,
+  });
+  await expect(prompt).toBeVisible();
+  await expect(page.locator("form.composer")).toBeHidden();
+  await expect(summary).toBeVisible();
+  const preview = summary.getByRole("button", { name: /^Preview saved diff/ });
+  await preview.click();
+  await expect(
+    summary.getByRole("table", { name: "Inline saved diff" }),
+  ).toBeVisible();
+  await preview.click();
+  await expect(openDiff).toBeVisible();
+  await openDiff.click();
+  await expect(
+    page.getByRole("table", { name: "Unified file diff" }),
+  ).toBeVisible();
+  await expect(
+    prompt.getByRole("button", { name: /Allow once/ }),
+  ).toBeVisible();
+  await expect(summary).toBeVisible();
+});
 
 test("CP-46 approval replaces the composer slot, opens its menu above, and yields back", async ({
   page,
@@ -140,6 +260,7 @@ test("CP-46 approval replaces the composer slot, opens its menu above, and yield
     "Allow once",
     "Allow similar commands",
   ]);
+  await waitForAnimations(menu);
   const menuBox = await menu.boundingBox();
   const chevronBox = await chevron.boundingBox();
   expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(chevronBox!.y);
@@ -156,7 +277,7 @@ test("CP-46 approval replaces the composer slot, opens its menu above, and yield
   await expect(prompt).toHaveCount(0);
   await expect(composer).toBeVisible();
   await expect(
-    page.getByRole("textbox", { name: "Message agent" }),
+    page.getByRole("combobox", { name: "Message agent" }),
   ).toBeVisible();
   await expect(
     page.getByText("Awaiting approval", { exact: true }),
@@ -171,12 +292,17 @@ for (const width of [720, 480]) {
     await openScenario(page, "waiting", "agent");
     await settleChatProjections(page);
     const composer = page.locator("form.composer");
+    await expect(composer).toBeVisible();
     const before = (await composer.boundingBox())!;
     await applyApproval(page, "received");
     const prompt = page
       .locator(".acp-permission-prompt")
       .and(page.getByRole("group", { name: "Permission request" }));
     await expect(prompt).toBeVisible();
+    // The loading fallback shares the card's class and accessible group name.
+    await expect(
+      prompt.getByRole("button", { name: /Allow once/ }),
+    ).toBeVisible();
     const box = (await prompt.boundingBox())!;
     expect(Math.abs(box.width - before.width)).toBeLessThanOrEqual(2);
     expect(Math.abs(box.x - before.x)).toBeLessThanOrEqual(2);
@@ -201,16 +327,161 @@ for (const width of [720, 480]) {
         Math.abs(deny.x + deny.width - (actions.x + actions.width)),
       ).toBeLessThanOrEqual(1);
     expect(box.x + box.width).toBeLessThanOrEqual(width);
-    // The rail's "Awaiting approval" pill keeps a gap before its spinner;
-    // the title truncates first (s6/f0526).
-    const spinner = page.locator(".project-chat__approval-spinner").first();
-    if (await spinner.isVisible()) {
-      const pill = (await page
-        .locator(".rail-pill--approval")
-        .first()
-        .boundingBox())!;
-      const glyph = (await spinner.boundingBox())!;
-      expect(pill.x + pill.width).toBeLessThanOrEqual(glyph.x - 4);
+    if (width <= 600)
+      await page
+        .getByRole("button", { name: "Show projects and chats" })
+        .click();
+    const row = page
+      .locator(".project-chat-row")
+      .filter({ has: page.locator(".project-chat__approval-spinner") })
+      .first();
+    const chat = row.locator(".project-chat");
+    await expect(row).toBeVisible();
+    await page.mouse.move(0, 0);
+    for (const state of ["resting", "hovered", "keyboard-focused"]) {
+      await test.step(`${state} approval row keeps its content clear`, async () => {
+        if (state === "hovered") await row.hover();
+        if (state === "keyboard-focused") {
+          await page.mouse.move(0, 0);
+          await chat.focus();
+          await page.keyboard.press("Shift+Tab");
+          await page.keyboard.press("Tab");
+          await expect(chat).toBeFocused();
+          await expect(chat.locator(":scope:focus-visible")).toHaveCount(1);
+        }
+        const actions = row.locator(".project-chat__quick-actions");
+        await expect(actions).toHaveCSS(
+          "opacity",
+          state === "resting" ? "0" : "1",
+        );
+        const geometry = await row.evaluate((element) => {
+          const box = (selector: string) =>
+            element.querySelector(selector)!.getBoundingClientRect();
+          const content = box(".project-chat__copy");
+          const title = box(".project-chat__title-label");
+          const pill = box(".rail-pill--approval");
+          const spinner = box(".project-chat__approval-spinner");
+          const actions = box(".project-chat__quick-actions");
+          return {
+            titleToPill: pill.left - title.right,
+            contentToSpinner: spinner.left - content.right,
+            pillToSpinner: spinner.left - pill.right,
+            contentToActions: actions.left - content.right,
+          };
+        });
+        expect(geometry.titleToPill).toBeGreaterThanOrEqual(4);
+        expect(geometry.contentToSpinner).toBeGreaterThanOrEqual(4);
+        expect(geometry.pillToSpinner).toBeGreaterThanOrEqual(4);
+        // Pin and Archive replace the spinner visually on hover and focus.
+        if (state !== "resting")
+          expect(geometry.contentToActions).toBeGreaterThanOrEqual(4);
+      });
     }
   });
 }
+
+/** A pending harness question (Codex requestUserInput) in the composer slot. */
+async function applyQuestion(page: Page) {
+  await page.evaluate(async () => {
+    const [{ useWorkbenchStore }, { acpProjectionStoreFor }] =
+      await Promise.all([
+        import("/src/app/store.ts"),
+        import("/src/app/acpProjectionRegistry.ts"),
+      ]);
+    const store = acpProjectionStoreFor(
+      useWorkbenchStore.getState().activeTabId,
+    );
+    const { page: current, scope } = store.getState();
+    if (!current || !scope) throw new Error("Expected a loaded chat");
+    const chatPage = structuredClone(current);
+    const turn = chatPage.turns.at(-1)!;
+    const prompt = turn.items[0];
+    turn.state = "running";
+    turn.terminalAt = null;
+    turn.items.push({
+      ...prompt,
+      id: "question-request" as typeof prompt.id,
+      ordinal: 5,
+      kind: "permissionRequest",
+      lifecycle: "streaming",
+      toolState: "waitingForApproval",
+      terminalAt: null,
+      payload: {
+        requestId: "question-1",
+        state: "received",
+        label: "Question",
+        summary: "Answer the agent's questions",
+        source: "harness",
+        offeredOptionKinds: ["allow_once", "reject_once"],
+        reason: null,
+        userInput: {
+          questions: [
+            {
+              id: "scope",
+              header: "Scope",
+              question: "Which files should I change?",
+              options: [
+                {
+                  label: "Only tests",
+                  description: "Leave production code alone.",
+                },
+                {
+                  label: "Tests and code",
+                  description: "Fix the bug the tests expose.",
+                },
+              ],
+              allowsOther: true,
+              secret: false,
+            },
+            {
+              id: "token",
+              header: "Token",
+              question: "Paste the staging deploy token.",
+              allowsOther: false,
+              secret: true,
+            },
+          ],
+        },
+      },
+    } as never);
+    store.getState().applyAuthoritativePage(scope, chatPage);
+  });
+}
+
+test("a harness question replaces the composer with its questions, gated until answered", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openScenario(page, "waiting", "agent");
+  await settleChatProjections(page);
+  const composer = page.locator("form.composer");
+  const before = (await composer.boundingBox())!;
+  await applyQuestion(page);
+  const card = page.getByRole("group", { name: "Agent question" });
+  await expect(card).toBeVisible();
+  await expect(composer).toBeHidden();
+  await expect(card).not.toContainText("Allow");
+  const first = card.getByRole("radio", { name: /Only tests/ });
+  await expect(first).toBeFocused();
+  const submit = card.getByRole("button", { name: /Submit/ });
+  await expect(submit).toBeDisabled();
+  // Pick an option with the keyboard, then Tab through the Other field: the
+  // option stays chosen (focus alone never switches the answer to Other).
+  await page.keyboard.press("ArrowDown");
+  const chosen = card.getByRole("radio", { name: /Tests and code/ });
+  await expect(chosen).toBeChecked();
+  await page.keyboard.press("Tab");
+  await expect(card.getByLabel("Other answer: Scope")).toBeFocused();
+  await page.keyboard.press("Tab");
+  const token = card.getByLabel("Answer: Token");
+  await expect(token).toBeFocused();
+  await expect(chosen).toBeChecked();
+  await expect(token).toHaveAttribute("type", "password");
+  await token.fill("staging-secret");
+  await expect(submit).toBeEnabled();
+  await expect(card).not.toContainText("staging-secret");
+  const box = (await card.boundingBox())!;
+  expect(Math.abs(box.width - before.width)).toBeLessThanOrEqual(2);
+  await token.blur();
+  await expect(card).toHaveScreenshot("cp46-user-input-question-1280.png");
+});

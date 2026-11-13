@@ -6,13 +6,9 @@ import {
   type ProjectChatSearchResponse,
   type ProjectChatSearchResult,
 } from "./chatSearchDomain";
-import type {
-  ArchivedChatSummary,
-  ProjectListItem,
-  ProjectSummary,
-  WorkbenchTab,
-} from "../../domain/workbench";
+import type { ProjectSummary } from "../../domain/workbench";
 import { MAX_AGENT_RAIL_PROJECTS } from "../../domain/agentRailLimits";
+import { projectLabel } from "../../domain/project";
 import {
   CHAT_SEARCH_ALL_FOLDERS_ID,
   type ChatSearchFolderOption,
@@ -48,10 +44,7 @@ export function chatSearchFolderOptions(
     ) {
       continue;
     }
-    const name =
-      typeof project.name === "string" && project.name.length > 0
-        ? project.name.slice(0, 64)
-        : "Project";
+    const name = projectLabel(project.name);
     next.push({ id: project.id, name });
   }
   if (next.length === 0) return next;
@@ -73,31 +66,6 @@ export function matchesChatSearchScope(
     state.projectGeneration === scope.projectGeneration &&
     state.nativeTransitionEpoch === scope.transitionEpoch
   );
-}
-
-export function chatSearchAttachment(
-  state: {
-    project: ProjectSummary | null;
-    tabs: ReadonlyArray<WorkbenchTab>;
-    archivedChats: ReadonlyArray<ArchivedChatSummary>;
-    projects: ReadonlyArray<ProjectListItem>;
-  },
-  projectId: string,
-  chatId: string,
-): { attached: boolean; archived: boolean } {
-  if (state.project?.id === projectId) {
-    return {
-      attached: state.tabs.some(
-        (tab) => tab.kind === "chat" && tab.id === chatId,
-      ),
-      archived: state.archivedChats.some((chat) => chat.id === chatId),
-    };
-  }
-  const folder = state.projects.find((item) => item.id === projectId);
-  return {
-    attached: Boolean(folder?.railChats?.some((chat) => chat.id === chatId)),
-    archived: Boolean(folder?.railArchived?.some((chat) => chat.id === chatId)),
-  };
 }
 
 export interface ChatSearchFanoutPick extends ProjectChatSearchResult {
@@ -194,7 +162,7 @@ export async function searchChatFolders(args: {
     }
   }
   if (pages.length === 0) {
-    throw new Error("Project Chat search requires a valid Project ID");
+    throw new Error("Project chat search requires a valid project ID");
   }
   return mergeChatSearchFanout(pages, visited, args.listedCount);
 }
@@ -244,3 +212,7 @@ export async function runScopedChatSearch(args: {
     hasMore: page.hasMore,
   };
 }
+
+/** One result's identity in the results list. */
+export const chatSearchResultKey = (result: ChatSearchFanoutPick) =>
+  `${result.projectId}:${result.chatId}`;

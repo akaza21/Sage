@@ -348,6 +348,42 @@ namespace SageValidation {
       )) NativeFailure("QueryInformationJobObject");
       return accounting.ActiveProcesses;
     }
+    // Job-wide CPU time and process counts, for diagnosing a command that
+    // outlives its deadline: CPU time near the wall time means its members
+    // were computing, and little CPU time means they were waiting.
+    public string AccountingSummary() {
+      var accounting = new JOBOBJECT_BASIC_ACCOUNTING_INFORMATION();
+      uint returned;
+      if (!QueryInformationJobObjectAccounting(
+        job, JobObjectBasicAccountingInformation, ref accounting,
+        (uint)Marshal.SizeOf(accounting), out returned
+      )) NativeFailure("QueryInformationJobObject");
+      return "userMs=" + (accounting.a / 10000) +
+        " kernelMs=" + (accounting.b / 10000) +
+        " totalProcesses=" + accounting.f +
+        " activeProcesses=" + accounting.ActiveProcesses +
+        " pageFaults=" + accounting.e;
+    }
+    // File names of the Job's live members, for diagnosing a command that
+    // outlives its deadline. A member whose image cannot be read is "?".
+    public string[] MemberImageNames() {
+      uint[] processIds;
+      if (!TryJobProcessIds(out processIds)) return new string[0];
+      var names = new string[processIds.Length];
+      for (int index = 0; index < processIds.Length; index++) {
+        names[index] = "?";
+        IntPtr member = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processIds[index]);
+        if (member == IntPtr.Zero) continue;
+        try {
+          string imagePath;
+          if (TryImagePath(member, out imagePath)) names[index] = Path.GetFileName(imagePath);
+        } finally {
+          CloseIfPresent(member);
+        }
+      }
+      Array.Sort(names, StringComparer.OrdinalIgnoreCase);
+      return names;
+    }
     public uint RootProcessId { get { return rootProcessId; } }
     public bool RootRunning {
       get {

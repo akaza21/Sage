@@ -1,4 +1,7 @@
 use super::*;
+use crate::acp::bindings::codex::CODEX_OBSERVED_PROTOCOL_IDENTITY;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+use crate::acp::bindings::codex::CODEX_PINNED_VERSION;
 use sha2::Digest;
 use std::{
     collections::VecDeque,
@@ -119,12 +122,12 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
         ProjectGeneration::ZERO,
         ProjectGeneration::ZERO,
         true,
-        OBSERVED_0146,
+        CODEX_OBSERVED_PROTOCOL_IDENTITY,
     )
     .await;
 }
 
-/// The native capture's desktop fixture replays the 0.146 `thread/read` wire
+/// The native capture's desktop fixture replays the pinned `thread/read` wire
 /// under its own identity; its child view reads that replay (wave 9 C1).
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 #[tokio::test]
@@ -133,12 +136,23 @@ async fn native_child_ipc_reads_the_desktop_fixture_replay() {
         ProjectGeneration::ZERO,
         ProjectGeneration::ZERO,
         false,
-        "codex-app-server-desktop-fixture-0.146.0",
+        &format!("codex-app-server-desktop-fixture-{CODEX_PINNED_VERSION}"),
     )
     .await;
 }
 
-const OBSERVED_0146: &str = "codex-app-server-observed-0.146.0";
+const STORED_ONLY: &str = "claude-code-sdk";
+
+#[tokio::test]
+async fn a_harness_without_a_native_child_read_serves_the_stored_transcript() {
+    child_ipc_journey(
+        ProjectGeneration::ZERO,
+        ProjectGeneration::ZERO,
+        false,
+        STORED_ONLY,
+    )
+    .await;
+}
 
 #[tokio::test]
 async fn native_child_ipc_rejects_drifted_projection_generation_but_accepts_live_generation() {
@@ -146,7 +160,7 @@ async fn native_child_ipc_rejects_drifted_projection_generation_but_accepts_live
         ProjectGeneration::new(3).unwrap(),
         ProjectGeneration::new(2).unwrap(),
         false,
-        OBSERVED_0146,
+        CODEX_OBSERVED_PROTOCOL_IDENTITY,
     )
     .await;
 }
@@ -192,7 +206,15 @@ async fn child_ipc_journey(
                 chat_id: chat_id.clone(),
                 expected_projection_revision: revision,
                 client_intent_id: ClientIntentId::parse("child-start").unwrap(),
-                binding_id: BindingId::new("binding", "sage-simulator").unwrap(),
+                binding_id: BindingId::new(
+                    "binding",
+                    if protocol == STORED_ONLY {
+                        STORED_ONLY
+                    } else {
+                        "sage-simulator"
+                    },
+                )
+                .unwrap(),
                 binding_digest: "a".repeat(64),
                 harness_version: None,
                 model_id: None,
@@ -233,12 +255,16 @@ async fn child_ipc_journey(
             prompt: true,
             cancel: true,
             native_session_fork: false,
+            native_session_compact: false,
+            native_review: false,
             active_turn_steer: false,
             child_conversation_projection: false,
             child_transcript_read: true,
             collaboration_event_projection: false,
             multi_root_extension_schema_id: None,
             model_count: 1,
+            prompt_resources: false,
+            prompt_images: false,
             config_count: 0,
         };
         complete_activation(
@@ -295,7 +321,7 @@ async fn child_ipc_journey(
             )
             .unwrap();
     }
-    let wire = include_bytes!("../../acp/runtime/adapter_pump/fixtures/cp18d_child_read_0146.json");
+    let wire = include_bytes!("../../acp/runtime/adapter_pump/fixtures/cp18d_child_read.json");
     let mapper = crate::acp::resource_mapper::NativeResourceMapper::new([]).unwrap();
     let snapshot =
         normalize_read_response(wire, 17, "child-one", "adapter-session", &mapper).unwrap();
@@ -305,6 +331,37 @@ async fn child_ipc_journey(
         session_id: session.session_id.clone(),
         runtime_epoch: epoch,
     };
+    if protocol == STORED_ONLY {
+        // No native child read: the stored transcript, kept current as the
+        // child runs, is what the view reads.
+        let scope = crate::acp::store::child_transcript::ChildTranscriptScope {
+            owner,
+            item_id: "item-one".into(),
+            child_thread_id: "child-one".into(),
+            parent_thread_id: "adapter-session".into(),
+        };
+        crate::acp::store::child_transcript::persist_snapshot(
+            &mut state.database.connection(),
+            &scope,
+            &snapshot,
+            5,
+        )
+        .unwrap();
+        let request = ChildTranscriptRequest {
+            project_id,
+            project_generation: projection_generation,
+            chat_id,
+            session_id: session.session_id,
+            runtime_epoch: epoch,
+            item_id: SageItemId::parse("item-one").unwrap(),
+            agent_key: ExternalId::new("child", "child-one").unwrap(),
+        };
+        assert!(matches!(
+            get_acp_child_transcript_inner(&state, request).await,
+            Ok(ChildTranscriptResponse::Current { snapshot: stored, .. }) if stored == snapshot
+        ));
+        return;
+    }
     let calls = Arc::new(AtomicUsize::new(0));
     let host = Arc::new(
         RuntimeHost::start(ChildEngine {

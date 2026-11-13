@@ -54,6 +54,60 @@ pub struct DiscoverProjectRepositoriesResult {
     pub truncated: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveResourceRepositoryRequest {
+    pub project_id: String,
+    pub project_generation: u64,
+    pub expected_transition_epoch: u64,
+    pub resource: ResourceRef,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveResourceRepositoryResult {
+    pub project_id: String,
+    pub transition_epoch: u64,
+    pub repository: Option<RepositoryRef>,
+}
+
+#[tauri::command]
+pub async fn resolve_resource_repository(
+    state: State<'_, AppState>,
+    request: ResolveResourceRepositoryRequest,
+) -> Result<ResolveResourceRepositoryResult, String> {
+    resolve_inner(&state, request)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+async fn resolve_inner(
+    state: &AppState,
+    request: ResolveResourceRepositoryRequest,
+) -> AppResult<ResolveResourceRepositoryResult> {
+    let _ = request.project_generation;
+    let epoch = admit_project(
+        state,
+        &request.project_id,
+        request.expected_transition_epoch,
+    )
+    .await?;
+    let workspace = nested_workspace(
+        state,
+        &request.project_id,
+        &RepositoryRef {
+            root_id: request.resource.root_id.clone(),
+            relative_path: String::new(),
+        },
+    )?;
+    let repository = workspace.resource_repository(&request.resource)?;
+    Ok(ResolveResourceRepositoryResult {
+        project_id: request.project_id,
+        transition_epoch: epoch,
+        repository,
+    })
+}
+
 #[tauri::command]
 pub async fn discover_project_repositories(
     state: State<'_, AppState>,
@@ -290,7 +344,7 @@ fn prefix_relative(repository: &str, inner: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, path::Path, process::Command};
+    use std::{fs, path::Path};
 
     use uuid::Uuid;
 
@@ -298,7 +352,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            Command::new("git")
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -365,48 +419,62 @@ mod tests {
 
     #[test]
     fn nested_status_and_diff_use_the_nested_git_top_level() {
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
-            let (state, project_id, root_id, base) = fixture();
-            let repository = RepositoryRef {
-                root_id: root_id.clone(),
-                relative_path: "packages/tool".into(),
-            };
-            let resource = ResourceRef {
-                root_id: root_id.clone(),
-                relative_path: "packages/tool/app.ts".into(),
-            };
-            let status = status_inner(
-                &state,
-                NestedRepositoryRequest {
-                    project_id: project_id.clone(),
-                    project_generation: 0,
-                    expected_transition_epoch: 0,
-                    r#ref: repository.clone(),
-                    resource: None,
-                },
-            )
-            .await
-            .unwrap();
-            assert_eq!(status.status.state, "repository");
-            assert_eq!(status.status.changes[0].resource, resource);
+        for root_repository in [true, false] {
+            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                let (state, project_id, root_id, base) = fixture();
+                if !root_repository {
+                    fs::rename(base.join("repo/.git"), base.join("root-git-marker")).unwrap();
+                }
+                let resource = ResourceRef {
+                    root_id: root_id.clone(),
+                    relative_path: "packages/tool/app.ts".into(),
+                };
+                let resolved = resolve_inner(
+                    &state,
+                    ResolveResourceRepositoryRequest {
+                        project_id: project_id.clone(),
+                        project_generation: 0,
+                        expected_transition_epoch: 0,
+                        resource: resource.clone(),
+                    },
+                )
+                .await
+                .unwrap();
+                let repository = resolved.repository.unwrap();
+                assert_eq!(repository.relative_path, "packages/tool");
+                let status = status_inner(
+                    &state,
+                    NestedRepositoryRequest {
+                        project_id: project_id.clone(),
+                        project_generation: 0,
+                        expected_transition_epoch: 0,
+                        r#ref: repository.clone(),
+                        resource: None,
+                    },
+                )
+                .await
+                .unwrap();
+                assert_eq!(status.status.state, "repository");
+                assert_eq!(status.status.changes[0].resource, resource);
 
-            let diff = diff_inner(
-                &state,
-                NestedRepositoryRequest {
-                    project_id,
-                    project_generation: 0,
-                    expected_transition_epoch: 0,
-                    r#ref: repository,
-                    resource: Some(resource.clone()),
-                },
-            )
-            .await
-            .unwrap();
-            assert_eq!(diff.diff.resource, resource);
-            assert!(!diff.diff.hunks.is_empty());
-            drop(state);
-            fs::remove_dir_all(base).ok();
-        });
+                let diff = diff_inner(
+                    &state,
+                    NestedRepositoryRequest {
+                        project_id,
+                        project_generation: 0,
+                        expected_transition_epoch: 0,
+                        r#ref: repository,
+                        resource: Some(resource.clone()),
+                    },
+                )
+                .await
+                .unwrap();
+                assert_eq!(diff.diff.resource, resource);
+                assert!(!diff.diff.hunks.is_empty());
+                drop(state);
+                fs::remove_dir_all(base).ok();
+            });
+        }
     }
 
     #[test]

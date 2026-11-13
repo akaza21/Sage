@@ -1,18 +1,18 @@
 import { useContext, useState, type FormEvent, type RefObject } from "react";
-import { FilePenLine } from "../../ui/leanIcons";
 import { useWorkbenchStore } from "../../app/store";
+import { errorMessage } from "../../domain/errors";
 import {
   parentResource,
   sameOrDescendantResource,
   sameResource,
 } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
+import { FilePenLine } from "../../ui/leanIcons";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { useExplorerActionDialog } from "./explorerActionDialogController";
 import { ExplorerReleasesOpenFiles } from "./explorerOpenFiles";
 import { renameTargetResource } from "./fileRenameContract";
 import { renameFolderTargetResource } from "./folderRenameContract";
-import { errorMessage } from "../../domain/errors";
 
 export function RenameResourceControl({
   kind,
@@ -90,8 +90,8 @@ export function RenameResourceControl({
     : (rootName ?? "Root");
   const triggerTitle = sourceOpen
     ? folder
-      ? "Close File and Diff tabs for the folder and its descendants before renaming"
-      : "Close the source File and Diff tabs before renaming"
+      ? "Close file and diff tabs for the folder and its descendants before renaming"
+      : "Close the source file and diff tabs before renaming"
     : source
       ? `Rename ${kind}`
       : folder

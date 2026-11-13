@@ -36,6 +36,9 @@ where
     pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.pump.take_native_rpc_reply()
     }
+    pub(crate) fn abandon_usage_read(&mut self) {
+        self.pump.abandon_usage_read();
+    }
     pub(crate) fn begin_native_rpc(
         &mut self,
         intent: &crate::acp::goal::NativeRpcIntent,
@@ -47,6 +50,9 @@ where
             crate::acp::goal::NativeRpcRequest::Goal(action) => {
                 self.pump.write_goal(&mut self.transport, *action)
             }
+            crate::acp::goal::NativeRpcRequest::UsageRead => {
+                self.pump.write_usage_read(&mut self.transport)
+            }
             crate::acp::goal::NativeRpcRequest::ChildThreadRead {
                 child_thread_id,
                 parent_thread_id,
@@ -56,6 +62,9 @@ where
             // A fork is taken only between Turns, so the forked history ends
             // at the latest completed Turn and never at a moving one.
             crate::acp::goal::NativeRpcRequest::ForkSession => Err(HostError::State),
+            crate::acp::goal::NativeRpcRequest::Control(control) => {
+                self.pump.write_control(&mut self.transport, control)
+            }
             // A Turn started before the release reached the runtime: it is
             // deferred and written once the runtime is idle again.
             crate::acp::goal::NativeRpcRequest::ReleaseFork { fork, committed } => {

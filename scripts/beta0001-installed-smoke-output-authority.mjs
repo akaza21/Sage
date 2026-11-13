@@ -1,25 +1,38 @@
 import { spawn } from "node:child_process";
 import { lstat, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  guardianPhaseSource,
+  observeGuardianStartup,
+} from "./beta0001-installed-smoke-output-diagnostics.mjs";
+import { recordGuardianStartup } from "./beta0001-installed-smoke-guardian-journal.mjs";
 
 const requestEnvironment = "SAGE_INSTALLED_SMOKE_OUTPUT_AUTHORITY";
 const startupTimeoutMs = 10_000;
+// How long a released guardian may take to exit on its own before it is
+// killed, and how long a killed one may take to close its stdio after that.
+const releaseGraceMs = 5000;
+const teardownTimeoutMs = 10_000;
 const outputMaximumBytes = 16 * 1024;
 const authorities = new WeakSet();
 
 const guardianSource = String.raw`
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+${guardianPhaseSource}
 $name = "SAGE_INSTALLED_SMOKE_OUTPUT_AUTHORITY"
 $encoded = [Environment]::GetEnvironmentVariable($name, "Process")
 [Environment]::SetEnvironmentVariable($name, $null, "Process")
 $request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded)) | ConvertFrom-Json
+Write-AuthorityPhase 'identity-start'
 $hostPath = (Get-Process -Id $PID -ErrorAction Stop).Path
 $hostItem = Get-Item -LiteralPath $hostPath -Force -ErrorAction Stop
 if ($hostItem.Length -ne [long]$request.powerShellBytes -or
     (Get-FileHash -LiteralPath $hostPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$request.powerShellSha256) {
   throw "Output guardian PowerShell identity changed."
 }
+Write-AuthorityPhase 'identity-verified'
+Write-AuthorityPhase 'compile-start'
 if (-not ("SageInstalledSmoke.DirectorySeal" -as [type])) {
 Add-Type -TypeDefinition @'
 using System;
@@ -99,14 +112,18 @@ namespace SageInstalledSmoke {
 }
 '@
 }
+Write-AuthorityPhase 'compile-complete'
 $seal = $null
 try {
+  Write-AuthorityPhase 'seal-start'
   $seal = [SageInstalledSmoke.DirectorySeal]::Acquire(
     [string]$request.outputDirectory,
     [bool]$request.create
   )
+  Write-AuthorityPhase 'seal-acquired'
   [Console]::Out.WriteLine((@{schemaVersion=1; status="ready"; root=$seal.Root} | ConvertTo-Json -Compress))
   [Console]::Out.Flush()
+  Write-AuthorityPhase 'ready-written'
   if ([Console]::In.ReadLine() -ne "release") { throw "Output authority release was not explicit." }
 } finally {
   if ($null -ne $seal) { $seal.Dispose() }
@@ -137,7 +154,131 @@ async function ordinaryIdentity(root, label) {
 }
 
 function stopChild(child) {
-  if (child.exitCode === null) child.kill();
+  if (child.exitCode === null && child.signalCode === null) child.kill();
+}
+
+function closedWithin(closed, timeoutMs) {
+  let timer;
+  return Promise.race([
+    closed.then(() => true),
+    new Promise((resolve) => {
+      timer = setTimeout(resolve, timeoutMs, false);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+// Tracks a spawned guardian's close from the start, so a close that happens
+// before teardown begins is still observed.
+export function guardianFor(child) {
+  // The guardian can exit before it reads the release line; that is settled
+  // by waiting for close, not by the write.
+  child.stdin.on("error", () => {});
+  return {
+    child,
+    closed: new Promise((resolve) => child.once("close", resolve)),
+  };
+}
+
+// The guardian holds no-delete handles on the output's ancestors until its
+// process is gone, so teardown is complete only once it has closed. A guardian
+// that outlives the kill is a failure, never something to retry around.
+export async function settleGuardian({ child, closed }, { release }) {
+  if (release) {
+    child.stdin.end("release\n");
+    if (await closedWithin(closed, releaseGraceMs)) return;
+  }
+  stopChild(child);
+  if (!(await closedWithin(closed, teardownTimeoutMs))) {
+    throw new Error("installed-smoke-output-authority-teardown-timeout");
+  }
+}
+
+export async function failAfterTeardown(guardian, error, { release }) {
+  try {
+    await settleGuardian(guardian, { release });
+  } catch (teardown) {
+    // Report the teardown failure first; the failure that led to it stays
+    // attached rather than being lost.
+    throw new AggregateError([teardown, error], teardown.message, {
+      cause: teardown,
+    });
+  }
+  throw error;
+}
+
+export function waitForGuardianAuthority(
+  guardian,
+  outputDirectory,
+  powerShell,
+  diagnostics = {},
+) {
+  const { child } = guardian;
+  const startup = observeGuardianStartup(child, diagnostics);
+  const recordStartup = diagnostics.recordStartup ?? recordGuardianStartup;
+  // The journal is written only after the guardian is settled, and nothing
+  // waits on it: a stalled disk must not delay the kill or the teardown.
+  const journal = (snapshot, outcome) => {
+    Promise.resolve()
+      .then(() => recordStartup(snapshot, outcome))
+      .catch(() => {});
+  };
+  return new Promise((resolve, reject) => {
+    let stdout = Buffer.alloc(0);
+    let stderrBytes = 0;
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      startup.dispose();
+      // Begin teardown in this turn, before any asynchronous diagnostic work.
+      failAfterTeardown(guardian, error, { release: false }).catch(reject);
+    };
+    const timer = setTimeout(() => {
+      const error = startup.timeoutError();
+      fail(error);
+      error.diagnosticReady = startup.collectCpu(error, powerShell);
+      journal(error.diagnostic, "timeout");
+    }, startupTimeoutMs);
+    child.stdout.on("data", (chunk) => {
+      if (settled) return;
+      stdout = Buffer.concat([stdout, chunk]);
+      if (stdout.byteLength > outputMaximumBytes) {
+        fail(new Error("installed-smoke-output-authority-stdout-oversize"));
+        return;
+      }
+      const newline = stdout.indexOf(0x0a);
+      if (newline < 0) return;
+      try {
+        const value = JSON.parse(stdout.subarray(0, newline).toString("utf8"));
+        if (
+          value?.schemaVersion !== 1 ||
+          value?.status !== "ready" ||
+          value?.root?.toLowerCase() !==
+            path.resolve(outputDirectory).toLowerCase()
+        ) {
+          throw new Error("installed-smoke-output-authority-proof-invalid");
+        }
+        settled = true;
+        clearTimeout(timer);
+        resolve({ ...guardian, root: path.resolve(outputDirectory) });
+        journal(startup.snapshot(), "ready");
+      } catch (error) {
+        fail(error);
+      }
+    });
+    child.stderr.on("data", (chunk) => {
+      stderrBytes += chunk.byteLength;
+      if (stderrBytes > outputMaximumBytes) {
+        fail(new Error("installed-smoke-output-authority-stderr-oversize"));
+      }
+    });
+    child.on("error", fail);
+    child.on("close", (code) => {
+      if (!settled)
+        fail(new Error(`installed-smoke-output-authority-exit-${code}`));
+    });
+  }).finally(() => startup.dispose());
 }
 
 export async function acquireInstalledSmokeOutputAuthority({
@@ -168,58 +309,18 @@ export async function acquireInstalledSmokeOutputAuthority({
     windowsHide: true,
     stdio: ["pipe", "pipe", "pipe"],
   });
-  const authority = await new Promise((resolve, reject) => {
-    let stdout = Buffer.alloc(0);
-    let stderrBytes = 0;
-    let settled = false;
-    const fail = (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      stopChild(child);
-      reject(error);
-    };
-    const timer = setTimeout(
-      () => fail(new Error("installed-smoke-output-authority-timeout")),
-      startupTimeoutMs,
-    );
-    child.stdout.on("data", (chunk) => {
-      if (settled) return;
-      stdout = Buffer.concat([stdout, chunk]);
-      if (stdout.byteLength > outputMaximumBytes) {
-        fail(new Error("installed-smoke-output-authority-stdout-oversize"));
-        return;
-      }
-      const newline = stdout.indexOf(0x0a);
-      if (newline < 0) return;
-      try {
-        const value = JSON.parse(stdout.subarray(0, newline).toString("utf8"));
-        if (
-          value?.schemaVersion !== 1 ||
-          value?.status !== "ready" ||
-          value?.root?.toLowerCase() !==
-            path.resolve(outputDirectory).toLowerCase()
-        ) {
-          throw new Error("installed-smoke-output-authority-proof-invalid");
-        }
-        settled = true;
-        clearTimeout(timer);
-        resolve({ root: path.resolve(outputDirectory), child });
-      } catch (error) {
-        fail(error);
-      }
-    });
-    child.stderr.on("data", (chunk) => {
-      stderrBytes += chunk.byteLength;
-      if (stderrBytes > outputMaximumBytes) {
-        fail(new Error("installed-smoke-output-authority-stderr-oversize"));
-      }
-    });
-    child.on("error", fail);
-    child.on("close", (code) => {
-      if (!settled)
-        fail(new Error(`installed-smoke-output-authority-exit-${code}`));
-    });
+  const guardian = guardianFor(child);
+  const authority = await waitForGuardianAuthority(
+    guardian,
+    outputDirectory,
+    powerShell,
+  ).catch(async (error) => {
+    // Teardown has already settled. Only reporting may wait for accounting;
+    // preserve the original startup error if teardown also failed.
+    const startupError =
+      error instanceof AggregateError ? error.errors[1] : error;
+    await startupError.diagnosticReady;
+    throw error;
   });
   try {
     authority.identity = await ordinaryIdentity(
@@ -227,9 +328,7 @@ export async function acquireInstalledSmokeOutputAuthority({
       "installed-smoke-output-authority",
     );
   } catch (error) {
-    authority.child.stdin.end("release\n");
-    stopChild(authority.child);
-    throw error;
+    await failAfterTeardown(authority, error, { release: true });
   }
   authorities.add(authority);
   return authority;
@@ -268,18 +367,7 @@ export async function writeInstalledSmokeOutputFile(
 export async function releaseInstalledSmokeOutputAuthority(authority) {
   if (!authorities.has(authority)) return;
   authorities.delete(authority);
-  if (authority.child.exitCode !== null) return;
-  await new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      stopChild(authority.child);
-      resolve();
-    }, 5000);
-    authority.child.once("close", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-    authority.child.stdin.end("release\n");
-  });
+  await settleGuardian(authority, { release: true });
 }
 
 export const INSTALLED_SMOKE_OUTPUT_GUARDIAN_ARGUMENTS = guardianArguments;

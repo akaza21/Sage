@@ -22,31 +22,41 @@ pub(crate) fn recover_after_restart(
     connection: &mut rusqlite::Connection,
     now_millis: i64,
 ) -> Result<RecoveryReport, StoreError> {
-    let candidates = load_recovery_candidates(connection)?;
-    let Some(candidate) = candidates.into_iter().next() else {
-        return Ok(RecoveryReport {
-            recovered_sessions: 0,
-            terminal_turn: None,
-            projection_revision: None,
-        });
+    // Every bounded live tree from the previous process is recovered; each
+    // candidate commits in its own transaction, oldest first.
+    let mut report = RecoveryReport {
+        recovered_sessions: 0,
+        terminal_turn: None,
+        projection_revision: None,
     };
-    recover_candidate(connection, candidate, now_millis)
+    for candidate in load_recovery_candidates(connection)? {
+        let recovered = recover_candidate(connection, candidate, now_millis)?;
+        report.recovered_sessions += recovered.recovered_sessions;
+        report.terminal_turn = recovered.terminal_turn.or(report.terminal_turn);
+        report.projection_revision = recovered.projection_revision;
+    }
+    let (parked, revision) =
+        crate::acp::store::turn_undo::recovery::recover_parked(connection, now_millis)?;
+    report.recovered_sessions += parked;
+    report.projection_revision = revision.or(report.projection_revision);
+    Ok(report)
 }
 
 pub(crate) fn recover_runtime_after_zero_process(
     connection: &mut rusqlite::Connection,
     command: RecoverRuntimeCommand,
 ) -> Result<RecoveryReport, StoreError> {
-    let mut candidates = load_recovery_candidates(connection)?;
-    match candidates.pop() {
-        Some(candidate) if exact_candidate(&candidate, &command) => {
-            recover_candidate(connection, candidate, command.now_millis)
-        }
-        Some(_) => Err(StoreError::Conflict {
-            resource: "runtimeRecovery",
-        }),
+    // Other bounded live trees may coexist; only this exact owner's epoch is
+    // recovered, and a missing candidate replays an exact postcondition.
+    let candidates = load_recovery_candidates(connection)?;
+    let report = match candidates
+        .into_iter()
+        .find(|candidate| exact_candidate(candidate, &command))
+    {
+        Some(candidate) => recover_candidate(connection, candidate, command.now_millis),
         None => replay_recovered_runtime(connection, &command),
-    }
+    }?;
+    Ok(report)
 }
 
 fn exact_candidate(candidate: &RecoveryCandidate, command: &RecoverRuntimeCommand) -> bool {
@@ -97,11 +107,15 @@ fn replay_recovered_runtime(
             resource: "runtimeRecovery",
         });
     };
-    if session != "failed"
+    let parked = session == "ready"
+        && epoch == "exited"
+        && has_head
+        && crate::acp::store::pending_thread_rewind(connection, command.session_id.as_str())?
+            .is_some();
+    let retired = session == "failed" && epoch == "failed" && !has_head;
+    if !(parked || retired)
         || residency != "cold"
-        || epoch != "failed"
         || exit.as_deref() != Some("restartRecovery")
-        || has_head
         || has_live_turn
     {
         return Err(StoreError::Corrupt("runtime recovery postcondition"));
@@ -126,47 +140,95 @@ fn recover_candidate(
         return Err(StoreError::Corrupt("live epoch has invalid session state"));
     }
     let transaction = connection.transaction()?;
+    let undo_rolled_back =
+        crate::acp::store::turn_undo::recovery::settle_live(&transaction, &candidate, now_millis)?;
+    // A pending cut proves the undo committed, not that a later prompt was
+    // never delivered. Include terminal deliveryUnknown turns too: their
+    // native effects remain uncertain even though they are no longer live.
+    let park = !undo_rolled_back
+        && matches!(
+            candidate.session_state,
+            SessionState::Ready | SessionState::Active
+        )
+        && match crate::acp::store::pending_thread_rewind(
+            &transaction,
+            candidate.session_id.as_str(),
+        )? {
+            Some(rewind) => transaction.query_row(
+                "SELECT NOT EXISTS(SELECT 1 FROM turns t
+                 JOIN turns undone ON undone.session_id=t.session_id AND undone.id=?3
+                 WHERE t.session_id=?1 AND t.runtime_epoch=?2 AND t.ordinal>undone.ordinal
+                   AND t.delivery_state NOT IN ('notWritten','zeroBytes'))",
+                params![
+                    candidate.session_id.as_str(),
+                    candidate.runtime_epoch.get() as i64,
+                    rewind.turn_id.as_str()
+                ],
+                |row| row.get::<_, bool>(0),
+            )?,
+            None => false,
+        };
     let projection = next_projection_revision(
         &transaction,
         candidate.project_id.as_str(),
         candidate.chat_id.as_str(),
     )?;
-    let terminalized = terminalize_recovery_epoch(
-        &transaction,
-        &candidate.project_id,
-        &candidate.chat_id,
-        &candidate.session_id,
-        candidate.runtime_epoch,
-        projection,
-        now_millis,
-    )?;
-    let terminal_turn = terminalized.turn;
+    let terminal_turn = if park {
+        crate::acp::store::terminalize_epoch(
+            &transaction,
+            &candidate.project_id,
+            &candidate.chat_id,
+            &candidate.session_id,
+            candidate.runtime_epoch,
+            TurnState::Cancelled,
+            "undoRecovery",
+            projection,
+            now_millis,
+        )?;
+        None
+    } else {
+        terminalize_recovery_epoch(
+            &transaction,
+            &candidate.project_id,
+            &candidate.chat_id,
+            &candidate.session_id,
+            candidate.runtime_epoch,
+            projection,
+            now_millis,
+        )?
+        .turn
+    };
     ensure_one(
         transaction.execute(
-            "UPDATE session_runtime_epochs SET state='failed', terminal_at=?3,
+            "UPDATE session_runtime_epochs SET state=?4, terminal_at=?3,
                  exit_kind='restartRecovery'
              WHERE session_id=?1 AND runtime_epoch=?2
                AND state IN ('starting','running','terminating')",
             params![
                 candidate.session_id.as_str(),
                 candidate.runtime_epoch.get() as i64,
-                now_millis
+                now_millis,
+                if park { "exited" } else { "failed" }
             ],
         )?,
         "runtime epoch",
     )?;
-    transaction.execute(
-        "DELETE FROM chat_session_heads WHERE session_id=?1",
-        [candidate.session_id.as_str()],
-    )?;
+    if !park {
+        transaction.execute(
+            "DELETE FROM chat_session_heads WHERE session_id=?1",
+            [candidate.session_id.as_str()],
+        )?;
+    }
     ensure_one(
         transaction.execute(
-            "UPDATE agent_sessions SET state='failed', residency='cold', revision=revision+1,
-                 projection_revision=?2, updated_at=?3, terminal_at=?3 WHERE id=?1",
+            "UPDATE agent_sessions SET state=?4, residency='cold', revision=revision+1,
+                 projection_revision=?2, updated_at=?3, terminal_at=?5 WHERE id=?1",
             params![
                 candidate.session_id.as_str(),
                 projection.get() as i64,
-                now_millis
+                now_millis,
+                if park { "ready" } else { "failed" },
+                if park { None } else { Some(now_millis) }
             ],
         )?,
         "session",

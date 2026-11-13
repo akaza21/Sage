@@ -86,21 +86,130 @@ impl CodexRuntime {
                 }
             }
         }
-        let mapper = MapperBridge(resources);
-        let disposition = self
-            .inner
-            .ingest_with_declarations(frame.as_bytes(), &mapper, &self.declared_test_commands)
-            .map_err(map_adapter)?;
+        let disposition = ingest_disposition(
+            &mut self.inner,
+            frame,
+            resources,
+            &self.declared_test_commands,
+        )?;
         self.record_browser_failure_diagnostic(&disposition, frame.as_bytes());
         let request_digest =
             request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?;
-        self.translate(disposition, request_digest)
+        let batch = self.translate(disposition, request_digest)?;
+        if !self.inner.take_deferred_interrupt() {
+            return Ok(batch);
+        }
+        let (events, mut egress) = batch.into_parts();
+        egress.push(self.request_with_control(CodexAdapter::cancel, true)?);
+        AdapterBatch::new(events, egress)
     }
+
+    /// Runs `frames`, in order, through the protocol ingestion `ingest_frame`
+    /// applies, against one copy of the adapter state, and reports whether
+    /// each would be read as a duplicate terminal that leaves the state as it
+    /// was. Only a repeated `turn/completed` counts: a repeated item terminal
+    /// also reads as DuplicateTerminal, but it is not a Turn boundary. A
+    /// DuplicateTerminal outcome alone is not enough: a late reply can read
+    /// as one while it settles a pending RPC. While a native RPC reply
+    /// is pending, `ingest_frame` may consume a frame before that ingestion,
+    /// so the probe answers false. Diagnostics stay silent: the trial is not
+    /// the read, and the real read reports them.
+    pub(super) fn ingests_as_duplicate_terminals(
+        &self,
+        frames: &[Frame],
+        resources: &dyn ResourceMapper,
+    ) -> bool {
+        if self.poisoned
+            || self.inner.fork_pending().is_some()
+            || self.inner.fork_release_pending().is_some()
+            || self.inner.child_read_pending()
+            || self.inner.is_child_read_tombstone_id_active()
+        {
+            return false;
+        }
+        let mut probe = self.inner.clone();
+        super::super::incoming::trial_read(|| {
+            frames.iter().all(|frame| {
+                is_turn_terminal(frame)
+                    && matches!(
+                        ingest_disposition(
+                            &mut probe,
+                            frame,
+                            resources,
+                            &self.declared_test_commands
+                        ),
+                        Ok(IngressDisposition::DuplicateTerminal)
+                    )
+                    && request_payload_digest(frame).is_ok()
+                    && probe == self.inner
+            })
+        })
+    }
+}
+
+/// Whether `frame` is a Turn terminal notification. Checked before the trial
+/// read, so no other frame is mapped or diffed by the probe.
+fn is_turn_terminal(frame: &Frame) -> bool {
+    serde_json::from_slice::<serde_json::Value>(frame.as_bytes())
+        .ok()
+        .and_then(|value| value.get("method")?.as_str().map(|m| m == "turn/completed"))
+        .unwrap_or(false)
+}
+
+fn ingest_disposition(
+    inner: &mut CodexAdapter,
+    frame: &Frame,
+    resources: &dyn ResourceMapper,
+    declarations: &DeclaredTestCommands,
+) -> Result<IngressDisposition, AdapterRuntimeError> {
+    inner
+        .ingest_with_declarations(frame.as_bytes(), &MapperBridge(resources), declarations)
+        .map_err(map_adapter)
 }
 
 impl CodexRuntime {
     /// `thread/fork`; a full fork ledger is a capacity refusal (BatchCount)
     /// the service turns into a reason the user can act on.
+    /// Undo removes the latest Turn from Codex's history; files stay.
+    pub(super) fn control_request(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        use crate::acp::session_control::SessionControl;
+        self.native_rpc_reply = None;
+        match control {
+            SessionControl::UndoTurn { turn_id } => {
+                self.request(|adapter, id| adapter.revert(id, turn_id.as_str()))
+            }
+            SessionControl::ReadMcpServers
+            | SessionControl::ReloadMcpServers
+            | SessionControl::SignInMcpServer { .. } => {
+                self.request(|adapter, id| adapter.mcp_request(id, control))
+            }
+            SessionControl::StopActivity { .. }
+            | SessionControl::SetTitle { .. }
+            | SessionControl::ReconnectMcpServer { .. } => {
+                Err(AdapterRuntimeError::UnsupportedCommand)
+            }
+        }
+    }
+
+    /// An undo of the Turn Codex already reverted is confirmed again, so a
+    /// revert whose record Sage lost can still be recorded.
+    pub(super) fn answered_undo(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> bool {
+        let crate::acp::session_control::SessionControl::UndoTurn { turn_id } = control else {
+            return false;
+        };
+        if !self.inner.reverted(turn_id.as_str()) {
+            return false;
+        }
+        self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::Controlled(None));
+        true
+    }
+
     pub(super) fn fork_request(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.native_rpc_reply = None;
         if self.inner.fork_ledger_full() {

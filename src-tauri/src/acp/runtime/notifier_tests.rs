@@ -14,6 +14,7 @@ use super::notifier::{
     NotificationError, NotificationRecovery, NotificationSink, NotificationSinkFuture,
     ProjectionNotifier, PublishOutcome,
 };
+use super::projection_publisher::TurnNotice;
 
 struct GateSink {
     committed: Arc<AtomicBool>,
@@ -42,9 +43,17 @@ impl GateSink {
         }
     }
 
+    // Both waits register for the wakeup before reading the counter, so a
+    // `notify_waiters` between the read and the await is never lost.
     async fn wait_for_entries(&self, expected: usize) {
-        while self.entries.load(Ordering::SeqCst) < expected {
-            self.entered.notified().await;
+        loop {
+            let entered = self.entered.notified();
+            tokio::pin!(entered);
+            entered.as_mut().enable();
+            if self.entries.load(Ordering::SeqCst) >= expected {
+                return;
+            }
+            entered.await;
         }
     }
 
@@ -53,8 +62,14 @@ impl GateSink {
     }
 
     async fn wait_for_idle(&self) {
-        while self.active.load(Ordering::SeqCst) != 0 {
-            self.settled.notified().await;
+        loop {
+            let settled = self.settled.notified();
+            tokio::pin!(settled);
+            settled.as_mut().enable();
+            if self.active.load(Ordering::SeqCst) == 0 {
+                return;
+            }
+            settled.await;
         }
     }
 }
@@ -163,20 +178,23 @@ fn a_child_epoch_at_an_unchanged_revision_is_still_delivered() {
             Ok(PublishOutcome::Scheduled)
         );
         sink.wait_for_entries(1).await;
-        sink.release(1);
-        tokio::task::yield_now().await;
-        // Only the child epoch moved; the revision is the same.
+        // Keep the original revision in flight so only the newer child epoch
+        // can admit this second event at the unchanged revision.
         assert_eq!(
             notifier.publish_committed(child(7)),
             Ok(PublishOutcome::Scheduled)
         );
-        sink.wait_for_entries(2).await;
         sink.release(1);
-        tokio::task::yield_now().await;
+        sink.wait_for_entries(2).await;
+        // A repeat of the child epoch being delivered coalesces into it. Once
+        // that delivery settles the notifier is idle and would schedule the
+        // repeat again, so publish it while the delivery is still held.
         assert_eq!(
             notifier.publish_committed(child(7)),
             Ok(PublishOutcome::Coalesced)
         );
+        sink.release(1);
+        sink.wait_for_idle().await;
         assert_eq!(*lock(&sink.revisions), vec![4, 4]);
         notifier.shutdown().await;
     });
@@ -430,4 +448,37 @@ fn interleaved_chats_keep_their_own_child_only_routing() {
         route_projection_notice(&mut routes, child("b", 9, 3)).is_ok(),
         "an evicted route reloads the parent page once"
     );
+}
+
+#[tokio::test]
+async fn only_possible_turn_notices_are_observed_even_when_projection_is_suppressed() {
+    struct Observer(AtomicUsize);
+    impl NotificationSink for Observer {
+        fn observe_turn_notice(&self, _: &ProjectionChangedV1) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+        fn publish<'a>(&'a self, _: ProjectionChangedV1) -> NotificationSinkFuture<'a> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+    let sink = Arc::new(Observer(AtomicUsize::new(0)));
+    let notifier = ProjectionNotifier::start(sink.clone());
+    notifier.set_active_project(SageProjectId::parse("foreground").unwrap());
+    assert_eq!(
+        notifier
+            .publish_committed(event("background", "chat", "session", 1))
+            .unwrap(),
+        PublishOutcome::SuppressedInactive
+    );
+    assert_eq!(sink.0.load(Ordering::SeqCst), 0, "streamed content");
+    assert_eq!(
+        notifier
+            .publish_committed_with(
+                event("background", "chat", "session", 2),
+                TurnNotice::Possible
+            )
+            .unwrap(),
+        PublishOutcome::SuppressedInactive
+    );
+    assert_eq!(sink.0.load(Ordering::SeqCst), 1);
 }

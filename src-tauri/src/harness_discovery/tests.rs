@@ -1,7 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 
 use super::{
@@ -18,13 +18,49 @@ use super::{
 use super::{InstallLayout, candidates::known_install_roots_from_windows};
 
 fn scratch_dir() -> PathBuf {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock")
-        .as_nanos();
+    try_scratch_dir().expect("exclusively create scratch directory")
+}
+
+fn try_scratch_dir() -> std::io::Result<PathBuf> {
+    let nonce = uuid::Uuid::new_v4();
     let directory = std::env::temp_dir().join(format!("sage-host-discovery-{nonce}"));
-    fs::create_dir_all(&directory).expect("create scratch directory");
-    directory
+    fs::create_dir(&directory)?;
+    Ok(directory)
+}
+
+#[test]
+fn parallel_scratch_directories_have_exclusive_ownership() {
+    let barrier = std::sync::Barrier::new(2);
+    let paths = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..2)
+            .map(|_| {
+                scope.spawn(|| {
+                    (0..500)
+                        .map(|_| {
+                            barrier.wait();
+                            let path = try_scratch_dir();
+                            barrier.wait();
+                            path
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|worker| worker.join().unwrap())
+            .collect::<Vec<_>>()
+    });
+    let paths: Vec<_> = paths.into_iter().map(Result::unwrap).collect();
+    let unique: std::collections::HashSet<_> = paths.iter().collect();
+    for path in &unique {
+        fs::remove_dir_all(path).unwrap();
+    }
+    assert_eq!(
+        unique.len(),
+        paths.len(),
+        "scratch directory ownership collided"
+    );
 }
 
 fn test_basename(harness: HarnessExecutable) -> &'static str {
@@ -34,13 +70,15 @@ fn test_basename(harness: HarnessExecutable) -> &'static str {
         .expect("each harness has one expected basename")
 }
 
-fn write_script(directory: &Path, basename: &str, body: &str) -> PathBuf {
+pub(super) fn write_script(directory: &Path, basename: &str, body: &str) -> PathBuf {
     let executable = directory.join(basename);
     #[cfg(windows)]
-    fs::write(&executable, format!("@echo off\r\n{body}\r\n")).expect("write command script");
+    crate::test_executable::write(&executable, format!("@echo off\r\n{body}\r\n"))
+        .expect("write command script");
     #[cfg(not(windows))]
     {
-        fs::write(&executable, format!("#!/bin/sh\n{body}\n")).expect("write shell script");
+        crate::test_executable::write(&executable, format!("#!/bin/sh\n{body}\n"))
+            .expect("write shell script");
         use std::os::unix::fs::PermissionsExt;
         let mut permissions = fs::metadata(&executable)
             .expect("script metadata")
@@ -79,18 +117,14 @@ fn timeout_limits() -> ProbeLimits {
 }
 
 #[test]
-fn presence_projection_does_not_wait_for_a_slow_version_command() {
+fn presence_projection_does_not_execute_a_version_command() {
     let directory = scratch_dir();
+    let marker = directory.join("version-command-executed");
     let executable = write_script(
         &directory,
         test_basename(HarnessExecutable::Codex),
-        if cfg!(windows) {
-            "ping 127.0.0.1 -n 6 > nul"
-        } else {
-            "sleep 1"
-        },
+        &format!("echo executed > \"{}\"", marker.display()),
     );
-    let started = std::time::Instant::now();
     let candidate = present_candidate(
         HarnessExecutable::Codex,
         vec![super::candidates::Candidate {
@@ -100,7 +134,53 @@ fn presence_projection_does_not_wait_for_a_slow_version_command() {
     );
 
     assert!(candidate.is_some());
-    assert!(started.elapsed() < Duration::from_millis(200));
+    assert!(
+        !marker.exists(),
+        "presence discovery executed a version probe"
+    );
+    fs::remove_dir_all(directory).expect("remove scratch directory");
+}
+
+#[test]
+fn a_failed_version_probe_is_tried_again_on_the_next_discovery() {
+    let directory = scratch_dir();
+    let ready = directory.join("ready");
+    // Fails until the marker exists, like a just-updated CLI that misses the
+    // deadline on its first, cold run. The script itself never changes.
+    let command = if cfg!(windows) {
+        format!(
+            "@if not exist \"{}\" exit /b 1\r\n@echo codex-cli 0.168.0",
+            ready.display()
+        )
+    } else {
+        format!(
+            "[ -e \"{}\" ] || exit 1\necho codex-cli 0.168.0",
+            ready.display()
+        )
+    };
+    let executable = write_script(
+        &directory,
+        test_basename(HarnessExecutable::Codex),
+        &command,
+    );
+    let present = vec![InstalledHarness {
+        id: "codex",
+        executable,
+        version: None,
+    }];
+    let cache = DisplayVersionCache::default();
+
+    assert_eq!(
+        enrich_installed_harness_versions(&present, &cache)[0].version,
+        None
+    );
+    fs::write(&ready, "").unwrap();
+    assert_eq!(
+        enrich_installed_harness_versions(&present, &cache)[0]
+            .version
+            .as_deref(),
+        Some("0.168.0")
+    );
     fs::remove_dir_all(directory).expect("remove scratch directory");
 }
 
@@ -139,6 +219,43 @@ fn display_version_cache_skips_unchanged_probe_and_rechecks_changed_file_identit
     assert_eq!(second[0].version.as_deref(), Some("0.146.0"));
     assert_eq!(third[0].version.as_deref(), Some("0.146.0"));
     assert_eq!(fs::read_to_string(marker).unwrap().lines().count(), 2);
+    fs::remove_dir_all(directory).expect("remove scratch directory");
+}
+
+#[cfg(unix)]
+#[test]
+fn fresh_scripts_can_be_probed_while_other_threads_spawn_children() {
+    let directory = scratch_dir();
+    let start = std::sync::Barrier::new(2);
+    std::thread::scope(|scope| {
+        for worker in 0..2 {
+            let directory = directory.join(worker.to_string());
+            fs::create_dir(&directory).unwrap();
+            let start = &start;
+            scope.spawn(move || {
+                start.wait();
+                // Each probe must succeed on its first attempt, including
+                // replacements of a script that was already executed.
+                for _ in 0..16 {
+                    let executable = write_script(
+                        &directory,
+                        test_basename(HarnessExecutable::Codex),
+                        "echo codex-cli 0.146.0",
+                    );
+                    let present = [InstalledHarness {
+                        id: "codex",
+                        executable,
+                        version: None,
+                    }];
+                    let found = enrich_installed_harness_versions(
+                        &present,
+                        &DisplayVersionCache::default(),
+                    );
+                    assert_eq!(found[0].version.as_deref(), Some("0.146.0"));
+                }
+            });
+        }
+    });
     fs::remove_dir_all(directory).expect("remove scratch directory");
 }
 

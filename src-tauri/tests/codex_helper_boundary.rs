@@ -7,7 +7,9 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use std::time::Instant;
 
-use sage_lib::codex_helper_boundary::{BoundaryStatus, direct_non_elevated_probe};
+use sage_lib::codex_helper_boundary::{
+    BoundaryError, BoundaryStatus, current_process_elevated, direct_non_elevated_probe,
+};
 use uuid::Uuid;
 
 struct TempRoot(PathBuf);
@@ -27,49 +29,46 @@ impl Drop for TempRoot {
 }
 
 #[test]
-fn direct_non_elevated_helper_returns_sealed_unavailable_without_residue() {
+fn direct_probe_honours_caller_elevation_without_residue() {
     let root = TempRoot::new();
-    let helper = root.0.join("sage-codex-0146-elevated-helper.exe");
-    fs::copy(
-        env!("CARGO_BIN_EXE_sage-codex-0146-elevated-helper"),
-        &helper,
-    )
-    .unwrap();
+    let helper = root.0.join("sage-codex-elevated-helper.exe");
+    fs::copy(env!("CARGO_BIN_EXE_sage-codex-elevated-helper"), &helper).unwrap();
     let before = fs::read_dir(&root.0).unwrap().count();
 
-    let receipt = direct_non_elevated_probe(
+    let result = direct_non_elevated_probe(
         &helper,
         b"sealed-core-request-placeholder-v1",
         Duration::from_secs(10),
-    )
-    .unwrap();
-
-    assert_eq!(receipt.status, BoundaryStatus::ElevationRequired);
-    assert_eq!(fs::read_dir(&root.0).unwrap().count(), before);
-    assert!(
-        OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&receipt.pipe_name)
-            .is_err()
     );
+
+    if current_process_elevated().unwrap() {
+        // Elevated callers are refused before the helper starts.
+        assert_eq!(result, Err(BoundaryError::Authority));
+    } else {
+        let receipt = result.unwrap();
+        assert_eq!(receipt.status, BoundaryStatus::ElevationRequired);
+        assert!(
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&receipt.pipe_name)
+                .is_err()
+        );
+    }
+    assert_eq!(fs::read_dir(&root.0).unwrap().count(), before);
     assert_eq!(
         fs::read(&helper).unwrap(),
-        fs::read(env!("CARGO_BIN_EXE_sage-codex-0146-elevated-helper")).unwrap()
+        fs::read(env!("CARGO_BIN_EXE_sage-codex-elevated-helper")).unwrap()
     );
 }
 
 #[test]
 fn unconnected_helper_exits_at_its_deadline_without_residue() {
     let root = TempRoot::new();
-    let helper = root.0.join("sage-codex-0146-elevated-helper.exe");
-    fs::copy(
-        env!("CARGO_BIN_EXE_sage-codex-0146-elevated-helper"),
-        &helper,
-    )
-    .unwrap();
+    let helper = root.0.join("sage-codex-elevated-helper.exe");
+    fs::copy(env!("CARGO_BIN_EXE_sage-codex-elevated-helper"), &helper).unwrap();
     assert!(fs::metadata(&helper).unwrap().len() <= 32 * 1024 * 1024);
-    let pipe = format!(r"\\.\pipe\sage-codex-0146-{}", Uuid::new_v4().simple());
+    let pipe = format!(r"\\.\pipe\sage-codex-helper-{}", Uuid::new_v4().simple());
     let mut child = Command::new(&helper)
         .arg("--sage-codex-helper-boundary-v1")
         .arg(&pipe)

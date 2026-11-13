@@ -12,7 +12,10 @@ use crate::{
         intent::ExternalId,
         store::chat_fork::{ForkSource, fork_source, install_fork},
     },
-    chat_lifecycle::{MAX_CHAT_TITLE_BYTES, insert_new_chat, validate_chat_identifier},
+    chat_lifecycle::{
+        CHAT_TITLE_PREFIX, MAX_CHAT_TITLE_BYTES, chat_display_title, insert_new_chat,
+        validate_chat_identifier,
+    },
     domain::{ProjectLayoutRequest, ProjectTransitionResult},
     error::{AppError, AppResult},
     persistence::{Database, now_millis},
@@ -20,7 +23,6 @@ use crate::{
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
 };
 
-const CHAT_TITLE_PREFIX: &str = "Chat: ";
 /// Fork numbers are searched in a bounded window; a Project holds far fewer
 /// Chats than this, so a free number always exists.
 const MAX_FORK_NUMBER: u32 = 10_000;
@@ -32,9 +34,7 @@ pub(crate) fn fork_title<'a>(
     parent_title: &str,
     taken: impl Iterator<Item = &'a str> + Clone,
 ) -> String {
-    let parent = parent_title
-        .strip_prefix(CHAT_TITLE_PREFIX)
-        .unwrap_or(parent_title);
+    let parent = chat_display_title(parent_title);
     for number in 2..=MAX_FORK_NUMBER {
         let suffix = format!(" ({number})");
         let mut end = parent.len().min(MAX_CHAT_TITLE_BYTES - suffix.len());
@@ -147,8 +147,13 @@ fn stage_fork_chat(
     let title = fork_title(&parent_title, titles.iter().map(String::as_str));
     let now = now_millis();
     transaction.execute(
-        "UPDATE chats SET title=?3 WHERE project_id=?1 AND id=?2",
-        params![project, chat_id, title],
+        "UPDATE chats SET title=?3,title_source=?4 WHERE project_id=?1 AND id=?2",
+        params![
+            project,
+            chat_id,
+            title,
+            crate::chat_lifecycle::ChatTitleSource::Fork.as_str()
+        ],
     )?;
     place_above_parent(
         transaction,

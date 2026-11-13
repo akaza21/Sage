@@ -60,12 +60,16 @@ pub(super) fn capabilities(runtime: &OmpRuntime) -> CapabilitySnapshotV1 {
         prompt: true,
         cancel: true,
         native_session_fork: false,
+        native_session_compact: false,
+        native_review: false,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: runtime.model_count,
+        prompt_resources: false,
+        prompt_images: false,
         config_count: 0,
     }
 }

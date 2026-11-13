@@ -1,10 +1,3 @@
-/*
- * Streamed answers (Codex s5/f0299-f0309): each block or list/table row that
- * mounts while the turn runs fades in once, and so does the newest run of
- * text appended to a growing block (.acp-stream-new, ChatMarkdown), so the
- * newest words trail. Earlier DOM nodes keep their finished animation across
- * re-renders, so only new content moves; opacity never shifts layout.
- */
 .acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
   .acp-message--assistant
   .acp-markdown
@@ -58,8 +51,10 @@
 }
 
 .acp-markdown {
+  --chat-text-leading: 1.6;
+  --chat-table-font-size: var(--font-size-xs);
   font-size: var(--font-size-md);
-  line-height: var(--line-height-relaxed);
+  line-height: var(--chat-text-leading);
 }
 
 .acp-markdown > :first-child {
@@ -77,10 +72,16 @@
   margin: var(--space-2) 0 0;
 }
 
+/* A chat answer keeps its single line breaks, as the harness wrote them. */
+.acp-markdown :is(p, [data-markdown-inline]) {
+  white-space: pre-line;
+}
+
 .acp-markdown :is(h1, h2, h3, h4, h5, h6) {
   margin: var(--space-4) 0 var(--space-2);
   line-height: var(--line-height-tight);
   font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
 }
 
 .acp-markdown blockquote {
@@ -112,7 +113,7 @@
   min-width: 0;
   white-space: normal;
   overflow-wrap: break-word;
-  font-size: var(--font-size-sm);
+  font-size: var(--chat-table-font-size);
   font-weight: var(--font-weight-regular);
   line-height: var(--line-height-relaxed);
 }

@@ -30,7 +30,12 @@ impl RuntimeFactory for PiFixtureRuntimeFactory {
         if !self.mcp.is_empty() {
             return Err(AdapterRuntimeError::LaunchUnavailable);
         }
-        let adapter = PiRuntime::from_fixture_binding(&self.binding, runtime_epoch, session_id)?;
+        let mut adapter =
+            PiRuntime::from_fixture_binding(&self.binding, runtime_epoch, session_id)?;
+        // A bridge case's child plays a Pi with the bundled extension installed.
+        if self.binding.bridge_installed() {
+            adapter.enable_bridge_for_root(&self.root)?;
+        }
         Ok(NativeRuntime::new(PiFixtureRuntime {
             adapter,
             binding: self.binding,
@@ -60,6 +65,12 @@ impl LaunchableRuntime for PiFixtureRuntime {
 }
 
 impl HarnessAdapter for PiFixtureRuntime {
+    fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
+        self.adapter.available_commands()
+    }
+    fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        self.adapter.discover_commands()
+    }
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
         self.adapter.session_config()
     }

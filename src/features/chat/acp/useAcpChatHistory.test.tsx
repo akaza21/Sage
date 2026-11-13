@@ -70,6 +70,28 @@ describe("useAcpChatHistory", () => {
     expect(result.current.historyError).toBe("Unavailable");
   });
 
+  it("reports a failed first page so the chat stops waiting for it", () => {
+    const store = useAcpProjectionStore.getState();
+    store.clear();
+    store.activateScope({
+      projectId: page.projectId,
+      projectGeneration: "7" as never,
+      chatId: page.chatId,
+    });
+    const { result } = renderHook(() => useAcpChatHistory());
+    let intent: ReturnType<typeof useAcpProjectionStore.getState>["activeLoad"];
+    act(() => {
+      intent = useAcpProjectionStore.getState().beginPageLoad(null);
+    });
+    expect(result.current.firstPageError).toBeNull();
+    act(() => {
+      useAcpProjectionStore.getState().failPageLoad(intent!, "Unavailable");
+    });
+    expect(result.current.historyLoading).toBe(false);
+    expect(result.current.firstPageError).toBe("Unavailable");
+    expect(result.current.historyError).toBeNull();
+  });
+
   it("loads only the user-selected bounded continuation cursor", async () => {
     const load = vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue({
       ...page,
@@ -89,5 +111,29 @@ describe("useAcpChatHistory", () => {
       decodeAcpGoal,
     );
     await waitFor(() => expect(result.current.hasEarlier).toBe(false));
+  });
+
+  it("expects a page only for a resolved chat in a settled project", () => {
+    const active = renderHook(() => useAcpChatHistory());
+    expect(active.result.current.pageExpected).toBe(true);
+    const bound = renderHook(() => useAcpChatHistory("chat-2"));
+    expect(bound.result.current.pageExpected).toBe(true);
+    act(() => {
+      useWorkbenchStore.setState({
+        activeTabId: "file-1",
+        tabs: [{ id: "file-1", kind: "file" }] as never,
+      });
+    });
+    expect(active.result.current.pageExpected).toBe(false);
+    expect(bound.result.current.pageExpected).toBe(true);
+    act(() => useWorkbenchStore.setState({ projectTransitioning: true }));
+    expect(bound.result.current.pageExpected).toBe(false);
+    act(() =>
+      useWorkbenchStore.setState({
+        projectTransitioning: false,
+        project: null,
+      }),
+    );
+    expect(bound.result.current.pageExpected).toBe(false);
   });
 });

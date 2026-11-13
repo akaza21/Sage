@@ -21,6 +21,8 @@ import {
   ACP04_SNAPSHOT_EXPRESSION,
   acceptModeBSnapshot,
   acceptModeASnapshot,
+  awaitCodexPickerOpenable,
+  awaitCodexReady,
   createAcp04Ui,
   createAcp04Receipt,
   createModeBState,
@@ -47,7 +49,7 @@ import {
 const SHA = "a".repeat(64);
 const GIT = "b".repeat(40);
 const ECHOES = ["SAGE_ACP04_A_TURN_1", "SAGE_ACP04_A_TURN_2"];
-const CODEX_VERSION = "codex 0.146.0";
+const CODEX_VERSION = "codex 0.167.0";
 
 function argumentsFor(overrides = {}) {
   const values = {
@@ -97,7 +99,7 @@ function snapshot({
     chatId,
     currentSessionId,
     projectionRevision,
-    harness: { id: "codex", text: `Codex \u2014 ${CODEX_VERSION}` },
+    harness: { id: "codex", text: "Codex" },
     model: { id: "gpt-5.6", text: "gpt-5.6" },
     harnessStatus: "Live",
     composerEnabled: true,
@@ -262,6 +264,19 @@ test("Mode A accepts exactly two turns with one project, chat, session, and mode
   assert.equal(state.sessionId, "session-1");
   assert.equal(state.runtimeEpoch, "7");
   assert.equal(state.projectionRevision, "3");
+  for (const harness of [
+    { id: "simulator", text: "Codex" },
+    { id: "codex", text: `Codex — ${CODEX_VERSION}` },
+  ])
+    assert.throws(
+      () =>
+        createModeAState(
+          ECHOES,
+          { ...snapshot({ currentSessionId: "" }), harness },
+          CODEX_VERSION,
+        ),
+      /acp04-chat-not-clean/,
+    );
 });
 
 test("Mode A accepts the durable zero-based Turn ordinal contract", () => {
@@ -624,46 +639,116 @@ test("snapshot probe propagates malformed observations instead of retrying them"
   }
 });
 
-test("snapshot DOM classifies only the unique focused surface with zero projections", () => {
-  const controls =
-    '<div class="composer__controls"><div class="searchable-picker"><button class="searchable-picker__trigger" aria-label="Harness" data-selected-id="codex">Codex</button></div><div class="searchable-picker"><button class="searchable-picker__trigger" aria-label="Model" data-selected-id="gpt-5.6">gpt-5.6</button></div></div><textarea aria-label="Message agent"></textarea>';
-  const surface = `<section class="chat-surface" aria-label="Agent chat">${controls}</section>`;
-  const pane = `<section class="agent-chat-pane agent-chat-pane--focused">${surface}</section>`;
-  const evaluate = (markup) => {
-    const dom = new JSDOM(`<!doctype html>${markup}`);
-    const previous = { document: globalThis.document };
-    globalThis.document = dom.window.document;
-    try {
-      return eval(ACP04_SNAPSHOT_EXPRESSION);
-    } finally {
-      globalThis.document = previous.document;
-      dom.window.close();
-    }
-  };
+// Markup below mirrors main: ChatHarnessControls/SearchablePicker (Harness),
+// ComposerModelControls (Model), AgentTaskStatus (Harness status),
+// AcpChatPresentation/TurnHeader (Turns), LeftSidebar/AgentPrimaryNavigation
+// and ProjectChatNavigation (rail).
+function composerControlsMarkup({
+  harnessId = "codex",
+  harnessName = "Codex",
+  modelDescription = "gpt-5.6 High",
+  modelId = "gpt-5.6",
+  modelLabel = "gpt-5.6",
+} = {}) {
+  return `<div class="composer__controls"><button class="composer__plus" type="button" aria-label="Composer options" aria-haspopup="menu" aria-expanded="false"></button><label class="composer__control-trigger composer__harness"><div class="searchable-picker"><button type="button" class="searchable-picker__trigger composer__control-trigger composer__picker-trigger" aria-label="Harness" aria-haspopup="listbox" aria-controls="r1-listbox" aria-expanded="false" data-selected-id="${harnessId}"><img alt="" aria-hidden="true"><span class="searchable-picker__trigger-label">${harnessName}</span><svg aria-hidden="true"></svg></button></div></label><div class="composer__model-group"><button class="composer__control-trigger composer__picker-trigger composer__model-trigger" type="button" aria-label="Model"${modelDescription ? ` aria-description="${modelDescription}"` : ""}${modelId ? ` data-selected-id="${modelId}"` : ""} aria-controls="model-panel" aria-haspopup="listbox" aria-expanded="false"><svg aria-hidden="true"></svg><span class="composer__model-label">${modelLabel}</span><svg aria-hidden="true"></svg></button><button type="button" aria-label="Thinking level: High"></button></div></div>`;
+}
 
-  assert.deepEqual(evaluate(pane), ACP04_PROJECTION_UNAVAILABLE);
+function agentHeaderMarkup(harnessStatus = "Ready") {
+  return `<div class="agent-chat-center__header"><header class="agent-task-header"><button class="agent-task-header__pencil" type="button" aria-label="New chat" title="New chat"></button><span class="agent-task-header__status" role="status" aria-label="Chat status: Idle">Idle</span><details class="agent-task-header__harness-status"><summary aria-label="Harness status: ${harnessStatus}" title="${harnessStatus}"><span>${harnessStatus}</span></summary><p>${harnessStatus}</p></details></header><div class="agent-artifact-header-slot"></div></div>`;
+}
+
+function sidebarMarkup(chatId = "chat-1") {
+  return `<aside class="project-sidebar" aria-label="Projects and chats"><nav class="project-sidebar__icon-rail" aria-label="Primary navigation"><button type="button" aria-label="Home" title="Home"></button><button type="button" aria-label="Go to recent chats" title="Recent chats"></button><button type="button" aria-label="Go to projects" title="Projects"></button></nav><div class="project-sidebar__actions"><div class="project-sidebar__brand"><strong>Sage</strong><button type="button" aria-label="Search chats" title="Search chats"></button></div><button class="project-action project-action--primary" type="button" title="New chat" aria-label="New chat" aria-keyshortcuts="Control+N"><svg aria-hidden="true"></svg><span>New chat</span></button></div><div class="project-sidebar__scroll"><div class="project-entry"><div class="project-entry__header"><button class="project-row project-row--active" type="button" aria-current="page" title="Sage" aria-label="Project Sage" aria-expanded="true"><span>Sage</span></button><div class="project-entry__trailing"><div class="project-entry__actions"><button class="project-entry__new-chat" type="button" aria-label="New chat in Sage" title="New chat in Sage"></button></div></div></div><div class="project-chat-row project-chat-row--active"><button class="project-chat project-chat--active" type="button" aria-label="Open chat Seeded chat" data-chat-id="${chatId}" aria-current="page"><span class="project-chat__title-label">Seeded chat</span></button></div></div></div></aside>`;
+}
+
+function turnMarkup({ id, ordinal, state, label, items }) {
+  return `<section class="acp-turn" data-turn-state="${state}" aria-label="Turn ${ordinal}" data-turn-id="${id}" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="${ordinal}"><header class="acp-turn__header"><span class="acp-state acp-turn__state" role="status" aria-label="${label}" data-turn-status="${id}">${label}</span></header><div class="acp-turn__items">${items
+    .map(
+      ([itemId, role, text]) =>
+        `<article class="acp-message acp-message--${role}" data-item-id="${itemId}" data-message-role="${role}"><header class="acp-message__meta"><span class="acp-message__role">${role === "user" ? "You" : "Agent"}</span></header><div class="acp-markdown">${text}</div></article>`,
+    )
+    .join("")}</div></section>`;
+}
+
+function agentWorkbenchMarkup({
+  mode = "agent",
+  controls = composerControlsMarkup(),
+  header = agentHeaderMarkup(),
+  projection = "",
+  panes = 1,
+} = {}) {
+  const surface = `<section class="chat-surface chat-surface--agent" aria-label="Agent chat">${projection}<form class="composer"><label class="sr-only" for="prompt-chat-1">Message agent</label><textarea id="prompt-chat-1" aria-label="Message agent"></textarea>${controls}<button class="send-button" type="submit" aria-label="Send message"></button></form></section>`;
+  const pane = (focused, index) =>
+    `<section class="agent-chat-pane${focused ? " agent-chat-pane--focused" : ""}" aria-label="Chat pane Chat ${index}" data-chat-id="chat-${index}">${surface}</section>`;
+  return `<main class="workbench workbench--${mode}"><header class="title-bar"><div class="title-bar__modes" role="radiogroup" aria-label="Window mode"><label class="title-bar__mode"><input name="workbench-window-mode" type="radio" value="agent"${mode === "agent" ? " checked" : ""}>Agent</label><label class="title-bar__mode"><input name="workbench-window-mode" type="radio" value="editor"${mode === "editor" ? " checked" : ""}>Editor</label></div></header>${sidebarMarkup()}<div class="agent-chat-center">${header}<div id="agent-chat-panel" aria-label="Agent chat panes" class="agent-chat-panes" role="tabpanel">${Array.from(
+    { length: panes },
+    (_, index) => pane(index === 0, index + 1),
+  ).join("")}</div></div></main>`;
+}
+
+function withDom(markup, run) {
+  const dom = new JSDOM(`<!doctype html><body>${markup}</body>`);
+  const previous = {
+    document: globalThis.document,
+    Event: globalThis.Event,
+    HTMLTextAreaElement: globalThis.HTMLTextAreaElement,
+  };
+  Object.assign(globalThis, {
+    document: dom.window.document,
+    Event: dom.window.Event,
+    HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  });
+  Object.defineProperty(dom.window.HTMLElement.prototype, "innerText", {
+    configurable: true,
+    get() {
+      return this.textContent;
+    },
+  });
+  try {
+    return run(dom.window.document);
+  } finally {
+    Object.assign(globalThis, previous);
+    dom.window.close();
+  }
+}
+
+test("snapshot DOM classifies only the unique focused surface with zero projections", () => {
+  const evaluate = (markup) =>
+    withDom(markup, () => eval(ACP04_SNAPSHOT_EXPRESSION));
+  const projection =
+    '<section class="acp-chat-projection" aria-label="Agent chat one"></section>';
+
+  assert.deepEqual(
+    evaluate(agentWorkbenchMarkup()),
+    ACP04_PROJECTION_UNAVAILABLE,
+  );
+  assert.deepEqual(
+    evaluate(agentWorkbenchMarkup({ panes: 2 })),
+    ACP04_PROJECTION_UNAVAILABLE,
+  );
+  assert.equal(evaluate(agentWorkbenchMarkup({ panes: 3 })), null);
+  assert.equal(evaluate(agentWorkbenchMarkup() + agentWorkbenchMarkup()), null);
   assert.equal(
     evaluate(
-      `${pane}<section class="agent-chat-pane"></section><section class="agent-chat-pane"></section>`,
+      agentWorkbenchMarkup({
+        projection: `${projection}${projection.replace("one", "two")}`,
+      }),
     ),
     null,
   );
-  assert.equal(evaluate(`${pane}${pane}`), null);
   assert.equal(
     evaluate(
-      `<section class="agent-chat-pane agent-chat-pane--focused">${surface}${surface}</section>`,
+      agentWorkbenchMarkup({
+        controls: composerControlsMarkup().replace('aria-label="Model"', ""),
+      }),
     ),
     null,
   );
   assert.equal(
     evaluate(
-      `<section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat">${controls}<section class="acp-chat-projection" aria-label="Agent chat one"></section><section class="acp-chat-projection" aria-label="Agent chat two"></section></section></section>`,
-    ),
-    null,
-  );
-  assert.equal(
-    evaluate(
-      `<section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat">${controls.replace('<div class="searchable-picker"><button class="searchable-picker__trigger" aria-label="Model" data-selected-id="gpt-5.6">gpt-5.6</button></div>', "")}</section></section>`,
+      agentWorkbenchMarkup({
+        controls: composerControlsMarkup() + composerControlsMarkup(),
+      }),
     ),
     null,
   );
@@ -686,6 +771,247 @@ function modeADriver(snapshotFor, onSend = () => {}) {
     runtimeObservation: async () => runtimeObservation(),
   };
 }
+
+test("snapshot DOM keys model identity on the selected id, not its label", () => {
+  const observe = (modelId, revision) =>
+    withDom(
+      agentWorkbenchMarkup({
+        controls: composerControlsMarkup({ modelId }),
+        projection: `<section class="acp-chat-projection" aria-label="Agent chat ACP" data-projection-revision="${revision}" data-project-id="project-1" data-chat-id="chat-1" data-current-session-id=""></section>`,
+      }),
+      () => eval(ACP04_SNAPSHOT_EXPRESSION),
+    );
+  const first = observe("gpt-5.6", "1");
+  const second = observe("gpt-5.6-preview", "2");
+  assert.deepEqual(first.model, { id: "gpt-5.6", text: "gpt-5.6" });
+  assert.deepEqual(second.model, { id: "gpt-5.6-preview", text: "gpt-5.6" });
+  const initial = createModeAState(ECHOES, first, CODEX_VERSION);
+  assert.throws(
+    () => acceptModeASnapshot(initial, second),
+    /acp04-identity-churn/,
+  );
+  assert.equal(observe("", "1").model, null);
+});
+
+test("Codex picker wait times out naming the first unmet precondition", async () => {
+  const ui = createAcp04Ui(CODEX_VERSION);
+  const surface =
+    '<section class="chat-surface chat-surface--agent" aria-label="Agent chat">';
+  const harnessExpanded = 'aria-expanded="false" data-selected-id=';
+  const controls = (edit) =>
+    agentWorkbenchMarkup({ controls: edit(composerControlsMarkup()) });
+  const noHarness = (x) => x.replace('aria-label="Harness"', "");
+  const disabled = (x) =>
+    x.replace('aria-label="Harness"', 'aria-label="Harness" disabled');
+  const expanded = (x) =>
+    x.replace(harnessExpanded, harnessExpanded.replace("false", "true"));
+  const cases = [
+    [
+      "pane-count",
+      agentWorkbenchMarkup().replace("agent-chat-pane--focused", ""),
+    ],
+    ["pane-count", agentWorkbenchMarkup() + agentWorkbenchMarkup()],
+    // Two focused panes with no Harness trigger: panes are checked first.
+    ["pane-count", controls(noHarness) + controls(noHarness)],
+    ["surface-count", agentWorkbenchMarkup().replace(surface, "<section>")],
+    [
+      "surface-count",
+      agentWorkbenchMarkup().replace(
+        surface,
+        `${surface.replace(" chat-surface--agent", "")}</section>${surface}`,
+      ),
+    ],
+    // Surface is checked before the trigger it contains.
+    ["surface-count", controls(noHarness).replace(surface, "<section>")],
+    ["trigger-count", controls(noHarness)],
+    ["trigger-count", controls((x) => x + x)],
+    ["trigger-count", controls((x) => disabled(x) + x)],
+    ["trigger-disabled", controls(disabled)],
+    ["trigger-disabled", controls((x) => expanded(disabled(x)))],
+    ["trigger-expanded", controls(expanded)],
+    [
+      "trigger-expanded",
+      controls((x) => x.replace(harnessExpanded, "data-selected-id=")),
+    ],
+  ];
+  const poll = (markup, ms) =>
+    awaitCodexPickerOpenable(
+      async () => withDom(markup, () => eval(ui.codexPickerState)),
+      Date.now() + ms,
+    );
+  await poll(agentWorkbenchMarkup(), 5_000);
+  for (const [state, markup] of cases) {
+    await assert.rejects(
+      poll(markup, 150),
+      new RegExp(`^Error: acp04-codex-picker-${state}-timeout$`),
+      state,
+    );
+  }
+});
+
+test("Codex readiness wait times out naming the first unmet condition", async () => {
+  const ui = createAcp04Ui(CODEX_VERSION);
+  const projection =
+    '<section class="acp-chat-projection" aria-label="Agent chat ACP" data-projection-revision="1" data-project-id="project-1" data-chat-id="chat-1" data-current-session-id=""></section>';
+  const ready = (overrides = {}) =>
+    agentWorkbenchMarkup({ projection, ...overrides });
+  const surfaceOpen =
+    '<section class="chat-surface chat-surface--agent" aria-label="Agent chat">';
+  const composerOpen =
+    '<textarea id="prompt-chat-1" aria-label="Message agent">';
+  const composerDisabled = composerOpen.replace(">", " disabled>");
+  const disable = (controls, label) =>
+    controls.replace(`aria-label="${label}"`, `aria-label="${label}" disabled`);
+  const cases = [
+    ["pane-count", ready() + ready()],
+    ["projection-count", agentWorkbenchMarkup()],
+    // No projection and no Model trigger: the projection is checked first.
+    [
+      "projection-count",
+      agentWorkbenchMarkup({
+        controls: composerControlsMarkup().replace('aria-label="Model"', ""),
+      }),
+    ],
+    [
+      "control-count",
+      ready({
+        controls: composerControlsMarkup().replace('aria-label="Model"', ""),
+      }),
+    ],
+    [
+      "harness-not-codex",
+      ready({
+        controls: composerControlsMarkup({
+          harnessId: "simulator",
+          harnessName: "Simulator",
+        }),
+      }),
+    ],
+    // A Simulator harness with no model id: the harness is checked first.
+    [
+      "harness-not-codex",
+      ready({
+        controls: composerControlsMarkup({
+          harnessId: "simulator",
+          harnessName: "Simulator",
+          modelId: "",
+        }),
+      }),
+    ],
+    [
+      "model-unidentified",
+      ready({ controls: composerControlsMarkup({ modelId: "" }) }),
+    ],
+    ["harness-not-ready", ready({ header: agentHeaderMarkup("Starting") })],
+    [
+      "surface-count",
+      ready().replace(surfaceOpen, `${surfaceOpen}</section>${surfaceOpen}`),
+    ],
+    // Surface is checked before the projection it contains.
+    ["surface-count", agentWorkbenchMarkup().replace(surfaceOpen, "<section>")],
+    [
+      "harness-disabled",
+      ready({ controls: disable(composerControlsMarkup(), "Harness") }),
+    ],
+    // Both controls disabled: the harness is named first.
+    [
+      "harness-disabled",
+      ready({
+        controls: disable(
+          disable(composerControlsMarkup(), "Harness"),
+          "Model",
+        ),
+      }),
+    ],
+    // A disabled harness that is not Codex: disabled is named first.
+    [
+      "harness-disabled",
+      ready({
+        controls: disable(
+          composerControlsMarkup({
+            harnessId: "simulator",
+            harnessName: "Simulator",
+          }),
+          "Harness",
+        ),
+      }),
+    ],
+    [
+      "model-disabled",
+      ready({ controls: disable(composerControlsMarkup(), "Model") }),
+    ],
+    // Missing Model trigger with a disabled harness: counts come first.
+    [
+      "control-count",
+      ready({
+        controls: disable(composerControlsMarkup(), "Harness").replace(
+          'aria-label="Model"',
+          "",
+        ),
+      }),
+    ],
+    ["composer", ready().replace(composerOpen, composerDisabled)],
+    // A Starting harness with a disabled composer: status is named first.
+    [
+      "harness-not-ready",
+      ready({ header: agentHeaderMarkup("Starting") }).replace(
+        composerOpen,
+        composerDisabled,
+      ),
+    ],
+    [
+      "model-unidentified",
+      ready({
+        controls: composerControlsMarkup({ modelId: "" }),
+        header: agentHeaderMarkup("Starting"),
+      }),
+    ],
+  ];
+  const poll = (markup, ms) =>
+    awaitCodexReady(
+      async () => withDom(markup, () => eval(ui.codexReadyState)),
+      Date.now() + ms,
+    );
+  assert.equal(
+    withDom(ready(), () => eval(ui.codexReady)),
+    true,
+  );
+  await poll(ready(), 5_000);
+  for (const [state, markup] of cases) {
+    assert.equal(
+      withDom(markup, () => eval(ui.codexReady)),
+      false,
+      state,
+    );
+    await assert.rejects(
+      poll(markup, 150),
+      new RegExp(`^Error: acp04-codex-ready-${state}-timeout$`),
+      state,
+    );
+  }
+  await assert.rejects(
+    awaitCodexReady(async () => "unknown", Date.now() + 5_000),
+    /^Error: acp04-codex-ready-state-invalid$/,
+  );
+});
+
+test("Codex picker wait retries until openable and fails with the last state", async () => {
+  const sequence = ["trigger-disabled", "trigger-expanded", "ready"];
+  let reads = 0;
+  await awaitCodexPickerOpenable(
+    async () => sequence[reads++],
+    Date.now() + 5_000,
+  );
+  assert.equal(reads, 3);
+  await assert.rejects(
+    awaitCodexPickerOpenable(async () => "trigger-disabled", Date.now() + 250),
+    /^Error: acp04-codex-picker-trigger-disabled-timeout$/,
+  );
+  await assert.rejects(
+    awaitCodexPickerOpenable(async () => false, Date.now() + 5_000),
+    /^Error: acp04-codex-picker-state-invalid$/,
+  );
+});
 
 test("Mode A retries only a post-send projection-unavailable observation without resending", async () => {
   let sent = 0;
@@ -832,167 +1158,255 @@ test("Mode A uses behavior seams for Editor to one seeded Agent chat", async () 
   assert.equal(calls.filter((call) => call === "new-chat").length, 1);
 });
 
-test("clean Chat navigation accepts one top-level New chat and only an empty replacement Chat", () => {
-  const dom = new JSDOM(
-    `<!doctype html><main class="workbench workbench--agent"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor"><input type="radio" name="workbench-window-mode" value="agent" checked></div><aside class="project-sidebar" aria-label="Projects and chats"><div class="project-sidebar__actions"><button type="button" title="New chat">New chat</button></div><button class="project-chat" data-chat-id="chat-seeded" aria-current="page">Seeded chat</button></aside><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"></section></section><section class="agent-chat-pane"><section class="chat-surface" aria-label="Agent chat"></section></section></main>`,
-  );
-  const previous = { document: globalThis.document };
-  globalThis.document = dom.window.document;
-  try {
+test("clean Chat navigation clicks only the sidebar New chat action and waits for a different empty Chat", () => {
+  withDom(agentWorkbenchMarkup(), (document) => {
     const ui = createAcp04Ui(CODEX_VERSION);
-    const action = dom.window.document.querySelector(
-      '.project-sidebar__actions button[title="New chat"]',
+    const action = document.querySelector(
+      'aside[aria-label="Projects and chats"] button.project-action--primary',
     );
+    const decoys = [
+      ...document.querySelectorAll(
+        '.agent-task-header button[aria-label="New chat"], button[aria-label="New chat in Sage"]',
+      ),
+    ];
+    assert.equal(decoys.length, 2);
+    let decoyClicks = 0;
+    for (const decoy of decoys)
+      decoy.addEventListener("click", () => {
+        decoyClicks += 1;
+      });
     let clicks = 0;
     action.addEventListener("click", () => {
       clicks += 1;
-      const rail = dom.window.document.querySelector(".project-chat");
-      rail.textContent = "Fresh chat";
-      rail.dataset.chatId = "chat-fresh";
+      document.querySelector(".project-chat").dataset.chatId = "chat-fresh";
     });
-    assert.equal(eval(ui.seededChatId), "chat-seeded");
-    assert.equal(eval(freshChatReadyExpression("chat-seeded")), false);
+    assert.equal(eval(ui.seededAgentReady), true);
+    assert.equal(eval(ui.seededChatId), "chat-1");
+    assert.equal(eval(freshChatReadyExpression("chat-1")), false);
     assert.equal(eval(ui.createFreshChat), true);
     assert.equal(clicks, 1);
-    assert.equal(eval(freshChatReadyExpression("chat-seeded")), true);
+    assert.equal(decoyClicks, 0);
+    assert.equal(eval(freshChatReadyExpression("chat-1")), true);
+
+    action.disabled = true;
+    assert.equal(eval(ui.createFreshChat), false);
+    action.disabled = false;
     action.after(action.cloneNode(true));
     assert.equal(eval(ui.createFreshChat), false);
-    assert.equal(clicks, 1);
-    dom.window.document
-      .querySelectorAll('.project-sidebar__actions button[title="New chat"]')
+    document
+      .querySelectorAll("aside button.project-action--primary")
       .forEach((button) => button.remove());
     assert.equal(eval(ui.createFreshChat), false);
-  } finally {
-    globalThis.document = previous.document;
-    dom.window.close();
-  }
+    assert.equal(clicks, 1);
+    assert.equal(decoyClicks, 0);
+
+    const rail = document.querySelector(".project-chat");
+    rail.after(rail.cloneNode(true));
+    assert.equal(eval(ui.seededChatId), null);
+    assert.equal(eval(freshChatReadyExpression("chat-1")), false);
+  });
 });
 
-test("browser DOM contract selects the discovered Codex display and exposes exact two-turn ids", () => {
-  const dom = new JSDOM(
-    `<!doctype html><main class="workbench workbench--editor"><div role="radiogroup" aria-label="Window mode"><input type="radio" name="workbench-window-mode" value="editor" checked><input type="radio" name="workbench-window-mode" value="agent"></div><button class="project-chat" aria-current="page">Chat</button><section class="agent-chat-pane agent-chat-pane--focused"><section class="chat-surface" aria-label="Agent chat"><div class="composer__controls"><div class="searchable-picker"><button class="searchable-picker__trigger" aria-label="Harness" aria-controls="harness-listbox" aria-expanded="false" data-selected-id="simulator">Simulator</button></div><div class="searchable-picker"><button class="searchable-picker__trigger" aria-label="Model" aria-controls="model-listbox" aria-expanded="false" data-selected-id="gpt-5.6">gpt-5.6</button></div></div><div class="session-state">Ready</div><textarea id="prompt-chat-1" aria-label="Message agent"></textarea><section class="acp-chat-projection" aria-label="Agent chat ACP" data-project-id="project-1" data-chat-id="chat-1" data-current-session-id="session-1" data-projection-revision="3"><section class="acp-turn" data-turn-id="turn-1" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="1"><header><span data-turn-status="turn-1" role="status" aria-label="Completed"></span></header><article data-item-id="item-1-user" data-message-role="user"><span class="acp-markdown">Reply with exactly: SAGE_ACP04_A_TURN_1</span></article><article data-item-id="item-1-assistant" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_1</span></article></section><section class="acp-turn" data-turn-id="turn-2" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="2"><header><span data-turn-status="turn-2" role="status" aria-label="Completed"></span></header><article data-item-id="item-2-user" data-message-role="assistant"><span class="acp-markdown">SAGE_ACP04_A_TURN_2</span></article></section></section></section></section></main>`,
-  );
-  const previous = {
-    document: globalThis.document,
-    Event: globalThis.Event,
-  };
-  Object.assign(globalThis, {
-    document: dom.window.document,
-    Event: dom.window.Event,
-  });
-  try {
-    Object.defineProperty(dom.window.HTMLElement.prototype, "innerText", {
-      configurable: true,
-      get() {
-        return this.textContent;
-      },
-    });
-    const secondTurn = dom.window.document.querySelector(
-      '[data-turn-id="turn-2"]',
-    );
-    const secondUser = secondTurn.querySelector('[data-item-id="item-2-user"]');
-    secondUser.dataset.messageRole = "user";
-    secondUser.textContent = `Reply with exactly: ${ECHOES[1]}`;
-    secondTurn.insertAdjacentHTML(
-      "beforeend",
-      `<article data-item-id="item-2-assistant" data-message-role="assistant"><span class="acp-markdown">${ECHOES[1]}</span></article>`,
-    );
-    const harness = dom.window.document.querySelector(
-      '.searchable-picker__trigger[aria-label="Harness"]',
-    );
-    harness.addEventListener("click", () => {
-      if (harness.getAttribute("aria-expanded") === "true") return;
-      harness.setAttribute("aria-expanded", "true");
-    });
-    const mountHarnessPicker = () => {
-      const popover = dom.window.document.createElement("div");
-      popover.id = "harness-popover";
-      popover.innerHTML = `<input class="searchable-picker__input" aria-label="Harness" aria-controls="harness-listbox"><div id="harness-listbox" role="listbox"><button role="option" data-option-id="codex">Codex — ${CODEX_VERSION}</button></div>`;
-      dom.window.document.body.append(popover);
-      const input = popover.querySelector("input");
-      input.focus();
-      popover.querySelector('[role="option"]').addEventListener("click", () => {
-        harness.dataset.selectedId = "codex";
-        harness.textContent = `Codex — ${CODEX_VERSION}`;
-        harness.setAttribute("aria-expanded", "false");
-        popover.remove();
+test("browser DOM contract selects the Codex option by its id and exposes exact two-turn ids", () => {
+  const turns = [
+    turnMarkup({
+      id: "turn-1",
+      ordinal: 1,
+      state: "completed",
+      label: "Completed",
+      items: [
+        ["item-1-user", "user", `Reply with exactly: ${ECHOES[0]}`],
+        ["item-1-assistant", "assistant", ECHOES[0]],
+      ],
+    }),
+    turnMarkup({
+      id: "turn-2",
+      ordinal: 2,
+      state: "cancelled",
+      label: "Cancelled by you",
+      items: [["item-2-user", "user", `Reply with exactly: ${ECHOES[1]}`]],
+    }),
+  ].join("");
+  const projection = `<section class="acp-chat-projection" aria-label="Agent chat ACP" data-projection-revision="3" data-project-id="project-1" data-chat-id="chat-1" data-current-session-id="session-1"><h2 class="sr-only">ACP</h2>${turns}</section>`;
+  withDom(
+    agentWorkbenchMarkup({
+      mode: "editor",
+      controls: composerControlsMarkup({
+        harnessId: "simulator",
+        harnessName: "Simulator",
+      }),
+      projection,
+    }),
+    (document) => {
+      const harness = document.querySelector(
+        'button[aria-label="Harness"][aria-haspopup="listbox"]',
+      );
+      const model = document.querySelector('button[aria-label="Model"]');
+      harness.addEventListener("click", () => {
+        if (harness.getAttribute("aria-expanded") === "true") return;
+        harness.setAttribute("aria-expanded", "true");
       });
-    };
-    const ui = createAcp04Ui(CODEX_VERSION);
-    assert.equal(eval(ui.editorReady), true);
-    assert.equal(eval(ui.enterAgentFromEditor), true);
-    assert.equal(eval(ui.editorReady), false);
-    dom.window.document.querySelector("main").className =
-      "workbench workbench--agent";
-    assert.equal(eval(ui.seededAgentReady), true);
-    assert.equal(eval(ui.openCodexPicker), true);
-    assert.equal(eval(ui.codexSelectable), false);
-    const decoy = dom.window.document.createElement("div");
-    decoy.innerHTML = `<input class="searchable-picker__input" aria-label="Harness" aria-controls="decoy-listbox"><div id="decoy-listbox" role="listbox"><button role="option">Codex — ${CODEX_VERSION}</button></div>`;
-    dom.window.document.body.append(decoy);
-    decoy.querySelector("input").focus();
-    assert.equal(eval(ui.selectCodex), false);
-    mountHarnessPicker();
-    assert.equal(eval(ui.codexSelectable), true);
-    harness.disabled = true;
-    assert.equal(eval(ui.selectCodex), false);
-    harness.disabled = false;
-    assert.equal(eval(ui.selectCodex), true);
-    assert.equal(eval(ui.codexReady), true);
-    assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, true);
-    delete harness.dataset.selectedId;
-    assert.equal(eval(ui.codexReady), false);
-    assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).harness, null);
-    harness.dataset.selectedId = "codex";
-    const model = dom.window.document.querySelector(
-      '.searchable-picker__trigger[aria-label="Model"]',
-    );
-    model.dataset.selectedId = "";
-    assert.equal(eval(ui.codexReady), false);
-    assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).model, null);
-    model.dataset.selectedId = "gpt-5.6";
-    harness.disabled = true;
-    assert.equal(eval(ui.codexReady), false);
-    harness.disabled = false;
-    model.disabled = true;
-    assert.equal(eval(ui.codexReady), false);
-    model.disabled = false;
-    const composer = dom.window.document.querySelector(
-      'textarea[aria-label="Message agent"]',
-    );
-    composer.disabled = true;
-    assert.equal(eval(ui.codexReady), false);
-    assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, false);
-    composer.disabled = false;
-    composer.after(composer.cloneNode());
-    assert.equal(eval(ui.codexReady), false);
-    assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, false);
-    composer.nextElementSibling.remove();
-    const codex = dom.window.document.querySelector(
-      '.searchable-picker__trigger[aria-label="Harness"]',
-    );
-    let changes = 0;
-    codex.addEventListener("click", () => {
-      changes += 1;
-    });
-    codex.disabled = true;
-    assert.equal(eval(ui.codexSelectable), false);
-    assert.equal(eval(ui.selectCodex), false);
-    assert.equal(changes, 0);
-    const actual = eval(ACP04_SNAPSHOT_EXPRESSION);
-    assert.equal(actual.projectionRevision, "3");
-    assert.deepEqual(
-      actual.turns.map((turn) => turn.id),
-      ["turn-1", "turn-2"],
-    );
-    assert.deepEqual(
-      actual.turns.flatMap((turn) => turn.items.map((item) => item.id)),
-      ["item-1-user", "item-1-assistant", "item-2-user", "item-2-assistant"],
-    );
-  } finally {
-    Object.assign(globalThis, previous);
-    dom.window.close();
-  }
+      // SearchablePicker portals a non-searchable listbox; options carry
+      // data-option-id and an accessible "name — availability" label.
+      const mountHarnessPicker = (listboxId = "r1-listbox") => {
+        const popover = document.createElement("div");
+        popover.setAttribute("role", "none");
+        popover.innerHTML = `<p class="searchable-picker__section-label">Harnesses</p><div id="${listboxId}" role="listbox" aria-label="Harness"><button type="button" role="option" aria-label="Codex — available" aria-selected="false" data-option-id="codex" tabindex="-1"><span class="searchable-picker__option-copy"><span>Codex</span></span></button><button type="button" role="option" aria-label="Simulator — test only" aria-selected="true" data-option-id="simulator" tabindex="-1"><span>Simulator</span></button><button type="button" role="option" aria-label="Pi — not installed" aria-disabled="true" data-option-id="pi" disabled tabindex="-1"><span>Pi</span></button></div>`;
+        document.body.append(popover);
+        popover
+          .querySelector('[data-option-id="codex"]')
+          .addEventListener("click", () => {
+            harness.dataset.selectedId = "codex";
+            harness.querySelector(
+              ".searchable-picker__trigger-label",
+            ).textContent = "Codex";
+            harness.setAttribute("aria-expanded", "false");
+            popover.remove();
+          });
+        return popover;
+      };
+      const ui = createAcp04Ui(CODEX_VERSION);
+      assert.equal(eval(ui.editorReady), true);
+      assert.equal(eval(ui.enterAgentFromEditor), true);
+      assert.equal(eval(ui.editorReady), false);
+      document.querySelector("main").className = "workbench workbench--agent";
+      assert.equal(eval(ui.seededAgentReady), true);
+      assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexPickerState), "ready");
+      harness.disabled = true;
+      assert.equal(eval(ui.codexPickerState), "trigger-disabled");
+      assert.equal(eval(ui.openCodexPicker), false);
+      harness.disabled = false;
+      assert.equal(eval(ui.openCodexPicker), true);
+      assert.equal(eval(ui.codexPickerState), "trigger-expanded");
+      assert.equal(eval(ui.openCodexPicker), false);
+      assert.equal(eval(ui.codexSelectable), false);
+      const decoy = mountHarnessPicker("decoy-listbox");
+      assert.equal(eval(ui.selectCodex), false);
+      decoy.remove();
+      const picker = mountHarnessPicker();
+      assert.equal(eval(ui.codexSelectable), true);
+      const codexOption = picker.querySelector('[data-option-id="codex"]');
+      codexOption.setAttribute("aria-disabled", "true");
+      assert.equal(eval(ui.codexSelectable), false);
+      assert.equal(eval(ui.selectCodex), false);
+      codexOption.removeAttribute("aria-disabled");
+      codexOption.after(codexOption.cloneNode(true));
+      assert.equal(eval(ui.selectCodex), false);
+      codexOption.nextElementSibling.remove();
+      harness.disabled = true;
+      assert.equal(eval(ui.selectCodex), false);
+      harness.disabled = false;
+      assert.equal(eval(ui.selectCodex), true);
+      assert.equal(harness.dataset.selectedId, "codex");
+      assert.equal(eval(ui.codexReady), true);
+
+      const actual = eval(ACP04_SNAPSHOT_EXPRESSION);
+      assert.deepEqual(actual.harness, { id: "codex", text: "Codex" });
+      assert.deepEqual(actual.model, { id: "gpt-5.6", text: "gpt-5.6" });
+      assert.equal(actual.harnessStatus, "Ready");
+      assert.equal(actual.composerEnabled, true);
+      assert.equal(actual.projectionRevision, "3");
+      assert.deepEqual(
+        actual.turns.map((turn) => [turn.id, turn.ordinal, turn.state]),
+        [
+          ["turn-1", 1, "Completed"],
+          ["turn-2", 2, "Cancelled"],
+        ],
+      );
+      assert.deepEqual(
+        actual.turns.flatMap((turn) =>
+          turn.items.map((item) => [item.id, item.role, item.text]),
+        ),
+        [
+          ["item-1-user", "user", `Reply with exactly: ${ECHOES[0]}`],
+          ["item-1-assistant", "assistant", ECHOES[0]],
+          ["item-2-user", "user", `Reply with exactly: ${ECHOES[1]}`],
+        ],
+      );
+      const secondTurn = document.querySelector('[data-turn-id="turn-2"]');
+      secondTurn.dataset.turnState = "toString";
+      assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).turns[1].state, "");
+      secondTurn.dataset.turnState = "cancelled";
+
+      const status = document.querySelector('[aria-label^="Harness status: "]');
+      status.setAttribute("aria-label", "Harness status: Starting");
+      assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "harness-not-ready");
+      status.setAttribute("aria-label", "Harness status: Live");
+      assert.equal(eval(ui.codexReady), true);
+      status.after(status.cloneNode(true));
+      assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "harness-not-ready");
+      assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).harnessStatus, "");
+      status.nextElementSibling.remove();
+
+      harness.querySelector(".searchable-picker__trigger-label").textContent =
+        "Codex — codex 0.167.0";
+      assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "harness-not-codex");
+      harness.querySelector(".searchable-picker__trigger-label").textContent =
+        "Codex";
+      delete harness.dataset.selectedId;
+      assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "harness-not-codex");
+      assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).harness, null);
+      harness.dataset.selectedId = "codex";
+      delete model.dataset.selectedId;
+      assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "model-unidentified");
+      assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).model, null);
+      model.dataset.selectedId = "gpt-5.6";
+      harness.disabled = true;
+      assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "harness-disabled");
+      harness.disabled = false;
+      model.disabled = true;
+      assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "model-disabled");
+      model.disabled = false;
+      const composer = document.querySelector(
+        'textarea[aria-label="Message agent"]',
+      );
+      composer.disabled = true;
+      assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "composer");
+      assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, false);
+      composer.disabled = false;
+      composer.after(composer.cloneNode());
+      assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, false);
+      composer.nextElementSibling.remove();
+      assert.equal(eval(ui.codexReady), true);
+
+      // A single-model catalog renders the model as a read-only label.
+      const label = document.createElement("span");
+      label.setAttribute("aria-label", "Model");
+      label.dataset.selectedId = "gpt-5.6";
+      label.textContent = "gpt-5.6";
+      model.replaceWith(label);
+      assert.equal(eval(ui.codexReady), true);
+      assert.deepEqual(eval(ACP04_SNAPSHOT_EXPRESSION).model, {
+        id: "gpt-5.6",
+        text: "gpt-5.6",
+      });
+      label.replaceWith(model);
+
+      let sends = 0;
+      const send = document.querySelector('button[aria-label="Send message"]');
+      send.addEventListener("click", (event) => {
+        event.preventDefault();
+        sends += 1;
+      });
+      assert.equal(eval(ui.sendEnabled), true);
+      assert.equal(eval(ui.send), true);
+      assert.equal(sends, 1);
+      send.disabled = true;
+      assert.equal(eval(ui.sendEnabled), false);
+      assert.equal(eval(ui.send), false);
+      assert.equal(sends, 1);
+    },
+  );
 });
 
 test("browser DOM contract refuses Agent, ambiguous, and absent Editor states without clicking", () => {
@@ -1306,7 +1720,7 @@ test("Codex cmd preflight waits for its captured-owner acknowledgement before st
       codex: {
         path: "C:\\Tools\\codex.cmd",
         version: CODEX_VERSION,
-        semanticVersion: "0.146.0",
+        semanticVersion: "0.167.0",
       },
       output: "C:\\Sage\\local-evidence\\ACP04-live-test",
     },
@@ -1457,7 +1871,7 @@ test("collector-owned Codex preflight records the exact bounded version", async 
     },
   });
   assert.equal(observed.codex.version, CODEX_VERSION);
-  assert.equal(observed.codex.semanticVersion, "0.146.0");
+  assert.equal(observed.codex.semanticVersion, "0.167.0");
   assert.deepEqual(invocation[1].slice(0, 3), ["/d", "/s", "/c"]);
   assert.equal(invocation[4].commandRole, "codex-version-preflight");
   assert.equal(invocation[4].maxOutputBytes, 4096);
@@ -1539,7 +1953,7 @@ test("pending validation rejects nested receipt mutation before finalization", (
       codex: {
         ...parseAcp04ProbeArguments(argumentsFor()).codex,
         version: CODEX_VERSION,
-        semanticVersion: "0.146.0",
+        semanticVersion: "0.167.0",
       },
     };
     const candidate = createAcp04Receipt(
@@ -1586,6 +2000,21 @@ test("pending validation rejects nested receipt mutation before finalization", (
         ),
       /acp04-pending-schema-invalid/,
     );
+    for (const harness of [
+      { id: "simulator", text: "Codex" },
+      { id: "codex", text: `Codex — ${CODEX_VERSION}` },
+    ])
+      assert.throws(
+        () =>
+          validatePendingAcp04Candidate(
+            {
+              ...candidate,
+              observation: { ...candidate.observation, harness },
+            },
+            root,
+          ),
+        /acp04-runtime-version-mismatch/,
+      );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

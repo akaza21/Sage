@@ -33,6 +33,8 @@ const MessageCirclePlus = leanIcon("lucide lucide-message-circle-plus", [
 
 /** Focus the side composer once, when it first becomes enabled after open. */
 const FOCUS_WAIT_MS = 5000;
+/** Coalesces a burst of projection change events into one refresh. */
+const PROJECTION_REFRESH_COALESCE_MS = 50;
 
 export function SideChatHeader({
   chatId,
@@ -151,7 +153,6 @@ export function SideChatDialogs() {
   ) : null;
 }
 
-/** Empty-state copy matches Codex. */
 export function SideChatHome() {
   return (
     <div className="side-chat-home">
@@ -295,7 +296,7 @@ function useSideChatRegistry() {
         timer = setTimeout(() => {
           timer = null;
           void refresh().catch(() => undefined);
-        }, 50);
+        }, PROJECTION_REFRESH_COALESCE_MS);
     };
     void acpDesktop
       .subscribeProjectionChanges((event) => {

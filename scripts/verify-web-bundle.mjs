@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import ts from "typescript";
 import { webBuildSourceFingerprint } from "./web-build-fingerprint.mjs";
 import {
   measureWebBundlePaths,
@@ -65,6 +66,115 @@ function gzipBytes(file) {
   return gzipSync(contents).byteLength;
 }
 
+// The desktop build emits every chunk as `assets/[hash].js`: an 8-character
+// base64url content hash, plus a numeric suffix when names collide. Chunks
+// import siblings by `./<name>.js`, so a change to any shared chunk rewrites
+// these names without touching the importing chunk's code. The specifier of
+// each static import, `export … from` and dynamic `import()` that names such a
+// chunk becomes a fixed token before a lazy budget, the initial closure or a
+// startup path gzips it. The chunk is parsed, so the same text inside a
+// string, template or comment is measured as written.
+// The core total still subtracts the chunks' emitted sizes.
+// Entry and core-total measurements stay as emitted.
+const HASHED_CHUNK_SPECIFIER = /^\.\/([A-Za-z0-9_-]{8}\d*)\.js$/u;
+// The bundler's deduplication suffix comes and goes with the sibling's name
+// ("DVYjmKP2" in one build, "C8dRJxrK2" in the next, for the same importing
+// code), so the whole name, suffix included, becomes one 8-character token.
+const HASH_TOKEN = "x".repeat(8);
+// Vite's preload helper lists the CSS a lazy chunk needs as
+// `assets/<name>-<hash>.css` in the `__vite__mapDeps` array, so an unrelated
+// stylesheet change renames those entries too. Only the hash is masked.
+const HASHED_PRELOAD_DEPENDENCY =
+  /^assets\/[A-Za-z0-9_.-]+-([A-Za-z0-9_-]{8})\.(?:css|js)$/u;
+
+function importSpecifier(node) {
+  if (
+    (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+    node.moduleSpecifier
+  ) {
+    return node.moduleSpecifier;
+  }
+  if (
+    ts.isCallExpression(node) &&
+    node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+    node.arguments.length > 0
+  ) {
+    return node.arguments[0];
+  }
+  return null;
+}
+
+export function normalizeHashedImports(source) {
+  const file = ts.createSourceFile(
+    "chunk.js",
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.JS,
+  );
+  // A chunk that does not parse cleanly is measured exactly as written.
+  if (file.parseDiagnostics.length > 0) return source;
+  const ranges = [];
+  const maskPreloadDependencies = (node) => {
+    if (ts.isStringLiteral(node)) {
+      const match = HASHED_PRELOAD_DEPENDENCY.exec(node.text);
+      const start = node.getStart(file) + 1;
+      if (match && source.slice(start, start + node.text.length) === node.text)
+        ranges.push([start + node.text.lastIndexOf(match[1]), match[1].length]);
+      return;
+    }
+    ts.forEachChild(node, maskPreloadDependencies);
+  };
+  const visit = (node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === "__vite__mapDeps" &&
+      node.initializer
+    ) {
+      maskPreloadDependencies(node.initializer);
+      return;
+    }
+    const specifier = importSpecifier(node);
+    if (
+      specifier &&
+      (ts.isStringLiteral(specifier) ||
+        ts.isNoSubstitutionTemplateLiteral(specifier))
+    ) {
+      const match = HASHED_CHUNK_SPECIFIER.exec(specifier.text);
+      const start = specifier.getStart(file) + 1;
+      if (
+        match &&
+        source.slice(start, start + specifier.text.length) === specifier.text
+      ) {
+        ranges.push([start + 2, match[1].length]);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  const parts = [];
+  let end = 0;
+  for (const [start, length] of ranges.sort((a, b) => a[0] - b[0])) {
+    parts.push(source.slice(end, start), HASH_TOKEN);
+    end = start + length;
+  }
+  parts.push(source.slice(end));
+  return parts.join("");
+}
+
+/** Gzip of a chunk with hashed sibling chunk names masked. */
+function maskedGzipBytes(contents) {
+  return gzipSync(normalizeHashedImports(contents.toString("utf8"))).byteLength;
+}
+
+function lazyChunkGzipBytes(file) {
+  if (!file.endsWith(".js")) return gzipBytes(file);
+  const contents = readFileSync(file, "utf8");
+  if (contents.length === 0) fail(`asset is empty: ${file}`);
+  return gzipSync(normalizeHashedImports(contents)).byteLength;
+}
+
 export function verifyWebBundle(root) {
   const budgets = json(
     path.join(root, "docs/performance/budgets.json"),
@@ -76,6 +186,7 @@ export function verifyWebBundle(root) {
   const totalLimit = budgets.bundle?.webTotalJsGzipBytes;
   const terminalLimit = budgets.bundle?.webTerminalLazyJsGzipBytes;
   const subagentLimit = budgets.bundle?.webSubagentLazyJsGzipBytes;
+  const markdownLimit = budgets.bundle?.webMarkdownLazyJsGzipBytes;
   if (
     !Number.isInteger(entryLimit) ||
     !Number.isInteger(initialStaticClosureLimit) ||
@@ -86,7 +197,9 @@ export function verifyWebBundle(root) {
     (terminalLimit !== undefined &&
       (!Number.isInteger(terminalLimit) || terminalLimit < 1)) ||
     (subagentLimit !== undefined &&
-      (!Number.isInteger(subagentLimit) || subagentLimit < 1))
+      (!Number.isInteger(subagentLimit) || subagentLimit < 1)) ||
+    (markdownLimit !== undefined &&
+      (!Number.isInteger(markdownLimit) || markdownLimit < 1))
   )
     fail("web bundle limits are missing or invalid");
   const lazyFeatures = parseLazyFeatureBudgets(
@@ -142,8 +255,10 @@ export function verifyWebBundle(root) {
   };
   visit(entry);
   const entryGzipBytes = gzipBytes(assetPath(root, entry.file));
+  // Startup closures mask hashed chunk names too: a lazy chunk's new name
+  // changes the startup chunk that imports it without changing its code.
   const initialStaticClosureGzipBytes = [...initial].reduce(
-    (sum, file) => sum + gzipBytes(assetPath(root, file)),
+    (sum, file) => sum + lazyChunkGzipBytes(assetPath(root, file)),
     0,
   );
   const assets = path.join(root, "dist/assets");
@@ -155,8 +270,10 @@ export function verifyWebBundle(root) {
     0,
   );
   let terminalLazyGzipBytes = 0;
+  let terminalLazyEmittedGzipBytes = 0;
   let subagentLazyGzipBytes = 0;
   let coreTotalGzipBytes = totalGzipBytes;
+  let markdownLazyGzipBytes = 0;
   const reachable = new Set();
   const visitReachable = (key) => {
     if (reachable.has(key)) return;
@@ -170,6 +287,24 @@ export function verifyWebBundle(root) {
       visitReachable(imported);
   };
   visitReachable(entries[0][0]);
+  if (markdownLimit !== undefined) {
+    const markdown = Object.entries(manifest).filter(
+      ([key, record]) =>
+        record.name === "markdown-rendering" && reachable.has(key),
+    );
+    if (markdown.length !== 1)
+      fail("markdown must own one reachable rendering chunk");
+    const file = markdown[0][1].file;
+    const paths = measureWebBundlePaths(root, manifest, maskedGzipBytes);
+    if (initial.has(file) || paths.agentOneChat.files.includes(file))
+      fail("markdown entered a startup static closure");
+    markdownLazyGzipBytes = gzipBytes(assetPath(root, file));
+    coreTotalGzipBytes -= markdownLazyGzipBytes;
+    if (markdownLazyGzipBytes > markdownLimit)
+      fail(
+        `markdown lazy gzip ${markdownLazyGzipBytes} exceeds ${markdownLimit}`,
+      );
+  }
   if (terminalLimit !== undefined) {
     const terminalKey = "src/workbench/TerminalDock.tsx";
     const terminal = manifest[terminalKey];
@@ -304,10 +439,14 @@ export function verifyWebBundle(root) {
       fail("Terminal lazy port must be imported only by terminal chunks");
     }
     terminalLazyGzipBytes = terminalFiles.reduce(
+      (sum, file) => sum + lazyChunkGzipBytes(assetPath(root, file)),
+      0,
+    );
+    terminalLazyEmittedGzipBytes = terminalFiles.reduce(
       (sum, file) => sum + gzipBytes(assetPath(root, file)),
       0,
     );
-    coreTotalGzipBytes -= terminalLazyGzipBytes;
+    coreTotalGzipBytes -= terminalLazyEmittedGzipBytes;
   }
   if (subagentLimit !== undefined) {
     const subagentKey = "src/workbench/SubagentSurface.tsx";
@@ -324,8 +463,8 @@ export function verifyWebBundle(root) {
     ) {
       fail("SubagentSurface must own a reachable, noninitial lazy chunk");
     }
-    subagentLazyGzipBytes = gzipBytes(assetPath(root, subagent.file));
-    coreTotalGzipBytes -= subagentLazyGzipBytes;
+    subagentLazyGzipBytes = lazyChunkGzipBytes(assetPath(root, subagent.file));
+    coreTotalGzipBytes -= gzipBytes(assetPath(root, subagent.file));
   }
   for (const file of jsFiles) {
     if (
@@ -343,10 +482,11 @@ export function verifyWebBundle(root) {
     initial,
     isInitialCss: (css) => initialCss.has(assetPath(root, css)),
     features: lazyFeatures,
-    gzipFile: (file) => gzipBytes(assetPath(root, file)),
+    gzipFile: (file) => lazyChunkGzipBytes(assetPath(root, file)),
   });
   for (const feature of Object.values(lazyFeatureChunks))
-    coreTotalGzipBytes -= feature.gzipBytes;
+    for (const file of feature.files)
+      coreTotalGzipBytes -= gzipBytes(assetPath(root, file));
   const exceeded = [];
   if (entryGzipBytes > entryLimit)
     exceeded.push(`entry gzip ${entryGzipBytes} exceeds ${entryLimit}`);
@@ -368,7 +508,7 @@ export function verifyWebBundle(root) {
       `subagent lazy gzip ${subagentLazyGzipBytes} exceeds ${subagentLimit}`,
     );
   if (exceeded.length) fail(exceeded.join("; "));
-  const paths = measureWebBundlePaths(root, manifest);
+  const paths = measureWebBundlePaths(root, manifest, maskedGzipBytes);
   verifyWebBundlePathBudgets(paths, budgets.bundle?.webPathJsGzipBytes);
   return {
     paths,
@@ -376,7 +516,9 @@ export function verifyWebBundle(root) {
     initialStaticClosureGzipBytes,
     totalGzipBytes,
     terminalLazyGzipBytes,
+    terminalLazyEmittedGzipBytes,
     subagentLazyGzipBytes,
+    markdownLazyGzipBytes,
     lazyFeatureChunks,
     coreTotalGzipBytes,
     initialFiles: [...initial].sort(),

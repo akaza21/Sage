@@ -2,7 +2,10 @@ use crate::acp::contract::{ProjectGeneration, SageChatId, SageProjectId};
 use rusqlite::OptionalExtension;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, atomic::AtomicBool},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
 };
 
 pub(crate) mod ipc;
@@ -24,6 +27,17 @@ pub const OUTPUT_LINES: usize = 4_096;
 pub const INPUT_BYTES: usize = 4_096;
 pub const OUTPUT_CHUNK_BYTES: usize = 8_192;
 pub const OUTPUT_PAGE_BYTES: usize = 48_000;
+/// Largest grid a terminal may be created or resized to.
+pub const MAX_COLUMNS: u16 = 500;
+pub const MAX_ROWS: u16 = 300;
+
+fn validate_dimensions(columns: u16, rows: u16) -> Result<(), TerminalError> {
+    if (1..=MAX_COLUMNS).contains(&columns) && (1..=MAX_ROWS).contains(&rows) {
+        Ok(())
+    } else {
+        Err(TerminalError::InvalidDimensions)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TerminalSessionId(uuid::Uuid);
@@ -93,6 +107,9 @@ trait TerminalFactory: Send + Sync {
 pub struct TerminalSessionPort {
     factory: Box<dyn TerminalFactory>,
     sessions: Mutex<HashMap<TerminalSessionId, Session>>,
+    /// Bumped by every `shutdown`, so a create whose shell was still
+    /// spawning (with `sessions` unlocked) learns it was missed.
+    shutdowns: AtomicU64,
 }
 
 impl std::fmt::Debug for TerminalSessionPort {
@@ -140,6 +157,30 @@ struct Session {
     process: Box<dyn TerminalProcess>,
 }
 
+/// Whether `scope` names a chat tab of its project, read off the async runtime.
+async fn chat_tab_exists(
+    database: &crate::persistence::Database,
+    scope: &TerminalScope,
+) -> Result<bool, TerminalError> {
+    let database = database.clone();
+    let project = scope.project.clone();
+    let chat = scope.chat.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        database
+            .connection()
+            .query_row(
+                "SELECT 1 FROM chat_tabs WHERE project_id=?1 AND chat_id=?2 LIMIT 1",
+                [project.as_str(), chat.as_str()],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+    })
+    .await
+    .map_err(|_| TerminalError::Backend)?
+    .map(|row| row.is_some())
+    .map_err(|_| TerminalError::InvalidScope)
+}
+
 impl TerminalSessionPort {
     fn shell_path(&self, handle: TerminalHandle) -> Result<String, TerminalError> {
         let sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
@@ -149,10 +190,24 @@ impl TerminalSessionPort {
         Ok(session.process.shell_path().to_owned())
     }
 
+    /// Whether another terminal fits the global, project and chat limits.
+    fn admits(&self, scope: &TerminalScope) -> Result<bool, TerminalError> {
+        let sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
+        let (project, chat) = sessions.values().fold((0, 0), |(project, chat), session| {
+            let same_project = session.scope.project == scope.project;
+            (
+                project + usize::from(same_project),
+                chat + usize::from(same_project && session.scope == *scope),
+            )
+        });
+        Ok(sessions.len() < MAX_GLOBAL && project < MAX_PER_PROJECT && chat < MAX_PER_CHAT)
+    }
+
     fn new(factory: Box<dyn TerminalFactory>) -> Self {
         Self {
             factory,
             sessions: Mutex::new(HashMap::new()),
+            shutdowns: AtomicU64::new(0),
         }
     }
 
@@ -179,48 +234,31 @@ impl TerminalSessionPort {
         rows: u16,
     ) -> Result<TerminalHandle, TerminalError> {
         let state = authority.0;
-        if !(1..=500).contains(&columns) || !(1..=300).contains(&rows) {
-            return Err(TerminalError::InvalidDimensions);
-        }
+        validate_dimensions(columns, rows)?;
         let context = state
             .lock_active_project(&scope.project, scope.generation)
             .await
             .map_err(|_| TerminalError::InvalidScope)?;
-        let chat_exists: Option<i64> = state
-            .database
-            .connection()
-            .query_row(
-                "SELECT 1 FROM chat_tabs WHERE project_id=?1 AND chat_id=?2 LIMIT 1",
-                [scope.project.as_str(), scope.chat.as_str()],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|_| TerminalError::InvalidScope)?;
-        if chat_exists.is_none() {
+        if !chat_tab_exists(&state.database, scope).await? {
             return Err(TerminalError::InvalidScope);
         }
-        let mut sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
-        let project_count = sessions
-            .values()
-            .filter(|session| session.scope.project == scope.project)
-            .count();
-        let chat_count = sessions
-            .values()
-            .filter(|session| session.scope == *scope)
-            .count();
-        if sessions.len() >= MAX_GLOBAL
-            || project_count >= MAX_PER_PROJECT
-            || chat_count >= MAX_PER_CHAT
-        {
+        if !self.admits(scope)? {
             return Err(TerminalError::Capacity);
         }
+        // Spawning a shell can take a while (ConPTY on Windows), so the
+        // session table stays unlocked for reads, writes and resizes of the
+        // other terminals meanwhile. `context` holds the project transition
+        // lock, so no other create can take the slot admitted above. Shutdown
+        // does not take that lock, so a shutdown during the spawn is caught
+        // below by its counter.
+        let shutdowns = self.shutdowns.load(Ordering::SeqCst);
         let root = state
             .database
             .selected_project_root_authority(&context)
             .map_err(|_| TerminalError::InvalidScope)?;
         root.revalidate().map_err(|_| TerminalError::InvalidScope)?;
         let output = TerminalOutputSink::new();
-        let (process, cleanup_unknown) =
+        let (mut process, mut cleanup_unknown) =
             match self.factory.spawn(&root, columns, rows, output.clone()) {
                 Ok(process) => (process, false),
                 Err(TerminalSpawnFailure::Clean(error)) => return Err(error),
@@ -228,6 +266,15 @@ impl TerminalSessionPort {
             };
         let id = TerminalSessionId(uuid::Uuid::new_v4());
         let revision = TerminalRevision(1);
+        let mut sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
+        if self.shutdowns.load(Ordering::SeqCst) != shutdowns {
+            if process.terminate().is_ok() {
+                return Err(TerminalError::Ended);
+            }
+            // Kept, like a session `terminate_matching` could not end, so the
+            // next shutdown retries it.
+            cleanup_unknown = true;
+        }
         sessions.insert(
             id,
             Session {
@@ -279,9 +326,7 @@ impl TerminalSessionPort {
         rows: u16,
     ) -> Result<(), TerminalError> {
         let state = authority.0;
-        if !(1..=500).contains(&columns) || !(1..=300).contains(&rows) {
-            return Err(TerminalError::InvalidDimensions);
-        }
+        validate_dimensions(columns, rows)?;
         let _context = state
             .lock_active_project(&scope.project, scope.generation)
             .await
@@ -358,6 +403,9 @@ impl TerminalSessionPort {
     }
 
     pub fn shutdown(&self) -> Result<(), TerminalError> {
+        // Before the table is locked: a create that inserts after this sees
+        // the new count and ends its own shell.
+        self.shutdowns.fetch_add(1, Ordering::SeqCst);
         self.terminate_matching(|_| true)
     }
 

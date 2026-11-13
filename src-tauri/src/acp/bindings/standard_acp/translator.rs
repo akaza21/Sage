@@ -25,6 +25,7 @@ mod diff_content;
 mod diff_records;
 mod error;
 mod images;
+mod open_items;
 mod permissions;
 mod terminal;
 mod tool_execution;
@@ -93,6 +94,8 @@ pub(crate) struct StandardAcpTranslator {
     tool_categories: BTreeMap<String, ToolCategory>,
     tool_labels: BTreeMap<String, SafeText<512>>,
     tool_inputs: BTreeMap<String, SafeText<65536>>,
+    command_outcomes: BTreeMap<String, tool_execution::CommandOutcome>,
+    command_tail_bytes: usize,
     diff_records: BTreeMap<String, diff_records::DiffRecord>,
     command_snapshots: BTreeMap<
         String,
@@ -112,6 +115,8 @@ pub(crate) struct StandardAcpTranslator {
     pending_prompt: Option<String>,
     running_emitted: bool,
     context_window: Option<u32>,
+    open_items: BTreeMap<String, (ExternalId, NormalizedPayload)>,
+    thought_block: u32,
     terminal_request_id: Option<String>,
     terminal_ledger: BTreeMap<String, PromptTerminal>,
     terminal: Option<PromptTerminal>,
@@ -141,6 +146,8 @@ impl StandardAcpTranslator {
             tool_categories: BTreeMap::new(),
             tool_labels: BTreeMap::new(),
             tool_inputs: BTreeMap::new(),
+            command_outcomes: BTreeMap::new(),
+            command_tail_bytes: 0,
             diff_records: BTreeMap::new(),
             command_snapshots: BTreeMap::new(),
             command_snapshot_bytes: 0,
@@ -154,6 +161,8 @@ impl StandardAcpTranslator {
             pending_prompt: None,
             running_emitted: false,
             context_window: None,
+            open_items: BTreeMap::new(),
+            thought_block: 0,
             terminal_request_id: None,
             terminal_ledger: BTreeMap::new(),
             terminal: None,
@@ -226,10 +235,17 @@ impl StandardAcpTranslator {
             .ok_or(TranslationError::MalformedFrame)?;
         let kind = string(update, "sessionUpdate")?;
         let mut events = match SessionUpdateKind::parse(kind) {
-            Some(SessionUpdateKind::AgentMessageChunk) => vec![self.content_event(update, false)?],
+            Some(SessionUpdateKind::AgentMessageChunk) => {
+                // The thought closes only once the answer chunk is admitted.
+                let answer = self.content_event(update, false)?;
+                let mut events = self.close_thought_block()?;
+                events.push(answer);
+                events
+            }
             Some(SessionUpdateKind::AgentThoughtChunk) => vec![self.content_event(update, true)?],
             Some(SessionUpdateKind::Plan) => {
                 let external_key = self.external_key(update, "plan")?;
+                self.admit_open_item(external_key.as_str())?;
                 vec![plan_event(update, external_key)?]
             }
             Some(SessionUpdateKind::ToolCall) => self.tool_call(update, resources)?,
@@ -240,6 +256,7 @@ impl StandardAcpTranslator {
                 UnmappedUpdate::Surfaced(reason) => vec![self.unsupported(kind, reason)?],
             },
         };
+        self.remember_open(&events);
         if let Some(running) = self.turn_running() {
             events.insert(0, running);
         }
@@ -318,8 +335,14 @@ impl StandardAcpTranslator {
         content: &Map<String, Value>,
         thought: bool,
     ) -> Result<AdapterEvent, TranslationError> {
-        let external_key =
-            self.external_key(update, if thought { "thought" } else { "agent-message" })?;
+        let external_key = self.external_key(
+            update,
+            &if thought {
+                self.thought_base()
+            } else {
+                "agent-message".to_owned()
+            },
+        )?;
         let chunk = string(content, "text")?;
         let key = external_key.as_str().to_owned();
         if !self.text_snapshots.contains_key(&key)
@@ -373,6 +396,7 @@ impl StandardAcpTranslator {
             .len()
             .saturating_add(self.tools.len())
             .saturating_add(self.image_keys.len())
+            .saturating_add(self.open_plan_count())
     }
 
     fn clear_turn_items(&mut self) {
@@ -380,6 +404,8 @@ impl StandardAcpTranslator {
         self.tool_categories.clear();
         self.tool_labels.clear();
         self.tool_inputs.clear();
+        self.command_outcomes.clear();
+        self.command_tail_bytes = 0;
         self.diff_records.clear();
         self.settled_reports.clear();
         self.carry.clear();
@@ -388,5 +414,7 @@ impl StandardAcpTranslator {
         self.text_snapshots.clear();
         self.image_keys.clear();
         self.text_bytes = 0;
+        self.open_items.clear();
+        self.thought_block = 0;
     }
 }

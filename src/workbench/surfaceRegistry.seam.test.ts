@@ -1,75 +1,138 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { createElement, type ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { createElement } from "react";
+import { describe, expect, it, vi } from "vitest";
 
-import { ExplorerSurface } from "../features/files/ExplorerSurface";
+import type { WorkbenchTab } from "../domain/workbench";
+import { settleLazyModules } from "../test/settleLazyModules";
 import {
-  getRegisteredCanvasSurface,
-  getRegisteredToolSurface,
   listRegisteredCanvasKinds,
   listRegisteredToolIds,
+  renderFileOrDiffCanvas,
+  renderRegisteredCanvas,
+  renderRegisteredTool,
+  type ToolSurfaceId,
 } from "./surfaceRegistry";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 
+// The feature surfaces themselves need the whole workbench runtime; this
+// suite is about the registry, so each feature module renders what it was
+// handed and the test checks the registry delivered it to the right one.
+type CanvasProps = { tab: WorkbenchTab; readOnly?: boolean };
+const canvas = (name: string) =>
+  function Canvas({ tab, readOnly }: CanvasProps) {
+    return createElement(
+      "p",
+      null,
+      `${name} canvas for ${tab.id}${readOnly ? " (read-only)" : ""}`,
+    );
+  };
+const tool = (name: string) =>
+  function Tool() {
+    return createElement("p", null, `${name} tool`);
+  };
+
+vi.mock("../features/chat/ChatSurface", () => ({
+  ChatSurface: ({ chatId }: { chatId: string }) =>
+    createElement("p", null, `Chat canvas for ${chatId}`),
+}));
+vi.mock("../features/files/FileSurface", () => ({
+  default: canvas("File"),
+}));
+vi.mock("../features/diff/DiffSurface", () => ({
+  DiffSurface: canvas("Diff"),
+}));
+vi.mock("../features/browser/BrowserSurface", () => ({
+  BrowserSurface: canvas("Browser"),
+}));
+vi.mock("../features/files/ExplorerSurface", () => ({
+  default: tool("Explorer"),
+}));
+vi.mock("../features/search/SearchSurface", () => ({
+  default: tool("Search"),
+}));
+vi.mock("../features/outline/OutlineSurface", () => ({
+  OutlineSurface: tool("Outline"),
+}));
+vi.mock("./SourceControlView", () => ({
+  SourceControlView: tool("Source Control"),
+}));
+vi.mock("../features/preview/PreviewSurface", () => ({
+  PreviewSurface: tool("Preview"),
+}));
+
 registerWorkbenchSurfaces();
 
-const srcRoot = path.resolve(import.meta.dirname, "..");
+const tab = (kind: WorkbenchTab["kind"], id: string): WorkbenchTab => ({
+  id,
+  kind,
+  title: id,
+  position: 0,
+  pinned: false,
+  dirty: false,
+});
 
-describe("S0.4 composition seam", () => {
-  it("owns Explorer as a feature surface instead of an inline RightSidebar view", () => {
-    expect(typeof ExplorerSurface).toBe("function");
-  });
-
-  it("registers canvas and tool surfaces so Workbench.tsx is not the feature list", () => {
+describe("workbench surface registry", () => {
+  it("registers every canvas kind and tool the workbench lays out", () => {
     expect(listRegisteredCanvasKinds().sort()).toEqual([
       "browser",
       "chat",
       "diff",
       "file",
     ]);
-    expect(listRegisteredToolIds()).toContain("explorer");
-    expect(getRegisteredCanvasSurface("chat")).toBeTypeOf("function");
-    expect(getRegisteredCanvasSurface("file")).toBeTypeOf("function");
-    expect(getRegisteredCanvasSurface("diff")).toBeTypeOf("function");
-    expect(getRegisteredCanvasSurface("browser")).toBeTypeOf("function");
-    const explorer = getRegisteredToolSurface("explorer");
-    expect(explorer).toBeTypeOf("function");
-    const node: ReactNode = createElement(explorer!);
-    expect(node).toBeTruthy();
-  });
-
-  it("keeps Workbench.tsx free of feature surface imports", async () => {
-    const source = await readFile(
-      path.join(srcRoot, "workbench/Workbench.tsx"),
-      "utf8",
-    );
-    expect(source).not.toMatch(
-      /from ["']\.\.\/features\/chat\/ChatSurface["']/,
-    );
-    expect(source).not.toMatch(
-      /from ["']\.\.\/features\/diff\/DiffSurface["']/,
-    );
-    expect(source).not.toMatch(
-      /from ["']\.\.\/features\/files\/FileSurface["']/,
-    );
-    expect(source).toMatch(/registeredSurfaces|surfaceRegistry/);
-  });
-
-  it("splits Explorer surface CSS from shell tokens", async () => {
-    const [surfaceCss, globalCss, sidebar] = await Promise.all([
-      readFile(
-        path.join(srcRoot, "features/files/explorer-surface.css"),
-        "utf8",
-      ),
-      readFile(path.join(srcRoot, "styles/global.css"), "utf8"),
-      readFile(path.join(srcRoot, "workbench/RightSidebar.tsx"), "utf8"),
+    expect(listRegisteredToolIds().sort()).toEqual([
+      "explorer",
+      "outline",
+      "preview",
+      "search",
+      "sourceControl",
     ]);
-    expect(surfaceCss).toMatch(/\.tree__/);
-    expect(surfaceCss).toMatch(/\.root-tree/);
-    expect(globalCss).not.toMatch(/^\.root-tree\b/m);
-    expect(globalCss).not.toMatch(/^\.tree__row\b/m);
-    expect(sidebar).not.toMatch(/function ExplorerView/);
-    expect(sidebar).not.toMatch(/function RootTree/);
   });
+
+  it.each([
+    ["chat", "chat:7", "Chat canvas for chat:7"],
+    ["file", "file:src/main.ts", "File canvas for file:src/main.ts"],
+    ["diff", "diff:src/main.ts", "Diff canvas for diff:src/main.ts"],
+    ["browser", "browser:1", "Browser canvas for browser:1"],
+  ] as const)(
+    "opens a %s tab in its own surface with that tab",
+    async (kind, id, text) => {
+      render(renderRegisteredCanvas(kind, tab(kind, id)));
+      await settleLazyModules();
+      expect(await screen.findByText(text)).toBeInTheDocument();
+    },
+  );
+
+  it("hands read-only through to the file and diff surfaces and ignores other tabs", async () => {
+    render(
+      createElement(
+        "div",
+        null,
+        renderFileOrDiffCanvas(tab("file", "file:a.ts"), { readOnly: true }),
+        renderFileOrDiffCanvas(tab("diff", "diff:b.ts"), { readOnly: true }),
+      ),
+    );
+    await settleLazyModules();
+    expect(
+      await screen.findByText("File canvas for file:a.ts (read-only)"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("Diff canvas for diff:b.ts (read-only)"),
+    ).toBeInTheDocument();
+    expect(renderFileOrDiffCanvas(tab("chat", "chat:1"))).toBeNull();
+  });
+
+  it.each([
+    ["explorer", "Explorer tool"],
+    ["search", "Search tool"],
+    ["sourceControl", "Source Control tool"],
+    ["preview", "Preview tool"],
+    ["outline", "Outline tool"],
+  ] as const satisfies ReadonlyArray<readonly [ToolSurfaceId, string]>)(
+    "opens the %s tool in its own surface",
+    async (id, text) => {
+      render(renderRegisteredTool(id));
+      await settleLazyModules();
+      expect(await screen.findByText(text)).toBeInTheDocument();
+    },
+  );
 });

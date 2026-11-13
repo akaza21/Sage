@@ -22,7 +22,7 @@ pub(crate) fn archived_chats_in(
         "SELECT c.id,c.title
          FROM chats c
          WHERE c.project_id=?1
-           AND c.id NOT GLOB 'side-*'
+           AND c.id NOT IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1)
            AND NOT EXISTS(
              SELECT 1 FROM chat_tabs a
              WHERE a.project_id=c.project_id AND a.chat_id=c.id
@@ -66,7 +66,7 @@ pub(crate) fn archived_chats_in(
 
 impl Database {
     pub(crate) fn archive_chat(&self, request: &ChatLifecycleRequest) -> AppResult<()> {
-        crate::side_chat_storage::refuse_persistence(&request.chat_id)?;
+        crate::side_chat_storage::refuse_persistence(&self.connection(), &request.chat_id)?;
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
         let mut connection = self.write_connection()?;
@@ -76,6 +76,23 @@ impl Database {
             &request.project_id,
             &request.chat_id,
         )?;
+        // An archived Chat holds no harness process and starts no Turn. A
+        // running Turn keeps a process, and a queued prompt would start one,
+        // so the user stops the Turn and sends or removes queued prompts
+        // first. Send, session start and activation refuse an archived Chat
+        // while holding the project transition lock this archive also takes,
+        // and archive advances the transition epoch, so a send that dropped
+        // the lock for its workspace capture fails its relock as stale.
+        if delete::has_running_turn(&transaction, &request.project_id, &request.chat_id)? {
+            return Err(AppError::InvalidRequest(
+                crate::acp::service::ChatRuntimeRelease::TurnRunning.message("archiving"),
+            ));
+        }
+        if delete::has_queued_prompts(&transaction, &request.project_id, &request.chat_id)? {
+            return Err(AppError::InvalidRequest(
+                "Send or remove this Chat's queued prompts before archiving it".into(),
+            ));
+        }
         if source_is_active(&transaction, &request.project_id)? {
             validate_request(request)?;
             let attached = require_exact_attached_chats(&transaction, &request.current_layout)?;
@@ -86,7 +103,7 @@ impl Database {
             }
             if attached.len() <= 1 {
                 return Err(AppError::InvalidRequest(
-                    "the last attached Chat cannot be archived".into(),
+                    "the last attached chat cannot be archived".into(),
                 ));
             }
             let next_layout = archived_layout(&request.current_layout, &request.chat_id)?;
@@ -141,6 +158,7 @@ impl Database {
                 dirty: false,
                 status: Some("idle".into()),
                 updated_at: None,
+                finished_at: None,
                 resource: None,
                 repository: None,
                 diff_ref: None,
@@ -256,7 +274,7 @@ fn archive_foreign_chat(
     )?;
     if attached <= 1 {
         return Err(AppError::InvalidRequest(
-            "the last attached Chat cannot be archived".into(),
+            "the last attached chat cannot be archived".into(),
         ));
     }
     let tab_id: Option<String> = transaction
@@ -348,7 +366,7 @@ fn archived_layout(
         .or_else(|| index.checked_sub(1).and_then(|prior| chats.get(prior)))
         .map(|tab| tab.id.clone())
         .ok_or_else(|| {
-            AppError::InvalidRequest("the last attached Chat cannot be archived".into())
+            AppError::InvalidRequest("the last attached chat cannot be archived".into())
         })?;
     let mut next = current.clone();
     next.tabs.retain(|tab| tab.id != chat_id);
@@ -357,6 +375,9 @@ fn archived_layout(
     }
     Ok(next)
 }
+
+mod delete;
+pub(crate) use delete::is_archived_chat;
 
 #[cfg(test)]
 mod tests;

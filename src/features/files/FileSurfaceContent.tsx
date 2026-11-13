@@ -1,9 +1,9 @@
+import { type Text } from "@codemirror/state";
 import { useEffect, type KeyboardEventHandler, type RefObject } from "react";
-import type { Text } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
 
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
-import type { ActiveEditorState } from "./fileEditorController";
 import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
 import {
   MAX_EDITABLE_CONTENT_BYTES,
@@ -11,12 +11,17 @@ import {
   type EditorContent,
   type EditorContentBase,
 } from "./editorContent";
+import { type ActiveEditorState } from "./fileEditorController";
 import { FileEditorHeader } from "./FileEditorHeader";
 import { FileEditorNotices } from "./FileEditorNotices";
-import type { FindControl, FindOpenRequest } from "./FileFindBar";
-import { FileGoToLineBar } from "./FileGoToLineBar";
-import { FileMarkdownPreview } from "./FileMarkdownPreview";
-import { canPreviewDiagram, canPreviewMarkdown } from "./markdownPreview";
+import { type FindControl, type FindOpenRequest } from "./FileFindBar";
+import { FileGoToLine, type FileGoToLineProps } from "./FileGoToLine";
+import { canPreviewDiagram, canPreviewMarkdown } from "./filePreviewKind";
+
+const loadMarkdownPreview = () =>
+  import("./FileMarkdownPreview").then(({ FileMarkdownPreview }) => ({
+    default: FileMarkdownPreview,
+  }));
 
 type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
 
@@ -53,18 +58,11 @@ interface FileSurfaceFindView {
   onClose: () => void;
 }
 
-// The Find bar, its matching and its worker load apart from the editor (EP-04).
+// The Find bar, its matching and its worker load apart from the editor.
 const loadFindBar = () =>
   import("./FileFindBar").then((module) => ({ default: module.FileFindBar }));
 
-interface FileSurfaceGoToView {
-  inputRef: RefObject<HTMLInputElement | null>;
-  query: string;
-  status: string;
-  onQueryChange: (query: string) => void;
-  onSubmit: () => void;
-  onClose: () => void;
-}
+type FileSurfaceGoToView = Omit<FileGoToLineProps, "content">;
 
 export function FileSurfaceContent({
   activeResourceKey,
@@ -83,6 +81,7 @@ export function FileSurfaceContent({
   agentMarkdown = false,
   onCaretOffset,
   onLimitExceeded,
+  onEditorView,
   onEditorChange,
   onSurfaceKeyDown,
   onTogglePreview,
@@ -104,6 +103,7 @@ export function FileSurfaceContent({
   agentMarkdown?: boolean;
   onCaretOffset: (offset: number, document: Text) => void;
   onLimitExceeded: () => void;
+  onEditorView?: (view: EditorView | null, text: string | null) => void;
   onEditorChange: (
     content: EditorContent,
     base?: EditorContentBase | null,
@@ -128,6 +128,7 @@ export function FileSurfaceContent({
         projectName={projectName}
         lineEnding={editor.document.lineEnding}
         diskByteLen={editor.document.disk.byteLen}
+        unwatched={editor.unwatched}
         persisting={editor.persisting}
         dirty={dirty}
         saving={editor.saving}
@@ -138,8 +139,9 @@ export function FileSurfaceContent({
         onTogglePreview={onTogglePreview}
       />
       <FileEditorNotices
-        conflict={editor.document.conflict}
+        document={editor.document}
         message={editor.message}
+        editable={!readOnly}
       />
       {languageNavigationStatus ? (
         <p role="status" className="file-language-navigation-status">
@@ -147,19 +149,18 @@ export function FileSurfaceContent({
         </p>
       ) : null}
       {goTo && !previewing ? (
-        <FileGoToLineBar
-          inputRef={goTo.inputRef}
-          query={goTo.query}
-          status={goTo.status}
-          onQueryChange={goTo.onQueryChange}
-          onSubmit={goTo.onSubmit}
-          onClose={goTo.onClose}
-        />
+        <FileGoToLine {...goTo} content={editor.content} />
       ) : null}
       {previewing ? (
-        <FileMarkdownPreview
-          source={contentText(editor.content)}
-          asDiagram={canPreviewDiagram(path) && !canPreviewMarkdown(path)}
+        <LazyModuleBoundary
+          load={loadMarkdownPreview}
+          label="Markdown preview"
+          render={(FileMarkdownPreview) => (
+            <FileMarkdownPreview
+              source={contentText(editor.content)}
+              asDiagram={canPreviewDiagram(path) && !canPreviewMarkdown(path)}
+            />
+          )}
         />
       ) : (
         <div className="file-editor-stage">
@@ -192,6 +193,7 @@ export function FileSurfaceContent({
             onChange={onEditorChange}
             onCaretOffset={onCaretOffset}
             onLimitExceeded={onLimitExceeded}
+            onView={onEditorView}
           />
         </div>
       )}

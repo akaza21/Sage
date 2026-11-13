@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use serde_json::json;
 use std::io::Cursor;
 
@@ -52,7 +53,7 @@ fn codex_menu_negotiates_confirmed_model_and_effort_with_complete_catalog() {
     assert_eq!(reply["result"]["nextCursor"], Value::Null);
     assert_eq!(model["defaultReasoningEffort"], "medium");
     let evidence: Value = serde_json::from_str(include_str!(
-        "../../../testdata/acp/codex/native-capture-wire-0146.json"
+        "../../../testdata/acp/codex/native-capture-wire.json"
     ))
     .unwrap();
     for field in evidence["modelRequired"].as_array().unwrap() {
@@ -109,8 +110,8 @@ fn codex_menu_negotiates_confirmed_model_and_effort_with_complete_catalog() {
     adapter
         .ingest(
             &serde_json::to_vec(&json!({"id":1,"result":{
-                "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+                "userAgent":user_agent("sage", "unknown"),
+                "codexHome":MANAGED_CODEX_HOME,
                 "platformFamily":"windows","platformOs":"windows"
             }}))
             .unwrap(),
@@ -320,4 +321,218 @@ fn codex_child_read_rejects_foreign_identity_and_bounds_waits() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn long_transcript_journey_fills_more_than_a_history_page_and_paces_within_budget() {
+    let case = super::super::generated_cases::JOURNEY_CASES
+        .iter()
+        .find(|case| case.id == "codex-long-transcript-stream")
+        .unwrap();
+    let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
+    assert!(steps.len() as u64 <= LIMITS.fixture.steps_per_case);
+    let paused: u64 = steps
+        .iter()
+        .filter(|step| step["op"] == "pauseMs")
+        .map(|step| step["ms"].as_u64().unwrap())
+        .sum();
+    assert!(paused <= LIMITS.deadlines_ms.fixture_delay_maximum);
+
+    let transcript = steps
+        .iter()
+        .find(|step| step["shape"] == "codexTranscript")
+        .unwrap();
+    let mut state = WireState::new();
+    state.current_turn_id = Some("fixture-turn-1".into());
+    let mut output = Vec::new();
+    execute_with_io(
+        transcript,
+        &mut state,
+        &mut std::io::empty(),
+        &mut output,
+        &mut Vec::new(),
+    )
+    .unwrap();
+    let frames: Vec<Value> = output
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap())
+        .collect();
+    assert!(frames.len() as u64 > LIMITS.durable.history_page_items);
+    assert!(frames.iter().all(|frame| {
+        frame["method"] == "item/completed"
+            && frame["params"]["turnId"] == "fixture-turn-1"
+            && frame["params"]["item"]["type"] == "agentMessage"
+    }));
+}
+
+#[test]
+fn a_transcript_step_outside_its_bounds_is_refused() {
+    let mut state = WireState::new();
+    state.current_turn_id = Some("fixture-turn-1".into());
+    for count in [0, codex::TRANSCRIPT_MESSAGES + 1] {
+        assert_eq!(
+            codex::emit_transcript(count, &mut state, &mut Vec::new()),
+            Err(FixtureError::InvalidArguments)
+        );
+    }
+}
+
+#[test]
+fn an_idle_skills_read_is_answered_with_no_skills_and_the_case_goes_on() {
+    let mut state = WireState::new();
+    let mut input = Cursor::new(concat!(
+        r#"{"id":5,"method":"skills/list","params":{}}"#,
+        "\n",
+        r#"{"id":6,"method":"skills/list","params":{"cwds":["C:/repo"],"forceReload":true}}"#,
+        "\n",
+        r#"{"id":7,"method":"model/list","params":{"cursor":null}}"#,
+        "\n"
+    ));
+    let mut output = Vec::new();
+    execute_with_io(
+        &json!({"op":"awaitClient","kind":"codexModelList"}),
+        &mut state,
+        &mut input,
+        &mut output,
+        &mut Vec::new(),
+    )
+    .unwrap();
+    let replies: Vec<Value> = output
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap())
+        .collect();
+    assert_eq!(
+        replies,
+        [
+            json!({"jsonrpc":"2.0","id":5,"result":{"data":[]}}),
+            json!({"jsonrpc":"2.0","id":6,"result":{"data":[]}}),
+        ]
+    );
+    assert_eq!(state.last_request_id, Some(7));
+}
+
+#[test]
+fn installed_skills_must_be_bounded_and_complete() {
+    let skill = |name: &str| json!({"name":name,"path":"$ROOT/s/SKILL.md","enabled":true});
+    let installs = |skills: Value| {
+        let step = json!({"op":"emitKnownFrame","shape":"codexSkillsChanged","skills":skills});
+        execute_with_io(
+            &step,
+            &mut WireState::new(),
+            &mut Cursor::new(""),
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+    };
+    assert!(installs(json!([skill("pdf")])).is_ok());
+    let many: Vec<Value> = (0..17).map(|n| skill(&format!("s{n}"))).collect();
+    for refused in [
+        json!(many),
+        json!([{"name":"pdf","path":"p"}]),
+        json!({"name":"pdf"}),
+    ] {
+        assert_eq!(
+            installs(refused.clone()),
+            Err(FixtureError::InvalidArguments),
+            "{refused}"
+        );
+    }
+    let unnamed = json!({"op":"emitKnownFrame","shape":"codexSkillsChanged"});
+    assert_eq!(
+        execute_with_io(
+            &unnamed,
+            &mut WireState::new(),
+            &mut Cursor::new(""),
+            &mut Vec::new(),
+            &mut Vec::new()
+        ),
+        Err(FixtureError::InvalidArguments)
+    );
+}
+
+#[test]
+fn installed_skills_list_per_cwd_and_a_change_reaches_only_a_read_that_skips_the_cache() {
+    let skill = |name: &str| json!({"name":name,"path":"$ROOT/s/SKILL.md","enabled":true});
+    let mut state = WireState::new();
+    // The initialize the observed result answers.
+    state.last_request_id = Some(1);
+    let step =
+        |shape: &str, skills: Value| json!({"op":"emitKnownFrame","shape":shape,"skills":skills});
+    let mut run = |step: &Value, requests: &str| {
+        let mut output = Vec::new();
+        execute_with_io(
+            step,
+            &mut state,
+            &mut Cursor::new(requests.to_owned()),
+            &mut output,
+            &mut Vec::new(),
+        )
+        .map(|()| {
+            output
+                .split(|byte| *byte == b'\n')
+                .filter(|line| !line.is_empty())
+                .map(|line| serde_json::from_slice::<Value>(line).unwrap())
+                .collect::<Vec<_>>()
+        })
+    };
+    let names = |reply: &Value, entry: usize| -> Vec<String> {
+        reply["result"]["data"][entry]["skills"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|skill| skill["name"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let read = |id: u64, params: Value| {
+        format!(
+            "{}\n",
+            json!({"id":id,"method":"skills/list","params":params})
+        )
+    };
+    let wait = json!({"op":"awaitClient","kind":"codexModelList"});
+    let models = r#"{"id":99,"method":"model/list","params":{"cursor":null}}"#.to_owned() + "\n";
+    run(
+        &step("codexInitializeResultObserved", json!([skill("pdf")])),
+        "",
+    )
+    .unwrap();
+    let replies = run(&wait, &(read(1, json!({"cwds":["C:/a","C:/b"]})) + &models)).unwrap();
+    assert_eq!(replies[0]["result"]["data"][1]["cwd"], "C:/b");
+    assert_eq!(names(&replies[0], 1), ["pdf"]);
+
+    let changed = run(
+        &step("codexSkillsChanged", json!([skill("pdf"), skill("lint")])),
+        "",
+    )
+    .unwrap();
+    assert_eq!(
+        changed,
+        [json!({"jsonrpc":"2.0","method":"skills/changed","params":{}})]
+    );
+    let cached = run(&wait, &(read(2, json!({"cwds":["C:/a"]})) + &models)).unwrap();
+    assert_eq!(
+        names(&cached[0], 0),
+        ["pdf"],
+        "the cache still serves the old list"
+    );
+    let reloaded = run(
+        &wait,
+        &(read(3, json!({"cwds":["C:/a"],"forceReload":true})) + &models),
+    )
+    .unwrap();
+    assert_eq!(names(&reloaded[0], 0), ["pdf", "lint"]);
+
+    for refused in [
+        json!({}),
+        json!({"cwds":[]}),
+        json!({"cwds":["1","2","3","4","5"]}),
+    ] {
+        assert_eq!(
+            run(&wait, &(read(4, refused.clone()) + &models)).err(),
+            Some(FixtureError::InvalidArguments),
+            "{refused}"
+        );
+    }
 }

@@ -1,8 +1,22 @@
 use super::super::request::{NativeProjectRoot, initialized_notification};
-use super::{AdapterError, CodexAdapter, ExternalId, OutgoingRequest, RequestKind};
+use super::{
+    AdapterError, CodexAdapter, ExternalId, ExternalKind, OutgoingRequest, RequestKind,
+    ScopedExternalId,
+};
 use crate::acp::{contract::RequiredText, intent::ModelId};
 
 impl CodexAdapter {
+    /// The session identity for a notification about the bound thread itself
+    /// rather than one of its Turns.
+    pub(crate) fn thread_session_id(&self, value: &str) -> Result<ScopedExternalId, AdapterError> {
+        self.expect_thread(value)?;
+        let thread = self
+            .external_thread_id
+            .clone()
+            .ok_or(AdapterError::ForeignIdentity)?;
+        Ok(self.scoped(ExternalKind::Session, thread))
+    }
+
     pub(crate) fn project_root(&self, value: String) -> Result<NativeProjectRoot, AdapterError> {
         NativeProjectRoot::new(self.platform, value).map_err(AdapterError::Request)
     }
@@ -31,7 +45,9 @@ impl CodexAdapter {
         model: Option<&ModelId>,
     ) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.new_session)?;
-        self.reserve(OutgoingRequest::start(id, root, model)?)
+        let request = self.reserve(OutgoingRequest::start(id, root, model)?)?;
+        self.skills_root(root.as_str());
+        Ok(request)
     }
 
     pub(crate) fn resume(
@@ -42,12 +58,14 @@ impl CodexAdapter {
         model: Option<&ModelId>,
     ) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.resume_session)?;
-        self.reserve(OutgoingRequest::resume(
+        let request = self.reserve(OutgoingRequest::resume(
             id,
             external_thread_id,
             root,
             model,
-        )?)
+        )?)?;
+        self.skills_root(root.as_str());
+        Ok(request)
     }
 
     pub(crate) fn read(
@@ -78,7 +96,9 @@ impl CodexAdapter {
             .active_turn_id
             .clone()
             .ok_or(AdapterError::TurnUnavailable)?;
-        self.reserve(OutgoingRequest::interrupt(id, &thread, &turn)?)
+        let request = self.reserve(OutgoingRequest::interrupt(id, &thread, &turn)?)?;
+        self.active_turn_user_stop = true;
+        Ok(request)
     }
 
     pub(crate) fn close(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {

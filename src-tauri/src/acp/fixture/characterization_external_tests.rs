@@ -95,6 +95,7 @@ fn run(case: CharacterizationCase, expected_terminal: TurnState) {
                 client_intent_id: ClientIntentId::parse("characterization-start").unwrap(),
                 binding_id: BindingId::new("bindingId", CHARACTERIZATION_BINDING_ID).unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await
@@ -104,7 +105,17 @@ fn run(case: CharacterizationCase, expected_terminal: TurnState) {
             .current_session_id
             .clone()
             .expect("characterization session is current");
-        assert!(database.bootstrap_snapshot().is_err());
+        let restored = database.bootstrap_snapshot().unwrap();
+        let unavailable = restored
+            .harnesses
+            .iter()
+            .find(|harness| Some(&harness.id) == restored.selected_harness_id.as_ref())
+            .unwrap();
+        assert_eq!(unavailable.install_state, "unavailable");
+        assert_eq!(
+            unavailable.binding_id.as_deref(),
+            Some(CHARACTERIZATION_BINDING_ID)
+        );
         assert_eq!(
             database
                 .bootstrap_snapshot_with_catalog(&state.harnesses)
@@ -147,6 +158,7 @@ fn run(case: CharacterizationCase, expected_terminal: TurnState) {
                 runtime_epoch: epoch,
                 prompt: Prompt::new("prompt", "read only").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await

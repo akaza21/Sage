@@ -1,25 +1,32 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 
-use super::contract::{
-    BoundedVec, ContractError, ItemKind, RequiredText, SafeText, SageRootId, SchemaVersionV1,
-};
+use super::contract::{BoundedVec, ContractError, ItemKind, RequiredText, SafeText, SageRootId};
 pub use super::{ipc::*, limits::COMMAND_RESOURCE_LIMIT};
 
+mod activity_provenance;
 mod capability;
 mod error_kind;
 mod file_change;
+mod prompt_send;
+pub(crate) mod session_event;
 mod tool_category;
 mod tool_execution;
+pub mod user_input;
 
+pub use activity_provenance::{ActivityProvenanceV1, ActivitySourceKind};
 pub use capability::CapabilitySnapshotV1;
+pub(crate) use capability::offers_prompt_capability;
 pub use error_kind::ErrorKind;
-pub(crate) use file_change::FileChangeFacts;
 pub use file_change::FileChangeOperation;
+pub(crate) use file_change::{FileChangeFacts, line_delta};
+pub(crate) use prompt_send::PromptSendError;
 pub use tool_category::ToolCategory;
-pub use tool_execution::ToolExecution;
+pub use tool_execution::{TOOL_PROGRESS_BYTES, ToolExecution};
 
 pub type BindingId = RequiredText<512>;
 pub type ModelId = RequiredText<512>;
+/// A thinking level chosen before a session exists.
+pub type EffortId = RequiredText<64>;
 pub type ExternalId = RequiredText<512>;
 pub type PageCursor = RequiredText<512>;
 pub use super::transcript_quote::Prompt;
@@ -219,6 +226,11 @@ pub enum NormalizedPayload {
     Text {
         text: SafeText<262144>,
     },
+    /// A message the user steered into the running Turn. Sage journals it
+    /// when the harness accepts the steer; bindings never emit it.
+    UserPrompt {
+        text: SafeText<262144>,
+    },
     ThoughtSummary {
         summary: SafeText<262144>,
     },
@@ -291,6 +303,10 @@ pub enum NormalizedPayload {
         /// carries one. Absent means the harness gave none.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<SafeText<2048>>,
+        /// Present when the harness asks the user questions rather than for
+        /// approval; the request is then answered, not allowed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        user_input: Option<Box<user_input::UserInputRequest>>,
     },
     Error {
         #[serde(
@@ -372,7 +388,7 @@ impl NormalizedPayload {
 
     pub fn kind(&self) -> ItemKind {
         match self {
-            Self::Text { .. } => ItemKind::Text,
+            Self::Text { .. } | Self::UserPrompt { .. } => ItemKind::Text,
             Self::ThoughtSummary { .. } => ItemKind::ThoughtSummary,
             Self::Plan { .. } | Self::PlanEntries { .. } => ItemKind::Plan,
             Self::CompactionNotice => ItemKind::CompactionNotice,
@@ -386,57 +402,6 @@ impl NormalizedPayload {
             Self::Collaboration { .. } => ItemKind::Collaboration,
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ActivitySourceKind {
-    Tool,
-    Extension,
-    Collaboration,
-    Unknown,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ActivityProvenanceV1 {
-    pub schema_version: SchemaVersionV1,
-    pub source_kind: ActivitySourceKind,
-    pub external_kind: RequiredText<128>,
-    pub extension_schema_id: Option<RequiredText<128>>,
-    pub safe_label: Option<RequiredText<512>>,
-}
-
-impl ActivityProvenanceV1 {
-    pub(crate) fn validate_for_persistence(&self) -> Result<(), ContractError> {
-        let fields = [
-            self.external_kind.as_str(),
-            self.extension_schema_id
-                .as_ref()
-                .map_or("", RequiredText::as_str),
-            self.safe_label.as_ref().map_or("", RequiredText::as_str),
-        ];
-        if fields.into_iter().any(contains_absolute_path_authority) {
-            return Err(ContractError::ForbiddenContent {
-                field: "activityProvenance",
-            });
-        }
-        Ok(())
-    }
-}
-
-fn contains_absolute_path_authority(value: &str) -> bool {
-    value.starts_with('/')
-        || value.starts_with("\\\\")
-        || value.as_bytes().get(1) == Some(&b':')
-            && value
-                .as_bytes()
-                .first()
-                .is_some_and(u8::is_ascii_alphabetic)
-            && value
-                .as_bytes()
-                .get(2)
-                .is_some_and(|byte| matches!(byte, b'/' | b'\\'))
 }
 
 #[cfg(test)]

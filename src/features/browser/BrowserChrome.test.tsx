@@ -1,3 +1,4 @@
+import { useAgentSettingsState } from "../settings/agentSettingsState";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
@@ -7,9 +8,9 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { listen } from "@tauri-apps/api/event";
 import type { WorkbenchTab } from "../../domain/workbench";
 import { BrowserSurface } from "./BrowserSurface";
 import { BrowserNewTab } from "./BrowserNewTab";
@@ -42,9 +43,17 @@ const positionBrowser = vi.fn(
   async (_tabId: string, _bounds: unknown) => undefined,
 );
 const browserSuggestedSites = vi.fn(async () => ["https://example.com/"]);
-const browserHistory = vi.fn(async (_tabId: string) => [
-  "https://example.com/",
-]);
+const browserHistoryPage = vi.fn(async (_query: unknown) => ({
+  visits: [
+    {
+      id: 1,
+      url: "https://history.example/page",
+      title: "History Example",
+      visitedAt: Date.now(),
+    },
+  ],
+  next: null,
+}));
 const detachBrowserTab = vi.fn(
   async (_projectId: string, _chatId: string) => undefined,
 );
@@ -64,8 +73,6 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   browserPrint: (tabId: string) => browserPrint(tabId),
   browserCaptureScreenshot: (tabId: string, revision: string) =>
     browserCaptureScreenshot(tabId, revision),
-  browserSuggestedSites: () => browserSuggestedSites(),
-  browserHistory: (tabId: string) => browserHistory(tabId),
   attachBrowserTab: vi.fn(),
   detachBrowserTab: (projectId: string, chatId: string) =>
     detachBrowserTab(projectId, chatId),
@@ -85,14 +92,19 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   positionBrowser: (tabId: string, bounds: unknown) =>
     positionBrowser(tabId, bounds),
 }));
+vi.mock("../../ports/nativeBrowserHistoryPort", () => ({
+  browserSuggestedSites: () => browserSuggestedSites(),
+
+  browserHistoryPage: (query: unknown) => browserHistoryPage(query),
+  browserHistoryRemove: vi.fn(async () => 1),
+}));
 const browserPreferences = vi.fn(async () => ({ showFullUrl: false }));
 vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
   browserPreferences: () => browserPreferences(),
   browserSetPreferences: vi.fn(async (value: unknown) => value),
 }));
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(async () => () => undefined),
-}));
+// Automatic mocks also cover concurrent demand imports of the event API.
+vi.mock("@tauri-apps/api/event");
 const tab: WorkbenchTab = {
   id: "browser-1",
   kind: "browser",
@@ -124,6 +136,9 @@ it("shows an inert new tab with Sage tools and suggested sites", async () => {
   expect(screen.getByRole("menuitem", { name: "Find in page" })).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Print" })).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Zoom out" })).toBeDisabled();
+  expect(
+    screen.getByRole("menuitem", { name: "Show device toolbar" }),
+  ).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Downloads" })).toBeEnabled();
   await waitFor(() =>
     expect(screen.getByRole("menuitem", { name: "Downloads" })).toHaveFocus(),
@@ -137,6 +152,41 @@ it("shows an inert new tab with Sage tools and suggested sites", async () => {
     ),
   );
 });
+it("discards New Tab suggestions while History is open and fetches fresh sites on return", async () => {
+  browserStatus.mockResolvedValue({
+    tabId: tab.id,
+    url: "",
+    revision: "0",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+  });
+  let started!: () => void;
+  const pending = new Promise<void>((resolve) => (started = resolve));
+  let finish!: (sites: string[]) => void;
+  browserSuggestedSites
+    .mockImplementationOnce(() => {
+      started();
+      return new Promise((resolve) => (finish = resolve));
+    })
+    .mockResolvedValueOnce(["https://fresh-suggestion.example/"]);
+  render(<BrowserSurface tab={tab} />);
+  await pending;
+  await screen.findByText("Tools");
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
+  await screen.findByRole("region", { name: "History" });
+  await act(async () => finish(["https://stale-suggestion.example/"]));
+  fireEvent.click(screen.getByRole("button", { name: "Close history" }));
+  expect(
+    screen.queryByRole("button", { name: "stale-suggestion.example" }),
+  ).toBeNull();
+  expect(
+    await screen.findByRole("button", { name: "fresh-suggestion.example" }),
+  ).toBeVisible();
+});
+
 it("shows a known open page title on its suggested tile", async () => {
   const previous = useWorkbenchStore.getState();
   useWorkbenchStore.setState({ tabs: [tab] });
@@ -380,38 +430,27 @@ it("loads the stored Show full URL choice when the browser opens", async () => {
   await screen.findByRole("textbox", { name: "Address or search" });
   expect(browserPreferences).toHaveBeenCalled();
 });
-it("opens Settings on the Browser page from the menu, as Codex does", async () => {
-  const openSettings = vi.fn(async () => undefined);
-  const previous = useWorkbenchStore.getState().openSettings;
-  useWorkbenchStore.setState({ openSettings });
-  try {
-    render(<BrowserSurface tab={tab} />);
-    await screen.findByRole("textbox", { name: "Address or search" });
-    fireEvent.click(screen.getByRole("button", { name: "More options" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Browser settings" }));
-    expect(openSettings).toHaveBeenCalledWith("browser");
-    expect(
-      screen.queryByRole("complementary", { name: "Site settings" }),
-    ).toBeNull();
-  } finally {
-    useWorkbenchStore.setState({ openSettings: previous });
-  }
+it("opens the shared Browser settings dialog from the menu", async () => {
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByRole("textbox", { name: "Address or search" });
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Browser settings" }));
+  expect(useAgentSettingsState.getState()).toMatchObject({
+    page: "Browser",
+    browserTabId: tab.id,
+    showSitePermissions: false,
+  });
 });
-it("keeps this tab's site permissions one menu item away", async () => {
+it("keeps this tab's site permissions one menu item away in the shared dialog", async () => {
   render(<BrowserSurface tab={tab} />);
   await screen.findByRole("textbox", { name: "Address or search" });
   fireEvent.click(screen.getByRole("button", { name: "More options" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Site settings" }));
-  const drawer = await screen.findByRole("complementary", {
-    name: "Site settings",
+  expect(useAgentSettingsState.getState()).toMatchObject({
+    page: "Browser",
+    browserTabId: tab.id,
+    showSitePermissions: true,
   });
-  expect(drawer).toHaveTextContent("No site permissions saved for this tab.");
-  fireEvent.click(
-    within(drawer).getByRole("button", { name: "Close site settings" }),
-  );
-  expect(
-    screen.queryByRole("complementary", { name: "Site settings" }),
-  ).toBeNull();
 });
 it("groups supported page controls in an overflow menu without dead features", async () => {
   render(<BrowserSurface tab={tab} />);
@@ -428,15 +467,17 @@ it("groups supported page controls in an overflow menu without dead features", a
     screen.getByRole("menuitem", { name: "Browser settings" }),
   ).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Print" })).toBeInTheDocument();
-  expect(screen.queryByText("Show device toolbar")).toBeNull();
+  expect(
+    screen.getByRole("menuitem", { name: "Show device toolbar" }),
+  ).toBeEnabled();
   expect(
     screen.getByRole("menuitem", { name: "Take a screenshot" }),
   ).toBeInTheDocument();
   expect(screen.queryByText("Import cookies and passwords...")).toBeNull();
   fireEvent.click(screen.getByRole("menuitem", { name: "Find in page" }));
   expect(
-    screen.getByRole("textbox", { name: "Find text" }),
-  ).toBeInTheDocument();
+    await screen.findByRole("textbox", { name: "Find text" }),
+  ).toHaveFocus();
 });
 it("opens native print for the loaded tab from the menu", async () => {
   browserPrint.mockClear();
@@ -579,7 +620,8 @@ it("dismisses the browser menu with Escape and restores trigger focus", async ()
   const menu = screen.getByRole("menu", { name: "Browser menu" });
   expect(menu).toBeInTheDocument();
   fireEvent.keyDown(menu, { key: "Escape" });
-  expect(menu).not.toBeInTheDocument();
+  expect(menu).not.toBeVisible();
+  expect(screen.queryByRole("menu", { name: "Browser menu" })).toBeNull();
   expect(trigger).toHaveFocus();
 });
 it("moves keyboard focus through browser menu items and closes from the trigger", async () => {
@@ -604,10 +646,6 @@ it("moves keyboard focus through browser menu items and closes from the trigger"
   expect(trigger).toHaveFocus();
 });
 it("returns focus to the overflow trigger when clearing data is cancelled", async () => {
-  vi.stubGlobal(
-    "confirm",
-    vi.fn(() => false),
-  );
   render(<BrowserSurface tab={tab} />);
   const trigger = screen.getByRole("button", { name: "More options" });
   fireEvent.click(trigger);
@@ -615,6 +653,10 @@ it("returns focus to the overflow trigger when clearing data is cancelled", asyn
     screen.getByRole("menuitem", { name: "Clear browsing data" }),
   );
   expect(screen.queryByRole("menu")).toBeNull();
+  const dialog = screen.getByRole("dialog", { name: "Clear browsing data?" });
+  expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
   expect(trigger).toHaveFocus();
 });
 it("hides the native browser when its host pane unmounts", () => {
@@ -637,7 +679,7 @@ it("contains browser chrome inside the Agent canvas and styles page actions", as
     /\.browser-surface__attachment (?:button|select)[^}]*background:\s*var\(--browser-control-fill\);/s,
   );
   expect(css).toMatch(
-    /\.browser-surface__menu button\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/s,
+    /\.browser-surface__menu \[role="menuitem"\]\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/s,
   );
   expect(css).toMatch(/\.browser-surface__toolbar\s*\{[^}]*height:\s*44px;/s);
   expect(css).toMatch(
@@ -667,7 +709,7 @@ it("clips native webview bounds to the Agent canvas below browser chrome", async
         return rect(630, 100, 740, 760);
       if (this.classList.contains("browser-surface__toolbar"))
         return rect(630, 100, 740, 40);
-      if (this.classList.contains("browser-surface__frame"))
+      if (this.classList.contains("browser-surface__viewport"))
         return rect(600, 110, 800, 800);
       return rect(0, 0, 0, 0);
     },
@@ -716,6 +758,7 @@ it("keeps Editor browser bounds at the frame rect", async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(listen).mockResolvedValue(() => undefined);
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -760,7 +803,7 @@ it("offers committed origin, copy, external open, zoom and find on the active ta
   fireEvent.click(screen.getByRole("menuitem", { name: "Zoom in" }));
   await waitFor(() => expect(browserZoom).toHaveBeenCalledWith(tab.id, 125));
   fireEvent.click(screen.getByRole("menuitem", { name: "Find in page" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Find text" }), {
+  fireEvent.change(await screen.findByRole("textbox", { name: "Find text" }), {
     target: { value: "example" },
   });
   fireEvent.click(screen.getByRole("button", { name: /^Find$/ }));
@@ -817,4 +860,47 @@ it("shows a failed history retry without offering a mismatched origin", async ()
   expect(
     screen.queryByRole("menuitem", { name: "Open externally" }),
   ).toBeNull();
+});
+
+it("discards a closed History page's pending result and reopens with fresh native history", async () => {
+  let finish!: (page: Awaited<ReturnType<typeof browserHistoryPage>>) => void;
+  const pageFor = (url: string) => ({
+    visits: [{ id: 1, url, title: url, visitedAt: Date.now() }],
+    next: null,
+  });
+  browserHistoryPage
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    )
+    .mockResolvedValueOnce(pageFor("https://fresh.example/"));
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByLabelText("Secure connection");
+  const openHistory = () => {
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
+  };
+  openHistory();
+  await screen.findByRole("region", { name: "History" });
+  fireEvent.click(screen.getByRole("button", { name: "Close history" }));
+  openHistory();
+  await screen.findByRole("button", {
+    name: /^(?!Remove ).*https:\/\/fresh\.example/,
+  });
+  await act(async () => finish(pageFor("https://stale.example/")));
+  expect(screen.queryByText("https://stale.example/")).toBeNull();
+  expect(
+    screen.queryByRole("button", {
+      name: /^(?!Remove ).*https:\/\/stale\.example/,
+    }),
+  ).toBeNull();
+  expect(
+    screen.getByRole("button", {
+      name: /^(?!Remove ).*https:\/\/fresh\.example/,
+    }),
+  ).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Close history" }));
+  expect(screen.queryByRole("region", { name: "History" })).toBeNull();
 });

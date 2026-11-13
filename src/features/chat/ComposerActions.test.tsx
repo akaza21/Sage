@@ -6,11 +6,15 @@ import {
   within,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { decodeSessionConfig } from "../../domain/acpSessionConfig";
 import { ChatHarnessControls } from "./ChatHarnessControls";
+import { preloadSearchablePicker } from "../../ui/searchablePickerLoad";
+
+// The picker list loads when the window first idles.
+beforeAll(() => preloadSearchablePicker());
 
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
@@ -18,7 +22,7 @@ afterEach(() => {
   useWorkbenchStore.setState(initial, true);
 });
 
-function renderActions(
+async function renderActions(
   modes = true,
   overrides: Partial<ComponentProps<typeof ChatHarnessControls>> = {},
 ) {
@@ -62,8 +66,11 @@ function renderActions(
     />
   );
   const view = render(controls);
-  const trigger = screen.getByRole("button", { name: "Composer options" });
-  fireEvent.click(trigger);
+  const trigger = screen.queryByRole("button", { name: "Composer options" })!;
+  if (trigger && !trigger.hasAttribute("disabled")) {
+    fireEvent.click(trigger);
+    await screen.findByRole("menu", { name: "Composer options menu" });
+  }
   return {
     ...view,
     trigger,
@@ -74,9 +81,9 @@ function renderActions(
   };
 }
 
-it("lists every advertised mode, including one whose id is default", () => {
+it("lists every advertised mode, including one whose id is default", async () => {
   const setMode = vi.fn().mockResolvedValue(undefined);
-  renderActions(true, {
+  await renderActions(true, {
     sessionConfig: decodeSessionConfig({
       sageAgentSessionId: "session-a",
       runtimeEpoch: "1",
@@ -109,8 +116,8 @@ it("lists every advertised mode, including one whose id is default", () => {
   expect(setMode).toHaveBeenCalledExactlyOnceWith("plan");
 });
 
-it("selects an advertised session mode directly in the Add menu", () => {
-  const { trigger, setMode } = renderActions();
+it("selects an advertised session mode directly in the Add menu", async () => {
+  const { trigger, setMode } = await renderActions();
   const menu = screen.getByRole("menu", { name: "Composer options menu" });
   expect(within(menu).queryByRole("combobox")).toBeNull();
   expect(within(menu).queryByRole("menuitemcheckbox")).toBeNull();
@@ -132,8 +139,8 @@ it("selects an advertised session mode directly in the Add menu", () => {
   expect(trigger).toHaveFocus();
 });
 
-it("describes Plan mode as on when selected", () => {
-  renderActions(true, {
+it("describes Plan mode as on when selected", async () => {
+  await renderActions(true, {
     sessionConfig: decodeSessionConfig({
       sageAgentSessionId: "session-a",
       runtimeEpoch: "1",
@@ -150,9 +157,9 @@ it("describes Plan mode as on when selected", () => {
   ).toHaveAccessibleDescription("Plan mode is on");
 });
 
-it("sends nothing when the current mode is chosen again", () => {
+it("sends nothing when the current mode is chosen again", async () => {
   const setMode = vi.fn().mockResolvedValue(undefined);
-  const { trigger } = renderActions(true, {
+  const { trigger } = await renderActions(true, {
     sessionConfig: decodeSessionConfig({
       sageAgentSessionId: "session-a",
       runtimeEpoch: "1",
@@ -178,9 +185,9 @@ it("sends nothing when the current mode is chosen again", () => {
   expect(setMode).toHaveBeenCalledExactlyOnceWith("default");
 });
 
-it("leaves a non-Plan mode only by choosing another advertised mode", () => {
+it("leaves a non-Plan mode only by choosing another advertised mode", async () => {
   const setMode = vi.fn().mockResolvedValue(undefined);
-  const { trigger } = renderActions(true, {
+  const { trigger } = await renderActions(true, {
     sessionConfig: decodeSessionConfig({
       sageAgentSessionId: "session-a",
       runtimeEpoch: "1",
@@ -203,8 +210,8 @@ it("leaves a non-Plan mode only by choosing another advertised mode", () => {
   expect(setMode).toHaveBeenCalledExactlyOnceWith("manual");
 });
 
-it("does not enable Add for effort alone while its trigger is visible", () => {
-  renderActions(false, {
+it("does not enable Add for effort alone while its trigger is visible", async () => {
+  await renderActions(false, {
     sessionConfig: decodeSessionConfig({
       sageAgentSessionId: "session-a",
       runtimeEpoch: "1",
@@ -223,18 +230,18 @@ it("does not enable Add for effort alone while its trigger is visible", () => {
     }),
   });
   expect(
-    screen.getByRole("button", { name: "Composer options" }),
+    screen.queryByRole("button", { name: "Composer options" }),
   ).toBeDisabled();
   expect(screen.queryByRole("menuitem", { name: "Thinking level" })).toBeNull();
 });
 
-it("keeps configuration choices on the same surface and project selection outside Add", () => {
+it("keeps configuration choices on the same surface and project selection outside Add", async () => {
   const setConfig = vi.fn().mockResolvedValue(undefined);
   useWorkbenchStore.setState({
     project: { id: "a", name: "A", roots: [] },
     projects: [{ id: "a", name: "A", rootCount: 0, lastOpenedAt: 1 }],
   });
-  const { trigger } = renderActions(false, {
+  const { trigger } = await renderActions(false, {
     projectName: "A",
     onSetSessionConfigOption: setConfig,
     sessionConfig: decodeSessionConfig({
@@ -273,9 +280,9 @@ it("keeps configuration choices on the same surface and project selection outsid
 
 it.each([false, true])(
   "closes Add and restores focus after changing a boolean from %s",
-  (currentValue) => {
+  async (currentValue) => {
     const setConfig = vi.fn().mockResolvedValue(undefined);
-    const { trigger } = renderActions(false, {
+    const { trigger } = await renderActions(false, {
       onSetSessionConfigOption: setConfig,
       sessionConfig: decodeSessionConfig({
         sageAgentSessionId: "session-a",
@@ -299,9 +306,9 @@ it.each([false, true])(
   },
 );
 
-it("gives Add a header and icon rows with truthful one-line Plan and Goal descriptions", () => {
+it("gives Add a header and icon rows with truthful one-line Plan and Goal descriptions", async () => {
   const onOpenGoal = vi.fn();
-  renderActions(true, { onOpenGoal });
+  await renderActions(true, { addActions: { onOpenGoal } });
   const menu = screen.getByRole("menu", { name: "Composer options menu" });
   expect(within(menu).getByText("Add", { exact: true })).toBeVisible();
   expect(within(menu).queryByText("Session mode")).toBeNull();
@@ -318,8 +325,8 @@ it("gives Add a header and icon rows with truthful one-line Plan and Goal descri
 
 it.each(["mode", "config"])(
   "announces pending and failed %s changes outside Add, even after dismissal",
-  (kind) => {
-    const { trigger } = renderActions(kind === "mode", {
+  async (kind) => {
+    const { trigger } = await renderActions(kind === "mode", {
       modePending: true,
       modeError: "Session settings refused",
       ...(kind === "config"
@@ -356,8 +363,8 @@ it.each(["mode", "config"])(
   },
 );
 
-it("keeps Add and Harness mutually exclusive and restores plus focus on Escape", () => {
-  const { trigger } = renderActions();
+it("keeps Add and Harness mutually exclusive and restores plus focus on Escape", async () => {
+  const { trigger } = await renderActions();
   const harness = screen.getByRole("button", { name: "Harness" });
   fireEvent.click(harness);
   expect(
@@ -372,8 +379,8 @@ it("keeps Add and Harness mutually exclusive and restores plus focus on Escape",
   expect(trigger).toHaveFocus();
 });
 
-it("disables Add instead of opening an empty capability menu", () => {
-  const { trigger } = renderActions(false);
+it("disables Add instead of opening an empty capability menu", async () => {
+  const { trigger } = await renderActions(false);
   expect(trigger).toBeDisabled();
   expect(screen.queryByRole("menu")).toBeNull();
 });
@@ -383,7 +390,7 @@ it("keeps Add open when a sibling Chat disables only project switching", async (
     projects: [{ id: "a", name: "A", rootCount: 0, lastOpenedAt: 1 }],
     chatUiById: { peer: { sending: true } } as never,
   });
-  renderActions(true, { projectName: "A" });
+  await renderActions(true, { projectName: "A" });
   await waitFor(() =>
     expect(
       screen.getByRole("menu", { name: "Composer options menu" }),
@@ -395,7 +402,7 @@ it("keeps Add open when a sibling Chat disables only project switching", async (
 
 it.each(["image", "goal", "config"])(
   "dismisses Add when its focused %s action is withdrawn",
-  (kind) => {
+  async (kind) => {
     const onModeRemoved = vi.fn();
     const config = decodeSessionConfig({
       sageAgentSessionId: "session-a",
@@ -406,18 +413,19 @@ it.each(["image", "goal", "config"])(
         { id: "flag", name: "Flag", type: "boolean", currentValue: false },
       ],
     });
-    const { rerenderActions } = renderActions(false, {
+    const { rerenderActions } = await renderActions(false, {
       onModeRemoved,
       ...(kind === "image"
-        ? { imageAction: { disabled: false, onChoose: vi.fn() } }
+        ? {
+            addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
+          }
         : kind === "goal"
-          ? { onOpenGoal: vi.fn() }
+          ? { addActions: { onOpenGoal: vi.fn() } }
           : { sessionConfig: config }),
     });
     expect(document.activeElement).not.toBe(document.body);
     rerenderActions({
-      imageAction: undefined,
-      onOpenGoal: undefined,
+      addActions: {},
       sessionConfig: null,
     });
     expect(screen.queryByRole("menu")).toBeNull();
@@ -427,7 +435,7 @@ it.each(["image", "goal", "config"])(
 
 it.each(["Claude", "Codex", "Pi", "OpenCode", "OMP"])(
   "omits unsupported Add actions for %s rather than inferring from its name",
-  (name) => {
+  async (name) => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -442,7 +450,7 @@ it.each(["Claude", "Codex", "Pi", "OpenCode", "OMP"])(
         },
       ],
     });
-    const { trigger } = renderActions(false);
+    const { trigger } = await renderActions(false);
     expect(trigger).toBeDisabled();
     expect(screen.queryByRole("menu")).toBeNull();
     expect(screen.queryByRole("menuitemradio")).toBeNull();

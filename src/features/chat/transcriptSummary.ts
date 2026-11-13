@@ -1,3 +1,18 @@
+import type { TurnProjection } from "../../domain/acp";
+
+/** Whether a Turn has work for its Worked row beyond its final answer. */
+export function turnHasActivities(
+  turn: TurnProjection,
+  workingItemCount: number,
+): boolean {
+  return (
+    workingItemCount > 0 ||
+    (turn.sessionActivities?.length ?? 0) > 0 ||
+    (turn.browserOperations?.length ?? 0) > 0 ||
+    (turn.browserOperationsCollapsed ?? 0) > 0
+  );
+}
+
 export function formatWorkedDuration(
   startedAt: number,
   finishedAt: number | null,

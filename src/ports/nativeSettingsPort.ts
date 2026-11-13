@@ -1,8 +1,12 @@
-import type { SettingsPort } from "./workbenchPorts";
-import type { EditorSettings } from "../domain/editorSettingsCatalogue";
-import type { SessionAccessModes } from "../domain/sessionAccessMode";
-import type { UiAppearance } from "../domain/uiAppearance";
+import { type EditorSettings } from "../domain/editorSettingsCatalogue";
+import {
+  type NewChatDefaults,
+  type NewChatDefaultsState,
+} from "../domain/newChatDefaults";
+import { type SessionAccessModes } from "../domain/sessionAccessMode";
+import { type UiAppearance } from "../domain/uiAppearance";
 import { invokeNative } from "./nativeInvoke";
+import { type SettingsPort } from "./workbenchPorts";
 
 export const nativeSettingsPort: SettingsPort = {
   getEditorSettings(): Promise<Record<string, unknown>> {
@@ -12,6 +16,12 @@ export const nativeSettingsPort: SettingsPort = {
     changes: Partial<EditorSettings>,
   ): Promise<Record<string, unknown>> {
     return invokeNative("set_editor_settings", { changes });
+  },
+  getNewChatDefaults(): Promise<NewChatDefaultsState> {
+    return invokeNative("get_new_chat_defaults");
+  },
+  setNewChatDefaults(defaults: NewChatDefaults): Promise<NewChatDefaultsState> {
+    return invokeNative("set_new_chat_defaults", { defaults });
   },
   getSessionAccessModes(): Promise<SessionAccessModes> {
     return invokeNative("get_session_access_modes");

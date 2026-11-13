@@ -48,7 +48,7 @@ impl PiRuntime {
             .ok_or(AdapterRuntimeError::Operation)?;
         let lifecycle = match outcome {
             TerminalOutcome::Completed => ItemLifecycle::Completed,
-            TerminalOutcome::Interrupted => ItemLifecycle::Cancelled,
+            TerminalOutcome::Cancelled | TerminalOutcome::Interrupted => ItemLifecycle::Cancelled,
             TerminalOutcome::Failed => ItemLifecycle::Failed,
         };
         Ok(Some(

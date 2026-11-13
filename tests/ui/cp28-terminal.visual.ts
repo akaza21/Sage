@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -71,15 +72,14 @@ for (const width of [1888, 720, 480]) {
       await settleChatProjections(page);
       const panes = page.locator(".agent-chat-pane");
       // Below the two-pane floor only the focused Chat stays visible.
-      await expect(panes).toHaveCount(
-        scenario === "agent-dual" && width === 1888 ? 2 : 1,
-      );
+      await expect(panes).toHaveCount(1);
       await installTurn(page, false);
       const bounds = [];
       for (const pane of await panes.all()) {
         await expect(pane.locator(footerActions)).toHaveCount(0);
         const answer = pane.locator(".acp-message--assistant").last();
         await expect(answer).toBeVisible();
+        await waitForAnimations(answer);
         bounds.push(await answer.boundingBox());
       }
       await installTurn(page, true);
@@ -93,6 +93,7 @@ for (const width of [1888, 720, 480]) {
         const answer = pane.locator(".acp-message--assistant").last();
         const before = bounds[index];
         const after = await answer.boundingBox();
+        await waitForAnimations(pane.locator(footerActions));
         const actions = await pane.locator(footerActions).boundingBox();
         const header = await pane
           .locator(".acp-turn__header")

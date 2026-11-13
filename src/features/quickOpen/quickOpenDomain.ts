@@ -1,5 +1,5 @@
-// Quick Open's request and response shapes (EP-08), matching the native
-// `quick_open_query` command (EP-07), and the parsing around them.
+// Quick Open's request and response shapes, matching the native
+// `quick_open_query` command, and the parsing around them.
 
 import { isRecord } from "../../domain/guards";
 import { truncateUtf8 } from "../../domain/text";
@@ -17,6 +17,8 @@ export interface QuickOpenRequest {
   generation: number;
   session: number;
   recent: readonly ResourceRef[];
+  /** An empty query also lists Files never opened, after the recent ones. */
+  browse?: boolean;
 }
 
 export interface QuickOpenMatch extends ResourceRef {
@@ -140,4 +142,12 @@ export function highlightRuns(
     else runs.push({ text: character, matched: isMatch });
   }
   return runs;
+}
+
+/**
+ * The keys of a shortcut label such as "Ctrl+Shift+P", one per keycap. A
+ * literal "+" key ("Ctrl++") stays a key of its own.
+ */
+export function shortcutKeys(label: string): string[] {
+  return label.split(/\+(?=.)/).filter(Boolean);
 }

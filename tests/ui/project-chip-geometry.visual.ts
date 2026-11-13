@@ -1,8 +1,28 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import {
+  expectComposerSweep,
+  settledComposerFit,
+  sweepComposerToolbar,
+} from "./shared/composerGeometry";
 import {
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
+
+import {
+  openSelectionScenario,
+  dragAnswerPhrase,
+} from "./shared/transcriptSelection";
+
+async function openSplitComposerScenario(page: Page) {
+  await openSelectionScenario(page);
+  await dragAnswerPhrase(page);
+  await page
+    .getByRole("button", { name: "Ask in side chat", exact: true })
+    .click();
+  await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+  await settleChatProjections(page);
+}
 
 async function expectProjectInOptionsMenu(composer: Locator) {
   const page = composer.page();
@@ -21,12 +41,37 @@ async function expectProjectInOptionsMenu(composer: Locator) {
   await expect(add).toBeFocused();
 }
 
-async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
+async function expectEffortReachable(composer: Locator, level: string) {
+  const effort = composer.getByRole("button", {
+    name: `Thinking level: ${level}`,
+    exact: true,
+  });
+  await expect(
+    composer.locator(".composer__effort-picker[data-overflow-control]"),
+  ).toHaveCount(1);
+  if (!(await settledComposerFit(composer)).includes("effort-menu"))
+    return expect(effort).toBeVisible();
+  const add = composer.getByRole("button", {
+    name: "Composer options",
+    exact: true,
+  });
+  await add.click();
+  await expect(
+    composer
+      .page()
+      .getByRole("menu", { name: "Composer options menu", exact: true })
+      .getByRole("menuitem", { name: "Thinking level", exact: true }),
+  ).toBeVisible();
+  await composer.page().keyboard.press("Escape");
+  await expect(add).toBeFocused();
+}
+
+async function expectResponsiveToolbar(composer: Locator) {
+  const fit = await settledComposerFit(composer);
   const project = composer.getByRole("button", { name: /^Project: / });
-  // Wave 5: at 280px and below the Project control folds into the composer
-  // options menu so the toolbar keeps one row (Codex ref 37).
-  if (await composer.evaluate((element) => element.clientWidth <= 280)) {
-    await expect(project).toHaveCount(0);
+  // The chip leaves the toolbar for the composer options menu only once every
+  // lower-priority control has compacted and the row still cannot fit it.
+  if (fit.includes("project-menu")) {
     await expectProjectInOptionsMenu(composer);
     return expectToolbarGeometry(composer);
   }
@@ -36,58 +81,41 @@ async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
   const box = await project.boundingBox();
   expect(box!.width).toBeGreaterThanOrEqual(24);
   expect(box!.height).toBeGreaterThanOrEqual(24);
-  if (compact) {
-    expect(box!.width).toBe(
-      await composer.evaluate((element) =>
-        element.clientWidth < 280 ? 24 : 28,
-      ),
-    );
-    expect(box!.height).toBe(28);
+  // The chip shows its whole name or only its folder icon.
+  if (
+    !(await project.locator(".searchable-picker__trigger-label").isVisible())
+  ) {
+    await expect(project.locator(".searchable-picker__chevron")).toBeHidden();
+    await expect(project.locator(".project-scope__icon")).toBeVisible();
+    expect(box!.width).toBeLessThanOrEqual(28);
   }
-  const controlsCompact = await composer.evaluate(
-    (element) => element.clientWidth <= 280,
-  );
   const harness = composer.getByRole("button", {
     name: "Harness",
     exact: true,
   });
-  const model = composer.getByRole("button", { name: "Model", exact: true });
-  for (const [trigger, minimum] of [
-    [harness, 24],
-    [model, 24],
-  ] as const) {
+  const model = composer.getByLabel("Model", { exact: true });
+  for (const trigger of [harness, model]) {
     await expect(trigger).toBeVisible();
-    expect((await trigger.boundingBox())!.width).toBeGreaterThanOrEqual(
-      minimum,
-    );
+    expect((await trigger.boundingBox())!.width).toBeGreaterThanOrEqual(24);
   }
   const harnessLabel = harness.locator(".searchable-picker__trigger-label");
-  const modelLabel = model.locator(".composer__model-label");
-  if (await composer.evaluate((element) => element.clientWidth <= 400)) {
-    await expect(harnessLabel).toBeHidden();
-  } else {
-    await expect(harnessLabel).toBeVisible();
+  // The brand mark always stays whole inside the harness trigger.
+  const harnessBox = (await harness.boundingBox())!;
+  const markBox = (await harness.locator("[data-harness-icon]").boundingBox())!;
+  expect(markBox.width).toBeGreaterThanOrEqual(12);
+  expect(markBox.x).toBeGreaterThanOrEqual(harnessBox.x - 0.5);
+  expect(markBox.x + markBox.width).toBeLessThanOrEqual(
+    harnessBox.x + harnessBox.width + 0.5,
+  );
+  if (await harnessLabel.isVisible()) {
+    expect(
+      await harnessLabel.evaluate(
+        (node) => node.scrollWidth <= node.clientWidth,
+      ),
+    ).toBe(true);
   }
-  if (controlsCompact) {
-    await expect(modelLabel).toBeHidden();
+  if (!(await model.locator(".composer__model-label").isVisible()))
     await expect(model.locator(".composer__model-icon")).toBeVisible();
-  } else if (await composer.evaluate((element) => element.clientWidth > 320)) {
-    await expect(modelLabel).toBeVisible();
-  } else if (!(await modelLabel.isVisible())) {
-    // Measured compaction may drop the label before the 280px query.
-    await expect(model.locator(".composer__model-icon")).toBeVisible();
-  }
-  if (compact) {
-    await expect(
-      project.locator(".searchable-picker__trigger-label"),
-    ).toBeHidden();
-    await expect(project.locator(".searchable-picker__chevron")).toBeHidden();
-    await expect(project.locator(".project-scope__icon")).toBeVisible();
-    await expect(project.locator("..").locator("..")).toHaveCSS(
-      "flex-shrink",
-      "0",
-    );
-  }
   await expectToolbarGeometry(composer);
 }
 
@@ -96,9 +124,9 @@ async function expectToolbarGeometry(composer: Locator) {
     const toolbar = element.querySelector(".composer__toolbar")!;
     const controls = element.querySelector(".composer__controls")!;
     const row = toolbar.getBoundingClientRect();
-    const targets = [...controls.children].map((child) =>
-      child.getBoundingClientRect(),
-    );
+    const targets = [...controls.children]
+      .map((child) => child.getBoundingClientRect())
+      .filter((target) => target.width > 0 && target.height > 0);
     const buttons = [...toolbar.querySelectorAll("button")].filter(
       (button) =>
         button.getBoundingClientRect().width > 0 &&
@@ -110,15 +138,9 @@ async function expectToolbarGeometry(composer: Locator) {
       .querySelector(".composer__mic")!
       .getBoundingClientRect();
     const send = toolbar.querySelector(".send-button")!.getBoundingClientRect();
-    const computed = getComputedStyle(element);
-    const contentWidth =
-      element.getBoundingClientRect().width -
-      Number.parseFloat(computed.borderLeftWidth) -
-      Number.parseFloat(computed.borderRightWidth) -
-      Number.parseFloat(computed.paddingLeft) -
-      Number.parseFloat(computed.paddingRight);
-    // Wave 5 keeps one toolbar row down to the 182px container rule.
-    const secondRow = contentWidth < 182;
+    // Only a row that cannot fit even as icons wraps, with the dictation and
+    // send actions on a row of their own.
+    const secondRow = mic.top >= controlsRow.bottom - 1;
     return {
       overflow: toolbar.scrollWidth > toolbar.clientWidth,
       disjoint: bounds.every((button, index) =>
@@ -201,12 +223,7 @@ for (const width of [1888, 720, 480]) {
       await openScenario(page, scenario, "agent");
       await settleChatProjections(page);
       for (const composer of await page.locator("form.composer").all()) {
-        const compact = await composer.evaluate(
-          (element) =>
-            element.clientWidth <= 400 ||
-            Boolean(element.closest(".agent-chat-panes--split")),
-        );
-        await expectResponsiveToolbar(composer, compact);
+        await expectResponsiveToolbar(composer);
       }
     });
   }
@@ -226,7 +243,7 @@ for (const contentWidth of [
       const computed = getComputedStyle(element);
       element.style.width = `${width + Number.parseFloat(computed.borderLeftWidth) + Number.parseFloat(computed.borderRightWidth)}px`;
     }, contentWidth);
-    await expectResponsiveToolbar(composer, contentWidth <= 400);
+    await expectResponsiveToolbar(composer);
     await page.evaluate(async () => {
       const fixture =
         await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
@@ -235,13 +252,8 @@ for (const contentWidth of [
         currentValue: "extraordinarily high",
       });
     });
-    await expect(
-      composer.getByRole("button", {
-        name: "Thinking level: Extraordinarily high",
-        exact: true,
-      }),
-    ).toBeVisible();
-    await expectResponsiveToolbar(composer, contentWidth <= 400);
+    await expectEffortReachable(composer, "Extraordinarily high");
+    await expectResponsiveToolbar(composer);
   });
 }
 
@@ -256,12 +268,94 @@ for (const paneWidth of [560, 414, 400]) {
       content: `.agent-chat-panes { grid-template-columns: ${paneWidth}px; }`,
     });
     const composer = page.locator("form.composer").first();
-    await expectResponsiveToolbar(
-      composer,
-      (await composer.evaluate((element) => element.clientWidth)) <= 400,
-    );
+    await expectResponsiveToolbar(composer);
   });
 }
+
+test("composer controls compact by their own container width, not the window", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  // The Goal fixture offers composer options, so the Add button is present.
+  await openScenario(page, "agent-composer-goal", "agent");
+  await settleChatProjections(page);
+  const composer = page.locator("form.composer").first();
+  const contentWidths = [580, 521, 520, 401, 400, 321, 320, 281, 280, 180];
+  const borders = await composer.evaluate((element) => {
+    const computed = getComputedStyle(element);
+    return (
+      Number.parseFloat(computed.borderLeftWidth) +
+      Number.parseFloat(computed.borderRightWidth)
+    );
+  });
+  const widths = contentWidths.map((width) => width + borders);
+  // The window never changes, so whatever compacts follows the composer's
+  // own width, and only as far as its measured row needs.
+  expectComposerSweep(await sweepComposerToolbar(composer, widths));
+
+  const access = composer.getByRole("button", { name: "Access options" });
+  const harnessLabel = composer
+    .getByRole("button", { name: "Harness", exact: true })
+    .locator(".searchable-picker__trigger-label");
+  const model = composer.getByRole("button", { name: "Model", exact: true });
+  const modelLabel = model.locator(".composer__model-label");
+  const modelIcon = model.locator(".composer__model-icon");
+  for (const [index, width] of widths.entries()) {
+    await composer.evaluate(
+      (element, width) => (element.style.width = `${width}px`),
+      width,
+    );
+    const at = `at ${contentWidths[index]}px`;
+    expect(await composer.evaluate((element) => element.clientWidth), at).toBe(
+      contentWidths[index],
+    );
+    await settledComposerFit(composer);
+    const plus = (await composer
+      .getByRole("button", { name: "Composer options", exact: true })
+      .boundingBox())!;
+    expect(plus.width, at).toBe(24);
+    expect(plus.height, at).toBe(28);
+    // The access control stays a target with or without its text.
+    await expect(access, at).toBeVisible();
+    expect((await access.boundingBox())!.width, at).toBeGreaterThanOrEqual(24);
+    // The harness name shows whole or not at all, leaving its mark.
+    if (await harnessLabel.isVisible())
+      expect(
+        await harnessLabel.evaluate(
+          (label) => label.scrollWidth <= label.clientWidth,
+        ),
+        at,
+      ).toBe(true);
+    await expect(composer.locator(".composer__shortcut"), at).toBeHidden();
+    if (!(await modelLabel.isVisible())) {
+      // The model name gives way to its icon, never to a bare chevron.
+      await expect(modelIcon, at).toBeVisible();
+      continue;
+    }
+    await expect(modelIcon, at).toBeHidden();
+    // The label truncates inside its own box, before the chevron, without
+    // clipping the trigger's leading edge.
+    const geometry = await model.evaluate((trigger) => {
+      const label = trigger.querySelector(".composer__model-label")!;
+      const chevron = trigger.querySelector("svg:last-child")!;
+      const box = trigger.getBoundingClientRect();
+      const text = label.getBoundingClientRect();
+      const glyph = chevron.getBoundingClientRect();
+      return {
+        labelStart: text.left - box.left,
+        beforeChevron: text.right <= glyph.left + 0.5,
+        chevron: [glyph.width, glyph.height],
+        chevronInside: glyph.left >= box.left && glyph.right <= box.right + 0.5,
+        ellipsis: getComputedStyle(label).textOverflow,
+      };
+    });
+    expect(geometry.labelStart, at).toBeGreaterThanOrEqual(0);
+    expect(geometry.beforeChevron, at).toBe(true);
+    expect(geometry.chevron, at).toEqual([16, 16]);
+    expect(geometry.chevronInside, at).toBe(true);
+    expect(geometry.ellipsis, at).toBe("ellipsis");
+  }
+});
 
 test.describe("Project chip 200% zoom reflow proxy", () => {
   test.use({ viewport: { width: 480, height: 360 }, deviceScaleFactor: 2 });
@@ -272,11 +366,8 @@ test.describe("Project chip 200% zoom reflow proxy", () => {
     await settleChatProjections(page);
     expect(await page.evaluate(() => window.devicePixelRatio)).toBe(2);
     const composer = page.locator("form.composer").first();
-    await expectResponsiveToolbar(
-      composer,
-      await composer.evaluate((element) => element.clientWidth <= 400),
-    );
-    const textarea = composer.getByRole("textbox", { name: "Message agent" });
+    await expectResponsiveToolbar(composer);
+    const textarea = composer.getByRole("combobox", { name: "Message agent" });
     await textarea.fill("Draft remains editable at 200% reflow");
     await expect(textarea).toHaveValue("Draft remains editable at 200% reflow");
     const field = (await textarea.boundingBox())!;
@@ -284,7 +375,9 @@ test.describe("Project chip 200% zoom reflow proxy", () => {
     const toolbar = (await composer
       .locator(".composer__toolbar")
       .boundingBox())!;
-    expect(field.height).toBeGreaterThanOrEqual(44);
+    // The 360 px viewport uses the compact 40–56 px textarea range.
+    expect(field.height).toBeGreaterThanOrEqual(40);
+    expect(field.height).toBeLessThanOrEqual(56);
     expect(field.y).toBeGreaterThanOrEqual(form.y);
     expect(field.y + field.height).toBeLessThanOrEqual(toolbar.y);
     expect(toolbar.y + toolbar.height).toBeLessThanOrEqual(
@@ -292,4 +385,118 @@ test.describe("Project chip 200% zoom reflow proxy", () => {
     );
     expect(form.y + form.height).toBeLessThanOrEqual(360);
   });
+});
+
+// These geometry contracts used to inspect CSS selectors in jsdom. Exercise
+// the rendered controls so stylesheet ownership can change independently.
+test("keeps the split chip nonshrinking after the later composer styles load", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await openSplitComposerScenario(page);
+  await expect(
+    page.locator("form.composer").nth(1).locator(".project-scope"),
+  ).toHaveCount(0);
+  await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+    fixture.installVisualComposerEffortFixture({
+      modelName: "A long advertised model name",
+      currentValue: "high",
+    });
+  });
+  for (const composer of [page.locator("form.composer").first()]) {
+    await composer.evaluate((element) => (element.style.width = "440px"));
+    // At this width every other label is an icon and the chip is the last
+    // toolbar control before it moves into the options menu.
+    await settledComposerFit(composer);
+    const chip = composer.locator(".project-scope");
+    const trigger = chip.getByRole("button");
+    await expect(chip).toHaveCSS("width", "28px");
+    await expect(chip).toHaveCSS("flex-shrink", "0");
+    await expect(trigger).toHaveCSS("min-width", "28px");
+    await expect(trigger).toHaveCSS("min-height", "28px");
+    await expect(
+      trigger.locator(".searchable-picker__trigger-label"),
+    ).toBeHidden();
+    await expect(trigger.locator(".searchable-picker__chevron")).toBeHidden();
+  }
+});
+
+test("reserves clickable icon targets while allowing the harness to shrink", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  const composer = page.locator("form.composer").first();
+  await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+    fixture.installVisualComposerEffortFixture({
+      levels: ["low", "medium", "high"],
+      currentValue: "high",
+    });
+  });
+  const project = composer.getByRole("button", { name: /^Project: / });
+  const model = composer.getByLabel("Model", { exact: true });
+  const effort = composer.getByRole("button", { name: "Thinking level: High" });
+  await expect(composer.locator(".project-scope")).toHaveCSS(
+    "min-width",
+    "28px",
+  );
+  for (const trigger of [project, model, effort]) {
+    await expect(trigger).toHaveCSS("min-width", "28px");
+    expect((await trigger.boundingBox())!.width).toBeGreaterThanOrEqual(28);
+  }
+  await expect(project).toHaveCSS("min-height", "28px");
+  await expect(effort).toHaveCSS("overflow", "hidden");
+  await composer.evaluate((element) => {
+    element.style.width = "320px";
+  });
+  await expectResponsiveToolbar(composer);
+});
+
+test("uses the same nonshrinking icon-only chip in narrow and split composers", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  for (const scenario of ["agent-single", "agent-dual"] as const) {
+    if (scenario === "agent-dual") await openSplitComposerScenario(page);
+    else await openScenario(page, scenario, "agent");
+    await settleChatProjections(page);
+    if (scenario === "agent-dual")
+      await expect(
+        page.locator("form.composer").nth(1).locator(".project-scope"),
+      ).toHaveCount(0);
+    await page.evaluate(async () => {
+      const fixture =
+        await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+      fixture.installVisualComposerEffortFixture({
+        modelName: "A long advertised model name",
+        currentValue: "high",
+      });
+    });
+    for (const composer of [page.locator("form.composer").first()]) {
+      await composer.evaluate((element) => (element.style.width = "440px"));
+      await settledComposerFit(composer);
+      if (scenario === "agent-single") {
+        await composer.evaluate((element) => {
+          element.style.width = "440px";
+        });
+      }
+      const chip = composer.locator(".project-scope");
+      const trigger = chip.getByRole("button");
+      await expect(chip).toHaveCSS("width", "28px");
+      await expect(chip).toHaveCSS("flex-shrink", "0");
+      await expect(trigger).toHaveCSS("justify-content", "center");
+      await expect(trigger).toHaveCSS("padding", "0px");
+      await expect(
+        trigger.locator(".searchable-picker__trigger-label"),
+      ).toBeHidden();
+      await expect(trigger.locator(".searchable-picker__chevron")).toBeHidden();
+      await expect(trigger.locator(".project-scope__icon")).toBeVisible();
+      await expectResponsiveToolbar(composer);
+    }
+  }
 });

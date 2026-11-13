@@ -241,7 +241,7 @@ export function HarnessActivity({
         </span>
       </summary>
       <span className="sr-only" id={descriptionId}>
-        Bounded read-only child activity in the originating Turn
+        Bounded read-only child activity in the originating turn
       </span>
       <p className="acp-activity__provenance">
         Harness-owned {activity.role} activity · level {activityLevel}

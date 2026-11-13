@@ -3,8 +3,8 @@ use rusqlite::{OptionalExtension, params};
 use crate::{
     acp::{
         contract::{
-            EntityRevision, ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId,
-            SageProjectId, SageTurnId,
+            EntityRevision, ProjectGeneration, ProjectionRevision, RuntimeEpoch,
+            SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
         },
         intent::IntentSnapshot,
         store::{StoreError, parse_turn_state},
@@ -13,6 +13,7 @@ use crate::{
 };
 
 type SnapshotRow = (
+    i64,
     i64,
     Option<String>,
     Option<i64>,
@@ -30,7 +31,7 @@ pub(super) fn load_intent_snapshot(
     let row: SnapshotRow = database
         .connection()
         .query_row(
-            "SELECT c.projection_revision,h.session_id,e.runtime_epoch,t.id,t.state,t.revision
+            "SELECT c.projection_revision,c.intent_revision,h.session_id,e.runtime_epoch,t.id,t.state,t.revision
              FROM chats c
              LEFT JOIN chat_session_heads h
                ON h.project_id=c.project_id AND h.chat_id=c.id
@@ -51,6 +52,7 @@ pub(super) fn load_intent_snapshot(
                     row.get(3)?,
                     row.get(4)?,
                     row.get(5)?,
+                    row.get(6)?,
                 ))
             },
         )
@@ -60,37 +62,38 @@ pub(super) fn load_intent_snapshot(
         project_id,
         project_generation,
         chat_id,
-        projection_revision: crate::acp::contract::ProjectionRevision::new(checked(
-            row.0,
-            "projection revision",
-        )?)
-        .map_err(|_| StoreError::Corrupt("projection revision"))?,
+        projection_revision: projection(row.0, "projection revision")?,
+        intent_revision: projection(row.1, "intent revision")?,
         session_id: row
-            .1
+            .2
             .map(SageAgentSessionId::parse)
             .transpose()
             .map_err(|_| StoreError::Corrupt("session id"))?,
         runtime_epoch: row
-            .2
+            .3
             .map(|value| {
                 RuntimeEpoch::new(checked(value, "runtime epoch")?)
                     .map_err(|_| StoreError::Corrupt("runtime epoch"))
             })
             .transpose()?,
         turn_id: row
-            .3
+            .4
             .map(SageTurnId::parse)
             .transpose()
             .map_err(|_| StoreError::Corrupt("turn id"))?,
-        turn_state: row.4.as_deref().map(parse_turn_state).transpose()?,
+        turn_state: row.5.as_deref().map(parse_turn_state).transpose()?,
         turn_revision: row
-            .5
+            .6
             .map(|value| {
                 EntityRevision::new(checked(value, "turn revision")?)
                     .map_err(|_| StoreError::Corrupt("turn revision"))
             })
             .transpose()?,
     })
+}
+
+fn projection(value: i64, resource: &'static str) -> Result<ProjectionRevision, StoreError> {
+    ProjectionRevision::new(checked(value, resource)?).map_err(|_| StoreError::Corrupt(resource))
 }
 
 fn checked(value: i64, resource: &'static str) -> Result<u64, StoreError> {

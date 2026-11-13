@@ -20,6 +20,7 @@ import {
 } from "./lib/check-cargo-lease.mjs";
 import { runCommandGroups } from "./lib/check-process.mjs";
 import { executeWindowsCargoJobCommand } from "./lib/check-windows-cargo-job.mjs";
+import { MAX_STALL_IMAGE_BYTES } from "./lib/check-windows-cargo-protocol.mjs";
 
 async function runVctipTeardownAdapterFixture({
   rootExitCode,
@@ -39,7 +40,7 @@ async function runVctipTeardownAdapterFixture({
   try {
     await writeFile(
       rootHelper,
-      `const {spawn}=require("node:child_process");const fs=require("node:fs");const childPidPath=process.argv[2];const childReadyPath=childPidPath+".ready";const naturalExitTriggerPath=process.argv[3]||"";const child=spawn(process.execPath,["-e",${childSource},childReadyPath,naturalExitTriggerPath],{detached:true,stdio:"ignore",windowsHide:true});fs.writeFileSync(childPidPath,String(child.pid));const deadline=Date.now()+2000;(function waitForChildReady(){if(fs.existsSync(childReadyPath))process.exit(${rootExitCode});if(Date.now()>=deadline)throw new Error("child-ready handshake timed out");setTimeout(waitForChildReady,10);})();`,
+      `const {spawn}=require("node:child_process");const fs=require("node:fs");const childPidPath=process.argv[2];process.on("uncaughtException",(error)=>{fs.writeFileSync(childPidPath+".error",String(error&&error.stack||error));process.exit(70)});const childReadyPath=childPidPath+".ready";const naturalExitTriggerPath=process.argv[3]||"";const child=spawn(process.execPath,["-e",${childSource},childReadyPath,naturalExitTriggerPath],{detached:true,stdio:"ignore",windowsHide:true});fs.writeFileSync(childPidPath,String(child.pid));const deadline=Date.now()+2000;(function waitForChildReady(){if(fs.existsSync(childReadyPath))process.exit(${rootExitCode});if(Date.now()>=deadline)throw new Error("child-ready handshake timed out");setTimeout(waitForChildReady,10);})();`,
     );
     await writeFile(
       driver,
@@ -52,10 +53,10 @@ async function runVctipTeardownAdapterFixture({
         `$stdout = $null; $stderr = $null; $job = $null`,
         `try {`,
         `  $triggerPath = if ($NaturalExitTrigger -eq 1) { $ChildPidPath + '.trigger' } else { $null }`,
-        `  $job = [SageValidation.CargoJob]::Start($NodePath, @($RootHelper,$ChildPidPath,([string]$triggerPath)), $FixtureRoot, @('PATH=' + $env:PATH), 4, [ref]$stdout, [ref]$stderr)`,
+        `  $job = [SageValidation.CargoJob]::Start($NodePath, @($RootHelper,$ChildPidPath,([string]$triggerPath)), $FixtureRoot, @(('PATH=' + $env:PATH), ('SystemRoot=' + $env:SystemRoot)), 4, [ref]$stdout, [ref]$stderr)`,
         `  $deadline = [DateTime]::UtcNow.AddSeconds(3)`,
         `  while ($job.RootRunning -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 5 }`,
-        `  if ($job.RootRunning -or -not (Test-Path -LiteralPath $ChildPidPath) -or -not (Test-Path -LiteralPath ($ChildPidPath + '.ready'))) { throw 'root/child fixture did not become ready' }`,
+        `  if ($job.RootRunning -or -not (Test-Path -LiteralPath $ChildPidPath) -or -not (Test-Path -LiteralPath ($ChildPidPath + '.ready'))) { $rootError = if (Test-Path -LiteralPath ($ChildPidPath + '.error')) { [IO.File]::ReadAllText($ChildPidPath + '.error') } else { '' }; $rootExit = if ($job.RootRunning) { 'running' } else { [string]$job.ExitCode() }; throw ('root/child fixture did not become ready (root: {0}, child.pid: {1}, ready: {2}) {3}' -f $rootExit, (Test-Path -LiteralPath $ChildPidPath), (Test-Path -LiteralPath ($ChildPidPath + '.ready')), $rootError) }`,
         `  $member = [uint32]([IO.File]::ReadAllText($ChildPidPath).Trim())`,
         `  $adapter = $job.GetType().GetMethod('EnableVctipTeardownTestAdapter', [Reflection.BindingFlags]::Instance -bor [Reflection.BindingFlags]::NonPublic)`,
         `  if ($null -eq $adapter) { throw 'compiled VCTIP test adapter was unavailable' }`,
@@ -165,6 +166,44 @@ async function runVctipProductionWrapperFixture({
   }
 }
 
+function windowsCargoJobStallReport(rootRunning, memberCount) {
+  const modulePath = path.resolve("scripts/lib/WindowsCargoJob.psm1");
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    `$module = Import-Module '${modulePath.replaceAll("'", "''")}' -PassThru -Force`,
+    `$names = [string[]]@(@(('x' * 251) + '.exe') * ${memberCount})`,
+    `& $module { param($names) New-CargoJobStallReport $${rootRunning} $names | ConvertTo-Json -Compress -Depth 4 } $names`,
+  ].join("; ");
+  return JSON.parse(
+    execFileSync(
+      "powershell.exe",
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+      { encoding: "utf8", timeout: 30_000, windowsHide: true },
+    ),
+  );
+}
+
+test("Windows Cargo Job stall report keeps member names within the proof budget", () => {
+  const full = windowsCargoJobStallReport(true, 32);
+  assert.equal(full.rootRunning, true);
+  assert.ok(full.omittedMembers > 0);
+  assert.equal(full.memberImages.length + full.omittedMembers, 32);
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(full.memberImages)) <=
+      MAX_STALL_IMAGE_BYTES,
+  );
+  assert.ok(
+    Buffer.byteLength(
+      JSON.stringify([...full.memberImages, full.memberImages[0]]),
+    ) > MAX_STALL_IMAGE_BYTES,
+  );
+  assert.deepEqual(windowsCargoJobStallReport(false, 0), {
+    rootRunning: false,
+    memberImages: [],
+    omittedMembers: 0,
+  });
+});
+
 // origin: Q01_VCTIP_TEARDOWN "exact identity positive teardown"
 test("compiled VCTIP test adapter preserves root exit 7 after verified teardown", async () => {
   const result = await runVctipTeardownAdapterFixture({
@@ -243,20 +282,43 @@ test("VCTIP retained-handle revalidation refuses a disappearing Job member", asy
 
 // origin: check-lanes.node-test.mjs:314 "Windows Cargo Job preserves Cargo proxy command semantics" -> check-lanes.native-windows.node-test.mjs
 test("Windows Cargo Job preserves Cargo proxy command semantics", async () => {
-  await executeWindowsCargoJobCommand(
-    {
-      label: "cargo-locate-project",
-      command: "cargo.exe",
-      args: ["locate-project", "--manifest-path", "src-tauri/Cargo.toml"],
-      cwd: path.resolve("."),
-      timeoutMs: 10_000,
-      terminationGraceMs: 500,
-      settlementTimeoutMs: 2_000,
-      maximumLineBytes: 1_024,
-      maximumOutputBytes: 4_096,
-    },
-    new AbortController().signal,
-    { stdout: discardStream(), stderr: discardStream() },
+  const captured = { stdout: "", stderr: "" };
+  const capture = (stream) =>
+    new Writable({
+      write(chunk, _encoding, callback) {
+        captured[stream] = (captured[stream] + chunk.toString("utf8")).slice(
+          0,
+          4_096,
+        );
+        callback();
+      },
+    });
+  const started = performance.now();
+  try {
+    await executeWindowsCargoJobCommand(
+      {
+        label: "cargo-locate-project",
+        command: "cargo.exe",
+        args: ["locate-project", "--manifest-path", "src-tauri/Cargo.toml"],
+        cwd: path.resolve("."),
+        timeoutMs: 10_000,
+        terminationGraceMs: 500,
+        settlementTimeoutMs: 2_000,
+        maximumLineBytes: 1_024,
+        maximumOutputBytes: 4_096,
+      },
+      new AbortController().signal,
+      { stdout: capture("stdout"), stderr: capture("stderr") },
+    );
+  } catch (error) {
+    error.cargoStdout = captured.stdout;
+    error.cargoStderr = captured.stderr;
+    error.elapsedMs = Math.round(performance.now() - started);
+    throw error;
+  }
+  assert.deepEqual(
+    JSON.parse(captured.stdout.replace(/^\[cargo-locate-project\] /u, "")),
+    { root: path.resolve("src-tauri/Cargo.toml") },
   );
 });
 
@@ -606,9 +668,13 @@ test("Windows Cargo Job timeout proves descendant zero", async () => {
   const pidPath = path.join(root, "descendant.pid");
   const readyPath = path.join(root, "descendant.ready");
   const target = path.join(root, "target");
-  const source = `const {spawn}=require("node:child_process");const fs=require("node:fs");const pidPath=process.argv[1];const readyPath=process.argv[2];const child=spawn(process.execPath,["-e","require('node:fs').writeFileSync(process.argv[1],'ready');setInterval(()=>{},1000)",readyPath],{detached:true,stdio:"ignore",windowsHide:true});fs.writeFileSync(pidPath,String(child.pid));const deadline=Date.now()+2000;(function waitForReady(){if(fs.existsSync(readyPath))process.exit(0);if(Date.now()>=deadline)throw new Error("descendant-ready handshake timed out");setTimeout(waitForReady,10)})();`;
+  // A non-ASCII image name proves the stall report survives the proof's
+  // serialization byte for byte.
+  const descendantImage = path.join(root, "caf\u00e9.exe");
+  const source = `const {spawn}=require("node:child_process");const fs=require("node:fs");const pidPath=process.argv[1];const readyPath=process.argv[2];const child=spawn(process.argv[3],["-e","require('node:fs').writeFileSync(process.argv[1],'ready');setInterval(()=>{},1000)",readyPath],{detached:true,stdio:"ignore",windowsHide:true});fs.writeFileSync(pidPath,String(child.pid));const deadline=Date.now()+2000;(function waitForReady(){if(fs.existsSync(readyPath))process.exit(0);if(Date.now()>=deadline)throw new Error("descendant-ready handshake timed out");setTimeout(waitForReady,10)})();`;
   let descendantPid;
   try {
+    await copyFile(process.execPath, descendantImage);
     await assert.rejects(
       runCommandGroups([
         {
@@ -621,7 +687,7 @@ test("Windows Cargo Job timeout proves descendant zero", async () => {
             {
               label: "owned-timeout",
               command: process.execPath,
-              args: ["-e", source, pidPath, readyPath],
+              args: ["-e", source, pidPath, readyPath, descendantImage],
               cwd: root,
               // The root has a bounded two-second readiness handshake before
               // its natural exit; preserve a margin so the command timeout
@@ -635,11 +701,26 @@ test("Windows Cargo Job timeout proves descendant zero", async () => {
           ],
         },
       ]),
-      (error) =>
-        error?.code === "command-timeout" &&
-        error.settled === true &&
-        error.exitCode === 0 &&
-        error.teardown === null,
+      (error) => {
+        assert.equal(error?.code, "command-timeout");
+        assert.equal(error.settled, true);
+        assert.equal(error.exitCode, 0);
+        assert.equal(error.teardown, null);
+        assert.deepEqual(error.stall, {
+          rootRunning: false,
+          memberImages: ["caf\u00e9.exe"],
+          omittedMembers: 0,
+        });
+        // The deadline diagnostic reports the Job's accounting: the root and
+        // its descendant were both created, and the descendant still runs.
+        const accounting = error.wrapperDiagnostic?.match(
+          /cargo-job deadline userMs=\d+ kernelMs=\d+ totalProcesses=(\d+) activeProcesses=(\d+) pageFaults=\d+/u,
+        );
+        assert.ok(accounting, error.wrapperDiagnostic);
+        assert.ok(Number(accounting[1]) >= 2);
+        assert.ok(Number(accounting[2]) >= 1);
+        return true;
+      },
     );
     assert.equal(await waitForFixtureReady(readyPath), "ready");
     descendantPid = Number.parseInt(await readFile(pidPath, "utf8"), 10);

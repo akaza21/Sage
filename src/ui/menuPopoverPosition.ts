@@ -1,6 +1,6 @@
 import { createContext, type CSSProperties, type RefObject } from "react";
 
-const GUTTER = 8;
+export const GUTTER = 8;
 const MIN_USABLE_HEIGHT = 120;
 export const PopoverPlacementContext = createContext<{
   originRef: RefObject<HTMLElement | null>;
@@ -8,11 +8,12 @@ export const PopoverPlacementContext = createContext<{
 } | null>(null);
 
 /**
- * Where a top-level menu prefers to open: below its trigger and right-aligned
- * (the default), or above it and left-aligned (Codex's answer "…" menu,
- * s2/f0053). Either side flips when the other has more room.
+ * The side names where the menu prefers to open (it flips when the other side
+ * has more room); "-end" aligns the menu's right edge with the trigger's and
+ * "-start" opens from the trigger's left edge toward the right.
  */
-export type MenuPlacement = "below-end" | "above-start";
+export type MenuPlacement =
+  "below-end" | "below-start" | "above-start" | "above-end";
 
 export function menuPopoverPosition(
   trigger: HTMLElement,
@@ -38,10 +39,10 @@ export function menuPopoverPosition(
     maxWidth,
     Math.max(surface.width, matchTriggerWidth ? anchor.width : 0),
   );
-  const composer = origin.closest(".composer")?.getBoundingClientRect();
-  if (composer && composer.width >= width) {
-    leftEdge = Math.max(leftEdge, composer.left);
-    rightEdge = Math.min(rightEdge, composer.right);
+  const dock = origin.closest(".chat-dock")?.getBoundingClientRect();
+  if (dock && dock.width >= width) {
+    leftEdge = Math.max(leftEdge, dock.left);
+    rightEdge = Math.min(rightEdge, dock.right);
   }
   const clampLeft = (left: number) =>
     Math.min(Math.max(leftEdge, left), Math.max(leftEdge, rightEdge - width));
@@ -101,15 +102,72 @@ export function menuPopoverPosition(
   }
   const roomBelow = window.innerHeight - anchor.bottom - gap - GUTTER;
   const roomAbove = anchor.top - gap - GUTTER;
-  const aboveStart = placement === "above-start";
-  const placeAbove = aboveStart
+  const preferAbove = placement.startsWith("above-");
+  const placeAbove = preferAbove
     ? surface.height <= roomAbove || roomAbove > roomBelow
     : surface.height > roomBelow && roomAbove > roomBelow;
+  let top = placeAbove
+    ? anchor.top - surface.height - gap
+    : anchor.bottom + gap;
+  // A composer menu that opens upward clears the changed-files summary above
+  // the composer instead of covering it.
+  const edits =
+    dock &&
+    origin
+      .closest(".chat-surface")
+      ?.querySelector(".chat-edit-summary-zone:not(:empty)")
+      ?.getBoundingClientRect();
+  if (edits && placeAbove && top < edits.bottom)
+    top = Math.min(top, edits.top - surface.height - gap);
   return {
     ...shared,
-    left: clampLeft(aboveStart ? anchor.left : anchor.right - width),
-    top: clampTop(
-      placeAbove ? anchor.top - surface.height - gap : anchor.bottom + gap,
+    left: clampLeft(
+      placement.endsWith("-end") ? anchor.right - width : anchor.left,
     ),
+    top: clampTop(top),
   };
+}
+
+const MAX_CONTAINING_BLOCK_DEPTH = 32;
+
+/**
+ * Positions are computed in viewport coordinates, but a popover portalled
+ * into an element with a transform, filter or backdrop filter (a modal
+ * dialog, for example) is fixed relative to that element instead. Shift the
+ * position into that box so the popover lands where it was measured to fit;
+ * otherwise its placement and the dialog's layout chase each other.
+ */
+export function inFixedContainingBlock(
+  position: CSSProperties,
+  popover: HTMLElement,
+): CSSProperties {
+  let node = popover.parentElement;
+  for (
+    let depth = 0;
+    node && node !== document.body && depth < MAX_CONTAINING_BLOCK_DEPTH;
+    depth += 1, node = node.parentElement
+  ) {
+    const style = getComputedStyle(node);
+    const set = (value: string | undefined) =>
+      Boolean(value) && value !== "none";
+    if (
+      set(style.transform) ||
+      set(style.filter) ||
+      set(style.backdropFilter) ||
+      set(style.perspective) ||
+      /paint|layout|strict|content/.test(style.contain ?? "")
+    ) {
+      const box = node.getBoundingClientRect();
+      const x = box.left + node.clientLeft - node.scrollLeft;
+      const y = box.top + node.clientTop - node.scrollTop;
+      return {
+        ...position,
+        ...(typeof position.left === "number"
+          ? { left: position.left - x }
+          : {}),
+        ...(typeof position.top === "number" ? { top: position.top - y } : {}),
+      };
+    }
+  }
+  return position;
 }

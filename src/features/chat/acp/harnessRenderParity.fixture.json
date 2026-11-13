@@ -1,0 +1,434 @@
+{
+  "scenarios": {
+    "thinkingThenLinkedText": {
+      "title": "Thinking, then an answer with a markdown link",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "thoughtSummary",
+            "payload": {
+              "summary": "Checking the guide."
+            }
+          },
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "text",
+            "payload": {
+              "role": "assistant",
+              "text": "See [the guide](https://example.com/guide)."
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "  Worked for 0s",
+        "article",
+        "  Agent",
+        "  See",
+        "web link -> https://example.com/guide",
+        "  the guide",
+        "  ."
+      ]
+    },
+    "toolCompletes": {
+      "title": "A file read that completes",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "completed",
+            "toolState": "completed",
+            "kind": "toolCall",
+            "payload": {
+              "presentation": {
+                "kind": "read",
+                "label": "Read src/lib.rs",
+                "resources": [
+                  {
+                    "kind": "resource",
+                    "resource": {
+                      "rootId": "root-1",
+                      "relativePath": "src/lib.rs"
+                    }
+                  }
+                ]
+              },
+              "inputSummary": null,
+              "outputSummary": "pub fn answer() -> u32 {\n    41\n}\n"
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "summary",
+        "  Worked for 0s",
+        "summary \"Read lib.rs, Completed, 1s\"",
+        "  Read lib.rs",
+        "group \"Read src/lib.rs\"",
+        "note",
+        "  Read",
+        "  pub fn answer() -> u32 { 41 }",
+        "status",
+        "  ✓ Success",
+        "list \"Referenced resources\"",
+        "listitem",
+        "  lib.rs"
+      ]
+    },
+    "toolFailsMidTurn": {
+      "title": "A file read that fails, then the turn continues",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "failed",
+            "toolState": "failed",
+            "kind": "toolCall",
+            "payload": {
+              "presentation": {
+                "kind": "read",
+                "label": "Read src/lib.rs",
+                "resources": [
+                  {
+                    "kind": "resource",
+                    "resource": {
+                      "rootId": "root-1",
+                      "relativePath": "src/lib.rs"
+                    }
+                  }
+                ]
+              },
+              "inputSummary": null,
+              "outputSummary": "Permission denied"
+            }
+          },
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "text",
+            "payload": {
+              "role": "assistant",
+              "text": "The read failed."
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "summary",
+        "  Worked for 0s",
+        "summary \"Read lib.rs, Failed, 1s\"",
+        "  Read lib.rs",
+        "group \"Read src/lib.rs\"",
+        "note",
+        "  Read",
+        "  Permission denied",
+        "status",
+        "  Failed",
+        "list \"Referenced resources\"",
+        "listitem",
+        "  lib.rs",
+        "article",
+        "  Agent",
+        "  The read failed."
+      ]
+    },
+    "commandWithOutput": {
+      "title": "A shell command with output",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "completed",
+            "toolState": "completed",
+            "kind": "toolCall",
+            "payload": {
+              "presentation": {
+                "kind": "execute",
+                "label": "echo hello",
+                "summary": null,
+                "exitCode": 0,
+                "outputTail": null,
+                "outputTruncated": false,
+                "resources": [],
+                "activity": "ordinary"
+              },
+              "inputSummary": "echo hello",
+              "outputSummary": "hello"
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "summary",
+        "  Worked for 0s",
+        "summary \"Ran echo hello, Completed, 1s\"",
+        "  Ran echo hello",
+        "group \"echo hello\"",
+        "note",
+        "  Shell",
+        "  $ echo hello",
+        "  hello",
+        "status",
+        "  ✓ Success"
+      ]
+    },
+    "fileEditWithDiff": {
+      "title": "A file edit with its saved diff",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "completed",
+            "toolState": "completed",
+            "kind": "toolCall",
+            "payload": {
+              "presentation": {
+                "kind": "edit",
+                "label": "Edited src/lib.rs",
+                "resources": [
+                  {
+                    "kind": "resource",
+                    "resource": {
+                      "rootId": "root-1",
+                      "relativePath": "src/lib.rs"
+                    }
+                  }
+                ]
+              },
+              "inputSummary": null,
+              "outputSummary": null
+            }
+          },
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "fileChangeDiff",
+            "payload": {
+              "changes": [
+                {
+                  "resource": {
+                    "kind": "resource",
+                    "resource": {
+                      "rootId": "root-1",
+                      "relativePath": "src/lib.rs"
+                    }
+                  },
+                  "operation": "updated",
+                  "originalResource": null,
+                  "summary": "Edited src/lib.rs",
+                  "additions": 1,
+                  "deletions": 1,
+                  "pairState": "available",
+                  "newBytes": 34,
+                  "oldBytes": 34
+                }
+              ],
+              "truncated": false
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "summary",
+        "  Worked for 0s",
+        "summary \"Edited lib.rs, Completed, 1s\"",
+        "  Edited lib.rs",
+        "group \"Edited src/lib.rs\"",
+        "note",
+        "  Edit",
+        "status",
+        "  ✓ Success",
+        "list \"Referenced resources\"",
+        "listitem",
+        "  lib.rs",
+        "button",
+        "  1 file changed",
+        "  +",
+        "  1",
+        "  -",
+        "  1"
+      ]
+    },
+    "planUpdate": {
+      "title": "A plan replaced by a later plan",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "plan",
+            "payload": {
+              "entries": [
+                {
+                  "label": "Inspect",
+                  "state": "completed"
+                },
+                {
+                  "label": "Edit",
+                  "state": "inProgress"
+                },
+                {
+                  "label": "Test",
+                  "state": "pending"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "summary",
+        "  Worked for 0s",
+        "button",
+        "  Plan",
+        "status",
+        "  Hide · 1 of 3 complete",
+        "list",
+        "listitem",
+        "  Inspect",
+        "  Completed",
+        "listitem",
+        "  Edit",
+        "  In progress",
+        "listitem",
+        "  Test",
+        "  Pending"
+      ]
+    },
+    "cancelledWithRunningTool": {
+      "title": "Stop while a tool is running",
+      "projection": {
+        "turnState": "cancelled",
+        "items": [
+          {
+            "lifecycle": "cancelled",
+            "toolState": "cancelled",
+            "kind": "toolCall",
+            "payload": {
+              "presentation": {
+                "kind": "read",
+                "label": "Read src/lib.rs",
+                "resources": [
+                  {
+                    "kind": "resource",
+                    "resource": {
+                      "rootId": "root-1",
+                      "relativePath": "src/lib.rs"
+                    }
+                  }
+                ]
+              },
+              "inputSummary": null,
+              "outputSummary": null
+            }
+          }
+        ]
+      },
+      "outline": [
+        "summary",
+        "  Worked",
+        "summary \"Read lib.rs, Cancelled, 1s\"",
+        "  Read lib.rs",
+        "group \"Read src/lib.rs\"",
+        "note",
+        "  Read",
+        "status",
+        "  Cancelled",
+        "list \"Referenced resources\"",
+        "listitem",
+        "  lib.rs",
+        "status \"Cancelled\"",
+        "  Cancelled"
+      ]
+    },
+    "steeredMessage": {
+      "title": "A message the user steers into the running turn",
+      "projection": {
+        "turnState": "completed",
+        "items": [
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "text",
+            "payload": {
+              "role": "assistant",
+              "text": "Starting on lib.rs."
+            }
+          },
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "userPrompt",
+            "payload": {
+              "text": "Use main.rs instead."
+            }
+          },
+          {
+            "lifecycle": "completed",
+            "toolState": null,
+            "kind": "text",
+            "payload": {
+              "role": "assistant",
+              "text": "Switching to main.rs."
+            }
+          }
+        ]
+      },
+      "outline": [
+        "status \"Completed\"",
+        "  Completed",
+        "summary",
+        "  Worked for 0s",
+        "article",
+        "  Agent",
+        "  Starting on lib.rs.",
+        "article",
+        "  You",
+        "  Use main.rs instead.",
+        "article",
+        "  Agent",
+        "  Switching to main.rs."
+      ]
+    }
+  },
+  "notApplicable": [
+    {
+      "scenario": "commandWithOutput",
+      "harness": "pi",
+      "reason": "Sage's Pi bridge refuses every shell command, so Pi never runs one."
+    },
+    {
+      "scenario": "planUpdate",
+      "harness": "pi",
+      "reason": "Pi has no plan or todo tool."
+    },
+    {
+      "scenario": "steeredMessage",
+      "harness": "claude",
+      "reason": "ACP has no way to add a message to a running prompt; the binding refuses a steer, so the composer waits for the turn to end."
+    },
+    {
+      "scenario": "steeredMessage",
+      "harness": "acp",
+      "reason": "ACP has no way to add a message to a running prompt; the binding refuses a steer, so the composer waits for the turn to end."
+    }
+  ],
+  "gaps": []
+}

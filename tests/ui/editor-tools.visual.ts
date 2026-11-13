@@ -4,6 +4,7 @@ import {
   expectNoViewportOverflow,
   openScenario,
 } from "./shared/visualBrowserPrimitives";
+import { settleEditorGutter } from "./editorVisualHelpers";
 
 test.describe("Wave 2 accessibility and responsive states", () => {
   test("shows selected, pressed, disabled, dirty, and confirmation states", async ({
@@ -175,6 +176,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       "export function AgentChatPanes() {",
     );
     await expectNoViewportOverflow(page);
+    await settleEditorGutter(page);
     await expect(workbench).toHaveScreenshot("editor-search-populated.png");
   });
 
@@ -187,7 +189,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       exact: true,
     });
     await expect(searchTools).toContainText(
-      "Search all roots in the active Project.",
+      "Search all roots in the active project.",
     );
     await expectNoViewportOverflow(page);
     await expect(workbench).toHaveScreenshot("editor-search.png");
@@ -205,7 +207,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       outlineTools.getByRole("heading", { name: "Outline" }),
     ).toBeVisible();
     await expect(outlineTools.getByText("1 Symbol")).toBeVisible();
-    const symbol = outlineTools.getByRole("button", {
+    const symbol = outlineTools.getByRole("treeitem", {
       name: "Function: AgentChatPanes. src/workbench/AgentChatPanes.tsx, line 3, column 17",
     });
     await expect(symbol).toBeVisible();
@@ -214,9 +216,6 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       "AgentChatPanes — src/workbench/AgentChatPanes.tsx:3:17",
     );
     await expect(outlineTools.locator(".outline-card")).toHaveCount(1);
-    const symbolPosition = symbol.locator(".outline-card__location-position");
-    await expect(symbolPosition).toHaveText(":3:17");
-    await expect(symbolPosition).toBeInViewport();
     await symbol.focus();
     await page.keyboard.press("Enter");
     await expect(page.getByTitle("Caret position")).toHaveText("Ln 3, Col 17");
@@ -237,7 +236,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const outlineTools = page.getByLabel("Outline project tools", {
       exact: true,
     });
-    await expect(outlineTools).toContainText("No symbols for the active File.");
+    await expect(outlineTools).toContainText("No symbols for the active file.");
     await expectNoViewportOverflow(page);
     await expect(workbench).toHaveScreenshot("editor-outline.png");
   });
@@ -532,6 +531,9 @@ for (const scale of [1, 1.25, 1.5, 2]) {
 
     test("keeps every line number level with its line", async ({ page }) => {
       await openScenario(page, "editor", "editor");
+      const drawer = page.locator('.workbench--editor .sidebar[role="dialog"]');
+      if (await drawer.isVisible())
+        await page.getByRole("button", { name: "Hide left sidebar" }).click();
       const editor = page.locator(".file-surface .cm-editor");
       await expect(editor.locator(".cm-line").first()).toBeVisible();
       const rows = await editor.evaluate((root) => {

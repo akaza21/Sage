@@ -1,23 +1,23 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { utf8ByteLength } from "../../domain/text";
 import {
   browserElementSink,
   handOffBrowserElement,
 } from "../../app/browserAnnotations";
-import {
-  browserControl,
-  type BrowserAnnotateSelection,
-} from "../../ports/nativeBrowserPort";
+import { utf8ByteLength } from "../../domain/text";
 import {
   browserAnnotateConfirm,
   browserAnnotateFrame,
   type BrowserAnnotateFrame,
 } from "../../ports/nativeBrowserAnnotatePort";
+import {
+  browserControl,
+  type BrowserAnnotateSelection,
+} from "../../ports/nativeBrowserPort";
 
 const pct = (value: number, total: number) => `${(value / total) * 100}%`;
 
 /**
- * The comment box over the frozen page (Codex ref 60). Rust hid the live page
+ * The comment box over the frozen page. Rust hid the live page
  * and kept this picture of the whole page area, so the badge and the box sit
  * exactly over the picked element. The stage keeps the picture's proportions
  * while the window resizes, and everything is placed in its shares.
@@ -135,7 +135,7 @@ export function BrowserAnnotatePopover({
 }
 
 const NO_SINK = "The composer cannot take page elements yet";
-const FULL = "Open an Agent Chat whose message has room for this element";
+const FULL = "Open an Agent chat whose message has room for this element";
 
 /**
  * Loads the frozen frame and turns the comment into an element item. The

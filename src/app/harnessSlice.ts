@@ -1,18 +1,23 @@
 import type { StateCreator } from "zustand";
 
 import type {
+  CodexAccount,
+  CodexAuthResponse,
+  CodexAuthScope,
   CuratedBindingId,
   ProjectGeneration,
   SageProjectId,
 } from "../domain/acp";
 import type { HarnessDefinition, ModelOption } from "../domain/workbench";
-import { acpDesktop } from "../services/acpDesktop";
+import { MAX_ATTACHED_CHAT_OWNERSHIP_ENTRIES } from "../domain/chatOwnership";
+import { acpHarnessDesktop } from "../services/acpHarnessDesktop";
 import { desktop } from "../services/desktop";
 import {
   cachedHarnessModels,
   harnessModelIdentity,
   rememberHarnessModels,
 } from "./harnessModelCache";
+import { accountChange, authCurrent, authScope } from "./harnessAuth";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
 import { errorMessage } from "../domain/errors";
@@ -45,6 +50,8 @@ export interface HarnessSlice {
   harnessRequestGeneration: number;
   harnessDiscoveryPhase: HarnessDiscoveryPhase;
   harnessDiscoveryError: string | null;
+  /** The account the selected harness reported at its last discovery. */
+  harnessAccount: CodexAccount | null;
   selectHarness: (harnessId: string) => Promise<void>;
   applyHarnessDiscovery: (harnesses: HarnessDefinition[]) => Promise<void>;
   loadHarnessModelsForProjection: (
@@ -58,6 +65,9 @@ export interface HarnessSlice {
   confirmHarnessSignIn: () => Promise<void>;
   cancelHarnessSignIn: () => Promise<void>;
   logoutHarness: () => Promise<void>;
+  signInHarnessWith: (
+    call: (scope: CodexAuthScope) => Promise<CodexAuthResponse>,
+  ) => Promise<void>;
   selectModel: (modelId: string) => void;
 }
 
@@ -119,6 +129,18 @@ export const createHarnessSlice: StateCreator<
     const usesAccountModelDiscovery =
       harness?.transport === "acp" && harness.accountModelDiscovery;
     const detecting = harness?.installState === "detecting";
+    if (harness && !detecting && harness.installState !== "available") {
+      set({
+        selectedHarnessId: harnessId,
+        selectedModelId: previousModelId,
+        models: [],
+        harnessRequestGeneration: requestGeneration,
+        harnessDiscoveryPhase: "ready",
+        harnessDiscoveryError: null,
+        harnessAccount: null,
+      });
+      return;
+    }
     const identity = usesAccountModelDiscovery
       ? null
       : harnessModelIdentity(harness);
@@ -136,6 +158,7 @@ export const createHarnessSlice: StateCreator<
           ? "checking"
           : "idle",
       harnessDiscoveryError: null,
+      harnessAccount: null,
     });
     if (detecting) return;
     if (cached) {
@@ -152,7 +175,7 @@ export const createHarnessSlice: StateCreator<
         const nativeGeneration = String(
           get().nativeTransitionEpoch,
         ) as ProjectGeneration;
-        const response = await acpDesktop.discoverCodex({
+        const response = await acpHarnessDesktop.discoverCodex({
           projectId: projectId as SageProjectId,
           projectGeneration: nativeGeneration,
           bindingId: harness.bindingId as CuratedBindingId,
@@ -170,6 +193,7 @@ export const createHarnessSlice: StateCreator<
         ) {
           return;
         }
+        set({ harnessAccount: response.account });
         if (response.account === "signedOut") {
           set({ harnessDiscoveryPhase: "signInRequired", error: null });
           return;
@@ -211,6 +235,8 @@ export const createHarnessSlice: StateCreator<
     }
   };
 
+  const changeAccount = accountChange(set, get);
+
   return {
     harnesses: [],
     selectedHarnessId: null,
@@ -219,6 +245,7 @@ export const createHarnessSlice: StateCreator<
     harnessRequestGeneration: 0,
     harnessDiscoveryPhase: "idle",
     harnessDiscoveryError: null,
+    harnessAccount: null,
     selectHarness: async (harnessId) => {
       if (get().projectTransitioning) return;
       const generation = get().projectGeneration;
@@ -229,6 +256,24 @@ export const createHarnessSlice: StateCreator<
       await load(harnessId, previous, generation, projectId);
     },
     applyHarnessDiscovery: async (harnesses) => {
+      const previous = get().harnesses.find(
+        (candidate) => candidate.id === get().selectedHarnessId,
+      );
+      // Discovery describes installed harnesses. Keep restored bindings visible
+      // until the next Project projection replaces this bounded catalog.
+      harnesses = [
+        ...harnesses,
+        ...get()
+          .harnesses.filter(
+            (previous) => !harnesses.some((next) => next.id === previous.id),
+          )
+          .slice(0, MAX_ATTACHED_CHAT_OWNERSHIP_ENTRIES)
+          .map((previous): HarnessDefinition => ({
+            ...previous,
+            installState: "unavailable",
+            accountModelDiscovery: false,
+          })),
+      ];
       set({ harnesses });
       const projectId = get().project?.id;
       if (!projectId || get().projectTransitioning) return;
@@ -239,12 +284,18 @@ export const createHarnessSlice: StateCreator<
           candidate.installState === "available",
       );
       const selected = get().selectedHarnessId;
-      const next =
-        selectable.find((candidate) => candidate.id === selected) ??
-        selectable[0];
+      const next = selected
+        ? harnesses.find((candidate) => candidate.id === selected)
+        : selectable[0];
       if (!next) return;
       const retained = next.id === selected;
-      if (retained && get().harnessDiscoveryPhase === "ready") return;
+      if (
+        retained &&
+        get().harnessDiscoveryPhase === "ready" &&
+        harnessModelIdentity(previous) === harnessModelIdentity(next) &&
+        previous?.accountModelDiscovery === next.accountModelDiscovery
+      )
+        return;
       await load(
         next.id,
         retained ? get().selectedModelId : null,
@@ -276,7 +327,7 @@ export const createHarnessSlice: StateCreator<
       const requestGeneration = get().harnessRequestGeneration;
       set({ harnessDiscoveryPhase: "waiting", harnessDiscoveryError: null });
       try {
-        const response = await acpDesktop.startCodexAuth(scope);
+        const response = await acpHarnessDesktop.startCodexAuth(scope);
         if (!authCurrent(get(), scope, requestGeneration)) return;
         if (response.phase !== "signedIn") {
           set({ harnessDiscoveryPhase: "signInRequired" });
@@ -298,35 +349,16 @@ export const createHarnessSlice: StateCreator<
       }
       const scope = authScope(get());
       if (!scope || get().harnessDiscoveryPhase !== "waiting") return;
-      await acpDesktop.cancelCodexAuth(scope);
+      await acpHarnessDesktop.cancelCodexAuth(scope);
     },
     logoutHarness: async () => {
-      const scope = authScope(get());
-      if (!scope || get().harnessDiscoveryPhase !== "ready") return;
-      const requestGeneration = get().harnessRequestGeneration;
-      set({
-        harnessDiscoveryPhase: "checking",
-        models: [],
-        selectedModelId: null,
-      });
-      try {
-        const response = await acpDesktop.logoutCodexAuth(scope);
-        if (!authCurrent(get(), scope, requestGeneration)) return;
-        set({
-          harnessDiscoveryPhase:
-            response.phase === "signedOut" ? "signInRequired" : "error",
-          harnessDiscoveryError:
-            response.phase === "signedOut"
-              ? null
-              : "Codex logout did not converge safely.",
-        });
-      } catch (error) {
-        if (!authCurrent(get(), scope, requestGeneration)) return;
-        set({
-          harnessDiscoveryPhase: "error",
-          harnessDiscoveryError: errorMessage(error),
-        });
-      }
+      if (get().harnessDiscoveryPhase === "ready")
+        await changeAccount(acpHarnessDesktop.logoutCodexAuth, "signedOut");
+    },
+    signInHarnessWith: async (call) => {
+      const phase = get().harnessDiscoveryPhase;
+      if (phase !== "checking" && phase !== "waiting")
+        await changeAccount(call, "signedIn");
     },
     selectModel: (selectedModelId) => {
       if (
@@ -338,37 +370,3 @@ export const createHarnessSlice: StateCreator<
     },
   };
 };
-
-function authScope(state: WorkbenchState) {
-  const harness = state.harnesses.find(
-    (candidate) => candidate.id === state.selectedHarnessId,
-  );
-  if (
-    !state.project ||
-    harness?.transport !== "acp" ||
-    !harness.accountModelDiscovery ||
-    !harness.bindingId
-  ) {
-    return null;
-  }
-  return {
-    projectId: state.project.id as SageProjectId,
-    projectGeneration: String(state.nativeTransitionEpoch) as ProjectGeneration,
-    bindingId: harness.bindingId as CuratedBindingId,
-  };
-}
-
-function authCurrent(
-  state: WorkbenchState,
-  scope: NonNullable<ReturnType<typeof authScope>>,
-  requestGeneration: number,
-) {
-  return (
-    state.project?.id === scope.projectId &&
-    String(state.nativeTransitionEpoch) === scope.projectGeneration &&
-    state.harnessRequestGeneration === requestGeneration &&
-    state.harnesses.find(
-      (candidate) => candidate.id === state.selectedHarnessId,
-    )?.bindingId === scope.bindingId
-  );
-}

@@ -2,9 +2,9 @@ import type {
   AcpItem,
   ItemLifecycle,
   ToolState,
+  TurnProjection,
   TurnState,
   TurnTerminalReason,
-  TurnProjection,
 } from "../../../domain/acp";
 
 export const terminalItemLifecycles: ReadonlySet<ItemLifecycle> = new Set([
@@ -53,6 +53,28 @@ export function getTurnStatusLabel(turn: TurnProjection): string {
     turn.terminalReason?.kind === "cancelledByUser"
     ? turnTerminalReasonLabels.cancelledByUser
     : turnStateLabels[turn.state];
+}
+
+/** A stopped turn may carry its denial on a tool rather than its terminal event. */
+export function turnReasonMessage(turn: TurnProjection): string | undefined {
+  const detail = turn.terminalReason?.message?.trim();
+  if (detail) return detail;
+  const stopped = turn.state === "interrupted" || turn.state === "cancelled";
+  if (!stopped && turn.state !== "failed") return;
+  for (let index = turn.items.length; index--;) {
+    const item = turn.items[index];
+    if (item.kind === "error" && item.payload.kind !== "attempt") {
+      const message = item.payload.message?.trim();
+      if (message || !stopped) return message;
+    }
+    if (
+      item.kind === "toolCall" &&
+      stopped &&
+      item.toolState === "declined" &&
+      item.payload.outputSummary?.trim()
+    )
+      return item.payload.outputSummary;
+  }
 }
 
 export const terminalToolStates: ReadonlySet<ToolState> = new Set([

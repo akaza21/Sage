@@ -8,6 +8,7 @@ use super::*;
 use crate::acp::limits::LIMITS;
 
 mod rollback;
+mod unavailable_binding;
 
 fn database_with_project() -> (Database, String, String) {
     let database = Database::open(Path::new(":memory:")).unwrap();
@@ -49,6 +50,7 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
         dirty: false,
         status: None,
         updated_at: None,
+        finished_at: None,
         resource: None,
         repository: None,
         diff_ref: None,

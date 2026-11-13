@@ -6,13 +6,26 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Profiler } from "react";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { preloadAgentHeaderMenu } from "./agentTaskHeaderLazy";
 
-import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
-import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
+import {
+  acpProjectionStoreFor,
+  clearAcpProjectionRegistry,
+} from "../app/acpProjectionRegistry";
+import type { AgentSessionChrome } from "../app/agentChatOwner";
 import { pinnedAgentChatOwner } from "../app/agentChatOwner";
-import { useWorkbenchStore } from "../app/store";
 import { openAgentArtifact } from "../app/openAgentArtifact";
+import { useWorkbenchStore } from "../app/store";
 import type {
   AcpChatPage,
   AcpItem,
@@ -21,11 +34,6 @@ import type {
   TurnProjection,
 } from "../domain/acp";
 import type { WorkbenchTab } from "../domain/workbench";
-import { AgentChatPanes } from "./AgentChatPanes";
-import { AgentTaskHeader } from "./AgentTaskHeader";
-import { SIDE_CHAT_SPLIT, useSideChatState } from "./sideChatState";
-import { WORKBENCH_LAYOUT_STORAGE_KEY } from "./workbenchLayoutStorage";
-import type { AgentSessionChrome } from "../app/agentChatOwner";
 import {
   applyBrowseIntent,
   browseSessionForOwner,
@@ -34,22 +42,21 @@ import {
   setHarnessBrowseOwner,
   type HarnessBrowseOwner,
 } from "../features/preview/harnessBrowse";
+import { settleLazyModules } from "../test/settleLazyModules";
+import { AgentChatPanes } from "./AgentChatPanes";
+import { AgentTaskHeader } from "./AgentTaskHeader";
+import { launchSideChat } from "./AgentToolPanel";
+import { SIDE_CHAT_SPLIT, useSideChatState } from "./sideChatState";
+import { WORKBENCH_LAYOUT_STORAGE_KEY } from "./workbenchLayoutStorage";
+
+// The header menu body loads when the window first idles.
+beforeAll(() => preloadAgentHeaderMenu());
 
 let resizeCallback: ResizeObserverCallback | null = null;
 const disconnect = vi.fn();
 
-vi.mock("./AgentChatPane", () => ({
-  AgentChatPane: ({
-    tab,
-    onFocus,
-  }: {
-    tab: WorkbenchTab;
-    onFocus: () => void;
-  }) => (
-    <button data-testid={`chat-pane-${tab.id}`} onClick={onFocus}>
-      {tab.title}
-    </button>
-  ),
+vi.mock("./surfaceRegistry", () => ({
+  renderRegisteredCanvas: () => null,
 }));
 
 vi.mock("../features/chat/transcriptLazy", () => ({
@@ -114,6 +121,7 @@ function seedPreviewOwner(chatId: string, sessionId: string): void {
 }
 
 beforeEach(() => {
+  useSideChatState.setState({ sides: [], pairedId: null });
   vi.mocked(openAgentArtifact).mockClear();
   localStorage.clear();
   clearAcpProjectionRegistry();
@@ -169,54 +177,108 @@ describe("AgentChatPanes measured focus-only fallback", () => {
     render(<AgentChatPanes />);
     expect(screen.queryByRole("tablist", { name: "Chat tabs" })).toBeNull();
     expect(screen.queryByRole("button", { name: "New chat" })).toBeNull();
-    expect(screen.getByTestId("chat-pane-chat:b")).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Chat pane Chat B" }),
+    ).toBeInTheDocument();
   });
 
-  it("keeps two chats wide, shows the focused chat when tight, and restores the split", async () => {
+  it("does not rerender for another project's side-chat status", () => {
+    const onRender = vi.fn();
+    render(
+      <Profiler id="panes" onRender={onRender}>
+        <AgentChatPanes />
+      </Profiler>,
+    );
+    onRender.mockClear();
+    act(() =>
+      useSideChatState.setState({
+        sides: [
+          {
+            id: "side-other",
+            projectId: "other",
+            parentChatId: "other-chat",
+            running: true,
+          },
+        ],
+      }),
+    );
+    expect(onRender).not.toHaveBeenCalled();
+  });
+
+  it("never grows the visible chat set across 860px or after the right pane collapses", async () => {
     render(<AgentChatPanes />);
-
-    reportCenterWidth(860);
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
-    const splitter = screen.getByRole("separator", {
-      name: "Resize chat panes",
-    });
-    fireEvent.keyDown(splitter, { key: "ArrowRight" });
-    expect(splitter).toHaveAttribute("aria-valuenow", "55");
-
-    reportCenterWidth(859);
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(1);
-    expect(screen.getByTestId("chat-pane-chat:b")).toBeInTheDocument();
-    expect(screen.queryByRole("separator")).toBeNull();
+    for (const width of [859, 860, 1000, 600, 1200]) {
+      reportCenterWidth(width);
+      expect(
+        screen
+          .getAllByRole("region", { name: /^Chat pane / })
+          .map((pane) => pane.dataset.chatId),
+      ).toEqual(["chat:b"]);
+      expect(screen.queryByRole("separator")).toBeNull();
+    }
 
     await act(async () => {
       await useWorkbenchStore.getState().activateTab("chat:a");
     });
-    expect(screen.getByTestId("chat-pane-chat:a")).toBeInTheDocument();
-    expect(screen.queryByTestId("chat-pane-chat:b")).toBeNull();
+    expect(
+      screen.getByRole("region", { name: "Chat pane Chat A" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Chat pane Chat B" }),
+    ).toBeNull();
 
     reportCenterWidth(1_000);
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
-    expect(screen.getByRole("separator")).toHaveAttribute(
-      "aria-valuenow",
-      "55",
+    expect(
+      screen
+        .getAllByRole("region", { name: /^Chat pane / })
+        .map((pane) => pane.dataset.chatId),
+    ).toEqual(["chat:a"]);
+    expect(screen.queryByRole("separator")).toBeNull();
+  });
+
+  it("replaces the center when New chat adds and activates a tab", () => {
+    render(<AgentChatPanes />);
+    reportCenterWidth(1200);
+    act(() =>
+      useWorkbenchStore.setState({
+        tabs: [...tabs, { ...tabs[0]!, id: "chat:new", title: "New chat" }],
+        activeTabId: "chat:new",
+      }),
+    );
+    expect(
+      screen
+        .getAllByRole("region", { name: /^Chat pane / })
+        .map((pane) => pane.dataset.chatId),
+    ).toEqual(["chat:new"]);
+    reportCenterWidth(859);
+    reportCenterWidth(1200);
+    expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+      1,
     );
   });
 
-  it("disconnects its center-width observer on unmount", () => {
+  it("does not observe center width at all for a single chat", () => {
     const view = render(<AgentChatPanes />);
     view.unmount();
-    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(disconnect).not.toHaveBeenCalled();
+    expect(resizeCallback).toBeNull();
   });
 
-  it("retains both visible Chat browse sessions across a focused page update", () => {
+  it("retains both explicitly visible Chat browse sessions across a focused page update", () => {
     useWorkbenchStore.setState({
+      tabs: [tabs[0]!, { ...tabs[1]!, id: "side-b" }],
+      activeTabId: "side-b",
       project: { id: "project-a", name: "A", roots: [] },
       projectGeneration: 7,
       nativeTransitionEpoch: 7,
       projectTransitioning: false,
     });
     seedPreviewOwner("chat:a", "session-a");
-    seedPreviewOwner("chat:b", "session-b");
+    seedPreviewOwner("side-b", "session-b");
+    useSideChatState.setState({
+      sides: [{ id: "side-b", parentChatId: "chat:a", projectId: "project-a" }],
+      pairedId: "side-b",
+    });
     const ownerA: HarnessBrowseOwner = {
       projectId: "project-a" as HarnessBrowseOwner["projectId"],
       projectGeneration: "7" as HarnessBrowseOwner["projectGeneration"],
@@ -227,17 +289,17 @@ describe("AgentChatPanes measured focus-only fallback", () => {
     };
     const ownerB: HarnessBrowseOwner = {
       ...ownerA,
-      chatId: "chat:b" as HarnessBrowseOwner["chatId"],
+      chatId: "side-b" as HarnessBrowseOwner["chatId"],
       sessionId: "session-b" as HarnessBrowseOwner["sessionId"],
     };
     render(<AgentChatPanes />);
     expect(harnessBrowseOwner()).toEqual(ownerB);
-    setHarnessBrowseOwner(ownerA, ["chat:a", "chat:b"]);
+    setHarnessBrowseOwner(ownerA, ["chat:a", "side-b"]);
     applyBrowseIntent({ owner: ownerA, url: "http://127.0.0.1:4173/a" });
-    setHarnessBrowseOwner(ownerB, ["chat:a", "chat:b"]);
+    setHarnessBrowseOwner(ownerB, ["chat:a", "side-b"]);
     applyBrowseIntent({ owner: ownerB, url: "http://127.0.0.1:4173/b" });
 
-    const focused = acpProjectionStoreFor("chat:b");
+    const focused = acpProjectionStoreFor("side-b");
     const scope = focused.getState().scope;
     const page = focused.getState().page;
     if (!scope || !page) throw new Error("Focused Chat projection was absent.");
@@ -319,7 +381,7 @@ describe("AgentChatPanes browse ownership across independent generation counters
 });
 
 describe("AgentTaskHeader working status", () => {
-  it("keeps session actions and live status reachable from the header", () => {
+  it("keeps session actions and live status reachable from the header", async () => {
     const closeSession = vi.fn();
     const endSession = vi.fn();
     const chrome: AgentSessionChrome = {
@@ -347,17 +409,19 @@ describe("AgentTaskHeader working status", () => {
         sessionChrome={chrome}
       />,
     );
-    expect(screen.getByLabelText("Harness status: Live")).toHaveTextContent(
-      "Live",
-    );
+    expect(screen.queryByLabelText("Harness status: Live")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Chat actions for/ }));
     fireEvent.click(
       screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
     );
+    const close = await screen.findByRole("menuitem", {
+      name: "Close session",
+    });
+    // Hand off loads with the menu, so it is there in the menu's first commit.
     expect(
       screen.getByRole("menuitem", { name: "Hand off chat" }),
     ).toBeEnabled();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Close session" }));
+    fireEvent.click(close);
     expect(closeSession).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: /Chat actions for/ }));
     fireEvent.click(
@@ -401,15 +465,17 @@ describe("AgentTaskHeader working status", () => {
     fireEvent.click(
       screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Hand off chat" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hand off chat" }),
+    );
     expect(
-      await screen.findByRole("dialog", { name: "Hand off this Chat" }),
+      await screen.findByRole("dialog", { name: "Hand off this chat" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Chat actions for/ }),
     ).toHaveAttribute("aria-expanded", "false");
     fireEvent.keyDown(
-      screen.getByRole("dialog", { name: "Hand off this Chat" }),
+      screen.getByRole("dialog", { name: "Hand off this chat" }),
       { key: "Escape" },
     );
     await vi.waitFor(() =>
@@ -742,7 +808,7 @@ describe("AgentTaskHeader working status", () => {
     ).toBeNull();
   });
 
-  it("shows a browser source host and selects its existing tab", () => {
+  it("shows a recorded browser source host without rebinding its existing tab", () => {
     seedHeaderItems([]);
     const store = acpProjectionStoreFor("chat:a");
     const { scope, page } = store.getState();
@@ -794,10 +860,15 @@ describe("AgentTaskHeader working status", () => {
     expect(
       within(screen.getByRole("region", { name: "Sources" })).queryByText("1"),
     ).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open source example.com" }),
-    );
-    expect(useWorkbenchStore.getState().activeTabId).toBe("browser-1");
+    expect(
+      screen.getByTitle(
+        "example.com - Recorded source; not a live browser link",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Open source example.com" }),
+    ).toBeNull();
+    expect(useWorkbenchStore.getState().activeTabId).not.toBe("browser-1");
     expect(screen.queryByText(/private/)).toBeNull();
   });
 
@@ -925,7 +996,7 @@ describe("AgentTaskHeader working status", () => {
     );
   }
 
-  it("spins a glyph beside the label while a turn is working", () => {
+  it("announces the running turn without a keyboard stop", () => {
     renderHeader({
       chatId: "chat:a",
       statusLabel: "Running",
@@ -939,16 +1010,16 @@ describe("AgentTaskHeader working status", () => {
     const status = screen.getByRole("status", { name: "Chat status: Running" });
 
     expect(status).toHaveTextContent("Running");
-    expect(status.querySelector(".agent-chat-chip__spinner")).not.toBeNull();
+    expect(status).not.toHaveAttribute("tabindex");
   });
 
-  it("leaves the idle status without a spinner", () => {
+  it("announces the idle status without a keyboard stop", () => {
     renderHeader(null);
 
     const status = screen.getByRole("status", { name: "Chat status: Idle" });
 
     expect(status).toHaveTextContent("Idle");
-    expect(status.querySelector(".agent-chat-chip__spinner")).toBeNull();
+    expect(status).not.toHaveAttribute("tabindex");
   });
 });
 
@@ -973,6 +1044,7 @@ describe("AgentChatPanes temporary side chat routing", () => {
     useSideChatState.setState({
       sides: [{ id: "side-x", projectId: "project-a", parentChatId: "chat:a" }],
       split: SIDE_CHAT_SPLIT,
+      pairedId: "side-x",
     });
   });
   afterEach(() =>
@@ -980,28 +1052,66 @@ describe("AgentChatPanes temporary side chat routing", () => {
       sides: [],
       pendingClose: null,
       split: SIDE_CHAT_SPLIT,
-      soloChatId: null,
+      pairedId: null,
     }),
   );
 
-  it("pairs the parent left and the side right at an unpersisted 43 / 57 split", () => {
+  it("pairs the parent left and the side right at an unpersisted 43 / 57 split", async () => {
     render(<AgentChatPanes />);
     reportCenterWidth(1_000);
     expect(
-      screen.getAllByTestId(/chat-pane-/).map((pane) => pane.dataset.testid),
-    ).toEqual(["chat-pane-chat:a", "chat-pane-side-x"]);
-    const splitter = screen.getByRole("separator", {
+      screen
+        .getAllByRole("region", { name: /^Chat pane / })
+        .map((pane) => pane.dataset.chatId),
+    ).toEqual(["chat:a", "side-x"]);
+    const splitter = await screen.findByRole("separator", {
       name: "Resize chat panes",
     });
     expect(splitter).toHaveAttribute("aria-valuenow", "43");
     fireEvent.keyDown(splitter, { key: "ArrowRight" });
     expect(splitter).toHaveAttribute("aria-valuenow", "48");
+    fireEvent.keyDown(splitter, { key: "ArrowLeft", shiftKey: true });
+    expect(splitter).toHaveAttribute("aria-valuenow", "38");
+    fireEvent.keyDown(splitter, { key: "Home" });
+    expect(splitter).toHaveAttribute("aria-valuenow", "30");
+    fireEvent.keyDown(splitter, { key: "ArrowLeft" });
+    expect(splitter).toHaveAttribute("aria-valuenow", "30");
+    fireEvent.keyDown(splitter, { key: "End" });
+    expect(splitter).toHaveAttribute("aria-valuenow", "70");
+    fireEvent.keyDown(splitter, { key: "ArrowRight" });
+    expect(splitter).toHaveAttribute("aria-valuenow", "70");
     expect(
       localStorage.getItem(WORKBENCH_LAYOUT_STORAGE_KEY) ?? "",
     ).not.toContain("48");
   });
 
-  it("keeps the parent's own header and puts the side tab in the same row (Codex s2/f0244)", () => {
+  it("restores focus inside the explicit pair after an Editor resource roundtrip", () => {
+    useSideChatState.setState({
+      sides: [{ id: "side-x", projectId: "project-a", parentChatId: "chat:b" }],
+    });
+    const view = render(<AgentChatPanes />);
+    view.unmount();
+    useWorkbenchStore.setState({ activeTabId: "file:editor" });
+    render(<AgentChatPanes />);
+    expect(
+      screen
+        .getAllByRole("region", { name: /^Chat pane / })
+        .map((pane) => pane.dataset.chatId),
+    ).toEqual(["chat:b", "side-x"]);
+    expect(pinnedAgentChatOwner()).toBe("chat:b");
+  });
+
+  it("keeps New chat available with a solo side pane and hidden navigation", async () => {
+    const createChat = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({ createChat });
+    render(<AgentChatPanes navigationCollapsed />);
+    reportCenterWidth(859);
+    await settleLazyModules();
+    fireEvent.click(await screen.findByRole("button", { name: "New chat" }));
+    expect(createChat).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the parent's own header and puts the side tab in the same row (Codex s2/f0244)", async () => {
     const { container } = render(<AgentChatPanes />);
     reportCenterWidth(1_000);
     const header = container.querySelector(".agent-chat-center__header")!;
@@ -1012,31 +1122,35 @@ describe("AgentChatPanes temporary side chat routing", () => {
     expect(header).toHaveStyle({
       gridTemplateColumns: "minmax(0, 43fr) minmax(0, 57fr)",
     });
+    await within(header as HTMLElement).findByText("Chat A");
     const cells = Array.from(header.children);
     expect(cells[0]).toHaveTextContent("Chat A");
     expect(cells[0]).not.toHaveTextContent("Side chat");
     expect(cells[1]).toHaveClass("agent-chat-center__side-tab");
     // Tight: the side chat shows alone with only its own tab in the row.
     reportCenterWidth(600);
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(1);
+    expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+      1,
+    );
     expect(header).not.toHaveClass("agent-chat-center__header--split");
     expect(Array.from(header.children).map((cell) => cell.className)).toEqual([
       "agent-chat-center__side-tab",
     ]);
   });
 
-  it("falls back to the ordinary two-pane policy when another Chat takes focus", async () => {
+  it("replaces the center when another Chat takes focus", async () => {
     render(<AgentChatPanes />);
     reportCenterWidth(1_000);
     await act(async () => {
       await useWorkbenchStore.getState().activateTab("chat:b");
     });
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
-    expect(screen.getByTestId("chat-pane-chat:b")).toBeInTheDocument();
-    expect(screen.getByRole("separator")).toHaveAttribute(
-      "aria-valuenow",
-      "50",
+    expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+      1,
     );
+    expect(
+      screen.getByRole("region", { name: "Chat pane Chat B" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("separator")).toBeNull();
   });
 
   it("shows a just-opened fork alone until the user selects another Chat (P3)", async () => {
@@ -1046,21 +1160,129 @@ describe("AgentChatPanes temporary side chat routing", () => {
     });
     render(<AgentChatPanes />);
     reportCenterWidth(1_000);
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
-    // The fork commit activates the fork and marks it solo.
+    expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+      1,
+    );
+    // The fork commit activates the fork.
     await act(async () => {
       await useWorkbenchStore.getState().activateTab("chat:b");
-      useSideChatState.setState({ soloChatId: "chat:b" });
     });
     expect(
-      screen.getAllByTestId(/chat-pane-/).map((pane) => pane.dataset.testid),
-    ).toEqual(["chat-pane-chat:b"]);
+      screen
+        .getAllByRole("region", { name: /^Chat pane / })
+        .map((pane) => pane.dataset.chatId),
+    ).toEqual(["chat:b"]);
     expect(screen.queryByRole("separator")).toBeNull();
-    // Selecting another Chat is the user's own choice; pairing resumes.
     await act(async () => {
       await useWorkbenchStore.getState().activateTab("chat:a");
     });
-    expect(useSideChatState.getState().soloChatId).toBeNull();
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
+    expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+      1,
+    );
   });
+
+  it.each(["chat:a", "side-x"])(
+    "retains a responsive-hidden pair and allows explicit launch from %s",
+    async (owner) => {
+      render(<AgentChatPanes />);
+      reportCenterWidth(1000);
+      expect(
+        screen.getAllByRole("region", { name: /^Chat pane / }),
+      ).toHaveLength(2);
+      reportCenterWidth(859);
+      expect(
+        screen.getAllByRole("region", { name: /^Chat pane / }),
+      ).toHaveLength(1);
+      for (const width of [860, 1200, 600, 1400]) {
+        reportCenterWidth(width);
+        expect(
+          screen
+            .getAllByRole("region", { name: /^Chat pane / })
+            .map((pane) => pane.dataset.chatId),
+        ).toEqual(width < 860 ? ["side-x"] : ["chat:a", "side-x"]);
+      }
+      await act(async () => {
+        await useWorkbenchStore.getState().activateTab(owner);
+      });
+      await act(async () => {
+        await launchSideChat(
+          owner,
+          "project-a",
+          useWorkbenchStore.getState().projectGeneration,
+        );
+      });
+      expect(
+        screen.getAllByRole("region", { name: /^Chat pane / }),
+      ).toHaveLength(2);
+      expect(
+        screen.getByRole("region", { name: "Chat pane Chat A" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("region", { name: "Chat pane Side chat" }),
+      ).toBeInTheDocument();
+      expect(useSideChatState.getState().sides).toHaveLength(1);
+    },
+  );
+});
+
+it("restores the requested side pair after compact and narrow layouts", () => {
+  useWorkbenchStore.setState({
+    project: { id: "project-a", name: "A", roots: [] },
+    tabs: [tabs[0], { ...tabs[1], id: "side-b" }],
+    activeTabId: "side-b",
+  });
+  useSideChatState.setState({
+    sides: [{ id: "side-b", parentChatId: "chat:a", projectId: "project-a" }],
+    pairedId: "side-b",
+  });
+  const view = render(<AgentChatPanes />);
+  expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+    2,
+  );
+  reportCenterWidth(700);
+  expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+    1,
+  );
+  reportCenterWidth(1200);
+  expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+    2,
+  );
+  view.rerender(<AgentChatPanes compact />);
+  expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+    1,
+  );
+  view.rerender(<AgentChatPanes />);
+  expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+    2,
+  );
+});
+
+it("keeps a parent's rename text and focus when pairing and unpairing its side chat", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "project-a", name: "A", roots: [] },
+    tabs: [tabs[0], { ...tabs[1], id: "side-b" }],
+    activeTabId: "chat:a",
+  });
+  useSideChatState.setState({
+    sides: [{ id: "side-b", parentChatId: "chat:a", projectId: "project-a" }],
+    pairedId: null,
+  });
+  render(<AgentChatPanes />);
+  fireEvent.click(
+    screen.getByRole("button", { name: /Chat actions for .* task/ }),
+  );
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "More chat actions in A" }),
+  );
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Rename chat" }));
+  const input = await screen.findByRole("textbox", { name: "New chat name" });
+  fireEvent.change(input, { target: { value: "Uncommitted rename" } });
+  input.focus();
+  act(() => useSideChatState.setState({ pairedId: "side-b" }));
+  expect(screen.getByRole("textbox", { name: "New chat name" })).toBe(input);
+  expect(input).toHaveValue("Uncommitted rename");
+  expect(input).toHaveFocus();
+  act(() => useSideChatState.setState({ pairedId: null }));
+  expect(screen.getByRole("textbox", { name: "New chat name" })).toBe(input);
+  expect(input).toHaveFocus();
 });

@@ -10,7 +10,7 @@ import {
 import { formatKeymapChords, keymapBinding } from "../../domain/keymapRegistry";
 import type { AgentTool } from "../../workbench/AgentToolsProvider";
 import { MenuPopover } from "../../ui/MenuPopover";
-import type { BrowserSuggestedSites } from "./browserAddress";
+import type { BrowserSuggestedSites } from "./browserSuggestions";
 import { BrowserFavicon } from "./browserFavicon";
 import "./BrowserNewTab.css";
 import { useWorkbenchStore } from "../../app/store";
@@ -88,7 +88,7 @@ export function BrowserNewTab({
                     available
                       ? undefined
                       : !chatAvailable
-                        ? "Open a Chat in Agent mode first"
+                        ? "Open a chat in Agent mode first"
                         : tool === "sideChat"
                           ? "Select an answer or open a side chat first"
                           : "Terminal requires the desktop app"

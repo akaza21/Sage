@@ -8,7 +8,6 @@ use crate::acp::{
         JournalHandle, PrepareDispatch, PrepareRecovery, ProjectIntentAuthority,
         ProjectionPublisher, RecoveryActivationParts, SendCoordinator, SessionPumpIntent,
         SessionTreeLease, SqliteAdapterBatchJournal, TeardownActivationParts,
-        is_available_commands_update,
     },
     scheduler::RuntimeOwner,
     store::PrepareTurnCommand,
@@ -52,6 +51,8 @@ where
         } else {
             self.idle_decoder.disable_recoverable_oversize();
         }
+        self.idle_decoder
+            .set_oversize_skip(self.parts.skips_oversize_frames());
         let mut frame = self
             .idle_decoder
             .push_chunk(chunk)
@@ -73,10 +74,14 @@ where
                         AdapterPumpError::Frame
                     })?;
                     self.parts.accept_idle_batch(batch, &mut self.transport)?;
-                } else if !is_available_commands_update(
+                } else if crate::acp::runtime::activation_pump::is_available_commands_update(
                     &frame,
                     self.parts.session().external_session_id.as_str(),
                 ) {
+                    self.parts
+                        .receive_command_update(&frame)
+                        .map_err(|_| AdapterPumpError::Frame)?;
+                } else {
                     match self.parts.ingest_idle_frame(&frame) {
                         Ok(batch) => {
                             if let Err(error) = self.parts.accept_idle_batch(batch, &mut self.transport) {
@@ -287,6 +292,8 @@ where
             owner,
             clock,
         } = parts;
+        let mut parts = parts;
+        let pending_session_events = parts.take_pending_session_events();
         let (adapter, activation_journal, resources, session) = parts.into_parts();
         let (lease, handoff) = match activation_journal.into_handoff() {
             Ok(value) => value,
@@ -298,7 +305,8 @@ where
                             *activation_journal,
                             resources,
                             session,
-                        ),
+                        )
+                        .with_pending_session_events(pending_session_events),
                         idle_decoder: IncrementalFrameDecoder::new(),
                         transport,
                         control,
@@ -365,7 +373,7 @@ where
             Some(observation) => adapter_journal.with_characterization_observation(observation),
             None => adapter_journal,
         };
-        let pump = AdapterPump::from_admission(
+        let mut pump = AdapterPump::from_admission(
             adapter,
             adapter_journal,
             resources,
@@ -373,6 +381,7 @@ where
             pump_intent,
             pump_admission,
         );
+        pump.seed_session_events(pending_session_events, clock.now_millis());
         Ok(PreparedDriverTurn {
             driver: ProcessAdapterDriver::from_admission(
                 pump,

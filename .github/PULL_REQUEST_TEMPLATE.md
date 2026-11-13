@@ -1,7 +1,5 @@
 ## Outcome
 
-Lifecycle rules and record templates: `docs/development/WORKFLOW.md`.
-
 ## Scope
 
 ## Architecture and invariants

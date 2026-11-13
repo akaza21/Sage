@@ -1,6 +1,7 @@
-import { createInjectedEditorWatchDelivery } from "../domain/editorWatch";
 import { browserDesktop } from "../services/browserDesktop";
+import { browserEditor } from "../services/browserEditor";
 import type {
+  ChatDeleteRequest,
   ChatLifecycleRequest,
   MoveChatRequest,
   PinChatRequest,
@@ -51,7 +52,9 @@ const project: ProjectPort = {
   getBootstrapSnapshot: () => browserDesktop.getBootstrapSnapshot(),
   getProjectChatQueuedPrompts: async () => ({}),
   replaceChatQueuedPrompts: async () => {},
-  createProjectFromPicker: (
+  pickProjectSourceFolder: () => Promise.resolve(null),
+  createProject: (
+    _request,
     _expectedActiveProjectId,
     expectedTransitionEpoch,
   ) => Promise.resolve(uncommittedTransition(expectedTransitionEpoch)),
@@ -87,35 +90,38 @@ const project: ProjectPort = {
     ),
 };
 
+/** Rejects where the native command would, rather than throwing. */
+const settle = <T>(run: () => T): Promise<T> =>
+  new Promise((resolve) => resolve(run()));
+
 const editor: EditorPort = {
   readTextFile: (resource) =>
-    Promise.resolve(browserDesktop.readTextFile(resource)),
+    settle(() => browserDesktop.readTextFile(resource)),
   openEditorDocument: (resource) =>
-    Promise.resolve(browserDesktop.openEditorDocument(resource)),
+    settle(() => browserDesktop.openEditorDocument(resource)),
   snapshotEditorBuffer: (request) =>
-    Promise.resolve(browserDesktop.snapshotEditorBuffer(request)),
+    settle(() => browserDesktop.snapshotEditorBuffer(request)),
   saveEditorDocument: (resource) =>
-    Promise.resolve(browserDesktop.saveEditorDocument(resource)),
-  discardEditorBuffer: (resource) =>
-    Promise.resolve(browserDesktop.discardEditorBuffer(resource)),
+    settle(() => browserDesktop.saveEditorDocument(resource)),
+  discardEditorBuffer: (resource, keepIfAbsent) =>
+    settle(() => browserDesktop.discardEditorBuffer(resource, keepIfAbsent)),
+  rebaseEditorBuffer: (request) => settle(() => browserEditor.rebase(request)),
   watchEditorDocument: async (
     resource: ResourceRef,
-  ): Promise<EditorWatchSubscription> => {
-    const injected = createInjectedEditorWatchDelivery();
-    return {
-      resource,
-      delivery: injected.delivery,
-      cancel: async () => {
-        injected.close();
-      },
-    };
-  },
+  ): Promise<EditorWatchSubscription> => browserEditor.watch(resource),
 };
 
 const repository: RepositoryPort = {
   getRepositoryStatus: () => browserDesktop.getRepositoryStatus(),
   getRepositoryChangeStamp: async () => "browser",
-  getFileDiff: (resource) => browserDesktop.getFileDiff(resource),
+  getFileDiff: (resource, scope) =>
+    scope
+      ? Promise.reject(
+          new Error("Scoped Git diffs require the native Git backend."),
+        )
+      : browserDesktop.getFileDiff(resource),
+  getFileGitBase: (resource, knownOid) =>
+    browserDesktop.getFileGitBase(resource, knownOid),
   mutateGitFile: (request, expectedTransitionEpoch) =>
     browserDesktop.mutateGitFile(request, expectedTransitionEpoch),
   abortGitInProgress: (request, expectedTransitionEpoch) =>
@@ -143,6 +149,11 @@ const repository: RepositoryPort = {
     transitionEpoch: request.expectedTransitionEpoch,
     refs: [],
     truncated: false,
+  }),
+  resolveResourceRepository: async (request) => ({
+    projectId: request.projectId,
+    transitionEpoch: request.expectedTransitionEpoch,
+    repository: { rootId: request.resource.rootId, relativePath: "" },
   }),
   getNestedRepositoryStatus: () =>
     Promise.reject(new Error("nested repository status is not implemented")),
@@ -179,17 +190,20 @@ const chat: ChatPort = {
     request: ChatLifecycleRequest,
     expectedTransitionEpoch: number,
   ) => browserDesktop.restoreChat(request, expectedTransitionEpoch),
+  deleteChat: (request: ChatDeleteRequest, expectedTransitionEpoch: number) =>
+    browserDesktop.deleteChat(request, expectedTransitionEpoch),
   moveChat: (request: MoveChatRequest, expectedTransitionEpoch: number) =>
     browserDesktop.moveChat(request, expectedTransitionEpoch),
   pinChat: (request: PinChatRequest, expectedTransitionEpoch: number) =>
     browserDesktop.pinChat(request, expectedTransitionEpoch),
 };
 
+const listBrowserHarnesses = () =>
+  browserDesktop.getBootstrapSnapshot().then((snapshot) => snapshot.harnesses);
+
 const agent: AgentPort = {
-  listHarnesses: () =>
-    browserDesktop
-      .getBootstrapSnapshot()
-      .then((snapshot) => snapshot.harnesses),
+  listHarnesses: listBrowserHarnesses,
+  refreshHarnesses: listBrowserHarnesses,
   listHarnessModels: (harnessId) => browserDesktop.listHarnessModels(harnessId),
   sendPrompt: (request) => browserDesktop.sendPrompt(request),
 };
@@ -239,6 +253,15 @@ const settings: SettingsPort = {
     writeBrowserEditorSettings(editorSettings);
     return Promise.resolve(editorSettings);
   },
+  // New chat defaults live in the native settings store only.
+  getNewChatDefaults: () =>
+    Promise.reject(
+      new Error("New chat defaults are not available in the browser adapter"),
+    ),
+  setNewChatDefaults: () =>
+    Promise.reject(
+      new Error("New chat defaults are not available in the browser adapter"),
+    ),
   getSessionAccessModes: () => Promise.resolve(sessionAccessModes),
   setSessionAccessModes: (modes) => {
     sessionAccessModes = admitSessionAccessModes(modes);

@@ -4,22 +4,38 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronRight,
+  Replace,
 } from "../../ui/leanIcons";
 
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import {
-  type WorkspaceSearchGateway,
-  type WorkspaceSearchLimitReason,
-  type WorkspaceSearchMatch,
-  type WorkspaceSearchNavigationRequest,
-  searchResultFileName,
+  keymapBinding,
+  matchesPlatformChord,
+} from "../../domain/keymapRegistry";
+import { usesMetaModifier } from "../../ui/shortcutLabel";
+
+import type {
+  WorkspaceSearchGateway,
+  WorkspaceSearchLimitReason,
+  WorkspaceSearchMatch,
+  WorkspaceSearchNavigationRequest,
 } from "./workspaceSearchDomain";
+import { searchResultFileName } from "./searchResultFileName";
 import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
 import { workspaceSearchDesktop } from "./workspaceSearchDesktop";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
 import { WorkspaceSearchCommandBar } from "./WorkspaceSearchCommandBar";
 import { FileKindIcon } from "../files/FileKindIcon";
+import type { WorkspaceReplaceGateway } from "./workspaceReplace";
+import {
+  loadReplace,
+  loadedReplaceParts,
+  preloadReplace,
+  preloadReplaceWhenIdle,
+} from "./workspaceReplaceLoader";
+import type { ReplaceState } from "./WorkspaceReplaceParts";
+import { highlightPreview } from "./workspaceSearchHighlight";
 
 interface WorkspaceSearchViewProps {
   projectId: string | null;
@@ -27,6 +43,7 @@ interface WorkspaceSearchViewProps {
   indexGeneration: number;
   onOpenMatch: (request: WorkspaceSearchNavigationRequest) => void;
   gateway?: WorkspaceSearchGateway;
+  replaceGateway?: WorkspaceReplaceGateway;
 }
 
 const limitMessages: Record<WorkspaceSearchLimitReason, string> = {
@@ -39,109 +56,20 @@ const limitMessages: Record<WorkspaceSearchLimitReason, string> = {
   timeLimit: "The scan reached its time limit.",
 };
 
-function highlightPreview(
-  preview: string,
-  query: string,
-  caseSensitive: boolean,
-  wholeWord: boolean,
-  occurrenceIndex: number,
-) {
-  const source = preview || "(empty line)";
-  if (!query) return source;
-  const ranges = literalPreviewMatchRanges(
-    source,
-    query,
-    caseSensitive,
-    wholeWord,
-  );
-  const target = ranges[occurrenceIndex];
-  if (!target) return source;
-  return (
-    <>
-      {source.slice(0, target.start)}
-      <mark>{source.slice(target.start, target.end)}</mark>
-      {source.slice(target.end)}
-    </>
-  );
-}
-
-interface PreviewMatchRange {
-  start: number;
-  end: number;
-}
-
-const wordCharacterPattern = /^[\p{L}\p{N}_]$/u;
-
-function isWordCharacter(character: string | undefined) {
-  return character !== undefined && wordCharacterPattern.test(character);
-}
-
-function hasWordBoundaries(source: string, { start, end }: PreviewMatchRange) {
-  const before = [...source.slice(0, start)].at(-1);
-  const after = [...source.slice(end)][0];
-  return !isWordCharacter(before) && !isWordCharacter(after);
-}
-
-function foldWithOrigin(source: string) {
-  let folded = "";
-  const origin: PreviewMatchRange[] = [];
-  for (let start = 0; start < source.length;) {
-    const codePoint = source.codePointAt(start);
-    if (codePoint === undefined) break;
-    const character = String.fromCodePoint(codePoint);
-    const end = start + character.length;
-    const foldedCharacter = character.toLowerCase();
-    folded += foldedCharacter;
-    for (let index = 0; index < foldedCharacter.length; index += 1) {
-      origin.push({ start, end });
-    }
-    start = end;
-  }
-  return { folded, origin };
-}
-
-function literalPreviewMatchRanges(
-  source: string,
-  query: string,
-  caseSensitive: boolean,
-  wholeWord: boolean,
-) {
-  const foldedSource = caseSensitive
-    ? { folded: source, origin: null }
-    : foldWithOrigin(source);
-  const foldedQuery = caseSensitive ? query : foldWithOrigin(query).folded;
-  if (!foldedQuery) return [];
-
-  const ranges: PreviewMatchRange[] = [];
-  let offset = 0;
-  while (offset <= foldedSource.folded.length - foldedQuery.length) {
-    const foldedStart = foldedSource.folded.indexOf(foldedQuery, offset);
-    if (foldedStart < 0) break;
-    const foldedEnd = foldedStart + foldedQuery.length;
-    const range = foldedSource.origin
-      ? {
-          start: foldedSource.origin[foldedStart].start,
-          end: foldedSource.origin[foldedEnd - 1].end,
-        }
-      : { start: foldedStart, end: foldedEnd };
-    if (!wholeWord || hasWordBoundaries(source, range)) ranges.push(range);
-    offset = foldedEnd;
-  }
-  return ranges;
-}
-
 export function WorkspaceSearchView({
   projectId,
   transitionEpoch,
   indexGeneration,
   onOpenMatch,
   gateway = workspaceSearchDesktop,
+  replaceGateway,
 }: WorkspaceSearchViewProps) {
   const {
     state,
     setQuery,
     setCaseSensitive,
     setWholeWord,
+    setUseRegex,
     setIncludePatternText,
     setExcludePatternText,
     submit,
@@ -157,6 +85,17 @@ export function WorkspaceSearchView({
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const [parts, setParts] = useState(loadedReplaceParts);
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  // Kept here, not in the Replace chunk, so a closed Replace keeps its text.
+  const [replaceState, setReplaceState] = useState<ReplaceState>();
+  useEffect(preloadReplaceWhenIdle, []);
+
+  function toggleReplace(open = !replaceOpen) {
+    setReplaceOpen(open);
+    if (open && !parts)
+      loadReplace().then(setParts, () => setReplaceOpen(false));
+  }
 
   function openMatch(match: WorkspaceSearchMatch) {
     const response = state.response;
@@ -206,12 +145,51 @@ export function WorkspaceSearchView({
   }, [matches]);
   const allCollapsed =
     groups.length > 0 && groups.every(([key]) => collapsedPaths.has(key));
+  const replace =
+    replaceOpen && parts
+      ? {
+          state: replaceState,
+          setState: setReplaceState,
+          search: state,
+          gateway: replaceGateway,
+          onReplaced: () => void refresh(),
+          files: groups.map(([, fileMatches]) => fileMatches[0].resource),
+          projectId,
+        }
+      : undefined;
 
   return (
-    <div className="workspace-search">
+    <div
+      className="workspace-search"
+      onKeyDown={(event) => {
+        if (
+          projectId &&
+          matchesPlatformChord(
+            keymapBinding("replace"),
+            event,
+            usesMetaModifier(),
+          )
+        ) {
+          event.preventDefault();
+          toggleReplace(true);
+        }
+      }}
+    >
       <div className="sidebar__heading">
         <span>Search</span>
         <span className="sidebar__heading-actions">
+          <button
+            type="button"
+            aria-label="Toggle Replace"
+            title="Toggle Replace"
+            aria-pressed={replaceOpen}
+            disabled={!projectId}
+            onClick={() => toggleReplace()}
+            onPointerEnter={preloadReplace}
+            onFocus={preloadReplace}
+          >
+            <Replace size={14} aria-hidden="true" />
+          </button>
           <button
             type="button"
             aria-label="Refresh Search"
@@ -243,11 +221,14 @@ export function WorkspaceSearchView({
         query={state.query}
         caseSensitive={state.caseSensitive}
         wholeWord={state.wholeWord}
+        useRegex={state.useRegex}
         includePatternText={state.includePatternText}
         excludePatternText={state.excludePatternText}
         onQueryChange={setQuery}
         onCaseSensitiveChange={setCaseSensitive}
         onWholeWordChange={setWholeWord}
+        onUseRegexChange={setUseRegex}
+        replaceRow={replace && parts && <parts.ReplaceRow context={replace} />}
         onIncludePatternTextChange={setIncludePatternText}
         onExcludePatternTextChange={setExcludePatternText}
         onSearch={() => void submit()}
@@ -255,20 +236,26 @@ export function WorkspaceSearchView({
       />
 
       <div className="workspace-search__body" aria-live="polite">
+        {replace && parts && (
+          <parts.ReplaceStatus
+            context={replace}
+            rootName={(rootId) => rootNames.get(rootId) ?? "Root"}
+          />
+        )}
         {!projectId ? (
           <p className="workspace-search__empty">
-            Open a Project to search its files.
+            Open a project to search its files.
           </p>
         ) : null}
         {state.phase === "idle" && projectId ? (
           <p className="workspace-search__empty">
-            Search all roots in the active Project.
+            Search all roots in the active project.
           </p>
         ) : null}
         {state.phase === "searching" ? (
           <p className="workspace-search__empty workspace-search__progress">
             <LoaderCircle size={14} aria-hidden="true" />
-            Searching the Project...
+            Searching the project...
           </p>
         ) : null}
         {state.phase === "error" ? (
@@ -304,7 +291,14 @@ export function WorkspaceSearchView({
                 No matches found for "{state.response.query}".
               </p>
             ) : (
-              <div className="workspace-search__results" role="list">
+              <div
+                className={
+                  replace
+                    ? "workspace-search__results workspace-replace"
+                    : "workspace-search__results"
+                }
+                role="list"
+              >
                 {groups.map(([key, fileMatches]) => {
                   const first = fileMatches[0];
                   const collapsed = collapsedPaths.has(key);
@@ -354,6 +348,12 @@ export function WorkspaceSearchView({
                           {fileMatches.length}
                         </span>
                       </button>
+                      {replace && parts && (
+                        <parts.ReplaceFileAction
+                          context={replace}
+                          resource={first.resource}
+                        />
+                      )}
                       {!collapsed
                         ? fileMatches.map((match, index) => (
                             <div
@@ -369,9 +369,6 @@ export function WorkspaceSearchView({
                                   handleMatchKeyDown(event, match)
                                 }
                               >
-                                <span className="workspace-search__position">
-                                  {match.lineNumber}:{match.columnNumber}
-                                </span>
                                 <span className="workspace-search__preview">
                                   {highlightPreview(
                                     match.preview,
@@ -385,9 +382,19 @@ export function WorkspaceSearchView({
                                           candidate.lineNumber ===
                                           match.lineNumber,
                                       ).length,
+                                    state.useRegex,
                                   )}
                                 </span>
+                                <span className="workspace-search__position">
+                                  {match.lineNumber}:{match.columnNumber}
+                                </span>
                               </button>
+                              {replace && parts && (
+                                <parts.ReplaceMatchAction
+                                  context={replace}
+                                  match={match}
+                                />
+                              )}
                             </div>
                           ))
                         : null}

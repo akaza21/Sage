@@ -48,7 +48,9 @@ pub(super) enum State {
 pub(crate) struct RuntimeSlot {
     state: Mutex<State>,
     pub(crate) config: Arc<crate::acp::session_config::ConfigChannel>,
+    pub(crate) commands: Arc<crate::acp::slash_commands::CommandChannel>,
     pub(crate) goal: Arc<crate::acp::goal::GoalChannel>,
+    pub(crate) usage: Arc<crate::acp::usage::UsageChannel>,
 }
 
 impl RuntimeSlot {
@@ -56,7 +58,9 @@ impl RuntimeSlot {
         Self {
             state: Mutex::new(State::Empty),
             config: Arc::new(crate::acp::session_config::ConfigChannel::default()),
+            commands: Arc::default(),
             goal: Arc::new(crate::acp::goal::GoalChannel::default()),
+            usage: Arc::default(),
         }
     }
 
@@ -87,6 +91,7 @@ impl RuntimeSlot {
             State::Empty => {
                 self.config.reserve(owner.clone());
                 self.goal.reserve(owner.clone());
+                self.commands.reserve(owner.clone());
                 *state = State::Starting { owner };
                 Ok(())
             }
@@ -165,6 +170,8 @@ impl RuntimeSlot {
             State::Starting { owner: current } if current == owner => {
                 self.config.clear(owner);
                 self.goal.clear(owner);
+                self.commands.clear(owner);
+                self.usage.clear(owner);
                 *state = State::Empty;
                 Ok(())
             }
@@ -193,6 +200,8 @@ impl RuntimeSlot {
             {
                 self.config.clear(owner);
                 self.goal.clear(owner);
+                self.commands.clear(owner);
+                self.usage.clear(owner);
                 *state = State::Empty;
                 Ok(())
             }
@@ -229,6 +238,8 @@ impl RuntimeSlot {
             } if current == owner && Arc::ptr_eq(current_host, host) => {
                 self.config.clear(owner);
                 self.goal.clear(owner);
+                self.commands.clear(owner);
+                self.usage.clear(owner);
                 *state = State::Empty;
                 Ok(())
             }
@@ -273,6 +284,8 @@ impl RuntimeSlot {
             State::Starting { owner: current } if current == owner => {
                 self.config.clear(owner);
                 self.goal.clear(owner);
+                self.commands.clear(owner);
+                self.usage.clear(owner);
                 *state = State::StartingRecovery {
                     owner: current.clone(),
                 };
@@ -290,6 +303,8 @@ impl RuntimeSlot {
                     .remove(owner)
                     .map_err(|_| RuntimeSlotError::Recovery)?;
                 self.goal.clear(owner);
+                self.commands.clear(owner);
+                self.usage.clear(owner);
                 *state = State::Recovery {
                     owner: current.clone(),
                     host: Arc::clone(host),
@@ -299,6 +314,8 @@ impl RuntimeSlot {
             State::StartingRecovery { owner: current } if current == owner => Ok(()),
             State::Recovery { owner: current, .. } if current == owner => {
                 self.goal.clear(owner);
+                self.commands.clear(owner);
+                self.usage.clear(owner);
                 self.config
                     .remove(owner)
                     .map_err(|_| RuntimeSlotError::Recovery)
@@ -326,6 +343,8 @@ impl RuntimeSlot {
             } if current == owner && Arc::ptr_eq(current_host, host) => {
                 self.config.clear(owner);
                 self.goal.clear(owner);
+                self.commands.clear(owner);
+                self.usage.clear(owner);
                 *state = State::Empty;
                 Ok(())
             }
@@ -357,6 +376,8 @@ impl RuntimeSlot {
             } if current == owner && Arc::ptr_eq(current_host, host) => {
                 self.config.clear(owner);
                 self.goal.clear(owner);
+                self.commands.clear(owner);
+                self.usage.clear(owner);
                 *state = State::Empty;
                 Ok(())
             }

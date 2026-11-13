@@ -9,8 +9,9 @@ import {
   safeOrdinal,
   safeText,
   safeTimestamp,
-} from "./acpDesktopResponses";
+} from "./acpDesktopGuards";
 import { admittedImageDataUrl } from "./acpDesktopResponseImage";
+import { safeUserInputRequest } from "./acpDesktopUserInput";
 import {
   MAX_FILE_CHANGES,
   safeFileChange,
@@ -84,16 +85,26 @@ export function safeItem(value: unknown): AcpItem | null {
   if (!identity) return null;
   const { payload } = value;
   switch (value.kind) {
-    case "text": {
+    case "text":
+    case "userPrompt": {
       const text = safeText(payload.text, 262_144);
-      return value.toolState === null &&
-        text !== null &&
-        isOneOf(payload.role, ["user", "assistant", "system"] as const)
+      if (value.toolState !== null || text === null) return null;
+      const { role } = payload;
+      if (value.kind === "userPrompt")
+        return Object.keys(payload).length === 1
+          ? {
+              ...identity,
+              kind: "userPrompt",
+              toolState: null,
+              payload: { text },
+            }
+          : null;
+      return isOneOf(role, ["user", "assistant", "system"] as const)
         ? {
             ...identity,
             kind: "text",
             toolState: null,
-            payload: { role: payload.role, text },
+            payload: { role, text },
           }
         : null;
     }
@@ -229,18 +240,24 @@ export function safeItem(value: unknown): AcpItem | null {
               "allow_once" | "allow_always" | "reject_once" | "reject_always"
             >)
           : undefined;
-      const source = isOneOf(payload.source, ["harness", "browser"] as const)
+      const source = isOneOf(payload.source, [
+        "harness",
+        "browser",
+        "browserDeveloper",
+      ] as const)
         ? payload.source
         : undefined;
-      return !isOneOf(value.toolState, [
-        "pending",
-        "inProgress",
-        "waitingForApproval",
-        "completed",
-        "failed",
-        "declined",
-        "cancelled",
-      ] as const) ||
+      const userInput = safeUserInputRequest(payload.userInput);
+      return userInput === undefined ||
+        !isOneOf(value.toolState, [
+          "pending",
+          "inProgress",
+          "waitingForApproval",
+          "completed",
+          "failed",
+          "declined",
+          "cancelled",
+        ] as const) ||
         !requestId ||
         label === null ||
         summary === null ||
@@ -276,6 +293,7 @@ export function safeItem(value: unknown): AcpItem | null {
                   ? (payload.category as ToolPresentation["kind"])
                   : undefined,
               reason: safeNullableText(payload.reason ?? null, 2048) ?? null,
+              ...(userInput ? { userInput } : {}),
             },
           };
     }

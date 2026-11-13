@@ -49,6 +49,8 @@ function Pane({
           onScreenshot={vi.fn()}
           onZoom={vi.fn()}
           onZoomReset={vi.fn()}
+          deviceOpen={false}
+          onDevice={vi.fn()}
           onDownloads={vi.fn()}
           onHistory={vi.fn()}
           onSettings={vi.fn()}

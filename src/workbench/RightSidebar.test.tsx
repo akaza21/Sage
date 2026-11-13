@@ -958,7 +958,7 @@ describe("RightSidebar Explorer New Folder", () => {
     );
     fireEvent.change(input, { target: { value: "nested" } });
     expect(screen.getByText("Path: Root B/src/nested")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Create Folder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create folder" }));
     expect(createProjectFolder).toHaveBeenCalledWith(
       { rootId: "root-b", relativePath: "src" },
       "nested",
@@ -1057,7 +1057,7 @@ describe("RightSidebar Explorer Rename File", () => {
     ).toHaveFocus();
   });
 
-  it("requires the source File and Diff tabs to be closed", () => {
+  it("requires the source file and diff tabs to be closed", () => {
     const renameProjectFile = vi.fn(async () => true);
     const source = renameState(renameProjectFile);
     useWorkbenchStore.setState({
@@ -1159,6 +1159,9 @@ describe("RightSidebar Explorer Rename File", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Renaming/ })).toBeDisabled();
 
+    await vi.waitFor(() =>
+      expect(projectPort.renameProjectFile).toHaveBeenCalled(),
+    );
     act(() => rejectRename(new Error("Native rename failed safely.")));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Native rename failed safely.",

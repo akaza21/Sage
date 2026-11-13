@@ -1,24 +1,24 @@
 import { useContext, useState } from "react";
+import { type AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import {
   BrainCircuit,
+  ChevronRight,
+  Command,
   FilePenLine,
   FileText,
   Image,
-  Command,
   Search,
   TerminalSquare,
   Workflow,
-  ChevronRight,
 } from "../../../ui/leanIcons";
-
-import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { ToolItem } from "./ToolItem";
-import { WorkedTurnTerminal } from "./WorkedActivityVisibility";
+import { WorkedTurnTerminal } from "./WorkedTurnTerminal";
 import { toolStateLabels } from "./statusSemantics";
 import {
   liveToolItem,
-  toolRollupLabel,
+  liveToolProgress,
   toolRollupDurationLabel,
+  toolRollupLabel,
   toolRollupState,
   type ToolRollup,
 } from "./toolActivityRollup";
@@ -67,6 +67,8 @@ export function ToolActivityRollup({
   const iconKind = (current ?? rollup.items[0])?.payload.presentation.kind;
   const ActivityIcon = (iconKind && activityIcons[iconKind]) || Workflow;
   const duration = toolRollupDurationLabel(rollup.items);
+  // A collapsed row still says what the live MCP call is doing.
+  const progress = liveToolProgress(current);
   return (
     <details
       className="acp-activity-card acp-activity-card--tool-rollup acp-tool-rollup"
@@ -79,7 +81,7 @@ export function ToolActivityRollup({
       }}
     >
       <summary
-        aria-label={[label, toolStateLabels[state], duration]
+        aria-label={[label, progress, toolStateLabels[state], duration]
           .filter(Boolean)
           .join(", ")}
       >
@@ -94,6 +96,9 @@ export function ToolActivityRollup({
           >
             {label}
           </span>
+          {progress ? (
+            <span className="acp-tool-rollup__progress">{progress}</span>
+          ) : null}
         </span>
         <span className="acp-tool-rollup__meta">
           <ChevronRight

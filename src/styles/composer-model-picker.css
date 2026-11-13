@@ -1,6 +1,5 @@
 .composer__model-group {
   display: flex;
-  min-width: 60px;
   align-items: center;
   gap: 4px;
   margin-left: auto;
@@ -11,10 +10,8 @@
   max-width: 148px;
   justify-content: flex-start;
   gap: 4px;
-  padding: 0 4px;
+  padding: 0 var(--space-2);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .composer__model-label {
@@ -45,21 +42,33 @@
   opacity: 1;
 }
 
+/* A restored value is the chat's choice, not yet reapplied to a running
+   session: it reads in the muted tone until the session reports it. */
+.composer__model-group
+  [data-restored]
+  :is(.composer__model-label, .composer__effort-label) {
+  color: var(--composer-muted-text);
+}
+
+.composer__config-notice {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--composer-muted-text);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composer__model-group .composer__model-trigger:has(> .composer__model-effort) {
   max-width: 240px;
 }
 
 .composer__model-group .composer__effort-picker {
   min-width: 28px;
-  overflow: hidden;
-  height: 28px;
   gap: 4px;
-  padding: 0 4px;
-  border: 0;
-  color: var(--composer-control-text);
-  background: transparent;
-  font-size: 11px;
+  padding: 0 var(--space-2);
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .composer__effort-menu.menu-popover {
@@ -90,8 +99,8 @@
   max-width: 100%;
   overflow: hidden;
   color: var(--color-accent);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -105,8 +114,17 @@
   border: 0;
   color: var(--composer-muted-text);
   background: transparent;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   line-height: 16px;
+}
+
+.composer-effort__heading > button {
+  justify-content: center;
+  border-radius: var(--radius-sm);
+}
+
+.composer-effort__heading button:hover:not(:disabled) {
+  color: var(--color-text-emphasis);
 }
 
 .composer-effort__identity button {
@@ -131,14 +149,21 @@
   height: 24px;
   margin: 0;
   appearance: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-pill);
   background: linear-gradient(
-    to right,
-    var(--color-accent) var(--effort-position),
-    color-mix(in srgb, var(--color-text-muted) 35%, var(--color-plane-raised))
-      var(--effort-position)
-  );
+      to right,
+      var(--color-accent) var(--effort-position),
+      color-mix(in srgb, var(--color-text-muted) 35%, var(--color-plane-raised))
+        var(--effort-position)
+    )
+    center / 100% 20px no-repeat;
   cursor: pointer;
+  transition: background-size var(--motion-duration-fast) ease-out;
+}
+
+.composer-effort__track input:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .composer-effort__track input::-webkit-slider-thumb {
@@ -148,6 +173,28 @@
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-circle);
   background: var(--color-status-foreground);
+  transition:
+    transform var(--motion-duration-fast) ease-out,
+    box-shadow var(--motion-duration-fast) ease-out;
+}
+
+@media (hover: hover) {
+  .composer-effort__track input:hover:not([aria-disabled="true"]) {
+    background-size: 100% 22px;
+  }
+
+  .composer-effort__track
+    input:hover:not([aria-disabled="true"])::-webkit-slider-thumb {
+    transform: scale(1.14);
+    box-shadow: var(--highlight-focus-halo-shadow);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-effort__track
+    input:hover:not([aria-disabled="true"])::-webkit-slider-thumb {
+    transform: none;
+  }
 }
 
 .composer-effort__stops {
@@ -191,15 +238,13 @@
   flex-direction: column;
   width: min(232px, calc(100vw - 32px));
   max-width: min(232px, calc(100vw - 32px));
-  max-height: min(288px, calc(100vh - 16px));
-  gap: 2px;
-  padding: 4px;
+  max-height: min(312px, calc(100vh - 16px));
 }
 
 .composer-model-picker__title {
   flex: 0 0 auto;
   margin: 0;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   color: var(--composer-muted-text);
   font-size: var(--font-size-xs);
   line-height: 16px;
@@ -216,15 +261,17 @@
   grid-template-columns: minmax(0, 1fr) 16px;
   align-items: center;
   gap: 8px;
-  color: var(--composer-control-text);
+  font-weight: var(--font-weight-regular);
 }
 
-.composer-model-picker .searchable-picker__option[aria-selected="true"] {
+.composer-model-picker
+  .searchable-picker__option[aria-selected="true"]:not(:hover, :focus-visible) {
   background: transparent;
 }
 
-.composer-model-picker .searchable-picker__option:is(:hover, :focus-visible) {
-  background: var(--composer-control-hover);
+.composer-model-picker .searchable-picker__option-copy > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (forced-colors: active) {

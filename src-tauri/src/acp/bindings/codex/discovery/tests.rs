@@ -1,11 +1,14 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use serde_json::{Value, json};
 
 use super::{CodexAccountSnapshot, CodexDiscoveryError, CodexDiscoveryProtocol, ProtocolProgress};
 use crate::acp::{
     bindings::codex::{Platform, parse_packet_metadata},
-    contract::RuntimeEpoch,
+    contract::{RequiredText, RuntimeEpoch},
     transport::{Frame, IncrementalFrameDecoder},
 };
+
+mod account_read_tests;
 
 fn protocol() -> CodexDiscoveryProtocol {
     let packet = parse_packet_metadata(include_bytes!(
@@ -30,8 +33,8 @@ fn frame(value: Value) -> Frame {
 
 fn initialize_result(id: u64) -> Frame {
     frame(json!({"id":id,"result":{
-        "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) terminal (sage; 0.1.0)",
-        "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+        "userAgent":user_agent("sage", "terminal"),
+        "codexHome":MANAGED_CODEX_HOME,
         "platformFamily":"windows",
         "platformOs":"windows"
     }}))
@@ -54,6 +57,9 @@ fn model(id: &str, name: &str, is_default: bool) -> Value {
         "additionalSpeedTiers": [],
         "serviceTiers": [],
         "defaultServiceTier": null,
+        "modelSpecialty": null,
+        "multiAgentVersion": null,
+        "availableAccessPrograms": null,
         "isDefault": is_default
     })
 }
@@ -67,27 +73,6 @@ fn advance_to_account(protocol: &mut CodexDiscoveryProtocol) -> u64 {
     let value: Value = serde_json::from_slice(initialized.payload()).unwrap();
     assert_eq!(value, json!({"method":"initialized"}));
     protocol.account_request().unwrap().id()
-}
-
-#[test]
-fn discovery_model_efforts_keep_strict_fields_and_collection_limit() {
-    for efforts in [
-        json!([{"reasoningEffort":"high","description":"Deep","extra":true}]),
-        json!([{"reasoningEffort":"high","description":"Deep\0"}]),
-        json!((0..33).map(|index| json!({"reasoningEffort":format!("effort-{index}"),"description":"Deep"})).collect::<Vec<_>>()),
-    ] {
-        let mut protocol = protocol();
-        let account_id = advance_to_account(&mut protocol);
-        protocol.accept_account(&frame(json!({"id":account_id,"result":{
-            "account":{"type":"chatgpt","email":null,"planType":"plus"},"requiresOpenaiAuth":true
-        }}))).unwrap();
-        let request = protocol.model_request().unwrap();
-        let mut entry = model("model", "Model", true);
-        entry["supportedReasoningEfforts"] = efforts;
-        assert_eq!(protocol.accept_model_page(&frame(json!({"id":request.id(),"result":{
-            "data":[entry],"nextCursor":null
-        }}))).unwrap_err(), CodexDiscoveryError::ModelCatalog);
-    }
 }
 
 #[test]
@@ -108,15 +93,13 @@ fn discovery_requests_follow_the_pinned_handshake_and_page_32_contract() {
     let account = protocol.account_request().unwrap();
     let account_value: Value = serde_json::from_slice(account.payload()).unwrap();
     assert_eq!(account_value["method"], "account/read");
-    // rust-v0.146.0 authority:
-    // app-server-protocol/src/protocol/v2/account.rs:484-491 defines the
-    // default-false flag, and protocol/common.rs:2942-2955 proves that false
-    // serializes as an empty params object rather than `refreshToken:false`.
+    // `refreshToken` defaults to false in the app-server protocol, and a
+    // false flag serializes as an empty params object.
     assert_eq!(account_value["params"], json!({}));
     protocol
         .accept_account(&frame(json!({"id":account.id(),"result":{
-            "account":{"type":"chatgpt","email":"private@example.test","planType":"plus"},
-            "requiresOpenaiAuth":true
+            "account":{"type":"chatgpt","email":"private@example.test","planType":"plus","workspaceName":null},
+            "requiresOpenaiAuth":true,"workspaceRouting":null
         }})))
         .unwrap();
 
@@ -136,8 +119,8 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
     let account_id = advance_to_account(&mut signed_in);
     let account = signed_in
         .accept_account(&frame(json!({"id":account_id,"result":{
-            "account":{"type":"chatgpt","email":"private@example.test","planType":"enterprise"},
-            "requiresOpenaiAuth":true
+            "account":{"type":"chatgpt","email":"private@example.test","planType":"enterprise","workspaceName":null},
+            "requiresOpenaiAuth":true,"workspaceRouting":null
         }})))
         .unwrap();
     assert_eq!(account, CodexAccountSnapshot::ManagedChatgpt);
@@ -150,7 +133,7 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
     assert_eq!(
         signed_out
             .accept_account(&frame(json!({"id":account_id,"result":{
-                "account":null,"requiresOpenaiAuth":true
+                "account":null,"requiresOpenaiAuth":true,"workspaceRouting":null
             }})))
             .unwrap(),
         CodexAccountSnapshot::SignedOut
@@ -161,7 +144,7 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
     assert_eq!(
         provider_managed
             .accept_account(&frame(json!({"id":account_id,"result":{
-                "account":null,"requiresOpenaiAuth":false
+                "account":null,"requiresOpenaiAuth":false,"workspaceRouting":null
             }})))
             .unwrap(),
         CodexAccountSnapshot::ProviderManaged
@@ -170,9 +153,20 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
     let model_request: Value = serde_json::from_slice(model_request.payload()).unwrap();
     assert_eq!(model_request["method"], "model/list");
 
+    let mut api_key = protocol();
+    let account_id = advance_to_account(&mut api_key);
+    assert_eq!(
+        api_key
+            .accept_account(&frame(json!({"id":account_id,"result":{
+                "account":{"type":"apiKey"},"requiresOpenaiAuth":true
+            }})))
+            .unwrap(),
+        CodexAccountSnapshot::ApiKey
+    );
+
     for rejected in [
-        json!({"account":{"type":"apiKey"},"requiresOpenaiAuth":true}),
         json!({"account":{"type":"amazonBedrock"},"requiresOpenaiAuth":true}),
+        json!({"account":{"type":"amazonBedrock"},"requiresOpenaiAuth":true,"workspaceRouting":null}),
     ] {
         let mut candidate = protocol();
         let account_id = advance_to_account(&mut candidate);
@@ -184,17 +178,26 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
         );
     }
 
-    let mut extended = protocol();
-    let account_id = advance_to_account(&mut extended);
-    assert_eq!(
-        extended
+    // Account members Sage does not read never decide the sign-in state.
+    for (account, expected) in [
+        (
+            json!({"type":"chatgpt","email":"private@example.test","planType":"future_plan","token":"never-retain"}),
+            CodexAccountSnapshot::ManagedChatgpt,
+        ),
+        (
+            json!({"type":"apiKey","key":"never-retain"}),
+            CodexAccountSnapshot::ApiKey,
+        ),
+    ] {
+        let mut extended = protocol();
+        let account_id = advance_to_account(&mut extended);
+        let snapshot = extended
             .accept_account(&frame(json!({"id":account_id,"result":{
-                "account":{"type":"chatgpt","email":"private@example.test","planType":"plus","token":"never-retain"},
-                "requiresOpenaiAuth":true
+                "account":account,"requiresOpenaiAuth":true,"futureMember":{}
             }})))
-            .unwrap_err(),
-        CodexDiscoveryError::Protocol
-    );
+            .unwrap();
+        assert_eq!(snapshot, expected);
+    }
 }
 
 #[test]
@@ -203,8 +206,8 @@ fn model_pages_preserve_observed_order_and_default_only_after_a_complete_catalog
     let account_id = advance_to_account(&mut protocol);
     protocol
         .accept_account(&frame(json!({"id":account_id,"result":{
-            "account":{"type":"chatgpt","email":null,"planType":"plus"},
-            "requiresOpenaiAuth":true
+            "account":{"type":"chatgpt","email":null,"planType":"plus","workspaceName":null},
+            "requiresOpenaiAuth":true,"workspaceRouting":null
         }})))
         .unwrap();
     let first = protocol.model_request().unwrap();
@@ -244,26 +247,45 @@ fn model_pages_preserve_observed_order_and_default_only_after_a_complete_catalog
 }
 
 #[test]
-fn model_catalog_rejects_modalities_outside_the_pinned_enum() {
+fn a_model_described_with_metadata_sage_does_not_read_is_still_offered() {
     let mut protocol = protocol();
     let account_id = advance_to_account(&mut protocol);
     protocol
         .accept_account(&frame(json!({"id":account_id,"result":{
-            "account":{"type":"chatgpt","email":null,"planType":"plus"},
-            "requiresOpenaiAuth":true
+            "account":{"type":"chatgpt","email":null,"planType":"future_plan","workspaceName":null},
+            "requiresOpenaiAuth":true,"workspaceRouting":{"futureRoute":true}
         }})))
         .unwrap();
     let request = protocol.model_request().unwrap();
-    let mut invalid = model("future-model", "Future Model", false);
-    invalid["inputModalities"] = json!(["text", "video"]);
+    let mut future = model("future-model", "Future Model", true);
+    future["inputModalities"] = json!(["text", "video"]);
+    future["multiAgentVersion"] = json!("v3");
+    future["availableAccessPrograms"] = json!({"cyber":[],"research":["preview"]});
+    future["serviceTiers"] = json!([{"id":"flex","name":"Flex","description":"","latency":"slow"}]);
+    future["upgradeInfo"] = json!({"model":"next","futureCopy":"Try it"});
+    future["supportedReasoningEfforts"] =
+        json!([{"reasoningEffort":"ultra","description":"Deepest","budget":"large"}]);
+    future["futureMember"] = json!({"nested":[1, 2]});
+    let mut minimal = json!({"id":"minimal","displayName":"Minimal"});
+    minimal["futureMember"] = json!(true);
 
+    let ProtocolProgress::Complete(content) = protocol
+        .accept_model_page(&frame(json!({"id":request.id(),"jsonrpc":"2.0","result":{
+            "data":[future, minimal],"nextCursor":null,"futurePaging":{"total":2}
+        }})))
+        .unwrap()
+    else {
+        panic!("a single page without a cursor completes discovery");
+    };
+    let ids = content
+        .models
+        .iter()
+        .map(|model| model.id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(ids, ["future-model", "minimal"]);
     assert_eq!(
-        protocol
-            .accept_model_page(&frame(json!({"id":request.id(),"result":{
-                "data":[invalid],"nextCursor":null
-            }})))
-            .unwrap_err(),
-        CodexDiscoveryError::ModelCatalog
+        content.default_model_id.as_ref().map(RequiredText::as_str),
+        Some("future-model")
     );
 }
 
@@ -274,8 +296,8 @@ fn model_catalog_rejects_page_count_identity_default_hidden_and_empty_violations
         let account_id = advance_to_account(&mut protocol);
         protocol
             .accept_account(&frame(json!({"id":account_id,"result":{
-                "account":{"type":"chatgpt","email":null,"planType":"plus"},
-                "requiresOpenaiAuth":true
+                "account":{"type":"chatgpt","email":null,"planType":"plus","workspaceName":null},
+                "requiresOpenaiAuth":true,"workspaceRouting":null
             }})))
             .unwrap();
         protocol
@@ -293,8 +315,9 @@ fn model_catalog_rejects_page_count_identity_default_hidden_and_empty_violations
     );
 
     for malformed_result in [
+        json!({"nextCursor":null}),
         json!({"data":[model("missing-cursor","Missing cursor",false)]}),
-        json!({"data":[model("extra-field","Extra field",false)],"nextCursor":null,"raw":"never-retain"}),
+        json!({"data":{"model":"not-a-list"},"nextCursor":null}),
     ] {
         let mut exact = ready();
         let request = exact.model_request().unwrap();
@@ -308,6 +331,8 @@ fn model_catalog_rejects_page_count_identity_default_hidden_and_empty_violations
         );
     }
 
+    // Hidden models are left out, as in Codex's own picker; a page of only
+    // hidden models leaves nothing to offer.
     let mut hidden = ready();
     let request = hidden.model_request().unwrap();
     let mut hidden_model = model("hidden", "Hidden", false);
@@ -315,16 +340,27 @@ fn model_catalog_rejects_page_count_identity_default_hidden_and_empty_violations
     assert_eq!(
         hidden
             .accept_model_page(&frame(json!({"id":request.id(),"result":{
-                "data":[hidden_model],"nextCursor":null
+                "data":[hidden_model.clone()],"nextCursor":null
             }})))
             .unwrap_err(),
-        CodexDiscoveryError::ModelCatalog
+        CodexDiscoveryError::EmptyCatalog
     );
+    let mut partly_hidden = ready();
+    let request = partly_hidden.model_request().unwrap();
+    let ProtocolProgress::Complete(content) = partly_hidden
+        .accept_model_page(&frame(json!({"id":request.id(),"result":{
+            "data":[hidden_model, model("shown","Shown",false)],"nextCursor":null
+        }})))
+        .unwrap()
+    else {
+        panic!("a single page without a cursor completes discovery");
+    };
+    assert_eq!(content.models.len(), 1);
+    assert_eq!(content.models[0].id.as_str(), "shown");
 
     let mut oversized = ready();
     let request = oversized.model_request().unwrap();
-    let mut oversized_model = model("oversized", "Oversized", false);
-    oversized_model["description"] = json!("x".repeat(8_193));
+    let oversized_model = model("oversized", &"x".repeat(513), false);
     assert_eq!(
         oversized
             .accept_model_page(&frame(json!({"id":request.id(),"result":{
@@ -451,4 +487,60 @@ fn exact_pinned_binary_discovery_hook_proves_bounded_zero_process_cleanup() {
 
     assert!(!discovery.content.models.is_empty());
     discovery.revalidate().expect("authority remains current");
+}
+
+/// What the composer's model menu shows for the desktop restart replay: Sage
+/// reads the case's own `model/list` frame with its real discovery protocol
+/// and keeps every model the session lists.
+#[cfg(feature = "acp-fixture")]
+#[test]
+fn a_replay_case_offers_every_model_its_session_lists() {
+    let case = "codex-config-resume";
+    let reply = |payload: &[u8]| {
+        let request: Value = serde_json::from_slice(payload).unwrap();
+        frame(crate::acp::fixture::native_case_discovery_reply(case, &request).unwrap())
+    };
+    let mut protocol = protocol();
+    let initialize = protocol.initialize_request().unwrap();
+    // The desktop replay is checked as an observed build, which accepts any
+    // absolute Codex home; this protocol is the pinned packet's, which
+    // expects its own.
+    let mut initialized = crate::acp::fixture::native_case_discovery_reply(
+        case,
+        &serde_json::from_slice(initialize.payload()).unwrap(),
+    )
+    .unwrap();
+    initialized["result"]["codexHome"] = parse_packet_metadata(include_bytes!(
+        "../../../../../testdata/acp/codex/candidate-windows.json"
+    ))
+    .unwrap()
+    .codex_home()
+    .to_string_lossy()
+    .into_owned()
+    .into();
+    protocol.accept_initialize(&frame(initialized)).unwrap();
+    let account = protocol.account_request().unwrap();
+    let models = protocol.model_request().unwrap();
+    assert_eq!(
+        protocol.accept_account(&reply(account.payload())).unwrap(),
+        CodexAccountSnapshot::ProviderManaged
+    );
+    let ProtocolProgress::Complete(content) = protocol
+        .accept_model_page(&reply(models.payload()))
+        .unwrap()
+    else {
+        panic!("one page lists the whole catalogue");
+    };
+    let listed: Vec<_> = content
+        .models
+        .iter()
+        .map(|model| (model.id.as_str(), model.name.as_str(), model.is_default))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            ("fixture-model", "Synthetic replay", true),
+            ("fixture-model-deep", "Synthetic replay deep", false)
+        ]
+    );
 }

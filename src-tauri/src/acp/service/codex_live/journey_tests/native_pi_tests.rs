@@ -201,7 +201,7 @@ fn native_pi_subprocess_real_binding_pump_sqlite_settlement_and_idle_configurati
                     set_config(&setup, &owner, "pi.thinking", "high");
                     set_config(&setup, &owner, "pi.model", "openai:fixture-model-two");
                     assert!(
-                        setup.service.runtime.is_active(),
+                        setup.service.lane_at(0).runtime.is_active(),
                         "idle config must not tear down the session"
                     );
                     send(&setup, &owner, "second");
@@ -210,6 +210,7 @@ fn native_pi_subprocess_real_binding_pump_sqlite_settlement_and_idle_configurati
                     setup.wait_until(|| {
                         setup
                             .service
+                            .lane_at(0)
                             .runtime
                             .config
                             .live_snapshot(&owner)
@@ -272,7 +273,7 @@ fn native_pi_subprocess_real_binding_pump_sqlite_settlement_and_idle_configurati
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(external, "pi-session-1-1");
+            assert_eq!(external, "2026-01-01T00-00-00-000Z_fixture-pi-session");
             reopened.shutdown_blocking().unwrap();
             drop(reopened);
             fs::remove_dir_all(directory).unwrap();
@@ -296,7 +297,13 @@ fn send(setup: &FixtureSetup, owner: &RuntimeOwner, id: &str) {
 }
 
 fn set_config(setup: &FixtureSetup, owner: &RuntimeOwner, id: &str, value: &str) {
-    let overlay = setup.service.runtime.config.live_snapshot(owner).unwrap();
+    let overlay = setup
+        .service
+        .lane_at(0)
+        .runtime
+        .config
+        .live_snapshot(owner)
+        .unwrap();
     setup
         .service
         .configure_session(ConfigIntent {
@@ -313,6 +320,7 @@ fn set_config(setup: &FixtureSetup, owner: &RuntimeOwner, id: &str, value: &str)
     setup.wait_until(|| {
         setup
             .service
+            .lane_at(0)
             .runtime
             .config
             .live_snapshot(owner)

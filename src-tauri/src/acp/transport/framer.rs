@@ -1,10 +1,15 @@
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-use super::oversize_id::OversizeIdScanner;
+use super::oversize_id::{OversizeIdScanner, Scanned};
 use crate::acp::limits::LIMITS;
 
 const READ_CHUNK_BYTES: usize = 8 * 1024;
 const DISCARD_BYTES_MAX: usize = 8 * 1024 * 1024;
+/// How far an id-less frame a harness may skip is read past. Reading past it
+/// holds no more memory than the scanner's fixed state, so this only bounds a
+/// harness that never ends a line; it sits well above the largest end-of-run
+/// event a harness repeats its whole run in.
+const SKIPPED_BYTES_MAX: usize = 256 * 1024 * 1024;
 
 struct Discarding {
     scanner: OversizeIdScanner,
@@ -51,6 +56,9 @@ pub(crate) struct IncrementalFrameDecoder {
     pending_cr: bool,
     eof_seen: bool,
     recoverable_oversize: bool,
+    /// Oversized frames that carry no request id are skipped, not fatal.
+    skip_oversize: bool,
+    skipped_oversize: bool,
     discarding: Option<Box<Discarding>>,
     oversize_id: Option<u64>,
 }
@@ -64,6 +72,8 @@ impl IncrementalFrameDecoder {
             pending_cr: false,
             eof_seen: false,
             recoverable_oversize: false,
+            skip_oversize: false,
+            skipped_oversize: false,
             discarding: None,
             oversize_id: None,
         }
@@ -79,6 +89,14 @@ impl IncrementalFrameDecoder {
 
     pub(crate) fn take_oversize_id(&mut self) -> Option<u64> {
         self.oversize_id.take()
+    }
+
+    pub(crate) fn set_oversize_skip(&mut self, skip: bool) {
+        self.skip_oversize = skip;
+    }
+
+    pub(crate) fn take_skipped_oversize(&mut self) -> bool {
+        std::mem::take(&mut self.skipped_oversize)
     }
 
     pub(crate) fn push_chunk(&mut self, chunk: &[u8]) -> Result<Option<Frame>, FrameError> {
@@ -159,6 +177,8 @@ impl IncrementalFrameDecoder {
         self.discarding = None;
         self.oversize_id = None;
         self.recoverable_oversize = false;
+        self.skip_oversize = false;
+        self.skipped_oversize = false;
     }
 
     fn accept_byte(&mut self, byte: u8) -> Result<Option<Frame>, FrameError> {
@@ -169,11 +189,11 @@ impl IncrementalFrameDecoder {
         if byte == b'\n' {
             self.pending_cr = false;
             if let Some(discarding) = self.discarding.take() {
-                let id = discarding
-                    .scanner
-                    .finish()
-                    .map_err(|()| FrameError::Oversize)?;
-                self.oversize_id = Some(id);
+                match discarding.scanner.finish() {
+                    Scanned::Reply(id) => self.oversize_id = Some(id),
+                    Scanned::Idless if self.skip_oversize => self.skipped_oversize = true,
+                    Scanned::Idless | Scanned::Invalid => return Err(FrameError::Oversize),
+                }
                 return Ok(None);
             }
             if std::str::from_utf8(&self.assembly).is_err() {
@@ -192,7 +212,12 @@ impl IncrementalFrameDecoder {
         }
         if let Some(discarding) = &mut self.discarding {
             discarding.bytes += 1;
-            if discarding.bytes > DISCARD_BYTES_MAX || discarding.scanner.feed(byte).is_err() {
+            let limit = if self.skip_oversize {
+                SKIPPED_BYTES_MAX
+            } else {
+                DISCARD_BYTES_MAX
+            };
+            if discarding.bytes > limit || discarding.scanner.feed(byte).is_err() {
                 self.reset_frame();
                 return Err(FrameError::Oversize);
             }
@@ -200,7 +225,7 @@ impl IncrementalFrameDecoder {
         }
         let maximum = frame_limit();
         if self.assembly.len() >= maximum {
-            if !self.recoverable_oversize {
+            if !self.recoverable_oversize && !self.skip_oversize {
                 self.reset_frame();
                 return Err(FrameError::Oversize);
             }
@@ -447,6 +472,75 @@ mod tests {
         assert_eq!(outputs, vec![b"next".to_vec()]);
     }
 
+    #[test]
+    fn skipped_oversize_drops_one_complete_idless_frame_and_keeps_reading() {
+        let raw = format!(
+            "{{\"type\":\"user\",\"content\":\"{}\"}}\nnext\n",
+            "x".repeat(frame_limit())
+        );
+        let mut decoder = IncrementalFrameDecoder::new();
+        decoder.set_oversize_skip(true);
+        let (mut frames, mut skipped) = (Vec::new(), 0);
+        for chunk in raw.as_bytes().chunks(READ_CHUNK_BYTES) {
+            let mut frame = decoder.push_chunk(chunk).unwrap();
+            loop {
+                skipped += usize::from(decoder.take_skipped_oversize());
+                frames.extend(frame.map(|frame| frame.as_bytes().to_vec()));
+                if !decoder.has_pending_input() {
+                    break;
+                }
+                frame = decoder.drain_pending().unwrap();
+            }
+        }
+        assert_eq!((frames, skipped), (vec![b"next".to_vec()], 1));
+        let mut truncated = IncrementalFrameDecoder::new();
+        truncated.set_oversize_skip(true);
+        let broken = format!("{{\"type\":\"{}\n", "x".repeat(frame_limit()));
+        let failed = broken
+            .as_bytes()
+            .chunks(READ_CHUNK_BYTES)
+            .map(|chunk| truncated.push_chunk(chunk))
+            .any(|result| matches!(result, Err(FrameError::Oversize)));
+        assert!(failed);
+        // A request is never skipped: its peer waits on an answer.
+        let mut skipping = IncrementalFrameDecoder::new();
+        skipping.set_oversize_skip(true);
+        let request = format!(
+            "{{\"id\":7,\"method\":\"x\",\"params\":\"{}\"}}\n",
+            "x".repeat(frame_limit())
+        );
+        let refused = request
+            .as_bytes()
+            .chunks(READ_CHUNK_BYTES)
+            .map(|chunk| skipping.push_chunk(chunk))
+            .any(|result| matches!(result, Err(FrameError::Oversize)));
+        assert!(refused);
+    }
+
+    /// A harness's end-of-run event can repeat a long run: one far past the
+    /// ordinary discard bound is still read past, holding only the scanner.
+    #[test]
+    fn skipped_oversize_reads_past_an_end_of_run_event_beyond_the_discard_bound() {
+        let body = "x".repeat(DISCARD_BYTES_MAX + frame_limit());
+        let raw = format!("{{\"type\":\"agent_end\",\"messages\":[\"{body}\"]}}\nnext\n");
+        let mut decoder = IncrementalFrameDecoder::new();
+        decoder.set_oversize_skip(true);
+        let (mut frames, mut skipped) = (Vec::new(), 0);
+        for chunk in raw.as_bytes().chunks(READ_CHUNK_BYTES) {
+            let mut frame = decoder.push_chunk(chunk).unwrap();
+            loop {
+                skipped += usize::from(decoder.take_skipped_oversize());
+                frames.extend(frame.map(|frame| frame.as_bytes().to_vec()));
+                assert!(decoder.assembly.capacity() <= frame_limit());
+                if !decoder.has_pending_input() {
+                    break;
+                }
+                frame = decoder.drain_pending().unwrap();
+            }
+        }
+        assert_eq!((frames, skipped), (vec![b"next".to_vec()], 1));
+    }
+
     fn decode_oversize(raw: &[u8]) -> Result<Option<u64>, FrameError> {
         let mut decoder = IncrementalFrameDecoder::new();
         decoder.enable_recoverable_oversize();
@@ -517,6 +611,34 @@ mod tests {
             decode_oversize(nested_32.trim_end().as_bytes()),
             Err(FrameError::PartialEof)
         );
+    }
+
+    #[test]
+    fn recoverable_oversize_never_takes_a_request_for_a_reply() {
+        // A server request carries an id from the peer's own counter, which
+        // may equal one of Sage's pending ids; it stays a frame error.
+        for (prefix, suffix) in [
+            (
+                r#"{"id":7,"method":"item/requestApproval","params":""#,
+                r#""}"#,
+            ),
+            (r#"{"id":7,"params":""#, r#"","method":"x"}"#),
+            (r#"{"id":7,"method":"x","params":""#, r#""}"#),
+        ] {
+            let raw = format!("{prefix}{}{suffix}\n", "x".repeat(frame_limit()));
+            assert_eq!(decode_oversize(raw.as_bytes()), Err(FrameError::Oversize));
+        }
+        // Only a top-level key counts, and a longer key is not `method`.
+        for prefix in [
+            r#"{"id":7,"result":{"method":"x"},"text":""#,
+            r#"{"id":7,"methods":"x","text":""#,
+            r#"{"id":7,"metho":"x","text":""#,
+            // An escape is read as the character it stands for.
+            r#"{"id":7,"me\thod":"x","text":""#,
+        ] {
+            let raw = format!("{prefix}{}\"}}\n", "x".repeat(frame_limit()));
+            assert_eq!(decode_oversize(raw.as_bytes()), Ok(Some(7)), "{prefix}");
+        }
     }
 
     #[test]

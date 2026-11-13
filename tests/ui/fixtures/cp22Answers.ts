@@ -43,3 +43,13 @@ export const flowchartSource = [
   "E -->|Yes| F[Hash new password and consume token atomically]",
   "E -->|No| A",
 ].join("\n");
+
+export const cp22MarkdownAnswers = {
+  table: tableAnswer,
+  python: pythonAnswer,
+  unlabelled: unlabelledAnswer,
+  passwordReset: `1. Password reset\n\n\`\`\`mermaid\n${flowchartSource}\n\`\`\``,
+  streaming: "```mermaid\ngraph TD\nA -->",
+  fallback: "```mermaid\nunsupported diagram\n```",
+  combined: `${tableAnswer}\n\n${pythonAnswer}\n\n\`\`\`mermaid\n${flowchartSource}\n\`\`\``,
+};

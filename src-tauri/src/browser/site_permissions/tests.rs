@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn default_is_a_visible_prompt_and_decisions_are_tab_and_origin_scoped() {
+fn default_is_a_visible_prompt_and_answers_are_saved_for_the_whole_site() {
     let mut permissions = SitePermissions::default();
     let RequestOutcome::Prompt(prompt) = permissions.request(
         "browser-1",
@@ -14,19 +14,21 @@ fn default_is_a_visible_prompt_and_decisions_are_tab_and_origin_scoped() {
     assert_eq!(prompt.origin, "https://a.example");
     assert!(!permissions.resolve(prompt.id, "browser-2", Decision::Allow));
     assert!(permissions.resolve(prompt.id, "browser-1", Decision::Allow));
-    assert!(matches!(
-        permissions.request(
-            "browser-1",
-            "https://a.example/other",
-            PermissionKind::Camera,
-            false
-        ),
-        RequestOutcome::Allow
-    ));
+    for tab in ["browser-1", "browser-2"] {
+        assert!(matches!(
+            permissions.request(
+                tab,
+                "https://a.example/other",
+                PermissionKind::Camera,
+                false
+            ),
+            RequestOutcome::Allow
+        ));
+    }
     assert!(matches!(
         permissions.request(
             "browser-2",
-            "https://a.example/other",
+            "https://b.example/",
             PermissionKind::Camera,
             false
         ),
@@ -34,8 +36,8 @@ fn default_is_a_visible_prompt_and_decisions_are_tab_and_origin_scoped() {
     ));
     assert!(matches!(
         permissions.request(
-            "browser-2",
-            "https://b.example/",
+            "browser-1",
+            "http://a.example/",
             PermissionKind::Camera,
             false
         ),
@@ -77,7 +79,7 @@ fn agent_and_invalid_sources_are_denied_without_a_prompt() {
 }
 
 #[test]
-fn revoke_and_close_remove_only_target_scope() {
+fn closing_a_tab_ends_its_prompts_but_keeps_the_site_answer() {
     let mut permissions = SitePermissions::default();
     let RequestOutcome::Prompt(first) = permissions.request(
         "browser-1",
@@ -98,21 +100,7 @@ fn revoke_and_close_remove_only_target_scope() {
     assert_eq!(permissions.cancel_tab("browser-1"), vec![first.id]);
     assert_eq!(permissions.pending("browser-2")[0].id, other.id);
     assert!(permissions.resolve(other.id, "browser-2", Decision::Allow));
-    assert!(!permissions.revoke("browser-1", "https://b.example", PermissionKind::Camera));
-    assert_eq!(permissions.decisions("browser-2").len(), 1);
-    assert!(permissions.revoke("browser-2", "https://b.example", PermissionKind::Camera));
-    assert!(permissions.decisions("browser-2").is_empty());
-    let RequestOutcome::Prompt(reopened) = permissions.request(
-        "browser-2",
-        "https://b.example/",
-        PermissionKind::Camera,
-        false,
-    ) else {
-        panic!()
-    };
-    assert!(permissions.resolve(reopened.id, "browser-2", Decision::Allow));
     permissions.cancel_tab("browser-2");
-    assert!(permissions.decisions("browser-2").is_empty());
     assert!(matches!(
         permissions.request(
             "browser-2",
@@ -124,6 +112,17 @@ fn revoke_and_close_remove_only_target_scope() {
     ));
     permissions.finish_close("browser-2");
     assert!(!permissions.closing_tabs.contains("browser-2"));
+    assert!(matches!(
+        permissions.request(
+            "browser-3",
+            "https://b.example/",
+            PermissionKind::Camera,
+            false
+        ),
+        RequestOutcome::Allow
+    ));
+    assert_eq!(permissions.decisions_for("https://b.example").len(), 1);
+    assert!(permissions.decisions_for("https://a.example").is_empty());
 }
 
 #[test]

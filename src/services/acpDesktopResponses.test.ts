@@ -409,6 +409,33 @@ describe("safeAcpMutationResponse", () => {
     ).toBeNull();
   });
 
+  it("carries native compact and review only when the wire grants them", () => {
+    const capabilities = (extra: object) =>
+      safeAcpMutationResponse(
+        mutation({
+          sessions: [
+            session(0, {
+              capabilities: {
+                ...(session() as { capabilities: object }).capabilities,
+                ...extra,
+              },
+            }),
+          ],
+        }),
+      )?.projection.sessions[0]?.capabilities;
+    expect(
+      capabilities({ nativeSessionCompact: true, nativeReview: true }),
+    ).toMatchObject({ nativeSessionCompact: true, nativeReview: true });
+    for (const granted of [
+      {},
+      { nativeSessionCompact: "true", nativeReview: 1 },
+    ]) {
+      const decoded = capabilities(granted);
+      expect(decoded).not.toHaveProperty("nativeSessionCompact");
+      expect(decoded).not.toHaveProperty("nativeReview");
+    }
+  });
+
   it("projects the session permission-request capability and rejects an absent value", () => {
     expect(
       safeAcpMutationResponse(mutation({ sessions: [session()] }))?.projection
@@ -496,6 +523,28 @@ describe("safeAcpMutationResponse", () => {
         }),
       ),
     ).toBeNull();
+  });
+
+  it("admits a steered message and refuses one with extra or oversized fields", () => {
+    const steered = (payload: Record<string, unknown>, toolState = null) =>
+      safeAcpMutationResponse(
+        mutation({
+          turns: [
+            turn({
+              items: [item(0, { kind: "userPrompt", toolState, payload })],
+            }),
+          ],
+        }),
+      );
+    expect(
+      steered({ text: "Use main.rs instead." })?.projection.turns[0].items[0],
+    ).toMatchObject({
+      kind: "userPrompt",
+      payload: { text: "Use main.rs instead." },
+    });
+    expect(steered({ text: "Hi", role: "user" })).toBeNull();
+    expect(steered({ text: "x".repeat(262_145) })).toBeNull();
+    expect(steered({})).toBeNull();
   });
 
   it("accepts a bounded compaction notice without tool state", () => {

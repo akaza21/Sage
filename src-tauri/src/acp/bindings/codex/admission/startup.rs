@@ -98,6 +98,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::acp::bindings::codex::{CODEX_PINNED_VERSION, test_identity::version_line};
 
     #[test]
     fn startup_promotes_a_runnable_discovered_codex_cli() {
@@ -112,10 +113,18 @@ mod tests {
         #[cfg(not(windows))]
         let executable = directory.join("codex");
         #[cfg(windows)]
-        fs::write(&executable, b"@echo off\r\necho codex-cli 0.146.0\r\n").unwrap();
+        crate::test_executable::write(
+            &executable,
+            format!("@echo off\r\necho {}\r\n", version_line("codex-cli")),
+        )
+        .unwrap();
         #[cfg(not(windows))]
         {
-            fs::write(&executable, b"#!/bin/sh\necho codex-cli 0.146.0\n").unwrap();
+            crate::test_executable::write(
+                &executable,
+                format!("#!/bin/sh\necho {}\n", version_line("codex-cli")),
+            )
+            .unwrap();
             use std::os::unix::fs::PermissionsExt;
             let mut permissions = fs::metadata(&executable).unwrap().permissions();
             permissions.set_mode(0o700);
@@ -128,7 +137,7 @@ mod tests {
             Some(crate::harness_discovery::InstalledHarness {
                 id: "codex",
                 executable: executable.clone(),
-                version: Some("0.146.0".into()),
+                version: Some(CODEX_PINNED_VERSION.into()),
             }),
             Arc::new(environment_tests::TestLaunchInputs::default()),
         ));
@@ -138,6 +147,73 @@ mod tests {
             binding.entrypoint().path,
             executable.canonicalize().unwrap()
         );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn rediscovery_admits_a_codex_cli_updated_in_place() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("sage-updated-codex-{nonce}"));
+        fs::create_dir_all(&directory).unwrap();
+        #[cfg(windows)]
+        let executable = directory.join("codex.cmd");
+        #[cfg(not(windows))]
+        let executable = directory.join("codex");
+        let install = |version: &str| {
+            #[cfg(windows)]
+            crate::test_executable::write(
+                &executable,
+                format!("@echo off\r\necho codex-cli {version}\r\n"),
+            )
+            .unwrap();
+            #[cfg(not(windows))]
+            {
+                crate::test_executable::write(
+                    &executable,
+                    format!("#!/bin/sh\necho codex-cli {version}\n"),
+                )
+                .unwrap();
+                use std::os::unix::fs::PermissionsExt;
+                let mut permissions = fs::metadata(&executable).unwrap().permissions();
+                permissions.set_mode(0o700);
+                fs::set_permissions(&executable, permissions).unwrap();
+            }
+        };
+        let discover = |registration: &CodexBindingRegistration| {
+            admit_discovered_codex_with_inputs(
+                registration,
+                Some(crate::harness_discovery::InstalledHarness {
+                    id: "codex",
+                    executable: executable.clone(),
+                    version: None,
+                }),
+                Arc::new(environment_tests::TestLaunchInputs::default()),
+            )
+        };
+        let registration = CodexBindingRegistration::unavailable_for_test();
+        install("0.167.1");
+        assert!(discover(&registration));
+        let earlier = registration.refresh().unwrap();
+        assert_eq!(earlier.harness_version(), "0.167.1");
+
+        // The update lands while Sage runs: the earlier build drifts, and the
+        // next discovery admits the new one instead of staying unavailable.
+        install("0.168.0");
+        assert_eq!(
+            registration.refresh().err(),
+            Some(CodexAdmissionUnavailable::Drift)
+        );
+        assert!(discover(&registration));
+        assert_eq!(registration.refresh().unwrap().harness_version(), "0.168.0");
+
+        // An update found before any launch noticed the drift replaces the
+        // admitted build directly.
+        install("0.169.0");
+        assert!(discover(&registration));
+        assert_eq!(registration.refresh().unwrap().harness_version(), "0.169.0");
         fs::remove_dir_all(directory).unwrap();
     }
 
@@ -154,14 +230,18 @@ mod tests {
         #[cfg(not(windows))]
         let executable = directory.join("codex");
         #[cfg(windows)]
-        fs::write(
+        crate::test_executable::write(
             &executable,
             b"@echo off\r\necho codex-cli not-a-version\r\n",
         )
         .unwrap();
         #[cfg(not(windows))]
         {
-            fs::write(&executable, b"#!/bin/sh\necho codex-cli not-a-version\n").unwrap();
+            crate::test_executable::write(
+                &executable,
+                b"#!/bin/sh\necho codex-cli not-a-version\n",
+            )
+            .unwrap();
             use std::os::unix::fs::PermissionsExt;
             let mut permissions = fs::metadata(&executable).unwrap().permissions();
             permissions.set_mode(0o700);
@@ -174,7 +254,7 @@ mod tests {
             Some(crate::harness_discovery::InstalledHarness {
                 id: "codex",
                 executable,
-                version: Some("0.146.0".into()),
+                version: Some(CODEX_PINNED_VERSION.into()),
             }),
             Arc::new(environment_tests::TestLaunchInputs::default()),
         ));

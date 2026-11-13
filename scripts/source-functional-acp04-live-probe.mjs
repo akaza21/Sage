@@ -71,32 +71,134 @@ function projectionUnavailable(value) {
   );
 }
 
+// Turn states come from each Turn's data-turn-state hook and are named with
+// the transcript's own status vocabulary, so a Turn the person cancelled
+// still reads as Cancelled or Interrupted.
+export const ACP04_TURN_STATE_LABELS = Object.freeze({
+  queued: "Queued",
+  sending: "Sending",
+  running: "Running",
+  waitingModel: "Waiting for model",
+  waitingTool: "Waiting for tool",
+  waitingApproval: "Waiting for approval",
+  waitingUser: "Waiting for user",
+  cancelling: "Cancelling",
+  completed: "Completed",
+  interrupted: "Interrupted",
+  cancelled: "Cancelled",
+  failed: "Failed",
+  deliveryUnknown: "Delivery unknown",
+});
+export const ACP04_TURN_STATE_EXPRESSION = `(t=>{const labels=${JSON.stringify(ACP04_TURN_STATE_LABELS)},state=t.dataset.turnState||'';return Object.hasOwn(labels,state)?labels[state]:''})`;
+
+// The Codex harness option's data-option-id and its rendered trigger name.
+export const ACP04_CODEX_HARNESS_ID = "codex";
+export const ACP04_CODEX_HARNESS_NAME = "Codex";
+
+const FOCUSED_PANES =
+  "[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')]";
+const CURRENT_RAIL_CHATS =
+  '[...document.querySelectorAll(\'aside[aria-label="Projects and chats"] button[aria-current="page"][data-chat-id]\')]';
+const HARNESS_TRIGGERS =
+  '[...s.querySelectorAll(\'button[aria-label="Harness"][aria-haspopup="listbox"]\')]';
+const MODEL_TRIGGERS =
+  // A model picker, or the read-only label a single-model catalog renders.
+  '[...s.querySelectorAll(\':is(button[aria-haspopup="listbox"],span)[aria-label="Model"]\')]';
+const HARNESS_STATUS =
+  "(()=>{const x=[...document.querySelectorAll('[aria-label^=\"Harness status: \"]')];return x.length===1?x[0].getAttribute('aria-label').slice(16).trim():''})()";
+const AGENT_MODE =
+  '(()=>{const groups=[...document.querySelectorAll(\'[role="radiogroup"][aria-label="Window mode"]\')];if(groups.length!==1)return false;const agent=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="agent"]:checked\')];return agent.length===1&&document.querySelectorAll(\'main.workbench.workbench--agent\').length===1})()';
+const CODEX_OPTIONS = `(harness=>{const controls=harness.getAttribute('aria-controls'),listbox=controls?document.getElementById(controls):null;if(!listbox||listbox.getAttribute('role')!=='listbox')return null;return [...listbox.querySelectorAll('[role="option"]')].filter(x=>x.dataset.optionId===${JSON.stringify(ACP04_CODEX_HARNESS_ID)}&&x.getAttribute('aria-disabled')!=='true'&&!x.disabled)})`;
+const AGENT_SURFACES =
+  "[...panes[0].querySelectorAll('section.chat-surface[aria-label=\"Agent chat\"]')]";
+
+// Names the first unmet precondition of openCodexPicker, so a picker that
+// never becomes openable fails with the reason rather than a bare code.
+export const ACP04_CODEX_PICKER_STATES = Object.freeze([
+  "ready",
+  "pane-count",
+  "surface-count",
+  "trigger-count",
+  "trigger-disabled",
+  "trigger-expanded",
+]);
+const CODEX_PICKER_STATE_EXPRESSION = `(()=>{const panes=${FOCUSED_PANES};if(panes.length!==1)return 'pane-count';const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return 'surface-count';const s=surfaces[0],harness=${HARNESS_TRIGGERS};if(harness.length!==1)return 'trigger-count';if(harness[0].disabled)return 'trigger-disabled';if(harness[0].getAttribute('aria-expanded')!=='false')return 'trigger-expanded';return 'ready'})()`;
+
+// Waits, within the journey deadline, for a fresh chat's Harness trigger to
+// become openable. On timeout the failure code carries the last observed
+// state; an observation outside the known states fails immediately.
+export function awaitCodexPickerOpenable(read, deadline) {
+  return awaitUiState(
+    read,
+    deadline,
+    ACP04_CODEX_PICKER_STATES,
+    "codex-picker",
+  );
+}
+
+// Names the first unmet condition of Codex readiness after selection, so a
+// harness that never becomes ready says which part of the surface held it.
+export const ACP04_CODEX_READY_STATES = Object.freeze([
+  "ready",
+  "pane-count",
+  "surface-count",
+  "projection-count",
+  "control-count",
+  "harness-disabled",
+  "model-disabled",
+  "harness-not-codex",
+  "model-unidentified",
+  "harness-not-ready",
+  "composer",
+]);
+function codexReadyStateExpression(codexId, codexName) {
+  return `(()=>{const panes=${FOCUSED_PANES};if(panes.length!==1)return 'pane-count';const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return 'surface-count';const s=surfaces[0],p=s.querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]'),harness=${HARNESS_TRIGGERS},models=${MODEL_TRIGGERS},composers=[...s.querySelectorAll('textarea[aria-label="Message agent"]')],bounded=x=>x.length>0&&x.length<=512,status=${HARNESS_STATUS};if(p.length!==1)return 'projection-count';if(harness.length!==1||models.length!==1)return 'control-count';if(harness[0].disabled)return 'harness-disabled';if(models[0].disabled)return 'model-disabled';if(harness[0].dataset.selectedId!==${codexId}||harness[0].textContent.trim()!==${codexName})return 'harness-not-codex';if(!bounded(models[0].dataset.selectedId||'')||!bounded(models[0].textContent.trim()))return 'model-unidentified';if(status!=='Ready'&&status!=='Live')return 'harness-not-ready';if(composers.length!==1||composers[0].disabled!==false)return 'composer';return 'ready'})()`;
+}
+
+export function awaitCodexReady(read, deadline) {
+  return awaitUiState(read, deadline, ACP04_CODEX_READY_STATES, "codex-ready");
+}
+
+async function awaitUiState(read, deadline, states, name) {
+  let last = "unobserved";
+  while (Date.now() < deadline) {
+    const state = await read();
+    if (!states.includes(state)) fail(`${name}-state-invalid`);
+    if (state === "ready") return;
+    last = state;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(100, Math.max(0, deadline - Date.now()))),
+    );
+  }
+  fail(`${name}-${last}-timeout`);
+}
+
 export function createAcp04Ui(codexVersion) {
   if (!codexSemanticVersion(codexVersion)) fail("codex-version-invalid");
-  const display = `Codex \u2014 ${codexVersion}`;
+  const codexId = JSON.stringify(ACP04_CODEX_HARNESS_ID);
+  const codexName = JSON.stringify(ACP04_CODEX_HARNESS_NAME);
   return Object.freeze({
     editorReady:
       '(()=>{const mains=[...document.querySelectorAll(\'main.workbench.workbench--editor\')],groups=[...document.querySelectorAll(\'[role="radiogroup"][aria-label="Window mode"]\')];if(mains.length!==1||groups.length!==1)return false;const editor=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="editor"]\')],agent=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="agent"]\')];return editor.length===1&&agent.length===1&&editor[0].checked&&!agent[0].checked})()',
     enterAgentFromEditor:
       '(()=>{const mains=[...document.querySelectorAll(\'main.workbench.workbench--editor\')],groups=[...document.querySelectorAll(\'[role="radiogroup"][aria-label="Window mode"]\')];if(mains.length!==1||groups.length!==1)return false;const editor=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="editor"]\')];const agent=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="agent"]\')];if(editor.length!==1||agent.length!==1||!editor[0].checked||agent[0].checked)return false;agent[0].click();return true})()',
-    seededAgentReady:
-      "(()=>{const groups=[...document.querySelectorAll('[role=\"radiogroup\"][aria-label=\"Window mode\"]')];const panes=[...document.querySelectorAll('section.agent-chat-pane')];const rails=[...document.querySelectorAll('.project-chat[aria-current=\"page\"]')];if(groups.length!==1||panes.length!==1||rails.length!==1||!panes[0].classList.contains('agent-chat-pane--focused'))return false;const agent=[...groups[0].querySelectorAll('input[name=\"workbench-window-mode\"][value=\"agent\"]:checked')];return agent.length===1&&document.querySelectorAll('main.workbench.workbench--agent').length===1&&panes[0].querySelectorAll('section.chat-surface[aria-label=\"Agent chat\"]').length===1})()",
-    seededChatId:
-      "(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')],rails=[...document.querySelectorAll('.project-chat[aria-current=\"page\"]')];if(panes.length!==1||rails.length!==1)return null;return rails[0].dataset.chatId||null})()",
+    seededAgentReady: `(()=>{const allPanes=[...document.querySelectorAll('section.agent-chat-pane')],panes=${FOCUSED_PANES},rails=${CURRENT_RAIL_CHATS};if(!${AGENT_MODE}||allPanes.length!==1||panes.length!==1||rails.length!==1)return false;return ${AGENT_SURFACES}.length===1})()`,
+    seededChatId: `(()=>{const panes=${FOCUSED_PANES},rails=${CURRENT_RAIL_CHATS};if(panes.length!==1||rails.length!==1)return null;return rails[0].dataset.chatId||null})()`,
     createFreshChat:
-      "(()=>{const sidebars=[...document.querySelectorAll('aside.project-sidebar[aria-label=\"Projects and chats\"]')];if(sidebars.length!==1)return false;const actions=[...sidebars[0].querySelectorAll('.project-sidebar__actions')];if(actions.length!==1)return false;const buttons=[...actions[0].querySelectorAll('button[title=\"New chat\"]')].filter(x=>x.textContent.trim()==='New chat'&&!x.disabled);if(buttons.length!==1)return false;buttons[0].click();return true})()",
-    openCodexPicker: `(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(panes.length!==1)return false;const surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label="Agent chat"]')];if(surfaces.length!==1)return false;const harness=[...surfaces[0].querySelectorAll('.composer__controls .searchable-picker__trigger')].filter(x=>x.getAttribute('aria-label')==='Harness');if(harness.length!==1||harness[0].disabled||harness[0].getAttribute('aria-expanded')!=='false')return false;harness[0].click();return true})()`,
-    codexSelectable: `(()=>{const groups=[...document.querySelectorAll('[role="radiogroup"][aria-label="Window mode"]')],allPanes=[...document.querySelectorAll('section.agent-chat-pane')],panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')],rails=[...document.querySelectorAll('.project-chat[aria-current="page"]')];if(groups.length!==1||allPanes.length<1||allPanes.length>2||panes.length!==1||rails.length!==1)return false;const agent=[...groups[0].querySelectorAll('input[name="workbench-window-mode"][value="agent"]:checked')],surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label="Agent chat"]')];if(agent.length!==1||document.querySelectorAll('main.workbench.workbench--agent').length!==1||surfaces.length!==1)return false;const triggers=[...surfaces[0].querySelectorAll('.composer__controls .searchable-picker__trigger')],harness=triggers.filter(x=>x.getAttribute('aria-label')==='Harness'),models=triggers.filter(x=>x.getAttribute('aria-label')==='Model');if(triggers.length!==2||harness.length!==1||models.length!==1||harness[0].disabled||harness[0].getAttribute('aria-expanded')!=='true')return false;const controls=harness[0].getAttribute('aria-controls'),input=controls?document.querySelector('input.searchable-picker__input[aria-label="Harness"][aria-controls="'+controls+'"]'):null,listbox=controls?document.getElementById(controls):null,options=listbox?[...listbox.querySelectorAll('[role="option"]')].filter(x=>x.textContent.trim()===${JSON.stringify(display)}&&x.getAttribute('aria-disabled')!=='true'&&!x.disabled):[];return input!==null&&listbox!==null&&options.length===1})()`,
-    selectCodex: `(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(panes.length!==1)return false;const surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label="Agent chat"]')];if(surfaces.length!==1)return false;const harness=[...surfaces[0].querySelectorAll('.composer__controls .searchable-picker__trigger')].filter(x=>x.getAttribute('aria-label')==='Harness');if(harness.length!==1||harness[0].disabled||harness[0].getAttribute('aria-expanded')!=='true')return false;const controls=harness[0].getAttribute('aria-controls'),inputs=controls?[...document.querySelectorAll('input.searchable-picker__input[aria-label="Harness"][aria-controls="'+controls+'"]')]:[],listbox=controls?document.getElementById(controls):null,options=listbox?[...listbox.querySelectorAll('[role="option"]')].filter(x=>x.textContent.trim()===${JSON.stringify(display)}&&x.getAttribute('aria-disabled')!=='true'&&!x.disabled):[];if(inputs.length!==1||document.activeElement!==inputs[0]||options.length!==1)return false;options[0].click();return true})()`,
-    codexReady: `(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(panes.length!==1)return false;const s=panes[0].querySelector('section.chat-surface[aria-label="Agent chat"]');if(!s)return false;const p=s.querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]');const triggers=[...s.querySelectorAll('.composer__controls .searchable-picker__trigger')],harness=triggers.filter(x=>x.getAttribute('aria-label')==='Harness'),models=triggers.filter(x=>x.getAttribute('aria-label')==='Model'),composers=[...s.querySelectorAll('textarea[aria-label="Message agent"]')],selected=x=>typeof x.dataset.selectedId==='string'&&x.dataset.selectedId.length>0&&x.dataset.selectedId.length<=512&&x.textContent.trim().length>0&&x.textContent.trim().length<=512;const status=s.querySelector('.session-state')?.textContent.trim();return p.length===1&&triggers.length===2&&harness.length===1&&models.length===1&&!harness[0].disabled&&!models[0].disabled&&selected(harness[0])&&harness[0].textContent.trim()===${JSON.stringify(display)}&&selected(models[0])&&(status==='Ready'||status==='Live')&&composers.length===1&&composers[0].disabled===false})()`,
-    sendEnabled:
-      "(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];return panes.length===1&&panes[0].querySelectorAll('button[aria-label=\"Send message\"]:not(:disabled)').length===1})()",
-    send: "(()=>{const panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(panes.length!==1)return false;const x=[...panes[0].querySelectorAll('button[aria-label=\"Send message\"]:not(:disabled)')];if(x.length!==1)return false;x[0].click();return true})()",
+      "(()=>{const sidebars=[...document.querySelectorAll('aside[aria-label=\"Projects and chats\"]')];if(sidebars.length!==1)return false;const buttons=[...sidebars[0].querySelectorAll('button[aria-label=\"New chat\"]')].filter(x=>!x.disabled);if(buttons.length!==1)return false;buttons[0].click();return true})()",
+    codexPickerState: CODEX_PICKER_STATE_EXPRESSION,
+    openCodexPicker: `(()=>{const panes=${FOCUSED_PANES};if(panes.length!==1)return false;const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return false;const s=surfaces[0],harness=${HARNESS_TRIGGERS};if(harness.length!==1||harness[0].disabled||harness[0].getAttribute('aria-expanded')!=='false')return false;harness[0].click();return true})()`,
+    codexSelectable: `(()=>{const allPanes=[...document.querySelectorAll('section.agent-chat-pane')],panes=${FOCUSED_PANES},rails=${CURRENT_RAIL_CHATS};if(!${AGENT_MODE}||allPanes.length<1||allPanes.length>2||panes.length!==1||rails.length!==1)return false;const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return false;const s=surfaces[0],harness=${HARNESS_TRIGGERS},models=${MODEL_TRIGGERS};if(harness.length!==1||models.length!==1||harness[0].disabled||harness[0].getAttribute('aria-expanded')!=='true')return false;const options=${CODEX_OPTIONS}(harness[0]);return options!==null&&options.length===1})()`,
+    selectCodex: `(()=>{const panes=${FOCUSED_PANES};if(panes.length!==1)return false;const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return false;const s=surfaces[0],harness=${HARNESS_TRIGGERS};if(harness.length!==1||harness[0].disabled||harness[0].getAttribute('aria-expanded')!=='true')return false;const options=${CODEX_OPTIONS}(harness[0]);if(options===null||options.length!==1)return false;options[0].click();return true})()`,
+    codexReadyState: codexReadyStateExpression(codexId, codexName),
+    codexReady: `(${codexReadyStateExpression(codexId, codexName)}==='ready')`,
+    sendEnabled: `(()=>{const panes=${FOCUSED_PANES};return panes.length===1&&panes[0].querySelectorAll('button[aria-label="Send message"]:not(:disabled)').length===1})()`,
+    send: `(()=>{const panes=${FOCUSED_PANES};if(panes.length!==1)return false;const x=[...panes[0].querySelectorAll('button[aria-label="Send message"]:not(:disabled)')];if(x.length!==1)return false;x[0].click();return true})()`,
     ...createModeBCancelUi(),
   });
 }
 
-export const ACP04_SNAPSHOT_EXPRESSION = `(()=>{const allPanes=[...document.querySelectorAll('section.agent-chat-pane')],panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')];if(allPanes.length<1||allPanes.length>2||panes.length!==1)return null;const surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label="Agent chat"]')];if(surfaces.length!==1)return null;const s=surfaces[0],projections=[...s.querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]')],triggers=[...s.querySelectorAll('.composer__controls .searchable-picker__trigger')],composers=[...s.querySelectorAll('textarea[aria-label="Message agent"]')];if(triggers.length!==2)return null;if(projections.length===0)return {kind:'projection-unavailable'};if(projections.length!==1)return null;const p=projections[0],selected=x=>x.dataset.selectedId&&x.textContent.trim()?{id:x.dataset.selectedId,text:x.textContent.trim()}:null,harness=triggers.filter(x=>x.getAttribute('aria-label')==='Harness'),models=triggers.filter(x=>x.getAttribute('aria-label')==='Model');if(harness.length!==1||models.length!==1)return null;const alerts=[...s.querySelectorAll('[role="alert"]')].map(x=>{const source=(String(x.className).trim().split(/\\s+/u)[0]||x.tagName.toLowerCase()).replace(/[^a-z0-9_-]/giu,'-').slice(0,64)||'unclassified';return '['+source+'] '+x.innerText.trim()}).filter(x=>!x.endsWith('] '));const named=(s.innerText.match(/ProtocolFailure|HostError::Closed|ACP[^\\n]{0,80}(?:recovery|capacity)/giu)||[]).map(x=>'[named-protocol] '+x);return {projectId:p.dataset.projectId||'',chatId:p.dataset.chatId||'',currentSessionId:p.dataset.currentSessionId||'',projectionRevision:p.dataset.projectionRevision||'',harness:selected(harness[0]),model:selected(models[0]),harnessStatus:(s.querySelector('.session-state')?.textContent||'').trim(),composerEnabled:composers.length===1&&composers[0].disabled===false,failures:[...new Set([...alerts,...named])],turns:[...p.querySelectorAll(':scope > section.acp-turn')].map(t=>({id:t.dataset.turnId||'',sessionId:t.dataset.sessionId||'',runtimeEpoch:t.dataset.runtimeEpoch||'',ordinal:Number(t.dataset.turnOrdinal),state:t.querySelector(':scope > header [data-turn-status][role="status"]')?.getAttribute('aria-label')||'',items:[...t.querySelectorAll('article[data-item-id][data-message-role]')].map(x=>({id:x.dataset.itemId||'',role:x.dataset.messageRole||'',text:(x.querySelector('.acp-markdown')?.innerText||'').trim()}))}))}})()`;
+export const ACP04_SNAPSHOT_EXPRESSION = `(()=>{const allPanes=[...document.querySelectorAll('section.agent-chat-pane')],panes=${FOCUSED_PANES};if(allPanes.length<1||allPanes.length>2||panes.length!==1)return null;const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return null;const s=surfaces[0],projections=[...s.querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]')],harness=${HARNESS_TRIGGERS},models=${MODEL_TRIGGERS},composers=[...s.querySelectorAll('textarea[aria-label="Message agent"]')];if(harness.length!==1||models.length!==1)return null;if(projections.length===0)return {kind:'projection-unavailable'};if(projections.length!==1)return null;const p=projections[0],harnessText=harness[0].textContent.trim(),modelText=models[0].textContent.trim(),modelId=models[0].dataset.selectedId||'';const alerts=[...s.querySelectorAll('[role="alert"]')].map(x=>{const source=(String(x.className).trim().split(/\\s+/u)[0]||x.tagName.toLowerCase()).replace(/[^a-z0-9_-]/giu,'-').slice(0,64)||'unclassified';return '['+source+'] '+x.innerText.trim()}).filter(x=>!x.endsWith('] '));const named=(s.innerText.match(/ProtocolFailure|HostError::Closed|ACP[^\\n]{0,80}(?:recovery|capacity)/giu)||[]).map(x=>'[named-protocol] '+x);return {projectId:p.dataset.projectId||'',chatId:p.dataset.chatId||'',currentSessionId:p.dataset.currentSessionId||'',projectionRevision:p.dataset.projectionRevision||'',harness:harness[0].dataset.selectedId&&harnessText?{id:harness[0].dataset.selectedId,text:harnessText}:null,model:modelId&&modelText?{id:modelId,text:modelText}:null,harnessStatus:${HARNESS_STATUS},composerEnabled:composers.length===1&&composers[0].disabled===false,failures:[...new Set([...alerts,...named])],turns:[...p.querySelectorAll('section[data-turn-id][data-turn-ordinal]')].map(t=>({id:t.dataset.turnId||'',sessionId:t.dataset.sessionId||'',runtimeEpoch:t.dataset.runtimeEpoch||'',ordinal:Number(t.dataset.turnOrdinal),state:${ACP04_TURN_STATE_EXPRESSION}(t),items:[...t.querySelectorAll('article[data-item-id][data-message-role]')].map(x=>({id:x.dataset.itemId||'',role:x.dataset.messageRole||'',text:(x.querySelector('.acp-markdown')?.innerText||'').trim()}))}))}})()`;
 
 export function freshChatReadyExpression(previousChatId) {
   if (
@@ -105,7 +207,7 @@ export function freshChatReadyExpression(previousChatId) {
     previousChatId.length > 512
   )
     fail("seeded-chat-id-invalid");
-  return `(()=>{const groups=[...document.querySelectorAll('[role="radiogroup"][aria-label="Window mode"]')],allPanes=[...document.querySelectorAll('section.agent-chat-pane')],panes=[...document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused')],rails=[...document.querySelectorAll('.project-chat[aria-current="page"]')];if(groups.length!==1||allPanes.length<1||allPanes.length>2||panes.length!==1||rails.length!==1)return false;const agent=[...groups[0].querySelectorAll('input[name="workbench-window-mode"][value="agent"]:checked')],surfaces=[...panes[0].querySelectorAll('section.chat-surface[aria-label="Agent chat"]')];if(agent.length!==1||document.querySelectorAll('main.workbench.workbench--agent').length!==1||surfaces.length!==1)return false;const chatId=rails[0].dataset.chatId||'';return chatId!==${JSON.stringify(previousChatId)}&&chatId!==''})()`;
+  return `(()=>{const allPanes=[...document.querySelectorAll('section.agent-chat-pane')],panes=${FOCUSED_PANES},rails=${CURRENT_RAIL_CHATS};if(!${AGENT_MODE}||allPanes.length<1||allPanes.length>2||panes.length!==1||rails.length!==1)return false;if(${AGENT_SURFACES}.length!==1)return false;const chatId=rails[0].dataset.chatId||'';return chatId!==${JSON.stringify(previousChatId)}&&chatId!==''})()`;
 }
 
 const RUNTIME_OBSERVATION_EXPRESSION =
@@ -139,12 +241,16 @@ export function createModeAState(
   codexVersion,
 ) {
   validateEchoes(echoes);
+  // The picker names the harness only; the runtime observation binds the
+  // admitted Codex version at the end of each mode.
+  if (!codexSemanticVersion(codexVersion)) fail("codex-version-invalid");
   const initial = validateSnapshot(initialValue);
   rejectObservedFailures(initial);
   if (
     initial.turns.length !== 0 ||
     initial.currentSessionId !== "" ||
-    initial.harness.text !== `Codex \u2014 ${codexVersion}` ||
+    initial.harness.id !== ACP04_CODEX_HARNESS_ID ||
+    initial.harness.text !== ACP04_CODEX_HARNESS_NAME ||
     !["Ready", "Live"].includes(initial.harnessStatus) ||
     !initial.composerEnabled
   )
@@ -174,8 +280,7 @@ export function acceptModeASnapshot(state, value) {
     snapshot.chatId !== state.chatId ||
     snapshot.harness.id !== state.harness.id ||
     snapshot.harness.text !== state.harness.text ||
-    snapshot.model.id !== state.model.id ||
-    snapshot.model.text !== state.model.text
+    snapshot.model.id !== state.model.id
   )
     fail("identity-churn");
   const revision = BigInt(snapshot.projectionRevision);
@@ -227,6 +332,9 @@ export function acceptModeASnapshot(state, value) {
     sessionId: turn.sessionId,
     runtimeEpoch: turn.runtimeEpoch,
     projectionRevision: snapshot.projectionRevision,
+    // The Model control reads "Model" until the session confirms the model,
+    // then shows its name; the id alone is the identity, the name is recorded.
+    model: { ...snapshot.model },
     turnIds: [...state.turnIds, turn.id],
     turnOrdinals: [...state.turnOrdinals, turn.ordinal],
     itemIds: [...state.itemIds, ...turn.items.map((item) => item.id)],
@@ -296,6 +404,10 @@ function defaultDriver(cdp, deadline, codexVersion, guard = () => {}) {
         "acp04-fresh-chat-timeout",
       ),
     waitForCodexSelectable: async () => {
+      await awaitCodexPickerOpenable(
+        () => readiness(ui.codexPickerState),
+        deadline,
+      );
       await exactAction(ui.openCodexPicker, "codex-picker-open-invalid");
       return waitUntil(
         () => readiness(ui.codexSelectable),
@@ -305,11 +417,7 @@ function defaultDriver(cdp, deadline, codexVersion, guard = () => {}) {
     },
     selectCodex: () => exactAction(ui.selectCodex, "codex-selector-invalid"),
     waitForCodexReady: () =>
-      waitUntil(
-        () => readiness(ui.codexReady),
-        deadline,
-        "acp04-codex-ready-timeout",
-      ),
+      awaitCodexReady(() => readiness(ui.codexReadyState), deadline),
     snapshot: () => {
       guard();
       return probeAcp04Snapshot(cdp, deadline);

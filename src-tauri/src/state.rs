@@ -52,37 +52,101 @@ pub struct AppState {
     pub project_transitions: tokio::sync::Mutex<u64>,
     pub startup_recovery_notice: Option<String>,
     pub terminals: crate::user_terminal::TerminalSessionPort,
+    /// Archive runtime releases still running; exit waits for them.
+    pub archive_releases: crate::chat_archive_commands::ArchiveReleases,
 }
 
 impl AppState {
+    /// Every sweep interval, parks the harness runtimes of Chats left idle,
+    /// until the lanes shut down.
+    pub(crate) fn release_idle_runtimes_periodically(app: tauri::AppHandle) {
+        tauri::async_runtime::spawn(async move {
+            let interval = crate::acp::service::AcpService::IDLE_SWEEP_INTERVAL;
+            let mut sweeps =
+                tokio::time::interval_at(tokio::time::Instant::now() + interval, interval);
+            sweeps.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                sweeps.tick().await;
+                let app = app.clone();
+                let swept = tauri::async_runtime::spawn_blocking(move || {
+                    let now = std::time::Instant::now();
+                    app.state::<AppState>().acp.release_idle_runtimes(now)
+                })
+                .await;
+                match swept {
+                    Ok(Some(0)) => {}
+                    Ok(Some(parked)) => tracing::info!(parked, "released idle Chats' runtimes"),
+                    // A sweep that panicked leaves the next one to try again.
+                    Err(_) => tracing::warn!("an idle-release sweep failed"),
+                    Ok(None) => break,
+                }
+            }
+        });
+    }
+
     pub(crate) fn refresh_harnesses_after_window_shown(app: tauri::AppHandle) {
         tauri::async_runtime::spawn_blocking(move || {
-            let presence = crate::harness_discovery::discover_installed_harness_presence();
-            let state = app.state::<AppState>();
-            state.harnesses.apply_presence(presence.clone());
-            use tauri::Emitter;
-            let _ = app.emit(
-                "harness-discovery-changed-v1",
-                state.harnesses.definitions(),
-            );
-            let (claude, discovered) = std::thread::scope(|scope| {
-                let claude = scope.spawn(crate::harness_discovery::discover_claude_launch);
-                let discovered = crate::harness_discovery::enrich_installed_harness_versions(
-                    &presence,
-                    &state.harness_version_cache,
-                );
-                let claude = claude.join().unwrap_or_else(|_| {
-                    tracing::warn!("Claude launch discovery panicked");
-                    crate::harness_discovery::ClaudeLaunchDiscovery::AdapterVersionUnreadable
-                });
-                (claude, discovered)
-            });
-            state.harnesses.apply_discovery(claude, discovered);
-            let _ = app.emit(
-                "harness-discovery-changed-v1",
-                state.harnesses.definitions(),
-            );
+            Self::rediscover_harnesses(&app);
         });
+    }
+
+    /// Discovers the installed harnesses again and re-admits them, so a
+    /// harness installed or updated while Sage runs is picked up without a
+    /// restart. Blocking: it runs each harness's bounded version probe. A
+    /// due update check continues in the background.
+    pub(crate) fn rediscover_harnesses(
+        app: &tauri::AppHandle,
+    ) -> Vec<crate::domain::HarnessDefinition> {
+        let harnesses = &app.state::<AppState>().harnesses;
+        let installed = {
+            let _discovering = harnesses.lock_rediscovery();
+            Self::discover_harnesses(app)
+        };
+        let sources = crate::harness_discovery::update_sources(&installed);
+        let ids: Vec<_> = sources.iter().map(|source| source.harness_id).collect();
+        if harnesses.begin_update_check(&ids) {
+            let app = app.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                use tauri::Emitter;
+                let found = crate::harness_discovery::published_releases(&sources);
+                let harnesses = &app.state::<AppState>().harnesses;
+                harnesses.finish_update_check(found);
+                let _ = app.emit("harness-discovery-changed-v1", harnesses.definitions());
+            });
+        }
+        harnesses.definitions()
+    }
+
+    fn discover_harnesses(
+        app: &tauri::AppHandle,
+    ) -> Vec<crate::harness_discovery::InstalledHarness> {
+        use tauri::Emitter;
+        let state = app.state::<AppState>();
+        crate::settings_commands::custom_acp_agents::apply_saved(&state);
+        let presence = crate::harness_discovery::discover_installed_harness_presence();
+        state.harnesses.apply_presence(presence.clone());
+        let _ = app.emit(
+            "harness-discovery-changed-v1",
+            state.harnesses.definitions(),
+        );
+        let (claude, discovered) = std::thread::scope(|scope| {
+            let claude = scope.spawn(crate::harness_discovery::discover_claude_launch);
+            let discovered = crate::harness_discovery::enrich_installed_harness_versions(
+                &presence,
+                &state.harness_version_cache,
+            );
+            let claude = claude.join().unwrap_or_else(|_| {
+                tracing::warn!("Claude launch discovery panicked");
+                crate::harness_discovery::ClaudeLaunchDiscovery::AdapterVersionUnreadable
+            });
+            (claude, discovered)
+        });
+        state.harnesses.apply_discovery(claude, discovered.clone());
+        let _ = app.emit(
+            "harness-discovery-changed-v1",
+            state.harnesses.definitions(),
+        );
+        discovered
     }
 
     pub(crate) async fn lock_active_project(
@@ -134,6 +198,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 
@@ -177,6 +242,11 @@ impl AppState {
             acp.set_browser_app(app.clone());
         }
         let goal_app = app.clone();
+        let commands_app = app.clone();
+        acp.set_commands_notice_sink(std::sync::Arc::new(move |notice| {
+            use tauri::Emitter;
+            let _ = commands_app.emit("acp-commands-changed-v1", notice);
+        }));
         acp.set_session_config_notice_sink(std::sync::Arc::new(move |notice| {
             use tauri::Emitter;
             let _ = app.emit("acp-session-config-changed-v1", notice);
@@ -185,10 +255,13 @@ impl AppState {
             use tauri::Emitter;
             let _ = goal_app.emit("acp-goal-changed-v1", notice);
         }));
+        crate::chat_archive_commands::forget_read_marks_of_deleted_chats(&database, &settings);
         let harnesses = HarnessCatalog::with_registry(registry);
         if fixture_isolation {
             harnesses.apply_presence(Vec::new());
         }
+        // Chats deleted while Sage was not running keep no access choice.
+        crate::settings_store::forget_removed_chat_access(&database, &settings);
         Ok(Self {
             database,
             settings,
@@ -199,6 +272,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 
@@ -236,6 +310,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 
@@ -268,6 +343,7 @@ impl AppState {
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+            archive_releases: Default::default(),
         })
     }
 
@@ -285,6 +361,9 @@ struct DesktopProjectionSink(
 );
 
 impl NotificationSink for DesktopProjectionSink {
+    fn observe_turn_notice(&self, event: &ProjectionChangedV1) {
+        crate::notifications::observe(&self.0, event);
+    }
     fn publish<'a>(&'a self, event: ProjectionChangedV1) -> NotificationSinkFuture<'a> {
         Box::pin(async move {
             use tauri::Emitter;
@@ -330,7 +409,7 @@ mod tests {
 
         let state = AppState::new(Database::open(std::path::Path::new(":memory:")).unwrap());
         let registry = state.acp.binding_registry();
-        for id in ["unknown", "pi", "oh-my-pi"] {
+        for id in ["unknown", "oh-my-pi"] {
             assert!(registry.for_harness(id).is_none());
             assert!(matches!(
                 registry.resolve(id),
@@ -377,11 +456,19 @@ mod tests {
             .find(|entry| entry.id == "claude-code")
             .unwrap();
         assert_eq!(claude.binding_id.as_deref(), Some("claude-agent-acp"));
-        for id in ["pi", "oh-my-pi"] {
-            let entry = definitions.iter().find(|entry| entry.id == id).unwrap();
-            assert!(entry.binding_id.is_none());
-            assert_ne!(entry.install_state, "available");
-        }
+        // Pi has a curated read-only binding that stays unadmitted until
+        // discovery finds the installed package.
+        assert!(registry.for_harness("pi").is_some());
+        assert!(registry.resolve("pi-rpc").is_err());
+        let pi = definitions.iter().find(|entry| entry.id == "pi").unwrap();
+        assert_eq!(pi.binding_id.as_deref(), Some("pi-rpc"));
+        assert_ne!(pi.install_state, "available");
+        let omp = definitions
+            .iter()
+            .find(|entry| entry.id == "oh-my-pi")
+            .unwrap();
+        assert!(omp.binding_id.is_none());
+        assert_ne!(omp.install_state, "available");
     }
 
     #[test]

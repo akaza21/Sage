@@ -7,10 +7,7 @@
 
 use std::time::{Duration, Instant};
 
-use crate::{
-    acp::runtime::HostOutcome,
-    acp::{contract::SageProjectId, runtime::HostError},
-};
+use crate::acp::{contract::SageProjectId, runtime::HostError};
 
 use super::{AcpService, shutdown::map_discovery_shutdown};
 
@@ -57,6 +54,10 @@ where
 
 impl AcpService {
     pub(crate) fn project_switched(&self, active_project: &SageProjectId) -> Result<(), HostError> {
+        self.file_stages
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear();
         self.revoke_browser_other_projects(active_project);
         // P-02 has no live adapter pump, but its conformance receivers are
         // owner-bound native work and must not survive a project replacement.
@@ -74,16 +75,17 @@ impl AcpService {
                     .map_err(map_discovery_shutdown)
             },
             |deadline, _remaining| {
-                match self.runtime.active() {
-                    Some(runtime) => {
-                        runtime.project_switched_until(active_project.clone(), deadline)
+                for lane in self.lanes() {
+                    if let Some(runtime) = lane.runtime.active() {
+                        runtime.project_switched_until(active_project.clone(), deadline)?;
                     }
-                    None => Ok(HostOutcome::ProjectSwitchObserved),
                 }
-                .map(|_| ())
+                Ok(())
             },
             || {
-                self.scheduler.project_switched(active_project);
+                for lane in self.lanes() {
+                    lane.scheduler.project_switched(active_project);
+                }
                 self.codex_auth.invalidate();
                 if let Some(notifier) = &self.notifier {
                     notifier.set_active_project(active_project.clone());

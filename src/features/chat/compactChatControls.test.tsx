@@ -40,7 +40,7 @@ describe("Compact chat controls", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("opens access options from a shield, returns Escape to that opener, and toggles closed on a second pointer click", () => {
+  it("opens access options from a shield, returns Escape to that opener, and toggles closed on a second pointer click", async () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -87,11 +87,11 @@ describe("Compact chat controls", () => {
     );
     const trigger = screen.getByRole("button", { name: "Access options" });
     expect(trigger).toHaveAccessibleDescription(
-      "Read workspace files; no writes or network. Applies from your next message with this harness.",
+      "Read workspace files; no writes or network. Applies to this chat from your next message.",
     );
     expect(trigger.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     fireEvent.click(trigger);
-    const dialog = screen.getByRole("menu", {
+    const dialog = await screen.findByRole("menu", {
       name: "Access mode",
     });
     expect(dialog.parentElement).toBe(document.body);
@@ -116,7 +116,10 @@ describe("Compact chat controls", () => {
         onToggle={() => {}}
         onToggleEffort={() => {}}
         onDismiss={() => {}}
-        choices={[{ id: "model", name: "Advertised long model" }]}
+        choices={[
+          { id: "model", name: "Advertised long model" },
+          { id: "other", name: "Other model" },
+        ]}
         selectedId="model"
         modelLabel="Advertised long model"
         effortLabel={null}
@@ -133,6 +136,7 @@ describe("Compact chat controls", () => {
       "aria-description",
       "Advertised long model",
     );
+    expect(trigger).toHaveAttribute("data-selected-id", "model");
     expect(
       trigger.querySelector(".composer__model-icon.lucide-sparkles"),
     ).toHaveAttribute("aria-hidden", "true");

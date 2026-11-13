@@ -7,6 +7,9 @@ import {
   type VirtualTurnTarget,
 } from "./chatScroll";
 
+/** Upper bound for a smooth scroll; `scrollend` usually settles it sooner. */
+const SMOOTH_SCROLL_SETTLE_MS = 1000;
+
 /**
  * Jump and find anchoring over the virtual list's host. It loads with the
  * lazy ChatNavigation chunk; the eager list only keeps a pinned target.
@@ -86,7 +89,10 @@ function createController(currentHost: () => TurnListHost | null) {
     clearTimer();
     const target = currentHost()?.target.current;
     if (target) target.settling = behavior === "smooth";
-    timer = behavior === "smooth" ? setTimeout(finish, 1000) : null;
+    timer =
+      behavior === "smooth"
+        ? setTimeout(finish, SMOOTH_SCROLL_SETTLE_MS)
+        : null;
   };
   const scroll = (port: HTMLElement, top: number, behavior: ScrollBehavior) => {
     waitForScroll(behavior);

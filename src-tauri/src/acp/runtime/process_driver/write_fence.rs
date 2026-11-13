@@ -70,13 +70,17 @@ impl WriteFence {
         self.phase == Phase::StdoutOpen
     }
 
-    #[cfg(test)]
     pub(crate) fn awaiting_observation(&self) -> bool {
         self.phase == Phase::AwaitingObservation
     }
 
     pub(crate) fn ready_for_write(&self) -> bool {
         self.phase == Phase::Bound
+    }
+
+    /// No further write of this Turn's prompt can be admitted.
+    pub(crate) fn delivery_settled(&self) -> bool {
+        matches!(self.phase, Phase::StdoutOpen | Phase::Terminal)
     }
 
     fn exact(&self, turn_id: &SageTurnId) -> Result<(), WriteFenceError> {

@@ -16,7 +16,7 @@ use crate::acp::{
 use super::{DriverClock, DriverError, DriverProgress};
 
 mod queue;
-use queue::{map_queue, pop_driver_message, reader_chunk_limit};
+use queue::{ReceiveMode, map_queue, pop_driver_message, reader_chunk_limit};
 
 pub(crate) struct PromptIntent {
     pub(crate) prompt: crate::acp::intent::Prompt,
@@ -130,7 +130,10 @@ impl DriverMailbox {
             LIMITS.queues.driver_control_messages as usize,
             LIMITS.queues.driver_control_bytes as usize,
         )
-        .map_err(map_queue)?;
+        .map_err(map_queue)?
+        // Harness output shares the data lane, so the largest prompt has a
+        // reserve beside it, as in the host mailbox and egress.
+        .with_prompt_reserve(crate::acp::limits::PROMPT_INTENT_BYTES);
         Ok(Self {
             state: Mutex::new(State {
                 queue,
@@ -255,7 +258,7 @@ impl DriverMailbox {
         deadline_millis: Option<i64>,
         clock: &dyn DriverClock,
     ) -> Result<Option<ControlMessage>, MailboxError> {
-        self.wait_until(deadline_millis, clock, false)
+        self.wait_until(deadline_millis, clock, ReceiveMode::All)
     }
 
     pub(super) fn wait_control_until(
@@ -263,18 +266,26 @@ impl DriverMailbox {
         deadline_millis: Option<i64>,
         clock: &dyn DriverClock,
     ) -> Result<Option<ControlMessage>, MailboxError> {
-        self.wait_until(deadline_millis, clock, true)
+        self.wait_until(deadline_millis, clock, ReceiveMode::Control)
+    }
+
+    pub(super) fn wait_write_observation_until(
+        &self,
+        deadline_millis: Option<i64>,
+        clock: &dyn DriverClock,
+    ) -> Result<Option<ControlMessage>, MailboxError> {
+        self.wait_until(deadline_millis, clock, ReceiveMode::WriteObservation)
     }
 
     fn wait_until(
         &self,
         deadline_millis: Option<i64>,
         clock: &dyn DriverClock,
-        control_only: bool,
+        mode: ReceiveMode,
     ) -> Result<Option<ControlMessage>, MailboxError> {
         let mut state = self.lock();
         loop {
-            let message = pop_driver_message(&mut state.queue, control_only);
+            let message = pop_driver_message(&mut state.queue, mode);
             if let Some(message) = message {
                 self.space.notify_all();
                 return Ok(Some(message));
@@ -319,14 +330,6 @@ impl DriverMailbox {
             self.space.notify_all();
         }
         message
-    }
-
-    pub(super) fn is_quiescent(&self) -> bool {
-        let state = self.lock();
-        state.queue.data_usage() == (0, 0)
-            && state.queue.control_usage() == (0, 0)
-            && !state.terminal_queued
-            && !state.closed
     }
 
     pub(super) fn reader_terminal_queued(&self) -> bool {
@@ -382,18 +385,28 @@ impl DriverMailbox {
         }
     }
 
+    /// A prompt the data lane cannot take, while harness output fills it,
+    /// waits in the prompt reserve instead. A refused push leaves the
+    /// message unbuilt, so the reserve can still take it.
     pub(super) fn try_push_data(
         &self,
         bytes: usize,
+        prompt: bool,
         build: impl FnOnce() -> ControlMessage,
     ) -> Result<(), MailboxError> {
         let mut state = self.lock();
         if state.closed || state.terminal_queued {
             return Err(MailboxError::Closed);
         }
+        let mut build = Some(build);
+        let mut take = || (build.take().expect("driver message built once"))();
         state
             .queue
-            .try_push_data_with(bytes, build)
+            .try_push_data_with(bytes, &mut take)
+            .or_else(|error| match prompt {
+                true => state.queue.try_push_prompt_with(bytes, &mut take),
+                false => Err(error),
+            })
             .map_err(map_queue)?;
         self.ready.notify_one();
         Ok(())

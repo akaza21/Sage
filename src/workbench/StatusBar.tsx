@@ -1,7 +1,8 @@
+import type { ReactNode } from "react";
 import { GitBranch, PanelLeftClose, PanelLeftOpen } from "../ui/leanIcons";
 
-import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useEditorCaretStore } from "../app/editorCaretStore";
+import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useWorkbenchStore } from "../app/store";
 import type { ProjectRepositoryStatus } from "../domain/workbench";
 import { caretStatusLabel } from "../features/files/editorCaret";
@@ -30,13 +31,13 @@ export function StatusBar({
   railLeading = false,
   showSidebarToggle = true,
   showEditorSettings = true,
-  onOpenTerminal,
+  terminalControls,
 }: {
   inert?: boolean;
   railLeading?: boolean;
   showSidebarToggle?: boolean;
   showEditorSettings?: boolean;
-  onOpenTerminal?: () => void;
+  terminalControls?: ReactNode;
 }) {
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const toggleSidebar = useWorkbenchStore((state) => state.toggleSidebar);
@@ -85,16 +86,7 @@ export function StatusBar({
         ) : null}
       </div>
       <div className="status-bar__group">
-        {onOpenTerminal ? (
-          <button
-            className="status-bar__button"
-            type="button"
-            aria-label="Open terminal"
-            onClick={onOpenTerminal}
-          >
-            &gt;_
-          </button>
-        ) : null}
+        {terminalControls}
         {showEditorSettings && caretLabel ? (
           <span title="Caret position">{caretLabel}</span>
         ) : null}

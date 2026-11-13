@@ -1,18 +1,49 @@
+use std::sync::OnceLock;
+
 use rusqlite::Connection;
 
 use crate::{error::AppResult, project_migration};
 
 use super::super::{INITIAL, V2, V3, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15, V16, legacy};
-use super::{V10_LEGACY_SESSION_EVENTS, schema_fingerprint};
+use super::{MAX_SCHEMA_VERSION, V10_LEGACY_SESSION_EVENTS, schema_fingerprint};
+
+// An expected fingerprint depends only on the SQL built into this binary, so
+// each one is replayed once per process. Every migration step classifies its
+// source, and replaying the whole chain each time made opening a fresh
+// database quadratic in the schema version.
+static EXPECTED: [OnceLock<String>; MAX_SCHEMA_VERSION + 1] =
+    [const { OnceLock::new() }; MAX_SCHEMA_VERSION + 1];
+static EXPECTED_LEGACY_V10_SESSION_EVENTS: OnceLock<String> = OnceLock::new();
 
 pub(super) fn expected_schema_fingerprint(version: u32) -> AppResult<String> {
-    schema_fingerprint(&expected_schema_connection(version)?)
+    let replay = || schema_fingerprint(&expected_schema_connection(version)?);
+    match usize::try_from(version)
+        .ok()
+        .and_then(|index| EXPECTED.get(index))
+    {
+        Some(slot) => memoized(slot, replay),
+        None => replay(),
+    }
 }
 
 pub(super) fn expected_legacy_v10_session_events_fingerprint() -> AppResult<String> {
-    let expected = expected_schema_connection(10)?;
-    expected.execute_batch(V10_LEGACY_SESSION_EVENTS)?;
-    schema_fingerprint(&expected)
+    memoized(&EXPECTED_LEGACY_V10_SESSION_EVENTS, || {
+        let expected = expected_schema_connection(10)?;
+        expected.execute_batch(V10_LEGACY_SESSION_EVENTS)?;
+        schema_fingerprint(&expected)
+    })
+}
+
+/// A failed replay is returned and not cached, so the next call retries it.
+fn memoized(
+    slot: &OnceLock<String>,
+    replay: impl FnOnce() -> AppResult<String>,
+) -> AppResult<String> {
+    if let Some(fingerprint) = slot.get() {
+        return Ok(fingerprint.clone());
+    }
+    let fingerprint = replay()?;
+    Ok(slot.get_or_init(|| fingerprint).clone())
 }
 
 fn expected_schema_connection(version: u32) -> AppResult<Connection> {
@@ -141,6 +172,91 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
             [],
         )?;
         expected.pragma_update(None, "user_version", 18)?;
+    }
+    if version >= 19 {
+        expected.execute_batch(super::super::workspace_changes::V19)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (19, 0)",
+            [],
+        )?;
+        expected.pragma_update(None, "user_version", 19)?;
+    }
+    if version >= 20 {
+        expected.execute_batch(super::super::title_provenance::V20)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (20, 0)",
+            [],
+        )?;
+        expected.pragma_update(None, "user_version", 20)?;
+    }
+    if version >= 21 {
+        expected.execute_batch(super::super::session_scope::V21)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (21, 0)",
+            [],
+        )?;
+        expected.pragma_update(None, "user_version", 21)?;
+    }
+    if version >= 22 {
+        expected.execute_batch(super::super::notifications::V22)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (22, 0)",
+            [],
+        )?;
+        expected.pragma_update(None, "user_version", 22)?;
+    }
+    if version >= 23 {
+        expected.execute_batch(super::super::config_choices::V23)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (23, 0)",
+            [],
+        )?;
+        expected.pragma_update(None, "user_version", 23)?;
+    }
+    let resume_link = super::super::session_resume_link::VERSION;
+    if version >= resume_link {
+        expected.execute_batch(super::super::session_resume_link::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [resume_link],
+        )?;
+        expected.pragma_update(None, "user_version", resume_link)?;
+    }
+    let title_source = super::super::title_source::VERSION;
+    if version >= title_source {
+        expected.execute_batch(super::super::title_source::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [title_source],
+        )?;
+        expected.pragma_update(None, "user_version", title_source)?;
+    }
+    let turn_index = super::super::session_facts_turn_index::VERSION;
+    if version >= turn_index {
+        expected.execute_batch(super::super::session_facts_turn_index::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [turn_index],
+        )?;
+        expected.pragma_update(None, "user_version", turn_index)?;
+    }
+    let terminal_index = super::super::operation_terminal_index::VERSION;
+    if version >= terminal_index {
+        expected.execute_batch(super::super::operation_terminal_index::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [terminal_index],
+        )?;
+        expected.pragma_update(None, "user_version", terminal_index)?;
+    }
+    let undo_indexes = super::super::turn_undo_intent_indexes::VERSION;
+    if version >= undo_indexes {
+        expected.execute_batch(super::super::turn_undo_intent_indexes::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [undo_indexes],
+        )?;
+        expected.pragma_update(None, "user_version", undo_indexes)?;
     }
     Ok(expected)
 }

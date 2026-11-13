@@ -19,6 +19,20 @@ pub struct HarnessDefinition {
     pub characterisation: Option<HarnessCharacterisation>,
     pub unavailable_reason: Option<HarnessUnavailableReason>,
     pub sign_in: Option<HarnessSignIn>,
+    /// The brand mark of a curated harness; `None` for any other harness.
+    #[serde(default)]
+    pub brand: Option<HarnessBrand>,
+    /// A newer published release of the installed CLI, from the last check.
+    #[serde(default)]
+    pub update: Option<HarnessUpdate>,
+}
+
+/// A newer published release and the command that installs it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HarnessUpdate {
+    pub latest_version: String,
+    pub command: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,13 +57,19 @@ impl HarnessInstallState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum HarnessCharacterisation {
+    /// The release Sage was tested with.
     Characterised,
+    /// A later release. It keeps the tested features; the chat notes that it
+    /// is newer than tested.
+    NewerThanTested,
+    /// An earlier release, or one whose version cannot be read.
     Uncharacterised,
 }
 
 impl HarnessCharacterisation {
-    pub(crate) fn is_characterised(self) -> bool {
-        matches!(self, Self::Characterised)
+    /// Whether the features Sage tested apply to this release.
+    pub(crate) fn runs_tested_features(self) -> bool {
+        matches!(self, Self::Characterised | Self::NewerThanTested)
     }
 }
 
@@ -65,10 +85,23 @@ pub enum HarnessUnavailableReason {
     NodeAbsent,
     NodeVersionUnreadable,
     NodeEngineMismatch,
+    /// The installed release predates the oldest one whose protocol Sage
+    /// speaks; updating it fixes this.
+    VersionTooOld,
     CandidateInvalid,
     CapabilityProjectionUnavailable,
     NoNativeAcpEndpoint,
     AcpProbeUncharacterised,
+}
+
+/// Brand identity is curated install metadata, never inferred from a name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HarnessBrand {
+    Claude,
+    Codex,
+    OpenCode,
+    Pi,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,4 +153,8 @@ pub struct ModelOption {
     pub is_default: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window: Option<u32>,
+    /// The thinking levels this model takes, when the harness lists them
+    /// before a session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort_levels: Option<Vec<String>>,
 }

@@ -6,6 +6,23 @@ import { turnStateLabels } from "../../../src/features/chat/acp/statusSemantics"
 
 const FIXED_TIME = "2026-09-04T12:00:00.000Z";
 const MAX_SCREENSHOT_ATTACHMENTS = 12;
+// The header shares Chat status with the rail; individual Turns retain their
+// protocol state labels below. These are the chat-surface display contracts.
+const chatStatusLabels: Record<TurnState, string> = {
+  queued: "Working…",
+  sending: "Working…",
+  running: "Working…",
+  waitingModel: "Working…",
+  waitingTool: "Working…",
+  waitingApproval: "Awaiting approval",
+  waitingUser: "Waiting",
+  cancelling: "Working…",
+  completed: "Done",
+  interrupted: "Done",
+  cancelled: "Done",
+  failed: "Failed",
+  deliveryUnknown: "Failed",
+};
 export const JOURNEY_IDS = {
   projectA: "journey-project-a",
   projectB: "journey-project-b",
@@ -40,9 +57,12 @@ export async function openJourney(page: Page) {
   await expect(
     page.getByRole("region", { name: "Chat pane Alpha" }),
   ).toBeVisible();
+  // AP-A1: the centre shows one Chat; another Chat is reached by selecting
+  // it, never by an automatic second pane.
+  await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
   await expect(
     page.getByRole("region", { name: "Chat pane Beta" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
 }
 
 export async function settleRender(page: Page, projectionEvent = false) {
@@ -59,7 +79,8 @@ export async function runEvent(page: Page, event: JourneyEvent) {
   const result = await page.evaluate(async (nextEvent) => {
     const fixture =
       await import("/tests/ui/fixtures/agentTurnJourneyFixture.ts");
-    return fixture.runJourneyEvent(nextEvent);
+    const result = await fixture.runJourneyEvent(nextEvent);
+    return result;
   }, event);
   await settleRender(page, true);
   return result;
@@ -124,14 +145,14 @@ export async function expectTurnState(
   ) {
     await expect(
       page.locator(".agent-task-header").getByRole("status"),
-    ).toHaveText(turnStateLabels[state]);
+    ).toHaveText(chatStatusLabels[state]);
   }
 }
 
 export async function expectRunningComposerReadyToQueue(
   owner: ReturnType<typeof pane>,
 ) {
-  const composer = owner.getByRole("textbox", { name: "Message agent" });
+  const composer = owner.getByRole("combobox", { name: "Message agent" });
   await expect(composer).toBeEnabled();
   // Wave 5 (Codex): the placeholder stays "Do anything"; queueing is
   // announced through the accessible description below.
@@ -164,7 +185,7 @@ export async function focusPane(page: Page, name: "Alpha" | "Beta") {
   await expect(
     target.getByRole("region", { name: "Agent chat " + name }),
   ).toBeVisible();
-  const composer = target.getByRole("textbox", { name: "Message agent" });
+  const composer = target.getByRole("combobox", { name: "Message agent" });
   if (await composer.isEnabled()) {
     await composer.focus();
     await expect(composer).toBeFocused();

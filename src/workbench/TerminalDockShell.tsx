@@ -1,11 +1,8 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ComponentType,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import { usePortalHost } from "../ui/usePortalHost";
+
+import { IconButton } from "../ui/IconButton";
 import { useWorkbenchStore } from "../app/store";
 import {
   closeUserTerminal,
@@ -15,8 +12,21 @@ import {
   type UserTerminalSession,
 } from "../services/userTerminalDesktop";
 import { firstChatTabId } from "./workbenchWindowMode";
-import type { TerminalDockProps } from "./TerminalDock";
+import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import "./terminal-dock.css";
+import {
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  TerminalSquare,
+  X,
+} from "../ui/leanIcons";
+
+/** The VT100 grid a shell starts with until the dock measures its screen. */
+const INITIAL_COLUMNS = 80;
+const INITIAL_ROWS = 24;
+const TERMINAL_MAX_PER_CHAT = 4;
+const loadTerminalView = () => import("./TerminalDock");
 
 type SessionEntry = {
   session: UserTerminalSession;
@@ -24,27 +34,16 @@ type SessionEntry = {
   message: string | null;
 };
 
-const loadTerminalView = () =>
-  import("./TerminalDock").then(({ TerminalDock }) => ({
-    default: TerminalDock,
-  }));
-
 function selectedScope(
   pinnedChatId: string | null,
   preferredChatId?: string,
 ): UserTerminalScope | null {
   const state = useWorkbenchStore.getState();
   if (!state.project || state.projectTransitioning) return null;
-  const activeChat = state.tabs.find(
-    (tab) => tab.id === state.activeTabId && tab.kind === "chat",
-  )?.id;
   const chatId =
-    activeChat ??
-    (state.tabs.some((tab) => tab.kind === "chat" && tab.id === preferredChatId)
-      ? preferredChatId
-      : state.tabs.some((tab) => tab.kind === "chat" && tab.id === pinnedChatId)
-        ? pinnedChatId
-        : firstChatTabId(state.tabs));
+    [state.activeTabId, preferredChatId, pinnedChatId].find((id) =>
+      state.tabs.some((tab) => tab.kind === "chat" && tab.id === id),
+    ) ?? firstChatTabId(state.tabs);
   if (!chatId) return null;
   return {
     projectId: state.project.id,
@@ -53,20 +52,36 @@ function selectedScope(
   };
 }
 
-export function TerminalDockForWorkbench({
-  inert = false,
-  setOpen,
-  pinnedChatId,
-}: {
+type WorkbenchDockProps = {
   inert?: boolean;
   setOpen: (open: boolean) => void;
   pinnedChatId: string | null;
-}) {
+  visible: boolean;
+  open: boolean;
+};
+
+/** Keep the session owner mounted while the visible center adopts its host. */
+export default function TerminalDockForWorkbench({
+  container,
+  inert,
+  setOpen,
+  pinnedChatId,
+  visible,
+  open,
+}: WorkbenchDockProps & { container: HTMLElement | null }) {
+  const { portal } = usePortalHost(container);
   const onClose = useCallback(() => setOpen(false), [setOpen]);
-  const [uiProjectGeneration] = useState(
-    () => useWorkbenchStore.getState().projectGeneration,
+  const [[scope, uiProjectGeneration], setOwner] = useState(
+    () =>
+      [
+        selectedScope(pinnedChatId),
+        useWorkbenchStore.getState().projectGeneration,
+      ] as const,
   );
-  const [scope] = useState(() => selectedScope(pinnedChatId));
+  if (visible && !scope) {
+    const next = selectedScope(pinnedChatId);
+    if (next) setOwner([next, useWorkbenchStore.getState().projectGeneration]);
+  }
   useEffect(() => {
     if (!scope) return;
     return useWorkbenchStore.subscribe(() => {
@@ -79,67 +94,82 @@ export function TerminalDockForWorkbench({
         current.projectGeneration !== scope.projectGeneration ||
         current.chatId !== scope.chatId
       ) {
+        setOwner([null, uiProjectGeneration]);
         onClose();
       }
     });
   }, [scope, onClose, pinnedChatId, uiProjectGeneration]);
-  if (!scope) {
-    return (
-      <section
-        className="terminal-dock"
-        aria-label="Terminal"
+  return portal(
+    scope ? (
+      <TerminalDockShell
+        scope={scope}
+        onClose={onClose}
         inert={inert}
-        aria-hidden={inert || undefined}
-      >
-        <div className="terminal-dock__header">Terminal unavailable</div>
+        visible={visible}
+        open={open}
+      />
+    ) : visible ? (
+      <section className="terminal-dock" aria-label="Terminal" inert={inert}>
+        <div className="terminal-dock__header">Terminal</div>
         <p className="terminal-dock__message" role="status">
-          Open a chat in an active project to use the terminal.
+          Open a chat first.
         </p>
         <button type="button" onClick={onClose}>
           Close terminal
         </button>
       </section>
-    );
-  }
-  return <TerminalDockShell scope={scope} onClose={onClose} inert={inert} />;
+    ) : null,
+  );
 }
 
 export function TerminalDockShell({
-  inert = false,
+  inert,
   scope,
   onClose,
+  visible,
+  open,
 }: {
   inert?: boolean;
   scope: UserTerminalScope;
   onClose: () => void;
+  visible: boolean;
+  open: boolean;
 }) {
   const [entries, setEntries] = useState<SessionEntry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [closingId, setClosingId] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  if (!open && collapsed) setCollapsed(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [TerminalView, setTerminalView] =
-    useState<ComponentType<TerminalDockProps> | null>(null);
   const ownerRef = useRef({
     entries: [] as SessionEntry[],
     creating: false,
     disposed: false,
     lifecycle: 0,
-    closingId: null as string | null,
+    closing: false,
     dismissWhenCreateSettles: false,
   });
 
   const create = useCallback(async () => {
     const owner = ownerRef.current;
-    if (owner.creating || owner.disposed || owner.entries.length >= 4) return;
+    if (
+      owner.creating ||
+      owner.disposed ||
+      owner.entries.length >= TERMINAL_MAX_PER_CHAT
+    )
+      return;
     const lifecycle = owner.lifecycle;
     owner.creating = true;
     setCreating(true);
     setMessage(null);
     try {
-      const session = await createUserTerminal(scope, 80, 24);
-      if (owner.disposed || owner.lifecycle !== lifecycle) {
+      const session = await createUserTerminal(
+        scope,
+        INITIAL_COLUMNS,
+        INITIAL_ROWS,
+      );
+      if (owner.lifecycle !== lifecycle) {
         await closeUserTerminal(scope, session).catch(() => undefined);
         return;
       }
@@ -150,16 +180,12 @@ export function TerminalDockShell({
       setActiveId(session.sessionId);
       setCollapsed(false);
     } catch (error) {
-      if (!owner.disposed && owner.lifecycle === lifecycle)
-        setMessage(terminalErrorLabel(error));
+      if (owner.lifecycle === lifecycle) setMessage(terminalErrorLabel(error));
     } finally {
       if (owner.lifecycle === lifecycle) {
         owner.creating = false;
-        if (!owner.disposed) {
-          setCreating(false);
-          if (owner.dismissWhenCreateSettles && owner.entries.length === 0)
-            onClose();
-        }
+        setCreating(false);
+        if (owner.dismissWhenCreateSettles && !owner.entries.length) onClose();
       }
     }
   }, [scope, onClose]);
@@ -168,10 +194,6 @@ export function TerminalDockShell({
     const owner = ownerRef.current;
     owner.disposed = false;
     owner.lifecycle += 1;
-    const lifecycle = owner.lifecycle;
-    void Promise.resolve().then(() => {
-      if (!owner.disposed && owner.lifecycle === lifecycle) void create();
-    });
     return () => {
       owner.disposed = true;
       owner.lifecycle += 1;
@@ -180,33 +202,30 @@ export function TerminalDockShell({
         void closeUserTerminal(scope, entry.session).catch(() => undefined);
       owner.entries = [];
     };
-  }, [create, scope]);
+  }, [scope]);
 
   useEffect(() => {
-    if (collapsed || entries.length === 0 || TerminalView) return;
-    let cancelled = false;
-    void loadTerminalView().then(({ default: View }) => {
-      if (!cancelled) setTerminalView(() => View);
+    const owner = ownerRef.current;
+    const lifecycle = owner.lifecycle;
+    if (!visible || entries.length) return;
+    void Promise.resolve().then(() => {
+      if (owner.lifecycle === lifecycle && !owner.entries.length) void create();
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [collapsed, entries.length, TerminalView]);
+  }, [create, visible, entries.length]);
 
   const close = async (sessionId: string) => {
     const owner = ownerRef.current;
-    if (owner.closingId) return;
+    if (owner.closing) return;
     const index = owner.entries.findIndex(
       (entry) => entry.session.sessionId === sessionId,
     );
     if (index < 0) return;
-    owner.closingId = sessionId;
-    setClosingId(sessionId);
+    owner.closing = true;
+    setClosing(true);
     try {
       await closeUserTerminal(scope, owner.entries[index].session);
-      const next = owner.entries.filter(
-        (entry) => entry.session.sessionId !== sessionId,
-      );
+      // Closing is serialized; a concurrent creation can only append.
+      const next = owner.entries.filter((_, position) => position !== index);
       owner.entries = next;
       setEntries(next);
       setActiveId((current) =>
@@ -214,15 +233,15 @@ export function TerminalDockShell({
           ? (next[Math.min(index, next.length - 1)]?.session.sessionId ?? null)
           : current,
       );
-      if (next.length === 0) {
+      if (!next.length) {
         if (owner.creating) owner.dismissWhenCreateSettles = true;
         else onClose();
       }
     } catch (error) {
       setMessage(terminalErrorLabel(error));
     } finally {
-      owner.closingId = null;
-      setClosingId(null);
+      owner.closing = false;
+      setClosing(false);
     }
   };
 
@@ -237,13 +256,16 @@ export function TerminalDockShell({
     setEntries(next);
   };
 
-  const active = entries.find((entry) => entry.session.sessionId === activeId);
+  const status =
+    message ??
+    entries.find((entry) => entry.session.sessionId === activeId)?.message;
+  const CollapseIcon = collapsed ? ChevronUp : ChevronDown;
   return (
     <section
       className={`terminal-dock${collapsed ? " terminal-dock--collapsed" : ""}`}
       aria-label="Terminal"
+      hidden={!visible}
       inert={inert}
-      aria-hidden={inert || undefined}
     >
       <div className="terminal-dock__header">
         <div
@@ -251,63 +273,73 @@ export function TerminalDockShell({
           role="tablist"
           aria-label="Terminal tabs"
         >
-          {entries.map((entry, index) => (
-            <div className="terminal-dock__tab" key={entry.session.sessionId}>
+          {entries.map(({ session }, index) => (
+            <div className="terminal-dock__tab" key={session.sessionId}>
               <button
                 type="button"
                 role="tab"
-                aria-selected={entry.session.sessionId === activeId}
-                title={entry.session.shellPath}
-                onClick={() => setActiveId(entry.session.sessionId)}
+                className="terminal-dock__tab-label"
+                aria-selected={session.sessionId === activeId}
+                title={session.shellPath}
+                onClick={() => setActiveId(session.sessionId)}
               >
-                <span aria-hidden="true">▣</span>{" "}
-                {entry.session.shellPath.split(/[\\/]/u).at(-1) ?? "Terminal"}{" "}
-                {index + 1}
+                <TerminalSquare size={14} />
+                <span>
+                  {session.shellPath.split(/[\\/]/u).at(-1)}
+                  {entries.length > 1 ? ` ${index + 1}` : null}
+                </span>
               </button>
-              <button
-                type="button"
+              <IconButton
                 aria-label="Close terminal tab"
-                disabled={closingId !== null}
-                onClick={() => void close(entry.session.sessionId)}
+                disabled={closing}
+                onClick={() => void close(session.sessionId)}
               >
-                ×
-              </button>
+                <X size={14} />
+              </IconButton>
             </div>
           ))}
         </div>
         <div className="terminal-dock__actions">
-          <button
-            type="button"
+          <IconButton
             aria-label="New terminal"
-            title="New terminal"
-            disabled={creating || entries.length >= 4}
-            onClick={() => void create()}
+            disabled={creating || entries.length >= TERMINAL_MAX_PER_CHAT}
+            onClick={create}
           >
-            +
-          </button>
-          <button
-            type="button"
+            <Plus size={16} />
+          </IconButton>
+          <IconButton
             aria-label={collapsed ? "Expand terminal" : "Collapse terminal"}
-            title={collapsed ? "Expand terminal" : "Collapse terminal"}
             onClick={() => setCollapsed(!collapsed)}
           >
-            {collapsed ? "⌃" : "⌄"}
-          </button>
+            <CollapseIcon size={16} />
+          </IconButton>
         </div>
       </div>
-      {!collapsed && (message || active?.message) ? (
+      {!collapsed && status ? (
         <p className="terminal-dock__message" role="status">
-          {message ?? active?.message}
+          {status}
         </p>
       ) : null}
-      {!collapsed && active && TerminalView ? (
-        <TerminalView
-          key={active.session.sessionId}
-          scope={scope}
-          session={active.session}
-          ended={active.ended}
-          onStatus={(status, ended) =>
-            updateStatus(active.session.sessionId, status, ended)
+      {entries.length ? (
+        <LazyModuleBoundary
+          label="Terminal view"
+          load={loadTerminalView}
+          fallback={null}
+          render={(TerminalView) =>
+            entries.map(({ session, ended }) => (
+              <TerminalView
+                key={session.sessionId}
+                scope={scope}
+                session={session}
+                ended={ended}
+                visible={
+                  visible && !collapsed && session.sessionId === activeId
+                }
+                onStatus={(status, ended) =>
+                  updateStatus(session.sessionId, status, ended)
+                }
+              />
+            ))
           }
         />
       ) : null}

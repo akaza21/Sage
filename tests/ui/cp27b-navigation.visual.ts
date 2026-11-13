@@ -5,23 +5,47 @@ import {
 } from "./shared/visualBrowserPrimitives";
 
 type Resource = "closed" | "file" | "diff" | "preview";
+// Navigation widths follow the owner's Codex desktop capture: the icon rail
+// plus the chat list end at x = 326, and the icon rail alone is 46 px. Where
+// Files can't sit beside the full rail, opening them folds it to the icon
+// rail and docks them beside Chat; only the narrowest window overlays them.
 const geometries = [
   {
     width: 1888,
     height: 1096,
-    navigation: 385,
-    closedChat: 1495,
-    openChat: 637,
+    navigation: 326,
+    openNavigation: 326,
+    closedChat: 1554,
+    openChat: 696,
+    inline: true,
   },
   {
     width: 1280,
     height: 1000,
-    navigation: 385,
-    closedChat: 887,
-    openChat: 360,
+    navigation: 326,
+    openNavigation: 326,
+    closedChat: 946,
+    openChat: 362,
+    inline: true,
   },
-  { width: 720, height: 1000, navigation: 332, closedChat: 388, openChat: 388 },
-  { width: 480, height: 1000, navigation: 262, closedChat: 218, openChat: 218 },
+  {
+    width: 720,
+    height: 1000,
+    navigation: 326,
+    openNavigation: 46,
+    closedChat: 394,
+    openChat: 360,
+    inline: true,
+  },
+  {
+    width: 480,
+    height: 1000,
+    navigation: 46,
+    openNavigation: 46,
+    closedChat: 434,
+    openChat: 434,
+    inline: false,
+  },
 ];
 
 async function box(locator: Locator) {
@@ -52,10 +76,6 @@ async function expectComposerControls(page: Page) {
   for (const composer of await page.locator("form.composer").all()) {
     const bounds = await box(composer);
     const controls = [
-      composer.getByRole("button", {
-        name: "Composer options",
-        exact: true,
-      }),
       composer.getByRole("button", {
         name: "Access options",
         exact: true,
@@ -128,20 +148,25 @@ for (const geometry of geometries) {
         const {
           width,
           height,
-          navigation: navigationWidth,
+          navigation: closedNavigation,
+          openNavigation,
           closedChat,
           openChat,
         } = geometry;
         await page.setViewportSize({ width, height });
         await openScenario(page, two ? "agent-dual" : "agent-single", "agent");
+        // The chat surface owns its 42rem (672px) transcript/composer measure.
         await settleChatProjections(page);
         // agent-dual's secondary chat has an active turn, so its composer is
         // disabled by the fixture; the draft and resource owner use the
         // primary chat, which stays focused while both chats are selected.
         if (two)
-          await page
-            .getByTitle("Open chat Agent navigation polish", { exact: true })
-            .click();
+          await page.evaluate(async () => {
+            const { useWorkbenchStore } = await import("/src/app/store.ts");
+            await useWorkbenchStore
+              .getState()
+              .activateTab("visual-chat-primary");
+          });
         const ownerId = two
           ? "visual-chat-primary"
           : "visual-chat-agent-single";
@@ -160,18 +185,19 @@ for (const geometry of geometries) {
           ".agent-chat-pane--focused form.composer textarea",
         );
         await draft.fill("CP-27b draft survives resources and resizing");
-        if (resource !== "closed") await openResource(page, resource, ownerId);
+        const inline = resource !== "closed" && geometry.inline;
+        if (inline) await openResource(page, resource, ownerId);
         const nav = await box(navigation);
         const chat = await box(center);
+        const navigationWidth = inline ? openNavigation : closedNavigation;
+        // The rail's splitter shows only beside the full desktop rail.
+        const railSplitter = width > 760 && navigationWidth > 46 ? 8 : 0;
         expect(nav.x).toBe(0);
         expect(nav.width).toBe(navigationWidth);
-        expect(chat.x).toBe(nav.width + (width > 760 ? 8 : 0));
+        expect(chat.x).toBe(nav.width + railSplitter);
         expect(chat.x + chat.width).toBeLessThanOrEqual(width);
-        const inline = resource !== "closed" && width >= 1280;
         expect(chat.width).toBe(resource === "closed" ? closedChat : openChat);
-        await expect(page.locator(".agent-chat-pane")).toHaveCount(
-          two && !inline && width >= 1280 ? 2 : 1,
-        );
+        await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
         for (const pane of await page.locator(".agent-chat-pane").all()) {
           const lane = await box(pane);
           const items = pane.locator(".acp-turn__items");
@@ -179,45 +205,77 @@ for (const geometry of geometries) {
           for (const item of await items.all()) {
             const reading = await item.boundingBox();
             expect(reading).not.toBeNull();
-            expect(reading!.width).toBeLessThanOrEqual(660);
+            expect(reading!.width).toBeLessThanOrEqual(672);
             expect(reading!.x).toBeGreaterThanOrEqual(lane.x);
             expect(reading!.x + reading!.width).toBeLessThanOrEqual(
               lane.x + lane.width,
             );
           }
           if (width === 1888 && resource === "closed")
-            expect((await items.first().boundingBox())!.width).toBe(660);
+            expect((await items.first().boundingBox())!.width).toBe(672);
         }
         for (const composer of await page.locator("form.composer").all()) {
           const bounds = await box(composer);
-          expect(bounds.width).toBeLessThanOrEqual(660);
+          expect(bounds.width).toBeLessThanOrEqual(672);
           if (width === 1888 && resource === "closed")
-            expect(bounds.width).toBe(660);
+            expect(bounds.width).toBe(670);
           expect(bounds.x).toBeGreaterThanOrEqual(chat.x);
           expect(bounds.x + bounds.width).toBeLessThanOrEqual(
             chat.x + chat.width,
           );
-          if (width === 720) expect(bounds.width).toBe(356);
-          if (width === 480) expect(bounds.width).toBe(186);
+          if (width === 720)
+            expect(bounds.width).toBe(resource === "closed" ? 358 : 324);
+          if (width === 480) expect(bounds.width).toBe(398);
         }
         if (inline) await expectComposerControls(page);
         if (resource !== "closed") {
+          // Covered chats sleep; measure their reading geometry before opening
+          // an overlay, then verify the visible controls after closing it.
+          if (!inline) {
+            await openResource(page, resource, ownerId);
+            await expect(page.locator(".agent-chat-pane")).toBeHidden();
+          }
           const pane = page.getByLabel("Agent artifacts", { exact: true });
           const bounds = await box(pane);
-          expect(bounds.x + bounds.width).toBe(width);
-          if (inline) expect(bounds.x).toBe(chat.x + chat.width + 8);
+          expect(bounds.x + bounds.width).toBe(width - 8);
+          if (inline) expect(bounds.x).toBe(chat.x + chat.width + 16);
           else {
-            expect(bounds.width).toBe(width === 480 ? 420 : chat.width);
+            // The drawer takes the whole hidden chat column.
+            expect(bounds.width).toBe(chat.width);
             if (chat.width >= 320) {
-              expect(bounds.x).toBeGreaterThanOrEqual(nav.x + nav.width);
+              // The overlay can use the rail's empty gutter, while every
+              // visible navigation control must remain directly reachable.
+              // Row actions that only appear on hover take no pointer until
+              // then, so there is nothing for the overlay to block.
+              for (const control of await navigation.locator("button").all()) {
+                if (!(await control.isVisible())) continue;
+                if (
+                  await control.evaluate(
+                    (element) =>
+                      getComputedStyle(element).pointerEvents === "none",
+                  )
+                )
+                  continue;
+                expect(
+                  await control.evaluate((element) => {
+                    const rect = element.getBoundingClientRect();
+                    return element.contains(
+                      document.elementFromPoint(
+                        rect.x + rect.width / 2,
+                        rect.y + rect.height / 2,
+                      ),
+                    );
+                  }),
+                ).toBe(true);
+              }
               await expect(navigation).not.toHaveAttribute("inert");
               await expect(pane).not.toHaveAttribute("aria-modal");
             } else {
               await expect(navigation).toHaveAttribute("inert", "");
               await expect(pane).toHaveAttribute("aria-modal", "true");
             }
-            expect(bounds.y).toBe(nav.y);
-            expect(bounds.y + bounds.height).toBe(nav.y + nav.height);
+            expect(bounds.y).toBe(nav.y + 8);
+            expect(bounds.y + bounds.height).toBe(nav.y + nav.height - 8);
             await expect(center).toHaveAttribute("inert", "");
           }
           const close = pane.getByRole("button", {
@@ -227,7 +285,7 @@ for (const geometry of geometries) {
           await close.click();
           await expect(
             page.locator(".agent-artifact-pane__canvas"),
-          ).toHaveCount(0);
+          ).toBeHidden();
           await expect(trigger).toBeFocused();
           await expect(center).not.toHaveAttribute("inert");
         } else
@@ -235,11 +293,9 @@ for (const geometry of geometries) {
         await expect(draft).toHaveValue(
           "CP-27b draft survives resources and resizing",
         );
-        await expect(page.locator(".agent-chat-pane")).toHaveCount(
-          two && width >= 1280 ? 2 : 1,
-        );
+        await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
         await expectHitTarget(
-          navigation.getByRole("button", { name: "New task", exact: true }),
+          page.getByRole("button", { name: "New chat", exact: true }),
         );
         await expectHitTarget(trigger);
         await expectComposerControls(page);
@@ -249,7 +305,7 @@ for (const geometry of geometries) {
 }
 
 for (const width of [720, 480]) {
-  test(`Preview iframe Tab stays inside resources at ${width}px`, async ({
+  test(`Preview iframe Tab follows the resources layout at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 1000 });
@@ -271,7 +327,21 @@ for (const width of [720, 480]) {
     });
     await target.focus();
     await page.keyboard.press("Tab");
-    await expect(pane).toBeFocused();
+    if (width === 480) {
+      // The overlay keeps Tab inside its own region.
+      await expect(pane).toBeFocused();
+    } else {
+      // Docked beside Chat, the pane is part of the page's Tab order, so
+      // Tab leaves the Preview frame without wrapping back into the pane.
+      await expect(
+        page.locator("iframe[title='Sage browser']"),
+      ).not.toBeFocused();
+      await expect
+        .poll(() =>
+          pane.evaluate((node) => node.contains(document.activeElement)),
+        )
+        .toBe(false);
+    }
     await target.focus();
     await page.keyboard.press("Shift+Tab");
     await expect
@@ -292,7 +362,12 @@ for (const width of [720, 480]) {
         .getByRole("button", { name: /^Show files and preview/ })
         .click();
       await page.mouse.click(16, 200);
-      await expect(pane).toHaveCount(0);
+      // Collapsed navigation leaves room for a nonmodal resource overlay.
+      await expect(pane).toBeVisible();
+      await pane
+        .getByRole("button", { name: "Collapse files, changes, and preview" })
+        .click();
+      await expect(pane).toBeHidden();
     }
   });
 }
@@ -334,7 +409,7 @@ for (const forcedColors of ["none", "active"] as const) {
     await expect(trigger).toBeFocused();
   });
 
-  test(`two chats restore drafts, split, and owner after resource-overlay resizing (${forcedColors})`, async ({
+  test(`multiple open chats retain the selected draft and owner without regrowing panes (${forcedColors})`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1888, height: 1096 });
@@ -343,27 +418,20 @@ for (const forcedColors of ["none", "active"] as const) {
     await settleChatProjections(page);
     const panes = page.locator(".agent-chat-pane");
     const firstInput = panes.nth(0).locator("form.composer textarea");
-    const secondInput = panes.nth(1).locator("form.composer textarea");
     await firstInput.fill("First draft");
     // The fixture's secondary chat has an active turn; its composer stays
     // disabled and must not gain a draft through resizing.
-    await expect(secondInput).toBeDisabled();
-    const splitter = page.getByRole("separator", { name: "Resize chat panes" });
-    for (const extreme of ["Home", "End"]) {
-      await splitter.focus();
-      await page.keyboard.press(extreme);
-      const left = await box(panes.nth(0));
-      const right = await box(panes.nth(1));
-      expect(right.x).toBe(left.x + left.width + 8);
-      expect(left.width / (left.width + right.width)).toBeCloseTo(
-        extreme === "Home" ? 0.3 : 0.7,
-        2,
-      );
-    }
+    await expect(panes).toHaveCount(1);
+    await expect(
+      page.getByRole("separator", { name: "Resize chat panes" }),
+    ).toHaveCount(0);
     const ownerName = "Chat pane Agent navigation polish";
     const ownerId = "visual-chat-primary";
     await page
-      .getByTitle("Open chat Agent navigation polish", { exact: true })
+      .getByRole("button", {
+        name: "Open chat Agent navigation polish",
+        exact: false,
+      })
       .click();
     const pane = await openResource(page, "file", ownerId);
     for (const viewport of [
@@ -371,6 +439,11 @@ for (const forcedColors of ["none", "active"] as const) {
       { width: 720, height: 1000 },
       { width: 480, height: 560 },
     ]) {
+      const docked = viewport.width !== 480;
+      // Work in Chat while the window narrows so a stolen focus shows up;
+      // the overlay step starts from the pane, as a person reading it would.
+      if (docked) await firstInput.focus();
+      else await pane.getByRole("tab").first().focus();
       await page.setViewportSize(viewport);
       await expect(panes).toHaveCount(1);
       await expect(panes.first()).toHaveAttribute("aria-label", ownerName!);
@@ -387,7 +460,14 @@ for (const forcedColors of ["none", "active"] as const) {
       expect(rect.x).toBeGreaterThanOrEqual(0);
       expect(rect.x + rect.width).toBeLessThanOrEqual(viewport.width);
       expect(rect.y + rect.height).toBeLessThanOrEqual(viewport.height);
-      if (viewport.width < 1280) await expect(pane).toBeFocused();
+      // Only an overlay that covers Chat takes focus; docked resources keep
+      // Chat reachable and leave focus where the person was working.
+      if (docked) {
+        await expect(firstInput).toBeFocused();
+        await expect(page.locator(".center-region")).not.toHaveAttribute(
+          "inert",
+        );
+      } else await expect(pane).toBeFocused();
     }
     await page.keyboard.press("Escape");
     const trigger = page.getByRole("button", {
@@ -410,9 +490,10 @@ for (const forcedColors of ["none", "active"] as const) {
     await page.keyboard.press("Escape");
     await expect(trigger).toBeFocused();
     await page.setViewportSize({ width: 1888, height: 1096 });
-    await expect(panes).toHaveCount(2);
+    await expect(panes).toHaveCount(1);
     await expect(firstInput).toHaveValue("First draft");
-    await expect(secondInput).toHaveValue("");
-    await expect(splitter).toHaveAttribute("aria-valuenow", "70");
+    await expect(
+      page.getByRole("separator", { name: "Resize chat panes" }),
+    ).toHaveCount(0);
   });
 }

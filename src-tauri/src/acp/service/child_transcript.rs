@@ -36,25 +36,31 @@ impl AcpService {
         &self,
         scope: ChildTranscriptScope,
     ) -> Result<ChildTranscriptRead, ChildTranscriptReadError> {
-        let running = {
+        let (native, stored, running) = {
             let connection = self.database.connection();
-            if !observed_protocol(&connection, &scope)? {
-                return Err(ChildTranscriptReadError::Unavailable);
-            }
-            match verify_current_binding(&connection, &scope) {
+            let native = observed_protocol(&connection, &scope)?;
+            let stored = stores_children(&connection, &scope)?;
+            let running = match verify_current_binding(&connection, &scope) {
                 Ok(()) => true,
                 Err(ChildTranscriptStoreError::Stale) => false,
                 Err(error) => return Err(error.into()),
-            }
+            };
+            (native, stored, running)
         };
         if !running {
             return load_earlier_snapshot(&self.database.connection(), &scope)?
                 .map(ChildTranscriptRead::FromEarlierSession)
                 .ok_or(ChildTranscriptReadError::Unavailable);
         }
+        // Claude Code on its SDK has no child read but streams every child
+        // item to the store as it happens, so the stored transcript is current.
+        if stored && !native {
+            return load_snapshot(&self.database.connection(), &scope)?
+                .map(ChildTranscriptRead::Current)
+                .ok_or(ChildTranscriptReadError::Unavailable);
+        }
         let host = self
-            .runtime
-            .for_owner(&scope.owner)
+            .host_for(&scope.owner)
             .map_err(|_| ChildTranscriptReadError::RecoveryRequired)?;
         let result = host.native_rpc(NativeRpcIntent {
             owner: scope.owner.clone(),
@@ -97,7 +103,14 @@ impl AcpService {
             Ok(NativeRpcReply::TooLarge) => Ok(ChildTranscriptRead::TooLarge),
             Ok(NativeRpcReply::Rejected) => Err(ChildTranscriptReadError::Rejected),
             Ok(
-                NativeRpcReply::GoalApplied | NativeRpcReply::Forked(_) | NativeRpcReply::Released,
+                NativeRpcReply::GoalApplied
+                | NativeRpcReply::Forked(_)
+                | NativeRpcReply::Released
+                | NativeRpcReply::UsageRead
+                | NativeRpcReply::Controlled(_)
+                | NativeRpcReply::ControlRefused(_)
+                | NativeRpcReply::McpServers(_)
+                | NativeRpcReply::McpSignIn(_),
             ) => Err(ChildTranscriptReadError::RecoveryRequired),
             Err(crate::acp::runtime::HostError::Intent | crate::acp::runtime::HostError::State) => {
                 Err(ChildTranscriptReadError::Unavailable)
@@ -105,6 +118,27 @@ impl AcpService {
             Err(_) => Err(ChildTranscriptReadError::RecoveryRequired),
         }
     }
+}
+
+/// The session runs on a binding that keeps its children's transcripts in
+/// the store as they run.
+fn stores_children(
+    connection: &rusqlite::Connection,
+    scope: &ChildTranscriptScope,
+) -> Result<bool, ChildTranscriptReadError> {
+    let binding: Option<String> = connection
+        .query_row(
+            "SELECT binding_id FROM agent_sessions WHERE id=?1 AND project_id=?2 AND chat_id=?3",
+            params![
+                scope.owner.session_id.as_str(),
+                scope.owner.project_id.as_str(),
+                scope.owner.chat_id.as_str()
+            ],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(ChildTranscriptStoreError::Storage)?;
+    Ok(binding.as_deref() == Some(crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID))
 }
 
 fn observed_protocol(
@@ -121,13 +155,13 @@ fn observed_protocol(
     };
     let value: serde_json::Value =
         serde_json::from_str(&encoded).map_err(|_| ChildTranscriptReadError::RecoveryRequired)?;
-    // The debug desktop fixture replays the same 0.146 `thread/read` wire
+    // The debug desktop fixture replays the same pinned `thread/read` wire
     // under its own identity, so native captures can read its children.
     Ok(value
         .get("protocolVersion")
         .and_then(serde_json::Value::as_str)
         .is_some_and(|identity| {
-            crate::acp::bindings::codex::supports_native_0146_protocol(identity)
+            crate::acp::bindings::codex::speaks_pinned_protocol(identity)
                 || crate::acp::bindings::codex::is_desktop_fixture_protocol(identity)
         }))
 }

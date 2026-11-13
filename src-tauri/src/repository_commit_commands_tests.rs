@@ -1,4 +1,4 @@
-use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path};
 
 use uuid::Uuid;
 
@@ -13,7 +13,8 @@ struct TwoRootProject {
 
 impl TwoRootProject {
     fn new() -> Self {
-        let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
+        let base =
+            crate::test_paths::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
         let root_a = base.join("repo-a");
         let root_b = base.join("repo-b");
         for root in [&root_a, &root_b] {
@@ -44,7 +45,7 @@ impl Drop for TwoRootProject {
 
 fn git(root: &Path, args: &[&str]) {
     assert!(
-        Command::new("git")
+        crate::git_process::fixture_git()
             .arg("-C")
             .arg(root)
             .args(args)
@@ -55,7 +56,7 @@ fn git(root: &Path, args: &[&str]) {
 }
 
 fn subject(root: &Path) -> String {
-    let output = Command::new("git")
+    let output = crate::git_process::fixture_git()
         .arg("-C")
         .arg(root)
         .args(["log", "-1", "--format=%s"])
@@ -66,7 +67,7 @@ fn subject(root: &Path) -> String {
 }
 
 fn write_executable(path: &Path, body: &str) {
-    fs::write(path, body).unwrap();
+    crate::test_executable::write(path, body).unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -118,6 +119,9 @@ fn commits_only_the_requested_root_and_returns_all_authoritative_statuses() {
 #[test]
 fn commit_and_post_commit_projection_never_launch_content_filters() {
     let fixture = TwoRootProject::new();
+    // Sage refuses repository filters outright; trusting the root here proves
+    // the commit and projection paths stay filter-free underneath that check.
+    crate::git_process::trust_repository_config_for_test(&fixture.root_a);
     fs::write(
         fixture.root_a.join(".gitattributes"),
         "*.txt filter=sentinel\n",
@@ -184,7 +188,7 @@ fn commit_and_post_commit_projection_never_launch_content_filters() {
 #[test]
 fn post_commit_projection_preserves_a_staged_type_change() {
     let fixture = TwoRootProject::new();
-    let linked_commit = Command::new("git")
+    let linked_commit = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&fixture.root_b)
         .args(["rev-parse", "HEAD"])
@@ -298,7 +302,7 @@ fn ordinary_git_failure_never_exposes_an_absolute_repository_path() {
     let alternates = fixture.root_a.join(".git/objects/info/alternates");
     fs::create_dir_all(alternates.parent().unwrap()).unwrap();
     fs::write(alternates, format!("{}\n", missing_object_store.display())).unwrap();
-    let head = Command::new("git")
+    let head = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&fixture.root_a)
         .args(["rev-parse", "HEAD"])
@@ -366,7 +370,7 @@ fn post_commit_index_projection_never_exposes_oversized_absolute_git_diagnostics
     let hook_root = fixture.root_a.clone();
     let policy = repository::GitProcessPolicy::mutation(Duration::from_secs(3))
         .with_after_process_hook(move || {
-            let head = Command::new("git")
+            let head = crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(&hook_root)
                 .args(["rev-parse", "HEAD"])
@@ -405,7 +409,7 @@ fn post_commit_index_projection_never_exposes_oversized_absolute_git_diagnostics
         ))
         .unwrap();
 
-    let raw = Command::new("git")
+    let raw = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&fixture.root_a)
         .args(["diff", "--cached", "--name-status", "HEAD", "--"])

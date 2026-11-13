@@ -31,6 +31,46 @@ afterEach(() => {
 });
 
 describe("DiffSurface resource states", () => {
+  it("caps rendered lines even when an adapter returns more than the native limit", () => {
+    useWorkbenchStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      loadDiff: vi.fn(async () => undefined),
+      diffs: {
+        [cacheKey]: {
+          phase: "ready",
+          value: {
+            resource,
+            binary: false,
+            truncated: false,
+            hunks: [
+              {
+                header: "@@",
+                lines: Array.from({ length: 1201 }, (_, index) => ({
+                  kind: "added" as const,
+                  oldLine: null,
+                  newLine: index + 1,
+                  text: "bounded line " + (index + 1),
+                })),
+              },
+            ],
+          },
+        },
+      },
+    });
+    const { container } = render(<DiffSurface tab={tab} />);
+    // Text queries without a selector read every element's text: thousands
+    // here. Check the rendered lines directly and look up the notice by tag.
+    const lines = container.querySelectorAll(".diff-line");
+    expect(lines).toHaveLength(1200);
+    expect(lines[lines.length - 1]).toHaveTextContent(/bounded line 1200$/);
+    expect(
+      screen.getByText(
+        "Diff capped at 1,200 lines to protect UI responsiveness.",
+        { selector: "p" },
+      ),
+    ).toBeVisible();
+  });
   it("refreshes the current diff and opens its file from the review toolbar", () => {
     const loadDiff = vi.fn(async () => undefined);
     const openFile = vi.fn(async () => undefined);

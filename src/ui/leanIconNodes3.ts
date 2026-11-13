@@ -76,6 +76,9 @@ export const NotebookText = leanIcon("notebook-text", [
   "M9.5 12H16",
   "M9.5 16H14",
 ]);
+export const Paperclip = leanIcon("paperclip", [
+  "m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551",
+]);
 export const PanelLeftClose = leanIcon("panel-left-close", [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }],
   "M9 3v18",
@@ -114,7 +117,7 @@ export const PinOff = leanIcon("pin-off", [
   "m2 2 20 20",
   "M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11",
 ]);
-/** The ⌘ glyph Codex gives MCP, web and integration rows (s5/f0390). */
+
 export const Command = leanIcon("command", [
   "M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3",
 ]);

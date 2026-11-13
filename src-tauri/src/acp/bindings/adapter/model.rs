@@ -10,6 +10,25 @@ pub(crate) struct AdapterIdentity {
     pub(crate) turn_client_message_id: Option<RequiredText<512>>,
 }
 
+impl AdapterIdentity {
+    /// True only for the exact session identity: same binding, epoch, Sage
+    /// session and harness session, and no Turn correlation at all.
+    pub(crate) fn is_exact_session(
+        &self,
+        binding_digest: &[u8; 32],
+        runtime_epoch: RuntimeEpoch,
+        session_id: &SageAgentSessionId,
+        external_session_id: &ExternalId,
+    ) -> bool {
+        &self.binding_digest == binding_digest
+            && self.runtime_epoch == runtime_epoch
+            && &self.session_id == session_id
+            && &self.external_id == external_session_id
+            && self.turn_id.is_none()
+            && self.turn_client_message_id.is_none()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct AdapterModel {
     pub(crate) id: ModelId,
@@ -39,6 +58,10 @@ pub(crate) enum AdapterRuntimeError {
     LaterPermissionMiss,
     #[error("adapter launch artifact is not admitted")]
     LaunchUnavailable,
+    #[error(
+        "The pending undo could not be applied; activation stopped and the rewind remains pending."
+    )]
+    RewindUnavailable,
     #[error("the harness reports that it is not signed in")]
     SignInRequired,
     #[error("adapter frame is invalid")]
@@ -57,11 +80,31 @@ pub(crate) enum AdapterRuntimeError {
 pub(crate) type AdapterOptionalEgress = Result<Option<AdapterEgress>, AdapterRuntimeError>;
 
 pub(crate) trait HarnessAdapter {
+    fn receive_command_update(&mut self, _frame: &Frame) -> Result<(), AdapterRuntimeError> {
+        Ok(())
+    }
+    fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        Ok(None)
+    }
+    fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
+        crate::acp::slash_commands::CommandState::unsupported()
+    }
     fn model_config_hydration(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(None)
     }
     fn finish_model_config_hydration(&mut self) {}
+    /// The session is still reading what it offers, so config options it
+    /// does not report yet may follow.
+    fn config_hydrating(&self) -> bool {
+        false
+    }
     fn provisional_turn_pending(&self) -> bool {
+        false
+    }
+    /// The active Turn is admitted but the harness has not named it, so a
+    /// cancel cannot address it yet: hold the cancel and send it once the
+    /// Turn binds. False when the harness has nothing to hold it for.
+    fn defer_cancel(&mut self) -> bool {
         false
     }
     fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
@@ -114,12 +157,49 @@ pub(crate) trait HarnessAdapter {
     fn deferred_fork_release(&mut self) -> AdapterOptionalEgress {
         Ok(None)
     }
+    /// True only when ingesting `frames` in order would read each one as a
+    /// repeat of the terminal of the Turn this adapter last finished, and
+    /// would leave the adapter unchanged. Harnesses that cannot prove that
+    /// answer false.
+    fn frames_repeat_terminal(&self, _frames: &[Frame], _resources: &dyn ResourceMapper) -> bool {
+        false
+    }
     fn accept_oversized_response(&mut self, _id: u64) -> Result<(), AdapterRuntimeError> {
         Err(AdapterRuntimeError::Frame)
+    }
+    /// Whether an oversized frame without a request id (such as a large
+    /// tool result) is skipped rather than failing the session.
+    fn skips_oversize_frames(&self) -> bool {
+        false
+    }
+    /// An oversized frame without a request id was read past and dropped.
+    fn oversize_frame_skipped(&mut self) {}
+    /// Answers a session control the harness has already carried out
+    /// without writing a frame: the answer waits in the native RPC reply.
+    /// A control done once, such as an undo whose outcome Sage could not
+    /// record, may then be confirmed again.
+    fn answered_control(&mut self, _control: &crate::acp::session_control::SessionControl) -> bool {
+        false
+    }
+    /// The frame for a session control; harnesses without one refuse it.
+    fn session_control(
+        &mut self,
+        _control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
     }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         None
     }
+    /// The usage-limit snapshot this binding keeps; `None` when it reports none.
+    fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
+        None
+    }
+    fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
+    /// Stops waiting for a usage read whose caller gave up.
+    fn abandon_usage_read(&mut self) {}
     fn mutate_goal(
         &mut self,
         _action: crate::acp::goal::GoalAction,

@@ -3,14 +3,9 @@ import { Check, Copy } from "../../ui/leanIcons";
 
 import type { AcpChatPage } from "../../domain/acp";
 import { AnswerCopyFeedback } from "./answerCopyFeedback";
+import { chatTimestamp } from "./chatTimestamp";
 import { ForkPart } from "./lazyParts";
-import { chatTimestamp, timeOfDayLabel } from "./chatTimestamp";
 
-/**
- * Codex's row under a finished answer (s2/f0053, f0093): Copy, "…" for a
- * native Chat's answer, any extra actions, then the answer's own time,
- * muted, on hover or focus. Copy acts on this answer's text only.
- */
 export function AnswerActions({
   text,
   createdAt,
@@ -27,22 +22,28 @@ export function AnswerActions({
   children?: ReactNode;
 }) {
   const onCopyFeedback = useContext(AnswerCopyFeedback);
-  const [copied, setCopied] = useState(false);
-  const copyTimer = useRef<number | undefined>(undefined);
+  const [copiedUntil, setCopiedUntil] = useState(0);
   const copyRequest = useRef(0);
   useEffect(
     () => () => {
       copyRequest.current++;
-      window.clearTimeout(copyTimer.current);
     },
     [],
   );
+  useEffect(() => {
+    if (!copiedUntil) return;
+    const timer = window.setTimeout(
+      () => setCopiedUntil(0),
+      Math.max(0, copiedUntil - performance.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [copiedUntil]);
+  const copied = copiedUntil > 0;
   const CopyIcon = copied ? Check : Copy;
   const time = createdAt === undefined ? null : chatTimestamp(createdAt);
 
   async function copyAnswer() {
     const request = ++copyRequest.current;
-    window.clearTimeout(copyTimer.current);
     let succeeded = true;
     try {
       await navigator.clipboard.writeText(text);
@@ -50,10 +51,8 @@ export function AnswerActions({
       succeeded = false;
     }
     if (request !== copyRequest.current) return;
-    setCopied(succeeded);
+    setCopiedUntil(succeeded ? performance.now() + 1_200 : 0);
     onCopyFeedback?.(succeeded ? "Copied" : "Copy failed");
-    if (succeeded)
-      copyTimer.current = window.setTimeout(() => setCopied(false), 1_200);
   }
 
   return (
@@ -84,7 +83,7 @@ export function AnswerActions({
           className="chat-transcript-actions__time"
           dateTime={time.dateTime}
         >
-          {timeOfDayLabel(createdAt!)}
+          {time.label}
         </time>
       ) : null}
     </div>

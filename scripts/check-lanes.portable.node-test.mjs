@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { Readable, Writable } from "node:stream";
 import test from "node:test";
@@ -18,10 +18,16 @@ import {
   executeCommand,
   runCommandGroups,
 } from "./lib/check-process.mjs";
-import { consumeWindowsCargoJobFrames } from "./lib/check-windows-cargo-protocol.mjs";
+import { processAlive } from "./lib/process-liveness.mjs";
+import {
+  consumeWindowsCargoJobFrames,
+  MAX_PROTOCOL_LINE_BYTES,
+  MAX_STALL_IMAGE_BYTES,
+} from "./lib/check-windows-cargo-protocol.mjs";
 import {
   createRustValidationCommands,
   resolveNpmInvocation,
+  PROCESS_LIMITS,
   VALIDATION_DEADLINES_MS,
 } from "./lib/check-plans.mjs";
 import { createDevPlan, parseDevArguments } from "./check-dev.mjs";
@@ -43,6 +49,7 @@ test("Windows Cargo frame parser rejects reordered and post-proof frames", async
     exitCode: 0,
     reason: null,
     teardown: null,
+    stall: null,
   };
   const data = {
     type: "data",
@@ -85,6 +92,7 @@ test("Windows Cargo frame parser accepts only the exact VCTIP teardown receipt",
     activeProcesses: 0,
     exitCode: 7,
     reason: null,
+    stall: null,
   };
   const receipt = {
     kind: "verified-msvc-vctip",
@@ -144,6 +152,127 @@ test("Windows Cargo frame parser accepts only the exact VCTIP teardown receipt",
       /invalid VCTIP teardown receipt/u,
     );
   }
+});
+
+test("Windows Cargo frame parser requires a stall report exactly for timeouts", async () => {
+  const requestNonce = "stall-nonce";
+  const base = {
+    type: "proof",
+    schemaVersion: 1,
+    requestNonce,
+    sequence: 0,
+    settled: true,
+    treeBoundaryVerified: true,
+    activeProcesses: 0,
+    exitCode: 1,
+    teardown: null,
+  };
+  const parse = (proof) =>
+    consumeWindowsCargoJobFrames(
+      Readable.from([Buffer.from(`${JSON.stringify(proof)}\n`)]),
+      { label: "protocol", maximumLineBytes: 32, maximumOutputBytes: 32 },
+      requestNonce,
+      discardStream(),
+      discardStream(),
+    );
+  const stall = {
+    rootRunning: true,
+    memberImages: ["cargo.exe", "cargo.exe"],
+    omittedMembers: 0,
+  };
+  assert.deepEqual(
+    (await parse({ ...base, reason: "command-timeout", stall })).stall,
+    stall,
+  );
+  for (const proof of [
+    { ...base, reason: "command-timeout", stall: null },
+    { ...base, reason: "command-timeout" },
+    { ...base, reason: null, stall },
+    { ...base, reason: "command-timeout", stall: { ...stall, extra: 1 } },
+    { ...base, reason: "command-timeout", stall: { ...stall, rootRunning: 1 } },
+    {
+      ...base,
+      reason: "command-timeout",
+      stall: { ...stall, memberImages: [""] },
+    },
+    {
+      ...base,
+      reason: "command-timeout",
+      stall: { ...stall, omittedMembers: -1 },
+    },
+    {
+      ...base,
+      reason: "command-timeout",
+      stall: { rootRunning: true, memberImages: ["cargo.exe"] },
+    },
+  ]) {
+    await assert.rejects(parse(proof), /invalid Job proof response/u);
+  }
+});
+
+test("Windows Cargo timeout proof with a full stall report fits one protocol line", async () => {
+  const requestNonce = "00000000-0000-4000-8000-000000000000";
+  // Fill the member-name budget with the longest Windows file names.
+  const longName = `${"x".repeat(251)}.exe`;
+  const memberImages = [];
+  while (
+    Buffer.byteLength(JSON.stringify([...memberImages, longName])) <=
+    MAX_STALL_IMAGE_BYTES
+  ) {
+    memberImages.push(longName);
+  }
+  const proof = {
+    type: "proof",
+    schemaVersion: 1,
+    requestNonce,
+    sequence: 0,
+    settled: false,
+    treeBoundaryVerified: false,
+    activeProcesses: Number.MAX_SAFE_INTEGER,
+    exitCode: Number.MIN_SAFE_INTEGER,
+    reason: "command-timeout",
+    // The unconfirmed receipt is the largest teardown the proof can carry.
+    teardown: {
+      fileVersion: "14.44.35228.0",
+      imagePath:
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\VCTIP.EXE",
+      imageSizeBytes: 335328,
+      jobMembershipVerified: true,
+      kind: "msvc-vctip-termination-unconfirmed",
+      originalFilename: "VCTIP.EXE",
+      productVersion: "14.44.35228.0",
+      rootExited: true,
+      sha256:
+        "e175c981ca866689bf8f8d9bd5ba1e71e2eb1c9d389de555744b0cb439250996",
+      singletonPid: 0xffff_ffff,
+      terminationExitCodeRequested: 0x53475654,
+      terminationObservation: "exit-code-unconfirmed",
+    },
+    stall: {
+      rootRunning: true,
+      memberImages,
+      omittedMembers: Number.MAX_SAFE_INTEGER,
+    },
+  };
+  const line = `${JSON.stringify(proof)}\n`;
+  assert.ok(Buffer.byteLength(line) <= MAX_PROTOCOL_LINE_BYTES);
+  const parse = (frame) =>
+    consumeWindowsCargoJobFrames(
+      Readable.from([Buffer.from(frame)]),
+      { label: "protocol", maximumLineBytes: 32, maximumOutputBytes: 32 },
+      requestNonce,
+      discardStream(),
+      discardStream(),
+    );
+  assert.deepEqual((await parse(line)).stall, proof.stall);
+  const overBudget = {
+    ...proof,
+    stall: { ...proof.stall, memberImages: [...memberImages, longName] },
+  };
+  await assert.rejects(
+    parse(`${JSON.stringify(overBudget)}\n`),
+    /invalid Job proof response/u,
+  );
 });
 
 // origin: check-lanes.node-test.mjs:75 "developer lane requires explicit bounded targets" -> check-lanes.portable.node-test.mjs
@@ -222,7 +351,8 @@ test("developer plan keeps Cargo filters sequential and overlaps only language l
           "test",
           "--manifest-path",
           "src-tauri/Cargo.toml",
-          "--all-features",
+          "--features",
+          "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics",
           "module::first_test",
         ],
       ],
@@ -232,7 +362,8 @@ test("developer plan keeps Cargo filters sequential and overlaps only language l
           "test",
           "--manifest-path",
           "src-tauri/Cargo.toml",
-          "--all-features",
+          "--features",
+          "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics",
           "module::second_test",
         ],
       ],
@@ -343,7 +474,8 @@ test("integration plan preserves every frontend phase and serializes Rust tools"
         "--manifest-path",
         "src-tauri/Cargo.toml",
         "--all-targets",
-        "--all-features",
+        "--features",
+        "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics,native-lane",
         "--",
         "-D",
         "warnings",
@@ -352,7 +484,8 @@ test("integration plan preserves every frontend phase and serializes Rust tools"
         "test",
         "--manifest-path",
         "src-tauri/Cargo.toml",
-        "--all-features",
+        "--features",
+        "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics",
         "--",
         "--test-threads=1",
       ],
@@ -510,48 +643,71 @@ test("release package mode hands exact validated arguments to the existing campa
 
 // origin: check-lanes.node-test.mjs:443 "Rust environment uses explicit paths and only enables detected sccache" -> check-lanes.portable.node-test.mjs
 test("Rust environment uses explicit paths and only enables detected sccache", () => {
-  assert.deepEqual(
-    buildRustEnvironment({
-      platform: "linux",
-      environment: {
-        SAGE_CARGO_TARGET_DIR: "/cache/target",
-        SAGE_SCCACHE_DIR: "/cache/sccache",
+  for (const platform of ["win32", "linux", "darwin"]) {
+    assert.deepEqual(
+      buildRustEnvironment({
+        platform,
+        environment: {
+          SAGE_CARGO_TARGET_DIR: "/cache/target",
+          SAGE_SCCACHE_DIR: "/cache/sccache",
+        },
+        repositoryRoot: "/workspace/sage",
+        sccachePath: "/usr/bin/sccache",
+      }),
+      {
+        CARGO_TARGET_DIR: "/cache/target",
+        RUSTC_WRAPPER: "/usr/bin/sccache",
+        SCCACHE_CACHE_SIZE: "20G",
+        SCCACHE_DIR: "/cache/sccache",
       },
-      repositoryRoot: "/workspace/sage",
-      sccachePath: "/usr/bin/sccache",
-      windowsDDriveAvailable: false,
-    }),
-    {
-      CARGO_TARGET_DIR: "/cache/target",
-      RUSTC_WRAPPER: "/usr/bin/sccache",
+    );
+    const pathModule = platform === "win32" ? path.win32 : path;
+    const root = pathModule.resolve("workspace", "sage");
+    const defaults = buildRustEnvironment({
+      platform,
+      environment: {},
+      repositoryRoot: root,
+      sccachePath: "sccache",
+    });
+    assert.equal(
+      pathModule.dirname(defaults.CARGO_TARGET_DIR),
+      pathModule.join(homedir(), ".cache", "sage-target"),
+    );
+    assert.match(
+      pathModule.basename(defaults.CARGO_TARGET_DIR),
+      /^sage-[0-9a-f]{12}$/u,
+    );
+    assert.deepEqual(defaults, {
+      CARGO_TARGET_DIR: defaults.CARGO_TARGET_DIR,
+      RUSTC_WRAPPER: "sccache",
       SCCACHE_CACHE_SIZE: "20G",
-      SCCACHE_DIR: "/cache/sccache",
-    },
-  );
-  const windowsEnvironment = buildRustEnvironment({
-    platform: "win32",
-    environment: {},
-    repositoryRoot,
-    sccachePath: undefined,
-    windowsDDriveAvailable: true,
-  });
-  assert.match(
-    windowsEnvironment.CARGO_TARGET_DIR,
-    /^C:\\SageCaches\\cargo-target\\sage-[0-9a-f]{12}$/u,
-  );
-  const first = buildRustEnvironment({
-    platform: "win32",
-    environment: {},
-    repositoryRoot: "C:\\one\\same-name",
-    windowsDDriveAvailable: true,
-  });
-  const second = buildRustEnvironment({
-    platform: "win32",
-    environment: {},
-    repositoryRoot: "C:\\two\\same-name",
-    windowsDDriveAvailable: true,
-  });
-  assert.notEqual(first.CARGO_TARGET_DIR, second.CARGO_TARGET_DIR);
+      SCCACHE_DIR: pathModule.join(homedir(), ".cache", "sccache"),
+    });
+    assert.deepEqual(
+      buildRustEnvironment({ platform, environment: {}, repositoryRoot: root }),
+      { CARGO_TARGET_DIR: defaults.CARGO_TARGET_DIR },
+    );
+    const first = buildRustEnvironment({
+      platform,
+      environment: {},
+      repositoryRoot: pathModule.resolve("one", "same-name"),
+    });
+    const second = buildRustEnvironment({
+      platform,
+      environment: {},
+      repositoryRoot: pathModule.resolve("two", "same-name"),
+    });
+    assert.notEqual(first.CARGO_TARGET_DIR, second.CARGO_TARGET_DIR);
+    const caseVariant = buildRustEnvironment({
+      platform,
+      environment: {},
+      repositoryRoot: pathModule.resolve("ONE", "same-name"),
+    });
+    assert.equal(
+      first.CARGO_TARGET_DIR === caseVariant.CARGO_TARGET_DIR,
+      platform === "win32",
+    );
+  }
 });
 
 // origin: check-lanes.node-test.mjs:488 "Cargo target lease excludes a second Node process and releases cleanly" -> check-lanes.portable.node-test.mjs
@@ -967,33 +1123,47 @@ test("real command timeout terminates its spawned process tree without an orphan
   const source = `
     const { spawn } = require("node:child_process");
     const { writeFileSync } = require("node:fs");
+    writeFileSync(process.argv[1] + ".leader", String(process.pid));
     const descendant = spawn(process.execPath, ["-e", ${JSON.stringify(descendantSource)}], {
       stdio: "ignore",
       windowsHide: true,
     });
     writeFileSync(process.argv[1], String(descendant.pid));
+    process.stdout.write("READY\\n");
     setInterval(() => {}, 1000);
   `;
   let descendantPid;
+  const controller = new AbortController();
+  const deadline = new AbortController();
+  const ready = fixtureReadiness();
+  let execution;
   try {
-    await assert.rejects(
-      executeCommand(
-        {
-          label: "timeout-tree",
-          command: process.execPath,
-          args: ["-e", source, descendantPidPath],
-          cwd: root,
-          timeoutMs: 300,
-          terminationGraceMs: 200,
-          settlementTimeoutMs: 1_500,
-          maximumLineBytes: 1_024,
-          maximumOutputBytes: 4_096,
-        },
-        new AbortController().signal,
-        { stdout: discardStream(), stderr: discardStream() },
-      ),
-      (error) => error?.code === "command-timeout",
+    execution = executeCommand(
+      {
+        label: "timeout-tree",
+        command: process.execPath,
+        args: ["-e", source, descendantPidPath],
+        cwd: root,
+        timeoutMs: 60_000,
+        terminationGraceMs: 200,
+        settlementTimeoutMs: 60_000,
+        maximumLineBytes: 1_024,
+        maximumOutputBytes: 4_096,
+      },
+      controller.signal,
+      {
+        stdout: ready.output,
+        stderr: discardStream(),
+        timeoutSignal: deadline.signal,
+      },
     );
+    const expired = assert.rejects(
+      execution,
+      (error) => error?.code === "command-timeout" && error.settled === true,
+    );
+    await Promise.race([ready.promise, execution]);
+    deadline.abort();
+    await expired;
     descendantPid = Number.parseInt(
       await readFile(descendantPidPath, "utf8"),
       10,
@@ -1001,10 +1171,9 @@ test("real command timeout terminates its spawned process tree without an orphan
     assert.ok(Number.isSafeInteger(descendantPid) && descendantPid > 0);
     await waitForProcessExit(descendantPid);
   } finally {
-    if (descendantPid && (await processExists(descendantPid))) {
-      process.kill(descendantPid, "SIGKILL");
-    }
-    await rm(root, { recursive: true, force: true });
+    controller.abort();
+    await execution?.catch(() => {});
+    await cleanProcessFixture(root, descendantPidPath, descendantPid);
   }
 });
 
@@ -1015,40 +1184,56 @@ test("leader exit cannot falsely prove descendant settlement", async () => {
   const source = `
     const { spawn } = require("node:child_process");
     const { writeFileSync } = require("node:fs");
+    writeFileSync(process.argv[1] + ".leader", String(process.pid));
     const descendant = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
       stdio: ["ignore", "inherit", "inherit"],
       windowsHide: true,
     });
     writeFileSync(process.argv[1], String(descendant.pid));
     process.on("SIGTERM", () => process.exit(0));
+    process.stdout.write("READY\\n");
     setInterval(() => {}, 1000);
   `;
   let descendantPid;
+  const controller = new AbortController();
+  const deadline = new AbortController();
+  const ready = fixtureReadiness();
+  let execution;
   try {
-    await assert.rejects(
-      executeCommand(
-        {
-          label: "leader-exit-first",
-          command: process.execPath,
-          args: ["-e", source, descendantPidPath],
-          cwd: root,
-          timeoutMs: 300,
-          terminationGraceMs: 200,
-          settlementTimeoutMs: 1_000,
-          maximumLineBytes: 1_024,
-          maximumOutputBytes: 4_096,
-        },
-        new AbortController().signal,
-        { stdout: discardStream(), stderr: discardStream() },
-      ),
+    execution = executeCommand(
+      {
+        label: "leader-exit-first",
+        command: process.execPath,
+        args: ["-e", source, descendantPidPath],
+        cwd: root,
+        timeoutMs: 60_000,
+        terminationGraceMs: 200,
+        settlementTimeoutMs: 60_000,
+        maximumLineBytes: 1_024,
+        maximumOutputBytes: 4_096,
+      },
+      controller.signal,
+      {
+        stdout: ready.output,
+        stderr: discardStream(),
+        timeoutSignal: deadline.signal,
+      },
+    );
+    const expired = assert.rejects(
+      execution,
       (error) => error?.code === "command-timeout" && error.settled === true,
     );
+    await Promise.race([ready.promise, execution]);
+    deadline.abort();
+    await expired;
     descendantPid = Number.parseInt(
       await readFile(descendantPidPath, "utf8"),
       10,
     );
     await waitForProcessExit(descendantPid);
   } finally {
+    controller.abort();
+    await execution?.catch(() => {});
     await cleanProcessFixture(root, descendantPidPath, descendantPid);
   }
 });
@@ -1076,7 +1261,7 @@ test("newline-free output is bounded and terminates the offending command", asyn
           cwd: root,
           timeoutMs: 5_000,
           terminationGraceMs: 200,
-          settlementTimeoutMs: 1_500,
+          settlementTimeoutMs: PROCESS_LIMITS.settlementTimeoutMs,
           maximumLineBytes: 1_024,
           maximumOutputBytes: 4_096,
         },
@@ -1099,14 +1284,25 @@ function discardStream() {
   });
 }
 
+function fixtureReadiness() {
+  let announce;
+  const promise = new Promise((resolve) => {
+    announce = resolve;
+  });
+  let text = "";
+  const output = new Writable({
+    write(chunk, _encoding, callback) {
+      text += chunk.toString();
+      if (text.includes("READY\n")) announce();
+      callback();
+    },
+  });
+  return { promise, output };
+}
+
+// A zombie the container never reaps has exited, so it does not count.
 async function processExists(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error.code === "ESRCH") return false;
-    throw error;
-  }
+  return processAlive(pid);
 }
 
 async function waitForProcessExit(pid, timeoutMs = 2_000) {
@@ -1129,18 +1325,27 @@ async function cleanProcessFixture(root, pidPath, descendantPid) {
       if (error?.code !== "ENOENT") throw error;
     }
   }
-  if (descendantPid && (await processExists(descendantPid))) {
-    try {
-      process.kill(descendantPid, "SIGKILL");
-    } catch (error) {
-      if (error?.code !== "ESRCH") throw error;
+  let leaderPid;
+  try {
+    leaderPid = Number.parseInt(
+      await readFile(pidPath + ".leader", "utf8"),
+      10,
+    );
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  for (const pid of [descendantPid, leaderPid]) {
+    if (pid && (await processExists(pid))) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch (error) {
+        if (error?.code !== "ESRCH") throw error;
+      }
+      await waitForProcessExit(pid);
     }
-    await waitForProcessExit(descendantPid);
   }
   await rm(root, {
     recursive: true,
     force: true,
-    maxRetries: 5,
-    retryDelay: 100,
   });
 }

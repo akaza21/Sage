@@ -1,5 +1,4 @@
-.edit-summary,
-.acp-file-changes {
+.edit-summary {
   position: relative;
   min-width: 0;
   padding: 0 0 var(--space-1) var(--space-2);
@@ -8,28 +7,35 @@
   border-radius: var(--radius-none);
   background: transparent;
   box-shadow: none;
-}
-
-.edit-summary {
   width: min(100%, var(--reading-measure));
   margin: var(--space-3) auto 0;
 }
 
 .acp-file-changes {
-  width: min(100%, var(--reading-measure));
-  margin: var(--space-3) auto 0;
+  width: var(--edit-summary-width, min(100%, var(--reading-measure)));
+  margin: var(--edit-summary-margin, var(--space-3) auto 0);
   padding: var(--space-1);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--color-panel);
+  border: var(
+    --edit-summary-border,
+    var(--border-width) solid var(--color-border-subtle)
+  );
+  border-radius: var(--radius-edit-summary);
+  background: var(--edit-summary-fill, var(--color-panel));
   animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
 }
 
 .acp-file-changes--collapsed {
-  width: max-content;
-  max-width: min(100%, var(--reading-measure));
+  --radius-edit-summary: var(
+    --edit-summary-collapsed-radius,
+    var(--radius-pill)
+  );
+  width: var(--edit-summary-width, max-content);
+  max-width: 100%;
+  background: var(--edit-summary-fill, var(--color-plane-raised));
+}
+
+.acp-file-changes--collapsed .acp-file-changes__header {
   border-radius: var(--radius-pill);
-  background: var(--color-plane-raised);
 }
 
 .acp-editing-files {
@@ -90,8 +96,7 @@
 
 .edit-summary__totals,
 .edit-file__counts,
-.acp-file-changes__totals,
-.acp-file-changes__counts {
+.acp-file-changes__totals {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -103,15 +108,13 @@
 
 .edit-summary__totals span:first-child,
 .edit-file__counts span:first-child,
-.acp-file-changes__additions,
-.acp-file-changes__counts span:first-child {
+.acp-file-changes__additions {
   color: var(--color-diff-add);
 }
 
 .edit-summary__totals span:last-child,
 .edit-file__counts span:last-child,
-.acp-file-changes__deletions,
-.acp-file-changes__counts span:last-child {
+.acp-file-changes__deletions {
   color: var(--color-diff-delete);
 }
 
@@ -161,20 +164,21 @@
 
 .acp-file-changes li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: var(--space-2);
   padding: 2px var(--space-2);
 }
 
-.acp-file-changes li {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 .acp-file-changes li > .acp-resource-action {
   display: flex;
   width: 100%;
-  justify-self: stretch;
+  justify-self: start;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 var(--space-1);
+  border-color: transparent;
+  background: transparent;
 }
 
 .acp-file-changes .chat-file-chip {
@@ -189,15 +193,6 @@
   overflow: hidden;
   text-align: left;
   text-overflow: ellipsis;
-}
-
-.acp-file-changes li > .acp-resource-action {
-  min-width: 0;
-  min-height: 28px;
-  justify-self: start;
-  padding: 0 var(--space-1);
-  border-color: transparent;
-  background: transparent;
 }
 
 .acp-file-changes li > .acp-resource-action:hover,
@@ -240,7 +235,8 @@
   overflow: auto;
 }
 
-.acp-file-changes__disposition {
+.acp-file-changes__disposition,
+.acp-file-changes__review {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -250,7 +246,8 @@
   border-top: 1px solid var(--color-border-subtle);
 }
 
-.acp-file-changes__disposition > span {
+.acp-file-changes__disposition > span,
+.acp-file-changes__review > span {
   min-width: 0;
   flex: 1 1 260px;
   color: var(--color-text-muted);
@@ -258,7 +255,8 @@
   line-height: 1.35;
 }
 
-.acp-file-changes__disposition button {
+.acp-file-changes__disposition button,
+.acp-file-changes__review button {
   min-height: var(--control-height-compact);
   padding: 0 var(--space-2);
   border: 1px solid var(--color-border-subtle);
@@ -270,7 +268,8 @@
   cursor: pointer;
 }
 
-.acp-file-changes__disposition button:first-child {
+.acp-file-changes__disposition button:first-child,
+.acp-file-changes__review button {
   border-color: color-mix(
     in srgb,
     var(--color-accent) 45%,
@@ -280,7 +279,8 @@
   background: var(--color-accent-muted);
 }
 
-.acp-file-changes__disposition button:hover:not(:disabled) {
+.acp-file-changes__disposition button:hover:not(:disabled),
+.acp-file-changes__review button:hover {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
 }
@@ -309,7 +309,8 @@
     overflow-wrap: anywhere;
   }
 
-  .acp-file-changes__disposition > span {
+  .acp-file-changes__disposition > span,
+  .acp-file-changes__review > span {
     flex-basis: 100%;
   }
 }
@@ -342,7 +343,8 @@
   .edit-file:focus-visible,
   .acp-file-changes__header:focus-visible,
   .acp-file-changes li > .acp-resource-action:focus-visible,
-  .acp-file-changes__disposition button {
+  .acp-file-changes__disposition button,
+  .acp-file-changes__review button {
     outline: 1px solid CanvasText;
   }
 }

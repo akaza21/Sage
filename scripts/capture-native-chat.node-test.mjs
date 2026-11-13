@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { CdpError } from "./source-functional-native-ide-cdp.mjs";
 import { boundedEvaluate } from "./capture-native-chat-shared.mjs";
 import path from "node:path";
 import {
@@ -67,10 +68,9 @@ function captureChatBoundary(width, harness, created = {}, initial = {}) {
   const clicks = [];
   const archived = [];
   let paneCount = 1;
+  // Agent navigation has no drawer at any capture width.
   const selectors = [
-    'button[aria-label="Open projects and chats"]',
-    'button[aria-label="New task"]',
-    'button[aria-label="Close projects and chats"]',
+    'button[aria-label="New chat"]',
     'button[aria-label="Harness"]',
     '[role="option"][data-option-id="' + HARNESS[harness].id + '"]',
   ];
@@ -84,17 +84,12 @@ function captureChatBoundary(width, harness, created = {}, initial = {}) {
       if (expression === SINGLE_CAPTURE_PANE) return paneCount === 1;
       if (expression === observationFor(HARNESS[harness].binding))
         return { ...observation };
-      if (
-        expression ===
-        "Boolean(document.querySelector('button[aria-label=\"Open projects and chats\"]'))"
-      )
-        return width < 760;
       const selector = selectors.find(
         (selector) => expression === clickExpression(selector),
       );
       assert.ok(selector, expression);
       clicks.push(selector);
-      if (selector === selectors[1]) {
+      if (selector === selectors[0]) {
         paneCount = width === 1888 ? 2 : 1;
         Object.assign(
           observation,
@@ -106,12 +101,11 @@ function captureChatBoundary(width, harness, created = {}, initial = {}) {
           created,
         );
       }
-      if (selector === selectors[4]) observation.selected = HARNESS[harness].id;
+      if (selector === selectors[2]) observation.selected = HARNESS[harness].id;
       return true;
     },
   };
-  const expectedClicks =
-    width < 760 ? selectors : [selectors[1], selectors[3], selectors[4]];
+  const expectedClicks = selectors;
   return { cdp, clicks, archived, observation, expectedClicks };
 }
 
@@ -167,7 +161,7 @@ for (const [reason, unhydrated] of Object.entries({
   project: { projectId: null },
   projection: { projectionLoaded: false },
 }))
-  test(`capture waits for the previous ${reason} before creating a new task`, async () => {
+  test(`capture waits for the previous ${reason} before creating a new chat`, async () => {
     const boundary = captureChatBoundary(1888, "pi");
     let observations = 0;
     const cdp = {
@@ -345,13 +339,14 @@ test("approval capture rejects missing advertised Ask before changing access or 
 });
 
 for (const state of ["approval-approved", "approval-declined"])
-  test(`compact Claude ${state} capture leaves eleven timing slots after cleanup`, async () => {
+  test(`compact Claude ${state} capture leaves fifteen timing slots after cleanup`, async () => {
     const timing = captureTiming();
     const boundary = captureChatBoundary(720, "claude");
     const deadline = Date.now() + 1000;
     const observationExpression = observationFor(HARNESS.claude.binding);
     boundary.observation.accessModes = ["ask"];
     let warmupObservations = 0;
+    let selectedAsk = false;
     const observation = {
       turnId: "none",
       turnCount: 0,
@@ -378,6 +373,7 @@ for (const state of ["approval-approved", "approval-declined"])
         if (
           expression === clickExpression('button[aria-label="Send message"]')
         ) {
+          assert.equal(selectedAsk, true);
           assert.equal(observation.controls.send, true);
           assert.equal(observation.controls.stop, false);
           observation.turnCount++;
@@ -396,6 +392,15 @@ for (const state of ["approval-approved", "approval-declined"])
           assert.equal(observation.turnCount, 0);
           assert.equal(observation.state, "none");
           assert.equal(observation.controls.modelEnabled, true);
+        }
+        if (
+          expression ===
+          clickExpression(
+            '[role="menu"][aria-label="Access mode"] [role="menuitemradio"][data-option-id="ask"]',
+          )
+        ) {
+          assert.equal(observation.turnCount, 0);
+          selectedAsk = true;
         }
         if (
           expression ===
@@ -462,11 +467,11 @@ for (const state of ["approval-approved", "approval-declined"])
       ]),
       undefined,
     );
-    assert.equal(timing.steps.length, 53);
+    assert.equal(timing.steps.length, 49);
     const value = probe();
     value.timing.steps = timing.steps;
     assert.doesNotThrow(() => validateProbe(value));
-    for (let remaining = 0; remaining < 11; remaining++)
+    for (let remaining = 0; remaining < 15; remaining++)
       timing.record("reserved-cleanup");
     assert.throws(() => timing.record("extra"), /timing-bound/u);
   });
@@ -586,6 +591,17 @@ test("Pi capture and probe protocols agree with the binding version constant", (
   };
   assert.equal(validateProbe(value), value);
 });
+test("Codex capture protocol agrees with the pinned Codex version", () => {
+  const manifest = readFileSync(
+    new URL("../src-tauri/src/acp/bindings/codex/manifest.rs", import.meta.url),
+    "utf8",
+  );
+  const version = manifest.match(
+    /macro_rules! pinned_codex_version \{\s*\(\) => \{\s*"([^"]+)"/u,
+  );
+  assert.ok(version);
+  assert.equal(HARNESS.codex.protocol, `codex-app-server-${version[1]}`);
+});
 test("probe JSON records boolean rendered and lazy-fallback witnesses and fails closed", () => {
   const value = JSON.parse(JSON.stringify(probe()));
   assert.equal(validateProbe(value).assistantRendered, true);
@@ -668,6 +684,22 @@ test("probe timestamps have a finite closed schema and a 64-step limit", () => {
     assert.throws(() => validateProbe(changed));
   }
 });
+for (const [reason, failure] of [
+  ["a CDP error without deadline metadata", new CdpError("deadline")],
+  ["an unrelated predicate error", new Error("turn-identity-drift")],
+])
+  test(`${reason} propagates unchanged after the state deadline`, async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    const deadline = Date.now() + 750;
+    await assert.rejects(
+      waitForState(async () => {
+        t.mock.timers.setTime(deadline + 1);
+        throw failure;
+      }, deadline),
+      (error) => error === failure,
+    );
+  });
+
 test("stalled predicates are bounded and teardown runs on failure", async () => {
   await assert.rejects(
     waitForState(async () => false, Date.now() + 5),

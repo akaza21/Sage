@@ -1,7 +1,6 @@
 import { FileCode2 } from "../ui/leanIcons";
-
 import { useWorkbenchStore } from "../app/store";
-import type { WorkbenchTab } from "../domain/workbench";
+import { type WorkbenchTab } from "../domain/workbench";
 import { sameResource } from "../domain/resourceIdentity";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import { EditorWelcome } from "./EditorWelcome";
@@ -12,6 +11,14 @@ const loadSettingsSurface = () =>
   import("./SettingsSurface").then(({ SettingsSurface }) => ({
     default: SettingsSurface,
   }));
+
+// Loads only once a Save All has something to report.
+const loadSaveAllNotice = () =>
+  import("../features/files/SaveAllNotice").then(({ SaveAllNotice }) => ({
+    default: SaveAllNotice,
+  }));
+
+export default ActiveEditorCanvas;
 
 function repositoryMutationTitle(
   error: NonNullable<
@@ -51,6 +58,11 @@ export function ActiveEditorCanvas({
   const repositoryMutationError = useWorkbenchStore(
     (state) => state.repositoryMutationError,
   );
+  const saveAllFailed = useWorkbenchStore(
+    (state) =>
+      !!state.saveAllReport &&
+      state.saveAllReport.projectId === state.project?.id,
+  );
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
   const editorTab =
     activeTab && isAgentArtifactTabKind(activeTab.kind) ? activeTab : null;
@@ -72,6 +84,14 @@ export function ActiveEditorCanvas({
           <strong>{repositoryMutationTitle(contextualMutationError)}</strong>
           <span>{contextualMutationError.message}</span>
         </div>
+      ) : null}
+      {saveAllFailed ? (
+        <LazyModuleBoundary
+          label="Save All"
+          load={loadSaveAllNotice}
+          fallback={null}
+          render={(SaveAllNotice) => <SaveAllNotice />}
+        />
       ) : null}
       {canvas}
       {activeTab?.kind === "settings" ? (

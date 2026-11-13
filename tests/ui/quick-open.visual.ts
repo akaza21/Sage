@@ -85,7 +85,9 @@ test.describe("Command palette (ED-2a)", () => {
     await expect(options).toHaveCount(1);
     await expect(options.first()).toContainText("Go to Line…");
     // Its own shortcut is shown (Control+G on every platform).
-    await expect(options.first().locator("kbd")).toHaveText("Ctrl+G");
+    await expect(options.first().locator(".quick-open__shortcut")).toHaveText(
+      "Ctrl+G",
+    );
     await box.press("Enter");
     await expect(dialog).toBeHidden();
     await expect(
@@ -111,7 +113,7 @@ test.describe("Command palette (ED-2a)", () => {
     await box.fill(">file");
     await box.press("Enter");
     await expect(
-      dialog.getByRole("combobox", { name: "Search Files by name" }),
+      dialog.getByRole("combobox", { name: "Search files by name" }),
     ).toHaveValue("");
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
@@ -143,7 +145,7 @@ test.describe("Quick Open", () => {
 
     const dialog = page.getByRole("dialog", { name: "Quick Open" });
     const input = dialog.getByRole("combobox", {
-      name: "Search Files by name",
+      name: "Search files by name",
     });
     const options = dialog.getByRole("option");
 
@@ -170,11 +172,11 @@ test.describe("Quick Open", () => {
     await expect(dialog).toBeHidden();
     await expect(page.locator(".cm-activeLine")).toHaveText(lines[lineIndex]);
 
-    // A bare :line goes to a line of the active File.
+    // A bare :line goes to a line of the active file.
     await page.keyboard.press("ControlOrMeta+p");
     await input.fill(":1");
     await expect(dialog.getByRole("status")).toHaveText(
-      "Press Enter to go to line 1 in the active File.",
+      "Press Enter to go to line 1 in the active file.",
     );
     await expect(options).toHaveCount(0);
     await input.press("Enter");
@@ -215,4 +217,62 @@ test.describe("Quick Open", () => {
     await expect(dialog).toBeHidden();
     await expect(page.locator(".cm-content")).toBeFocused();
   });
+});
+
+test("leaving Editor cancels Quick Open while its controller is still loading", async ({
+  page,
+}) => {
+  let release!: () => void;
+  const loading = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    "**/src/features/quickOpen/QuickOpenHost.tsx*",
+    async (route) => {
+      await loading;
+      await route.continue();
+    },
+  );
+  try {
+    await openScenario(page, "editor", "editor");
+    await expect(page.locator(".cm-content")).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+p");
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { useQuickOpenStore } =
+            await import("/src/features/quickOpen/quickOpenState.ts");
+          return useQuickOpenStore.getState().open;
+        }),
+      )
+      .toBe(true);
+    await page
+      .getByRole("radio", { name: "Agent", exact: true })
+      .press("Space");
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { useQuickOpenStore } =
+            await import("/src/features/quickOpen/quickOpenState.ts");
+          return useQuickOpenStore.getState().open;
+        }),
+      )
+      .toBe(false);
+    release();
+    await page.evaluate(async () => {
+      await import("/src/features/quickOpen/QuickOpenHost.tsx");
+    });
+    await page
+      .getByRole("radio", { name: "Editor", exact: true })
+      .press("Space");
+    await expect(page.locator(".cm-content")).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: "Quick Open" });
+    await expect(dialog).toBeHidden();
+    await page.keyboard.press("ControlOrMeta+p");
+    await expect(
+      dialog.getByRole("combobox", { name: "Search files by name" }),
+    ).toBeFocused();
+  } finally {
+    release();
+  }
 });

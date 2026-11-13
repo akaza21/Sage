@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { fileURLToPath } from "node:url";
 import { resolveUiPort } from "./scripts/lib/ui-test-port.mjs";
 
 const port = resolveUiPort();
@@ -17,11 +18,14 @@ export default defineConfig({
     toHaveScreenshot: {
       animations: "disabled",
       caret: "hide",
+      stylePath: fileURLToPath(
+        new URL("./tests/ui/shared/visualScreenshot.css", import.meta.url),
+      ),
       maxDiffPixelRatio: 0.002,
     },
   },
   forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
+  retries: 0,
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "line",
   outputDir: "output/playwright",
   use: {

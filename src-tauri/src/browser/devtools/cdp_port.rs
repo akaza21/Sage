@@ -8,16 +8,18 @@ use crate::acp::{
 
 use super::{
     capability::DevtoolsPort,
-    screenshot::{admit_jpeg, admit_png, capture_png_with_fallback},
+    screenshot::{admit_jpeg, admit_png, capture_png_with_fallback, fit_factor, png_size},
     snapshot::{DocumentStamp, NativeNode, parse_ax_tree},
     transport::CdpTransport,
 };
 
 mod act;
+pub(super) mod evaluate;
 pub(super) mod highlight;
 pub(super) mod inspect;
 pub(super) mod outcome;
 pub(super) mod page_context;
+mod screenshot;
 pub(super) mod select;
 mod world;
 use outcome::{navigation_failure, navigation_matches};
@@ -31,6 +33,7 @@ const PROBE_FLOOR: Duration = Duration::from_secs(1);
 pub(crate) struct CdpPort<T> {
     pub(super) transport: T,
     world: world::AgentWorld,
+    pub(super) serializer: evaluate::Serializer,
 }
 
 impl<T: CdpTransport> CdpPort<T> {
@@ -38,6 +41,7 @@ impl<T: CdpTransport> CdpPort<T> {
         Self {
             transport,
             world: world::AgentWorld::default(),
+            serializer: evaluate::Serializer::default(),
         }
     }
 
@@ -117,14 +121,39 @@ impl<T: CdpTransport> CdpPort<T> {
         } else {
             (0, 0, viewport_width, viewport_height)
         };
-        if width == 0
-            || height == 0
-            || width > BROWSER_LIMITS.screenshot_width
-            || height > BROWSER_LIMITS.screenshot_height
-            || u64::from(width) * u64::from(height) > BROWSER_LIMITS.screenshot_pixels
+        // The limits bound the picture, so a smaller scale lets a tall page,
+        // such as a phone emulation laid out about 980 px wide, fit.
+        let (scaled_width, scaled_height) =
+            crate::acp::browser::admit_capture_pixels(f64::from(width), f64::from(height), scale)?;
+        if scaled_width > f64::from(BROWSER_LIMITS.screenshot_width)
+            || scaled_height > f64::from(BROWSER_LIMITS.screenshot_height)
         {
             return Err(BrowserFailure::Capacity);
         }
+        let mut data = self.screenshot(format, (x, y, width, height), scale)?;
+        // A PNG comes out in device pixels, which an emulated scale factor
+        // of 2 to 3.5 multiplies; draw it once more at the scale that fits.
+        if format == "png"
+            && let Some(fit) = png_size(&data).and_then(|(w, h)| fit_factor(w, h))
+        {
+            data = self.screenshot(format, (x, y, width, height), scale * fit)?;
+        }
+        let data = data.as_str();
+        if format == "png" {
+            let (actual_width, actual_height) = admit_png(data)?;
+            Ok((actual_width, actual_height, data.to_owned()))
+        } else {
+            admit_jpeg(width, height, data)?;
+            Ok((width, height, data.to_owned()))
+        }
+    }
+
+    fn screenshot(
+        &mut self,
+        format: &'static str,
+        (x, y, width, height): (u32, u32, u32, u32),
+        scale: f64,
+    ) -> Result<String, BrowserFailure> {
         let params = json!({
             "format": format,
             "quality": 70,
@@ -138,22 +167,51 @@ impl<T: CdpTransport> CdpPort<T> {
             BROWSER_LIMITS.screenshot_bytes + 4096,
             Duration::from_secs(5),
         )?;
-        let response: Value =
+        let mut response: Value =
             serde_json::from_str(&response).map_err(|_| BrowserFailure::Unavailable)?;
-        let data = response["data"]
-            .as_str()
-            .ok_or(BrowserFailure::Unavailable)?;
-        if format == "png" {
-            let (actual_width, actual_height) = admit_png(data)?;
-            Ok((actual_width, actual_height, data.to_owned()))
-        } else {
-            admit_jpeg(width, height, data)?;
-            Ok((width, height, data.to_owned()))
+        match response["data"].take() {
+            Value::String(data) => Ok(data),
+            _ => Err(BrowserFailure::Unavailable),
         }
     }
 }
 
+/// Releases developer mode's object group without the dispatch permit:
+/// after every evaluation and when a grant ends (ADR-0009b).
+pub(in crate::browser::devtools) fn release_developer_objects<T: CdpTransport>(transport: &T) {
+    let _ = transport.observe(
+        "Runtime.releaseObjectGroup",
+        &crate::acp::browser::developer::release_params(),
+        4096,
+        Duration::from_secs(2),
+    );
+}
+
 impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
+    fn raw(&mut self, method: &str, params: &str) -> Result<String, BrowserFailure> {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        if method == "Runtime.evaluate" {
+            return self.bounded_evaluate(params, deadline);
+        }
+        let bounded;
+        let params = if method == "Page.captureScreenshot" {
+            bounded = self.bounded_screenshot(params, deadline)?;
+            bounded.as_str()
+        } else {
+            params
+        };
+        self.transport.raw(
+            method,
+            params,
+            BROWSER_LIMITS.cdp_result_bytes,
+            world::left(deadline)?,
+        )
+    }
+
+    fn release_developer_objects(&mut self) {
+        self.transport.release_raw_objects();
+    }
+
     fn navigate(&mut self, url: &str) -> Result<(String, u64), BrowserFailure> {
         let before = self.stamp()?;
         // This CDP call goes through the dispatch permit and marks Agent

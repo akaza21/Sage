@@ -1,0 +1,64 @@
+use super::{Notifications, receipts, visibility::VisibilityUpdate};
+use crate::{settings_store::NotificationPreference, state::AppState};
+use std::sync::atomic::Ordering;
+use tauri::State;
+
+#[tauri::command]
+pub fn get_notification_preference(
+    state: State<'_, AppState>,
+) -> Result<NotificationPreference, String> {
+    state
+        .settings
+        .notification_preference()
+        .map_err(|_| "notification preference unavailable".into())
+}
+#[tauri::command]
+pub fn set_notification_preference(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    notifications: State<'_, Notifications>,
+    value: NotificationPreference,
+) -> Result<NotificationPreference, String> {
+    let value = state
+        .settings
+        .set_notification_preference(value)
+        .map_err(|_| "notification preference could not be saved".to_owned())?;
+    notifications.apply(&app, &state.database.connection(), value);
+    Ok(value)
+}
+#[tauri::command]
+pub fn begin_notification_visibility(state: State<'_, Notifications>) -> u64 {
+    state
+        .visibility
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .reset()
+}
+#[tauri::command]
+pub fn report_notification_visibility(
+    app_state: State<'_, AppState>,
+    state: State<'_, Notifications>,
+    update: VisibilityUpdate,
+) -> Result<(), String> {
+    // The Chats shown are also those whose idle runtime is kept longest.
+    let shown = update.shown_chats();
+    state
+        .visibility
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .update(update)?;
+    app_state.acp.set_shown_chats(shown);
+    Ok(())
+}
+#[tauri::command]
+pub fn take_notification_chat(
+    state: State<'_, AppState>,
+    notifications: State<'_, Notifications>,
+) -> Result<Option<receipts::OpenChat>, String> {
+    let id = notifications.pending_open.swap(0, Ordering::AcqRel);
+    if id == 0 {
+        return Ok(None);
+    }
+    receipts::target(&state.database.connection(), id)
+        .map_err(|_| "notification chat unavailable".into())
+}

@@ -1375,9 +1375,9 @@ fn thought_chunks_stream_and_nested_transcript_updates_are_bounded_fallbacks() {
         &thought[0],
         AdapterEvent::Item {
             lifecycle: ItemLifecycle::Streaming,
-            payload: NormalizedPayload::ThoughtSummary { .. },
+            payload: NormalizedPayload::ThoughtSummary { summary },
             ..
-        }
+        } if summary.as_str() == "unproven thought"
     ));
     let nested = translator
         .translate_notification(&encoded(&frames[1]), &FixtureResources)
@@ -1475,10 +1475,10 @@ fn launch_manifest_admits_valid_discovery_shape_and_rejects_contract_drift() {
     // exact Node/adapter contract; each mutation below changes one guard.
     assert!(validate_research_candidate(candidate.clone()).is_ok());
     let mut sdk_mismatch = candidate.clone();
-    sdk_mismatch.acp_sdk_version = "1.5.0".into();
+    sdk_mismatch.acp_sdk_version = "1.3.0".into();
     assert_eq!(
         validate_research_candidate(sdk_mismatch)
-            .expect("an unknown SDK degrades rather than refusing")
+            .expect("an older SDK degrades rather than refusing")
             .characterisation,
         crate::acp::bindings::characterisation::Characterisation::Uncharacterised
     );
@@ -1551,7 +1551,7 @@ fn startup_defers_claude_launch_admission_until_background_discovery_applies() {
 }
 
 #[test]
-fn an_unexpected_acp_sdk_binds_uncharacterised_instead_of_being_refused() {
+fn a_later_acp_sdk_binds_as_newer_than_tested_instead_of_being_refused() {
     let root = std::env::temp_dir().join(format!("sage-claude-uncharacterised-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let adapter = root.join("adapter.js");
@@ -1575,8 +1575,8 @@ fn an_unexpected_acp_sdk_binds_uncharacterised_instead_of_being_refused() {
     let binding = registration.refresh().expect("unknown SDK still binds");
     assert_eq!(
         binding.characterisation(),
-        crate::acp::bindings::characterisation::Characterisation::Uncharacterised,
-        "an unknown SDK must be reported, not hidden behind a known profile"
+        crate::acp::bindings::characterisation::Characterisation::NewerThanTested,
+        "a later SDK must be reported as newer, not hidden behind the tested profile"
     );
     fs::remove_dir_all(&root).ok();
 }

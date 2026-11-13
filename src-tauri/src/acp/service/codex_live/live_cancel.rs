@@ -1,13 +1,15 @@
 use super::live_recovery::{LiveHostRecovery, LiveHostRecoveryPhase};
 use super::*;
 
-impl AcpService {
+impl Lane<'_> {
     pub(crate) fn dispose_temporary_runtime(
         &self,
         project: &crate::acp::contract::SageProjectId,
         chat: &crate::acp::contract::SageChatId,
     ) -> Result<(), CodexSessionError> {
-        if !chat.as_str().starts_with("side-") {
+        if !crate::side_chat_storage::is_temporary(&self.database.connection(), chat.as_str())
+            .map_err(|_| CodexSessionError::Recovery)?
+        {
             return Err(CodexSessionError::Intent);
         }
         self.revoke_browser_chat(project, chat);
@@ -51,10 +53,25 @@ impl AcpService {
         &self,
         deadline: std::time::Instant,
     ) -> Result<bool, CodexSessionError> {
+        if !self.can_park_idle_runtime() {
+            return Ok(false);
+        }
+        self.park_idle_runtime(deadline)
+    }
+
+    /// Parks this lane's runtime through the graceful explicit close a
+    /// replacement uses: the host drains, parks its session durably and
+    /// exits, and a later activation resumes it. Ok(false) leaves the
+    /// runtime as it was: no runtime, a reserved Turn, a host without
+    /// shutdown recovery, or a refused idle drain.
+    pub(crate) fn park_idle_runtime(
+        &self,
+        deadline: std::time::Instant,
+    ) -> Result<bool, CodexSessionError> {
         let Some(allocation) = self.scheduler.active() else {
             return Ok(false);
         };
-        if allocation.turn_reserved || !self.runtime_has_completed_turn(&allocation.tree) {
+        if allocation.turn_reserved {
             return Ok(false);
         }
         let owner = allocation.tree;
@@ -83,6 +100,17 @@ impl AcpService {
             phase: LiveHostRecoveryPhase::ReplacementPark,
         }));
         Err(CodexSessionError::Recovery)
+    }
+
+    pub(crate) fn can_park_idle_runtime(&self) -> bool {
+        self.scheduler.active().is_some_and(|allocation| {
+            !allocation.turn_reserved
+                && self.runtime_has_completed_turn(&allocation.tree)
+                && self
+                    .runtime
+                    .for_owner(&allocation.tree)
+                    .is_ok_and(|host| host.has_shutdown_recovery())
+        })
     }
 
     fn runtime_has_completed_turn(&self, owner: &RuntimeOwner) -> bool {

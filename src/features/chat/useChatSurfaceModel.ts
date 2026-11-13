@@ -1,24 +1,25 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, type FormEvent } from "react";
 
-import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
-import { openAgentArtifact } from "../../app/openAgentArtifact";
-import type { AgentDiffRef } from "../../domain/agentDiff";
-import type { AttachedContext } from "../../domain/attachedContext";
-import { MAX_QUEUED_CHAT_PROMPTS } from "../../domain/chatOwnership";
-import type { HarnessDefinition } from "../../domain/harness";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
+import { openAgentArtifact } from "../../app/openAgentArtifact";
+import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
 import type {
+  AcpChatPage,
   AcpCommandFailure,
   CuratedBindingId,
   CuratedModelId,
   TurnProjection,
 } from "../../domain/acp";
-import type { AcpChatPage } from "../../domain/acp";
+import type { AgentDiffRef } from "../../domain/agentDiff";
+import type { AttachedContext } from "../../domain/attachedContext";
+import { MAX_QUEUED_CHAT_PROMPTS } from "../../domain/chatOwnership";
+import type { HarnessDefinition } from "../../domain/harness";
 import type { ResourceRef } from "../../domain/workbench";
-import { composerDisabledReason, sizeReason } from "./composerDisabledReason";
-import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
-import { currentChatUsage } from "./acp/chatUsage";
 import { terminalTurnStates, type OpenResourceTarget } from "./acp";
+import { currentChatUsage } from "./acp/chatUsage";
+import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
+import { composerDisabledReason, sizeReason } from "./composerDisabledReason";
+import { composerImageAvailability } from "./useComposerImageInput";
 
 type SurfaceHarness = Pick<
   HarnessDefinition,
@@ -40,7 +41,6 @@ export function useChatSurfaceModel({
   discoveryPhase,
   composerText = "",
   attachedContext = [],
-  imageInputAvailable = false,
   imageUploading = false,
   sending = false,
   chatError = null,
@@ -60,7 +60,6 @@ export function useChatSurfaceModel({
   discoveryPhase: HarnessDiscoveryPhase;
   composerText: string;
   attachedContext: readonly AttachedContext[];
-  imageInputAvailable?: boolean;
   imageUploading?: boolean;
   sending: boolean;
   chatError: string | null;
@@ -79,6 +78,7 @@ export function useChatSurfaceModel({
       attachedContext: readonly AttachedContext[],
       bindingId: CuratedBindingId,
       modelId: CuratedModelId | null,
+      staged?: { revision: string },
     ) => Promise<unknown>;
     cancel: (turnId: TurnProjection["id"]) => Promise<unknown>;
     close: () => Promise<unknown>;
@@ -155,6 +155,7 @@ export function useChatSurfaceModel({
       harnessAvailable,
       availableBinding,
       harnessStatus,
+      imageInput: composerImageAvailability(!!useNativeAcp, selectedSession),
     };
   }, [discoveryPhase, harnesses, page, selectedHarnessId, selectedModelId]);
   const accessBindingId = model.selectedSession?.bindingId ?? model.bindingId;
@@ -234,10 +235,12 @@ export function useChatSurfaceModel({
   const actionBusy = model.useNativeAcp ? acpActions.busy : sending;
   const legacyAttachments = !model.useNativeAcp && attachedContext.length > 0;
   const sendBlocked =
+    queueSavePending ||
+    (model.useNativeAcp && chatLoadFailed) ||
     sizeReason(composerText, attachedContext) !== null ||
     imageUploading ||
     (attachedContext.some((context) => context.kind === "image") &&
-      !imageInputAvailable);
+      !model.imageInput.available);
   const queueAvailable = Boolean(
     model.useNativeAcp &&
     activeAcpTurn?.state === "running" &&
@@ -248,10 +251,7 @@ export function useChatSurfaceModel({
     queuedPromptCount < MAX_QUEUED_CHAT_PROMPTS,
   );
   const composerEnabled =
-    canPrompt &&
-    !queueSavePending &&
-    (!activeAcpTurn || queueAvailable) &&
-    !legacyAttachments;
+    canPrompt && !(model.useNativeAcp && chatLoadFailed) && !legacyAttachments;
   const sessionPromptUnavailable = Boolean(
     model.useNativeAcp &&
     model.selectedSession &&
@@ -273,7 +273,7 @@ export function useChatSurfaceModel({
                 activeTurn: Boolean(activeAcpTurn),
                 availableBinding: model.availableBinding,
                 canPrompt,
-                chatLoadFailed,
+                chatLoadFailed: model.useNativeAcp && chatLoadFailed,
                 harnessAvailable: model.harnessAvailable,
                 harnessDiscoveryPhase: discoveryPhase,
                 projectTransitioning,
@@ -281,7 +281,8 @@ export function useChatSurfaceModel({
                 useNativeAcp: model.useNativeAcp,
               }));
   const submit = useCallback(
-    (event: FormEvent) => {
+    // The composer names the batch it staged; a queued message never does.
+    (event: FormEvent, stagedRevision?: string | null) => {
       event.preventDefault();
       if (sendBlocked) return;
       if (activeAcpTurn) {
@@ -302,6 +303,7 @@ export function useChatSurfaceModel({
           attachedContext,
           model.bindingId,
           model.selectedModelId,
+          ...(stagedRevision ? [{ revision: stagedRevision }] : []),
         );
         return;
       }
@@ -357,15 +359,19 @@ export function useChatSurfaceModel({
   );
   return {
     ...model,
-    accessBindingId,
-    foregroundError:
-      acpActions.errorKind === "signInRequired" && model.selectedHarness
-        ? signInRequiredMessage(model.selectedHarness)
-        : (acpActions.error ?? chatError),
+    // A chat with no session at all drafts its access for its first one.
+    accessTarget: {
+      bindingId: accessBindingId,
+      draftChatId: page?.sessions.length === 0 ? page.chatId : undefined,
+    },
+    foregroundError: acpActions.error ?? chatError,
+    // The sign-in sentence renders lazily in the composer, off the chat path.
+    signInHarness:
+      acpActions.errorKind === "signInRequired"
+        ? (model.selectedHarness ?? null)
+        : null,
     modeError: model.useNativeAcp ? (acpActions.modeError ?? null) : null,
-    modeChanging: model.useNativeAcp
-      ? (acpActions.modeChanging ?? false)
-      : false,
+    modeChanging: model.useNativeAcp && (acpActions.modeChanging ?? false),
     actionBusy,
     activeAcpTurn,
     workingTurnCount,
@@ -375,6 +381,7 @@ export function useChatSurfaceModel({
     sessionPromptUnavailable,
     usage,
     composerEnabled,
+    sendBlocked,
     queueAvailable,
     composerHotkeyEnabled:
       focused && composerEnabled && !actionBusy && !projectTransitioning,
@@ -394,11 +401,4 @@ export function useChatSurfaceModel({
     ),
     openResource,
   };
-}
-
-function signInRequiredMessage(harness: SurfaceHarness): string {
-  if (harness.signIn) {
-    return `${harness.name} requires sign-in before it can continue. Run ${harness.signIn.command}. ${harness.signIn.hint} Then try again.`;
-  }
-  return `${harness.name} requires sign-in before it can continue. Sign in with its CLI, then try again.`;
 }

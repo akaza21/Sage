@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   browserControl,
-  type BrowserAnnotateChange,
   type BrowserAnnotateSelection,
   type BrowserControlAction,
   type BrowserNavigation,
 } from "../../ports/nativeBrowserPort";
 import { registerBrowserElementSink } from "../../app/browserAnnotations";
 import { browserElementChatSink } from "../../app/browserElementChatSink";
-import BrowserAnnotateComment from "./BrowserAnnotatePopover";
+import { subscribeBrowserTab } from "./browserTabEvents";
+const BrowserAnnotateComment = lazy(() => import("./BrowserAnnotatePopover"));
 
 // Stateless: it reads the pinned Agent Chat at each pick, so one
 // registration serves every browser tab.
@@ -37,7 +37,7 @@ export function BrowserAnnotateControl({
       setFrame(
         button
           ?.closest(".browser-surface")
-          ?.querySelector(".browser-surface__frame") ?? null,
+          ?.querySelector(".browser-surface__viewport") ?? null,
       ),
     [],
   );
@@ -48,24 +48,22 @@ export function BrowserAnnotateControl({
   const set = (on: boolean) => onControl(on ? "annotateOn" : "annotateOff");
   useEffect(() => {
     if (!tabId) return;
-    const unlisten = import("@tauri-apps/api/event")
-      .then(({ listen }) =>
-        listen<BrowserAnnotateChange>("browser:annotate", ({ payload }) => {
-          if (payload.tabId !== tabId) return;
-          setActive(payload.active);
-          setSelection(payload.selection ?? null);
-          if (payload.error) onError(payload.error);
-        }),
-      )
+    const stop = subscribeBrowserTab(
+      "browser:annotate",
+      tabId,
+      (payload) => {
+        setActive(payload.active);
+        setSelection(payload.selection ?? null);
+        if (payload.error) onError(payload.error);
+      },
       // A new chrome has no comment box: drop any element still waiting,
       // which shows the page again.
-      .then((stop) => {
-        void browserControl(tabId, "annotateCancel").catch(() => undefined);
-        return stop;
-      })
-      .catch(() => () => undefined);
+      async () => {
+        await browserControl(tabId, "annotateCancel").catch(() => undefined);
+      },
+    );
     return () => {
-      void unlisten.then((stop) => stop());
+      stop();
       setActive(false);
       setSelection(null);
     };
@@ -81,17 +79,21 @@ export function BrowserAnnotateControl({
         disabled={!navigation || Boolean(reason)}
         title={reason ?? undefined}
         onClick={() => set(!active)}
-        onKeyDown={(event) =>
-          event.key === "Escape" &&
-          active &&
-          (selection ? onControl("annotateCancel") : set(false))
-        }
+        onKeyDown={(event) => {
+          if (event.key !== "Escape" || !active) return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (selection) onControl("annotateCancel");
+          else set(false);
+        }}
       >
         Annotate
       </button>
       {tabId && selection && frame
         ? createPortal(
-            <BrowserAnnotateComment tabId={tabId} selection={selection} />,
+            <Suspense fallback={null}>
+              <BrowserAnnotateComment tabId={tabId} selection={selection} />
+            </Suspense>,
             frame,
           )
         : null}

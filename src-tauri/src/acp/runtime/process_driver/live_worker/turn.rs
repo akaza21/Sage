@@ -24,13 +24,15 @@ mod prepare_error;
 use prepare_error::{map_prepare, map_prepare_next};
 
 pub(super) async fn handle_reusable<A, R, T, C, Auth>(
-    parts: CompletedDriverParts<
-        A,
-        SqliteAdapterBatchJournal,
-        R,
-        T,
-        C,
-        crate::acp::runtime::SessionTreeLease,
+    parts: Box<
+        CompletedDriverParts<
+            A,
+            SqliteAdapterBatchJournal,
+            R,
+            T,
+            C,
+            crate::acp::runtime::SessionTreeLease,
+        >,
     >,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
@@ -50,6 +52,13 @@ where
                 responder.respond(Err(HostError::Intent));
                 return FirstTurnWorkerState::Reusable(parts);
             }
+            if let Err(error) = parts
+                .completed
+                .validate_command_prompt(&intent.command.prompt)
+            {
+                responder.respond(Err(error));
+                return FirstTurnWorkerState::Reusable(parts);
+            }
             if !parts.completed.idle_frame_aligned() {
                 responder.respond(Err(HostError::Capacity));
                 return FirstTurnWorkerState::Reusable(parts);
@@ -62,11 +71,11 @@ where
                 Ok(turn) => {
                     let turn_id = turn.dispatch.turn_id().clone();
                     responder.respond(Ok(WorkerReply::Prepared(turn_id)));
-                    FirstTurnWorkerState::Active(PreparedProcessWrite::new(
+                    FirstTurnWorkerState::Active(Box::new(PreparedProcessWrite::new(
                         turn,
                         prompt,
                         intent.access_mode,
-                    ))
+                    )))
                 }
                 Err(failure) => {
                     responder.respond(Err(map_prepare_next(&failure.error)));
@@ -81,12 +90,12 @@ where
             FirstTurnWorkerState::Reusable(parts)
         }
         WorkerCommand::BeginClose(command) => {
-            super::reusable::begin(ReusableCloseBeginState::new(parts, command), responder).await
+            super::reusable::begin(ReusableCloseBeginState::new(*parts, command), responder).await
         }
-        WorkerCommand::BeginPark => match ReusableCloseBeginState::begin_park(parts).await {
+        WorkerCommand::BeginPark => match ReusableCloseBeginState::begin_park(*parts).await {
             Ok(closing) => {
                 responder.respond(Ok(WorkerReply::Unit));
-                FirstTurnWorkerState::ReusableDraining(closing)
+                FirstTurnWorkerState::ReusableDraining(Box::new(closing))
             }
             Err(failure) => {
                 responder.respond(Err(super::map_close(&failure.error)));
@@ -102,7 +111,7 @@ where
     }
 }
 pub(super) async fn handle_idle<A, R, T, C, Auth>(
-    parts: CompletedActivationDriverParts<A, CoordinatorActivationJournal, R, T, C>,
+    parts: Box<CompletedActivationDriverParts<A, CoordinatorActivationJournal, R, T, C>>,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>
@@ -121,6 +130,10 @@ where
                 responder.respond(Err(HostError::Intent));
                 return FirstTurnWorkerState::Idle(parts);
             }
+            if let Err(error) = parts.parts.validate_command_prompt(&intent.command.prompt) {
+                responder.respond(Err(error));
+                return FirstTurnWorkerState::Idle(parts);
+            }
             if !parts.idle_decoder.is_frame_aligned() {
                 responder.respond(Err(HostError::Capacity));
                 return FirstTurnWorkerState::Idle(parts);
@@ -134,7 +147,7 @@ where
                     let turn_id = turn.dispatch.turn_id().clone();
                     responder.respond(Ok(WorkerReply::Prepared(turn_id)));
                     FirstTurnWorkerState::Prepared {
-                        turn,
+                        turn: Box::new(turn),
                         prompt,
                         access_mode: intent.access_mode,
                     }
@@ -148,7 +161,7 @@ where
             }
         }
         WorkerCommand::BeginClose(command) => {
-            super::idle::begin(IdleCloseBeginState::activation(parts), command, responder).await
+            super::idle::begin(IdleCloseBeginState::activation(*parts), command, responder).await
         }
         _ => {
             responder.respond(Err(HostError::State));
@@ -158,7 +171,7 @@ where
 }
 
 pub(super) async fn handle_prepared<A, R, T, C, Auth>(
-    turn: PreparedActivationTurn<A, R, T, C>,
+    turn: Box<PreparedActivationTurn<A, R, T, C>>,
     prompt: crate::acp::intent::Prompt,
     access_mode: crate::settings_store::SessionAccessMode,
     context: &FirstTurnWorkerContext<Auth>,
@@ -182,7 +195,7 @@ where
         {
             drop(prompt);
             return super::idle::begin(
-                IdleCloseBeginState::prepared(turn),
+                IdleCloseBeginState::prepared(*turn),
                 command.clone(),
                 envelope.into_parts().1,
             )
@@ -215,7 +228,7 @@ where
 }
 
 pub(super) async fn handle_active<A, R, T, C, Auth>(
-    mut active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
+    mut active: Box<PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>>,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>
@@ -233,7 +246,7 @@ where
             decision,
         } if owner == &context.owner => {
             let request_id = request_id.clone();
-            let decision = *decision;
+            let decision = decision.clone();
             match active
                 .turn
                 .driver
@@ -255,7 +268,7 @@ where
                 && turn_id == active.turn.dispatch.turn_id()
                 && active.ready_for_write() =>
         {
-            write_once(active, context, envelope).await
+            write_once(*active, context, envelope).await
         }
         WorkerCommand::ObserveSend {
             owner,
@@ -271,7 +284,7 @@ where
             {
                 Ok(active) => {
                     envelope.respond(Ok(WorkerReply::Unit));
-                    FirstTurnWorkerState::Active(active)
+                    FirstTurnWorkerState::Active(Box::new(active))
                 }
                 Err(failure) if failure.state.projection_retry_pending() => {
                     envelope.respond(Err(map_write(&failure.error)));
@@ -296,11 +309,13 @@ where
             match active.begin_cancel(&intent).await {
                 Ok(active) => {
                     envelope.respond(Ok(WorkerReply::Unit));
-                    FirstTurnWorkerState::Active(active)
+                    FirstTurnWorkerState::Active(Box::new(active))
                 }
                 Err(failure) if durable_commit_unknown(&failure.error) => {
                     envelope.respond(Err(map_write(&failure.error)));
-                    FirstTurnWorkerState::Active(failure.state.mark_durable_mutation_unknown())
+                    FirstTurnWorkerState::Active(Box::new(
+                        failure.state.mark_durable_mutation_unknown(),
+                    ))
                 }
                 Err(failure) => {
                     envelope.respond(Err(map_write(&failure.error)));
@@ -318,7 +333,7 @@ where
             match active.dispatch_cancel(intent).await {
                 Ok(active) => {
                     envelope.respond(Ok(WorkerReply::Unit));
-                    FirstTurnWorkerState::Active(active)
+                    FirstTurnWorkerState::Active(Box::new(active))
                 }
                 Err(failure) => retain_active_after_write_error(failure, envelope),
             }
@@ -337,16 +352,16 @@ where
         {
             let owner = owner.clone();
             let cursor = cursor.clone();
-            super::recovery::accept_terminal_once(active, owner, cursor, context, envelope)
+            super::recovery::accept_terminal_once(*active, owner, cursor, context, envelope)
         }
         WorkerCommand::AcceptLatestCompleted => {
-            super::turn_park::accept_latest_completed(active, context, envelope)
+            super::turn_park::accept_latest_completed(*active, context, envelope)
         }
         WorkerCommand::WaitZero { .. } => {
-            super::turn_park::wait_zero_active(active, context, envelope).await
+            super::turn_park::wait_zero_active(*active, context, envelope).await
         }
         WorkerCommand::ParkAfterZero { .. } => {
-            super::turn_park::park_after_zero_active(active, context, envelope)
+            super::turn_park::park_after_zero_active(*active, context, envelope)
         }
         WorkerCommand::BeginClose(command)
             if command.project_id == context.owner.project_id
@@ -356,7 +371,7 @@ where
         {
             active.reject_steer(HostError::Closed);
             super::active_close::begin(
-                ActiveCloseBeginState::new(active, command.clone()),
+                ActiveCloseBeginState::new(*active, command.clone()),
                 envelope,
             )
             .await
@@ -385,7 +400,7 @@ where
     match active.dispatch_once(context.clock.now_millis()).await {
         Ok((active, write)) => {
             envelope.respond(Ok(WorkerReply::Write(write)));
-            FirstTurnWorkerState::Active(active)
+            FirstTurnWorkerState::Active(Box::new(active))
         }
         Err(failure) => classify_begin_send_failure(failure, owner, turn_id, envelope),
     }

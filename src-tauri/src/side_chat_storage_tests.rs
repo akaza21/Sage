@@ -1,4 +1,5 @@
 use super::*;
+use crate::chat_purge::HISTORY_GUARDS;
 
 struct Fixture {
     root: std::path::PathBuf,
@@ -37,7 +38,7 @@ fn side_chats(database: &Database) -> i64 {
     database
         .connection()
         .query_row(
-            "SELECT COUNT(*) FROM chats WHERE id GLOB 'side-*'",
+            "SELECT COUNT(*) FROM chats WHERE id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1)",
             [],
             |row| row.get(0),
         )
@@ -82,45 +83,36 @@ fn a_failed_purge_warns_and_never_blocks_startup_or_the_other_purges() {
     let Fixture {
         root,
         database,
+        project,
         side,
-        ..
     } = fixture();
-    // A registry row the purge refuses (not a canonical temporary Chat id).
-    let columns = database
-        .connection()
-        .prepare("SELECT name FROM pragma_table_info('chats') ORDER BY cid")
-        .unwrap()
-        .query_map([], |row| row.get::<_, String>(0))
-        .unwrap()
-        .collect::<Result<Vec<_>, _>>()
+    let other_root = root.join("other-project");
+    std::fs::create_dir_all(&other_root).unwrap();
+    let other = database.create_project_from_root(&other_root).unwrap();
+    let snapshot = database.bootstrap_snapshot().unwrap();
+    let parent = snapshot.active_tab_id.clone().unwrap();
+    let layout = crate::domain::ProjectLayoutRequest {
+        project_id: other.id.clone(),
+        tabs: snapshot.tabs,
+        active_tab_id: Some(parent.clone()),
+        selected_root_id: snapshot.selected_root_id,
+        selected_resource: snapshot.selected_resource,
+    };
+    let other_side = database
+        .create_chat_with_parent(&other.id, &layout, Some(&parent))
         .unwrap();
-    let values = columns
-        .iter()
-        .map(|column| {
-            if column == "id" {
-                "'side-not-a-uuid'".to_owned()
-            } else if column == "ordinal" {
-                "(SELECT MAX(ordinal)+1 FROM chats)".to_owned()
-            } else {
-                format!("\"{column}\"")
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(",");
-    let names = columns
-        .iter()
-        .map(|column| format!("\"{column}\""))
-        .collect::<Vec<_>>()
-        .join(",");
+    // Fault-inject a ledger that cannot charge this Project's purge. Its CHECK
+    // constraint rolls that one transaction back; another Project can converge.
     database
         .connection()
         .execute(
-            &format!("INSERT INTO chats({names}) SELECT {values} FROM chats WHERE id=?1"),
-            [&side],
+            "UPDATE acp_project_usage SET chat_count=0 WHERE project_id=?1",
+            [&project],
         )
         .unwrap();
     assert!(database.purge_side_chats().is_err());
-    // The valid temporary Chat was still purged.
+    assert!(is_temporary(&database.connection(), &side).unwrap());
+    assert!(!is_temporary(&database.connection(), &other_side).unwrap());
     assert_eq!(side_chats(&database), 1);
     drop(database);
     let reopened = Database::open(&root.join("sage.db")).expect("startup must not block");
@@ -130,7 +122,7 @@ fn a_failed_purge_warns_and_never_blocks_startup_or_the_other_purges() {
 }
 
 #[test]
-fn image_cleanup_runs_in_bounded_batches_instead_of_failing_at_a_cap() {
+fn image_rows_leave_in_bounded_batches_and_files_only_after_commit() {
     let Fixture {
         root,
         database,
@@ -150,17 +142,31 @@ fn image_cleanup_runs_in_bounded_batches_instead_of_failing_at_a_cap() {
             .artifact_id
         })
         .collect::<Vec<_>>();
-    assert_eq!(
-        database
-            .remove_side_chat_images(&project, &side, 2)
-            .unwrap(),
-        5
-    );
+    {
+        // Batches run inside the caller's transaction; a rollback keeps every
+        // row and file.
+        let mut connection = database.write_connection().unwrap();
+        let transaction = connection.transaction().unwrap();
+        let taken = crate::chat_purge::take_chat_images(&transaction, &project, &side, 2).unwrap();
+        assert_eq!(taken.len(), 5);
+    }
+    let rows: i64 = database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM chat_image_artifacts WHERE chat_id=?1",
+            [&side],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(rows, 5);
+    for id in &images {
+        assert!(artifact_root.join(format!("{id}.full")).is_file());
+    }
+    database.remove_side_chat(&project, &side).unwrap();
     for id in &images {
         assert!(!artifact_root.join(format!("{id}.full")).exists());
         assert!(!artifact_root.join(format!("{id}.thumb")).exists());
     }
-    database.remove_side_chat(&project, &side).unwrap();
     assert_eq!(side_chats(&database), 0);
     drop(database);
     std::fs::remove_dir_all(root).unwrap();
@@ -219,4 +225,28 @@ fn a_purge_leaving_a_dangling_reference_is_refused_at_commit_and_guards_survive(
     assert_eq!(guards, HISTORY_GUARDS.len() as i64);
     drop(database);
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn temporary_authority_comes_from_durable_metadata_not_chat_id() {
+    let fixture = fixture();
+    assert!(is_temporary(&fixture.database.connection(), &fixture.side).unwrap());
+    let connection = fixture.database.connection();
+    connection
+        .execute(
+            "UPDATE workbench_tabs SET metadata_json='{}' WHERE id=?1",
+            [&fixture.side],
+        )
+        .unwrap();
+    assert!(!is_temporary(&connection, &fixture.side).unwrap());
+    assert!(refuse_persistence(&connection, &fixture.side).is_ok());
+    drop(connection);
+    assert!(
+        fixture
+            .database
+            .remove_side_chat(&fixture.project, &fixture.side)
+            .is_err()
+    );
+    drop(fixture.database);
+    std::fs::remove_dir_all(fixture.root).unwrap();
 }

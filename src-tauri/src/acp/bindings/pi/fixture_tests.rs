@@ -30,7 +30,9 @@ fn fixture_registry_isolated_and_native_activation_revalidates_without_consuming
         artifact_bytes: 17,
         case: "pi-turn-completed".into(),
     };
-    assert!(BindingRegistry::default().route("pi-rpc").is_err());
+    // The production registry routes pi-rpc to the curated native binding,
+    // which stays unadmitted until discovery finds an installed Pi.
+    assert!(BindingRegistry::default().resolve("pi-rpc").is_err());
     let registry = BindingRegistry::desktop_pi_fixture(selection.clone()).unwrap();
     let catalog = crate::harnesses::HarnessCatalog::with_registry(std::sync::Arc::new(registry));
     catalog.apply_presence(Vec::new());
@@ -234,7 +236,10 @@ fn assert_native_activation(
                 "get_available_models",
                 serde_json::json!({"models":[model, alternative]}),
             ),
-            ("new_session", serde_json::json!({"cancelled":false})),
+            (
+                "get_state",
+                serde_json::json!({"sessionId":"fixture-pi-session","sessionFile":"/s/1_fixture-pi-session.jsonl"}),
+            ),
         ]
         .into_iter()
         .enumerate()
@@ -265,7 +270,7 @@ fn assert_native_activation(
     assert!(parts.journal().0.is_some());
     assert_eq!(
         parts.session().external_session_id.as_str(),
-        "pi-session-1-1"
+        "1_fixture-pi-session"
     );
     assert_eq!(parts.session().models.len(), 2);
     assert_eq!(parts.session().capabilities.model_count, 2);

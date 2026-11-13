@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -29,6 +30,7 @@ for (const width of [1888, 720, 480]) {
     }) => {
       await page.setViewportSize({ width, height: 1096 });
       await openScenario(page, "agent-single", "agent");
+      await expect(page.locator(".acp-chat-projection").first()).toBeVisible();
       await settleChatProjections(page);
       await page.evaluate(async (modes) => {
         const fixture =
@@ -40,9 +42,11 @@ for (const width of [1888, 720, 480]) {
         name: "Composer options",
         exact: true,
       });
-      // Wave 5: at 480 the Project control folds into this menu, so it opens
-      // even without session modes and leads the item order.
-      const folded = width === 480;
+      // Project folds according to the actual composer width, including
+      // the responsive navigation state.
+      const folded =
+        (await composer.getByRole("button", { name: /^Project: / }).count()) ===
+        0;
       if (profile.modes.length === 0 && !folded) {
         await expect(trigger).toBeDisabled();
         await expect(
@@ -77,9 +81,7 @@ for (const width of [1888, 720, 480]) {
         ).toHaveCount(0);
       }
       // Measure the settled panel, not a frame of its enter animation.
-      await menu.evaluate((element) =>
-        Promise.all(element.getAnimations().map((motion) => motion.finished)),
-      );
+      await waitForAnimations(menu);
       const anchor = await trigger.boundingBox();
       const panel = await menu.boundingBox();
       expect(anchor).not.toBeNull();
@@ -88,9 +90,15 @@ for (const width of [1888, 720, 480]) {
       expect(panel!.x + panel!.width).toBeLessThanOrEqual(width - 8);
       expect(panel!.y).toBeGreaterThanOrEqual(8);
       expect(panel!.y + panel!.height).toBeLessThanOrEqual(1088);
+      for (const summary of await page.locator(".acp-file-changes").all())
+        await waitForAnimations(summary);
+      const edits = await page
+        .locator(".chat-edit-summary-zone:not(:empty)")
+        .boundingBox();
+      const aboveEdge = edits ? Math.min(edits.y, anchor!.y) : anchor!.y;
       expect(
         Math.min(
-          Math.abs(panel!.y + panel!.height - anchor!.y),
+          Math.abs(panel!.y + panel!.height - aboveEdge),
           Math.abs(panel!.y - anchor!.y - anchor!.height),
         ),
       ).toBeLessThanOrEqual(9);

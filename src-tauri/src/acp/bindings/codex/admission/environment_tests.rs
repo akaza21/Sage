@@ -100,7 +100,7 @@ impl Executable {
     ) -> Result<AdmittedCodexBinding, CodexAdmissionUnavailable> {
         AdmittedCodexBinding::admit_observed_with_inputs(
             self.0.clone(),
-            "codex 0.146.0".into(),
+            crate::acp::bindings::codex::test_identity::version_line("codex"),
             inputs,
         )
     }

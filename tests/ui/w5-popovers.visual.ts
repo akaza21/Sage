@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { expectCompactComposerTargets } from "./shared/composerGeometry";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -9,6 +10,10 @@ import type {} from "./fixtures/popoverWorkbench";
 
 async function openPopoverScenario(page: Page) {
   await openScenario(page, "agent-single", "agent");
+  await expect(page.locator("form.composer").first()).toBeVisible();
+  await expect(
+    page.locator(".acp-chat-projection[data-chat-id]").first(),
+  ).toBeVisible();
   await settleChatProjections(page);
   await page.evaluate(async () => {
     await import("/tests/ui/fixtures/popoverWorkbench.ts");
@@ -31,9 +36,7 @@ async function subtleSelection(menu: Locator) {
 
 async function contained(menu: Locator, trigger: Locator, pane: Locator) {
   await expect(menu).toBeVisible();
-  await menu.evaluate((element) =>
-    Promise.all(element.getAnimations().map((motion) => motion.finished)),
-  );
+  await waitForAnimations(menu, { subtree: false });
   await menu.evaluate(
     () =>
       new Promise<void>((resolve) =>
@@ -42,6 +45,11 @@ async function contained(menu: Locator, trigger: Locator, pane: Locator) {
   );
   const box = (await menu.boundingBox())!;
   const anchor = (await trigger.boundingBox())!;
+  for (const summary of await pane.locator(".acp-file-changes").all())
+    await waitForAnimations(summary);
+  const edits = await pane
+    .locator(".chat-edit-summary-zone:not(:empty)")
+    .boundingBox();
   const owner = (await pane.boundingBox())!;
   expect(box.x).toBeGreaterThanOrEqual(owner.x);
   expect(box.x + box.width).toBeLessThanOrEqual(owner.x + owner.width);
@@ -53,8 +61,13 @@ async function contained(menu: Locator, trigger: Locator, pane: Locator) {
     Math.min(
       Math.abs(box.y + box.height - anchor.y),
       Math.abs(box.y - anchor.y - anchor.height),
+      edits ? Math.abs(box.y + box.height - edits.y) : Infinity,
     ),
   ).toBeLessThanOrEqual(9);
+  if (edits)
+    expect(
+      box.y + box.height <= edits.y || box.y >= edits.y + edits.height,
+    ).toBe(true);
   expect(
     await menu.evaluate(
       (element) => element.scrollWidth <= element.clientWidth,
@@ -85,18 +98,22 @@ for (const width of [1888, 720, 480]) {
         (modes) => window.popoverWorkbench.actions(modes),
         profile.modes,
       );
+      const projectFolded = async () =>
+        (await composer.getByRole("button", { name: /^Project: / }).count()) ===
+        0;
       for (const [name, menuName, available] of [
         ["Access options", "Access mode", profile.access.length > 0],
         [
           "Composer options",
           "Composer options menu",
-          profile.modes.length > 0 || width === 480,
+          profile.modes.length > 0 || (await projectFolded()),
         ],
       ] as const) {
         const trigger = composer.getByRole("button", { name, exact: true });
         if (!available) {
-          if (name === "Access options") await expect(trigger).toHaveCount(0);
-          else await expect(trigger).toBeDisabled();
+          // "+" keeps its place, disabled, when it has nothing to offer.
+          if (name === "Composer options") await expect(trigger).toBeDisabled();
+          else await expect(trigger).toHaveCount(0);
           await expect(
             page.getByRole("menu", { name: menuName, exact: true }),
           ).toHaveCount(0);
@@ -125,7 +142,12 @@ for (const width of [1888, 720, 480]) {
         }
         if (name === "Access options") {
           await expect(
-            menu.getByText("How should agent actions be approved?"),
+            menu.getByText(
+              "How should agent actions be approved in this chat?",
+              {
+                exact: true,
+              },
+            ),
           ).toBeVisible();
           await expect(menu.getByRole("menuitemradio")).toHaveCount(
             profile.access.length,
@@ -151,26 +173,27 @@ for (const width of [1888, 720, 480]) {
         exact: true,
       });
       if (width === 480) await expectCompactComposerTargets(composer);
-      if (width === 480) {
+      const compactEffort = await composer.evaluate(
+        (element) => element.clientWidth <= 320,
+      );
+      // The effort control takes toolbar room, so the project chip may have
+      // folded into the Add menu since the options pass above.
+      const hasAdd =
+        (await projectFolded()) ||
+        (profile.effort && compactEffort) ||
+        (!profile.effort && profile.modes.length > 0);
+      if (hasAdd) {
         await add.click();
         await expect(
           page.getByRole("menuitem", { name: "Thinking level" }),
-        ).toHaveCount(profile.effort ? 1 : 0);
+        ).toHaveCount(profile.effort && compactEffort ? 1 : 0);
         await expect(
           page.getByRole("menuitem", { name: /^Project:/ }),
-        ).toBeVisible();
+        ).toHaveCount((await projectFolded()) ? 1 : 0);
         await page.keyboard.press("Escape");
-      } else if (profile.effort || profile.modes.length === 0) {
-        await expect(add).toBeDisabled();
-      } else {
-        await add.click();
-        await expect(
-          page.getByRole("menuitem", { name: "Thinking level" }),
-        ).toHaveCount(0);
-        await page.keyboard.press("Escape");
-      }
+      } else await expect(add).toBeDisabled();
       for (const [name, selector] of [
-        ...(profile.effort
+        ...(profile.effort && !compactEffort
           ? [
               [
                 `Thinking level: ${profile.effort.currentValue === "medium" ? "Medium" : "High"}`,
@@ -261,6 +284,7 @@ for (const width of [1888, 720, 480]) {
           requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
         ),
     );
+    await waitForAnimations(surface);
     const box = (await surface.boundingBox())!;
     const pane = (await page.locator(".agent-chat-pane").boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(pane.x);
@@ -298,6 +322,7 @@ for (const height of [320, 400]) {
             requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
           ),
       );
+      await waitForAnimations(menu, { subtree: false });
       const box = (await menu.boundingBox())!;
       expect(box.y).toBeGreaterThanOrEqual(8);
       expect(box.y + box.height).toBeLessThanOrEqual(height - 8);
