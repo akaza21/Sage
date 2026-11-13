@@ -22,9 +22,10 @@ interface Listed {
 
 /**
  * The commands the current session left running, once it negotiated
- * background terminals. It lists them when it mounts, each time the latest
- * Turn ends and after each stop, never on a timer; the strip loads only
- * while one runs.
+ * background terminals. It lists them when it mounts or the runtime changes,
+ * each time a Turn ends and after each stop, even while a Turn runs, but
+ * never on a timer or a streaming update; the strip loads only while one
+ * runs.
  */
 export function BackgroundTerminalSlot({
   page,
@@ -39,15 +40,13 @@ export function BackgroundTerminalSlot({
     page.sessions.find(({ id }) => id === page.currentSessionId)?.capabilities
       ?.nativeBackgroundTerminals ?? false,
   );
-  const latest = page.turns.at(-1);
-  const settled =
-    !latest || terminalTurnStates.has(latest.state) ? (latest?.id ?? "") : null;
+  const settled = lastSettledTurn(page.turns);
   const [listed, setListed] = useState<Listed | null>(null);
   const [stops, setStops] = useState(0);
   // Only the newest listing lands; a stop makes any listing before it stale.
   const sequence = useRef(0);
   useEffect(() => {
-    if (!request || settled === null) return;
+    if (!request) return;
     const started = ++sequence.current;
     const land = (terminals: readonly BackgroundTerminal[] | null) =>
       started === sequence.current &&
@@ -69,4 +68,13 @@ export function BackgroundTerminalSlot({
       }}
     />
   );
+}
+
+/** The newest Turn that has ended: it moves only when a Turn ends. */
+function lastSettledTurn(turns: AcpChatPage["turns"]): string | undefined {
+  for (let index = turns.length - 1; index >= 0; index--) {
+    const turn = turns[index];
+    if (terminalTurnStates.has(turn.state)) return turn.id;
+  }
+  return undefined;
 }

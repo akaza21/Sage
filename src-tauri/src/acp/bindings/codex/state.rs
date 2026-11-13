@@ -216,7 +216,8 @@ pub(crate) struct CodexAdapter {
     pending_child_read: Option<(u64, String, String)>,
     child_read_tombstone: Option<u64>,
     rate_limits_abandoned: rate_limits::AbandonedReads,
-    terminals_tombstone: Option<u64>,
+    /// Background-terminal listings whose caller gave up; late answers are dropped.
+    terminals_tombstones: Vec<u64>,
     /// An `/mcp` read whose caller gave up; its late answer is dropped.
     mcp_read_tombstones: Vec<u64>,
     skills: skills::Skills,

@@ -1,7 +1,7 @@
 use super::*;
 use crate::acp::{
     background_terminals::{BackgroundTerminal, TerminalAction, valid_handle},
-    service::background_terminals::TerminalsError,
+    service::background_terminals::{TerminalsError, absent_runtime},
 };
 use usage::{AcpUsageRequest, current_owner};
 
@@ -49,18 +49,19 @@ async fn run(
     request: AcpUsageRequest,
     action: TerminalAction,
 ) -> Result<Vec<BackgroundTerminal>, AcpIpcError> {
-    let Some(owner) = current_owner(state, request).await? else {
-        return Ok(Vec::new());
+    let result = match current_owner(state, request).await? {
+        Some(owner) => tauri::async_runtime::spawn_blocking(move || {
+            use tauri::Manager;
+            app.state::<AppState>()
+                .acp
+                .background_terminals(owner, action)
+        })
+        .await
+        .map_err(|_| internal_error())?,
+        None => absent_runtime(&action),
     };
-    tauri::async_runtime::spawn_blocking(move || {
-        use tauri::Manager;
-        app.state::<AppState>()
-            .acp
-            .background_terminals(owner, action)
-    })
-    .await
-    .map_err(|_| internal_error())?
-    .map_err(|error| match error {
+    result.map_err(|error| match error {
+        TerminalsError::Stale => intent_error(IntentError::StaleRuntimeEpoch),
         TerminalsError::Rejected => AcpIpcError::Rejected {
             message: safe_message("The harness did not take the background terminal request."),
         },
@@ -111,9 +112,16 @@ mod tests {
         assert_eq!(
             state
                 .acp
-                .background_terminals(foreign, TerminalAction::List)
+                .background_terminals(foreign.clone(), TerminalAction::List)
                 .unwrap(),
             Vec::new()
+        );
+        // A stop aimed at a runtime that is gone reached nothing.
+        assert_eq!(
+            state
+                .acp
+                .background_terminals(foreign, TerminalAction::StopAll),
+            Err(TerminalsError::Stale)
         );
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         state.acp.shutdown_blocking().unwrap();

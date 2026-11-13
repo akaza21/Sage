@@ -147,19 +147,39 @@ fn no_terminal_request_is_sent_before_a_thread_is_bound() {
 }
 
 #[test]
-fn an_abandoned_listing_is_discarded_and_blocks_a_new_request_until_it_answers() {
+fn an_abandoned_listing_never_holds_back_a_stop_and_its_late_answer_is_discarded() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     let (abandoned, _) = send(&mut runtime, TerminalAction::List);
     runtime.abandon_passive_read();
     assert!(!runtime.native_rpc_pending());
-    assert!(runtime.background_terminals(&TerminalAction::List).is_err());
 
+    let (stop, _) = send(&mut runtime, TerminalAction::Stop("7".into()));
+    assert_eq!(
+        answer(&mut runtime, stop, json!({"result": {"terminated": true}})),
+        Some(NativeRpcReply::TerminalsStopped)
+    );
+    let (id, _) = send(&mut runtime, TerminalAction::List);
     let late = json!({"result": {"data": [{"processId": "7", "command": "x"}]}});
     assert_eq!(answer(&mut runtime, abandoned, late), None);
-    let (id, _) = send(&mut runtime, TerminalAction::List);
     assert_eq!(
         answer(&mut runtime, id, json!({"result": {"data": []}})),
         Some(NativeRpcReply::BackgroundTerminals(Vec::new()))
+    );
+}
+
+#[test]
+fn unanswered_abandoned_listings_hold_back_only_further_listings() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    for _ in 0..4 {
+        send(&mut runtime, TerminalAction::List);
+        runtime.abandon_passive_read();
+    }
+    assert!(runtime.background_terminals(&TerminalAction::List).is_err());
+    let (stop, _) = send(&mut runtime, TerminalAction::StopAll);
+    assert_eq!(
+        answer(&mut runtime, stop, json!({"result": {}})),
+        Some(NativeRpcReply::TerminalsStopped)
     );
 }

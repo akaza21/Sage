@@ -8,6 +8,8 @@ use crate::acp::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TerminalsError {
+    /// The runtime is no longer the current one; nothing was sent.
+    Stale,
     /// The harness refused the request or was busy; nothing changed.
     Rejected,
     /// The request may have reached the harness and its outcome is unknown.
@@ -17,19 +19,20 @@ pub(crate) enum TerminalsError {
 impl AcpService {
     /// Runs `action` against the runtime's harness. A listing answers with
     /// the terminals it still runs: none when the runtime is gone or never
-    /// negotiated them. A stop answers with none; the caller lists again.
+    /// negotiated them. A stop answers with none, and the caller lists again;
+    /// a stop for a runtime that is gone is `Stale`, since nothing stopped.
     pub(crate) fn background_terminals(
         &self,
         owner: RuntimeOwner,
         action: TerminalAction,
     ) -> Result<Vec<BackgroundTerminal>, TerminalsError> {
+        let list = action == TerminalAction::List;
         let Some(host) = self
             .lane_for(&owner)
             .and_then(|lane| lane.runtime.for_owner(&owner).ok())
         else {
-            return Ok(Vec::new());
+            return absent_runtime(&action);
         };
-        let list = action == TerminalAction::List;
         let result = host.native_rpc(NativeRpcIntent {
             owner: owner.clone(),
             request: NativeRpcRequest::BackgroundTerminals(action),
@@ -44,6 +47,17 @@ impl AcpService {
             self.retain_config_effect_recovery(owner, host);
         }
         terminals_reply(list, result)
+    }
+}
+
+/// A runtime that is gone runs no terminals, and a stop aimed at it reached
+/// nothing, so it must not read as done.
+pub(crate) fn absent_runtime(
+    action: &TerminalAction,
+) -> Result<Vec<BackgroundTerminal>, TerminalsError> {
+    match action {
+        TerminalAction::List => Ok(Vec::new()),
+        TerminalAction::Stop(_) | TerminalAction::StopAll => Err(TerminalsError::Stale),
     }
 }
 

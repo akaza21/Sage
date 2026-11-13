@@ -153,3 +153,24 @@ it("reports a refused stop but not a failed relisting after one", async () => {
   await waitFor(() => expect(container).toBeEmptyDOMElement());
   expect(screen.queryByRole("alert")).toBeNull();
 });
+
+it("lists on mount and after a stop while a turn runs, not on its updates", async () => {
+  const list = vi
+    .spyOn(acpBackgroundTerminals, "list")
+    .mockResolvedValueOnce([server, watcher])
+    .mockResolvedValueOnce([watcher]);
+  vi.spyOn(acpBackgroundTerminals, "stop").mockResolvedValue();
+  const { rerender } = render(<Dock page={page(true, "running")} />);
+  expect(
+    await screen.findByText("Background terminals (2)"),
+  ).toBeInTheDocument();
+
+  rerender(<Dock page={page(true, "running")} />);
+  expect(list).toHaveBeenCalledTimes(1);
+
+  fireEvent.click(screen.getByRole("button", { name: "Stop npm run dev" }));
+  expect(
+    await screen.findByText("Background terminals (1)"),
+  ).toBeInTheDocument();
+  expect(list).toHaveBeenCalledTimes(2);
+});
