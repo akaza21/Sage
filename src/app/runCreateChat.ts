@@ -16,6 +16,12 @@ import {
 import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
 
+export type CreateChatResult =
+  | { status: "confirmed"; chatId: string }
+  | { status: "confirmed-in-other-project" }
+  | { status: "not-created" }
+  | { status: "unconfirmed" };
+
 export async function runCreateChat(
   input: {
     set: StoreApi<WorkbenchState>["setState"];
@@ -31,21 +37,21 @@ export async function runCreateChat(
     chat: ChatPort;
   },
   projectId?: string,
-): Promise<string | null> {
+): Promise<CreateChatResult> {
   const { set, get, applyProjection, loadAuthoritativeProjection, chat } =
     input;
-  if (get().projectTransitioning) return null;
+  if (get().projectTransitioning) return { status: "not-created" };
   const initial = currentProjectLayout(get());
   const sourceProjectId = projectId ?? initial?.projectId;
   const foreign =
     typeof sourceProjectId === "string" &&
     sourceProjectId !== initial?.projectId;
   if (!initial) {
-    if (foreign) return null;
+    if (foreign) return { status: "not-created" };
     await get().ensureLocalProject();
-    return null;
+    return { status: "not-created" };
   }
-  if (!sourceProjectId) return null;
+  if (!sourceProjectId) return { status: "not-created" };
   set({ projectTransitioning: true, error: null });
   const expectedTransitionEpoch = get().nativeTransitionEpoch;
   try {
@@ -55,7 +61,7 @@ export async function runCreateChat(
       projectTransitioning: false,
       error: "Could not save the editor. Try again.",
     });
-    return null;
+    return { status: "not-created" };
   }
   const current = currentProjectLayout(get());
   if (!current) {
@@ -63,10 +69,10 @@ export async function runCreateChat(
       projectTransitioning: false,
       error: "Open a project before starting a new chat.",
     });
-    return null;
+    return { status: "not-created" };
   }
   if (foreign) {
-    await commitIdentityChatResult({
+    const confirmed = await commitIdentityChatResult({
       set,
       get,
       applyProjection,
@@ -77,7 +83,9 @@ export async function runCreateChat(
       invoke: () =>
         chat.createChat(current, expectedTransitionEpoch, sourceProjectId),
     });
-    return null;
+    return confirmed
+      ? { status: "confirmed-in-other-project" }
+      : { status: "unconfirmed" };
   }
   return createOnActiveProject({
     set,
@@ -104,7 +112,7 @@ async function createOnActiveProject(input: {
   chat: ChatPort;
   current: ProjectLayoutRequest;
   expectedTransitionEpoch: number;
-}): Promise<string | null> {
+}): Promise<CreateChatResult> {
   const { set, get, applyProjection, loadAuthoritativeProjection, chat } =
     input;
   const priorChatIds = new Set(
@@ -113,6 +121,8 @@ async function createOnActiveProject(input: {
       .map((tab) => tab.id),
   );
   let confirmedId: string | null = null;
+  let committed = false;
+  let mutationInvoked = false;
   const classify = (snapshot: BootstrapSnapshot) => {
     if (snapshot.project?.id !== input.current.projectId) return null;
     const active = snapshot.tabs.find(
@@ -127,6 +137,7 @@ async function createOnActiveProject(input: {
       return "committed" as const;
     }
     if (
+      !committed &&
       snapshot.tabs.length === input.current.tabs.length &&
       snapshot.activeTabId === input.current.activeTabId
     ) {
@@ -134,22 +145,20 @@ async function createOnActiveProject(input: {
     }
     return null;
   };
-  let committed = false;
-  let mutationInvoked = false;
   try {
     const latest = currentProjectLayout(get());
     if (!latest) throw new Error("Open a project before starting a new chat.");
     mutationInvoked = true;
     const result = await chat.createChat(latest, input.expectedTransitionEpoch);
+    committed = result.committed;
     validateTransitionIntent(result, input.expectedTransitionEpoch);
     if (!result.committed) {
       set({
         projectTransitioning: false,
         error: "Could not create the chat. Try again.",
       });
-      return null;
+      return { status: "not-created" };
     }
-    committed = true;
     const generation = nextProjectGeneration(get().projectGeneration);
     set({ projectGeneration: generation, repositoryRefreshing: false });
     if (result.snapshot) {
@@ -167,34 +176,32 @@ async function createOnActiveProject(input: {
         (await loadAuthoritativeProjection(generation, classify)) !==
         "committed"
       ) {
-        set({ error: "Could not create the chat. Try again." });
-        return null;
+        throw new Error("Chat creation has not been confirmed");
       }
     }
-    return confirmedId;
+    return { status: "confirmed", chatId: confirmedId! };
   } catch {
-    if (committed) {
-      set({
-        projectTransitioning: false,
-        repositoryRefreshing: false,
-        error:
-          "Chat creation succeeded. Reopen the project to load the new chat.",
-      });
-    } else if (mutationInvoked) {
+    if (mutationInvoked) {
       const generation = nextProjectGeneration(get().projectGeneration);
       set({ projectGeneration: generation, repositoryRefreshing: false });
       try {
         const outcome = await loadAuthoritativeProjection(generation, classify);
-        if (outcome === "committed") return confirmedId;
-        if (outcome === "unchanged")
+        if (outcome === "committed")
+          return { status: "confirmed", chatId: confirmedId! };
+        if (outcome === "unchanged") {
           set({ error: "Could not create the chat. Try again." });
+          return { status: "not-created" };
+        }
       } catch {
         set({
           projectTransitioning: false,
-          error:
-            "Chat creation is unconfirmed. Reopen the project before retrying.",
+          repositoryRefreshing: false,
+          error: committed
+            ? "Chat creation succeeded. Reopen the project to load the new chat."
+            : "Chat creation is unconfirmed. Reopen the project before retrying.",
         });
       }
+      return { status: "unconfirmed" };
     } else {
       set({
         projectTransitioning: false,
@@ -202,5 +209,5 @@ async function createOnActiveProject(input: {
       });
     }
   }
-  return null;
+  return { status: "not-created" };
 }

@@ -178,7 +178,7 @@ describe("Agent center workbench window mode seam", () => {
   });
 
   it("creates a Chat for the Agent center when no Chat tab exists to activate", async () => {
-    const createChat = vi.fn(async () => null);
+    const createChat = vi.fn(async () => ({ status: "not-created" as const }));
     useWorkbenchStore.setState({
       project,
       tabs: [
@@ -301,7 +301,7 @@ describe("Agent center workbench window mode seam", () => {
       if (useWorkbenchStore.getState().projectTransitioning) return;
       useWorkbenchStore.setState({ activeTabId: tabId });
     });
-    const createChat = vi.fn(async () => null);
+    const createChat = vi.fn(async () => ({ status: "not-created" as const }));
     const nextProject = { id: "project-b", name: "B", roots: [] };
     useWorkbenchStore.setState({
       project,
@@ -385,7 +385,7 @@ describe("Agent center workbench window mode seam", () => {
   it("does not re-create a Chat when a failed creation only resets the transition flag", async () => {
     const createChat = vi.fn(async () => {
       await failProjectTransition("Chat creation");
-      return null;
+      return { status: "not-created" as const };
     });
     useWorkbenchStore.setState({
       project,

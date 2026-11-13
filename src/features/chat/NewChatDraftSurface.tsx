@@ -5,6 +5,7 @@ import { AgentNavigationPart } from "../../workbench/agentNavigationLazy";
 import { ChatHome } from "./ChatHome";
 import { useComposerFocusHotkey } from "./composerChrome";
 import { ChatComposerRegion } from "./ChatComposerRegion";
+import { LazyHarnessNotice } from "./lazyParts";
 
 const emptyContext = [] as const;
 const unchangedSession = () => Promise.resolve();
@@ -96,6 +97,10 @@ export function NewChatDraftSurface({
         className="chat-surface chat-surface--agent"
         aria-label="New chat draft"
       >
+        <LazyHarnessNotice
+          harness={harness ?? null}
+          discoveryPhase={discoveryPhase}
+        />
         <div className="message-list message-list--home">
           <div className="message-list__content">
             <ChatHome projectName={project.name} />

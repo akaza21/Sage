@@ -15,6 +15,7 @@ export interface NewChatDraft {
   effort: string | null;
   creating: boolean;
   error: string | null;
+  unconfirmedCreation?: { priorChatIds: readonly string[] };
 }
 
 export interface NewChatDraftSlice {

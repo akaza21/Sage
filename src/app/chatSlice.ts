@@ -9,6 +9,7 @@ import {
 } from "./projectIntent";
 import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
+import type { CreateChatResult } from "./runCreateChat";
 import {
   commitIdentityChatResult,
   createChatTransitionContext,
@@ -19,7 +20,7 @@ import {
 } from "./chatTransitions";
 
 export interface ChatSlice {
-  createChat: (projectId?: string) => Promise<string | null>;
+  createChat: (projectId?: string) => Promise<CreateChatResult>;
   pinChat: (chatId: string, projectId?: string) => Promise<void>;
   moveChat: (
     chatId: string,
@@ -298,7 +299,7 @@ export const createChatSlice: StateCreator<
         get().project?.id !== source.project?.id ||
         get().chatOwnershipEpoch !== source.chatOwnershipEpoch
       )
-        return null;
+        return { status: "not-created" };
       return runCreateChat(
         {
           set,

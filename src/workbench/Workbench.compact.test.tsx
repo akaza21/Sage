@@ -855,7 +855,7 @@ describe("compact Workbench project tools", () => {
   });
 
   it("routes the Agent New chat control through one creation action", async () => {
-    const createChat = vi.fn(async () => null);
+    const createChat = vi.fn(async () => ({ status: "not-created" as const }));
     useWorkbenchStore.setState({
       createChat,
       project: { id: "project-a", name: "A", roots: [] },
@@ -877,7 +877,7 @@ describe("compact Workbench project tools", () => {
   });
 
   it("creates a task from the new task keyboard shortcut", async () => {
-    const createChat = vi.fn(async () => null);
+    const createChat = vi.fn(async () => ({ status: "not-created" as const }));
     useWorkbenchStore.setState({
       createChat,
       project: { id: "project-a", name: "A", roots: [] },

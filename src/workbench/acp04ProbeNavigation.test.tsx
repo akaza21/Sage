@@ -55,7 +55,7 @@ beforeEach(() => {
         tabs: [seeded, { ...seeded, id: "chat:fresh", title: "New chat" }],
         activeTabId: "chat:fresh",
       });
-      return "chat:fresh";
+      return { status: "confirmed" as const, chatId: "chat:fresh" };
     }),
   });
 });

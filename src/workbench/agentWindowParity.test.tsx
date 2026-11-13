@@ -74,7 +74,7 @@ beforeEach(() => {
         tabs: [...tabs, { ...tabs[0]!, id: "chat:new", title: "New chat" }],
         activeTabId: "chat:new",
       });
-      return "chat:new";
+      return { status: "confirmed" as const, chatId: "chat:new" };
     }),
   });
 });

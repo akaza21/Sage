@@ -76,7 +76,7 @@ it("refuses delayed creation after the project ownership lifetime changes", asyn
   useWorkbenchStore.setState({
     chatOwnershipEpoch: state.chatOwnershipEpoch + 1,
   });
-  expect(await creation).toBeNull();
+  expect(await creation).toEqual({ status: "not-created" });
   expect((await ports.project.getBootstrapSnapshot()).tabs).toEqual(
     before.tabs,
   );

@@ -33,7 +33,7 @@ it("leaves the brand and the window mode switch to the title bar", () => {
 });
 
 it("provides a separate icon rail and sidebar header with reachable chat actions", async () => {
-  const createChat = vi.fn(async () => null);
+  const createChat = vi.fn(async () => ({ status: "not-created" as const }));
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
     createChat,
@@ -235,7 +235,7 @@ it("keeps New chat available when no folder project is open", async () => {
       ],
       activeTabId: "local-chat",
     });
-    return "local-chat";
+    return { status: "confirmed" as const, chatId: "local-chat" };
   });
   useWorkbenchStore.setState({
     project: null,
@@ -439,7 +439,7 @@ it("creates a chat from a foreign project menu without switching first", async (
           : project,
       ),
     }));
-    return "foreign-created";
+    return { status: "confirmed-in-other-project" as const };
   });
   const switchProject = vi.fn(async () => undefined);
   useWorkbenchStore.setState({

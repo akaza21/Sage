@@ -55,26 +55,78 @@ export async function runNewChatDraftSend(
     fail("Choose an available harness and model before sending.");
     return;
   }
-  const chatId = await initial.createChat();
+  const result = await initial.createChat();
   if (!owns()) return;
-  if (!chatId) {
+  if (result.status === "not-created") {
     fail(get().error ?? "Could not create the chat. Try again.");
     return;
   }
+  if (result.status === "unconfirmed") {
+    set({
+      newChatDraft: {
+        ...draft,
+        creating: true,
+        error: boundedChatError(get().error ?? "Chat creation is unconfirmed."),
+        unconfirmedCreation: {
+          priorChatIds: initial.tabs
+            .filter((tab) => tab.kind === "chat")
+            .map((tab) => tab.id),
+        },
+      },
+      pendingFirstSend: null,
+    });
+    reconcileNewChatDraft(set, get);
+    return;
+  }
+  if (result.status === "confirmed")
+    adoptDraft(
+      set,
+      get,
+      draft,
+      result.chatId,
+      get().pendingFirstSend === submission,
+    );
+}
+
+export function reconcileNewChatDraft(
+  set: StoreApi<WorkbenchState>["setState"],
+  get: StoreApi<WorkbenchState>["getState"],
+) {
+  const state = get();
+  const draft = state.newChatDraft;
+  if (!draft?.unconfirmedCreation || state.project?.id !== draft.projectId)
+    return;
+  const priorIds = new Set(draft.unconfirmedCreation.priorChatIds);
+  const created = state.tabs.filter(
+    (tab) => tab.kind === "chat" && !priorIds.has(tab.id),
+  );
+  if (created.length === 1) adoptDraft(set, get, draft, created[0].id, false);
+}
+
+function adoptDraft(
+  set: StoreApi<WorkbenchState>["setState"],
+  get: StoreApi<WorkbenchState>["getState"],
+  draft: NewChatDraft,
+  chatId: string,
+  dispatch: boolean,
+) {
   const state = get();
   const owner = state.captureChatOwnership(chatId);
   if (!owner) return;
+  const harness = state.harnesses.find(
+    (harness) => harness.id === draft.harnessId,
+  );
   state.setChatHarnessSelection(owner, {
     harnessId: draft.harnessId,
     modelId: draft.modelId,
   });
   state.setChatComposer(owner, draft.text);
-  if (harness.bindingId && draft.access)
+  if (harness?.bindingId && draft.access)
     draftChatAccess(chatId, {
       bindingId: harness.bindingId,
       mode: draft.access,
     });
-  if (harness.bindingId && draft.modelId && draft.effort)
+  if (harness?.bindingId && draft.modelId && draft.effort)
     useChatEffortDraft.setState({
       draft: {
         chatId,
@@ -83,12 +135,15 @@ export async function runNewChatDraftSend(
         effort: draft.effort,
       },
     });
-  const dispatch = state.pendingFirstSend === submission;
   set({
     newChatDraft: null,
     agentCenter: "chat",
     pendingFirstSend: dispatch
-      ? { projectId: draft.projectId, chatId, ownershipEpoch: epoch }
+      ? {
+          projectId: draft.projectId,
+          chatId,
+          ownershipEpoch: state.chatOwnershipEpoch,
+        }
       : null,
   });
 }
