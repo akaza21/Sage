@@ -46,11 +46,11 @@ impl Drop for Repository {
     }
 }
 
-fn window(
+fn deliver_window(
     refresh: &mut GitRefresh,
     relevance: &mut NoticeRelevance,
     paths: &[(&str, u32)],
-) -> Vec<WorkspaceNotifyNotice> {
+) -> Vec<WorkspaceNotifyBatch> {
     let mut batch = NoticeBatch::default();
     for &(path, action) in paths {
         let (relative, kind) = match relevance.classify(path, action) {
@@ -99,8 +99,17 @@ fn window(
             }
         }
     });
-    let mut listing = received.recv().unwrap().notices;
-    for decision in received.try_iter().flat_map(|batch| batch.notices) {
+    received.try_iter().collect()
+}
+
+fn window(
+    refresh: &mut GitRefresh,
+    relevance: &mut NoticeRelevance,
+    paths: &[(&str, u32)],
+) -> Vec<WorkspaceNotifyNotice> {
+    let mut delivered = deliver_window(refresh, relevance, paths).into_iter();
+    let mut listing = delivered.next().unwrap().notices;
+    for decision in delivered.flat_map(|batch| batch.notices) {
         for notice in &mut listing {
             if notice.root_id == decision.root_id {
                 notice.git_relevant = None;
@@ -186,6 +195,47 @@ fn force_added_files_and_tracked_directory_deletions_remain_relevant() {
         &mut relevance,
         &[("dist", 2)]
     )));
+}
+
+#[test]
+fn tracked_edit_then_new_root_file_both_refresh_after_separate_windows() {
+    let repo = Repository::new();
+    repo.write(".gitignore", "target/\n");
+    repo.write("target/tracked.txt", "base");
+    repo.git(&["add", "-f", "--", "target/tracked.txt"]);
+    let mut refresh = repo.refresh();
+    let mut relevance = NoticeRelevance::new(&repo.0);
+
+    repo.write("target/tracked.txt", "edited");
+    let first = deliver_window(&mut refresh, &mut relevance, &[("target/tracked.txt", 3)]);
+    assert_eq!(first[0].notices[0].relative_path, "target");
+    assert_eq!(first[0].notices[0].kind, "ignored");
+    assert_eq!(first[0].notices[0].git_relevant, Some(false));
+    assert_eq!(first[1].notices[0].kind, "repository");
+    assert!(relevant(&first[1].notices));
+
+    // A status read can leave a .git directory record ahead of the new file
+    // in the next window. The decision must still cover that whole window.
+    repo.write("control.txt", "new");
+    let next = deliver_window(
+        &mut refresh,
+        &mut relevance,
+        &[(".git", 3), ("control.txt", 1)],
+    );
+    assert_eq!(
+        next[1]
+            .notices
+            .iter()
+            .map(|notice| (notice.relative_path.as_str(), notice.kind.as_str()))
+            .collect::<Vec<_>>(),
+        [(".git", "repository"), ("control.txt", "repository")]
+    );
+    assert!(
+        next[1]
+            .notices
+            .iter()
+            .all(|notice| notice.git_relevant.is_none())
+    );
 }
 
 #[test]

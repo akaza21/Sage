@@ -214,7 +214,9 @@ impl GitRefresh {
             windows,
             cancelled,
             emit,
-            std::time::Duration::from_millis(500),
+            // Listing/search delivery is already independent. Allow the same
+            // load headroom as other Git reads before falling back to refresh.
+            crate::git_budget::READ,
             |window, path, stop| async move { window.irrelevant(&path, stop).await },
         );
     }
@@ -244,9 +246,20 @@ impl GitRefresh {
             let Some(window) = windows.remove(id) else {
                 continue;
             };
-            let Some(mut notice) = batch.notices.iter().find(|n| &n.root_id == id).cloned() else {
+            let notices: Vec<_> = batch
+                .notices
+                .iter()
+                .filter(|notice| &notice.root_id == id)
+                .cloned()
+                .map(|mut notice| {
+                    notice.kind = "repository".into();
+                    notice.git_relevant = None;
+                    notice
+                })
+                .collect();
+            if notices.is_empty() {
                 continue;
-            };
+            }
             let Some(guard) = root
                 .gate
                 .as_ref()
@@ -261,15 +274,20 @@ impl GitRefresh {
                     notice.git_relevant = Some(false);
                 }
             }
-            notice.kind = "repository".into();
-            notice.git_relevant = None;
-            pending.push((guard, window, root.path.clone(), notice));
+            // Preserve every path in the bounded window: consumers may ignore
+            // metadata-only notices, so one path cannot represent the others.
+            pending.push((
+                guard,
+                window,
+                root.path.clone(),
+                WorkspaceNotifyBatch { notices },
+            ));
         }
         if cancelled.load(Ordering::Acquire) {
             return;
         }
         emit(batch);
-        for (mut safe, window, path, notice) in pending {
+        for (mut safe, window, path, decision) in pending {
             let cancelled = Arc::clone(cancelled);
             let emit = Arc::clone(&emit);
             let runner = runner.clone();
@@ -281,7 +299,7 @@ impl GitRefresh {
                     result = &mut query => result,
                     () = tokio::time::sleep_until(deadline) => {
                         if !cancelled.load(Ordering::Acquire) {
-                            emit(WorkspaceNotifyBatch { notices: vec![notice.clone()] });
+                            emit(decision.clone());
                         }
                         stop.store(true, Ordering::Release);
                         // Do not drop/abort a process-owning future. Keep the
@@ -306,9 +324,7 @@ impl GitRefresh {
                     Err(_) => false,
                 };
                 if !irrelevant && !cancelled.load(Ordering::Acquire) {
-                    emit(WorkspaceNotifyBatch {
-                        notices: vec![notice],
-                    });
+                    emit(decision);
                 }
             });
         }

@@ -570,7 +570,7 @@ describe("live Project workspace notify bind", () => {
     }
   });
 
-  it("refreshes tracked changes under an ignored folder without polling or a Git stamp change", async () => {
+  it("refreshes an ignored-folder tracked edit and then a new root file without polling or a stamp change", async () => {
     await useWorkbenchStore.getState().initialize();
     await unbindWorkspaceNotify();
     vi.useFakeTimers();
@@ -594,7 +594,7 @@ describe("live Project workspace notify bind", () => {
           branch: "main",
           changes: [
             {
-              resource: childResource("root-a", "dist/app.js"),
+              resource: childResource("root-a", "target/tracked.txt"),
               indexStatus: "unchanged",
               worktreeStatus: "modified",
               additions: 1,
@@ -609,29 +609,75 @@ describe("live Project workspace notify bind", () => {
       truncated: false,
       elapsedMs: 1,
     };
-    vi.spyOn(desktop, "getRepositoryStatus").mockResolvedValue(modified);
+    let status = modified;
+    vi.spyOn(desktop, "getRepositoryStatus").mockImplementation(
+      async () => status,
+    );
     const stop = startRepositoryAutoRefresh({
       async refresh() {
         await useWorkbenchStore.getState().refreshRepository();
         return "changed";
       },
       changeStamp: async () => "fixed-git-metadata",
-      subscribeNotices: subscribeWorkspaceNotifySearch,
+      subscribeNotices: subscribeWorkspaceNotifyRepository,
       pollAlways: false,
     });
     try {
       await vi.advanceTimersByTimeAsync(1_000);
       expect(useWorkbenchStore.getState().repositories.roots).toEqual([]);
-      emit({
+      const notice = {
         projectId: "project-a",
         projectGeneration: 1,
         transitionEpoch: 7,
         rootId: "root-a",
-        relativePath: "dist",
+        relativePath: "target",
         kind: "ignored",
-      });
+      };
+      emit({ ...notice, gitRelevant: false });
+      emit({ ...notice, kind: "repository" });
       await vi.advanceTimersByTimeAsync(REFRESH_DEBOUNCE_MS);
       expect(useWorkbenchStore.getState().repositories).toEqual(modified);
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      status = {
+        ...modified,
+        roots: [
+          {
+            ...modified.roots[0],
+            changes: [
+              ...modified.roots[0].changes,
+              {
+                resource: childResource("root-a", "control.txt"),
+                indexStatus: "untracked",
+                worktreeStatus: "untracked",
+                additions: null,
+                deletions: null,
+              },
+            ],
+          },
+        ],
+      };
+      // A .git directory notice can precede control.txt in the native window.
+      // Both paths survive Git classification; metadata alone stays filtered.
+      emit({ ...notice, relativePath: ".git", kind: "repository" });
+      await vi.advanceTimersByTimeAsync(REFRESH_DEBOUNCE_MS);
+      expect(useWorkbenchStore.getState().repositories).toEqual(modified);
+      emit({
+        ...notice,
+        relativePath: ".git",
+        kind: "changed",
+        gitRelevant: false,
+      });
+      emit({
+        ...notice,
+        relativePath: "control.txt",
+        kind: "created",
+        gitRelevant: false,
+      });
+      emit({ ...notice, relativePath: ".git", kind: "repository" });
+      emit({ ...notice, relativePath: "control.txt", kind: "repository" });
+      await vi.advanceTimersByTimeAsync(REFRESH_DEBOUNCE_MS);
+      expect(useWorkbenchStore.getState().repositories).toEqual(status);
     } finally {
       stop();
       await unbindWorkspaceNotify();
