@@ -90,14 +90,14 @@ impl AcpService {
         owner: &RuntimeOwner,
         turn_id: &crate::acp::contract::SageTurnId,
     ) -> bool {
-        self.load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
-            .is_ok_and(|page| {
-                page.turns.as_slice().iter().any(|turn| {
-                    turn.id == *turn_id
-                        && turn.session_id == owner.session_id
-                        && turn.state.is_terminal()
-                })
-            })
+        crate::acp::store::turn_is_terminal(
+            &self.database.connection(),
+            &owner.project_id,
+            &owner.chat_id,
+            &owner.session_id,
+            turn_id,
+        )
+        .unwrap_or(false)
     }
 
     pub(crate) fn close_session(

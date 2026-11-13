@@ -82,7 +82,7 @@ pub(crate) use adapter_batch::{
     AdapterInboundEvent, AdapterStoreOwner, AdapterTurnCursor, ChildLiveItemCommand,
     TurnTerminalReasonCommand, TurnUsageSnapshotCommand,
 };
-pub(crate) use cancel::begin_cancel;
+pub(crate) use cancel::{begin_cancel, turn_is_terminal};
 #[cfg(test)]
 pub(crate) use commands::prepare_turn;
 pub(crate) use commands::{lookup_active_turn, lookup_prepared_turn};

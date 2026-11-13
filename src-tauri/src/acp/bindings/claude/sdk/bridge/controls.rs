@@ -1,7 +1,7 @@
 //! Session controls as SDK control requests: undoing a turn rewinds the
 //! files Claude Code checkpointed since that turn's message, stopping a
-//! task ends one background task, and `/mcp` lists the session's MCP
-//! servers or connects one again.
+//! task ends one background task, `/mcp` lists the session's MCP servers
+//! or connects one again, and a usage read asks for the plan's limits.
 
 use serde_json::{Value, json};
 
@@ -14,26 +14,29 @@ use crate::acp::{
     session_control::SessionControl,
 };
 
-/// MCP requests Claude Code has not answered after their callers gave up;
-/// at this many, further MCP requests wait until one is answered.
+/// Passive requests Claude Code has not answered after their callers gave
+/// up; at this many, further passive requests wait until one is answered.
 const MAX_ABANDONED_REQUESTS: usize = 4;
 
-/// An MCP request that changes nothing Sage holds, so its caller may give
-/// up on it (see `SessionControl::abandons_at_deadline`).
+/// A request that changes nothing Sage holds, so its caller may give up on
+/// it (see `SessionControl::abandons_at_deadline`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum McpRequest {
+pub(super) enum PassiveRequest {
     /// A read of the session's MCP servers.
-    List,
+    McpList,
     /// Connecting one MCP server again.
-    Reconnect,
+    McpReconnect,
+    /// A read of the plan's usage limits.
+    Usage,
 }
 
-impl McpRequest {
+impl PassiveRequest {
     /// Claude Code's reply, as the request's native answer.
     pub(super) fn answered(self, reply: Result<&Value, &str>, inbound: &mut Inbound) {
         match (self, reply) {
-            (Self::List, Ok(reply)) => SdkBridge::mcp_listed(reply, inbound),
-            (Self::List | Self::Reconnect, reply) => SdkBridge::controlled(reply, inbound),
+            (Self::McpList, Ok(reply)) => SdkBridge::mcp_listed(reply, inbound),
+            (Self::Usage, reply) => super::usage::answered(reply.ok(), inbound),
+            (Self::McpList | Self::McpReconnect, reply) => SdkBridge::controlled(reply, inbound),
         }
     }
 }
@@ -61,11 +64,11 @@ impl SdkBridge {
                 json!({"subtype": "stop_task", "task_id": task})
             }
             SessionControl::ReadMcpServers => {
-                pending = Pending::Mcp(McpRequest::List);
+                pending = Pending::Passive(PassiveRequest::McpList);
                 json!({"subtype": "mcp_status"})
             }
             SessionControl::ReconnectMcpServer { name } => {
-                pending = Pending::Mcp(McpRequest::Reconnect);
+                pending = Pending::Passive(PassiveRequest::McpReconnect);
                 json!({"subtype": "mcp_reconnect", "serverName": name.as_str()})
             }
             // Claude Code reloads its MCP configuration only together with
@@ -75,6 +78,20 @@ impl SdkBridge {
             | SessionControl::SignInMcpServer { .. } => return Err(BridgeError::Unsupported),
         };
         self.control(request, pending)
+    }
+
+    /// The control request for the plan's usage limits; it waits behind a
+    /// session control like any other.
+    pub(in crate::acp::bindings::claude::sdk) fn usage_read(
+        &mut self,
+    ) -> Result<Value, BridgeError> {
+        if self.controlling() || self.abandoned_full() {
+            return Err(BridgeError::Capacity);
+        }
+        self.control(
+            super::usage::read_request(),
+            Pending::Passive(PassiveRequest::Usage),
+        )
     }
 
     /// Enough abandoned requests are still unanswered that no more are sent.
@@ -91,18 +108,19 @@ impl SdkBridge {
         self.pending.values().any(|pending| {
             matches!(
                 pending,
-                Pending::Control | Pending::Mcp(_) | Pending::Fork(_)
+                Pending::Control | Pending::Passive(_) | Pending::Fork(_)
             )
         })
     }
 
-    /// Stops waiting for an MCP list or reconnect whose caller gave up.
-    /// Neither changes what Sage holds, and Claude Code may still finish a
-    /// reconnect. The request id stays known, so the late reply is dropped
-    /// rather than read as a frame Sage never asked for.
-    pub(in crate::acp::bindings::claude::sdk) fn abandon_mcp_requests(&mut self) {
+    /// Stops waiting for a passive request whose caller gave up: an MCP
+    /// list or reconnect, or a usage read. None changes what Sage holds, and
+    /// Claude Code may still finish a reconnect. The request id stays known,
+    /// so the late reply is dropped rather than read as a frame Sage never
+    /// asked for.
+    pub(in crate::acp::bindings::claude::sdk) fn abandon_passive_requests(&mut self) {
         for pending in self.pending.values_mut() {
-            if matches!(pending, Pending::Mcp(_)) {
+            if matches!(pending, Pending::Passive(_)) {
                 *pending = Pending::Abandoned;
             }
         }

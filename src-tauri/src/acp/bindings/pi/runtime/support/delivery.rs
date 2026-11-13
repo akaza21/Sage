@@ -30,11 +30,15 @@ impl PiRuntime {
                 self.clear_thinking_request();
             }
             // Never written, so its caller is answered by the write failure.
-            RequestKind::Native => self.native_pending = None,
+            RequestKind::Native => {
+                self.native_pending = None;
+                self.fork_step_dropped(&reservation.command_id);
+            }
             RequestKind::Models
             | RequestKind::RefreshState
             | RequestKind::SetModel
             | RequestKind::SetThinkingLevel
+            | RequestKind::SetAutoCompaction
             | RequestKind::NewSession
             | RequestKind::ResumeSession
             | RequestKind::ClearQueue
@@ -73,6 +77,7 @@ impl PiRuntime {
                         reservation.kind,
                         RequestKind::SetModel
                             | RequestKind::SetThinkingLevel
+                            | RequestKind::SetAutoCompaction
                             | RequestKind::Commands
                             | RequestKind::Native
                     )
@@ -96,6 +101,7 @@ impl PiRuntime {
                 if self.native_pending.as_ref() == Some(&reservation.command_id) {
                     self.native_pending = None;
                 }
+                self.fork_step_dropped(&reservation.command_id);
                 self.staged_initialize = None;
                 self.poisoned = true;
                 Ok(())

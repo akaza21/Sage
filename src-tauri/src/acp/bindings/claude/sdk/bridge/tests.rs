@@ -726,7 +726,7 @@ fn an_abandoned_mcp_list_frees_the_session_and_its_late_reply_is_dropped() {
         let list = bridge
             .session_control(&SessionControl::ReadMcpServers)
             .unwrap();
-        bridge.abandon_mcp_requests();
+        bridge.abandon_passive_requests();
         assert!(!bridge.controlling(), "an abandoned list holds nothing");
         abandoned.push(list);
     }
@@ -763,7 +763,7 @@ fn an_abandoned_reconnect_frees_the_session_and_counts_toward_the_bound() {
     let mut abandoned = Vec::new();
     for _ in 0..4 {
         abandoned.push(bridge.session_control(&reconnect).unwrap());
-        bridge.abandon_mcp_requests();
+        bridge.abandon_passive_requests();
         assert!(
             !bridge.controlling(),
             "an abandoned reconnect holds nothing"
