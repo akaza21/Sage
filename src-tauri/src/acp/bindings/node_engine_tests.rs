@@ -5,6 +5,58 @@ fn check(range: &str, node: &str) -> Option<bool> {
 }
 
 #[test]
+fn npm_hyphens_are_expanded_before_comparator_trimming() {
+    for (range, expected) in [("22 - v 23", Some(true)), ("22.1+build - 22.3", None)] {
+        assert_eq!(check(range, "22.1.7"), expected, "{range:?}");
+    }
+}
+
+#[test]
+fn generated_npm_corpus_examples_match_strict_range_parsing() {
+    // Expected values from npm's bundled semver 7.7.4, with loose=false.
+    for (range, node, expected) in [
+        ("v 22 - 23", "22.1.7", Some(true)),
+        ("v 22.1.7 - 23", "22.1.7", None),
+        ("22 - v 23.0.0", "22.1.7", None),
+        ("22 - v=23.0.0-rc.1", "23.0.0", Some(false)),
+        ("22.1.7+build - v23.0.0", "23.0.0", Some(true)),
+        ("22.1.7+build+id - 23", "22.1.7", None),
+        ("22.1.x+build - 22.3", "22.1.7", Some(true)),
+        ("22\t-\n23", "24.1.0", Some(false)),
+        ("22 - 23 >=22", "22.1.7", None),
+        ("^=22.1.7+build+id", "22.12.0", Some(true)),
+        ("<=v=22.X.7-rc.1", "22.12.0", Some(true)),
+        ("~v 22.1", "22.1.7", None),
+        ("~> = 22.1", "22.1.7", None),
+        (">=0.0.0 <0.0.0-0 || ~> =22.1", "22.1.7", Some(true)),
+        ("* || nope", "22.1.7", None),
+        ("22\u{85}", "22.1.7", None),
+        ("\u{85}22", "22.1.7", None),
+        ("22 || \u{85}", "22.1.7", None),
+        ("\u{feff}>=\u{a0}22 || <20", "18.20.4", Some(true)),
+    ] {
+        assert_eq!(check(range, node), expected, "{node} in {range:?}");
+    }
+}
+
+#[test]
+fn npm_safe_regex_build_identifier_bounds_apply_before_replacement() {
+    for (core, size, expected) in [
+        ("22", 249, Some(true)),
+        ("22", 250, Some(true)),
+        ("22", 251, None),
+        ("22", 252, None),
+        ("22.1", 250, Some(true)),
+        ("22.1", 251, None),
+        ("*", 250, Some(true)),
+        ("*", 251, None),
+    ] {
+        let range = format!("{core}+{}", "a".repeat(size));
+        assert_eq!(check(&range, "22.1.7"), expected, "{core}+({size} chars)");
+    }
+}
+
+#[test]
 fn the_ranges_harness_packages_declare_are_evaluated() {
     for (range, inside, outside) in [
         (">=22", "22.0.0", "21.99.99"),
