@@ -481,6 +481,7 @@
         "src-tauri/src/acp/bindings/characterisation.rs",
         "src-tauri/src/acp/bindings/mod.rs",
         "src-tauri/src/acp/bindings/node_engine.rs",
+        "src-tauri/src/acp/bindings/node_engine_range.rs",
         "src-tauri/src/acp/bindings/node_engine_tests.rs",
         "src-tauri/src/acp/bindings/registry/claude.rs",
         "src-tauri/src/acp/bindings/registry/claude_sdk.rs",
