@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+#[cfg(windows)]
+mod browser_mcp;
 mod undo;
 
 use crate::acp::{
@@ -284,21 +286,6 @@ pub(crate) struct BindingIdentity<'a> {
 }
 
 impl AdmittedBindingRecord<'_> {
-    #[cfg(windows)]
-    pub(crate) fn browser_mcp_version_notice(&self) -> Option<&'static str> {
-        match &self.binding {
-            AdmittedBinding::Codex(binding) => {
-                let supported = binding.capability_ceiling().is_ok_and(|ceiling| {
-                    crate::acp::bindings::codex::speaks_pinned_protocol(
-                        ceiling.protocol_version.as_str(),
-                    )
-                });
-                (!supported).then_some("Browser tools are unavailable for this Codex version. You can continue chatting without browser tools.")
-            }
-            _ => None,
-        }
-    }
-
     /// The id this admission binds sessions to; a standard ACP binding
     /// carries its own, which for a user-defined agent is the agent's id.
     pub(crate) fn binding_id(&self) -> &str {
