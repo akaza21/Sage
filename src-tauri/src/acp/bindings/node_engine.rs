@@ -1,19 +1,27 @@
 //! Whether a Node release meets a package's declared `engines.node` range.
 
 use std::ops::Bound::{self, Excluded, Included, Unbounded};
+use std::sync::LazyLock;
+
+use regex::Regex;
 
 /// Longest `engines.node` value Sage evaluates.
 pub(crate) const RANGE_BYTES_MAX: usize = 256;
 
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+const NPM_WHITESPACE: &str = concat!(
+    "\t\n\u{b}\u{c}\r \u{a0}\u{1680}",
+    "\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}",
+    "\u{2006}\u{2007}\u{2008}\u{2009}\u{200a}",
+    "\u{2028}\u{2029}\u{202f}\u{205f}\u{3000}\u{feff}",
+);
 
 /// A release version: major, minor, patch.
 pub(crate) type NodeVersion = (u64, u64, u64);
 
-/// Evaluates npm ranges for release versions. Empty declarations, oversized or
-/// invalid ranges, and explicit prerelease requirements remain unavailable.
+/// Evaluates npm ranges for release runtimes, including prerelease bounds.
 pub(crate) fn satisfies(range: &str, node: NodeVersion) -> Option<bool> {
-    let range = range.trim();
+    let range = range.trim_matches(npm_whitespace);
     if range.is_empty() || range.len() > RANGE_BYTES_MAX {
         return None;
     }
@@ -28,6 +36,9 @@ pub(crate) fn satisfies(range: &str, node: NodeVersion) -> Option<bool> {
 /// A Node release written `22.18.0` or `v22.18.0`.
 pub(crate) fn parse_node_version(text: &str) -> Option<NodeVersion> {
     let text = text.trim();
+    if text.contains('-') {
+        return None;
+    }
     let text = text.strip_prefix('v').unwrap_or(text);
     let mut parts = text.split('.').map(number);
     let version = (parts.next()??, parts.next()??, parts.next()??);
@@ -65,13 +76,13 @@ impl Interval {
 }
 
 fn comparator_set(set: &str) -> Option<Vec<Interval>> {
-    let tokens = range_tokens(set)?;
+    let tokens = range_tokens(set);
     if let [from, dash, to] = tokens.as_slice()
         && dash == "-"
     {
         let from = Partial::parse(from)?;
         let to = Partial::parse(to)?;
-        if !from.valid_comparator() || !to.valid_comparator() {
+        if !from.valid_comparator() || (!to.prerelease && !to.valid_comparator()) {
             return None;
         }
         return Some(vec![Interval {
@@ -88,19 +99,44 @@ fn comparator_set(set: &str) -> Option<Vec<Interval>> {
         .collect()
 }
 
-fn range_tokens(set: &str) -> Option<Vec<String>> {
-    let mut tokens = Vec::new();
-    let mut pending = String::new();
-    for token in set.split_whitespace() {
-        pending.push_str(token);
-        if !pending
-            .bytes()
-            .all(|byte| matches!(byte, b'<' | b'>' | b'=' | b'~' | b'^'))
-        {
-            tokens.push(std::mem::take(&mut pending));
-        }
+fn range_tokens(set: &str) -> Vec<String> {
+    static TRIMS: LazyLock<[(Regex, &str); 3]> = LazyLock::new(|| {
+        let compile = |pattern: &str| {
+            Regex::new(&pattern.replace(r"\s", &format!("[{NPM_WHITESPACE}]")))
+                .expect("npm range trim regex")
+        };
+        let numeric = r"(?:0|[1-9][0-9]*)";
+        let nonnumeric = r"(?:[0-9]*[a-zA-Z-][a-zA-Z0-9-]*)";
+        let prerelease = format!(r"(?:{nonnumeric}|{numeric})");
+        let loose_id = format!(r"(?:{nonnumeric}|[0-9]+)");
+        let build = r"(?:\+[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*)?";
+        let loose =
+            format!(r"[v=\s]*[0-9]+\.[0-9]+\.[0-9]+(?:-?{loose_id}(?:\.{loose_id})*)?{build}");
+        let x = format!(r"(?:{numeric}|x|X|\*)");
+        let partial =
+            format!(r"[v=\s]*{x}(?:\.{x}(?:\.{x}(?:-{prerelease}(?:\.{prerelease})*)?{build})?)?");
+        [
+            (
+                compile(&format!(r"(\s*)((?:<|>)?=?)\s*({loose}|{partial})")),
+                "${1}${2}${3}",
+            ),
+            (compile(r"(\s*)~>?\s+"), "${1}~"),
+            (compile(r"(\s*)\^\s+"), "${1}^"),
+        ]
+    });
+    let mut normalized = set.to_owned();
+    for (pattern, replacement) in TRIMS.iter() {
+        normalized = pattern.replace_all(&normalized, *replacement).into_owned();
     }
-    pending.is_empty().then_some(tokens)
+    normalized
+        .split(npm_whitespace)
+        .filter(|token| !token.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn npm_whitespace(character: char) -> bool {
+    NPM_WHITESPACE.contains(character)
 }
 
 #[derive(Clone, Copy)]
@@ -139,6 +175,7 @@ impl Operator {
         }
         let floor = version.floor();
         let interval = match self {
+            Self::Equal if version.prerelease => Interval::NONE,
             Self::Equal => Interval {
                 low: Included(floor),
                 high: version.upper_bound()?,
@@ -147,8 +184,12 @@ impl Operator {
                 low: Included(floor),
                 high: Unbounded,
             },
-            Self::Greater if version.is_full() => Interval {
+            Self::Greater if version.is_full() && !version.prerelease => Interval {
                 low: Excluded(floor),
+                high: Unbounded,
+            },
+            Self::Greater if version.prerelease => Interval {
+                low: Included(floor),
                 high: Unbounded,
             },
             Self::Greater => match version.upper_bound()? {
@@ -194,6 +235,7 @@ struct Partial {
     minor: Option<u64>,
     patch: Option<u64>,
     canonical_prefix: bool,
+    prerelease: bool,
 }
 
 impl Partial {
@@ -204,15 +246,17 @@ impl Partial {
         let mut qualified = text.split('+');
         let core = qualified.next()?;
         for build in qualified {
-            if !build.split('.').all(|identifier| {
-                !identifier.is_empty()
-                    && identifier
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-            }) {
+            if !identifiers(build, false) {
                 return None;
             }
         }
+        let (core, prerelease) = match core.split_once('-') {
+            Some((core, tag)) if core.split('.').count() == 3 && identifiers(tag, true) => {
+                (core, true)
+            }
+            Some(_) => return None,
+            None => (core, false),
+        };
         let mut parts = [None; 3];
         let mut wildcard = false;
         for (index, part) in core.split('.').enumerate() {
@@ -234,6 +278,7 @@ impl Partial {
             minor,
             patch,
             canonical_prefix,
+            prerelease: prerelease && patch.is_some(),
         })
     }
 
@@ -258,6 +303,7 @@ impl Partial {
             (None, _, _) => Unbounded,
             (_, None, _) => Excluded(self.ceiling(0)?),
             (_, _, None) => Excluded(self.ceiling(1)?),
+            _ if self.prerelease => Excluded(self.floor()),
             _ => Included(self.floor()),
         })
     }
@@ -271,6 +317,17 @@ impl Partial {
         parts[index + 1..].fill(0);
         Some((parts[0], parts[1], parts[2]))
     }
+}
+
+fn identifiers(text: &str, prerelease: bool) -> bool {
+    text.split('.').all(|id| {
+        !id.is_empty()
+            && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            && !(prerelease
+                && id.len() > 1
+                && id.starts_with('0')
+                && id.bytes().all(|b| b.is_ascii_digit()))
+    })
 }
 
 fn number(part: &str) -> Option<u64> {

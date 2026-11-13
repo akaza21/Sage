@@ -53,7 +53,6 @@ fn a_range_sage_cannot_read_is_never_a_pass() {
         ">=",
         ">=a",
         ">= ",
-        "^20.19.0-rc.1",
         "22.0.0+",
         "22.0.0+build..id",
         "22.0.0+build/id",
@@ -101,32 +100,85 @@ fn npm_partial_and_zero_major_boundaries_are_respected() {
 fn npm_prefix_and_operator_spacing_follow_range_normalization() {
     for (range, inside, outside) in [
         ("~ =22.1", "22.1.7", "22.2.0"),
+        ("~ = 22.1", "22.1.7", "22.2.0"),
+        ("~> =22.1", "22.1.7", "22.2.0"),
+        ("~ > 22.1", "22.1.7", "22.2.0"),
         ("^=22.1", "22.1.7", "23.0.0"),
+        ("^ = 22.1", "22.1.7", "23.0.0"),
         (">=v=22", "22.1.7", "21.99.99"),
         ("==22", "22.1.7", "23.0.0"),
         ("~=22.1.7", "22.1.7", "22.1.6"),
         ("22.1 - = 22.3", "22.1.7", "22.4.0"),
         ("> =22", "22.1.7", "21.99.99"),
+        (">= 22", "22.1.7", "21.99.99"),
+        (">\t=22", "22.1.7", "21.99.99"),
+        (">=\u{feff}22", "22.1.7", "21.99.99"),
+        ("\u{feff}~\u{a0}22.1", "22.1.7", "22.2.0"),
         ("< =22", "22.1.7", "23.0.0"),
     ] {
         assert_eq!(check(range, inside), Some(true), "{inside} in {range}");
         assert_eq!(check(range, outside), Some(false), "{outside} in {range}");
     }
-    for range in ["==22.1.7", "v=22.1.7", "22.1.7 - =22.3.0"] {
+    for range in [
+        "==22.1.7",
+        "v=22.1.7",
+        "22.1.7 - =22.3.0",
+        "> = 22",
+        ">\t=\t22",
+        "< = 22",
+        "~> = 22.1",
+        "== 22",
+        ">= = 22",
+        "> v 22",
+        ">\u{85}22",
+        "~\u{85}22",
+    ] {
         assert_eq!(check(range, "22.1.7"), None, "{range}");
     }
 }
 
 #[test]
-fn prerelease_engines_and_runtimes_remain_unavailable() {
+fn npm_prerelease_bounds_match_release_versions() {
+    for (range, inside, outside) in [
+        (">=22.1.0-rc.1", "22.1.7", "22.0.9"),
+        (">22.1.0-rc.1", "22.1.0", "22.0.9"),
+        ("^22.1.0-rc.1", "22.1.7", "23.0.0"),
+        ("^20.19.0-rc.1", "20.19.0", "21.0.0"),
+        ("~22.1.0-rc.1", "22.1.0", "22.2.0"),
+        (">=22.0.0 <23.0.0-0", "22.1.7", "23.0.0"),
+        ("<=22.1.0-rc.1", "22.0.9", "22.1.0"),
+        ("<22.1.0-rc.1", "22.0.9", "22.1.0"),
+        ("22.1.0 - 22.3.0-beta", "22.1.7", "22.3.0"),
+        ("22.1.0 - =22.3.0-rc.1", "22.1.7", "22.3.0"),
+        ("22.1.0 - = 22.3.0-rc.1", "22.1.7", "22.3.0"),
+        ("22.1.0 - v=22.3.0-rc.1", "22.1.7", "22.3.0"),
+        ("22.1.0-rc.1 - 22.3.0", "22.1.0", "22.0.9"),
+        (">=22.1.0-rc.1+build.01", "22.1.0", "22.0.9"),
+        ("22.1.x-rc.1", "22.1.7", "22.2.0"),
+    ] {
+        assert_eq!(check(range, inside), Some(true), "{inside} in {range}");
+        assert_eq!(check(range, outside), Some(false), "{outside} in {range}");
+    }
+    for (range, node, expected) in [
+        ("* || >=22.1.0-rc.1", "22.1.7", true),
+        ("22.1.0-rc.1", "22.1.0", false),
+        ("=22.1.0-rc.1", "22.1.7", false),
+    ] {
+        assert_eq!(check(range, node), Some(expected), "{node} in {range}");
+    }
     for range in [
-        ">=22.1.0-rc.1",
-        "^22.1.0-rc.1",
-        "22.1.0 - 22.3.0-beta",
-        "* || >=22.1.0-rc.1",
+        ">=22.1.0-",
+        ">=22.1.0-rc..1",
+        ">=22.1.0-01",
+        ">=22.1.0-rc/1",
+        ">=22.1-rc.1",
     ] {
         assert_eq!(check(range, "22.1.7"), None, "{range}");
     }
+}
+
+#[test]
+fn prerelease_node_runtimes_remain_unavailable() {
     assert_eq!(parse_node_version("22.1.7-rc.1"), None);
 }
 
