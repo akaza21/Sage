@@ -110,11 +110,7 @@ pub(in crate::acp::bindings::codex::incoming) fn explore_presentation(
     command: Option<&str>,
     locations: &ToolLocations,
 ) -> (ToolCategory, String) {
-    let read_path = match locations.as_slice() {
-        [SafeResourceLocation::Resource { resource }] => Some(resource.relative_path.as_str()),
-        _ => None,
-    }
-    .filter(|path| !path.chars().any(char::is_control));
+    let read_path = read_path(locations);
     match explore {
         _ if activity != CommandActivity::Ordinary => {
             (ToolCategory::Execute, bounded_label(command, "Command"))
@@ -132,6 +128,18 @@ pub(in crate::acp::bindings::codex::incoming) fn explore_presentation(
         ),
         None => (ToolCategory::Execute, bounded_label(command, "Command")),
     }
+}
+
+/// The workspace path a single-location Read resolved to; without one the
+/// command line stays as the row's input.
+pub(in crate::acp::bindings::codex::incoming) fn read_path(
+    locations: &ToolLocations,
+) -> Option<&str> {
+    match locations.as_slice() {
+        [SafeResourceLocation::Resource { resource }] => Some(resource.relative_path.as_str()),
+        _ => None,
+    }
+    .filter(|path| !path.chars().any(char::is_control))
 }
 
 fn safe_name(value: Option<&Value>) -> Option<&str> {
