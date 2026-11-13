@@ -1,6 +1,6 @@
 // The Workbench close sequence and its trace. Kept apart from the workspace
 // watcher so the startup bundle that traces close stages does not carry the
-// watcher; the close path loads it when it unwatches.
+// watcher; the watcher registers its unbind here when it binds a Project.
 
 import { errorMessage } from "../domain/errors";
 import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
@@ -59,6 +59,17 @@ export function bindEditorSettingsClose(close: EditorSettingsClose) {
   editorSettingsClose = close;
 }
 
+/**
+ * The watcher's unbind, registered by the watcher module once it binds a
+ * Project. Until then no session exists, so closing loads and unwatches
+ * nothing.
+ */
+let workspaceNotifyClose: (() => Promise<void>) | null = null;
+
+export function bindWorkspaceNotifyClose(unbind: () => Promise<void>) {
+  workspaceNotifyClose = unbind;
+}
+
 export async function closeLiveWorkbench(
   get: () => WorkbenchState,
 ): Promise<void> {
@@ -69,11 +80,10 @@ export async function closeLiveWorkbench(
       "appearanceFlush",
       () => editorSettingsClose?.flush() ?? Promise.resolve(),
     );
-    await runCloseStage("workspaceUnwatch", async () => {
-      const { unbindWorkspaceNotify } =
-        await import("./workspaceNotifyLifecycle");
-      await unbindWorkspaceNotify();
-    });
+    await runCloseStage(
+      "workspaceUnwatch",
+      () => workspaceNotifyClose?.() ?? Promise.resolve(),
+    );
     await runCloseStage("persistAndDestroy", () =>
       getWorkbenchPorts().project.persistProjectLayoutAndClose(
         currentProjectLayout(get()),

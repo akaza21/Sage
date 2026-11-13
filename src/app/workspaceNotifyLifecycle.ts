@@ -14,6 +14,7 @@ import {
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { WorkbenchState } from "./store";
+import { bindWorkspaceNotifyClose } from "./workbenchClose";
 
 export function liveProjectNotifyStamp(
   state: WorkbenchState,
@@ -176,6 +177,7 @@ export function createWorkspaceNotifyHooks(
 export async function bindWorkspaceNotifyFromState(
   get: () => WorkbenchState,
 ): Promise<void> {
+  bindWorkspaceNotifyClose(unbindWorkspaceNotify);
   await syncLiveProjectWorkspaceNotify(
     liveProjectNotifyStamp(get()),
     createWorkspaceNotifyHooks(get),
