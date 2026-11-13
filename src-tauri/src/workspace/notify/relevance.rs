@@ -18,8 +18,8 @@
 //!
 //! The rules are loaded once and each folder's decision is cached. A change
 //! that can alter a decision (a `.gitignore`, any repository's
-//! `info/exclude`, a repository appearing or going, a cached folder moving,
-//! or lost records) drops the rules and the cache, so the next record
+//! `info/exclude`, a repository appearing or going, a cached folder created,
+//! removed or renamed, or lost records) drops the rules and the cache, so the next record
 //! reloads them. Such a change inside a dropped or ignored folder alters
 //! nothing outside it and is not counted.
 
@@ -74,8 +74,8 @@ impl NoticeRelevance {
     }
 
     /// What the record for `relative` (a root-relative path with `/`
-    /// separators) means to the WebView.
-    pub(super) fn classify(&mut self, relative: &str) -> Relevance {
+    /// separators) with the watcher's `action` means to the WebView.
+    pub(super) fn classify(&mut self, relative: &str, action: u32) -> Relevance {
         if let Some(repository) = repository_of_exclude(relative) {
             if !skipped(repository) && self.ignored_folder(repository).is_none() {
                 self.forget();
@@ -89,7 +89,14 @@ impl NoticeRelevance {
         if let Some(ignored) = self.ignored_folder(parent) {
             return Relevance::IgnoredBelow(ignored.to_string());
         }
-        if changes_rules(relative) || self.folders.contains_key(relative) {
+        // A folder's own "changed" record says only that an entry inside it
+        // came or went (Windows reports one for every parent on each create
+        // or delete), which alters no decision; its creation, removal or
+        // rename can, as can any change to a `.gitignore`.
+        let moved = matches!(super::kind_for_action(action), Some("created" | "deleted"));
+        if is_named(relative, ".gitignore")
+            || moved && (is_named(relative, ".git") || self.folders.contains_key(relative))
+        {
             self.forget();
         }
         Relevance::Keep
@@ -169,11 +176,12 @@ fn repository_of_exclude(relative: &str) -> Option<&str> {
     }
 }
 
-/// Whether a record for `relative`, outside every dropped and ignored
-/// folder, can change what the ignore rules decide.
-fn changes_rules(relative: &str) -> bool {
-    let name = relative.rsplit('/').next().unwrap_or(relative);
-    name.eq_ignore_ascii_case(".gitignore") || name.eq_ignore_ascii_case(".git")
+/// Whether the last name of `relative` is `name`, in any case.
+fn is_named(relative: &str, name: &str) -> bool {
+    relative
+        .rsplit('/')
+        .next()
+        .is_some_and(|last| last.eq_ignore_ascii_case(name))
 }
 
 #[cfg(test)]
@@ -203,6 +211,9 @@ mod tests {
             let _ = fs::remove_dir_all(&self.0);
         }
     }
+
+    const CHANGED: u32 = 3;
+    const RENAMED_OLD: u32 = 4;
 
     fn ignored_below(folder: &str) -> Relevance {
         Relevance::IgnoredBelow(folder.to_string())
@@ -238,7 +249,11 @@ mod tests {
             (".git", Relevance::Keep),
             ("tools/fixtures/case.json", Relevance::Keep),
         ] {
-            assert_eq!(relevance.classify(relative), expected, "{relative}");
+            assert_eq!(
+                relevance.classify(relative, CHANGED),
+                expected,
+                "{relative}"
+            );
         }
     }
 
@@ -247,13 +262,19 @@ mod tests {
         let root = Root::new();
         root.write(".gitignore", "dist/\n");
         let mut relevance = NoticeRelevance::new(&root.0, None);
-        assert_eq!(relevance.classify("dist/app.js"), ignored_below("dist"));
-        assert_eq!(relevance.classify("out/app.js"), Relevance::Keep);
+        assert_eq!(
+            relevance.classify("dist/app.js", CHANGED),
+            ignored_below("dist")
+        );
+        assert_eq!(relevance.classify("out/app.js", CHANGED), Relevance::Keep);
 
         root.write(".gitignore", "out/\n");
-        assert_eq!(relevance.classify(".gitignore"), Relevance::Keep);
-        assert_eq!(relevance.classify("dist/app.js"), Relevance::Keep);
-        assert_eq!(relevance.classify("out/app.js"), ignored_below("out"));
+        assert_eq!(relevance.classify(".gitignore", CHANGED), Relevance::Keep);
+        assert_eq!(relevance.classify("dist/app.js", CHANGED), Relevance::Keep);
+        assert_eq!(
+            relevance.classify("out/app.js", CHANGED),
+            ignored_below("out")
+        );
     }
 
     #[test]
@@ -261,7 +282,10 @@ mod tests {
         let root = Root::new();
         root.write(".gitignore", "target/\n");
         let mut relevance = NoticeRelevance::new(&root.0, None);
-        assert_eq!(relevance.classify("target/a"), ignored_below("target"));
+        assert_eq!(
+            relevance.classify("target/a", CHANGED),
+            ignored_below("target")
+        );
 
         // Unignoring `target` would show up only after a reload.
         root.write(".gitignore", "");
@@ -272,9 +296,16 @@ mod tests {
             "node_modules/pkg/.git/info/exclude",
             "target/sub/.git/info/exclude",
         ] {
-            assert_ne!(relevance.classify(relative), Relevance::Keep, "{relative}");
+            assert_ne!(
+                relevance.classify(relative, RENAMED_OLD),
+                Relevance::Keep,
+                "{relative}"
+            );
         }
-        assert_eq!(relevance.classify("target/a"), ignored_below("target"));
+        assert_eq!(
+            relevance.classify("target/a", CHANGED),
+            ignored_below("target")
+        );
     }
 
     #[test]
@@ -283,20 +314,32 @@ mod tests {
         root.write(".git/info/exclude", "");
         root.write("sub/.git/info/exclude", "");
         let mut relevance = NoticeRelevance::new(&root.0, None);
-        assert_eq!(relevance.classify("scratch/notes.md"), Relevance::Keep);
-        assert_eq!(relevance.classify("sub/cache/blob"), Relevance::Keep);
+        assert_eq!(
+            relevance.classify("scratch/notes.md", CHANGED),
+            Relevance::Keep
+        );
+        assert_eq!(
+            relevance.classify("sub/cache/blob", CHANGED),
+            Relevance::Keep
+        );
 
         root.write(".git/info/exclude", "scratch/\n");
-        assert_eq!(relevance.classify(".git/info/exclude"), Relevance::Drop);
         assert_eq!(
-            relevance.classify("scratch/notes.md"),
+            relevance.classify(".git/info/exclude", CHANGED),
+            Relevance::Drop
+        );
+        assert_eq!(
+            relevance.classify("scratch/notes.md", CHANGED),
             ignored_below("scratch")
         );
 
         root.write("sub/.git/info/exclude", "cache/\n");
-        assert_eq!(relevance.classify("sub/.git/info/exclude"), Relevance::Drop);
         assert_eq!(
-            relevance.classify("sub/cache/blob"),
+            relevance.classify("sub/.git/info/exclude", CHANGED),
+            Relevance::Drop
+        );
+        assert_eq!(
+            relevance.classify("sub/cache/blob", CHANGED),
             ignored_below("sub/cache")
         );
     }
@@ -307,12 +350,22 @@ mod tests {
         root.write("lib/.gitignore", "cache/\n");
         let mut relevance = NoticeRelevance::new(&root.0, None);
         assert_eq!(
-            relevance.classify("lib/cache/blob"),
+            relevance.classify("lib/cache/blob", CHANGED),
             ignored_below("lib/cache")
         );
 
+        // Windows reports a changed parent for every entry created inside it.
         fs::remove_file(root.0.join("lib/.gitignore")).unwrap();
-        assert_eq!(relevance.classify("lib"), Relevance::Keep);
-        assert_eq!(relevance.classify("lib/cache/blob"), Relevance::Keep);
+        assert_eq!(relevance.classify("lib", CHANGED), Relevance::Keep);
+        assert_eq!(
+            relevance.classify("lib/cache/blob", CHANGED),
+            ignored_below("lib/cache")
+        );
+
+        assert_eq!(relevance.classify("lib", RENAMED_OLD), Relevance::Keep);
+        assert_eq!(
+            relevance.classify("lib/cache/blob", CHANGED),
+            Relevance::Keep
+        );
     }
 }

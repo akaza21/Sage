@@ -312,6 +312,30 @@ describe("workspace notify compose", () => {
     expect(search).not.toHaveBeenCalled();
   });
 
+  it("stops throttled ignored-folder refreshes when the session ends", async () => {
+    vi.useFakeTimers();
+    let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
+    const invalidate = vi.fn();
+    const hooks = {
+      watch: vi.fn().mockResolvedValue({ generation: 1 }),
+      unwatch: vi.fn(),
+      async listen(next: (value: unknown) => void) {
+        emit = next;
+        return () => undefined;
+      },
+      invalidate,
+    };
+    await syncLiveProjectWorkspaceNotify(live, hooks);
+    const ignored = { ...notice, relativePath: "target", kind: "ignored" };
+    emit(ignored);
+    emit(ignored);
+    await syncLiveProjectWorkspaceNotify(null, hooks);
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it("reads the notices of a bounded native batch only", () => {
     expect(workspaceNotifyBatchNotices({ notices: [notice] })).toEqual([
       notice,

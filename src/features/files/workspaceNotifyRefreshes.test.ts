@@ -96,6 +96,32 @@ describe("workspace notify refreshes", () => {
     );
   });
 
+  it("passes on a resync requested while another runs", async () => {
+    const { invalidate } = heldRefreshes();
+    const refreshes = createNotifyRefreshes(
+      invalidate,
+      () => true,
+      MAX_IN_FLIGHT,
+    );
+    const overflow = (wave: string) => {
+      for (
+        let index = 0;
+        index <= MAX_QUEUED_NOTIFY_INVALIDATIONS;
+        index += 1
+      ) {
+        refreshes.folder(folder(`${wave}-${index}`));
+      }
+    };
+    refreshes.folder(folder("a"));
+    refreshes.folder(folder("b"));
+    overflow("first");
+    overflow("second");
+    const resyncs = invalidate.mock.calls.filter(
+      ([sent]) => sent.kind === "resync",
+    );
+    expect(resyncs).toHaveLength(2);
+  });
+
   it("starts nothing more once the session is gone", async () => {
     const { started, invalidate, paths } = heldRefreshes();
     let live = true;
@@ -137,5 +163,21 @@ describe("workspace notify refreshes", () => {
 
     refreshes.ignoredFolder(notice("dist", "ignored"));
     expect(invalidate).toHaveBeenCalledTimes(3);
+  });
+
+  it("drops pending ignored-folder refreshes when disposed", async () => {
+    vi.useFakeTimers();
+    const invalidate = vi.fn();
+    const refreshes = createNotifyRefreshes(
+      invalidate,
+      () => true,
+      MAX_IN_FLIGHT,
+    );
+    refreshes.ignoredFolder(notice("target", "ignored"));
+    refreshes.ignoredFolder(notice("target", "ignored"));
+    refreshes.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(IGNORED_SUBTREE_REFRESH_MS * 3);
+    expect(invalidate).toHaveBeenCalledTimes(1);
   });
 });

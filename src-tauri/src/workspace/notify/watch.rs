@@ -90,7 +90,7 @@ pub(super) fn root_delivery(
             relevance.forget();
             (relative, action)
         } else {
-            match relevance.classify(&relative) {
+            match relevance.classify(&relative, action) {
                 Relevance::Keep => (relative, action),
                 Relevance::Drop => return,
                 Relevance::IgnoredBelow(folder) => (folder, IGNORED_BELOW_NOTIFY_ACTION),

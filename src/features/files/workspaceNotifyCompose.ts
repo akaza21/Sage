@@ -1,7 +1,6 @@
 import { isShortId, safeOrdinal } from "../../domain/guards";
 import { parentResource } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
-import { createNotifyRefreshes } from "./workspaceNotifyRefreshes";
 
 export const WORKSPACE_NOTIFY_EVENT = "workspace-notify-v2";
 /**
@@ -289,6 +288,8 @@ export async function syncLiveProjectWorkspaceNotify(
     session = null;
   }
   let bound: BoundNotifySession | null = null;
+  // Loaded with the first bound Project, off the startup and first-Chat paths.
+  const { createNotifyRefreshes } = await import("./workspaceNotifyRefreshes");
   const refreshes = createNotifyRefreshes(
     hooks.invalidate,
     () => bound !== null && session === bound,
@@ -320,7 +321,13 @@ export async function syncLiveProjectWorkspaceNotify(
     }
     refreshes.folder({ notice: accepted, listing });
   });
-  bound = { live, unlisten };
+  bound = {
+    live,
+    unlisten() {
+      unlisten();
+      refreshes.dispose();
+    },
+  };
   session = bound;
   try {
     await hooks.watch({

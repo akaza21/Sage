@@ -42,13 +42,17 @@ function settled(run: () => void | Promise<void>): Promise<void> {
  *   refresh ends the folder joins the back of the queue once more, since that
  *   refresh may have listed it before the change, and waits its turn behind
  *   folders already waiting. Other folders wait in a queue of
- *   MAX_QUEUED_NOTIFY_INVALIDATIONS; past that the root resyncs, once.
+ *   MAX_QUEUED_NOTIFY_INVALIDATIONS; past that the root resyncs, which
+ *   covers that root's waiting folders, so they leave the queue. Every
+ *   resync is passed on, even while one runs: the listing side coalesces
+ *   them and runs once more after a resync that a change overtook.
  * - `ignoredFolder`: changes inside an ignored folder refresh its listings
  *   at once, then at most every IGNORED_SUBTREE_REFRESH_MS while they keep
  *   coming, with one last refresh after the final change. Each listing load
  *   still takes one of the shared listing slots.
  *
- * Nothing scheduled starts after `live()` turns false.
+ * Nothing scheduled starts after `live()` turns false, and `dispose` drops
+ * the throttle timers when the session ends.
  */
 export function createNotifyRefreshes(
   invalidate: WorkspaceNotifyHooks["invalidate"],
@@ -57,21 +61,22 @@ export function createNotifyRefreshes(
 ) {
   const running = new Map<string, { dirty: ListingRefresh | null }>();
   const queued = new Map<string, ListingRefresh>();
-  const resyncingRoots = new Set<string>();
   // Each throttled ignored folder, with the notice that came in since its
   // last refresh, if any.
   const throttled = new Map<string, WorkspaceNotifyNotice | null>();
+  const timers = new Set<ReturnType<typeof setTimeout>>();
 
   const resyncRoot = (notice: WorkspaceNotifyNotice) => {
     const { rootId } = notice;
-    if (resyncingRoots.has(rootId)) return;
-    resyncingRoots.add(rootId);
+    for (const [key, refresh] of queued) {
+      if (refresh.listing.rootId === rootId) queued.delete(key);
+    }
     void settled(() =>
       invalidate(
         { ...notice, relativePath: LOST_NOTICES_PATH, kind: "resync" },
         { rootId, relativePath: "" },
       ),
-    ).finally(() => resyncingRoots.delete(rootId));
+    );
   };
 
   const start = (key: string, refresh: ListingRefresh) => {
@@ -122,12 +127,21 @@ export function createNotifyRefreshes(
     throttled.set(key, null);
     const { rootId, relativePath } = notice;
     void settled(() => invalidate(notice, { rootId, relativePath }));
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      timers.delete(timer);
       const next = throttled.get(key);
       throttled.delete(key);
       if (next && live()) ignoredFolder(next);
     }, IGNORED_SUBTREE_REFRESH_MS);
+    timers.add(timer);
   };
 
-  return { folder, ignoredFolder };
+  const dispose = () => {
+    for (const timer of timers) clearTimeout(timer);
+    timers.clear();
+    throttled.clear();
+    queued.clear();
+  };
+
+  return { folder, ignoredFolder, dispose };
 }
