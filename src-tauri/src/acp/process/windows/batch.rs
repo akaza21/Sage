@@ -240,7 +240,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(plan.node, directory.join("node.exe"));
-        assert_eq!(plan.args[0], package.join("bin/reinstalled.js").into_os_string());
+        assert_eq!(
+            plan.args[0],
+            package.join("bin/reinstalled.js").into_os_string()
+        );
         drop((artifact, guard, spec));
         fs::remove_dir_all(directory).unwrap();
     }
