@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use super::{claude::read_json, validation::authentic_descendant_file};
+#[cfg(test)]
+use super::claude::read_json;
+use super::validation::authentic_descendant_file;
 
 /// Longest bin target read from a package manifest.
 pub(super) const BIN_ENTRY_BYTES_MAX: usize = 256;
@@ -16,7 +18,7 @@ pub(super) const BIN_ENTRY_BYTES_MAX: usize = 256;
 /// The installed module that `package`'s `bin.<name>` names, under the npm
 /// root that holds `node_modules`. The package must be the named one and the
 /// module an authentic file inside it.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg(test)]
 pub(crate) fn npm_package_bin(npm_root: &Path, package: &str, name: &str) -> Option<PathBuf> {
     let package_root = Path::new("node_modules").join(package);
     let manifest_relative = package_root.join("package.json");
@@ -24,10 +26,25 @@ pub(crate) fn npm_package_bin(npm_root: &Path, package: &str, name: &str) -> Opt
         return None;
     }
     let manifest = read_json(&npm_root.join(manifest_relative))?;
+    npm_package_bin_from_manifest(npm_root, package, name, &manifest)
+}
+
+/// Resolves a bin from manifest contents already verified and pinned by launch.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn npm_package_bin_from_manifest(
+    npm_root: &Path,
+    package: &str,
+    name: &str,
+    manifest: &Value,
+) -> Option<PathBuf> {
+    let package_root = Path::new("node_modules").join(package);
+    if !authentic_descendant_file(npm_root, package_root.join("package.json")) {
+        return None;
+    }
     if manifest.get("name").and_then(Value::as_str) != Some(package) {
         return None;
     }
-    let entry = package_root.join(bin_entry(&manifest, name)?);
+    let entry = package_root.join(bin_entry(manifest, name)?);
     authentic_descendant_file(npm_root, &entry).then(|| npm_root.join(entry))
 }
 

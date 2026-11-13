@@ -36,8 +36,10 @@ pub(crate) use claude::cached_sha256_file;
 pub(crate) use claude::{
     ClaudeLaunchDiscovery, DiscoveredClaudeLaunch, discover_claude_launch, sha256_file,
 };
-#[cfg(windows)]
+#[cfg(all(test, windows))]
 pub(crate) use npm_package::npm_package_bin;
+#[cfg(windows)]
+pub(crate) use npm_package::npm_package_bin_from_manifest;
 use parsing::parse_harness_display_version;
 #[cfg(test)]
 use parsing::parse_harness_version;

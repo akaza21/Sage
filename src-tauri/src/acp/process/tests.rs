@@ -423,7 +423,18 @@ fn windows_npm_codex_launcher_hands_node_ordinary_script_and_working_directory_p
             Sha256::digest(contents).into(),
             u64::try_from(contents.len()).unwrap(),
         )
-        .unwrap(),
+        .unwrap()
+        .with_manifest(Some(
+            ManifestExpectation::record(
+                script_directory
+                    .parent()
+                    .unwrap()
+                    .join("package.json")
+                    .canonicalize()
+                    .unwrap(),
+            )
+            .unwrap(),
+        )),
         fixed_args: BoundedOsArgs::new(vec![OsString::from("app-server")]).unwrap(),
         environment: BoundedEnvironment::new(
             ["PATH", "SystemRoot", "TEMP", "TMP", "WINDIR"]

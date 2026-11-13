@@ -1,6 +1,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
+use super::super::manifest::ManifestGuard;
 use super::super::supervisor::{BoundedEnvironment, BoundedOsArgs, LaunchError};
 use super::artifact::VerifiedArtifact;
 
@@ -16,6 +17,7 @@ pub(super) struct BatchLaunchPlan {
 
 pub(super) fn parse_npm_codex_launcher(
     artifact: &VerifiedArtifact,
+    manifest: Option<&ManifestGuard>,
     environment: &BoundedEnvironment,
     fixed_args: &BoundedOsArgs,
 ) -> Result<BatchLaunchPlan, LaunchError> {
@@ -27,11 +29,16 @@ pub(super) fn parse_npm_codex_launcher(
         .canonical_path
         .parent()
         .ok_or(LaunchError::InvalidAbsolutePath)?;
-    // The module the installed release's `bin.codex` names, never a path
-    // read from the shim, so an npm or Codex upgrade keeps launching.
-    let script =
-        crate::harness_discovery::npm_package_bin(launcher_directory, "@openai/codex", "codex")
-            .ok_or(LaunchError::IdentityMismatch)?;
+    let manifest = manifest.ok_or(LaunchError::IdentityMismatch)?;
+    let contents =
+        serde_json::from_slice(manifest.bytes()).map_err(|_| LaunchError::IdentityMismatch)?;
+    let script = crate::harness_discovery::npm_package_bin_from_manifest(
+        launcher_directory,
+        "@openai/codex",
+        "codex",
+        &contents,
+    )
+    .ok_or(LaunchError::IdentityMismatch)?;
     let adjacent_node = launcher_directory.join("node.exe");
     let node = if adjacent_node.is_file() {
         adjacent_node
@@ -77,8 +84,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn accepts_the_observed_npm_codex_launcher_and_resolves_node_from_path() {
+    fn npm_tree() -> PathBuf {
         let directory =
             std::env::temp_dir().join(format!("sage-batch-plan-{}", uuid::Uuid::new_v4()));
         let package = directory.join("node_modules/@openai/codex");
@@ -97,7 +103,15 @@ mod tests {
             "endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & \"%_prog%\"  ",
             "\"%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js\" %*\r\n"
         );
+        fs::write(directory.join("codex.cmd"), contents).unwrap();
+        fs::write(directory.join("node.exe"), b"node").unwrap();
         assert!(observed_npm_codex_launcher(contents.as_bytes()));
+        directory.canonicalize().unwrap()
+    }
+
+    #[test]
+    fn accepts_the_observed_npm_codex_launcher_and_resolves_node_from_path() {
+        let directory = npm_tree();
         assert_eq!(
             crate::harness_discovery::npm_package_bin(&directory, "@openai/codex", "codex")
                 .unwrap(),
@@ -108,6 +122,60 @@ mod tests {
                 .join("bin")
                 .join("codex.js")
         );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn refuses_a_manifest_only_bin_redirect_after_admission() {
+        use crate::acp::{
+            bindings::codex::{AdmittedCodexBinding, CodexProjectRootAuthority, CodexRuntime},
+            contract::{
+                ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
+            },
+        };
+        use crate::project_registry::ProjectRootAuthority;
+
+        let directory = npm_tree();
+        let launcher = directory.join("codex.cmd");
+        let package = directory.join("node_modules/@openai/codex");
+        fs::write(package.join("bin/other.js"), b"").unwrap();
+        let manifest = package.join("package.json");
+        let binding =
+            AdmittedCodexBinding::admit_observed_for_test(launcher, "0.167.1".into()).unwrap();
+        let root = ProjectRootAuthority::for_test(
+            SageProjectId::parse("project-batch-plan").unwrap(),
+            ProjectGeneration::ZERO,
+            SageRootId::parse("root-batch-plan").unwrap(),
+            &directory,
+        )
+        .unwrap();
+        let spec = CodexRuntime::from_admitted_binding(
+            std::sync::Arc::new(binding),
+            CodexProjectRootAuthority::for_test(root),
+            RuntimeEpoch::new(1).unwrap(),
+            SageAgentSessionId::parse("session-batch-plan").unwrap(),
+        )
+        .unwrap()
+        .launch_spec()
+        .unwrap();
+        let plan = || {
+            let (artifact, guard) = VerifiedArtifact::open_with_manifest(&spec)?;
+            parse_npm_codex_launcher(
+                &artifact,
+                guard.as_ref(),
+                &spec.environment,
+                &spec.fixed_args,
+            )
+        };
+        assert!(plan().is_ok());
+        fs::write(
+            manifest,
+            br#"{"name":"@openai/codex","bin":{"codex":"bin/other.js"}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(plan().err(), Some(LaunchError::IdentityMismatch));
+        drop(spec);
         fs::remove_dir_all(directory).unwrap();
     }
 

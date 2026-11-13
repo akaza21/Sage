@@ -76,7 +76,7 @@ pub(crate) fn launch(
             }
         };
     }
-    let (artifact, _manifest_guard) = pre_spawn!(VerifiedArtifact::open_with_manifest(spec));
+    let (artifact, manifest_guard) = pre_spawn!(VerifiedArtifact::open_with_manifest(spec));
     #[cfg(test)]
     if let Some(hook) = &spec.test_after_artifact_verified {
         hook();
@@ -95,6 +95,7 @@ pub(crate) fn launch(
         EntryPointKind::WindowsBatchLauncher => {
             let plan = pre_spawn!(parse_npm_codex_launcher(
                 &artifact,
+                manifest_guard.as_ref(),
                 &spec.environment,
                 &spec.fixed_args
             ));

@@ -353,6 +353,9 @@ fn uncharacterised_observed_codex_starts_without_a_model_catalogue() {
         fs::create_dir_all(&root).unwrap();
         let executable = root.join("codex.cmd");
         fs::write(&executable, b"@echo off\r\n").unwrap();
+        let package = root.join("node_modules/@openai/codex");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(package.join("package.json"), br#"{"name":"@openai/codex"}"#).unwrap();
         fs::write(root.join("node.exe"), b"node").unwrap();
         let registration = CodexBindingRegistration::unavailable_for_test();
         registration

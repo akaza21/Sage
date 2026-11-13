@@ -89,6 +89,11 @@ impl AdmittedCodexBinding {
         &self.entrypoint
     }
 
+    #[cfg(windows)]
+    pub(crate) fn package_manifest(&self) -> Option<&crate::acp::process::ManifestExpectation> {
+        self.observed.as_ref()?.manifest.as_ref()
+    }
+
     #[cfg(all(test, windows))]
     pub(crate) fn journey_test_entrypoint(&self) -> Option<&EntrypointIdentity> {
         self.journey_test_entrypoint.as_ref()
