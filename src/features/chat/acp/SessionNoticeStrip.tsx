@@ -1,7 +1,8 @@
 import { useState } from "react";
 
-import type { SessionNotice } from "../../../domain/acpProjection";
+import type { AcpChatPage, SessionNotice } from "../../../domain/acpProjection";
 import "./session-notice-strip.css";
+import { SessionSurfacePanel } from "./SessionSurfacePanel";
 
 const LEVEL_LABEL: Record<SessionNotice["level"], string> = {
   info: "Notice",
@@ -12,6 +13,26 @@ const LEVEL_LABEL: Record<SessionNotice["level"], string> = {
 /** A notice's identity: the session surface already collapses repeats. */
 const keyOf = (notice: SessionNotice) =>
   `${notice.level}\u0000${notice.source ?? ""}\u0000${notice.text}`;
+
+/** The page's session notices, then its background activities and Undo. */
+export function SessionStrip({ page }: { page: AcpChatPage }) {
+  return (
+    <>
+      {page.sessionNotices?.length ? (
+        <SessionNoticeStrip
+          session={page.chatId + page.currentSessionId}
+          notices={page.sessionNotices}
+        />
+      ) : null}
+      {page.sessionSurface ? (
+        <SessionSurfacePanel
+          surface={page.sessionSurface}
+          chatId={page.chatId}
+        />
+      ) : null}
+    </>
+  );
+}
 
 interface Dismissed {
   session: string;
@@ -83,7 +104,7 @@ export function SessionNoticeStrip({
       {shown.length > 1 ? (
         <button
           type="button"
-          className="button--compact acp-session-notices__clear"
+          className="button button--compact acp-session-notices__clear"
           onClick={() => dismiss(shown.map(keyOf))}
         >
           Dismiss all

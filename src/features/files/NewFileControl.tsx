@@ -124,7 +124,7 @@ function NewEntryControl({
         ref={triggerRef}
         type="button"
         aria-label={`New ${label}`}
-        title={parent ? `New ${label}` : "Select an available Project root"}
+        title={parent ? `New ${label}` : "Select an available project root"}
         disabled={!parent || projectTransitioning}
         onClick={() => {
           const state = useWorkbenchStore.getState();
@@ -194,7 +194,7 @@ function NewEntryControl({
                   ? "Creating…"
                   : kind === "file"
                     ? "Create"
-                    : "Create Folder"}
+                    : "Create folder"}
               </button>
             </div>
           </form>

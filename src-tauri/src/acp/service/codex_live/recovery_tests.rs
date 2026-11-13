@@ -286,6 +286,13 @@ fn live_process_runner_failure_remains_capacity_blocked() {
 }
 
 async fn ready_runtime_fixture(label: &str) -> (AcpService, RuntimeOwner) {
+    ready_runtime_fixture_with(label, test_capabilities()).await
+}
+
+async fn ready_runtime_fixture_with(
+    label: &str,
+    capabilities: crate::acp::intent::CapabilitySnapshotV1,
+) -> (AcpService, RuntimeOwner) {
     let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
     let root = std::env::current_dir().unwrap().canonicalize().unwrap();
     let project = database.create_project_from_root(&root).unwrap();
@@ -311,7 +318,7 @@ async fn ready_runtime_fixture(label: &str) -> (AcpService, RuntimeOwner) {
     };
     let chat_id = SageChatId::parse(chat).unwrap();
     let service = AcpService::new(database).unwrap();
-    let owner = seat_ready_session(&service, project_id, chat_id, label).await;
+    let owner = seat_ready_session_with(&service, project_id, chat_id, label, capabilities).await;
     (service, owner)
 }
 
@@ -322,6 +329,16 @@ async fn seat_ready_session(
     project_id: SageProjectId,
     chat_id: SageChatId,
     label: &str,
+) -> RuntimeOwner {
+    seat_ready_session_with(service, project_id, chat_id, label, test_capabilities()).await
+}
+
+async fn seat_ready_session_with(
+    service: &AcpService,
+    project_id: SageProjectId,
+    chat_id: SageChatId,
+    label: &str,
+    capabilities: crate::acp::intent::CapabilitySnapshotV1,
 ) -> RuntimeOwner {
     let revision = service
         .load_chat_page(project_id.clone(), chat_id.clone(), None)
@@ -377,7 +394,7 @@ async fn seat_ready_session(
                 format!("{label}-external"),
             )
             .unwrap(),
-            capabilities_json: serde_json::to_string(&test_capabilities()).unwrap(),
+            capabilities_json: serde_json::to_string(&capabilities).unwrap(),
             now_millis: crate::persistence::now_millis(),
         })
         .await
@@ -997,7 +1014,8 @@ fn steer_ack_timeout_keeps_runtime_live_for_an_explicit_retry() {
         host.send(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
             access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
-        })?;
+        })
+        .map_err(|failure| failure.error)?;
         Ok::<(), crate::acp::runtime::HostError>(())
     })
     .unwrap();
@@ -1524,6 +1542,7 @@ fn archiving_a_chat_after_its_turn_parks_its_runtime_and_it_then_deletes() {
             client_intent_id: ClientIntentId::new(),
             binding_id: BindingId::new("bindingId", "archive-command-recovery").unwrap(),
             model_id: None,
+            effort: None,
         },
     ));
     assert_archived_refusal(started.map(|_| ()));
@@ -1653,6 +1672,7 @@ fn archive_refuses_a_running_turn_and_an_archived_chat_takes_no_prompt() {
             runtime_epoch: owner.runtime_epoch,
             prompt: crate::acp::intent::Prompt::new("prompt", "archived").unwrap(),
             attached_context: Default::default(),
+            staged: None,
         },
     ));
     let failure = refused.expect_err("an archived Chat takes no prompt");
@@ -2163,7 +2183,9 @@ fn cancel_settles_a_turn_whose_host_failed_closed() {
             command: prepare_turn(&owner),
             access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         }),
-        Err(crate::acp::runtime::HostError::SignInRequired)
+        Err(crate::acp::intent::PromptSendError::unknown(
+            crate::acp::runtime::HostError::SignInRequired
+        ))
     );
     assert!(matches!(
         host.cancel(cancel_intent(&owner)),
@@ -2226,5 +2248,200 @@ async fn refused_prompt_recovery_allows_other_async_work_to_progress() {
     assert!(matches!(failure.error, CodexSessionError::SignInRequired));
     assert!(turn_state(&service, &owner).is_terminal());
     assert!(service.lane_for(&owner).is_none());
+    service.shutdown_blocking().unwrap();
+}
+
+/// Records the completed Turn that makes an idle runtime one eviction could
+/// park.
+fn complete_a_turn(service: &AcpService, owner: &RuntimeOwner) {
+    service
+        .database
+        .connection()
+        .execute(
+            "INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,
+                 state,delivery_state,revision,created_at,updated_at,terminal_at)
+             VALUES('turn-idle-release',?1,?2,?3,?4,0,'intent-idle-release','completed','correlated',0,1,1,1)",
+            rusqlite::params![
+                owner.project_id.as_str(),
+                owner.chat_id.as_str(),
+                owner.session_id.as_str(),
+                owner.runtime_epoch.get() as i64
+            ],
+        )
+        .unwrap();
+}
+
+fn runtime_epoch_is_live(service: &AcpService, owner: &RuntimeOwner) -> bool {
+    service
+        .database
+        .connection()
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM session_runtime_epochs WHERE chat_id=?1
+               AND state IN ('starting','running','terminating'))",
+            [owner.chat_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+fn idle_release_fixture(label: &str) -> (AcpService, RuntimeOwner) {
+    idle_runtime_fixture(label, true, true)
+}
+
+fn idle_runtime_fixture(
+    label: &str,
+    resumable: bool,
+    completed_turn: bool,
+) -> (AcpService, RuntimeOwner) {
+    let capabilities = crate::acp::intent::CapabilitySnapshotV1 {
+        resume_session: resumable,
+        ..test_capabilities()
+    };
+    let (service, owner) =
+        tauri::async_runtime::block_on(ready_runtime_fixture_with(label, capabilities));
+    if completed_turn {
+        complete_a_turn(&service, &owner);
+    }
+    let host = Arc::new(
+        crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
+            TestRuntime::default(),
+            Arc::new(SuccessfulShutdownRecovery(owner.runtime_epoch.get())),
+        )
+        .unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    service.install_runtime_for_test(owner.clone(), host);
+    (service, owner)
+}
+
+const MINUTE: Duration = Duration::from_secs(60);
+
+#[test]
+fn an_idle_chat_out_of_view_releases_its_runtime_after_two_minutes() {
+    let (service, owner) = idle_release_fixture("idle-hidden");
+    let start = std::time::Instant::now();
+
+    // Shown, it is kept well past the out-of-view wait.
+    service.set_shown_chats([owner.chat_id.clone()]);
+    assert_eq!(service.release_idle_runtimes(start + 3 * MINUTE), Some(0));
+    assert!(service.lane_for(&owner).is_some());
+
+    // Out of view from now: not yet two minutes, then two minutes.
+    service.set_shown_chats([]);
+    assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
+    assert!(service.lane_for(&owner).is_some());
+    assert_eq!(
+        service.release_idle_runtimes(start + 2 * MINUTE + Duration::from_secs(1)),
+        Some(1)
+    );
+    assert!(service.lane_for(&owner).is_none());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+    assert!(
+        !runtime_epoch_is_live(&service, &owner),
+        "the parked runtime epoch is no longer live"
+    );
+    assert!(
+        service.lane_at(0).scheduler.active().is_none(),
+        "the lane is free for the next activation"
+    );
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn an_idle_chat_in_view_is_released_only_after_fifteen_minutes() {
+    let (service, owner) = idle_release_fixture("idle-shown");
+    let start = std::time::Instant::now();
+    service.set_shown_chats([owner.chat_id.clone()]);
+    assert_eq!(service.release_idle_runtimes(start + 14 * MINUTE), Some(0));
+    assert!(service.lane_for(&owner).is_some());
+    assert_eq!(service.release_idle_runtimes(start + 15 * MINUTE), Some(1));
+    assert!(service.lane_for(&owner).is_none());
+    assert!(!runtime_epoch_is_live(&service, &owner));
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn before_any_view_report_only_the_fifteen_minute_rule_applies() {
+    let (service, owner) = idle_release_fixture("idle-unreported");
+    let start = std::time::Instant::now();
+    assert_eq!(service.release_idle_runtimes(start + 5 * MINUTE), Some(0));
+    assert_eq!(service.release_idle_runtimes(start + 10 * MINUTE), Some(0));
+    assert!(service.lane_for(&owner).is_some());
+    assert_eq!(service.release_idle_runtimes(start + 15 * MINUTE), Some(1));
+    assert!(service.lane_for(&owner).is_none());
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn a_lane_held_by_an_activation_keeps_an_idle_chat_runtime() {
+    let (service, owner) = idle_release_fixture("idle-held");
+    let start = std::time::Instant::now();
+    service.set_shown_chats([]);
+    {
+        let _claim = service.claim_lane_activation_for_test(&owner);
+        assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), Some(0));
+        assert!(service.lane_for(&owner).is_some());
+    }
+    // The refused sweep let go of nothing it did not hold.
+    drop(service.claim_lane_activation_for_test(&owner));
+    // Once let go, the next sweep releases it.
+    assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), Some(1));
+    assert!(service.lane_for(&owner).is_none());
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn a_chat_shown_again_is_kept_and_sweeping_ends_at_shutdown() {
+    let (service, owner) = idle_release_fixture("idle-returned");
+    let start = std::time::Instant::now();
+    service.set_shown_chats([]);
+    assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
+    // Coming back before two minutes clears the out-of-view mark.
+    service.set_shown_chats([owner.chat_id.clone()]);
+    assert_eq!(service.release_idle_runtimes(start + 5 * MINUTE), Some(0));
+    assert!(service.lane_for(&owner).is_some());
+
+    service.shutdown_blocking().unwrap();
+    assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), None);
+}
+
+#[test]
+fn a_session_that_cannot_resume_or_never_completed_a_turn_is_kept() {
+    for (label, resumable, completed_turn) in [
+        ("idle-unresumable", false, true),
+        ("idle-unused", true, false),
+    ] {
+        let (service, owner) = idle_runtime_fixture(label, resumable, completed_turn);
+        let start = std::time::Instant::now();
+        service.set_shown_chats([]);
+        assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
+        // Parking would lose the conversation, or nothing proves it resumes.
+        assert_eq!(
+            service.release_idle_runtimes(start + 30 * MINUTE),
+            Some(0),
+            "{label}"
+        );
+        assert!(service.lane_for(&owner).is_some(), "{label}");
+        assert!(runtime_epoch_is_live(&service, &owner), "{label}");
+        service.shutdown_blocking().unwrap();
+    }
+}
+
+#[test]
+fn a_chat_shown_again_while_a_sweep_runs_is_kept() {
+    let (service, owner) = idle_release_fixture("idle-came-back");
+    let start = std::time::Instant::now();
+    service.set_shown_chats([]);
+    assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
+    let now = start + 3 * MINUTE;
+    let due = service.idle_runtimes_due(now);
+    assert_eq!(due.len(), 1);
+    // The user opens the Chat while earlier lanes of the sweep are parking.
+    service.set_shown_chats([owner.chat_id.clone()]);
+    let (index, due_owner, idle_since) = due.into_iter().next().unwrap();
+    let deadline = crate::acp::service::explicit_close_deadline();
+    assert!(!service.park_idle_lane(index, &due_owner, idle_since, now, deadline));
+    assert!(service.lane_for(&owner).is_some());
+    assert!(runtime_epoch_is_live(&service, &owner));
     service.shutdown_blocking().unwrap();
 }

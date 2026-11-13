@@ -207,6 +207,10 @@ pub enum ItemContent {
         role: TextRole,
         text: SafeText<262144>,
     },
+    /// A message the user steered into the running Turn, at its place.
+    UserPrompt {
+        text: SafeText<262144>,
+    },
     ThoughtSummary {
         summary: SafeText<262144>,
     },
@@ -328,6 +332,10 @@ pub struct TurnProjection {
     /// run it again on Retry and offers no Retry for one it cannot run.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) session_action: Option<serde_json::Value>,
+    /// The listed command this Turn ran, as stored, so the chat shows the
+    /// prompt as that command.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) command: Option<serde_json::Value>,
     pub id: SageTurnId,
     pub session_id: SageAgentSessionId,
     pub runtime_epoch: RuntimeEpoch,
@@ -407,6 +415,9 @@ pub struct AcpChatPage {
     /// The current session's live runtime reports usage limits.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) usage: bool,
+    /// Notices and live activities of the current session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) session_surface: Option<super::intent::session_event::SessionSurfaceView>,
     pub project_id: SageProjectId,
     pub chat_id: SageChatId,
     pub title: SafeText<8192>,

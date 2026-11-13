@@ -8,11 +8,6 @@
   flex: none;
 }
 
-.composer__popover.menu-popover {
-  --menu-focus-edge: var(--color-border-strong);
-  --menu-selected-fill: var(--color-surface-hover);
-}
-
 .composer-access-menu.menu-popover {
   width: min(420px, calc(100vw - 16px));
   max-width: min(420px, calc(100vw - 16px));
@@ -46,7 +41,6 @@
   grid-row: 1;
 }
 
-/* Beats the shared uppercase .menu-group-label wherever the cascade puts it. */
 .menu-group-label.composer__add-heading {
   text-transform: none;
   letter-spacing: normal;
@@ -84,12 +78,6 @@
   white-space: normal;
 }
 
-/* The compact composer control retains its established type size. */
-.composer__harness,
-.composer__harness-menu.menu-popover {
-  --picker-harness-type-size: 11px;
-}
-
 .composer__harness .searchable-picker {
   height: 100%;
 }
@@ -100,11 +88,11 @@
   min-height: 0;
   padding: var(--picker-trigger-padding, 0 var(--space-1));
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   color: var(--composer-control-text);
   background: transparent;
-  font-size: var(--picker-harness-type-size);
-  font-weight: 400;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
 }
 
@@ -125,14 +113,9 @@
 }
 
 .composer__harness-menu.menu-popover {
-  --menu-focus-edge: var(--color-border-strong);
-  --menu-selected-fill: var(--color-surface-hover);
   display: flex;
   flex-direction: column;
   width: min(var(--picker-harness-menu-width), calc(100vw - var(--space-8)));
-  border-radius: var(--radius-composer-menu);
-  background: var(--color-plane-raised);
-  backdrop-filter: none;
 }
 
 .composer__harness-menu .searchable-picker__current,
@@ -195,7 +178,7 @@
   flex: 1 1 auto;
   flex-direction: column;
   gap: var(--border-width);
-  font-weight: 600;
+  font-weight: var(--font-weight-medium);
   line-height: 1.2;
 }
 
@@ -203,10 +186,21 @@
   :is(.searchable-picker__subtitle, .searchable-picker__reason) {
   overflow: hidden;
   color: var(--composer-muted-text);
-  font-size: var(--picker-harness-type-size);
+  font-size: var(--font-size-xs);
   font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Why a harness cannot be picked is the row's point, so it wraps to a
+   second line instead of being cut to a few words; a longer reason ends in
+   an ellipsis there and stays whole in the row's tooltip and description. */
+.composer__harness-menu .searchable-picker__reason {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
 }
 
 .composer__harness-menu .searchable-picker__option:hover,

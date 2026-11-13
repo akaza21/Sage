@@ -118,7 +118,9 @@ test.describe("Editor focus frame", () => {
     const text = await content.evaluate((node) => node.textContent);
 
     // Tab from the artifact tab reaches the text.
-    await pane.locator(".tab--active").first().focus();
+    const tab = pane.getByRole("tab", { selected: true });
+    await tab.focus();
+    await expect(tab).toBeFocused();
     for (let step = 0; step < 12; step += 1) {
       if (await content.evaluate((node) => node === document.activeElement))
         break;

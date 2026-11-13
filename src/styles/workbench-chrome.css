@@ -17,6 +17,7 @@
   --workbench-card-radius: var(--radius-xl);
   --workbench-card-fill: var(--agent-shell-center);
   --workbench-card-margin: var(--space-2);
+  font-family: var(--font-family-agent);
 }
 .title-bar {
   display: grid;
@@ -167,16 +168,39 @@
   background: var(--tab-strip-fill, var(--color-canvas));
 }
 
+/* Overflowing tabs scroll without a scrollbar; a fade marks each edge that
+   hides tabs (useResourceTabStrip sets data-overflow), and scroll padding
+   keeps a revealed tab clear of the fade. */
 .tab-strip__scroll {
+  --tab-strip-fade-size: var(--space-6);
   display: flex;
   min-width: 0;
   flex: 1;
   overflow-x: auto;
+  scroll-padding-inline: var(--tab-strip-fade-size);
   scrollbar-width: none;
 }
 
 .tab-strip__scroll::-webkit-scrollbar {
   display: none;
+}
+
+.tab-strip__scroll[data-overflow] {
+  mask-image: linear-gradient(
+    to right,
+    var(--tab-strip-fade-start, black),
+    black var(--tab-strip-fade-size),
+    black calc(100% - var(--tab-strip-fade-size)),
+    var(--tab-strip-fade-end, black)
+  );
+}
+
+.tab-strip__scroll[data-overflow~="start"] {
+  --tab-strip-fade-start: transparent;
+}
+
+.tab-strip__scroll[data-overflow~="end"] {
+  --tab-strip-fade-end: transparent;
 }
 
 .tab {

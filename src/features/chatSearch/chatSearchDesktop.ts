@@ -27,7 +27,7 @@ export function createProjectChatSearchAdapter(
         response.transitionEpoch !== normalized.expectedTransitionEpoch ||
         response.query !== normalized.query
       ) {
-        throw new Error("Project Chat search returned another intent identity");
+        throw new Error("Project chat search returned another intent identity");
       }
       return response;
     },

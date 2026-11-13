@@ -55,9 +55,11 @@ test("CP-17(b) refs 08/15/17/19: running header and chronological rows fit a 560
   await expect(pane).toHaveCSS("width", "560px");
   const work = pane.locator(".chat-transcript-work");
   await expect(work).toHaveCount(1);
-  await expect(
-    work.locator(":scope > .chat-transcript-work__heading"),
-  ).toContainText("Working for");
+  const heading = work.locator(":scope > .chat-transcript-work__heading");
+  await expect(heading).toHaveText("Working for 19m");
+  // Timer callbacks still run, but capture timing must not age the fixture.
+  await page.clock.runFor(1_100);
+  await expect(heading).toHaveText("Working for 19m");
   await expect(work.locator(":scope > summary")).toHaveCount(0);
   const rows = work.locator(
     ".acp-tool-rollup__label, .acp-message--assistant .acp-markdown",

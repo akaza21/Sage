@@ -90,17 +90,45 @@ pub(in crate::acp::bindings::codex) fn parse_reasoning_efforts(
         .iter()
         .map(|value| {
             let effort = value.as_object().ok_or(IngressError::Malformed)?;
-            if effort.len() != 2 {
-                return Err(IngressError::Malformed);
-            }
             Ok(ReasoningEffort {
                 id: RequiredText::new(
                     "reasoningEffort",
                     text(effort, "reasoningEffort", 512)?.to_owned(),
                 )
                 .map_err(content)?,
-                description: text(effort, "description", 8_192)?.to_owned(),
+                // Older and newer releases omit or blank the description.
+                description: match effort.get("description") {
+                    None | Some(Value::Null) => String::new(),
+                    Some(Value::String(description))
+                        if description.len() <= 8_192 && !description.contains('\0') =>
+                    {
+                        description.clone()
+                    }
+                    Some(_) => return Err(IngressError::Malformed),
+                },
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::parse_reasoning_efforts;
+
+    #[test]
+    fn an_effort_with_new_members_or_no_description_is_still_offered() {
+        let efforts = parse_reasoning_efforts(&json!([
+            {"reasoningEffort":"high","description":"Deep","budget":"large"},
+            {"reasoningEffort":"ultra"},
+            {"reasoningEffort":"low","description":null}
+        ]))
+        .unwrap();
+        let read = efforts
+            .iter()
+            .map(|effort| (effort.id.as_str(), effort.description.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(read, [("high", "Deep"), ("ultra", ""), ("low", "")]);
+    }
 }

@@ -11,11 +11,7 @@ use super::{
 /// row whose role is `assistant`.
 pub(crate) fn assistant_text(payload_json: &str) -> Option<String> {
     use super::{intent::NormalizedPayload, projection::TextRole};
-    let (payload, role) = match serde_json::from_str::<NormalizedPayload>(payload_json) {
-        Ok(value) => (value, None),
-        Err(_) => super::store::parse_legacy_text(payload_json).ok()?,
-    };
-    match (payload, role) {
+    match super::store::decode_payload(payload_json).ok()? {
         (NormalizedPayload::Text { text }, None | Some(TextRole::Assistant)) => {
             Some(text.as_str().to_owned())
         }
@@ -57,7 +53,8 @@ pub(crate) fn validate_quote_sources(
         })
 }
 
-/// Checks a quote against the durable answer it names. Offsets count UTF-16
+/// Checks a quote against the visible durable answer it names; an undone
+/// Turn's answer is no longer in the conversation. Offsets count UTF-16
 /// units of the rendered answer, which never exceeds its Markdown source, so
 /// the source length bounds the range. Side chats quote their parent Chat, so
 /// the item only has to belong to the same Project.
@@ -69,8 +66,11 @@ pub(crate) fn validate_quote_source(
     use rusqlite::OptionalExtension;
     let payload: Option<String> = connection
         .query_row(
-            "SELECT payload_json FROM items
-             WHERE project_id=?1 AND turn_id=?2 AND id=?3 AND kind='text'",
+            concat!(
+                "SELECT i.payload_json FROM items i
+                 WHERE i.project_id=?1 AND i.turn_id=?2 AND i.id=?3 AND i.kind='text' AND ",
+                crate::acp::store::turn_undo::visible_turn!("i.session_id", "i.turn_id")
+            ),
             rusqlite::params![project_id, quote.source_turn_id, quote.source_item_id],
             |row| row.get(0),
         )
@@ -167,11 +167,15 @@ pub struct Prompt {
     #[serde(skip)]
     pub(crate) command_revision: Option<u64>,
     #[serde(skip)]
+    pub(crate) command: Option<super::slash_commands::CommandMark>,
+    #[serde(skip)]
     pub(crate) action: Option<super::session_action::SessionAction>,
     #[serde(skip)]
     context: Option<Box<(String, AttachedContexts)>>,
     #[serde(skip)]
     pub(crate) resources: super::attached_context::files::Resources,
+    #[serde(skip)]
+    pub(crate) mentions: super::prompt_mentions::Mentions,
     #[serde(skip)]
     pub(crate) images: super::attached_context::files::images::PromptImages,
 }
@@ -182,8 +186,10 @@ impl Prompt {
             text: RequiredText::new(field, text)?,
             context: None,
             command_revision: None,
+            command: None,
             action: None,
             resources: Default::default(),
+            mentions: Default::default(),
             images: Default::default(),
         })
     }
@@ -202,6 +208,7 @@ impl Prompt {
     }
     pub(crate) fn retained_bytes(&self) -> usize {
         self.resources.retained_bytes()
+            + self.mentions.retained_bytes()
             + self.images.retained_bytes()
             + self.as_str().len()
             + self.context.as_ref().map_or(0, |context| {
@@ -215,6 +222,12 @@ impl Prompt {
         self.context = Some(Box::new((original.as_str().to_owned(), context.clone())));
         self
     }
+    /// The text the user wrote, before Sage attached any quoted context.
+    pub(crate) fn display_text(&self) -> &str {
+        self.context
+            .as_ref()
+            .map_or(self.as_str(), |context| context.0.as_str())
+    }
     pub(crate) fn user_payload(&self) -> serde_json::Value {
         let mut payload = match &self.context {
             Some(context) => {
@@ -222,8 +235,15 @@ impl Prompt {
             }
             None => serde_json::json!({ "role": "user", "text": self.as_str() }),
         };
+        // Only the count is durable, so a Retry after a restart can tell a
+        // prompt that carried files from one that carried none. It is
+        // always written, none included, so every new prompt states it.
+        payload["attachments"] = self.resources.0.len().into();
         if let Some(action) = &self.action {
             payload["sessionAction"] = serde_json::json!(action);
+        }
+        if let Some(command) = &self.command {
+            payload["command"] = serde_json::json!(command);
         }
         payload
     }
@@ -235,6 +255,8 @@ pub(crate) struct PromptMetadata {
     pub(crate) attached_context: Vec<super::attached_context::AttachedContext>,
     /// As stored, so an action this build does not run still marks its Turn.
     pub(crate) session_action: Option<serde_json::Value>,
+    /// The listed command the Turn ran, as stored.
+    pub(crate) command: Option<serde_json::Value>,
 }
 
 pub(crate) fn load_prompt_metadata(
@@ -260,10 +282,10 @@ pub(crate) fn load_prompt_metadata(
             .to_vec(),
         None => Vec::new(),
     };
-    let session_action = field("sessionAction").cloned();
     Ok(PromptMetadata {
         attached_context,
-        session_action,
+        session_action: field("sessionAction").cloned(),
+        command: field("command").cloned(),
     })
 }
 
@@ -284,6 +306,12 @@ mod tests {
             "Explain\n\nAnnotations on earlier assistant output (quoted context; cite as \"Annotation N\"):\n- Annotation 1\n  Selected text (JSON-quoted): \"a \\\"quote\\\"\\nnext\"\n  User comment (JSON-quoted): \"Why?\"\n- Annotation 2\n  Selected text (JSON-quoted): \"other\"\n  User comment (JSON-quoted): (none)"
         );
         assert_eq!(prompt.user_payload()["text"], "Explain");
+        // Every prompt records its attachment count, none included.
+        assert_eq!(prompt.user_payload()["attachments"], 0);
+        assert_eq!(
+            Prompt::new("prompt", "Plain").unwrap().user_payload()["attachments"],
+            0
+        );
         assert_eq!(
             prompt.user_payload()["attachedContext"]
                 .as_array()
@@ -389,17 +417,27 @@ mod tests {
     #[test]
     fn quote_sources_must_be_a_durable_assistant_answer_long_enough_for_the_range() {
         let connection = rusqlite::Connection::open_in_memory().unwrap();
-        connection.execute_batch("CREATE TABLE items(id TEXT,project_id TEXT,turn_id TEXT,kind TEXT,payload_json TEXT)").unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE items(id TEXT,project_id TEXT,session_id TEXT,turn_id TEXT,kind TEXT,payload_json TEXT);
+                 CREATE TABLE session_facts(session_id TEXT,turn_id TEXT,kind TEXT);
+                 INSERT INTO session_facts VALUES ('session','undone-turn','turnUndone');",
+            )
+            .unwrap();
         let text = "Durable \u{6c34} answer";
+        let answer = serde_json::to_string(&crate::acp::intent::NormalizedPayload::Text {
+            text: crate::acp::contract::SafeText::new("text", text).unwrap(),
+        })
+        .unwrap();
+        connection
+            .execute(
+                "INSERT INTO items VALUES ('undone-answer','project','session','undone-turn','text',?1)",
+                [&answer],
+            )
+            .unwrap();
         for (id, payload) in [
             // Native ingress: NormalizedPayload::Text, no role.
-            (
-                "answer",
-                serde_json::to_string(&crate::acp::intent::NormalizedPayload::Text {
-                    text: crate::acp::contract::SafeText::new("text", text).unwrap(),
-                })
-                .unwrap(),
-            ),
+            ("answer", answer.clone()),
             // Legacy rows carry a role; only assistant prose is quotable.
             (
                 "legacy-answer",
@@ -414,7 +452,7 @@ mod tests {
         ] {
             connection
                 .execute(
-                    "INSERT INTO items VALUES (?1,'project','turn','text',?2)",
+                    "INSERT INTO items VALUES (?1,'project','session','turn','text',?2)",
                     rusqlite::params![id, payload],
                 )
                 .unwrap();
@@ -436,6 +474,7 @@ mod tests {
             ("answer", "other-turn", 5, "project"),
             ("missing", "turn", 5, "project"),
             ("answer", "turn", 5, "other-project"),
+            ("undone-answer", "undone-turn", 5, "project"),
         ] {
             assert!(
                 validate_quote_source(&connection, project, &quote(item, turn, end)).is_err(),

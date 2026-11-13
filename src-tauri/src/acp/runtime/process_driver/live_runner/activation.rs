@@ -42,7 +42,7 @@ where
     loop {
         if driver.completion_ready(mailbox) {
             return match driver.try_into_idle_parts(mailbox) {
-                Ok(parts) => Ok(FirstTurnWorkerState::Idle(parts)),
+                Ok(parts) => Ok(FirstTurnWorkerState::Idle(Box::new(parts))),
                 Err(failure) => {
                     driver = failure.driver;
                     continue;

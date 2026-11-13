@@ -126,9 +126,16 @@ it("keeps a Turn whose stored session action the chat cannot run, without it", (
   const compact = safeTurn({ ...turn, sessionAction: { kind: "compact" } });
   expect(compact?.sessionAction).toEqual({ kind: "compact" });
   expect(compact?.unrecognizedAction).toBeUndefined();
+  const review = {
+    kind: "review",
+    target: { kind: "baseBranch", branch: "main" },
+  };
+  expect(safeTurn({ ...turn, sessionAction: review })?.sessionAction).toEqual(
+    review,
+  );
   for (const sessionAction of [
     { kind: "unrecognized" },
-    { kind: "review", target: { kind: "baseBranch", branch: "main" } },
+    { kind: "review", target: { kind: "pullRequest", number: 7 } },
     "compact",
   ]) {
     const kept = safeTurn({ ...turn, sessionAction });
@@ -137,6 +144,39 @@ it("keeps a Turn whose stored session action the chat cannot run, without it", (
     expect(kept?.unrecognizedAction).toBe(true);
   }
   expect(safeTurn(turn)?.unrecognizedAction).toBeUndefined();
+});
+
+it("keeps the listed command a Turn ran and drops a mark it cannot show", () => {
+  const turn = {
+    id: "turn",
+    sessionId: "session",
+    runtimeEpoch: "1",
+    ordinal: 1,
+    state: "completed",
+    revision: "1",
+    createdAt: 1,
+    updatedAt: 2,
+    terminalAt: 2,
+    items: [],
+    activities: [],
+  };
+  const command = { name: "deploy", source: "skill" };
+  expect(safeTurn({ ...turn, command })?.command).toEqual(command);
+  for (const invalid of [
+    { name: "deploy", source: "invented" },
+    { name: "two words", source: "skill" },
+    { name: "a/b", source: "skill" },
+    { name: "", source: "skill" },
+    { name: "x".repeat(129), source: "skill" },
+    { name: "deploy", source: "skill", extra: 1 },
+    { name: "deploy" },
+    "deploy",
+    null,
+  ]) {
+    const kept = safeTurn({ ...turn, command: invalid });
+    expect(kept?.id).toBe("turn");
+    expect(kept && "command" in kept).toBe(false);
+  }
 });
 
 const request: StartAcpSessionRequest = {

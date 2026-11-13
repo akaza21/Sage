@@ -85,16 +85,26 @@ export function safeItem(value: unknown): AcpItem | null {
   if (!identity) return null;
   const { payload } = value;
   switch (value.kind) {
-    case "text": {
+    case "text":
+    case "userPrompt": {
       const text = safeText(payload.text, 262_144);
-      return value.toolState === null &&
-        text !== null &&
-        isOneOf(payload.role, ["user", "assistant", "system"] as const)
+      if (value.toolState !== null || text === null) return null;
+      const { role } = payload;
+      if (value.kind === "userPrompt")
+        return Object.keys(payload).length === 1
+          ? {
+              ...identity,
+              kind: "userPrompt",
+              toolState: null,
+              payload: { text },
+            }
+          : null;
+      return isOneOf(role, ["user", "assistant", "system"] as const)
         ? {
             ...identity,
             kind: "text",
             toolState: null,
-            payload: { role: payload.role, text },
+            payload: { role, text },
           }
         : null;
     }

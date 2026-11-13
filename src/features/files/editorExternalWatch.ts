@@ -20,12 +20,12 @@ export { EDITOR_EXTERNAL_WATCH_EVENT };
 export const EDITOR_WATCH_LIMIT_ERROR = "editor-watch-limit-reached";
 
 export const WATCH_LIMIT_MESSAGE =
-  "File is not watched: the external-change watch limit was reached. Focus this File to retry.";
+  "File is not watched: the external-change watch limit was reached. Focus this file to retry.";
 export const WATCH_UNAVAILABLE_MESSAGE =
   "File is not watched: external-change notifications could not start.";
 /** Shown quietly: the File is gone, and is watched again once it exists. */
 export const WATCH_MISSING_MESSAGE =
-  "Not watched while the File is missing. Sage checks for it every few seconds.";
+  "Not watched while the file is missing. Sage checks for it every few seconds.";
 const WATCH_RETRY_MS = 2_000;
 
 /** Returns the element whose focus means the user is back in this File. */

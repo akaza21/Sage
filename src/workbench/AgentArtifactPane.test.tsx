@@ -810,7 +810,7 @@ describe("Agent artifact file chips", () => {
     expect(within(expand).queryByText("Changes")).toBeNull();
     expect(within(expand).queryByText("Preview")).toBeNull();
     expect(
-      screen.queryByRole("heading", { name: "Waiting for this Chat" }),
+      screen.queryByRole("heading", { name: "Waiting for this chat" }),
     ).toBeNull();
 
     fireEvent.click(expand);
@@ -820,7 +820,7 @@ describe("Agent artifact file chips", () => {
       <AgentArtifactPane expanded onExpandedChange={onExpandedChange} />,
     );
     expect(
-      screen.getByRole("heading", { name: "Waiting for this Chat" }),
+      screen.getByRole("heading", { name: "Waiting for this chat" }),
     ).toBeVisible();
     expect(
       screen.getByText(/Open a file or change from the conversation/),
@@ -2377,7 +2377,7 @@ describe("Agent artifact file chips", () => {
       screen.getByRole("tab", { name: "Browser Example Domain" }),
     ).toHaveAttribute("aria-selected", "false");
     expect(
-      screen.queryByRole("heading", { name: "Waiting for this Chat" }),
+      screen.queryByRole("heading", { name: "Waiting for this chat" }),
     ).toBeNull();
   });
 
@@ -2437,7 +2437,7 @@ describe("Agent artifact file chips", () => {
     });
     expect(browserTab).toHaveAttribute("aria-selected", "true");
     expect(
-      screen.queryByRole("heading", { name: "Waiting for this Chat" }),
+      screen.queryByRole("heading", { name: "Waiting for this chat" }),
     ).toBeNull();
   });
 
@@ -2737,7 +2737,7 @@ describe("Agent artifact pane Changes ownership", () => {
     rerender(<AgentArtifactPane expanded />);
     // The session is unknown until the projection loads: no invented review.
     expect(
-      screen.getByRole("heading", { name: "Waiting for this Chat" }),
+      screen.getByRole("heading", { name: "Waiting for this chat" }),
     ).toBeVisible();
     expect(useAgentChangesState.getState().owner).toBeNull();
     act(() => {
@@ -2778,7 +2778,7 @@ describe("Agent artifact pane Changes ownership", () => {
     act(() => store.getState().clear());
     expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
     expect(
-      screen.getByRole("heading", { name: "Waiting for this Chat" }),
+      screen.getByRole("heading", { name: "Waiting for this chat" }),
     ).toBeVisible();
   });
 
@@ -2861,7 +2861,7 @@ describe("Agent artifact pane Changes ownership", () => {
     render(<AgentArtifactPane expanded />);
     expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
     expect(
-      screen.getByRole("heading", { name: "Waiting for this Chat" }),
+      screen.getByRole("heading", { name: "Waiting for this chat" }),
     ).toBeVisible();
   });
 
@@ -2883,7 +2883,7 @@ describe("Agent artifact pane Changes ownership", () => {
       await screen.findByRole("region", { name: "Chat changes" }),
     ).toBeVisible();
     expect(
-      screen.queryByRole("heading", { name: "Waiting for this Chat" }),
+      screen.queryByRole("heading", { name: "Waiting for this chat" }),
     ).toBeNull();
   });
 });

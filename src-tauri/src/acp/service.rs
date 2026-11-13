@@ -50,6 +50,7 @@ mod debug;
 mod intent_snapshot;
 mod live_lanes;
 mod live_routes;
+mod page_bytes;
 pub(crate) use live_lanes::{ChatRuntimeRelease, LIVE_RUNTIME_LANES, explicit_close_deadline};
 mod permission;
 // Only the Pi bridge fixture replay drives decisions through the service from outside it.
@@ -81,6 +82,14 @@ pub(crate) mod runtime_identity;
 mod runtime_slot;
 mod session_config;
 pub(crate) use session_config::QueueError;
+mod mcp;
+mod session_control;
+mod session_surface;
+mod turn_undo;
+pub(crate) use session_control::SessionControlError;
+pub(crate) use turn_undo::UndoneRelaunchError;
+#[cfg(test)]
+pub(crate) use turn_undo::stage_turn_undo;
 mod session_error;
 mod slash_commands;
 mod usage;
@@ -101,39 +110,12 @@ use intent_snapshot::load_intent_snapshot;
 pub(crate) use renderer_recreation::RendererRecreationUsage;
 pub(crate) use renderer_recreation_orchestrator::RendererRecreationReloadLifecycle;
 
+use page_bytes::PageBytes;
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 use runtime_identity::CodexRuntimeIdentityLedger;
 use runtime_slot::RuntimeSlot;
 
-/// Carries positive pre-invocation proof without inferring it from an error kind.
-#[derive(Debug)]
-pub(crate) struct PromptSendError<E> {
-    pub error: E,
-    pub prompt_dispatch: crate::acp::intent::PromptDispatch,
-}
-
-impl<E> PromptSendError<E> {
-    pub(crate) fn not_started(error: E) -> Self {
-        Self {
-            error,
-            prompt_dispatch: crate::acp::intent::PromptDispatch::NotStarted,
-        }
-    }
-
-    pub(crate) fn unknown(error: E) -> Self {
-        Self {
-            error,
-            prompt_dispatch: crate::acp::intent::PromptDispatch::Unknown,
-        }
-    }
-
-    pub(crate) fn map<F>(self, map: impl FnOnce(E) -> F) -> PromptSendError<F> {
-        PromptSendError {
-            error: map(self.error),
-            prompt_dispatch: self.prompt_dispatch,
-        }
-    }
-}
+pub(crate) use crate::acp::intent::PromptSendError;
 
 pub(crate) struct AcpService {
     pub(crate) file_stages: Arc<Mutex<crate::acp::attached_context::files::FileStages>>,
@@ -144,6 +126,7 @@ pub(crate) struct AcpService {
     /// Starts durable sessions; it never reserves a runtime tree.
     session_starts: SessionCoordinator,
     lanes: Box<[live_lanes::LiveLane]>,
+    idle_release: live_lanes::IdleRelease,
     publisher: Arc<dyn ProjectionPublisher>,
     notifier: Option<Arc<ProjectionNotifier>>,
     page_reads: PageReadAdmission,
@@ -371,35 +354,43 @@ impl AcpService {
         self.page_reads.try_acquire(project_id, chat_id)
     }
 
+    /// Reads a chat page from SQLite. When called from async code on a
+    /// multi-thread runtime, the worker's other tasks move to another thread
+    /// while it runs.
     pub(crate) fn load_chat_page(
         &self,
         project_id: SageProjectId,
         chat_id: SageChatId,
         cursor: Option<PageCursor>,
     ) -> Result<AcpChatPage, StoreError> {
-        let mut page = load_chat_page(
-            &self.database.connection(),
-            project_id.clone(),
-            chat_id.clone(),
-            cursor.clone(),
-        )?;
-        self.compose_session_config(&mut page)?;
-        // History yields room for the session config that does not fit.
-        if let Some(reserve) = session_config::config_reserve(&mut page)? {
-            page = crate::acp::store::load_chat_page_reserving(
+        crate::blocking::in_place(|| {
+            let mut page = load_chat_page(
                 &self.database.connection(),
-                project_id,
-                chat_id,
-                cursor,
-                reserve,
+                project_id.clone(),
+                chat_id.clone(),
+                cursor.clone(),
             )?;
             self.compose_session_config(&mut page)?;
-        }
-        self.fit_session_config_to_page_budget(&mut page)?;
-        self.compose_goal(&mut page);
-        self.compose_usage(&mut page);
-        self.fit_goal_to_page_budget(&mut page)?;
-        Ok(page)
+            let mut size = PageBytes::measure(&page)?;
+            // History yields room for the session config that does not fit.
+            if let Some(reserve) = session_config::config_reserve(&mut page, &size)? {
+                page = crate::acp::store::load_chat_page_reserving(
+                    &self.database.connection(),
+                    project_id,
+                    chat_id,
+                    cursor,
+                    reserve,
+                )?;
+                self.compose_session_config(&mut page)?;
+                size = PageBytes::measure(&page)?;
+            }
+            self.fit_session_config_to_page_budget(&mut page, &size)?;
+            self.compose_goal(&mut page);
+            self.compose_usage(&mut page);
+            self.fit_goal_to_page_budget(&mut page, &size)?;
+            self.compose_session_surface(&mut page)?;
+            Ok(page)
+        })
     }
 
     pub(crate) fn intent_snapshot(

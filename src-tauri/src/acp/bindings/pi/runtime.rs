@@ -25,12 +25,15 @@ pub(super) enum RequestKind {
     ThinkingLevels,
     Commands,
     SetThinkingLevel,
+    SetAutoCompaction,
     NewSession,
     ResumeSession,
     Prompt,
     Steer,
     ClearQueue,
     Cancel,
+    /// A native RPC, written straight to Pi whether idle or mid-Turn.
+    Native,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,6 +102,8 @@ pub(crate) struct PiRuntime {
     pub(super) available_models: Vec<ModelSummary>,
     pub(super) current_thinking: Option<String>,
     pub(super) available_thinking: Vec<String>,
+    /// Pi's auto-compaction setting, once `get_state` has reported it.
+    pub(super) auto_compaction: Option<bool>,
     commands: std::sync::Arc<crate::acp::slash_commands::CommandState>,
     commands_pending: bool,
     commands_discovered: bool,
@@ -108,6 +113,15 @@ pub(crate) struct PiRuntime {
     pub(super) refresh_thinking_after_model: bool,
     pub(super) initialized: bool,
     poisoned: bool,
+    /// The command id of the native request whose caller waits on its answer.
+    pub(super) native_pending: Option<String>,
+    pub(super) native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
+    /// The session's spend as Pi last reported it; read on demand only.
+    pub(super) usage: std::sync::Arc<crate::acp::usage::UsageCell>,
+    /// A fork under way, while Pi is away from the chat's session.
+    fork: Option<support::Fork>,
+    /// Forks this runtime made whose chats are not yet committed or refused.
+    forks: Vec<ExternalId>,
 }
 
 impl PiRuntime {
@@ -177,6 +191,7 @@ impl PiRuntime {
             available_models: Vec::new(),
             current_thinking: None,
             available_thinking: Vec::new(),
+            auto_compaction: None,
             commands: std::sync::Arc::default(),
             commands_pending: false,
             commands_discovered: false,
@@ -186,11 +201,27 @@ impl PiRuntime {
             refresh_thinking_after_model: false,
             initialized: false,
             poisoned: false,
+            native_pending: None,
+            native_rpc_reply: None,
+            usage: std::sync::Arc::default(),
+            fork: None,
+            forks: Vec::new(),
         }
     }
 }
 
 impl HarnessAdapter for PiRuntime {
+    /// Pi ends each run with `agent_end`, which repeats the whole run and
+    /// can outgrow a frame. Everything Sage needs from it already arrived
+    /// in the streamed events, so an oversized event is read past without
+    /// buffering it rather than ending the session. The translator allows
+    /// this only where such a frame cannot carry anything Sage still needs.
+    fn skips_oversize_frames(&self) -> bool {
+        self.translator.skips_oversize_frames()
+    }
+    fn oversize_frame_skipped(&mut self) {
+        self.translator.note_dropped_frame();
+    }
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
         std::sync::Arc::clone(&self.commands)
     }
@@ -225,6 +256,50 @@ impl HarnessAdapter for PiRuntime {
 
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.initialized.then(|| self.snapshot())
+    }
+
+    fn native_rpc_pending(&self) -> bool {
+        self.native_pending.is_some()
+    }
+
+    fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
+        self.native_rpc_reply.take()
+    }
+
+    fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
+        Some(std::sync::Arc::clone(&self.usage))
+    }
+
+    fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.begin_native(super::NativeRequest::SessionStats)
+    }
+
+    fn abandon_usage_read(&mut self) {
+        self.abandon_native();
+    }
+
+    fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.begin_fork()
+    }
+
+    fn release_fork(
+        &mut self,
+        fork: &ExternalId,
+        committed: bool,
+    ) -> crate::acp::bindings::adapter::AdapterOptionalEgress {
+        self.release_fork_copy(fork, committed)
+    }
+
+    // Releasing touches only Pi's saved copy, never the running session.
+    fn defer_fork_release(&mut self, fork: &ExternalId, committed: bool) -> bool {
+        self.release_fork_copy(fork, committed).is_ok()
+    }
+
+    fn session_control(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.begin_control(control)
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -265,30 +340,10 @@ impl HarnessAdapter for PiRuntime {
                 if self.external_session.is_none() || self.active_turn.is_some() {
                     return Err(AdapterRuntimeError::Operation);
                 }
-                let extension_command = prompt.command_revision.is_some()
-                    && self.commands.snapshot().commands.iter().any(|c| {
-                        c.extension
-                            && prompt
-                                .as_str()
-                                .strip_prefix('/')
-                                .and_then(|s| s.split_whitespace().next())
-                                == Some(c.name.as_str())
-                    });
                 let external_id =
                     ExternalId::new("piTurnId", client_message_id.as_str().to_owned())
                         .map_err(|_| AdapterRuntimeError::Operation)?;
-                let egress = self.begin_one(
-                    Operation::Prompt {
-                        turn_key: external_id.as_str().to_owned(),
-                        message: prompt.as_str().to_owned(),
-                    },
-                    RequestKind::Prompt,
-                )?;
-                if extension_command {
-                    self.translator
-                        .mark_extension_command()
-                        .map_err(support::map_pi)?;
-                }
+                let egress = self.begin_prompt(&prompt, external_id.as_str())?;
                 self.commands_discovered = false;
                 self.active_turn = Some(TurnIntent {
                     external_id,
@@ -371,51 +426,7 @@ impl HarnessAdapter for PiRuntime {
                 | EgressResolution::DeliveryUnknown => Err(AdapterRuntimeError::EgressIntent),
             };
         }
-        let id = token
-            .request_id()
-            .ok_or(AdapterRuntimeError::EgressIntent)?;
-        match resolution {
-            EgressResolution::QueueRejected | EgressResolution::WriteZeroBytes => self.rollback(id),
-            EgressResolution::Queued => {
-                let reservation = self
-                    .reservations
-                    .get_mut(&id)
-                    .ok_or(AdapterRuntimeError::EgressIntent)?;
-                reservation.phase = DeliveryPhase::Queued;
-                Ok(())
-            }
-            EgressResolution::Written => {
-                let reservation = self
-                    .reservations
-                    .get(&id)
-                    .ok_or(AdapterRuntimeError::EgressIntent)?;
-                if reservation.phase != DeliveryPhase::Queued
-                    && !matches!(
-                        reservation.kind,
-                        RequestKind::SetModel
-                            | RequestKind::SetThinkingLevel
-                            | RequestKind::Commands
-                    )
-                {
-                    return Err(AdapterRuntimeError::EgressIntent);
-                }
-                if reservation.kind == RequestKind::Prompt {
-                    self.translator
-                        .mark_prompt_written(&reservation.command_id)
-                        .map_err(support::map_pi)?;
-                }
-                self.reservations.remove(&id);
-                Ok(())
-            }
-            EgressResolution::DeliveryUnknown => {
-                self.reservations
-                    .remove(&id)
-                    .ok_or(AdapterRuntimeError::EgressIntent)?;
-                self.staged_initialize = None;
-                self.poisoned = true;
-                Ok(())
-            }
-        }
+        self.resolve_request(&token, resolution)
     }
 }
 

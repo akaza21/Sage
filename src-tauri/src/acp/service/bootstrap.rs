@@ -94,6 +94,7 @@ impl AcpService {
             journal_thread: std::sync::Mutex::new(Some(journal_thread)),
             session_starts,
             lanes,
+            idle_release: Default::default(),
             publisher,
             notifier,
             page_reads: super::PageReadAdmission::default(),

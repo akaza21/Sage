@@ -96,12 +96,14 @@ test("selected overflow tab stays fully visible on selection, keyboard navigatio
   await visibleTab();
   await selected.press("ArrowLeft");
   await expect(selected).toHaveAccessibleName("Browser Browser page 8");
+  // The strip is already scrolled to the last tab, so wait for the resize to
+  // scroll it further: the strip's ResizeObserver reveals the tab a frame
+  // after the viewport shrinks.
+  const stripScroll = () =>
+    selected.evaluate((tab) => tab.closest(".tab-strip__scroll")!.scrollLeft);
+  const scrolledBeforeResize = await stripScroll();
   await page.setViewportSize({ width: 400, height: 700 });
-  await expect
-    .poll(async () =>
-      selected.evaluate((tab) => tab.closest(".tab-strip__scroll")!.scrollLeft),
-    )
-    .toBeGreaterThan(0);
+  await expect.poll(stripScroll).toBeGreaterThan(scrolledBeforeResize);
   await visibleTab();
   await expect(
     page.getByRole("button", { name: "New browser tab" }),

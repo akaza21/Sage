@@ -91,7 +91,7 @@ export default function CustomAgentSettings() {
 
   if (!native) return null;
   return (
-    <section aria-label="Your ACP agents">
+    <section className="settings-surface__group" aria-label="Your ACP agents">
       <h3>Your ACP agents</h3>
       <p>
         Add any agent that speaks the Agent Client Protocol over stdio. Sage
@@ -195,14 +195,16 @@ export default function CustomAgentSettings() {
           </button>
         </form>
       ) : agents.length < MAX_CUSTOM_AGENTS ? (
-        <button
-          className="button button--compact"
-          type="button"
-          disabled={busy}
-          onClick={() => setDraft(EMPTY)}
-        >
-          Add ACP agent
-        </button>
+        <div>
+          <button
+            className="button button--compact"
+            type="button"
+            disabled={busy}
+            onClick={() => setDraft(EMPTY)}
+          >
+            Add ACP agent
+          </button>
+        </div>
       ) : (
         <p role="status">
           Sage holds up to {MAX_CUSTOM_AGENTS} agents. Remove one to add

@@ -1,5 +1,5 @@
-//! The model catalogue a Codex replay lists, and the model its restart
-//! journey's thread runs.
+//! The model catalogue a Codex replay lists, the model its restart
+//! journey's thread runs, and the model and effort a Turn asked for.
 use serde_json::{Value, json};
 
 use super::WireState;
@@ -58,4 +58,21 @@ pub(super) fn models(shape: &str) -> Value {
         catalog["data"].as_array_mut().unwrap().push(alternate);
     }
     catalog
+}
+
+/// The model and effort a `turn/start` named. Codex runs the thread's own
+/// for any it leaves out.
+pub(super) fn turn_config(request: &Value) -> String {
+    let named = |key: &str| {
+        request
+            .get("params")
+            .and_then(|params| params.get(key))
+            .and_then(Value::as_str)
+            .unwrap_or("none, so the thread's own")
+    };
+    format!(
+        "This turn/start named model: {}; effort: {}.",
+        named("model"),
+        named("effort")
+    )
 }

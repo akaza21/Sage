@@ -9,7 +9,7 @@ use crate::acp::{bindings::standard_acp::elicitation::refused, intent::user_inpu
 
 use super::super::{
     IncomingEvent, IngressDisposition, IngressError, record_unprojected,
-    support::{identity, request_id_text, text},
+    support::{request_id_text, text},
 };
 use super::{CodexAdapter, PendingServerRequest, project_server_request, reply};
 
@@ -26,9 +26,14 @@ pub(super) fn request(
     if adapter.bound_thread_id().is_none() {
         return answer_now(id, refused(false));
     }
-    adapter
+    // A subagent's MCP server asks on its own thread, which has no card here;
+    // that is a refusal for that server, not a broken session.
+    if adapter
         .expect_thread(text(params, "threadId", 512)?)
-        .map_err(identity)?;
+        .is_err()
+    {
+        return answer_now(id, refused(false));
+    }
     let Ok(server) = text(params, "serverName", 512) else {
         record_unprojected(ELICITATION_METHOD);
         return answer_now(id, refused(true));

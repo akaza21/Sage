@@ -10,14 +10,25 @@ use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId};
 impl CodexAdapter {
     #[cfg(test)]
     pub(crate) fn enable_observed_goal_for_test(&mut self) {
-        self.runtime_version =
-            format!("codex-cli {}", super::super::manifest::PINNED_CODEX_VERSION);
-        self.codex_home.clear();
-        self.observed_build_characterisation =
-            Some(crate::acp::bindings::characterisation::Characterisation::Characterised);
+        self.observe_build_for_test(
+            &format!("codex-cli {}", super::super::manifest::PINNED_CODEX_VERSION),
+            crate::acp::bindings::characterisation::Characterisation::Characterised,
+        );
         if let Some(methods) = self.negotiated.as_mut() {
             methods.snapshot.active_turn_steer = true;
         }
+    }
+
+    /// Runs this adapter as an observed (user-installed) build.
+    #[cfg(test)]
+    pub(crate) fn observe_build_for_test(
+        &mut self,
+        version_line: &str,
+        characterisation: crate::acp::bindings::characterisation::Characterisation,
+    ) {
+        self.runtime_version = version_line.to_owned();
+        self.codex_home.clear();
+        self.observed_build_characterisation = Some(characterisation);
     }
 
     pub(crate) fn from_metadata_packet(
@@ -45,6 +56,7 @@ impl CodexAdapter {
             browser_mcp_failure_reported: false,
             pending_browser_mcp_failure_threads: Vec::new(),
             pending_session_notices: Vec::new(),
+            recent_warnings: Vec::new(),
             turn_start_correlations: TurnStartCorrelations::new(),
             active_turn_id: None,
             provisional_turn: None,
@@ -54,10 +66,13 @@ impl CodexAdapter {
             active_item_terminals: Vec::new(),
             active_terminal_id_bytes: 0,
             active_unretried_error_fingerprints: Vec::new(),
+            active_turn_user_stop: false,
+            active_turn_plan: None,
             previous_turn: None,
             command_item_snapshots: CommandItemSnapshots::default(),
             running_mcp_tools: Default::default(),
             running_hooks: Default::default(),
+            compactions: Default::default(),
             subagent_labels: SubagentLabels::default(),
             child_threads: Vec::new(),
             bound_child_threads: Vec::new(),
@@ -70,8 +85,12 @@ impl CodexAdapter {
             pending_child_read: None,
             child_read_tombstone: None,
             rate_limits_abandoned: super::rate_limits::AbandonedReads::default(),
+            mcp_read_tombstones: Vec::new(),
+            skills: Default::default(),
             pending_fork: None,
             forks: super::fork::ForkLedger::default(),
+            revert_target: None,
+            reverted_turn: None,
         }
     }
 

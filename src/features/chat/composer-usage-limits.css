@@ -1,6 +1,22 @@
 .composer-usage {
+  /* Section rules match the popover's own edge. */
+  --usage-divider: color-mix(
+    in srgb,
+    var(--color-text-primary) 12%,
+    transparent
+  );
+
   display: grid;
+  gap: var(--space-3);
   font-size: var(--font-size-xs);
+}
+
+/* The popover holds text rather than menu rows, so it pads and spaces its
+   own content. */
+.composer__popover.composer-usage {
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-sm);
 }
 
 .composer-usage p {
@@ -12,12 +28,25 @@
 .composer-usage__row {
   display: flex;
   justify-content: space-between;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
-.composer-usage__heading span,
-.composer-usage__reset {
+.composer-usage__heading {
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--usage-divider);
+}
+
+.composer-usage__heading,
+.composer-usage__section,
+.composer-usage__reset,
+.composer-usage__session dt {
   color: var(--color-text-muted);
+}
+
+.composer-usage__section {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--usage-divider);
+  font-weight: inherit;
 }
 
 .composer-usage .composer-usage__reached {
@@ -32,25 +61,17 @@
   list-style: none;
 }
 
-.composer-usage__window {
+.composer-usage__window,
+.composer-usage__session {
   display: grid;
   gap: var(--space-1);
 }
 
-.composer-usage__bar {
-  height: 4px;
-  border-radius: var(--radius-circle);
-  background:
-    linear-gradient(var(--color-accent), var(--color-accent)) 0 / var(--usage)
-      100% no-repeat,
-    var(--color-border-strong);
+.composer-usage__session,
+.composer-usage__session dd {
+  margin: 0;
 }
 
-@media (forced-colors: active) {
-  .composer-usage__bar {
-    forced-color-adjust: none;
-    border: 1px solid CanvasText;
-    background: linear-gradient(Highlight, Highlight) 0 / var(--usage) 100%
-      no-repeat Canvas;
-  }
+.composer-usage__reset {
+  font-size: var(--font-size-xs);
 }

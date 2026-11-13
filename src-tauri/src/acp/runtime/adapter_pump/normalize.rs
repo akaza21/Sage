@@ -46,6 +46,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             } if self.exact_turn(&id) && terminal.is_none() => Ok(Some(
                 terminal_reason::normalize(self.scope(), reason, message, now_millis),
             )),
+            AdapterEvent::SteerResponse {
+                request_id,
+                accepted: true,
+            } => self.steered_item(request_id, now_millis, terminal),
             AdapterEvent::Turn { id, state } if self.exact_turn(&id) => {
                 if terminal.is_some() {
                     return Ok(None);

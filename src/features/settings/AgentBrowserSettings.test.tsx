@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
@@ -256,4 +257,26 @@ it("opens site permissions directly when Site settings requests the originating 
   expect(
     screen.getByRole("button", { name: "Manage site permissions" }),
   ).toHaveAttribute("aria-expanded", "true");
+});
+
+it("keeps one Site permissions section holding both saved answers and the live tab's review", async () => {
+  await import("../../workbench/settings/SettingsBrowserPage");
+  render(<AgentBrowserSettings />);
+  const section = await screen.findByRole("group", {
+    name: "Site permissions",
+  });
+  expect(
+    await within(section).findByRole("button", {
+      name: "Manage site permissions",
+    }),
+  ).toBeVisible();
+  expect(
+    await within(section).findByRole("button", {
+      name: "Reset Camera for https://saved.example",
+    }),
+  ).toBeVisible();
+  expect(
+    screen.getAllByRole("heading", { name: "Site permissions" }),
+  ).toHaveLength(1);
+  expect(within(section).getByText("Second browser")).toBeVisible();
 });

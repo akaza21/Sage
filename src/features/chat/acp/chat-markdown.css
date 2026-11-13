@@ -51,9 +51,9 @@
 }
 
 .acp-markdown {
-  --chat-text-leading: 21px;
-  --chat-table-font-size: 11px;
-  font-size: var(--font-size-sm);
+  --chat-text-leading: 1.6;
+  --chat-table-font-size: var(--font-size-xs);
+  font-size: var(--font-size-md);
   line-height: var(--chat-text-leading);
 }
 
@@ -72,10 +72,16 @@
   margin: var(--space-2) 0 0;
 }
 
+/* A chat answer keeps its single line breaks, as the harness wrote them. */
+.acp-markdown :is(p, [data-markdown-inline]) {
+  white-space: pre-line;
+}
+
 .acp-markdown :is(h1, h2, h3, h4, h5, h6) {
   margin: var(--space-4) 0 var(--space-2);
   line-height: var(--line-height-tight);
   font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
 }
 
 .acp-markdown blockquote {

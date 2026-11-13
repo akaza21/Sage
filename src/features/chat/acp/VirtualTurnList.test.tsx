@@ -251,10 +251,25 @@ it("retains the settled anchor after a correction scroll event and another histo
   view.rerender(<History turns={older} />);
   expect(visibleAnchor()).toEqual(before);
   expect(document.querySelectorAll(".acp-turn").length).toBeLessThanOrEqual(40);
-  act(() => fireEvent.scroll(document.querySelector(".message-list")!));
-  act(() => vi.advanceTimersByTime(50));
-  view.rerender(<History turns={[...turns(-19, 10), ...older]} />);
+  // A late layout can land before the native event for the correction's
+  // scrollTop write. That event must not capture the already-shifted anchor.
+  const overscan = document.querySelector<HTMLElement>(".acp-turn")!;
+  expect(overscan.dataset.turnId).not.toBe(before.id);
+  rowHeights.set(overscan.dataset.turnId!, 120);
+  act(() => {
+    fireEvent.scroll(document.querySelector(".message-list")!);
+    for (const observer of [...observers]) observer([], {} as ResizeObserver);
+  });
   expect(visibleAnchor()).toEqual(before);
+  act(() => vi.advanceTimersByTime(50));
+  const all = [...turns(-19, 10), ...older];
+  view.rerender(<History turns={all} />);
+  expect(visibleAnchor()).toEqual(before);
+  // Reader movement wins even when another commit beats its native event.
+  document.querySelector<HTMLElement>(".message-list")!.scrollTop = 0;
+  view.rerender(<History turns={[...all]} />);
+  expect(scrollTop).toBe(0);
+  expect(visibleAnchor().id).toBe("turn--19");
 });
 
 it("keeps the same visible Turn when a measured overscan row grows", () => {
@@ -268,6 +283,32 @@ it("keeps the same visible Turn when a measured overscan row grows", () => {
     for (const observer of [...observers]) observer([], {} as ResizeObserver);
   });
   expect(visibleAnchor()).toEqual(before);
+});
+
+it("yields to reader movement before its scroll event after a row below the viewport grows", () => {
+  const current = turns();
+  const view = render(<History turns={current} />);
+  scrollTo(scrollHeight() / 2);
+  // Release any pin from settling the window's initial measurements.
+  scrollTo(scrollTop + 1);
+  const before = visibleAnchor();
+  const pinnedTop = scrollTop;
+  const below = [...document.querySelectorAll<HTMLElement>(".acp-turn")].at(
+    -1,
+  )!;
+  expect(below.getBoundingClientRect().top).toBeGreaterThanOrEqual(400);
+  rowHeights.set(below.dataset.turnId!, 240);
+  act(() => {
+    for (const observer of [...observers]) observer([], {} as ResizeObserver);
+  });
+  expect(scrollTop).toBe(pinnedTop);
+  expect(visibleAnchor()).toEqual(before);
+
+  // The browser moves first; another commit beats the native scroll event.
+  document.querySelector<HTMLElement>(".message-list")!.scrollTop = 0;
+  view.rerender(<History turns={[...current]} />);
+  expect(scrollTop).toBe(0);
+  expect(visibleAnchor().id).toBe("turn-1");
 });
 
 function streamedText(turn: TurnProjection) {

@@ -304,6 +304,7 @@ impl Fixture {
                 runtime_epoch: self.owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "Review safely").unwrap(),
                 attached_context,
+                staged: None,
             }
         }
     }
@@ -431,7 +432,10 @@ fn attached_context_corrupt_and_out_of_range_fail_without_dispatch_or_user_item(
 fn image_attachment_is_typed_not_dispatched_for_every_send_target() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         for new_session in [false, true] {
-            let fixture = Fixture::new().await;
+            // A session that did not negotiate image input; a Windows desktop
+            // fixture's Codex ceiling advertises it.
+            let fixture =
+                Fixture::with_capabilities(|capabilities| capabilities.prompt_images = false).await;
             let (calls, _) = fixture.install_host();
             let before = fixture.counts();
             let image = serde_json::json!({
@@ -580,10 +584,14 @@ fn staged_files_are_refused_without_dispatch_and_retained_for_retry() {
     use crate::acp::attached_context::files::{Resource, Resources};
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         for new_session in [false, true] {
-            let fixture = Fixture::new().await;
+            // A session without embedded-resource prompts; a Windows desktop
+            // fixture's Codex ceiling advertises them.
+            let fixture =
+                Fixture::with_capabilities(|capabilities| capabilities.prompt_resources = false)
+                    .await;
             let (calls, _) = fixture.install_host();
             let before = fixture.counts();
-            fixture
+            let revision = fixture
                 .state
                 .acp
                 .file_stages
@@ -600,12 +608,21 @@ fn staged_files_are_refused_without_dispatch_and_retained_for_retry() {
                         bytes: b"context".to_vec(),
                     }])),
                 )
-                .unwrap();
-            let error = acp::send_acp_turn_inner(&fixture.state, fixture.request(new_session))
+                .unwrap()
+                .revision;
+            // The send names the staged batch; a send that names none carries none.
+            let mut request = fixture.request(new_session);
+            if let SendAcpTurnRequest::Session { staged, .. } = &mut request {
+                *staged = Some(crate::acp::intent::StagedSelection::Revision(revision));
+            }
+            let error = acp::send_acp_turn_inner(&fixture.state, request)
                 .await
                 .unwrap_err();
             assert_eq!(error.prompt_dispatch, PromptDispatch::NotStarted);
-            assert!(matches!(error.failure, AcpIpcError::InvalidRequest { .. }));
+            // A new-session send names no batch, so it leaves the batch be.
+            if !new_session {
+                assert!(matches!(error.failure, AcpIpcError::InvalidRequest { .. }));
+            }
             assert!(calls.lock().unwrap().is_empty());
             assert_eq!(fixture.counts(), before);
             assert_eq!(
@@ -627,8 +644,19 @@ fn staged_files_are_refused_without_dispatch_and_retained_for_retry() {
     });
 }
 
+/// Names the staged files a session send carries.
+fn with_staged(
+    mut request: SendAcpTurnRequest,
+    selection: crate::acp::intent::StagedSelection,
+) -> SendAcpTurnRequest {
+    if let SendAcpTurnRequest::Session { staged, .. } = &mut request {
+        *staged = Some(selection);
+    }
+    request
+}
+
 #[test]
-fn staged_files_are_consumed_after_admitted_dispatch() {
+fn a_named_revision_is_consumed_after_admitted_dispatch_and_only_its_count_is_durable() {
     use crate::acp::attached_context::files::{Resource, Resources};
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         // Durable session capabilities are immutable after activation, so the
@@ -655,10 +683,42 @@ fn staged_files_are_consumed_after_admitted_dispatch() {
                 resources,
             )
             .unwrap();
-        acp::send_acp_turn_inner(&fixture.state, fixture.request(false))
+        let revision = fixture
+            .state
+            .acp
+            .file_stages
+            .lock()
+            .unwrap()
+            .list(
+                fixture.owner.project_id.as_str(),
+                fixture.owner.chat_id.as_str(),
+            )
+            .unwrap()
+            .revision;
+        // A send that names no batch leaves it for the one that does.
+        let selection = crate::acp::intent::StagedSelection::Revision(revision.clone());
+        acp::send_acp_turn_inner(&fixture.state, with_staged(fixture.request(false), selection))
             .await
             .unwrap();
         assert!(!calls.lock().unwrap().is_empty());
+        let payload: String = fixture
+            .state
+            .database
+            .connection()
+            .query_row(
+                "SELECT payload_json FROM items WHERE kind='text' AND ordinal=0 AND external_item_id IS NULL ORDER BY created_at DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(payload.contains("\"attachments\":1"), "{payload}");
+        assert!(!payload.contains("test.txt"), "{payload}");
+        // The same revision is never sent twice.
+        let again = crate::acp::intent::StagedSelection::Revision(revision);
+        let refused = acp::send_acp_turn_inner(&fixture.state, with_staged(fixture.request(false), again))
+            .await
+            .unwrap_err();
+        assert_eq!(refused.prompt_dispatch, PromptDispatch::NotStarted);
         assert!(
             fixture
                 .state

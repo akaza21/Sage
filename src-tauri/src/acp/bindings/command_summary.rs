@@ -108,7 +108,7 @@ fn redact_tokens(input: &str) -> Result<String, ()> {
     Ok(output)
 }
 
-fn is_hidden_format(ch: char) -> bool {
+pub(crate) fn is_hidden_format(ch: char) -> bool {
     matches!(ch,
         '\u{00ad}' | '\u{061c}' | '\u{180e}' | '\u{200b}'..='\u{200f}'
         | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2069}' | '\u{feff}'

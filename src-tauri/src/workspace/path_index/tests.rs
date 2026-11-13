@@ -91,6 +91,7 @@ fn ask_in(inputs: &IndexInputs, session: u64, text: &str, recent: &[ResourceRef]
             generation: generation(),
             session,
             recent,
+            browse: false,
         },
         super::ticket(),
     );
@@ -191,6 +192,24 @@ fn ranks_basename_word_start_and_recent_matches_first() {
     assert_eq!(boosted.paths[0], "src/app/remain.ts");
     let empty = ask(&inputs, "  ", &recent);
     assert_eq!(empty.paths, ["src/app/remain.ts"]);
+    // Browsing lists the recent File first, then the rest, shortest first.
+    let browsed = run(
+        &inputs,
+        &QuickOpenQuery {
+            text: "",
+            limit: 3,
+            generation: generation(),
+            session: 1,
+            recent: &recent,
+            browse: true,
+        },
+        super::ticket(),
+    );
+    let Outcome::Ready { results, .. } = browsed else {
+        panic!("query was superseded");
+    };
+    let browsed: Vec<_> = results.iter().map(|r| r.relative_path.as_str()).collect();
+    assert_eq!(browsed, ["src/app/remain.ts", "README.md", "src/main.ts"]);
     assert!(ask(&inputs, "zzz", &[]).paths.is_empty());
     let pieces = ask(&inputs, "main src", &[]);
     assert_eq!(pieces.paths[0], "src/main.ts", "pieces match in any order");
@@ -237,6 +256,7 @@ fn a_newer_query_supersedes_an_older_one() {
                 generation,
                 session: 1,
                 recent: &[],
+                browse: false,
             },
             super::ticket(),
         )
@@ -308,6 +328,7 @@ fn a_query_checked_before_its_project_closed_keeps_nothing() {
         generation: generation(),
         session: 1,
         recent: &[],
+        browse: false,
     };
     assert!(matches!(run(&inputs, &query, ticket), Outcome::Superseded));
     assert!(lock(&INDEX).index.is_none());
@@ -365,6 +386,7 @@ fn watching_another_project_drops_this_ones_index() {
         generation: generation(),
         session: 1,
         recent: &[],
+        browse: false,
     };
     assert!(matches!(run(&inputs, &query, ticket), Outcome::Superseded));
     assert!(lock(&INDEX).index.is_none());
@@ -385,6 +407,7 @@ fn a_query_waiting_for_a_build_gives_up_once_superseded() {
                 generation: older,
                 session: 1,
                 recent: &[],
+                browse: false,
             };
             run(&inputs, &query, super::ticket())
         });
@@ -502,6 +525,7 @@ fn ranking_split_across_threads_matches_one_thread() {
                     generation: u64::MAX,
                     session: 1,
                     recent: &recent,
+                    browse: false,
                 },
                 shares,
             )

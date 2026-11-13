@@ -288,12 +288,11 @@ fn command_execution_uses_only_typed_output_and_a_single_read_action() {
         NormalizedPayload::ToolCall {
             category: ToolCategory::Read,
             label,
-            input_summary: Some(command_line),
+            input_summary: None,
             output_summary: Some(output),
             ..
         } if output.as_str() == "Bearer [redacted]\nsecond\n"
-            && command_line.as_str() == "cat [path]"
-            && label.as_str() == "Read read package"
+            && label.as_str() == "Read package.json"
     ));
 
     let (payload, state, lifecycle) =

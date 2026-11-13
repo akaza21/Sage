@@ -7,11 +7,14 @@ import {
   goBack,
   goForward,
 } from "../../app/editorHistory";
+import {
+  closeActiveEditor,
+  isEditorTabKind,
+} from "../../app/closeActiveEditor";
 import type * as ConflictActions from "../../app/editorConflictActions";
 import { useWorkbenchStore } from "../../app/store";
 import type { SidebarView } from "../../app/store";
 import { formatKeymapChords, keymapBinding } from "../../domain/keymapRegistry";
-import type { TabKind } from "../../domain/chat";
 import { errorMessage } from "../../domain/errors";
 import { isDeletedOnDisk } from "../files/editorDisk";
 import {
@@ -29,9 +32,6 @@ const runConflictAction = (
     .catch((error: unknown) =>
       useWorkbenchStore.setState({ error: errorMessage(error) }),
     );
-
-const isEditorTab = (kind: TabKind) =>
-  kind === "file" || kind === "diff" || kind === "settings";
 
 export interface PaletteCommand {
   id: string;
@@ -141,17 +141,13 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
       run: () => void useWorkbenchStore.getState().openSettings(),
     });
   }
-  if (activeTab && isEditorTab(activeTab.kind)) {
+  if (activeTab && isEditorTabKind(activeTab.kind)) {
     commands.push({
       id: "closeEditor",
       label: "Close Editor",
-      shortcut: null,
+      shortcut: shortcutOf("closeEditor", apple),
       // The tab active when it runs, which the list may not have seen.
-      run: () => {
-        const state = useWorkbenchStore.getState();
-        const tab = state.tabs.find((item) => item.id === state.activeTabId);
-        if (tab && isEditorTab(tab.kind)) state.closeTab(tab.id);
-      },
+      run: closeActiveEditor,
     });
   }
   return commands;

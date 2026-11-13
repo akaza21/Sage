@@ -20,6 +20,7 @@ impl ClaudeRuntime {
             published.push(SharedEvent::IgnoredDuplicate);
             return AdapterBatch::new(published, Vec::new());
         }
+        let user_input = self.next_user_input.take();
         let allow_once_option_id = permission_allow_option(&value, "allow_once")?;
         let allow_always_option_id = permission_allow_option(&value, "allow_always")?;
         let events = self
@@ -43,7 +44,24 @@ impl ClaudeRuntime {
             } = event
             {
                 let mut payload = payload;
-                if let crate::acp::intent::NormalizedPayload::PermissionRequest {
+                if let (
+                    crate::acp::intent::NormalizedPayload::PermissionRequest {
+                        offered_option_kinds,
+                        user_input: asked,
+                        ..
+                    },
+                    Some(questions),
+                ) = (&mut payload, &user_input)
+                {
+                    *asked = Some(questions.clone());
+                    *offered_option_kinds = Some(
+                        crate::acp::contract::BoundedVec::new(
+                            "permissionOptionKinds",
+                            vec![crate::acp::intent::PermissionOptionKind::RejectOnce],
+                        )
+                        .map_err(|_| AdapterRuntimeError::Frame)?,
+                    );
+                } else if let crate::acp::intent::NormalizedPayload::PermissionRequest {
                     offered_option_kinds,
                     ..
                 } = &mut payload
@@ -89,6 +107,16 @@ impl ClaudeRuntime {
 
     /// The harness withdrew a request the user has not answered: its card
     /// is cancelled, so a turn may end without it.
+    /// The next permission request asks these questions instead of an
+    /// approval; it must offer `answer` as its allow-once option, which the
+    /// answers are sent back on.
+    pub(crate) fn offer_user_input(
+        &mut self,
+        request: crate::acp::intent::user_input::UserInputRequest,
+    ) {
+        self.next_user_input = Some(Box::new(request));
+    }
+
     pub(crate) fn withdraw_permission(
         &mut self,
         wire: &Value,

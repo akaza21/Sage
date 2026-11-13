@@ -388,7 +388,7 @@ function SubagentChild({
         </div>
       ) : (
         <p>
-          Bounded activity recorded in the originating Turn. A full child
+          Bounded activity recorded in the originating turn. A full child
           transcript is not available in this harness projection.
         </p>
       )}

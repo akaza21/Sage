@@ -12,7 +12,7 @@ pub(crate) fn notice(level: SessionNoticeLevel, text: &str) -> SessionScopedEven
 
 pub(crate) fn title(text: &str) -> SessionScopedEvent {
     SessionScopedEvent::Title {
-        title: RequiredText::new("title", text).unwrap(),
+        title: Some(RequiredText::new("title", text).unwrap()),
     }
 }
 
@@ -24,5 +24,6 @@ pub(crate) fn activity(id: &str, state: SessionActivityState, progress: &str) ->
         state,
         progress: Some(RequiredText::new("activityProgress", progress).unwrap()),
         in_previous_turn: false,
+        stoppable: false,
     }
 }

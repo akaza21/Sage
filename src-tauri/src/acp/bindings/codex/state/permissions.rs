@@ -127,10 +127,11 @@ impl CodexAdapter {
         self.advance_permission(request_id, next)
     }
 
-    /// Returns the exact native app-server approval response retained at
-    /// ingress. Command/file approvals decline; granular permission requests
-    /// return an empty permission set. The separate turn/interrupt request is
-    /// still emitted by `CodexAdapter::cancel`; ACP wire is never synthesized.
+    /// Returns the native app-server cancellation response. MCP elicitations
+    /// cancel; command/file approvals retain their decline response, and
+    /// granular permission requests return an empty permission set. The
+    /// separate turn/interrupt request is still emitted by
+    /// `CodexAdapter::cancel`; ACP wire is never synthesized.
     pub(crate) fn cancelled_permission_response(
         &self,
         request_id: &str,

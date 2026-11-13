@@ -3,10 +3,7 @@ import {
   sessionAccessModeCandidates,
   type SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
-import {
-  chatAccessCandidates,
-  chatAccessEffective,
-} from "./ChatAccessSelection";
+import { chatAccessCandidates, chatAccessEffective } from "./chatAccessMode";
 
 const claude: SessionAccessModeCapability[] = [
   {

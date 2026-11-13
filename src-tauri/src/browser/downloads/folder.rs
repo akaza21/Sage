@@ -111,7 +111,8 @@ pub(crate) fn admit_folder_before(path: &Path, deadline: Deadline) -> Option<Pat
     if !path.is_absolute() {
         return None;
     }
-    let canonical = simplify_verbatim(std::fs::canonicalize(path).ok()?);
+    // WebView2 and the Settings row want the ordinary spelling.
+    let canonical = crate::win32_path::simplified(&std::fs::canonicalize(path).ok()?);
     deadline.check().ok()?;
     if !canonical.is_dir() {
         return None;
@@ -162,33 +163,6 @@ fn is_writable(folder: &Path) -> bool {
 #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 fn is_writable(folder: &Path) -> bool {
     std::fs::metadata(folder).is_ok_and(|metadata| !metadata.permissions().readonly())
-}
-
-/// `std::fs::canonicalize` returns a verbatim path on Windows. WebView2 and the
-/// Settings row want the ordinary form, which is equivalent for any path that
-/// fits in `MAX_PATH` and has no component Windows would rewrite.
-fn simplify_verbatim(path: PathBuf) -> PathBuf {
-    match path.to_str().and_then(simplified_verbatim_text) {
-        Some(text) => PathBuf::from(text),
-        None => path,
-    }
-}
-
-fn simplified_verbatim_text(text: &str) -> Option<String> {
-    let simple = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{rest}")
-    } else {
-        let rest = text.strip_prefix(r"\\?\")?;
-        let bytes = rest.as_bytes();
-        if bytes.len() < 2 || !bytes[0].is_ascii_alphabetic() || bytes[1] != b':' {
-            return None;
-        }
-        rest.to_owned()
-    };
-    let rewritable = simple
-        .split('\\')
-        .any(|part| part.ends_with('.') || part.ends_with(' '));
-    (simple.len() < 260 && !rewritable).then_some(simple)
 }
 
 /// A single path component that is safe to create in the download folder:

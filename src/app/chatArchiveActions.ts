@@ -126,7 +126,7 @@ export function createChatArchiveActions(set: Set, get: Get) {
         (!foreign && attachedChats?.length === 1) ||
         (foreign && foreignChats.length === 1)
       ) {
-        set({ error: "The last attached Chat cannot be archived" });
+        set({ error: "The last attached chat cannot be archived" });
       }
       return false;
     }
@@ -158,7 +158,7 @@ export function createChatArchiveActions(set: Set, get: Get) {
         get,
         applyProjection,
         loadAuthoritativeProjection,
-        failedMessage: "native Chat archive did not commit",
+        failedMessage: "native chat archive did not commit",
         invoke: () =>
           chat.archiveChat(
             {
@@ -238,7 +238,7 @@ export function createChatArchiveActions(set: Set, get: Get) {
     if (!current || !currentArchived) {
       set({
         projectTransitioning: false,
-        error: "Archived Chat disappeared before restore",
+        error: "Archived chat disappeared before restore",
       });
       return false;
     }
@@ -249,7 +249,7 @@ export function createChatArchiveActions(set: Set, get: Get) {
         get,
         applyProjection,
         loadAuthoritativeProjection,
-        failedMessage: "native Chat restore did not commit",
+        failedMessage: "native chat restore did not commit",
         invoke: () =>
           chat.restoreChat(
             {
@@ -313,7 +313,7 @@ export function createChatArchiveActions(set: Set, get: Get) {
       get,
       applyProjection,
       loadAuthoritativeProjection,
-      failedMessage: "native Chat delete did not commit",
+      failedMessage: "native chat delete did not commit",
       invoke: () =>
         chat.deleteChat(
           { projectId: sourceProjectId, chatId },

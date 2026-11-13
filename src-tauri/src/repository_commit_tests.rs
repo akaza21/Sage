@@ -75,7 +75,7 @@ fn git_path(root: &Path, marker: &str) -> std::path::PathBuf {
 }
 
 fn write_executable(path: &Path, body: &str) {
-    fs::write(path, body).unwrap();
+    crate::test_executable::write(path, body).unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

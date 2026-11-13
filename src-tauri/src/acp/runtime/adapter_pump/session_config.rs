@@ -6,11 +6,21 @@ pub(crate) fn hydrate_model_config<A: HarnessAdapter>(
     adapter: &mut A,
     transport: &mut impl EgressTransport,
 ) {
-    if let Ok(Some(egress)) = adapter.discover_commands() {
-        let resolution = EgressResolution::from(transport.write(egress.frame()));
-        let _ = adapter.resolve_egress(egress.into_token(), resolution);
-    }
+    write_discovered_commands(adapter, transport);
     let Ok(Some(egress)) = adapter.model_config_hydration() else {
+        return;
+    };
+    let resolution = EgressResolution::from(transport.write(egress.frame()));
+    let _ = adapter.resolve_egress(egress.into_token(), resolution);
+}
+
+/// Writes the harness's command-list read when its list is missing or
+/// stale. Idle background work, like the model catalog.
+pub(crate) fn write_discovered_commands<A: HarnessAdapter>(
+    adapter: &mut A,
+    transport: &mut impl EgressTransport,
+) {
+    let Ok(Some(egress)) = adapter.discover_commands() else {
         return;
     };
     let resolution = EgressResolution::from(transport.write(egress.frame()));
@@ -102,6 +112,31 @@ pub(crate) fn write_release_fork<A: HarnessAdapter>(
     write_egress(adapter, transport, egress)
 }
 
+/// Writes a session control, such as undoing a turn or stopping a task.
+pub(crate) fn write_control<A: HarnessAdapter>(
+    adapter: &mut A,
+    transport: &mut impl EgressTransport,
+    control: &crate::acp::session_control::SessionControl,
+) -> Result<(), crate::acp::runtime::HostError> {
+    use crate::acp::runtime::HostError;
+    if adapter.answered_control(control) {
+        return Ok(());
+    }
+    let egress = adapter
+        .session_control(control)
+        .map_err(|_| HostError::Intent)?;
+    let outcome = transport.write(egress.frame());
+    let resolution = EgressResolution::from(outcome);
+    adapter
+        .resolve_egress(egress.into_token(), resolution)
+        .map_err(|_| HostError::RecoveryRequired)?;
+    match outcome {
+        FrameWriteOutcome::Complete => Ok(()),
+        FrameWriteOutcome::ZeroByteFailure => Err(HostError::Unavailable),
+        FrameWriteOutcome::DeliveryUnknown { .. } => Err(HostError::DeliveryUnknown),
+    }
+}
+
 pub(crate) fn write_child<A: HarnessAdapter>(
     adapter: &mut A,
     transport: &mut impl EgressTransport,
@@ -173,6 +208,15 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         self.ensure_live()
             .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
         write_usage_read(&mut self.adapter, transport)
+    }
+    pub(crate) fn write_control(
+        &mut self,
+        transport: &mut impl EgressTransport,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        self.ensure_live()
+            .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
+        write_control(&mut self.adapter, transport, control)
     }
     pub(crate) fn write_child(
         &mut self,
@@ -252,6 +296,13 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         )?;
         self.idle_decoder.enable_recoverable_oversize();
         Ok(())
+    }
+    pub(crate) fn write_control(
+        &mut self,
+        transport: &mut impl EgressTransport,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        write_control(&mut self.adapter, transport, control)
     }
     pub(crate) fn write_fork(
         &mut self,

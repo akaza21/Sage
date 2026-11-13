@@ -67,7 +67,7 @@ fn a_turn_streams_text_runs_an_approved_tool_and_completes_with_usage() {
     assert_eq!(
         updates(&chunk),
         [
-            &json!({"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Writing"}})
+            &json!({"sessionUpdate":"agent_message_chunk","itemId":"msg_1:0","content":{"type":"text","text":"Writing"}})
         ]
     );
 
@@ -102,7 +102,12 @@ fn a_turn_streams_text_runs_an_approved_tool_and_completes_with_usage() {
         .collect();
     assert_eq!(kinds, ["allow_once", "allow_always", "reject_once"]);
 
-    let reply = bridge.outbound(&json!({"jsonrpc":"2.0","id":request["id"],"result":{"outcome":{"outcome":"selected","optionId":"allow_always"}}})).unwrap();
+    // Allow-always on an edit names the mode the guard lets the turn enter.
+    assert_eq!(
+        request["params"]["options"][1]["optionId"],
+        "allow-always-accept-edits"
+    );
+    let reply = bridge.outbound(&json!({"jsonrpc":"2.0","id":request["id"],"result":{"outcome":{"outcome":"selected","optionId":"allow-always-accept-edits"}}})).unwrap();
     assert_eq!(reply["response"]["request_id"], "cli-7");
     assert_eq!(reply["response"]["response"]["behavior"], "allow");
     assert_eq!(
@@ -283,6 +288,36 @@ fn attachments_become_text_image_and_document_content() {
 }
 
 #[test]
+fn a_linked_file_becomes_a_mention_claude_code_reads() {
+    let mut bridge = initialized();
+    let (uri, path) = if cfg!(windows) {
+        (
+            "file:///C:/work/my%20notes.md",
+            "@\"C:\\work\\my notes.md\"",
+        )
+    } else {
+        ("file:///work/my%20notes.md", "@\"/work/my notes.md\"")
+    };
+    let user = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"prompt":[
+                {"type":"text","text":"see"},
+                {"type":"resource_link","uri":uri,"name":"my notes.md"},
+            ]}}),
+        )
+        .unwrap();
+    assert_eq!(user["message"]["content"][1]["text"], path);
+    assert_eq!(
+        bridge.outbound(
+            &json!({"jsonrpc":"2.0","id":4,"method":"session/prompt","params":{"prompt":[
+                {"type":"resource_link","uri":"https://example.com/x","name":"x"},
+            ]}})
+        ),
+        Err(BridgeError::Unsupported)
+    );
+}
+
+#[test]
 fn resume_must_name_the_launched_session() {
     let mut bridge = SdkBridge::new(SESSION.into(), None);
     assert_eq!(
@@ -436,5 +471,668 @@ fn a_cli_that_starts_outside_the_picker_modes_fails_initialize() {
             .as_str()
             .unwrap()
             .contains("permission mode")
+    );
+}
+
+#[test]
+fn claude_codes_status_messages_become_notices_and_activities() {
+    use crate::acp::intent::session_event::{SessionActivityState, SessionScopedEvent};
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let state = |inbound: &Inbound| match &inbound.session[..] {
+        [SessionScopedEvent::Activity(activity)] => {
+            (activity.kind.as_str().to_owned(), activity.state)
+        }
+        other => panic!("one activity: {other:?}"),
+    };
+    let compacting = bridge
+        .inbound(json!({"type":"system","subtype":"status","status":"compacting"}))
+        .unwrap();
+    assert_eq!(
+        state(&compacting),
+        ("compaction".into(), SessionActivityState::Running)
+    );
+    let done = bridge
+        .inbound(
+            json!({"type":"system","subtype":"status","status":null,"compact_result":"success"}),
+        )
+        .unwrap();
+    assert_eq!(
+        state(&done),
+        ("compaction".into(), SessionActivityState::Completed)
+    );
+    let boundary = bridge.inbound(json!({"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":9000,"post_tokens":1200}})).unwrap();
+    let [SessionScopedEvent::Notice(notice)] = &boundary.session[..] else {
+        panic!("notice")
+    };
+    assert!(notice.text.as_str().contains("9000 to 1200"));
+
+    let task = bridge.inbound(json!({"type":"system","subtype":"task_started","task_id":"b1","description":"Run the test suite"})).unwrap();
+    assert_eq!(state(&task), ("task".into(), SessionActivityState::Running));
+    let finished = bridge.inbound(json!({"type":"system","subtype":"task_notification","task_id":"b1","status":"completed","output_file":"/tmp/x","summary":"All tests passed"})).unwrap();
+    assert_eq!(
+        state(&finished),
+        ("task".into(), SessionActivityState::Completed)
+    );
+
+    let limit = bridge.inbound(json!({"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","rateLimitType":"five_hour","utilization":0.91}})).unwrap();
+    let [SessionScopedEvent::Notice(notice)] = &limit.session[..] else {
+        panic!("notice")
+    };
+    assert!(notice.text.as_str().contains("5-hour limit (91% used)"));
+    let quiet = bridge
+        .inbound(json!({"type":"rate_limit_event","rate_limit_info":{"status":"allowed"}}))
+        .unwrap();
+    assert!(quiet.session.is_empty());
+
+    bridge.inbound(json!({"type":"system","subtype":"api_retry","attempt":2,"max_retries":10,"retry_delay_ms":500,"error_status":529,"error":"overloaded"})).unwrap();
+    let ended = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false}))
+        .unwrap();
+    assert_eq!(
+        state(&ended),
+        ("retry".into(), SessionActivityState::Completed)
+    );
+}
+
+#[test]
+fn local_command_output_and_new_commands_reach_the_chat() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let output = bridge
+        .inbound(
+            json!({"type":"system","subtype":"local_command_output","content":"Total cost: $0.12"}),
+        )
+        .unwrap();
+    assert_eq!(updates(&output)[0]["content"]["text"], "Total cost: $0.12");
+    let commands = bridge.inbound(json!({"type":"system","subtype":"commands_changed","commands":[{"name":"deploy","description":"Ship it","argumentHint":""}]})).unwrap();
+    assert_eq!(
+        updates(&commands)[0]["availableCommands"][0]["name"],
+        "deploy"
+    );
+}
+
+#[test]
+fn commands_sharing_a_name_list_the_row_that_runs() {
+    let mut bridge = initialized();
+    let commands = bridge
+        .inbound(
+            json!({"type":"system","subtype":"commands_changed","commands":[
+                {"name":"review","description":"Project review","argumentHint":""},
+                {"name":"review","description":"Review a PR","argumentHint":"<pr>","builtin":true},
+                {"name":"deploy","description":"Ship it","argumentHint":"","aliases":["ship"]},
+                {"name":"deploy","description":"Other deploy","argumentHint":""},
+                {"name":"cost","description":"Cost","argumentHint":"","builtin":true,"aliases":["usage"]},
+                {"name":"cost","description":"Later cost","argumentHint":"","builtin":true},
+            ]}),
+        )
+        .unwrap();
+    let listed = &updates(&commands)[0]["availableCommands"];
+    assert_eq!(
+        listed,
+        &json!([
+            {"name":"review","description":"Review a PR","input":{"hint":"<pr>"},"_meta":{"source":"builtin"}},
+            {"name":"deploy","description":"Ship it","input":null,"_meta":{"aliases":["ship"]}},
+            {"name":"cost","description":"Cost","input":null,"_meta":{"source":"builtin","aliases":["usage"]}},
+        ])
+    );
+}
+
+#[test]
+fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
+    use crate::acp::{goal::NativeRpcReply, session_control::SessionControl};
+    let mut bridge = initialized();
+    const TURN: &str = "turn-6f9619ff-8b86-4011-b42d-00cf4fc964ff";
+    let user = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{
+            "sessionId":SESSION,"messageId":TURN,"prompt":[{"type":"text","text":"hi"}]}}),
+        )
+        .unwrap();
+    assert_eq!(user["uuid"], "6f9619ff-8b86-4011-b42d-00cf4fc964ff");
+    let undo = SessionControl::UndoTurn {
+        turn_id: crate::acp::contract::SageTurnId::parse(TURN).unwrap(),
+    };
+    let rewind = bridge.session_control(&undo).unwrap();
+    assert_eq!(rewind["request"]["subtype"], "rewind_files");
+    assert_eq!(
+        rewind["request"]["user_message_id"],
+        "6f9619ff-8b86-4011-b42d-00cf4fc964ff"
+    );
+    assert!(bridge.controlling());
+    assert_eq!(bridge.session_control(&undo), Err(BridgeError::Capacity));
+    let done = bridge
+        .inbound(success(
+            &rewind,
+            json!({"canRewind":true,"filesChanged":["a.rs","b.rs"]}),
+        ))
+        .unwrap();
+    assert!(
+        matches!(&done.native, Some(NativeRpcReply::Controlled(Some(text))) if text.as_str() == "Restored 2 files")
+    );
+    assert!(!bridge.controlling());
+    let rewind = bridge.session_control(&undo).unwrap();
+    let refused = bridge
+        .inbound(success(
+            &rewind,
+            json!({"canRewind":false,"error":"No file checkpoint found for this message."}),
+        ))
+        .unwrap();
+    assert!(
+        matches!(&refused.native, Some(NativeRpcReply::ControlRefused(Some(text)))
+        if text.as_str() == "No file checkpoint found for this message.")
+    );
+    let stop = bridge
+        .session_control(&SessionControl::StopActivity {
+            activity_id: crate::acp::intent::ExternalId::new("activityId", "task:task-7").unwrap(),
+        })
+        .unwrap();
+    assert_eq!(
+        stop["request"],
+        json!({"subtype":"stop_task","task_id":"task-7"})
+    );
+    let failed = bridge
+        .inbound(json!({"type":"control_response","response":{"subtype":"error","request_id":stop["request_id"],"error":"No task with that id"}}))
+        .unwrap();
+    assert!(failed.acp.is_empty());
+    assert!(
+        matches!(&failed.native, Some(NativeRpcReply::ControlRefused(Some(text))) if text.as_str() == "No task with that id")
+    );
+    // A turn id that names no SDK message cannot be undone.
+    assert_eq!(
+        bridge.session_control(&SessionControl::UndoTurn {
+            turn_id: crate::acp::contract::SageTurnId::parse("turn-legacy").unwrap(),
+        }),
+        Err(BridgeError::Unsupported)
+    );
+}
+
+#[test]
+fn mcp_servers_are_listed_and_reconnected_one_control_at_a_time() {
+    use crate::acp::{
+        contract::RequiredText, goal::NativeRpcReply, mcp::inventory::McpConnection,
+        session_control::SessionControl,
+    };
+    let mut bridge = initialized();
+    let list = bridge
+        .session_control(&SessionControl::ReadMcpServers)
+        .unwrap();
+    assert_eq!(list["request"], json!({"subtype": "mcp_status"}));
+    assert!(bridge.controlling());
+    let name = RequiredText::<128>::new("serverName", "linear").unwrap();
+    let reconnect = SessionControl::ReconnectMcpServer { name };
+    assert_eq!(
+        bridge.session_control(&reconnect),
+        Err(BridgeError::Capacity)
+    );
+    let listed = bridge
+        .inbound(success(
+            &list,
+            json!({"mcpServers": [{"name": "linear", "status": "failed", "error": "timed out",
+                "config": {"type": "http", "url": "https://mcp.linear.app/mcp", "headers": {"x": "y"}}}]}),
+        ))
+        .unwrap();
+    assert!(listed.acp.is_empty());
+    let Some(NativeRpcReply::McpServers(inventory)) = listed.native else {
+        panic!("a server list")
+    };
+    assert_eq!(inventory.servers[0].connection, McpConnection::Failed);
+    assert!(!bridge.controlling());
+    let again = bridge.session_control(&reconnect).unwrap();
+    assert_eq!(
+        again["request"],
+        json!({"subtype": "mcp_reconnect", "serverName": "linear"})
+    );
+    let refused = bridge
+        .inbound(
+            json!({"type":"control_response","response":{"subtype":"error",
+            "request_id":again["request_id"],"error":"Server not found: linear"}}),
+        )
+        .unwrap();
+    assert!(
+        matches!(&refused.native, Some(NativeRpcReply::ControlRefused(Some(text))) if text.as_str() == "Server not found: linear")
+    );
+    let again = bridge.session_control(&reconnect).unwrap();
+    let done = bridge.inbound(success(&again, json!({}))).unwrap();
+    assert_eq!(done.native, Some(NativeRpcReply::Controlled(None)));
+    // A reply that is not a list is refused rather than shown as empty.
+    let list = bridge
+        .session_control(&SessionControl::ReadMcpServers)
+        .unwrap();
+    let odd = bridge
+        .inbound(success(&list, json!({"servers": []})))
+        .unwrap();
+    assert_eq!(odd.native, Some(NativeRpcReply::Rejected));
+    // Reloading and signing in happen in Claude Code's own `/mcp`.
+    for control in [
+        SessionControl::ReloadMcpServers,
+        SessionControl::SignInMcpServer {
+            name: RequiredText::new("serverName", "linear").unwrap(),
+        },
+    ] {
+        assert_eq!(
+            bridge.session_control(&control),
+            Err(BridgeError::Unsupported)
+        );
+    }
+}
+
+#[test]
+fn an_abandoned_mcp_list_frees_the_session_and_its_late_reply_is_dropped() {
+    use crate::acp::session_control::SessionControl;
+    let mut bridge = initialized();
+    let mut abandoned = Vec::new();
+    for _ in 0..4 {
+        let list = bridge
+            .session_control(&SessionControl::ReadMcpServers)
+            .unwrap();
+        bridge.abandon_passive_requests();
+        assert!(!bridge.controlling(), "an abandoned list holds nothing");
+        abandoned.push(list);
+    }
+    // Four lists Claude Code never answered hold back further lists only.
+    assert_eq!(
+        bridge.session_control(&SessionControl::ReadMcpServers),
+        Err(BridgeError::Capacity)
+    );
+    let late = bridge
+        .inbound(success(&abandoned[0], json!({"mcpServers": []})))
+        .unwrap();
+    assert_eq!(late, Inbound::default());
+    let late = bridge
+        .inbound(
+            json!({"type":"control_response","response":{"subtype":"error",
+            "request_id":abandoned[1]["request_id"],"error":"too large"}}),
+        )
+        .unwrap();
+    assert_eq!(late, Inbound::default());
+    assert!(
+        bridge
+            .session_control(&SessionControl::ReadMcpServers)
+            .is_ok()
+    );
+}
+
+#[test]
+fn an_abandoned_reconnect_frees_the_session_and_counts_toward_the_bound() {
+    use crate::acp::{contract::RequiredText, session_control::SessionControl};
+    let mut bridge = initialized();
+    let reconnect = SessionControl::ReconnectMcpServer {
+        name: RequiredText::new("serverName", "linear").unwrap(),
+    };
+    let mut abandoned = Vec::new();
+    for _ in 0..4 {
+        abandoned.push(bridge.session_control(&reconnect).unwrap());
+        bridge.abandon_passive_requests();
+        assert!(
+            !bridge.controlling(),
+            "an abandoned reconnect holds nothing"
+        );
+    }
+    // Neither MCP request is sent past the bound; other controls still are.
+    assert_eq!(
+        bridge.session_control(&reconnect),
+        Err(BridgeError::Capacity)
+    );
+    assert_eq!(
+        bridge.session_control(&SessionControl::ReadMcpServers),
+        Err(BridgeError::Capacity)
+    );
+    let late = bridge.inbound(success(&abandoned[0], json!({}))).unwrap();
+    assert_eq!(late, Inbound::default());
+    assert!(bridge.session_control(&reconnect).is_ok());
+}
+
+/// The blocks `Mentions::blocks` sends for an `@` mention: the file's text
+/// when embedded context is offered, otherwise a sized link.
+#[test]
+fn an_at_mention_reaches_claude_code_as_context_or_a_path_mention() {
+    let (uri, path) = if cfg!(windows) {
+        ("file:///C:/work/a.rs", "@C:\\work\\a.rs")
+    } else {
+        ("file:///work/a.rs", "@/work/a.rs")
+    };
+    for (block, expected) in [
+        (
+            json!({"type":"resource","resource":{"uri":uri,"text":"fn a"}}),
+            format!("<context ref=\"{uri}\">\nfn a\n</context>"),
+        ),
+        (
+            json!({"type":"resource_link","uri":uri,"name":"a.rs","size":4}),
+            path.to_owned(),
+        ),
+    ] {
+        let mut bridge = initialized();
+        let user = bridge
+            .outbound(
+                &json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"prompt":[
+                    {"type":"text","text":"see @a.rs"},
+                    block,
+                ]}}),
+            )
+            .unwrap();
+        assert_eq!(user["message"]["content"][1]["text"], expected);
+    }
+}
+
+/// Claude Code reads an `@path` it receives, so a link to a credential file
+/// Sage would not embed must not become one.
+#[test]
+fn a_mentioned_credential_file_is_named_but_not_handed_to_claude_code() {
+    let uri = if cfg!(windows) {
+        "file:///C:/work/.env"
+    } else {
+        "file:///work/.env"
+    };
+    let mut bridge = initialized();
+    let user = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"prompt":[
+                {"type":"text","text":"see @.env"},
+                {"type":"resource_link","uri":uri,"name":".env","size":9},
+            ]}}),
+        )
+        .unwrap();
+    let text = user["message"]["content"][1]["text"].as_str().unwrap();
+    assert!(!text.contains('@'), "{text}");
+    assert!(text.contains("Not attached"), "{text}");
+}
+
+fn lifecycle(uuid: &str, state: &str) -> Value {
+    json!({"type":"command_lifecycle","command_uuid":uuid,"state":state,"uuid":"e1","session_id":SESSION})
+}
+
+fn ended(inbound: &Inbound) -> bool {
+    inbound.acp.iter().any(|frame| frame["id"] == 3)
+}
+
+#[test]
+fn a_message_sent_mid_turn_is_queued_and_the_turn_ends_after_it_runs() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (user, uuid) = bridge.steer("also check the tests").unwrap();
+    assert_eq!(user["type"], "user");
+    assert_eq!(user["uuid"], uuid.as_str());
+    assert_eq!(
+        user["message"]["content"],
+        json!([{"type":"text","text":"also check the tests"}])
+    );
+    let queued = bridge.inbound(lifecycle(&uuid, "queued")).unwrap();
+    assert_eq!(queued.steers, [(uuid.clone(), true)]);
+
+    // The running reply ends before Claude Code takes the message up: the
+    // turn goes on.
+    let first = bridge.inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":1}})).unwrap();
+    assert!(!ended(&first) && first.acp.is_empty());
+    bridge.inbound(lifecycle(&uuid, "started")).unwrap();
+    let chunk = bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Checked"}}})).unwrap();
+    assert_eq!(updates(&chunk)[0]["content"]["text"], "Checked");
+    let last = bridge.inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":2}})).unwrap();
+    assert!(ended(&last));
+    assert!(last.steers.is_empty());
+    // A later lifecycle frame for it changes nothing.
+    assert!(
+        bridge
+            .inbound(lifecycle(&uuid, "completed"))
+            .unwrap()
+            .acp
+            .is_empty()
+    );
+}
+
+#[test]
+fn a_message_taken_up_at_a_tool_boundary_ends_with_the_one_result() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("stop after this").unwrap();
+    bridge.inbound(lifecycle(&uuid, "queued")).unwrap();
+    let started = bridge.inbound(lifecycle(&uuid, "started")).unwrap();
+    assert_eq!(started.steers, [(uuid.clone(), true)]);
+    bridge.inbound(lifecycle(&uuid, "completed")).unwrap();
+    let result = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(ended(&result));
+}
+
+#[test]
+fn a_held_turn_ends_when_its_waiting_message_is_dropped() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("later").unwrap();
+    let first = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(!ended(&first));
+    let dropped = bridge.inbound(lifecycle(&uuid, "cancelled")).unwrap();
+    assert_eq!(dropped.steers, [(uuid, false)]);
+    assert!(ended(&dropped));
+}
+
+#[test]
+fn stopping_withdraws_waiting_messages_before_interrupting() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, first) = bridge.steer("one").unwrap();
+    let (_, second) = bridge.steer("two").unwrap();
+    let cancel = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    assert_eq!(
+        cancel["request"],
+        json!({"subtype":"cancel_async_message","message_uuid":first})
+    );
+    assert!(
+        bridge.steer("three").is_err(),
+        "nothing joins a stopping turn"
+    );
+    let next = bridge
+        .inbound(success(&cancel, json!({"cancelled":true})))
+        .unwrap();
+    assert_eq!(next.steers, [(first, false)]);
+    assert_eq!(
+        next.replies[0]["request"],
+        json!({"subtype":"cancel_async_message","message_uuid":second})
+    );
+    // A message already running is not withdrawn; the interrupt stops it.
+    let next = bridge.inbound(json!({"type":"control_response","response":{"subtype":"error","request_id":next.replies[0]["request_id"],"error":"not queued"}})).unwrap();
+    assert_eq!(next.steers, [(second, false)]);
+    let interrupt = &next.replies[0];
+    assert_eq!(interrupt["request"]["subtype"], "interrupt");
+    bridge
+        .inbound(success(interrupt, json!({"still_queued":[]})))
+        .unwrap();
+    let result = bridge
+        .inbound(
+            json!({"type":"result","subtype":"error_during_execution","is_error":true,"usage":{}}),
+        )
+        .unwrap();
+    assert_eq!(
+        result.acp.last().unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn a_message_needs_a_running_turn_and_an_unsent_one_is_forgotten() {
+    let mut bridge = initialized();
+    assert!(bridge.steer("idle").is_err());
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("never written").unwrap();
+    bridge.undo(&Sent::Steer(uuid));
+    let result = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(ended(&result));
+}
+
+#[test]
+fn stopping_while_a_run_end_is_held_ends_the_turn_once_the_message_is_withdrawn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("later").unwrap();
+    let first = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(!ended(&first));
+    let cancel = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    let withdrawn = bridge
+        .inbound(success(&cancel, json!({"cancelled":true})))
+        .unwrap();
+    assert_eq!(withdrawn.steers, [(uuid, false)]);
+    assert!(
+        withdrawn.replies.is_empty(),
+        "Claude Code is idle; nothing to interrupt"
+    );
+    assert_eq!(
+        withdrawn.acp.last().unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn a_late_withdrawal_reply_never_interrupts_the_next_turn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    bridge.steer("later").unwrap();
+    let cancel = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    // The run ends before Claude Code answers the withdrawal: the turn
+    // waits for the answer, then ends without reaching the next one.
+    let end = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(!ended(&end));
+    let answered = bridge
+        .inbound(success(&cancel, json!({"cancelled":true})))
+        .unwrap();
+    assert!(answered.replies.is_empty());
+    assert_eq!(
+        answered.acp.last().unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+    prompt(&mut bridge, 4);
+    let next = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert_eq!(next.acp.last().unwrap()["result"]["stopReason"], "end_turn");
+}
+
+#[test]
+fn a_message_taken_up_while_its_withdrawal_is_in_flight_is_interrupted_in_its_turn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let (_, uuid) = bridge.steer("later").unwrap();
+    let cancel = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    // The run ends and Claude Code takes the message up before reading the
+    // withdrawal.
+    let first = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(!ended(&first));
+    bridge.inbound(lifecycle(&uuid, "started")).unwrap();
+    let reply = bridge
+        .inbound(success(&cancel, json!({"cancelled":false})))
+        .unwrap();
+    assert_eq!(reply.replies[0]["request"]["subtype"], "interrupt");
+    let end = bridge
+        .inbound(
+            json!({"type":"result","subtype":"error_during_execution","is_error":true,"usage":{}}),
+        )
+        .unwrap();
+    assert_eq!(end.acp.last().unwrap()["result"]["stopReason"], "cancelled");
+}
+
+#[test]
+fn a_fork_answers_once_claude_code_replies_and_never_mid_turn() {
+    const REPLY: &str = "1c8e7d9f-4d2b-4a8f-8b62-3a7e9d2f5ca1";
+    let config = std::env::temp_dir().join(format!("sage-sdk-fork-{}", uuid::Uuid::new_v4()));
+    let project = config.join("projects").join("-w");
+    std::fs::create_dir_all(&project).unwrap();
+    let mut bridge = initialized();
+    // The turn's reply reaches the transcript before Claude Code answers.
+    let sdk = bridge.fork(Some(config.clone())).unwrap();
+    assert_eq!(sdk["request"]["subtype"], "get_settings");
+    assert!(bridge.controlling());
+    std::fs::write(
+        project.join(format!("{SESSION}.jsonl")),
+        json!({"type":"assistant","uuid":REPLY,"isSidechain":false}).to_string(),
+    )
+    .unwrap();
+    let reply = bridge.inbound(success(&sdk, json!({}))).unwrap();
+    let Some(crate::acp::goal::NativeRpcReply::Forked(id)) = reply.native else {
+        panic!("forked: {:?}", reply.native);
+    };
+    let fork = crate::acp::bindings::claude::sdk::fork::Fork::parse(id.as_str()).unwrap();
+    assert_eq!((fork.source.as_str(), fork.at.as_str()), (SESSION, REPLY));
+    // No profile, or Claude Code refusing, rejects the fork.
+    let sdk = bridge.fork(None).unwrap();
+    let reply = bridge.inbound(success(&sdk, json!({}))).unwrap();
+    assert_eq!(
+        reply.native,
+        Some(crate::acp::goal::NativeRpcReply::Rejected)
+    );
+    let sdk = bridge.fork(Some(config.clone())).unwrap();
+    let reply = bridge.inbound(json!({"type":"control_response","response":{"subtype":"error","request_id":sdk["request_id"],"error":"gone"}})).unwrap();
+    assert_eq!(
+        reply.native,
+        Some(crate::acp::goal::NativeRpcReply::Rejected)
+    );
+    prompt(&mut bridge, 3);
+    assert!(bridge.fork(None).is_err());
+    let _ = std::fs::remove_dir_all(config);
+}
+
+#[test]
+fn answer_text_on_either_side_of_a_tool_call_stays_two_items() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let text = |bridge: &mut SdkBridge, message: &str, text: &str| {
+        bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"message_start","message":{"id":message}}})).unwrap();
+        let chunk = bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":text}}})).unwrap();
+        updates(&chunk)[0]["itemId"].clone()
+    };
+    let before = text(&mut bridge, "msg_a", "File exists.");
+    let after = text(&mut bridge, "msg_b", "I added a line.");
+    assert_eq!(before, "msg_a:0");
+    assert_eq!(after, "msg_b:0");
+
+    // Within one message, every delta of a block shares its item and a
+    // later block starts its own.
+    let delta = |bridge: &mut SdkBridge, index: u64, text: &str| {
+        let chunk = bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":index,"delta":{"type":"text_delta","text":text}}})).unwrap();
+        updates(&chunk)[0]["itemId"].clone()
+    };
+    assert_eq!(delta(&mut bridge, 0, " More."), "msg_b:0");
+    assert_eq!(delta(&mut bridge, 2, "Second block."), "msg_b:2");
+    assert_eq!(delta(&mut bridge, 2, " Continued."), "msg_b:2");
+
+    // Text Claude Code wrote itself, never streamed, is keyed by its
+    // message and block the same way.
+    let unstreamed = bridge
+        .inbound(
+            json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"msg_c","content":[
+                {"type":"text","text":"Signed out."},
+            ]}}),
+        )
+        .unwrap();
+    assert_eq!(
+        updates(&unstreamed),
+        [
+            &json!({"sessionUpdate":"agent_message_chunk","itemId":"msg_c:0","content":{"type":"text","text":"Signed out."}})
+        ]
     );
 }
