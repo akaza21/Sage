@@ -137,7 +137,8 @@ mod tests {
     #[test]
     fn a_manifest_under_a_linked_parent_is_refused() {
         let root = npm_tree();
-        let package = root.join("node_modules/@openai/codex");
+        // Joined per component: `mklink` reads a `/` in its path as a switch.
+        let package = root.join("node_modules").join("@openai").join("codex");
         let target = root.join("real-package");
         std::fs::rename(&package, &target).unwrap();
         #[cfg(unix)]
