@@ -809,6 +809,8 @@ test.describe("V2-4 session mode picker", () => {
       .click();
     await expect(closedOptions).toHaveCount(0);
     await expectComposerControlRow(page);
+    // Lazy Markdown and virtual-row measurements can outlast scenario setup.
+    await settleTranscriptAtEnd(page);
     await takeCanonicalScreenshot(closedWorkbench, "agent-session-mode-closed");
 
     const openWorkbench = await openScenario(
@@ -830,6 +832,7 @@ test.describe("V2-4 session mode picker", () => {
       "Apply changesApply approved changes to the workspace.",
     );
     await expectOpenPickerContained(page, openInput, openListbox);
+    await settleTranscriptAtEnd(page);
     await takeCanonicalScreenshot(openWorkbench, "agent-session-mode-open");
 
     await page.setViewportSize({ width: 720, height: 560 });
@@ -850,6 +853,7 @@ test.describe("V2-4 session mode picker", () => {
       page.getByRole("group", { name: "Session mode" }),
     );
     await expectNoViewportOverflow(page);
+    await settleTranscriptAtEnd(page);
     await takeCanonicalScreenshot(narrowWorkbench, "agent-session-mode-narrow");
 
     await page.emulateMedia({
@@ -871,6 +875,7 @@ test.describe("V2-4 session mode picker", () => {
       }));
     expect(forcedState.background).not.toBe("rgba(0, 0, 0, 0)");
     expect(forcedState.color).not.toBe("rgba(0, 0, 0, 0)");
+    await settleTranscriptAtEnd(page);
     await takeCanonicalScreenshot(
       forcedWorkbench,
       "agent-session-mode-forced-colors",
