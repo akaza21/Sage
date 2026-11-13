@@ -99,12 +99,21 @@ pub(super) fn observed_entrypoint_identity(
     })
 }
 
-pub(super) fn observed_binding_digest(entrypoint: &EntrypointIdentity) -> [u8; 32] {
+pub(super) fn observed_binding_digest(
+    entrypoint: &EntrypointIdentity,
+    #[cfg(windows)] manifest: Option<&crate::acp::process::ManifestExpectation>,
+) -> [u8; 32] {
     let mut digest = Sha256::new();
     digest.update(b"sage:observed-codex-app-server:v1:");
     digest.update(entrypoint.path.as_os_str().as_encoded_bytes());
     digest.update(entrypoint.sha256);
     digest.update(entrypoint.byte_len.to_le_bytes());
+    #[cfg(windows)]
+    if let Some(manifest) = manifest {
+        digest.update(b":manifest:");
+        digest.update(manifest.sha256());
+        digest.update(manifest.byte_len().to_le_bytes());
+    }
     digest.finalize().into()
 }
 

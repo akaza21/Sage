@@ -83,7 +83,7 @@ impl CodexBindingRegistration {
             }
             CodexRegistrationState::Admitted(binding)
                 if binding.is_observed()
-                    && (binding.artifact_digest() != candidate.artifact_digest()
+                    && (binding.binding_digest() != candidate.binding_digest()
                         || binding.harness_version() != candidate.harness_version()) =>
             {
                 *state = CodexRegistrationState::Admitted(Arc::clone(&candidate));

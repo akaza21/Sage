@@ -180,6 +180,72 @@ mod tests {
     }
 
     #[test]
+    fn rediscovery_admits_and_plans_a_manifest_only_codex_reinstall() {
+        use crate::acp::{
+            bindings::codex::{CodexBindingRegistration, CodexProjectRootAuthority, CodexRuntime},
+            contract::{
+                ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
+            },
+        };
+        use crate::project_registry::ProjectRootAuthority;
+
+        let directory = npm_tree();
+        let launcher = directory.join("codex.cmd");
+        let package = directory.join("node_modules/@openai/codex");
+        fs::write(package.join("bin/reinstalled.js"), b"").unwrap();
+        let registration = CodexBindingRegistration::unavailable_for_test();
+        let discover = || {
+            registration
+                .authenticate_observed_for_test(launcher.clone(), "0.167.1".into())
+                .unwrap()
+        };
+        let earlier = discover();
+
+        // Rediscovery sees only a new manifest, before refresh has detected
+        // drift. The shim and reported CLI version remain unchanged.
+        fs::write(
+            package.join("package.json"),
+            br#"{"name":"@openai/codex","bin":{"codex":"bin/reinstalled.js"}}"#,
+        )
+        .unwrap();
+        discover();
+        let current = registration.refresh().unwrap();
+        assert!(registration.is_available());
+        assert_ne!(current.binding_digest(), earlier.binding_digest());
+        assert_eq!(current.artifact_digest(), earlier.artifact_digest());
+        assert_eq!(current.harness_version(), earlier.harness_version());
+
+        let root = ProjectRootAuthority::for_test(
+            SageProjectId::parse("project-manifest-reinstall").unwrap(),
+            ProjectGeneration::ZERO,
+            SageRootId::parse("root-manifest-reinstall").unwrap(),
+            &directory,
+        )
+        .unwrap();
+        let spec = CodexRuntime::from_admitted_binding(
+            current,
+            CodexProjectRootAuthority::for_test(root),
+            RuntimeEpoch::new(1).unwrap(),
+            SageAgentSessionId::parse("session-manifest-reinstall").unwrap(),
+        )
+        .unwrap()
+        .launch_spec()
+        .unwrap();
+        let (artifact, guard) = VerifiedArtifact::open_with_manifest(&spec).unwrap();
+        let plan = parse_npm_codex_launcher(
+            &artifact,
+            guard.as_ref(),
+            &spec.environment,
+            &spec.fixed_args,
+        )
+        .unwrap();
+        assert_eq!(plan.node, directory.join("node.exe"));
+        assert_eq!(plan.args[0], package.join("bin/reinstalled.js").into_os_string());
+        drop((artifact, guard, spec));
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn accepts_npm_codex_shims_from_any_npm_template() {
         let current = concat!(
             "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n",
