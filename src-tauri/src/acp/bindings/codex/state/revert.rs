@@ -40,6 +40,15 @@ impl CodexAdapter {
         Ok(request)
     }
 
+    /// Whether the Turn Sage sent as `client_message_id` is the one this
+    /// runtime last reverted.
+    pub(crate) fn reverted(&self, client_message_id: &str) -> bool {
+        self.previous_turn.as_ref().is_some_and(|turn| {
+            turn.client_message_id.as_str() == client_message_id
+                && self.reverted_turn.as_deref() == Some(turn.id.as_str())
+        })
+    }
+
     pub(crate) fn revert_pending(&self) -> bool {
         self.pending
             .iter()

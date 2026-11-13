@@ -58,6 +58,10 @@ pub(crate) enum AdapterRuntimeError {
     LaterPermissionMiss,
     #[error("adapter launch artifact is not admitted")]
     LaunchUnavailable,
+    #[error(
+        "The pending undo could not be applied; activation stopped and the rewind remains pending."
+    )]
+    RewindUnavailable,
     #[error("the harness reports that it is not signed in")]
     SignInRequired,
     #[error("adapter frame is invalid")]
@@ -170,6 +174,13 @@ pub(crate) trait HarnessAdapter {
     }
     /// An oversized frame without a request id was read past and dropped.
     fn oversize_frame_skipped(&mut self) {}
+    /// Answers a session control the harness has already carried out
+    /// without writing a frame: the answer waits in the native RPC reply.
+    /// A control done once, such as an undo whose outcome Sage could not
+    /// record, may then be confirmed again.
+    fn answered_control(&mut self, _control: &crate::acp::session_control::SessionControl) -> bool {
+        false
+    }
     /// The frame for a session control; harnesses without one refuse it.
     fn session_control(
         &mut self,

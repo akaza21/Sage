@@ -607,7 +607,10 @@ fn upgraded_store_with_a_duplicate_terminal_recovers_only_the_unfinished_operati
                  FROM session_facts WHERE kind='browserOperationTerminal';
                  DROP INDEX idx_session_facts_operation_start;
                  DROP INDEX idx_session_facts_operation_terminal;
-                 DELETE FROM schema_migrations WHERE version=27;
+                 DROP INDEX idx_session_facts_undo_start;
+                 DROP INDEX idx_session_facts_undo_recovery;
+                 DROP INDEX idx_session_facts_undo_settled;
+                 DELETE FROM schema_migrations WHERE version>=27;
                  PRAGMA user_version=26;",
             )
             .unwrap();
