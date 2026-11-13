@@ -3,6 +3,7 @@ import type { ResourceRef } from "../domain/workbench";
 import {
   acquireNotifyListingSlot,
   isIgnoreRuleFile,
+  MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
   releaseNotifyListingSlot,
   WORKSPACE_NOTIFY_EVENT,
   syncLiveProjectWorkspaceNotify,
@@ -56,8 +57,55 @@ function resourceFromKey(key: string): ResourceRef | null {
   };
 }
 
-const resyncRootsInFlight = new Set<string>();
-const resyncRootsQueued = new Set<string>();
+const resyncRoots = new Map<string, { dirty: boolean }>();
+
+interface ListingRefreshBatch {
+  resources: ResourceRef[];
+  load(resource: ResourceRef): Promise<void>;
+  complete(): void;
+  cancel(): void;
+}
+
+// Root resyncs coalesce per root; the notice scheduler admits at most eight
+// subtree refreshes. Each selection holds at most 64 cached + 64 expanded
+// listings. Workers pull from those bounded selections, never fan them out
+// into admission waiters. Unbind discards selections from the old session.
+const listingRefreshBatches = new Set<ListingRefreshBatch>();
+let listingRefreshWorkers = 0;
+
+function discardListingRefreshes(): void {
+  for (const batch of listingRefreshBatches) batch.cancel();
+  listingRefreshBatches.clear();
+  resyncRoots.clear();
+}
+
+function startListingRefreshWorkers(): void {
+  while (
+    listingRefreshWorkers < MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS &&
+    listingRefreshBatches.size > 0
+  ) {
+    listingRefreshWorkers += 1;
+    void (async () => {
+      try {
+        while (listingRefreshBatches.size > 0) {
+          const batch = listingRefreshBatches.values().next().value!;
+          const resource = batch.resources.shift()!;
+          if (batch.resources.length === 0) listingRefreshBatches.delete(batch);
+          try {
+            await batch.load(resource);
+          } catch {
+            // Directory loads report native failures in listing state. An
+            // unexpected rejection must not strand the remaining selections.
+          } finally {
+            batch.complete();
+          }
+        }
+      } finally {
+        listingRefreshWorkers -= 1;
+      }
+    })();
+  }
+}
 
 async function admittedLoadDirectory(
   get: () => WorkbenchState,
@@ -74,7 +122,7 @@ async function admittedLoadDirectory(
   }
 }
 
-/** Resyncs ready/expanded listings; subtree notices also dirty cached reads. */
+/** Resyncs cached/expanded listings, including reads overtaken by changes. */
 async function reloadRootListings(
   get: () => WorkbenchState,
   rootId: string,
@@ -99,7 +147,7 @@ async function reloadRootListings(
   for (const [key, entry] of Object.entries(get().directoryListings)) {
     if (entry.phase === "ready") {
       add(entry.value.resource);
-    } else if (subtree !== undefined && entry.phase === "loading") {
+    } else if (entry.phase === "loading") {
       const resource = resourceFromKey(key);
       if (resource) add(resource);
     }
@@ -110,27 +158,54 @@ async function reloadRootListings(
       add(resource);
     }
   }
-  await Promise.all(
-    resources.map((resource) => admittedLoadDirectory(get, resource)),
-  );
+  if (resources.length === 0) return;
+  const { projectGeneration, nativeTransitionEpoch } = get();
+  await new Promise<void>((resolve) => {
+    let remaining = resources.length;
+    const batch: ListingRefreshBatch = {
+      resources,
+      async load(resource) {
+        if (
+          get().projectGeneration === projectGeneration &&
+          get().nativeTransitionEpoch === nativeTransitionEpoch
+        ) {
+          await admittedLoadDirectory(get, resource);
+        }
+      },
+      complete() {
+        if (--remaining === 0) resolve();
+      },
+      cancel() {
+        remaining -= resources.length;
+        resources.length = 0;
+        if (remaining === 0) resolve();
+      },
+    };
+    listingRefreshBatches.add(batch);
+    startListingRefreshWorkers();
+  });
 }
 
 async function refreshListingsForResync(
   get: () => WorkbenchState,
   notice: WorkspaceNotifyNotice,
 ): Promise<void> {
-  if (resyncRootsInFlight.has(notice.rootId)) {
-    resyncRootsQueued.add(notice.rootId);
+  const current = resyncRoots.get(notice.rootId);
+  if (current) {
+    current.dirty = true;
     return;
   }
-  resyncRootsInFlight.add(notice.rootId);
+  const entry = { dirty: false };
+  resyncRoots.set(notice.rootId, entry);
   try {
     do {
-      resyncRootsQueued.delete(notice.rootId);
+      entry.dirty = false;
       await reloadRootListings(get, notice.rootId);
-    } while (resyncRootsQueued.has(notice.rootId));
+    } while (entry.dirty && resyncRoots.get(notice.rootId) === entry);
   } finally {
-    resyncRootsInFlight.delete(notice.rootId);
+    if (resyncRoots.get(notice.rootId) === entry) {
+      resyncRoots.delete(notice.rootId);
+    }
   }
 }
 
@@ -138,6 +213,7 @@ export function createWorkspaceNotifyHooks(
   get: () => WorkbenchState,
 ): WorkspaceNotifyHooks {
   return {
+    dispose: discardListingRefreshes,
     watch(input) {
       return getWorkbenchPorts().project.watchWorkspaceNotify(input);
     },
@@ -185,8 +261,7 @@ export async function bindWorkspaceNotifyFromState(
 }
 
 export async function unbindWorkspaceNotify(): Promise<void> {
-  resyncRootsInFlight.clear();
-  resyncRootsQueued.clear();
+  discardListingRefreshes();
   await syncLiveProjectWorkspaceNotify(null, {
     watch: async () => ({ generation: 0 }),
     unwatch(input) {

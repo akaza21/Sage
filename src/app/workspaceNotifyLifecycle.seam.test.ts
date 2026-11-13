@@ -7,6 +7,7 @@ import type {
   ProjectRepositoryStatus,
 } from "../domain/workbench";
 import {
+  getNotifyListingAdmissionState,
   MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
   subscribeWorkspaceNotifySearch,
   syncLiveProjectWorkspaceNotify,
@@ -32,6 +33,23 @@ import {
 
 const projectPort = getWorkbenchPorts().project;
 const initialState = useWorkbenchStore.getState();
+
+async function drainListingReads(
+  finishers: Array<() => void>,
+  pending: Array<void | Promise<void>>,
+): Promise<void> {
+  let settled = false;
+  const completion = Promise.all(pending).then(() => {
+    settled = true;
+  });
+  while (!settled) {
+    for (const finish of finishers.splice(0)) finish();
+    await vi.waitFor(() => {
+      expect(settled || finishers.length > 0).toBe(true);
+    });
+  }
+  await completion;
+}
 
 function snapshot(): BootstrapSnapshot {
   return {
@@ -147,6 +165,147 @@ describe("live Project workspace notify bind", () => {
     const refreshed = listDirectory.mock.calls.map(([resource]) => resource);
     expect(refreshed).toEqual(expect.arrayContaining([root, nested]));
     expect(refreshed).toHaveLength(2);
+  });
+
+  it("replaces a held root snapshot after an overflow resync", async () => {
+    await useWorkbenchStore.getState().initialize();
+    const root = childResource("root-a");
+    const before: DirectoryListing = {
+      resource: root,
+      entries: [],
+      truncated: false,
+    };
+    const after: DirectoryListing = {
+      ...before,
+      entries: [
+        {
+          resource: childResource("root-a", "new.txt"),
+          name: "new.txt",
+          kind: "file",
+          byteLen: 1,
+        },
+      ],
+    };
+    useWorkbenchStore.setState({
+      directoryListings: {},
+      expandedDirectories: {},
+    });
+    let finishRead!: (value: DirectoryListing) => void;
+    vi.mocked(projectPort.listDirectory)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishRead = resolve;
+          }),
+      )
+      .mockResolvedValue(after);
+    const read = useWorkbenchStore.getState().loadDirectory(root);
+    const resync = createWorkspaceNotifyHooks(() =>
+      useWorkbenchStore.getState(),
+    ).invalidate(
+      {
+        projectId: "project-a",
+        projectGeneration: 1,
+        transitionEpoch: 7,
+        rootId: "root-a",
+        relativePath: "lost-notices",
+        kind: "resync",
+      },
+      root,
+    );
+    await Promise.resolve();
+    finishRead(before);
+    await Promise.all([read, resync]);
+    expect(
+      useWorkbenchStore.getState().directoryListings[resourceKey(root)],
+    ).toEqual({ phase: "ready", value: after });
+  });
+
+  it("refreshes all 128 cached and expanded subtree listings within eight slots", async () => {
+    await useWorkbenchStore.getState().initialize();
+    vi.useFakeTimers();
+    const resources = Array.from({ length: 128 }, (_, index) =>
+      childResource("root-a", `target/dir-${index}`),
+    );
+    useWorkbenchStore.setState({
+      directoryListings: Object.fromEntries(
+        resources.slice(0, 64).map((resource) => [
+          resourceKey(resource),
+          {
+            phase: "ready" as const,
+            value: { resource, entries: [], truncated: false },
+          },
+        ]),
+      ),
+      expandedDirectories: Object.fromEntries(
+        resources.slice(64).map((resource) => [resourceKey(resource), true]),
+      ),
+    });
+    const refreshed = new Set<string>();
+    const unsubscribe = useWorkbenchStore.subscribe((state) => {
+      for (const [key, listing] of Object.entries(state.directoryListings)) {
+        if (
+          listing.phase === "ready" &&
+          listing.value.entries[0]?.name === "new.txt"
+        )
+          refreshed.add(key);
+      }
+    });
+    let inFlight = 0;
+    let peak = 0;
+    vi.mocked(projectPort.listDirectory).mockImplementation(
+      async (resource) => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        inFlight -= 1;
+        return {
+          resource,
+          entries: [
+            {
+              resource: {
+                ...resource,
+                relativePath: `${resource.relativePath}/new.txt`,
+              },
+              name: "new.txt",
+              kind: "file",
+              byteLen: 1,
+            },
+          ],
+          truncated: false,
+        };
+      },
+    );
+    try {
+      const pending = createWorkspaceNotifyHooks(() =>
+        useWorkbenchStore.getState(),
+      ).invalidate(
+        {
+          projectId: "project-a",
+          projectGeneration: 1,
+          transitionEpoch: 7,
+          rootId: "root-a",
+          relativePath: "target",
+          kind: "ignored",
+        },
+        childResource("root-a", "target"),
+      );
+      await vi.runAllTimersAsync();
+      await pending;
+      expect([...refreshed].sort()).toEqual(resources.map(resourceKey).sort());
+      expect(peak).toBeLessThanOrEqual(8);
+      for (const resource of resources.slice(64)) {
+        expect(
+          useWorkbenchStore.getState().directoryListings[resourceKey(resource)],
+        ).toMatchObject({
+          phase: "ready",
+          value: { entries: [{ name: "new.txt" }] },
+        });
+      }
+    } finally {
+      unsubscribe();
+      vi.useRealTimers();
+    }
   });
 
   it("refreshes only the listings inside an ignored folder that changed", async () => {
@@ -576,7 +735,9 @@ describe("live Project workspace notify bind", () => {
         ),
       ),
     );
-    await Promise.resolve();
+    await vi.waitFor(() => {
+      expect(listDirectory).toHaveBeenCalledTimes(8);
+    });
     expect(listDirectory).toHaveBeenCalledTimes(8);
     expect(maxInFlight).toBe(8);
     const resyncPending = hooks.invalidate(
@@ -590,7 +751,12 @@ describe("live Project workspace notify bind", () => {
       },
       { rootId: "root-a", relativePath: "" },
     );
-    await Promise.resolve();
+    await vi.waitFor(() => {
+      expect(getNotifyListingAdmissionState()).toEqual({
+        inFlight: 8,
+        waiting: 8,
+      });
+    });
     expect(listDirectory).toHaveBeenCalledTimes(8);
     expect(maxInFlight).toBe(8);
     const firstBatch = finishers.splice(0);
@@ -602,13 +768,7 @@ describe("live Project workspace notify bind", () => {
       expect(listDirectory.mock.calls.length).toBeGreaterThan(8);
     });
     expect(maxInFlight).toBe(8);
-    while (finishers.length > 0) {
-      const batch = finishers.splice(0);
-      for (const finish of batch) {
-        finish();
-      }
-      await Promise.resolve();
-    }
+    await drainListingReads(finishers, [resyncPending]);
     await resyncPending;
     expect(maxInFlight).toBe(8);
     expect(listDirectory).toHaveBeenCalledWith(resyncOnly[0]);
@@ -669,7 +829,9 @@ describe("live Project workspace notify bind", () => {
         ),
       ),
     );
-    await Promise.resolve();
+    await vi.waitFor(() => {
+      expect(listDirectory).toHaveBeenCalledTimes(8);
+    });
     expect(listDirectory).toHaveBeenCalledTimes(8);
     expect(maxInFlight).toBe(8);
     await unbindWorkspaceNotify();
@@ -691,7 +853,14 @@ describe("live Project workspace notify bind", () => {
         ),
       ),
     );
-    await Promise.resolve();
+    // All rebound invalidations have reached admission, with no free slot.
+    // This makes the following absence assertion independent of microtasks.
+    await vi.waitFor(() => {
+      expect(getNotifyListingAdmissionState()).toEqual({
+        inFlight: 8,
+        waiting: 8,
+      });
+    });
     expect(listDirectory).toHaveBeenCalledTimes(8);
     expect(maxInFlight).toBe(8);
     const firstBatch = finishers.splice(0);
@@ -703,13 +872,7 @@ describe("live Project workspace notify bind", () => {
       expect(listDirectory.mock.calls.length).toBeGreaterThan(8);
     });
     expect(maxInFlight).toBe(8);
-    while (finishers.length > 0) {
-      const batch = finishers.splice(0);
-      for (const finish of batch) {
-        finish();
-      }
-      await Promise.resolve();
-    }
+    await drainListingReads(finishers, [...firstPending, ...secondPending]);
     await Promise.all(secondPending);
     expect(maxInFlight).toBe(8);
     expect(listDirectory).toHaveBeenCalledWith(secondWave[0]);

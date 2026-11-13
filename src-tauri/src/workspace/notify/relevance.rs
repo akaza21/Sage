@@ -3,7 +3,8 @@
 //! platform's watcher alike.
 //!
 //! - A record under `.git` or `node_modules` is dropped, as the workspace
-//!   walks skip them. Git's own files are not needed: the WebView watches
+//!   walks skip them. Relevant `info/exclude` changes resync the root; other
+//!   Git files are not needed: the WebView watches
 //!   Git's change stamp (HEAD, the index and refs) itself, and Explorer never
 //!   lists `.git`. `npm install` writes under `node_modules` by the thousand.
 //! - A record under a folder that Git ignores (`.gitignore`, the repository's
@@ -17,7 +18,8 @@
 //!   say) passes as usual.
 //! - Everything else passes.
 //!
-//! The rules are loaded once and each folder's decision is cached. A change
+//! Root rules are loaded once and compact folder decisions are cached;
+//! descendant matchers are rebuilt only on cache misses. A change
 //! that can alter a decision (a `.gitignore`, any repository's
 //! `info/exclude`, a repository appearing or going, a cached folder created,
 //! removed or renamed, or lost records) drops the rules and the cache, so the next record
@@ -35,10 +37,10 @@ use crate::workspace::{
     ignore_rules::{FolderChain, IgnoreRules, RuleFiles},
 };
 
-/// Folder decisions kept before the cache starts again. A build tree is
-/// decided at its top folder, so real Projects stay far below this; the
-/// bound only caps a pathological tree's memory (a few hundred KiB).
+/// Only compact decisions are cached, never descendant folder matchers.
+/// Bound both entry overhead and the aggregate path bytes per watched root.
 const MAX_CACHED_FOLDERS: usize = 4_096;
+const MAX_CACHED_FOLDER_BYTES: usize = 1024 * 1024;
 
 const REPOSITORY_EXCLUDE: &str = ".git/info/exclude";
 
@@ -49,6 +51,8 @@ pub(super) enum Relevance {
     Keep,
     /// Deliver nothing.
     Drop,
+    /// Exclusion rules changed outside any skipped or ignored folder.
+    Resync,
     /// Something changed inside this ignored folder, the topmost one above
     /// the record.
     IgnoredBelow(String),
@@ -58,10 +62,13 @@ pub(super) enum Relevance {
 pub(super) struct NoticeRelevance {
     root: PathBuf,
     global_excludes: Option<PathBuf>,
-    rules: Option<IgnoreRules>,
-    /// Each decided folder's rules, or `None` when Git ignores the folder.
-    /// The root is the empty key.
-    folders: HashMap<String, Option<FolderChain>>,
+    /// Only global and root matchers survive a record, a fixed number of
+    /// individually size-capped rule files, independent of the folder count.
+    rules: Option<(IgnoreRules, FolderChain)>,
+    /// Whether Git ignores each decided folder. Descendant matchers live only
+    /// while deciding a cache miss, so siblings cannot retain rule chains.
+    folders: HashMap<String, bool>,
+    folder_bytes: usize,
 }
 
 impl NoticeRelevance {
@@ -71,6 +78,7 @@ impl NoticeRelevance {
             global_excludes,
             rules: None,
             folders: HashMap::new(),
+            folder_bytes: 0,
         }
     }
 
@@ -80,6 +88,7 @@ impl NoticeRelevance {
         if let Some(repository) = repository_of_exclude(relative) {
             if !skipped(repository) && self.ignored_folder(repository).is_none() {
                 self.forget();
+                return Relevance::Resync;
             }
             return Relevance::Drop;
         }
@@ -108,6 +117,7 @@ impl NoticeRelevance {
     pub(super) fn forget(&mut self) {
         self.rules = None;
         self.folders.clear();
+        self.folder_bytes = 0;
     }
 
     /// The topmost folder at or above `folder` that Git ignores, deciding
@@ -116,38 +126,65 @@ impl NoticeRelevance {
         if folder.is_empty() {
             return None;
         }
-        if self.folders.len() >= MAX_CACHED_FOLDERS {
-            self.folders.clear();
+        let ends = || {
+            folder
+                .match_indices('/')
+                .map(|(index, _)| index)
+                .chain(std::iter::once(folder.len()))
+        };
+        let mut cached = true;
+        for end in ends() {
+            match self.folders.get(&folder[..end]) {
+                Some(true) => return Some(&folder[..end]),
+                Some(false) => {}
+                None => cached = false,
+            }
         }
-        let rules = self.rules.get_or_insert_with(|| {
-            IgnoreRules::load(&self.root, true, self.global_excludes.as_deref())
+        if cached {
+            return None;
+        }
+        if self.folders.len() >= MAX_CACHED_FOLDERS
+            || self.folder_bytes + folder.len() > MAX_CACHED_FOLDER_BYTES
+        {
+            self.folders.clear();
+            self.folder_bytes = 0;
+        }
+        let (rules, root_chain) = self.rules.get_or_insert_with(|| {
+            let rules = IgnoreRules::load(&self.root, true, self.global_excludes.as_deref());
+            let chain = rules.enter(
+                &FolderChain::default(),
+                "",
+                RuleFiles::probe(&self.root).git_only(),
+            );
+            (rules, chain)
         });
         let root = &self.root;
         let folders = &mut self.folders;
+        let folder_bytes = &mut self.folder_bytes;
         let git_rules = |path: &Path| RuleFiles::probe(path).git_only();
-        let mut chain = folders
-            .entry(String::new())
-            .or_insert_with(|| Some(rules.enter(&FolderChain::default(), "", git_rules(root))))
-            .clone()
-            .unwrap_or_default();
-        let ends = folder
-            .match_indices('/')
-            .map(|(index, _)| index)
-            .chain(std::iter::once(folder.len()));
-        for end in ends {
+        let mut chain = root_chain.clone();
+        for end in ends() {
             let prefix = &folder[..end];
-            let decided = match folders.get(prefix) {
-                Some(decided) => decided.clone(),
+            let ignored = match folders.get(prefix) {
+                Some(ignored) => *ignored,
                 None => {
-                    let decided = (!rules.is_ignored(&chain, prefix, true))
-                        .then(|| rules.enter(&chain, prefix, git_rules(&root.join(prefix))));
-                    folders.insert(prefix.to_string(), decided.clone());
-                    decided
+                    let ignored = rules.is_ignored(&chain, prefix, true);
+                    // Never evict mid-chain: retained descendants must keep
+                    // their ancestor keys so moving an ancestor invalidates them.
+                    if folders.len() < MAX_CACHED_FOLDERS
+                        && *folder_bytes + prefix.len() <= MAX_CACHED_FOLDER_BYTES
+                    {
+                        folders.insert(prefix.to_string(), ignored);
+                        *folder_bytes += prefix.len();
+                    }
+                    ignored
                 }
             };
-            match decided {
-                Some(next) => chain = next,
-                None => return Some(prefix),
+            if ignored {
+                return Some(prefix);
+            }
+            if end < folder.len() {
+                chain = rules.enter(&chain, prefix, git_rules(&root.join(prefix)));
             }
         }
         None
@@ -310,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn a_repository_exclude_change_updates_the_filter() {
+    fn a_repository_exclude_change_resyncs_consumers_and_updates_the_filter() {
         let root = Root::new();
         root.write(".git/info/exclude", "");
         root.write("sub/.git/info/exclude", "");
@@ -327,7 +364,7 @@ mod tests {
         root.write(".git/info/exclude", "scratch/\n");
         assert_eq!(
             relevance.classify(".git/info/exclude", CHANGED),
-            Relevance::Drop
+            Relevance::Resync
         );
         assert_eq!(
             relevance.classify("scratch/notes.md", CHANGED),
@@ -337,12 +374,47 @@ mod tests {
         root.write("sub/.git/info/exclude", "cache/\n");
         assert_eq!(
             relevance.classify("sub/.git/info/exclude", CHANGED),
-            Relevance::Drop
+            Relevance::Resync
         );
         assert_eq!(
             relevance.classify("sub/cache/blob", CHANGED),
             ignored_below("sub/cache")
         );
+    }
+
+    #[test]
+    fn bounded_cache_keeps_decisions_correct_when_an_ancestor_moves() {
+        let root = Root::new();
+        root.write(".gitignore", "target/\n");
+        root.write("src/.gitignore", "generated/\n!generated-source/\n");
+        root.write("lib/.gitignore", "cache/\n");
+        let mut relevance = NoticeRelevance::new(&root.0, None);
+        for index in 0..MAX_CACHED_FOLDERS - 1 {
+            assert_eq!(
+                relevance.classify(&format!("sibling-{index}/file"), CHANGED),
+                Relevance::Keep
+            );
+        }
+        assert_eq!(
+            relevance.classify("lib/cache/blob", CHANGED),
+            ignored_below("lib/cache")
+        );
+        assert!(relevance.folders.len() <= MAX_CACHED_FOLDERS);
+        assert!(relevance.folder_bytes <= MAX_CACHED_FOLDER_BYTES);
+        fs::remove_file(root.0.join("lib/.gitignore")).unwrap();
+        assert_eq!(relevance.classify("lib", RENAMED_OLD), Relevance::Keep);
+        assert_eq!(
+            relevance.classify("lib/cache/blob", CHANGED),
+            Relevance::Keep
+        );
+        for (path, expected) in [
+            ("target/debug/out", ignored_below("target")),
+            ("src/generated/out", ignored_below("src/generated")),
+            ("src/generated-source/main.rs", Relevance::Keep),
+            ("sibling-0/file", Relevance::Keep),
+        ] {
+            assert_eq!(relevance.classify(path, CHANGED), expected, "{path}");
+        }
     }
 
     #[test]

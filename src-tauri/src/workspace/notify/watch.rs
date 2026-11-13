@@ -93,6 +93,10 @@ pub(super) fn root_delivery(
             match relevance.classify(&relative, action) {
                 Relevance::Keep => (relative, action),
                 Relevance::Drop => return,
+                Relevance::Resync => (
+                    super::OVERFLOW_RELATIVE_PATH.to_string(),
+                    OVERFLOW_NOTIFY_ACTION,
+                ),
                 Relevance::IgnoredBelow(folder) => (folder, IGNORED_BELOW_NOTIFY_ACTION),
             }
         };

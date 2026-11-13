@@ -71,6 +71,7 @@ export interface WorkspaceNotifyHooks {
     notice: WorkspaceNotifyNotice,
     listing: ResourceRef,
   ): void | Promise<void>;
+  dispose?(): void;
 }
 
 interface BoundNotifySession {
@@ -83,6 +84,14 @@ let session: BoundNotifySession | null = null;
 let listingAdmission = 0;
 let listingAdmissionEpoch = 0;
 const listingAdmissionWaiters: Array<() => void> = [];
+
+/** A read-only snapshot of occupied slots and queued listing refreshes. */
+export function getNotifyListingAdmissionState() {
+  return {
+    inFlight: listingAdmission,
+    waiting: listingAdmissionWaiters.length,
+  };
+}
 
 export async function acquireNotifyListingSlot(): Promise<boolean> {
   const epoch = listingAdmissionEpoch;
@@ -325,6 +334,7 @@ export async function syncLiveProjectWorkspaceNotify(
     unlisten() {
       unlisten();
       refreshes.dispose();
+      hooks.dispose?.();
     },
   };
   session = bound;

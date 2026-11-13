@@ -362,6 +362,81 @@ describe("workspace Search state", () => {
     }
   });
 
+  it("removes existing matches when exclusion rules trigger a root resync", async () => {
+    const settings = useEditorSettingsStore.getState().settings;
+    useEditorSettingsStore.setState({
+      settings: { ...settings, "search.useIgnoreFiles": true },
+    });
+    let excluded = false;
+    const match = {
+      resource: { rootId: "root-a", relativePath: "scratch/notes.md" },
+      lineNumber: 1,
+      columnNumber: 1,
+      preview: "needle",
+    };
+    const gateway: WorkspaceSearchGateway = {
+      async search(request) {
+        return {
+          ...response(request.query),
+          indexGeneration: 1,
+          matches: excluded && request.useIgnoreFiles !== false ? [] : [match],
+        };
+      },
+    };
+    let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
+    const hooks: WorkspaceNotifyHooks = {
+      watch: async () => ({ generation: 1 }),
+      unwatch: async () => undefined,
+      async listen(listener) {
+        emit = listener;
+        return () => undefined;
+      },
+      invalidate() {},
+    };
+    const { result, unmount } = renderHook(() =>
+      useWorkspaceSearch({
+        projectId: "project-a",
+        transitionEpoch: 4,
+        indexGeneration: 1,
+        gateway,
+      }),
+    );
+    try {
+      await syncLiveProjectWorkspaceNotify(
+        {
+          projectId: "project-a",
+          projectGeneration: 1,
+          transitionEpoch: 4,
+          roots: [{ rootId: "root-a" }],
+        },
+        hooks,
+      );
+      act(() => result.current.setQuery("needle"));
+      await act(async () => result.current.submit());
+      expect(result.current.state.response?.matches).toEqual([match]);
+
+      excluded = true;
+      // The native relevance filter turns an in-place info/exclude edit into
+      // this resync, since .git paths themselves never reach the WebView.
+      await act(async () =>
+        emit({
+          projectId: "project-a",
+          projectGeneration: 1,
+          transitionEpoch: 4,
+          rootId: "root-a",
+          relativePath: "lost-notices",
+          kind: "resync",
+        }),
+      );
+      expect(result.current.state.phase).toBe("results");
+      expect(result.current.state.response?.matches).toEqual([]);
+    } finally {
+      unmount();
+      await syncLiveProjectWorkspaceNotify(null, hooks);
+      useEditorSettingsStore.setState({ settings });
+    }
+  });
+
   it("does not search an unsubmitted draft when a notice arrives", async () => {
     const search = vi.fn().mockResolvedValue(response("needle"));
     const { result } = renderHook(() =>
