@@ -79,7 +79,8 @@ mod tests {
 
     #[test]
     fn accepts_the_observed_npm_codex_launcher_and_resolves_node_from_path() {
-        let directory = std::env::temp_dir().join(format!("sage-batch-plan-{}", uuid::Uuid::new_v4()));
+        let directory =
+            std::env::temp_dir().join(format!("sage-batch-plan-{}", uuid::Uuid::new_v4()));
         let package = directory.join("node_modules/@openai/codex");
         fs::create_dir_all(package.join("bin")).unwrap();
         fs::write(package.join("bin/codex.js"), b"").unwrap();

@@ -147,7 +147,10 @@ mod tests {
         let ordinary = format!(r"C:\{}", "\u{1f680}".repeat(128));
         let verbatim = format!(r"\\?\{ordinary}");
         let at_limit = format!("{verbatim}a");
-        assert_eq!(simplified_text(&verbatim).as_deref(), Some(ordinary.as_str()));
+        assert_eq!(
+            simplified_text(&verbatim).as_deref(),
+            Some(ordinary.as_str())
+        );
         assert_eq!(simplified_text(&at_limit), None);
         assert_eq!(simplified(Path::new(&at_limit)), PathBuf::from(&at_limit));
         let (program, args) = ordinary_invocation(
@@ -166,10 +169,8 @@ mod tests {
             r"\\?\UNC\server\share\CONIN$\cli.js",
             r"\\?\C:\trailing \cli.js",
         ];
-        let (program, args) = ordinary_invocation(
-            Path::new(paths[0]),
-            &paths.map(std::ffi::OsString::from),
-        );
+        let (program, args) =
+            ordinary_invocation(Path::new(paths[0]), &paths.map(std::ffi::OsString::from));
         assert_eq!(program, PathBuf::from(paths[0]));
         assert_eq!(args, paths.map(std::ffi::OsString::from));
     }
