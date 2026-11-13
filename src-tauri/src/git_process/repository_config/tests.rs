@@ -98,7 +98,7 @@ fn refusal(result: AppResult<GitOutput>) -> String {
 fn sentinel_filter(root: &Path) -> (PathBuf, String) {
     let sentinel = root.join("filter-ran");
     let script = root.join("sentinel-filter");
-    fs::write(
+    crate::test_executable::write(
         &script,
         format!(
             "#!/bin/sh\necho ran > \"{}\"\ncat\n",

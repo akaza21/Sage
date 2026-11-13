@@ -4,7 +4,7 @@ use crate::acp::{
     bindings::{
         adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError},
         standard_acp::surface::command_list::{
-            AvailableCommand, CommandDispatch, CommandSource, MAX_COMMANDS, wire_text,
+            AvailableCommand, CommandDispatch, CommandPanel, CommandSource, MAX_COMMANDS, wire_text,
         },
     },
     intent::Prompt,
@@ -16,7 +16,11 @@ use crate::acp::bindings::pi::Operation;
 
 /// Pi's own commands that RPC runs by name rather than as a prompt. As in
 /// Pi's CLI, they take the place of a template or skill of the same name.
+/// RPC does not list Pi's built-ins, so their wording is Pi's own from its
+/// command table.
 const COMPACT: &str = "compact";
+/// Pi's session info and stats, which Sage's status panel shows.
+const SESSION: &str = "session";
 
 /// One entry of Pi's `get_commands`. Its `source` says what the command
 /// is; only extension commands run as command turns.
@@ -40,24 +44,38 @@ fn command(value: &Value) -> Result<AvailableCommand, AdapterRuntimeError> {
 }
 
 /// Pi's commands with its built-ins added, so they list like any other. A
-/// catalog larger than Sage's list keeps its first commands, giving the last
-/// place to compact.
+/// catalog larger than Sage's list keeps its first commands, leaving room
+/// for the built-ins.
 fn with_builtins(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
+    let builtins = [
+        AvailableCommand::new(
+            SESSION,
+            "Show session info and stats",
+            None,
+            CommandSource::Builtin,
+            CommandDispatch::Panel(CommandPanel::Status),
+        )?,
+        AvailableCommand::new(
+            COMPACT,
+            "Manually compact the session context",
+            None,
+            CommandSource::Builtin,
+            CommandDispatch::Builtin,
+        )?,
+    ];
     let mut commands = value
         .as_array()
         .ok_or(AdapterRuntimeError::Frame)?
         .iter()
-        .filter(|value| value["name"] != COMPACT)
-        .take(MAX_COMMANDS - 1)
+        .filter(|value| {
+            builtins
+                .iter()
+                .all(|builtin| value["name"] != builtin.name.as_str())
+        })
+        .take(MAX_COMMANDS - builtins.len())
         .map(command)
         .collect::<Result<Vec<_>, _>>()?;
-    commands.push(AvailableCommand::new(
-        COMPACT,
-        "Summarize the conversation so far to free up context",
-        Some("what the summary should focus on"),
-        CommandSource::Builtin,
-        CommandDispatch::Builtin,
-    )?);
+    commands.extend(builtins);
     Ok(commands)
 }
 

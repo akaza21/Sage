@@ -32,6 +32,7 @@ mod send;
 mod session_close;
 mod session_duplicates;
 mod session_head;
+mod session_restart;
 mod session_resume;
 pub(crate) mod session_surface;
 mod sessions;
@@ -41,6 +42,7 @@ mod terminal;
 mod terminal_reason;
 mod terminalize;
 mod turn_activity_facts;
+pub(crate) mod turn_undo;
 
 use serde::{Deserialize, Serialize};
 
@@ -80,7 +82,7 @@ pub(crate) use adapter_batch::{
     AdapterInboundEvent, AdapterStoreOwner, AdapterTurnCursor, ChildLiveItemCommand,
     TurnTerminalReasonCommand, TurnUsageSnapshotCommand,
 };
-pub(crate) use cancel::begin_cancel;
+pub(crate) use cancel::{begin_cancel, turn_is_terminal};
 #[cfg(test)]
 pub(crate) use commands::prepare_turn;
 pub(crate) use commands::{lookup_active_turn, lookup_prepared_turn};
@@ -111,8 +113,9 @@ pub(crate) use send::{begin_send, record_send_observation};
 pub(crate) use session_close::{
     FinalizeCloseCommand, close_session, finalize_close_after_zero_process,
 };
+pub(crate) use session_restart::{RestartSessionCommand, restart_undone_session};
 pub(crate) use session_resume::{
-    ResumeEarlierSessionCommand, link_resumed_session, unstarted_resume_link,
+    ResumeEarlierSessionCommand, link_resumed_session, unstarted_continuation,
 };
 pub(crate) use session_surface::SessionEventCommand;
 pub(crate) use sessions::{
@@ -123,7 +126,10 @@ pub(crate) use snapshots::{FilePairCommand, read_snapshot};
 #[cfg(test)]
 pub(crate) use terminal::apply_session_terminal;
 pub(crate) use terminal::apply_turn_terminal;
-pub(crate) use terminalize::terminalize_recovery_epoch;
+pub(crate) use terminalize::{terminalize_epoch, terminalize_recovery_epoch};
+pub(crate) use turn_undo::{
+    TurnUndoneCommand, UndoneThread, pending_thread_rewind, record_turn_undone,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum StoreError {

@@ -108,7 +108,7 @@ pub(crate) fn clear_harness_title_in(
 }
 
 /// The title the chat's first prompt gives it: the primary user item of its
-/// earliest turn, by the same rule as auto-titling.
+/// earliest visible turn, by the same rule as auto-titling.
 fn first_prompt_title(
     transaction: &Transaction<'_>,
     project_id: &str,
@@ -116,10 +116,13 @@ fn first_prompt_title(
 ) -> rusqlite::Result<Option<String>> {
     let payload: Option<String> = transaction
         .query_row(
-            "SELECT i.payload_json FROM items i
-             WHERE i.project_id=?1 AND i.chat_id=?2 AND i.ordinal=0 AND i.origin='primary'
-               AND i.turn_id=(SELECT id FROM turns WHERE project_id=?1 AND chat_id=?2
-                              ORDER BY created_at,ordinal LIMIT 1)",
+            concat!(
+                "SELECT i.payload_json FROM items i
+                 WHERE i.project_id=?1 AND i.chat_id=?2 AND i.ordinal=0 AND i.origin='primary'
+                   AND i.turn_id=(SELECT t.id FROM turns t WHERE t.project_id=?1 AND t.chat_id=?2 AND ",
+                crate::acp::store::turn_undo::visible_turn!("t.session_id", "t.id"),
+                " ORDER BY t.created_at,t.ordinal LIMIT 1)"
+            ),
             params![project_id, chat_id],
             |row| row.get(0),
         )

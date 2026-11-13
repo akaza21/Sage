@@ -119,10 +119,8 @@ it("says when undo keeps the files and only rewinds the conversation", () => {
     { kind: "undoTurn", turnId: TURN },
     "Last turn removed; files unchanged",
   );
-  // Once removed, the turn is not offered again; the notice stays.
   status = { kind: "done", message: "Last turn removed" };
   rerender(panel());
-  expect(screen.queryByRole("button", { name: /Undo/ })).toBeNull();
   expect(screen.getByRole("status").textContent).toBe("Last turn removed");
   expect(
     decodeSessionSurface({ activities: [], undoKeepsFiles: true })

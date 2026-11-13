@@ -45,6 +45,8 @@ mod launch_profile;
 mod notifications;
 mod persistence;
 mod preview_lifecycle;
+mod profile_handoff;
+mod profile_lock;
 mod project_commands;
 mod project_create_commands;
 mod project_migration;
@@ -98,10 +100,13 @@ mod settings_commands;
 mod settings_store;
 mod side_chat;
 mod side_chat_storage;
+mod startup_refusal;
 mod state;
 mod system_browser;
 #[cfg(test)]
 mod test_diagnostics;
+#[cfg(test)]
+mod test_executable;
 #[cfg(test)]
 mod test_paths;
 #[cfg(test)]
@@ -109,6 +114,7 @@ mod test_wait;
 mod turn_workspace;
 pub mod user_terminal;
 mod voice_input;
+mod win32_path;
 #[cfg(windows)]
 mod window_frame;
 mod window_memory;
@@ -134,8 +140,11 @@ use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 #[cfg(all(windows, feature = "acp-fixture"))]
 use crate::launch_profile::{DesktopFixtureMode, resolve_desktop_fixture_mode_from_environment};
 use crate::{
+    error::AppError,
     launch_profile::{reject_unavailable_fixture_environment_inputs, resolve_launch_profile},
     persistence::Database,
+    profile_lock::{ProfileLock, ProfileLockError},
+    startup_refusal::Refusal,
     state::AppState,
     workspace::development_workspace_root,
 };
@@ -178,6 +187,17 @@ pub fn run() {
                 app.path().app_data_dir()?,
                 app.path().app_local_data_dir()?,
             )?;
+            // Nothing below may touch the profile until this process owns it:
+            // startup recovery would otherwise rewrite a running Sage's state.
+            fs::create_dir_all(profile.durable_dir())?;
+            let profile_lock = match ProfileLock::acquire(profile.durable_dir()) {
+                Ok(lock) => lock,
+                Err(ProfileLockError::Held(_)) => {
+                    startup_refusal::exit(Refusal::ProfileInUse, &profile)
+                }
+                Err(error) => return Err(error.into()),
+            };
+            app.manage(profile_lock);
             reject_unavailable_fixture_environment_inputs()?;
             #[cfg(all(windows, feature = "acp-fixture"))]
             let fixture_mode = resolve_desktop_fixture_mode_from_environment(&profile)?;
@@ -188,8 +208,13 @@ pub fn run() {
                     | DesktopFixtureMode::ClaudeFixture(_)
                     | DesktopFixtureMode::PiFixture(_)
             );
-            fs::create_dir_all(profile.durable_dir())?;
-            let database = Database::open(&profile.durable_dir().join("sage.db"))?;
+            let database = match Database::open(&profile.durable_dir().join("sage.db")) {
+                Ok(database) => database,
+                Err(error @ AppError::NewerProfile { .. }) => {
+                    startup_refusal::exit(Refusal::NewerProfile(error.to_string()), &profile)
+                }
+                Err(error) => return Err(error.into()),
+            };
             let seed_project_root = if profile.is_disposable() {
                 profile.project_root().map(ToOwned::to_owned)
             } else {
@@ -328,6 +353,14 @@ pub fn run() {
                 None => main_window,
             };
             main_window.build()?;
+            if !profile.is_disposable()
+                && let Err(error) = profile_handoff::listen(app.handle(), profile.durable_dir())
+            {
+                warn!(
+                    ?error,
+                    "a second launch will not bring this Sage to the front"
+                );
+            }
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
             if !native_fixture_mode {
                 AppState::refresh_harnesses_after_window_shown(app.handle().clone());

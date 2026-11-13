@@ -29,7 +29,7 @@ pub(super) enum ReaderCompletion {
 }
 
 pub(super) struct ReaderThread {
-    pub(super) events: mpsc::Receiver<ReaderEvent>,
+    events: Option<mpsc::Receiver<ReaderEvent>>,
     completion: mpsc::Receiver<ReaderCompletion>,
     overflowed: Arc<AtomicBool>,
     handle: Option<JoinHandle<()>>,
@@ -40,6 +40,7 @@ impl ReaderThread {
         mut stdout: StdoutEndpoint,
         slots: usize,
         session_kind: &str,
+        deadline: Instant,
     ) -> Result<Self, CodexDiscoveryRunError> {
         if !(1..=4).contains(&slots) {
             return Err(CodexDiscoveryRunError::Transport);
@@ -66,12 +67,12 @@ impl ReaderThread {
                         }
                     };
                     if let Some(completion) =
-                        enqueue_reader_event(&send_event, event, &reader_overflowed)
+                        enqueue_reader_event(&send_event, event, &reader_overflowed, deadline)
                     {
                         if completion == ReaderCompletion::Overflow {
                             tracing::warn!(
                                 session_kind,
-                                "Codex discovery stdout reader exceeded its bounded buffer"
+                                "Codex discovery stdout reader buffer stayed full until its deadline"
                             );
                         }
                         break completion;
@@ -81,7 +82,7 @@ impl ReaderThread {
             })
             .map_err(|_| CodexDiscoveryRunError::Transport)?;
         Ok(Self {
-            events,
+            events: Some(events),
             completion,
             overflowed,
             handle: Some(handle),
@@ -92,10 +93,37 @@ impl ReaderThread {
         self.overflowed.load(Ordering::Acquire)
     }
 
+    pub(super) fn recv_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<ReaderEvent, mpsc::RecvTimeoutError> {
+        let event = self
+            .events
+            .as_ref()
+            .ok_or(mpsc::RecvTimeoutError::Disconnected)?
+            .recv_timeout(timeout);
+        self.wake_reader();
+        event
+    }
+
+    fn wake_reader(&self) {
+        if let Some(handle) = &self.handle {
+            handle.thread().unpark();
+        }
+    }
+
+    fn close_events(&mut self) {
+        // Drop before waking: the producer must observe disconnection even if
+        // it has not parked yet. This also releases a full queue during cleanup.
+        self.events.take();
+        self.wake_reader();
+    }
+
     pub(super) fn finish_before(
         &mut self,
         deadline: Instant,
     ) -> Result<(), CodexDiscoveryRunError> {
+        self.close_events();
         let timeout = deadline
             .saturating_duration_since(Instant::now())
             .min(Duration::from_millis(LIMITS.deadlines_ms.explicit_close));
@@ -117,19 +145,39 @@ impl ReaderThread {
     }
 }
 
-pub(super) fn enqueue_reader_event(
-    sender: &mpsc::SyncSender<ReaderEvent>,
-    event: ReaderEvent,
-    overflowed: &AtomicBool,
-) -> Option<ReaderCompletion> {
-    let terminal = !matches!(&event, ReaderEvent::Frame(_));
-    match sender.try_send(event) {
-        Ok(()) if terminal => Some(ReaderCompletion::Clean),
-        Ok(()) => None,
-        Err(mpsc::TrySendError::Full(_)) => {
-            overflowed.store(true, Ordering::Release);
-            Some(ReaderCompletion::Overflow)
-        }
-        Err(mpsc::TrySendError::Disconnected(_)) => Some(ReaderCompletion::Clean),
+impl Drop for ReaderThread {
+    fn drop(&mut self) {
+        self.close_events();
     }
 }
+
+pub(super) fn enqueue_reader_event(
+    sender: &mpsc::SyncSender<ReaderEvent>,
+    mut event: ReaderEvent,
+    overflowed: &AtomicBool,
+    deadline: Instant,
+) -> Option<ReaderCompletion> {
+    let terminal = !matches!(&event, ReaderEvent::Frame(_));
+    loop {
+        match sender.try_send(event) {
+            Ok(()) if terminal => return Some(ReaderCompletion::Clean),
+            Ok(()) => return None,
+            Err(mpsc::TrySendError::Full(pending)) => {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    overflowed.store(true, Ordering::Release);
+                    return Some(ReaderCompletion::Overflow);
+                }
+                event = pending;
+                // At most the bounded channel plus this one frame is retained.
+                // A receive or receiver drop unparks us; the token prevents a
+                // lost wakeup between try_send and park_timeout.
+                thread::park_timeout(remaining);
+            }
+            Err(mpsc::TrySendError::Disconnected(_)) => return Some(ReaderCompletion::Clean),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

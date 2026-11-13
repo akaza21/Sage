@@ -10,6 +10,7 @@ impl PiRuntime {
     ) -> Result<ConfigReply, AdapterRuntimeError> {
         self.current_model = state.model.as_ref().map(model_key).transpose()?;
         self.current_thinking = state.thinking_level;
+        self.auto_compaction = state.auto_compaction;
         let _ = state.is_streaming;
         self.session_dir = state
             .session_file

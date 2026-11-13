@@ -3,9 +3,6 @@ import { decodeSessionSurface } from "../../../services/acpSessionSurface";
 import "./session-surface.css";
 import { useSessionControl } from "./useSessionControl";
 
-/** Turns this app removed from their conversation. */
-const rewoundTurns = new Set<string>();
-
 const STATE_LABEL = {
   running: "Running",
   completed: "Done",
@@ -14,8 +11,8 @@ const STATE_LABEL = {
 } as const;
 
 /** The session's background activities, each running one with a Stop
- * control when the agent can stop it, and an Undo for the latest turn's
- * file changes once the user confirms. */
+ * control when the agent can stop it, and an Undo that removes the latest
+ * turn once the user confirms. */
 export function SessionSurfacePanel({
   surface,
   chatId,
@@ -25,17 +22,11 @@ export function SessionSurfacePanel({
 }) {
   const { status, run } = useSessionControl(chatId || undefined);
   const [confirming, setConfirming] = useState(false);
-  // A turn removed from the conversation cannot be removed again; the
-  // session keeps offering it, so the app remembers it was removed.
-  const [undoing, setUndoing] = useState<string>();
-  if (status.kind === "done" && undoing) rewoundTurns.add(undoing);
   const decoded = decodeSessionSurface(surface);
   const activities = decoded?.activities ?? [];
   const keepsFiles = decoded?.undoKeepsFiles === true;
-  const offered = decoded?.undoTurn;
-  const undoTurn =
-    keepsFiles && offered && rewoundTurns.has(offered) ? undefined : offered;
-  if (!activities.length && !offered) return null;
+  const undoTurn = decoded?.undoTurn;
+  if (!activities.length && !undoTurn) return null;
   return (
     <section className="acp-session-surface" aria-label="Session activity">
       {activities.length ? (
@@ -57,13 +48,12 @@ export function SessionSurfacePanel({
                 <button
                   type="button"
                   disabled={status.kind === "pending"}
-                  onClick={() => {
-                    setUndoing(undefined);
+                  onClick={() =>
                     void run(
                       { kind: "stopActivity", activityKey: activity.key },
                       `Stopping ${activity.label}`,
-                    );
-                  }}
+                    )
+                  }
                 >
                   Stop
                 </button>
@@ -80,12 +70,11 @@ export function SessionSurfacePanel({
           title={
             keepsFiles
               ? "Remove the last turn from the chat; files stay as they are"
-              : "Restore the files the last turn changed to how they were before it"
+              : "Remove the last turn from the chat and restore the files it changed"
           }
           onClick={() => {
             if (!confirming) return setConfirming(true);
             setConfirming(false);
-            setUndoing(keepsFiles ? undoTurn : undefined);
             void run(
               { kind: "undoTurn", turnId: undoTurn },
               keepsFiles

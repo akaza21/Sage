@@ -56,7 +56,8 @@ pub(super) fn quote(text: &str, state: &WireState) -> Result<String, FixtureErro
     Ok(quoted)
 }
 
-/// The echo of prompt blocks, in ACP's or the Messages API's shape.
+/// The echo of prompt blocks, in ACP's or the Messages API's shape, or of
+/// a Codex turn's input items.
 pub(super) fn blocks(blocks: &[Value]) -> String {
     let mut lines = vec![match blocks.len() {
         1 => "Synthetic replay received 1 prompt block:".to_owned(),
@@ -97,6 +98,12 @@ fn block(block: &Value) -> String {
             }
         }
         Some("resource_link") => format!("Linked file {}", field("uri").unwrap_or("no URI")),
+        // Codex runs a skill from its input item.
+        Some("skill") => format!(
+            "Skill {} at {}",
+            field("name").unwrap_or("with no name"),
+            field("path").unwrap_or("no path")
+        ),
         Some(other) => format!("A {other} block"),
         None => "A block with no type".to_owned(),
     }

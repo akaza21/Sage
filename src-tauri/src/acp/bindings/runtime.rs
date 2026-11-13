@@ -207,6 +207,9 @@ impl HarnessAdapter for NativeRuntime {
     fn abandon_usage_read(&mut self) {
         self.0.abandon_usage_read()
     }
+    fn answered_control(&mut self, control: &crate::acp::session_control::SessionControl) -> bool {
+        self.0.answered_control(control)
+    }
     fn session_control(
         &mut self,
         control: &crate::acp::session_control::SessionControl,

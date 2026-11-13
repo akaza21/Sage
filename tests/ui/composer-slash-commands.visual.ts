@@ -278,11 +278,32 @@ test("an unfiltered menu sections commands by source and fits a narrow window", 
   );
   await page.setViewportSize({ width: 720, height: 900 });
   await expectNoViewportOverflow(page);
-  const row = (await listbox.getByRole("option").nth(2).boundingBox())!;
-  const menu = (await page.locator(".composer-slash-menu").boundingBox())!;
-  // A long description is cut to one line inside the menu.
-  expect(row.x + row.width).toBeLessThanOrEqual(menu.x + menu.width + 1);
-  expect(row.height).toBeLessThan(40);
+  // Resize/ResizeObserver positioning can land between browser calls. Read
+  // both boxes together and wait for the menu to fit the new viewport too.
+  await expect
+    .poll(() =>
+      listbox
+        .getByRole("option")
+        .nth(2)
+        .evaluate((option) => {
+          const row = option.getBoundingClientRect();
+          const menu = option
+            .closest(".composer-slash-menu")!
+            .getBoundingClientRect();
+          return {
+            menuWithinViewport:
+              menu.left >= 0 && menu.right <= window.innerWidth,
+            rowWithinMenu: row.left >= menu.left && row.right <= menu.right + 1,
+            // A long description is cut to one line inside the menu.
+            singleLine: row.height < 40,
+          };
+        }),
+    )
+    .toEqual({
+      menuWithinViewport: true,
+      rowWithinMenu: true,
+      singleLine: true,
+    });
 });
 
 test("a prompt that ran a listed command shows the command beside what was typed", async ({

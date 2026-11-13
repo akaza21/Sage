@@ -67,7 +67,8 @@ async function openChatActions(title: string) {
   fireEvent.click(
     screen.getByRole("button", { name: `Chat actions for ${title}` }),
   );
-  await screen.findByRole("menu", { name: `Actions for ${title}` });
+  await settleLazyModules();
+  screen.getByRole("menu", { name: `Actions for ${title}` });
 }
 
 const initialState = useWorkbenchStore.getState();
@@ -709,28 +710,30 @@ describe("compact Workbench project tools", () => {
 
     await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Cancel chat rename" }),
-    );
-    let trigger: HTMLElement;
-    await vi.waitFor(() => {
-      trigger = screen.getByRole("button", { name: "Chat actions for B" });
-      expect(trigger).toHaveFocus();
+    // Rename is a demand-loaded part. Flush its import and React effects
+    // before driving Cancel, rather than spending the polling budget on I/O.
+    await settleLazyModules();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Cancel chat rename" }),
+      );
     });
+    expect(
+      screen.getByRole("button", { name: "Chat actions for B" }),
+    ).toHaveFocus();
 
     await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    fireEvent.keyDown(
-      await screen.findByRole("textbox", { name: "New name for B" }),
-      {
-        key: "Escape",
-      },
-    );
-    await vi.waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Chat actions for B" }),
-      ).toHaveFocus();
+    await settleLazyModules();
+    await act(async () => {
+      fireEvent.keyDown(
+        screen.getByRole("textbox", { name: "New name for B" }),
+        { key: "Escape" },
+      );
     });
+    expect(
+      screen.getByRole("button", { name: "Chat actions for B" }),
+    ).toHaveFocus();
   });
 
   it("exposes bounded archive and restore actions in the Chat navigation", async () => {
