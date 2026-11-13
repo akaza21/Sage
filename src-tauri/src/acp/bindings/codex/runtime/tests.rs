@@ -42,6 +42,8 @@ mod saved_diff_tests;
 mod session_title_tests;
 mod skill_command_tests;
 #[cfg(feature = "acp-fixture")]
+mod skills_journey_tests;
+#[cfg(feature = "acp-fixture")]
 mod steer_journey_tests;
 mod usage_tests;
 

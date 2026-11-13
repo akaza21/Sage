@@ -83,6 +83,7 @@ pub(super) struct WireState {
     /// The client's last prompt, as a frame quotes it (`$PROMPT_ECHO`).
     prompt_echo: Option<String>,
     claude_sdk: claude_sdk::SdkWireState,
+    codex_skills: background::Skills,
 }
 
 impl WireState {
@@ -105,6 +106,7 @@ impl WireState {
             codex_turn_config: None,
             prompt_echo: None,
             claude_sdk: claude_sdk::SdkWireState::default(),
+            codex_skills: background::Skills::default(),
         }
     }
 
