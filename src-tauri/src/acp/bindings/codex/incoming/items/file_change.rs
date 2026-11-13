@@ -13,7 +13,7 @@ use crate::acp::{
 
 use super::{
     IngressError, ItemNormalization, ResourceMapper, ToolPresentationInput, content,
-    lenient_tool_state, text, tool_with_summary_status, unsupported,
+    lenient_tool_state, terminal_lifecycle, text, tool_with_summary_status, unsupported,
 };
 
 mod patch;
@@ -115,7 +115,16 @@ pub(in crate::acp::bindings::codex::incoming) fn normalize<M: ResourceMapper>(
         }
         None => NormalizedPayload::file_summary_only(facts, truncated),
     };
-    Ok(((payload, None, None), pair))
+    Ok(((payload, None, refused_lifecycle(item)), pair))
+}
+
+/// A declined or failed change settles its diff in that state; any other
+/// status leaves the notification's own lifecycle.
+fn refused_lifecycle(item: &Map<String, Value>) -> Option<ItemLifecycle> {
+    match lenient_tool_state(item, ItemLifecycle::Started) {
+        state @ (ToolState::Declined | ToolState::Failed) => terminal_lifecycle(state),
+        _ => None,
+    }
 }
 
 /// The single change's resource and `Edited <path>` summary, before any line
