@@ -359,6 +359,44 @@ fn command_execution_never_derives_a_location_from_nonread_or_multiple_actions()
 }
 
 #[test]
+fn unresolved_read_completion_bounds_its_sanitized_command_summary() {
+    for (padding, suffix, retained_suffix) in [
+        (65_524, "", ""),
+        (65_525, "", ""),
+        (65_526, "", ""),
+        (65_523, "é", "é"),
+        (65_524, "é", ""),
+    ] {
+        let command = item(json!({
+            "type": "commandExecution", "status": "completed",
+            "command": format!("cat C:\\foreign\\file {}{suffix}", "x".repeat(padding)),
+            "commandActions": [{"type": "read", "name": "file", "path": "C:\\foreign\\file"}]
+        }));
+        let (payload, state, terminal) =
+            normalize_item(&command, ItemLifecycle::Completed, &UnusedMapper)
+                .expect("an oversized display summary must not reject completion")
+                .expect("read item");
+        let NormalizedPayload::ToolCall {
+            category: ToolCategory::Read,
+            input_summary: Some(summary),
+            ..
+        } = payload
+        else {
+            panic!("expected an unresolved read with its command summary");
+        };
+        assert_eq!(
+            summary.as_str(),
+            format!(
+                "cat [path] {}{retained_suffix}",
+                "x".repeat(padding.min(65_525))
+            )
+        );
+        assert_eq!(state, Some(ToolState::Completed));
+        assert_eq!(terminal, Some(ItemLifecycle::Completed));
+    }
+}
+
+#[test]
 fn command_execution_maps_its_cwd_to_a_workspace_resource() {
     struct CwdMapper;
     impl ResourceMapper for CwdMapper {

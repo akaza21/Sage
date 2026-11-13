@@ -34,8 +34,9 @@ mod tool_kinds;
 use tool_kinds::{explore_presentation, mcp_tool, read_path, web_search};
 
 use presentation::{
-    ToolPresentationInput, bounded_label, bounded_summary, context_compaction, declared_tool_state,
-    lenient_tool_state, parse_tool_state, tool, tool_with_summary, tool_with_summary_status,
+    ToolPresentationInput, bounded_command_summary, bounded_label, bounded_summary,
+    context_compaction, declared_tool_state, lenient_tool_state, parse_tool_state, tool,
+    tool_with_summary, tool_with_summary_status,
 };
 
 pub(super) fn normalize_materialized_command(
@@ -53,8 +54,9 @@ pub(super) fn normalize_materialized_command(
         tool_state: parse_tool_state(command.status.as_str()).ok_or(IngressError::Malformed)?,
         input_summary: command
             .command
-            .clone()
-            .filter(|_| category != ToolCategory::Read || read_path(&command.locations).is_none()),
+            .as_deref()
+            .filter(|_| category != ToolCategory::Read || read_path(&command.locations).is_none())
+            .map(bounded_command_summary),
         output_summary: command.output.clone(),
         locations: command.locations.clone(),
         command_activity: command.activity,
@@ -264,7 +266,9 @@ fn command_execution<M: ResourceMapper>(
         label: &label,
         tool_state: declared_tool_state(item)?,
         input_summary: command
-            .filter(|_| category != ToolCategory::Read || read_path(&locations).is_none()),
+            .as_deref()
+            .filter(|_| category != ToolCategory::Read || read_path(&locations).is_none())
+            .map(bounded_command_summary),
         output_summary: output,
         locations,
         command_activity: CommandActivity::Ordinary,

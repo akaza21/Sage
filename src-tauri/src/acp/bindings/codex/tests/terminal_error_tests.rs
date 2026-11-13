@@ -1,5 +1,7 @@
 use super::*;
 
+mod plan_store_tests;
+
 fn running_adapter() -> CodexAdapter {
     let mut adapter = adapter();
     ready(&mut adapter);
@@ -274,30 +276,6 @@ fn an_interrupt_sage_never_wrote_leaves_the_codex_stop_interrupted() {
         events.as_slice(),
         [IncomingEvent::Turn {
             state: TurnState::Interrupted,
-            ..
-        }]
-    ));
-}
-
-#[test]
-fn a_user_stop_leaves_the_plan_open_for_the_turn_sweep() {
-    let mut adapter = running_adapter();
-    let plan = json!({"method":"turn/plan/updated","params":{
-        "threadId":"thread-1","turnId":"turn-1","explanation":null,
-        "plan":[{"step":"Inspect","status":"inProgress"}]
-    }});
-    adapter
-        .ingest(&serde_json::to_vec(&plan).unwrap(), &Mapper)
-        .unwrap();
-    adapter.cancel(3).unwrap();
-    let IngressDisposition::Events(events) = adapter.ingest(&interrupted(), &Mapper).unwrap()
-    else {
-        panic!()
-    };
-    assert!(matches!(
-        events.as_slice(),
-        [IncomingEvent::Turn {
-            state: TurnState::Cancelled,
             ..
         }]
     ));
