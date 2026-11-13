@@ -296,4 +296,6 @@ pub(crate) fn pending_thread_rewind(
 #[cfg(test)]
 pub(crate) mod fixture;
 #[cfg(test)]
+mod intent_tests;
+#[cfg(test)]
 mod tests;

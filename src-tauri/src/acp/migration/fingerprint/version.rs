@@ -38,6 +38,9 @@ pub(super) fn class_for_version(version: u32) -> AppResult<SchemaClass> {
         version if version == super::super::operation_terminal_index::VERSION => {
             SchemaClass::CurrentOperationTerminalIndex
         }
+        version if version == super::super::turn_undo_intent_indexes::VERSION => {
+            SchemaClass::CurrentTurnUndoIntentIndexes
+        }
         _ => return invalid("Sage schema version is above the supported maximum"),
     })
 }

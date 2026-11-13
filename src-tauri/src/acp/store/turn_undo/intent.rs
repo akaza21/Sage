@@ -6,6 +6,16 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 const SETTLEMENT_FACTS: i64 = 3;
 
+// Drop sequence's INTEGER affinity so SQLite can seek the JSON expression
+// index, as browser operation recovery does for its start receipt.
+pub(super) const PENDING_SQL: &str =
+    "SELECT s.sequence,s.session_id,s.turn_id,s.payload_json FROM session_facts s
+     WHERE s.project_id=?1 AND s.chat_id=?2 AND s.kind='turnUndoStarted'
+       AND NOT EXISTS(SELECT 1 FROM session_facts f WHERE f.session_id=s.session_id
+         AND f.turn_id=s.turn_id AND f.kind='turnUndoSettled'
+         AND json_extract(f.payload_json,'$.start')=+s.sequence)
+     ORDER BY s.sequence LIMIT 1";
+
 fn reservation_bytes(command: &TurnUndoneCommand) -> i64 {
     // Reserve exact identity escaping and worst-width sequence/count fields.
     let undone = super::undo_payload(command, UndoneThread::Reverted).len();
@@ -44,23 +54,14 @@ pub(crate) fn pending(
     chat: &str,
 ) -> Result<Option<PendingUndo>, StoreError> {
     connection
-        .query_row(
-            "SELECT s.sequence,s.session_id,s.turn_id,s.payload_json FROM session_facts s
-         WHERE s.project_id=?1 AND s.chat_id=?2 AND s.kind='turnUndoStarted'
-           AND NOT EXISTS(SELECT 1 FROM session_facts f WHERE f.session_id=s.session_id
-             AND f.turn_id=s.turn_id AND f.kind='turnUndoSettled'
-             AND json_extract(f.payload_json,'$.start')=s.sequence)
-         ORDER BY s.sequence LIMIT 1",
-            params![project, chat],
-            |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                ))
-            },
-        )
+        .query_row(PENDING_SQL, params![project, chat], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })
         .optional()?
         .map(|(sequence, session, turn, json)| {
             let value: serde_json::Value =

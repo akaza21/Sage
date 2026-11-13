@@ -142,15 +142,32 @@ fn recover_candidate(
     let transaction = connection.transaction()?;
     let undo_rolled_back =
         crate::acp::store::turn_undo::recovery::settle_live(&transaction, &candidate, now_millis)?;
-    // An earlier committed rewind must not revive a session whose latest
-    // native effect is uncertain, even though that earlier cut stays pending.
+    // A pending cut proves the undo committed, not that a later prompt was
+    // never delivered. Include terminal deliveryUnknown turns too: their
+    // native effects remain uncertain even though they are no longer live.
     let park = !undo_rolled_back
         && matches!(
             candidate.session_state,
             SessionState::Ready | SessionState::Active
         )
-        && crate::acp::store::pending_thread_rewind(&transaction, candidate.session_id.as_str())?
-            .is_some();
+        && match crate::acp::store::pending_thread_rewind(
+            &transaction,
+            candidate.session_id.as_str(),
+        )? {
+            Some(rewind) => transaction.query_row(
+                "SELECT NOT EXISTS(SELECT 1 FROM turns t
+                 JOIN turns undone ON undone.session_id=t.session_id AND undone.id=?3
+                 WHERE t.session_id=?1 AND t.runtime_epoch=?2 AND t.ordinal>undone.ordinal
+                   AND t.delivery_state NOT IN ('notWritten','zeroBytes'))",
+                params![
+                    candidate.session_id.as_str(),
+                    candidate.runtime_epoch.get() as i64,
+                    rewind.turn_id.as_str()
+                ],
+                |row| row.get::<_, bool>(0),
+            )?,
+            None => false,
+        };
     let projection = next_projection_revision(
         &transaction,
         candidate.project_id.as_str(),

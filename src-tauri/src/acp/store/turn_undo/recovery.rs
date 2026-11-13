@@ -10,6 +10,16 @@
 //! SDK contract: https://code.claude.com/docs/en/agent-sdk/typescript#rewindfilesresult
 use super::*;
 
+// Keep the affinity-free receipt comparison used by intent::PENDING_SQL.
+pub(super) const RECOVER_PARKED_SQL: &str = "SELECT f.project_id,f.chat_id FROM session_facts f
+     WHERE f.kind='turnUndoStarted'
+       AND NOT EXISTS(SELECT 1 FROM session_facts s WHERE s.session_id=f.session_id
+         AND s.turn_id=f.turn_id AND s.kind='turnUndoSettled'
+         AND json_extract(s.payload_json,'$.start')=+f.sequence)
+       AND NOT EXISTS(SELECT 1 FROM session_runtime_epochs e WHERE e.session_id=f.session_id
+         AND e.state IN ('starting','running','terminating'))
+     ORDER BY f.created_at,f.session_id,f.sequence LIMIT 1";
+
 /// Reconcile the exact owner's plan inside runtime recovery's transaction.
 /// Returns whether an unsettled intent was rolled back while still mutable;
 /// the same transaction retires it before any send can pass the intent gate.
@@ -45,18 +55,7 @@ pub(crate) fn recover_parked(
     let (mut recovered, mut latest) = (0, None);
     loop {
         let row: Option<(String, String)> = connection
-            .query_row(
-                "SELECT f.project_id,f.chat_id FROM session_facts f
-             WHERE f.kind='turnUndoStarted'
-               AND NOT EXISTS(SELECT 1 FROM session_facts s WHERE s.session_id=f.session_id
-                 AND s.turn_id=f.turn_id AND s.kind='turnUndoSettled'
-                 AND json_extract(s.payload_json,'$.start')=f.sequence)
-               AND NOT EXISTS(SELECT 1 FROM session_runtime_epochs e WHERE e.session_id=f.session_id
-                 AND e.state IN ('starting','running','terminating'))
-             ORDER BY f.created_at,f.session_id,f.sequence LIMIT 1",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
+            .query_row(RECOVER_PARKED_SQL, [], |row| Ok((row.get(0)?, row.get(1)?)))
             .optional()?;
         let Some((project, chat)) = row else {
             return Ok((recovered, latest));

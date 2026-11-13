@@ -2,6 +2,81 @@
 use super::*;
 
 #[test]
+fn a_prompt_that_may_have_been_delivered_after_an_undo_relaunch_retires_the_session() {
+    for observation in [
+        None,
+        Some(store::SendObservation::CompleteBytes),
+        Some(store::SendObservation::PossibleBytes),
+    ] {
+        let chat = Chat::new(true);
+        let command = chat.stage(LAST).unwrap();
+        store::record_turn_undone(&mut chat.fixture.database.connection(), &command).unwrap();
+        crate::acp::recovery::recover_after_restart(&mut chat.fixture.database.connection(), 70)
+            .unwrap();
+        let session = SageAgentSessionId::parse("session-a").unwrap();
+        chat.activate(&session, 3, SESSION);
+        let prepared = chat.send(session.clone(), 3).unwrap();
+        let mut sending = store::TurnMutationCommand {
+            project_id: chat.fixture.project.clone(),
+            chat_id: chat.fixture.chat.clone(),
+            session_id: session.clone(),
+            runtime_epoch: RuntimeEpoch::new(3).unwrap(),
+            turn_id: prepared.turn_id.clone(),
+            expected_revision: prepared.turn_revision,
+            now_millis: 110,
+        };
+        let started =
+            store::begin_send(&mut chat.fixture.database.connection(), sending.clone()).unwrap();
+        if let Some(observation) = observation {
+            sending.expected_revision = started.revision;
+            store::record_send_observation(
+                &mut chat.fixture.database.connection(),
+                sending,
+                observation,
+            )
+            .unwrap();
+        }
+        // No native correlation has cleared the rewind, even if the prompt
+        // reached Claude and executed effects before the process crashed.
+        assert!(chat.fixture.pending().is_some());
+        let reopened =
+            crate::persistence::Database::open(&chat.fixture.root.join("sage.db")).unwrap();
+        crate::acp::recovery::recover_after_restart(&mut reopened.connection(), 120).unwrap();
+        let page = store::load_chat_page(
+            &reopened.connection(),
+            chat.fixture.project.clone(),
+            chat.fixture.chat.clone(),
+            None,
+        )
+        .unwrap();
+        assert!(page.current_session_id.is_none(), "{observation:?}");
+        let turn = page
+            .turns
+            .as_slice()
+            .iter()
+            .find(|turn| turn.id == prepared.turn_id)
+            .unwrap();
+        assert_eq!(turn.state, TurnState::DeliveryUnknown, "{observation:?}");
+        assert_eq!(
+            chat.fixture.page_turns(),
+            [prepared.turn_id.as_str(), FIRST]
+        );
+        assert!(matches!(
+            chat.send(session, 3),
+            Err(StoreError::Conflict {
+                resource: "sessionEpoch"
+            })
+        ));
+        assert_eq!(
+            crate::acp::recovery::recover_after_restart(&mut reopened.connection(), 130)
+                .unwrap()
+                .recovered_sessions,
+            0
+        );
+    }
+}
+
+#[test]
 fn a_crash_before_undo_dispatch_keeps_the_turns_files_and_transcript() {
     for parked in [false, true] {
         let chat = Chat::new(true);
