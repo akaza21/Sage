@@ -1370,6 +1370,14 @@ fn app_with_runtime(
     label: &str,
     parkable: bool,
 ) -> (crate::state::AppState, RuntimeOwner, std::path::PathBuf) {
+    app_with_engine(label, parkable, TestRuntime::default())
+}
+
+fn app_with_engine(
+    label: &str,
+    parkable: bool,
+    engine: TestRuntime,
+) -> (crate::state::AppState, RuntimeOwner, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-archive-runtime-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
     let database = crate::persistence::Database::open(&root.join("sage.db")).unwrap();
@@ -1389,11 +1397,11 @@ fn app_with_runtime(
     let host = Arc::new(
         if parkable {
             crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
-                TestRuntime::default(),
+                engine,
                 Arc::new(SuccessfulShutdownRecovery(owner.runtime_epoch.get())),
             )
         } else {
-            crate::acp::runtime::RuntimeHost::start(TestRuntime::default())
+            crate::acp::runtime::RuntimeHost::start(engine)
         }
         .unwrap(),
     );
@@ -1596,6 +1604,58 @@ fn delete_waits_for_a_background_release_still_parking_the_runtime() {
     assert!(deleted.committed, "{:?}", deleted.recovery_error);
     assert!(state.acp.lane_for(&owner).is_none());
     assert_eq!(live_epochs(&state, &owner), 0);
+    finish_app(state, root);
+}
+
+#[test]
+fn delete_waits_for_the_harness_to_answer_a_control_then_releases_the_runtime() {
+    let pending = Arc::new(Mutex::new(None));
+    let engine = TestRuntime {
+        pending_native: Some(Arc::clone(&pending)),
+        ..TestRuntime::default()
+    };
+    let (state, owner, root) = app_with_engine("delete-during-control", true, engine);
+    state
+        .database
+        .archive_chat(&archive_request(&state, &owner))
+        .unwrap();
+    let host = state.acp.host_for(&owner).unwrap();
+    let control = {
+        let owner = owner.clone();
+        std::thread::spawn(move || {
+            host.native_rpc(crate::acp::goal::NativeRpcIntent {
+                owner,
+                request: crate::acp::goal::NativeRpcRequest::UsageRead,
+            })
+        })
+    };
+    let started = Instant::now();
+    while pending.lock().unwrap().is_none() {
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+    let state = Arc::new(state);
+    let deleting = {
+        let state = Arc::clone(&state);
+        let owner = owner.clone();
+        std::thread::spawn(move || {
+            tokio::runtime::Runtime::new().unwrap().block_on(
+                crate::chat_archive_commands::delete_chat_inner(&state, delete_request(&owner), 0),
+            )
+        })
+    };
+    // Delete is refused while the harness answers, and keeps asking.
+    while state.acp.control_running_refusals_for_test() == 0 {
+        assert!(started.elapsed() < Duration::from_secs(2));
+        std::thread::yield_now();
+    }
+    let answer = pending.lock().unwrap().take().unwrap();
+    answer.complete(Ok(crate::acp::goal::NativeRpcReply::UsageRead));
+    assert!(control.join().unwrap().is_ok());
+    let deleted = deleting.join().unwrap();
+    assert!(deleted.committed, "{:?}", deleted.recovery_error);
+    assert!(state.acp.lane_for(&owner).is_none());
+    let state = Arc::into_inner(state).expect("the delete let go of the app");
     finish_app(state, root);
 }
 
@@ -2453,6 +2513,33 @@ fn an_idle_chat_whose_harness_is_answering_a_control_keeps_its_runtime() {
     );
     // Once answered, the next sweep releases it.
     assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), Some(1));
+    assert!(service.lane_for(&owner).is_none());
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn an_eviction_park_takes_the_claim_made_when_its_lane_was_chosen() {
+    let (service, owner) = idle_release_fixture("evict-claimed");
+    let lane = service.lane_for(&owner).unwrap();
+    let host = lane.runtime.for_owner(&owner).unwrap();
+    *lane.eviction.lock().unwrap() = Some(host.claim_idle_park().unwrap());
+    // Claimed for the eviction, the runtime takes no new control...
+    assert!(host.claim_idle_park().is_none());
+    // ...and its park goes ahead under that claim rather than refusing: the
+    // host shuts down and the park's zero-process recovery releases the lane,
+    // as an activation's reclaim drives it.
+    let deadline = crate::acp::service::explicit_close_deadline();
+    let parked = lane.park_idle_runtime_for_replacement(deadline);
+    assert!(
+        matches!(parked, Err(CodexSessionError::Recovery)),
+        "the park went ahead and left its zero-process recovery: {parked:?}"
+    );
+    assert!(
+        lane.eviction.lock().unwrap().is_none(),
+        "the park took the claim"
+    );
+    assert!(lane.has_replacement_park_recovery());
+    assert_eq!(lane.shutdown_codex_recovery(deadline), Ok(true));
     assert!(service.lane_for(&owner).is_none());
     service.shutdown_blocking().unwrap();
 }

@@ -36,6 +36,15 @@ impl AcpService {
         self.yield_lane_on_busy.store(true, Ordering::Release);
     }
 
+    /// How many chat releases found the harness answering a control.
+    pub(in crate::acp::service) fn control_running_refusals_for_test(&self) -> usize {
+        self.control_running_refusals.load(Ordering::Acquire)
+    }
+
+    pub(super) fn observe_control_running_for_test(&self) {
+        self.control_running_refusals.fetch_add(1, Ordering::AcqRel);
+    }
+
     pub(super) fn observe_lane_busy_for_test(&self, lane: &LiveLane) {
         self.lane_busy_refusals.fetch_add(1, Ordering::AcqRel);
         if self.yield_lane_on_busy.swap(false, Ordering::AcqRel) {
@@ -445,6 +454,35 @@ fn an_idle_runtime_answering_a_control_is_passed_over_for_eviction() {
         evicted.claim_idle_park().is_some(),
         "an unused eviction lets go"
     );
+}
+
+#[test]
+fn a_full_house_of_runtimes_answering_controls_says_so() {
+    let service = service();
+    let mut leases = Vec::new();
+    let mut answers = Vec::new();
+    for index in 0..LIVE_RUNTIME_LANES {
+        let pending = Arc::new(Mutex::new(None));
+        let answering = engine::IdleEngine {
+            answering: Some(Arc::clone(&pending)),
+        };
+        leases.push(occupied_lane_with(&service, index, true, true, answering));
+        answers.push((answering_control(&service, index, &pending), pending));
+    }
+    assert!(matches!(
+        service.claim_activation_lane(&owner("new", 1), activation_deadline()),
+        Err(CodexSessionError::CapacityAnswering)
+    ));
+    for (control, pending) in answers {
+        let answer = pending.lock().unwrap().take().unwrap();
+        answer.complete(Ok(crate::acp::goal::NativeRpcReply::UsageRead));
+        assert!(control.join().unwrap().is_ok());
+    }
+    // Once they have answered, the oldest idle runtime makes room again.
+    let (lane, _claim) = service
+        .claim_activation_lane(&owner("new", 1), activation_deadline())
+        .unwrap();
+    assert!(Arc::ptr_eq(&lane.runtime, &service.lanes[0].runtime));
 }
 
 #[test]

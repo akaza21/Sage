@@ -37,6 +37,13 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
             limit: crate::acp::limits::LIMITS.process.operational_live_trees,
             message: safe_message("The native live runtime capacity is occupied."),
         },
+        crate::acp::service::CodexSessionError::CapacityAnswering => AcpIpcError::Capacity {
+            resource: AcpCapacityResource::LiveTree,
+            limit: crate::acp::limits::LIMITS.process.operational_live_trees,
+            message: safe_message(
+                "Every live agent is busy, and an idle one is still answering a request; try again in a moment.",
+            ),
+        },
         crate::acp::service::CodexSessionError::SignInRequired => AcpIpcError::SignInRequired {
             message: safe_message("The harness requires sign-in before it can continue."),
         },

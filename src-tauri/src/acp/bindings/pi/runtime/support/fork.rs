@@ -215,6 +215,16 @@ impl PiRuntime {
         Ok(None)
     }
 
+    #[cfg(not(test))]
+    fn remove_file(&self, path: &std::path::Path) -> std::io::Result<()> {
+        std::fs::remove_file(path)
+    }
+
+    #[cfg(test)]
+    fn remove_file(&self, path: &std::path::Path) -> std::io::Result<()> {
+        (self.remove_file_for_test)(path)
+    }
+
     /// Removes the saved copy of a fork no chat holds; true once no such
     /// file is left. The key names a file inside Pi's session folder only.
     fn remove_copy(&self, fork: &ExternalId) -> bool {
@@ -222,7 +232,7 @@ impl PiRuntime {
             return false;
         };
         session_path(dir, fork.as_str(), SESSION_DIR_SCAN_LIMIT)
-            .is_none_or(|file| (self.remove_file)(&file).is_ok())
+            .is_none_or(|file| self.remove_file(&file).is_ok())
     }
 }
 

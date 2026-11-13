@@ -147,6 +147,9 @@ pub(crate) struct AcpService {
     /// Chat releases refused because another holder had the lane.
     #[cfg(test)]
     lane_busy_refusals: std::sync::atomic::AtomicUsize,
+    /// Chat releases refused because the harness was answering a control.
+    #[cfg(test)]
+    control_running_refusals: std::sync::atomic::AtomicUsize,
     /// When set, the next lane-busy refusal lets go of the lane's claim, as
     /// the holder finishing would.
     #[cfg(test)]

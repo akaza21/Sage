@@ -137,6 +137,19 @@ impl LiveLane {
     fn is_free(&self) -> bool {
         self.runtime.is_empty() && self.scheduler.active().is_none() && !self.has_recovery()
     }
+
+    /// An idle runtime that would make room for another Chat, but whose
+    /// harness is answering a session control.
+    fn answering_while_idle(&self) -> bool {
+        !self.has_recovery()
+            && self.scheduler.active().is_some_and(|active| {
+                !active.turn_reserved
+                    && self
+                        .runtime
+                        .for_owner(&active.tree)
+                        .is_ok_and(|host| !host.controls_settled())
+            })
+    }
 }
 
 /// Lane-specific runtime authority with shared service access through `Deref`.
@@ -275,6 +288,9 @@ impl AcpService {
             );
             return Ok((view, claim));
         }
+        if self.lanes.iter().any(|lane| lane.answering_while_idle()) {
+            return Err(CodexSessionError::CapacityAnswering);
+        }
         Err(CodexSessionError::Capacity)
     }
 
@@ -331,12 +347,18 @@ impl AcpService {
             if held.as_ref().is_some_and(|active| active.turn_reserved) {
                 return Err(ChatRuntimeRelease::TurnRunning);
             }
-            // So does a session control the harness is still answering.
-            if held.as_ref().is_some_and(|active| {
-                view.runtime
-                    .for_owner(&active.tree)
-                    .is_ok_and(|host| !host.controls_settled())
-            }) {
+            // So does a session control the harness was answering: a park
+            // that leaves a parkable runtime untouched was refused for one,
+            // even if the harness has answered it since, and a retry parks it.
+            if !lane.has_recovery()
+                && held.as_ref().is_some_and(|active| {
+                    view.runtime
+                        .for_owner(&active.tree)
+                        .is_ok_and(|host| host.has_shutdown_recovery())
+                })
+            {
+                #[cfg(test)]
+                self.observe_control_running_for_test();
                 return Err(ChatRuntimeRelease::ControlRunning);
             }
             if held.is_some() || lane.recovery_owner().as_ref().is_some_and(same) {

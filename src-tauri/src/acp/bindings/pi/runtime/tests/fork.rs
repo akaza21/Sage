@@ -371,7 +371,7 @@ fn a_copy_that_cannot_be_removed_is_reported_and_no_longer_takes_a_forks_place()
         panic!("fork reply expected");
     };
     // The file system refuses the removal.
-    chat.runtime.remove_file = |_| Err(std::io::ErrorKind::PermissionDenied.into());
+    chat.runtime.remove_file_for_test = |_| Err(std::io::ErrorKind::PermissionDenied.into());
     chat.runtime.release_fork(&fork, false).unwrap();
     assert_eq!(
         chat.runtime.take_native_rpc_reply(),
