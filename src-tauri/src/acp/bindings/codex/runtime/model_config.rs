@@ -87,14 +87,18 @@ impl CodexRuntime {
     /// Adopts the model and effort Codex reports for the thread, on start or
     /// resume and whenever its settings change. The reported model is the
     /// thread's from now on, so a pick not yet sent is not sent over it, and
-    /// its listed descriptor offers its efforts at once. An absent effort
-    /// keeps the selected one while the model runs it.
+    /// its listed descriptor offers its efforts at once. A different model
+    /// keeps only an effort reported with it; an absent effort keeps the
+    /// selected one only for the same model while the model runs it.
     pub(super) fn adopt_reported_settings(
         &mut self,
         model: Option<ModelId>,
         effort: Option<crate::acp::contract::RequiredText<512>>,
     ) {
         if let Some(model) = &model {
+            if self.selected_model_id.as_ref() != Some(model) {
+                self.selected_effort = None;
+            }
             self.model_catalog.choice = None;
             self.selected_model = self.model_catalog.find(model.as_str()).cloned();
             self.selected_model_id = Some(model.clone());
