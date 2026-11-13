@@ -321,6 +321,7 @@ impl CodexAdapter {
             unretried_error_fingerprints: std::mem::take(
                 &mut self.active_unretried_error_fingerprints,
             ),
+            approval_reviews: std::mem::take(&mut self.active_approval_reviews),
         });
         self.active_turn_id = None;
         self.active_turn_user_stop = false;

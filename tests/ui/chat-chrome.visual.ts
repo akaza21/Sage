@@ -4,6 +4,11 @@ import {
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
 import { popoverProfiles } from "./fixtures/popoverProfiles";
+import type { replaceChatChromeWithQueuedScroll } from "./fixtures/chatChromeReplacementRace";
+
+type ReplacementRaceWindow = Window & {
+  replaceChatChromeWithQueuedScroll: typeof replaceChatChromeWithQueuedScroll;
+};
 
 async function openChrome(
   page: Page,
@@ -89,11 +94,18 @@ test("transcript replacement keeps following through a queued old-layout scroll"
         element.scrollHeight - element.clientHeight - element.scrollTop,
     );
   await expect.poll(remaining).toBeLessThanOrEqual(1);
-  const revisions = await page.evaluate(async () => {
-    const fixture =
+  // The replacement commits synchronously and allocates heavily; run it in a
+  // synchronous evaluate so its result is not a promise Chromium can collect.
+  await page.evaluate(async () => {
+    const { replaceChatChromeWithQueuedScroll } =
       await import("/tests/ui/fixtures/chatChromeReplacementRace.ts");
-    return fixture.replaceChatChromeWithQueuedScroll();
+    Object.assign(window, { replaceChatChromeWithQueuedScroll });
   });
+  const revisions = await page.evaluate(() =>
+    (
+      window as unknown as ReplacementRaceWindow
+    ).replaceChatChromeWithQueuedScroll(),
+  );
   await expect.poll(remaining).toBeLessThanOrEqual(1);
   expect(revisions).toEqual({ before: "42", after: "43" });
 });

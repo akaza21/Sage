@@ -69,10 +69,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 match batch {
                     Ok(batch) => {
                         let (events, egress) = batch.into_parts();
-                        if egress
-                            .iter()
-                            .any(|value| value.token().cancelled_permission_request().is_none())
-                        {
+                        if egress.iter().any(|value| {
+                            value.token().cancelled_permission_request().is_none()
+                                && !value.token().is_native_rpc_continuation()
+                        }) {
                             return Err(AdapterPumpError::Frame);
                         }
                         for event in events {
@@ -157,7 +157,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                                 _ => return Err(AdapterPumpError::Frame),
                             }
                         }
-                        super::write_idle_cancellations(&mut self.adapter, egress, transport)?;
+                        super::write_idle_egress(&mut self.adapter, egress, transport)?;
                     }
                     Err(error) if let Some(refusal) = NonfatalRefusal::from_adapter(&error) => {
                         nonfatal_refusal = Some(refusal.into());

@@ -1,4 +1,5 @@
 mod action_handoff;
+mod approval_reviews;
 pub(crate) mod capabilities;
 mod child_read;
 mod fork;
@@ -92,6 +93,7 @@ struct TurnTombstone {
     item_terminals: Vec<ItemTerminal>,
     terminal_id_bytes: usize,
     unretried_error_fingerprints: Vec<[u8; 32]>,
+    approval_reviews: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -192,6 +194,7 @@ pub(crate) struct CodexAdapter {
     active_item_terminals: Vec<ItemTerminal>,
     active_terminal_id_bytes: usize,
     active_unretried_error_fingerprints: Vec<[u8; 32]>,
+    active_approval_reviews: Vec<String>,
     /// Sage wrote `turn/interrupt` for the active Turn.
     active_turn_user_stop: bool,
     active_turn_plan: Option<turn_end::PlanEntries>,

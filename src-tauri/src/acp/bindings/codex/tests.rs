@@ -15,6 +15,7 @@ use super::{
 };
 use crate::test_diagnostics::capture_diagnostics;
 
+mod command_summary_tests;
 mod file_change_sequence_tests;
 #[cfg(feature = "acp-fixture")]
 mod mcp_progress_hook_journey_tests;
