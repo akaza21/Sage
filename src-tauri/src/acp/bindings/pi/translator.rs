@@ -40,6 +40,7 @@ enum PendingKind {
     ThinkingLevels,
     Commands,
     SetThinkingLevel,
+    SetAutoCompaction,
     NewSession,
     Resume,
     Prompt,
@@ -61,7 +62,11 @@ impl PendingKind {
     const fn is_config(self) -> bool {
         matches!(
             self,
-            Self::State | Self::SetModel | Self::ThinkingLevels | Self::SetThinkingLevel
+            Self::State
+                | Self::SetModel
+                | Self::ThinkingLevels
+                | Self::SetThinkingLevel
+                | Self::SetAutoCompaction
         )
     }
 
@@ -73,6 +78,7 @@ impl PendingKind {
             Self::Commands => "get_commands",
             Self::ThinkingLevels => "get_available_thinking_levels",
             Self::SetThinkingLevel => "set_thinking_level",
+            Self::SetAutoCompaction => "set_auto_compaction",
             // Pi opens a fresh session at launch and Sage runs one session
             // per process, so a new chat takes that session by its id.
             Self::NewSession => "get_state",
@@ -106,6 +112,8 @@ struct ActiveTurn {
     retry_notices: u8,
     retry_failed: bool,
     retry_final_error: Option<String>,
+    /// Pi is waiting to retry, as the chat's retry activity shows.
+    retry_waiting: Option<u64>,
     unknown_kinds: BTreeSet<String>,
     unknown_suppression_emitted: bool,
     /// The last assistant reply's stop reason, error and usage, kept from
@@ -145,6 +153,8 @@ pub struct PiTranslator {
     initialization: Option<InitializationIntent>,
     pending_ui: Option<PendingUiRequest>,
     pending_thinking: Option<(String, String)>,
+    /// The auto-compaction setting asked for, by its request.
+    pending_auto_compaction: Option<(String, bool)>,
     resuming: Option<String>,
     closed_config_requests: BTreeSet<String>,
 }
@@ -199,9 +209,17 @@ impl PiTranslator {
                     | PendingKind::Abort
                     | PendingKind::SetModel
                     | PendingKind::SetThinkingLevel
+                    | PendingKind::SetAutoCompaction
                     | PendingKind::Native(_)
             )
         })
+    }
+
+    /// Pi is waiting before it retries the running Turn's failed reply.
+    pub(crate) fn waiting_to_retry(&self) -> bool {
+        self.active
+            .as_ref()
+            .is_some_and(|turn| turn.retry_waiting.is_some())
     }
 
     pub(crate) fn permission_waiting_for(&self, id: &str) -> bool {
@@ -255,6 +273,7 @@ impl PiTranslator {
             initialization: None,
             pending_ui: None,
             pending_thinking: None,
+            pending_auto_compaction: None,
             resuming: None,
             closed_config_requests: BTreeSet::new(),
         }
@@ -282,6 +301,16 @@ impl PiTranslator {
                 fields.insert("level".into(), Value::String(level.clone()));
                 let outbound = self.issue(PendingKind::SetThinkingLevel, fields)?;
                 self.pending_thinking = Some((outbound.command_id.clone(), level));
+                Ok(vec![outbound])
+            }
+            Operation::SetAutoCompaction { enabled } => {
+                if self.pending_auto_compaction.is_some() {
+                    return Err(AdapterError::Malformed);
+                }
+                let mut fields = Map::new();
+                fields.insert("enabled".into(), Value::Bool(enabled));
+                let outbound = self.issue(PendingKind::SetAutoCompaction, fields)?;
+                self.pending_auto_compaction = Some((outbound.command_id.clone(), enabled));
                 Ok(vec![outbound])
             }
             Operation::NewSession | Operation::Resume { .. } => {

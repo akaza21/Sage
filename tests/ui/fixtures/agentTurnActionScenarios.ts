@@ -207,12 +207,15 @@ export function registerAgentTurnActionScenarios() {
   }) => {
     await openJourney(page);
     const alpha = pane(page, "Alpha");
-    const composer = alpha.getByRole("textbox", { name: "Message agent" });
+    const composer = alpha.getByRole("combobox", { name: "Message agent" });
     await composer.fill("Keep this draft");
-    // Focus loads the paste part, which then takes over-cap pastes.
-    await expect(
-      alpha.locator(".composer__body > [aria-live=polite]"),
-    ).toBeAttached();
+    // A native chat loads the paste part at once; its polite notices sit
+    // under the paste notice id the field names, and it then takes
+    // over-cap pastes.
+    const notices = alpha.locator(
+      '[id$="-disabled-reason-paste"] > [aria-live=polite]',
+    );
+    await expect(notices).toBeAttached();
     // A real clipboard paste event, larger than the composer's byte cap.
     const inserted = await composer.evaluate((area, text) => {
       const data = new DataTransfer();
@@ -228,10 +231,14 @@ export function registerAgentTurnActionScenarios() {
     expect(inserted).toBe(false);
     await expect(composer).toHaveValue("Keep this draft");
     // The web build has no native attachment store, so it says why.
+    await expect(notices).toHaveText(/Nothing was pasted\.$/);
     await expect(alpha.getByText(/Nothing was pasted\.$/)).toBeVisible();
 
     await composer.fill("a".repeat(MAX_CHAT_COMPOSER_BYTES + 1));
     await expect(composer).toHaveValue("Keep this draft");
+    await expect(notices).toHaveText(
+      /^Messages hold up to 16 KB of typed text/,
+    );
     await expect(
       alpha.getByText(/^Messages hold up to 16 KB of typed text/),
     ).toBeVisible();

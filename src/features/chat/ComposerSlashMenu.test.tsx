@@ -370,6 +370,62 @@ describe("composer slash commands", () => {
     );
   });
 
+  it("finds a command by an alias its harness gives it", async () => {
+    native.lists = [
+      {
+        revision: 1,
+        commands: [
+          {
+            name: "cost-report",
+            description: "Prefix",
+            inputHint: null,
+            source: "harness",
+          },
+          {
+            name: "usage",
+            description: "Show usage",
+            inputHint: null,
+            source: "builtin",
+            aliases: ["cost", "stats"],
+          },
+        ],
+      },
+    ];
+    render(<Composer />);
+    const { listbox } = await openMenu("/cost");
+    await waitFor(() =>
+      expect(names(listbox)).toEqual(["/usage", "/cost-report"]),
+    );
+  });
+
+  it("prefers an exact command name over another command's alias on Enter", async () => {
+    native.lists = [
+      {
+        revision: 1,
+        commands: [
+          {
+            name: "usage",
+            description: "Show usage",
+            inputHint: null,
+            source: "builtin",
+            aliases: ["cost"],
+          },
+          {
+            name: "cost",
+            description: "Show cost",
+            inputHint: null,
+            source: "harness",
+          },
+        ],
+      },
+    ];
+    render(<Composer />);
+    const { field } = await openMenu("/cost");
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(field).toHaveValue("/cost");
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
   it("sections an unfiltered list by source and flattens it while typing", async () => {
     native.lists = [
       {

@@ -66,9 +66,13 @@ pub(crate) fn auto_title_first_prompt_in(
     now: i64,
 ) -> rusqlite::Result<()> {
     let eligible: bool = transaction.query_row(
-        "SELECT EXISTS(SELECT 1 FROM chats c
-         WHERE c.project_id=?1 AND c.id=?2 AND c.title_source=?3
-         AND NOT EXISTS(SELECT 1 FROM turns WHERE project_id=?1 AND chat_id=?2 LIMIT 1))",
+        concat!(
+            "SELECT EXISTS(SELECT 1 FROM chats c
+             WHERE c.project_id=?1 AND c.id=?2 AND c.title_source=?3
+             AND NOT EXISTS(SELECT 1 FROM turns t WHERE t.project_id=?1 AND t.chat_id=?2 AND ",
+            crate::acp::store::turn_undo::visible_turn!("t.session_id", "t.id"),
+            " LIMIT 1))"
+        ),
         params![project_id, chat_id, ChatTitleSource::Default.as_str()],
         |row| row.get(0),
     )?;
@@ -127,7 +131,8 @@ mod tests {
     fn renames_only_an_untitled_first_prompt_and_rolls_back_with_the_turn() {
         let mut connection = rusqlite::Connection::open_in_memory().unwrap();
         connection.execute_batch("CREATE TABLE chats(id TEXT,project_id TEXT,title TEXT,updated_at INTEGER,title_source TEXT);
-            CREATE TABLE turns(project_id TEXT,chat_id TEXT);
+            CREATE TABLE turns(id TEXT,project_id TEXT,chat_id TEXT,session_id TEXT);
+            CREATE TABLE session_facts(session_id TEXT,turn_id TEXT,kind TEXT);
             CREATE TABLE workbench_tabs(id TEXT,project_id TEXT,kind TEXT,title TEXT,updated_at INTEGER,metadata_json TEXT);
             CREATE TABLE chat_tabs(project_id TEXT,chat_id TEXT,tab_id TEXT);
             INSERT INTO chat_tabs VALUES('project','chat','chat');
@@ -164,7 +169,8 @@ mod tests {
         assert_eq!(read(&connection), "Chat: Custom");
         connection
             .execute_batch(
-                "UPDATE chats SET title='Chat: Chat'; INSERT INTO turns VALUES('project','chat');",
+                "UPDATE chats SET title='Chat: Chat';
+                 INSERT INTO turns VALUES('turn','project','chat','session');",
             )
             .unwrap();
         connection

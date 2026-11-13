@@ -33,11 +33,14 @@ export interface AvailableAcpCommand {
   source: AcpCommandSource;
   /** Opens this panel in the chat and sends nothing. */
   panel?: AcpCommandPanel;
+  /** Other names the harness runs this command by. */
+  aliases?: string[];
 }
 
 // The native list's bounds.
 const MAX_COMMANDS = 512;
 const MAX_COMMAND_BYTES = 256 * 1024;
+const MAX_ALIASES = 8;
 
 export interface AcpCommandList {
   revision: number;
@@ -67,13 +70,17 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
   let bytes = 0;
   const text = (s: unknown, cap: number): s is string =>
     typeof s === "string" && !s.includes("\0") && utf8ByteLength(s) <= cap;
+  const commandName = (s: unknown): s is string =>
+    text(s, 128) && s !== "" && !/[\s/]/u.test(s);
   const commands: AvailableAcpCommand[] = [];
   for (const c of value.commands) {
+    const aliases: unknown = isRecord(c) ? (c.aliases ?? []) : [];
     if (
       !isRecord(c) ||
-      !text(c.name, 128) ||
-      !c.name ||
-      /[\s/]/u.test(c.name) ||
+      !commandName(c.name) ||
+      !Array.isArray(aliases) ||
+      aliases.length > MAX_ALIASES ||
+      !aliases.every(commandName) ||
       names.has(c.name) ||
       !text(c.description, 1024) ||
       (c.inputHint !== null && !text(c.inputHint, 256)) ||
@@ -82,7 +89,9 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
     )
       return null;
     names.add(c.name);
-    bytes += utf8ByteLength(c.name + c.description + (c.inputHint ?? ""));
+    bytes += utf8ByteLength(
+      c.name + c.description + (c.inputHint ?? "") + aliases.join(""),
+    );
     if (bytes > MAX_COMMAND_BYTES) return null;
     commands.push({
       name: c.name,
@@ -90,6 +99,7 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
       inputHint: c.inputHint,
       source: c.source,
       ...(c.panel ? { panel: c.panel } : {}),
+      ...(aliases.length ? { aliases } : {}),
     });
   }
   return { revision: value.revision as number, commands };

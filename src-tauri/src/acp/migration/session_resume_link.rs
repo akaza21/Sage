@@ -10,7 +10,8 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         SchemaClass::CurrentResumeLink
         | SchemaClass::CurrentTitleSource
         | SchemaClass::CurrentSessionFactsTurnIndex
-        | SchemaClass::CurrentOperationTerminalIndex => return Ok(()),
+        | SchemaClass::CurrentOperationTerminalIndex
+        | SchemaClass::CurrentTurnUndoIntentIndexes => return Ok(()),
         SchemaClass::CurrentV23 => {}
         _ => return invalid("session resume links require exact schema v23"),
     }

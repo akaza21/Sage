@@ -94,7 +94,10 @@ fn ready() -> ClaudeSdkRuntime {
     let events = reply(
         &mut runtime,
         &initialize,
-        json!({"commands":[{"name":"review","description":"Review changes"}],"current_permission_mode":"default","models":[{"value":"default","displayName":"Default"}]}),
+        json!({"commands":[{"name":"review","description":"Review changes"},
+            {"name":"status","description":"A user skill"},
+            {"name":"mcp","description":"Manage MCP servers","argumentHint":"[reconnect]","builtin":true,"aliases":["servers"]}],
+            "current_permission_mode":"default","models":[{"value":"default","displayName":"Default"}]}),
     );
     let [AdapterEvent::Initialized { capabilities: told }] = &events[..] else {
         panic!("initialized: {events:?}");
@@ -125,6 +128,26 @@ fn ready() -> ClaudeSdkRuntime {
     let listed = runtime.available_commands().snapshot().commands;
     let names: Vec<_> = listed.iter().map(|command| command.name.as_str()).collect();
     assert_eq!(names, ["status", "mcp", "review"]);
+    // A panel that is also Claude Code's built-in keeps Claude Code's
+    // wording but takes no input, since the panel sends nothing.
+    let mcp = &listed[1];
+    assert_eq!(
+        (mcp.description.as_str(), mcp.input_hint.as_deref()),
+        ("Manage MCP servers", None)
+    );
+    assert_eq!(mcp.aliases, ["servers"]);
+    // A user's command of a panel's name is not the built-in, so the panel
+    // keeps its own wording.
+    assert_eq!(
+        listed[0].description,
+        "Show the session's model, access, context and usage"
+    );
+    assert_eq!(
+        mcp.dispatch,
+        crate::acp::slash_commands::CommandDispatch::Panel(
+            crate::acp::slash_commands::CommandPanel::Mcp
+        )
+    );
     assert!(runtime.session_config().is_some());
     runtime
 }
@@ -352,6 +375,7 @@ fn a_new_launch_names_its_session_and_a_resume_names_the_stored_one() {
             .unwrap(),
         native_root: "/w".into(),
         model: Some(crate::acp::intent::ModelId::new("modelId", "opus").unwrap()),
+        rewind_at: None,
     });
     let launch = resumed.launch.as_ref().unwrap();
     assert_eq!(

@@ -153,8 +153,8 @@ fn completed_extension_replies_cannot_affect_the_next_turn_or_discovery() {
                 .ingest(&response(&query, json!({"commands":[]})), &Mapper)
                 .unwrap();
             let catalog = runtime.available_commands().snapshot();
-            assert_eq!(catalog.commands.len(), 1);
-            assert_eq!(catalog.commands[0].name, "compact");
+            let names: Vec<_> = catalog.commands.iter().map(|c| c.name.as_str()).collect();
+            assert_eq!(names, ["session", "compact"]);
             let ack = reply(&mut runtime, &second, true);
             if next_running {
                 assert_no_terminal(&ack);

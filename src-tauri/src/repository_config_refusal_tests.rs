@@ -60,7 +60,7 @@ impl Fixture {
 
         let sentinel = base.join("tool-ran");
         let script = base.join("sentinel-tool");
-        fs::write(
+        crate::test_executable::write(
             &script,
             format!(
                 "#!/bin/sh\necho ran > \"{}\"\nexit 91\n",

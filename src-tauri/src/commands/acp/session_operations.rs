@@ -4,12 +4,13 @@ use crate::acp::attached_context::effective_prompt;
 mod lifecycle;
 mod prompt_images;
 mod staged;
+mod undone_relaunch;
 pub(crate) use lifecycle::{close_acp_session_inner, end_acp_session_inner};
 use prompt_images::image_input_block;
 
 pub(crate) async fn send_acp_turn_inner(
     state: &AppState,
-    request: SendAcpTurnRequest,
+    mut request: SendAcpTurnRequest,
 ) -> Result<AcpMutationResponse, SendAcpTurnFailure> {
     let (project_id, generation, chat_id) = send_owner(&request);
     let (transition, snapshot) =
@@ -51,6 +52,9 @@ pub(crate) async fn send_acp_turn_inner(
             return characterization::send(state, request);
         }
     }
+    undone_relaunch::relaunch_undone(state, &transition, &mut request)
+        .await
+        .map_err(prompt_not_dispatched)?;
     let (
         project_id,
         project_generation,

@@ -12,9 +12,10 @@
 
 use std::{
     ffi::OsString,
-    io::BufRead,
     path::{Path, PathBuf},
 };
+
+use super::transcript::{is_uuid, last_reply, transcript};
 
 const SEPARATOR: char = '~';
 
@@ -62,16 +63,17 @@ impl Fork {
         })
     }
 
-    /// The launch arguments that open this fork.
-    /// A profile Sage cannot read counts as holding the copy: resuming a
-    /// missing session fails as plainly, and a repeated fork would be
-    /// refused on every later launch.
-    pub(super) fn launch_args(&self, config: &Path) -> Vec<OsString> {
-        let copied = std::fs::read_dir(config.join("projects")).is_err()
-            || transcript(config, &self.session).is_some();
-        if copied {
-            return vec!["--resume".into(), self.session.clone().into()];
+    /// Whether Claude Code already wrote the fork's copy.
+    pub(super) fn copy(&self, config: &Path) -> ForkCopy {
+        if std::fs::read_dir(config.join("projects")).is_err() {
+            return ForkCopy::Unknown;
         }
+        transcript(config, &self.session).map_or(ForkCopy::Pending, ForkCopy::Written)
+    }
+
+    /// The launch arguments that make the copy: Claude Code resumes the
+    /// source cut at the fork's reply, under the fork's own id.
+    pub(super) fn copy_args(&self) -> Vec<OsString> {
         [
             "--resume",
             &self.source,
@@ -84,15 +86,33 @@ impl Fork {
         .map(OsString::from)
         .into()
     }
+
+    /// The launch arguments that open this fork.
+    #[cfg(test)]
+    fn launch_args(&self, config: &Path) -> Vec<OsString> {
+        match self.copy(config) {
+            ForkCopy::Pending => self.copy_args(),
+            _ => vec!["--resume".into(), self.session.clone().into()],
+        }
+    }
+}
+
+/// The state of a fork's copy in Claude Code's profile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ForkCopy {
+    /// Not written yet: the next launch makes it.
+    Pending,
+    /// Written, at this transcript.
+    Written(PathBuf),
+    /// The profile cannot be read. It counts as holding the copy: resuming
+    /// a missing session fails as plainly, and a repeated fork would be
+    /// refused on every later launch.
+    Unknown,
 }
 
 /// The Claude session a stored session id names.
 pub(super) fn claude_session(id: &str) -> &str {
     id.split(SEPARATOR).next().unwrap_or(id)
-}
-
-fn is_uuid(value: &str) -> bool {
-    uuid::Uuid::parse_str(value).is_ok_and(|parsed| parsed.hyphenated().to_string() == value)
 }
 
 /// Claude Code's profile directory, as its launch environment names it.
@@ -108,40 +128,6 @@ pub(super) fn config_directory(environment: &[(OsString, OsString)]) -> Option<P
         .or_else(|| value("USERPROFILE").map(|home| home.join(".claude")))
         // Claude Code reads a relative one from the project, not from Sage.
         .filter(|config| config.is_absolute())
-}
-
-/// A session's transcript: Claude Code keeps each project's sessions in
-/// their own directory under `projects`.
-fn transcript(config: &Path, session: &str) -> Option<PathBuf> {
-    let name = format!("{session}.jsonl");
-    std::fs::read_dir(config.join("projects"))
-        .ok()?
-        .filter_map(Result::ok)
-        .map(|project| project.path().join(&name))
-        .find(|path| path.is_file())
-}
-
-/// The id of the transcript's last assistant message in the main thread.
-fn last_reply(path: &Path) -> Option<String> {
-    let file = std::fs::File::open(path).ok()?;
-    let mut last = None;
-    for line in std::io::BufReader::new(file).lines() {
-        let Ok(line) = line else { break };
-        // Only an assistant entry can carry the id this looks for.
-        if !line.contains("\"assistant\"") {
-            continue;
-        }
-        let Ok(entry) = serde_json::from_str::<serde_json::Value>(&line) else {
-            continue;
-        };
-        if entry["type"] == "assistant"
-            && entry["isSidechain"] != true
-            && let Some(id) = entry["uuid"].as_str().filter(|id| is_uuid(id))
-        {
-            last = Some(id.to_owned());
-        }
-    }
-    last
 }
 
 #[cfg(test)]

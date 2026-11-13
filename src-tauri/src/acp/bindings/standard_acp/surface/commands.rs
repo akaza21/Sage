@@ -21,8 +21,11 @@ pub(crate) fn update_commands(
 }
 
 /// An `available_commands_update` for `session`, with the binding's own
-/// `first` rows ahead of the harness's; a harness row of the same name is
-/// left out.
+/// `first` rows ahead of the harness's. A `first` row that is also one of
+/// the harness's own built-ins keeps the harness's description and aliases,
+/// so the menu describes the command as the harness does; its route and
+/// input stay the binding's. A skill or plugin of that name is not the same
+/// command, so the binding's row stays as it is.
 pub(crate) fn update_commands_with(
     value: &Value,
     session: &str,
@@ -44,10 +47,25 @@ pub(crate) fn update_commands_with(
     let parsed = super::command_list::parse_acp(&value["params"]["update"]["availableCommands"]);
     commands.replace(parsed.map(|listed| {
         if first.is_empty() {
-            listed
-        } else {
-            first_listed(first.iter().cloned().chain(listed))
+            return listed;
         }
+        let routed: Vec<_> = first
+            .iter()
+            .map(|own| {
+                let builtin = listed.iter().find(|harness| {
+                    harness.name == own.name && harness.source == CommandSource::Builtin
+                });
+                match builtin {
+                    Some(harness) => AvailableCommand {
+                        description: harness.description.clone(),
+                        aliases: harness.aliases.clone(),
+                        ..own.clone()
+                    },
+                    None => own.clone(),
+                }
+            })
+            .collect();
+        first_listed(routed.into_iter().chain(listed))
     }))?;
     Ok(true)
 }
