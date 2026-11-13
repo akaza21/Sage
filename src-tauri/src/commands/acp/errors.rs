@@ -22,6 +22,13 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
     );
     match error {
         crate::acp::service::CodexSessionError::Binding(_) => binding_unavailable(),
+        crate::acp::service::CodexSessionError::RewindUnavailable => {
+            AcpIpcError::RecoveryRequired {
+                message: safe_message(
+                    "The pending undo could not be applied. The session was not resumed; the rewind remains pending.",
+                ),
+            }
+        }
         crate::acp::service::CodexSessionError::Intent => AcpIpcError::Conflict {
             resource: AcpConflictResource::Session,
             message: safe_message("The native session identity is stale or foreign."),

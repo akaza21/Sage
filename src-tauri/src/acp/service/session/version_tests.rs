@@ -1,4 +1,4 @@
-use super::{earlier_release::continues_on_later_release, *};
+use super::{head_continuation::continues_on_later_release, *};
 use crate::acp::bindings::codex::{CODEX_BINDING_ID, CODEX_PINNED_VERSION};
 
 fn session_at(version: &str) -> DurableSession {
@@ -150,7 +150,7 @@ fn a_linked_session_resumes_the_earlier_thread() {
     linked.external_session_id = None;
     linked.resumed_thread = Some("thread-before-upgrade".into());
     assert!(matches!(
-        activation_mode(linked, "root".into(), None),
+        activation_mode(linked, "root".into(), None, None),
         Ok(ActivationMode::Resume { external_session_id, .. })
             if external_session_id.as_str() == "thread-before-upgrade"
     ));
@@ -158,7 +158,7 @@ fn a_linked_session_resumes_the_earlier_thread() {
     fresh.state = "created".into();
     fresh.external_session_id = None;
     assert!(matches!(
-        activation_mode(fresh, "root".into(), None),
+        activation_mode(fresh, "root".into(), None, None),
         Ok(ActivationMode::New { .. })
     ));
 }

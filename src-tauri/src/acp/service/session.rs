@@ -171,7 +171,8 @@ impl AcpService {
         let native_root = project_root
             .native_root()
             .map_err(|_| CodexSessionError::Intent)?;
-        let mode = activation_mode(session, native_root, model)?;
+        let rewind_at = pending_cut(&self.database, &owner)?;
+        let mode = activation_mode(session, native_root, model, rewind_at)?;
         let ceiling = admitted
             .supported_capabilities()
             .map_err(|error| CodexSessionError::Binding(error.into()))?;
@@ -263,10 +264,26 @@ fn load_durable_session(
         .ok_or(CodexSessionError::Intent)
 }
 
+/// The undone Turn a resumed native thread is cut before, while one waits.
+/// A pending restart never reaches here: the head is replaced first.
+fn pending_cut(
+    database: &crate::persistence::Database,
+    owner: &RuntimeOwner,
+) -> Result<Option<String>, CodexSessionError> {
+    let rewind =
+        crate::acp::store::pending_thread_rewind(&database.connection(), owner.session_id.as_str())
+            .map_err(|_| CodexSessionError::Intent)?;
+    rewind
+        .filter(|rewind| rewind.thread == crate::acp::store::UndoneThread::Cut)
+        .map(|rewind| rewind.cut_at.ok_or(CodexSessionError::RewindUnavailable))
+        .transpose()
+}
+
 fn activation_mode(
     session: DurableSession,
     native_root: String,
     model: Option<ModelId>,
+    rewind_at: Option<String>,
 ) -> Result<ActivationMode, CodexSessionError> {
     let thread = |external: String| {
         ExternalId::new("externalSessionId", external).map_err(|_| CodexSessionError::Intent)
@@ -281,13 +298,20 @@ fn activation_mode(
             ("created", "cold", None, None) => ActivationMode::New { native_root, model },
             // A session that continues an earlier one resumes its thread; the
             // first activation records that thread as this session's own.
-            ("created", "cold", None, Some(external)) | ("ready", "cold", Some(external), _) => {
-                ActivationMode::Resume {
-                    external_session_id: thread(external)?,
-                    native_root,
-                    model,
-                }
-            }
+            ("created", "cold", None, Some(external)) => ActivationMode::Resume {
+                external_session_id: thread(external)?,
+                native_root,
+                model,
+                rewind_at: None,
+            },
+            // A parked session resumes its own thread, cut before a Turn the
+            // user undid while one waits.
+            ("ready", "cold", Some(external), _) => ActivationMode::Resume {
+                external_session_id: thread(external)?,
+                native_root,
+                model,
+                rewind_at,
+            },
             _ => return Err(CodexSessionError::Intent),
         },
     )
@@ -344,8 +368,11 @@ fn validate_session_identity(
     Ok(())
 }
 
-mod earlier_release;
+mod head_continuation;
+pub(super) use head_continuation::{next_runtime_epoch, store_error};
 
+#[cfg(test)]
+mod undo_tests;
 #[cfg(test)]
 mod version_tests;
 

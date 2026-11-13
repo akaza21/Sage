@@ -31,6 +31,7 @@ mod title_source;
 mod tool_result_fold;
 #[cfg(test)]
 mod tool_result_fold_tests;
+mod turn_undo_intent_indexes;
 mod v18_backup;
 mod workspace_changes;
 
@@ -146,6 +147,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     title_source::apply(&mut opened.connection)?;
     session_facts_turn_index::apply(&mut opened.connection)?;
     operation_terminal_index::apply(&mut opened.connection)?;
+    turn_undo_intent_indexes::apply(&mut opened.connection)?;
     Ok(opened)
 }
 

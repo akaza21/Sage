@@ -96,9 +96,9 @@ type RailChatRow = (
     Option<i64>,
 );
 
-/// A column of the chat aliased `c`'s latest Turn, from its latest session
-/// that has one. Every read of "the chat's latest Turn" goes through this, so
-/// the rail and the attention query agree on which Turn that is.
+/// A column of the chat aliased `c`'s latest visible Turn, from its latest
+/// session that has one. Every read of "the chat's latest Turn" goes through
+/// this, so the rail and the attention query agree on which Turn that is.
 macro_rules! chat_latest_turn {
     ($column:literal) => {
         concat!(
@@ -107,8 +107,12 @@ macro_rules! chat_latest_turn {
             " FROM turns t
            WHERE t.session_id = (SELECT s.id FROM agent_sessions s
              WHERE s.project_id = c.project_id AND s.chat_id = c.id
-               AND EXISTS(SELECT 1 FROM turns present WHERE present.session_id = s.id)
-             ORDER BY s.ordinal DESC, s.id DESC LIMIT 1)
+               AND EXISTS(SELECT 1 FROM turns present WHERE present.session_id = s.id AND ",
+            crate::acp::store::turn_undo::visible_turn!("present.session_id", "present.id"),
+            ")
+             ORDER BY s.ordinal DESC, s.id DESC LIMIT 1) AND ",
+            crate::acp::store::turn_undo::visible_turn!("t.session_id", "t.id"),
+            "
            ORDER BY t.ordinal DESC, t.id DESC LIMIT 1)"
         )
     };
