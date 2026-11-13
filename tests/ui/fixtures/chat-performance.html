@@ -255,12 +255,18 @@
         },
         scrollToMiddle() {
           scroll.scrollTop = scroll.scrollHeight / 2;
-          scroll.dispatchEvent(new Event("scroll"));
+          flushSync(() => scroll.dispatchEvent(new Event("scroll")));
         },
         visibleAnchor() {
           const top = scroll.getBoundingClientRect().top;
           const turn = [...document.querySelectorAll(".acp-turn")].find(
-            (element) => element.getBoundingClientRect().bottom > top + 16,
+            (element) => {
+              const bounds = element.getBoundingClientRect();
+              return (
+                bounds.bottom > top + 16 &&
+                bounds.top < top + scroll.clientHeight
+              );
+            },
           );
           return turn
             ? {
