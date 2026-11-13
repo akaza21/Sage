@@ -74,11 +74,11 @@ async function admittedLoadDirectory(
   }
 }
 
-/** Reloads the root's ready or expanded listings that `within` admits. */
+/** Resyncs ready/expanded listings; subtree notices also dirty cached reads. */
 async function reloadRootListings(
   get: () => WorkbenchState,
   rootId: string,
-  within: (relativePath: string) => boolean,
+  subtree?: string,
 ): Promise<void> {
   const seen = new Set<string>();
   const resources: ResourceRef[] = [];
@@ -86,7 +86,9 @@ async function reloadRootListings(
     const key = resourceKey(resource);
     if (
       resource.rootId !== rootId ||
-      !within(resource.relativePath) ||
+      (subtree !== undefined &&
+        resource.relativePath !== subtree &&
+        !resource.relativePath.startsWith(`${subtree}/`)) ||
       seen.has(key)
     ) {
       return;
@@ -94,9 +96,12 @@ async function reloadRootListings(
     seen.add(key);
     resources.push(resource);
   };
-  for (const entry of Object.values(get().directoryListings)) {
+  for (const [key, entry] of Object.entries(get().directoryListings)) {
     if (entry.phase === "ready") {
       add(entry.value.resource);
+    } else if (subtree !== undefined && entry.phase === "loading") {
+      const resource = resourceFromKey(key);
+      if (resource) add(resource);
     }
   }
   for (const key of Object.keys(get().expandedDirectories)) {
@@ -122,7 +127,7 @@ async function refreshListingsForResync(
   try {
     do {
       resyncRootsQueued.delete(notice.rootId);
-      await reloadRootListings(get, notice.rootId, () => true);
+      await reloadRootListings(get, notice.rootId);
     } while (resyncRootsQueued.has(notice.rootId));
   } finally {
     resyncRootsInFlight.delete(notice.rootId);
@@ -158,12 +163,7 @@ export function createWorkspaceNotifyHooks(
       }
       // Changes inside an ignored folder: its listings and those below.
       if (notice.kind === "ignored") {
-        const folder = notice.relativePath;
-        return reloadRootListings(
-          get,
-          notice.rootId,
-          (path) => path === folder || path.startsWith(`${folder}/`),
-        );
+        return reloadRootListings(get, notice.rootId, notice.relativePath);
       }
       const key = resourceKey(listing);
       if (get().directoryListings[key] || get().expandedDirectories[key]) {

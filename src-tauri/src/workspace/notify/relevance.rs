@@ -11,9 +11,10 @@
 //!   Git does not read) is folded into one record for the topmost ignored
 //!   folder, marked [`Relevance::IgnoredBelow`]. Explorer still refreshes an
 //!   expanded `target` or `dist` from it, at a throttled pace, while a
-//!   `cargo build` no longer sends each of its writes, and Git status is not
-//!   asked to run for it. The ignored folder's own record (`target` created
-//!   at the root, say) passes as usual.
+//!   `cargo build` no longer sends each of its writes. Throttled notices also
+//!   refresh Git (tracked descendants can be ignored) and Search using its
+//!   settings. The ignored folder's own record (`target` created at the root,
+//!   say) passes as usual.
 //! - Everything else passes.
 //!
 //! The rules are loaded once and each folder's decision is cached. A change

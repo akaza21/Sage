@@ -289,29 +289,6 @@ describe("workspace notify compose", () => {
     );
   });
 
-  it("sends changes inside an ignored folder to its listings only", async () => {
-    let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
-    const invalidate = vi.fn();
-    const search = vi.fn();
-    subscribeWorkspaceNotifySearch(search);
-    await syncLiveProjectWorkspaceNotify(live, {
-      watch: vi.fn().mockResolvedValue({ generation: 1 }),
-      unwatch: vi.fn(),
-      async listen(next) {
-        emit = next;
-        return () => undefined;
-      },
-      invalidate,
-    });
-    const ignored = { ...notice, relativePath: "target", kind: "ignored" };
-    emit(ignored);
-    expect(invalidate).toHaveBeenCalledWith(
-      ignored,
-      childResource("root-a", "target"),
-    );
-    expect(search).not.toHaveBeenCalled();
-  });
-
   it("stops throttled ignored-folder refreshes when the session ends", async () => {
     vi.useFakeTimers();
     let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;

@@ -1,15 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { childResource, resourceKey } from "../domain/resourceIdentity";
-import type { BootstrapSnapshot } from "../domain/workbench";
+import type {
+  BootstrapSnapshot,
+  DirectoryListing,
+  ProjectRepositoryStatus,
+} from "../domain/workbench";
+import {
+  MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
+  subscribeWorkspaceNotifySearch,
+  syncLiveProjectWorkspaceNotify,
+  type WorkspaceNotifyNotice,
+} from "../features/files/workspaceNotifyCompose";
+import { createNotifyRefreshes } from "../features/files/workspaceNotifyRefreshes";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { desktop } from "../services/desktop";
 import {
   flushEditorSettingsPersistence,
   useEditorSettingsStore,
 } from "./editorSettingsStore";
 import { useWorkbenchStore } from "./store";
 import {
+  REFRESH_DEBOUNCE_MS,
+  startRepositoryAutoRefresh,
+} from "./repositoryAutoRefresh";
+import {
   createWorkspaceNotifyHooks,
+  liveProjectNotifyStamp,
   unbindWorkspaceNotify,
 } from "./workspaceNotifyLifecycle";
 
@@ -168,6 +185,229 @@ describe("live Project workspace notify bind", () => {
     const refreshed = listDirectory.mock.calls.map(([resource]) => resource);
     expect(refreshed).toEqual(expect.arrayContaining([target, debug]));
     expect(refreshed).toHaveLength(2);
+  });
+
+  it.each(["notify", "Explorer", "cached listing"])(
+    "keeps an ignored listing current when its %s read outlasts the throttle",
+    async (source) => {
+      await useWorkbenchStore.getState().initialize();
+      vi.useFakeTimers();
+      const target = childResource("root-a", "target");
+      const listing = (name: string): DirectoryListing => ({
+        resource: target,
+        entries: [
+          {
+            name,
+            resource: childResource("root-a", `target/${name}`),
+            kind: "file",
+            byteLen: 1,
+          },
+        ],
+        truncated: false,
+      });
+      const before = listing("before.txt");
+      const after = listing("after.txt");
+      useWorkbenchStore.setState({
+        directoryListings:
+          source === "Explorer"
+            ? {}
+            : { [resourceKey(target)]: { phase: "ready", value: before } },
+        expandedDirectories:
+          source === "notify" ? { [resourceKey(target)]: true } : {},
+      });
+      let finishRead!: (value: DirectoryListing) => void;
+      const firstRead = new Promise<DirectoryListing>((resolve) => {
+        finishRead = resolve;
+      });
+      vi.mocked(projectPort.listDirectory)
+        .mockImplementationOnce(() => firstRead)
+        .mockResolvedValue(after);
+      const refreshes = createNotifyRefreshes(
+        createWorkspaceNotifyHooks(() => useWorkbenchStore.getState())
+          .invalidate,
+        () => true,
+        MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
+      );
+      const notice = {
+        projectId: "project-a",
+        projectGeneration: 1,
+        transitionEpoch: 7,
+        rootId: "root-a",
+        relativePath: "target",
+        kind: "ignored",
+      };
+      try {
+        if (source === "notify") {
+          refreshes.ignoredFolder(notice);
+        } else if (source === "Explorer") {
+          useWorkbenchStore.getState().toggleDirectory(target);
+        } else {
+          void useWorkbenchStore.getState().loadDirectory(target, true);
+        }
+        await vi.advanceTimersByTimeAsync(0);
+        refreshes.ignoredFolder(notice);
+        // The trailing notice matures while the first native read is pending.
+        await vi.advanceTimersByTimeAsync(2_500);
+        finishRead(before);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(
+          useWorkbenchStore.getState().directoryListings[resourceKey(target)],
+        ).toEqual({ phase: "ready", value: after });
+      } finally {
+        refreshes.dispose();
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("holds a shared listing slot through an Explorer read's trailing refresh", async () => {
+    await useWorkbenchStore.getState().initialize();
+    vi.useFakeTimers();
+    const target = childResource("root-a", "target");
+    const others = Array.from({ length: 8 }, (_, index) =>
+      childResource("root-a", `other-${index}`),
+    );
+    useWorkbenchStore.setState({
+      directoryListings: Object.fromEntries(
+        others.map((resource) => [
+          resourceKey(resource),
+          {
+            phase: "ready" as const,
+            value: { resource, entries: [], truncated: false },
+          },
+        ]),
+      ),
+      expandedDirectories: {},
+    });
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const finishers: Array<() => void> = [];
+    vi.mocked(projectPort.listDirectory).mockImplementation(
+      (resource) =>
+        new Promise((resolve) => {
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          finishers.push(() => {
+            inFlight -= 1;
+            resolve({ resource, entries: [], truncated: false });
+          });
+        }),
+    );
+    const hooks = createWorkspaceNotifyHooks(() =>
+      useWorkbenchStore.getState(),
+    );
+    const notice = {
+      projectId: "project-a",
+      projectGeneration: 1,
+      transitionEpoch: 7,
+      rootId: "root-a",
+      relativePath: "target",
+      kind: "ignored",
+    };
+    useWorkbenchStore.getState().toggleDirectory(target);
+    const pending = [
+      hooks.invalidate(notice, target),
+      ...others.map((resource) =>
+        hooks.invalidate(
+          {
+            ...notice,
+            kind: "changed",
+            relativePath: `${resource.relativePath}/file.ts`,
+          },
+          resource,
+        ),
+      ),
+    ];
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(maxInFlight).toBe(8);
+      // End Explorer's read while the other listings still occupy their slots.
+      finishers.shift()!();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(maxInFlight).toBe(8);
+    } finally {
+      while (finishers.length > 0) {
+        for (const finish of finishers.splice(0)) finish();
+        await vi.advanceTimersByTimeAsync(0);
+      }
+      await Promise.all(pending);
+      vi.useRealTimers();
+    }
+    expect(
+      useWorkbenchStore.getState().directoryListings[resourceKey(target)],
+    ).toEqual({
+      phase: "ready",
+      value: { resource: target, entries: [], truncated: false },
+    });
+  });
+
+  it("refreshes tracked changes under an ignored folder without polling or a Git stamp change", async () => {
+    await useWorkbenchStore.getState().initialize();
+    await unbindWorkspaceNotify();
+    vi.useFakeTimers();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
+    await syncLiveProjectWorkspaceNotify(
+      liveProjectNotifyStamp(useWorkbenchStore.getState()),
+      {
+        ...createWorkspaceNotifyHooks(() => useWorkbenchStore.getState()),
+        async listen(listener) {
+          emit = listener;
+          return () => undefined;
+        },
+      },
+    );
+    const modified: ProjectRepositoryStatus = {
+      roots: [
+        {
+          rootId: "root-a",
+          state: "repository",
+          branch: "main",
+          changes: [
+            {
+              resource: childResource("root-a", "dist/app.js"),
+              indexStatus: "unchanged",
+              worktreeStatus: "modified",
+              additions: 1,
+              deletions: 0,
+            },
+          ],
+          truncated: false,
+          elapsedMs: 1,
+          message: null,
+        },
+      ],
+      truncated: false,
+      elapsedMs: 1,
+    };
+    vi.spyOn(desktop, "getRepositoryStatus").mockResolvedValue(modified);
+    const stop = startRepositoryAutoRefresh({
+      async refresh() {
+        await useWorkbenchStore.getState().refreshRepository();
+        return "changed";
+      },
+      changeStamp: async () => "fixed-git-metadata",
+      subscribeNotices: subscribeWorkspaceNotifySearch,
+      pollAlways: false,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(useWorkbenchStore.getState().repositories.roots).toEqual([]);
+      emit({
+        projectId: "project-a",
+        projectGeneration: 1,
+        transitionEpoch: 7,
+        rootId: "root-a",
+        relativePath: "dist",
+        kind: "ignored",
+      });
+      await vi.advanceTimersByTimeAsync(REFRESH_DEBOUNCE_MS);
+      expect(useWorkbenchStore.getState().repositories).toEqual(modified);
+    } finally {
+      stop();
+      await unbindWorkspaceNotify();
+      vi.useRealTimers();
+    }
   });
 
   it("refreshes the root's cached listings when an ignore file changes", async () => {

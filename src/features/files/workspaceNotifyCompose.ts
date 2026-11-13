@@ -294,6 +294,7 @@ export async function syncLiveProjectWorkspaceNotify(
     hooks.invalidate,
     () => bound !== null && session === bound,
     MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
+    publishWorkspaceNotifySearch,
   );
   const unlisten = await hooks.listen((value) => {
     if (!session) {
@@ -303,10 +304,8 @@ export async function syncLiveProjectWorkspaceNotify(
     if (!accepted) {
       return;
     }
-    // Changes inside an ignored folder only refresh its expanded listings.
-    // Search and Git skip them: Git ignores those files, except a tracked
-    // one (`git add -f`, or ignored after commit), which the Git refresh on
-    // focus, on a changed Git stamp, or from the poll picks up instead.
+    // Folded subtree notices can cover tracked files and Search can include
+    // ignored files. Publish them at the throttle boundary for both consumers.
     if (accepted.kind === "ignored") {
       refreshes.ignoredFolder(accepted);
       return;
