@@ -34,6 +34,7 @@ const reviewedSpawnModules = new Map([
     "browser/devtools/cdp_lane/chromium.rs",
     "Feature-gated Chromium measurement lane",
   ],
+  ["test_executable.rs", "Test-only executable fixture writer"],
 ]);
 
 const frontendSecurityPatterns = [
