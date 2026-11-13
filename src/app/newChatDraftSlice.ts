@@ -15,7 +15,7 @@ export interface NewChatDraft {
   effort: string | null;
   creating: boolean;
   error: string | null;
-  unconfirmedCreation?: { priorChatIds: readonly string[] };
+  unconfirmedAtProjectGeneration?: number;
 }
 
 export interface NewChatDraftSlice {
@@ -118,4 +118,26 @@ export function projectNewChatDraft(
         agentCenter: "chat" as const,
         pendingFirstSend: null,
       };
+}
+
+export function reopenedNewChatDraft(
+  state: Pick<WorkbenchState, "project" | "projectGeneration" | "newChatDraft">,
+  generation: number,
+) {
+  const draft = state.newChatDraft;
+  if (
+    draft?.unconfirmedAtProjectGeneration === undefined ||
+    generation <= draft.unconfirmedAtProjectGeneration ||
+    state.projectGeneration !== generation ||
+    state.project?.id !== draft.projectId
+  )
+    return {};
+  return {
+    newChatDraft: {
+      ...draft,
+      creating: false,
+      error: null,
+      unconfirmedAtProjectGeneration: undefined,
+    },
+  };
 }

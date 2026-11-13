@@ -196,9 +196,8 @@ async function createOnActiveProject(input: {
         set({
           projectTransitioning: false,
           repositoryRefreshing: false,
-          error: committed
-            ? "Chat creation succeeded. Reopen the project to load the new chat."
-            : "Chat creation is unconfirmed. Reopen the project before retrying.",
+          error:
+            "Chat creation is unconfirmed. Reopen the project before retrying.",
         });
       }
       return { status: "unconfirmed" };

@@ -46,10 +46,6 @@ export async function loadProjectProjection(
     ),
     projectTransitioning: true,
   });
-  if (get().newChatDraft?.unconfirmedCreation) {
-    const { reconcileNewChatDraft } = await import("./runNewChatDraftSend");
-    reconcileNewChatDraft(set, get);
-  }
   const availableRoots =
     snapshot.project?.roots.filter(
       (root) => root.availability === "available",

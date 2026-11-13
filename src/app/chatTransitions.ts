@@ -131,10 +131,6 @@ export function createChatTransitionContext(
       ),
       projectTransitioning: true,
     });
-    if (get().newChatDraft?.unconfirmedCreation) {
-      const { reconcileNewChatDraft } = await import("./runNewChatDraftSend");
-      reconcileNewChatDraft(set, get);
-    }
     const projectionLoads =
       snapshot.project?.roots
         .filter((root) => root.availability === "available")
