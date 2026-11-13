@@ -15,15 +15,50 @@ use std::{io, path::Path};
 #[cfg(windows)]
 mod named_event;
 
+#[cfg(any(windows, test))]
+#[derive(Default)]
+struct RaiseGate(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+#[cfg(any(windows, test))]
+impl RaiseGate {
+    fn request<E>(
+        &self,
+        dispatch: impl FnOnce(Box<dyn FnOnce() + Send>) -> Result<(), E>,
+        raise: impl FnOnce() + Send + 'static,
+    ) {
+        use std::sync::{Arc, atomic::Ordering};
+
+        if self
+            .0
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
+        let pending = Arc::clone(&self.0);
+        if dispatch(Box::new(move || {
+            raise();
+            pending.store(false, Ordering::Release);
+        }))
+        .is_err()
+        {
+            self.0.store(false, Ordering::Release);
+        }
+    }
+}
+
 /// Starts raising `app`'s main window whenever a later launch of this
 /// profile rings. Call it once, after the main window exists, from the
 /// process that owns the profile.
 #[cfg(windows)]
 pub(crate) fn listen(app: &tauri::AppHandle, durable_dir: &Path) -> io::Result<()> {
     let app = app.clone();
+    let raises = RaiseGate::default();
     named_event::listen(&doorbell_name(durable_dir)?, move || {
-        let raised = app.clone();
-        let _ = app.run_on_main_thread(move || raise(&raised));
+        raises.request(|task| app.run_on_main_thread(task), {
+            let raised = app.clone();
+            move || raise(&raised)
+        });
     })
 }
 
@@ -80,6 +115,63 @@ fn doorbell_name(durable_dir: &Path) -> io::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn doorbell_bursts_queue_one_raise_until_the_dispatcher_resumes() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let gate = RaiseGate::default();
+        let raises = Arc::new(AtomicUsize::new(0));
+        let mut queue = std::collections::VecDeque::new();
+        for _ in 0..10_000 {
+            let raises = Arc::clone(&raises);
+            gate.request(
+                |task| {
+                    queue.push_back(task);
+                    Ok::<_, ()>(())
+                },
+                move || {
+                    raises.fetch_add(1, Ordering::Relaxed);
+                },
+            );
+        }
+        assert_eq!(queue.len(), 1);
+        assert_eq!(raises.load(Ordering::Relaxed), 0);
+        queue.pop_front().unwrap()();
+        assert_eq!(raises.load(Ordering::Relaxed), 1);
+
+        let raises_again = Arc::clone(&raises);
+        gate.request(
+            |task| {
+                queue.push_back(task);
+                Ok::<_, ()>(())
+            },
+            move || {
+                raises_again.fetch_add(1, Ordering::Relaxed);
+            },
+        );
+        assert_eq!(queue.len(), 1);
+        queue.pop_front().unwrap()();
+        assert_eq!(raises.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn a_failed_dispatch_does_not_block_the_next_raise() {
+        let gate = RaiseGate::default();
+        gate.request(|_| Err(()), || panic!("failed dispatch must not execute"));
+        let (raised, raises) = std::sync::mpsc::sync_channel(1);
+        gate.request(
+            |task| {
+                task();
+                Ok::<_, ()>(())
+            },
+            move || raised.send(()).unwrap(),
+        );
+        assert_eq!(raises.try_recv(), Ok(()));
+    }
 
     #[test]
     fn each_profile_folder_has_one_session_scoped_doorbell() {

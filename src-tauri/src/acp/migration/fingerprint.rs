@@ -6,9 +6,12 @@ use sha2::{Digest, Sha256};
 use crate::error::{AppError, AppResult};
 
 mod expected;
+mod preflight;
 mod version;
 use expected::{expected_legacy_v10_session_events_fingerprint, expected_schema_fingerprint};
-use version::class_for_version;
+use version::{class_for_version, reject_newer_history};
+
+pub(super) use preflight::reject_newer_live;
 
 pub(super) use super::file_artifact::{FileFingerprint, file_fingerprint, open_read_only};
 
@@ -164,7 +167,7 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
     }
     reject_newer_history(connection)?;
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT ?1")?
+        .prepare("SELECT version FROM schema_migrations ORDER BY version COLLATE BINARY LIMIT ?1")?
         .query_map([MAX_SCHEMA_VERSION as i64 + 1], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     if versions.is_empty()
@@ -193,91 +196,6 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
         return Ok(SchemaClass::CurrentV10LegacySessionEvents);
     }
     invalid("Sage schema objects do not match the exact declared version")
-}
-
-/// Refuses a live database a newer Sage migrated before any recovery acts on
-/// the files beside it. Only that refusal is decided here: any other problem
-/// is left to the full classification after recovery, as before.
-///
-/// The main file's header `user_version` is read even beside a nonempty WAL:
-/// Sage only raises it, so a checkpointed value above this build's maximum is
-/// conclusive. A newer version still only in the WAL is read through the
-/// bounded probe copy by the full classification, which refuses it the same
-/// way. With no WAL, the migration history itself is checked here.
-pub(super) fn reject_newer_live(paths: &super::paths::MigrationPaths) -> AppResult<()> {
-    let newer = (|| {
-        if let Some(stored) = header_user_version(&paths.live)?
-            && i64::from(stored) > MAX_SCHEMA_VERSION as i64
-        {
-            return Err(AppError::NewerProfile {
-                stored_version: i64::from(stored),
-                supported_version: MAX_SCHEMA_VERSION as u32,
-            });
-        }
-        if std::fs::metadata(&paths.live_wal).map_or(0, |metadata| metadata.len()) != 0 {
-            return Ok(());
-        }
-        let connection = open_read_only(&paths.live)?;
-        let tracked: bool = connection.query_row(
-            "SELECT EXISTS(
-               SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_migrations'
-             )",
-            [],
-            |row| row.get(0),
-        )?;
-        if tracked {
-            reject_newer_history(&connection)?;
-        }
-        Ok(())
-    })();
-    match newer {
-        Err(error @ AppError::NewerProfile { .. }) => Err(error),
-        _ => Ok(()),
-    }
-}
-
-/// The `user_version` in a SQLite file's 100-byte header, read without
-/// opening it as a database. `None` for a missing, empty or non-SQLite file.
-fn header_user_version(path: &Path) -> AppResult<Option<i32>> {
-    use std::io::Read;
-
-    const MAGIC: &[u8; 16] = b"SQLite format 3\0";
-    super::platform::reject_path_alias(path)?;
-    let mut header = [0_u8; 64];
-    match std::fs::File::open(path).and_then(|mut file| file.read_exact(&mut header)) {
-        Ok(()) if header.starts_with(MAGIC) => Ok(Some(i32::from_be_bytes([
-            header[60], header[61], header[62], header[63],
-        ]))),
-        Ok(()) => Ok(None),
-        Err(error)
-            if matches!(
-                error.kind(),
-                std::io::ErrorKind::NotFound | std::io::ErrorKind::UnexpectedEof
-            ) =>
-        {
-            Ok(None)
-        }
-        Err(error) => Err(error.into()),
-    }
-}
-
-/// Only a newer Sage records a migration above this binary's maximum. Naming
-/// that case lets the person act on it; the database is still refused, and
-/// every lower history still has to match its exact fingerprint.
-fn reject_newer_history(connection: &Connection) -> AppResult<()> {
-    let newest: Option<i64> =
-        connection.query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
-            row.get(0)
-        })?;
-    match newest {
-        Some(stored_version) if stored_version > MAX_SCHEMA_VERSION as i64 => {
-            Err(AppError::NewerProfile {
-                stored_version,
-                supported_version: MAX_SCHEMA_VERSION as u32,
-            })
-        }
-        _ => Ok(()),
-    }
 }
 
 pub(super) fn database_fingerprint(connection: &Connection) -> AppResult<DatabaseFingerprint> {
@@ -415,88 +333,4 @@ fn invalid<T>(message: &str) -> AppResult<T> {
 
 fn limit<T>(message: &str) -> AppResult<T> {
     Err(AppError::ResourceLimit(message.into()))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct TestDir(std::path::PathBuf);
-
-    impl Drop for TestDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
-    fn snapshot(directory: &Path) -> Vec<(std::ffi::OsString, Vec<u8>)> {
-        let mut entries = std::fs::read_dir(directory)
-            .unwrap()
-            .map(|entry| {
-                let entry = entry.unwrap();
-                (entry.file_name(), std::fs::read(entry.path()).unwrap())
-            })
-            .collect::<Vec<_>>();
-        entries.sort();
-        entries
-    }
-
-    #[test]
-    fn a_profile_migrated_by_a_newer_sage_is_refused_by_name_before_recovery_touches_it() {
-        refuses_newer_profile_untouched(false);
-    }
-
-    #[test]
-    fn a_checkpointed_newer_profile_is_refused_before_recovery_beside_a_nonempty_wal() {
-        refuses_newer_profile_untouched(true);
-    }
-
-    fn refuses_newer_profile_untouched(with_wal: bool) {
-        let directory = TestDir(
-            crate::test_paths::temp_dir()
-                .join(format!("sage-newer-profile-{}", uuid::Uuid::new_v4())),
-        );
-        std::fs::create_dir_all(&directory.0).unwrap();
-        let path = directory.0.join("sage.db");
-        drop(super::super::open_or_migrate(&path).unwrap());
-        let newer = MAX_SCHEMA_VERSION as i64 + 1;
-        {
-            let connection = Connection::open(&path).unwrap();
-            connection
-                .execute(
-                    "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
-                    [newer],
-                )
-                .unwrap();
-            connection
-                .pragma_update(None, "user_version", newer)
-                .unwrap();
-        }
-        // A replacement left mid-flight by the newer Sage: recovery would
-        // resume it if the refusal came any later.
-        let paths = super::super::paths::MigrationPaths::new(&path).unwrap();
-        std::fs::write(&paths.replacement_build_intent, b"{\"newer\":true}").unwrap();
-        if with_wal {
-            // Frames the newer Sage had not checkpointed when it stopped.
-            std::fs::write(&paths.live_wal, [0x37_u8; 64]).unwrap();
-        }
-        let before = snapshot(&directory.0);
-
-        let error = match super::super::open_or_migrate(&path) {
-            Ok(_) => panic!("a newer profile must not open"),
-            Err(error) => error,
-        };
-
-        assert!(
-            matches!(
-                error,
-                AppError::NewerProfile { stored_version, supported_version }
-                    if stored_version == newer
-                        && supported_version as usize == MAX_SCHEMA_VERSION
-            ),
-            "{error}"
-        );
-        assert!(error.to_string().contains("newer version of Sage"));
-        assert_eq!(snapshot(&directory.0), before);
-    }
 }

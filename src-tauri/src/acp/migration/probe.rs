@@ -43,6 +43,19 @@ pub(super) fn classify_live(paths: &MigrationPaths) -> AppResult<SchemaClass> {
 }
 
 pub(super) fn inspect_live(paths: &MigrationPaths) -> AppResult<Option<DatabaseFingerprint>> {
+    with_live_snapshot(paths, |connection| {
+        let database = database_fingerprint(connection)?;
+        verify_sqlite(connection)?;
+        Ok(database)
+    })
+}
+
+/// Inspects committed WAL frames on a bounded copy, without opening the live
+/// WAL or creating/updating its SHM. Also used before replacement recovery.
+pub(super) fn with_live_snapshot<T>(
+    paths: &MigrationPaths,
+    inspect: impl FnOnce(&Connection) -> AppResult<T>,
+) -> AppResult<Option<T>> {
     paths.validate_containment()?;
     recover_probe(paths)?;
     let main = file_fingerprint(&paths.live)?;
@@ -52,9 +65,7 @@ pub(super) fn inspect_live(paths: &MigrationPaths) -> AppResult<Option<DatabaseF
     let wal = file_fingerprint(&paths.live_wal)?;
     if !wal.present || wal.bytes == 0 {
         let connection = open_read_only(&paths.live)?;
-        let database = database_fingerprint(&connection)?;
-        verify_sqlite(&connection)?;
-        return Ok(Some(database));
+        return inspect(&connection).map(Some);
     }
     let main_before = main;
     let shm_before = file_fingerprint(&paths.live_shm)?;
@@ -75,8 +86,7 @@ pub(super) fn inspect_live(paths: &MigrationPaths) -> AppResult<Option<DatabaseF
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
         connection.pragma_update(None, "query_only", true)?;
-        let database = database_fingerprint(&connection)?;
-        verify_sqlite(&connection)?;
+        let database = inspect(&connection)?;
         connection.close().map_err(|(_, error)| error)?;
         anchor.verify_path(&paths.probe_main)?;
         Ok(database)
