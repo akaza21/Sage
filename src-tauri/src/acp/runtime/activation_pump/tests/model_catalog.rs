@@ -288,7 +288,8 @@ fn settings_in_the_session_response_chunk_defer_catalog_hydration_until_handoff(
 
     impl crate::acp::runtime::EgressTransport for Writes {
         fn write(&mut self, frame: &crate::acp::transport::OutboundFrame) -> FrameWriteOutcome {
-            self.0.push(serde_json::from_slice(frame.payload()).unwrap());
+            self.0
+                .push(serde_json::from_slice(frame.payload()).unwrap());
             FrameWriteOutcome::Complete
         }
     }
