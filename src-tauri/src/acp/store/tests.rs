@@ -84,6 +84,21 @@ pub(super) fn setup() -> Connection {
         ))
         .unwrap();
     connection
+        .execute_batch(include_str!(
+            "../../../migrations/025_chat_title_source.sql"
+        ))
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/026_session_facts_turn_index.sql"
+        ))
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/027_browser_operation_terminal_index.sql"
+        ))
+        .unwrap();
+    connection
 }
 
 pub(super) fn command(prompt: &str) -> PrepareTurnCommand {
@@ -753,4 +768,28 @@ fn every_durable_terminal_family_is_idempotent_and_conflict_safe() {
     )
     .unwrap();
     assert_eq!(duplicate.disposition, MutationDisposition::Duplicate);
+}
+
+#[test]
+fn turn_is_terminal_reads_the_scoped_turn_row() {
+    let mut connection = setup();
+    let prepared = prepare_turn(&mut connection, command("terminal")).unwrap();
+    let project = SageProjectId::parse("project-one").unwrap();
+    let chat = SageChatId::parse("chat-one").unwrap();
+    let session = SageAgentSessionId::parse("session-one").unwrap();
+    let probe = |connection: &Connection, session: &SageAgentSessionId, turn: &SageTurnId| {
+        turn_is_terminal(connection, &project, &chat, session, turn).unwrap()
+    };
+    assert!(!probe(&connection, &session, &prepared.turn_id));
+    connection
+        .execute(
+            "UPDATE turns SET state='completed', terminal_at=13 WHERE id=?1",
+            [prepared.turn_id.as_str()],
+        )
+        .unwrap();
+    assert!(probe(&connection, &session, &prepared.turn_id));
+    let other_session = SageAgentSessionId::parse("session-two").unwrap();
+    assert!(!probe(&connection, &other_session, &prepared.turn_id));
+    let missing = SageTurnId::parse("turn-missing").unwrap();
+    assert!(!probe(&connection, &session, &missing));
 }

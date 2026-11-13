@@ -58,6 +58,10 @@ pub(crate) enum AdapterRuntimeError {
     LaterPermissionMiss,
     #[error("adapter launch artifact is not admitted")]
     LaunchUnavailable,
+    #[error(
+        "The pending undo could not be applied; activation stopped and the rewind remains pending."
+    )]
+    RewindUnavailable,
     #[error("the harness reports that it is not signed in")]
     SignInRequired,
     #[error("adapter frame is invalid")]
@@ -89,6 +93,11 @@ pub(crate) trait HarnessAdapter {
         Ok(None)
     }
     fn finish_model_config_hydration(&mut self) {}
+    /// The session is still reading what it offers, so config options it
+    /// does not report yet may follow.
+    fn config_hydrating(&self) -> bool {
+        false
+    }
     fn provisional_turn_pending(&self) -> bool {
         false
     }
@@ -162,6 +171,22 @@ pub(crate) trait HarnessAdapter {
     /// tool result) is skipped rather than failing the session.
     fn skips_oversize_frames(&self) -> bool {
         false
+    }
+    /// An oversized frame without a request id was read past and dropped.
+    fn oversize_frame_skipped(&mut self) {}
+    /// Answers a session control the harness has already carried out
+    /// without writing a frame: the answer waits in the native RPC reply.
+    /// A control done once, such as an undo whose outcome Sage could not
+    /// record, may then be confirmed again.
+    fn answered_control(&mut self, _control: &crate::acp::session_control::SessionControl) -> bool {
+        false
+    }
+    /// The frame for a session control; harnesses without one refuse it.
+    fn session_control(
+        &mut self,
+        _control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
     }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         None

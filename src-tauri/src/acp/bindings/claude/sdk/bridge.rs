@@ -16,9 +16,19 @@ use serde_json::{Value, json};
 
 use super::config::SessionSettings;
 
+mod commands;
+mod controls;
+pub(super) use controls::message_uuid;
 mod inbound;
+mod notices;
 mod outbound;
 mod permission;
+mod questions;
+mod steer;
+mod subagents;
+mod usage;
+
+pub(super) use usage::UsageReply;
 
 /// Bounds on per-turn bookkeeping; the inner session caps pending requests.
 const MAX_PENDING: usize = 32;
@@ -51,6 +61,18 @@ pub(super) struct Inbound {
     /// Approval cards to cancel, by wire id, before the ACP frames: Claude
     /// Code no longer waits on them.
     pub(super) withdrawn: Vec<u64>,
+    /// Session-scoped facts: notices, activities, the effective model.
+    pub(super) session: Vec<crate::acp::intent::session_event::SessionScopedEvent>,
+    /// Questions the permission request in `acp` asks instead.
+    pub(super) questions: Option<crate::acp::intent::user_input::UserInputRequest>,
+    /// The reply to a session control.
+    pub(super) native: Option<crate::acp::goal::NativeRpcReply>,
+    /// What a usage read learned about the plan's limits.
+    pub(super) usage: Option<UsageReply>,
+    /// Subagent facts, applied before the ACP frames.
+    pub(super) children: Vec<crate::acp::bindings::claude::runtime::ChildEvent>,
+    /// Mid-turn messages, by id: taken up (or queued to be), or not.
+    pub(super) steers: Vec<(String, bool)>,
 }
 
 #[derive(Debug)]
@@ -67,6 +89,17 @@ enum Pending {
         value: String,
     },
     Interrupt,
+    /// Withdrawing a waiting mid-turn message, on the way to an interrupt.
+    Withdraw(String),
+    /// A session control; its reply completes the native request.
+    Control,
+    /// A passive request Sage stops waiting for at its deadline.
+    Passive(controls::PassiveRequest),
+    /// A passive request whose caller gave up: its late reply is dropped.
+    Abandoned,
+    /// A fork, with Claude Code's profile to read the cut point from once
+    /// its reply confirms the turn's transcript is written.
+    Fork(Option<std::path::PathBuf>),
 }
 
 #[derive(Debug)]
@@ -74,6 +107,10 @@ struct Permission {
     request_id: String,
     input: Value,
     suggestions: Option<Value>,
+    /// An `AskUserQuestion` card: its questions' texts, in order.
+    questions: Option<Vec<String>>,
+    /// An `ExitPlanMode` card: declining it ends the turn in plan mode.
+    plan_exit: bool,
 }
 
 #[derive(Debug)]
@@ -92,7 +129,18 @@ pub(super) struct SdkBridge {
     answering: BTreeSet<String>,
     next_permission: u64,
     tools: BTreeMap<String, String>,
+    /// Open subagents, by their `Task` tool use id.
+    subagents: BTreeSet<String>,
+    /// A subagent's own tool rows: subagent and tool name, by tool use id.
+    child_tools: BTreeMap<String, (String, String)>,
     streamed: VecDeque<String>,
+    retrying: bool,
+    compacting: bool,
+    /// Mid-turn messages Claude Code has not yet taken up.
+    steers: Vec<String>,
+    /// A run's `result` that did not end the turn, for when no waiting
+    /// message runs after all.
+    held: Option<Value>,
 }
 
 /// What a written SDK frame changed, so an undelivered one can be undone.
@@ -101,6 +149,8 @@ pub(super) enum Sent {
     Prompt,
     Control(String),
     Answer(String),
+    /// A mid-turn message, by id.
+    Steer(String),
 }
 
 impl SdkBridge {
@@ -121,7 +171,13 @@ impl SdkBridge {
             answering: BTreeSet::new(),
             next_permission: 0,
             tools: BTreeMap::new(),
+            subagents: BTreeSet::new(),
+            child_tools: BTreeMap::new(),
             streamed: VecDeque::new(),
+            retrying: false,
+            compacting: false,
+            steers: Vec::new(),
+            held: None,
         }
     }
 
@@ -198,11 +254,14 @@ impl SdkBridge {
                 self.interrupted = false;
             }
             Sent::Control(request_id) => {
-                if let Some(Pending::Interrupt) = self.pending.remove(request_id) {
+                if let Some(Pending::Interrupt | Pending::Withdraw(_)) =
+                    self.pending.remove(request_id)
+                {
                     self.interrupted = false;
                 }
             }
             Sent::Answer(_) => self.delivered(sent),
+            Sent::Steer(uuid) => self.unsteer(uuid),
         }
     }
 

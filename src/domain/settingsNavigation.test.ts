@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { KEYMAP_BINDINGS } from "./keymapRegistry";
 import {
+  SETTINGS_KEYMAP_BINDINGS,
   SETTINGS_PAGES,
   admitSettingsPageId,
   matchingSettingsEntryIds,
@@ -8,6 +10,17 @@ import {
 } from "./settingsNavigation";
 
 describe("settings navigation", () => {
+  it("describes every shortcut the Keyboard page lists", () => {
+    expect(
+      SETTINGS_KEYMAP_BINDINGS.filter(
+        (binding) => !binding.description.trim(),
+      ).map((binding) => binding.id),
+    ).toEqual([]);
+    expect(SETTINGS_KEYMAP_BINDINGS.map((binding) => binding.id)).toEqual(
+      expect.arrayContaining(KEYMAP_BINDINGS.map((binding) => binding.id)),
+    );
+  });
+
   it("orders the pages Editor, Keyboard, Browser, then Passwords", () => {
     expect(SETTINGS_PAGES.map((page) => page.id)).toEqual([
       "editor",

@@ -63,8 +63,14 @@ where
     let mut pending_config: Option<PendingConfig> = None;
     let mut eof_deadline_millis = None;
     loop {
-        if let FirstTurnWorkerState::Reusable(parts) = &mut state {
-            parts.completed.hydrate_model_config(&mut parts.transport);
+        match &mut state {
+            FirstTurnWorkerState::Reusable(parts) => {
+                parts.completed.hydrate_model_config(&mut parts.transport);
+            }
+            FirstTurnWorkerState::Idle(parts) => {
+                parts.parts.write_discovered_commands(&mut parts.transport);
+            }
+            _ => {}
         }
         if let FirstTurnWorkerState::Active(active) = &mut state {
             active.settle_steer();

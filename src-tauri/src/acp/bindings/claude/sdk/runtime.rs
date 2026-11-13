@@ -9,8 +9,9 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use super::{
-    admission::{AdmittedClaudeSdkBinding, SessionLaunch},
+    admission::AdmittedClaudeSdkBinding,
     bridge::{SdkBridge, Sent},
+    launch::SessionLaunch,
 };
 use crate::acp::{
     bindings::{
@@ -19,7 +20,10 @@ use crate::acp::{
             AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, RefusalDetail,
             ResourceMapper,
         },
-        claude::{runtime::ClaudeRuntime, wire::decode_frame},
+        claude::{
+            runtime::{Children, ClaudeRuntime},
+            wire::decode_frame,
+        },
         runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
     },
     contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
@@ -50,7 +54,11 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
                 session_id,
             ),
             bridge: None,
+            children: Children::default(),
+            native: None,
+            usage: Arc::default(),
             sent: Vec::new(),
+            steering: Steering::default(),
             launch: None,
             binding: self.binding,
             root: Some(self.root),
@@ -62,8 +70,14 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
 struct ClaudeSdkRuntime {
     session: ClaudeRuntime,
     bridge: Option<SdkBridge>,
+    children: Children,
+    /// The reply to a session control, until the host takes it.
+    native: Option<crate::acp::goal::NativeRpcReply>,
+    /// The plan's usage limits as last read, lent to the runtime lane.
+    usage: Arc<crate::acp::usage::UsageCell>,
     /// Written frames whose delivery is still open, with what they started.
     sent: Vec<(EgressToken, Sent)>,
+    steering: Steering,
     launch: Option<SessionLaunch>,
     binding: Arc<AdmittedClaudeSdkBinding>,
     root: Option<crate::project_registry::ProjectRootAuthority>,
@@ -133,6 +147,29 @@ impl ClaudeSdkRuntime {
                 batch.push_event(event)?;
             }
         }
+        for event in self.steering.answers(inbound.steers) {
+            observed = true;
+            batch.push_event(event)?;
+        }
+        self.answered(inbound.native, inbound.usage);
+        if let Some(questions) = inbound.questions {
+            self.session.offer_user_input(questions);
+        }
+        for event in inbound.session {
+            if let Some(event) = self.session.session_event(event) {
+                observed = true;
+                batch.push_event(event)?;
+            }
+        }
+        for child in inbound.children {
+            for event in self
+                .session
+                .child_event(&mut self.children, child, resources)?
+            {
+                observed = true;
+                batch.push_event(event)?;
+            }
+        }
         for acp in inbound.acp {
             let digest = request_value_digest(&acp);
             let (events, egress) = self
@@ -141,7 +178,12 @@ impl ClaudeSdkRuntime {
                 .into_parts();
             for event in events {
                 observed = true;
-                batch.push_event(event)?;
+                batch.push_event(match event {
+                    AdapterEvent::Initialized { capabilities } => AdapterEvent::Initialized {
+                        capabilities: sdk_capabilities(capabilities),
+                    },
+                    event => event,
+                })?;
             }
             for egress in egress {
                 batch.push_egress(self.outbound(egress)?)?;
@@ -160,47 +202,32 @@ impl ClaudeSdkRuntime {
     }
 }
 
-/// Paths in a frame read without its structure checks are not mapped into
-/// the project; they show as unavailable.
-struct NoResources;
-
-impl ResourceMapper for NoResources {
-    fn map_existing(
-        &self,
-        _absolute_path: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
-        Err(crate::acp::intent::UnavailableResourceReason::Foreign)
-    }
-}
-
 /// Deliveries the pump settles before more egress; beyond this, undelivered
 /// frames are not undone (the pump fails the session on such writes anyway).
 const MAX_OPEN_DELIVERIES: usize = 64;
 
 fn sdk_frame(value: &Value) -> Result<OutboundFrame, AdapterRuntimeError> {
     let bytes = serde_json::to_vec(value).map_err(|_| AdapterRuntimeError::Frame)?;
-    OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)
+    // A user message carries the prompt's images and files, so it takes the
+    // prompt frame bound, as the ACP `session/prompt` it came from did.
+    if value.get("type").and_then(Value::as_str) == Some("user") {
+        OutboundFrame::new_prompt(bytes)
+    } else {
+        OutboundFrame::new(bytes)
+    }
+    .map_err(|_| AdapterRuntimeError::Frame)
 }
 
 impl LaunchableRuntime for ClaudeSdkRuntime {
     fn bind_activation(&mut self, mode: &ActivationMode) {
-        let (session_id, resume, model) = match mode {
-            ActivationMode::New { model, .. } => (uuid::Uuid::new_v4().to_string(), false, model),
-            ActivationMode::Resume {
-                external_session_id,
-                model,
-                ..
-            } => (external_session_id.as_str().to_owned(), true, model),
-            ActivationMode::Load { .. } => return,
+        let Some(launch) = SessionLaunch::from_mode(mode) else {
+            return;
         };
-        let model = model.as_ref().map(|model| model.as_str().to_owned());
-        self.bridge = Some(SdkBridge::new(session_id.clone(), model.clone()));
-        self.launch = Some(SessionLaunch {
-            session_id,
-            resume,
-            model,
-        });
+        self.bridge = Some(SdkBridge::new(
+            launch.session_id.clone(),
+            launch.model.clone(),
+        ));
+        self.launch = Some(launch);
     }
 
     fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {
@@ -234,7 +261,51 @@ impl HarnessAdapter for ClaudeSdkRuntime {
             .transpose()
     }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
-        self.session.capabilities()
+        self.session.capabilities().map(sdk_capabilities)
+    }
+    fn session_control(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.control_request(control)
+    }
+    /// A fork of this session through its latest reply, as Claude Code
+    /// saved it.
+    fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.fork_egress()
+    }
+    /// Claude Code holds nothing for a fork until its chat launches.
+    fn release_fork(
+        &mut self,
+        _fork: &crate::acp::intent::ExternalId,
+        _committed: bool,
+    ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        self.native = Some(crate::acp::goal::NativeRpcReply::Released);
+        Ok(None)
+    }
+    fn defer_fork_release(&mut self, _fork: &crate::acp::intent::ExternalId, _done: bool) -> bool {
+        self.native = Some(crate::acp::goal::NativeRpcReply::Released);
+        true
+    }
+    fn usage(&self) -> Option<Arc<crate::acp::usage::UsageCell>> {
+        Some(Arc::clone(&self.usage))
+    }
+    fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.usage_request()
+    }
+    /// A passive read whose caller gave up: a usage or MCP read.
+    fn abandon_passive_read(&mut self) {
+        self.abandon_passive_requests();
+    }
+    fn native_rpc_pending(&self) -> bool {
+        self.native.is_some()
+            || self.bridge.as_ref().is_some_and(SdkBridge::controlling)
+            || self.session.native_rpc_pending()
+    }
+    fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
+        self.native
+            .take()
+            .or_else(|| self.session.take_native_rpc_reply())
     }
     /// A large tool result or file write is dropped rather than ending the
     /// session; its tool row ends as failed when the turn completes.
@@ -259,6 +330,10 @@ impl HarnessAdapter for ClaudeSdkRuntime {
                 native_root,
                 model: None,
             },
+            AdapterCommand::Steer { prompt, .. } => {
+                let bridge = self.bridge.as_mut().ok_or(AdapterRuntimeError::Operation)?;
+                return self.steering.egress(bridge, &prompt);
+            }
             command => command,
         };
         let egress = self.session.command(command)?;
@@ -293,30 +368,7 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         &mut self,
         frame: &Frame,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        let mut sdk: Value =
-            serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
-        let object = sdk.as_object_mut().ok_or(AdapterRuntimeError::Frame)?;
-        object.remove("tool_use_result");
-        object.remove("tool_result_meta");
-        let reduced = serde_json::to_vec(&sdk).map_err(|_| AdapterRuntimeError::Frame)?;
-        if let Ok(sdk) = decode_frame(&reduced) {
-            return self.ingest_sdk(sdk, &NoResources);
-        }
-        if let Some(essentials) = SdkBridge::essentials(&sdk)
-            && let Ok(essentials) = serde_json::to_vec(&essentials)
-            && let Ok(sdk) = decode_frame(&essentials)
-        {
-            return self.ingest_sdk(sdk, &NoResources);
-        }
-        let mut batch = AdapterBatchBuilder::new();
-        if let Some(reply) = SdkBridge::refusal(&sdk) {
-            batch.push_egress(AdapterEgress::new(
-                sdk_frame(&reply)?,
-                EgressToken::protocol_notification(),
-            ))?;
-        }
-        batch.push_event(AdapterEvent::Absorbed)?;
-        Ok(batch.finish())
+        self.ingest_oversize(frame)
     }
 
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
@@ -330,6 +382,12 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         token: EgressToken,
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
+        if self
+            .steering
+            .resolve(&token, resolution, self.bridge.as_mut())
+        {
+            return Ok(());
+        }
         if !matches!(resolution, EgressResolution::Queued)
             && let Some(index) = self.sent.iter().position(|(sent, _)| *sent == token)
         {
@@ -348,6 +406,15 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         self.session.resolve_egress(token, resolution)
     }
 }
+
+#[path = "runtime_native.rs"]
+mod native;
+use native::sdk_capabilities;
+#[path = "runtime_oversize.rs"]
+mod oversize;
+#[path = "runtime_steer.rs"]
+mod steering;
+use steering::Steering;
 
 #[cfg(test)]
 #[path = "runtime_tests.rs"]

@@ -6,6 +6,51 @@ thread_local! {
     static ARMED: Cell<Option<&'static str>> = const { Cell::new(None) };
     static AVAILABLE_BYTES: Cell<Option<u64>> = const { Cell::new(None) };
     static RETAINED_PAIR_LOADS: Cell<Option<u64>> = const { Cell::new(None) };
+    static SNAPSHOT_IO: Cell<Option<(u64, u64, u64)>> = const { Cell::new(None) };
+}
+
+pub(super) struct SnapshotIoGuard {
+    previous: Option<(u64, u64, u64)>,
+}
+
+pub(super) fn observe_snapshot_io() -> SnapshotIoGuard {
+    let previous = SNAPSHOT_IO.with(|value| value.replace(Some((0, 0, 0))));
+    SnapshotIoGuard { previous }
+}
+
+pub(super) fn record_snapshot_copy(bytes: u64) {
+    SNAPSHOT_IO.with(|value| {
+        if let Some((copies, copied_bytes, hashes)) = value.get() {
+            value.set(Some((copies + 1, copied_bytes + bytes, hashes)));
+        }
+    });
+}
+
+pub(super) fn record_main_hash() {
+    SNAPSHOT_IO.with(|value| {
+        if let Some((copies, bytes, hashes)) = value.get() {
+            value.set(Some((copies, bytes, hashes + 1)));
+        }
+    });
+}
+
+impl SnapshotIoGuard {
+    pub(super) fn copies(&self) -> (u64, u64) {
+        SNAPSHOT_IO.with(|value| {
+            let (copies, bytes, _) = value.get().unwrap();
+            (copies, bytes)
+        })
+    }
+
+    pub(super) fn main_hashes(&self) -> u64 {
+        SNAPSHOT_IO.with(|value| value.get().unwrap().2)
+    }
+}
+
+impl Drop for SnapshotIoGuard {
+    fn drop(&mut self) {
+        SNAPSHOT_IO.with(|value| value.set(self.previous));
+    }
 }
 
 pub(super) struct RetainedPairLoadsGuard {

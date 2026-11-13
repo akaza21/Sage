@@ -22,9 +22,13 @@ impl Default for DiscoveryState {
 }
 
 impl DiscoveryState {
+    /// Shows which harnesses are present while their versions are read. A
+    /// rediscovery keeps the last full result on screen until it finishes.
     pub(super) fn apply_presence(&self, discovered: Vec<InstalledHarness>) {
-        *self.0.write().expect("harness discovery lock poisoned") =
-            DiscoverySnapshot::Presence(discovered);
+        let mut snapshot = self.0.write().expect("harness discovery lock poisoned");
+        if !matches!(*snapshot, DiscoverySnapshot::Discovered(_)) {
+            *snapshot = DiscoverySnapshot::Presence(discovered);
+        }
     }
 
     pub(super) fn apply(
@@ -117,6 +121,29 @@ mod tests {
         assert!(state.is_pending());
         state.replace(Vec::new());
         assert!(!state.is_pending());
+    }
+
+    #[test]
+    fn a_rediscovery_keeps_the_last_full_result_until_it_finishes() {
+        let state = DiscoveryState::default();
+        let codex = InstalledHarness {
+            id: "codex",
+            executable: std::path::PathBuf::from("codex"),
+            version: Some("0.167.1".into()),
+        };
+        state.replace(vec![codex.clone()]);
+        state.apply_presence(vec![InstalledHarness {
+            version: None,
+            ..codex
+        }]);
+        assert!(!state.is_version_checking("codex"));
+        assert_eq!(
+            state
+                .find("codex")
+                .and_then(|codex| codex.version)
+                .as_deref(),
+            Some("0.167.1")
+        );
     }
 
     #[test]

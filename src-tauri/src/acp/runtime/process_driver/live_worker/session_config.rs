@@ -124,6 +124,9 @@ where
                 crate::acp::goal::NativeRpcRequest::BackgroundTerminals(action) => {
                     idle.parts.write_terminals(&mut idle.transport, action)
                 }
+                crate::acp::goal::NativeRpcRequest::Control(control) => {
+                    idle.parts.write_control(&mut idle.transport, control)
+                }
             },
             Self::Reusable(parts) => match &intent.request {
                 crate::acp::goal::NativeRpcRequest::Goal(action) => {
@@ -149,6 +152,9 @@ where
                 crate::acp::goal::NativeRpcRequest::BackgroundTerminals(action) => parts
                     .completed
                     .write_terminals(&mut parts.transport, action),
+                crate::acp::goal::NativeRpcRequest::Control(control) => {
+                    parts.completed.write_control(&mut parts.transport, control)
+                }
             },
             Self::Active(active) if active.stdout_allowed() => {
                 active.turn.driver.begin_native_rpc(intent)

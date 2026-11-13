@@ -4,6 +4,8 @@ use super::*;
 
 impl AcpService {
     pub(crate) fn shutdown_blocking(&self) -> Result<(), crate::acp::runtime::HostError> {
+        // An idle release parking a runtime finishes before the lanes close.
+        self.idle_release.stop();
         self.file_stages
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

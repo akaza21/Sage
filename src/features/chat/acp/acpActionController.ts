@@ -9,11 +9,13 @@ import type {
   ProjectGeneration,
   SageTurnId,
   SendAcpTurnRequest,
+  StagedSelection,
 } from "../../../domain/acp";
 import type {
   AcpProjectionScope,
   ProjectionCommitDisposition,
 } from "../../../app/acpProjectionStore";
+import { chatAccessDraftPort } from "../../../app/chatAccessDraftPort";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { createAcpSessionActions, typedError } from "./acpSessionActions";
 import { currentSession } from "./acpTurnState";
@@ -184,8 +186,8 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         resource: "queue",
         limit: scopeBusy ? 1 : MAX_CONCURRENT_CHAT_ACTIONS,
         message: scopeBusy
-          ? "Another action is already in progress for this Chat."
-          : "Too many Chat actions are already in progress.",
+          ? "Another action is already in progress for this chat."
+          : "Too many chat actions are already in progress.",
       });
       emitState(captured, origin, {
         busy: false,
@@ -222,6 +224,8 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     attachedContext: readonly AttachedContext[],
     bindingId: CuratedBindingId,
     modelId: CuratedModelId | null,
+    /** Staged prompt files that go with this send; none unless named. */
+    staged?: StagedSelection,
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();
@@ -244,11 +248,11 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     }
     if (!captured) {
       dependencies.onUnscopedRefusal?.(
-        "This Chat is not ready to send. Reload it and try again.",
+        "This chat is not ready to send. Reload it and try again.",
       );
       return Promise.resolve("rejected");
     }
-    if (!normalizedPrompt && !boundedContext.length) {
+    if (!normalizedPrompt && !boundedContext.length && !staged) {
       emitState(captured, "chat", {
         busy: false,
         cancellingTurnId: null,
@@ -261,7 +265,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         busy: false,
         cancellingTurnId: null,
         error: localFailure(
-          "Wait for the current Turn to finish before sending a follow-up.",
+          "Wait for the current turn to finish before sending a follow-up.",
         ),
       });
       return Promise.resolve("rejected");
@@ -293,6 +297,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
             clientIntentId: nextIntentId(),
             bindingId,
             modelId,
+            ...chatAccessDraftPort.effort?.(captured.scope, bindingId, modelId),
           });
           const applied = apply(captured, started);
           if (!applied) return "ignoredStale";
@@ -301,6 +306,8 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           if (!session)
             throw localFailure("Session start returned no session.");
           session = requireSelectedSession(session, bindingId, modelId);
+          // Access chosen before the session existed is given to it first.
+          await chatAccessDraftPort.spend?.(captured.scope.chatId, session);
         }
 
         if (session.residency === "cold") {
@@ -348,6 +355,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           ...(boundedContext.length > 0
             ? { attachedContext: boundedContext }
             : {}),
+          ...(staged ? { staged } : {}),
         };
         // `/name …` may be an advertised command; its route loads on demand.
         const runCommand = normalizedPrompt.startsWith("/")

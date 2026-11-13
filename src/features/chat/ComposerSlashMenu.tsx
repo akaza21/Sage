@@ -15,10 +15,11 @@ import type {
 } from "../../domain/acp";
 import {
   acpCommandsDesktop,
+  commandSourceGroups,
   type AcpCommandList,
+  type AcpCommandSource,
   type AvailableAcpCommand,
 } from "../../services/acpCommandsDesktop";
-import { AcpDesktopError } from "../../services/acpDesktop";
 import {
   suggestionOptionId,
   useSuggestionNavigation,
@@ -27,12 +28,14 @@ import {
   type TextFieldSuggestionsState,
 } from "../../ui/textFieldSuggestionNavigation";
 import { isImeComposing } from "../../ui/imeComposition";
-import { TextFieldSuggestions } from "../../ui/TextFieldSuggestions";
+import { SuggestionsPart } from "./composerSuggestionsPart";
+import { SlashCommandIcon } from "./SlashCommandIcon";
 import { createClientIntentFactory } from "./acp/clientIntent";
 import { currentContext } from "./acp/useAcpChatActions";
 import type { PickedSlashCommand } from "./composerSlashCommand";
 
 const nextIntentId = createClientIntentFactory();
+
 const LOADING: Load = { kind: "loading" };
 
 type Load =
@@ -53,30 +56,58 @@ function liveOwnerKey(page: AcpChatPage | null): string {
 }
 
 /**
- * The exact name first, then prefix matches, then other name matches, each
- * in advertised order.
+ * Rows each section shows before typing, so every source stays in view:
+ * seven sources of seven rows fit the list's 50 rendered rows.
+ */
+const SECTION_ROWS = 7;
+
+/**
+ * With no query, the first commands of each source in sections, each in
+ * advertised order. While typing, exact names first, then exact aliases,
+ * then prefix matches, then other matches, each in advertised order. A command
+ * matches by its name or any alias its harness gives it, by the closest of them.
  */
 function filterSlashCommands(
   commands: readonly AvailableAcpCommand[],
   query: string,
 ): AvailableAcpCommand[] {
+  if (!query)
+    return (Object.keys(commandSourceGroups) as AcpCommandSource[]).flatMap(
+      (source) =>
+        commands
+          .filter((command) => command.source === source)
+          .slice(0, SECTION_ROWS),
+    );
   const needle = query.toLocaleLowerCase();
-  const exact: AvailableAcpCommand[] = [];
-  const prefix: AvailableAcpCommand[] = [];
-  const inner: AvailableAcpCommand[] = [];
+  const ranks: AvailableAcpCommand[][] = [[], [], [], []];
   for (const command of commands) {
-    const name = command.name.toLocaleLowerCase();
-    if (name === needle) exact.push(command);
-    else if (name.startsWith(needle)) prefix.push(command);
-    else if (name.includes(needle)) inner.push(command);
+    const names = [command.name, ...(command.aliases ?? [])].map((name) =>
+      name.toLocaleLowerCase(),
+    );
+    const rank =
+      names[0] === needle
+        ? 0
+        : names.includes(needle)
+          ? 1
+          : names.some((name) => name.startsWith(needle))
+            ? 2
+            : names.some((name) => name.includes(needle))
+              ? 3
+              : -1;
+    ranks[rank]?.push(command);
   }
-  return [...exact, ...prefix, ...inner];
+  return ranks.flat();
 }
 
-function suggestion(command: AvailableAcpCommand): TextFieldSuggestion {
+function suggestion(
+  command: AvailableAcpCommand,
+  grouped: boolean,
+): TextFieldSuggestion {
   return {
     id: command.name,
+    group: grouped ? commandSourceGroups[command.source] : undefined,
     label: `/${command.name}`,
+    icon: <SlashCommandIcon name={command.name} />,
     hint: command.inputHint ?? undefined,
     description: command.description || undefined,
     accessibleLabel: [
@@ -156,7 +187,7 @@ function useSessionCommands(boundChatId: string | undefined): Load | null {
               kind: "error",
               owner,
               message:
-                error instanceof AcpDesktopError || error instanceof Error
+                error instanceof Error
                   ? error.message
                   : "The command list could not be read.",
             });
@@ -215,6 +246,7 @@ export function ComposerSlashMenu({
   listboxId,
   onActiveOptionChange,
   onDismiss,
+  onMountedChange,
   onPick,
   onStatusChange,
   query,
@@ -225,6 +257,8 @@ export function ComposerSlashMenu({
   listboxId: string;
   onActiveOptionChange: (optionId: string | null) => void;
   onDismiss: () => void;
+  /** Whether the listbox the field controls is in the document. */
+  onMountedChange: (mounted: boolean) => void;
   onPick: (command: PickedSlashCommand) => void;
   /** What the list holds, for the field's polite status region. */
   onStatusChange: (status: string) => void;
@@ -236,13 +270,20 @@ export function ComposerSlashMenu({
     [load],
   );
   const items = useMemo(
-    () => filterSlashCommands(commands, query).map(suggestion),
+    () =>
+      filterSlashCommands(commands, query).map((command) =>
+        suggestion(command, !query),
+      ),
     [commands, query],
   );
   const pick = (item: TextFieldSuggestion) => {
     const command = commands.find((candidate) => candidate.name === item.id);
     if (command)
-      onPick({ name: command.name, inputHint: command.inputHint ?? null });
+      onPick({
+        name: command.name,
+        inputHint: command.inputHint ?? null,
+        ...(command.panel ? { panel: command.panel } : {}),
+      });
   };
   const navigation = useSuggestionNavigation(items, pick, onDismiss);
   const activeId = navigation.active?.id ?? null;
@@ -257,8 +298,14 @@ export function ComposerSlashMenu({
         !event.metaKey &&
         !isImeComposing(event);
       // A fully typed name runs on the first Enter, as in the Claude Code
-      // CLI: the field's own Enter sends it.
-      if (enter && navigation.active?.id === query) return false;
+      // CLI: the field's own Enter sends it, and a panel command opens.
+      if (enter && navigation.active?.id === query) {
+        if (!commands.find((command) => command.name === query)?.panel)
+          return false;
+        event.preventDefault();
+        pick(navigation.active);
+        return true;
+      }
       // While the list loads, Enter must not send a half-typed name.
       if (enter && loading) {
         event.preventDefault();
@@ -282,6 +329,10 @@ export function ComposerSlashMenu({
     () => () => onActiveOptionChange(null),
     [onActiveOptionChange],
   );
+  useLayoutEffect(() => {
+    onMountedChange(true);
+    return () => onMountedChange(false);
+  }, [onMountedChange]);
   const state = menuState(load, query, items.length);
   const status =
     state.kind === "ready"
@@ -289,8 +340,14 @@ export function ComposerSlashMenu({
       : state.title;
   useEffect(() => onStatusChange(status), [onStatusChange, status]);
   return (
-    <TextFieldSuggestions
+    <SuggestionsPart
+      part="TextFieldSuggestions"
       anchorRef={anchorRef}
+      footer={
+        !query && commands.length > items.length
+          ? `${commands.length - items.length} more — keep typing to narrow`
+          : undefined
+      }
       ariaLabel="Slash commands"
       className="composer-slash-menu"
       items={items}

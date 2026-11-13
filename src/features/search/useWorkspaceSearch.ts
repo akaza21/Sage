@@ -249,7 +249,7 @@ export function useWorkspaceSearch({
           response: null,
           error: projectId
             ? "Enter text to search for."
-            : "Open a Project before searching.",
+            : "Open a project before searching.",
         }));
         return;
       }

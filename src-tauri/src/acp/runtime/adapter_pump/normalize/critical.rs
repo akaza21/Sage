@@ -12,7 +12,10 @@ pub(in crate::acp::runtime::adapter_pump) fn control_critical(fact: &NormalizedF
         ),
         DurableAdapterEvent::UsageSnapshot { .. } => false,
         DurableAdapterEvent::TerminalReason { .. } => true,
-        DurableAdapterEvent::Item { .. } => false,
+        // A steered message is durable before its accept completes.
+        DurableAdapterEvent::Item { payload, .. } => {
+            matches!(payload, NormalizedPayload::UserPrompt { .. })
+        }
         DurableAdapterEvent::ChildThreadItem { .. } => false,
         DurableAdapterEvent::ChildLiveItem { .. } => false,
         DurableAdapterEvent::ChildTurnStatus { .. } => false,

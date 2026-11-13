@@ -114,10 +114,6 @@ fn rejected_catalog_pages(failure: Option<CatalogFailure>, during_turn: bool) {
         })
         .collect::<Vec<_>>();
     let invalid_pages = [
-        json!({"data":[{"id":"selected","displayName":"Selected",
-            "defaultReasoningEffort":"low","supportedReasoningEfforts":[{
-                "reasoningEffort":"low","description":"Quick","unexpected":true
-            }]}],"nextCursor":"third"}),
         json!({"data":[model.clone(),model.clone()],"nextCursor":"third"}),
         json!({"data":[model],"nextCursor":"x".repeat(513)}),
         json!({"data":too_many,"nextCursor":"third"}),

@@ -489,6 +489,42 @@ test("web bundle verifier counts static closure but includes dynamic chunks in t
   }
 });
 
+test("startup closures ignore which content hashes they import but count code growth", async () => {
+  const code =
+    "const s=e.useMemo(()=>t.snapshot(n),[n]);export{s as ChangesSurface};";
+  const importing = (shared, deps, body = code) =>
+    `import{a as e}from"./${shared}.js";import{t}from"./${deps}.js";${body}`;
+  const measure = async (imported) => {
+    const root = await candidate({ imported });
+    try {
+      const result = verifyWebBundle(root);
+      return {
+        initial: result.initialStaticClosureGzipBytes,
+        paths: Object.fromEntries(
+          Object.entries(result.paths).map(([name, value]) => [
+            name,
+            value.gzipBytes,
+          ]),
+        ),
+      };
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  };
+  const first = await measure(importing("DLlys00o", "CPZB2TWi"));
+  // As emitted, the two chunks compress to different sizes.
+  assert.notEqual(
+    gzipSync(importing("DLlys00o", "CPZB2TWi")).length,
+    gzipSync(importing("snapshot", "useMemo_")).length,
+  );
+  assert.deepEqual(await measure(importing("snapshot", "useMemo_")), first);
+  const grown = await measure(
+    importing("snapshot", "useMemo_", code.replace("[n]", "[+n]")),
+  );
+  assert.ok(grown.initial > first.initial);
+  assert.ok(grown.paths.agentOneChat > first.paths.agentOneChat);
+});
+
 test("a shrinking core total cannot hide an independently regressed user path", async () => {
   const root = await candidate();
   try {
@@ -927,7 +963,8 @@ test("only import specifiers lose their content hashes", () => {
     ["import './DLlys00o.js';", `import '${masked}';`],
     ["await import(`./DLlys00o.js`)", `await import(\`${masked}\`)`],
     ['import ( "./DLlys00o.js" )', `import ( "${masked}" )`],
-    ['import"./fObb2P8k2.js";', 'import"./xxxxxxxxx.js";'],
+    // A deduplication suffix is part of the emitted name, not the code.
+    ['import"./fObb2P8k2.js";', `import"${masked}";`],
     ['export{a}from"./DLlys00o.js";', `export{a}from"${masked}";`],
     ['export*from"./DLlys00o.js";', `export*from"${masked}";`],
   ]) {

@@ -100,6 +100,9 @@ pub(crate) mod test_identity;
 mod tests;
 
 #[cfg(test)]
+mod elicitation_tests;
+
+#[cfg(test)]
 mod hard_failure_tests;
 
 #[cfg(test)]

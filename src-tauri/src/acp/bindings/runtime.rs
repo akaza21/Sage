@@ -125,10 +125,16 @@ impl HarnessAdapter for NativeRuntime {
         &mut self,
         frame: &Frame,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        self.0.discard_invalid_response(frame)
+        let batch = self.0.discard_invalid_response(frame)?;
+        self.publish_config()?;
+        Ok(batch)
     }
     fn model_config_hydration(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
-        self.0.model_config_hydration()
+        let egress = self.0.model_config_hydration()?;
+        // The session now waits on what it offers; say so before the
+        // restore that follows activation reads it.
+        self.publish_config()?;
+        Ok(egress)
     }
     fn finish_model_config_hydration(&mut self) {
         self.0.finish_model_config_hydration();
@@ -176,10 +182,18 @@ impl HarnessAdapter for NativeRuntime {
         self.0.deferred_fork_release()
     }
     fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
-        self.0.accept_oversized_response(id)
+        // An oversized command-list reply empties the list without ingest.
+        let result = self.0.accept_oversized_response(id);
+        if let Some((owner, channel)) = &self.3 {
+            channel.update(owner, self.0.available_commands());
+        }
+        result
     }
     fn skips_oversize_frames(&self) -> bool {
         self.0.skips_oversize_frames()
+    }
+    fn oversize_frame_skipped(&mut self) {
+        self.0.oversize_frame_skipped();
     }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.0.take_native_rpc_reply()
@@ -199,6 +213,15 @@ impl HarnessAdapter for NativeRuntime {
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.0.background_terminals(action)
     }
+    fn answered_control(&mut self, control: &crate::acp::session_control::SessionControl) -> bool {
+        self.0.answered_control(control)
+    }
+    fn session_control(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.0.session_control(control)
+    }
     fn mutate_goal(
         &mut self,
         action: crate::acp::goal::GoalAction,
@@ -215,6 +238,9 @@ impl HarnessAdapter for NativeRuntime {
     }
     fn config_pending(&self) -> bool {
         self.0.config_pending()
+    }
+    fn config_hydrating(&self) -> bool {
+        self.0.config_hydrating()
     }
     fn configure(
         &mut self,
@@ -299,7 +325,10 @@ impl HarnessAdapter for NativeRuntime {
     ) -> Result<(), AdapterRuntimeError> {
         let result = self.0.resolve_egress(token, resolution);
         self.publish_goal();
-        result
+        // A request refused before it was written (a catalogue page among
+        // them) no longer holds the session's options back.
+        let published = self.publish_config();
+        result.and(published)
     }
 }
 
@@ -311,6 +340,7 @@ impl NativeRuntime {
                 None => channel.remove(owner),
             }
             .map_err(|_| AdapterRuntimeError::Frame)?;
+            channel.set_hydrating(owner, self.0.config_hydrating());
         }
         Ok(())
     }

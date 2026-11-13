@@ -15,7 +15,10 @@ pub(super) fn response<M: ResourceMapper>(
         .get("id")
         .and_then(Value::as_u64)
         .ok_or(IngressError::Malformed)?;
-    if adapter.take_rate_limits_tombstone(id) || adapter.take_terminals_tombstone(id) {
+    if adapter.take_rate_limits_tombstone(id)
+        || adapter.take_terminals_tombstone(id)
+        || adapter.take_mcp_tombstone(id)
+    {
         return Ok(IngressDisposition::IgnoredLate);
     }
     let kind = adapter.pending_kind(id).ok_or(IngressError::Uncorrelated)?;
@@ -37,6 +40,26 @@ pub(super) fn response<M: ResourceMapper>(
                 None => IngressDisposition::IgnoredLate,
             },
         );
+    }
+    if kind == RequestKind::SkillsList {
+        adapter.take_pending(id);
+        let result = object.get("result").and_then(Value::as_object);
+        adapter.skills_result(result.filter(|_| !object.contains_key("error")));
+        return Ok(IngressDisposition::IgnoredLate);
+    }
+    if matches!(
+        kind,
+        RequestKind::McpList | RequestKind::McpReload | RequestKind::McpSignIn
+    ) {
+        return Ok(IngressDisposition::Controlled(
+            adapter.complete_mcp(id, kind, object),
+        ));
+    }
+    if kind == RequestKind::ThreadRevert {
+        let error = object.get("error");
+        return Ok(IngressDisposition::Controlled(
+            adapter.complete_revert(id, error),
+        ));
     }
     if kind == RequestKind::RateLimitsRead {
         adapter.take_pending(id);
@@ -257,7 +280,12 @@ pub(super) fn response<M: ResourceMapper>(
         | RequestKind::RateLimitsRead
         | RequestKind::TerminalsList
         | RequestKind::TerminalsStop
-        | RequestKind::TerminalsStopAll => {
+        | RequestKind::TerminalsStopAll
+        | RequestKind::SkillsList
+        | RequestKind::ThreadRevert
+        | RequestKind::McpList
+        | RequestKind::McpReload
+        | RequestKind::McpSignIn => {
             unreachable!("handled above")
         }
     };

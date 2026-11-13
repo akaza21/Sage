@@ -161,6 +161,18 @@ impl Drop for ActivationClaim<'_> {
     }
 }
 
+impl Lane<'_> {
+    /// Parks this lane's idle runtime. A park that did not converge retains
+    /// its zero-process recovery, driven now as an activation's reclaim would.
+    fn park_or_reclaim(&self, deadline: Instant) {
+        if !matches!(self.park_idle_runtime(deadline), Ok(true))
+            && self.has_replacement_park_recovery()
+        {
+            let _ = self.shutdown_codex_recovery(deadline);
+        }
+    }
+}
+
 impl AcpService {
     pub(super) fn lane_at(&self, index: usize) -> Lane<'_> {
         let lane = &self.lanes[index];
@@ -280,12 +292,8 @@ impl AcpService {
                 .scheduler
                 .active()
                 .is_some_and(|active| same(&active.tree))
-                && !matches!(view.park_idle_runtime(deadline), Ok(true))
-                && view.has_replacement_park_recovery()
             {
-                // A park that did not converge retains its zero-process
-                // recovery; drive it now as an activation's reclaim would.
-                let _ = view.shutdown_codex_recovery(deadline);
+                view.park_or_reclaim(deadline);
             }
             let held = lane.scheduler.active().filter(|active| same(&active.tree));
             // A prompt that won the idle-drain race keeps its runtime running.
@@ -345,13 +353,7 @@ impl AcpService {
             .lanes
             .iter()
             .enumerate()
-            .filter(|(index, lane)| {
-                lane.scheduler.active().is_some_and(|active| {
-                    !lane.has_recovery()
-                        && self.can_resume(&active.tree)
-                        && self.lane_at(*index).can_park_idle_runtime()
-                })
-            })
+            .filter(|(index, _)| self.parks_resumably(*index))
             .map(|(index, lane)| (lane.last_activation.load(Ordering::Acquire), index))
             .collect();
         idle.sort_unstable();
@@ -366,6 +368,17 @@ impl AcpService {
         order
     }
 
+    /// An idle runtime a park releases and the next activation resumes;
+    /// eviction and idle release park only these.
+    fn parks_resumably(&self, index: usize) -> bool {
+        let lane = &self.lanes[index];
+        lane.scheduler.active().is_some_and(|active| {
+            !lane.has_recovery()
+                && self.can_resume(&active.tree)
+                && self.lane_at(index).can_park_idle_runtime()
+        })
+    }
+
     fn can_resume(&self, owner: &RuntimeOwner) -> bool {
         self.database.connection().query_row(
             "SELECT capabilities_json FROM agent_sessions WHERE project_id=?1 AND chat_id=?2 AND id=?3 AND external_session_id IS NOT NULL",
@@ -375,6 +388,11 @@ impl AcpService {
             .is_some_and(|capabilities| capabilities.resume_session)
     }
 }
+
+mod idle_release;
+pub(crate) use idle_release::IdleRelease;
+mod release_retry;
+mod turn_undo;
 
 #[cfg(test)]
 #[path = "live_lanes_tests.rs"]

@@ -31,6 +31,7 @@ use super::{
 };
 
 mod browse_host;
+mod children;
 mod commands;
 mod egress;
 mod fork;
@@ -40,6 +41,7 @@ mod mode_guard;
 mod session_config;
 mod slash_commands;
 mod support;
+pub(crate) use children::{ChildEvent, ChildOutcome, Children, OPEN_CHILDREN};
 pub(crate) use launch::ClaudeRuntimeFactory;
 use support::*;
 
@@ -64,10 +66,16 @@ pub(crate) struct ClaudeRuntime {
     delivery_unknown: Option<DeliveryUnknown>,
     refusal_detail: Option<RefusalDetail>,
     deferred: Vec<AdapterEvent>,
+    /// Questions the next permission request asks instead of an approval.
+    next_user_input: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
     session_root: Option<String>,
     native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
     /// Recent sessions this runtime forked (bounded; see `fork.rs`).
     forks: Vec<fork::TrackedFork>,
+    /// The SDK bridge reports subagents, so their transcripts are stored.
+    stores_children: bool,
+    /// The SDK bridge answers `/status` and `/mcp`, so they open panels.
+    opens_panels: bool,
 }
 
 struct ActiveSession {
@@ -106,32 +114,6 @@ enum PendingRequest {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum DenialState {
-    Pending,
-    Committed,
-    Queued,
-    Written,
-}
-
-struct DenialRecord {
-    state: DenialState,
-    sequence: u64,
-    translator_id: String,
-    wire_id: Value,
-    allow_once_option_id: Option<String>,
-    allow_always_option_id: Option<String>,
-    reply: PermissionReply,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum PermissionReply {
-    AllowOnce,
-    AllowAlways,
-    Deny,
-    Cancelled,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
 enum DeliveryUnknown {
     Request(u64),
     Notification,
@@ -161,7 +143,11 @@ impl ClaudeRuntime {
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Self {
-        Self::new(None, binding_digest, runtime_epoch, session_id)
+        Self {
+            stores_children: true,
+            opens_panels: true,
+            ..Self::new(None, binding_digest, runtime_epoch, session_id)
+        }
     }
 
     #[cfg(test)]
@@ -199,9 +185,12 @@ impl ClaudeRuntime {
             delivery_unknown: None,
             refusal_detail: None,
             deferred: Vec::new(),
+            next_user_input: None,
             session_root: None,
             native_rpc_reply: None,
             forks: Vec::new(),
+            stores_children: false,
+            opens_panels: false,
         }
     }
 

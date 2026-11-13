@@ -247,6 +247,8 @@ export interface RunAcpSessionActionRequest extends AcpSessionMutationIntent {
 export interface StartAcpSessionRequest extends AcpMutationIntent {
   bindingId: CuratedBindingId;
   modelId: CuratedModelId | null;
+  /** A thinking level chosen before the session existed. */
+  effort?: string;
 }
 
 interface AcpTurnContent {
@@ -254,8 +256,16 @@ interface AcpTurnContent {
   attachedContext?: readonly AttachedContext[];
 }
 
+/**
+ * The staged prompt files a send carries: the chat's batch at a revision, or
+ * for Retry of a turn the files that turn's prompt carried. Native refuses a
+ * Retry whose files are no longer held rather than sending it without them.
+ */
+export type StagedSelection = { revision: string } | { retryOf: SageTurnId };
+
 export type SendAcpTurnRequest =
-  | (AcpSessionMutationIntent & AcpTurnContent & { target: "session" })
+  | (AcpSessionMutationIntent &
+      AcpTurnContent & { target: "session"; staged?: StagedSelection })
   | (AcpMutationIntent &
       AcpTurnContent & {
         target: "newSession";

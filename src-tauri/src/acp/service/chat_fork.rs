@@ -107,7 +107,11 @@ fn fork_reply(result: Result<NativeRpcReply, HostError>) -> Result<ExternalId, C
             | NativeRpcReply::Released
             | NativeRpcReply::UsageRead
             | NativeRpcReply::BackgroundTerminals(_)
-            | NativeRpcReply::TerminalsStopped,
+            | NativeRpcReply::TerminalsStopped
+            | NativeRpcReply::Controlled(_)
+            | NativeRpcReply::ControlRefused(_)
+            | NativeRpcReply::McpServers(_)
+            | NativeRpcReply::McpSignIn(_),
         ) => Err(ChatForkError::RecoveryRequired),
         Err(HostError::Intent | HostError::State) => Err(ChatForkError::Unavailable),
         Err(HostError::Capacity) => Err(ChatForkError::TooManyForks),

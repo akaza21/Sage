@@ -311,7 +311,7 @@ fn verify_legacy_ownership(connection: &Connection) -> AppResult<()> {
     Ok(())
 }
 
-fn verify_file_envelope(live: &Path) -> AppResult<()> {
+pub(super) fn verify_file_envelope(live: &Path) -> AppResult<()> {
     let main = fs::metadata(live)?.len();
     if main > LIVE_SQLITE_BYTES {
         return limit("live SQLite image exceeds 1 GiB");

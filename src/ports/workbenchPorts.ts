@@ -286,6 +286,8 @@ export interface ForkChatRequest {
 
 export interface AgentPort {
   listHarnesses(): Promise<HarnessDefinition[]>;
+  /** Discovers the installed harnesses again, picking up updates. */
+  refreshHarnesses(): Promise<HarnessDefinition[]>;
   listHarnessModels(harnessId: string): Promise<ModelOption[]>;
   sendPrompt(request: SendPromptRequest): Promise<SimulatorTurnResult>;
 }
@@ -374,7 +376,12 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "renameChat",
     "restoreChat",
   ],
-  agent: ["listHarnesses", "listHarnessModels", "sendPrompt"],
+  agent: [
+    "listHarnesses",
+    "listHarnessModels",
+    "refreshHarnesses",
+    "sendPrompt",
+  ],
   settings: [
     "getEditorSettings",
     "getNewChatDefaults",

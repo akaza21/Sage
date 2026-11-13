@@ -63,8 +63,8 @@ fn launch_factory(
 }
 
 /// What the SDK protocol carries today: new and resumed sessions, prompts
-/// with attachments, and cancel. Closing ends the process; fork and child
-/// transcripts arrive with their own stages.
+/// with attachments, cancel, and subagent transcripts. Closing ends the
+/// process; fork arrives with its own stage.
 fn capabilities(
     binding: &AdmittedBinding,
 ) -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
@@ -88,19 +88,54 @@ fn ceiling() -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
         close_session: false,
         prompt: true,
         cancel: true,
-        native_session_fork: false,
-        native_session_compact: false,
+        native_session_fork: true,
+        native_session_compact: true,
         native_review: false,
         native_background_terminals: false,
-        active_turn_steer: false,
+        active_turn_steer: true,
         child_conversation_projection: false,
-        child_transcript_read: false,
+        child_transcript_read: true,
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 0,
         prompt_resources: true,
         prompt_images: true,
         config_count: 0,
+    })
+}
+
+/// Whether a binding without model discovery can start a session with
+/// `model`: Claude Code takes a model its build listed before the session.
+pub(super) fn accepts_launch_model(binding: &AdmittedBinding, model: &str) -> bool {
+    match binding {
+        AdmittedBinding::ClaudeSdk(binding) => {
+            crate::acp::bindings::claude::sdk::offers_model(binding, model)
+        }
+        _ => false,
+    }
+}
+
+/// The config choice a new session of this binding starts with for a
+/// thinking level chosen before it existed, when the binding lists that
+/// level for `model` (Claude Code's own default when none is named).
+pub(super) fn launch_effort_choice(
+    binding: &AdmittedBinding,
+    model: Option<&str>,
+    effort: &str,
+) -> Option<crate::acp::session_config::ConfigMutation> {
+    use crate::acp::{
+        bindings::claude::sdk,
+        session_config::{ConfigId, ConfigMutation, ConfigValue},
+    };
+    let AdmittedBinding::ClaudeSdk(binding) = binding else {
+        return None;
+    };
+    sdk::offers_effort(binding, model.unwrap_or("default"), effort).then_some(())?;
+    Some(ConfigMutation::Option {
+        config_id: ConfigId::new("configId", sdk::EFFORT_CONFIG_ID).ok()?,
+        value: ConfigValue::Select {
+            value: ConfigId::new("value", effort).ok()?,
+        },
     })
 }
 

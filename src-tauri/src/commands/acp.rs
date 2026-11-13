@@ -9,6 +9,7 @@ pub(crate) mod edit_disposition;
 mod errors;
 pub(crate) mod file_reference;
 pub(crate) mod goal;
+pub(crate) mod mcp;
 pub(crate) mod permission;
 pub(crate) mod read_text_file;
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
@@ -16,6 +17,7 @@ pub(crate) mod runtime_identity;
 pub(crate) mod session_access;
 pub(crate) mod session_action;
 pub(crate) mod session_config;
+pub(crate) mod session_control;
 mod session_operations;
 mod session_routes;
 pub(crate) mod slash_commands;

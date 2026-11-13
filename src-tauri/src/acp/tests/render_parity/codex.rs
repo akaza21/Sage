@@ -129,6 +129,10 @@ fn frames(scenario: Scenario) -> (Vec<Value>, &'static str) {
             ),
         ],
         Scenario::CancelledWithRunningTool => vec![item("item/started", read("inProgress", None))],
+        Scenario::SteeredMessage => vec![item(
+            "item/completed",
+            json!({"type":"agentMessage","id":"message-1","text":"Starting on lib.rs."}),
+        )],
     };
     let status = match scenario {
         Scenario::CancelledWithRunningTool => "interrupted",
@@ -194,6 +198,35 @@ pub(super) fn run(scenario: Scenario) -> Option<Vec<Fact>> {
     .chain(frames)
     {
         facts.extend(ingest(&mut runtime, value));
+    }
+    if scenario == Scenario::SteeredMessage {
+        // The user steers: Codex accepts `turn/steer`, then echoes the
+        // message as its own `userMessage` item before answering it.
+        let steer = runtime
+            .command(AdapterCommand::Steer {
+                prompt: Prompt::new("prompt", super::STEER).unwrap(),
+                client_message_id: RequiredText::new("client", super::STEER_CLIENT_ID).unwrap(),
+            })
+            .unwrap();
+        let request: Value = serde_json::from_slice(steer.frame().payload()).unwrap();
+        assert_eq!(request["method"], "turn/steer");
+        facts.extend(
+            answer(&mut runtime, steer, json!({"turnId":"turn-1"}))
+                .into_iter()
+                .filter_map(super::adapter_fact),
+        );
+        let echo = json!({"type":"userMessage","id":"echo-1",
+            "content":[{"type":"text","text":super::STEER,"text_elements":[]}]});
+        for value in [
+            item("item/started", echo.clone()),
+            item("item/completed", echo),
+            item(
+                "item/completed",
+                json!({"type":"agentMessage","id":"message-2","text":"Switching to main.rs."}),
+            ),
+        ] {
+            facts.extend(ingest(&mut runtime, value));
+        }
     }
     if scenario == Scenario::CancelledWithRunningTool {
         // A user stop: Sage records the cancel intent and writes

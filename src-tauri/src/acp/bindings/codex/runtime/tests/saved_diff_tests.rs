@@ -32,6 +32,11 @@ fn completed_codex_patch_delivers_metadata_and_pair_to_the_shared_journal() {
         )
         .unwrap();
     let [
+        AdapterEvent::Item {
+            id: edit_id,
+            payload: edit,
+            ..
+        },
         AdapterEvent::Item { id, payload, .. },
         AdapterEvent::FilePair {
             id: pair_id,
@@ -45,6 +50,15 @@ fn completed_codex_patch_delivers_metadata_and_pair_to_the_shared_journal() {
     };
     assert_eq!(id, pair_id);
     assert_eq!(external_item_id.as_str(), "saved-edit");
+    assert_eq!(edit_id.external_id.as_str(), "saved-edit:edit");
+    assert!(matches!(
+        edit,
+        NormalizedPayload::ToolCall {
+            category: crate::acp::intent::ToolCategory::Edit,
+            label,
+            ..
+        } if label.as_str() == "Edited src/lib.rs"
+    ));
     assert!(matches!(
         payload,
         NormalizedPayload::FileChangeDiff {

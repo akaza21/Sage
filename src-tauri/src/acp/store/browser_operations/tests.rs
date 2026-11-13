@@ -9,9 +9,18 @@ use super::{
 };
 
 fn setup() -> rusqlite::Connection {
-    let (connection, _) = crate::acp::migration::open_or_migrate(std::path::Path::new(":memory:"))
+    setup_at(std::path::Path::new(":memory:"))
+}
+
+fn open_at(path: &std::path::Path) -> rusqlite::Connection {
+    crate::acp::migration::open_or_migrate(path)
         .unwrap()
-        .into_parts();
+        .into_parts()
+        .0
+}
+
+fn setup_at(path: &std::path::Path) -> rusqlite::Connection {
+    let connection = open_at(path);
     connection.execute_batch(
         "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-one','Project',1,1,1);
          INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES('root-one','project-one','C:/project','c:/project',0);
@@ -364,4 +373,264 @@ fn restart_recovers_more_than_one_batch_of_unterminated_operations() {
         .unwrap();
     assert_eq!(recovered, 8_193);
     assert_eq!(recover_started(&mut connection, 100_001).unwrap(), 0);
+}
+
+fn turn_row(id: &str) -> crate::acp::store::history::TurnRow {
+    crate::acp::store::history::TurnRow {
+        id: id.into(),
+        project_id: "project-one".into(),
+        chat_id: "chat-one".into(),
+        session_id: "session-one".into(),
+        session_ordinal: 0,
+        runtime_epoch: 1,
+        ordinal: 0,
+        state: "running".into(),
+        revision: 0,
+        created_at: 1,
+        updated_at: 1,
+        terminal_at: None,
+        item_before: None,
+    }
+}
+
+fn begin_turn(connection: &rusqlite::Connection, ordinal: i64) {
+    connection
+        .execute(
+            "UPDATE turns SET state='completed',terminal_at=1 WHERE state='running'",
+            [],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,state,delivery_state,revision,created_at,updated_at)
+             VALUES(?1,'project-one','chat-one','session-one',1,?2,?3,'running','completeBytes',0,1,1)",
+            rusqlite::params![format!("turn-{ordinal}"), ordinal, format!("intent-{ordinal}")],
+        )
+        .unwrap();
+}
+
+#[test]
+fn each_turn_projects_only_its_own_operations_in_order() {
+    let mut connection = setup();
+    let epoch = RuntimeEpoch::new(1).unwrap();
+    let mut started = Vec::new();
+    for (number, turn) in [
+        (1, None),
+        (2, None),
+        (3, Some(1)),
+        (4, Some(1)),
+        (5, Some(2)),
+    ] {
+        if number == 3 || number == 5 {
+            begin_turn(&connection, turn.unwrap());
+        }
+        let mut operation = record(number);
+        if let Some(turn) = turn {
+            operation.turn_id = SageTurnId::parse(format!("turn-{turn}")).unwrap();
+        }
+        start(&mut connection, epoch, &operation).unwrap();
+        started.push(operation);
+    }
+    // Terminals land after later Turns' facts; each still joins its own start.
+    for (index, phase) in [(0, "completed"), (3, "failed"), (1, "denied")] {
+        let operation = &mut started[index];
+        operation.phase = phase.into();
+        operation.result_summary = Some(format!("{phase} {index}"));
+        operation.updated_at += 10;
+        finish(&mut connection, operation).unwrap();
+    }
+
+    for (turn, expected) in [
+        ("turn-browser", &started[0..2]),
+        ("turn-1", &started[2..4]),
+        ("turn-2", &started[4..5]),
+    ] {
+        let (operations, collapsed) = load(&connection, &turn_row(turn)).unwrap();
+        assert_eq!(operations, expected, "{turn}");
+        assert_eq!(collapsed, 0);
+    }
+    assert_eq!(load(&connection, &turn_row("turn-9")).unwrap().0, vec![]);
+}
+
+fn start_in_turn(
+    connection: &mut rusqlite::Connection,
+    numbers: std::ops::RangeInclusive<u32>,
+    turn: &str,
+) -> Vec<BrowserOperationProjection> {
+    numbers
+        .map(|number| {
+            let mut operation = record(number);
+            operation.turn_id = SageTurnId::parse(turn).unwrap();
+            start(connection, RuntimeEpoch::new(1).unwrap(), &operation).unwrap();
+            operation
+        })
+        .collect()
+}
+
+#[test]
+fn turn_page_hides_operations_collapsed_past_the_turn_cap() {
+    let mut connection = setup();
+    let earlier = start_in_turn(&mut connection, 1..=2, "turn-browser");
+    begin_turn(&connection, 1);
+    // Two past the per-Turn cap of 32, so the Turn's two oldest collapse.
+    let crowded = start_in_turn(&mut connection, 3..=36, "turn-1");
+
+    assert_eq!(
+        load(&connection, &turn_row("turn-1")).unwrap(),
+        (crowded[2..].to_vec(), 2)
+    );
+    assert_eq!(
+        load(&connection, &turn_row("turn-browser")).unwrap(),
+        (earlier, 0)
+    );
+}
+
+#[test]
+fn turn_page_hides_operations_collapsed_past_the_chat_cap() {
+    let mut connection = setup();
+    let mut turns = vec![(
+        "turn-browser".to_owned(),
+        start_in_turn(&mut connection, 1..=4, "turn-browser"),
+    )];
+    // Five Turns of 25 stay under the per-Turn cap and bring the chat to 129
+    // operations, one past its cap of 128, so only the chat's oldest operation
+    // collapses, out of an earlier Turn.
+    for ordinal in 1_u32..=5 {
+        begin_turn(&connection, i64::from(ordinal));
+        let turn = format!("turn-{ordinal}");
+        let first = 5 + (ordinal - 1) * 25;
+        let operations = start_in_turn(&mut connection, first..=first + 24, &turn);
+        turns.push((turn, operations));
+    }
+    turns[0].1.remove(0);
+
+    for (index, (turn, operations)) in turns.into_iter().enumerate() {
+        let collapsed = u64::from(index == 0);
+        assert_eq!(
+            load(&connection, &turn_row(&turn)).unwrap(),
+            (operations, collapsed),
+            "{turn}"
+        );
+    }
+}
+
+fn plan(connection: &rusqlite::Connection, sql: &str, values: &[&dyn rusqlite::ToSql]) -> String {
+    connection
+        .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+        .unwrap()
+        .query_map(values, |row| row.get::<_, String>(3))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n")
+}
+
+#[test]
+fn fact_lookups_seek_their_index() {
+    const TURN: &str = "idx_session_facts_turn";
+    const TERMINAL: &str = "idx_session_facts_operation_terminal";
+    const START: &str = "idx_session_facts_operation_start";
+    let connection = setup();
+    let owner: [&dyn rusqlite::ToSql; 4] = [&"project-one", &"chat-one", &"session-one", &"turn"];
+    let cases = [
+        (
+            plan(&connection, super::TURN_OPERATIONS_SQL, &owner),
+            [("start", TURN), ("marker", TURN)].as_slice(),
+        ),
+        (
+            plan(&connection, super::TERMINAL_SQL, &[&"session-one", &1_i64]),
+            [("session_facts", TERMINAL)].as_slice(),
+        ),
+        (
+            plan(
+                &connection,
+                crate::acp::store::turn_activity_facts::TURN_FACTS_SQL,
+                &[&"session-one", &"turn", &"sessionActivity", &80_i64],
+            ),
+            [("session_facts", TURN)].as_slice(),
+        ),
+        (
+            plan(
+                &connection,
+                super::write::RECOVER_SQL,
+                &[&"session-one", &0_i64],
+            ),
+            [("start", START), ("terminal", TERMINAL)].as_slice(),
+        ),
+    ];
+    for (plan, seeks) in cases {
+        for (table, index) in seeks {
+            assert!(
+                plan.lines().any(|step| {
+                    step.split_whitespace().nth(1) == Some(table)
+                        && step.contains(index)
+                        // A terminal is sought by its `$.s` key, not filtered after.
+                        && (*index != TERMINAL || step.contains("<expr>=?"))
+                }),
+                "{table} does not seek {index}:\n{plan}"
+            );
+        }
+        assert!(!plan.contains("SCAN"), "{plan}");
+        assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+        assert!(!plan.contains("MATERIALIZE"), "{plan}");
+    }
+}
+
+#[test]
+fn upgraded_store_with_a_duplicate_terminal_recovers_only_the_unfinished_operation() {
+    let directory = std::env::temp_dir().join(format!(
+        "sage-browser-terminal-upgrade-{}",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("sage.db");
+    let mut finished = record(1);
+    let unfinished = record(2);
+    {
+        let mut connection = setup_at(&path);
+        for operation in [&finished, &unfinished] {
+            start(&mut connection, RuntimeEpoch::new(1).unwrap(), operation).unwrap();
+        }
+        finished.phase = "completed".into();
+        finished.result_summary = Some("Page inspected".into());
+        finished.updated_at += 1;
+        finish(&mut connection, &finished).unwrap();
+        // Return the file to schema 26, before the operation indexes, with its
+        // facts already written and a duplicate terminal an older store could
+        // hold, so the next open has to upgrade it.
+        connection
+            .execute_batch(
+                "INSERT INTO session_facts(project_id,chat_id,session_id,sequence,turn_id,kind,
+                   payload_json,payload_bytes,payload_digest,projection_revision,created_at)
+                 SELECT project_id,chat_id,session_id,sequence+1,turn_id,kind,
+                   payload_json,payload_bytes,payload_digest,projection_revision,created_at
+                 FROM session_facts WHERE kind='browserOperationTerminal';
+                 DROP INDEX idx_session_facts_operation_start;
+                 DROP INDEX idx_session_facts_operation_terminal;
+                 DROP INDEX idx_session_facts_undo_start;
+                 DROP INDEX idx_session_facts_undo_recovery;
+                 DROP INDEX idx_session_facts_undo_settled;
+                 DELETE FROM schema_migrations WHERE version>=27;
+                 PRAGMA user_version=26;",
+            )
+            .unwrap();
+    }
+
+    let mut connection = open_at(&path);
+    let version: u32 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, crate::acp::migration::CURRENT_SCHEMA_VERSION);
+    assert_eq!(recover_started(&mut connection, 100).unwrap(), 1);
+    assert_eq!(recover_started(&mut connection, 101).unwrap(), 0);
+    let mut unknown = unfinished;
+    unknown.phase = "outcomeUnknown".into();
+    unknown.result_summary = Some("Sage restarted before the browser result was known".into());
+    unknown.updated_at = 100;
+    assert_eq!(
+        load(&connection, &turn_row("turn-browser")).unwrap(),
+        (vec![finished, unknown], 0)
+    );
+    drop(connection);
+    std::fs::remove_dir_all(directory).unwrap();
 }

@@ -1,102 +1,111 @@
 import { EDITOR_SETTINGS } from "./editorSettingsCatalogue";
 import { EDITOR_SETTING_COPY } from "./editorSettingsCopy";
+import { KEYMAP_DESCRIPTIONS } from "./keymapDescriptions";
 import {
   KEYMAP_BINDINGS,
   type KeymapBinding,
   type KeymapScope,
 } from "./keymapRegistry";
 
+/** A shortcut with the sentence the Keyboard settings page shows for it. */
+export type DescribedKeymapBinding = KeymapBinding & { description: string };
+
 /**
  * Shortcuts CodeMirror handles (EP-03), kept out of the startup bundle's
  * `KEYMAP_BINDINGS`. A test keeps `editorEditing.ts` binding the same chords.
  */
-export const EDITOR_EDITING_BINDINGS: readonly KeymapBinding[] = Object.freeze([
-  {
-    id: "editor.indent",
-    label: "Indent lines",
-    description:
-      "Tab indents the selected lines and Shift+Tab outdents them. Press Esc, then Tab, to move focus out of the editor.",
-    scope: "Editor",
-    key: "tab",
-    ctrlOrMeta: "forbidden",
-    shift: "allowed",
-    alt: "forbidden",
-  },
-  {
-    id: "editor.selectNextOccurrence",
-    label: "Add next occurrence",
-    description: "Selects the next copy of the selected text as well.",
-    scope: "Editor",
-    key: "d",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "editor.addCursorAbove",
-    label: "Add cursor above",
-    description: "Adds a cursor on the line above.",
-    scope: "Editor",
-    key: "arrowup",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "required",
-  },
-  {
-    id: "editor.addCursorBelow",
-    label: "Add cursor below",
-    description: "Adds a cursor on the line below.",
-    scope: "Editor",
-    key: "arrowdown",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "required",
-  },
-  {
-    id: "editor.toggleLineComment",
-    label: "Toggle line comment",
-    description: "Comments or uncomments the selected lines.",
-    scope: "Editor",
-    key: "/",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "forbidden",
-  },
-  {
-    id: "editor.toggleBlockComment",
-    label: "Toggle block comment",
-    description: "Wraps the selection in a block comment, or removes it.",
-    scope: "Editor",
-    key: "a",
-    ctrlOrMeta: "forbidden",
-    shift: "required",
-    alt: "required",
-  },
-  {
-    id: "editor.fold",
-    label: "Fold",
-    description: "Collapses the block at the cursor.",
-    scope: "Editor",
-    key: "[",
-    ctrlOrMeta: "required",
-    shift: "required",
-    alt: "forbidden",
-    apple: { shift: "forbidden", alt: "required" },
-  },
-  {
-    id: "editor.unfold",
-    label: "Unfold",
-    description: "Expands the folded block at the cursor.",
-    scope: "Editor",
-    key: "]",
-    ctrlOrMeta: "required",
-    shift: "required",
-    alt: "forbidden",
-    apple: { shift: "forbidden", alt: "required" },
-  },
-]);
+export const EDITOR_EDITING_BINDINGS: readonly DescribedKeymapBinding[] =
+  Object.freeze([
+    {
+      id: "editor.indent",
+      label: "Indent lines",
+      description:
+        "Tab indents the selected lines and Shift+Tab outdents them. Press Esc, then Tab, to move focus out of the editor.",
+      scope: "Editor",
+      key: "tab",
+      ctrlOrMeta: "forbidden",
+      shift: "allowed",
+      alt: "forbidden",
+    },
+    {
+      id: "editor.selectNextOccurrence",
+      label: "Add next occurrence",
+      description: "Selects the next copy of the selected text as well.",
+      scope: "Editor",
+      key: "d",
+      ctrlOrMeta: "required",
+      shift: "forbidden",
+      alt: "forbidden",
+    },
+    {
+      id: "editor.addCursorAbove",
+      label: "Add cursor above",
+      description: "Adds a cursor on the line above.",
+      scope: "Editor",
+      key: "arrowup",
+      ctrlOrMeta: "required",
+      shift: "forbidden",
+      alt: "required",
+    },
+    {
+      id: "editor.addCursorBelow",
+      label: "Add cursor below",
+      description: "Adds a cursor on the line below.",
+      scope: "Editor",
+      key: "arrowdown",
+      ctrlOrMeta: "required",
+      shift: "forbidden",
+      alt: "required",
+    },
+    {
+      id: "editor.toggleLineComment",
+      label: "Toggle line comment",
+      description: "Comments or uncomments the selected lines.",
+      scope: "Editor",
+      key: "/",
+      ctrlOrMeta: "required",
+      shift: "forbidden",
+      alt: "forbidden",
+    },
+    {
+      id: "editor.toggleBlockComment",
+      label: "Toggle block comment",
+      description: "Wraps the selection in a block comment, or removes it.",
+      scope: "Editor",
+      key: "a",
+      ctrlOrMeta: "forbidden",
+      shift: "required",
+      alt: "required",
+    },
+    {
+      id: "editor.fold",
+      label: "Fold",
+      description: "Collapses the block at the cursor.",
+      scope: "Editor",
+      key: "[",
+      ctrlOrMeta: "required",
+      shift: "required",
+      alt: "forbidden",
+      apple: { shift: "forbidden", alt: "required" },
+    },
+    {
+      id: "editor.unfold",
+      label: "Unfold",
+      description: "Expands the folded block at the cursor.",
+      scope: "Editor",
+      key: "]",
+      ctrlOrMeta: "required",
+      shift: "required",
+      alt: "forbidden",
+      apple: { shift: "forbidden", alt: "required" },
+    },
+  ]);
 
-const findToggle = (id: string, label: string, key: string): KeymapBinding => ({
+const findToggle = (
+  id: string,
+  label: string,
+  key: string,
+): DescribedKeymapBinding => ({
   id: `find.${id}`,
   label,
   description: `Switches ${label} while the find bar has focus.`,
@@ -112,27 +121,31 @@ const findToggle = (id: string, label: string, key: string): KeymapBinding => ({
  * Shortcuts the find bar handles itself (EP-04), as in VS Code. A test keeps
  * `FileFindBar.tsx` answering the same chords.
  */
-export const FIND_BAR_BINDINGS: readonly KeymapBinding[] = Object.freeze([
-  findToggle("toggleCase", "Match case", "c"),
-  findToggle("toggleWholeWord", "Match whole word", "w"),
-  findToggle("toggleRegex", "Use regular expression", "r"),
-  {
-    id: "find.replaceAll",
-    label: "Replace all",
-    description:
-      "Replaces every match in one step, which one undo reverses. Enter in the replace box replaces the current match.",
-    scope: "Editor",
-    key: "enter",
-    ctrlOrMeta: "required",
-    shift: "forbidden",
-    alt: "required",
-    apple: { shift: "forbidden", alt: "forbidden" },
-  },
-]);
+export const FIND_BAR_BINDINGS: readonly DescribedKeymapBinding[] =
+  Object.freeze([
+    findToggle("toggleCase", "Match case", "c"),
+    findToggle("toggleWholeWord", "Match whole word", "w"),
+    findToggle("toggleRegex", "Use regular expression", "r"),
+    {
+      id: "find.replaceAll",
+      label: "Replace all",
+      description:
+        "Replaces every match in one step, which one undo reverses. Enter in the replace box replaces the current match.",
+      scope: "Editor",
+      key: "enter",
+      ctrlOrMeta: "required",
+      shift: "forbidden",
+      alt: "required",
+      apple: { shift: "forbidden", alt: "forbidden" },
+    },
+  ]);
 
 /** Every shortcut the Keyboard settings page lists. */
-export const SETTINGS_KEYMAP_BINDINGS: readonly KeymapBinding[] = [
-  ...KEYMAP_BINDINGS,
+export const SETTINGS_KEYMAP_BINDINGS: readonly DescribedKeymapBinding[] = [
+  ...KEYMAP_BINDINGS.map((binding) => ({
+    ...binding,
+    description: KEYMAP_DESCRIPTIONS[binding.id] ?? "",
+  })),
   ...EDITOR_EDITING_BINDINGS,
   ...FIND_BAR_BINDINGS,
 ];

@@ -5,10 +5,13 @@ use super::HarnessCatalog;
 impl HarnessCatalog {
     pub(crate) fn claude_cli_path(&self) -> Option<PathBuf> {
         let discovered = self.discovered("claude-code")?;
-        if cfg!(windows) {
+        #[cfg(unix)]
+        {
+            crate::harness_discovery::claude_sdk_executable(&discovered.executable)
+        }
+        #[cfg(not(unix))]
+        {
             native_claude_executable(&discovered.executable)
-        } else {
-            None
         }
     }
 

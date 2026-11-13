@@ -20,8 +20,8 @@ use super::{
     decode::{EXTERNAL_ID_BYTES, Record, Response, decode_record, validate_opaque_text},
     manifest::LaunchAdmission,
     protocol::{
-        AdapterError, AdapterOutput, Operation, Outbound, TerminalOutcome, ToolOutcome,
-        is_allow_option,
+        AdapterError, AdapterOutput, NativeCommand, NativeRequest, Operation, Outbound,
+        TerminalOutcome, ToolOutcome, is_allow_option,
     },
 };
 
@@ -29,6 +29,8 @@ const PENDING_COMMANDS: usize = 16;
 const COMPLETED_COMMANDS: usize = 32;
 const TOOLS_PER_TURN: usize = 512;
 const UNKNOWN_KINDS_PER_TURN: usize = 32;
+/// Sage sends at most a chat title, whose cap this mirrors.
+const SESSION_NAME_BYTES: usize = crate::acp::intent::session_event::SESSION_TITLE_BYTES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PendingKind {
@@ -38,21 +40,33 @@ enum PendingKind {
     ThinkingLevels,
     Commands,
     SetThinkingLevel,
+    SetAutoCompaction,
     NewSession,
     Resume,
     Prompt,
+    Compact,
     Steer,
     ClearQueue,
     Abort,
     Messages,
     Entries,
+    Native(NativeCommand),
 }
 
 impl PendingKind {
+    /// Requests that open a Turn the user sees.
+    const fn starts_turn(self) -> bool {
+        matches!(self, Self::Prompt | Self::Compact)
+    }
+
     const fn is_config(self) -> bool {
         matches!(
             self,
-            Self::State | Self::SetModel | Self::ThinkingLevels | Self::SetThinkingLevel
+            Self::State
+                | Self::SetModel
+                | Self::ThinkingLevels
+                | Self::SetThinkingLevel
+                | Self::SetAutoCompaction
         )
     }
 
@@ -64,16 +78,19 @@ impl PendingKind {
             Self::Commands => "get_commands",
             Self::ThinkingLevels => "get_available_thinking_levels",
             Self::SetThinkingLevel => "set_thinking_level",
+            Self::SetAutoCompaction => "set_auto_compaction",
             // Pi opens a fresh session at launch and Sage runs one session
             // per process, so a new chat takes that session by its id.
             Self::NewSession => "get_state",
             Self::Resume => "switch_session",
             Self::Prompt => "prompt",
+            Self::Compact => "compact",
             Self::Steer => "steer",
             Self::ClearQueue => "clear_queue",
             Self::Abort => "abort",
             Self::Messages => "get_messages",
             Self::Entries => "get_entries",
+            Self::Native(command) => command.wire(),
         }
     }
 }
@@ -86,6 +103,8 @@ struct ActiveTurn {
     authority_denied: bool,
     tools: BTreeMap<String, Option<ToolOutcome>>,
     compaction_active: bool,
+    /// Pi's reason for a failed compaction has reached the user.
+    compaction_failure_shown: bool,
     thought_active: bool,
     settlement_outcome: TerminalOutcome,
     settlement_message: Option<String>,
@@ -93,8 +112,17 @@ struct ActiveTurn {
     retry_notices: u8,
     retry_failed: bool,
     retry_final_error: Option<String>,
+    /// Pi is waiting to retry, as the chat's retry activity shows.
+    retry_waiting: Option<u64>,
     unknown_kinds: BTreeSet<String>,
     unknown_suppression_emitted: bool,
+    /// The last assistant reply's stop reason, error and usage, kept from
+    /// its `message_end` in case the run's `agent_end` is too large to read.
+    last_reply: Option<Box<Value>>,
+    /// An oversized event of this run was dropped unread.
+    dropped_frame: bool,
+    /// An assistant reply has started and not yet ended.
+    reply_open: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -125,6 +153,8 @@ pub struct PiTranslator {
     initialization: Option<InitializationIntent>,
     pending_ui: Option<PendingUiRequest>,
     pending_thinking: Option<(String, String)>,
+    /// The auto-compaction setting asked for, by its request.
+    pending_auto_compaction: Option<(String, bool)>,
     resuming: Option<String>,
     closed_config_requests: BTreeSet<String>,
 }
@@ -166,6 +196,32 @@ pub(crate) const ANSWER_ID: &str = "answer";
 pub(crate) const BRIDGE_WRITE_METHOD: &str = "sage-write";
 
 impl PiTranslator {
+    /// Whether an answer may still arrive that could outgrow a frame: any
+    /// read, as opposed to the turn commands Pi answers in a few bytes.
+    pub(crate) fn awaits_large_response(&self) -> bool {
+        self.pending.values().any(|request| {
+            !matches!(
+                request.kind,
+                PendingKind::Prompt
+                    | PendingKind::Compact
+                    | PendingKind::Steer
+                    | PendingKind::ClearQueue
+                    | PendingKind::Abort
+                    | PendingKind::SetModel
+                    | PendingKind::SetThinkingLevel
+                    | PendingKind::SetAutoCompaction
+                    | PendingKind::Native(_)
+            )
+        })
+    }
+
+    /// Pi is waiting before it retries the running Turn's failed reply.
+    pub(crate) fn waiting_to_retry(&self) -> bool {
+        self.active
+            .as_ref()
+            .is_some_and(|turn| turn.retry_waiting.is_some())
+    }
+
     pub(crate) fn permission_waiting_for(&self, id: &str) -> bool {
         self.pending_ui
             .as_ref()
@@ -217,6 +273,7 @@ impl PiTranslator {
             initialization: None,
             pending_ui: None,
             pending_thinking: None,
+            pending_auto_compaction: None,
             resuming: None,
             closed_config_requests: BTreeSet::new(),
         }
@@ -246,6 +303,16 @@ impl PiTranslator {
                 self.pending_thinking = Some((outbound.command_id.clone(), level));
                 Ok(vec![outbound])
             }
+            Operation::SetAutoCompaction { enabled } => {
+                if self.pending_auto_compaction.is_some() {
+                    return Err(AdapterError::Malformed);
+                }
+                let mut fields = Map::new();
+                fields.insert("enabled".into(), Value::Bool(enabled));
+                let outbound = self.issue(PendingKind::SetAutoCompaction, fields)?;
+                self.pending_auto_compaction = Some((outbound.command_id.clone(), enabled));
+                Ok(vec![outbound])
+            }
             Operation::NewSession | Operation::Resume { .. } => {
                 if !self.pending.is_empty()
                     || self
@@ -265,7 +332,15 @@ impl PiTranslator {
                 self.resuming = Some(session_id);
                 Ok(outbound)
             }
-            Operation::Prompt { turn_key, message } => self.begin_prompt(turn_key, message),
+            Operation::Prompt {
+                turn_key,
+                message,
+                images,
+            } => self.begin_prompt(turn_key, message, images),
+            Operation::Compact {
+                turn_key,
+                instructions,
+            } => self.begin_compact(turn_key, instructions),
             Operation::Steer { message } => self.begin_steer(message),
             Operation::ClearQueue => self.one(PendingKind::ClearQueue, Map::new()),
             Operation::Abort => {
@@ -303,6 +378,16 @@ impl PiTranslator {
             Operation::Close => Err(AdapterError::UnsupportedOperation("close")),
             Operation::MultiRoot => Err(AdapterError::UnsupportedOperation("multi-root")),
             Operation::ForkOrClone => Err(AdapterError::UnsupportedOperation("fork or clone")),
+            Operation::Native(request) => {
+                if let NativeRequest::SessionName { name } = &request {
+                    validate_opaque_text(name, SESSION_NAME_BYTES)
+                        .map_err(|_| AdapterError::Limit("session name"))?;
+                }
+                self.one(
+                    PendingKind::Native(request.command()),
+                    request.into_fields(),
+                )
+            }
         }
     }
 

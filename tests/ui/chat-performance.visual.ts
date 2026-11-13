@@ -91,6 +91,19 @@ test("long Chat preserves the visible Turn when earlier Turns arrive", async ({
   await page.goto("/tests/ui/fixtures/chat-performance.html");
   await page.waitForFunction(() => Boolean(window.chatPerf));
   await page.evaluate(() => window.chatPerf.mount("cap"));
+  // A placeholder is not a settled transcript: the demand-loaded Markdown
+  // renderer and fonts can still change row heights before we choose an anchor.
+  await page.waitForFunction(() => {
+    const messages = [...document.querySelectorAll(".acp-message")];
+    return (
+      messages.length > 0 &&
+      messages.every((message) => message.querySelector(".acp-markdown"))
+    );
+  });
+  await expect(
+    page.getByRole("status").filter({ hasText: "Loading Diagram renderer" }),
+  ).toHaveCount(0);
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
   await page.evaluate(() => window.chatPerf.scrollToMiddle());
   await page.waitForFunction(() => Boolean(window.chatPerf.visibleAnchor()));
   const before = await page.evaluate(() => window.chatPerf.visibleAnchor());

@@ -49,8 +49,8 @@ fn launch_factory(
     Box::new(PiNativeRuntimeFactory { binding, root, mcp })
 }
 
-/// The truthful ceiling: prompt, cancel, steer and resume; no load, close,
-/// fork, or child projection.
+/// The truthful ceiling: prompt, cancel, steer, resume and Pi's own
+/// compaction; no load, close, fork, or child projection.
 fn capabilities(
     binding: &AdmittedBinding,
 ) -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
@@ -70,8 +70,8 @@ fn capabilities(
         close_session: false,
         prompt: true,
         cancel: true,
-        native_session_fork: false,
-        native_session_compact: false,
+        native_session_fork: true,
+        native_session_compact: true,
         native_review: false,
         native_background_terminals: false,
         active_turn_steer: true,
@@ -81,8 +81,8 @@ fn capabilities(
         multi_root_extension_schema_id: None,
         // Counts arrive from the native session handshake, not installation metadata.
         model_count: 0,
-        prompt_resources: false,
-        prompt_images: false,
+        prompt_resources: true,
+        prompt_images: true,
         config_count: 0,
     })
 }

@@ -57,7 +57,7 @@ describe("Project Chat search domain", () => {
         ...browse,
         results: [{ ...browse.results[0], matchedTitle: false }],
       }),
-    ).toThrow("invalid Project Chat search response");
+    ).toThrow("invalid project chat search response");
     expect(() =>
       validateProjectChatSearchRequest({
         projectId: "",
@@ -65,7 +65,7 @@ describe("Project Chat search domain", () => {
         expectedTransitionEpoch: 3,
         query: "",
       }),
-    ).toThrow("valid Project ID");
+    ).toThrow("valid project ID");
   });
   it("accepts a bounded literal response with attached and archived results", () => {
     expect(parseProjectChatSearchResponse(valid)).toEqual(valid);
@@ -77,19 +77,19 @@ describe("Project Chat search domain", () => {
         ...valid,
         results: [valid.results[0], valid.results[0]],
       }),
-    ).toThrow("invalid Project Chat search response");
+    ).toThrow("invalid project chat search response");
     expect(() =>
       parseProjectChatSearchResponse({
         ...valid,
         results: [{ ...valid.results[0], matchedTitle: false }],
       }),
-    ).toThrow("invalid Project Chat search response");
+    ).toThrow("invalid project chat search response");
     expect(() =>
       parseProjectChatSearchResponse({
         ...valid,
         results: [{ ...valid.results[1], snippet: "x".repeat(2_049) }],
       }),
-    ).toThrow("invalid Project Chat search response");
+    ).toThrow("invalid project chat search response");
     expect(() =>
       parseProjectChatSearchResponse({
         ...valid,
@@ -98,7 +98,7 @@ describe("Project Chat search domain", () => {
           chatId: `chat-${index}`,
         })),
       }),
-    ).toThrow("invalid Project Chat search response");
+    ).toThrow("invalid project chat search response");
   });
 
   it("measures the query in UTF-8 bytes at the exact 256-byte boundary", () => {

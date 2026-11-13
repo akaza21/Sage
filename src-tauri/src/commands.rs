@@ -15,6 +15,14 @@ pub fn list_harnesses(state: State<'_, AppState>) -> Vec<HarnessDefinition> {
     state.harnesses.definitions()
 }
 
+/// Discovers the installed harnesses again, for Settings' Refresh discovery.
+#[tauri::command]
+pub async fn refresh_harnesses(app: tauri::AppHandle) -> Result<Vec<HarnessDefinition>, String> {
+    tauri::async_runtime::spawn_blocking(move || AppState::rediscover_harnesses(&app))
+        .await
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub async fn list_harness_models(
     state: State<'_, AppState>,

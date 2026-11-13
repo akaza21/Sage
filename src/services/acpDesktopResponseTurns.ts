@@ -20,6 +20,7 @@ import {
 import { safeItem } from "./acpDesktopResponseItems";
 import { validateAttachedContexts } from "../domain/attachedContext";
 import { decodeSessionAction } from "../domain/acpSessionAction";
+import { decodeTurnCommand } from "../domain/acpCommand";
 
 /** Native caps: kind 64, label 256 and progress 512 bytes, none empty. */
 function safeSessionActivity(value: unknown): TurnSessionActivity | null {
@@ -268,6 +269,9 @@ export function safeTurn(value: unknown): TurnProjection | null {
     value.sessionAction === undefined
       ? undefined
       : decodeSessionAction(value.sessionAction);
+  // Presentation only: a mark this build cannot show leaves plain text.
+  const command =
+    value.command === undefined ? null : decodeTurnCommand(value.command);
   const sessionId = safeIdentifier(value.sessionId);
   const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
   const revision = safeCounter(value.revision, true);
@@ -335,6 +339,7 @@ export function safeTurn(value: unknown): TurnProjection | null {
         ...(sessionAction === null
           ? { unrecognizedAction: true }
           : sessionAction && { sessionAction }),
+        ...(command && { command }),
         id: id as TurnProjection["id"],
         sessionId: sessionId as TurnProjection["sessionId"],
         runtimeEpoch: runtimeEpoch as TurnProjection["runtimeEpoch"],

@@ -17,9 +17,7 @@ impl PiTranslator {
                     .as_ref()
                     .is_some_and(|turn| turn.authority_denied));
         if response.command != kind.command() {
-            if kind == PendingKind::SetThinkingLevel {
-                self.pending_thinking = None;
-            }
+            self.clear_pending_setting(kind);
             if matches!(kind, PendingKind::State | PendingKind::Models) {
                 self.reset_initialization();
             }
@@ -34,10 +32,17 @@ impl PiTranslator {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
         if closed {
-            if kind == PendingKind::SetThinkingLevel {
-                self.pending_thinking = None;
-            }
+            self.clear_pending_setting(kind);
             return Ok(vec![AdapterOutput::LateIgnored]);
+        }
+        // A native reply goes back to the caller that asked for it; Pi's
+        // refusal is that caller's to report, not a transcript error.
+        if let (PendingKind::Native(command), false) = (kind, response.success) {
+            return Ok(vec![AdapterOutput::NativeReply {
+                command_id: response.id,
+                command,
+                data: None,
+            }]);
         }
         if !response.success && kind == PendingKind::Commands {
             return Ok(vec![AdapterOutput::Commands(serde_json::json!([]))]);
@@ -46,16 +51,29 @@ impl PiTranslator {
             if kind == PendingKind::Resume {
                 self.resuming = None;
             }
-            if kind == PendingKind::SetThinkingLevel {
-                self.pending_thinking = None;
-            }
-            if matches!(kind, PendingKind::SetModel | PendingKind::SetThinkingLevel) {
+            self.clear_pending_setting(kind);
+            if matches!(
+                kind,
+                PendingKind::SetModel
+                    | PendingKind::SetThinkingLevel
+                    | PendingKind::SetAutoCompaction
+            ) {
                 return Err(AdapterError::ConfigMutationRejected);
             }
-            let mut output = vec![AdapterOutput::Error {
-                code: "command_failed",
-            }];
-            if kind == PendingKind::Prompt {
+            // A compaction whose `compaction_end` gave Pi's reason needs no
+            // second, generic failure.
+            let explained = kind == PendingKind::Compact
+                && self
+                    .active
+                    .as_ref()
+                    .is_some_and(|turn| turn.compaction_failure_shown);
+            let mut output = Vec::new();
+            if !explained {
+                output.push(AdapterOutput::Error {
+                    code: "command_failed",
+                });
+            }
+            if kind.starts_turn() {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
                 if active.lifecycle.acknowledged(false, false)? {
                     output.extend(self.finish_turn(TerminalOutcome::Failed)?);
@@ -112,9 +130,19 @@ impl PiTranslator {
                 }
                 Ok(vec![AdapterOutput::ThinkingSelected(level)])
             }
+            PendingKind::SetAutoCompaction => {
+                let (id, enabled) = self
+                    .pending_auto_compaction
+                    .take()
+                    .ok_or(AdapterError::Correlation)?;
+                if id != response.id {
+                    return Err(AdapterError::Correlation);
+                }
+                Ok(vec![AdapterOutput::AutoCompactionSelected(enabled)])
+            }
             PendingKind::NewSession => {
                 let id = parse_state(&response.data)?
-                    .session_id
+                    .session_key()
                     .ok_or(AdapterError::Malformed)?;
                 validate_id("session ID", &id)?;
                 self.active = None;
@@ -130,10 +158,10 @@ impl PiTranslator {
                 self.active = None;
                 Ok(vec![AdapterOutput::SessionOpened(id)])
             }
-            PendingKind::Prompt => {
+            PendingKind::Prompt | PendingKind::Compact => {
                 let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-                let handled =
-                    response.data.get("disposition").and_then(Value::as_str) == Some("handled");
+                let handled = kind == PendingKind::Compact
+                    || response.data.get("disposition").and_then(Value::as_str) == Some("handled");
                 if active.lifecycle.acknowledged(true, handled)? {
                     return self.finish_turn(TerminalOutcome::Completed);
                 }
@@ -163,6 +191,11 @@ impl PiTranslator {
             PendingKind::Entries => {
                 Ok(vec![AdapterOutput::Entries(parse_entries(&response.data)?)])
             }
+            PendingKind::Native(command) => Ok(vec![AdapterOutput::NativeReply {
+                command_id: response.id,
+                command,
+                data: Some(response.data),
+            }]),
         }
     }
 
@@ -183,6 +216,7 @@ impl PiTranslator {
                     response.command.as_str(),
                     "set_model"
                         | "set_thinking_level"
+                        | "set_auto_compaction"
                         | "get_available_thinking_levels"
                         | "get_state"
                 );

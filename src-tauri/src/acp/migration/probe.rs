@@ -20,6 +20,9 @@ use super::{
     },
 };
 
+mod snapshot;
+pub(super) use snapshot::LiveSnapshot;
+
 const PROBE_APP_IDENTITY: &str = "sage-ade-0006a-migration-probe-v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +46,19 @@ pub(super) fn classify_live(paths: &MigrationPaths) -> AppResult<SchemaClass> {
 }
 
 pub(super) fn inspect_live(paths: &MigrationPaths) -> AppResult<Option<DatabaseFingerprint>> {
+    with_live_snapshot(paths, |connection| {
+        let database = database_fingerprint(connection)?;
+        verify_sqlite(connection)?;
+        Ok(database)
+    })
+}
+
+/// Inspects committed WAL frames on a bounded copy, without opening the live
+/// WAL or creating/updating its SHM. Recovery here requires prior version admission.
+fn with_live_snapshot<T>(
+    paths: &MigrationPaths,
+    inspect: impl FnOnce(&Connection) -> AppResult<T>,
+) -> AppResult<Option<T>> {
     paths.validate_containment()?;
     recover_probe(paths)?;
     let main = file_fingerprint(&paths.live)?;
@@ -52,9 +68,7 @@ pub(super) fn inspect_live(paths: &MigrationPaths) -> AppResult<Option<DatabaseF
     let wal = file_fingerprint(&paths.live_wal)?;
     if !wal.present || wal.bytes == 0 {
         let connection = open_read_only(&paths.live)?;
-        let database = database_fingerprint(&connection)?;
-        verify_sqlite(&connection)?;
-        return Ok(Some(database));
+        return inspect(&connection).map(Some);
     }
     let main_before = main;
     let shm_before = file_fingerprint(&paths.live_shm)?;
@@ -69,17 +83,7 @@ pub(super) fn inspect_live(paths: &MigrationPaths) -> AppResult<Option<DatabaseF
         copy_bounded_create_new(&paths.live, &paths.probe_main, LIVE_SQLITE_BYTES)?;
         copy_bounded_create_new(&paths.live_wal, &paths.probe_wal, WAL_HARD_BYTES)?;
         verify_snapshot(paths, &main_before, &wal, &shm_before)?;
-        let anchor = super::platform::anchor_existing_sqlite(&paths.probe_main, false)?;
-        let connection = Connection::open_with_flags(
-            &paths.probe_main,
-            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )?;
-        connection.pragma_update(None, "query_only", true)?;
-        let database = database_fingerprint(&connection)?;
-        verify_sqlite(&connection)?;
-        connection.close().map_err(|(_, error)| error)?;
-        anchor.verify_path(&paths.probe_main)?;
-        Ok(database)
+        inspect_snapshot(&paths.probe_main, inspect)
     })();
     let cleanup = cleanup_probe(paths);
     match (result, cleanup) {
@@ -89,7 +93,45 @@ pub(super) fn inspect_live(paths: &MigrationPaths) -> AppResult<Option<DatabaseF
     }
 }
 
+fn inspect_snapshot<T>(
+    path: &std::path::Path,
+    inspect: impl FnOnce(&Connection) -> AppResult<T>,
+) -> AppResult<T> {
+    let anchor = super::platform::anchor_existing_sqlite(path, false)?;
+    let connection = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    connection.pragma_update(None, "query_only", true)?;
+    let result = inspect(&connection)?;
+    connection.close().map_err(|(_, error)| error)?;
+    anchor.verify_path(path)?;
+    Ok(result)
+}
+
 pub(super) fn verify_snapshot(
+    paths: &MigrationPaths,
+    main_before: &FileFingerprint,
+    wal_before: &FileFingerprint,
+    shm_before: &FileFingerprint,
+) -> AppResult<()> {
+    verify_source(paths, main_before, wal_before, shm_before)?;
+    verify_copy(&paths.probe_main, &paths.probe_wal, main_before, wal_before)
+}
+
+fn verify_copy(
+    main: &std::path::Path,
+    wal: &std::path::Path,
+    main_before: &FileFingerprint,
+    wal_before: &FileFingerprint,
+) -> AppResult<()> {
+    if file_fingerprint(main)? != *main_before || file_fingerprint(wal)? != *wal_before {
+        return invalid("probe snapshot bytes do not match the live source");
+    }
+    Ok(())
+}
+
+fn verify_source(
     paths: &MigrationPaths,
     main_before: &FileFingerprint,
     wal_before: &FileFingerprint,
@@ -100,11 +142,6 @@ pub(super) fn verify_snapshot(
     let shm_after = file_fingerprint(&paths.live_shm)?;
     if *main_before != main_after || *wal_before != wal_after || *shm_before != shm_after {
         return invalid("live SQLite source changed during bounded probe snapshot");
-    }
-    if file_fingerprint(&paths.probe_main)? != *main_before
-        || file_fingerprint(&paths.probe_wal)? != *wal_before
-    {
-        return invalid("probe snapshot bytes do not match the live source");
     }
     Ok(())
 }
@@ -139,7 +176,7 @@ fn write_identity(
     write_stage(&paths.probe_manifest, &identity)
 }
 
-fn recover_probe(paths: &MigrationPaths) -> AppResult<()> {
+pub(super) fn recover_probe(paths: &MigrationPaths) -> AppResult<()> {
     if !paths.probe_manifest.exists() {
         return reject_unmanifested_probe(paths);
     }

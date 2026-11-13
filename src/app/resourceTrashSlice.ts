@@ -194,13 +194,13 @@ async function trashResource(
   ) {
     set({
       resourceTrashError:
-        "Select one visible closed file or empty folder in an available Project root.",
+        "Select one visible closed file or empty folder in an available project root.",
     });
     return false;
   }
   if (hasOpenResource(state, source)) {
     set({
-      resourceTrashError: `Close File and Diff tabs for the resource and its descendants before moving it to the ${trashName()}.`,
+      resourceTrashError: `Close file and diff tabs for the resource and its descendants before moving it to the ${trashName()}.`,
     });
     return false;
   }
@@ -233,7 +233,7 @@ async function trashResource(
     }
     const currentLayout = currentProjectLayout(get());
     if (!currentLayout)
-      throw new Error("No active Project layout is available.");
+      throw new Error("No active project layout is available.");
     await getWorkbenchPorts().project.persistProjectLayout(
       currentLayout,
       transitionEpoch,

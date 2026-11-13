@@ -9,6 +9,9 @@ export const nativeWorkbenchAgentPort: AgentPort = {
   listHarnesses() {
     return invokeNative("list_harnesses");
   },
+  refreshHarnesses() {
+    return invokeNative("refresh_harnesses");
+  },
   listHarnessModels(harnessId: string): Promise<ModelOption[]> {
     return invokeNative("list_harness_models", { harnessId });
   },

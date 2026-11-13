@@ -51,6 +51,11 @@ pub(super) fn production_present_candidates(
             .into_iter()
             .map(|root| (DiscoverySource::KnownInstallRoot, root)),
     );
+    #[cfg(unix)]
+    let native_claude = std::env::var_os("HOME")
+        .as_deref()
+        .and_then(|home| super::native_claude::launcher(std::path::Path::new(home)))
+        .map(|path| candidate(path, DiscoverySource::KnownInstallRoot));
     specs
         .iter()
         .filter_map(|spec| {
@@ -58,7 +63,8 @@ pub(super) fn production_present_candidates(
                 InstallLayout::NpmGlobal => &npm_global,
                 InstallLayout::CursorAgent => &cursor_agent,
             };
-            path.iter()
+            let found = path
+                .iter()
                 .chain(fallback)
                 .find(|candidate| {
                     expected_basenames(spec.executable).iter().any(|name| {
@@ -69,8 +75,13 @@ pub(super) fn production_present_candidates(
                             )
                     })
                 })
-                .cloned()
-                .map(|candidate| (spec.id, candidate))
+                .cloned();
+            #[cfg(unix)]
+            let found = found.or_else(|| match spec.executable {
+                super::HarnessExecutable::Claude => native_claude.clone(),
+                _ => None,
+            });
+            found.map(|candidate| (spec.id, candidate))
         })
         .collect()
 }

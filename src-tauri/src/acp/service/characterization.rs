@@ -317,12 +317,8 @@ impl AcpService {
                 command,
                 access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
             })
-            .map_err(|error| {
-                super::PromptSendError::unknown(map_host_error(
-                    &self.lane_at(0).runtime,
-                    &owner,
-                    error,
-                ))
+            .map_err(|failure| {
+                failure.map(|error| map_host_error(&self.lane_at(0).runtime, &owner, error))
             })
     }
 

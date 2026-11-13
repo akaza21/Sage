@@ -6,7 +6,7 @@ use std::{
 use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterIdentity, EgressToken},
     contract::{RequiredText, SafeText, SchemaVersionV1},
-    intent::{NormalizedPayload, SafeResourceRef},
+    intent::{ModelId, NormalizedPayload, SafeResourceRef},
     transport::Frame,
 };
 
@@ -383,6 +383,7 @@ fn resume_and_load_bind_only_the_persisted_external_session() {
                     external_session_id: ExternalId::new("externalSessionId", "persisted").unwrap(),
                     native_root: "/repo".into(),
                     model: None,
+                    rewind_at: None,
                 },
                 false,
             ),

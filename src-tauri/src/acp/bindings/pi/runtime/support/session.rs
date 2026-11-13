@@ -10,8 +10,8 @@ use crate::acp::bindings::pi::Operation;
 
 type Reply = (Option<AdapterEvent>, Option<AdapterEgress>);
 
-/// Entries read from Pi's session directory while looking for one chat's file.
-const SESSION_DIR_SCAN_LIMIT: usize = 20_000;
+/// Entries read from Pi's session directory while looking for an older chat's file.
+pub(super) const SESSION_DIR_SCAN_LIMIT: usize = 20_000;
 
 impl PiRuntime {
     /// Reopens a chat's Pi session from the file Pi saved it in. Pi's own
@@ -58,19 +58,20 @@ impl PiRuntime {
     }
 }
 
-/// Pi names a session's file `<timestamp>_<id>.jsonl`, beside the other
-/// sessions of the same working directory. Pi writes it once the chat has a
-/// message, so a chat that never had one has nothing to reopen. The scan
-/// stops after `limit` entries, so a directory past it fails closed.
-fn session_path(dir: &Path, id: &str, limit: usize) -> Option<PathBuf> {
-    if id.is_empty()
-        || !id
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-    {
+/// The file of the session a chat keys by `key`, beside the other sessions of
+/// the same working directory. A chat keyed by its file's name opens it
+/// directly. Chats from before that key carry Pi's bare id, and Pi names the
+/// file `<timestamp>_<id>.jsonl`; those are looked up by a scan that stops
+/// after `limit` entries. Pi writes the file once the chat has a message, so
+/// a chat that never had one has nothing to reopen.
+pub(super) fn session_path(dir: &Path, key: &str, limit: usize) -> Option<PathBuf> {
+    if !crate::acp::bindings::pi::protocol::is_session_key(key) {
         return None;
     }
-    let name = format!("_{id}.jsonl");
+    if key.contains('_') {
+        return Some(dir.join(format!("{key}.jsonl"))).filter(|path| path.is_file());
+    }
+    let name = format!("_{key}.jsonl");
     std::fs::read_dir(dir)
         .ok()?
         .take(limit)
@@ -90,12 +91,21 @@ mod tests {
     use super::session_path;
 
     #[test]
-    fn the_session_file_scan_is_bounded() {
+    fn a_keyed_chat_opens_its_file_directly_and_older_chats_scan_within_the_bound() {
         let dir = std::env::temp_dir().join(format!("sage-pi-scan-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("1_saved.jsonl"), "{}\n").unwrap();
+        // No scan at all: even a zero bound finds a keyed chat's file.
+        assert_eq!(
+            session_path(&dir, "1_saved", 0),
+            Some(dir.join("1_saved.jsonl"))
+        );
+        assert!(session_path(&dir, "2_saved", 0).is_none());
         assert!(session_path(&dir, "saved", 1).is_some());
         assert!(session_path(&dir, "saved", 0).is_none());
+        for foreign in ["../1_saved", "1_saved.jsonl", "a/1_saved", ""] {
+            assert!(session_path(&dir, foreign, 10).is_none(), "{foreign}");
+        }
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

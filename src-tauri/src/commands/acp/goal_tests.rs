@@ -74,6 +74,7 @@ impl RuntimeEngine for GoalEngine {
                     return Ok(());
                 }
                 crate::acp::goal::NativeRpcRequest::ChildThreadRead { .. }
+                | crate::acp::goal::NativeRpcRequest::Control(_)
                 | crate::acp::goal::NativeRpcRequest::ForkSession
                 | crate::acp::goal::NativeRpcRequest::ReleaseFork { .. }
                 | crate::acp::goal::NativeRpcRequest::UsageRead => {

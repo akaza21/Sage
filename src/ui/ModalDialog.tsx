@@ -6,6 +6,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { DismissLayerContext, useDismissLayer } from "./dismissLayer";
 import { useNativePageLayer } from "./nativePageLayers";
 
 const FOCUSABLE_SELECTOR = [
@@ -43,12 +44,24 @@ export function ModalDialog({
   labelledBy: string;
   describedBy?: string;
   initialFocusRef?: RefObject<HTMLElement | null>;
+  /**
+   * Puts the focus back on what had it when the dialog opened. Off by
+   * default because most dialogs choose where the focus goes when they close
+   * (their trigger, the editor they opened, the chat they picked); turn it on
+   * when nothing else does.
+   */
   restoreFocus?: boolean;
   onDismiss: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const previousFocusRef = useRef(document.activeElement);
   useNativePageLayer(dialogRef, { coverage: "window" });
+  // A modal keeps presses on it from dismissing the layers it opened over.
+  const { layer, onKeyDown: layerKeyDown } = useDismissLayer(true, {
+    inside: [dialogRef],
+    onEscape: onDismiss,
+    modal: true,
+  });
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -74,12 +87,9 @@ export function ModalDialog({
   }, [initialFocusRef, restoreFocus]);
 
   const containFocus = (event: KeyboardEvent<HTMLDialogElement>) => {
+    layerKeyDown(event);
     event.stopPropagation();
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onDismiss();
-      return;
-    }
+    if (event.key === "Escape") return;
     if (event.key !== "Tab") return;
 
     const focusable = focusableElements(event.currentTarget);
@@ -115,7 +125,7 @@ export function ModalDialog({
       }}
       onKeyDown={containFocus}
     >
-      {children}
+      <DismissLayerContext value={layer}>{children}</DismissLayerContext>
     </dialog>,
     document.body,
   );

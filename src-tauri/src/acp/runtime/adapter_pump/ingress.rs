@@ -223,6 +223,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
 
     fn accept_oversize_event(&mut self) -> Result<(), AdapterPumpError> {
         if self.decoder.take_skipped_oversize() {
+            self.adapter.oversize_frame_skipped();
             self.oversize_event = true;
         }
         if let Some(id) = self.decoder.take_oversize_id() {

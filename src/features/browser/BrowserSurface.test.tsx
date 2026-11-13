@@ -471,7 +471,7 @@ it("rejects page capture if navigation changes before attachment", async () => {
     await screen.findByRole("button", { name: "Ask about this page" }),
   );
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Browser page or focused Chat changed",
+    "Browser page or focused chat changed",
   );
   expect(
     useWorkbenchStore.getState().chatUiById[chat.id]?.attachedContext ?? [],
@@ -529,7 +529,7 @@ it.each([
   });
   fireEvent.click(ask);
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Browser page or focused Chat changed",
+    "Browser page or focused chat changed",
   );
   expect(browserPageContext).toHaveBeenCalledWith(tab.id, "1");
   expect(
@@ -574,7 +574,7 @@ it("rejects captured page if the user switches tabs during capture", async () =>
     }),
   );
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Browser page or focused Chat changed",
+    "Browser page or focused chat changed",
   );
   expect(
     useWorkbenchStore.getState().chatUiById[chat.id]?.attachedContext ?? [],

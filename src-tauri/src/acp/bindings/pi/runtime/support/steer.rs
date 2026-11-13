@@ -26,7 +26,7 @@ impl PiRuntime {
         }
         let egress = self.begin_one(
             Operation::Steer {
-                message: prompt.as_str().to_owned(),
+                message: prompt.resources.inline(prompt.as_str()),
             },
             RequestKind::Steer,
         )?;
