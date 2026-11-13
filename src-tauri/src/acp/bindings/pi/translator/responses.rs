@@ -17,9 +17,7 @@ impl PiTranslator {
                     .as_ref()
                     .is_some_and(|turn| turn.authority_denied));
         if response.command != kind.command() {
-            if kind == PendingKind::SetThinkingLevel {
-                self.pending_thinking = None;
-            }
+            self.clear_pending_setting(kind);
             if matches!(kind, PendingKind::State | PendingKind::Models) {
                 self.reset_initialization();
             }
@@ -34,9 +32,7 @@ impl PiTranslator {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
         if closed {
-            if kind == PendingKind::SetThinkingLevel {
-                self.pending_thinking = None;
-            }
+            self.clear_pending_setting(kind);
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
         // A native reply goes back to the caller that asked for it; Pi's
@@ -55,10 +51,13 @@ impl PiTranslator {
             if kind == PendingKind::Resume {
                 self.resuming = None;
             }
-            if kind == PendingKind::SetThinkingLevel {
-                self.pending_thinking = None;
-            }
-            if matches!(kind, PendingKind::SetModel | PendingKind::SetThinkingLevel) {
+            self.clear_pending_setting(kind);
+            if matches!(
+                kind,
+                PendingKind::SetModel
+                    | PendingKind::SetThinkingLevel
+                    | PendingKind::SetAutoCompaction
+            ) {
                 return Err(AdapterError::ConfigMutationRejected);
             }
             // A compaction whose `compaction_end` gave Pi's reason needs no
@@ -130,6 +129,16 @@ impl PiTranslator {
                     return Err(AdapterError::Correlation);
                 }
                 Ok(vec![AdapterOutput::ThinkingSelected(level)])
+            }
+            PendingKind::SetAutoCompaction => {
+                let (id, enabled) = self
+                    .pending_auto_compaction
+                    .take()
+                    .ok_or(AdapterError::Correlation)?;
+                if id != response.id {
+                    return Err(AdapterError::Correlation);
+                }
+                Ok(vec![AdapterOutput::AutoCompactionSelected(enabled)])
             }
             PendingKind::NewSession => {
                 let id = parse_state(&response.data)?
@@ -207,6 +216,7 @@ impl PiTranslator {
                     response.command.as_str(),
                     "set_model"
                         | "set_thinking_level"
+                        | "set_auto_compaction"
                         | "get_available_thinking_levels"
                         | "get_state"
                 );

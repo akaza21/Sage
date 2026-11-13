@@ -8,6 +8,10 @@ use crate::acp::{
     session_config::{ConfigIntent, ConfigMutation, ConfigValue},
 };
 
+const MODEL: &str = "pi.model";
+const THINKING: &str = "pi.thinking";
+const AUTO_COMPACTION: &str = "pi.autoCompaction";
+
 impl PiRuntime {
     pub(in crate::acp::bindings::pi::runtime) fn clear_thinking_request(&mut self) {
         self.thinking_request_session = None;
@@ -55,24 +59,15 @@ impl PiRuntime {
         {
             return Err(AdapterRuntimeError::Operation);
         }
-        let ConfigMutation::Option {
-            config_id,
-            value: ConfigValue::Select { value },
-        } = &intent.mutation
-        else {
+        let ConfigMutation::Option { config_id, value } = &intent.mutation else {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         };
         self.model_session_config()
             .ok_or(AdapterRuntimeError::Operation)?
-            .validate_value(
-                config_id.as_str(),
-                &ConfigValue::Select {
-                    value: value.clone(),
-                },
-            )
+            .validate_value(config_id.as_str(), value)
             .map_err(|_| AdapterRuntimeError::Operation)?;
-        match config_id.as_str() {
-            "pi.model" => {
+        match (config_id.as_str(), value) {
+            (MODEL, ConfigValue::Select { value }) => {
                 let model = self
                     .available_models
                     .iter()
@@ -86,11 +81,15 @@ impl PiRuntime {
                     super::super::RequestKind::SetModel,
                 )
             }
-            "pi.thinking" => self.begin_one(
+            (THINKING, ConfigValue::Select { value }) => self.begin_one(
                 Operation::SetThinkingLevel {
                     level: value.as_str().to_owned(),
                 },
                 super::super::RequestKind::SetThinkingLevel,
+            ),
+            (AUTO_COMPACTION, ConfigValue::Boolean { value }) => self.begin_one(
+                Operation::SetAutoCompaction { enabled: *value },
+                super::super::RequestKind::SetAutoCompaction,
             ),
             _ => Err(AdapterRuntimeError::UnsupportedCommand),
         }
@@ -117,7 +116,7 @@ impl PiRuntime {
             })
             .collect::<Option<Vec<_>>>()?;
         let mut config_options = vec![serde_json::json!({
-            "id":"pi.model",
+            "id":MODEL,
             "name":"Model",
             "category":"model",
             "type":"select",
@@ -135,7 +134,7 @@ impl PiRuntime {
                 .map(|level| serde_json::json!({"value":level,"name":level}))
                 .collect::<Vec<_>>();
             config_options.push(serde_json::json!({
-                "id":"pi.thinking",
+                "id":THINKING,
                 "name":"Thinking",
                 "category":"effort",
                 "type":"select",
@@ -143,9 +142,19 @@ impl PiRuntime {
                 "options":options
             }));
         }
+        // Pi keeps this setting for all its sessions, as its own `/settings` does.
+        if let Some(enabled) = self.auto_compaction {
+            config_options.push(serde_json::json!({
+                "id":AUTO_COMPACTION,
+                "name":"Auto-compact",
+                "description":"Summarize older context when it is nearly full",
+                "type":"boolean",
+                "currentValue":enabled
+            }));
+        }
         crate::acp::session_config::SessionConfig::from_wire(
             &serde_json::json!({"configOptions":config_options}),
-            false,
+            true,
         )
         .ok()
     }

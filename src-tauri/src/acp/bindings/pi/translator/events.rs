@@ -215,6 +215,15 @@ impl PiTranslator {
                         | TerminalOutcome::Interrupted => AdapterOutput::CompactionInterrupted,
                     });
                 }
+                // A wait to retry ends with its Turn; its activity row
+                // must not stay running in the chat.
+                if let Some(attempt) = turn.retry_waiting.take() {
+                    events.push(AdapterOutput::Retry {
+                        attempt,
+                        max_attempts: None,
+                        state: crate::acp::intent::session_event::SessionActivityState::Cancelled,
+                    });
+                }
                 events.push(AdapterOutput::TurnTerminal {
                     turn_key: turn.turn_key.clone(),
                     outcome: incoming,

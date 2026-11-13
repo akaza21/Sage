@@ -5,12 +5,14 @@ mod compact_command;
 mod config_delivery;
 mod extension_lifecycle;
 mod followups;
+mod fork;
 mod native_rpc;
 mod oversize_end;
 mod prompt_images;
 mod pump_contract;
 mod questions;
 mod regressions;
+mod retry_and_settings;
 mod session_facts;
 mod sessions;
 mod slash_commands;
@@ -157,6 +159,10 @@ fn initialize_with(runtime: &mut PiRuntime, state_data: Value) {
 
 fn ready(runtime: &mut PiRuntime) {
     let levels = ready_until_levels(runtime);
+    answer_levels(runtime, levels);
+}
+
+fn answer_levels(runtime: &mut PiRuntime, levels: Value) {
     let batch = runtime
         .ingest(
             &response(&levels, json!({"levels":["off","high"]})),
@@ -169,6 +175,10 @@ fn ready(runtime: &mut PiRuntime) {
 
 fn ready_until_levels(runtime: &mut PiRuntime) -> Value {
     initialize(runtime);
+    open_until_levels(runtime)
+}
+
+fn open_until_levels(runtime: &mut PiRuntime) -> Value {
     let new_session = runtime
         .command(AdapterCommand::NewSession {
             native_root: r"C:\repo".into(),
@@ -490,7 +500,11 @@ fn retry_progress_preserves_reported_attempt_counts_even_without_error_text() {
         .unwrap();
     assert!(matches!(batch.events(), [AdapterEvent::Item {
         payload: NormalizedPayload::Error { code, message, .. }, ..
-    }] if code.as_str() == "Attempt failed (attempt 1/3)" && message.as_str().is_empty()));
+    }, AdapterEvent::Session {
+        event: crate::acp::intent::session_event::SessionScopedEvent::Activity(waiting), ..
+    }] if code.as_str() == "Attempt failed (attempt 1/3)" && message.as_str().is_empty()
+        && waiting.progress.as_ref().map(|text| text.as_str())
+            == Some("Attempt 1 of 3 failed; retrying")));
 }
 
 #[test]
@@ -505,7 +519,7 @@ fn pi_retry_notices_are_sanitized_deduplicated_and_bounded_to_32_per_turn() {
         assert!(matches!(batch.events(), [AdapterEvent::Item {
             lifecycle: crate::acp::lifecycle::ItemLifecycle::Failed,
             payload: NormalizedPayload::Error { kind: Some(crate::acp::intent::ErrorKind::Attempt), message, .. }, ..
-        }] if message.as_str() == "Unavailable [redacted] Bearer [redacted] [path] [redacted]"));
+        }, AdapterEvent::Session { .. }] if message.as_str() == "Unavailable [redacted] Bearer [redacted] [path] [redacted]"));
         let replay = runtime.ingest(&frame(retry), &Mapper).unwrap();
         assert!(matches!(replay.events(), [AdapterEvent::IgnoredDuplicate]));
     }

@@ -70,7 +70,7 @@ fn capabilities(
         close_session: false,
         prompt: true,
         cancel: true,
-        native_session_fork: false,
+        native_session_fork: true,
         native_session_compact: true,
         native_review: false,
         active_turn_steer: true,

@@ -100,9 +100,25 @@ async fn run_status(
     run_status_with_timeout(path, environment, STATUS_TIMEOUT).await
 }
 
+/// Kills the status check's whole process group if it is dropped while armed,
+/// so a CLI that forks (e.g. a node wrapper) leaves no descendants behind.
+#[cfg(unix)]
+struct ProcessGroupGuard(Option<libc::pid_t>);
+
+#[cfg(unix)]
+impl Drop for ProcessGroupGuard {
+    fn drop(&mut self) {
+        if let Some(group) = self.0 {
+            // SAFETY: the group was created for this child, and its leader is
+            // not yet reaped, so the id cannot name an unrelated group.
+            unsafe { libc::killpg(group, libc::SIGKILL) };
+        }
+    }
+}
+
 /// Runs `claude auth status --json` and waits for its output and exit,
-/// both within `timeout`. Dropping the child on any early return (timeout,
-/// oversized output) kills it.
+/// both within `timeout`. Any early return (timeout, oversized output)
+/// kills the child and, on Unix, every process in its group.
 async fn run_status_with_timeout(
     path: &Path,
     environment: &ClaudeEnvironment,
@@ -114,6 +130,8 @@ async fn run_status_with_timeout(
         use std::os::windows::process::CommandExt;
         command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
     }
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -122,6 +140,9 @@ async fn run_status_with_timeout(
         .kill_on_drop(true)
         .spawn()
         .map_err(|_| "Claude Code sign-in check could not start.")?;
+    // Declared after `child` so it drops first, while the leader is unreaped.
+    #[cfg(unix)]
+    let mut group = ProcessGroupGuard(child.id().and_then(|id| libc::pid_t::try_from(id).ok()));
     let stdout = child
         .stdout
         .take()
@@ -140,6 +161,13 @@ async fn run_status_with_timeout(
             .wait()
             .await
             .map_err(|_| "Claude Code sign-in check failed.")?;
+        // The leader is reaped, so its id may be reused: never signal it now.
+        // A descendant that closed stdout and outlives a normal exit is left
+        // alone; reaching it would need a non-reaping wait tokio lacks.
+        #[cfg(unix)]
+        {
+            group.0 = None;
+        }
         Ok((bytes, exit))
     };
     let (bytes, exit) = tokio::time::timeout(timeout, check)
@@ -251,6 +279,29 @@ mod tests {
             Err("Claude Code sign-in check timed out.")
         );
         assert!(started.elapsed() < Duration::from_secs(5));
+        // A descendant that holds stdout open is killed with the group, so
+        // the check neither waits on it nor leaves it running.
+        let marker = directory.join("descendant.pid");
+        let forked = fixture(
+            "forked",
+            &format!("sleep 30 & echo $! > '{}'; wait", marker.display()),
+        );
+        assert_eq!(
+            // Long enough for a slow runner to start the shell and write the marker.
+            check(&forked, Duration::from_secs(2)),
+            Err("Claude Code sign-in check timed out.")
+        );
+        let descendant: libc::pid_t = std::fs::read_to_string(&marker)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        // SAFETY: signal 0 only probes whether the pid still exists.
+        while unsafe { libc::kill(descendant, 0) } == 0 {
+            assert!(std::time::Instant::now() < deadline, "descendant survived");
+            std::thread::sleep(Duration::from_millis(20));
+        }
         assert_eq!(
             check(&directory.join("missing"), STATUS_TIMEOUT),
             Err("Claude Code sign-in check could not start.")

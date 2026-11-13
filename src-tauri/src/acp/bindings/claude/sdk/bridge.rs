@@ -25,6 +25,9 @@ mod permission;
 mod questions;
 mod steer;
 mod subagents;
+mod usage;
+
+pub(super) use usage::UsageReply;
 
 /// Bounds on per-turn bookkeeping; the inner session caps pending requests.
 const MAX_PENDING: usize = 32;
@@ -63,6 +66,8 @@ pub(super) struct Inbound {
     pub(super) questions: Option<crate::acp::intent::user_input::UserInputRequest>,
     /// The reply to a session control.
     pub(super) native: Option<crate::acp::goal::NativeRpcReply>,
+    /// What a usage read learned about the plan's limits.
+    pub(super) usage: Option<UsageReply>,
     /// Subagent facts, applied before the ACP frames.
     pub(super) children: Vec<crate::acp::bindings::claude::runtime::ChildEvent>,
     /// Mid-turn messages, by id: taken up (or queued to be), or not.
@@ -87,9 +92,9 @@ enum Pending {
     Withdraw(String),
     /// A session control; its reply completes the native request.
     Control,
-    /// An MCP request Sage stops waiting for at its deadline.
-    Mcp(controls::McpRequest),
-    /// An MCP request whose caller gave up: its late reply is dropped.
+    /// A passive request Sage stops waiting for at its deadline.
+    Passive(controls::PassiveRequest),
+    /// A passive request whose caller gave up: its late reply is dropped.
     Abandoned,
     /// A fork, with Claude Code's profile to read the cut point from once
     /// its reply confirms the turn's transcript is written.
