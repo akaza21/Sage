@@ -202,15 +202,22 @@ fn inspect_large_history(indexed: bool) {
 
 #[test]
 fn wal_only_newer_migrations_are_refused_before_pending_intent_recovery() {
-    check_wal_preflight(false);
+    check_wal_preflight("none");
 }
 
 #[test]
-fn a_failed_wal_inspection_stops_pending_intent_recovery() {
-    check_wal_preflight(true);
+fn an_unmanifested_probe_cannot_mask_a_wal_only_newer_profile() {
+    check_wal_preflight("unmanifested");
 }
 
-fn check_wal_preflight(orphan_probe: bool) {
+#[test]
+fn wal_only_newer_profiles_preserve_valid_interrupted_probes() {
+    for prefix in ["manifest", "partial-main", "partial-wal"] {
+        check_wal_preflight(prefix);
+    }
+}
+
+fn check_wal_preflight(probe_prefix: &str) {
     // Exercise both markers together and history alone, with no live SHM.
     for update_marker in [true, false] {
         let source = test_directory();
@@ -250,8 +257,26 @@ fn check_wal_preflight(orphan_probe: bool) {
         std::fs::copy(&path, &paths.live).unwrap();
         std::fs::copy(source.0.join("sage.db-wal"), &paths.live_wal).unwrap();
         std::fs::write(&paths.replacement_build_intent, b"{\"newer\":true}").unwrap();
-        if orphan_probe {
+        if probe_prefix == "unmanifested" {
             std::fs::write(&paths.probe_main, b"foreign-probe").unwrap();
+        } else if probe_prefix != "none" {
+            probe::write_current_identity(&paths).unwrap();
+            if probe_prefix != "manifest" {
+                std::fs::copy(&paths.live, &paths.probe_main).unwrap();
+                let partial = if probe_prefix == "partial-main" {
+                    &paths.probe_main
+                } else {
+                    std::fs::copy(&paths.live_wal, &paths.probe_wal).unwrap();
+                    &paths.probe_wal
+                };
+                let length = std::fs::metadata(partial).unwrap().len();
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(partial)
+                    .unwrap()
+                    .set_len(length / 2)
+                    .unwrap();
+            }
         }
         let before = snapshot(&crashed.0);
 
@@ -259,20 +284,53 @@ fn check_wal_preflight(orphan_probe: bool) {
             Ok(_) => panic!("a WAL-only newer profile must not open"),
             Err(error) => error,
         };
-        if orphan_probe {
-            assert!(
-                error.to_string().contains("unmanifested migration probe"),
-                "{error}"
-            );
-        } else {
-            assert!(
-                matches!(error, AppError::NewerProfile { stored_version, .. } if stored_version == newer),
-                "{error}"
-            );
-        }
+        assert!(
+            matches!(error, AppError::NewerProfile { stored_version, .. } if stored_version == newer),
+            "{error}"
+        );
         assert_eq!(snapshot(&crashed.0), before);
         drop(writer);
     }
+}
+
+#[test]
+fn wal_startup_reuses_one_bounded_snapshot_and_reads_committed_data() {
+    use crate::acp::migration::test_failpoint::observe_snapshot_io;
+
+    let source = test_directory();
+    let path = source.0.join("sage.db");
+    drop(open_or_migrate(&path).unwrap());
+    let writer = Connection::open(&path).unwrap();
+    writer
+        .execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA wal_autocheckpoint=0;
+             PRAGMA wal_checkpoint(TRUNCATE);
+             UPDATE schema_migrations SET applied_at=4242 WHERE version=1;",
+        )
+        .unwrap();
+    let crashed = test_directory();
+    let paths = MigrationPaths::new(&crashed.0.join("sage.db")).unwrap();
+    let main_bytes = std::fs::copy(&path, &paths.live).unwrap();
+    let wal_bytes = std::fs::copy(source.0.join("sage.db-wal"), &paths.live_wal).unwrap();
+    assert!(wal_bytes > 0);
+
+    let io = observe_snapshot_io();
+    let opened = open_or_migrate(&paths.live).unwrap();
+    assert_eq!(io.copies(), (2, main_bytes + wal_bytes));
+    // Three source hashes (capture, copy verification, pre-open check), and
+    // one snapshot hash. Admission must not add a separate snapshot pass.
+    assert_eq!(io.main_hashes(), 4);
+    assert_eq!(
+        opened
+            .query_row::<i64, _, _>(
+                "SELECT applied_at FROM schema_migrations WHERE version=1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap(),
+        4242
+    );
 }
 
 fn test_directory() -> TestDir {

@@ -12,10 +12,12 @@ use super::{
 
 /// Refuses newer profiles before replacement recovery. Resource limits and
 /// unreadable WAL snapshots fail closed; other main-file errors may need recovery.
-pub(in super::super) fn reject_newer_live(paths: &MigrationPaths) -> AppResult<()> {
+pub(in super::super) fn reject_newer_live(
+    paths: &MigrationPaths,
+) -> AppResult<Option<probe::LiveSnapshot>> {
     match std::fs::metadata(&paths.live) {
-        Ok(metadata) if metadata.len() == 0 => return Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Ok(metadata) if metadata.len() == 0 => return Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
         _ => {}
     }
@@ -31,19 +33,24 @@ pub(in super::super) fn reject_newer_live(paths: &MigrationPaths) -> AppResult<(
             reject_version(i64::from(stored))?;
         }
         if has_wal {
-            probe::with_live_snapshot(paths, inspect_version)?;
+            let snapshot = probe::LiveSnapshot::capture(paths)?;
+            snapshot.inspect(inspect_version)?;
+            // A refused profile must retain even a valid interrupted probe.
+            probe::recover_probe(paths)?;
+            Ok(Some(snapshot))
         } else {
             // The immutable open is cheap here and cannot create live sidecars.
             let connection = open_read_only(&paths.live)?;
             inspect_version(&connection)?;
+            Ok(None)
         }
-        Ok(())
     })();
     match newer {
         // Recovery must not act on a live WAL whose version could not be read.
         Err(error) if has_wal => Err(error),
         Err(error @ (AppError::NewerProfile { .. } | AppError::ResourceLimit(_))) => Err(error),
-        _ => Ok(()),
+        Ok(snapshot) => Ok(snapshot),
+        Err(_) => Ok(None),
     }
 }
 
