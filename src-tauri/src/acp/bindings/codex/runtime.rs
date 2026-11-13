@@ -175,16 +175,9 @@ impl CodexRuntime {
             }
             IngressDisposition::SettingsUpdated { model, effort } => {
                 self.adopt_reported_settings(Some(model), effort);
-                // A model the loaded catalog lacks re-runs hydration: its
-                // first page if never requested, else any page still unread.
-                let egress = self
-                    .selected_model
-                    .is_none()
-                    .then(|| self.request_model_config());
-                AdapterBatch::new(
-                    vec![AdapterEvent::IgnoredLate],
-                    egress.flatten().into_iter().collect(),
-                )
+                // Hydration belongs to the idle owner after handoff. Activation
+                // must be able to drain this notification without new requests.
+                one(AdapterEvent::IgnoredLate)
             }
             IngressDisposition::DuplicateTerminal => one(AdapterEvent::IgnoredDuplicate),
             IngressDisposition::DuplicateServerRequest { denial: None } => {

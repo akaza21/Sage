@@ -34,7 +34,7 @@ pub(super) fn approval_review(
     let Ok(review_id) = text(params, "reviewId", 512) else {
         return Ok(IngressDisposition::IgnoredLate);
     };
-    if !adapter.complete_approval_review(review_id) {
+    if !adapter.complete_approval_review(text(params, "turnId", 512)?, review_id) {
         return Ok(IngressDisposition::IgnoredLate);
     }
     let subject = match field(params.get("action").and_then(Value::as_object), "type") {

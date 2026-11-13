@@ -1,4 +1,5 @@
 mod action_handoff;
+mod approval_reviews;
 pub(crate) mod capabilities;
 mod child_read;
 mod fork;
@@ -92,6 +93,7 @@ struct TurnTombstone {
     item_terminals: Vec<ItemTerminal>,
     terminal_id_bytes: usize,
     unretried_error_fingerprints: Vec<[u8; 32]>,
+    approval_reviews: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -192,6 +194,7 @@ pub(crate) struct CodexAdapter {
     active_item_terminals: Vec<ItemTerminal>,
     active_terminal_id_bytes: usize,
     active_unretried_error_fingerprints: Vec<[u8; 32]>,
+    active_approval_reviews: Vec<String>,
     /// Sage wrote `turn/interrupt` for the active Turn.
     active_turn_user_stop: bool,
     active_turn_plan: Option<turn_end::PlanEntries>,
@@ -200,7 +203,6 @@ pub(crate) struct CodexAdapter {
     running_mcp_tools: mcp_tools::RunningMcpTools,
     running_hooks: hook_runs::RunningHooks,
     compactions: compactions::Compactions,
-    last_approval_review: String,
     subagent_labels: SubagentLabels,
     child_threads: Vec<SafeText<512>>,
     bound_child_threads: Vec<SafeText<512>>,
@@ -224,14 +226,6 @@ pub(crate) struct CodexAdapter {
 }
 
 impl CodexAdapter {
-    /// Records a completed approval review, or returns false when it is the
-    /// last one recorded, so a repeated completion posts once.
-    pub(crate) fn complete_approval_review(&mut self, review: &str) -> bool {
-        let new = self.last_approval_review != review;
-        review.clone_into(&mut self.last_approval_review);
-        new
-    }
-
     pub(crate) fn has_active_turn(&self) -> bool {
         self.active_turn_id.is_some()
     }

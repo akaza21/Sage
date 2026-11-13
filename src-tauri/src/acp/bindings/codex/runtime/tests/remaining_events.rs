@@ -1,6 +1,8 @@
 use super::*;
 use crate::acp::intent::session_event::{SessionNotice, SessionNoticeLevel, SessionScopedEvent};
 
+mod approval_reviews;
+
 fn notify(runtime: &mut CodexRuntime, method: &str, params: Value) -> Vec<AdapterEvent> {
     runtime
         .ingest(&frame(json!({"method":method,"params":params})), &Mapper)
@@ -160,8 +162,8 @@ fn world_writable_warning_names_a_few_folders_and_counts_the_rest() {
 #[test]
 fn an_auto_approval_review_leaves_one_notice_with_its_verdict() {
     let mut runtime = running();
-    let review = |status: &str| {
-        json!({"threadId":"thread-1","turnId":"turn-1","reviewId":"review-1",
+    let review = |id: &str, status: &str| {
+        json!({"threadId":"thread-1","turnId":"turn-1","reviewId":id,
             "targetItemId":"item-1","startedAtMs":1,
             "action":{"type":"command","command":"cargo test","cwd":r"C:\repo","source":"shell"},
             "review":{"status":status,"riskLevel":"low","rationale":"Runs the test suite."}})
@@ -170,7 +172,7 @@ fn an_auto_approval_review_leaves_one_notice_with_its_verdict() {
         notify(
             &mut runtime,
             "item/autoApprovalReview/started",
-            review("inProgress")
+            review("review-1", "inProgress")
         )
         .as_slice(),
         [AdapterEvent::IgnoredLate]
@@ -178,7 +180,7 @@ fn an_auto_approval_review_leaves_one_notice_with_its_verdict() {
     let notice = one_notice(&notify(
         &mut runtime,
         "item/autoApprovalReview/completed",
-        review("denied"),
+        review("review-1", "denied"),
     ));
     assert_eq!(notice.level, SessionNoticeLevel::Warning);
     assert_eq!(
@@ -186,18 +188,16 @@ fn an_auto_approval_review_leaves_one_notice_with_its_verdict() {
         "Codex's approval reviewer denied a command (risk: low). Runs the test suite."
     );
     assert_eq!(notice.source.unwrap().as_str(), "codex approval reviewer");
-    // A repeated completion, an approval, an abort, an unknown status and
-    // an unreadable payload show nothing.
-    let mut unknown = review("someFutureStatus");
+    // Each filtered status has a fresh identity so duplicate suppression
+    // cannot hide an incorrectly emitted notice.
+    let mut unknown = review("review-unknown", "someFutureStatus");
     unknown["action"] = json!({"type":"someFutureAction"});
-    let mut missing = review("denied");
-    missing["reviewId"] = json!("review-2");
+    let mut missing = review("review-missing", "denied");
     missing.as_object_mut().unwrap().remove("action");
     missing["review"] = json!(7);
     for params in [
-        review("denied"),
-        review("approved"),
-        review("aborted"),
+        review("review-approved", "approved"),
+        review("review-aborted", "aborted"),
         unknown,
         missing,
     ] {
@@ -207,8 +207,7 @@ fn an_auto_approval_review_leaves_one_notice_with_its_verdict() {
         ));
     }
     // An unknown action still names its verdict.
-    let mut timed_out = review("timedOut");
-    timed_out["reviewId"] = json!("review-3");
+    let mut timed_out = review("review-timed-out", "timedOut");
     timed_out["action"] = json!({"type":"someFutureAction"});
     timed_out["review"]["rationale"] = Value::Null;
     assert_eq!(
@@ -259,11 +258,13 @@ fn thread_settings_update_refreshes_the_model_and_effort() {
             "collaborationMode":{"mode":"default","settings":{}}
         }})
     };
-    // A catalog not yet requested is requested by the update.
+    // Settings during activation do not request the catalog; the idle owner
+    // starts hydration after handoff.
     let update =
         json!({"method":"thread/settings/updated","params":settings("gpt-6-astra",json!("high"))});
     let batch = runtime.ingest(&frame(update), &Mapper).unwrap();
-    let list_id = request_id(&batch.egress()[0]);
+    assert!(batch.egress().is_empty());
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
     runtime
         .ingest(
             &frame(json!({"id":list_id,"result":{"data":[{
