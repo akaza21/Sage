@@ -162,8 +162,13 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
     fs::create_dir_all(paths.parent())?;
     let _lock = MigrationLock::acquire(paths.parent())?;
     paths.validate_containment()?;
+    let mut admitted_snapshot = fingerprint::reject_newer_live(&paths)?;
     v18_backup::admit_recovery(&paths)?;
 
+    if admitted_snapshot.is_some() && paths.has_replacement_artifact() {
+        // Publication can replace the source admitted by preflight.
+        admitted_snapshot = None;
+    }
     if paths.replacement_manifest.exists() {
         if paths.replacement_build_intent.exists() {
             build_intent::finalize_published_manifest(&paths)?;
@@ -176,7 +181,13 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
         recover_unmanifested_stage(&paths)?;
     }
 
-    let source_schema = probe::classify_live(&paths)?;
+    let source_schema = match &admitted_snapshot {
+        Some(snapshot) => snapshot.classify()?,
+        None => probe::classify_live(&paths)?,
+    };
+    if !source_schema.is_v18_or_later() {
+        admitted_snapshot = None;
+    }
     v18_backup::admit_source(&paths, source_schema)?;
     match source_schema {
         SchemaClass::Fresh => {
@@ -199,7 +210,9 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
         class if class.is_v18_or_later() => {
             let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
-            if probe::classify_live(&paths)? != source_schema {
+            if let Some(snapshot) = admitted_snapshot.take() {
+                snapshot.verify_source()?;
+            } else if probe::classify_live(&paths)? != source_schema {
                 return invalid("current SQLite path changed before its anchored open");
             }
             let connection = Connection::open(path)?;
