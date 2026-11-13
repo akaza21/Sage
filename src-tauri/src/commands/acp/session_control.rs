@@ -49,14 +49,20 @@ pub(crate) struct SessionControlResponse {
     summary: Option<String>,
 }
 
-/// Undoes a turn's file changes or stops a background task in the chat's
-/// running session. Neither changes the transcript, so the request names
-/// the session and runtime rather than a projection revision.
+/// Undoes the latest turn or stops a background task in the chat's running
+/// session. The request names the session and runtime rather than a
+/// projection revision: a stop leaves the transcript as it is, and an undo
+/// only takes its turn out of the page once the harness has undone it.
 #[tauri::command]
 pub(crate) async fn control_acp_session(
     state: State<'_, AppState>,
     request: SessionControlRequest,
 ) -> Result<SessionControlResponse, AcpIpcError> {
+    // The project transition lock is held to the end, through the control,
+    // the record and the park: every prompt is prepared under the same lock
+    // (`send_acp_turn_inner` dispatches under it, and the prepare commits
+    // before the dispatch returns), so no turn can start between the
+    // harness undoing a turn and the store recording it.
     let (_transition, snapshot) = snapshot_for(
         &state,
         request.project_id.clone(),
@@ -78,22 +84,22 @@ pub(crate) async fn control_acp_session(
     if snapshot.runtime_epoch != Some(request.runtime_epoch) {
         return Err(intent_error(IntentError::StaleRuntimeEpoch));
     }
+    let owner = RuntimeOwner {
+        project_id: request.project_id.clone(),
+        chat_id: request.chat_id.clone(),
+        session_id: request.session_id.clone(),
+        runtime_epoch: request.runtime_epoch,
+    };
     let control = match request.control {
         ControlIntent::UndoTurn { turn_id } => {
-            // Rewinding also undoes every later turn, so only the latest,
-            // finished turn of this session is undone.
-            let undoable = crate::acp::store::session_surface::is_undoable_turn(
-                &state.database.connection(),
-                request.project_id.as_str(),
-                request.chat_id.as_str(),
-                request.session_id.as_str(),
-                turn_id.as_str(),
-            )
-            .map_err(|_| control_error(SessionControlError::RecoveryRequired))?;
-            if !undoable {
-                return Err(control_error(SessionControlError::Unavailable));
-            }
-            SessionControl::UndoTurn { turn_id }
+            let summary = state
+                .acp
+                .undo_turn(&owner, turn_id)
+                .await
+                .map_err(control_error)?;
+            return Ok(SessionControlResponse {
+                summary: summary.map(|summary| summary.as_str().to_owned()),
+            });
         }
         ControlIntent::StopActivity { activity_key } => {
             let activity_id = crate::acp::store::session_surface::activity_id(
@@ -108,15 +114,9 @@ pub(crate) async fn control_acp_session(
             SessionControl::StopActivity { activity_id }
         }
     };
-    let owner = RuntimeOwner {
-        project_id: request.project_id,
-        chat_id: request.chat_id,
-        session_id: request.session_id,
-        runtime_epoch: request.runtime_epoch,
-    };
     let summary = state
         .acp
-        .control_session(owner, control)
+        .control_session(owner.clone(), control)
         .map_err(control_error)?;
     Ok(SessionControlResponse {
         summary: summary.map(|summary| summary.as_str().to_owned()),

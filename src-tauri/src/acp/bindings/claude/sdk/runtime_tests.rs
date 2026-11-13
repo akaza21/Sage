@@ -375,6 +375,7 @@ fn a_new_launch_names_its_session_and_a_resume_names_the_stored_one() {
             .unwrap(),
         native_root: "/w".into(),
         model: Some(crate::acp::intent::ModelId::new("modelId", "opus").unwrap()),
+        rewind_at: None,
     });
     let launch = resumed.launch.as_ref().unwrap();
     assert_eq!(

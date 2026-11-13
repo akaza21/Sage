@@ -2,7 +2,7 @@ use std::path::{Component, Path};
 
 use serde_json::Value;
 
-use crate::workspace::directory_skip::windows_reserved_device_name;
+use crate::win32_path::windows_reserved_device_name;
 
 pub(super) fn workspace_edit_target(request: &Value, root: &Path) -> bool {
     let Some(tool) = request.pointer("/params/toolCall") else {

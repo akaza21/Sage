@@ -11,7 +11,7 @@ use crate::acp::{
         SageProjectId,
     },
     intent::{
-        CapabilitySnapshotV1, ExternalId, ModelId, PageCursor,
+        CapabilitySnapshotV1, ExternalId, PageCursor,
         session_event::{PendingSessionEvents, SessionScopedEvent},
     },
     limits::LIMITS,
@@ -23,6 +23,7 @@ mod capabilities;
 mod coordinator_journal;
 mod ingress;
 mod intent;
+mod mode;
 mod parts;
 
 use intent::{digest, validate_intent};
@@ -31,25 +32,11 @@ pub(crate) use coordinator_journal::{
     CoordinatorActivationHandoff, CoordinatorActivationJournal, CoordinatorShutdownHandoff,
 };
 pub(crate) use ingress::is_available_commands_update;
+pub(crate) use mode::ActivationMode;
 pub(crate) use parts::{IdleActivationParts, RecoveryActivationParts, TeardownActivationParts};
 
 #[cfg(test)]
 mod tests;
-
-#[derive(Clone)]
-pub(crate) enum ActivationMode {
-    New {
-        native_root: String,
-        model: Option<ModelId>,
-    },
-    Resume {
-        external_session_id: ExternalId,
-        native_root: String,
-        model: Option<ModelId>,
-    },
-    #[allow(dead_code, reason = "only tests construct this variant so far")]
-    Load { external_session_id: ExternalId },
-}
 
 #[derive(Clone)]
 pub(crate) struct ActivationIntent {
@@ -390,6 +377,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                 external_session_id,
                 native_root,
                 model,
+                ..
             } => AdapterCommand::ResumeSession {
                 external_session_id: external_session_id.clone(),
                 native_root: native_root.clone(),

@@ -184,11 +184,14 @@ fn load_turn_rows(
 ) -> Result<(Vec<TurnRow>, bool), StoreError> {
     let welcome = crate::session_events::legacy_welcome::turn_id(connection, chat.as_str())?
         .unwrap_or_default();
-    let base = "SELECT t.id,t.project_id,t.chat_id,t.session_id,s.ordinal,
-                       t.runtime_epoch,t.ordinal,t.state,t.revision,
-                       t.created_at,t.updated_at,t.terminal_at
-                FROM turns t JOIN agent_sessions s ON s.id=t.session_id
-                WHERE t.project_id=?1 AND t.chat_id=?2 AND t.id<>?3";
+    let base = concat!(
+        "SELECT t.id,t.project_id,t.chat_id,t.session_id,s.ordinal,
+                t.runtime_epoch,t.ordinal,t.state,t.revision,
+                t.created_at,t.updated_at,t.terminal_at
+         FROM turns t JOIN agent_sessions s ON s.id=t.session_id
+         WHERE t.project_id=?1 AND t.chat_id=?2 AND t.id<>?3 AND ",
+        super::turn_undo::visible_turn!("t.session_id", "t.id")
+    );
     let sql = match cursor {
         Some(boundary) if boundary.includes_boundary_turn() => format!(
             "{base} AND (s.ordinal<?4 OR (s.ordinal=?4 AND
