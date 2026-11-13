@@ -33,6 +33,7 @@
     "gate:fast": "node scripts/gate.mjs fast",
     "gate:rust": "node scripts/gate.mjs rust",
     "gate:full": "node scripts/gate.mjs full",
+    "gate:changed": "node scripts/gate.mjs changed",
     "lane": "node scripts/lane.mjs",
     "smoke": "node scripts/app-smoke.mjs",
     "tauri": "tauri"

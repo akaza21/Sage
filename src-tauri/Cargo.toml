@@ -170,11 +170,38 @@ native-lane = ["dep:log", "dep:rcgen", "dep:rustls"]
 
 [profile.dev]
 incremental = true
+# Line tables keep panic locations and backtraces readable. Full debug info
+# (variables and types) is what makes debug builds slow to compile and link
+# and large on disk; set CARGO_PROFILE_DEV_DEBUG=true for a debugger session.
+debug = "line-tables-only"
 
 [profile.dev.package.sha2]
 opt-level = 3
 
 [profile.dev.package.libsqlite3-sys]
+opt-level = 3
+
+# Image normalisation decodes and re-encodes full-size screenshots and photos;
+# unoptimised codecs make each such test take tens of seconds.
+[profile.dev.package.png]
+opt-level = 3
+
+[profile.dev.package.jpeg-decoder]
+opt-level = 3
+
+[profile.dev.package.jpeg-encoder]
+opt-level = 3
+
+[profile.dev.package.fdeflate]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
+[profile.dev.package.crc32fast]
+opt-level = 3
+
+[profile.dev.package.flate2]
 opt-level = 3
 
 [profile.release]
