@@ -34,7 +34,7 @@ pub use protocol::{
     NativeCommand, NativeRequest, Operation, Outbound, StateSnapshot, TerminalOutcome, ToolOutcome,
     session_file_key,
 };
-pub(crate) use runtime::PiRuntime;
+pub(crate) use runtime::{PiLaunch, PiRuntime};
 pub use translator::PiTranslator;
 
 #[cfg(test)]

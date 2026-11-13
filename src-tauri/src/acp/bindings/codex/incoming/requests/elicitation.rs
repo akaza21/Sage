@@ -22,6 +22,10 @@ pub(super) fn request(
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
     let id = object.get("id").ok_or(IngressError::Malformed)?;
+    // Before a thread is bound there is no Turn to hold the card either.
+    if adapter.bound_thread_id().is_none() {
+        return answer_now(id, refused(false));
+    }
     // A subagent's MCP server asks on its own thread, which has no card here;
     // that is a refusal for that server, not a broken session.
     if adapter
@@ -30,7 +34,10 @@ pub(super) fn request(
     {
         return answer_now(id, refused(false));
     }
-    let server = text(params, "serverName", 512)?;
+    let Ok(server) = text(params, "serverName", 512) else {
+        record_unprojected(ELICITATION_METHOD);
+        return answer_now(id, refused(true));
+    };
     // The turn is Codex's correlation, not part of the request: without a
     // running Turn to hold the card nothing can ask, so it is cancelled.
     let turn = match params.get("turnId") {
