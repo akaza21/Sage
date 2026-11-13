@@ -23,10 +23,10 @@ impl CodexAdapter {
         self.active_turn_plan = Some(entries);
     }
 
-    pub(crate) fn take_turn_plan(&mut self, turn: &str) -> Option<PlanEntries> {
+    pub(crate) fn turn_plan(&self, turn: &str) -> Option<PlanEntries> {
         self.active_turn_id
             .as_ref()
             .filter(|active| active.as_str() == turn)?;
-        self.active_turn_plan.take()
+        self.active_turn_plan.clone()
     }
 }

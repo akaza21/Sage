@@ -1,6 +1,8 @@
 use super::*;
 use crate::acp::intent::session_event::{SessionNotice, SessionNoticeLevel, SessionScopedEvent};
 
+mod approval_reviews;
+
 fn notify(runtime: &mut CodexRuntime, method: &str, params: Value) -> Vec<AdapterEvent> {
     runtime
         .ingest(&frame(json!({"method":method,"params":params})), &Mapper)
@@ -81,7 +83,7 @@ fn auth_recovery_start_and_completion_are_session_notices() {
         ),
         (
             "modelProvider/authRecoveryCompleted",
-            "Codex renewed its sign-in to openai: Refreshing the access token.",
+            "Codex finished renewing its sign-in to openai: Refreshing the access token.",
         ),
     ] {
         let notice = one_notice(&notify(
@@ -94,13 +96,23 @@ fn auth_recovery_start_and_completion_are_session_notices() {
         assert_eq!(notice.text.as_str(), text);
         assert_eq!(notice.source.unwrap().as_str(), "codex sign-in");
     }
+    let notice = one_notice(&notify(
+        &mut runtime,
+        "modelProvider/authRecoveryCompleted",
+        json!({"threadId":"thread-1","turnId":"turn-1","provider":"openai","message":""}),
+    ));
+    assert_eq!(
+        notice.text.as_str(),
+        "Codex finished renewing its sign-in to openai."
+    );
     assert!(matches!(
-        rejected(
+        notify(
             &mut runtime,
             "modelProvider/authRecoveryStarted",
-            json!({"threadId":"thread-1","turnId":"turn-1","provider":"openai"}),
-        ),
-        AdapterRuntimeError::Frame
+            json!({"threadId":"thread-1","provider":7}),
+        )
+        .as_slice(),
+        [AdapterEvent::IgnoredLate]
     ));
 }
 
@@ -150,8 +162,8 @@ fn world_writable_warning_names_a_few_folders_and_counts_the_rest() {
 #[test]
 fn an_auto_approval_review_leaves_one_notice_with_its_verdict() {
     let mut runtime = running();
-    let review = |status: &str| {
-        json!({"threadId":"thread-1","turnId":"turn-1","reviewId":"review-1",
+    let review = |id: &str, status: &str| {
+        json!({"threadId":"thread-1","turnId":"turn-1","reviewId":id,
             "targetItemId":"item-1","startedAtMs":1,
             "action":{"type":"command","command":"cargo test","cwd":r"C:\repo","source":"shell"},
             "review":{"status":status,"riskLevel":"low","rationale":"Runs the test suite."}})
@@ -160,7 +172,7 @@ fn an_auto_approval_review_leaves_one_notice_with_its_verdict() {
         notify(
             &mut runtime,
             "item/autoApprovalReview/started",
-            review("inProgress")
+            review("review-1", "inProgress")
         )
         .as_slice(),
         [AdapterEvent::IgnoredLate]
@@ -168,7 +180,7 @@ fn an_auto_approval_review_leaves_one_notice_with_its_verdict() {
     let notice = one_notice(&notify(
         &mut runtime,
         "item/autoApprovalReview/completed",
-        review("denied"),
+        review("review-1", "denied"),
     ));
     assert_eq!(notice.level, SessionNoticeLevel::Warning);
     assert_eq!(
@@ -176,18 +188,38 @@ fn an_auto_approval_review_leaves_one_notice_with_its_verdict() {
         "Codex's approval reviewer denied a command (risk: low). Runs the test suite."
     );
     assert_eq!(notice.source.unwrap().as_str(), "codex approval reviewer");
-    let mut unknown = review("someFutureStatus");
+    // Each filtered status has a fresh identity so duplicate suppression
+    // cannot hide an incorrectly emitted notice.
+    let mut unknown = review("review-unknown", "someFutureStatus");
     unknown["action"] = json!({"type":"someFutureAction"});
-    assert!(matches!(
-        notify(&mut runtime, "item/autoApprovalReview/completed", unknown).as_slice(),
-        [AdapterEvent::IgnoredLate]
-    ));
-    let mut missing = review("approved");
+    let mut missing = review("review-missing", "denied");
     missing.as_object_mut().unwrap().remove("action");
-    assert!(matches!(
-        rejected(&mut runtime, "item/autoApprovalReview/completed", missing),
-        AdapterRuntimeError::Frame
-    ));
+    missing["review"] = json!(7);
+    for params in [
+        review("review-approved", "approved"),
+        review("review-aborted", "aborted"),
+        unknown,
+        missing,
+    ] {
+        assert!(matches!(
+            notify(&mut runtime, "item/autoApprovalReview/completed", params).as_slice(),
+            [AdapterEvent::IgnoredLate]
+        ));
+    }
+    // An unknown action still names its verdict.
+    let mut timed_out = review("review-timed-out", "timedOut");
+    timed_out["action"] = json!({"type":"someFutureAction"});
+    timed_out["review"]["rationale"] = Value::Null;
+    assert_eq!(
+        one_notice(&notify(
+            &mut runtime,
+            "item/autoApprovalReview/completed",
+            timed_out
+        ))
+        .text
+        .as_str(),
+        "Codex's approval reviewer timed out reviewing a request (risk: low)."
+    );
 }
 
 #[test]
@@ -208,26 +240,16 @@ fn legacy_and_item_compaction_show_one_row_in_either_order() {
         [AdapterEvent::IgnoredLate]
     ));
     assert_eq!(compaction_items(&legacy_compaction(&mut runtime)), 1);
-    assert!(compaction_item(&mut runtime, "c-2").is_empty());
+    assert!(matches!(
+        compaction_item(&mut runtime, "c-2").as_slice(),
+        [AdapterEvent::IgnoredLate]
+    ));
 }
 
 #[test]
 fn thread_settings_update_refreshes_the_model_and_effort() {
     let mut runtime = fixture_runtime();
     ready_with_reported_config(&mut runtime, Some("gpt-6-astra"), Some("high"));
-    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
-    runtime
-        .ingest(
-            &frame(json!({"id":list_id,"result":{"data":[{
-                "id":"gpt-6-astra","displayName":"GPT-6 Astra","isDefault":true,
-                "supportedReasoningEfforts":[
-                    {"reasoningEffort":"medium","description":"Balanced"},
-                    {"reasoningEffort":"high","description":"Deep"}
-                ]
-            }],"nextCursor":null}})),
-            &Mapper,
-        )
-        .unwrap();
     let settings = |model: &str, effort: Value| {
         json!({"threadId":"thread-1","threadSettings":{
             "model":model,"effort":effort,"modelProvider":"openai","cwd":r"C:\repo",
@@ -236,6 +258,29 @@ fn thread_settings_update_refreshes_the_model_and_effort() {
             "collaborationMode":{"mode":"default","settings":{}}
         }})
     };
+    // Settings during activation do not request the catalog; the idle owner
+    // starts hydration after handoff.
+    let update =
+        json!({"method":"thread/settings/updated","params":settings("gpt-6-astra",json!("high"))});
+    let batch = runtime.ingest(&frame(update), &Mapper).unwrap();
+    assert!(batch.egress().is_empty());
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    runtime
+        .ingest(
+            &frame(json!({"id":list_id,"result":{"data":[{
+                "id":"gpt-6-astra","displayName":"GPT-6 Astra","isDefault":true,
+                "supportedReasoningEfforts":[
+                    {"reasoningEffort":"low","description":"Quick"},
+                    {"reasoningEffort":"medium","description":"Balanced"},
+                    {"reasoningEffort":"high","description":"Deep"}
+                ]
+            },{
+                "id":"gpt-6-nova","displayName":"GPT-6 Nova","isDefault":false,
+                "supportedReasoningEfforts":[{"reasoningEffort":"low","description":"Quick"}]
+            }],"nextCursor":null}})),
+            &Mapper,
+        )
+        .unwrap();
     assert!(matches!(
         notify(
             &mut runtime,
@@ -250,15 +295,44 @@ fn thread_settings_update_refreshes_the_model_and_effort() {
         serde_json::to_value(&config).unwrap()["configOptions"][0]["currentValue"],
         "medium"
     );
-    // A null effort keeps the selected one; a new model is confirmed.
+    // A null effort keeps the selected one for the same model.
     notify(
         &mut runtime,
         "thread/settings/updated",
-        settings("gpt-6-nova", Value::Null),
+        settings("gpt-6-astra", Value::Null),
     );
     let config = runtime.session_config().unwrap();
-    assert_eq!(config.confirmed_model.unwrap().id.as_str(), "gpt-6-nova");
     assert_eq!(config.confirmed_effort.unwrap().as_str(), "medium");
+    // A new model takes its efforts from the catalog.
+    notify(
+        &mut runtime,
+        "thread/settings/updated",
+        settings("gpt-6-nova", json!("low")),
+    );
+    let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert_eq!(config["confirmedModel"]["name"], "GPT-6 Nova");
+    assert_eq!(config["configOptions"][0]["currentValue"], "low");
+    assert_eq!(config["configOptions"][0]["options"][0]["value"], "low");
+    assert_eq!(config["configOptions"][0]["options"][1], Value::Null);
+    // A new model without an effort drops the old model's effort, even if
+    // both offer it, so the next turn/start sends none.
+    notify(
+        &mut runtime,
+        "thread/settings/updated",
+        settings("gpt-6-astra", Value::Null),
+    );
+    let config = runtime.session_config().unwrap();
+    assert_eq!(config.confirmed_model.unwrap().id.as_str(), "gpt-6-astra");
+    assert!(config.confirmed_effort.is_none());
+    let prompt = runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "continue").unwrap(),
+            client_message_id: RequiredText::new("client", "settings-effort").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .unwrap();
+    let request: Value = serde_json::from_slice(prompt.frame().payload()).unwrap();
+    assert!(request["params"].get("effort").is_none());
     let mut foreign = settings("gpt-6-astra", Value::Null);
     foreign["threadId"] = json!("thread-foreign");
     assert!(matches!(

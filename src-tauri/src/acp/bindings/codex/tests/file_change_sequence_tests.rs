@@ -113,6 +113,38 @@ fn completed_file_change_notification_has_journal_compatible_shape() {
     ));
 }
 
+#[test]
+fn a_file_change_id_too_long_for_the_edit_row_still_settles_its_diff() {
+    let mut adapter = adapter();
+    ready(&mut adapter);
+    arm_turn(&mut adapter, 2, "client-file-change");
+    let turn = json!({"method":"turn/started","params":{
+        "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
+    }});
+    adapter
+        .ingest(&serde_json::to_vec(&turn).unwrap(), &Mapper)
+        .unwrap();
+    let file = json!({"method":"item/completed","params":{
+        "threadId":"thread-1","turnId":"turn-1","item":{
+            "type":"fileChange","id":"f".repeat(510),"status":"completed",
+            "changes":[{"path":"C:\\repo\\src\\lib.rs","kind":{"type":"update"},"diff":"opaque"}]
+        }
+    }});
+    let IngressDisposition::Events(events) = adapter
+        .ingest(&serde_json::to_vec(&file).unwrap(), &Mapper)
+        .unwrap()
+    else {
+        panic!("expected file change event");
+    };
+    assert!(matches!(
+        events.as_slice(),
+        [IncomingEvent::Item {
+            payload: NormalizedPayload::FileChangeDiff { .. },
+            ..
+        }]
+    ));
+}
+
 #[cfg(windows)]
 #[test]
 fn created_file_becomes_openable_when_completed_after_disk_write() {

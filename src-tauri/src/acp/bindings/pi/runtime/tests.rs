@@ -77,7 +77,7 @@ fn request(egress: &AdapterEgress) -> Value {
     serde_json::from_slice(egress.frame().payload()).expect("request json")
 }
 
-fn deliver(runtime: &mut PiRuntime, egress: AdapterEgress) -> Value {
+fn deliver(runtime: &mut impl HarnessAdapter, egress: AdapterEgress) -> Value {
     let value = request(&egress);
     let token = egress.into_token();
     runtime
@@ -111,7 +111,7 @@ fn initialize(runtime: &mut PiRuntime) {
     );
 }
 
-fn initialize_with(runtime: &mut PiRuntime, state_data: Value) {
+fn initialize_with(runtime: &mut impl HarnessAdapter, state_data: Value) {
     let state = runtime
         .command(AdapterCommand::Initialize)
         .expect("initialize");

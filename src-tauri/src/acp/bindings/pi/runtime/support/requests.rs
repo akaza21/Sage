@@ -99,6 +99,8 @@ impl PiRuntime {
         );
         let token = if kind == RequestKind::Cancel {
             EgressToken::cancel_request(self.next_egress)
+        } else if kind == RequestKind::Native && self.fork.is_some() {
+            EgressToken::native_rpc_continuation(self.next_egress)
         } else {
             EgressToken::request(self.next_egress)
         };
