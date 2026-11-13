@@ -20,6 +20,7 @@ pub(crate) fn commit(error: &AppError) -> String {
         AppError::GitContainment { .. } => containment(),
         AppError::MixedLineEndings
         | AppError::TaskInterrupted(_)
+        | AppError::NewerProfile { .. }
         | AppError::UnknownHarness(_)
         | AppError::HarnessUnavailable(_) => "Sage could not complete the Git commit.",
     };
@@ -46,6 +47,7 @@ pub(crate) fn create_branch(error: &AppError) -> String {
         AppError::GitContainment { .. } => containment(),
         AppError::MixedLineEndings
         | AppError::TaskInterrupted(_)
+        | AppError::NewerProfile { .. }
         | AppError::UnknownHarness(_)
         | AppError::HarnessUnavailable(_) => "Sage could not complete the Git create branch.",
     };
@@ -70,6 +72,7 @@ pub(crate) fn sequence_abort(error: &AppError) -> String {
         AppError::GitContainment { .. } => containment(),
         AppError::MixedLineEndings
         | AppError::TaskInterrupted(_)
+        | AppError::NewerProfile { .. }
         | AppError::UnknownHarness(_)
         | AppError::HarnessUnavailable(_) => "Sage could not complete the Git abort.",
     };
@@ -96,6 +99,7 @@ pub(crate) fn rename_branch(error: &AppError) -> String {
         AppError::GitContainment { .. } => containment(),
         AppError::MixedLineEndings
         | AppError::TaskInterrupted(_)
+        | AppError::NewerProfile { .. }
         | AppError::UnknownHarness(_)
         | AppError::HarnessUnavailable(_) => "Sage could not complete the Git rename branch.",
     };
@@ -122,6 +126,7 @@ pub(crate) fn delete_branch(error: &AppError) -> String {
         AppError::GitContainment { .. } => containment(),
         AppError::MixedLineEndings
         | AppError::TaskInterrupted(_)
+        | AppError::NewerProfile { .. }
         | AppError::UnknownHarness(_)
         | AppError::HarnessUnavailable(_) => "Sage could not complete the Git delete branch.",
     };
@@ -146,6 +151,7 @@ pub(crate) fn checkout(error: &AppError) -> String {
         AppError::GitContainment { .. } => containment(),
         AppError::MixedLineEndings
         | AppError::TaskInterrupted(_)
+        | AppError::NewerProfile { .. }
         | AppError::UnknownHarness(_)
         | AppError::HarnessUnavailable(_) => "Sage could not complete the Git checkout.",
     };
@@ -170,6 +176,7 @@ pub(crate) fn rebase(error: &AppError) -> String {
         AppError::GitContainment { .. } => containment(),
         AppError::MixedLineEndings
         | AppError::TaskInterrupted(_)
+        | AppError::NewerProfile { .. }
         | AppError::UnknownHarness(_)
         | AppError::HarnessUnavailable(_) => "Sage could not complete the rebase continue.",
     };
@@ -196,6 +203,7 @@ pub(crate) fn cherry_pick(error: &AppError) -> String {
         AppError::GitContainment { .. } => containment(),
         AppError::MixedLineEndings
         | AppError::TaskInterrupted(_)
+        | AppError::NewerProfile { .. }
         | AppError::UnknownHarness(_)
         | AppError::HarnessUnavailable(_) => "Sage could not complete the cherry-pick continue.",
     };
@@ -222,6 +230,7 @@ pub(crate) fn remote_transport(error: &AppError) -> String {
         AppError::GitContainment { .. } => containment(),
         AppError::MixedLineEndings
         | AppError::TaskInterrupted(_)
+        | AppError::NewerProfile { .. }
         | AppError::UnknownHarness(_)
         | AppError::HarnessUnavailable(_) => "Sage could not complete the Git fetch or push.",
     };
@@ -246,6 +255,7 @@ pub(crate) fn pull(error: &AppError) -> String {
         AppError::GitContainment { .. } => containment(),
         AppError::MixedLineEndings
         | AppError::TaskInterrupted(_)
+        | AppError::NewerProfile { .. }
         | AppError::UnknownHarness(_)
         | AppError::HarnessUnavailable(_) => "Sage could not complete the Git pull.",
     };
@@ -270,6 +280,7 @@ pub(crate) fn revert(error: &AppError) -> String {
         AppError::GitContainment { .. } => containment(),
         AppError::MixedLineEndings
         | AppError::TaskInterrupted(_)
+        | AppError::NewerProfile { .. }
         | AppError::UnknownHarness(_)
         | AppError::HarnessUnavailable(_) => "Sage could not complete the revert continue.",
     };
@@ -298,6 +309,7 @@ pub(crate) fn projection(error: &AppError) -> String {
         AppError::GitContainment { .. } => containment(),
         AppError::MixedLineEndings
         | AppError::TaskInterrupted(_)
+        | AppError::NewerProfile { .. }
         | AppError::UnknownHarness(_)
         | AppError::HarnessUnavailable(_) => "Repository status is unavailable.",
     };
