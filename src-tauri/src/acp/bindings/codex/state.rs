@@ -8,10 +8,12 @@ pub(crate) use fork::{MAX_UNRELEASED_FORKS, fork_reply};
 pub(crate) mod command_explore;
 pub(crate) mod command_output_stream;
 mod command_snapshots;
+mod compactions;
 mod construction;
 mod errors;
 mod goal;
 mod hook_runs;
+mod mcp;
 mod mcp_tools;
 #[cfg(test)]
 pub(crate) use mcp_tools::RUNNING_MCP_TOOLS_MAX;
@@ -20,7 +22,12 @@ mod permissions;
 pub(in crate::acp::bindings::codex) use permissions::USER_INPUT_METHOD;
 mod provisional;
 mod rate_limits;
+mod revert;
+
+/// The id a Turn Codex refused to start is recorded under; Codex never ran it.
+const REJECTED_TURN: &str = "rejected-";
 mod session;
+mod skills;
 mod turn_end;
 mod turn_errors;
 mod turn_prompt;
@@ -33,6 +40,7 @@ pub(crate) use errors::{AdapterError, TurnStartedRejection};
 use command_snapshots::CommandItemSnapshots;
 pub(crate) use command_snapshots::MaterializedCommandItem;
 pub(crate) use turn_end::PlanEntries;
+pub(crate) use turn_starts::WarningKind;
 use turn_starts::{CorrelationMatch, TurnStartCorrelations};
 pub(in crate::acp::bindings::codex) use turns::SubagentLabels;
 
@@ -102,6 +110,8 @@ struct PermissionRequestEntry {
     item_id: String,
     response: Vec<u8>,
     state: ServerRequestState,
+    /// The form an MCP elicitation asked; its answers are typed against it.
+    form: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
 }
 
 pub(crate) struct PermissionRequestParams<'a> {
@@ -112,6 +122,7 @@ pub(crate) struct PermissionRequestParams<'a> {
     pub(crate) turn_id: &'a str,
     pub(crate) item_id: &'a str,
     pub(crate) response: &'a [u8],
+    pub(crate) form: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -168,6 +179,10 @@ pub(crate) struct CodexAdapter {
     /// Thread-less notices that arrived before a thread was bound; at most
     /// `PENDING_NOTICES_MAX`, oldest dropped first.
     pending_session_notices: Vec<SessionScopedEvent>,
+    /// The latest configuration-warning texts (summary and details) and
+    /// generic warning messages, at most `REPEATED_WARNINGS_MAX`, so one
+    /// problem Codex reports both ways is shown once.
+    recent_warnings: Vec<(WarningKind, String)>,
     turn_start_correlations: TurnStartCorrelations,
     active_turn_id: Option<ExternalId>,
     provisional_turn: Option<ProvisionalTurn>,
@@ -184,6 +199,7 @@ pub(crate) struct CodexAdapter {
     command_item_snapshots: CommandItemSnapshots,
     running_mcp_tools: mcp_tools::RunningMcpTools,
     running_hooks: hook_runs::RunningHooks,
+    compactions: compactions::Compactions,
     subagent_labels: SubagentLabels,
     child_threads: Vec<SafeText<512>>,
     bound_child_threads: Vec<SafeText<512>>,
@@ -196,8 +212,14 @@ pub(crate) struct CodexAdapter {
     pending_child_read: Option<(u64, String, String)>,
     child_read_tombstone: Option<u64>,
     rate_limits_abandoned: rate_limits::AbandonedReads,
+    /// An `/mcp` read whose caller gave up; its late answer is dropped.
+    mcp_read_tombstones: Vec<u64>,
+    skills: skills::Skills,
     pending_fork: Option<u64>,
     forks: fork::ForkLedger,
+    /// The Codex Turn an Undo in flight removes, then the one it removed.
+    revert_target: Option<String>,
+    reverted_turn: Option<String>,
 }
 
 impl CodexAdapter {
@@ -262,6 +284,9 @@ impl CodexAdapter {
         if kind == RequestKind::ChildRead {
             self.pending_child_read = None;
         }
+        if kind == RequestKind::SkillsList {
+            self.skills_unsent();
+        }
         if kind == RequestKind::Interrupt {
             self.active_turn_user_stop = self
                 .pending
@@ -283,6 +308,11 @@ impl CodexAdapter {
         self.pending
             .iter()
             .find_map(|(pending, kind)| (*pending == id).then_some(*kind))
+    }
+
+    /// Whether a request of `kind` is still waiting for its answer.
+    pub(crate) fn awaits(&self, kind: RequestKind) -> bool {
+        self.pending.iter().any(|(_, pending)| *pending == kind)
     }
 
     pub(crate) fn ingest<M: ResourceMapper>(
@@ -320,8 +350,10 @@ impl CodexAdapter {
         Ok(match self.turn_start_correlations.failure(id)? {
             CorrelationMatch::Pending(client) => {
                 self.active_turn_client_message_id = Some(client);
-                self.active_turn_id =
-                    Some(ExternalId::new("externalTurnId", format!("rejected-{id}"))?);
+                self.active_turn_id = Some(ExternalId::new(
+                    "externalTurnId",
+                    format!("{REJECTED_TURN}{id}"),
+                )?);
                 self.accept_active_failure().map(TurnStartFailure::Failed)?
             }
             CorrelationMatch::Active { turn_id, .. }

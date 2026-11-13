@@ -28,14 +28,16 @@ describe("native agent port", () => {
     };
 
     await nativeWorkbenchAgentPort.listHarnesses();
+    await nativeWorkbenchAgentPort.refreshHarnesses();
     await nativeWorkbenchAgentPort.listHarnessModels("codex");
     await nativeWorkbenchAgentPort.sendPrompt(request);
 
     expect(invokeNative).toHaveBeenNthCalledWith(1, "list_harnesses");
-    expect(invokeNative).toHaveBeenNthCalledWith(2, "list_harness_models", {
+    expect(invokeNative).toHaveBeenNthCalledWith(2, "refresh_harnesses");
+    expect(invokeNative).toHaveBeenNthCalledWith(3, "list_harness_models", {
       harnessId: "codex",
     });
-    expect(invokeNative).toHaveBeenNthCalledWith(3, "send_simulated_prompt", {
+    expect(invokeNative).toHaveBeenNthCalledWith(4, "send_simulated_prompt", {
       ...request,
     });
   });

@@ -91,6 +91,27 @@ impl HarnessAdapter for PiNativeRuntime {
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.adapter.capabilities()
     }
+    fn native_rpc_pending(&self) -> bool {
+        self.adapter.native_rpc_pending()
+    }
+    fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
+        self.adapter.take_native_rpc_reply()
+    }
+    fn usage(&self) -> Option<Arc<crate::acp::usage::UsageCell>> {
+        self.adapter.usage()
+    }
+    fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.adapter.read_usage()
+    }
+    fn abandon_usage_read(&mut self) {
+        self.adapter.abandon_usage_read();
+    }
+    fn session_control(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.adapter.session_control(control)
+    }
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.adapter.command(command)
     }

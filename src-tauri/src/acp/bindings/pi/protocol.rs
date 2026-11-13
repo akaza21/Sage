@@ -6,23 +6,120 @@ pub(super) fn is_allow_option(option: &str) -> bool {
 pub enum Operation {
     Initialize,
     GetModels,
-    SetModel { provider: String, id: String },
+    SetModel {
+        provider: String,
+        id: String,
+    },
     GetThinkingLevels,
     GetCommands,
-    SetThinkingLevel { level: String },
+    SetThinkingLevel {
+        level: String,
+    },
+    /// Pi's own setting for compacting when the context is nearly full.
+    SetAutoCompaction {
+        enabled: bool,
+    },
     NewSession,
-    Prompt { turn_key: String, message: String },
-    Steer { message: String },
+    Prompt {
+        turn_key: String,
+        message: String,
+        /// Pi `ImageContent` blocks: `type`, base64 `data` and `mimeType`.
+        images: Vec<serde_json::Value>,
+    },
+    Compact {
+        turn_key: String,
+        instructions: Option<String>,
+    },
+    Steer {
+        message: String,
+    },
     ClearQueue,
     Abort,
     GetState,
     GetMessages,
-    GetEntries { since: Option<String> },
-    Resume { session_id: String, path: String },
+    GetEntries {
+        since: Option<String>,
+    },
+    Resume {
+        session_id: String,
+        path: String,
+    },
     Load,
     Close,
     MultiRoot,
     ForkOrClone,
+    /// A request outside any Turn whose answer goes back to the caller that
+    /// asked for it, never into the transcript.
+    Native(NativeRequest),
+}
+
+/// Requests Sage makes of Pi's session on behalf of a native RPC.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NativeRequest {
+    /// Token and cost totals for the whole session (`get_session_stats`).
+    SessionStats,
+    /// The display name Pi lists the session under (`set_session_name`).
+    SessionName { name: String },
+    /// Stops waiting to retry a failed reply (`abort_retry`).
+    AbortRetry,
+    /// Copies the session at its current position into a new session and
+    /// moves Pi onto the copy (`clone`).
+    Clone,
+    /// Reads which session Pi is on after a clone (`get_state`).
+    ForkState,
+    /// Moves Pi back onto the session it was on (`switch_session`).
+    ReturnToSession { path: String },
+}
+
+impl NativeRequest {
+    pub(crate) const fn command(&self) -> NativeCommand {
+        match self {
+            Self::SessionStats => NativeCommand::SessionStats,
+            Self::SessionName { .. } => NativeCommand::SessionName,
+            Self::AbortRetry => NativeCommand::AbortRetry,
+            Self::Clone => NativeCommand::Clone,
+            Self::ForkState => NativeCommand::ForkState,
+            Self::ReturnToSession { .. } => NativeCommand::ReturnToSession,
+        }
+    }
+
+    pub(crate) fn into_fields(self) -> serde_json::Map<String, serde_json::Value> {
+        let mut fields = serde_json::Map::new();
+        match self {
+            Self::SessionStats | Self::AbortRetry | Self::Clone | Self::ForkState => {}
+            Self::ReturnToSession { path } => {
+                fields.insert("sessionPath".into(), serde_json::Value::String(path));
+            }
+            Self::SessionName { name } => {
+                fields.insert("name".into(), serde_json::Value::String(name));
+            }
+        }
+        fields
+    }
+}
+
+/// Which native request a reply answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeCommand {
+    SessionStats,
+    SessionName,
+    AbortRetry,
+    Clone,
+    ForkState,
+    ReturnToSession,
+}
+
+impl NativeCommand {
+    pub(crate) const fn wire(self) -> &'static str {
+        match self {
+            Self::SessionStats => "get_session_stats",
+            Self::SessionName => "set_session_name",
+            Self::AbortRetry => "abort_retry",
+            Self::Clone => "clone",
+            Self::ForkState => "get_state",
+            Self::ReturnToSession => "switch_session",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +144,39 @@ pub struct StateSnapshot {
     pub session_id: Option<String>,
     pub session_file: Option<String>,
     pub is_streaming: bool,
+    /// Whether Pi compacts on its own when the context is nearly full.
+    pub auto_compaction: Option<bool>,
+}
+
+impl StateSnapshot {
+    /// The chat's key for Pi's session: its file's name, `<timestamp>_<id>`,
+    /// so reopening the chat opens that file directly. Pi's bare id stands in
+    /// when it keeps no file.
+    pub fn session_key(&self) -> Option<String> {
+        self.session_file
+            .as_deref()
+            .and_then(session_file_key)
+            .map(str::to_owned)
+            .or_else(|| self.session_id.clone())
+    }
+}
+
+/// The chat key Pi's session file names: `<timestamp>_<id>.jsonl`.
+pub fn session_file_key(file: &str) -> Option<&str> {
+    std::path::Path::new(file)
+        .file_name()?
+        .to_str()?
+        .strip_suffix(".jsonl")
+        .filter(|stem| is_session_key(stem))
+}
+
+/// Pi's session ids and file names use only these characters, so a key can
+/// never name a path outside Pi's session folder.
+pub fn is_session_key(key: &str) -> bool {
+    (1..=128).contains(&key.len())
+        && key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,6 +231,7 @@ pub enum AdapterOutput {
     ThinkingLevels(Vec<String>),
     Commands(serde_json::Value),
     ThinkingSelected(String),
+    AutoCompactionSelected(bool),
     Messages(Vec<HistoryMessage>),
     Entries(Vec<EntrySummary>),
     TurnRunning {
@@ -117,6 +248,12 @@ pub enum AdapterOutput {
         attempt: u64,
         max_attempts: Option<u64>,
         message: String,
+    },
+    /// Pi waits to retry a failed reply, or has stopped waiting.
+    Retry {
+        attempt: u64,
+        max_attempts: Option<u64>,
+        state: crate::acp::intent::session_event::SessionActivityState,
     },
     TextStarted {
         external_id: Option<String>,
@@ -194,6 +331,12 @@ pub enum AdapterOutput {
         kind: String,
     },
     UnknownEventsSuppressed,
+    /// Pi answered a native request; a refusal carries no data.
+    NativeReply {
+        command_id: String,
+        command: NativeCommand,
+        data: Option<serde_json::Value>,
+    },
     DuplicateIgnored,
     LateIgnored,
     Absorbed,

@@ -26,9 +26,23 @@ pub(super) fn run_version_command(
     path: &Path,
     limits: ProbeLimits,
 ) -> Option<VersionCommandOutput> {
+    run_bounded_command(path, &[std::ffi::OsStr::new("--version")], None, limits)
+}
+
+/// Runs `path` with fixed arguments under the version probe's bounds: no
+/// stdin, bounded output from both pipes, a deadline and a bounded reap.
+pub(super) fn run_bounded_command(
+    path: &Path,
+    args: &[&std::ffi::OsStr],
+    current_dir: Option<&Path>,
+    limits: ProbeLimits,
+) -> Option<VersionCommandOutput> {
     let mut command = Command::new(path);
+    if let Some(directory) = current_dir {
+        command.current_dir(directory);
+    }
     command
-        .arg("--version")
+        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -346,7 +360,7 @@ mod tests {
     fn version_probe_still_reads_cmd_shim_output() {
         let fixture = Fixture::new();
         let shim = fixture.path("claude.cmd");
-        std::fs::write(&shim, "@echo off\r\necho %~n0 %1 4.5.6\r\n").unwrap();
+        crate::test_executable::write(&shim, "@echo off\r\necho %~n0 %1 4.5.6\r\n").unwrap();
 
         let output = run_version_command(&shim, ProbeLimits::PRODUCTION)
             .expect("the .cmd shim's version output is captured");

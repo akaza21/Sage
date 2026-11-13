@@ -47,6 +47,63 @@ fn fixture_accepts_only_exact_frozen_arguments() {
 }
 
 #[test]
+fn only_a_claude_code_sdk_case_takes_the_harness_arguments_after_its_seed() {
+    let session = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
+    let invocation = FixtureInvocation::parse(
+        [
+            "--case",
+            "claude-sdk-fork",
+            "--seed",
+            "0",
+            "--session-id",
+            session,
+        ]
+        .map(OsString::from),
+    )
+    .unwrap();
+    assert_eq!(invocation.harness_args, ["--session-id", session]);
+    for refused in [
+        vec![
+            "--case",
+            "codex-config-resume",
+            "--seed",
+            "0",
+            "--session-id",
+            session,
+        ],
+        vec!["--seed", "0", "--case", "claude-sdk-fork"],
+    ] {
+        assert_eq!(
+            FixtureInvocation::parse(refused.into_iter().map(OsString::from)).err(),
+            Some(FixtureError::InvalidArguments)
+        );
+    }
+    let many = ["--case", "claude-sdk-fork", "--seed", "0"]
+        .into_iter()
+        .chain(std::iter::repeat_n("--verbose", 17));
+    assert!(FixtureInvocation::parse(many.map(OsString::from)).is_err());
+    let long = "x".repeat(257);
+    let too_long = [
+        "--case",
+        "claude-sdk-fork",
+        "--seed",
+        "0",
+        "--resume",
+        long.as_str(),
+    ];
+    assert!(FixtureInvocation::parse(too_long.map(OsString::from)).is_err());
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        let mut args = ["--case", "claude-sdk-fork", "--seed", "0", "--resume"]
+            .map(OsString::from)
+            .to_vec();
+        args.push(OsString::from_vec(vec![0xff, 0xfe]));
+        assert!(FixtureInvocation::parse(args).is_err());
+    }
+}
+
+#[test]
 fn all_179_frozen_case_ids_and_steps_are_unique_bounded_and_recognized() {
     assert_eq!(FROZEN_CASES.len(), 179);
     let mut ids = BTreeSet::new();

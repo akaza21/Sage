@@ -234,7 +234,7 @@ describe("resource trash store transaction", () => {
 
     expect(trash).not.toHaveBeenCalled();
     expect(useWorkbenchStore.getState().resourceTrashError).toContain(
-      "Close File and Diff tabs",
+      "Close file and diff tabs",
     );
   });
 });

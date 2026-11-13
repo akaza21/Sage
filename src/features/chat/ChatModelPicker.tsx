@@ -29,24 +29,35 @@ export function ChatModelPicker({
   // render would re-render each memoised option on any focus change.
   const groups = useMemo(() => {
     const visible = models.slice(0, MAX_VISIBLE_MODELS);
-    const names = visible.map((model) => composerModelName(model.name));
-    const recommended = visible.some((model) => model.isDefault);
+    const defaults = visible.map((model) =>
+      /^default \(recommended\)$/i.test(model.name),
+    );
+    const names = visible.map((model, index) =>
+      defaults[index] ? "Default" : composerModelName(model.name),
+    );
+    const recommended = visible.some(
+      (model, index) => model.isDefault || defaults[index],
+    );
     const grouped = new Map<string, SearchablePickerOption[]>();
     visible.forEach((model, index) => {
+      const isDefault = model.isDefault || defaults[index];
       const group =
         model.group ??
-        (recommended ? (model.isDefault ? "Recommended" : "Other models") : "");
+        (recommended ? (isDefault ? "Recommended" : "Other models") : "");
       const label = names[index]!;
       const duplicate = names.indexOf(label) < names.lastIndexOf(label);
-      grouped.set(group, [
-        ...(grouped.get(group) ?? []),
-        {
-          id: model.id,
-          label,
-          subtitle: duplicate ? model.id : undefined,
-          accessibleLabel: duplicate ? `${label} (${model.id})` : undefined,
-        },
-      ]);
+      const options = grouped.get(group) ?? [];
+      options.push({
+        id: model.id,
+        label,
+        subtitle: duplicate
+          ? model.id
+          : isDefault
+            ? "Recommended by the harness"
+            : undefined,
+        accessibleLabel: duplicate ? `${label} (${model.id})` : label,
+      });
+      grouped.set(group, options);
     });
     return grouped;
   }, [models]);
@@ -76,9 +87,11 @@ export function ChatModelPicker({
           ));
           return group ? (
             <div key={group} role="group" aria-label={group}>
-              <p className="menu-group-label" aria-hidden="true">
-                {group}
-              </p>
+              {group !== "Recommended" && group !== "Other models" ? (
+                <p className="menu-group-label" aria-hidden="true">
+                  {group}
+                </p>
+              ) : null}
               {options}
             </div>
           ) : (

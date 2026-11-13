@@ -47,7 +47,7 @@ export function WorkspaceReplaceDialog({
       </h2>
       <p id={`${id}-description`}>
         {empty
-          ? "No File can be changed as Search showed it."
+          ? "No file can be changed as Search showed it."
           : `“${plan.spec.query}” becomes “${plan.spec.replacement}”. Files with unsaved edits are changed in the editor, where Undo takes the change back.`}
       </p>
       <div
@@ -83,7 +83,7 @@ export function WorkspaceReplaceDialog({
             </ol>
             {file.linesTruncated ? (
               <p className="workspace-replace-dialog__more">
-                More changes in this File are not shown.
+                More changes in this file are not shown.
               </p>
             ) : null}
           </section>

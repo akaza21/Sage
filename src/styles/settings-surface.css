@@ -218,6 +218,11 @@
   padding: 16px var(--settings-row-inset, 0px) 12px;
 }
 
+/* The rows of a group; Agent settings draws them as one card. */
+.settings-surface__rows {
+  display: grid;
+}
+
 .settings-surface__row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(132px, 180px);
@@ -252,16 +257,6 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-}
-
-.settings-surface__toggle input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--color-accent);
 }
 
 /* A list setting: the control column widens to hold the patterns. */
@@ -477,10 +472,6 @@
   .settings-surface__footer .button,
   .settings-surface__row .browser-clear-data .button {
     border-color: ButtonText;
-  }
-
-  .settings-surface__toggle input {
-    accent-color: Highlight;
   }
 
   .settings-surface__error {

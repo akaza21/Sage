@@ -1,0 +1,73 @@
+.acp-session-surface {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+}
+
+.acp-session-surface__activities {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acp-session-surface__activities li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.acp-session-surface__label {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acp-session-surface__progress {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acp-session-surface__state {
+  margin-left: auto;
+  color: var(--color-text-secondary);
+}
+
+.acp-session-surface__activities button,
+.acp-session-surface__undo {
+  min-height: var(--control-height-compact);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  background: transparent;
+  font: inherit;
+}
+
+.acp-session-surface__undo {
+  justify-self: start;
+}
+
+.acp-session-surface__notice {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.acp-session-surface__notice[data-level="warning"] {
+  color: var(--color-warning);
+}
+
+.acp-session-surface__notice[data-level="error"] {
+  color: var(--color-danger);
+}

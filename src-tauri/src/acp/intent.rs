@@ -7,6 +7,7 @@ mod activity_provenance;
 mod capability;
 mod error_kind;
 mod file_change;
+mod prompt_send;
 pub(crate) mod session_event;
 mod tool_category;
 mod tool_execution;
@@ -18,11 +19,14 @@ pub(crate) use capability::offers_prompt_capability;
 pub use error_kind::ErrorKind;
 pub use file_change::FileChangeOperation;
 pub(crate) use file_change::{FileChangeFacts, line_delta};
+pub(crate) use prompt_send::PromptSendError;
 pub use tool_category::ToolCategory;
 pub use tool_execution::{TOOL_PROGRESS_BYTES, ToolExecution};
 
 pub type BindingId = RequiredText<512>;
 pub type ModelId = RequiredText<512>;
+/// A thinking level chosen before a session exists.
+pub type EffortId = RequiredText<64>;
 pub type ExternalId = RequiredText<512>;
 pub type PageCursor = RequiredText<512>;
 pub use super::transcript_quote::Prompt;
@@ -222,6 +226,11 @@ pub enum NormalizedPayload {
     Text {
         text: SafeText<262144>,
     },
+    /// A message the user steered into the running Turn. Sage journals it
+    /// when the harness accepts the steer; bindings never emit it.
+    UserPrompt {
+        text: SafeText<262144>,
+    },
     ThoughtSummary {
         summary: SafeText<262144>,
     },
@@ -379,7 +388,7 @@ impl NormalizedPayload {
 
     pub fn kind(&self) -> ItemKind {
         match self {
-            Self::Text { .. } => ItemKind::Text,
+            Self::Text { .. } | Self::UserPrompt { .. } => ItemKind::Text,
             Self::ThoughtSummary { .. } => ItemKind::ThoughtSummary,
             Self::Plan { .. } | Self::PlanEntries { .. } => ItemKind::Plan,
             Self::CompactionNotice => ItemKind::CompactionNotice,

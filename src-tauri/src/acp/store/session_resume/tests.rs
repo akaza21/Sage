@@ -272,7 +272,7 @@ fn an_aborted_activation_keeps_the_link_for_a_retry_of_the_earlier_session() {
     let retried = fixture.link().unwrap();
     assert_eq!(retried.session_id, linked.session_id);
     let unstarted = || {
-        unstarted_resume_link(
+        unstarted_continuation(
             &fixture.database.connection(),
             fixture.project.as_str(),
             fixture.chat.as_str(),

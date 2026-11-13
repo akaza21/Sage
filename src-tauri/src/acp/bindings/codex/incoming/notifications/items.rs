@@ -6,7 +6,10 @@ use super::super::{
     support::{expect_thread_and_turn, identity, text},
 };
 use super::{child_thread, provisional};
-use crate::acp::lifecycle::{ItemLifecycle, TerminalUpdate, ToolState};
+use crate::acp::{
+    intent::NormalizedPayload,
+    lifecycle::{ItemLifecycle, TerminalUpdate, ToolState},
+};
 use serde_json::{Map, Value};
 
 pub(super) fn item_event<M: ResourceMapper>(
@@ -81,6 +84,11 @@ pub(super) fn item_event<M: ResourceMapper>(
             TerminalUpdate::Conflict => return Err(IngressError::TerminalConflict),
             TerminalUpdate::Apply => {}
         }
+    }
+    if matches!(payload, NormalizedPayload::CompactionNotice)
+        && adapter.record_compaction(turn, false).is_none()
+    {
+        return Ok(IngressDisposition::Events(vec![]));
     }
     if let Some(command) = command {
         if lifecycle.is_terminal() {

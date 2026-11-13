@@ -60,6 +60,7 @@ test("CP-45 find stays labelled and readable in forced colours and reduced motio
   await expect(page.locator(".agent-chat-center")).toHaveScreenshot(
     "find-in-chat-forced-colors.png",
   );
+  await expect(input).toBeFocused();
   await input.press("Escape");
   expect(await page.evaluate(() => CSS.highlights.size)).toBe(0);
 });

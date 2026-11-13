@@ -31,6 +31,9 @@ pub(super) const ROOT: &str = r"C:\repo";
 pub(super) const FILE: &str = r"C:\repo\src\lib.rs";
 pub(super) const OLD_TEXT: &str = "pub fn answer() -> u32 {\n    41\n}\n";
 pub(super) const NEW_TEXT: &str = "pub fn answer() -> u32 {\n    42\n}\n";
+/// The message every steering scenario sends into the running turn.
+pub(super) const STEER: &str = "Use main.rs instead.";
+pub(super) const STEER_CLIENT_ID: &str = "steer-1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Scenario {
@@ -41,9 +44,10 @@ pub(super) enum Scenario {
     FileEditWithDiff,
     PlanUpdate,
     CancelledWithRunningTool,
+    SteeredMessage,
 }
 
-const SCENARIOS: [(Scenario, &str); 7] = [
+const SCENARIOS: [(Scenario, &str); 8] = [
     (Scenario::ThinkingThenLinkedText, "thinkingThenLinkedText"),
     (Scenario::ToolCompletes, "toolCompletes"),
     (Scenario::ToolFailsMidTurn, "toolFailsMidTurn"),
@@ -54,6 +58,7 @@ const SCENARIOS: [(Scenario, &str); 7] = [
         Scenario::CancelledWithRunningTool,
         "cancelledWithRunningTool",
     ),
+    (Scenario::SteeredMessage, "steeredMessage"),
 ];
 
 type Driver = fn(Scenario) -> Option<Vec<Fact>>;
@@ -114,8 +119,25 @@ pub(super) fn adapter_fact(event: crate::acp::bindings::adapter::AdapterEvent) -
             new_text,
         },
         AdapterEvent::Turn { state, .. } => Fact::Turn(state),
+        AdapterEvent::SteerResponse { accepted: true, .. } => steered_message(),
         _ => return None,
     })
+}
+
+/// What Sage's shared layer journals when a harness accepts the steer
+/// (`runtime/adapter_pump/steer.rs`). No binding emits the steered message.
+pub(super) fn steered_message() -> Fact {
+    let (id, payload) = crate::acp::runtime::steered_prompt_item(
+        &crate::acp::intent::Prompt::new("prompt", STEER).unwrap(),
+        &crate::acp::contract::RequiredText::new("client", STEER_CLIENT_ID).unwrap(),
+    )
+    .unwrap();
+    Fact::Item {
+        key: id.as_str().to_owned(),
+        lifecycle: ItemLifecycle::Completed,
+        tool_state: None,
+        payload,
+    }
 }
 
 /// Maps paths under one project root, `root-1`.
@@ -384,4 +406,20 @@ fn the_store_refuses_sequences_no_binding_may_emit() {
         ])
         .is_ok()
     );
+}
+
+/// A retried steer or a repeated accept journals the same item again; the
+/// store keeps the one bubble.
+#[test]
+fn a_repeated_steer_accept_keeps_one_user_bubble() {
+    let projected = store::project(vec![
+        steered_message(),
+        steered_message(),
+        Fact::Turn(TurnState::Completed),
+    ])
+    .unwrap();
+    let items = projected["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["kind"], "userPrompt");
+    assert_eq!(items[0]["payload"]["text"], STEER);
 }

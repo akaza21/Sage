@@ -2,7 +2,8 @@ import { expect, it, vi } from "vitest";
 import type { AcpActionContext } from "./acpActionController";
 import { agentSessionFixture } from "../../../domain/acpProjection.fixture";
 import { AcpDesktopError } from "../../../services/acpDesktop";
-import { canMutateGoal, createGoalMutationController } from "./useGoalMutation";
+import { canMutateGoal } from "./goalMutability";
+import { createGoalMutationController } from "./useGoalMutation";
 
 function context(runtimeEpoch: string | null = "9"): AcpActionContext {
   return {

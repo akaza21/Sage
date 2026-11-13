@@ -72,7 +72,7 @@ fn extension_notices_and_errors_become_session_notices_with_or_without_a_turn() 
 fn session_name_changes_become_the_harness_title() {
     let mut runtime = fixture_runtime(1);
     ready(&mut runtime);
-    let Some(SessionScopedEvent::Title { title }) = session_event(
+    let Some(SessionScopedEvent::Title { title: Some(title) }) = session_event(
         &mut runtime,
         json!({"type":"session_info_changed","name":"Fix the parser"}),
     ) else {

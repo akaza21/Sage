@@ -25,6 +25,7 @@ import {
   runAgentCanonicalTest,
   revealWorkedContent,
 } from "./agentVisualHelpers";
+import { settledComposerFit } from "./shared/composerGeometry";
 
 async function expectOpenPickerContained(
   page: Page,
@@ -139,6 +140,9 @@ async function expectComposerControlRow(page: Page) {
 async function expectComposerToolbarLaidOut(form: Locator, projectChip = true) {
   const toolbar = form.locator(".composer__toolbar");
   await expect(toolbar).toBeVisible();
+  // A resized pane refits its toolbar a frame or more later; measure the
+  // fit it settles on.
+  await settledComposerFit(form);
   const geometry = await toolbar.evaluate((node) => {
     const toolbarBox = node.getBoundingClientRect();
     const buttons = [
@@ -187,9 +191,18 @@ async function expectComposerToolbarLaidOut(form: Locator, projectChip = true) {
   // Measured fitting moves Project into options only after lower-priority labels compact.
   // Wave 6: a new chat (such as a fresh side chat) shows Project on its home
   // rather than in the composer.
-  expect(geometry.buttons).toHaveLength(
-    !projectChip || geometry.fit.includes("project-menu") ? 6 : 7,
-  );
+  expect(geometry.buttons.map((button) => button.name)).toEqual([
+    "Composer options",
+    "Attach files",
+    "Access options",
+    "Harness",
+    "Model",
+    ...(!projectChip || geometry.fit.includes("project-menu")
+      ? []
+      : ["Project: Sage"]),
+    "Start dictation",
+    "Send message",
+  ]);
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   expect(
     geometry.harnessContained,
@@ -476,7 +489,7 @@ test.describe("ED02 picker visual states", () => {
       listbox.getByRole("option", { name: "Codex — test only", exact: true }),
     ).toHaveAttribute("aria-selected", "true");
     const unavailable = listbox.getByRole("option", {
-      name: /Unavailable Codex.*Sage did not admit this harness and will not start it\./,
+      name: /Unavailable Codex.*Sage can't start this harness\./,
     });
     await expect(unavailable).toHaveAttribute("aria-disabled", "true");
     await expect(page.getByRole("combobox", { name: "Harness" })).toHaveCount(
@@ -498,7 +511,7 @@ test.describe("ED02 picker visual states", () => {
     const modelTrigger = page.getByLabel("Model", { exact: true });
     await expect(modelTrigger).toBeDisabled();
     await expect(
-      page.getByText("Wait while Sage checks the selected Harness."),
+      page.getByText("Wait while Sage checks the selected harness."),
     ).toBeVisible();
     await releasePickerHarnessReadiness(page);
     await expect(modelTrigger).toBeEnabled();
@@ -562,12 +575,12 @@ test.describe("ED02 picker visual states", () => {
     });
     await expect(handoffTrigger).toBeEnabled();
     await handoffTrigger.click();
-    const dialog = page.getByRole("dialog", { name: "Hand off this Chat" });
-    const trigger = dialog.getByRole("button", { name: "Target Chat" });
+    const dialog = page.getByRole("dialog", { name: "Hand off this chat" });
+    const trigger = dialog.getByRole("button", { name: "Target chat" });
     await expect(trigger).toHaveText("Target chat");
     await trigger.click();
-    const input = dialog.getByRole("combobox", { name: "Target Chat" });
-    const listbox = dialog.getByRole("listbox", { name: "Target Chat" });
+    const input = dialog.getByRole("combobox", { name: "Target chat" });
+    const listbox = dialog.getByRole("listbox", { name: "Target chat" });
     await expect(input).toBeFocused();
     await expect(
       listbox.getByRole("option", { name: "Target chat", exact: true }),
@@ -652,13 +665,26 @@ test.describe("ED02 picker visual states", () => {
     });
     await expectComposerControlsLaidOut(page);
     const harnessTrigger = page.getByRole("button", { name: "Harness" });
-    // The content-sized trigger keeps its complete label when the measured
-    // toolbar has room, even in this narrow Chat lane.
+    // This narrow Chat lane has no room for every label beside the attach
+    // button: access and harness yield to their icons while the model keeps
+    // its name, and the harness trigger still names its selection.
+    expect(
+      await settledComposerFit(page.locator("form.composer").first()),
+    ).toEqual([
+      "placeholder",
+      "context",
+      "capacity",
+      "project",
+      "effort",
+      "access",
+      "harness",
+    ]);
     await expect(harnessTrigger).toHaveAccessibleName("Harness");
+    await expect(harnessTrigger).toHaveAccessibleDescription("Codex");
     await expect(harnessTrigger).toHaveText("Codex");
     await expect(
       harnessTrigger.locator(".searchable-picker__trigger-label"),
-    ).toBeVisible();
+    ).toBeHidden();
     await expectComposerPickerValue(
       page.getByLabel("Model", { exact: true }),
       "Model",
@@ -783,6 +809,8 @@ test.describe("V2-4 session mode picker", () => {
       .click();
     await expect(closedOptions).toHaveCount(0);
     await expectComposerControlRow(page);
+    // Lazy Markdown and virtual-row measurements can outlast scenario setup.
+    await settleTranscriptAtEnd(page);
     await takeCanonicalScreenshot(closedWorkbench, "agent-session-mode-closed");
 
     const openWorkbench = await openScenario(
@@ -804,6 +832,7 @@ test.describe("V2-4 session mode picker", () => {
       "Apply changesApply approved changes to the workspace.",
     );
     await expectOpenPickerContained(page, openInput, openListbox);
+    await settleTranscriptAtEnd(page);
     await takeCanonicalScreenshot(openWorkbench, "agent-session-mode-open");
 
     await page.setViewportSize({ width: 720, height: 560 });
@@ -824,6 +853,7 @@ test.describe("V2-4 session mode picker", () => {
       page.getByRole("group", { name: "Session mode" }),
     );
     await expectNoViewportOverflow(page);
+    await settleTranscriptAtEnd(page);
     await takeCanonicalScreenshot(narrowWorkbench, "agent-session-mode-narrow");
 
     await page.emulateMedia({
@@ -845,6 +875,7 @@ test.describe("V2-4 session mode picker", () => {
       }));
     expect(forcedState.background).not.toBe("rgba(0, 0, 0, 0)");
     expect(forcedState.color).not.toBe("rgba(0, 0, 0, 0)");
+    await settleTranscriptAtEnd(page);
     await takeCanonicalScreenshot(
       forcedWorkbench,
       "agent-session-mode-forced-colors",
@@ -856,7 +887,10 @@ test.describe("V6 Composer context meter", () => {
   test("renders runtime usage truthfully across unknown, known, and over-capacity states", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 720, height: 560 });
+    // The meter is the first control a narrow toolbar drops, and a 720px
+    // window's Chat lane no longer fits it beside the attach button: give
+    // the composer room for its whole row.
+    await page.setViewportSize({ width: 1280, height: 560 });
 
     const unknownWorkbench = await openScenario(
       page,
@@ -931,6 +965,13 @@ test.describe("V6 Composer context meter", () => {
       knownWorkbench,
       "agent-composer-context-known",
     );
+    // In a 720px window the fit drops the meter before any label.
+    await page.setViewportSize({ width: 720, height: 560 });
+    expect(
+      await settledComposerFit(page.locator("form.composer").first()),
+    ).toContain("context");
+    await expect(knownContext).toHaveCount(0);
+    await page.setViewportSize({ width: 1280, height: 560 });
 
     const overCapacityWorkbench = await openScenario(
       page,
@@ -1705,12 +1746,12 @@ test.describe("Wave 2 200% zoom state", () => {
     await expect(handoffTrigger).toBeEnabled();
     await handoffTrigger.click();
     await page
-      .getByRole("button", { name: "Target Chat", exact: true })
+      .getByRole("button", { name: "Target chat", exact: true })
       .click();
     await expectOpenPickerContained(
       page,
-      page.getByRole("combobox", { name: "Target Chat" }),
-      page.getByRole("listbox", { name: "Target Chat" }),
+      page.getByRole("combobox", { name: "Target chat" }),
+      page.getByRole("listbox", { name: "Target chat" }),
     );
     await expectNoViewportOverflow(page);
 
@@ -1719,7 +1760,7 @@ test.describe("Wave 2 200% zoom state", () => {
       .locator("header.title-bar")
       .getByRole("button", { name: "Search chats" });
     await titleSearch.click();
-    const searchDialog = page.getByRole("dialog", { name: "Search Chats" });
+    const searchDialog = page.getByRole("dialog", { name: "Search chats" });
     await expect(searchDialog).toBeVisible();
     const folderTrigger = searchDialog.getByRole("button", {
       name: "Search in",
@@ -1750,7 +1791,7 @@ test.describe("Wave 2 200% zoom state", () => {
     await page.keyboard.press("Escape");
     await expect(searchDialog).toBeVisible();
     await expect(folderTrigger).toBeFocused();
-    await searchDialog.getByRole("button", { name: "Cancel" }).click();
+    await searchDialog.getByRole("button", { name: "Close" }).click();
     await expect(searchDialog).toHaveCount(0);
     await expect(titleSearch).toBeFocused();
     await expectNoViewportOverflow(page);

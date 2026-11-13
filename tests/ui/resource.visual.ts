@@ -9,6 +9,7 @@ import { snapshotFileDiff } from "../../src/features/diff/snapshotDiff";
 import { RESOURCE_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { PREVIEW_PROJECTION_FIXTURE_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
+import { VISUAL_PREVIEW_URL } from "./fixtures/visualPreviewFixture";
 import {
   waitForAnimations,
   expectNoViewportOverflow,
@@ -156,7 +157,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(diff).toHaveAccessibleDescription("New resource");
     await expect(
       resources.getByRole("button", {
-        name: "Pinned resource, new File or Diff available",
+        name: "Pinned resource, new file or diff available",
       }),
     ).toContainText("New");
   });
@@ -874,7 +875,7 @@ test.describe("V6a Agent right-resource state shell", () => {
       page.getByRole("region", { name: "Chat changes", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Waiting for this Chat" }),
+      page.getByRole("heading", { name: "Waiting for this chat" }),
     ).toHaveCount(0);
     // The pane change reflows the transcript; capture it settled at its end.
     await settleTranscriptAtEnd(page);
@@ -1087,11 +1088,11 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
       0,
     );
     await expect(
-      resources.getByRole("heading", { name: "Waiting for this Chat" }),
+      resources.getByRole("heading", { name: "Waiting for this chat" }),
     ).toBeVisible();
     await expect(
       resources.getByText(
-        "Open a file or change from the conversation. Preview will appear when this Chat starts a loopback server.",
+        "Open a file or change from the conversation. Preview will appear when this chat starts a loopback server.",
         { exact: true },
       ),
     ).toBeVisible();
@@ -1101,7 +1102,7 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
     ).toHaveCount(0);
     await expect(page.getByTitle("Sage browser")).toHaveCount(0);
     const waiting = resources.getByRole("region", {
-      name: "Waiting for this Chat",
+      name: "Waiting for this chat",
     });
     expect(
       await waiting.evaluate((node) => {
@@ -1122,6 +1123,11 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
 
   test("agent-preview-active stays visually stable", async ({ page }) => {
     const workbench = await openAgentScenario(page, "preview");
+    await expect(
+      page
+        .frameLocator('iframe[title="Sage browser"]')
+        .getByRole("heading", { name: "Product coherence review" }),
+    ).toBeVisible();
     const resources = page.getByLabel("Agent artifacts", { exact: true });
     await expect(
       resources.getByRole("tab", { name: "Preview" }),
@@ -1173,6 +1179,7 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
     const activeAddress = resources.getByRole("textbox", {
       name: "Preview address",
     });
+    await expect(activeAddress).toHaveValue(VISUAL_PREVIEW_URL);
     const activeHref = await activeAddress.inputValue();
     await activeAddress.fill("https://example.com/");
     await activeAddress.press("Enter");

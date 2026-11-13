@@ -52,7 +52,14 @@ pub(super) struct FixtureInvocation {
     pub(super) case_id: &'static str,
     pub(super) steps_json: &'static str,
     pub(super) seed: u32,
+    /// What follows the case and seed: the arguments the real harness would
+    /// take, which only a Claude Code SDK case reads (its session flags).
+    pub(super) harness_args: Vec<String>,
 }
+
+/// Harness arguments one launch may carry, and the bytes of each.
+const MAX_HARNESS_ARGS: usize = 16;
+const MAX_HARNESS_ARG_BYTES: usize = 256;
 
 impl FixtureInvocation {
     pub(super) fn parse(
@@ -63,10 +70,30 @@ impl FixtureInvocation {
         let case = values.next().ok_or(FixtureError::InvalidArguments)?;
         let flag_seed = values.next().ok_or(FixtureError::InvalidArguments)?;
         let seed = values.next().ok_or(FixtureError::InvalidArguments)?;
-        if values.next().is_some() || flag_case != "--case" || flag_seed != "--seed" {
+        if flag_case != "--case" || flag_seed != "--seed" {
             return Err(FixtureError::InvalidArguments);
         }
         let case = case.to_str().ok_or(FixtureError::InvalidArguments)?;
+        let harness_args = values
+            .map(|value| {
+                value
+                    .into_string()
+                    .ok()
+                    .filter(|value| value.len() <= MAX_HARNESS_ARG_BYTES)
+            })
+            .collect::<Option<Vec<_>>>()
+            .ok_or(FixtureError::InvalidArguments)?;
+        if harness_args.len() > MAX_HARNESS_ARGS
+            || (!harness_args.is_empty() && !case.starts_with("claude-sdk-"))
+        {
+            return Err(FixtureError::InvalidArguments);
+        }
+        let mut invocation = Self::case(case, seed)?;
+        invocation.harness_args = harness_args;
+        Ok(invocation)
+    }
+
+    fn case(case: &str, seed: OsString) -> Result<Self, FixtureError> {
         if let Some((case_id, steps_json)) = CHARACTERIZATION_CASES
             .iter()
             .find(|(case_id, _)| *case_id == case)
@@ -105,6 +132,7 @@ impl FixtureInvocation {
             case_id,
             steps_json,
             seed,
+            harness_args: Vec::new(),
         })
     }
 }

@@ -13,7 +13,11 @@ import type {
   ResourceRef,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
-import { idleAtEpoch, matchesResourceIntent } from "./projectIntent";
+import {
+  idleAtEpoch,
+  matchesResourceIntent,
+  repositoryBusy,
+} from "./projectIntent";
 import type { WorkbenchState } from "./store";
 
 export interface RepositoryMutation {
@@ -81,14 +85,9 @@ export const createRepositoryMutationSlice: StateCreator<
     const transitionEpoch = get().nativeTransitionEpoch;
     if (
       !projectId ||
-      get().projectTransitioning ||
+      repositoryBusy(get()) ||
       get().fileRenameInFlight ||
       get().resourceTrashInFlight ||
-      get().repositoryRefreshing ||
-      get().repositoryCommit ||
-      get().repositoryCheckout ||
-      get().repositoryRemote ||
-      get().repositoryMutation ||
       !matchesResourceIntent(get(), generation, projectId, resource) ||
       !eligibleMutation(get(), resource, action, discardConfirmed)
     ) {

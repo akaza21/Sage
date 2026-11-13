@@ -371,7 +371,7 @@ describe("a File that changed on disk under unsaved edits", () => {
     }
 
     const failed =
-      "Couldn't keep your version: Sage doesn't create Files there (inside protected folders such as .git, or through a link).";
+      "Couldn't keep your version: Sage doesn't create files there (inside protected folders such as .git, or through a link).";
     expect(store().error).toBe(failed);
     expect(readyEditor()).toMatchObject({ saving: false, content: "mine\n" });
     render(
@@ -508,7 +508,7 @@ describe("a File that changed on disk under unsaved edits", () => {
     expect(
       (
         await screen.findByText(
-          "Couldn't keep your version: Sage doesn't create Files there (inside protected folders such as .git, or through a link).",
+          "Couldn't keep your version: Sage doesn't create files there (inside protected folders such as .git, or through a link).",
         )
       ).closest('[role="alert"]'),
     ).not.toBeNull();

@@ -34,6 +34,8 @@ pub(crate) use activation_pump::{
 pub(crate) use activation_pump::{ActivationJournalError, ActivationReceipt};
 #[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use adapter_pump::normalized_payload_bytes;
+#[cfg(test)]
+pub(crate) use adapter_pump::steer::steered_prompt_item;
 pub(crate) use adapter_pump::{
     ActiveTurnIntent, AdapterBatchJournal, AdapterPump, AdapterPumpError, CompletedPumpParts,
     EgressTransport, FlushDisposition, NonfatalRefusal, PumpJournalError, QueueDisposition,

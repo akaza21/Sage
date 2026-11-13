@@ -8,7 +8,9 @@
 // `agentVisualHelpers.ts` / `editorVisualHelpers.ts` /
 // `resourceVisualHelpers.ts`, composed from these primitives.
 import { expect, type Locator, type Page } from "@playwright/test";
+import { fileURLToPath } from "node:url";
 
+import { VISUAL_PREVIEW_URL } from "../fixtures/visualPreviewFixture";
 import type {
   VisualScenarioMode,
   VisualScenarioName,
@@ -18,6 +20,9 @@ const FIXED_TIME = "2026-08-31T09:30:00.000Z";
 
 export async function installFixedClock(page: Page, time: string = FIXED_TIME) {
   await page.clock.install({ time: new Date(time) });
+  // Freeze displayed dates without stopping timers, animation frames, or
+  // explicit runFor/pauseAt controls used by interaction specs.
+  await page.clock.setFixedTime(new Date(time));
 }
 
 export async function installLayoutMode(page: Page, mode: VisualScenarioMode) {
@@ -41,6 +46,14 @@ async function gotoWorkbench(page: Page): Promise<Locator> {
 }
 
 export async function installScenario(page: Page, name: VisualScenarioName) {
+  // Serve the checked-in page directly so neither its address nor its content
+  // depends on the dev server (including Vite's injected client scripts).
+  await page.route(`${VISUAL_PREVIEW_URL}*`, async (route) => {
+    await route.fulfill({
+      path: fileURLToPath(new URL("../fixtures/preview.html", import.meta.url)),
+      contentType: "text/html",
+    });
+  });
   await page.evaluate(async (scenarioName) => {
     const fixtures = await import("/tests/ui/fixtures/visualScenarios.ts");
     await fixtures.installVisualScenario(scenarioName);

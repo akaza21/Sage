@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::acp::lifecycle::{ItemLifecycle, ServerRequestState, TerminalUpdate, TurnState};
+use crate::acp::lifecycle::{ItemLifecycle, ServerRequestState, TurnState};
 
 use super::super::state::{AdapterError, ExternalKind, TurnStartFailure, TurnStartedRejection};
 use super::{
@@ -12,12 +12,14 @@ use super::{
     },
 };
 
+mod approval_review;
 mod child_thread;
 pub(super) use child_thread::item_event as child_item_event;
 pub(super) use child_thread::turn_completed as child_turn_completed;
+mod compaction;
 mod deltas;
 mod hooks;
-use hooks::{HookPhase, cancelled_hooks, hook_run};
+use hooks::{HookPhase, hook_run};
 mod items;
 use items::item_event;
 mod mcp_progress;
@@ -25,9 +27,13 @@ use mcp_progress::mcp_tool_progress;
 mod notices;
 mod plan;
 mod provisional;
+mod session;
+mod settings;
 mod status_line;
+mod turn_terminal;
 use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};
 use plan::structured_plan;
+use turn_terminal::turn_completed;
 
 pub(super) fn notification<M: ResourceMapper>(
     adapter: &mut CodexAdapter,
@@ -55,11 +61,12 @@ pub(super) fn notification<M: ResourceMapper>(
                 _ => Err(IngressError::Malformed),
             }
         }
-        // Account and skill changes belong to Codex and have no Sage-owned
-        // projection. The frame is bounded before reaching this matcher and
-        // its payload is discarded, so neither can become a transcript
-        // artifact or alter a turn/session state.
-        "skills/changed" => Ok(IngressDisposition::IgnoredLate),
+        // Skills changed on disk: the `/` menu reads them again while idle.
+        // The payload is discarded and touches no Turn or session state.
+        "skills/changed" => {
+            adapter.skills_changed();
+            Ok(IngressDisposition::IgnoredLate)
+        }
         // A ChatGPT sign-in may lift an earlier refusal to report usage.
         "account/updated" => Ok(
             if params.get("authMode").and_then(Value::as_str) == Some("chatgpt") {
@@ -149,6 +156,13 @@ pub(super) fn notification<M: ResourceMapper>(
                 "starting" | "ready" | "cancelled"
                     if params.get("error").is_some_and(Value::is_null)
                         && params.get("failureReason").is_some_and(Value::is_null) => {}
+                "failed"
+                    if name != "sage-browser"
+                        || params.get("failureReason").and_then(Value::as_str)
+                            == Some(notices::REAUTHENTICATION_REQUIRED) =>
+                {
+                    return notices::mcp_startup_failed(adapter, params, name, thread);
+                }
                 "failed" if name == "sage-browser" => {
                     text(
                         params,
@@ -235,6 +249,7 @@ pub(super) fn notification<M: ResourceMapper>(
         "item/reasoning/summaryPartAdded" => summary_part_added(adapter, params),
         "item/plan/delta" => delta_event(adapter, params, DeltaKind::Plan, None),
         "turn/plan/updated" => structured_plan(adapter, params),
+        "thread/name/updated" => session::thread_name_updated(adapter, params),
         "thread/goal/updated" => {
             adapter
                 .expect_thread(text(params, "threadId", 512)?)
@@ -297,6 +312,18 @@ pub(super) fn notification<M: ResourceMapper>(
         "model/rerouted" => notices::model_rerouted(adapter, params),
         "model/verification" => notices::model_verification(adapter, params),
         "model/safetyBuffering/updated" => notices::model_safety_buffering(adapter, params),
+        "turn/moderationMetadata" => notices::moderation_metadata(adapter, params),
+        "modelProvider/authRecoveryStarted" => notices::auth_recovery(adapter, params, true),
+        "modelProvider/authRecoveryCompleted" => notices::auth_recovery(adapter, params, false),
+        "windows/worldWritableWarning" => notices::world_writable_warning(adapter, params),
+        "item/autoApprovalReview/started" => {
+            approval_review::approval_review(adapter, params, false)
+        }
+        "item/autoApprovalReview/completed" => {
+            approval_review::approval_review(adapter, params, true)
+        }
+        "thread/compacted" => compaction::thread_compacted(adapter, params),
+        "thread/settings/updated" => settings::thread_settings_updated(adapter, params),
         other => {
             record_unprojected(other);
             Ok(IngressDisposition::IgnoredLate)
@@ -338,75 +365,4 @@ fn turn_started_rejection(adapter: &CodexAdapter, error: AdapterError) -> Ingres
         );
     }
     identity(error)
-}
-
-fn turn_completed(
-    adapter: &mut CodexAdapter,
-    params: &Map<String, Value>,
-) -> Result<IngressDisposition, IngressError> {
-    let thread_id = text(params, "threadId", 512)?;
-    adapter.expect_thread(thread_id).map_err(identity)?;
-    let turn = params
-        .get("turn")
-        .and_then(Value::as_object)
-        .ok_or(IngressError::Malformed)?;
-    let external = text(turn, "id", 512)?;
-    adapter.expect_turn(external).map_err(identity)?;
-    let state = match text(turn, "status", 32)? {
-        "completed" => TurnState::Completed,
-        "interrupted" if adapter.stopped_by_user(external) => TurnState::Cancelled,
-        "interrupted" => TurnState::Interrupted,
-        "failed" => TurnState::Failed,
-        _ => return Err(IngressError::Malformed),
-    };
-    let terminal_error = if state == TurnState::Failed {
-        turn.get("error")
-            .filter(|value| !value.is_null())
-            .map(|value| {
-                let error = value.as_object().ok_or(IngressError::Malformed)?;
-                let message = text(
-                    error,
-                    "message",
-                    crate::acp::limits::LIMITS.wire.error_bytes as usize,
-                )?;
-                let payload = error_payload("codex", message, false)?;
-                Ok::<_, IngressError>(
-                    (!adapter.has_unretried_error(external, message)).then_some(payload),
-                )
-            })
-            .transpose()?
-            .flatten()
-    } else {
-        None
-    };
-    // Only a completed Turn closes its plan; the turn sweep cancels it otherwise.
-    let plan = (state == TurnState::Completed)
-        .then(|| adapter.turn_plan(external))
-        .flatten();
-    match adapter
-        .accept_turn_terminal(external, state)
-        .map_err(identity)?
-    {
-        TerminalUpdate::Apply => {
-            adapter.clear_command_items();
-            adapter.clear_running_mcp_tools();
-            let id = adapter.scoped_turn(external).map_err(identity)?;
-            let mut events = cancelled_hooks(adapter, thread_id)?;
-            if let Some(entries) = plan {
-                events.push(plan::event(
-                    adapter,
-                    external,
-                    entries,
-                    ItemLifecycle::Completed,
-                )?);
-            }
-            if let Some(payload) = terminal_error {
-                events.push(IncomingEvent::Error(payload));
-            }
-            events.push(IncomingEvent::Turn { id, state });
-            Ok(IngressDisposition::Events(events))
-        }
-        TerminalUpdate::NoOp => Ok(IngressDisposition::DuplicateTerminal),
-        TerminalUpdate::Conflict => Err(IngressError::TerminalConflict),
-    }
 }

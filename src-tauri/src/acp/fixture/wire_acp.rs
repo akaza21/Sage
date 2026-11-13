@@ -3,6 +3,10 @@ use super::{WireState, codex};
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 
+#[path = "wire_acp_resources.rs"]
+mod resources;
+pub(super) use resources::EmbeddedContext;
+
 pub(super) const SESSION: &str = "fixture-persisted-session-1";
 const ELICITATION_ID: &str = "fixture-elicitation-1";
 
@@ -118,6 +122,12 @@ pub(super) fn await_request(
             {
                 return Err(FixtureError::InvalidArguments);
             }
+            if let Some(embedded) = state.embedded_context.as_mut() {
+                embedded.receive(&request["params"]["prompt"])?;
+            }
+            state.prompt_echo = request["params"]["prompt"]
+                .as_array()
+                .map(|blocks| super::prompt_echo::blocks(blocks));
             state.prompt_request_id = Some(id);
         }
         return Ok(());
@@ -249,11 +259,16 @@ pub(super) fn emit(
             params["sessionId"] = json!(SESSION);
             json!({"jsonrpc":"2.0","id":ELICITATION_ID,"method":"elicitation/create","params":params})
         }
-        "acpElicitationEcho" => {
-            let text = state
-                .user_input_echo
-                .take()
-                .ok_or(FixtureError::InvalidArguments)?;
+        "acpElicitationEcho" | "acpResourceEcho" => {
+            let echo = if shape == "acpResourceEcho" {
+                state
+                    .embedded_context
+                    .as_mut()
+                    .and_then(EmbeddedContext::take_echo)
+            } else {
+                state.user_input_echo.take()
+            };
+            let text = echo.ok_or(FixtureError::InvalidArguments)?;
             json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":SESSION,"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":text}}}})
         }
         "acpAuthRequired" => {
@@ -293,7 +308,19 @@ pub(super) fn emit(
             let result = match shape {
                 "acpInitialize" => {
                     let auth = step.get("authMethods").cloned().unwrap_or(json!([]));
-                    json!({"protocolVersion":1,"agentCapabilities":{"loadSession":false,"promptCapabilities":{"image":true},"sessionCapabilities":{"close":{}}},"models":[{"id":"fixture-model","name":"Synthetic replay"}],"authMethods":auth})
+                    // A journey may advertise its own prompt capabilities;
+                    // with embedded context it reads what each prompt carries.
+                    let prompt = step
+                        .get("promptCapabilities")
+                        .cloned()
+                        .unwrap_or(json!({"image":true}));
+                    if !prompt.is_object() {
+                        return Err(FixtureError::InvalidArguments);
+                    }
+                    if prompt["embeddedContext"] == true {
+                        state.embedded_context = Some(EmbeddedContext::default());
+                    }
+                    json!({"protocolVersion":1,"agentCapabilities":{"loadSession":false,"promptCapabilities":prompt,"sessionCapabilities":{"close":{}}},"models":[{"id":"fixture-model","name":"Synthetic replay"}],"authMethods":auth})
                 }
                 // Unstable `session/fork`, advertised as claude-agent-acp 0.76.0 does.
                 "acpInitializeFork" => {
@@ -334,14 +361,13 @@ pub(super) fn substitute(
     Ok(match value {
         Value::String(text) => {
             let root = std::env::current_dir().map_err(|_| FixtureError::Io)?;
-            Value::String(
-                substitute_root(&text, &root)?
-                    .replace("$SESSION", SESSION)
-                    .replace(
-                        "$TURN",
-                        state.current_turn_id.as_deref().unwrap_or("fixture-turn"),
-                    ),
-            )
+            let text = substitute_root(&text, &root)?
+                .replace("$SESSION", SESSION)
+                .replace(
+                    "$TURN",
+                    state.current_turn_id.as_deref().unwrap_or("fixture-turn"),
+                );
+            Value::String(super::prompt_echo::quote(&text, state)?)
         }
         Value::Array(values) => Value::Array(
             values

@@ -5,13 +5,43 @@ import type {
 import { AcpDesktopError, invokeAcp } from "./acpDesktopCommand";
 import { utf8ByteLength } from "../domain/text";
 import { isRecord } from "./acpDesktopGuards";
+import {
+  isCommandPanel,
+  isCommandSource,
+  type AcpCommandPanel,
+  type AcpCommandSource,
+} from "../domain/acpCommand";
 import { safeAcpMutationResponse } from "./acpDesktopResponses";
+
+export type { AcpCommandSource };
+
+/** The `/` menu's section heading for each source, in section order. */
+export const commandSourceGroups = {
+  builtin: "Commands",
+  skill: "Skills",
+  prompt: "Prompts",
+  extension: "Extensions",
+  mcp: "MCP prompts",
+  plugin: "Plugins",
+  harness: "Other commands",
+} as const satisfies Record<AcpCommandSource, string>;
 
 export interface AvailableAcpCommand {
   name: string;
   description: string;
   inputHint: string | null;
+  source: AcpCommandSource;
+  /** Opens this panel in the chat and sends nothing. */
+  panel?: AcpCommandPanel;
+  /** Other names the harness runs this command by. */
+  aliases?: string[];
 }
+
+// The native list's bounds.
+const MAX_COMMANDS = 512;
+const MAX_COMMAND_BYTES = 256 * 1024;
+const MAX_ALIASES = 8;
+
 export interface AcpCommandList {
   revision: number;
   commands: AvailableAcpCommand[];
@@ -33,32 +63,43 @@ export function decodeCommandList(value: unknown): AcpCommandList | null {
     !Number.isSafeInteger(value.revision) ||
     (value.revision as number) < 0 ||
     !Array.isArray(value.commands) ||
-    value.commands.length > 128
+    value.commands.length > MAX_COMMANDS
   )
     return null;
   const names = new Set<string>();
   let bytes = 0;
   const text = (s: unknown, cap: number): s is string =>
     typeof s === "string" && !s.includes("\0") && utf8ByteLength(s) <= cap;
+  const commandName = (s: unknown): s is string =>
+    text(s, 128) && s !== "" && !/[\s/]/u.test(s);
   const commands: AvailableAcpCommand[] = [];
   for (const c of value.commands) {
+    const aliases: unknown = isRecord(c) ? (c.aliases ?? []) : [];
     if (
       !isRecord(c) ||
-      !text(c.name, 128) ||
-      !c.name ||
-      /[\s/]/u.test(c.name) ||
+      !commandName(c.name) ||
+      !Array.isArray(aliases) ||
+      aliases.length > MAX_ALIASES ||
+      !aliases.every(commandName) ||
       names.has(c.name) ||
       !text(c.description, 1024) ||
-      (c.inputHint !== null && !text(c.inputHint, 256))
+      (c.inputHint !== null && !text(c.inputHint, 256)) ||
+      !isCommandSource(c.source) ||
+      (c.panel !== undefined && !isCommandPanel(c.panel))
     )
       return null;
     names.add(c.name);
-    bytes += utf8ByteLength(c.name + c.description + (c.inputHint ?? ""));
-    if (bytes > 131072) return null;
+    bytes += utf8ByteLength(
+      c.name + c.description + (c.inputHint ?? "") + aliases.join(""),
+    );
+    if (bytes > MAX_COMMAND_BYTES) return null;
     commands.push({
       name: c.name,
       description: c.description,
       inputHint: c.inputHint,
+      source: c.source,
+      ...(c.panel ? { panel: c.panel } : {}),
+      ...(aliases.length ? { aliases } : {}),
     });
   }
   return { revision: value.revision as number, commands };

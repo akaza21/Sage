@@ -2,6 +2,7 @@ use super::*;
 
 mod permission;
 mod read_text_file;
+mod session_info;
 
 const MAX_CANCELLED_PROMPT_ERRORS: usize = 16;
 
@@ -9,7 +10,7 @@ impl ClaudeRuntime {
     fn binding_is_characterised(&self) -> bool {
         self.launch_binding
             .as_ref()
-            .is_none_or(|binding| binding.characterisation().is_characterised())
+            .is_none_or(|binding| binding.characterisation().runs_tested_features())
     }
 
     fn ingest_response(&mut self, value: Value) -> Result<AdapterBatch, AdapterRuntimeError> {
@@ -98,6 +99,7 @@ impl ClaudeRuntime {
         // `session/load` requires cwd/MCP context that the frozen shared command
         // does not carry. Intersect the source offer with Sage's safe surface.
         capabilities.load_session = false;
+        capabilities.child_transcript_read = self.stores_children;
         let default_model = models.first().map(|model| model.id.clone());
         let mut batch = AdapterBatchBuilder::new();
         batch.push_event(SharedEvent::Initialized {
@@ -234,6 +236,9 @@ impl ClaudeRuntime {
         if let Some(batch) = self.config_notification(&value)? {
             return Ok(batch);
         }
+        if let Some(batch) = self.session_info_notification(&value)? {
+            return Ok(batch);
+        }
         let active = self.active.as_mut().ok_or(AdapterRuntimeError::Frame)?;
         let events = active
             .translator
@@ -314,6 +319,18 @@ impl ClaudeRuntime {
             active.turn = None;
         }
         Ok(batch.finish())
+    }
+
+    /// A session-scoped fact for the open session; none before it opens.
+    pub(crate) fn session_event(
+        &self,
+        event: crate::acp::intent::session_event::SessionScopedEvent,
+    ) -> Option<SharedEvent> {
+        let active = self.active.as_ref()?;
+        Some(SharedEvent::Session {
+            id: self.session_identity(active.external_id.clone()),
+            event,
+        })
     }
 
     pub(super) fn session_identity(

@@ -33,7 +33,7 @@ export async function navigateFileSymbol(
   ) {
     return null;
   }
-  if (!target) return "No declaration in this File for that name.";
+  if (!target) return "No declaration in this file for that name.";
   input.focus();
   input.setSelection(target.start, target.end);
   return "Moved to local symbol.";

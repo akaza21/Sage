@@ -18,23 +18,37 @@ impl SdkBridge {
             return self.permission_reply(&id, acp.get("result"));
         };
         match method {
-            "initialize" => self.control(json!({"subtype": "initialize"}), Pending::Initialize(id)),
+            // Sage shows a stop control on each background task, so a
+            // cancelled turn leaves the others running.
+            "initialize" => self.control(
+                json!({"subtype": "initialize", "perTaskStopAffordance": true}),
+                Pending::Initialize(id),
+            ),
             "session/new" => self.session(id),
             "session/resume" if params["sessionId"] == self.session_id.as_str() => self.session(id),
             "session/prompt" if self.prompt.is_none() => {
                 let content = prompt_content(params.get("prompt"))?;
                 self.prompt = Some(id);
                 self.interrupted = false;
-                Ok(json!({
+                let mut user = json!({
                     "type": "user",
                     "session_id": self.session_id,
                     "message": {"role": "user", "content": content},
                     "parent_tool_use_id": null,
-                }))
+                });
+                // The turn's id names its checkpoint, for undo.
+                if let Some(uuid) = params
+                    .get("messageId")
+                    .and_then(Value::as_str)
+                    .and_then(super::controls::message_uuid)
+                {
+                    user["uuid"] = uuid.into();
+                }
+                Ok(user)
             }
             "session/cancel" => {
                 self.interrupted = self.prompt.is_some();
-                self.control(json!({"subtype": "interrupt"}), Pending::Interrupt)
+                self.withdraw_steers()
             }
             "session/set_mode" => {
                 let mode = text(params.get("modeId"))?;
@@ -97,7 +111,8 @@ fn text(value: Option<&Value>) -> Result<&str, BridgeError> {
 }
 
 /// ACP prompt blocks as Messages API content: text and images pass through;
-/// an attached text file becomes a text block that names its source. Sage
+/// an attached text file becomes a text block that names its source, and a
+/// linked file becomes an `@path` mention. Sage
 /// attaches other files as opaque blobs, so their type is read from their
 /// leading bytes: images and PDFs go as such, anything else is named but
 /// not sent, since Claude Code accepts no other binary content.
@@ -133,6 +148,31 @@ fn prompt_content(blocks: Option<&Value>) -> Result<Vec<Value>, BridgeError> {
                         "<context ref=\"{uri}\">\n(Binary file not shown: only images and PDFs can be sent to Claude Code.)\n</context>"
                     )}),
                 })
+            }
+            // A file named but not attached: Claude Code reads an `@path`
+            // mention itself.
+            Some("resource_link") => {
+                let uri = text(block.get("uri"))?;
+                let path = url::Url::parse(uri)
+                    .ok()
+                    .filter(|url| url.scheme() == "file")
+                    .and_then(|url| url.to_file_path().ok())
+                    .ok_or(BridgeError::Unsupported)?;
+                // Claude Code reads an `@path` itself, so a credential file
+                // Sage would not embed is named without one.
+                if crate::acp::service::prompt_files::secrets::path_is_secret(&path, false) {
+                    let context = format!(
+                        "<context ref=\"{uri}\">\n(Not attached: Sage does not send credential files.)\n</context>"
+                    );
+                    return Ok(json!({"type": "text", "text": context}));
+                }
+                let path = path.display().to_string();
+                let mention = if path.contains(char::is_whitespace) {
+                    format!("@\"{path}\"")
+                } else {
+                    format!("@{path}")
+                };
+                Ok(json!({"type": "text", "text": mention}))
             }
             _ => Err(BridgeError::Unsupported),
         })

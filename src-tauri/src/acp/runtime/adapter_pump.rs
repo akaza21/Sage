@@ -41,6 +41,7 @@ mod payload;
 mod provisional;
 mod receipt;
 pub(crate) mod session_config;
+pub(crate) mod steer;
 
 pub(crate) use activity::DurableActivityItem;
 pub(crate) use batch_journal::{AdapterBatchJournal, JournalReceipt, PumpJournalError};
@@ -174,6 +175,8 @@ pub(crate) struct AdapterPump<A, J, R> {
     /// Recent requests the harness withdrew before the user answered.
     withdrawn_permissions: std::collections::VecDeque<SageServerRequestId>,
     pending_steer_request: Option<u64>,
+    /// The pending steer's item, journaled only when the harness accepts it.
+    pending_steer_item: Option<Box<(ExternalId, NormalizedPayload)>>,
     steer_response: Option<bool>,
 }
 
@@ -257,6 +260,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             pending_permissions: admission.pending_permissions,
             withdrawn_permissions: std::collections::VecDeque::new(),
             pending_steer_request: None,
+            pending_steer_item: None,
             steer_response: None,
         }
     }

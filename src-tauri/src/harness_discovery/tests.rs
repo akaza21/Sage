@@ -73,10 +73,12 @@ fn test_basename(harness: HarnessExecutable) -> &'static str {
 pub(super) fn write_script(directory: &Path, basename: &str, body: &str) -> PathBuf {
     let executable = directory.join(basename);
     #[cfg(windows)]
-    fs::write(&executable, format!("@echo off\r\n{body}\r\n")).expect("write command script");
+    crate::test_executable::write(&executable, format!("@echo off\r\n{body}\r\n"))
+        .expect("write command script");
     #[cfg(not(windows))]
     {
-        fs::write(&executable, format!("#!/bin/sh\n{body}\n")).expect("write shell script");
+        crate::test_executable::write(&executable, format!("#!/bin/sh\n{body}\n"))
+            .expect("write shell script");
         use std::os::unix::fs::PermissionsExt;
         let mut permissions = fs::metadata(&executable)
             .expect("script metadata")
@@ -140,6 +142,49 @@ fn presence_projection_does_not_execute_a_version_command() {
 }
 
 #[test]
+fn a_failed_version_probe_is_tried_again_on_the_next_discovery() {
+    let directory = scratch_dir();
+    let ready = directory.join("ready");
+    // Fails until the marker exists, like a just-updated CLI that misses the
+    // deadline on its first, cold run. The script itself never changes.
+    let command = if cfg!(windows) {
+        format!(
+            "@if not exist \"{}\" exit /b 1\r\n@echo codex-cli 0.168.0",
+            ready.display()
+        )
+    } else {
+        format!(
+            "[ -e \"{}\" ] || exit 1\necho codex-cli 0.168.0",
+            ready.display()
+        )
+    };
+    let executable = write_script(
+        &directory,
+        test_basename(HarnessExecutable::Codex),
+        &command,
+    );
+    let present = vec![InstalledHarness {
+        id: "codex",
+        executable,
+        version: None,
+    }];
+    let cache = DisplayVersionCache::default();
+
+    assert_eq!(
+        enrich_installed_harness_versions(&present, &cache)[0].version,
+        None
+    );
+    fs::write(&ready, "").unwrap();
+    assert_eq!(
+        enrich_installed_harness_versions(&present, &cache)[0]
+            .version
+            .as_deref(),
+        Some("0.168.0")
+    );
+    fs::remove_dir_all(directory).expect("remove scratch directory");
+}
+
+#[test]
 fn display_version_cache_skips_unchanged_probe_and_rechecks_changed_file_identity() {
     let directory = scratch_dir();
     let marker = directory.join("version-probes.txt");
@@ -174,6 +219,43 @@ fn display_version_cache_skips_unchanged_probe_and_rechecks_changed_file_identit
     assert_eq!(second[0].version.as_deref(), Some("0.146.0"));
     assert_eq!(third[0].version.as_deref(), Some("0.146.0"));
     assert_eq!(fs::read_to_string(marker).unwrap().lines().count(), 2);
+    fs::remove_dir_all(directory).expect("remove scratch directory");
+}
+
+#[cfg(unix)]
+#[test]
+fn fresh_scripts_can_be_probed_while_other_threads_spawn_children() {
+    let directory = scratch_dir();
+    let start = std::sync::Barrier::new(2);
+    std::thread::scope(|scope| {
+        for worker in 0..2 {
+            let directory = directory.join(worker.to_string());
+            fs::create_dir(&directory).unwrap();
+            let start = &start;
+            scope.spawn(move || {
+                start.wait();
+                // Each probe must succeed on its first attempt, including
+                // replacements of a script that was already executed.
+                for _ in 0..16 {
+                    let executable = write_script(
+                        &directory,
+                        test_basename(HarnessExecutable::Codex),
+                        "echo codex-cli 0.146.0",
+                    );
+                    let present = [InstalledHarness {
+                        id: "codex",
+                        executable,
+                        version: None,
+                    }];
+                    let found = enrich_installed_harness_versions(
+                        &present,
+                        &DisplayVersionCache::default(),
+                    );
+                    assert_eq!(found[0].version.as_deref(), Some("0.146.0"));
+                }
+            });
+        }
+    });
     fs::remove_dir_all(directory).expect("remove scratch directory");
 }
 

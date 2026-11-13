@@ -82,26 +82,35 @@ pub(crate) fn native_case_lists_models(case: &str) -> bool {
     case.starts_with("codex-") && native_case_awaits(case, &["codexModelList"])
 }
 
-/// A replay case that opens a new session on its first launch and resumes the
-/// same one after an app restart, so it needs a second launch on its profile.
+/// A replay case that runs twice on its profile, so it needs a second launch:
+/// one that opens a new session on its first launch and resumes the same one
+/// after an app restart, or a Claude Code case that names its relaunch (the
+/// fork chat a fork opens, say).
 #[cfg(any(test, all(windows, debug_assertions)))]
 pub(crate) fn native_case_spans_restart(case: &str) -> bool {
     native_case_awaits(case, &["acpOpen", "codexStartOrResume"])
+        || native_case_any_await(case, |step| step["relaunch"] == true)
 }
 
 #[cfg(any(test, all(windows, debug_assertions)))]
 fn native_case_awaits(case: &str, kinds: &[&str]) -> bool {
+    native_case_any_await(case, |step| {
+        step["kind"]
+            .as_str()
+            .is_some_and(|kind| kinds.contains(&kind))
+    })
+}
+
+#[cfg(any(test, all(windows, debug_assertions)))]
+fn native_case_any_await(case: &str, matches: impl Fn(&serde_json::Value) -> bool) -> bool {
     generated_cases::JOURNEY_CASES
         .iter()
         .filter(|entry| entry.id == case)
         .filter_map(|entry| serde_json::from_str::<Vec<serde_json::Value>>(entry.steps_json).ok())
         .any(|steps| {
-            steps.iter().any(|step| {
-                step["op"] == "awaitClient"
-                    && step["kind"]
-                        .as_str()
-                        .is_some_and(|kind| kinds.contains(&kind))
-            })
+            steps
+                .iter()
+                .any(|step| step["op"] == "awaitClient" && matches(step))
         })
 }
 

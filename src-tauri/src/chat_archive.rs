@@ -103,7 +103,7 @@ impl Database {
             }
             if attached.len() <= 1 {
                 return Err(AppError::InvalidRequest(
-                    "the last attached Chat cannot be archived".into(),
+                    "the last attached chat cannot be archived".into(),
                 ));
             }
             let next_layout = archived_layout(&request.current_layout, &request.chat_id)?;
@@ -274,7 +274,7 @@ fn archive_foreign_chat(
     )?;
     if attached <= 1 {
         return Err(AppError::InvalidRequest(
-            "the last attached Chat cannot be archived".into(),
+            "the last attached chat cannot be archived".into(),
         ));
     }
     let tab_id: Option<String> = transaction
@@ -366,7 +366,7 @@ fn archived_layout(
         .or_else(|| index.checked_sub(1).and_then(|prior| chats.get(prior)))
         .map(|tab| tab.id.clone())
         .ok_or_else(|| {
-            AppError::InvalidRequest("the last attached Chat cannot be archived".into())
+            AppError::InvalidRequest("the last attached chat cannot be archived".into())
         })?;
     let mut next = current.clone();
     next.tabs.retain(|tab| tab.id != chat_id);

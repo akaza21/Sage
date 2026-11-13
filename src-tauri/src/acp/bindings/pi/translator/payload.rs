@@ -90,6 +90,7 @@ pub(super) fn parse_state(value: &Value) -> Result<StateSnapshot, AdapterError> 
             .or_else(|| value.get("is_streaming"))
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        auto_compaction: value.get("autoCompactionEnabled").and_then(Value::as_bool),
     })
 }
 

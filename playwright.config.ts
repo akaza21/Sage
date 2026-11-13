@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { fileURLToPath } from "node:url";
 import { resolveUiPort } from "./scripts/lib/ui-test-port.mjs";
 
 const port = resolveUiPort();
@@ -17,6 +18,9 @@ export default defineConfig({
     toHaveScreenshot: {
       animations: "disabled",
       caret: "hide",
+      stylePath: fileURLToPath(
+        new URL("./tests/ui/shared/visualScreenshot.css", import.meta.url),
+      ),
       maxDiffPixelRatio: 0.002,
     },
   },

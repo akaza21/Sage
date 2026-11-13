@@ -85,7 +85,14 @@ function harness(list: AcpCommandList | Error) {
 
 const review = {
   revision: 4,
-  commands: [{ name: "review", description: "Review", inputHint: "PR" }],
+  commands: [
+    {
+      name: "review",
+      description: "Review",
+      inputHint: "PR",
+      source: "harness" as const,
+    },
+  ],
 };
 
 describe("slash commands on the send path", () => {

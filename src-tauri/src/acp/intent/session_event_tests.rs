@@ -156,3 +156,46 @@ fn the_pre_turn_buffer_replaces_superseded_events_and_drops_the_oldest_at_its_ca
     assert_eq!(events.last(), Some(&title("second")));
     assert!(pending.take().is_empty());
 }
+
+#[test]
+fn a_chat_sees_live_activities_by_key_and_only_running_ones_can_be_stopped() {
+    let mut surface = SessionSurface::default();
+    let mut running = fixtures::activity("task:a", SessionActivityState::Running, "working");
+    running.stoppable = true;
+    let mut done = fixtures::activity("task:b", SessionActivityState::Completed, "done");
+    done.stoppable = true;
+    surface.apply(2, &SessionScopedEvent::Activity(running.clone()));
+    surface.apply(2, &SessionScopedEvent::Activity(done));
+    let view = surface.view(Some(2));
+    assert_eq!(view.activities.len(), 2);
+    assert!(view.activities[0].stoppable);
+    assert!(!view.activities[1].stoppable);
+    let key = &view.activities[0].key;
+    assert_eq!(key.len(), 24);
+    assert!(!key.contains("task"));
+    assert_eq!(surface.activity_id(key), Some(&running.id));
+    assert_eq!(surface.activity_id("unknown"), None);
+    // Another epoch's activities are not the running session's.
+    assert!(surface.view(Some(3)).activities.is_empty());
+    assert!(surface.view(None).activities.is_empty());
+}
+
+#[test]
+fn a_cleared_title_replaces_the_title_and_a_repeat_clear_is_no_change() {
+    let cleared = SessionScopedEvent::Title { title: None };
+    let mut surface = SessionSurface::default();
+    assert_eq!(surface.apply(1, &cleared), None);
+    surface.apply(1, &title("Fix the sidebar"));
+    assert_eq!(surface.apply(1, &cleared), Some(SurfaceChange::SendNeutral));
+    assert_eq!(surface.title, None);
+    assert_eq!(surface.apply(1, &cleared), None);
+    assert_eq!(
+        surface.apply(1, &title("Fix the sidebar")),
+        Some(SurfaceChange::SendNeutral)
+    );
+
+    let mut pending = PendingSessionEvents::default();
+    pending.push(title("first"));
+    pending.push(cleared.clone());
+    assert_eq!(pending.take(), [cleared]);
+}

@@ -27,13 +27,24 @@ use crate::{error::AppError, persistence::Database, state::AppState};
 
 mod browser_mcp_tests;
 mod duplicate_terminal_probe;
+mod foreign_thread_tests;
 mod fork_tests;
 mod hook_and_progress_events;
+mod mcp_tests;
+mod model_choice;
 mod model_identity;
 #[cfg(feature = "acp-fixture")]
 mod notice_journey_tests;
 mod notice_tests;
+mod remaining_events;
+mod revert_tests;
 mod saved_diff_tests;
+mod session_title_tests;
+mod skill_command_tests;
+#[cfg(feature = "acp-fixture")]
+mod skills_journey_tests;
+#[cfg(feature = "acp-fixture")]
+mod steer_journey_tests;
 mod usage_tests;
 
 struct Mapper;
@@ -367,7 +378,11 @@ fn codex_model_without_efforts_hides_thinking_config() {
         )
         .unwrap();
     let config = runtime.session_config().unwrap();
-    assert!(config.config_options.as_slice().is_empty());
+    // No thinking level: the thread's model is the one option.
+    let wire = serde_json::to_value(&config).unwrap();
+    assert_eq!(wire["configOptions"].as_array().unwrap().len(), 1);
+    assert_eq!(wire["configOptions"][0]["category"], "model");
+    assert_eq!(wire["configOptions"][0]["currentValue"], "gpt-6-astra");
     assert_eq!(
         config.confirmed_model.unwrap().name.unwrap().as_str(),
         "GPT-6 Astra"
@@ -409,7 +424,6 @@ fn model_efforts_accept_the_exact_collection_limit() {
 fn model_effort_pages_with_invalid_fields_or_collections_are_ignored_and_stop_paging() {
     for efforts in [
         json!([{"reasoningEffort":"e".repeat(513),"description":"Deep"}]),
-        json!([{"reasoningEffort":"high","description":"Deep","unknown":true}]),
         json!([{"reasoningEffort":"high","description":"Deep\0"}]),
         json!((0..33).map(|index| json!({"reasoningEffort":format!("effort-{index}"),"description":"Deep"})).collect::<Vec<_>>()),
         json!({"reasoningEffort":"high","description":"not an array"}),
@@ -566,7 +580,11 @@ fn resumed_codex_thread_without_reported_effort_hides_thinking_config() {
         )
         .unwrap();
     let config = runtime.session_config().unwrap();
-    assert!(config.config_options.as_slice().is_empty());
+    // No thinking level: the thread's model is the one option.
+    let wire = serde_json::to_value(&config).unwrap();
+    assert_eq!(wire["configOptions"].as_array().unwrap().len(), 1);
+    assert_eq!(wire["configOptions"][0]["category"], "model");
+    assert_eq!(wire["configOptions"][0]["currentValue"], "gpt-6-astra");
     assert_eq!(
         config.confirmed_model.unwrap().name.unwrap().as_str(),
         "GPT-6 Astra"
@@ -597,7 +615,7 @@ fn starting_resume_clears_model_page_effort_until_current_effort_is_known() {
             .config_options
             .as_slice()
             .len(),
-        1
+        2
     );
     let resume = runtime
         .command(AdapterCommand::ResumeSession {

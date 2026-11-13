@@ -210,6 +210,8 @@ pub(crate) enum IngressDisposition {
     DroppedRawReasoning,
     GoalMutationRejected,
     GoalMutationApplied,
+    /// Codex's answer to a session control, such as undoing a Turn.
+    Controlled(crate::acp::goal::NativeRpcReply),
     /// A limit bucket Codex pushed.
     UsageUpdated(rate_limits::RateLimitBucket),
     /// The answer to a usage read; `None` when nothing usable was reported.
@@ -218,6 +220,11 @@ pub(crate) enum IngressDisposition {
     UsageRefused,
     /// The account signed in to ChatGPT, so usage may be reported again.
     UsageReset,
+    /// Codex changed the thread's model or effort.
+    SettingsUpdated {
+        model: crate::acp::intent::ModelId,
+        effort: Option<RequiredText<512>>,
+    },
     DuplicateTerminal,
     DuplicateServerRequest {
         denial: Option<Vec<u8>>,
