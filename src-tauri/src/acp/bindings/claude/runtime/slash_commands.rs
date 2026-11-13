@@ -28,7 +28,8 @@ impl ClaudeRuntime {
 }
 
 /// `/status` and `/mcp` as panels in the chat. Claude Code's own versions
-/// draw in its terminal, which a Sage session does not have.
+/// draw in its terminal, which a Sage session does not have. The wording
+/// here is used only while Claude Code does not list the command itself.
 fn panels() -> Vec<AvailableCommand> {
     [
         panel(

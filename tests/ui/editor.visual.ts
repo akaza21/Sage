@@ -795,6 +795,8 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const workbench = await openScenario(page, "editor", "editor");
 
     await expect(page.getByRole("tabpanel")).toBeVisible();
+    // Git change markers arrive after the file renders; capture them settled.
+    await settleEditorGutter(page);
     await expect(workbench).toHaveScreenshot("editor-forced-colors.png");
   });
 });
