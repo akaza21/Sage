@@ -17,6 +17,7 @@ const desktopWorkbenchRuntime = path.join(
 );
 const devWatchIgnoredRoots = new Set([
   "src-tauri",
+  "target",
   "work",
   "output",
   "local-evidence",

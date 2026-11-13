@@ -33,11 +33,15 @@ export async function verifySource(workspace, expected, tool = sourceTool) {
   if ((await cleanSource(workspace, tool)) !== expected)
     throw new Error("source-drift");
 }
+// The committed inputs of a native build: the app crate plus the workspace
+// manifest and lockfile at the repository root.
+const NATIVE_INPUTS = ["src-tauri", "Cargo.toml", "Cargo.lock"];
 /**
  * Debug fixture builds admit disposable profiles only below
  * `<build checkout>/work/cp-native-proof`, fixed at compile time. Binaries from a
  * shared CARGO_TARGET_DIR may come from another checkout: it must be named
- * explicitly, be clean under src-tauri and carry the same committed native tree.
+ * explicitly, be clean in its native inputs and carry the same committed native
+ * tree.
  */
 export async function buildCheckout(
   workspace,
@@ -50,11 +54,20 @@ export async function buildCheckout(
   const checkout = path.resolve(configured);
   plain(checkout, true);
   plain(path.join(checkout, "src-tauri", "Cargo.toml"));
+  plain(path.join(checkout, "Cargo.toml"));
+  plain(path.join(checkout, "Cargo.lock"));
   const tree = (root) =>
-    tool("git", ["-C", root, "rev-parse", "HEAD:src-tauri"]);
+    tool("git", [
+      "-C",
+      root,
+      "rev-parse",
+      ...NATIVE_INPUTS.map((input) => `HEAD:${input}`),
+    ]);
   const expected = await tree(workspace);
+  const objects = expected.split(/\r?\n/u);
   if (
-    !/^[a-f0-9]{40,64}$/u.test(expected) ||
+    objects.length !== NATIVE_INPUTS.length ||
+    !objects.every((object) => /^[a-f0-9]{40,64}$/u.test(object)) ||
     (await tree(checkout)) !== expected
   )
     throw new Error("build-checkout-mismatch");
@@ -66,7 +79,7 @@ export async function buildCheckout(
     "--porcelain=v1",
     "--untracked-files=all",
     "--",
-    "src-tauri",
+    ...NATIVE_INPUTS,
   ]);
   if (status !== "") throw new Error("build-checkout-dirty");
   return checkout;

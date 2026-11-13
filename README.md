@@ -168,7 +168,7 @@ After the native prerequisites are installed:
 
 ```powershell
 npm run tauri dev
-cargo test --manifest-path src-tauri/Cargo.toml
+cargo test --workspace
 npm run gate:fast
 ```
 
