@@ -27,7 +27,8 @@ fn node_engine_is_checked_against_the_discovered_runtime() {
         Some(true)
     );
     assert_eq!(engine_satisfied("^20", "22.18.0"), Some(false));
-    assert_eq!(engine_satisfied("^20.6.0-rc.1", "22.18.0"), None);
+    assert_eq!(engine_satisfied("^20.6.0-rc.1", "22.18.0"), Some(false));
+    assert_eq!(engine_satisfied("^20.6.0-rc.1", "20.6.0"), Some(true));
     assert_eq!(engine_satisfied(">=20.6.0", "garbage"), None);
 }
 
