@@ -15,6 +15,10 @@ pub enum Operation {
     SetThinkingLevel {
         level: String,
     },
+    /// Pi's own setting for compacting when the context is nearly full.
+    SetAutoCompaction {
+        enabled: bool,
+    },
     NewSession,
     Prompt {
         turn_key: String,
@@ -56,6 +60,15 @@ pub enum NativeRequest {
     SessionStats,
     /// The display name Pi lists the session under (`set_session_name`).
     SessionName { name: String },
+    /// Stops waiting to retry a failed reply (`abort_retry`).
+    AbortRetry,
+    /// Copies the session at its current position into a new session and
+    /// moves Pi onto the copy (`clone`).
+    Clone,
+    /// Reads which session Pi is on after a clone (`get_state`).
+    ForkState,
+    /// Moves Pi back onto the session it was on (`switch_session`).
+    ReturnToSession { path: String },
 }
 
 impl NativeRequest {
@@ -63,13 +76,20 @@ impl NativeRequest {
         match self {
             Self::SessionStats => NativeCommand::SessionStats,
             Self::SessionName { .. } => NativeCommand::SessionName,
+            Self::AbortRetry => NativeCommand::AbortRetry,
+            Self::Clone => NativeCommand::Clone,
+            Self::ForkState => NativeCommand::ForkState,
+            Self::ReturnToSession { .. } => NativeCommand::ReturnToSession,
         }
     }
 
     pub(crate) fn into_fields(self) -> serde_json::Map<String, serde_json::Value> {
         let mut fields = serde_json::Map::new();
         match self {
-            Self::SessionStats => {}
+            Self::SessionStats | Self::AbortRetry | Self::Clone | Self::ForkState => {}
+            Self::ReturnToSession { path } => {
+                fields.insert("sessionPath".into(), serde_json::Value::String(path));
+            }
             Self::SessionName { name } => {
                 fields.insert("name".into(), serde_json::Value::String(name));
             }
@@ -83,6 +103,10 @@ impl NativeRequest {
 pub enum NativeCommand {
     SessionStats,
     SessionName,
+    AbortRetry,
+    Clone,
+    ForkState,
+    ReturnToSession,
 }
 
 impl NativeCommand {
@@ -90,6 +114,10 @@ impl NativeCommand {
         match self {
             Self::SessionStats => "get_session_stats",
             Self::SessionName => "set_session_name",
+            Self::AbortRetry => "abort_retry",
+            Self::Clone => "clone",
+            Self::ForkState => "get_state",
+            Self::ReturnToSession => "switch_session",
         }
     }
 }
@@ -116,6 +144,8 @@ pub struct StateSnapshot {
     pub session_id: Option<String>,
     pub session_file: Option<String>,
     pub is_streaming: bool,
+    /// Whether Pi compacts on its own when the context is nearly full.
+    pub auto_compaction: Option<bool>,
 }
 
 impl StateSnapshot {
@@ -123,12 +153,21 @@ impl StateSnapshot {
     /// so reopening the chat opens that file directly. Pi's bare id stands in
     /// when it keeps no file.
     pub fn session_key(&self) -> Option<String> {
-        let file = self.session_file.as_deref().map(std::path::Path::new);
-        file.and_then(|file| file.file_name()?.to_str()?.strip_suffix(".jsonl"))
-            .filter(|stem| is_session_key(stem))
+        self.session_file
+            .as_deref()
+            .and_then(session_file_key)
             .map(str::to_owned)
             .or_else(|| self.session_id.clone())
     }
+}
+
+/// The chat key Pi's session file names: `<timestamp>_<id>.jsonl`.
+pub fn session_file_key(file: &str) -> Option<&str> {
+    std::path::Path::new(file)
+        .file_name()?
+        .to_str()?
+        .strip_suffix(".jsonl")
+        .filter(|stem| is_session_key(stem))
 }
 
 /// Pi's session ids and file names use only these characters, so a key can
@@ -192,6 +231,7 @@ pub enum AdapterOutput {
     ThinkingLevels(Vec<String>),
     Commands(serde_json::Value),
     ThinkingSelected(String),
+    AutoCompactionSelected(bool),
     Messages(Vec<HistoryMessage>),
     Entries(Vec<EntrySummary>),
     TurnRunning {
@@ -208,6 +248,12 @@ pub enum AdapterOutput {
         attempt: u64,
         max_attempts: Option<u64>,
         message: String,
+    },
+    /// Pi waits to retry a failed reply, or has stopped waiting.
+    Retry {
+        attempt: u64,
+        max_attempts: Option<u64>,
+        state: crate::acp::intent::session_event::SessionActivityState,
     },
     TextStarted {
         external_id: Option<String>,

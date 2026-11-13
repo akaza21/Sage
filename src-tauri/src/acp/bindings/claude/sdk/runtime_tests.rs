@@ -51,6 +51,7 @@ fn runtime() -> ClaudeSdkRuntime {
         bridge: None,
         children: Default::default(),
         native: None,
+        usage: Arc::default(),
         sent: Vec::new(),
         steering: Default::default(),
         launch: None,
@@ -975,4 +976,47 @@ fn mcp_servers_list_through_claude_code_and_an_abandoned_list_frees_the_session(
     };
     assert_eq!(inventory.servers[0].tools, 1);
     assert!(inventory.actions.reconnect && !inventory.actions.reload);
+}
+
+#[test]
+fn usage_limits_read_through_claude_code_and_an_api_key_account_reports_none() {
+    use crate::acp::{goal::NativeRpcReply, usage::UsageState};
+    let mut runtime = ready();
+    let usage = runtime.usage().expect("Claude Code reports usage");
+    let read = |runtime: &mut ClaudeSdkRuntime| {
+        let egress = runtime.read_usage().unwrap();
+        let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+        runtime
+            .resolve_egress(egress.into_token(), EgressResolution::Written)
+            .unwrap();
+        assert_eq!(
+            sdk["request"],
+            json!({"subtype": "get_usage", "skip_behaviors": true})
+        );
+        sdk
+    };
+    let first = read(&mut runtime);
+    reply(
+        &mut runtime,
+        &first,
+        json!({"subscription_type": "pro", "rate_limits_available": true, "rate_limits": {
+            "five_hour": {"utilization": 1, "resets_at": "2026-11-12T17:20:00Z"},
+        }}),
+    );
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::UsageRead)
+    );
+    let UsageState::Usage { snapshot } = usage.state() else {
+        panic!("a usage snapshot")
+    };
+    assert_eq!(snapshot.plan.as_deref(), Some("Pro"));
+    assert_eq!(snapshot.windows[0].resets_at, Some(1_794_504_000));
+    let second = read(&mut runtime);
+    reply(
+        &mut runtime,
+        &second,
+        json!({"subscription_type": null, "rate_limits_available": false, "rate_limits": null}),
+    );
+    assert_eq!(usage.state(), UsageState::Unsupported);
 }

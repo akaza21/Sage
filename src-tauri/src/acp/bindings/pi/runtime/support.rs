@@ -24,11 +24,14 @@ mod config_reply;
 mod delivery;
 mod dialog;
 mod errors;
+mod fork;
+pub(super) use fork::Fork;
 mod identity;
 mod image;
 mod native;
 mod permission;
 mod requests;
+mod retry;
 mod session;
 mod steer;
 pub(super) use steer::Steering;
@@ -148,6 +151,10 @@ impl PiRuntime {
             AdapterOutput::ModelSelected(model) => self.model_selected(model)?,
             AdapterOutput::ThinkingLevels(levels) => self.thinking_levels(levels),
             AdapterOutput::ThinkingSelected(level) => self.thinking_selected(level)?,
+            AdapterOutput::AutoCompactionSelected(enabled) => {
+                self.auto_compaction = Some(enabled);
+                (Some(AdapterEvent::IgnoredDuplicate), None)
+            }
             AdapterOutput::Messages(messages) => {
                 let _ = messages;
                 (
@@ -203,6 +210,14 @@ impl PiRuntime {
                 message,
             } => (
                 Some(self.attempt_failed(attempt, max_attempts, message)?),
+                None,
+            ),
+            AdapterOutput::Retry {
+                attempt,
+                max_attempts,
+                state,
+            } => (
+                Some(self.retry_activity(attempt, max_attempts, state)?),
                 None,
             ),
             // The answer's item opens with its first text, so thinking that
@@ -367,7 +382,7 @@ impl PiRuntime {
                 command_id,
                 command,
                 data,
-            } => (Some(self.native_reply(&command_id, command, data)), None),
+            } => self.native_reply(&command_id, command, data)?,
             AdapterOutput::DuplicateIgnored => (Some(AdapterEvent::IgnoredDuplicate), None),
             AdapterOutput::LateIgnored => (Some(AdapterEvent::IgnoredLate), None),
             AdapterOutput::Absorbed => (Some(AdapterEvent::Absorbed), None),

@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useState,
-  type CSSProperties,
-  type RefObject,
-} from "react";
+import { useEffect, useId, useState, type RefObject } from "react";
 import type {
   AcpUsageRequest,
   AcpUsageState,
@@ -34,6 +28,13 @@ function windowSpan(minutes: number | null): string | null {
   return `${size}-${unit}`;
 }
 
+/** "5-hour limit", "Opus weekly limit", or the harness's own name alone. */
+function windowTitle({ label, windowMinutes }: UsageWindow): string {
+  const span = windowSpan(windowMinutes);
+  if (!span) return label ?? "Usage limit";
+  return label ? `${label} ${span.toLowerCase()} limit` : `${span} limit`;
+}
+
 function resetText(seconds: number): string {
   const at = new Date(seconds * 1_000);
   const sameDay = at.toDateString() === new Date().toDateString();
@@ -44,26 +45,13 @@ function resetText(seconds: number): string {
   })}`;
 }
 
-function UsageBar({ window }: { window: UsageWindow }) {
-  const title =
-    [window.label, windowSpan(window.windowMinutes)]
-      .filter(Boolean)
-      .join(" · ") || "Usage";
+function UsageLimit({ window }: { window: UsageWindow }) {
   return (
     <li className="composer-usage__window">
       <span className="composer-usage__row">
-        <span>{title}</span>
-        <span>{window.usedPercent}%</span>
+        <span>{windowTitle(window)}</span>
+        <span>{100 - window.usedPercent}% left</span>
       </span>
-      <span
-        className="composer-usage__bar"
-        role="progressbar"
-        aria-label={`${title} used`}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={window.usedPercent}
-        style={{ "--usage": `${window.usedPercent}%` } as CSSProperties}
-      />
       {window.resetsAt !== null ? (
         <span className="composer-usage__reset">
           {resetText(window.resetsAt)}
@@ -172,10 +160,10 @@ export function UsageReport({ request }: { request: AcpUsageRequest }) {
   return (
     <>
       <div className="composer-usage__heading">
-        <strong id={headingId}>
+        <span id={headingId}>
           {sessionOnly ? "This session" : "Usage limits"}
-        </strong>
-        {snapshot?.plan ? <span>{snapshot.plan}</span> : null}
+        </span>
+        {snapshot?.plan ? <span>{snapshot.plan} plan</span> : null}
       </div>
       {state === null ? (
         <p role="status">Checking usage…</p>
@@ -193,14 +181,19 @@ export function UsageReport({ request }: { request: AcpUsageRequest }) {
           {snapshot.windows.length > 0 ? (
             <ul className="composer-usage__windows">
               {snapshot.windows.map((window, index) => (
-                <UsageBar key={index} window={window} />
+                <UsageLimit key={index} window={window} />
               ))}
             </ul>
           ) : null}
           {snapshot.session ? (
             <>
               {sessionOnly ? null : (
-                <strong id={sessionHeadingId}>This session</strong>
+                <strong
+                  id={sessionHeadingId}
+                  className="composer-usage__section"
+                >
+                  This session
+                </strong>
               )}
               <SessionSpendRows
                 spend={snapshot.session}

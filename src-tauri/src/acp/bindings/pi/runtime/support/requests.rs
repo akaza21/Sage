@@ -47,6 +47,14 @@ impl PiRuntime {
         outbound: Outbound,
         kind: RequestKind,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        // Until a fork moves Pi back, its open session is the copy: only the
+        // fork's own steps may reach it.
+        if self.fork.is_some() && kind != RequestKind::Native {
+            self.translator
+                .reject_before_write(&outbound.command_id)
+                .map_err(super::map_pi)?;
+            return Err(AdapterRuntimeError::Operation);
+        }
         if self.reservations.len() >= LIMITS.queues.outstanding_rpc_per_session as usize {
             self.translator
                 .reject_before_write(&outbound.command_id)

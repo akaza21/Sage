@@ -55,8 +55,9 @@ pub(super) fn response_result(
             "Codex rejected a discovery JSON-RPC request"
         );
     }
-    if object.len() != 2
-        || object.get("id").and_then(Value::as_u64) != Some(expected)
+    // Envelope members other than `id`, `result`, `error` and `method` (such as
+    // a `jsonrpc` tag) carry nothing Sage reads and are ignored.
+    if object.get("id").and_then(Value::as_u64) != Some(expected)
         || object.contains_key("error")
         || object.contains_key("method")
     {
@@ -79,168 +80,53 @@ pub(super) fn response_result(
 
 /// An OpenAI API key Codex stores in its own home: `{"type":"apiKey"}`.
 pub(crate) fn api_key_account(account: &Map<String, Value>) -> bool {
-    account.len() == 1 && account.get("type").and_then(Value::as_str) == Some("apiKey")
+    account_type(account) == Some("apiKey")
 }
 
-/// Whether an `account/read` result has the pinned closed shape: the
-/// account, the auth requirement, and the optional (unused) workspace
-/// routing. Any other key is refused.
+/// Whether an `account/read` result carries the two members Sage reads: the
+/// account (an object or null) and the auth requirement. Other members, such
+/// as workspace routing, are not used and may change between releases.
 pub(crate) fn valid_account_read(result: &Map<String, Value>) -> bool {
-    only_keys(
-        result,
-        &["account", "requiresOpenaiAuth", "workspaceRouting"],
-    ) && result.contains_key("account")
+    matches!(result.get("account"), Some(Value::Null | Value::Object(_)))
         && result
             .get("requiresOpenaiAuth")
             .is_some_and(Value::is_boolean)
-        && match result.get("workspaceRouting") {
-            None | Some(Value::Null) => true,
-            Some(Value::Object(routing)) => {
-                routing.len() == 3
-                    && [
-                        "chatgptAccountId",
-                        "backendOrigin",
-                        "accountRoutingOverride",
-                    ]
-                    .iter()
-                    .all(|field| {
-                        routing
-                            .get(*field)
-                            .and_then(Value::as_str)
-                            .is_some_and(|text| text.len() <= 8_192 && !text.contains('\0'))
-                    })
-            }
-            _ => false,
-        }
 }
 
-fn only_keys(object: &Map<String, Value>, allowed: &[&str]) -> bool {
-    object.keys().all(|key| allowed.contains(&key.as_str()))
+/// A ChatGPT sign-in. Sage keeps no identity data from it, so the email,
+/// plan and workspace members are not read: a new plan or member must not
+/// sign the user out of Sage.
+pub(crate) fn managed_chatgpt(account: &Map<String, Value>) -> bool {
+    account_type(account) == Some("chatgpt")
 }
 
-pub(crate) fn managed_chatgpt(account: &Map<String, Value>) -> Result<bool, CodexDiscoveryError> {
-    if account.get("type").and_then(Value::as_str) != Some("chatgpt") {
-        return Ok(false);
-    }
-    if !only_keys(account, &["type", "email", "planType", "workspaceName"])
-        || !["email", "planType"]
-            .iter()
-            .all(|field| account.contains_key(*field))
-    {
-        return Err(CodexDiscoveryError::Protocol);
-    }
-    // `workspaceName` is optional in the schema: absent reads as null.
-    let nullable_text = |field: &str| {
-        matches!(account.get(field), None | Some(Value::Null))
-            || account
-                .get(field)
-                .and_then(Value::as_str)
-                .is_some_and(|text| text.len() <= 8_192 && !text.contains('\0'))
-    };
-    let email_valid = nullable_text("email") && nullable_text("workspaceName");
-    const PLANS: [&str; 20] = [
-        "free",
-        "go",
-        "plus",
-        "pro",
-        "prolite",
-        "promax",
-        "team",
-        "self_serve_business_prolite",
-        "self_serve_business_usage_based",
-        "business",
-        "ent26",
-        "enterprise_cbp_automation",
-        "enterprise_cbp_usage_based",
-        "enterprise",
-        "edu",
-        "edu_plus",
-        "edu_pro",
-        "sci",
-        "sci_plus",
-        "unknown",
-    ];
-    let plan_valid = account
-        .get("planType")
-        .and_then(Value::as_str)
-        .is_some_and(|plan| PLANS.contains(&plan));
-    if !email_valid || !plan_valid {
-        return Err(CodexDiscoveryError::Protocol);
-    }
-    Ok(true)
+fn account_type(account: &Map<String, Value>) -> Option<&str> {
+    account.get("type").and_then(Value::as_str)
 }
 
-pub(super) fn parse_model(value: &Value) -> Result<CodexModelSnapshot, CodexDiscoveryError> {
+/// Reads the members of a `model/list` entry that discovery keeps. Members
+/// Sage does not read (tiers, modalities, upgrade copy and so on) are ignored,
+/// so a model the service describes with new metadata is still offered.
+/// Hidden models are skipped, as Codex's own picker does.
+pub(super) fn parse_model(
+    value: &Value,
+) -> Result<Option<CodexModelSnapshot>, CodexDiscoveryError> {
     let model = value.as_object().ok_or(CodexDiscoveryError::ModelCatalog)?;
-    const MODEL_FIELDS: [&str; 19] = [
-        "id",
-        "model",
-        "upgrade",
-        "upgradeInfo",
-        "availabilityNux",
-        "displayName",
-        "description",
-        "modelSpecialty",
-        "hidden",
-        "supportedReasoningEfforts",
-        "defaultReasoningEffort",
-        "inputModalities",
-        "supportsPersonality",
-        "multiAgentVersion",
-        "additionalSpeedTiers",
-        "serviceTiers",
-        "defaultServiceTier",
-        "availableAccessPrograms",
-        "isDefault",
-    ];
-    if model.len() != MODEL_FIELDS.len()
-        || !MODEL_FIELDS.iter().all(|field| model.contains_key(*field))
-    {
-        return Err(CodexDiscoveryError::ModelCatalog);
+    // As in the runtime catalog, a flag that is absent or not a boolean is off.
+    let flag = |key: &str| model.get(key).and_then(Value::as_bool).unwrap_or(false);
+    if flag("hidden") {
+        return Ok(None);
     }
+    let is_default = flag("isDefault");
     let id = model_text(model, "id", 512)?;
-    model_text(model, "model", 512)?;
     let name = model_text(model, "displayName", 512)?;
-    model_text(model, "description", 8_192)?;
-    optional_model_text(model.get("upgrade"), 512)?;
-    optional_model_text(model.get("defaultServiceTier"), 512)?;
-    optional_model_text(model.get("modelSpecialty"), 512)?;
-    validate_multi_agent_version(model.get("multiAgentVersion"))?;
-    validate_access_programs(model.get("availableAccessPrograms"))?;
-    validate_upgrade_info(model.get("upgradeInfo"))?;
-    validate_availability_nux(model.get("availabilityNux"))?;
-    model_text(model, "defaultReasoningEffort", 512)?;
-    crate::acp::bindings::codex::incoming::parse_reasoning_efforts(
-        model
-            .get("supportedReasoningEfforts")
-            .ok_or(CodexDiscoveryError::ModelCatalog)?,
-    )
-    .map_err(|_| CodexDiscoveryError::ModelCatalog)?;
-    validate_input_modalities(model.get("inputModalities"))?;
-    bounded_text_array(model.get("additionalSpeedTiers"), 32, 512)?;
-    validate_service_tiers(model.get("serviceTiers"))?;
-    model
-        .get("supportsPersonality")
-        .and_then(Value::as_bool)
-        .ok_or(CodexDiscoveryError::ModelCatalog)?;
-    let hidden = model
-        .get("hidden")
-        .and_then(Value::as_bool)
-        .ok_or(CodexDiscoveryError::ModelCatalog)?;
-    let is_default = model
-        .get("isDefault")
-        .and_then(Value::as_bool)
-        .ok_or(CodexDiscoveryError::ModelCatalog)?;
-    if hidden {
-        return Err(CodexDiscoveryError::ModelCatalog);
-    }
-    Ok(CodexModelSnapshot {
+    Ok(Some(CodexModelSnapshot {
         id: RequiredText::new("modelId", id.to_owned())
             .map_err(|_| CodexDiscoveryError::ModelCatalog)?,
         name: RequiredText::new("modelName", name.to_owned())
             .map_err(|_| CodexDiscoveryError::ModelCatalog)?,
         is_default,
-    })
+    }))
 }
 
 pub(super) fn parse_cursor(
@@ -253,137 +139,6 @@ pub(super) fn parse_cursor(
             .map_err(|_| CodexDiscoveryError::ModelCatalog),
         Some(_) => Err(CodexDiscoveryError::ModelCatalog),
     }
-}
-
-fn optional_model_text(value: Option<&Value>, maximum: usize) -> Result<(), CodexDiscoveryError> {
-    match value {
-        Some(Value::Null) => Ok(()),
-        Some(Value::String(value)) if value.len() <= maximum && !value.contains('\0') => Ok(()),
-        _ => Err(CodexDiscoveryError::ModelCatalog),
-    }
-}
-
-fn bounded_text_array(
-    value: Option<&Value>,
-    entries: usize,
-    bytes_each: usize,
-) -> Result<(), CodexDiscoveryError> {
-    let values = value
-        .and_then(Value::as_array)
-        .filter(|values| values.len() <= entries)
-        .ok_or(CodexDiscoveryError::ModelCatalog)?;
-    if values.iter().all(|value| {
-        value.as_str().is_some_and(|value| {
-            !value.is_empty() && value.len() <= bytes_each && !value.contains('\0')
-        })
-    }) {
-        Ok(())
-    } else {
-        Err(CodexDiscoveryError::ModelCatalog)
-    }
-}
-
-fn validate_input_modalities(value: Option<&Value>) -> Result<(), CodexDiscoveryError> {
-    let modalities = value
-        .and_then(Value::as_array)
-        .filter(|modalities| modalities.len() <= 8)
-        .ok_or(CodexDiscoveryError::ModelCatalog)?;
-    if modalities.iter().all(|modality| {
-        modality
-            .as_str()
-            .is_some_and(|modality| matches!(modality, "text" | "image" | "audio"))
-    }) {
-        Ok(())
-    } else {
-        Err(CodexDiscoveryError::ModelCatalog)
-    }
-}
-
-fn validate_upgrade_info(value: Option<&Value>) -> Result<(), CodexDiscoveryError> {
-    let Some(value) = value else {
-        return Err(CodexDiscoveryError::ModelCatalog);
-    };
-    if value.is_null() {
-        return Ok(());
-    }
-    let object = value.as_object().ok_or(CodexDiscoveryError::ModelCatalog)?;
-    if object.len() != 5
-        || ![
-            "model",
-            "upgradeCopy",
-            "modelLink",
-            "migrationMarkdown",
-            "retirementAt",
-        ]
-        .iter()
-        .all(|field| object.contains_key(*field))
-    {
-        return Err(CodexDiscoveryError::ModelCatalog);
-    }
-    model_text(object, "model", 512)?;
-    for field in ["upgradeCopy", "modelLink", "migrationMarkdown"] {
-        optional_model_text(object.get(field), 8_192)?;
-    }
-    match object.get("retirementAt") {
-        Some(Value::Null) => Ok(()),
-        Some(value) if value.is_i64() => Ok(()),
-        _ => Err(CodexDiscoveryError::ModelCatalog),
-    }
-}
-
-fn validate_multi_agent_version(value: Option<&Value>) -> Result<(), CodexDiscoveryError> {
-    match value {
-        Some(Value::Null) => Ok(()),
-        Some(Value::String(version)) if matches!(version.as_str(), "disabled" | "v1" | "v2") => {
-            Ok(())
-        }
-        _ => Err(CodexDiscoveryError::ModelCatalog),
-    }
-}
-
-fn validate_access_programs(value: Option<&Value>) -> Result<(), CodexDiscoveryError> {
-    match value {
-        Some(Value::Null) => Ok(()),
-        Some(Value::Object(programs)) if programs.len() == 1 => {
-            bounded_text_array(programs.get("cyber"), 8, 512)
-        }
-        _ => Err(CodexDiscoveryError::ModelCatalog),
-    }
-}
-
-fn validate_availability_nux(value: Option<&Value>) -> Result<(), CodexDiscoveryError> {
-    let Some(value) = value else {
-        return Err(CodexDiscoveryError::ModelCatalog);
-    };
-    if value.is_null() {
-        return Ok(());
-    }
-    let object = value.as_object().ok_or(CodexDiscoveryError::ModelCatalog)?;
-    if object.len() != 1 {
-        return Err(CodexDiscoveryError::ModelCatalog);
-    }
-    model_text(object, "message", 8_192).map(drop)
-}
-
-fn validate_service_tiers(value: Option<&Value>) -> Result<(), CodexDiscoveryError> {
-    let tiers = value
-        .and_then(Value::as_array)
-        .filter(|tiers| tiers.len() <= 32)
-        .ok_or(CodexDiscoveryError::ModelCatalog)?;
-    for tier in tiers {
-        let tier = tier.as_object().ok_or(CodexDiscoveryError::ModelCatalog)?;
-        if tier.len() != 3
-            || !["id", "name", "description"]
-                .iter()
-                .all(|field| tier.contains_key(*field))
-        {
-            return Err(CodexDiscoveryError::ModelCatalog);
-        }
-        model_text(tier, "id", 512)?;
-        model_text(tier, "name", 512)?;
-        model_text(tier, "description", 8_192)?;
-    }
-    Ok(())
 }
 
 fn model_text<'a>(

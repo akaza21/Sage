@@ -49,9 +49,7 @@ impl PiTranslator {
         }
         self.pending.remove(command_id);
         self.closed_config_requests.remove(command_id);
-        if kind == PendingKind::SetThinkingLevel {
-            self.pending_thinking = None;
-        }
+        self.clear_pending_setting(kind);
         match kind {
             PendingKind::Prompt | PendingKind::Compact => {
                 self.active = None;
@@ -70,6 +68,7 @@ impl PiTranslator {
             | PendingKind::Commands
             | PendingKind::ThinkingLevels
             | PendingKind::SetThinkingLevel
+            | PendingKind::SetAutoCompaction
             | PendingKind::NewSession
             | PendingKind::Resume
             | PendingKind::Steer
@@ -153,6 +152,7 @@ impl PiTranslator {
             retry_notices: 0,
             retry_failed: false,
             retry_final_error: None,
+            retry_waiting: None,
             unknown_kinds: Default::default(),
             unknown_suppression_emitted: false,
             last_reply: None,
@@ -238,4 +238,16 @@ fn validate_message(message: &str) -> Result<(), AdapterError> {
         return Err(AdapterError::Limit("prompt bytes"));
     }
     Ok(())
+}
+
+impl PiTranslator {
+    /// Forgets the setting a refused, lost or unanswered config request
+    /// asked for, so the next change of that setting can be sent.
+    pub(super) fn clear_pending_setting(&mut self, kind: PendingKind) {
+        match kind {
+            PendingKind::SetThinkingLevel => self.pending_thinking = None,
+            PendingKind::SetAutoCompaction => self.pending_auto_compaction = None,
+            _ => {}
+        }
+    }
 }
