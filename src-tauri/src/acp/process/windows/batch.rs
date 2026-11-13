@@ -211,9 +211,9 @@ mod tests {
         discover();
         let current = registration.refresh().unwrap();
         assert!(registration.is_available());
-        assert_ne!(current.binding_digest(), earlier.binding_digest());
-        assert_eq!(current.artifact_digest(), earlier.artifact_digest());
-        assert_eq!(current.harness_version(), earlier.harness_version());
+        assert_ne!(current.package_manifest(), earlier.package_manifest());
+        // Persisted chats keep resuming: the binding digest is unchanged.
+        assert_eq!(current.binding_digest(), earlier.binding_digest());
 
         let root = ProjectRootAuthority::for_test(
             SageProjectId::parse("project-manifest-reinstall").unwrap(),

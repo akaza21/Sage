@@ -17,16 +17,6 @@ pub(crate) struct ManifestExpectation {
 
 impl ManifestExpectation {
     #[cfg(windows)]
-    pub(crate) fn sha256(&self) -> [u8; 32] {
-        self.sha256
-    }
-
-    #[cfg(windows)]
-    pub(crate) fn byte_len(&self) -> u64 {
-        self.byte_len
-    }
-
-    #[cfg(windows)]
     pub(crate) fn record(canonical_absolute_path: PathBuf) -> Result<Self, LaunchError> {
         let mut bytes = Vec::new();
         open_denying_writers(&canonical_absolute_path)?

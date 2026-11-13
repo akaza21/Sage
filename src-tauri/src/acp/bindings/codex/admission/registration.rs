@@ -82,9 +82,7 @@ impl CodexBindingRegistration {
                 Ok(candidate)
             }
             CodexRegistrationState::Admitted(binding)
-                if binding.is_observed()
-                    && (binding.binding_digest() != candidate.binding_digest()
-                        || binding.harness_version() != candidate.harness_version()) =>
+                if binding.is_observed() && !binding.is_same_installation(&candidate) =>
             {
                 *state = CodexRegistrationState::Admitted(Arc::clone(&candidate));
                 Ok(candidate)

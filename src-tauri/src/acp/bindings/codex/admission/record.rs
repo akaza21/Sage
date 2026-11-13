@@ -70,11 +70,7 @@ impl AdmittedCodexBinding {
         #[cfg(windows)]
         let manifest = npm_manifest_expectation(&entrypoint.path)
             .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-        let binding_digest = observed_binding_digest(
-            &entrypoint,
-            #[cfg(windows)]
-            manifest.as_ref(),
-        );
+        let binding_digest = observed_binding_digest(&entrypoint);
         let artifact_digest = sha256_hex(entrypoint.sha256);
         let binding_digest_hex = sha256_hex(binding_digest);
         let environment = observed_environment(&entrypoint.path, inputs.as_ref())?;
