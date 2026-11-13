@@ -115,7 +115,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         commands::acp::file_snapshot::get_acp_file_snapshot,
         commands::acp::child_transcript::get_acp_child_transcript,
         commands::acp::file_reference::resolve_chat_file_reference,
-        commands::acp::get_codex_discovery,
+        commands::acp::codex_discovery::get_codex_discovery,
         #[cfg(any(debug_assertions, feature = "diagnostics"))]
         commands::acp::runtime_identity::get_codex_runtime_identity,
         commands::acp::codex_auth::get_codex_auth,
