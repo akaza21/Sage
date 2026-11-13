@@ -145,6 +145,13 @@ pub(super) fn cut_at(path: &Path, prompt: &str) -> Result<Option<String>, Transc
                 None
             }
         };
+        // Resumed transcripts can repeat history; only conflicting links or
+        // message roles make a repeated UUID ambiguous.
+        let ancestry = (
+            parent,
+            entry.is_main_reply(),
+            entry.kind == Some("user") && entry.sidechain != Some(true),
+        );
         if id == prompt {
             if entry.kind == Some("user") && entry.sidechain != Some(true) {
                 start = Some(parent);
@@ -152,15 +159,8 @@ pub(super) fn cut_at(path: &Path, prompt: &str) -> Result<Option<String>, Transc
                 invalid = true;
             }
         } else if entries
-            .insert(
-                id,
-                (
-                    parent,
-                    entry.is_main_reply(),
-                    entry.kind == Some("user") && entry.sidechain != Some(true),
-                ),
-            )
-            .is_some()
+            .insert(id, ancestry)
+            .is_some_and(|previous| previous != ancestry)
         {
             invalid = true;
         }

@@ -136,6 +136,44 @@ impl Chat {
 }
 
 #[test]
+fn undo_after_duplicated_history_cuts_at_the_previous_reply() {
+    let chat = Chat::new(true);
+    let saved = std::fs::read_to_string(&chat.transcript).unwrap();
+    let history = saved.lines().take(2).collect::<Vec<_>>().join("\n");
+    std::fs::write(&chat.transcript, format!("{history}\n{saved}")).unwrap();
+
+    let command = chat.stage(LAST).unwrap();
+    assert_eq!(command.cut_at.as_deref(), Some(REPLY));
+    let recorded =
+        store::record_turn_undone(&mut chat.fixture.database.connection(), &command).unwrap();
+    assert_eq!(recorded.thread, store::UndoneThread::Cut);
+    assert_eq!(chat.fixture.page_turns(), [FIRST]);
+}
+
+#[test]
+fn undo_on_conflicting_duplicate_history_fails_and_keeps_the_turn() {
+    for (field, value) in [
+        ("parentUuid", serde_json::Value::Null),
+        ("type", serde_json::json!("user")),
+        ("isSidechain", serde_json::json!(true)),
+    ] {
+        let chat = Chat::new(true);
+        let saved = std::fs::read_to_string(&chat.transcript).unwrap();
+        let mut duplicate: serde_json::Value =
+            serde_json::from_str(saved.lines().nth(1).unwrap()).unwrap();
+        duplicate[field] = value;
+        std::fs::write(&chat.transcript, format!("{duplicate}\n{saved}")).unwrap();
+
+        assert_eq!(
+            chat.stage(LAST).unwrap_err(),
+            TranscriptError::ParentChain.to_string()
+        );
+        assert_eq!(chat.fixture.page_turns(), [LAST, FIRST]);
+        assert!(chat.fixture.pending().is_none());
+    }
+}
+
+#[test]
 fn undo_on_an_unreadable_transcript_fails_and_keeps_the_turn() {
     let chat = Chat::new(true);
     std::fs::remove_file(&chat.transcript).unwrap();
@@ -182,6 +220,7 @@ fn undo_on_an_oversized_transcript_fails_and_keeps_the_turn() {
         "not JSON\n",
         "{}\n",
         "{\"uuid\":\"00000000-0000-4000-8000-000000000009\"}\n",
+        "{\"type\":\"assistant\",\"uuid\":\"00000000-0000-4000-8000-000000000009\",\"parentUuid\":null}\n",
     ] {
         let mut file = std::io::BufWriter::new(std::fs::File::create(&chat.transcript).unwrap());
         for _ in 0..=transcript::MAX_ENTRIES {
