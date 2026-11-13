@@ -64,6 +64,15 @@ pub(super) fn bounded_summary(value: &str) -> Option<String> {
         .filter(|value| !value.is_empty() && value.len() <= ITEM_SUMMARY_BYTES)
 }
 
+/// Command lines are already sanitized; clip only their display summary.
+pub(super) fn bounded_command_summary(value: &str) -> String {
+    let mut end = value.len().min(ITEM_SUMMARY_BYTES);
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    value[..end].to_owned()
+}
+
 pub(super) fn parse_tool_state(status: &str) -> Option<ToolState> {
     match status {
         "inProgress" => Some(ToolState::InProgress),

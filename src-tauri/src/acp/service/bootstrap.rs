@@ -109,6 +109,8 @@ impl AcpService {
             #[cfg(test)]
             lane_busy_refusals: Default::default(),
             #[cfg(test)]
+            control_running_refusals: Default::default(),
+            #[cfg(test)]
             yield_lane_on_busy: Default::default(),
             #[cfg(test)]
             codex_runtime_release_fail_always: std::sync::atomic::AtomicBool::new(false),

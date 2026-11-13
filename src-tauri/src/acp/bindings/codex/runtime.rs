@@ -175,6 +175,8 @@ impl CodexRuntime {
             }
             IngressDisposition::SettingsUpdated { model, effort } => {
                 self.adopt_reported_settings(Some(model), effort);
+                // Hydration belongs to the idle owner after handoff. Activation
+                // must be able to drain this notification without new requests.
                 one(AdapterEvent::IgnoredLate)
             }
             IngressDisposition::DuplicateTerminal => one(AdapterEvent::IgnoredDuplicate),

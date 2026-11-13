@@ -14,6 +14,8 @@ pub(crate) enum CodexSessionError {
     Session(#[from] SessionCoordinatorError),
     #[error("Codex runtime capacity is occupied")]
     Capacity,
+    #[error("runtime capacity is occupied while an idle runtime answers a session control")]
+    CapacityAnswering,
     #[error("the harness requires sign-in before it can continue")]
     SignInRequired,
     #[error("Codex live runtime requires recovery")]

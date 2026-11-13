@@ -469,7 +469,9 @@
   --type-size-editor-ui: var(--font-size-sm);
 
   font-family: var(--font-family-ui);
-  font-synthesis: none;
+  /* Keep real weights; allow emphasis in families without an italic face,
+     such as Segoe UI Variable. */
+  font-synthesis: style;
   text-rendering: optimizeLegibility;
   color: var(--color-text-primary);
   background: var(--color-canvas);
