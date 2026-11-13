@@ -140,6 +140,49 @@ fn presence_projection_does_not_execute_a_version_command() {
 }
 
 #[test]
+fn a_failed_version_probe_is_tried_again_on_the_next_discovery() {
+    let directory = scratch_dir();
+    let ready = directory.join("ready");
+    // Fails until the marker exists, like a just-updated CLI that misses the
+    // deadline on its first, cold run. The script itself never changes.
+    let command = if cfg!(windows) {
+        format!(
+            "@if not exist \"{}\" exit /b 1\r\n@echo codex-cli 0.168.0",
+            ready.display()
+        )
+    } else {
+        format!(
+            "[ -e \"{}\" ] || exit 1\necho codex-cli 0.168.0",
+            ready.display()
+        )
+    };
+    let executable = write_script(
+        &directory,
+        test_basename(HarnessExecutable::Codex),
+        &command,
+    );
+    let present = vec![InstalledHarness {
+        id: "codex",
+        executable,
+        version: None,
+    }];
+    let cache = DisplayVersionCache::default();
+
+    assert_eq!(
+        enrich_installed_harness_versions(&present, &cache)[0].version,
+        None
+    );
+    fs::write(&ready, "").unwrap();
+    assert_eq!(
+        enrich_installed_harness_versions(&present, &cache)[0]
+            .version
+            .as_deref(),
+        Some("0.168.0")
+    );
+    fs::remove_dir_all(directory).expect("remove scratch directory");
+}
+
+#[test]
 fn display_version_cache_skips_unchanged_probe_and_rechecks_changed_file_identity() {
     let directory = scratch_dir();
     let marker = directory.join("version-probes.txt");

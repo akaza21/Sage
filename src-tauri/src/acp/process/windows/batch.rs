@@ -78,6 +78,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn accepts_the_observed_npm_codex_launcher_and_resolves_node_from_path() {
+        let directory = std::env::temp_dir().join(format!("sage-batch-plan-{}", uuid::Uuid::new_v4()));
+        let package = directory.join("node_modules/@openai/codex");
+        fs::create_dir_all(package.join("bin")).unwrap();
+        fs::write(package.join("bin/codex.js"), b"").unwrap();
+        fs::write(
+            package.join("package.json"),
+            br#"{"name":"@openai/codex","bin":{"codex":"bin/codex.js"}}"#,
+        )
+        .unwrap();
+        let contents = concat!(
+            "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n",
+            ":start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST \"%dp0%\\node.exe\" (\r\n",
+            "  SET \"_prog=%dp0%\\node.exe\"\r\n) ELSE (\r\n  SET \"_prog=node\"\r\n",
+            "  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\n",
+            "endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & \"%_prog%\"  ",
+            "\"%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js\" %*\r\n"
+        );
+        assert!(observed_npm_codex_launcher(contents.as_bytes()));
+        assert_eq!(
+            crate::harness_discovery::npm_package_bin(&directory, "@openai/codex", "codex")
+                .unwrap(),
+            directory
+                .join("node_modules")
+                .join("@openai")
+                .join("codex")
+                .join("bin")
+                .join("codex.js")
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn accepts_npm_codex_shims_from_any_npm_template() {
         let current = concat!(
             "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n",

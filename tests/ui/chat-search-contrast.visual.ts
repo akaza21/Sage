@@ -104,7 +104,7 @@ test.describe("Search chats contrast", () => {
       const dialog = await openSearchChats(page);
       // A search with no native backend reports its error inline, so the
       // error role is on screen with the field, picker and actions.
-      await dialog.getByRole("searchbox").fill("chat");
+      await dialog.getByRole("combobox", { name: "Search chats" }).fill("chat");
       await expect(dialog.locator(".composer__error")).toBeVisible();
 
       const atRest = await lowestTextContrast(dialog, underlay);

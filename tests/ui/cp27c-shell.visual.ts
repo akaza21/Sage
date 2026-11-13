@@ -236,16 +236,8 @@ for (const width of [480, 720]) {
           const { fileResource, visualDiff } =
             await import("/tests/ui/fixtures/visualDocumentFixtures.ts");
           const { diffCacheKey } = await import("/src/domain/diffIdentity.ts");
-          await useWorkbenchStore.getState().openDiff(fileResource);
-          useWorkbenchStore.setState((state) => ({
-            diffs: {
-              ...state.diffs,
-              [diffCacheKey(undefined, fileResource)]: {
-                phase: "ready",
-                value: visualDiff,
-              },
-            },
-          }));
+          // The desktop runtime is in place before the diff opens, so the
+          // Workbench re-render that opening it causes connects the terminal.
           let visible = false;
           Object.defineProperty(window, "__TAURI_INTERNALS__", {
             configurable: true,
@@ -264,8 +256,25 @@ for (const width of [480, 720]) {
               },
             },
           });
+          await useWorkbenchStore.getState().openDiff(fileResource);
+          useWorkbenchStore.setState((state) => ({
+            diffs: {
+              ...state.diffs,
+              [diffCacheKey(undefined, fileResource)]: {
+                phase: "ready",
+                value: visualDiff,
+              },
+            },
+          }));
         });
-        await page.getByRole("button", { name: "Hide left sidebar" }).click();
+        // Opening the diff is resource navigation, which dismisses the
+        // compact tool drawer that covered the editor.
+        await expect(
+          page.locator('.workbench--editor .sidebar[role="dialog"]'),
+        ).toHaveCount(0);
+        await expect(
+          page.getByRole("button", { name: "Show left sidebar" }),
+        ).toBeVisible();
         const surface = page.locator(".diff-surface");
         const surfaceBefore = await expectContained(surface, page);
         const scroll = surface.locator(".diff-editor");

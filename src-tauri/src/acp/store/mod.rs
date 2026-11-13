@@ -23,7 +23,7 @@ mod paging;
 mod permission_item;
 mod projection_decode;
 mod prompt_images;
-pub(crate) use projection_decode::parse_legacy_text;
+pub(crate) use projection_decode::decode_payload;
 mod request_identity;
 mod request_terminal;
 mod requests;
@@ -80,7 +80,7 @@ pub(crate) use adapter_batch::{
     AdapterInboundEvent, AdapterStoreOwner, AdapterTurnCursor, ChildLiveItemCommand,
     TurnTerminalReasonCommand, TurnUsageSnapshotCommand,
 };
-pub(crate) use cancel::begin_cancel;
+pub(crate) use cancel::{begin_cancel, turn_is_terminal};
 #[cfg(test)]
 pub(crate) use commands::prepare_turn;
 pub(crate) use commands::{lookup_active_turn, lookup_prepared_turn};

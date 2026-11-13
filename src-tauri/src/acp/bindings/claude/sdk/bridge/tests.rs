@@ -560,9 +560,9 @@ fn commands_sharing_a_name_list_the_row_that_runs() {
             json!({"type":"system","subtype":"commands_changed","commands":[
                 {"name":"review","description":"Project review","argumentHint":""},
                 {"name":"review","description":"Review a PR","argumentHint":"<pr>","builtin":true},
-                {"name":"deploy","description":"Ship it","argumentHint":""},
+                {"name":"deploy","description":"Ship it","argumentHint":"","aliases":["ship"]},
                 {"name":"deploy","description":"Other deploy","argumentHint":""},
-                {"name":"cost","description":"Cost","argumentHint":"","builtin":true},
+                {"name":"cost","description":"Cost","argumentHint":"","builtin":true,"aliases":["usage"]},
                 {"name":"cost","description":"Later cost","argumentHint":"","builtin":true},
             ]}),
         )
@@ -572,8 +572,8 @@ fn commands_sharing_a_name_list_the_row_that_runs() {
         listed,
         &json!([
             {"name":"review","description":"Review a PR","input":{"hint":"<pr>"},"_meta":{"source":"builtin"}},
-            {"name":"deploy","description":"Ship it","input":null},
-            {"name":"cost","description":"Cost","input":null,"_meta":{"source":"builtin"}},
+            {"name":"deploy","description":"Ship it","input":null,"_meta":{"aliases":["ship"]}},
+            {"name":"cost","description":"Cost","input":null,"_meta":{"source":"builtin","aliases":["usage"]}},
         ])
     );
 }
@@ -645,6 +645,142 @@ fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
         }),
         Err(BridgeError::Unsupported)
     );
+}
+
+#[test]
+fn mcp_servers_are_listed_and_reconnected_one_control_at_a_time() {
+    use crate::acp::{
+        contract::RequiredText, goal::NativeRpcReply, mcp::inventory::McpConnection,
+        session_control::SessionControl,
+    };
+    let mut bridge = initialized();
+    let list = bridge
+        .session_control(&SessionControl::ReadMcpServers)
+        .unwrap();
+    assert_eq!(list["request"], json!({"subtype": "mcp_status"}));
+    assert!(bridge.controlling());
+    let name = RequiredText::<128>::new("serverName", "linear").unwrap();
+    let reconnect = SessionControl::ReconnectMcpServer { name };
+    assert_eq!(
+        bridge.session_control(&reconnect),
+        Err(BridgeError::Capacity)
+    );
+    let listed = bridge
+        .inbound(success(
+            &list,
+            json!({"mcpServers": [{"name": "linear", "status": "failed", "error": "timed out",
+                "config": {"type": "http", "url": "https://mcp.linear.app/mcp", "headers": {"x": "y"}}}]}),
+        ))
+        .unwrap();
+    assert!(listed.acp.is_empty());
+    let Some(NativeRpcReply::McpServers(inventory)) = listed.native else {
+        panic!("a server list")
+    };
+    assert_eq!(inventory.servers[0].connection, McpConnection::Failed);
+    assert!(!bridge.controlling());
+    let again = bridge.session_control(&reconnect).unwrap();
+    assert_eq!(
+        again["request"],
+        json!({"subtype": "mcp_reconnect", "serverName": "linear"})
+    );
+    let refused = bridge
+        .inbound(
+            json!({"type":"control_response","response":{"subtype":"error",
+            "request_id":again["request_id"],"error":"Server not found: linear"}}),
+        )
+        .unwrap();
+    assert!(
+        matches!(&refused.native, Some(NativeRpcReply::ControlRefused(Some(text))) if text.as_str() == "Server not found: linear")
+    );
+    let again = bridge.session_control(&reconnect).unwrap();
+    let done = bridge.inbound(success(&again, json!({}))).unwrap();
+    assert_eq!(done.native, Some(NativeRpcReply::Controlled(None)));
+    // A reply that is not a list is refused rather than shown as empty.
+    let list = bridge
+        .session_control(&SessionControl::ReadMcpServers)
+        .unwrap();
+    let odd = bridge
+        .inbound(success(&list, json!({"servers": []})))
+        .unwrap();
+    assert_eq!(odd.native, Some(NativeRpcReply::Rejected));
+    // Reloading and signing in happen in Claude Code's own `/mcp`.
+    for control in [
+        SessionControl::ReloadMcpServers,
+        SessionControl::SignInMcpServer {
+            name: RequiredText::new("serverName", "linear").unwrap(),
+        },
+    ] {
+        assert_eq!(
+            bridge.session_control(&control),
+            Err(BridgeError::Unsupported)
+        );
+    }
+}
+
+#[test]
+fn an_abandoned_mcp_list_frees_the_session_and_its_late_reply_is_dropped() {
+    use crate::acp::session_control::SessionControl;
+    let mut bridge = initialized();
+    let mut abandoned = Vec::new();
+    for _ in 0..4 {
+        let list = bridge
+            .session_control(&SessionControl::ReadMcpServers)
+            .unwrap();
+        bridge.abandon_passive_requests();
+        assert!(!bridge.controlling(), "an abandoned list holds nothing");
+        abandoned.push(list);
+    }
+    // Four lists Claude Code never answered hold back further lists only.
+    assert_eq!(
+        bridge.session_control(&SessionControl::ReadMcpServers),
+        Err(BridgeError::Capacity)
+    );
+    let late = bridge
+        .inbound(success(&abandoned[0], json!({"mcpServers": []})))
+        .unwrap();
+    assert_eq!(late, Inbound::default());
+    let late = bridge
+        .inbound(
+            json!({"type":"control_response","response":{"subtype":"error",
+            "request_id":abandoned[1]["request_id"],"error":"too large"}}),
+        )
+        .unwrap();
+    assert_eq!(late, Inbound::default());
+    assert!(
+        bridge
+            .session_control(&SessionControl::ReadMcpServers)
+            .is_ok()
+    );
+}
+
+#[test]
+fn an_abandoned_reconnect_frees_the_session_and_counts_toward_the_bound() {
+    use crate::acp::{contract::RequiredText, session_control::SessionControl};
+    let mut bridge = initialized();
+    let reconnect = SessionControl::ReconnectMcpServer {
+        name: RequiredText::new("serverName", "linear").unwrap(),
+    };
+    let mut abandoned = Vec::new();
+    for _ in 0..4 {
+        abandoned.push(bridge.session_control(&reconnect).unwrap());
+        bridge.abandon_passive_requests();
+        assert!(
+            !bridge.controlling(),
+            "an abandoned reconnect holds nothing"
+        );
+    }
+    // Neither MCP request is sent past the bound; other controls still are.
+    assert_eq!(
+        bridge.session_control(&reconnect),
+        Err(BridgeError::Capacity)
+    );
+    assert_eq!(
+        bridge.session_control(&SessionControl::ReadMcpServers),
+        Err(BridgeError::Capacity)
+    );
+    let late = bridge.inbound(success(&abandoned[0], json!({}))).unwrap();
+    assert_eq!(late, Inbound::default());
+    assert!(bridge.session_control(&reconnect).is_ok());
 }
 
 /// The blocks `Mentions::blocks` sends for an `@` mention: the file's text

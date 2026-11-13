@@ -1,20 +1,23 @@
-//! The ordinary Win32 spelling of a verbatim (`\\?\`) path.
+//! Win32 path spelling and reserved device names.
 //!
 //! `std::fs::canonicalize` returns verbatim paths on Windows. Sage keeps them
 //! for identity checks, but programs that receive a path as an argument or
 //! setting expect the ordinary form: Node.js, for one, cannot start a main
 //! script named `\\?\C:\...` ("EISDIR: illegal operation on a directory,
 //! lstat 'C:'"). The ordinary form is returned only where it names the same
-//! file, so the conversion never changes which file a program opens.
+//! file, so the conversion never changes which file a program opens. Paths with
+//! reserved device-name components stay verbatim, as do ordinary spellings of
+//! 260 or more UTF-16 code units.
 
 use std::path::{Path, PathBuf};
 
-/// Win32 rewrites a path longer than `MAX_PATH` only with long-path support,
-/// so longer paths stay verbatim.
+/// Win32's ordinary path limit in UTF-16 code units, including the terminating
+/// NUL; paths reaching this length stay verbatim without long-path support.
 const MAX_PATH: usize = 260;
 
 /// `path` in its ordinary Win32 spelling when that names the same file;
-/// otherwise `path` unchanged.
+/// otherwise `path` unchanged. Reserved device-name components and ordinary
+/// spellings of `MAX_PATH` or more UTF-16 code units stay verbatim.
 pub(crate) fn simplified(path: &Path) -> PathBuf {
     match path.to_str().and_then(simplified_text) {
         Some(text) => PathBuf::from(text),
@@ -40,7 +43,8 @@ pub(crate) fn ordinary_invocation(
 
 /// The ordinary spelling of a verbatim local-drive or UNC path, or `None` when
 /// `text` is not verbatim or Win32 would read its ordinary form differently: a
-/// component ending in `.` or a space, or a path of `MAX_PATH` or more.
+/// reserved device-name component, a component ending in `.` or a space, or a
+/// path of `MAX_PATH` or more UTF-16 code units.
 pub(crate) fn simplified_text(text: &str) -> Option<String> {
     let simple = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
         format!(r"\\{rest}")
@@ -52,41 +56,34 @@ pub(crate) fn simplified_text(text: &str) -> Option<String> {
         }
         rest.to_owned()
     };
-    let rewritable = simple
-        .split('\\')
-        .any(|part| part.ends_with('.') || part.ends_with(' ') || dos_device(part));
-    (simple.len() < MAX_PATH && !rewritable).then_some(simple)
+    let rewritable = simple.split('\\').any(|part| {
+        part.ends_with('.') || part.ends_with(' ') || windows_reserved_device_name(part)
+    });
+    (simple.encode_utf16().count() < MAX_PATH && !rewritable).then_some(simple)
 }
 
-/// Whether Win32 reads `part` as a device rather than a file: `NUL`, `CON`,
-/// `COM1` and the rest, with or without an extension.
-fn dos_device(part: &str) -> bool {
-    let stem = part.split('.').next().unwrap_or(part).trim_end();
+/// Windows reserves these device names in every directory: case-insensitively,
+/// whatever follows the first dot, and after trimming trailing spaces from the
+/// stem. Through a verbatim path they become literal files that Win32 tools and
+/// Git cannot handle, so write admission refuses them on every platform.
+pub(crate) fn windows_reserved_device_name(filename: &str) -> bool {
+    let stem = filename.split('.').next().unwrap_or(filename).trim_end();
     let upper = stem.to_ascii_uppercase();
-    let numbered = |prefix: &str| {
-        stem.get(..3)
-            .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
-            && matches!(
-                &stem[3..],
-                "0" | "1"
-                    | "2"
-                    | "3"
-                    | "4"
-                    | "5"
-                    | "6"
-                    | "7"
-                    | "8"
-                    | "9"
-                    | "\u{b9}"
-                    | "\u{b2}"
-                    | "\u{b3}"
-            )
-    };
-    matches!(
+    if matches!(
         upper.as_str(),
-        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
-    ) || numbered("COM")
-        || numbered("LPT")
+        "CON" | "PRN" | "AUX" | "NUL" | "CLOCK$" | "CONIN$" | "CONOUT$"
+    ) {
+        return true;
+    }
+    let suffix = upper
+        .strip_prefix("COM")
+        .or_else(|| upper.strip_prefix("LPT"));
+    suffix.is_some_and(|suffix| {
+        matches!(
+            suffix,
+            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+        )
+    })
 }
 
 #[cfg(test)]
@@ -128,6 +125,53 @@ mod tests {
         assert_eq!(simplified_text(r"C:\already\plain"), None);
         let long = format!(r"\\?\C:\{}", "a".repeat(300));
         assert_eq!(simplified_text(&long), None);
+    }
+
+    #[test]
+    fn a_reserved_name_component_keeps_the_verbatim_path() {
+        let path = Path::new(r"\\?\C:\projects\NUL\notes.txt");
+        assert_eq!(simplified(path), path.to_path_buf());
+    }
+
+    #[test]
+    fn a_multibyte_path_below_max_path_is_simplified() {
+        // The ordinary spelling is 103 UTF-16 code units but 303 UTF-8 bytes.
+        let ordinary = format!(r"C:\{}", "界".repeat(100));
+        let verbatim = format!(r"\\?\{ordinary}");
+        assert_eq!(simplified(Path::new(&verbatim)), PathBuf::from(ordinary));
+    }
+
+    #[test]
+    fn invocation_paths_obey_the_utf16_max_path_boundary() {
+        // Each supplementary character occupies two UTF-16 code units.
+        let ordinary = format!(r"C:\{}", "\u{1f680}".repeat(128));
+        let verbatim = format!(r"\\?\{ordinary}");
+        let at_limit = format!("{verbatim}a");
+        assert_eq!(simplified_text(&verbatim).as_deref(), Some(ordinary.as_str()));
+        assert_eq!(simplified_text(&at_limit), None);
+        assert_eq!(simplified(Path::new(&at_limit)), PathBuf::from(&at_limit));
+        let (program, args) = ordinary_invocation(
+            Path::new(&verbatim),
+            &[verbatim.clone().into(), at_limit.clone().into()],
+        );
+        assert_eq!(program, PathBuf::from(&ordinary));
+        assert_eq!(args, [ordinary, at_limit].map(std::ffi::OsString::from));
+    }
+
+    #[test]
+    fn invocation_keeps_reserved_names_and_trailing_spaces_verbatim() {
+        let paths = [
+            r"\\?\C:\NUL\node.exe",
+            r"\\?\C:\CLOCK$\cli.js",
+            r"\\?\UNC\server\share\CONIN$\cli.js",
+            r"\\?\C:\trailing \cli.js",
+        ];
+        let (program, args) = ordinary_invocation(
+            Path::new(paths[0]),
+            &paths.map(std::ffi::OsString::from),
+        );
+        assert_eq!(program, PathBuf::from(paths[0]));
+        assert_eq!(args, paths.map(std::ffi::OsString::from));
     }
 
     #[test]

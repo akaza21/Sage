@@ -22,6 +22,7 @@ mod native_claude_tests;
 mod npm_package;
 mod parsing;
 mod pi;
+mod updates;
 mod validation;
 mod version_probe;
 
@@ -41,6 +42,7 @@ use parsing::parse_harness_display_version;
 #[cfg(test)]
 use parsing::parse_harness_version;
 pub(crate) use pi::{DiscoveredPiLaunch, PiLaunchDiscovery, discover_pi_launch};
+pub(crate) use updates::{PublishedRelease, published_releases, update_sources};
 use validation::authentic_harness_file as validate_harness_file;
 use version_probe::run_version_command;
 
@@ -319,11 +321,11 @@ struct DisplayFileIdentity {
 
 #[derive(Debug, Default)]
 pub(crate) struct DisplayVersionCache {
-    entries: Mutex<HashMap<DisplayFileIdentity, Option<String>>>,
+    entries: Mutex<HashMap<DisplayFileIdentity, String>>,
 }
 
 impl DisplayVersionCache {
-    fn version(&self, identity: &DisplayFileIdentity) -> Option<Option<String>> {
+    fn version(&self, identity: &DisplayFileIdentity) -> Option<String> {
         self.entries
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -331,7 +333,7 @@ impl DisplayVersionCache {
             .cloned()
     }
 
-    fn insert(&self, identity: DisplayFileIdentity, version: Option<String>) {
+    fn insert(&self, identity: DisplayFileIdentity, version: String) {
         self.entries
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -388,7 +390,7 @@ pub(crate) fn enrich_installed_harness_versions(
                     let version = identity
                         .as_ref()
                         .and_then(|identity| cache.version(identity))
-                        .unwrap_or_else(|| {
+                        .or_else(|| {
                             let version = spec.zip(target.as_deref()).and_then(|(spec, target)| {
                                 let output = run_version_command(target, ProbeLimits::PRODUCTION)?;
                                 parse_harness_display_version(spec.executable, &output.stdout)
@@ -400,7 +402,10 @@ pub(crate) fn enrich_installed_harness_versions(
                                     })
                                     .map(|version| version.to_string())
                             });
-                            if let Some(identity) = identity {
+                            // A failed probe is not remembered: the first run of
+                            // a just-updated CLI can miss the deadline, and a
+                            // refresh must try it again.
+                            if let (Some(identity), Some(version)) = (identity, &version) {
                                 cache.insert(identity, version.clone());
                             }
                             version

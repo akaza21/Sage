@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../app/store";
+import { sameResource } from "../domain/resourceIdentity";
+import { requestEditorFocus } from "../features/files/editorFocusRequest";
 import { ModalDialog } from "../ui/ModalDialog";
 
 type PendingCloseAction = "discard" | "save";
@@ -24,7 +26,25 @@ function DirtyTabConfirmation({
       ? state
       : null;
   };
-  const dismiss = () => activeCommands()?.cancelCloseTab();
+  const dismiss = () => {
+    const state = activeCommands();
+    if (!state) return;
+    state.cancelCloseTab();
+    // Cancel goes back to typing in the active File, whether the close began
+    // in its editor (Ctrl+W) or on a tab's close button.
+    // Only an editor that is open can take the request, so a stale one never
+    // steals the focus later.
+    const editor = state.activeEditor;
+    const active = state.tabs.find((tab) => tab.id === state.activeTabId);
+    if (
+      active?.kind === "file" &&
+      active.resource &&
+      editor?.phase === "ready" &&
+      sameResource(editor.resource, active.resource)
+    ) {
+      requestEditorFocus(active.resource);
+    }
+  };
   const run = async (action: PendingCloseAction) => {
     const commands = activeCommands();
     if (!commands) return;
@@ -46,8 +66,10 @@ function DirtyTabConfirmation({
     <ModalDialog
       className="dirty-dialog--editor"
       labelledBy="dirty-dialog-title"
-      // Cancel puts the focus back where the close began, such as the
-      // editor; after Save or Discard that tab and its editor are gone.
+      // With no File to type in (a Diff or Settings tab is active), Cancel
+      // puts the focus back where the close began. The editor's own focus
+      // request runs after this restore, as React runs every effect cleanup
+      // before the next effects. After Save or Discard the tab is gone.
       restoreFocus
       onDismiss={dismiss}
     >

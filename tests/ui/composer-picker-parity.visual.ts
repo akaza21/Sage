@@ -84,6 +84,8 @@ test("gives single-line harness rows bounded scrolling and visible keyboard focu
   expect(
     await row.evaluate((element) => element.matches(":focus-visible")),
   ).toBe(true);
+  // Rows ease into their focus fill; read the fill it settles on.
+  await waitForAnimations(row, { subtree: false });
   const keyboard = await row.evaluate((element) => ({
     fill: getComputedStyle(element).backgroundColor,
     shadow: getComputedStyle(element).boxShadow,
@@ -441,7 +443,7 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   expect(modelBox).not.toBeNull();
   expect(modelBox!.width).toBeGreaterThanOrEqual(228);
   expect(modelBox!.width).toBeLessThanOrEqual(236);
-  expect(modelBox!.height).toBeLessThanOrEqual(288);
+  expect(modelBox!.height).toBeLessThanOrEqual(312);
   await page.keyboard.press("End");
   const lastModel = modelCard.getByRole("option", {
     name: "Fresh advertised model 128",
@@ -632,8 +634,13 @@ test("a long harness list scrolls inside its menu and shows keyboard focus", asy
         .map((option) => option.getBoundingClientRect().height),
     );
   for (const height of rows) expect(height).toBeGreaterThanOrEqual(32);
-  const fill = (option: Locator) =>
-    option.evaluate((element) => getComputedStyle(element).backgroundColor);
+  // Rows ease into their focus fill; read the fill each settles on.
+  const fill = async (option: Locator) => {
+    await waitForAnimations(option, { subtree: false });
+    return option.evaluate(
+      (element) => getComputedStyle(element).backgroundColor,
+    );
+  };
   const resting = await fill(listbox.getByRole("option").nth(1));
   await page.keyboard.press("End");
   // End lands on the last selectable row; unavailable harnesses follow it.

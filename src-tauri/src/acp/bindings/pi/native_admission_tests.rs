@@ -125,6 +125,7 @@ fn older_and_newer_pi_releases_are_admitted_and_an_unreadable_or_too_old_one_is_
     }
     for (version, reason) in [
         ("1.6", PiAdmissionUnavailable::VersionUnreadable),
+        ("01.6.0", PiAdmissionUnavailable::VersionUnreadable),
         ("1.6.0-01", PiAdmissionUnavailable::VersionUnreadable),
         ("0.73.0", PiAdmissionUnavailable::VersionUnsupported),
         ("0.74.0-rc.1", PiAdmissionUnavailable::VersionUnsupported),

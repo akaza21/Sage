@@ -155,16 +155,18 @@ describe("Advertised composer effort", () => {
         screen.getByRole("button", { description: "Select effort" }),
       );
       const slider = await screen.findByRole("slider");
+      const heading = screen
+        .getByRole("dialog", { name: "Thinking level" })
+        .querySelector(".composer-effort__level");
+      const shown = (value: string) => value[0].toUpperCase() + value.slice(1);
       fireEvent.pointerDown(slider, { pointerId: 1 });
       for (let position = 1; position < values.length; position++) {
         fireEvent.change(slider, { target: { value: String(position) } });
+        expect(heading).toHaveTextContent(shown(values[position]));
       }
       expect(onSetOption).not.toHaveBeenCalled();
       expect(slider).toHaveValue(String(values.length - 1));
-      expect(slider).toHaveAttribute(
-        "aria-valuetext",
-        final[0].toUpperCase() + final.slice(1),
-      );
+      expect(slider).toHaveAttribute("aria-valuetext", shown(final));
       fireEvent.pointerUp(slider, { pointerId: 1 });
       fireEvent.blur(slider);
       expect(onSetOption).toHaveBeenCalledExactlyOnceWith(id, {

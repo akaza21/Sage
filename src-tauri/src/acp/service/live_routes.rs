@@ -22,7 +22,7 @@ impl AcpService {
     ) -> Result<(), CodexSessionError> {
         // Commits before the checks below; a refused activation leaves the
         // linked head `created`, and a retry naming either session resumes it.
-        let command = self.resume_earlier_codex_session(&admitted, command)?;
+        let command = self.resume_earlier_release_session(&admitted, command)?;
         let owner = RuntimeOwner {
             project_id: command.project_id.clone(),
             chat_id: command.chat_id.clone(),
@@ -76,14 +76,14 @@ impl AcpService {
         owner: &RuntimeOwner,
         turn_id: &crate::acp::contract::SageTurnId,
     ) -> bool {
-        self.load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
-            .is_ok_and(|page| {
-                page.turns.as_slice().iter().any(|turn| {
-                    turn.id == *turn_id
-                        && turn.session_id == owner.session_id
-                        && turn.state.is_terminal()
-                })
-            })
+        crate::acp::store::turn_is_terminal(
+            &self.database.connection(),
+            &owner.project_id,
+            &owner.chat_id,
+            &owner.session_id,
+            turn_id,
+        )
+        .unwrap_or(false)
     }
 
     pub(crate) fn close_session(

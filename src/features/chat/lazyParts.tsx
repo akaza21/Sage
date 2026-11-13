@@ -195,8 +195,10 @@ export function LazyHarnessNotice(
     !(
       harness?.transport === "acp" &&
       (harness.installState !== "available" ||
-        // An uncharacterised or newer-than-tested build is explained.
+        // An uncharacterised or newer-than-tested build, or a published
+        // update, is explained.
         (harness.characterisation ?? "characterised") !== "characterised" ||
+        harness.update ||
         (harness.accountModelDiscovery && discoveryPhase !== "ready"))
     )
   )

@@ -11,11 +11,7 @@ use super::{
 /// row whose role is `assistant`.
 pub(crate) fn assistant_text(payload_json: &str) -> Option<String> {
     use super::{intent::NormalizedPayload, projection::TextRole};
-    let (payload, role) = match serde_json::from_str::<NormalizedPayload>(payload_json) {
-        Ok(value) => (value, None),
-        Err(_) => super::store::parse_legacy_text(payload_json).ok()?,
-    };
-    match (payload, role) {
+    match super::store::decode_payload(payload_json).ok()? {
         (NormalizedPayload::Text { text }, None | Some(TextRole::Assistant)) => {
             Some(text.as_str().to_owned())
         }
