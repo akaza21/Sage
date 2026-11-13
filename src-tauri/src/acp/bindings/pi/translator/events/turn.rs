@@ -1,5 +1,6 @@
 use super::super::{ActiveTurn, PiTranslator, TurnPhase};
 use crate::acp::bindings::pi::{AdapterError, AdapterOutput, TerminalOutcome};
+use crate::acp::intent::session_event::SessionActivityState;
 use serde_json::Value;
 
 impl PiTranslator {
@@ -56,6 +57,14 @@ impl PiTranslator {
         turn.lifecycle.start_model()?;
         turn.settlement_message = None;
         turn.last_reply = None;
+        // The run Pi waited for has begun: the wait is over.
+        if let Some(attempt) = turn.retry_waiting.take() {
+            output.push(AdapterOutput::Retry {
+                attempt,
+                max_attempts: None,
+                state: SessionActivityState::Completed,
+            });
+        }
         output.push(AdapterOutput::TurnRunning {
             turn_key: turn.turn_key.clone(),
         });
@@ -157,14 +166,23 @@ impl PiTranslator {
         turn.retry_final_error = None;
         turn.settlement_message =
             failure_detail(value.get("errorMessage")).or_else(|| turn.settlement_message.take());
-        Ok(vec![AdapterOutput::AttemptFailed {
-            attempt,
-            max_attempts: value
-                .get("maxAttempts")
-                .and_then(Value::as_u64)
-                .filter(|maximum| *maximum >= attempt),
-            message: turn.settlement_message.clone().unwrap_or_default(),
-        }])
+        let max_attempts = value
+            .get("maxAttempts")
+            .and_then(Value::as_u64)
+            .filter(|maximum| *maximum >= attempt);
+        turn.retry_waiting = Some(attempt);
+        Ok(vec![
+            AdapterOutput::AttemptFailed {
+                attempt,
+                max_attempts,
+                message: turn.settlement_message.clone().unwrap_or_default(),
+            },
+            AdapterOutput::Retry {
+                attempt,
+                max_attempts,
+                state: SessionActivityState::Running,
+            },
+        ])
     }
 
     pub(super) fn retry_end(&mut self, value: &Value) -> Result<Vec<AdapterOutput>, AdapterError> {
@@ -172,6 +190,7 @@ impl PiTranslator {
             return Ok(vec![AdapterOutput::Absorbed]);
         };
         let turn = self.session_turn()?;
+        let waited = turn.retry_waiting.take();
         if success {
             turn.settlement_message = None;
             turn.retry_attempt = None;
@@ -181,7 +200,19 @@ impl PiTranslator {
             turn.retry_failed = true;
             turn.retry_final_error = failure_detail(value.get("finalError"));
         }
-        Ok(vec![AdapterOutput::Absorbed])
+        // A wait that ends without a new run recovered, or was stopped or
+        // given up.
+        Ok(vec![waited.map_or(AdapterOutput::Absorbed, |attempt| {
+            AdapterOutput::Retry {
+                attempt,
+                max_attempts: None,
+                state: if success {
+                    SessionActivityState::Completed
+                } else {
+                    SessionActivityState::Cancelled
+                },
+            }
+        })])
     }
 }
 

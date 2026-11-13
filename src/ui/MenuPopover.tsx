@@ -29,6 +29,9 @@ import {
   typeaheadIndex,
 } from "./listNavigation";
 
+/** Pause after which typed letters start a new typeahead search. */
+const TYPEAHEAD_RESET_MS = 500;
+
 const ITEM_SELECTOR = [
   '[role="menuitem"]',
   '[role="menuitemradio"]',
@@ -383,7 +386,7 @@ export function MenuPopover({
     typeaheadTimerRef.current = window.setTimeout(() => {
       typeaheadRef.current = "";
       typeaheadTimerRef.current = null;
-    }, 500);
+    }, TYPEAHEAD_RESET_MS);
     const match = typeaheadIndex(
       items.map((item) => item.textContent ?? ""),
       items.indexOf(document.activeElement as HTMLElement),
