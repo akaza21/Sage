@@ -12,9 +12,9 @@
 //!   Git does not read) is folded into one record for the topmost ignored
 //!   folder, marked [`Relevance::IgnoredBelow`]. Explorer still refreshes an
 //!   expanded `target` or `dist` from it, at a throttled pace, while a
-//!   `cargo build` no longer sends each of its writes. Throttled notices also
-//!   refresh Git (tracked descendants can be ignored) and Search using its
-//!   settings. The ignored folder's own record (`target` created at the root,
+//!   `cargo build` no longer sends each of its writes. Git relevance comes
+//!   from cached index membership; Search still uses its settings.
+//!   The ignored folder's own record (`target` created at the root,
 //!   say) passes as usual.
 //! - Everything else passes.
 //!
@@ -69,6 +69,7 @@ pub(super) struct NoticeRelevance {
     /// while deciding a cache miss, so siblings cannot retain rule chains.
     folders: HashMap<String, bool>,
     folder_bytes: usize,
+    tracked: super::tracked::TrackedPaths,
 }
 
 impl NoticeRelevance {
@@ -79,6 +80,7 @@ impl NoticeRelevance {
             rules: None,
             folders: HashMap::new(),
             folder_bytes: 0,
+            tracked: super::tracked::TrackedPaths::default(),
         }
     }
 
@@ -118,6 +120,43 @@ impl NoticeRelevance {
         self.rules = None;
         self.folders.clear();
         self.folder_bytes = 0;
+    }
+
+    /// Decide both consumers before folding away the exact changed path.
+    pub(super) fn classify_record(&mut self, relative: &str, action: u32) -> (Relevance, bool) {
+        // A removed directory is no longer on disk, and classifying its move
+        // may clear folder decisions. Retain that bounded directory evidence.
+        let known_directory = self.folders.contains_key(relative);
+        let relevance = self.classify(relative, action);
+        let git_relevant = match &relevance {
+            Relevance::Keep | Relevance::IgnoredBelow(_) => {
+                self.git_relevant(relative, action, known_directory)
+            }
+            Relevance::Drop | Relevance::Resync => true,
+        };
+        (relevance, git_relevant)
+    }
+
+    fn git_relevant(&mut self, relative: &str, action: u32, known_directory: bool) -> bool {
+        let parent = relative.rsplit_once('/').map_or("", |(parent, _)| parent);
+        let ignored = self.ignored_folder(parent).or_else(|| {
+            // Include the folder's own entry churn and clean/recreate events,
+            // without mistaking an ordinary file for a directory-only rule.
+            self.root
+                .join(relative)
+                .symlink_metadata()
+                .map_or(known_directory, |metadata| metadata.is_dir())
+                .then(|| self.ignored_folder(relative))
+                .flatten()
+        });
+        ignored.is_none_or(|folder| {
+            self.tracked.relevant(
+                &self.root,
+                folder,
+                relative,
+                matches!(super::kind_for_action(action), Some("created" | "deleted")),
+            )
+        })
     }
 
     /// The topmost folder at or above `folder` that Git ignores, deciding

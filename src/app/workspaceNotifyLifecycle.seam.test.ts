@@ -9,6 +9,7 @@ import type {
 import {
   getNotifyListingAdmissionState,
   MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
+  subscribeWorkspaceNotifyRepository,
   subscribeWorkspaceNotifySearch,
   syncLiveProjectWorkspaceNotify,
   type WorkspaceNotifyNotice,
@@ -498,6 +499,75 @@ describe("live Project workspace notify bind", () => {
       phase: "ready",
       value: { resource: target, entries: [], truncated: false },
     });
+  });
+
+  it("keeps sustained untracked ignored output out of Git refreshes while notifying Search", async () => {
+    await useWorkbenchStore.getState().initialize();
+    await unbindWorkspaceNotify();
+    vi.useFakeTimers();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    let emit: (value: unknown) => void = () => undefined;
+    await syncLiveProjectWorkspaceNotify(
+      liveProjectNotifyStamp(useWorkbenchStore.getState()),
+      {
+        ...createWorkspaceNotifyHooks(() => useWorkbenchStore.getState()),
+        async listen(listener) {
+          emit = listener;
+          return () => undefined;
+        },
+      },
+    );
+    const refreshTimes: number[] = [];
+    const searchTimes: number[] = [];
+    const stopSearch = subscribeWorkspaceNotifySearch(() => {
+      searchTimes.push(performance.now());
+    });
+    const stop = startRepositoryAutoRefresh({
+      async refresh() {
+        refreshTimes.push(performance.now());
+        return "unchanged";
+      },
+      changeStamp: async () => "fixed-git-metadata",
+      subscribeNotices: subscribeWorkspaceNotifyRepository,
+      pollAlways: false,
+    });
+    try {
+      // Settle the folder's initial creation, then replay native batches from
+      // a build in a collapsed target/ with no tracked descendants.
+      const notice = {
+        projectId: "project-a",
+        projectGeneration: 1,
+        transitionEpoch: 7,
+        rootId: "root-a",
+        relativePath: "target",
+        kind: "created",
+      };
+      emit(notice);
+      await vi.advanceTimersByTimeAsync(REFRESH_DEBOUNCE_MS);
+      expect(refreshTimes).toHaveLength(1);
+      for (let batch = 0; batch < 60; batch += 1) {
+        emit({ ...notice, kind: "ignored", gitRelevant: false });
+        await vi.advanceTimersByTimeAsync(100);
+      }
+      await vi.advanceTimersByTimeAsync(1_300);
+      expect(refreshTimes).toHaveLength(1);
+      expect(searchTimes.length).toBeGreaterThan(5);
+      emit({
+        ...notice,
+        relativePath: "dist",
+        kind: "ignored",
+        gitRelevant: true,
+      });
+      await vi.advanceTimersByTimeAsync(REFRESH_DEBOUNCE_MS);
+      expect(refreshTimes).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(refreshTimes).toHaveLength(2);
+    } finally {
+      stop();
+      stopSearch();
+      await unbindWorkspaceNotify();
+      vi.useRealTimers();
+    }
   });
 
   it("refreshes tracked changes under an ignored folder without polling or a Git stamp change", async () => {

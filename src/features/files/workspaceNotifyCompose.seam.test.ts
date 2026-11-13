@@ -53,6 +53,14 @@ describe("workspace notify compose", () => {
     expect(acceptWorkspaceNotifyNotice(notice, live)).toEqual(notice);
   });
 
+  it("accepts native Git relevance only as an optional boolean", () => {
+    const output = { ...notice, gitRelevant: false };
+    expect(acceptWorkspaceNotifyNotice(output, live)).toEqual(output);
+    expect(
+      acceptWorkspaceNotifyNotice({ ...notice, gitRelevant: "false" }, live),
+    ).toBeNull();
+  });
+
   it("accepts a resync notice and maps it to the root listing", () => {
     const resync = { ...notice, relativePath: "lost-notices", kind: "resync" };
     expect(acceptWorkspaceNotifyNotice(resync, live)).toEqual(resync);

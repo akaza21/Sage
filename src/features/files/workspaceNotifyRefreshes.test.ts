@@ -180,4 +180,25 @@ describe("workspace notify refreshes", () => {
     await vi.advanceTimersByTimeAsync(IGNORED_SUBTREE_REFRESH_MS * 3);
     expect(invalidate).toHaveBeenCalledTimes(1);
   });
+
+  it("preserves a tracked edit among ignored output without carrying it into later windows", async () => {
+    vi.useFakeTimers();
+    const published: WorkspaceNotifyNotice[] = [];
+    const refreshes = createNotifyRefreshes(
+      () => undefined,
+      () => true,
+      MAX_IN_FLIGHT,
+      (notice) => published.push(notice),
+    );
+    const output = { ...notice("dist", "ignored"), gitRelevant: false };
+    const tracked = { ...output, gitRelevant: true };
+    refreshes.ignoredFolder(output);
+    refreshes.ignoredFolder(tracked);
+    refreshes.ignoredFolder(output);
+    await vi.advanceTimersByTimeAsync(IGNORED_SUBTREE_REFRESH_MS);
+    refreshes.ignoredFolder(output);
+    await vi.advanceTimersByTimeAsync(IGNORED_SUBTREE_REFRESH_MS * 2);
+    expect(published).toEqual([output, tracked, output]);
+    refreshes.dispose();
+  });
 });

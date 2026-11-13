@@ -14,6 +14,7 @@ use crate::state::AppState;
 
 mod batch;
 mod relevance;
+mod tracked;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub(crate) mod unix;
 #[cfg(any(not(windows), test))]
@@ -64,6 +65,10 @@ pub struct WorkspaceNotifyNotice {
     pub root_id: String,
     pub relative_path: String,
     pub kind: String,
+    /// Omitted for ordinary notices; false only for ignored output whose
+    /// changed path is known not to be tracked by this root's index.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_relevant: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -365,6 +370,7 @@ impl WorkspaceNotifySession {
             root_id: root_id.to_string(),
             relative_path: relative.to_string(),
             kind: kind.to_string(),
+            git_relevant: None,
         }))
     }
 }
@@ -424,6 +430,7 @@ mod tests {
             root_id: root_id.to_string(),
             relative_path: relative.to_string(),
             kind: kind.to_string(),
+            git_relevant: None,
         })
     }
 

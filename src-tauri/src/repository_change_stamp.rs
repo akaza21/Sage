@@ -102,6 +102,19 @@ pub(crate) fn change_stamp(root: &Path) -> u64 {
     hasher.finish()
 }
 
+/// Index membership cache key, including linked-worktree pointer changes.
+/// Unlike the full status stamp, this never lists ref directories.
+pub(crate) fn index_stamp(root: &Path) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    let dot_git = root.join(".git");
+    hash_metadata(&mut hasher, &dot_git);
+    if let Some(git_dir) = git_dir(root, &dot_git) {
+        git_dir.hash(&mut hasher);
+        hash_metadata(&mut hasher, &git_dir.join("index"));
+    }
+    hasher.finish()
+}
+
 fn hash_metadata(hasher: &mut DefaultHasher, path: &Path) {
     let Ok(metadata) = fs::symlink_metadata(path) else {
         0_u8.hash(hasher);

@@ -78,6 +78,9 @@ export function createNotifyRefreshes(
       relativePath: LOST_NOTICES_PATH,
       kind: "resync",
     };
+    // A lost-notices resync must cover Git too, even if ignored output was
+    // the notice that exceeded a queue bound.
+    delete resync.gitRelevant;
     publish(resync);
     void settled(() => invalidate(resync, { rootId, relativePath: "" }));
   };
@@ -120,7 +123,12 @@ export function createNotifyRefreshes(
   const ignoredFolder = (notice: WorkspaceNotifyNotice) => {
     const key = listingKey(notice);
     if (throttled.has(key)) {
-      throttled.set(key, notice);
+      const pending = throttled.get(key);
+      // An untracked write later in the window must not hide a tracked edit.
+      throttled.set(
+        key,
+        pending && pending.gitRelevant !== false ? pending : notice,
+      );
       return;
     }
     if (throttled.size >= MAX_THROTTLED_IGNORED_FOLDERS) {

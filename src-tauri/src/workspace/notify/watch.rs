@@ -86,11 +86,14 @@ pub(super) fn root_delivery(
         if cancelled.load(Ordering::Acquire) {
             return;
         }
+        let mut git_relevant = true;
         let (relative, action) = if action == OVERFLOW_NOTIFY_ACTION {
             relevance.forget();
             (relative, action)
         } else {
-            match relevance.classify(&relative, action) {
+            let (classified, relevant) = relevance.classify_record(&relative, action);
+            git_relevant = relevant;
+            match classified {
                 Relevance::Keep => (relative, action),
                 Relevance::Drop => return,
                 Relevance::Resync => (
@@ -100,9 +103,10 @@ pub(super) fn root_delivery(
                 Relevance::IgnoredBelow(folder) => (folder, IGNORED_BELOW_NOTIFY_ACTION),
             }
         };
-        if let Ok(Some(notice)) =
+        if let Ok(Some(mut notice)) =
             deliver_workspace_notify_action(&project_id, generation, &root_id, &relative, action)
         {
+            notice.git_relevant = (!git_relevant).then_some(false);
             sink.push(notice);
         }
     }

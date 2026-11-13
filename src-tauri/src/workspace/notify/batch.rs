@@ -90,6 +90,9 @@ impl NoticeBatch {
             let key = path_key(&notice);
             if let Some(&slot) = self.index.get(&key) {
                 self.notices[slot].kind = notice.kind;
+                if notice.git_relevant != Some(false) {
+                    self.notices[slot].git_relevant = None;
+                }
                 return;
             }
             self.index.insert(key, self.notices.len());
@@ -137,6 +140,7 @@ impl NoticeBatch {
     fn resync(&mut self, mut notice: WorkspaceNotifyNotice) {
         notice.relative_path = OVERFLOW_RELATIVE_PATH.to_string();
         notice.kind = RESYNC_KIND.to_string();
+        notice.git_relevant = None;
         self.notices
             .retain(|queued| queued.root_id != notice.root_id);
         self.index = self
@@ -227,11 +231,33 @@ mod tests {
             root_id: root.into(),
             relative_path: path.into(),
             kind: kind.into(),
+            git_relevant: None,
         }
     }
 
     fn resync(root: &str) -> WorkspaceNotifyNotice {
         notice(root, OVERFLOW_RELATIVE_PATH, RESYNC_KIND)
+    }
+
+    #[test]
+    fn ignored_output_cannot_hide_a_tracked_edit_in_either_order() {
+        let tracked = notice("root-a", "dist", IGNORED_KIND);
+        let mut output = tracked.clone();
+        output.git_relevant = Some(false);
+        for notices in [
+            vec![output.clone(), tracked.clone(), output.clone()],
+            vec![tracked.clone(), output.clone()],
+        ] {
+            let mut batch = NoticeBatch::default();
+            for notice in notices {
+                batch.push(notice);
+            }
+            assert_eq!(batch.take().notices, vec![tracked.clone()]);
+        }
+        let mut batch = NoticeBatch::default();
+        batch.push(output.clone());
+        batch.push(output.clone());
+        assert_eq!(batch.take().notices, vec![output]);
     }
 
     #[test]

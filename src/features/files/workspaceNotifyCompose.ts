@@ -47,6 +47,8 @@ export interface WorkspaceNotifyNotice {
   rootId: string;
   relativePath: string;
   kind: string;
+  /** False only when native index membership rules out a Git change. */
+  gitRelevant?: boolean;
 }
 
 export interface LiveProjectNotifyStamp {
@@ -171,7 +173,7 @@ export function acceptWorkspaceNotifyNotice(
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record);
   if (
-    keys.length !== NOTICE_KEYS.length ||
+    keys.length !== NOTICE_KEYS.length + ("gitRelevant" in record ? 1 : 0) ||
     NOTICE_KEYS.some((key) => !keys.includes(key))
   ) {
     return null;
@@ -184,7 +186,8 @@ export function acceptWorkspaceNotifyNotice(
     transitionEpoch === null ||
     !isShortId(record.rootId) ||
     !boundedNotifyPath(record.relativePath) ||
-    !boundedNotifyKind(record.kind)
+    !boundedNotifyKind(record.kind) ||
+    ("gitRelevant" in record && typeof record.gitRelevant !== "boolean")
   ) {
     return null;
   }
@@ -203,6 +206,9 @@ export function acceptWorkspaceNotifyNotice(
     rootId: record.rootId,
     relativePath: record.relativePath,
     kind: record.kind,
+    ...(typeof record.gitRelevant === "boolean"
+      ? { gitRelevant: record.gitRelevant }
+      : {}),
   };
 }
 
@@ -239,6 +245,15 @@ export function publishWorkspaceNotifySearch(
   for (const listener of searchSubscribers) {
     listener(notice);
   }
+}
+
+/** Git shares the throttled notice stream, excluding known ignored output. */
+export function subscribeWorkspaceNotifyRepository(
+  listener: (notice: WorkspaceNotifyNotice) => void,
+): () => void {
+  return subscribeWorkspaceNotifySearch((notice) => {
+    if (notice.gitRelevant !== false) listener(notice);
+  });
 }
 
 export function resetWorkspaceNotifyComposeForTests(): void {
@@ -313,8 +328,8 @@ export async function syncLiveProjectWorkspaceNotify(
     if (!accepted) {
       return;
     }
-    // Folded subtree notices can cover tracked files and Search can include
-    // ignored files. Publish them at the throttle boundary for both consumers.
+    // Search includes ignored files when configured; Git uses native index
+    // membership. Both consume the same throttled stream.
     if (accepted.kind === "ignored") {
       refreshes.ignoredFolder(accepted);
       return;
