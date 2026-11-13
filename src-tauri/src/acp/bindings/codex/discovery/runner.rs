@@ -10,7 +10,9 @@ use crate::acp::{
 use super::{CodexDiscoveryContent, CodexDiscoveryError, CodexDiscoveryProtocol, ProtocolProgress};
 
 const DISCOVERY_MODEL_PAGE_LIMIT: u32 = 4;
-const DISCOVERY_INTERLEAVED_NOTIFICATION_LIMIT: usize = 4;
+/// Reads allowed per expected response, so at most fifteen notifications may
+/// precede it. The operation deadline still bounds the whole exchange.
+const DISCOVERY_INTERLEAVED_NOTIFICATION_LIMIT: usize = 16;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CodexDiscoveryDeadline {
@@ -323,7 +325,7 @@ fn read(
         let frame = transport
             .read_frame(timeout)?
             .ok_or(CodexDiscoveryRunError::Eof)?;
-        if is_interleaved_account_notification(&frame) {
+        if is_interleaved_notification(&frame) {
             continue;
         }
         return Ok(frame);
@@ -331,30 +333,50 @@ fn read(
     Err(CodexDiscoveryRunError::Protocol)
 }
 
-fn is_interleaved_account_notification(frame: &Frame) -> bool {
+/// Discovery only needs responses, so it skips any server notification that
+/// arrives in between. Codex emits several while it starts up (account and
+/// remote-control status, `configWarning` for a stale config key), and newer
+/// releases add more. A server request carries an `id` and is not skipped.
+fn is_interleaved_notification(frame: &Frame) -> bool {
     let Ok(value) = serde_json::from_slice::<Value>(frame.as_bytes()) else {
         return false;
     };
     let Some(object) = value.as_object() else {
         return false;
     };
-    let notification = (object.len() == 2 || object.len() == 3)
-        && matches!(
-            object.get("method").and_then(Value::as_str),
-            Some("account/updated" | "remoteControl/status/changed")
+    let Some(method) = object.get("method").and_then(Value::as_str) else {
+        return false;
+    };
+    let notification = object.keys().all(|key| {
+        matches!(
+            key.as_str(),
+            "method" | "params" | "emittedAtMs" | "jsonrpc"
         )
-        && object.get("params").is_some_and(Value::is_object)
+    }) && object
+        .get("params")
+        .is_none_or(|params| params.is_object() || params.is_array())
         && object
             .get("emittedAtMs")
             .is_none_or(|emitted_at| emitted_at.as_u64().is_some());
-    if notification {
+    if !notification {
+        return false;
+    }
+    if matches!(method, "account/updated" | "remoteControl/status/changed") {
         tracing::info!(
-            json_rpc_method = ?object.get("method"),
+            json_rpc_method = method,
             json_rpc_params = ?object.get("params"),
             "Codex discovery ignored an interleaved Codex notification"
         );
+    } else {
+        // Other notifications may carry user configuration, so only their
+        // method and size are recorded.
+        tracing::info!(
+            json_rpc_method = method,
+            notification_bytes = frame.as_bytes().len(),
+            "Codex discovery ignored an interleaved Codex notification"
+        );
     }
-    notification
+    true
 }
 
 fn write(

@@ -42,7 +42,9 @@ pub(super) fn parse_npm_codex_launcher(
         node_from_path(path)?
     };
     let mut args = Vec::with_capacity(fixed_args.as_slice().len().saturating_add(1));
-    args.push(script.into_os_string());
+    // The script comes from the verbatim canonical launcher path, which Node
+    // cannot load as its main module; hand it the same file's ordinary name.
+    args.push(crate::win32_path::simplified(&script).into_os_string());
     args.extend(fixed_args.as_slice().iter().cloned());
     Ok(BatchLaunchPlan { node, args })
 }
