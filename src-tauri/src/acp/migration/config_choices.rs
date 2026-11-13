@@ -8,7 +8,8 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         | SchemaClass::CurrentResumeLink
         | SchemaClass::CurrentTitleSource
         | SchemaClass::CurrentSessionFactsTurnIndex
-        | SchemaClass::CurrentOperationTerminalIndex => return Ok(()),
+        | SchemaClass::CurrentOperationTerminalIndex
+        | SchemaClass::CurrentTurnUndoIntentIndexes => return Ok(()),
         SchemaClass::CurrentV22 => {}
         _ => return invalid("session config choices require exact schema v22"),
     }

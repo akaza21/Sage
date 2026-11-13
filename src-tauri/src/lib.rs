@@ -106,6 +106,8 @@ mod system_browser;
 #[cfg(test)]
 mod test_diagnostics;
 #[cfg(test)]
+mod test_executable;
+#[cfg(test)]
 mod test_paths;
 #[cfg(test)]
 mod test_wait;

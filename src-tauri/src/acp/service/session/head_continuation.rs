@@ -1,6 +1,7 @@
-//! Continues a Chat whose parked session was started by an earlier release
-//! of its harness: the updated binding resumes the native session in a new
-//! session linked to it.
+//! Continues a Chat in a new head session when its parked head cannot go on
+//! as it is: one started by an earlier release of its harness resumes in a
+//! new session linked to it, and one whose only native history was undone
+//! restarts in a fresh session.
 
 use crate::acp::{
     bindings::{claude::sdk::CLAUDE_SDK_BINDING_ID, release_version::ReleaseVersion},
@@ -12,11 +13,13 @@ use super::{super::AcpService, CodexSessionError, DurableSession, load_durable_s
 
 impl AcpService {
     /// Continues a Chat whose parked head session was started by an earlier
-    /// release of its harness: a new head session on the updated binding
-    /// links to it, and the activation is redirected to that session's first
-    /// epoch, also when a retry names the earlier session after a refused
-    /// activation. Any other activation passes through unchanged.
-    pub(in crate::acp::service) fn resume_earlier_release_session(
+    /// release of its harness (a new head session on the updated binding
+    /// links to it) or holds only an undone Turn in its native thread (a
+    /// fresh head session replaces it). The activation is redirected to the
+    /// new session's first epoch, also when a retry names the earlier
+    /// session after a refused activation. Any other activation passes
+    /// through unchanged.
+    pub(in crate::acp::service) fn continue_head_session(
         &self,
         admitted: &crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
         command: ActivateSessionCommand,
@@ -28,10 +31,10 @@ impl AcpService {
             &command.chat_id,
             &command.session_id,
         )?;
-        let linked = if session.state == "closed" {
+        let continued = if session.state == "closed" {
             // A retry after a refused activation still names the earlier
-            // session; it continues in the linked head that has not started.
-            let head = crate::acp::store::unstarted_resume_link(
+            // session; it continues in the new head that has not started.
+            let head = crate::acp::store::unstarted_continuation(
                 &self.database.connection(),
                 command.project_id.as_str(),
                 command.chat_id.as_str(),
@@ -65,13 +68,29 @@ impl AcpService {
                 },
             )
             .map_err(store_error)?
+        } else if restarts_after_undo(&self.database, &session, &command.session_id)? {
+            let mut connection = self
+                .database
+                .write_connection()
+                .map_err(|_| CodexSessionError::Intent)?;
+            crate::acp::store::restart_undone_session(
+                &mut connection,
+                crate::acp::store::RestartSessionCommand {
+                    project_id: command.project_id.clone(),
+                    chat_id: command.chat_id.clone(),
+                    expected_projection_revision: command.expected_projection_revision,
+                    session_id: command.session_id.clone(),
+                    now_millis: command.now_millis,
+                },
+            )
+            .map_err(store_error)?
         } else {
             return Ok(command);
         };
-        let runtime_epoch = next_runtime_epoch(&self.database, &linked.session_id)?;
+        let runtime_epoch = next_runtime_epoch(&self.database, &continued.session_id)?;
         Ok(ActivateSessionCommand {
-            expected_projection_revision: linked.projection_revision,
-            session_id: linked.session_id,
+            expected_projection_revision: continued.projection_revision,
+            session_id: continued.session_id,
             runtime_epoch,
             ..command
         })
@@ -80,7 +99,9 @@ impl AcpService {
 
 /// A store failure surfaces as the session coordination error it would be
 /// on the journal path.
-fn store_error(error: crate::acp::store::StoreError) -> CodexSessionError {
+pub(in crate::acp::service) fn store_error(
+    error: crate::acp::store::StoreError,
+) -> CodexSessionError {
     crate::acp::runtime::SessionCoordinatorError::from(crate::acp::runtime::JournalError::Store(
         error,
     ))
@@ -88,7 +109,7 @@ fn store_error(error: crate::acp::store::StoreError) -> CodexSessionError {
 }
 
 /// The first runtime epoch a session has not used yet.
-fn next_runtime_epoch(
+pub(in crate::acp::service) fn next_runtime_epoch(
     database: &crate::persistence::Database,
     session: &crate::acp::contract::SageAgentSessionId,
 ) -> Result<crate::acp::contract::RuntimeEpoch, CodexSessionError> {
@@ -137,6 +158,22 @@ pub(super) fn continues_on_later_release(
         && session.state == "ready"
         && session.residency == "cold"
         && session.external_session_id.is_some()
+}
+
+/// Whether a parked session's native thread holds nothing before a Turn the
+/// user undid, so the Chat goes on in a fresh native session.
+pub(super) fn restarts_after_undo(
+    database: &crate::persistence::Database,
+    session: &DurableSession,
+    session_id: &crate::acp::contract::SageAgentSessionId,
+) -> Result<bool, CodexSessionError> {
+    if session.state != "ready" || session.residency != "cold" {
+        return Ok(false);
+    }
+    let rewind =
+        crate::acp::store::pending_thread_rewind(&database.connection(), session_id.as_str())
+            .map_err(store_error)?;
+    Ok(rewind.is_some_and(|rewind| rewind.thread == crate::acp::store::UndoneThread::Restart))
 }
 
 /// Whether `earlier` is a strictly lower release than `later`. Unreadable

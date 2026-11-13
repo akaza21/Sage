@@ -190,7 +190,7 @@ impl SdkBridge {
 
 /// The SDK message id Sage gives a turn's prompt: the UUID in its turn id,
 /// so an undo still finds it after the session is resumed.
-pub(super) fn message_uuid(turn_id: &str) -> Option<String> {
+pub(in crate::acp::bindings::claude::sdk) fn message_uuid(turn_id: &str) -> Option<String> {
     let id = turn_id.strip_prefix("turn-")?;
     uuid::Uuid::parse_str(id).ok().map(|id| id.to_string())
 }

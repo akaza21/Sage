@@ -18,6 +18,7 @@ use super::config::SessionSettings;
 
 mod commands;
 mod controls;
+pub(super) use controls::message_uuid;
 mod inbound;
 mod notices;
 mod outbound;
