@@ -366,6 +366,51 @@ fn forks_waiting_on_their_chats_are_bounded() {
 }
 
 #[test]
+fn unidentified_copies_still_count_toward_the_fork_bound() {
+    // Both a failed get_state and one omitting sessionFile leave a copy
+    // that cannot safely be identified or deleted.
+    for success in [false, true] {
+        let mut chat = saved_chat();
+        for attempt in 0..10 {
+            if attempt >= 8 {
+                // Refusal returns no egress, so no further clone reaches Pi.
+                assert!(matches!(
+                    chat.runtime.fork_session(),
+                    Err(AdapterRuntimeError::BatchCount)
+                ));
+                assert!(!chat.runtime.native_rpc_pending());
+                continue;
+            }
+            let state = cloned(&mut chat);
+            let batch = chat
+                .runtime
+                .ingest(
+                    &frame(json!({
+                        "type":"response", "id":state["id"], "command":"get_state",
+                        "success":success, "data":{}, "error":"state unavailable"
+                    })),
+                    &Mapper,
+                )
+                .unwrap();
+            let (_, mut egress) = batch.into_parts();
+            assert_eq!(egress.len(), 1);
+            let back = deliver(&mut chat.runtime, egress.pop().unwrap());
+            assert_eq!(
+                back,
+                json!({"type":"switch_session", "id":back["id"],
+                    "sessionPath":chat.file(HOME).to_str().unwrap()})
+            );
+            assert!(answer(&mut chat, &back, json!({"cancelled":false})).is_none());
+            assert_eq!(
+                chat.runtime.take_native_rpc_reply(),
+                Some(NativeRpcReply::Rejected)
+            );
+        }
+        running(&mut chat.runtime);
+    }
+}
+
+#[test]
 fn failed_cleanup_keeps_backpressure_until_a_later_fork_can_remove_the_copies() {
     let mut chat = saved_chat();
     chat.runtime.remove_file_for_test = |_| Err(std::io::ErrorKind::PermissionDenied.into());

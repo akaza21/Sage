@@ -24,11 +24,13 @@ const MAX_TRACKED_FORKS: usize = 8;
 
 /// Only a copy known to have no Chat may be retried for deletion.
 pub(in crate::acp::bindings::pi::runtime) struct ForkCopy {
-    key: ExternalId,
+    /// An unidentified copy holds its slot for the rest of this runtime.
+    key: Option<ExternalId>,
     cleanup_pending: bool,
 }
 
-/// A fork under way: its step, and the Pi command id that step waits on.
+/// A fork under way reserves one ledger slot until it settles. No other
+/// fork may start meanwhile. Its command id names the step it waits on.
 #[derive(Debug)]
 pub(in crate::acp::bindings::pi::runtime) struct Fork {
     step: ForkStep,
@@ -110,7 +112,8 @@ impl PiRuntime {
                 // `clone` answer does not name it, and the session folder is
                 // shared with every other Pi chat, so no file can be safely
                 // picked as the copy. Pi is still moved back and the fork is
-                // refused; that copy stays in Pi's own session list.
+                // refused; that copy stays in Pi's own session list and
+                // keeps its reserved ledger slot.
                 let fork = data.as_ref().and_then(fork_key);
                 let path = home.clone();
                 (
@@ -148,16 +151,16 @@ impl PiRuntime {
         awaited: bool,
     ) -> Option<AdapterEgress> {
         let home_key = session_file_key(home);
-        let Some(fork) = fork
+        let fork = fork
             .filter(|fork| Some(fork.as_str()) != home_key)
-            .and_then(|fork| ExternalId::new("externalSessionId", fork).ok())
-        else {
-            return self.answer_fork(awaited, NativeRpcReply::Rejected);
-        };
+            .and_then(|fork| ExternalId::new("externalSessionId", fork).ok());
         self.forks.push(ForkCopy {
             key: fork.clone(),
             cleanup_pending: false,
         });
+        let Some(fork) = fork else {
+            return self.answer_fork(awaited, NativeRpcReply::Rejected);
+        };
         if !awaited {
             // No chat will open a copy its caller gave up on.
             self.cleanup_fork_copy(self.forks.len() - 1);
@@ -209,7 +212,7 @@ impl PiRuntime {
         let index = self
             .forks
             .iter()
-            .position(|known| &known.key == fork)
+            .position(|known| known.key.as_ref() == Some(fork))
             .ok_or(AdapterRuntimeError::Operation)?;
         let released = if committed {
             self.forks.remove(index);
@@ -236,7 +239,10 @@ impl PiRuntime {
     }
 
     fn cleanup_fork_copy(&mut self, index: usize) -> bool {
-        if self.remove_copy(&self.forks[index].key) {
+        let Some(key) = self.forks[index].key.as_ref() else {
+            return false;
+        };
+        if self.remove_copy(key) {
             self.forks.remove(index);
             true
         } else {
