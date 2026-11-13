@@ -25,6 +25,7 @@ pub(super) enum RequestKind {
     ThinkingLevels,
     Commands,
     SetThinkingLevel,
+    SetAutoCompaction,
     NewSession,
     ResumeSession,
     Prompt,
@@ -101,6 +102,8 @@ pub(crate) struct PiRuntime {
     pub(super) available_models: Vec<ModelSummary>,
     pub(super) current_thinking: Option<String>,
     pub(super) available_thinking: Vec<String>,
+    /// Pi's auto-compaction setting, once `get_state` has reported it.
+    pub(super) auto_compaction: Option<bool>,
     commands: std::sync::Arc<crate::acp::slash_commands::CommandState>,
     commands_pending: bool,
     commands_discovered: bool,
@@ -115,6 +118,10 @@ pub(crate) struct PiRuntime {
     pub(super) native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
     /// The session's spend as Pi last reported it; read on demand only.
     pub(super) usage: std::sync::Arc<crate::acp::usage::UsageCell>,
+    /// A fork under way, while Pi is away from the chat's session.
+    fork: Option<support::Fork>,
+    /// Forks this runtime made whose chats are not yet committed or refused.
+    forks: Vec<ExternalId>,
 }
 
 impl PiRuntime {
@@ -184,6 +191,7 @@ impl PiRuntime {
             available_models: Vec::new(),
             current_thinking: None,
             available_thinking: Vec::new(),
+            auto_compaction: None,
             commands: std::sync::Arc::default(),
             commands_pending: false,
             commands_discovered: false,
@@ -196,6 +204,8 @@ impl PiRuntime {
             native_pending: None,
             native_rpc_reply: None,
             usage: std::sync::Arc::default(),
+            fork: None,
+            forks: Vec::new(),
         }
     }
 }
@@ -266,6 +276,23 @@ impl HarnessAdapter for PiRuntime {
 
     fn abandon_usage_read(&mut self) {
         self.abandon_native();
+    }
+
+    fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.begin_fork()
+    }
+
+    fn release_fork(
+        &mut self,
+        fork: &ExternalId,
+        committed: bool,
+    ) -> crate::acp::bindings::adapter::AdapterOptionalEgress {
+        self.release_fork_copy(fork, committed)
+    }
+
+    // Releasing touches only Pi's saved copy, never the running session.
+    fn defer_fork_release(&mut self, fork: &ExternalId, committed: bool) -> bool {
+        self.release_fork_copy(fork, committed).is_ok()
     }
 
     fn session_control(
