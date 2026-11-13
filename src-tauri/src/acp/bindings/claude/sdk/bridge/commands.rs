@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use crate::acp::slash_commands::MAX_COMMANDS;
 
 /// Claude Code's commands as ACP `availableCommands`, its own marked as
-/// built-in. Rows can share a name; `/name` runs the first built-in row that
+/// built-in and each with the other names Claude Code runs it by. Rows can share a name; `/name` runs the first built-in row that
 /// carries it, else the first row, so only that row is listed. A catalog
 /// larger than Sage's list keeps its first commands.
 pub(super) fn commands(reply: &Value) -> Value {
@@ -41,7 +41,10 @@ pub(super) fn commands(reply: &Value) -> Value {
                 "input": hint.map(|hint| json!({"hint": hint})),
             });
             if builtin(command) {
-                entry["_meta"] = json!({"source": "builtin"});
+                entry["_meta"]["source"] = json!("builtin");
+            }
+            if let Some(aliases) = command.get("aliases").filter(|aliases| aliases.is_array()) {
+                entry["_meta"]["aliases"] = aliases.clone();
             }
             Some(entry)
         })

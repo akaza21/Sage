@@ -267,3 +267,33 @@ fn a_long_description_is_clipped_and_the_list_still_admitted() {
         .unwrap();
     assert_eq!(list.commands[0].description, "d".repeat(1023));
 }
+
+#[test]
+fn aliases_from_acp_meta_keep_only_distinct_command_names_within_the_bound() {
+    let mut aliases = vec![
+        json!("cost"),
+        json!("bad name"),
+        json!("usage"),
+        json!("cost"),
+        json!(3),
+    ];
+    aliases.extend((0..10).map(|n| json!(format!("a{n}"))));
+    let [command] =
+        &parse_acp(&json!([{"name":"usage","description":"Usage","_meta":{"aliases":aliases}}]))
+            .unwrap()[..]
+    else {
+        panic!("one command");
+    };
+    assert_eq!(
+        command.aliases,
+        ["cost", "a0", "a1", "a2", "a3", "a4", "a5", "a6"]
+    );
+    assert_eq!(serde_json::to_value(command).unwrap()["aliases"][0], "cost");
+    let plain = &parse_acp(&json!([{"name":"x","description":"d"}])).unwrap()[0];
+    assert!(
+        serde_json::to_value(plain)
+            .unwrap()
+            .get("aliases")
+            .is_none()
+    );
+}

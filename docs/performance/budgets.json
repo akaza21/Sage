@@ -40,8 +40,8 @@
       },
       {
         "entry": "src/features/chat/ComposerSlashMenu.tsx",
-        "maxGzipBytes": 1925,
-        "reason": "Composer `/` command menu: commands by source, the command port, and panel commands such as `/mcp` on Enter. Loads with the first `/` typed. Measured 1923-1925 B JS as shared-chunk aliases move."
+        "maxGzipBytes": 1946,
+        "reason": "Composer `/` menu: commands by source, matched by name or alias, the command port, and panel commands on Enter. Loads with the first `/`. Measured 1944-1946 B JS as shared-chunk aliases move."
       },
       {
         "entry": "src/features/chat/ComposerCommandPanel.tsx",

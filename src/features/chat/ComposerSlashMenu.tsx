@@ -20,7 +20,6 @@ import {
   type AcpCommandSource,
   type AvailableAcpCommand,
 } from "../../services/acpCommandsDesktop";
-import { AcpDesktopError } from "../../services/acpDesktop";
 import {
   suggestionOptionId,
   useSuggestionNavigation,
@@ -64,8 +63,9 @@ const SECTION_ROWS = 7;
 
 /**
  * With no query, the first commands of each source in sections, each in
- * advertised order. While typing, the exact name first, then prefix matches, then
- * other name matches, each in advertised order.
+ * advertised order. While typing, exact names first, then exact aliases,
+ * then prefix matches, then other matches, each in advertised order. A command
+ * matches by its name or any alias its harness gives it, by the closest of them.
  */
 function filterSlashCommands(
   commands: readonly AvailableAcpCommand[],
@@ -79,16 +79,24 @@ function filterSlashCommands(
           .slice(0, SECTION_ROWS),
     );
   const needle = query.toLocaleLowerCase();
-  const exact: AvailableAcpCommand[] = [];
-  const prefix: AvailableAcpCommand[] = [];
-  const inner: AvailableAcpCommand[] = [];
+  const ranks: AvailableAcpCommand[][] = [[], [], [], []];
   for (const command of commands) {
-    const name = command.name.toLocaleLowerCase();
-    if (name === needle) exact.push(command);
-    else if (name.startsWith(needle)) prefix.push(command);
-    else if (name.includes(needle)) inner.push(command);
+    const names = [command.name, ...(command.aliases ?? [])].map((name) =>
+      name.toLocaleLowerCase(),
+    );
+    const rank =
+      names[0] === needle
+        ? 0
+        : names.includes(needle)
+          ? 1
+          : names.some((name) => name.startsWith(needle))
+            ? 2
+            : names.some((name) => name.includes(needle))
+              ? 3
+              : -1;
+    ranks[rank]?.push(command);
   }
-  return [...exact, ...prefix, ...inner];
+  return ranks.flat();
 }
 
 function suggestion(
@@ -179,7 +187,7 @@ function useSessionCommands(boundChatId: string | undefined): Load | null {
               kind: "error",
               owner,
               message:
-                error instanceof AcpDesktopError || error instanceof Error
+                error instanceof Error
                   ? error.message
                   : "The command list could not be read.",
             });
