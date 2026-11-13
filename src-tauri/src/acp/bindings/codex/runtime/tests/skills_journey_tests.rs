@@ -119,7 +119,17 @@ fn a_picked_skill_reaches_the_journeys_turn_as_its_skill_input() {
     let blocks: Vec<&str> = echo.split("\n\n").collect();
     assert_eq!(blocks.len(), 3, "{echo}");
     assert_eq!(blocks[0], "Synthetic replay received 2 prompt blocks:");
-    assert!(blocks[1].starts_with("Skill pdf at "), "{echo}");
-    assert!(blocks[1].ends_with("/.codex/skills/pdf/SKILL.md"), "{echo}");
+    let skill_path = blocks[1].strip_prefix("Skill pdf at ").expect(echo);
+    let expected_path = std::env::current_dir()
+        .unwrap()
+        .join(".codex")
+        .join("skills")
+        .join("pdf")
+        .join("SKILL.md");
+    assert_eq!(
+        std::path::Path::new(skill_path),
+        expected_path.as_path(),
+        "{echo}"
+    );
     assert_eq!(blocks[2], "Text:\n```text\nsummarise it\n```");
 }
