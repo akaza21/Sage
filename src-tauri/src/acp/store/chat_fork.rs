@@ -128,14 +128,26 @@ pub(crate) fn fork_source(
     })
 }
 
+/// The fork is cut at the native thread's latest reply, so the Turn must be
+/// the session's latest visible one and no undone Turn may still wait in
+/// that thread for its rewind.
 fn require_latest_completed(
     connection: &Connection,
     session: &str,
     turn_id: &SageTurnId,
 ) -> Result<(), StoreError> {
+    if super::turn_undo::pending_thread_rewind(connection, session)?.is_some() {
+        return Err(StoreError::Conflict {
+            resource: "forkTurn",
+        });
+    }
     let latest: Option<(String, String)> = connection
         .query_row(
-            "SELECT id,state FROM turns WHERE session_id=?1 ORDER BY ordinal DESC LIMIT 1",
+            concat!(
+                "SELECT t.id,t.state FROM turns t WHERE t.session_id=?1 AND ",
+                super::turn_undo::visible_turn!("t.session_id", "t.id"),
+                " ORDER BY t.ordinal DESC LIMIT 1"
+            ),
             [session],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )

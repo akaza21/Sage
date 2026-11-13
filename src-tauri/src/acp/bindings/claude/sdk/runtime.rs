@@ -9,8 +9,9 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use super::{
-    admission::{AdmittedClaudeSdkBinding, SessionLaunch},
+    admission::AdmittedClaudeSdkBinding,
     bridge::{SdkBridge, Sent},
+    launch::SessionLaunch,
 };
 use crate::acp::{
     bindings::{
@@ -219,22 +220,14 @@ fn sdk_frame(value: &Value) -> Result<OutboundFrame, AdapterRuntimeError> {
 
 impl LaunchableRuntime for ClaudeSdkRuntime {
     fn bind_activation(&mut self, mode: &ActivationMode) {
-        let (session_id, resume, model) = match mode {
-            ActivationMode::New { model, .. } => (uuid::Uuid::new_v4().to_string(), false, model),
-            ActivationMode::Resume {
-                external_session_id,
-                model,
-                ..
-            } => (external_session_id.as_str().to_owned(), true, model),
-            ActivationMode::Load { .. } => return,
+        let Some(launch) = SessionLaunch::from_mode(mode) else {
+            return;
         };
-        let model = model.as_ref().map(|model| model.as_str().to_owned());
-        self.bridge = Some(SdkBridge::new(session_id.clone(), model.clone()));
-        self.launch = Some(SessionLaunch {
-            session_id,
-            resume,
-            model,
-        });
+        self.bridge = Some(SdkBridge::new(
+            launch.session_id.clone(),
+            launch.model.clone(),
+        ));
+        self.launch = Some(launch);
     }
 
     fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {

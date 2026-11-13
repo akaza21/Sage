@@ -94,6 +94,14 @@ fn undo_reverts_the_thread_before_the_latest_turn_once() {
         runtime.session_control(&undo(TURN)).is_err(),
         "the Turn is already gone"
     );
+    // Asked again, the revert is confirmed without another request, so an
+    // undo Sage could not record is recorded on retry.
+    assert!(!runtime.answered_control(&undo("turn-00000000-0000-4000-8000-000000000000")));
+    assert!(runtime.answered_control(&undo(TURN)));
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::Controlled(None))
+    );
 }
 
 #[test]

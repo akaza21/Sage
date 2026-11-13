@@ -20,9 +20,22 @@ impl AcpService {
         command: ActivateSessionCommand,
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
     ) -> Result<(), CodexSessionError> {
+        self.activate_head_session(admitted, command, project_root)
+            .await
+            .map(drop)
+    }
+
+    /// Activates the session `command` names, or the head session that
+    /// continues it, and returns the runtime that now runs.
+    pub(in crate::acp::service) async fn activate_head_session(
+        &self,
+        admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
+        command: ActivateSessionCommand,
+        project_root: crate::acp::bindings::registry::BindingProjectRoot,
+    ) -> Result<RuntimeOwner, CodexSessionError> {
         // Commits before the checks below; a refused activation leaves the
         // linked head `created`, and a retry naming either session resumes it.
-        let command = self.resume_earlier_release_session(&admitted, command)?;
+        let command = self.continue_head_session(&admitted, command)?;
         let owner = RuntimeOwner {
             project_id: command.project_id.clone(),
             chat_id: command.chat_id.clone(),
@@ -40,7 +53,8 @@ impl AcpService {
         // its next prompt can be sent. A change that left the runtime needing
         // recovery is reported here rather than left silent.
         self.restore_session_config(&owner)
-            .map_err(|_| CodexSessionError::Recovery)
+            .map_err(|_| CodexSessionError::Recovery)?;
+        Ok(owner)
     }
 
     pub(crate) fn send_session_turn(

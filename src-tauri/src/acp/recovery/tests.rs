@@ -47,7 +47,7 @@ fn restart_recovery_commits_delivery_unknown_and_converges_to_cold_zero_runtime(
          CREATE TABLE agent_sessions(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, state TEXT, residency TEXT, revision INTEGER, projection_revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
          CREATE TABLE chat_session_heads(session_id TEXT PRIMARY KEY);
          CREATE TABLE session_runtime_epochs(session_id TEXT, runtime_epoch INTEGER, state TEXT, terminal_at INTEGER, exit_kind TEXT, started_at INTEGER, PRIMARY KEY(session_id,runtime_epoch));
-         CREATE TABLE turns(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, session_id TEXT, runtime_epoch INTEGER, client_intent_id TEXT, state TEXT, delivery_state TEXT, revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
+         CREATE TABLE turns(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, session_id TEXT, runtime_epoch INTEGER, ordinal INTEGER NOT NULL, client_intent_id TEXT, state TEXT, delivery_state TEXT, revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
          CREATE TABLE items(id TEXT PRIMARY KEY,session_id TEXT,runtime_epoch INTEGER,kind TEXT,lifecycle TEXT,tool_state TEXT,revision INTEGER,updated_at INTEGER,terminal_at INTEGER);
          CREATE TABLE session_activities(id TEXT PRIMARY KEY,session_id TEXT,runtime_epoch INTEGER,lifecycle TEXT,revision INTEGER,updated_at INTEGER,terminal_at INTEGER);
          CREATE TABLE server_requests(id TEXT PRIMARY KEY,session_id TEXT,runtime_epoch INTEGER,state TEXT,revision INTEGER,updated_at INTEGER,resolved_at INTEGER);
@@ -59,7 +59,7 @@ fn restart_recovery_commits_delivery_unknown_and_converges_to_cold_zero_runtime(
          INSERT INTO agent_sessions VALUES('session-one','project-one','chat-one','active','hot',0,0,0,NULL);
          INSERT INTO chat_session_heads VALUES('session-one');
          INSERT INTO session_runtime_epochs VALUES('session-one',1,'running',NULL,NULL,0);
-         INSERT INTO turns VALUES('turn-one','project-one','chat-one','session-one',1,'intent-one','sending','writing',0,0,NULL);
+         INSERT INTO turns VALUES('turn-one','project-one','chat-one','session-one',1,0,'intent-one','sending','writing',0,0,NULL);
          INSERT INTO items VALUES('item-one','session-one',1,'permissionRequest','streaming','waitingForApproval',0,0,NULL);
          INSERT INTO session_activities VALUES('activity-one','session-one',1,'active',0,0,NULL);
          INSERT INTO server_requests VALUES('request-one','session-one',1,'received',0,0,NULL);
@@ -193,7 +193,7 @@ fn recovery_connection() -> Connection {
          CREATE TABLE agent_sessions(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, state TEXT, residency TEXT, revision INTEGER, projection_revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
          CREATE TABLE chat_session_heads(session_id TEXT PRIMARY KEY);
          CREATE TABLE session_runtime_epochs(session_id TEXT, runtime_epoch INTEGER, state TEXT, terminal_at INTEGER, exit_kind TEXT, started_at INTEGER, PRIMARY KEY(session_id,runtime_epoch));
-         CREATE TABLE turns(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, session_id TEXT, runtime_epoch INTEGER, client_intent_id TEXT, state TEXT, delivery_state TEXT, revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
+         CREATE TABLE turns(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, session_id TEXT, runtime_epoch INTEGER, ordinal INTEGER NOT NULL, client_intent_id TEXT, state TEXT, delivery_state TEXT, revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
          CREATE TABLE items(id TEXT PRIMARY KEY,session_id TEXT,runtime_epoch INTEGER,kind TEXT,lifecycle TEXT,tool_state TEXT,revision INTEGER,updated_at INTEGER,terminal_at INTEGER);
          CREATE TABLE session_activities(id TEXT PRIMARY KEY,session_id TEXT,runtime_epoch INTEGER,lifecycle TEXT,revision INTEGER,updated_at INTEGER,terminal_at INTEGER);
          CREATE TABLE server_requests(id TEXT PRIMARY KEY,session_id TEXT,runtime_epoch INTEGER,state TEXT,revision INTEGER,updated_at INTEGER,resolved_at INTEGER);
@@ -205,7 +205,7 @@ fn recovery_connection() -> Connection {
          INSERT INTO agent_sessions VALUES('session-one','project-one','chat-one','active','hot',0,0,0,NULL);
          INSERT INTO chat_session_heads VALUES('session-one');
          INSERT INTO session_runtime_epochs VALUES('session-one',1,'running',NULL,NULL,0);
-         INSERT INTO turns VALUES('turn-one','project-one','chat-one','session-one',1,'intent-one','running','correlated',0,0,NULL);
+         INSERT INTO turns VALUES('turn-one','project-one','chat-one','session-one',1,0,'intent-one','running','correlated',0,0,NULL);
          INSERT INTO acp_session_usage VALUES('session-one',0,0,0,0);
          INSERT INTO acp_project_usage VALUES('project-one',0,0,0);
          INSERT INTO acp_store_usage VALUES(1,0,0,0,0);",

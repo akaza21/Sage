@@ -2,9 +2,9 @@
 //! could alias a protected directory on any supported file system, or when the
 //! approval prompt could not show it to the user exactly as it will be written.
 use super::Refusal;
-use crate::workspace::{
-    Workspace,
-    directory_skip::{protected_workspace_name, windows_reserved_device_name},
+use crate::{
+    win32_path::windows_reserved_device_name,
+    workspace::{Workspace, directory_skip::protected_workspace_name},
 };
 use std::path::{Component, Path, PathBuf};
 

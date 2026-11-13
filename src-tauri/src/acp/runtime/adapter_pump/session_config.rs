@@ -119,6 +119,9 @@ pub(crate) fn write_control<A: HarnessAdapter>(
     control: &crate::acp::session_control::SessionControl,
 ) -> Result<(), crate::acp::runtime::HostError> {
     use crate::acp::runtime::HostError;
+    if adapter.answered_control(control) {
+        return Ok(());
+    }
     let egress = adapter
         .session_control(control)
         .map_err(|_| HostError::Intent)?;

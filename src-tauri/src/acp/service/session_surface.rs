@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::scheduler::RuntimeOwner;
 
 impl AcpService {
     /// Adds the current session's live activities and Undo to the page.
@@ -27,14 +28,22 @@ impl AcpService {
             .iter()
             .max_by_key(|turn| (turn.created_at, turn.ordinal))
             .filter(|turn| turn.session_id == session.id && turn.terminal_at.is_some());
-        let undo = latest.and_then(|turn| {
-            undo_keeps_files(
-                session.binding_id.as_str(),
-                session.runtime_epoch.map(|epoch| epoch.get()),
-                turn.runtime_epoch.get(),
-            )
-            .map(|keeps_files| (turn.id.clone(), keeps_files))
-        });
+        let undo = match (latest, session.runtime_epoch) {
+            (Some(turn), Some(epoch)) => self
+                .turn_undo(
+                    &RuntimeOwner {
+                        project_id: page.project_id.clone(),
+                        chat_id: page.chat_id.clone(),
+                        session_id: session.id.clone(),
+                        runtime_epoch: epoch,
+                    },
+                    session.binding_id.as_str(),
+                    turn.id.as_str(),
+                    turn.runtime_epoch.get(),
+                )?
+                .map(|undo| (turn.id.clone(), undo.keeps_files)),
+            _ => None,
+        };
         view.undo_keeps_files = undo.as_ref().is_some_and(|(_, keeps)| *keeps);
         view.undo_turn = undo.map(|(turn, _)| turn);
         page.session_surface = (view != Default::default()).then_some(view);
@@ -45,39 +54,5 @@ impl AcpService {
             page.session_surface = None;
         }
         Ok(())
-    }
-}
-
-/// How a running session undoes its latest finished turn, if it can: Claude
-/// Code checkpoints each turn's files and restores them (`false`); Codex
-/// drops the turn from its history and leaves files as they are (`true`),
-/// and only for a turn the running process ran itself.
-fn undo_keeps_files(binding: &str, session_epoch: Option<u64>, turn_epoch: u64) -> Option<bool> {
-    let epoch = session_epoch?;
-    if binding == crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID {
-        Some(false)
-    } else if binding == crate::acp::bindings::codex::CODEX_BINDING_ID && epoch == turn_epoch {
-        Some(true)
-    } else {
-        None
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::undo_keeps_files;
-    use crate::acp::bindings::{claude::sdk::CLAUDE_SDK_BINDING_ID, codex::CODEX_BINDING_ID};
-
-    #[test]
-    fn claude_restores_files_and_codex_rewinds_only_its_own_runtimes_turn() {
-        assert_eq!(
-            undo_keeps_files(CLAUDE_SDK_BINDING_ID, Some(2), 1),
-            Some(false)
-        );
-        assert_eq!(undo_keeps_files(CODEX_BINDING_ID, Some(2), 2), Some(true));
-        assert_eq!(undo_keeps_files(CODEX_BINDING_ID, Some(2), 1), None);
-        assert_eq!(undo_keeps_files(CODEX_BINDING_ID, None, 1), None);
-        assert_eq!(undo_keeps_files(CLAUDE_SDK_BINDING_ID, None, 1), None);
-        assert_eq!(undo_keeps_files("pi-rpc", Some(1), 1), None);
     }
 }

@@ -8,7 +8,9 @@ pub(super) const SQL: &str =
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentOperationTerminalIndex => return Ok(()),
+        SchemaClass::CurrentOperationTerminalIndex | SchemaClass::CurrentTurnUndoIntentIndexes => {
+            return Ok(());
+        }
         SchemaClass::CurrentSessionFactsTurnIndex => {}
         _ => {
             return invalid(
