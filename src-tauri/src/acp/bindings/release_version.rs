@@ -165,6 +165,19 @@ mod tests {
     }
 
     #[test]
+    fn semver_prerelease_identifiers_parse() {
+        for reported in [
+            "1.0.0-0",
+            "1.0.0-alpha.0",
+            "1.0.0-0a",
+            "1.0.0--",
+            "1.0.0-x-y.10",
+        ] {
+            assert!(ReleaseVersion::parse(reported).is_some(), "{reported:?}");
+        }
+    }
+
+    #[test]
     fn an_unreadable_version_does_not_parse() {
         for reported in [
             "",

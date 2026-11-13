@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
+    acp::{intent::NormalizedPayload, store::decode_payload},
     error::{AppError, AppResult},
     persistence::Database,
 };
@@ -89,26 +90,6 @@ struct ChatRow {
     attached: bool,
     matched_title: bool,
     snippet: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TaggedText {
-    kind: String,
-    payload: TextBody,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TextBody {
-    text: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LegacyText {
-    role: String,
-    text: String,
 }
 
 pub fn validate_chat_search_request(request: &ProjectChatSearchRequest) -> AppResult<String> {
@@ -331,20 +312,16 @@ fn load_primary_text_matches(
     Ok(())
 }
 
+/// Reads a primary text row through the store's own payload decoder, so
+/// search admits exactly the rows the transcript renders and rejects the
+/// rows the transcript would report as corrupt.
 fn decode_primary_text(payload: &str) -> AppResult<String> {
-    if let Ok(tagged) = serde_json::from_str::<TaggedText>(payload)
-        && tagged.kind == "text"
-    {
-        return Ok(tagged.payload.text);
+    match decode_payload(payload) {
+        Ok((NormalizedPayload::Text { text }, _)) => Ok(text.as_str().to_owned()),
+        _ => Err(AppError::InvalidRequest(
+            "Chat search found an invalid primary text payload".into(),
+        )),
     }
-    if let Ok(legacy) = serde_json::from_str::<LegacyText>(payload)
-        && matches!(legacy.role.as_str(), "user" | "assistant" | "system")
-    {
-        return Ok(legacy.text);
-    }
-    Err(AppError::InvalidRequest(
-        "Chat search found an invalid primary text payload".into(),
-    ))
 }
 
 fn snippet(text: &str, match_start: usize) -> String {

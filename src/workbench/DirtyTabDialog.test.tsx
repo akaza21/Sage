@@ -9,7 +9,14 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
+import { useEffect, useRef, useState } from "react";
+
 import { useWorkbenchStore } from "../app/store";
+import type { ActiveEditorState } from "../app/editorSlice";
+import {
+  subscribeEditorFocusRequest,
+  takeEditorFocusRequest,
+} from "../features/files/editorFocusRequest";
 import { DirtyTabDialog } from "./DirtyTabDialog";
 
 const initialState = useWorkbenchStore.getState();
@@ -82,6 +89,68 @@ describe("DirtyTabDialog", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(editor).toHaveFocus();
+  });
+
+  describe("Cancel after a close that began on a tab button", () => {
+    // Takes focus requests as the File surface does.
+    function Editor() {
+      const ref = useRef<HTMLTextAreaElement>(null);
+      const [requests, setRequests] = useState(0);
+      useEffect(
+        () => subscribeEditorFocusRequest(() => setRequests((n) => n + 1)),
+        [],
+      );
+      useEffect(() => {
+        if (takeEditorFocusRequest(fileTabs[0].resource)) ref.current?.focus();
+      }, [requests]);
+      return <textarea aria-label="Editor" ref={ref} />;
+    }
+
+    function cancelFromCloseButton(activeEditor: ActiveEditorState | null) {
+      const closeButton = document.createElement("button");
+      document.body.append(closeButton);
+      onTestFinished(() => closeButton.remove());
+      closeButton.focus();
+      useWorkbenchStore.setState({
+        activeTabId: "file-a",
+        activeEditor,
+        pendingCloseTabId: "file-b",
+        tabs: fileTabs,
+      });
+      // One root, so the dialog's focus restore and the editor's focus
+      // request settle in the same commit, as in the workbench.
+      render(
+        <>
+          <Editor />
+          <DirtyTabDialog />
+        </>,
+      );
+      const dialog = screen.getByRole("dialog", {
+        name: "Save changes to other.ts?",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      return closeButton;
+    }
+
+    it("returns to the open editor of the active File", () => {
+      // Only the phase and resource decide where the focus goes.
+      cancelFromCloseButton({
+        phase: "ready",
+        resource: fileTabs[0].resource,
+      } as ActiveEditorState);
+
+      expect(screen.getByRole("textbox", { name: "Editor" })).toHaveFocus();
+    });
+
+    it("returns to the close button while the File is still loading", () => {
+      const closeButton = cancelFromCloseButton({
+        phase: "loading",
+        resource: fileTabs[0].resource,
+      });
+
+      expect(closeButton).toHaveFocus();
+    });
   });
 
   it("owns a pending Save by tab and refuses every dismissal until it settles", async () => {

@@ -32,6 +32,7 @@ pub use manifest::{
 pub use protocol::{
     AdapterError, AdapterOutput, EntrySummary, HistoryMessage, HistoryRole, ModelSummary,
     NativeCommand, NativeRequest, Operation, Outbound, StateSnapshot, TerminalOutcome, ToolOutcome,
+    session_file_key,
 };
 pub(crate) use runtime::PiRuntime;
 pub use translator::PiTranslator;

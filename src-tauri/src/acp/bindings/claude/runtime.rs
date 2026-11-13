@@ -74,6 +74,8 @@ pub(crate) struct ClaudeRuntime {
     forks: Vec<fork::TrackedFork>,
     /// The SDK bridge reports subagents, so their transcripts are stored.
     stores_children: bool,
+    /// The SDK bridge answers `/status` and `/mcp`, so they open panels.
+    opens_panels: bool,
 }
 
 struct ActiveSession {
@@ -143,6 +145,7 @@ impl ClaudeRuntime {
     ) -> Self {
         Self {
             stores_children: true,
+            opens_panels: true,
             ..Self::new(None, binding_digest, runtime_epoch, session_id)
         }
     }
@@ -187,6 +190,7 @@ impl ClaudeRuntime {
             native_rpc_reply: None,
             forks: Vec::new(),
             stores_children: false,
+            opens_panels: false,
         }
     }
 

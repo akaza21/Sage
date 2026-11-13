@@ -22,6 +22,17 @@ pub struct HarnessDefinition {
     /// The brand mark of a curated harness; `None` for any other harness.
     #[serde(default)]
     pub brand: Option<HarnessBrand>,
+    /// A newer published release of the installed CLI, from the last check.
+    #[serde(default)]
+    pub update: Option<HarnessUpdate>,
+}
+
+/// A newer published release and the command that installs it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HarnessUpdate {
+    pub latest_version: String,
+    pub command: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

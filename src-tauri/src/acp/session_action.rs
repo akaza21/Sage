@@ -304,7 +304,7 @@ mod tests {
             metadata.session_action,
             Some(serde_json::to_value(&action).unwrap())
         );
-        assert!(crate::acp::store::parse_legacy_text(&payload).is_ok());
+        assert!(crate::acp::store::decode_payload(&payload).is_ok());
         let plain = crate::acp::intent::Prompt::new("prompt", "/review").unwrap();
         assert!(plain.user_payload().get("sessionAction").is_none());
     }
@@ -331,6 +331,6 @@ mod tests {
             action,
             Some(json!({"kind":"review","target":{"kind":"baseBranch","branch":"main"}}))
         );
-        assert!(crate::acp::store::parse_legacy_text(&payload).is_ok());
+        assert!(crate::acp::store::decode_payload(&payload).is_ok());
     }
 }

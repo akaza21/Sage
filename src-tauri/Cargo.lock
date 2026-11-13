@@ -2949,6 +2949,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "thiserror 2.0.19",
+ "time",
  "tokio",
  "toml 0.8.2",
  "tracing",
