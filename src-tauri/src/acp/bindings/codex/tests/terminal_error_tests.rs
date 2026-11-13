@@ -1,5 +1,7 @@
 use super::*;
 
+mod plan_store_tests;
+
 fn running_adapter() -> CodexAdapter {
     let mut adapter = adapter();
     ready(&mut adapter);
@@ -276,37 +278,5 @@ fn an_interrupt_sage_never_wrote_leaves_the_codex_stop_interrupted() {
             state: TurnState::Interrupted,
             ..
         }]
-    ));
-}
-
-#[test]
-fn a_user_stop_closes_the_plan_and_settles_the_turn_cancelled() {
-    let mut adapter = running_adapter();
-    let plan = json!({"method":"turn/plan/updated","params":{
-        "threadId":"thread-1","turnId":"turn-1","explanation":null,
-        "plan":[{"step":"Inspect","status":"inProgress"}]
-    }});
-    adapter
-        .ingest(&serde_json::to_vec(&plan).unwrap(), &Mapper)
-        .unwrap();
-    adapter.cancel(3).unwrap();
-    let IngressDisposition::Events(events) = adapter.ingest(&interrupted(), &Mapper).unwrap()
-    else {
-        panic!()
-    };
-    assert!(matches!(
-        events.as_slice(),
-        [
-            IncomingEvent::Item {
-                id,
-                lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
-                payload: NormalizedPayload::PlanEntries { entries },
-                ..
-            },
-            IncomingEvent::Turn {
-                state: TurnState::Cancelled,
-                ..
-            },
-        ] if id.external_id.as_str() == "sage:turn-plan" && entries.as_slice().len() == 1
     ));
 }
