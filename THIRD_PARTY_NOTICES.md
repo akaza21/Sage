@@ -17,6 +17,25 @@ implemented yet. It must exist before the first public release.
 | ----------------------------------------- | -------------------------------- | --------------------------------- |
 | Microsoft Edge WebView2 Runtime (Windows) | Microsoft Software License Terms | System runtime; not redistributed |
 
+## Bundled crates with extra notices
+
+### jpeg-encoder
+
+- Used to re-encode attached images; licensed `(MIT OR Apache-2.0) AND IJG`
+- Its forward DCT is based in part on the work of the Independent JPEG Group;
+  the IJG notice is in `public/third-party/jpeg-encoder-IJG-NOTICE.txt`
+
+## Harness logos
+
+`public/harness-*.svg` identify each harness in the harness picker. They are
+third-party marks that belong to their owners; their use does not imply
+endorsement. Sources and licenses are listed per file in
+`public/third-party/harness-logos-NOTICE.txt`, with the license texts beside it:
+
+- Simple Icons (CC0 1.0): `public/third-party/simple-icons-LICENSE.txt`
+- Lobe Icons (MIT): `public/third-party/lobe-icons-LICENSE.txt`
+- Lucide (ISC): `public/third-party/lucide-react-LICENSE.txt`
+
 ## Adapted code
 
 Each entry names the source, its license, and the files that contain it.
