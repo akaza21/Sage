@@ -1,7 +1,7 @@
 use std::{
     sync::{
         Arc, Mutex, OnceLock,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -35,6 +35,7 @@ const REAPER_RETRY_DELAY: Duration = Duration::from_millis(25);
 const TEST_RELEASE_GATE_TIMEOUT: Duration = crate::test_wait::HANG_GUARD;
 
 pub(super) struct ContainmentRegistry {
+    abandoning: AtomicBool,
     reaper_capacity: Arc<Semaphore>,
     unconfirmed_exits: AtomicUsize,
     uncertain_terminations: AtomicUsize,
@@ -63,6 +64,7 @@ struct ActiveReaper {
 impl ContainmentRegistry {
     fn new() -> Arc<Self> {
         Arc::new(Self {
+            abandoning: AtomicBool::new(false),
             reaper_capacity: Arc::new(Semaphore::new(GIT_REAPER_CAPACITY)),
             unconfirmed_exits: AtomicUsize::new(0),
             uncertain_terminations: AtomicUsize::new(0),
@@ -275,6 +277,29 @@ pub(super) fn git_containment() -> Arc<ContainmentRegistry> {
         .clone()
 }
 
+/// Final host teardown only: retain no quarantined owners after making one
+/// last kill attempt. Live owners keep their Jobs until host handle closure;
+/// reapers that finish concurrently see `abandoning` instead of quarantining.
+pub(crate) fn abandon_cleanup_on_exit() {
+    abandon(&git_containment());
+}
+
+fn abandon(registry: &ContainmentRegistry) {
+    registry.abandoning.store(true, Ordering::Release);
+    registry.reaper_capacity.close();
+    let mut owners = registry
+        .quarantined
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    for mut owner in owners.drain(..) {
+        let _ = owner._tree.terminate();
+        let _ = owner._child.start_kill();
+        let _ = owner._child.try_wait();
+        // Dropping the tree closes its owned kill-on-close Job on Windows;
+        // dropping readers aborts only this process's bounded pipe tasks.
+    }
+}
+
 pub(super) async fn await_mutation_admission(
     registry: &ContainmentRegistry,
     admission_timeout: Duration,
@@ -311,6 +336,43 @@ fn decrement(counter: &AtomicUsize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn final_teardown_releases_owned_quarantine_and_refuses_further_git() {
+        crate::test_wait::guarded("final Git teardown", async {
+            let harness = crate::git_process::GitProcessTestHarness::new();
+            let (policy, reaper) = harness.exhausting_reaper_policy(crate::git_budget::READ);
+            let registry = policy.containment_registry.clone().unwrap();
+            let root = crate::test_paths::temp_dir();
+            let result = crate::git_process::run(&root, &["--version"], 1024, policy).await;
+            assert!(matches!(result, Err(AppError::GitContainment { .. })));
+            reaper
+                .wait_for_quarantine(crate::test_wait::HANG_GUARD)
+                .await
+                .unwrap();
+            assert_eq!(harness.observation().quarantined_owners, 1);
+
+            // A process outside this registry must remain untouched.
+            let mut unrelated = crate::git_process::fixture_git()
+                .args(["hash-object", "--stdin"])
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap();
+            abandon(&registry);
+            let unrelated_alive = unrelated.try_wait().unwrap().is_none();
+            let _ = unrelated.kill();
+            unrelated.wait().unwrap();
+            assert!(unrelated_alive);
+            assert_eq!(harness.observation().quarantined_owners, 0);
+            assert!(
+                harness
+                    .probe_reaper_owner(Duration::from_millis(10))
+                    .await
+                    .is_err()
+            );
+        });
+    }
 
     #[test]
     fn reaper_owner_capacity_accepts_exact_eight_rejects_plus_one_and_resets() {

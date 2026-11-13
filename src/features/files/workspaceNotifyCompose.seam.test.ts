@@ -15,6 +15,7 @@ import {
   resetNotifyListingAdmission,
   resetWorkspaceNotifyComposeForTests,
   subscribeWorkspaceNotifySearch,
+  subscribeWorkspaceNotifyRepository,
   syncLiveProjectWorkspaceNotify,
   type LiveProjectNotifyStamp,
   type WorkspaceNotifyNotice,
@@ -65,6 +66,45 @@ describe("workspace notify compose", () => {
     const resync = { ...notice, relativePath: "lost-notices", kind: "resync" };
     expect(acceptWorkspaceNotifyNotice(resync, live)).toEqual(resync);
     expect(listingResourceForNotify(resync)).toEqual(childResource("root-a"));
+  });
+
+  it("delivers listing/search immediately and routes the later Git decision only to repositories", async () => {
+    const searches: WorkspaceNotifyNotice[] = [];
+    const repositories: WorkspaceNotifyNotice[] = [];
+    const listings: ResourceRef[] = [];
+    let emit: (value: unknown) => void = () => undefined;
+    const stopSearch = subscribeWorkspaceNotifySearch((value) =>
+      searches.push(value),
+    );
+    const stopRepository = subscribeWorkspaceNotifyRepository((value) =>
+      repositories.push(value),
+    );
+    await syncLiveProjectWorkspaceNotify(live, {
+      watch: async () => ({ generation: 1 }),
+      unwatch: async () => undefined,
+      listen: async (listener) => {
+        emit = listener;
+        return () => undefined;
+      },
+      invalidate: (_notice, listing) => {
+        listings.push(listing);
+      },
+    });
+    const listing = { ...notice, gitRelevant: false };
+    emit(listing);
+    expect(searches).toEqual([listing]);
+    expect(listings).toEqual([childResource("root-a", "src")]);
+    expect(repositories).toEqual([]);
+
+    const decision = { ...notice, kind: "repository" };
+    emit(decision);
+    expect(repositories).toEqual([decision]);
+    expect(searches).toEqual([listing]);
+    expect(listings).toHaveLength(1);
+    emit({ ...decision, transitionEpoch: 6 });
+    expect(repositories).toHaveLength(1);
+    stopSearch();
+    stopRepository();
   });
 
   it("rejects a notice whose path or kind is outside the native bounds", () => {

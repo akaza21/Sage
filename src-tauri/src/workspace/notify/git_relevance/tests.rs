@@ -79,9 +79,35 @@ fn window(
         );
     }
     let windows = batch.take_git_windows();
-    let mut sent = batch.take();
-    refresh.apply(&mut sent, windows, &Arc::new(AtomicBool::new(false)));
-    sent.notices
+    let (sent, received) = std::sync::mpsc::channel();
+    refresh.emit_with(
+        batch.take(),
+        windows,
+        &Arc::new(AtomicBool::new(false)),
+        Arc::new(move |batch| {
+            sent.send(batch).unwrap();
+        }),
+        crate::test_wait::BUDGET,
+        |window, path, stop| async move { window.irrelevant(&path, stop).await },
+    );
+    tauri::async_runtime::block_on(async {
+        for root in refresh.roots.values() {
+            if let Some(gate) = &root.gate {
+                let _settled = tokio::time::timeout(crate::test_wait::HANG_GUARD, gate.lock())
+                    .await
+                    .unwrap();
+            }
+        }
+    });
+    let mut listing = received.recv().unwrap().notices;
+    for decision in received.try_iter().flat_map(|batch| batch.notices) {
+        for notice in &mut listing {
+            if notice.root_id == decision.root_id {
+                notice.git_relevant = None;
+            }
+        }
+    }
+    listing
 }
 
 fn relevant(notices: &[WorkspaceNotifyNotice]) -> bool {
@@ -330,9 +356,19 @@ fn git_errors_and_cancelled_windows_retain_the_refresh() {
         false,
     );
     let windows = batch.take_git_windows();
-    let mut sent = batch.take();
-    refresh.apply(&mut sent, windows, &Arc::new(AtomicBool::new(true)));
-    assert!(relevant(&sent.notices));
+    let (sent, received) = std::sync::mpsc::channel();
+    refresh.emit(
+        batch.take(),
+        windows,
+        &Arc::new(AtomicBool::new(true)),
+        Arc::new(move |batch| {
+            sent.send(batch).unwrap();
+        }),
+    );
+    assert!(
+        received.try_recv().is_err(),
+        "cancelled windows emit no decisions"
+    );
 }
 
 #[test]

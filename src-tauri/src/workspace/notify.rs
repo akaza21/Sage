@@ -66,8 +66,8 @@ pub struct WorkspaceNotifyNotice {
     pub root_id: String,
     pub relative_path: String,
     pub kind: String,
-    /// Omitted for ordinary notices; false only for ignored output whose
-    /// window's paths are confirmed ignored and untracked by Git.
+    /// False for listing/search delivery while Git is decided separately.
+    /// Repository decisions and conservative fallbacks omit this field.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub git_relevant: Option<bool>,
 }

@@ -81,19 +81,18 @@ pub(super) fn root_delivery(
     cancelled: Arc<AtomicBool>,
     sink: Arc<NoticeSink>,
 ) -> impl FnMut(String, u32) + Send + 'static {
-    let mut relevance = None;
+    let excludes = super::git_relevance::start_explorer_excludes(root, Arc::clone(&cancelled));
+    let mut relevance = NoticeRelevance::new(root);
     let root_path = root.to_path_buf();
     move |relative: String, action: u32| {
         if cancelled.load(Ordering::Acquire) {
             return;
         }
-        // One startup config read per root, on the watcher thread after its
-        // OS subscription is active. It configures listing folds only.
-        let relevance = relevance.get_or_insert_with(|| {
-            let excludes =
-                super::git_relevance::explorer_excludes(&root_path, Arc::clone(&cancelled));
-            NoticeRelevance::new(&root_path).with_excludes(excludes)
-        });
+        // Config may arrive after early records; those already delivered
+        // ordinary listing notices. Reset folded decisions for later records.
+        if let Ok(excludes) = excludes.try_recv() {
+            relevance = NoticeRelevance::new(&root_path).with_excludes(excludes);
+        }
         // Retain the exact operand before Explorer folds it to its ignored
         // ancestor. The matcher supplies no Git relevance verdict.
         let original = relative.clone();

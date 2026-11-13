@@ -47,7 +47,7 @@ export interface WorkspaceNotifyNotice {
   rootId: string;
   relativePath: string;
   kind: string;
-  /** False only when native index membership rules out a Git change. */
+  /** False for listing/search delivery; Git may be decided separately. */
   gitRelevant?: boolean;
 }
 
@@ -82,6 +82,9 @@ interface BoundNotifySession {
 }
 
 const searchSubscribers = new Set<(notice: WorkspaceNotifyNotice) => void>();
+const repositorySubscribers = new Set<
+  (notice: WorkspaceNotifyNotice) => void
+>();
 let session: BoundNotifySession | null = null;
 let listingAdmission = 0;
 let listingAdmissionEpoch = 0;
@@ -142,6 +145,7 @@ const NOTICE_KINDS = new Set([
   "deleted",
   "resync",
   "ignored",
+  "repository",
 ]);
 
 function boundedNotifyPath(value: unknown): value is string {
@@ -242,22 +246,31 @@ export function subscribeWorkspaceNotifySearch(
 export function publishWorkspaceNotifySearch(
   notice: WorkspaceNotifyNotice,
 ): void {
+  if (notice.gitRelevant !== false) {
+    for (const listener of repositorySubscribers) listener(notice);
+  }
+  if (notice.kind === "repository") return;
   for (const listener of searchSubscribers) {
     listener(notice);
   }
 }
 
-/** Git shares the throttled notice stream, excluding known ignored output. */
+/** Native Git decisions bypass listing and ignored-folder throttles. */
 export function subscribeWorkspaceNotifyRepository(
   listener: (notice: WorkspaceNotifyNotice) => void,
 ): () => void {
-  return subscribeWorkspaceNotifySearch((notice) => {
-    if (notice.gitRelevant !== false) listener(notice);
-  });
+  if (repositorySubscribers.size >= MAX_NOTIFY_SEARCH_SUBSCRIBERS) {
+    return () => undefined;
+  }
+  repositorySubscribers.add(listener);
+  return () => {
+    repositorySubscribers.delete(listener);
+  };
 }
 
 export function resetWorkspaceNotifyComposeForTests(): void {
   searchSubscribers.clear();
+  repositorySubscribers.clear();
   resetNotifyListingAdmission();
   listingAdmission = 0;
 }
@@ -326,6 +339,10 @@ export async function syncLiveProjectWorkspaceNotify(
     }
     const accepted = acceptWorkspaceNotifyNotice(value, session.live);
     if (!accepted) {
+      return;
+    }
+    if (accepted.kind === "repository") {
+      publishWorkspaceNotifySearch(accepted);
       return;
     }
     // Search includes ignored files when configured; Git uses native index

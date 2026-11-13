@@ -31,6 +31,7 @@ use readers::{ReaderTask, ReaderTasks};
 mod test_support;
 
 pub(crate) use cancellation::wait_for_cleanup;
+pub(crate) use containment::abandon_cleanup_on_exit;
 #[cfg(test)]
 pub(crate) use repository_config::trust_for_test as trust_repository_config_for_test;
 pub(crate) use root_authority::GitRootAuthority;

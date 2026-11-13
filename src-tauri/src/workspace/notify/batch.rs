@@ -204,12 +204,11 @@ impl NoticeSink {
     /// Sends one batch per window that held notices, until `cancelled`. A
     /// window opens with its first notice and lasts as long as `window`
     /// blocks.
-    fn run_emitter(
+    pub(super) fn run_emitter(
         &self,
         cancelled: &AtomicBool,
         mut window: impl FnMut(),
-        mut prepare: impl FnMut(&mut WorkspaceNotifyBatch, HashMap<String, GitWindow>),
-        mut emit: impl FnMut(WorkspaceNotifyBatch),
+        mut emit: impl FnMut(WorkspaceNotifyBatch, HashMap<String, GitWindow>),
     ) {
         loop {
             let mut batch = self.lock();
@@ -228,16 +227,15 @@ impl NoticeSink {
             if cancelled.load(Ordering::Acquire) {
                 return;
             }
-            let (mut batch, windows) = {
+            let (batch, windows) = {
                 let mut pending = self.lock();
                 let windows = pending.take_git_windows();
                 (pending.take(), windows)
             };
-            prepare(&mut batch, windows);
             if cancelled.load(Ordering::Acquire) {
                 return;
             }
-            emit(batch);
+            emit(batch, windows);
         }
     }
 }
@@ -247,17 +245,17 @@ pub(super) fn spawn_notice_emitter(
     sink: Arc<NoticeSink>,
     cancelled: Arc<AtomicBool>,
     roots: Vec<(String, std::path::PathBuf)>,
-    emit: impl FnMut(WorkspaceNotifyBatch) + Send + 'static,
+    emit: impl Fn(WorkspaceNotifyBatch) + Send + Sync + 'static,
 ) -> std::io::Result<()> {
     std::thread::Builder::new()
         .name("sage-workspace-notify-emit".into())
         .spawn(move || {
-            let mut git = GitRefresh::new(roots);
+            let git = GitRefresh::new(roots);
+            let emit = Arc::new(emit);
             sink.run_emitter(
                 &cancelled,
                 || std::thread::sleep(NOTICE_BATCH_WINDOW),
-                |batch, windows| git.apply(batch, windows, &cancelled),
-                emit,
+                |batch, windows| git.emit(batch, windows, &cancelled, emit.clone()),
             )
         })
         .map(|_| ())
@@ -375,8 +373,7 @@ mod tests {
                         window_open.send(()).unwrap();
                         let _ = window_closes.recv();
                     },
-                    |_, _| {},
-                    |batch| sent.send(batch).unwrap(),
+                    |batch, _| sent.send(batch).unwrap(),
                 )
             })
         };

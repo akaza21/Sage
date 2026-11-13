@@ -121,40 +121,61 @@ pub(super) fn wait_for_queries() -> bool {
     })
 }
 
-/// Resolve Explorer's configured excludes once at watch startup. This uses
-/// the same source semantics as before, with no Git-only freshness cache.
-pub(super) fn explorer_excludes(root: &Path, cancelled: Arc<AtomicBool>) -> Option<PathBuf> {
+/// Read Explorer's configured excludes off the delivery path. A full/busy
+/// root falls back to ordinary listing notices, never a queued Git query.
+pub(super) fn start_explorer_excludes(
+    root: &Path,
+    cancelled: Arc<AtomicBool>,
+) -> std::sync::mpsc::Receiver<Option<PathBuf>> {
+    let (sent, received) = std::sync::mpsc::sync_channel(1);
+    if let Some(mut safe) = root_gate(root).and_then(|gate| gate.try_lock_owned().ok()) {
+        let root = root.to_path_buf();
+        tauri::async_runtime::spawn(async move {
+            let excludes = read_explorer_excludes(&root, cancelled, &mut safe).await;
+            let _ = sent.send(excludes);
+        });
+    }
+    received
+}
+
+#[cfg(test)]
+fn explorer_excludes(root: &Path, cancelled: Arc<AtomicBool>) -> Option<PathBuf> {
     let gate = root_gate(root)?;
     tauri::async_runtime::block_on(async {
-        let mut safe = tokio::select! {
-            guard = gate.lock() => guard,
-            () = wait_cancelled(&cancelled) => return None,
-        };
-        if !*safe || cancelled.load(Ordering::Acquire) {
-            return None;
-        }
-        let output = match git_process::run_cancellable(
-            root,
-            &["config", "--path", "-z", "--get", "core.excludesFile"],
-            64 * 1024,
-            None,
-            cancelled,
-        )
-        .await
-        {
-            Ok(output) => output,
-            Err(AppError::GitContainment { .. }) => {
-                *safe = false;
-                return None;
-            }
-            Err(_) => return None,
-        };
-        if !output.status.success() || output.stdout_truncated {
-            return None;
-        }
-        let path = std::str::from_utf8(output.stdout.strip_suffix(&[0])?).ok()?;
-        (!path.is_empty() && !path.contains('\0')).then(|| root.join(path))
+        let mut safe = gate.lock().await;
+        read_explorer_excludes(root, cancelled, &mut safe).await
     })
+}
+
+async fn read_explorer_excludes(
+    root: &Path,
+    cancelled: Arc<AtomicBool>,
+    safe: &mut bool,
+) -> Option<PathBuf> {
+    if !*safe || cancelled.load(Ordering::Acquire) {
+        return None;
+    }
+    let output = match git_process::run_cancellable(
+        root,
+        &["config", "--path", "-z", "--get", "core.excludesFile"],
+        64 * 1024,
+        None,
+        cancelled,
+    )
+    .await
+    {
+        Ok(output) => output,
+        Err(AppError::GitContainment { .. }) => {
+            *safe = false;
+            return None;
+        }
+        Err(_) => return None,
+    };
+    if !output.status.success() || output.stdout_truncated {
+        return None;
+    }
+    let path = std::str::from_utf8(output.stdout.strip_suffix(&[0])?).ok()?;
+    (!path.is_empty() && !path.contains('\0')).then(|| root.join(path))
 }
 
 struct Root {
@@ -179,12 +200,39 @@ impl GitRefresh {
         }
     }
 
-    pub(super) fn apply(
-        &mut self,
-        batch: &mut WorkspaceNotifyBatch,
+    /// Listing/search notices never await Git. Each admitted root owns one
+    /// asynchronous decision, with no queue behind a running/unsafe root.
+    pub(super) fn emit(
+        &self,
+        batch: WorkspaceNotifyBatch,
+        windows: HashMap<String, GitWindow>,
+        cancelled: &Arc<AtomicBool>,
+        emit: Arc<dyn Fn(WorkspaceNotifyBatch) + Send + Sync>,
+    ) {
+        self.emit_with(
+            batch,
+            windows,
+            cancelled,
+            emit,
+            std::time::Duration::from_millis(500),
+            |window, path, stop| async move { window.irrelevant(&path, stop).await },
+        );
+    }
+
+    pub(super) fn emit_with<F, Fut>(
+        &self,
+        mut batch: WorkspaceNotifyBatch,
         mut windows: HashMap<String, GitWindow>,
         cancelled: &Arc<AtomicBool>,
-    ) {
+        emit: Arc<dyn Fn(WorkspaceNotifyBatch) + Send + Sync>,
+        budget: std::time::Duration,
+        runner: F,
+    ) where
+        F: Fn(GitWindow, PathBuf, Arc<AtomicBool>) -> Fut + Clone + Send + 'static,
+        Fut: std::future::Future<Output = Result<bool, AppError>> + Send + 'static,
+    {
+        let deadline = tokio::time::Instant::now() + budget;
+        let mut pending = Vec::new();
         for (id, root) in &self.roots {
             if batch
                 .notices
@@ -196,33 +244,73 @@ impl GitRefresh {
             let Some(window) = windows.remove(id) else {
                 continue;
             };
-            let Some(gate) = &root.gate else {
+            let Some(mut notice) = batch.notices.iter().find(|n| &n.root_id == id).cloned() else {
                 continue;
             };
-            let irrelevant = tauri::async_runtime::block_on(async {
-                let mut safe = tokio::select! {
-                    guard = gate.lock() => guard,
-                    () = wait_cancelled(cancelled) => return false,
-                };
-                if !*safe || cancelled.load(Ordering::Acquire) {
-                    return false;
+            let Some(guard) = root
+                .gate
+                .as_ref()
+                .and_then(|gate| Arc::clone(gate).try_lock_owned().ok())
+                .filter(|safe| **safe)
+            else {
+                continue;
+            };
+            for notice in &mut batch.notices {
+                if &notice.root_id == id {
+                    // Only the separate repository decision drives Git.
+                    notice.git_relevant = Some(false);
                 }
-                match window.irrelevant(&root.path, Arc::clone(cancelled)).await {
-                    Ok(irrelevant) => irrelevant && !cancelled.load(Ordering::Acquire),
+            }
+            notice.kind = "repository".into();
+            notice.git_relevant = None;
+            pending.push((guard, window, root.path.clone(), notice));
+        }
+        if cancelled.load(Ordering::Acquire) {
+            return;
+        }
+        emit(batch);
+        for (mut safe, window, path, notice) in pending {
+            let cancelled = Arc::clone(cancelled);
+            let emit = Arc::clone(&emit);
+            let runner = runner.clone();
+            tauri::async_runtime::spawn(async move {
+                let stop = Arc::new(AtomicBool::new(false));
+                let query = runner(window, path, Arc::clone(&stop));
+                tokio::pin!(query);
+                let result = tokio::select! {
+                    result = &mut query => result,
+                    () = tokio::time::sleep_until(deadline) => {
+                        if !cancelled.load(Ordering::Acquire) {
+                            emit(WorkspaceNotifyBatch { notices: vec![notice.clone()] });
+                        }
+                        stop.store(true, Ordering::Release);
+                        // Do not drop/abort a process-owning future. Keep the
+                        // root locked through cancellation and reaper handoff.
+                        let result = query.await;
+                        if matches!(result, Err(AppError::GitContainment { .. })) { *safe = false; }
+                        return;
+                    }
+                    () = wait_cancelled(&cancelled) => {
+                        stop.store(true, Ordering::Release);
+                        let result = query.await;
+                        if matches!(result, Err(AppError::GitContainment { .. })) { *safe = false; }
+                        return;
+                    }
+                };
+                let irrelevant = match result {
+                    Ok(irrelevant) => irrelevant,
                     Err(AppError::GitContainment { .. }) => {
                         *safe = false;
                         false
                     }
                     Err(_) => false,
+                };
+                if !irrelevant && !cancelled.load(Ordering::Acquire) {
+                    emit(WorkspaceNotifyBatch {
+                        notices: vec![notice],
+                    });
                 }
             });
-            if irrelevant {
-                for notice in &mut batch.notices {
-                    if &notice.root_id == id {
-                        notice.git_relevant = Some(false);
-                    }
-                }
-            }
         }
     }
 }
@@ -235,3 +323,6 @@ async fn wait_cancelled(cancelled: &AtomicBool) {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod delivery_tests;
