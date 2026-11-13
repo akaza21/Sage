@@ -7,7 +7,7 @@ use std::{
 use std::sync::Arc;
 
 use tokio::{
-    io::{AsyncRead, AsyncReadExt},
+    io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
     process::Command,
     time::timeout,
 };
@@ -17,6 +17,7 @@ use crate::{
     git_budget,
 };
 
+mod cancellation;
 mod containment;
 mod parallel_limits;
 mod process_tree;
@@ -29,7 +30,7 @@ use readers::{ReaderTask, ReaderTasks};
 #[cfg(test)]
 mod test_support;
 
-pub(crate) use repository_config::ignore::{GitRuleSources, IgnoreConfig};
+pub(crate) use cancellation::wait_for_cleanup;
 #[cfg(test)]
 pub(crate) use repository_config::trust_for_test as trust_repository_config_for_test;
 pub(crate) use root_authority::GitRootAuthority;
@@ -54,6 +55,7 @@ type GitSpawnHook = Arc<dyn Fn(u32) + Send + Sync>;
 
 #[derive(Clone)]
 pub(crate) struct GitProcessPolicy {
+    stdin: Option<Vec<u8>>,
     command_timeout: Duration,
     admission_timeout: Duration,
     reap_timeout: Option<Duration>,
@@ -85,6 +87,7 @@ pub(crate) struct GitProcessPolicy {
 impl GitProcessPolicy {
     pub(crate) fn mutation(command_timeout: Duration) -> Self {
         Self {
+            stdin: None,
             command_timeout,
             admission_timeout: git_budget::ADMISSION,
             reap_timeout: Some(git_budget::REAP),
@@ -115,6 +118,7 @@ impl GitProcessPolicy {
 
     pub(crate) fn read(command_timeout: Duration) -> Self {
         Self {
+            stdin: None,
             command_timeout,
             admission_timeout: git_budget::ADMISSION,
             reap_timeout: Some(git_budget::REAP),
@@ -145,6 +149,7 @@ impl GitProcessPolicy {
 
     pub(crate) fn pre_ref_mutation(&self, command_timeout: Duration) -> Self {
         Self {
+            stdin: None,
             command_timeout,
             admission_timeout: self.admission_timeout,
             reap_timeout: Some(git_budget::REAP),
@@ -231,6 +236,21 @@ pub(crate) async fn run(
     run_inner(root, args, stdout_limit, policy, None).await
 }
 
+/// Bounded watch input, using status's configuration, admission and cleanup.
+pub(crate) async fn run_cancellable(
+    root: &Path,
+    args: &[&str],
+    stdout_limit: usize,
+    input: Option<Vec<u8>>,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+) -> AppResult<GitOutput> {
+    let mut policy = GitProcessPolicy::read(git_budget::READ);
+    policy.stdin = input;
+    cancellation::CANCELLED
+        .scope(cancelled, run(root, args, stdout_limit, policy))
+        .await
+}
+
 pub(crate) async fn run_with_authority(
     root: &Path,
     args: &[&str],
@@ -248,6 +268,7 @@ async fn run_inner(
     policy: GitProcessPolicy,
     root_authority: Option<GitRootAuthority>,
 ) -> AppResult<GitOutput> {
+    cancellation::ensure_active()?;
     let repository = repository_config::admit(root, root_authority.as_ref()).await?;
     if repository.is_some()
         && root_authority
@@ -294,10 +315,16 @@ async fn run_admitted(
     if policy.mutation {
         containment::await_mutation_admission(&registry, policy.admission_timeout).await?;
     }
-    let reaper_lease =
-        containment::reserve_reaper_owner(Arc::clone(&registry), policy.admission_timeout).await?;
+    let reaper_lease = tokio::select! {
+        result = containment::reserve_reaper_owner(Arc::clone(&registry), policy.admission_timeout) => result?,
+        () = cancellation::cancelled() => return Err(cancellation::error()),
+    };
 
+    cancellation::ensure_active()?;
     let mut command = configured_command(root, args, root_authority.as_ref(), repository);
+    if policy.stdin.is_some() {
+        command.stdin(Stdio::piped());
+    }
     #[cfg(test)]
     if let Some(trace) = &policy.trace2_event {
         command.env("GIT_TRACE2_EVENT", trace);
@@ -380,66 +407,65 @@ async fn run_admitted(
         )
         .await;
     }
-    let completed = timeout(policy.command_timeout, async {
-        #[cfg(test)]
-        if let Some(gate) = &policy.deadline_wait_gate {
-            gate.wait().await;
-        }
-        let status = child.wait().await.map_err(|error| PostSpawnFailure {
-            message: format!("Git process wait failed: {error}"),
-            reaped: false,
-        })?;
-        #[cfg(test)]
-        if policy.post_reap_failure {
-            return Err(PostSpawnFailure {
-                message: "injected Git output failure after reap".into(),
-                reaped: true,
-            });
-        }
-        let stdout = await_reader(
-            &mut readers.stdout,
-            &mut readers.failed,
-            "stdout",
+    let completed = tokio::select! {
+        result = timeout(policy.command_timeout, async {
+            if let Some(input) = &policy.stdin {
+                let mut stdin = child.stdin.take().ok_or_else(|| PostSpawnFailure {
+                    message: "Git stdin was not captured".into(), reaped: false,
+                })?;
+                stdin.write_all(input).await.map_err(|error| PostSpawnFailure {
+                    message: format!("Git stdin write failed: {error}"), reaped: false,
+                })?;
+            }
             #[cfg(test)]
-            policy.stdout_reader_failure,
-            #[cfg(not(test))]
-            false,
-        )
-        .await?;
-        let stderr =
-            await_reader(&mut readers.stderr, &mut readers.failed, "stderr", false).await?;
-        Ok::<GitOutput, PostSpawnFailure>(GitOutput {
-            status,
-            stdout: stdout.bytes,
-            stderr: stderr.bytes,
-            stdout_truncated: stdout.truncated,
-        })
-    })
-    .await;
+            if let Some(gate) = &policy.deadline_wait_gate {
+                gate.wait().await;
+            }
+            let status = child.wait().await.map_err(|error| PostSpawnFailure {
+                message: format!("Git process wait failed: {error}"),
+                reaped: false,
+            })?;
+            #[cfg(test)]
+            if policy.post_reap_failure {
+                return Err(PostSpawnFailure {
+                    message: "injected Git output failure after reap".into(),
+                    reaped: true,
+                });
+            }
+            let stdout = await_reader(
+                &mut readers.stdout,
+                &mut readers.failed,
+                "stdout",
+                #[cfg(test)]
+                policy.stdout_reader_failure,
+                #[cfg(not(test))]
+                false,
+            )
+            .await?;
+            let stderr =
+                await_reader(&mut readers.stderr, &mut readers.failed, "stderr", false).await?;
+            Ok::<GitOutput, PostSpawnFailure>(GitOutput {
+                status,
+                stdout: stdout.bytes,
+                stderr: stderr.bytes,
+                stdout_truncated: stdout.truncated,
+            })
+        }) => result.unwrap_or_else(|_| Err(PostSpawnFailure {
+            message: "the post-spawn Git deadline expired".into(), reaped: false,
+        })),
+        () = cancellation::cancelled() => Err(PostSpawnFailure {
+            message: "Git watch window cancelled".into(), reaped: false,
+        }),
+    };
 
     match completed {
-        Ok(Ok(output)) => Ok(output),
-        Ok(Err(failure)) => {
+        Ok(output) => Ok(output),
+        Err(failure) => {
             containment::cleanup_failure(
                 GitChild { root: child, tree },
                 readers,
                 reaper_lease,
                 failure,
-                policy,
-                registry,
-                root_authority,
-            )
-            .await
-        }
-        Err(_) => {
-            containment::cleanup_failure(
-                GitChild { root: child, tree },
-                readers,
-                reaper_lease,
-                PostSpawnFailure {
-                    message: "the post-spawn Git deadline expired".into(),
-                    reaped: false,
-                },
                 policy,
                 registry,
                 root_authority,
@@ -473,6 +499,10 @@ pub(crate) fn fixture_git() -> std::process::Command {
     command
 }
 
+/// Subcommands whose operands are pathnames, not pathspecs. Git refuses
+/// pathspec magic for them, so they run without `--literal-pathspecs`.
+const PATHNAME_COMMANDS: &[&str] = &["check-ignore"];
+
 fn configured_command(
     root: &Path,
     args: &[&str],
@@ -480,9 +510,14 @@ fn configured_command(
     repository: Option<&repository_config::AdmittedRepository>,
 ) -> Command {
     let mut command = Command::new("git");
+    command.arg("--no-optional-locks");
+    if !args
+        .first()
+        .is_some_and(|name| PATHNAME_COMMANDS.contains(name))
+    {
+        command.arg("--literal-pathspecs");
+    }
     command
-        .arg("--no-optional-locks")
-        .arg("--literal-pathspecs")
         .args(["-c", "core.hooksPath=/dev/null"])
         .args(["-c", "core.fsmonitor=false"])
         .args(["-c", "maintenance.auto=false"])
@@ -503,7 +538,7 @@ fn configured_command(
     if let Some(root_authority) = root_authority {
         root_authority.bind_child(&mut command, root);
     } else {
-        command.arg("-C").arg(root);
+        command.arg("-C").arg(repository_config::os_path(root));
     }
     command
         .args(submodule_isolation::arguments(args))

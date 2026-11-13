@@ -2,7 +2,7 @@ use std::path::{Component, Path, PathBuf};
 
 use ignore::gitignore::Gitignore;
 
-use super::{IgnoreRules, Skipped, matcher, present, unresolved};
+use super::{IgnoreRules, Skipped, matcher, present, read_rules, unresolved};
 
 /// The `info/exclude` matcher of the repository in `directory`. A `.git` file
 /// (a worktree or submodule) names its Git directory, and a worktree's
@@ -15,7 +15,6 @@ pub(super) fn repository_exclude(
     is_root: bool,
 ) -> Result<Option<Gitignore>, Skipped> {
     let root = &rules.root;
-    let read_rules = |path: &Path, follow| rules.read_source(path, follow);
     let dot_git = directory.join(".git");
     let Some(metadata) = present(&dot_git, dot_git.symlink_metadata())? else {
         return Ok(None);

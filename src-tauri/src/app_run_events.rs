@@ -52,6 +52,9 @@ pub(crate) fn handle_run_event(app_handle: &AppHandle, event: RunEvent) {
         } if label == "main"
     ) || matches!(&event, RunEvent::Exit)
     {
+        if !crate::workspace::notify::cancel_all_workspace_watches() {
+            warn!("workspace watcher Git cleanup did not settle before window teardown");
+        }
         if let Err(error) = app_handle.state::<AppState>().terminals.shutdown() {
             warn!(?error, "terminal app-exit cleanup remains unsettled");
         }
@@ -88,11 +91,19 @@ pub(crate) fn handle_run_event(app_handle: &AppHandle, event: RunEvent) {
         }
         preview_lifecycle::cleanup_previews_on_exit();
         let window_gone = app_handle.get_webview_window("main").is_none();
-        match handle_exit_request(
+        let outcome = handle_exit_request(
             || state.acp.shutdown_blocking(),
             || api.prevent_exit(),
             window_gone,
-        ) {
+        );
+        if !matches!(&outcome, ExitRequestOutcome::Deferred(_))
+            && !crate::workspace::notify::cancel_all_workspace_watches()
+        {
+            api.prevent_exit();
+            warn!("Sage host exit deferred until workspace watcher Git cleanup settles");
+            return;
+        }
+        match outcome {
             ExitRequestOutcome::Allowed => {
                 info!("Sage host ExitRequested shutdown end; exit allowed");
             }

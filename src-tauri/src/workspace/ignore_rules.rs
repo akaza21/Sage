@@ -26,7 +26,7 @@ use std::{
     io::{ErrorKind, Read},
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -35,8 +35,6 @@ use ignore::{
     Match,
     gitignore::{Gitignore, GitignoreBuilder},
 };
-
-use crate::git_process::GitRuleSources;
 
 mod repository;
 #[cfg(test)]
@@ -133,7 +131,6 @@ pub(crate) struct IgnoreRules {
     global: Option<Gitignore>,
     /// Set once any resolved rule source was skipped.
     skipped: AtomicBool,
-    external_sources: Mutex<GitRuleSources>,
 }
 
 /// A rule source that exists but was skipped (already logged): over the cap,
@@ -152,21 +149,11 @@ impl IgnoreRules {
             enabled,
             global: None,
             skipped: AtomicBool::new(false),
-            external_sources: Mutex::new(GitRuleSources::default()),
         };
         rules.global = global_excludes
             .filter(|_| enabled)
             .filter(|path| path.is_absolute())
-            .and_then(|path| {
-                // An explicit excludes file may also be inside the root,
-                // under an arbitrary name the watcher cannot recognise.
-                rules
-                    .external_sources
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .note(path);
-                rules.honour(read_rules(path, true))
-            })
+            .and_then(|path| rules.honour(read_rules(path, true)))
             .and_then(|bytes| matcher(&bytes));
         rules
     }
@@ -177,25 +164,6 @@ impl IgnoreRules {
     /// as prompt attachments, check this after building each chain.
     pub(crate) fn every_source_honoured(&self) -> bool {
         !self.skipped.load(Ordering::Relaxed)
-    }
-
-    /// External rules have no watcher records. Check their bounded metadata
-    /// fingerprints before trusting any cached folder decision.
-    pub(crate) fn sources_current(&self) -> bool {
-        self.external_sources
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .is_current()
-    }
-
-    fn read_source(&self, path: &Path, follow: bool) -> Result<Option<Vec<u8>>, Skipped> {
-        if !path.starts_with(&self.root) {
-            self.external_sources
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .note(path);
-        }
-        read_rules(path, follow)
     }
 
     fn honour<T>(&self, source: Result<Option<T>, Skipped>) -> Option<T> {

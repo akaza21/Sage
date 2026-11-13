@@ -20,6 +20,7 @@ use std::{
 
 use serde::Serialize;
 
+use super::git_relevance::{GitRefresh, GitWindow};
 use super::{MAX_ROOTS, OVERFLOW_RELATIVE_PATH, WorkspaceNotifyNotice};
 
 /// How long the first notice of a batch waits for others. The WebView's Git
@@ -63,6 +64,7 @@ fn path_key(notice: &WorkspaceNotifyNotice) -> PathKey {
 /// Notices gathered since the last event.
 #[derive(Debug, Default)]
 pub(super) struct NoticeBatch {
+    git_windows: HashMap<String, GitWindow>,
     notices: Vec<WorkspaceNotifyNotice>,
     /// Each queued notice's index.
     index: HashMap<PathKey, usize>,
@@ -72,6 +74,24 @@ pub(super) struct NoticeBatch {
 }
 
 impl NoticeBatch {
+    pub(super) fn push_record(
+        &mut self,
+        notice: WorkspaceNotifyNotice,
+        original: &str,
+        directory: bool,
+        moved: bool,
+    ) {
+        self.git_windows
+            .entry(notice.root_id.clone())
+            .or_default()
+            .push(original, directory, moved);
+        self.push(notice);
+    }
+
+    pub(super) fn take_git_windows(&mut self) -> HashMap<String, GitWindow> {
+        std::mem::take(&mut self.git_windows)
+    }
+
     pub(super) fn is_empty(&self) -> bool {
         self.notices.is_empty() && self.resyncs.is_empty()
     }
@@ -90,9 +110,6 @@ impl NoticeBatch {
             let key = path_key(&notice);
             if let Some(&slot) = self.index.get(&key) {
                 self.notices[slot].kind = notice.kind;
-                if notice.git_relevant != Some(false) {
-                    self.notices[slot].git_relevant = None;
-                }
                 return;
             }
             self.index.insert(key, self.notices.len());
@@ -161,7 +178,19 @@ pub(super) struct NoticeSink {
 }
 
 impl NoticeSink {
-    pub(super) fn push(&self, notice: WorkspaceNotifyNotice) {
+    pub(super) fn push_record(
+        &self,
+        notice: WorkspaceNotifyNotice,
+        original: &str,
+        directory: bool,
+        moved: bool,
+    ) {
+        self.lock().push_record(notice, original, directory, moved);
+        self.queued.notify_one();
+    }
+
+    #[cfg(test)]
+    fn push(&self, notice: WorkspaceNotifyNotice) {
         self.lock().push(notice);
         self.queued.notify_one();
     }
@@ -179,6 +208,7 @@ impl NoticeSink {
         &self,
         cancelled: &AtomicBool,
         mut window: impl FnMut(),
+        mut prepare: impl FnMut(&mut WorkspaceNotifyBatch, HashMap<String, GitWindow>),
         mut emit: impl FnMut(WorkspaceNotifyBatch),
     ) {
         loop {
@@ -198,7 +228,15 @@ impl NoticeSink {
             if cancelled.load(Ordering::Acquire) {
                 return;
             }
-            let batch = self.lock().take();
+            let (mut batch, windows) = {
+                let mut pending = self.lock();
+                let windows = pending.take_git_windows();
+                (pending.take(), windows)
+            };
+            prepare(&mut batch, windows);
+            if cancelled.load(Ordering::Acquire) {
+                return;
+            }
             emit(batch);
         }
     }
@@ -208,12 +246,19 @@ impl NoticeSink {
 pub(super) fn spawn_notice_emitter(
     sink: Arc<NoticeSink>,
     cancelled: Arc<AtomicBool>,
+    roots: Vec<(String, std::path::PathBuf)>,
     emit: impl FnMut(WorkspaceNotifyBatch) + Send + 'static,
 ) -> std::io::Result<()> {
     std::thread::Builder::new()
         .name("sage-workspace-notify-emit".into())
         .spawn(move || {
-            sink.run_emitter(&cancelled, || std::thread::sleep(NOTICE_BATCH_WINDOW), emit)
+            let mut git = GitRefresh::new(roots);
+            sink.run_emitter(
+                &cancelled,
+                || std::thread::sleep(NOTICE_BATCH_WINDOW),
+                |batch, windows| git.apply(batch, windows, &cancelled),
+                emit,
+            )
         })
         .map(|_| ())
 }
@@ -237,27 +282,6 @@ mod tests {
 
     fn resync(root: &str) -> WorkspaceNotifyNotice {
         notice(root, OVERFLOW_RELATIVE_PATH, RESYNC_KIND)
-    }
-
-    #[test]
-    fn ignored_output_cannot_hide_a_tracked_edit_in_either_order() {
-        let tracked = notice("root-a", "dist", IGNORED_KIND);
-        let mut output = tracked.clone();
-        output.git_relevant = Some(false);
-        for notices in [
-            vec![output.clone(), tracked.clone(), output.clone()],
-            vec![tracked.clone(), output.clone()],
-        ] {
-            let mut batch = NoticeBatch::default();
-            for notice in notices {
-                batch.push(notice);
-            }
-            assert_eq!(batch.take().notices, vec![tracked.clone()]);
-        }
-        let mut batch = NoticeBatch::default();
-        batch.push(output.clone());
-        batch.push(output.clone());
-        assert_eq!(batch.take().notices, vec![output]);
     }
 
     #[test]
@@ -351,6 +375,7 @@ mod tests {
                         window_open.send(()).unwrap();
                         let _ = window_closes.recv();
                     },
+                    |_, _| {},
                     |batch| sent.send(batch).unwrap(),
                 )
             })

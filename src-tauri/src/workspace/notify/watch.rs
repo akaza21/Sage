@@ -81,19 +81,29 @@ pub(super) fn root_delivery(
     cancelled: Arc<AtomicBool>,
     sink: Arc<NoticeSink>,
 ) -> impl FnMut(String, u32) + Send + 'static {
-    let mut relevance = NoticeRelevance::new(root);
+    let mut relevance = None;
+    let root_path = root.to_path_buf();
     move |relative: String, action: u32| {
         if cancelled.load(Ordering::Acquire) {
             return;
         }
-        let mut git_relevant = true;
+        // One startup config read per root, on the watcher thread after its
+        // OS subscription is active. It configures listing folds only.
+        let relevance = relevance.get_or_insert_with(|| {
+            let excludes =
+                super::git_relevance::explorer_excludes(&root_path, Arc::clone(&cancelled));
+            NoticeRelevance::new(&root_path).with_excludes(excludes)
+        });
+        // Retain the exact operand before Explorer folds it to its ignored
+        // ancestor. The matcher supplies no Git relevance verdict.
+        let original = relative.clone();
+        let directory = root_path.join(&relative).is_dir();
+        let moved = matches!(super::kind_for_action(action), Some("created" | "deleted"));
         let (relative, action) = if action == OVERFLOW_NOTIFY_ACTION {
             relevance.forget();
             (relative, action)
         } else {
-            let (classified, relevant) = relevance.classify_record(&relative, action);
-            git_relevant = relevant;
-            match classified {
+            match relevance.classify(&relative, action) {
                 Relevance::Keep => (relative, action),
                 Relevance::Drop => return,
                 Relevance::Resync => (
@@ -103,11 +113,10 @@ pub(super) fn root_delivery(
                 Relevance::IgnoredBelow(folder) => (folder, IGNORED_BELOW_NOTIFY_ACTION),
             }
         };
-        if let Ok(Some(mut notice)) =
+        if let Ok(Some(notice)) =
             deliver_workspace_notify_action(&project_id, generation, &root_id, &relative, action)
         {
-            notice.git_relevant = (!git_relevant).then_some(false);
-            sink.push(notice);
+            sink.push_record(notice, &original, directory, moved);
         }
     }
 }
@@ -163,9 +172,14 @@ pub(super) fn start_workspace_notify_watchers(
     };
     let sink = Arc::new(NoticeSink::default());
     let emitter = app.clone();
-    spawn_notice_emitter(Arc::clone(&sink), Arc::clone(&cancelled), move |batch| {
-        let _ = emitter.emit(WORKSPACE_NOTIFY_EVENT, batch);
-    })
+    spawn_notice_emitter(
+        Arc::clone(&sink),
+        Arc::clone(&cancelled),
+        paths.clone(),
+        move |batch| {
+            let _ = emitter.emit(WORKSPACE_NOTIFY_EVENT, batch);
+        },
+    )
     .map_err(|_| reject("notify-substituted"))?;
     for (root_id, path) in paths {
         spawn_workspace_root_watch(

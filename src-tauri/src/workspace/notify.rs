@@ -13,6 +13,7 @@ use tauri::{AppHandle, Emitter, State};
 use crate::state::AppState;
 
 mod batch;
+mod git_relevance;
 mod relevance;
 mod tracked;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -66,7 +67,7 @@ pub struct WorkspaceNotifyNotice {
     pub relative_path: String,
     pub kind: String,
     /// Omitted for ordinary notices; false only for ignored output whose
-    /// changed path is known not to be tracked by this root's index.
+    /// window's paths are confirmed ignored and untracked by Git.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub git_relevant: Option<bool>,
 }
@@ -212,6 +213,13 @@ fn registry() -> std::sync::MutexGuard<'static, NotifyRegistry> {
         })
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+pub(crate) fn cancel_all_workspace_watches() -> bool {
+    for watch in registry().watches.values() {
+        watch.cancelled.store(true, Ordering::Release);
+    }
+    git_relevance::wait_for_queries()
 }
 
 pub fn apply_watch_workspace_notify(value: &Value) -> Result<u32, WorkspaceNotifyError> {

@@ -42,7 +42,6 @@ use super::{GitOutput, GitProcessPolicy, GitRootAuthority, parallel_limits};
 mod cache;
 mod discovery;
 mod fingerprint;
-pub(super) mod ignore;
 mod layout;
 mod paths;
 mod policy;
@@ -53,6 +52,7 @@ pub(super) use layout::AdmittedRepository;
 
 use discovery::{Location, discovery_path};
 use fingerprint::{Fingerprint, watch};
+pub(super) use paths::os_path;
 use policy::{path_protection_keys, path_protection_refusal, refusal_message};
 
 const GIT_DIR_NAME: &str = ".git";
@@ -70,7 +70,10 @@ pub(super) async fn admit(
 ) -> AppResult<Option<AdmittedRepository>> {
     let slot = cache::admission_slot(root);
     // Holding the per-root lock makes concurrent first reads share one probe.
-    let mut cached = slot.lock().await;
+    let mut cached = tokio::select! {
+        cached = slot.lock() => cached,
+        () = super::cancellation::cancelled() => return Err(super::cancellation::error()),
+    };
     if let Some(admission) = cached.as_ref().filter(|admission| admission.is_current()) {
         return admission.verdict();
     }

@@ -1,113 +1,70 @@
-//! Index membership for ignored notices. One bounded Git read per ignored
-//! subtree and index stamp; steady build output starts no Git processes.
-
+//! Bounded index lookup for one window. Git reads a fresh index, so force-adds
+//! and index removals need no watcher-owned membership/fingerprint cache.
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     path::Path,
+    sync::{Arc, atomic::AtomicBool},
 };
 
-use crate::{
-    repository_change_stamp::index_stamp,
-    repository_git::{RepositoryBoundary, repository_boundary, run_git},
-    workspace::file_walk::MAX_WORKSPACE_FILES,
-};
+use crate::{error::AppError, git_process, workspace::file_walk::MAX_WORKSPACE_FILES};
 
 const MAX_TRACKED_PATH_BYTES: usize = 16 * 1024 * 1024;
-const MAX_TRACKED_FOLDERS: usize = 64;
 
-#[derive(Default)]
-pub(super) struct TrackedPaths {
-    stamp: Option<u64>,
-    // None means unavailable or over budget: keep Git notifications rather
-    // than silently losing tracked edits because a partial set omitted them.
-    folders: HashMap<String, Option<BTreeSet<Vec<u8>>>>,
-    path_bytes: usize,
-    path_count: usize,
-}
-
-impl TrackedPaths {
-    pub(super) fn relevant(
-        &mut self,
-        root: &Path,
-        folder: &str,
-        relative: &str,
-        moved: bool,
-    ) -> bool {
-        let stamp = index_stamp(root);
-        if self.stamp != Some(stamp) {
-            self.folders.clear();
-            self.path_bytes = 0;
-            self.path_count = 0;
-            self.stamp = Some(stamp);
-        }
-        if !self.folders.contains_key(folder) {
-            if self.folders.len() >= MAX_TRACKED_FOLDERS {
-                return true;
-            }
-            let loaded = tauri::async_runtime::block_on(load(
-                root,
-                folder,
-                MAX_TRACKED_PATH_BYTES - self.path_bytes,
-            ));
-            // If the index changed during the read, notify conservatively
-            // and reload next time; this set might describe either version.
-            if index_stamp(root) != stamp {
-                self.stamp = None;
-                return true;
-            }
-            let paths = loaded
-                .filter(|(paths, _)| self.path_count + paths.len() <= MAX_WORKSPACE_FILES as usize)
-                .map(|(paths, bytes)| {
-                    self.path_bytes += bytes;
-                    self.path_count += paths.len();
-                    paths
-                });
-            self.folders.insert(folder.to_owned(), paths);
-        }
-        let Some(Some(paths)) = self.folders.get(folder) else {
-            return true;
-        };
-        let mut path = key(relative.as_bytes());
-        if paths.contains(&path) {
-            return true;
-        }
-        // Removing or renaming a directory can remove tracked descendants.
-        // A directory's ordinary changed record only reports entry churn.
-        if !moved {
-            return false;
-        }
-        path.push(b'/');
-        paths
-            .range(path.clone()..)
-            .next()
-            .is_some_and(|tracked| tracked.starts_with(&path))
-    }
-}
-
-async fn load(root: &Path, folder: &str, byte_limit: usize) -> Option<(BTreeSet<Vec<u8>>, usize)> {
-    match repository_boundary(root).await.ok()? {
-        RepositoryBoundary::Exact => {}
-        RepositoryBoundary::Nested | RepositoryBoundary::NotRepository => {
-            return Some((BTreeSet::new(), 0));
+pub(super) async fn all_untracked(
+    root: &Path,
+    paths: &BTreeMap<String, bool>,
+    cancelled: Arc<AtomicBool>,
+) -> Result<bool, AppError> {
+    // Limit the lookup to the common containing folder. Unrelated index
+    // entries cannot exhaust an ignored build-output subtree's budget.
+    let mut folder = paths
+        .keys()
+        .next()
+        .and_then(|path| path.rsplit_once('/'))
+        .map_or("", |(parent, _)| parent);
+    for path in paths.keys() {
+        while !folder.is_empty()
+            && !path
+                .strip_prefix(folder)
+                .is_some_and(|rest| rest.starts_with('/'))
+        {
+            folder = folder.rsplit_once('/').map_or("", |(parent, _)| parent);
         }
     }
-    // Windows can report a case-only rename that the index still spells the
-    // old way. Override the runner's global literal mode with an explicitly
-    // literal, case-insensitive pathspec; metacharacters remain file names.
     let pathspec = if cfg!(windows) {
         format!(":(icase,literal){folder}")
     } else {
         folder.to_string()
     };
-    let mut args = vec!["ls-files", "--cached", "-z", "--", pathspec.as_str()];
-    if cfg!(windows) {
-        args.insert(0, "--no-literal-pathspecs");
+    let mut args = vec!["ls-files", "--cached", "-z"];
+    if !folder.is_empty() {
+        args.extend(["--", pathspec.as_str()]);
+        if cfg!(windows) {
+            args.insert(0, "--no-literal-pathspecs");
+        }
     }
-    let output = run_git(root, &args, byte_limit).await.ok()?;
-    if !output.succeeded() || output.stdout_truncated {
-        return None;
+    let output =
+        git_process::run_cancellable(root, &args, MAX_TRACKED_PATH_BYTES, None, cancelled).await?;
+    if !output.status.success() || output.stdout_truncated {
+        return Ok(false);
     }
-    Some((parse(&output.stdout)?, output.stdout.len()))
+    let Some(tracked) = parse(&output.stdout) else {
+        return Ok(false);
+    };
+    Ok(paths.iter().all(|(path, moved)| {
+        let mut path_key = key(path.trim_end_matches('/').as_bytes());
+        if tracked.contains(&path_key) {
+            return false;
+        }
+        if !moved {
+            return true;
+        }
+        path_key.push(b'/');
+        !tracked
+            .range(path_key.clone()..)
+            .next()
+            .is_some_and(|path| path.starts_with(&path_key))
+    }))
 }
 
 fn parse(bytes: &[u8]) -> Option<BTreeSet<Vec<u8>>> {
@@ -143,4 +100,13 @@ fn key(path: &[u8]) -> Vec<u8> {
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    use super::*;
+
+    #[test]
+    fn incomplete_or_over_budget_indexes_never_supply_partial_membership() {
+        assert_eq!(parse(b"dist/a.js\0dist/b.js\0").unwrap().len(), 2);
+        assert!(parse(b"dist/a.js\0dist/b.js").is_none());
+        assert!(parse(&b"a\0".repeat(MAX_WORKSPACE_FILES as usize + 1)).is_none());
+    }
+}
