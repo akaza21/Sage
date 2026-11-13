@@ -6,9 +6,12 @@ use sha2::{Digest, Sha256};
 use crate::error::{AppError, AppResult};
 
 mod expected;
+mod preflight;
 mod version;
 use expected::{expected_legacy_v10_session_events_fingerprint, expected_schema_fingerprint};
-use version::class_for_version;
+use version::{class_for_version, reject_newer_history};
+
+pub(super) use preflight::reject_newer_live;
 
 pub(super) use super::file_artifact::{FileFingerprint, file_fingerprint, open_read_only};
 
@@ -51,8 +54,21 @@ pub(super) enum SchemaClass {
     /// Schema v23 plus the session resume link; its version number lives in
     /// `session_resume_link::VERSION`.
     CurrentResumeLink,
-    /// The resume link schema plus imported session histories; its version
-    /// number lives in `imported_history::VERSION`.
+    /// The resume link schema plus each chat title's source; its version
+    /// number lives in `title_source::VERSION`.
+    CurrentTitleSource,
+    /// The title source schema plus the per-Turn session facts index; its
+    /// version number lives in `session_facts_turn_index::VERSION`.
+    CurrentSessionFactsTurnIndex,
+    /// The per-Turn index schema plus browser operation terminals keyed by
+    /// their start; its version number lives in
+    /// `operation_terminal_index::VERSION`.
+    CurrentOperationTerminalIndex,
+    /// The operation terminal schema plus undo starts and settlements indexed
+    /// by kind; its version lives in `turn_undo_intent_indexes::VERSION`.
+    CurrentTurnUndoIntentIndexes,
+    /// The undo intent index schema plus imported session histories; its
+    /// version number lives in `imported_history::VERSION`.
     CurrentImportedHistory,
 }
 
@@ -65,6 +81,26 @@ pub(super) const CURRENT_SCHEMA: SchemaClass = SchemaClass::CurrentImportedHisto
 pub(crate) const CURRENT_SCHEMA_VERSION: u32 = super::imported_history::VERSION;
 
 impl SchemaClass {
+    /// Every schema from v18 on, which opens and verifies in place: the
+    /// later migrations only add to it.
+    pub(super) fn is_v18_or_later(self) -> bool {
+        matches!(
+            self,
+            Self::CurrentV18
+                | Self::CurrentV19
+                | Self::CurrentV20
+                | Self::CurrentV21
+                | Self::CurrentV22
+                | Self::CurrentV23
+                | Self::CurrentResumeLink
+                | Self::CurrentTitleSource
+                | Self::CurrentSessionFactsTurnIndex
+                | Self::CurrentOperationTerminalIndex
+                | Self::CurrentTurnUndoIntentIndexes
+                | Self::CurrentImportedHistory
+        )
+    }
+
     pub(super) fn is_legacy(self) -> bool {
         matches!(
             self,
@@ -137,8 +173,9 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
         }
         return invalid("nonempty database has no exact Sage migration schema");
     }
+    reject_newer_history(connection)?;
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT ?1")?
+        .prepare("SELECT version FROM schema_migrations ORDER BY version COLLATE BINARY LIMIT ?1")?
         .query_map([MAX_SCHEMA_VERSION as i64 + 1], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     if versions.is_empty()

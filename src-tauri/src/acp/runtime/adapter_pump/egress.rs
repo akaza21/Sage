@@ -194,6 +194,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         if self.terminal.is_some() {
             return Err(AdapterPumpError::NoActiveTurn);
         }
+        let item = super::steer::steered_prompt_item(&prompt, &client_message_id)
+            .map_err(|_| AdapterPumpError::Intent)?;
         let egress = self
             .adapter
             .command(AdapterCommand::Steer {
@@ -212,6 +214,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .ok_or(AdapterPumpError::Intent)?;
         let disposition = self.enqueue(egress)?;
         self.pending_steer_request = Some(request_id);
+        self.pending_steer_item = Some(Box::new(item));
         self.steer_response = None;
         Ok((disposition, request_id))
     }
@@ -222,12 +225,14 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         }
         let response = self.steer_response.take()?;
         self.pending_steer_request = None;
+        self.pending_steer_item = None;
         Some(response)
     }
 
     pub(crate) fn expire_steer(&mut self, request_id: u64) {
         if self.pending_steer_request == Some(request_id) {
             self.pending_steer_request = None;
+            self.pending_steer_item = None;
             self.steer_response = None;
         }
     }

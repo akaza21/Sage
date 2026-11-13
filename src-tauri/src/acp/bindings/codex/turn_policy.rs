@@ -2,6 +2,14 @@ use crate::{acp::bindings::characterisation::Characterisation, settings_store::S
 
 use super::{manifest::PINNED_CODEX_VERSION, request::RequestError};
 
+/// The thread settings a `turn/start` changes. Codex applies each one given to
+/// that Turn and the Turns after it; one left out keeps the thread's own.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct TurnSettings<'a> {
+    pub(crate) model: Option<&'a crate::acp::intent::ModelId>,
+    pub(crate) effort: Option<&'a crate::acp::contract::RequiredText<512>>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TurnPolicySurface {
     Unsupported,
@@ -9,10 +17,15 @@ pub(crate) enum TurnPolicySurface {
 }
 
 impl TurnPolicySurface {
+    /// An observed build that runs the tested features takes the tested turn
+    /// policy, including later releases; the curated package must be the
+    /// pinned one.
     pub(super) fn from_identity(observed: Option<Characterisation>, runtime_version: &str) -> Self {
-        if (observed == Some(Characterisation::Characterised) || observed.is_none())
-            && runtime_version == PINNED_CODEX_VERSION
-        {
+        let supported = match observed {
+            Some(characterisation) => characterisation.runs_tested_features(),
+            None => runtime_version == PINNED_CODEX_VERSION,
+        };
+        if supported {
             Self::Supported
         } else {
             Self::Unsupported
@@ -75,6 +88,37 @@ mod tests {
     use serde_json::Value;
 
     #[test]
+    fn the_turn_policy_follows_the_tested_release_or_a_later_one() {
+        use Characterisation::{Characterised, NewerThanTested, Uncharacterised};
+        for (observed, runtime_version, expected) in [
+            (
+                Some(Characterised),
+                PINNED_CODEX_VERSION,
+                TurnPolicySurface::Supported,
+            ),
+            (
+                Some(NewerThanTested),
+                "99.0.0",
+                TurnPolicySurface::Supported,
+            ),
+            (
+                Some(Uncharacterised),
+                PINNED_CODEX_VERSION,
+                TurnPolicySurface::Unsupported,
+            ),
+            (None, PINNED_CODEX_VERSION, TurnPolicySurface::Supported),
+            // The curated package must be the pinned build.
+            (None, "99.0.0", TurnPolicySurface::Unsupported),
+        ] {
+            assert_eq!(
+                TurnPolicySurface::from_identity(observed, runtime_version),
+                expected,
+                "{observed:?} {runtime_version}"
+            );
+        }
+    }
+
+    #[test]
     fn advertised_codex_policies_emit_the_enforced_sandbox() {
         for capability in crate::acp::bindings::access_policy::access_modes(
             "codex-app-server",
@@ -88,7 +132,7 @@ mod tests {
                 &RequiredText::new("client", "client-policy").unwrap(),
                 capability.id,
                 TurnPolicySurface::Supported,
-                None,
+                TurnSettings::default(),
             )
             .unwrap();
             let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
@@ -122,7 +166,7 @@ mod tests {
             &RequiredText::new("client", "client-ask").unwrap(),
             SessionAccessMode::Ask,
             TurnPolicySurface::Supported,
-            None,
+            TurnSettings::default(),
         )
         .unwrap();
         let wire: Value = serde_json::from_slice(&request.bytes).unwrap();

@@ -364,9 +364,8 @@ fn codex_model_and_effort_survive_a_graceful_restart() {
         let menu = discovery.discover(prepared).unwrap();
         let listed: Vec<_> = menu.models.iter().map(|model| model.id.as_str()).collect();
         assert_eq!(listed, ["fixture-model", "fixture-model-deep"]);
-        // A Codex model belongs to the thread: the chat opens it with the
-        // second model, as the composer does when that model is picked
-        // before the first send. The effort changes live, after a Turn.
+        // Picked before the first send, the model opens the thread. After a
+        // Turn, model and effort both change live, for the next turn/start.
         let deep = crate::acp::intent::ModelId::new("modelId", "fixture-model-deep").unwrap();
         let revision = setup
             .service
@@ -396,6 +395,8 @@ fn codex_model_and_effort_survive_a_graceful_restart() {
             Some("fixture-model-deep")
         );
         setup.send_and_wait_completed(&first).await;
+        choose(&setup, &first, "model", "fixture-model");
+        wait_shown(&setup, &first, "model", "fixture-model");
         choose(&setup, &first, "effort", "high");
         wait_shown(&setup, &first, "effort", "high");
 
@@ -407,20 +408,17 @@ fn codex_model_and_effort_survive_a_graceful_restart() {
         };
         // Before anything resumes, the cold chat shows both as restored.
         let restored = restored(&setup, &resumed);
-        assert_eq!(restored["confirmedModel"]["id"], "fixture-model-deep");
+        assert_eq!(option_value(&restored, "model"), "fixture-model");
         assert_eq!(option_value(&restored, "effort"), "high");
-        // thread/resume reports the thread's model at the Medium default,
-        // and Sage puts the stored effort back before the prompt.
+        // thread/resume reports the session's opening model at the Medium
+        // default, and Sage puts the stored choices back before the prompt.
         setup
             .activate(&resumed)
             .await
             .unwrap_or_else(|error| panic!("Codex resume failed: {error:?}"));
         setup.wait_for_ready(&resumed);
+        wait_shown(&setup, &resumed, "model", "fixture-model");
         wait_shown(&setup, &resumed, "effort", "high");
-        assert_eq!(
-            confirmed_model(&setup, &resumed).as_deref(),
-            Some("fixture-model-deep")
-        );
         setup.send_and_wait_completed(&resumed).await;
         assert_eq!(shown(&setup, &resumed, "effort").as_deref(), Some("high"));
         setup.service.shutdown_blocking().unwrap();

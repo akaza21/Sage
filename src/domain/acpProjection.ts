@@ -1,5 +1,6 @@
 import type { AttachedContext } from "./attachedContext";
 import type { AcpSessionAction } from "./acpSessionAction";
+import type { AcpTurnCommand } from "./acpCommand";
 import type { AcpImagePayload } from "./acpImage";
 import type { AcpGoalState } from "./acpGoal";
 import type {
@@ -156,6 +157,8 @@ type ToolItem<Kind extends string, Payload> = AcpItemIdentity & {
 
 export type AcpItem =
   | PlainItem<"text", { role: "user" | "assistant" | "system"; text: string }>
+  /** A message the user steered into the running Turn, at its place. */
+  | PlainItem<"userPrompt", { text: string }>
   | PlainItem<"thoughtSummary", { summary: string }>
   | PlainItem<"compactionNotice", Record<string, never>>
   | PlainItem<
@@ -260,6 +263,8 @@ export interface TurnProjection {
   sessionAction?: AcpSessionAction;
   /** The Turn ran a session action this build cannot run again. */
   unrecognizedAction?: true;
+  /** The listed command this Turn's prompt ran. */
+  command?: AcpTurnCommand;
   id: SageTurnId;
   sessionId: SageAgentSessionId;
   runtimeEpoch: RuntimeEpoch;
@@ -323,6 +328,9 @@ export interface AcpChatPage {
   goal?: AcpGoalState;
   /** The current session's live runtime reports usage limits. */
   usage?: true;
+  /** The session's activities and Undo, still undecoded: the panel that
+   * shows them decodes them (`decodeSessionSurface`). */
+  sessionSurface?: unknown;
   projectId: SageProjectId;
   chatId: SageChatId;
   title: string;

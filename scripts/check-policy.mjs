@@ -24,6 +24,7 @@ const reviewedSpawnModules = new Map([
   ["workspace/search/helper_process.rs", "Bounded workspace search helper"],
   ["codex_helper_boundary/caller.rs", "Provisioning helper caller"],
   ["commands/acp/claude_auth.rs", "Claude Code sign-in"],
+  ["acp/bindings/claude/sdk/probe.rs", "Bounded Claude Code model probe"],
   ["acp/fixture/process_ops.rs", "Feature-gated adversarial process fixture"],
   [
     "acp/fixture/host/redaction_observer.rs",
@@ -33,6 +34,7 @@ const reviewedSpawnModules = new Map([
     "browser/devtools/cdp_lane/chromium.rs",
     "Feature-gated Chromium measurement lane",
   ],
+  ["test_executable.rs", "Test-only executable fixture writer"],
 ]);
 
 const frontendSecurityPatterns = [

@@ -20,11 +20,15 @@ import {
 } from "./ProjectChatActionMenu";
 import "./agent-subagent-summary.css";
 
+import { useDismissLayer } from "../ui/dismissLayer";
 import { AgentTaskStatus } from "./AgentTaskStatus";
 import { isSideChatId } from "./sideChatState";
 import { AgentTaskResourcesPart } from "./agentTaskHeaderLazy";
 import { AgentToolsContext } from "./AgentToolsProvider";
 import { AgentNavigationPart } from "./agentNavigationLazy";
+
+/** Delay after mount before preloading the resources panel, off the first frame. */
+const RESOURCES_PRELOAD_DELAY_MS = 1000;
 
 function preloadResources() {
   void AgentTaskResourcesPart.preload().catch(() => undefined);
@@ -55,7 +59,7 @@ export function AgentTaskHeader({
   const [showAllSources, setShowAllSources] = useState(false);
   const resourcesSession = useRef("");
   useEffect(() => {
-    const timer = setTimeout(preloadResources, 1000);
+    const timer = setTimeout(preloadResources, RESOURCES_PRELOAD_DELAY_MS);
     return () => clearTimeout(timer);
   }, []);
   const resourcesTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -65,20 +69,12 @@ export function AgentTaskHeader({
     if (!document.getElementById(resourcesId)) setResourcesOpen(false);
     if (!document.getElementById(renameId)) setRenaming(false);
   }, [resourcesId, renameId]);
-  useEffect(() => {
-    if (!resourcesOpen && !renaming) return;
-    const dismissOutside = (event: Event) => {
-      if (
-        event.target instanceof Node &&
-        resourcesTriggerRef.current?.contains(event.target)
-      )
-        return;
-      dismissPending();
-    };
-    document.addEventListener("pointerdown", dismissOutside, true);
-    return () =>
-      document.removeEventListener("pointerdown", dismissOutside, true);
-  }, [resourcesOpen, renaming, dismissPending]);
+  // Until their lazy parts load, the trigger stands in for the popover and
+  // the rename form.
+  useDismissLayer(resourcesOpen || renaming, {
+    inside: [resourcesTriggerRef],
+    onOutside: dismissPending,
+  });
   const resourcesScope = [
     project?.id,
     generation,

@@ -6,7 +6,7 @@
 .workbench--editor,
 .new-file-dialog--editor,
 .dirty-dialog--editor,
-.menu-popover--editor {
+.menu-popover--editor:not(.composer__popover) {
   --radius-sm: 4px;
   --radius-md: 6px;
   --workbench-card-radius: var(--radius-md);
@@ -58,7 +58,7 @@
   .workbench--editor,
   .new-file-dialog--editor,
   .dirty-dialog--editor,
-  .menu-popover--editor {
+  .menu-popover--editor:not(.composer__popover) {
     --color-canvas: var(--doc-canvas);
     --color-panel: var(--doc-panel);
     --color-surface: var(--doc-surface);

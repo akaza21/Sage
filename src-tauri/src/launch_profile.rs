@@ -76,7 +76,6 @@ impl LaunchProfile {
         matches!(self, Self::Disposable { .. })
     }
 
-    #[cfg(all(windows, feature = "acp-fixture"))]
     pub(crate) fn disposable_root(&self) -> Option<&Path> {
         match self {
             Self::Normal { .. } => None,

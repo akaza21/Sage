@@ -143,6 +143,34 @@ fn the_fork_title_is_the_parent_title_with_the_next_free_number() {
 }
 
 #[test]
+fn a_fork_keeps_its_derived_title_when_its_harness_names_the_thread() {
+    let fixture = Fixture::new(&forkable());
+    let fork = fixture.fork("thread-fork").expect("fork chat");
+    let mut connection = fixture.database.connection();
+    let transaction = connection.transaction().unwrap();
+    crate::chat_lifecycle::apply_harness_title_in(
+        &transaction,
+        &fixture.project,
+        &fork,
+        "Inspect repo files",
+        9,
+    )
+    .unwrap();
+    transaction.commit().unwrap();
+    let (title, source): (String, String) = connection
+        .query_row(
+            "SELECT title,title_source FROM chats WHERE id=?1",
+            [&fork],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        (title.as_str(), source.as_str()),
+        ("Chat: Inspect repo files (2)", "fork")
+    );
+}
+
+#[test]
 fn a_fork_is_a_persistent_chat_above_its_parent_with_rust_owned_lineage() {
     let fixture = Fixture::new(&forkable());
     let parent_position: i64 = fixture
@@ -457,9 +485,10 @@ fn an_imported_session_becomes_a_resumable_chat_once_per_thread() {
     };
     let chat = import("thread-cli").expect("import");
     let connection = fixture.database.connection();
-    let row: (String, String, String, String, String) = connection
+    let row: (String, String, String, String, String, String) = connection
         .query_row(
-            "SELECT c.title,s.state,s.residency,s.external_session_id,s.capabilities_json
+            "SELECT c.title,c.title_source,s.state,s.residency,s.external_session_id,
+                    s.capabilities_json
              FROM chats c JOIN agent_sessions s ON s.chat_id=c.id WHERE c.id=?1",
             [&chat],
             |row| {
@@ -469,6 +498,7 @@ fn an_imported_session_becomes_a_resumable_chat_once_per_thread() {
                     row.get(2)?,
                     row.get(3)?,
                     row.get(4)?,
+                    row.get(5)?,
                 ))
             },
         )
@@ -477,6 +507,7 @@ fn an_imported_session_becomes_a_resumable_chat_once_per_thread() {
         row,
         (
             "Fix the build".into(),
+            "harness".into(),
             "ready".into(),
             "cold".into(),
             "thread-cli".into(),

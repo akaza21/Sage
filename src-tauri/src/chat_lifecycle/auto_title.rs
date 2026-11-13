@@ -1,18 +1,61 @@
 use rusqlite::{Transaction, params};
 
-fn first_line_title(prompt: &str) -> Option<String> {
-    let line = prompt
-        .lines()
-        .next()?
-        .trim_matches(super::is_chat_title_trim_character);
+use super::ChatTitleSource;
+
+/// Format characters that change how surrounding text displays without
+/// showing themselves: bidirectional controls and zero-width characters. A
+/// title from a prompt or a harness must not be able to reorder or hide text
+/// in the rail.
+fn is_hidden_format_character(value: char) -> bool {
+    matches!(
+        value,
+        '\u{061c}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2069}'
+    )
+}
+
+/// Characters that end a line of text: the ones `str::lines` honours plus a
+/// lone carriage return, vertical tab, form feed and the Unicode line and
+/// paragraph separators, so no line break is ever read as part of a title.
+fn is_line_break(value: char) -> bool {
+    matches!(
+        value,
+        '\n' | '\r' | '\u{000b}' | '\u{000c}' | '\u{0085}' | '\u{2028}' | '\u{2029}'
+    )
+}
+
+/// The first line of `text` as display text for a title: whitespace control
+/// characters such as tabs become a single space so words stay apart, other control
+/// and hidden format characters are removed, then the text is trimmed and cut
+/// at a character boundary within `max_bytes`. `None` when nothing printable
+/// is left.
+pub(crate) fn title_line(text: &str, max_bytes: usize) -> Option<String> {
+    let mut visible = String::new();
+    for value in text.split(is_line_break).next()?.chars() {
+        if value.is_control() && value.is_whitespace() {
+            if !visible.ends_with(' ') {
+                visible.push(' ');
+            }
+        } else if !value.is_control() && !is_hidden_format_character(value) {
+            visible.push(value);
+        }
+    }
     let mut title = String::new();
-    for character in line.chars().filter(|character| !character.is_control()) {
-        if title.len() + character.len_utf8() > super::MAX_CHAT_TITLE_BYTES {
+    for character in visible
+        .trim_matches(super::is_chat_title_trim_character)
+        .chars()
+    {
+        if title.len() + character.len_utf8() > max_bytes {
             break;
         }
         title.push(character);
     }
-    super::canonical_chat_title(&title).ok()
+    let title = title.trim_end_matches(super::is_chat_title_trim_character);
+    (!title.is_empty()).then(|| title.to_owned())
+}
+
+/// The first line of `text` as a canonical chat title.
+pub(super) fn first_line_title(text: &str) -> Option<String> {
+    super::canonical_chat_title(&title_line(text, super::MAX_CHAT_TITLE_BYTES)?).ok()
 }
 
 pub(crate) fn auto_title_first_prompt_in(
@@ -23,10 +66,14 @@ pub(crate) fn auto_title_first_prompt_in(
     now: i64,
 ) -> rusqlite::Result<()> {
     let eligible: bool = transaction.query_row(
-        "SELECT EXISTS(SELECT 1 FROM chats c
-         WHERE c.project_id=?1 AND c.id=?2 AND c.title_is_default=1
-         AND NOT EXISTS(SELECT 1 FROM turns WHERE project_id=?1 AND chat_id=?2 LIMIT 1))",
-        params![project_id, chat_id],
+        concat!(
+            "SELECT EXISTS(SELECT 1 FROM chats c
+             WHERE c.project_id=?1 AND c.id=?2 AND c.title_source=?3
+             AND NOT EXISTS(SELECT 1 FROM turns t WHERE t.project_id=?1 AND t.chat_id=?2 AND ",
+            crate::acp::store::turn_undo::visible_turn!("t.session_id", "t.id"),
+            " LIMIT 1))"
+        ),
+        params![project_id, chat_id, ChatTitleSource::Default.as_str()],
         |row| row.get(0),
     )?;
     if !eligible {
@@ -36,12 +83,16 @@ pub(crate) fn auto_title_first_prompt_in(
         return Ok(());
     };
     transaction.execute(
-        "UPDATE chats SET title=?3,updated_at=?4,title_is_default=0 WHERE project_id=?1 AND id=?2",
-        params![project_id, chat_id, title, now],
+        "UPDATE chats SET title=?3,updated_at=?4,title_source=?5 WHERE project_id=?1 AND id=?2",
+        params![
+            project_id,
+            chat_id,
+            title,
+            now,
+            ChatTitleSource::Prompt.as_str()
+        ],
     )?;
-    transaction.execute("UPDATE workbench_tabs SET title=?3,updated_at=?4 WHERE project_id=?1 AND id=?2 AND kind='chat'",
-        params![project_id, chat_id, title, now])?;
-    Ok(())
+    super::title_source::retitle_attached_tab_in(transaction, project_id, chat_id, &title, now)
 }
 
 #[cfg(test)]
@@ -64,17 +115,28 @@ mod tests {
         );
         assert_eq!(
             first_line_title("hello\tworld"),
-            Some("Chat: helloworld".into())
+            Some("Chat: hello world".into())
+        );
+        assert_eq!(
+            first_line_title("hello \t\tworld"),
+            Some("Chat: hello world".into())
+        );
+        assert_eq!(
+            first_line_title("line one\rHow many lines"),
+            Some("Chat: line one".into())
         );
     }
 
     #[test]
     fn renames_only_an_untitled_first_prompt_and_rolls_back_with_the_turn() {
         let mut connection = rusqlite::Connection::open_in_memory().unwrap();
-        connection.execute_batch("CREATE TABLE chats(id TEXT,project_id TEXT,title TEXT,updated_at INTEGER,title_is_default INTEGER);
-            CREATE TABLE turns(project_id TEXT,chat_id TEXT);
+        connection.execute_batch("CREATE TABLE chats(id TEXT,project_id TEXT,title TEXT,updated_at INTEGER,title_source TEXT);
+            CREATE TABLE turns(id TEXT,project_id TEXT,chat_id TEXT,session_id TEXT);
+            CREATE TABLE session_facts(session_id TEXT,turn_id TEXT,kind TEXT);
             CREATE TABLE workbench_tabs(id TEXT,project_id TEXT,kind TEXT,title TEXT,updated_at INTEGER,metadata_json TEXT);
-            INSERT INTO chats VALUES('chat','project','Chat: Chat',0,1);
+            CREATE TABLE chat_tabs(project_id TEXT,chat_id TEXT,tab_id TEXT);
+            INSERT INTO chat_tabs VALUES('project','chat','chat');
+            INSERT INTO chats VALUES('chat','project','Chat: Chat',0,'default');
             INSERT INTO workbench_tabs VALUES('chat','project','chat','Chat: Chat',0,'{}');").unwrap();
         {
             let transaction = connection.transaction().unwrap();
@@ -96,7 +158,10 @@ mod tests {
             .unwrap();
         assert_eq!(attached, "Chat: Fix sidebar");
         connection
-            .execute("UPDATE chats SET title='Chat: Custom'", [])
+            .execute(
+                "UPDATE chats SET title='Chat: Custom',title_source='user'",
+                [],
+            )
             .unwrap();
         let transaction = connection.transaction().unwrap();
         auto_title_first_prompt_in(&transaction, "project", "chat", "Do not rename", 2).unwrap();
@@ -104,11 +169,12 @@ mod tests {
         assert_eq!(read(&connection), "Chat: Custom");
         connection
             .execute_batch(
-                "UPDATE chats SET title='Chat: Chat'; INSERT INTO turns VALUES('project','chat');",
+                "UPDATE chats SET title='Chat: Chat';
+                 INSERT INTO turns VALUES('turn','project','chat','session');",
             )
             .unwrap();
         connection
-            .execute("UPDATE chats SET title_is_default=1", [])
+            .execute("UPDATE chats SET title_source='default'", [])
             .unwrap();
         let transaction = connection.transaction().unwrap();
         auto_title_first_prompt_in(&transaction, "project", "chat", "Second prompt", 3).unwrap();

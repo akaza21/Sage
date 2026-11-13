@@ -14,6 +14,8 @@ use crate::acp::{
 };
 
 mod child_thread_tests;
+mod command_turn_tests;
+mod harness_title_tests;
 mod lifecycle_tests;
 mod mcp_progress_tests;
 mod session_surface_tests;

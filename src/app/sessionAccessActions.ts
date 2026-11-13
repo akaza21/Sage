@@ -18,6 +18,11 @@ export const useChatAccessStore = create<ChatAccessStore>(() => ({
   error: null,
 }));
 const store = useChatAccessStore;
+/** Modes that run actions without asking take a confirmed native token. */
+export const PERMISSIVE_ACCESS: readonly SessionAccessMode[] = [
+  "auto",
+  "fullAccess",
+];
 /** Chats whose mode is held; older ones are read again when shown. */
 const MAX_CHAT_MODES = 32;
 
@@ -62,7 +67,7 @@ const record = (sessionId: string, mode: SessionAccessMode) =>
 export async function chooseChatAccess(
   sessionId: string,
   mode: SessionAccessMode,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const change = await chatAccessChanges().set(sessionId, mode);
     record(sessionId, mode);
@@ -72,11 +77,13 @@ export async function chooseChatAccess(
           "The running turn was stopped because this chat's access was lowered.",
       });
     }
+    return true;
   } catch {
     store.setState({
       error: "This chat's access could not be changed. Try again.",
     });
     await loadChatAccess(sessionId);
+    return false;
   }
 }
 
@@ -101,15 +108,32 @@ export async function grantChatAccess(
   sessionId: string,
   mode: SessionAccessMode,
   confirmToken: string,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await chatAccessChanges().grant(sessionId, mode, confirmToken);
     record(sessionId, mode);
+    return true;
   } catch {
     store.setState({
       error: "This access was not granted. Confirm again.",
     });
     // Show what the chat really holds after the refusal.
     await loadChatAccess(sessionId);
+    return false;
   }
+}
+
+/**
+ * Gives a chat's new session the access drafted before it existed, the way
+ * the menu gives it once the session exists: a permissive mode only through
+ * a fresh native confirmation, any other mode directly.
+ */
+export async function applyChatAccessDraft(
+  sessionId: string,
+  mode: SessionAccessMode,
+): Promise<boolean> {
+  if (!PERMISSIVE_ACCESS.includes(mode))
+    return chooseChatAccess(sessionId, mode);
+  const token = await prepareChatAccess(sessionId, mode);
+  return token !== null && grantChatAccess(sessionId, mode, token);
 }

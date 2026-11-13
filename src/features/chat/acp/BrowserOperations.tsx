@@ -1,7 +1,5 @@
-import { useContext } from "react";
 import { type BrowserOperationProjection } from "../../../domain/browserOperation";
 import { BrowserOperationItem } from "./BrowserOperationItem";
-import { WorkedActivityVisibility } from "./WorkedActivityVisibility";
 
 const MAX_VISIBLE_BROWSER_OPERATIONS = 32;
 
@@ -12,8 +10,6 @@ export function BrowserOperations({
   operations: readonly BrowserOperationProjection[];
   collapsed: number;
 }) {
-  const expanded = useContext(WorkedActivityVisibility);
-  if (!expanded) return null;
   const visible = operations.slice(-MAX_VISIBLE_BROWSER_OPERATIONS);
   const earlier = Math.max(0, collapsed) + operations.length - visible.length;
   if (visible.length === 0 && earlier === 0) return null;

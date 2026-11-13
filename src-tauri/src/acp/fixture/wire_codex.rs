@@ -6,9 +6,9 @@ use crate::acp::limits::LIMITS;
 
 use super::super::FixtureError;
 use super::super::interpreter::{field_str, field_u64};
-use super::{WireState, acp, user_input, write_stdout};
+use super::{WireState, acp, background, user_input, write_stdout};
 
-const THREAD_ID: &str = "fixture-persisted-session-1";
+pub(super) const THREAD_ID: &str = "fixture-persisted-session-1";
 /// The session a native capture's fork creates (Codex `thread/fork` per the
 /// pinned schema; Claude `session/fork` per claude-agent-acp 0.76.0).
 pub(super) const FORK_THREAD_ID: &str = "fixture-fork-session-1";
@@ -58,8 +58,9 @@ fn await_request_inner(
         if object.get("id").is_none() && !expected(expected_method, method) {
             continue;
         }
-        if method == "thread/turns/list" {
-            emit_child_read(&request, output, state)?;
+        if !expected(expected_method, method)
+            && background::answer(method, &request, output, state)?
+        {
             continue;
         }
         if method == "model/list" {
@@ -92,6 +93,13 @@ fn await_request_inner(
                     .and_then(Value::as_str)
                     .map(str::to_owned);
             }
+            if method == "turn/start" {
+                state.codex_turn_config = Some(super::codex_catalog::turn_config(&request));
+                state.prompt_echo = request
+                    .pointer("/params/input")
+                    .and_then(Value::as_array)
+                    .map(|items| super::prompt_echo::blocks(items));
+            }
             return Ok(());
         }
         if expected_method == "initialized" {
@@ -105,36 +113,6 @@ fn await_request_inner(
 /// `expected` names one method, or alternatives separated by `|`.
 fn expected(expected: &str, method: &str) -> bool {
     expected.split('|').any(|candidate| candidate == method)
-}
-
-fn emit_child_read(
-    request: &Value,
-    output: &mut impl Write,
-    state: &mut WireState,
-) -> Result<(), FixtureError> {
-    let id = request
-        .get("id")
-        .and_then(Value::as_u64)
-        .ok_or(FixtureError::InvalidArguments)?;
-    let params = request
-        .get("params")
-        .ok_or(FixtureError::InvalidArguments)?;
-    params
-        .get("threadId")
-        .and_then(Value::as_str)
-        .filter(|child| matches!(*child, "fixture-child-1" | "fixture-child-2"))
-        .ok_or(FixtureError::InvalidArguments)?;
-    if params.get("itemsView").and_then(Value::as_str) != Some("full") {
-        return Err(FixtureError::InvalidArguments);
-    }
-    emit_json(
-        output,
-        state,
-        &json!({"jsonrpc":"2.0","id":id,"result":{"nextCursor":null,"data":[{
-            "id":"fixture-child-turn","itemsView":"full","status":"completed",
-            "items":[{"id":"fixture-child-answer","type":"agentMessage","text":"Synthetic child summary"}]
-        }]}}),
-    )
 }
 
 pub(super) fn emit_response(
@@ -184,6 +162,9 @@ pub(super) fn emit_response(
             json!({"turn":{"id":turn_id}})
         }
         "ack" => json!({}),
+        "steer" => {
+            json!({"turnId": state.current_turn_id.as_deref().ok_or(FixtureError::InvalidArguments)?})
+        }
         "fork" => json!({"thread":{"id": FORK_THREAD_ID, "forkedFromId": THREAD_ID}}),
         _ => return Err(FixtureError::InvalidArguments),
     };
@@ -338,7 +319,12 @@ pub(super) fn emit_known(
     match shape {
         "codexError" => emit_notification("error", state, output),
         "codexInitializeResult" => emit_response("initialize", state, output),
-        "codexInitializeResultObserved" => emit_response("initializeObserved", state, output),
+        // The install's skills, from its start (see `background`).
+        "codexInitializeResultObserved" => {
+            background::install(step, state, true)?;
+            emit_response("initializeObserved", state, output)
+        }
+        "codexSkillsChanged" => background::skills_changed(step, state, output),
         "codexThreadResult" => emit_response("thread", state, output),
         "codexThreadEffortResult" => emit_response("effortThread", state, output),
         "codexModelListResult" => emit_response("models", state, output),
@@ -347,6 +333,7 @@ pub(super) fn emit_known(
         "codexModelListConfigResult" => emit_response("configModels", state, output),
         "codexGoalMethodNotFound" => emit_response("goalMethodNotFound", state, output),
         "codexTurnResult" => emit_response("turn", state, output),
+        "codexSteerResult" => emit_response("steer", state, output),
         "codexForkResult" => emit_response("fork", state, output),
         "codexStarted" => emit_notification("started", state, output),
         "codexAck" => emit_response("ack", state, output),
@@ -362,56 +349,5 @@ pub(super) fn emit_known(
 }
 
 #[cfg(test)]
-mod journey_tests {
-    use super::*;
-
-    #[test]
-    fn lost_steer_fixture_answers_goal_hydration_without_ending_the_session() {
-        let case = super::super::super::generated_cases::JOURNEY_CASES
-            .iter()
-            .find(|case| case.id == "codex-steer-lost-result")
-            .unwrap();
-        let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
-        let request = br#"{"jsonrpc":"2.0","id":4,"method":"thread/goal/get","params":{}}
-"#;
-        let mut input = std::io::Cursor::new(request);
-        let mut output = Vec::new();
-        let mut error = Vec::new();
-        let mut state = super::super::WireState::new();
-        super::super::execute_with_io(&steps[4], &mut state, &mut input, &mut output, &mut error)
-            .unwrap();
-        super::super::execute_with_io(&steps[5], &mut state, &mut input, &mut output, &mut error)
-            .unwrap();
-        assert_eq!(input.position(), request.len() as u64);
-        assert_eq!(
-            serde_json::from_slice::<Value>(&output).unwrap(),
-            json!({"jsonrpc":"2.0","id":4,"error":{"code":-32601,"message":"Method not found"}})
-        );
-        assert!(error.is_empty());
-        assert_eq!(
-            steps[6],
-            json!({"op":"awaitClient","kind":"codexTurnStart"})
-        );
-    }
-
-    #[test]
-    fn lost_steer_result_consumes_the_correlated_write_without_emitting_a_reply() {
-        let case = super::super::super::generated_cases::JOURNEY_CASES
-            .iter()
-            .find(|case| case.id == "codex-steer-lost-result")
-            .unwrap();
-        let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
-        let request = br#"{"jsonrpc":"2.0","id":4,"method":"turn/steer","params":{}}
-"#;
-        let mut input = std::io::Cursor::new(request);
-        let mut output = Vec::new();
-        let mut error = Vec::new();
-        let mut state = super::super::WireState::new();
-        super::super::execute_with_io(&steps[9], &mut state, &mut input, &mut output, &mut error)
-            .unwrap();
-        assert_eq!(input.position(), request.len() as u64);
-        assert!(output.is_empty());
-        assert_eq!(state.last_request_id, Some(4));
-        assert_eq!(steps[10], json!({"op":"exit","code":17}));
-    }
-}
+#[path = "wire_codex_journey_tests.rs"]
+mod journey_tests;

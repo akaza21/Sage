@@ -54,7 +54,9 @@ test("CP-43: Branch in new chat forks above the parent and links back", async ({
   expect(
     Math.abs(box.y + box.height / 2 - viewport.height / 2),
   ).toBeLessThanOrEqual(4);
-  const options = dialog.getByRole("menuitem");
+  const options = dialog
+    .getByRole("group", { name: "Fork chat from here" })
+    .getByRole("button");
   await expect(options).toHaveCount(1);
   await expect(options.first()).toContainText("Fork in this workspace");
   await expect(options.first()).toContainText(

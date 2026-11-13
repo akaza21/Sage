@@ -222,6 +222,42 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
         )?;
         expected.pragma_update(None, "user_version", resume_link)?;
     }
+    let title_source = super::super::title_source::VERSION;
+    if version >= title_source {
+        expected.execute_batch(super::super::title_source::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [title_source],
+        )?;
+        expected.pragma_update(None, "user_version", title_source)?;
+    }
+    let turn_index = super::super::session_facts_turn_index::VERSION;
+    if version >= turn_index {
+        expected.execute_batch(super::super::session_facts_turn_index::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [turn_index],
+        )?;
+        expected.pragma_update(None, "user_version", turn_index)?;
+    }
+    let terminal_index = super::super::operation_terminal_index::VERSION;
+    if version >= terminal_index {
+        expected.execute_batch(super::super::operation_terminal_index::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [terminal_index],
+        )?;
+        expected.pragma_update(None, "user_version", terminal_index)?;
+    }
+    let undo_indexes = super::super::turn_undo_intent_indexes::VERSION;
+    if version >= undo_indexes {
+        expected.execute_batch(super::super::turn_undo_intent_indexes::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [undo_indexes],
+        )?;
+        expected.pragma_update(None, "user_version", undo_indexes)?;
+    }
     let imported = super::super::imported_history::VERSION;
     if version >= imported {
         expected.execute_batch(super::super::imported_history::SQL)?;

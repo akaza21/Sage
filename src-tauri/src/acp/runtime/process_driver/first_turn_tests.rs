@@ -1118,7 +1118,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
                 mailbox: Arc::clone(&mailbox),
             };
 
-            let mut state = FirstTurnWorkerState::Idle(completed);
+            let mut state = FirstTurnWorkerState::Idle(Box::new(completed));
             for timeout_millis in [
                 crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
                 crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
@@ -1475,7 +1475,7 @@ async fn first_turn_retry_cancel_and_close_recovery_scenario(whole_test_deadline
     let ControlMessage::Worker(first) = first else {
         panic!("worker command")
     };
-    let mut state = FirstTurnWorkerState::Idle(completed)
+    let mut state = FirstTurnWorkerState::Idle(Box::new(completed))
         .handle(&context, first)
         .await;
     let FirstTurnWorkerState::Prepared { turn, .. } = &state else {
@@ -1752,7 +1752,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
             session_recovery: None,
             zero_sequence: std::sync::atomic::AtomicU64::new(0),
         };
-        let mut state = FirstTurnWorkerState::Idle(completed);
+        let mut state = FirstTurnWorkerState::Idle(Box::new(completed));
 
         macro_rules! step {
             ($command:expr) => {{
@@ -2324,7 +2324,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
             session_recovery: None,
             zero_sequence: std::sync::atomic::AtomicU64::new(0),
         };
-        let mut state = FirstTurnWorkerState::Idle(completed);
+        let mut state = FirstTurnWorkerState::Idle(Box::new(completed));
         if case == CloseBeforeWriteCase::IdlePendingConfigReaderEofDeadline {
             let deadline = now
                 + i64::try_from(crate::acp::limits::LIMITS.deadlines_ms.tree_termination)

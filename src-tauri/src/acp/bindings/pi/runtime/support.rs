@@ -7,32 +7,38 @@ use crate::acp::{
         ExternalId, NormalizedPayload,
         session_event::{SessionNotice, SessionScopedEvent},
     },
-    lifecycle::{ItemLifecycle, ToolState, TurnState},
+    lifecycle::{ItemLifecycle, TurnState},
     limits::LIMITS,
 };
 
 use super::PiRuntime;
-use crate::acp::bindings::pi::{AdapterOutput, TerminalOutcome, ToolOutcome};
+use crate::acp::bindings::pi::{AdapterOutput, TerminalOutcome};
 
 mod authority;
 mod bridge;
 mod capabilities;
+mod commands;
 mod compaction;
 mod config;
 mod config_reply;
 mod delivery;
 mod dialog;
 mod errors;
+mod fork;
+pub(super) use fork::Fork;
 mod identity;
 mod image;
+mod native;
 mod permission;
 mod requests;
+mod retry;
 mod session;
 mod steer;
 pub(super) use steer::Steering;
 mod stream;
 mod thought;
 mod tool_cache;
+mod tool_output;
 use capabilities::capabilities;
 pub(super) use errors::map_pi;
 pub(super) use identity::unsupported;
@@ -127,11 +133,7 @@ impl PiRuntime {
                 };
                 (Some(AdapterEvent::Acknowledged), refresh)
             }
-            AdapterOutput::Commands(value) => {
-                self.commands_pending = false;
-                self.commands.replace(&value, true)?;
-                (Some(AdapterEvent::Absorbed), None)
-            }
+            AdapterOutput::Commands(value) => (Some(self.list_commands(value)?), None),
             AdapterOutput::SessionOpened(id) => self.open_session(id)?,
 
             AdapterOutput::State(state) => self.state_reply(state)?,
@@ -149,6 +151,10 @@ impl PiRuntime {
             AdapterOutput::ModelSelected(model) => self.model_selected(model)?,
             AdapterOutput::ThinkingLevels(levels) => self.thinking_levels(levels),
             AdapterOutput::ThinkingSelected(level) => self.thinking_selected(level)?,
+            AdapterOutput::AutoCompactionSelected(enabled) => {
+                self.auto_compaction = Some(enabled);
+                (Some(AdapterEvent::IgnoredDuplicate), None)
+            }
             AdapterOutput::Messages(messages) => {
                 let _ = messages;
                 (
@@ -204,6 +210,14 @@ impl PiRuntime {
                 message,
             } => (
                 Some(self.attempt_failed(attempt, max_attempts, message)?),
+                None,
+            ),
+            AdapterOutput::Retry {
+                attempt,
+                max_attempts,
+                state,
+            } => (
+                Some(self.retry_activity(attempt, max_attempts, state)?),
                 None,
             ),
             // The answer's item opens with its first text, so thinking that
@@ -272,55 +286,22 @@ impl PiRuntime {
                 external_id,
                 name,
                 path,
-            } => {
-                let id = external("piItemId", external_id.clone())?;
-                let payload = identity::tool_start_payload(name, path.as_deref(), resources)?;
-                self.cache_tool(external_id, payload.clone(), false)?;
-                (
-                    Some(self.item(
-                        id,
-                        ItemLifecycle::Started,
-                        Some(ToolState::InProgress),
-                        payload,
-                    )?),
-                    None,
-                )
-            }
+            } => (
+                Some(self.tool_started(external_id, name, path, resources)?),
+                None,
+            ),
             AdapterOutput::ToolUpdated {
                 external_id,
                 output,
-            } => {
-                let id = external("piItemId", external_id.clone())?;
-                let payload = self.update_tool(&external_id, output, false)?;
-                (
-                    Some(self.item(
-                        id,
-                        ItemLifecycle::Streaming,
-                        Some(ToolState::InProgress),
-                        payload,
-                    )?),
-                    None,
-                )
-            }
+            } => (Some(self.tool_updated(external_id, output)?), None),
             AdapterOutput::ToolTerminal {
                 external_id,
                 outcome,
                 output,
-            } => {
-                let id = external("piItemId", external_id.clone())?;
-                // A finished edit shows its diff; Pi's own success line adds nothing.
-                let output = output.filter(|_| {
-                    outcome != ToolOutcome::Completed || !self.is_edit_tool(&external_id)
-                });
-                let payload = self.update_tool(&external_id, output, true)?;
-                let (lifecycle, state) = match outcome {
-                    ToolOutcome::Completed => (ItemLifecycle::Completed, ToolState::Completed),
-                    ToolOutcome::Failed => (ItemLifecycle::Failed, ToolState::Failed),
-                    ToolOutcome::Declined => (ItemLifecycle::Cancelled, ToolState::Declined),
-                    ToolOutcome::Cancelled => (ItemLifecycle::Cancelled, ToolState::Cancelled),
-                };
-                (Some(self.item(id, lifecycle, Some(state), payload)?), None)
-            }
+            } => (
+                Some(self.tool_terminal(external_id, outcome, output)?),
+                None,
+            ),
             AdapterOutput::Usage {
                 input_tokens,
                 output_tokens,
@@ -359,10 +340,8 @@ impl PiRuntime {
             ),
             AdapterOutput::Title(title) => (
                 Some(
-                    self.session_event(SessionScopedEvent::Title {
-                        title: RequiredText::new("sessionTitle", title)
-                            .map_err(|_| AdapterRuntimeError::Frame)?,
-                    }),
+                    crate::acp::bindings::session_title::harness_title_event(&title)
+                        .map_or(AdapterEvent::IgnoredLate, |event| self.session_event(event)),
                 ),
                 None,
             ),
@@ -399,6 +378,11 @@ impl PiRuntime {
                 )),
                 None,
             ),
+            AdapterOutput::NativeReply {
+                command_id,
+                command,
+                data,
+            } => self.native_reply(&command_id, command, data)?,
             AdapterOutput::DuplicateIgnored => (Some(AdapterEvent::IgnoredDuplicate), None),
             AdapterOutput::LateIgnored => (Some(AdapterEvent::IgnoredLate), None),
             AdapterOutput::Absorbed => (Some(AdapterEvent::Absorbed), None),

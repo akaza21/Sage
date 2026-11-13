@@ -7,7 +7,7 @@ test("developer mode names the backend's allowlist and remains opt-in", async ({
   page,
 }) => {
   await page.goto("/tests/ui/fixtures/browser-developer.html");
-  const toggle = page.getByRole("checkbox", { name: "Enable CDP access" });
+  const toggle = page.getByRole("switch", { name: "Enable CDP access" });
   await expect(toggle).not.toBeChecked();
   await expect(toggle).toHaveAccessibleDescription(
     /Allowed commands: Runtime.evaluate, Page.reload\. Scripts can access data available to the page/,
@@ -24,7 +24,7 @@ test("capability copy follows a changed backend allowlist", async ({
 }) => {
   await page.goto("/tests/ui/fixtures/browser-developer.html?extended");
   await expect(
-    page.getByRole("checkbox", { name: "Enable CDP access" }),
+    page.getByRole("switch", { name: "Enable CDP access" }),
   ).toHaveAccessibleDescription(
     /Allowed commands: Runtime.evaluate, Page.reload, Page.getLayoutMetrics\./,
   );

@@ -1,5 +1,6 @@
 use rusqlite::{OptionalExtension, params};
 
+use crate::acp::encoded_len::encoded_len;
 use crate::acp::{
     contract::{
         BoundedVec, ProjectionRevision, SafeText, SageAgentSessionId, SageChatId, SageProjectId,
@@ -97,6 +98,7 @@ pub(crate) fn load_chat_page_reserving(
         goal: crate::acp::goal::GoalState::Unsupported,
         // Counted as set: the service sets it after the history is sized.
         usage: true,
+        session_surface: None,
         project_id: project_id.clone(),
         chat_id: chat_id.clone(),
         title: title.clone(),
@@ -112,9 +114,8 @@ pub(crate) fn load_chat_page_reserving(
         child_projection_epoch,
         session_notices: session_notices.clone(),
     };
-    let base_page_bytes = serde_json::to_vec(&empty_page)
+    let base_page_bytes = encoded_len(&empty_page)
         .map_err(|_| StoreError::Corrupt("chat page serialization"))?
-        .len()
         .saturating_add(reserve);
     let slice = super::history_items::load(super::history_items::HistoryLoad {
         connection,
@@ -132,6 +133,7 @@ pub(crate) fn load_chat_page_reserving(
         session_config_notice: None,
         goal: crate::acp::goal::GoalState::Unsupported,
         usage: false,
+        session_surface: None,
         project_id,
         chat_id,
         title,
@@ -149,9 +151,8 @@ pub(crate) fn load_chat_page_reserving(
     };
     page.validate_page_bounds()
         .map_err(|_| StoreError::Corrupt("chat page ownership"))?;
-    let page_bytes = serde_json::to_vec(&page)
-        .map_err(|_| StoreError::Corrupt("chat page serialization"))?
-        .len();
+    let page_bytes =
+        encoded_len(&page).map_err(|_| StoreError::Corrupt("chat page serialization"))?;
     if page_bytes > LIMITS.durable.history_page_bytes as usize {
         return Err(StoreError::Capacity {
             resource: "historyPage",
@@ -187,11 +188,14 @@ fn load_turn_rows(
 ) -> Result<(Vec<TurnRow>, bool), StoreError> {
     let welcome = crate::session_events::legacy_welcome::turn_id(connection, chat.as_str())?
         .unwrap_or_default();
-    let base = "SELECT t.id,t.project_id,t.chat_id,t.session_id,s.ordinal,
-                       t.runtime_epoch,t.ordinal,t.state,t.revision,
-                       t.created_at,t.updated_at,t.terminal_at
-                FROM turns t JOIN agent_sessions s ON s.id=t.session_id
-                WHERE t.project_id=?1 AND t.chat_id=?2 AND t.id<>?3";
+    let base = concat!(
+        "SELECT t.id,t.project_id,t.chat_id,t.session_id,s.ordinal,
+                t.runtime_epoch,t.ordinal,t.state,t.revision,
+                t.created_at,t.updated_at,t.terminal_at
+         FROM turns t JOIN agent_sessions s ON s.id=t.session_id
+         WHERE t.project_id=?1 AND t.chat_id=?2 AND t.id<>?3 AND ",
+        super::turn_undo::visible_turn!("t.session_id", "t.id")
+    );
     let sql = match cursor {
         Some(boundary) if boundary.includes_boundary_turn() => format!(
             "{base} AND (s.ordinal<?4 OR (s.ordinal=?4 AND

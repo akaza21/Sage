@@ -139,7 +139,11 @@ fn page_reply(
             NativeRpcReply::GoalApplied
             | NativeRpcReply::Forked(_)
             | NativeRpcReply::Released
-            | NativeRpcReply::UsageRead,
+            | NativeRpcReply::UsageRead
+            | NativeRpcReply::Controlled(_)
+            | NativeRpcReply::ControlRefused(_)
+            | NativeRpcReply::McpServers(_)
+            | NativeRpcReply::McpSignIn(_),
         ) => Err(NativeReadError::RecoveryRequired),
         Err(HostError::Intent | HostError::State) => Err(NativeReadError::Unavailable),
         Err(_) => Err(NativeReadError::RecoveryRequired),

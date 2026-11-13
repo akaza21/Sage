@@ -143,7 +143,7 @@ export function ExplorerActionMenu() {
         // A menu a row opened belongs to that row.
         aria-expanded={open && row === null}
         aria-haspopup="menu"
-        title={project ? "More Explorer actions" : "Open a Project first"}
+        title={project ? "More Explorer actions" : "Open a project first"}
         disabled={!project || projectTransitioning}
         onClick={() => {
           keepFocus();

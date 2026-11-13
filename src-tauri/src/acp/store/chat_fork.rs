@@ -20,11 +20,20 @@ use super::{
 const FORK_CAPABILITY: &str = "nativeSessionFork";
 pub(crate) const IMPORT_CAPABILITY: &str = "nativeSessionImport";
 
-/// A session negotiated before its harness's fork or import methods were
-/// characterised stored `nativeSessionFork: false` (or no
-/// `nativeSessionImport`); the same harness now negotiates `true`. Those
-/// upgrades still resume the session. Its stored snapshot stays immutable,
-/// so such a session keeps reporting neither (fail closed).
+/// Capabilities a harness may gain once Sage learns to drive them, with
+/// whether a snapshot records them when false.
+const UPGRADES: [(&str, bool); 5] = [
+    (FORK_CAPABILITY, true),
+    ("activeTurnSteer", true),
+    ("nativeSessionCompact", false),
+    (IMPORT_CAPABILITY, false),
+    ("promptImages", false),
+];
+
+/// A session negotiated before Sage drove one of its harness's methods
+/// stored that capability as off; the same harness now negotiates it on.
+/// Such upgrades still resume the session. Its stored snapshot stays
+/// immutable, so the session keeps reporting them off (fail closed).
 pub(crate) fn resumable_capabilities(stored: &str, negotiated: &str) -> bool {
     if stored == negotiated {
         return true;
@@ -35,20 +44,15 @@ pub(crate) fn resumable_capabilities(stored: &str, negotiated: &str) -> bool {
     ) else {
         return false;
     };
-    let fork = (
-        stored.remove(FORK_CAPABILITY),
-        negotiated.remove(FORK_CAPABILITY),
-    );
-    let import = (
-        stored.remove(IMPORT_CAPABILITY),
-        negotiated.remove(IMPORT_CAPABILITY),
-    );
-    let upgraded = |(before, after): (Option<Value>, Option<Value>), absent_ok: bool| {
-        before == after
-            || (after == Some(Value::Bool(true))
-                && (before == Some(Value::Bool(false)) || (absent_ok && before.is_none())))
-    };
-    upgraded(fork, false) && upgraded(import, true) && stored == negotiated
+    UPGRADES.iter().all(|(key, recorded)| {
+        let (was, now) = (stored.remove(*key), negotiated.remove(*key));
+        let off = match was {
+            Some(Value::Bool(false)) => true,
+            None => !recorded,
+            _ => false,
+        };
+        was == now || (off && now == Some(Value::Bool(true)))
+    }) && stored == negotiated
 }
 
 /// The Turn a fork is taken through: the latest completed Turn of the Chat's
@@ -126,14 +130,26 @@ pub(crate) fn fork_source(
     })
 }
 
+/// The fork is cut at the native thread's latest reply, so the Turn must be
+/// the session's latest visible one and no undone Turn may still wait in
+/// that thread for its rewind.
 fn require_latest_completed(
     connection: &Connection,
     session: &str,
     turn_id: &SageTurnId,
 ) -> Result<(), StoreError> {
+    if super::turn_undo::pending_thread_rewind(connection, session)?.is_some() {
+        return Err(StoreError::Conflict {
+            resource: "forkTurn",
+        });
+    }
     let latest: Option<(String, String)> = connection
         .query_row(
-            "SELECT id,state FROM turns WHERE session_id=?1 ORDER BY ordinal DESC LIMIT 1",
+            concat!(
+                "SELECT t.id,t.state FROM turns t WHERE t.session_id=?1 AND ",
+                super::turn_undo::visible_turn!("t.session_id", "t.id"),
+                " ORDER BY t.ordinal DESC LIMIT 1"
+            ),
             [session],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -320,5 +336,31 @@ mod tests {
         assert!(!resumable_capabilities(&imported, STORED));
         let other = imported.replace(r#""prompt":true"#, r#""prompt":false"#);
         assert!(!resumable_capabilities(STORED, &other));
+    }
+
+    #[test]
+    fn steer_and_compact_upgrades_still_resume_but_never_a_downgrade() {
+        let stored = r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false,"activeTurnSteer":false}"#;
+        let upgraded = r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false,"nativeSessionCompact":true,"activeTurnSteer":true}"#;
+        assert!(resumable_capabilities(stored, upgraded));
+        assert!(!resumable_capabilities(upgraded, stored));
+        // A recorded flag cannot go missing.
+        assert!(!resumable_capabilities(
+            stored,
+            r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false}"#
+        ));
+        assert!(!resumable_capabilities(
+            stored,
+            r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false,"activeTurnSteer":"yes"}"#
+        ));
+    }
+
+    #[test]
+    fn a_session_from_before_prompt_images_still_resumes_with_them() {
+        let stored = r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":true}"#;
+        let upgraded =
+            r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":true,"promptImages":true}"#;
+        assert!(resumable_capabilities(stored, upgraded));
+        assert!(!resumable_capabilities(upgraded, stored));
     }
 }

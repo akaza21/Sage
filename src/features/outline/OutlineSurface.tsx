@@ -51,12 +51,12 @@ function outlineEmptyMessage(status: ActiveOutline["status"] | undefined) {
     case "reading":
       return "Reading symbols…";
     case "unsupported":
-      return "No Outline for this File type.";
+      return "No outline for this file type.";
     case "too-large":
-      return "This File is too large for an Outline.";
+      return "This file is too large for an outline.";
     case "ready":
-      return "No symbols for the active File.";
+      return "No symbols for the active file.";
     case undefined:
-      return "No File is open.";
+      return "No file is open.";
   }
 }

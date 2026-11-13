@@ -59,6 +59,9 @@ where
             // A fork is taken only between Turns, so the forked history ends
             // at the latest completed Turn and never at a moving one.
             crate::acp::goal::NativeRpcRequest::ForkSession => Err(HostError::State),
+            crate::acp::goal::NativeRpcRequest::Control(control) => {
+                self.pump.write_control(&mut self.transport, control)
+            }
             // A Turn started before the release reached the runtime: it is
             // deferred and written once the runtime is idle again.
             crate::acp::goal::NativeRpcRequest::ReleaseFork { fork, committed } => {

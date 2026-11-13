@@ -59,11 +59,14 @@ pub(super) fn resolve(
     }
     let turn_id = connection
         .query_row(
-            "SELECT t.id FROM turns t
-             JOIN agent_sessions s ON s.id=t.session_id
-             WHERE t.project_id=?1 AND t.chat_id=?2
-               AND s.ordinal=?3 AND t.ordinal=?4
-             ORDER BY t.id LIMIT 2",
+            concat!(
+                "SELECT t.id FROM turns t
+                 JOIN agent_sessions s ON s.id=t.session_id
+                 WHERE t.project_id=?1 AND t.chat_id=?2
+                   AND s.ordinal=?3 AND t.ordinal=?4 AND ",
+                super::turn_undo::visible_turn!("t.session_id", "t.id"),
+                " ORDER BY t.id LIMIT 2"
+            ),
             params![
                 project.as_str(),
                 chat.as_str(),

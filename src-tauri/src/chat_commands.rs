@@ -41,11 +41,24 @@ pub async fn activate_chat(
 
 #[tauri::command]
 pub async fn rename_chat(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: RenameChatRequest,
     expected_transition_epoch: u64,
 ) -> Result<ProjectTransitionResult, String> {
-    Ok(rename_chat_inner(&state, request, expected_transition_epoch).await)
+    let (project_id, chat_id) = (request.project_id.clone(), request.chat_id.clone());
+    let result = rename_chat_inner(&state, request, expected_transition_epoch).await;
+    // The harness learns the name once Sage has kept it, off the rename's
+    // own path, so a rename never waits on a running session.
+    if result.committed {
+        tauri::async_runtime::spawn_blocking(move || {
+            use tauri::Manager;
+            app.state::<AppState>()
+                .acp
+                .retitle_live_session(&project_id, &chat_id);
+        });
+    }
+    Ok(result)
 }
 
 #[tauri::command]

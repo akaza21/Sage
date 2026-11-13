@@ -1,5 +1,9 @@
 use std::sync::Arc;
 
+#[cfg(windows)]
+mod browser_mcp;
+mod undo;
+
 use crate::acp::{
     bindings::{
         claude::{AdmittedClaudeBinding, ClaudeBindingRegistration},
@@ -129,6 +133,18 @@ impl BindingRecord {
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
             Admission::Pi(_) => crate::acp::bindings::pi::fixture_admission::PI_FIXTURE_BINDING_ID,
         }
+    }
+
+    /// Whether this binding's prompts carry ACP content blocks beyond their
+    /// text (`resource_link`, embedded `resource`), which `@` mentions need.
+    pub(crate) fn sends_prompt_blocks(&self) -> bool {
+        // The Claude Agent SDK bridge turns an embedded resource into a
+        // context text block and a link into an `@path` mention.
+        use Admission::{Claude, ClaudeSdk, CustomAcp, OpenCode};
+        matches!(
+            self.admission,
+            Claude(_) | ClaudeSdk(_) | OpenCode(_) | CustomAcp(_)
+        )
     }
 
     pub(crate) fn session_operations_enabled(&self) -> bool {
@@ -270,21 +286,6 @@ pub(crate) struct BindingIdentity<'a> {
 }
 
 impl AdmittedBindingRecord<'_> {
-    #[cfg(windows)]
-    pub(crate) fn browser_mcp_version_notice(&self) -> Option<&'static str> {
-        match &self.binding {
-            AdmittedBinding::Codex(binding) => {
-                let supported = binding.capability_ceiling().is_ok_and(|ceiling| {
-                    crate::acp::bindings::codex::speaks_pinned_protocol(
-                        ceiling.protocol_version.as_str(),
-                    )
-                });
-                (!supported).then_some("Browser tools are unavailable for this Codex version. You can continue chatting without browser tools.")
-            }
-            _ => None,
-        }
-    }
-
     /// The id this admission binds sessions to; a standard ACP binding
     /// carries its own, which for a user-defined agent is the agent's id.
     pub(crate) fn binding_id(&self) -> &str {
@@ -334,6 +335,22 @@ impl AdmittedBindingRecord<'_> {
                 harness_version: binding.harness_version(),
             },
         }
+    }
+
+    /// Whether a session may start with `model` though the binding has no
+    /// model discovery (Claude Code: a model its build listed).
+    pub(crate) fn accepts_launch_model(&self, model: &str) -> bool {
+        super::claude_sdk::accepts_launch_model(&self.binding, model)
+    }
+
+    /// The config choice a new session starts with for a thinking level
+    /// chosen before it existed, when the binding lists it for `model`.
+    pub(crate) fn launch_effort_choice(
+        &self,
+        model: Option<&str>,
+        effort: &str,
+    ) -> Option<crate::acp::session_config::ConfigMutation> {
+        super::claude_sdk::launch_effort_choice(&self.binding, model, effort)
     }
 
     pub(crate) fn has_model_discovery(&self) -> Result<bool, RegistryAdmissionUnavailable> {

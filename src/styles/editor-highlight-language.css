@@ -51,7 +51,8 @@
   .workbench--editor
     .source-control-selector
     .searchable-picker__input:focus-visible,
-  .menu-popover--editor .searchable-picker__input:focus-visible,
+  .menu-popover--editor:not(.composer__popover)
+    .searchable-picker__input:focus-visible,
   .workbench--editor .source-branch-create__label input:focus-visible,
   .workbench--editor .source-branch-create__label select:focus-visible,
   .workbench--editor .repository-commit__label textarea:focus-visible,

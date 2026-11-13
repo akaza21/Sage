@@ -17,6 +17,14 @@ impl PiTranslator {
             return Ok(Vec::new());
         }
         let message = value.get("message");
+        let kept = |key| message.and_then(|message| message.get(key)).cloned();
+        self.live_turn()?.reply_open = false;
+        self.live_turn()?.last_reply = Some(Box::new(serde_json::json!({
+            "role": "assistant",
+            "stopReason": kept("stopReason"),
+            "errorMessage": kept("errorMessage"),
+            "usage": kept("usage"),
+        })));
         let outcome = match message
             .and_then(|message| message.get("stopReason"))
             .and_then(Value::as_str)

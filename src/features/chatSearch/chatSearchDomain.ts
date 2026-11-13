@@ -77,13 +77,13 @@ export function validateProjectChatSearchRequest(
   request: ProjectChatSearchRequest,
 ): void {
   if (!boundedString(request.projectId, MAX_IDENTIFIER_BYTES)) {
-    throw new Error("Project Chat search requires a valid Project ID");
+    throw new Error("Project chat search requires a valid project ID");
   }
   if (
     !safeCount(request.projectGeneration) ||
     !safeCount(request.expectedTransitionEpoch)
   ) {
-    throw new Error("Project Chat search requires a valid intent generation");
+    throw new Error("Project chat search requires a valid intent generation");
   }
   const query = request.query.trim();
   if (
@@ -91,7 +91,7 @@ export function validateProjectChatSearchRequest(
     containsControl(query)
   ) {
     throw new Error(
-      "Project Chat search query must be at most 256 UTF-8 bytes without control characters",
+      "Project chat search query must be at most 256 UTF-8 bytes without control characters",
     );
   }
 }
@@ -131,7 +131,7 @@ function searchResult(
 export function parseProjectChatSearchResponse(
   value: unknown,
 ): ProjectChatSearchResponse {
-  const invalid = () => new Error("invalid Project Chat search response");
+  const invalid = () => new Error("invalid project chat search response");
   if (
     !isNonArrayRecord(value) ||
     !hasExactKeys(value, [

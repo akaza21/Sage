@@ -105,15 +105,15 @@
   resize: none;
   border: 0;
   outline: 0;
-  color: var(--color-text-primary);
+  color: var(--color-text-emphasis);
   background: transparent;
-  font-family: var(--font-family-ui);
+  font-family: inherit;
   font-size: var(--font-size-md);
   line-height: var(--line-height-normal);
 }
 
 .composer textarea::placeholder {
-  color: var(--color-text-muted);
+  color: var(--composer-muted-text);
 }
 .composer textarea:disabled {
   color: var(--color-text-disabled);
@@ -288,7 +288,7 @@
 .project-scope.select-control {
   --select-control-trigger-min-width: var(--control-height-compact);
   --select-control-trigger-padding: 0 var(--space-1);
-  --radius-select-control-trigger: var(--radius-md);
+  --radius-select-control-trigger: var(--radius-pill);
   --select-control-trigger-border: var(
     --project-scope-trigger-border,
     var(--border-width) solid var(--glass-border)
@@ -315,6 +315,20 @@
 
 .project-scope .searchable-picker {
   width: 100%;
+}
+
+.project-scope.select-control .searchable-picker__trigger {
+  font-weight: var(--font-weight-medium);
+}
+
+.composer
+  .project-scope
+  .searchable-picker__trigger:is(
+    :hover:not(:disabled),
+    [aria-expanded="true"]
+  ) {
+  color: var(--color-text-emphasis);
+  background: var(--composer-control-hover);
 }
 
 .project-scope__icon,

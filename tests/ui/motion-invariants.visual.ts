@@ -32,7 +32,7 @@ async function openWithSearchDialog(
     .getByRole("button", { name: "Search chats" })
     .click();
   await expect(
-    page.getByRole("dialog", { name: "Search Chats" }),
+    page.getByRole("dialog", { name: "Search chats" }),
   ).toBeVisible();
 }
 

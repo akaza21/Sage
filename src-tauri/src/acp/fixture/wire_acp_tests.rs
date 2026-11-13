@@ -4,6 +4,8 @@ use std::io::Cursor;
 
 #[path = "wire_native_projection_tests.rs"]
 mod native_projection;
+#[path = "wire_acp_resource_tests.rs"]
+mod resource_tests;
 
 #[test]
 fn replay_resource_paths_resolve_existing_files_in_the_capture_project() {
@@ -332,7 +334,12 @@ fn launch_rules_follow_what_each_case_waits_for() {
     ] {
         assert!(!native_case_lists_models(case), "{case}");
     }
-    for case in ["claude-config-resume", "codex-config-resume"] {
+    // A Claude Code fork opens its fork chat as a second launch.
+    for case in [
+        "claude-config-resume",
+        "codex-config-resume",
+        "claude-sdk-fork",
+    ] {
         assert!(native_case_spans_restart(case), "{case}");
     }
     for case in [
@@ -341,6 +348,7 @@ fn launch_rules_follow_what_each_case_waits_for() {
         "codex-turn-completed",
         "codex-steer-lost-result",
         "pi-turn-completed",
+        "claude-sdk-turn-completed",
     ] {
         assert!(!native_case_spans_restart(case), "{case}");
     }

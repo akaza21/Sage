@@ -6,6 +6,10 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
         SchemaClass::CurrentV23
         | SchemaClass::CurrentResumeLink
+        | SchemaClass::CurrentTitleSource
+        | SchemaClass::CurrentSessionFactsTurnIndex
+        | SchemaClass::CurrentOperationTerminalIndex
+        | SchemaClass::CurrentTurnUndoIntentIndexes
         | SchemaClass::CurrentImportedHistory => return Ok(()),
         SchemaClass::CurrentV22 => {}
         _ => return invalid("session config choices require exact schema v22"),

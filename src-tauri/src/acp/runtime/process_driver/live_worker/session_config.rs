@@ -114,6 +114,9 @@ where
                 crate::acp::goal::NativeRpcRequest::UsageRead => {
                     idle.parts.write_usage_read(&mut idle.transport)
                 }
+                crate::acp::goal::NativeRpcRequest::Control(control) => {
+                    idle.parts.write_control(&mut idle.transport, control)
+                }
             },
             Self::Reusable(parts) => match &intent.request {
                 crate::acp::goal::NativeRpcRequest::Goal(action) => {
@@ -130,6 +133,9 @@ where
                     .write_release_fork(&mut parts.transport, fork, *committed),
                 crate::acp::goal::NativeRpcRequest::UsageRead => {
                     parts.completed.write_usage_read(&mut parts.transport)
+                }
+                crate::acp::goal::NativeRpcRequest::Control(control) => {
+                    parts.completed.write_control(&mut parts.transport, control)
                 }
             },
             Self::Active(active) if active.stdout_allowed() => {

@@ -544,3 +544,148 @@ export function piFullTurnJourney() {
     ],
   };
 }
+
+/**
+ * A run whose `agent_end` outgrows a frame, then a second prompt. Pi's
+ * `agent_end` repeats every message of the run; here the run read the
+ * synthetic example in 24 pages of 48 KiB, as Pi's read tool pages a large
+ * file, so the repeat is about 1.2 MiB. Sage reads past it, settles the
+ * Turn from the streamed reply, and the chat takes the next prompt.
+ */
+export function piLargeRunJourney() {
+  const PAGES = 24;
+  const PAGE_BYTES = 48 * 1024;
+  const LINE = "export const example = 1;\n";
+  const first = assistantStream();
+  const second = assistantStream();
+  const pages = Array.from({ length: PAGES }, (_, index) => ({
+    toolCallId: `fixture-read-${index + 1}`,
+    toolName: "read",
+    args: {
+      path: "$ROOT/src/example.ts",
+      offset: index * 2000 + 1,
+      limit: 2000,
+    },
+  }));
+  const page = (call) => ({
+    role: "toolResult",
+    toolCallId: call.toolCallId,
+    toolName: call.toolName,
+    content: [{ type: "text", text: "" }],
+    isError: false,
+    timestamp: 1,
+  });
+  const fill = (pointers) => ({ pointers, unit: LINE, bytes: PAGE_BYTES });
+  const reads = pages.flatMap((call) => [
+    frame("tool_execution_start", call),
+    {
+      ...frame("tool_execution_end", {
+        ...call,
+        result: { content: [{ type: "text", text: "" }] },
+        isError: false,
+      }),
+      fill: fill(["/result/content/0/text"]),
+    },
+  ]);
+  const answer = `Read all ${PAGES} pages of the synthetic example.`;
+  const finish = first.finish("stop", answer);
+  const end = finish.findIndex((step) => step.frame.type === "agent_end");
+  const terminal = finish[end].frame.messages;
+  const calls = message(
+    pages.map((call) => ({
+      type: "toolCall",
+      id: call.toolCallId,
+      name: call.toolName,
+      arguments: call.args,
+    })),
+    "toolUse",
+  );
+  finish[end] = {
+    ...frame("agent_end", {
+      messages: [calls, ...pages.map(page), ...terminal],
+    }),
+    fill: fill(
+      pages.map((_, index) => `/messages/${index + 1}/content/0/text`),
+    ),
+  };
+  const next = "Synthetic second turn after the large run.";
+  return {
+    id: "pi-large-run-end",
+    steps: [
+      wait("piInitialize"),
+      wait("piModels"),
+      wait("piNew"),
+      wait("piPrompt"),
+      wait("piThinkingLevels"),
+      ...first.start(),
+      first.update("text_delta", "Reading the synthetic example page by page."),
+      ...reads,
+      ...finish,
+      wait("piPrompt"),
+      ...second.start(),
+      second.update("text_delta", next),
+      ...second.finish("stop", next),
+      wait("piIdle"),
+    ],
+  };
+}
+
+/**
+ * A Pi that loaded prompt templates and skills, as `get_commands` lists
+ * them, one with a name long enough to test how the / menu fits it. Each
+ * prompt is answered with what Pi received, so a picked command shows the
+ * `/name arguments` text Sage sent. Two prompts, then the chat closes.
+ */
+export function piCommandsJourney() {
+  const commands = [
+    {
+      name: "fix-tests",
+      description: "Fix the failing tests in the current project",
+      source: "prompt",
+      location: "project",
+    },
+    {
+      name: "summarize-the-current-branch-changes-for-a-pull-request-description",
+      description:
+        "Summarize the branch's changes as a pull request description",
+      source: "prompt",
+      location: "user",
+    },
+    {
+      name: "skill:lint",
+      description: "Lint the files changed in this session",
+      source: "skill",
+      location: "project",
+      path: "$ROOT/.pi/skills/lint/SKILL.md",
+    },
+    {
+      name: "skill:release-notes",
+      description: "Draft release notes from the commit log",
+      source: "skill",
+      location: "user",
+      path: "$ROOT/.pi/skills/release-notes/SKILL.md",
+    },
+  ];
+  const turn = () => {
+    const stream = assistantStream();
+    return [
+      ...stream.start(),
+      stream.update("text_delta", "$PROMPT_ECHO"),
+      ...stream.finish("stop", "$PROMPT_ECHO"),
+    ];
+  };
+  return {
+    id: "pi-commands",
+    steps: [
+      { ...wait("piInitialize"), commands },
+      wait("piModels"),
+      wait("piNew"),
+      wait("piPrompt"),
+      wait("piThinkingLevels"),
+      ...turn(),
+      wait("piPrompt"),
+      ...turn(),
+      wait("piIdle"),
+    ],
+  };
+}

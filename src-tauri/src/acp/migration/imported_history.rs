@@ -2,14 +2,18 @@ use super::*;
 
 /// The schema version that adds imported session histories. The migration's
 /// file name carries the same number; nothing else names it.
-pub(super) const VERSION: u32 = 25;
-pub(super) const SQL: &str = include_str!("../../../migrations/025_imported_session_history.sql");
+pub(super) const VERSION: u32 = 29;
+pub(super) const SQL: &str = include_str!("../../../migrations/029_imported_session_history.sql");
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
         SchemaClass::CurrentImportedHistory => return Ok(()),
-        SchemaClass::CurrentResumeLink => {}
-        _ => return invalid("imported session histories require the exact resume link schema"),
+        SchemaClass::CurrentTurnUndoIntentIndexes => {}
+        _ => {
+            return invalid(
+                "imported session histories require the exact undo intent index schema",
+            );
+        }
     }
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     transaction.execute_batch(SQL)?;
@@ -38,6 +42,10 @@ mod tests {
         notifications::apply(&mut connection).unwrap();
         config_choices::apply(&mut connection).unwrap();
         session_resume_link::apply(&mut connection).unwrap();
+        title_source::apply(&mut connection).unwrap();
+        session_facts_turn_index::apply(&mut connection).unwrap();
+        operation_terminal_index::apply(&mut connection).unwrap();
+        turn_undo_intent_indexes::apply(&mut connection).unwrap();
         connection
     }
 

@@ -80,6 +80,10 @@ pub(super) fn recover_or_publish(paths: &MigrationPaths) -> AppResult<bool> {
         | SchemaClass::CurrentV22
         | SchemaClass::CurrentV23
         | SchemaClass::CurrentResumeLink
+        | SchemaClass::CurrentTitleSource
+        | SchemaClass::CurrentSessionFactsTurnIndex
+        | SchemaClass::CurrentOperationTerminalIndex
+        | SchemaClass::CurrentTurnUndoIntentIndexes
         | SchemaClass::CurrentImportedHistory => {
             verify_replacement(&paths.live, &manifest)?;
             if paths.replacement_stage.exists() {
@@ -361,6 +365,8 @@ fn verify_restored_optional(
 }
 
 fn verify_replacement(path: &Path, manifest: &ReplacementManifest) -> AppResult<()> {
+    // A replacement is always a whole current schema: never fresh, legacy or
+    // the v10 shape that still carries the legacy session events table.
     let expected_schema = manifest.replacement_database.schema;
     if expected_schema.is_legacy()
         || matches!(

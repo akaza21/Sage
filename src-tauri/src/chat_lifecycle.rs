@@ -1,7 +1,12 @@
 use rusqlite::{OptionalExtension, params};
 use uuid::Uuid;
 mod auto_title;
-pub(crate) use auto_title::auto_title_first_prompt_in;
+mod title_source;
+pub(crate) use auto_title::{auto_title_first_prompt_in, title_line};
+pub(crate) use title_source::{
+    ChatTitleSource, SIDE_CHAT_ID_PREFIX, apply_harness_title_in, clear_harness_title_in,
+    placeholder_chat_title,
+};
 
 use crate::{
     acp::limits::LIMITS,
@@ -33,6 +38,14 @@ fn is_chat_title_trim_character(value: char) -> bool {
     )
 }
 
+/// Every stored Chat title starts with this; the UI shows what follows.
+pub(crate) const CHAT_TITLE_PREFIX: &str = "Chat: ";
+
+/// The title the user sees and named the Chat, without the stored prefix.
+pub(crate) fn chat_display_title(stored: &str) -> &str {
+    stored.strip_prefix(CHAT_TITLE_PREFIX).unwrap_or(stored)
+}
+
 pub(crate) fn canonical_chat_title(input: &str) -> AppResult<String> {
     let title = input.trim_matches(is_chat_title_trim_character);
     if title.is_empty() {
@@ -50,7 +63,7 @@ pub(crate) fn canonical_chat_title(input: &str) -> AppResult<String> {
             "Chat title must not contain control characters".into(),
         ));
     }
-    Ok(format!("Chat: {title}"))
+    Ok(format!("{CHAT_TITLE_PREFIX}{title}"))
 }
 
 pub(crate) fn validate_chat_identifier(label: &str, value: &str) -> AppResult<()> {
@@ -254,21 +267,24 @@ pub(crate) fn insert_new_chat(
         |row| row.get(0),
     )?;
     let chat_id = if parent.is_some() {
-        format!("side-{}", Uuid::new_v4())
+        format!("{SIDE_CHAT_ID_PREFIX}{}", Uuid::new_v4())
     } else {
         Uuid::new_v4().to_string()
     };
-    let title = if parent.is_some() {
-        "Chat: Side chat".to_owned()
-    } else {
-        "Chat: Chat".to_owned()
-    };
+    let title = placeholder_chat_title(&chat_id);
     let now = now_millis();
     transaction.execute(
         "INSERT INTO chats(
-           id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_is_default
-         ) VALUES (?1,?2,?3,?4,0,?5,?5,1)",
-        params![chat_id, project_id, ordinal, title, now],
+           id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_source
+         ) VALUES (?1,?2,?3,?4,0,?5,?5,?6)",
+        params![
+            chat_id,
+            project_id,
+            ordinal,
+            title,
+            now,
+            ChatTitleSource::Default.as_str()
+        ],
     )?;
     transaction.execute(
         "INSERT INTO workbench_tabs(
@@ -348,9 +364,14 @@ fn apply_chat_title(
     let now = now_millis();
     require_one(
         transaction.execute(
-            "UPDATE chats SET title=?3,title_is_default=0
+            "UPDATE chats SET title=?3,title_source=?4
              WHERE project_id=?1 AND id=?2",
-            params![request.project_id, request.chat_id, title],
+            params![
+                request.project_id,
+                request.chat_id,
+                title,
+                ChatTitleSource::User.as_str()
+            ],
         )?,
         "Chat disappeared during rename",
     )?;

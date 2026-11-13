@@ -54,7 +54,7 @@ pub(crate) fn link_resumed_session(
     let chat = command.chat_id.as_str();
     let earlier = command.earlier_session_id.as_str();
     let transaction = connection.transaction()?;
-    if let Some(linked) = unstarted_resume_link(&transaction, project, chat, earlier)? {
+    if let Some(linked) = unstarted_continuation(&transaction, project, chat, earlier)? {
         return Ok(linked);
     }
     validate_chat_revision(
@@ -96,9 +96,14 @@ pub(crate) fn link_resumed_session(
     let projection = next_projection_revision(&transaction, project, chat)?;
     close_parked(
         &transaction,
-        &command,
-        entity_revision_from_i64(revision)?,
+        ParkedSession {
+            project_id: &command.project_id,
+            chat_id: &command.chat_id,
+            session_id: &command.earlier_session_id,
+            revision: entity_revision_from_i64(revision)?,
+        },
         projection,
+        command.now_millis,
     )?;
     let session_id = install_head_session(
         &transaction,
@@ -156,15 +161,24 @@ pub(crate) fn link_resumed_session(
     })
 }
 
+/// A parked head session a new head replaces, at its current revision.
+pub(super) struct ParkedSession<'a> {
+    pub(super) project_id: &'a SageProjectId,
+    pub(super) chat_id: &'a SageChatId,
+    pub(super) session_id: &'a SageAgentSessionId,
+    pub(super) revision: EntityRevision,
+}
+
 /// Closes the parked earlier session: its head is removed first, then it
 /// moves through `closing` to `closed`. Nothing else about it changes.
-fn close_parked(
+pub(super) fn close_parked(
     transaction: &rusqlite::Transaction<'_>,
-    command: &ResumeEarlierSessionCommand,
-    revision: EntityRevision,
+    parked: ParkedSession<'_>,
     projection: ProjectionRevision,
+    now_millis: i64,
 ) -> Result<(), StoreError> {
-    let earlier = command.earlier_session_id.as_str();
+    let earlier = parked.session_id.as_str();
+    let revision = parked.revision;
     let next = revision.next().map_err(|_| StoreError::CounterExhausted)?;
     ensure_one(
         transaction.execute(
@@ -188,27 +202,29 @@ fn close_parked(
                 earlier,
                 next.get() as i64,
                 projection.get() as i64,
-                command.now_millis
+                now_millis
             ],
         )?,
         "session",
     )?;
     append_entity_fact(
         transaction,
-        &command.project_id,
-        &command.chat_id,
-        &command.earlier_session_id,
+        parked.project_id,
+        parked.chat_id,
+        parked.session_id,
         None,
         "sessionTerminal",
         earlier,
         "closed",
         projection,
-        command.now_millis,
+        now_millis,
     )
 }
 
-/// The Chat's head when it already resumes `earlier` and has not started.
-pub(crate) fn unstarted_resume_link(
+/// The Chat's head when it already continues the closed `earlier` session,
+/// by resuming its thread or by restarting it after an undo, and has not
+/// started.
+pub(crate) fn unstarted_continuation(
     connection: &rusqlite::Connection,
     project: &str,
     chat: &str,
@@ -219,8 +235,10 @@ pub(crate) fn unstarted_resume_link(
             "SELECT s.id,s.revision,c.projection_revision FROM agent_sessions s
              JOIN chat_session_heads h ON h.session_id=s.id
              JOIN chats c ON c.project_id=s.project_id AND c.id=s.chat_id
-             WHERE s.project_id=?1 AND s.chat_id=?2 AND s.resumes_session_id=?3
-               AND s.state='created'",
+             WHERE s.project_id=?1 AND s.chat_id=?2 AND s.state='created'
+               AND (s.resumes_session_id=?3 OR EXISTS(SELECT 1 FROM session_facts f
+                 WHERE f.session_id=s.id AND f.kind='sessionRestarted'
+                   AND json_extract(f.payload_json,'$.replacesSessionId')=?3))",
             params![project, chat, earlier],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )

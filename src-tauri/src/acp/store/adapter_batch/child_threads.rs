@@ -8,8 +8,10 @@ use crate::acp::{
 use super::{AdapterStoreOwner, MutationDisposition, StoreError};
 use crate::acp::store::ItemIngressCommand;
 
-/// An admitted Codex parent Item and its native child identity commit together.
-/// The display collaboration payload does not grant this authority.
+/// An admitted parent Item and its native child identity commit together.
+/// The display collaboration payload does not grant this authority. The
+/// stored source tag predates other harnesses and stands for any harness's
+/// subagent activity.
 pub(super) fn apply(
     transaction: &Transaction<'_>,
     owner: &AdapterStoreOwner,

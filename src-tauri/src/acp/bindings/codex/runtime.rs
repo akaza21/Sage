@@ -48,6 +48,7 @@ pub(crate) struct CodexRuntime {
     reported_model_id: Option<crate::acp::intent::ModelId>,
     selected_model: Option<super::incoming::ModelDescriptor>,
     selected_effort: Option<crate::acp::contract::RequiredText<512>>,
+    model_catalog: model_config::ModelCatalog,
     model_list_requested: bool,
     model_catalog_idle_only: bool,
     model_catalog_entries: usize,
@@ -157,6 +158,10 @@ impl CodexRuntime {
             IngressDisposition::GoalMutationRejected => {
                 Err(AdapterRuntimeError::GoalMutationRejected)
             }
+            IngressDisposition::Controlled(reply) => {
+                self.native_rpc_reply = Some(reply);
+                one(AdapterEvent::IgnoredLate)
+            }
             IngressDisposition::GoalMutationApplied => {
                 self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::GoalApplied);
                 one(AdapterEvent::IgnoredLate)
@@ -166,6 +171,10 @@ impl CodexRuntime {
             | IngressDisposition::UsageRefused
             | IngressDisposition::UsageReset) => {
                 self.apply_usage(usage);
+                one(AdapterEvent::IgnoredLate)
+            }
+            IngressDisposition::SettingsUpdated { model, effort } => {
+                self.adopt_reported_settings(Some(model), effort);
                 one(AdapterEvent::IgnoredLate)
             }
             IngressDisposition::DuplicateTerminal => one(AdapterEvent::IgnoredDuplicate),
@@ -213,18 +222,7 @@ impl CodexRuntime {
             } => (
                 {
                     self.snapshots.clear();
-                    self.reported_model_id = current_model.clone();
-                    if let Some(model) = current_model {
-                        if self.selected_model_id.as_ref() != Some(&model) {
-                            self.selected_model = None;
-                            self.session_config = None;
-                        }
-                        self.selected_model_id = Some(model);
-                    }
-                    if current_effort.is_some() {
-                        self.selected_effort = current_effort;
-                    }
-                    self.refresh_model_config();
+                    self.adopt_reported_settings(current_model, current_effort);
                     AdapterEvent::SessionReady {
                         id: identity(id),
                         loaded: false,

@@ -1,5 +1,5 @@
 use crate::acp::{
-    bindings::characterisation::{Characterisation, valid_numeric_version},
+    bindings::{characterisation::Characterisation, release_version::ReleaseVersion},
     contract::{RequiredText, SchemaVersionV1},
     intent::CapabilitySnapshotV1,
 };
@@ -86,21 +86,28 @@ fn observed_version(reported_version: &str) -> Option<&str> {
         .split_ascii_whitespace()
         .next_back()
         .filter(|token| {
-            token.len() <= VERSION_TOKEN_BYTES_MAX && valid_numeric_version(token, 3, 3)
+            token.len() <= VERSION_TOKEN_BYTES_MAX && ReleaseVersion::parse(token).is_some()
         })
 }
 
+/// The evidence of the newest tested release at or before the observed one.
+/// A later release keeps what the release before it was tested to support.
 fn observed_capability_evidence(build: ObservedBuild<'_>) -> OptionalCapabilities {
-    if !build.characterisation.is_characterised() {
+    if !build.characterisation.runs_tested_features() {
         return OptionalCapabilities::default();
     }
-    observed_version(build.reported_version)
-        .and_then(|version| {
-            OBSERVED_CAPABILITY_EVIDENCE
-                .iter()
-                .find(|evidence| evidence.version == version)
+    let Some(observed) = ReleaseVersion::parse(build.reported_version) else {
+        return OptionalCapabilities::default();
+    };
+    OBSERVED_CAPABILITY_EVIDENCE
+        .iter()
+        .filter_map(|evidence| {
+            ReleaseVersion::parse(evidence.version)
+                .filter(|tested| *tested <= observed)
+                .map(|tested| (tested, evidence.optional))
         })
-        .map(|evidence| evidence.optional)
+        .max_by(|left, right| left.0.cmp(&right.0))
+        .map(|(_, optional)| optional)
         .unwrap_or_default()
 }
 
@@ -161,8 +168,8 @@ pub(crate) fn projected_capabilities(
         child_transcript_read: optional.child_transcript_read,
         multi_root_extension_schema_id: None,
         model_count: 0,
-        prompt_resources: false,
-        prompt_images: false,
+        prompt_resources: true,
+        prompt_images: true,
         config_count: 0,
     };
     Ok((snapshot, optional.model_list))
@@ -336,6 +343,43 @@ mod tests {
                 "{reported}"
             );
         }
+    }
+
+    #[test]
+    fn a_later_observed_release_keeps_the_tested_release_evidence() {
+        let (tested, tested_models) = projected_capabilities(
+            &pinned(),
+            Some(ObservedBuild {
+                reported_version: &observed_pinned_version(),
+                characterisation: Characterisation::Characterised,
+            }),
+        )
+        .unwrap();
+        let [major, minor, _] = PINNED_CODEX_VERSION
+            .split('.')
+            .map(|part| part.parse::<u32>().unwrap())
+            .collect::<Vec<_>>()[..]
+        else {
+            panic!("the pinned version has three components");
+        };
+        let later = format!("codex-cli {major}.{}.0-alpha.1", minor + 1);
+        let (snapshot, models) = projected_capabilities(
+            &pinned(),
+            Some(ObservedBuild {
+                reported_version: &later,
+                characterisation: Characterisation::NewerThanTested,
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            snapshot.protocol_version.as_str(),
+            format!("codex-app-server-observed-{major}.{}.0-alpha.1", minor + 1)
+        );
+        let mut same_features = snapshot.clone();
+        same_features.protocol_version = tested.protocol_version.clone();
+        assert_eq!(same_features, tested);
+        assert_eq!(models, tested_models);
+        assert!(snapshot.cancel && snapshot.resume_session && snapshot.native_session_fork);
     }
 
     #[test]

@@ -51,7 +51,7 @@ const PHASE_PRESENTATION: Record<
     tone: "active",
   },
   discovering: {
-    detail: "Finding runnable Preview targets for this Chat.",
+    detail: "Finding runnable preview targets for this chat.",
     label: "Discovering targets",
     tone: "starting",
   },

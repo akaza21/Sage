@@ -22,6 +22,16 @@ impl HarnessAdapter for CodexRuntime {
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         self.discard_invalid_model_page(frame)
     }
+    fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
+        self.inner.skills()
+    }
+    /// Reads the skills while idle, first and after Codex says they changed.
+    fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        let wanted = self.inner.skills_wanted();
+        wanted
+            .then(|| self.request(CodexAdapter::skills_list))
+            .transpose()
+    }
     fn model_config_hydration(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(self.request_model_config())
     }
@@ -31,12 +41,15 @@ impl HarnessAdapter for CodexRuntime {
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
         self.session_config.clone()
     }
+    fn config_hydrating(&self) -> bool {
+        self.catalogue_pending()
+    }
 
     fn configure(
         &mut self,
         intent: &crate::acp::session_config::ConfigIntent,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
-        self.configure_effort(intent).map(|()| None)
+        self.configure_thread(intent).map(|()| None)
     }
     fn provisional_turn_pending(&self) -> bool {
         self.inner.has_provisional_turn() || self.inner.has_action_handoff()
@@ -71,6 +84,8 @@ impl HarnessAdapter for CodexRuntime {
             || self.inner.child_read_pending()
             || self.inner.fork_rpc_pending()
             || self.inner.rate_limits_read_pending()
+            || self.inner.revert_pending()
+            || self.inner.mcp_pending()
     }
 
     fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
@@ -82,14 +97,26 @@ impl HarnessAdapter for CodexRuntime {
         self.request(CodexAdapter::rate_limits_read)
     }
 
+    /// A passive read whose caller gave up: a usage or MCP list read.
     fn abandon_usage_read(&mut self) {
         self.inner.abandon_rate_limits_read();
+        self.inner.abandon_mcp_read();
     }
 
-    /// A child read or a fork may answer with an oversize frame (both carry
-    /// native Turns), so either keeps the decoder in recoverable mode.
+    /// Each read whose reply may be past the frame bound keeps the decoder
+    /// in recoverable mode.
     fn child_read_pending(&self) -> bool {
-        self.inner.child_read_pending() || self.inner.fork_pending().is_some()
+        self.inner.oversize_recoverable()
+    }
+
+    fn answered_control(&mut self, control: &crate::acp::session_control::SessionControl) -> bool {
+        self.answered_undo(control)
+    }
+    fn session_control(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.control_request(control)
     }
 
     fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -115,18 +142,17 @@ impl HarnessAdapter for CodexRuntime {
     }
 
     fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
-        if self.inner.fork_pending() == Some(id) {
-            // The native fork happened, but its new thread id is beyond the
-            // frame bound; Sage creates no Chat for it.
-            self.inner.complete_fork(id).map_err(map_adapter)?;
-            self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::TooLarge);
+        if self.inner.skills_oversized(id) {
             return Ok(());
         }
-        if self
-            .inner
-            .oversized_child_response(id)
-            .map_err(map_adapter)?
-        {
+        let native = if self.inner.fork_pending() == Some(id) {
+            // The native fork happened, but its new thread id is beyond the
+            // frame bound; Sage creates no Chat for it.
+            self.inner.complete_fork(id).map(|_| true)
+        } else {
+            self.inner.oversized_child_response(id)
+        };
+        if native.map_err(map_adapter)? {
             self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::TooLarge);
         }
         Ok(())
@@ -216,16 +242,7 @@ impl HarnessAdapter for CodexRuntime {
                 client_message_id,
                 access_mode,
             } => {
-                let effort = self.selected_effort.clone();
-                let egress = self.request(|adapter, id| {
-                    adapter.prompt_with_effort(
-                        id,
-                        &prompt,
-                        &client_message_id,
-                        access_mode,
-                        effort.as_ref(),
-                    )
-                })?;
+                let egress = self.prompt_request(&prompt, &client_message_id, access_mode)?;
                 self.finish_model_config_hydration();
                 Ok(egress)
             }
@@ -319,31 +336,7 @@ impl HarnessAdapter for CodexRuntime {
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
         if let Some(request_id) = token.request_id() {
-            if resolution == EgressResolution::DeliveryUnknown {
-                match self.inner.pending_kind(request_id) {
-                    Some(RequestKind::GoalGet) => self.inner.goal_get_delivery_unknown(request_id),
-                    Some(RequestKind::GoalPause | RequestKind::GoalClear) => {
-                        self.inner.goal_mutation_delivery_unknown(request_id)
-                    }
-                    _ => {}
-                }
-            }
-            if matches!(
-                resolution,
-                EgressResolution::QueueRejected | EgressResolution::WriteZeroBytes
-            ) {
-                let clear = self
-                    .inner
-                    .pending_kind(request_id)
-                    .is_some_and(RequestKind::starts_turn);
-                self.inner
-                    .reject_before_write(request_id)
-                    .map_err(map_adapter)?;
-                if clear {
-                    self.snapshots.clear();
-                }
-            }
-            return Ok(());
+            return self.resolve_request_egress(request_id, resolution);
         }
         if token.is_notification() {
             return match resolution {
@@ -411,4 +404,5 @@ impl HarnessAdapter for CodexRuntime {
 
 mod browser_failure;
 mod command_method;
+mod request_egress;
 use command_method::command_method;

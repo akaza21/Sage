@@ -10,6 +10,22 @@ import {
 } from "./textFieldSuggestionNavigation";
 
 /**
+ * Contiguous rows of one section. Headings show only when the rows span
+ * more than one section.
+ */
+function sections(
+  items: readonly TextFieldSuggestion[],
+): { heading?: string; rows: readonly TextFieldSuggestion[] }[] {
+  const out: { heading?: string; rows: TextFieldSuggestion[] }[] = [];
+  for (const item of items) {
+    const last = out.at(-1);
+    if (last && last.heading === item.group) last.rows.push(item);
+    else out.push({ heading: item.group, rows: [item] });
+  }
+  return out[1] ? out : [{ rows: items }];
+}
+
+/**
  * A bounded listbox that opens beside a text field (for example the chat
  * composer's `/` commands, later its `@` mentions). The field keeps the
  * focus and points at the active row with aria-activedescendant; rows take
@@ -52,6 +68,35 @@ export function TextFieldSuggestions({
       .getElementById(activeOptionId)
       ?.scrollIntoView?.({ block: "nearest" });
   }, [activeOptionId, anchorRef]);
+  const option = (item: TextFieldSuggestion) => {
+    const active = item.id === activeId;
+    return (
+      <div
+        key={item.id}
+        id={suggestionOptionId(listboxId, item.id)}
+        role="option"
+        aria-selected={active}
+        aria-label={item.accessibleLabel}
+        className="text-field-suggestions__option menu-item"
+        data-active={active || undefined}
+        onMouseMove={() => !active && onActivate(item.id)}
+        onClick={() => onPick(item)}
+      >
+        <span className="text-field-suggestions__label">
+          {item.icon}
+          {item.label}
+          {item.hint ? (
+            <span className="text-field-suggestions__hint">{item.hint}</span>
+          ) : null}
+        </span>
+        {item.description ? (
+          <span className="text-field-suggestions__description">
+            {item.description}
+          </span>
+        ) : null}
+      </div>
+    );
+  };
   return (
     <MenuPopover
       ariaLabel={ariaLabel}
@@ -83,36 +128,17 @@ export function TextFieldSuggestions({
         // scrollbar is dragged.
         onMouseDown={(event) => event.preventDefault()}
       >
-        {rendered.map((item) => {
-          const active = item.id === activeId;
-          return (
-            <div
-              key={item.id}
-              id={suggestionOptionId(listboxId, item.id)}
-              role="option"
-              aria-selected={active}
-              aria-label={item.accessibleLabel}
-              className="text-field-suggestions__option menu-item"
-              data-active={active || undefined}
-              onMouseMove={() => !active && onActivate(item.id)}
-              onClick={() => onPick(item)}
-            >
-              <span className="text-field-suggestions__label">
-                {item.label}
-                {item.hint ? (
-                  <span className="text-field-suggestions__hint">
-                    {item.hint}
-                  </span>
-                ) : null}
-              </span>
-              {item.description ? (
-                <span className="text-field-suggestions__description">
-                  {item.description}
-                </span>
-              ) : null}
+        {sections(rendered).map(({ heading, rows }) =>
+          heading ? (
+            <div key={heading} role="group" aria-label={heading}>
+              {/* The group's name, shown; the label reads it out. */}
+              <div aria-hidden="true">{heading}</div>
+              {rows.map(option)}
             </div>
-          );
-        })}
+          ) : (
+            rows.map(option)
+          ),
+        )}
       </div>
       {items.length > rendered.length ? (
         <p className="text-field-suggestions__footer">

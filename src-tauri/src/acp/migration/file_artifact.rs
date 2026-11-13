@@ -93,6 +93,10 @@ fn file_fingerprint_with_cap(
         }
         hash.update(&buffer[..read]);
     }
+    #[cfg(test)]
+    if path.extension().is_some_and(|extension| extension == "db") {
+        super::test_failpoint::record_main_hash();
+    }
     Ok(FileFingerprint {
         present: true,
         bytes,

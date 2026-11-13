@@ -279,6 +279,10 @@ export function safeAcpMutationResponse(
       ...(sessionConfigNotice ? { sessionConfigNotice } : {}),
       ...(goal ? { goal } : {}),
       ...(projection.usage === true && { usage: true }),
+      // Decoded where it is shown, in the panel's lazy chunk.
+      ...(projection.sessionSurface != null && {
+        sessionSurface: projection.sessionSurface,
+      }),
       turns: safeTurns,
       nextCursor: nextCursor as AcpChatPage["nextCursor"],
       ...(forkedFrom

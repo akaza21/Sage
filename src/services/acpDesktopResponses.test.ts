@@ -529,6 +529,28 @@ describe("safeAcpMutationResponse", () => {
     ).toBeNull();
   });
 
+  it("admits a steered message and refuses one with extra or oversized fields", () => {
+    const steered = (payload: Record<string, unknown>, toolState = null) =>
+      safeAcpMutationResponse(
+        mutation({
+          turns: [
+            turn({
+              items: [item(0, { kind: "userPrompt", toolState, payload })],
+            }),
+          ],
+        }),
+      );
+    expect(
+      steered({ text: "Use main.rs instead." })?.projection.turns[0].items[0],
+    ).toMatchObject({
+      kind: "userPrompt",
+      payload: { text: "Use main.rs instead." },
+    });
+    expect(steered({ text: "Hi", role: "user" })).toBeNull();
+    expect(steered({ text: "x".repeat(262_145) })).toBeNull();
+    expect(steered({})).toBeNull();
+  });
+
   it("accepts a bounded compaction notice without tool state", () => {
     const response = safeAcpMutationResponse(
       mutation({

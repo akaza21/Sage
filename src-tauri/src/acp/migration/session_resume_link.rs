@@ -7,7 +7,12 @@ pub(super) const SQL: &str = include_str!("../../../migrations/024_session_resum
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentResumeLink | SchemaClass::CurrentImportedHistory => return Ok(()),
+        SchemaClass::CurrentResumeLink
+        | SchemaClass::CurrentTitleSource
+        | SchemaClass::CurrentSessionFactsTurnIndex
+        | SchemaClass::CurrentOperationTerminalIndex
+        | SchemaClass::CurrentTurnUndoIntentIndexes
+        | SchemaClass::CurrentImportedHistory => return Ok(()),
         SchemaClass::CurrentV23 => {}
         _ => return invalid("session resume links require exact schema v23"),
     }

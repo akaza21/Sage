@@ -166,6 +166,8 @@ pub(super) fn copy_bounded_create_new(source: &Path, target: &Path, cap: u64) ->
     }
     output.sync_all()?;
     drop(output);
+    #[cfg(test)]
+    super::test_failpoint::record_snapshot_copy(total);
     sync_parent(target)
 }
 

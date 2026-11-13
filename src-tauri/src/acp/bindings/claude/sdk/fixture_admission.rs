@@ -62,6 +62,7 @@ impl AdmittedClaudeSdkBinding {
         selection: &crate::launch_profile::FixtureSelection,
         epoch: u64,
         root: crate::project_registry::ProjectRootAuthority,
+        session: Vec<OsString>,
     ) -> Result<LaunchSpec, AdapterRuntimeError> {
         fn unavailable<E>(_: E) -> AdapterRuntimeError {
             AdapterRuntimeError::LaunchUnavailable
@@ -71,7 +72,10 @@ impl AdmittedClaudeSdkBinding {
         }
         root.revalidate().map_err(unavailable)?;
         selection.revalidate().map_err(unavailable)?;
-        let (binding_id, artifact, fixed_args) = selection.launch_metadata(self.binding_digest)?;
+        // The case reads the session flags as Claude Code would: it opens,
+        // resumes or forks that session's transcript in the fixture profile.
+        let (binding_id, artifact, fixed_args) =
+            selection.launch_metadata(self.binding_digest, session)?;
         let environment = BoundedEnvironment::new(
             [
                 ("USERPROFILE", &selection.profile_root),

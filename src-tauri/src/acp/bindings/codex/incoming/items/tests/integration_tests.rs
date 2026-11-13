@@ -187,8 +187,8 @@ fn command_actions_classify_reads_and_searches_without_the_raw_command() {
         assert_eq!(projected_label, label);
         assert_eq!(
             input.as_deref(),
-            Some("rg -n foo src"),
-            "the command stays in detail"
+            (category != ToolCategory::Read).then_some("rg -n foo src"),
+            "the command stays in detail; a read shows only its path"
         );
         assert_eq!(output.as_deref(), Some("src/a.ts:1:foo"));
     }

@@ -48,54 +48,57 @@ export function AgentArchivedSettings() {
         Restore archived chats to their project without deleting conversation
         history.
       </p>
-      <label>
-        Project{" "}
-        <select
-          className="input"
-          aria-label="Archived chats project"
-          value={projectId ?? ""}
-          disabled={pending || transitioning}
-          onChange={(event) => {
-            setChosenProject(event.target.value);
-            setOffset(0);
-            setMessage(null);
-            setError(null);
-          }}
-        >
-          {project ? (
-            <option value={project.id}>{project.name}</option>
-          ) : (
-            <option value="">No project</option>
-          )}
-          {projects
-            .slice(0, 200)
-            .filter((item) => item.id !== project?.id)
-            .map((item) => (
-              <option value={item.id} key={item.id}>
-                {item.name}
-              </option>
-            ))}
-        </select>
-      </label>
       <div className="agent-settings__card">
-        {chats.slice(start, start + 50).map((chat) => (
-          <SettingsRow
-            key={chat.id}
-            title={chat.title}
-            description="Archived chat"
+        <SettingsRow title="Project">
+          <select
+            className="select"
+            aria-label="Archived chats project"
+            value={projectId ?? ""}
+            disabled={pending || transitioning}
+            onChange={(event) => {
+              setChosenProject(event.target.value);
+              setOffset(0);
+              setMessage(null);
+              setError(null);
+            }}
           >
-            <button
-              className="button button--compact"
-              type="button"
-              aria-label={`Unarchive ${chat.title}`}
-              disabled={pending || transitioning || !project}
-              onClick={() => void unarchive(chat.id)}
-            >
-              Unarchive
-            </button>
-          </SettingsRow>
-        ))}
+            {project ? (
+              <option value={project.id}>{project.name}</option>
+            ) : (
+              <option value="">No project</option>
+            )}
+            {projects
+              .slice(0, 200)
+              .filter((item) => item.id !== project?.id)
+              .map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.name}
+                </option>
+              ))}
+          </select>
+        </SettingsRow>
       </div>
+      {chats.length ? (
+        <div className="agent-settings__card">
+          {chats.slice(start, start + 50).map((chat) => (
+            <SettingsRow
+              key={chat.id}
+              title={chat.title}
+              description="Archived chat"
+            >
+              <button
+                className="button button--compact"
+                type="button"
+                aria-label={`Unarchive ${chat.title}`}
+                disabled={pending || transitioning || !project}
+                onClick={() => void unarchive(chat.id)}
+              >
+                Unarchive
+              </button>
+            </SettingsRow>
+          ))}
+        </div>
+      ) : null}
       {!chats.length ? (
         <p role="status">No archived chats in this project.</p>
       ) : null}

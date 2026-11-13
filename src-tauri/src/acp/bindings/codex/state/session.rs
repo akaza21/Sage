@@ -47,6 +47,7 @@ impl CodexAdapter {
         self.require_method(|methods| methods.snapshot.new_session)?;
         let request = self.reserve(OutgoingRequest::start(id, root, model)?)?;
         self.native_root = Some(root.clone());
+        self.skills_root(root.as_str());
         Ok(request)
     }
 
@@ -65,6 +66,7 @@ impl CodexAdapter {
             model,
         )?)?;
         self.native_root = Some(root.clone());
+        self.skills_root(root.as_str());
         Ok(request)
     }
 
@@ -96,7 +98,9 @@ impl CodexAdapter {
             .active_turn_id
             .clone()
             .ok_or(AdapterError::TurnUnavailable)?;
-        self.reserve(OutgoingRequest::interrupt(id, &thread, &turn)?)
+        let request = self.reserve(OutgoingRequest::interrupt(id, &thread, &turn)?)?;
+        self.active_turn_user_stop = true;
+        Ok(request)
     }
 
     pub(crate) fn close(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {

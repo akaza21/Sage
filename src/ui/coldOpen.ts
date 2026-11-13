@@ -1,11 +1,11 @@
 import {
   useCallback,
-  useEffect,
   useLayoutEffect,
   useRef,
   type KeyboardEvent,
   type RefObject,
 } from "react";
+import { useDismissLayer } from "./dismissLayer";
 import type { MenuDismissReason } from "./MenuPopover";
 
 /** One typed character, not a shortcut, a dead key or a named key. */
@@ -50,19 +50,10 @@ export function useColdOpen({
     return from !== null && from.ownerDocument.activeElement !== from;
   }, []);
 
-  useEffect(() => {
-    if (!cold) return;
-    const trigger = triggerRef.current;
-    if (!trigger) return;
-    const dismissOutside = (event: PointerEvent) => {
-      if (event.target instanceof Node && trigger.contains(event.target))
-        return;
-      dismiss("outside");
-    };
-    const owner = trigger.ownerDocument;
-    owner.addEventListener("pointerdown", dismissOutside, true);
-    return () => owner.removeEventListener("pointerdown", dismissOutside, true);
-  }, [cold, dismiss, triggerRef]);
+  useDismissLayer(cold, {
+    inside: [triggerRef],
+    onOutside: () => dismiss("outside"),
+  });
 
   /** Returns true when it handled the key for the body that is not there. */
   const onKeyDown = (event: KeyboardEvent): boolean => {

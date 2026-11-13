@@ -5,20 +5,33 @@ use crate::acp::{
     scheduler::RuntimeOwner,
 };
 use serde::Serialize;
-use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
-pub(crate) const MAX_COMMANDS: usize = 128;
-pub(crate) const MAX_COMMAND_BYTES: usize = 128 * 1024;
+/// Room for a harness with many skills, plugins and MCP prompts; the byte
+/// cap bounds the list's memory whatever the count.
+pub(crate) const MAX_COMMANDS: usize = 512;
+pub(crate) const MAX_COMMAND_BYTES: usize = 256 * 1024;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct AvailableCommand {
-    pub(crate) name: String,
-    pub(crate) description: String,
-    pub(crate) input_hint: Option<String>,
-    #[serde(skip)]
-    pub(crate) extension: bool,
+mod entry;
+pub(crate) use entry::*;
+
+/// Admits a whole list: bounded in count and bytes, names unique.
+fn admit(commands: Vec<AvailableCommand>) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
+    if commands.len() > MAX_COMMANDS {
+        return Err(AdapterRuntimeError::BatchCount);
+    }
+    let mut bytes = 0;
+    let mut names = std::collections::HashSet::with_capacity(commands.len());
+    for command in &commands {
+        if !names.insert(command.name.as_str()) {
+            return Err(AdapterRuntimeError::Frame);
+        }
+        bytes += command.listed_bytes();
+        if bytes > MAX_COMMAND_BYTES {
+            return Err(AdapterRuntimeError::BatchBytes);
+        }
+    }
+    Ok(commands)
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
@@ -28,74 +41,34 @@ pub(crate) struct CommandList {
 }
 
 impl CommandList {
-    pub(crate) fn replace(&mut self, value: &Value, pi: bool) -> Result<(), AdapterRuntimeError> {
-        // An invalid replacement must never leave stale command authority usable.
+    /// Takes a binding's newly parsed list. A failed parse still counts as a
+    /// new revision and leaves the list empty, so stale command authority is
+    /// never usable.
+    pub(crate) fn replace(
+        &mut self,
+        parsed: Result<Vec<AvailableCommand>, AdapterRuntimeError>,
+    ) -> Result<(), AdapterRuntimeError> {
         self.commands = Vec::new();
         self.revision = self
             .revision
             .checked_add(1)
             .filter(|revision| *revision <= 9_007_199_254_740_991)
             .ok_or(AdapterRuntimeError::Operation)?;
-        self.commands = parse(value, pi)?;
+        self.commands = admit(parsed?)?;
         Ok(())
+    }
+    /// The listed command a `/name …` prompt runs at this revision.
+    pub(crate) fn find(&self, revision: u64, text: &str) -> Option<&AvailableCommand> {
+        let name = text.strip_prefix('/')?.split_whitespace().next()?;
+        (revision == self.revision)
+            .then(|| self.commands.iter().find(|c| c.name == name))
+            .flatten()
     }
     pub(crate) fn validate(&self, revision: u64, text: &str) -> Result<(), AdapterRuntimeError> {
-        let name = text
-            .strip_prefix('/')
-            .and_then(|s| s.split_whitespace().next())
-            .ok_or(AdapterRuntimeError::Operation)?;
-        if revision != self.revision || !self.commands.iter().any(|c| c.name == name) {
-            return Err(AdapterRuntimeError::UnsupportedCommand);
-        }
-        Ok(())
+        self.find(revision, text)
+            .map(|_| ())
+            .ok_or(AdapterRuntimeError::UnsupportedCommand)
     }
-}
-
-fn text(value: &Value, cap: usize) -> Result<String, AdapterRuntimeError> {
-    let s = value.as_str().ok_or(AdapterRuntimeError::Frame)?;
-    if s.len() > cap || s.contains('\0') {
-        return Err(AdapterRuntimeError::BatchBytes);
-    }
-    Ok(s.to_owned())
-}
-fn parse(value: &Value, pi: bool) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
-    let values = value
-        .as_array()
-        .filter(|v| v.len() <= MAX_COMMANDS)
-        .ok_or(AdapterRuntimeError::BatchCount)?;
-    let mut commands: Vec<AvailableCommand> = Vec::with_capacity(values.len());
-    let mut bytes = 0;
-    for value in values {
-        let name = text(&value["name"], 128)?;
-        if name.is_empty()
-            || name
-                .chars()
-                .any(|c| c.is_whitespace() || c.is_control() || c == '/')
-            || commands.iter().any(|c| c.name == name)
-        {
-            return Err(AdapterRuntimeError::Frame);
-        }
-        let description = if pi && value.get("description").is_none() {
-            String::new()
-        } else {
-            text(&value["description"], 1024)?
-        };
-        let input_hint = match value.get("input").filter(|v| !v.is_null()) {
-            Some(input) => Some(text(&input["hint"], 256)?),
-            None => None,
-        };
-        bytes += name.len() + description.len() + input_hint.as_ref().map_or(0, String::len);
-        if bytes > MAX_COMMAND_BYTES {
-            return Err(AdapterRuntimeError::BatchBytes);
-        }
-        commands.push(AvailableCommand {
-            name,
-            description,
-            input_hint,
-            extension: pi && value["source"] == "extension",
-        });
-    }
-    Ok(commands)
 }
 
 /// Shared with the runtime lane so process/project teardown revokes and frees
@@ -111,13 +84,32 @@ impl CommandState {
         static EMPTY: std::sync::OnceLock<Arc<CommandState>> = std::sync::OnceLock::new();
         Arc::clone(EMPTY.get_or_init(|| Arc::new(CommandState(Mutex::new(None)))))
     }
-    pub(crate) fn replace(&self, value: &Value, pi: bool) -> Result<(), AdapterRuntimeError> {
+    pub(crate) fn replace(
+        &self,
+        parsed: Result<Vec<AvailableCommand>, AdapterRuntimeError>,
+    ) -> Result<(), AdapterRuntimeError> {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_mut()
             .ok_or(AdapterRuntimeError::Operation)?
-            .replace(value, pi)
+            .replace(parsed)
+    }
+    /// Takes a binding's new list unless it equals the shown one, so an
+    /// unchanged list keeps its revision and a pick made from it still runs.
+    pub(crate) fn replace_if_changed(
+        &self,
+        commands: Vec<AvailableCommand>,
+    ) -> Result<(), AdapterRuntimeError> {
+        let mut list = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let list = list.as_mut().ok_or(AdapterRuntimeError::Operation)?;
+        if list.commands == commands {
+            return Ok(());
+        }
+        list.replace(Ok(commands))
     }
     pub(crate) fn snapshot(&self) -> CommandList {
         self.0
@@ -140,6 +132,22 @@ impl CommandState {
             .as_ref()
             .ok_or(AdapterRuntimeError::Operation)?
             .validate(revision, text)
+    }
+    /// The source of the listed command a `/name …` prompt runs at this
+    /// revision, which the Turn keeps beside its prompt.
+    pub(crate) fn command(
+        &self,
+        revision: u64,
+        text: &str,
+    ) -> Result<AvailableCommand, AdapterRuntimeError> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .ok_or(AdapterRuntimeError::Operation)?
+            .find(revision, text)
+            .cloned()
+            .ok_or(AdapterRuntimeError::UnsupportedCommand)
     }
     fn close(&self) {
         self.0

@@ -1,20 +1,16 @@
 use super::*;
 use crate::acp::attached_context::effective_prompt;
 
-// The over-budget message names the budget as static text.
-const _: () = assert!(
-    crate::acp::attached_context::files::DISPATCH_BYTES == 120 * 1024,
-    "update the dispatch budget in the prompt-too-large message"
-);
-
 mod lifecycle;
 mod prompt_images;
+mod staged;
+mod undone_relaunch;
 pub(crate) use lifecycle::{close_acp_session_inner, end_acp_session_inner};
 use prompt_images::image_input_block;
 
 pub(crate) async fn send_acp_turn_inner(
     state: &AppState,
-    request: SendAcpTurnRequest,
+    mut request: SendAcpTurnRequest,
 ) -> Result<AcpMutationResponse, SendAcpTurnFailure> {
     let (project_id, generation, chat_id) = send_owner(&request);
     let (transition, snapshot) =
@@ -26,22 +22,6 @@ pub(crate) async fn send_acp_turn_inner(
     validate_send(state, &request, &snapshot).map_err(prompt_not_dispatched)?;
     // A batch staged in a tab that has since closed must never be sent.
     crate::acp::attached_context::files::release_detached(&state.acp.file_stages, &state.database);
-    if matches!(request, SendAcpTurnRequest::NewSession { .. })
-        && !state
-            .acp
-            .file_stages
-            .lock()
-            .map_err(|_| prompt_not_dispatched(internal_error()))?
-            .get(project_id.as_str(), chat_id.as_str())
-            .0
-            .is_empty()
-    {
-        return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
-            message: safe_message(
-                "Start a harness session before sending staged file attachments.",
-            ),
-        }));
-    }
     match &request {
         SendAcpTurnRequest::Session {
             attached_context, ..
@@ -55,6 +35,8 @@ pub(crate) async fn send_acp_turn_inner(
     if let SendAcpTurnRequest::Session {
         session_id,
         attached_context,
+        staged,
+        prompt,
         ..
     } = &request
     {
@@ -63,22 +45,16 @@ pub(crate) async fn send_acp_turn_inner(
             .map_err(prompt_not_dispatched)?;
         if state.acp.accepts_characterization(&binding_id) {
             image_input_block(attached_context).map_err(prompt_not_dispatched)?;
-            if !state
-                .acp
-                .file_stages
-                .lock()
-                .map_err(|_| prompt_not_dispatched(internal_error()))?
-                .get(project_id.as_str(), chat_id.as_str())
-                .0
-                .is_empty()
-            {
-                return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
-                    message: safe_message("This harness cannot accept staged file attachments."),
-                }));
-            }
+            let selection = staged::resolve(state, project_id, chat_id, staged.clone(), prompt)
+                .map_err(prompt_not_dispatched)?;
+            staged::characterization_carries_none(state, project_id, chat_id, &selection)
+                .map_err(prompt_not_dispatched)?;
             return characterization::send(state, request);
         }
     }
+    undone_relaunch::relaunch_undone(state, &transition, &mut request)
+        .await
+        .map_err(prompt_not_dispatched)?;
     let (
         project_id,
         project_generation,
@@ -89,6 +65,7 @@ pub(crate) async fn send_acp_turn_inner(
         runtime_epoch,
         prompt,
         attached_context,
+        staged,
     ) = match request {
         SendAcpTurnRequest::NewSession {
             project_id,
@@ -144,6 +121,7 @@ pub(crate) async fn send_acp_turn_inner(
             runtime_epoch,
             prompt,
             attached_context,
+            staged,
         } => (
             project_id,
             project_generation,
@@ -154,10 +132,15 @@ pub(crate) async fn send_acp_turn_inner(
             runtime_epoch,
             prompt,
             attached_context,
+            staged,
         ),
     };
+    // Only the person's own text names files, never attached context.
+    let mentioned = mentions::tokens(&prompt);
     let binding_id = session_routes::durable_binding_id(state, &session_id)
         .map_err(store_error)
+        .map_err(prompt_not_dispatched)?;
+    let staged = staged::resolve(state, &project_id, &chat_id, staged, &prompt)
         .map_err(prompt_not_dispatched)?;
     let mut prompt = effective_prompt(&prompt, &attached_context)
         .map_err(|_| AcpIpcError::InvalidRequest {
@@ -179,7 +162,12 @@ pub(crate) async fn send_acp_turn_inner(
         .file_stages
         .lock()
         .map_err(|_| prompt_not_dispatched(internal_error()))?
-        .for_prompt(project_id.as_str(), chat_id.as_str(), &prompt);
+        .selected(project_id.as_str(), chat_id.as_str(), &staged)
+        .map_err(|message| {
+            prompt_not_dispatched(AcpIpcError::InvalidRequest {
+                message: safe_message(message),
+            })
+        })?;
     if !files.0.is_empty() || prompt.action.is_some() {
         let capabilities =
             session_routes::session_capabilities(state, &project_id, &chat_id, &session_id)
@@ -200,6 +188,19 @@ pub(crate) async fn send_acp_turn_inner(
     }
     super::turn_workspace::mark_before_prompt(state, transition, &client_intent_id, &session_id)
         .await;
+    // Mentioned files are read after the transition guard is released, so a
+    // slow disk cannot hold it; authority is reacquired below before dispatch.
+    let budget = prompt.mention_budget(&files);
+    let owner = (&binding_id, &session_id);
+    let mentioned =
+        mentions::resolve_mentions(state, &project_id, &chat_id, owner, mentioned, budget).await;
+    prompt.mentions = match mentioned {
+        Ok(mentioned) => mentioned,
+        Err(failure) => {
+            super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
+            return Err(failure);
+        }
+    };
     let _transition = super::turn_workspace::relock_after_capture(
         state,
         &project_id,
@@ -214,21 +215,18 @@ pub(crate) async fn send_acp_turn_inner(
         .file_stages
         .lock()
         .map_err(|_| prompt_not_dispatched(internal_error()))?
-        .for_prompt(project_id.as_str(), chat_id.as_str(), &prompt);
-    if !files.same_selection(&current_files) {
+        .selected(project_id.as_str(), chat_id.as_str(), &staged);
+    if !current_files.is_ok_and(|current| files.same_selection(&current)) {
         super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
         return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
             message: safe_message("Attachments changed while preparing the prompt; send again."),
         }));
     }
-    if !files.0.is_empty()
-        && prompt.retained_bytes() - prompt.images.retained_bytes() + files.retained_bytes()
-            > crate::acp::attached_context::files::DISPATCH_BYTES
-    {
+    if !files.0.is_empty() && !prompt.fits_dispatch(&files) {
         super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
         return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
             message: safe_message(
-                "Prompt text and file attachments exceed the 120 KiB native dispatch budget. Shorten the prompt or remove attachments.",
+                crate::acp::attached_context::files::limits::DISPATCH_OVER.as_str(),
             ),
         }));
     }
@@ -246,6 +244,18 @@ pub(crate) async fn send_acp_turn_inner(
             prompt_not_dispatched(error)
         })?;
     prompt.resources = files.clone();
+    if binding_id.as_str() == crate::acp::bindings::codex::CODEX_BINDING_ID
+        && !prompt
+            .images
+            .echo_fits(&prompt.resources.inline(prompt.as_str()))
+    {
+        super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
+        return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
+            message: safe_message(
+                "These images and this text are too large to send together. Remove an image or some attached text.",
+            ),
+        }));
+    }
     let tracked_session = session_id.clone();
     let tracked_intent = client_intent_id.clone();
     let dispatch = state
@@ -275,12 +285,7 @@ pub(crate) async fn send_acp_turn_inner(
         Ok(_) => true,
         Err(failure) => failure.prompt_dispatch != PromptDispatch::NotStarted,
     } {
-        state
-            .acp
-            .file_stages
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .consume(project_id.as_str(), chat_id.as_str(), &files);
+        staged::record_sent(state, &project_id, &chat_id, &tracked_intent, &files);
         prompt_images::retire(state, &project_id, &chat_id, &sent_images);
     }
     if dispatch.is_err() {
@@ -357,6 +362,7 @@ pub(crate) async fn steer_acp_turn_inner(
     .await?;
     validate_steer_intent(&request, &snapshot).map_err(intent_error)?;
     image_input_block(&request.attached_context)?;
+    // Steer sends no `@` mentions; `session_operations/mentions.rs` says why.
     let binding_id =
         session_routes::durable_binding_id(state, &request.session_id).map_err(store_error)?;
     let prompt = effective_prompt(&request.prompt, &request.attached_context).map_err(|_| {
@@ -392,3 +398,5 @@ pub(crate) async fn steer_acp_turn_inner(
         .map_err(dispatch_error)?;
     mutation_response(state, project_id, chat_id)
 }
+
+mod mentions;

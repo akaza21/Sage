@@ -80,6 +80,17 @@ still outstanding.
 - ACP Rust SDK v1 behind an isolated Cargo feature
 - Vitest and Rust unit tests
 
+## Install on macOS
+
+1. Open a successful [Desktop packages workflow run](https://github.com/akaza21/Sage/actions/workflows/desktop-packages.yml) on `main`.
+2. Download the `Sage-macOS-universal-<commit>` artifact under **Artifacts** and unzip it. It supports Apple Silicon and Intel Macs on macOS 11 or later.
+3. Open the DMG, drag **Sage** into **Applications**, then eject the disk image.
+4. Open Sage from **Applications**. This personal build uses an ad hoc signature. If macOS blocks it and you trust the build, open **System Settings → Privacy & Security** and use **Open Anyway** for Sage. The artifact includes its commit and SHA-256 checksum.
+
+Sage runs the Claude Code CLI installed on your Mac. Use the native installer from the [Claude Code setup guide](https://code.claude.com/docs/en/setup), then run `claude auth login` in Terminal if sign-in is needed. Reopen Sage and select **Claude Code** in the Agent composer. The SDK binding requires a supported 2.x version from 2.1.300 onward.
+
+To build a fresh installer on GitHub, select **Run workflow → main** in **Desktop packages**. The run also produces a Windows installer for the same commit.
+
 ## Prerequisites
 
 - Node.js 22.12 or newer

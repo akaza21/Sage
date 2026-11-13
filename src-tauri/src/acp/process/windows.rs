@@ -87,14 +87,13 @@ pub(crate) fn launch(
             .map_err(|_| LaunchError::IdentityMismatch)
     );
     let job = pre_spawn!(JobBoundary::create(spec.limits.active_processes));
-    let (application_path, mut command_line, cwd_path) = match spec.artifact.entrypoint_kind {
+    let (application_path, mut command_line) = match spec.artifact.entrypoint_kind {
         EntryPointKind::NativeExecutable => (
             artifact.canonical_path.clone(),
             pre_spawn!(command_line(
                 &artifact.canonical_path,
                 spec.fixed_args.as_slice()
             )),
-            spec.project_root.as_path().as_os_str().to_owned(),
         ),
         EntryPointKind::WindowsBatchLauncher => {
             let plan = pre_spawn!(parse_npm_codex_launcher(
@@ -105,13 +104,16 @@ pub(crate) fn launch(
             (
                 plan.node.clone(),
                 pre_spawn!(command_line(&plan.node, &plan.args)),
-                spec.project_root.as_path().as_os_str().to_owned(),
             )
         }
     };
     let environment = pre_spawn!(environment_block(spec.environment.as_slice()));
     let application = pre_spawn!(wide_z(application_path.as_os_str()));
-    let cwd = pre_spawn!(wide_z(&cwd_path));
+    // Harnesses derive state from their working directory (Pi names its
+    // session folder after it), so they must see the root's ordinary spelling
+    // rather than the verbatim canonical one.
+    let cwd_path = crate::win32_path::simplified(spec.project_root.as_path());
+    let cwd = pre_spawn!(wide_z(cwd_path.as_os_str()));
     // Batch launchers remain writable because npm may update them concurrently.
     // Ensure the exact discovered launcher has not drifted after parsing it and
     // before node receives the derived Codex script path.

@@ -71,9 +71,16 @@ impl Database {
             "Open a session in its own active Project",
         )?;
         let title = import_title(title);
+        // The title is the session's own name or preview as the harness
+        // listed it, so a name the harness reports later may replace it.
         transaction.execute(
-            "UPDATE chats SET title=?3,title_is_default=0 WHERE project_id=?1 AND id=?2",
-            rusqlite::params![current_layout.project_id, chat_id, title],
+            "UPDATE chats SET title=?3,title_source=?4 WHERE project_id=?1 AND id=?2",
+            rusqlite::params![
+                current_layout.project_id,
+                chat_id,
+                title,
+                crate::chat_lifecycle::ChatTitleSource::Harness.as_str()
+            ],
         )?;
         transaction.execute(
             "UPDATE workbench_tabs SET title=?3 WHERE project_id=?1 AND id=?2",

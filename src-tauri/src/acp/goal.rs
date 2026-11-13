@@ -37,6 +37,8 @@ pub(crate) enum NativeRpcRequest {
     },
     /// Refreshes the runtime's usage-limit snapshot from the harness.
     UsageRead,
+    /// Acts on the running session without starting a turn.
+    Control(crate::acp::session_control::SessionControl),
 }
 
 /// A paged native read. Each RPC reads one page; the caller follows the
@@ -99,13 +101,35 @@ pub(crate) enum NativeRpcReply {
     Released,
     /// The harness answered a usage read; the snapshot is in the usage cell.
     UsageRead,
+    /// The harness carried out a session control; the text says what it did.
+    Controlled(Option<crate::acp::contract::SafeText<512>>),
+    /// The harness declined a session control, with its reason if it gave one.
+    ControlRefused(Option<crate::acp::contract::SafeText<512>>),
+    /// The session's MCP servers as the harness listed them.
+    McpServers(crate::acp::mcp::inventory::McpInventory),
+    /// Where the user signs in to the MCP server named in the request.
+    McpSignIn(crate::acp::mcp::inventory::McpAuthUrl),
 }
 
 impl NativeRpcIntent {
-    /// A read nothing waits on beyond its caller: it gets a short deadline,
-    /// and missing it abandons the read instead of recovering the runtime.
+    /// A request nothing waits on beyond its caller: missing its deadline
+    /// abandons it instead of recovering the runtime.
     pub(crate) fn passive(&self) -> bool {
-        matches!(self.request, NativeRpcRequest::UsageRead)
+        match &self.request {
+            NativeRpcRequest::UsageRead => true,
+            NativeRpcRequest::Control(control) => control.abandons_at_deadline(),
+            _ => false,
+        }
+    }
+
+    /// A passive request the harness answers at once, so it gets the short
+    /// deadline rather than the ordinary one.
+    pub(crate) fn answers_at_once(&self) -> bool {
+        match &self.request {
+            NativeRpcRequest::UsageRead => true,
+            NativeRpcRequest::Control(control) => control.answers_at_once(),
+            _ => false,
+        }
     }
 
     pub(crate) fn actual_bytes(&self) -> usize {
@@ -118,6 +142,7 @@ impl NativeRpcIntent {
                 NativeRpcRequest::Read(read) => read.bytes() + 1,
                 NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,
                 NativeRpcRequest::ReleaseFork { fork, .. } => fork.as_str().len() + 1,
+                NativeRpcRequest::Control(control) => control.actual_bytes() + 1,
             }
     }
 }

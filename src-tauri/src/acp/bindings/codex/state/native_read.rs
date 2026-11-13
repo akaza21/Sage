@@ -17,6 +17,15 @@ impl CodexAdapter {
         self.pending_read.is_some()
     }
 
+    /// A native read or a fork carries native Turns, and a skills read a
+    /// whole catalogue; each may be answered past the frame bound.
+    pub(crate) fn oversize_recoverable(&self) -> bool {
+        self.child_read_pending()
+            || self.fork_pending().is_some()
+            || self.skills_read_pending()
+            || self.mcp_list_awaited()
+    }
+
     pub(crate) fn read_scope(&self) -> Option<(u64, &NativeRead)> {
         self.pending_read.as_ref().map(|(id, read)| (*id, read))
     }
@@ -105,7 +114,13 @@ impl CodexAdapter {
         Ok(())
     }
 
+    /// A native read's answer past the frame bound: `true` when the read
+    /// that awaited it is over, too large to show (a child transcript, an
+    /// imported session's Turns or an MCP server list).
     pub(crate) fn oversized_child_response(&mut self, id: u64) -> Result<bool, AdapterError> {
+        if self.mcp_list_oversized(id) {
+            return Ok(true);
+        }
         if self.read_scope().map(|(pending, _)| pending) == Some(id) {
             self.complete_native_read(id)?;
             return Ok(true);
