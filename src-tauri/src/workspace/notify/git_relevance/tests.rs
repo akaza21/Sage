@@ -239,13 +239,39 @@ fn tracked_edit_then_new_root_file_both_refresh_after_separate_windows() {
 }
 
 #[test]
-fn ignored_paths_over_the_batch_cap_refresh_git_even_when_they_fold_to_one_notice() {
+fn ignored_untracked_output_over_the_batch_cap_does_not_refresh_git() {
     let repo = Repository::new();
     let mut refresh = repo.refresh();
     let mut relevance = NoticeRelevance::new(&repo.0);
     let paths: Vec<_> = (0..=MAX_GIT_PATHS)
         .map(|i| format!("dist/output-{i}"))
         .collect();
+    for path in &paths {
+        repo.write(path, "build output");
+    }
+    let input: Vec<_> = paths.iter().map(|path| (path.as_str(), 3)).collect();
+    let sent = window(&mut refresh, &mut relevance, &input);
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].kind, "ignored");
+    assert!(!relevant(&sent));
+}
+
+#[test]
+fn a_tracked_edit_after_an_ignored_output_burst_still_refreshes_git() {
+    let repo = Repository::new();
+    repo.write("dist/tracked.txt", "base");
+    repo.git(&["add", "-f", "--", "dist/tracked.txt"]);
+    let mut refresh = repo.refresh();
+    let mut relevance = NoticeRelevance::new(&repo.0);
+    let mut paths: Vec<_> = (0..=MAX_GIT_PATHS)
+        .map(|i| format!("dist/output-{i}"))
+        .collect();
+    for path in &paths {
+        repo.write(path, "build output");
+    }
+    // The edit arrives after the original paths no longer fit in the window.
+    repo.write("dist/tracked.txt", "edited");
+    paths.push("dist/tracked.txt".into());
     let input: Vec<_> = paths.iter().map(|path| (path.as_str(), 3)).collect();
     let sent = window(&mut refresh, &mut relevance, &input);
     assert_eq!(sent.len(), 1);

@@ -1,5 +1,6 @@
 //! Git alone decides whether a window can skip its Git refresh. Keep original
-//! paths independently of Explorer's folded notices, with fixed count/byte caps.
+//! paths independently of Explorer's folded notices, compacting ignored groups
+//! to directory questions when the fixed count/byte caps would be exceeded.
 use std::{
     collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
@@ -16,15 +17,38 @@ pub(super) const MAX_GIT_PATHS: usize = super::batch::MAX_BATCH_NOTICES;
 const MAX_GIT_PATH_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Default)]
-pub(super) struct GitWindow {
+struct GitGroup {
     paths: BTreeMap<String, bool>,
+    collapsed: bool,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct GitWindow {
+    // Empty key: ordinary paths. Other keys: ignored ancestor operands with
+    // trailing slashes. These are hints only; Git must confirm every operand.
+    groups: BTreeMap<String, GitGroup>,
+    paths: usize,
     bytes: usize,
     overflow: bool,
 }
 
 impl GitWindow {
-    pub(super) fn push(&mut self, path: &str, directory: bool, moved: bool) {
+    pub(super) fn push(
+        &mut self,
+        path: &str,
+        directory: bool,
+        moved: bool,
+        ignored_folder: Option<&str>,
+    ) {
         if self.overflow {
+            return;
+        }
+        let folder = ignored_folder.map_or_else(String::new, |folder| format!("{folder}/"));
+        if self
+            .groups
+            .get(&folder)
+            .is_some_and(|group| group.collapsed)
+        {
             return;
         }
         // Preserve directory-only rules for extant directories.
@@ -33,33 +57,76 @@ impl GitWindow {
         } else {
             path.to_owned()
         };
-        if let Some(previous) = self.paths.get_mut(&operand) {
+        let group = self.groups.entry(folder.clone()).or_insert_with(|| {
+            self.bytes += folder.len();
+            GitGroup::default()
+        });
+        if let Some(previous) = group.paths.get_mut(&operand) {
             *previous |= moved;
             return;
         }
-        if self.paths.len() >= MAX_GIT_PATHS || self.bytes + operand.len() + 1 > MAX_GIT_PATH_BYTES
-        {
-            self.overflow = true;
-            self.paths.clear();
-            return;
-        }
+        self.paths += 1;
         self.bytes += operand.len() + 1;
-        self.paths.insert(operand, moved);
+        group.paths.insert(operand, moved);
+        if self.over_budget() {
+            // Bound the question, not the number of writes in an ignored
+            // subtree. No original path is discarded without requiring Git
+            // to prove the whole ancestor ignored and free of tracked files.
+            self.compact();
+            if self.over_budget() {
+                self.overflow = true;
+                self.groups.clear();
+            }
+        }
+    }
+
+    fn over_budget(&self) -> bool {
+        self.paths > MAX_GIT_PATHS || self.bytes > MAX_GIT_PATH_BYTES
+    }
+
+    fn compact(&mut self) {
+        self.paths = 0;
+        self.bytes = 0;
+        for (folder, group) in &mut self.groups {
+            if !folder.is_empty() {
+                group.paths.clear();
+                group.collapsed = true;
+                self.paths += 1;
+                self.bytes += folder.len() + 1;
+            } else {
+                self.paths += group.paths.len();
+                self.bytes += group.paths.keys().map(|path| path.len() + 1).sum::<usize>();
+            }
+        }
     }
 
     async fn irrelevant(&self, root: &Path, cancelled: Arc<AtomicBool>) -> Result<bool, AppError> {
-        if self.overflow || self.paths.is_empty() {
+        if self.overflow || self.paths == 0 {
             return Ok(false);
         }
-        let input: Vec<u8> = self
-            .paths
+        let mut paths = BTreeMap::new();
+        for (folder, group) in &self.groups {
+            if group.collapsed {
+                // `moved` asks the tracked lookup about all descendants, even
+                // when this window contains only file edits inside the folder.
+                paths.insert(folder.clone(), true);
+            } else {
+                for (path, moved) in &group.paths {
+                    paths
+                        .entry(path.clone())
+                        .and_modify(|previous| *previous |= *moved)
+                        .or_insert(*moved);
+                }
+            }
+        }
+        let input: Vec<u8> = paths
             .keys()
             .flat_map(|path| path.bytes().chain(std::iter::once(0)))
             .collect();
         let output = git_process::run_cancellable(
             root,
             &["check-ignore", "--stdin", "-z", "--no-index"],
-            self.bytes,
+            input.len(),
             Some(input.clone()),
             Arc::clone(&cancelled),
         )
@@ -69,7 +136,7 @@ impl GitWindow {
         if !output.status.success() || output.stdout_truncated || output.stdout != input {
             return Ok(false);
         }
-        tracked::all_untracked(root, &self.paths, cancelled).await
+        tracked::all_untracked(root, &paths, cancelled).await
     }
 }
 

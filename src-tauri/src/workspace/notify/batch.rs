@@ -84,7 +84,12 @@ impl NoticeBatch {
         self.git_windows
             .entry(notice.root_id.clone())
             .or_default()
-            .push(original, directory, moved);
+            .push(
+                original,
+                directory,
+                moved,
+                (notice.kind == IGNORED_KIND).then_some(notice.relative_path.as_str()),
+            );
         self.push(notice);
     }
 
