@@ -205,6 +205,52 @@ fn an_elicitation_outside_a_running_turn_is_cancelled() {
 }
 
 #[test]
+fn an_elicitation_before_the_thread_is_bound_is_cancelled_without_ending_the_session() {
+    let mut adapter = adapter();
+    assert!(adapter.bound_thread_id().is_none());
+    assert_eq!(
+        immediate(&mut adapter, &fixture(FORM_FIXTURE)),
+        json!({"id": 31, "result": {"action": "cancel"}})
+    );
+    ready(&mut adapter);
+    running_turn(&mut adapter);
+    running_delta(&mut adapter);
+}
+
+#[test]
+fn an_elicitation_with_an_unusable_server_name_is_declined_without_ending_the_session() {
+    let mut adapter = live();
+    for (id, name) in [
+        (50, json!("")),
+        (51, json!("s".repeat(513))),
+        (52, Value::Null),
+    ] {
+        let mut frame = fixture(FORM_FIXTURE);
+        frame["id"] = json!(id);
+        frame["params"]["serverName"] = name;
+        assert_eq!(
+            immediate(&mut adapter, &frame),
+            json!({"id": id, "result": {"action": "decline"}})
+        );
+    }
+    running_delta(&mut adapter);
+}
+
+#[test]
+fn cancelling_a_pending_elicitation_replies_cancel_while_deny_stays_decline() {
+    let mut adapter = live();
+    asked(&mut adapter, &fixture(FORM_FIXTURE));
+    let cancelled: Value =
+        serde_json::from_slice(&adapter.cancelled_permission_response("number:31").unwrap())
+            .unwrap();
+    assert_eq!(cancelled, json!({"id": 31, "result": {"action": "cancel"}}));
+    assert_eq!(
+        decide(&mut adapter, 31, &PermissionDecision::Deny),
+        json!({"id": 31, "result": {"action": "decline"}})
+    );
+}
+
+#[test]
 fn server_request_resolved_withdraws_a_pending_elicitation() {
     let mut adapter = live();
     asked(&mut adapter, &fixture(FORM_FIXTURE));
