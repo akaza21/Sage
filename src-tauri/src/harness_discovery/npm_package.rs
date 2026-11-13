@@ -19,7 +19,11 @@ pub(super) const BIN_ENTRY_BYTES_MAX: usize = 256;
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn npm_package_bin(npm_root: &Path, package: &str, name: &str) -> Option<PathBuf> {
     let package_root = Path::new("node_modules").join(package);
-    let manifest = read_json(&npm_root.join(package_root.join("package.json")))?;
+    let manifest_relative = package_root.join("package.json");
+    if !authentic_descendant_file(npm_root, &manifest_relative) {
+        return None;
+    }
+    let manifest = read_json(&npm_root.join(manifest_relative))?;
     if manifest.get("name").and_then(Value::as_str) != Some(package) {
         return None;
     }
@@ -69,6 +73,75 @@ fn relative_module(bin: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn npm_tree() -> PathBuf {
+        let root = crate::test_paths::temp_dir()
+            .join(format!("sage-npm-manifest-{}", uuid::Uuid::new_v4()));
+        let package = root.join("node_modules/@openai/codex");
+        std::fs::create_dir_all(package.join("bin")).unwrap();
+        std::fs::write(package.join("bin/codex.js"), "").unwrap();
+        std::fs::write(
+            package.join("package.json"),
+            r#"{"name":"@openai/codex","bin":{"codex":"bin/codex.js"}}"#,
+        )
+        .unwrap();
+        root
+    }
+
+    #[test]
+    fn an_ordinary_manifest_resolves_the_declared_bin() {
+        let root = npm_tree();
+        assert_eq!(
+            npm_package_bin(&root, "@openai/codex", "codex"),
+            Some(root.join("node_modules/@openai/codex/bin/codex.js"))
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn a_symlinked_manifest_is_refused() {
+        let root = npm_tree();
+        let manifest = root.join("node_modules/@openai/codex/package.json");
+        let target = root.join("real-package.json");
+        std::fs::rename(&manifest, &target).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&target, &manifest).expect("create file symlink");
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&target, &manifest).expect(
+            "file symlink creation is required; enable Developer Mode or symlink privileges",
+        );
+        assert_eq!(npm_package_bin(&root, "@openai/codex", "codex"), None);
+        std::fs::remove_file(manifest).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn a_manifest_under_a_linked_parent_is_refused() {
+        let root = npm_tree();
+        let package = root.join("node_modules/@openai/codex");
+        let target = root.join("real-package");
+        std::fs::rename(&package, &target).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&target, &package).expect("create directory symlink");
+        #[cfg(windows)]
+        {
+            let status = std::process::Command::new("cmd")
+                .args(["/c", "mklink", "/J"])
+                .arg(&package)
+                .arg(&target)
+                .status()
+                .expect("create directory junction");
+            assert!(status.success(), "create junction");
+        }
+        assert_eq!(npm_package_bin(&root, "@openai/codex", "codex"), None);
+        #[cfg(unix)]
+        std::fs::remove_file(package).unwrap();
+        #[cfg(windows)]
+        std::fs::remove_dir(package).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn a_bin_target_is_a_portable_relative_module_path_on_every_host() {

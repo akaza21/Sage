@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     fn an_engine_range_sage_cannot_evaluate_is_not_treated_as_a_pass() {
-        for declared in ["*", "", ">=", ">=a", ">=22 ||", "^22.0.0-rc.1"] {
+        for declared in ["", ">=", ">=a", "^22.0.0-rc.1"] {
             assert!(
                 !node_satisfies_declared_engine("24.0.0", declared),
                 "{declared} must not be silently accepted"
@@ -209,5 +209,13 @@ mod tests {
         assert!(node_satisfies_declared_engine("22.0.0", ">=18"));
         assert!(!node_satisfies_declared_engine("22.0.0", ">=24"));
         assert!(node_satisfies_declared_engine("24.0.0", ">=24"));
+    }
+
+    #[test]
+    fn npm_wildcards_still_respect_sages_node_floor() {
+        for declared in ["*", ">=22 ||"] {
+            assert!(node_satisfies_declared_engine("22.1.7", declared));
+            assert!(!node_satisfies_declared_engine("20.19.0", declared));
+        }
     }
 }
