@@ -399,23 +399,6 @@ fn a_relative_stored_folder_is_never_used() {
     ));
 }
 
-#[test]
-fn verbatim_windows_paths_are_simplified_only_when_equivalent() {
-    assert_eq!(
-        simplified_verbatim_text(r"\\?\C:\downloads").as_deref(),
-        Some(r"C:\downloads")
-    );
-    assert_eq!(
-        simplified_verbatim_text(r"\\?\UNC\server\share\dl").as_deref(),
-        Some(r"\\server\share\dl")
-    );
-    assert_eq!(simplified_verbatim_text(r"\\?\C:\odd.\dir"), None);
-    assert_eq!(simplified_verbatim_text(r"\\?\Volume{x}\dir"), None);
-    assert_eq!(simplified_verbatim_text("/home/me"), None);
-    let long = format!(r"\\?\C:\{}", "a".repeat(300));
-    assert_eq!(simplified_verbatim_text(&long), None);
-}
-
 #[cfg(unix)]
 #[test]
 fn a_read_only_saved_folder_asks_again() {

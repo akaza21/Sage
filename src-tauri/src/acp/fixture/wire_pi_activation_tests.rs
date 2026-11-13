@@ -123,8 +123,8 @@ fn pi_fixture_wire_activation_and_idless_idle_discovery_preserve_the_next_prompt
             let catalog = adapter.available_commands().snapshot();
             assert_eq!(catalog.revision, 1);
             // Only Pi's built-in commands remain.
-            assert_eq!(catalog.commands.len(), 1);
-            assert_eq!(catalog.commands[0].name, "compact");
+            let names: Vec<_> = catalog.commands.iter().map(|c| c.name.as_str()).collect();
+            assert_eq!(names, ["session", "compact"]);
 
             let prompt = adapter
                 .command(AdapterCommand::Prompt {

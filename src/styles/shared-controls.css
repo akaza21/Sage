@@ -331,9 +331,13 @@
   white-space: nowrap;
 }
 
-.menu-item:hover:not(:disabled):not([aria-disabled="true"]) {
-  color: var(--menu-row-text, var(--color-text-primary));
-  background: var(--menu-row-hover, var(--color-surface-hover));
+/* Forced colors paint no hover fill, so a row under the pointer keeps the
+   Highlight of its keyboard focus or selection. */
+@media (forced-colors: none) {
+  .menu-item:hover:not(:disabled):not([aria-disabled="true"]) {
+    color: var(--menu-row-text, var(--color-text-primary));
+    background: var(--menu-row-hover, var(--color-surface-hover));
+  }
 }
 
 .menu-item:focus-visible {

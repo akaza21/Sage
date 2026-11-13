@@ -88,7 +88,7 @@ fn idle_idless_command_discovery_rejection_keeps_the_next_prompt_usable() {
     let catalog = runtime.available_commands().snapshot();
     assert_eq!(catalog.revision, 1);
     // Only Pi's built-in commands remain.
-    assert_eq!(names(&catalog.commands), ["compact"]);
+    assert_eq!(names(&catalog.commands), ["session", "compact"]);
     assert!(runtime.discover_commands().unwrap().is_none());
 
     running(&mut runtime);
@@ -240,7 +240,7 @@ fn pi_discovers_only_advertised_commands_and_replaces_the_catalog() {
     runtime.ingest(&frame(json!({"type":"response","id":query["id"],"command":"get_commands","success":false,"error":"unsupported"})), &Mapper).unwrap();
     assert_eq!(
         names(&runtime.available_commands().snapshot().commands),
-        ["compact"]
+        ["session", "compact"]
     );
 }
 #[test]
@@ -351,6 +351,7 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
             ("review", CommandSource::Extension),
             ("fix", CommandSource::Prompt),
             ("skill:lint", CommandSource::Skill),
+            ("session", CommandSource::Builtin),
             ("compact", CommandSource::Builtin),
         ]
     );

@@ -6,9 +6,12 @@ use sha2::{Digest, Sha256};
 use crate::error::{AppError, AppResult};
 
 mod expected;
+mod preflight;
 mod version;
 use expected::{expected_legacy_v10_session_events_fingerprint, expected_schema_fingerprint};
-use version::class_for_version;
+use version::{class_for_version, reject_newer_history};
+
+pub(super) use preflight::reject_newer_live;
 
 pub(super) use super::file_artifact::{FileFingerprint, file_fingerprint, open_read_only};
 
@@ -166,8 +169,9 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
         }
         return invalid("nonempty database has no exact Sage migration schema");
     }
+    reject_newer_history(connection)?;
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT ?1")?
+        .prepare("SELECT version FROM schema_migrations ORDER BY version COLLATE BINARY LIMIT ?1")?
         .query_map([MAX_SCHEMA_VERSION as i64 + 1], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     if versions.is_empty()
