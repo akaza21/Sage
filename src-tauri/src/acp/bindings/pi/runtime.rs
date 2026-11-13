@@ -13,7 +13,10 @@ use crate::acp::{
 use super::{AdapterError, ModelSummary, Operation, Outbound, PiTranslator};
 
 mod ingress;
+mod launch;
 mod support;
+
+pub(crate) use launch::PiLaunch;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RequestKind {
@@ -120,8 +123,14 @@ pub(crate) struct PiRuntime {
     pub(super) usage: std::sync::Arc<crate::acp::usage::UsageCell>,
     /// A fork under way, while Pi is away from the chat's session.
     fork: Option<support::Fork>,
-    /// Forks this runtime made whose chats are not yet committed or refused.
-    forks: Vec<ExternalId>,
+    /// Unsettled forks and refused copies whose cleanup has not succeeded.
+    forks: Vec<support::ForkCopy>,
+    /// The authority to start this runtime's Pi process, until it is used.
+    launch: Option<Box<dyn PiLaunch>>,
+    /// Removes a refused fork's saved copy in place of the file system, so a
+    /// test can make the removal fail.
+    #[cfg(test)]
+    pub(super) remove_file_for_test: fn(&std::path::Path) -> std::io::Result<()>,
 }
 
 impl PiRuntime {
@@ -206,6 +215,9 @@ impl PiRuntime {
             usage: std::sync::Arc::default(),
             fork: None,
             forks: Vec::new(),
+            launch: None,
+            #[cfg(test)]
+            remove_file_for_test: |path| std::fs::remove_file(path),
         }
     }
 }

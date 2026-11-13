@@ -25,7 +25,7 @@ mod delivery;
 mod dialog;
 mod errors;
 mod fork;
-pub(super) use fork::Fork;
+pub(super) use fork::{Fork, ForkCopy};
 mod identity;
 mod image;
 mod native;

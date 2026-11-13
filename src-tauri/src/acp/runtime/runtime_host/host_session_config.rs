@@ -44,12 +44,15 @@ impl RuntimeHost {
         intent: crate::acp::goal::NativeRpcIntent,
     ) -> Result<crate::acp::goal::NativeRpcReply, HostError> {
         let background = matches!(intent.request, crate::acp::goal::NativeRpcRequest::Read(_));
-        let send = || match self
-            .submit(HostCommand::NativeRpc(intent.clone()))
-            .map_err(dispatched_or_deadline)?
-        {
-            HostReply::NativeRpc(reply) => Ok(reply),
-            _ => Err(HostError::State),
+        let send = || {
+            let _hold = self.hold_control()?;
+            match self
+                .submit(HostCommand::NativeRpc(intent.clone()))
+                .map_err(dispatched_or_deadline)?
+            {
+                HostReply::NativeRpc(reply) => Ok(reply),
+                _ => Err(HostError::State),
+            }
         };
         if background {
             return send();
@@ -62,6 +65,7 @@ impl RuntimeHost {
     ) -> Result<HostOutcome, HostError> {
         yield_to_background_read(
             || {
+                let _hold = self.hold_control()?;
                 self.outcome(HostCommand::ConfigureSession(intent.clone()))
                     .map_err(dispatched_or_deadline)
             },
@@ -77,7 +81,10 @@ impl RuntimeHost {
         deadline: std::time::Instant,
     ) -> Result<HostOutcome, HostError> {
         yield_to_background_read(
-            || self.outcome_until(HostCommand::ConfigureSession(intent.clone()), deadline),
+            || {
+                let _hold = self.hold_control()?;
+                self.outcome_until(HostCommand::ConfigureSession(intent.clone()), deadline)
+            },
             || std::thread::sleep(USER_COMMAND_RETRY),
         )
     }

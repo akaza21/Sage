@@ -2460,6 +2460,9 @@ mod completion_tests;
 #[path = "idle_egress_tests.rs"]
 mod idle_egress_tests;
 
+#[path = "pi_fork_tests.rs"]
+mod pi_fork_tests;
+
 #[path = "sign_in_tests.rs"]
 mod sign_in_tests;
 

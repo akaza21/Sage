@@ -641,6 +641,64 @@ fn native_rpc_rejects_a_foreign_owner_without_dispatch() {
 }
 
 #[test]
+fn an_idle_park_waits_out_a_native_rpc_and_refuses_one_while_it_runs() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([]).with_native_completion(Arc::clone(&completion));
+    let observed = engine.clone();
+    let host = Arc::new(RuntimeHost::start(engine).unwrap());
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+    let intent = crate::acp::goal::NativeRpcIntent {
+        owner: runtime,
+        request: crate::acp::goal::NativeRpcRequest::ForkSession,
+    };
+    let pending = {
+        let host = Arc::clone(&host);
+        let intent = intent.clone();
+        std::thread::spawn(move || host.native_rpc(intent))
+    };
+    let started = Instant::now();
+    while completion.lock().unwrap().is_none() {
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+    // The harness is mid-command: the runtime is not idle.
+    assert!(!host.controls_settled());
+    assert!(host.claim_idle_park().is_none());
+    completion
+        .lock()
+        .unwrap()
+        .take()
+        .unwrap()
+        .complete(Ok(crate::acp::goal::NativeRpcReply::Rejected));
+    assert_eq!(
+        pending.join().unwrap(),
+        Ok(crate::acp::goal::NativeRpcReply::Rejected)
+    );
+    assert!(host.controls_settled());
+
+    let claim = host.claim_idle_park().expect("a settled runtime can park");
+    assert!(host.claim_idle_park().is_none(), "one park at a time");
+    // A control that finds the park under way never reaches the harness.
+    assert_eq!(host.native_rpc(intent.clone()), Err(HostError::State));
+    assert_eq!(
+        host.configure_session(config(&owner("project-a"))),
+        Err(HostError::State)
+    );
+    let dispatched = |events: Vec<&'static str>| {
+        events
+            .iter()
+            .filter(|event| **event == "beginNativeRpc" || **event == "beginConfigureSession")
+            .count()
+    };
+    assert_eq!(dispatched(observed.events()), 1);
+    // A park that does not go ahead lets controls through again.
+    drop(claim);
+    assert!(host.claim_idle_park().is_some());
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
 fn late_native_rpc_completion_cannot_escape_its_deadline() {
     let completion = Arc::new(Mutex::new(None));
     let engine = FakeEngine::new([]).with_native_completion(Arc::clone(&completion));

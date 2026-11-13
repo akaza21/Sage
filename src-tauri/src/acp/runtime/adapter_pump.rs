@@ -31,7 +31,7 @@ mod commit;
 mod completion;
 mod egress;
 use egress::queue;
-pub(crate) use egress::write_idle_cancellations;
+pub(crate) use egress::write_idle_egress;
 mod error;
 mod events;
 pub(crate) use events::{DurableAdapterEvent, SessionScope, TurnScope};
