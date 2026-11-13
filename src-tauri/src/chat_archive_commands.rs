@@ -1,6 +1,6 @@
 use std::{
     sync::{Condvar, Mutex, PoisonError},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use tauri::{Manager, State};
@@ -15,10 +15,6 @@ use crate::{
     error::AppResult,
     state::AppState,
 };
-
-/// How long a release waits before asking again for a lane another holder
-/// (an activation, or another release) has claimed.
-const LANE_BUSY_RETRY: Duration = Duration::from_millis(25);
 
 /// Archive releases still running after their archive answered. Exit waits
 /// for them, within its shutdown budget, before shutting the lanes down.
@@ -121,33 +117,20 @@ fn still_archived(state: &AppState, project: &SageProjectId, chat: &SageChatId) 
 }
 
 /// Parks an archived Chat's live runtime through the lanes' explicit-close
-/// park. One `deadline` bounds every attempt and the waits between them; a
-/// lane another holder has claimed is asked again until then, while a park
-/// that did not settle is answered at once. The lane is claimed before the
-/// Chat is checked as still archived, so a Chat restored meanwhile keeps its
-/// runtime. Each attempt hands its Tokio worker to the blocking pool.
+/// park within `deadline`. The lane is claimed before the Chat is checked
+/// as still archived, so a Chat restored meanwhile keeps its runtime.
 async fn release_until(
     state: &AppState,
     project: &SageProjectId,
     chat: &SageChatId,
     deadline: Instant,
 ) -> Result<(), ChatRuntimeRelease> {
-    let attempt = || {
-        state.acp.release_chat_runtime(project, chat, deadline, || {
+    state
+        .acp
+        .release_chat_runtime_until(project, chat, deadline, || {
             still_archived(state, project, chat)
         })
-    };
-    loop {
-        let outcome = crate::blocking::in_place(attempt);
-        match outcome {
-            Err(ChatRuntimeRelease::LaneBusy | ChatRuntimeRelease::ControlRunning)
-                if Instant::now() + LANE_BUSY_RETRY < deadline =>
-            {
-                tokio::time::sleep(LANE_BUSY_RETRY).await;
-            }
-            outcome => return outcome,
-        }
-    }
+        .await
 }
 
 /// Releases an archived Chat's runtime after its archive has answered,

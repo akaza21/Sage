@@ -94,6 +94,11 @@ pub(super) fn prepare_turn_in(
     transaction: &Transaction<'_>,
     command: PrepareTurnCommand,
 ) -> Result<PreparedTurn, StoreError> {
+    super::turn_undo::intent::ensure_settled(
+        transaction,
+        command.project_id.as_str(),
+        command.chat_id.as_str(),
+    )?;
     let user_payload = command.prompt.user_payload();
     let item_payload = user_item_payload(&user_payload)?;
     let item_bytes = i64::try_from(item_payload.len()).map_err(|_| StoreError::PayloadTooLarge)?;
@@ -249,15 +254,22 @@ fn validate_prepare_owner(
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
+    let stale = StoreError::Conflict {
+        resource: "sessionEpoch",
+    };
     match owner {
         Some((state, residency))
-            if matches!(state.as_str(), "ready" | "active") && residency == "hot" =>
-        {
-            Ok(())
-        }
-        _ => Err(StoreError::Conflict {
-            resource: "sessionEpoch",
-        }),
+            if matches!(state.as_str(), "ready" | "active") && residency == "hot" => {}
+        _ => return Err(stale),
+    }
+    // A runtime still holding a Turn the user undid is as stale as an
+    // earlier epoch: its prompt would answer with the undone Turn in context.
+    // The undo's record and this check commit in SQLite's write order, so a
+    // prompt is either prepared before the undo is recorded (which then
+    // refuses it) or refused here.
+    match super::turn_undo::pending_thread_rewind(transaction, command.session_id.as_str())? {
+        Some(rewind) if rewind.held_by(command.runtime_epoch) => Err(stale),
+        _ => Ok(()),
     }
 }
 

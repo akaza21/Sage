@@ -194,6 +194,22 @@ impl CodexRuntime {
         }
     }
 
+    /// An undo of the Turn Codex already reverted is confirmed again, so a
+    /// revert whose record Sage lost can still be recorded.
+    pub(super) fn answered_undo(
+        &mut self,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> bool {
+        let crate::acp::session_control::SessionControl::UndoTurn { turn_id } = control else {
+            return false;
+        };
+        if !self.inner.reverted(turn_id.as_str()) {
+            return false;
+        }
+        self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::Controlled(None));
+        true
+    }
+
     pub(super) fn fork_request(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.native_rpc_reply = None;
         if self.inner.fork_ledger_full() {

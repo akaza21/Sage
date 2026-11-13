@@ -171,10 +171,56 @@ fn pinned_codex_model_response_before_account_response_is_correlated_by_id() {
 }
 
 #[test]
-fn four_recognized_notifications_before_a_response_fails_closed() {
+fn a_config_warning_and_unknown_notifications_during_discovery_are_skipped() {
     let mut protocol = protocol();
     let mut transport = ScriptTransport::happy();
-    for index in 0..4 {
+    transport.reads.insert(
+        1,
+        Ok(Some(frame(json!({
+            "method": "configWarning",
+            "params": {"summary": "unknown key", "details": null}
+        })))),
+    );
+    transport.reads.insert(
+        2,
+        Ok(Some(frame(json!({"method": "future/event", "params": {}})))),
+    );
+    transport
+        .reads
+        .insert(3, Ok(Some(frame(json!({"method": "future/bare"})))));
+
+    let content = run_discovery_protocol(&mut protocol, &mut transport, 71, deadline()).unwrap();
+
+    assert_eq!(content.models[0].id.as_str(), "gpt-a");
+    assert_eq!(transport.terminated, Some(false));
+}
+
+#[test]
+fn a_server_request_during_discovery_fails_closed() {
+    let mut protocol = protocol();
+    let mut transport = ScriptTransport::happy();
+    transport.reads.insert(
+        1,
+        Ok(Some(frame(json!({
+            "id": 900,
+            "method": "item/commandExecution/requestApproval",
+            "params": {}
+        })))),
+    );
+
+    assert_eq!(
+        run_discovery_protocol(&mut protocol, &mut transport, 71, deadline()),
+        Err(CodexDiscoveryRunError::Protocol)
+    );
+    assert!(transport.closed);
+    assert_eq!(transport.terminated, Some(true));
+}
+
+#[test]
+fn sixteen_notifications_before_a_response_fails_closed() {
+    let mut protocol = protocol();
+    let mut transport = ScriptTransport::happy();
+    for index in 0..16 {
         transport.reads.insert(
             0,
             Ok(Some(frame(json!({
@@ -217,14 +263,16 @@ fn every_transport_protocol_eof_timeout_and_drift_failure_tears_down() {
     }
 
     let mut protocol = protocol();
-    let mut unknown = ScriptTransport::happy();
-    unknown.reads[0] = Ok(Some(frame(json!({"method":"future/event","params":{}}))));
+    let mut malformed = ScriptTransport::happy();
+    malformed.reads[0] = Ok(Some(frame(
+        json!({"method":"future/event","params":"text"}),
+    )));
     assert_eq!(
-        run_discovery_protocol(&mut protocol, &mut unknown, 71, deadline()),
+        run_discovery_protocol(&mut protocol, &mut malformed, 71, deadline()),
         Err(CodexDiscoveryRunError::Protocol)
     );
-    assert!(unknown.closed);
-    assert_eq!(unknown.terminated, Some(true));
+    assert!(malformed.closed);
+    assert_eq!(malformed.terminated, Some(true));
 }
 
 #[test]

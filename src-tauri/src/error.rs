@@ -76,6 +76,18 @@ pub enum AppError {
         message: String,
     },
 
+    /// The profile's database was migrated by a newer Sage than this one.
+    /// Opening it would mean guessing at a schema this build does not know,
+    /// so Sage refuses before changing anything.
+    #[error(
+        "this Sage profile was written by a newer version of Sage (data version \
+         {stored_version}; this version reads up to {supported_version}) and was left unchanged"
+    )]
+    NewerProfile {
+        stored_version: i64,
+        supported_version: u32,
+    },
+
     /// The background task running an operation ended before reporting an
     /// outcome (it panicked or was cancelled). The detail is for logs only.
     #[error("background task ended before finishing: {0}")]
