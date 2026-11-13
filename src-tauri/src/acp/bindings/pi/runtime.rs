@@ -123,8 +123,8 @@ pub(crate) struct PiRuntime {
     pub(super) usage: std::sync::Arc<crate::acp::usage::UsageCell>,
     /// A fork under way, while Pi is away from the chat's session.
     fork: Option<support::Fork>,
-    /// Forks this runtime made whose chats are not yet committed or refused.
-    forks: Vec<ExternalId>,
+    /// Unsettled forks and refused copies whose cleanup has not succeeded.
+    forks: Vec<support::ForkCopy>,
     /// The authority to start this runtime's Pi process, until it is used.
     launch: Option<Box<dyn PiLaunch>>,
     /// Removes a refused fork's saved copy in place of the file system, so a

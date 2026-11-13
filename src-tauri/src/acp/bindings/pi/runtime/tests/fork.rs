@@ -74,7 +74,11 @@ fn cloned(chat: &mut Chat<impl HarnessAdapter>) -> Value {
 
 /// Pi reports the copy it moved onto; returns the switch back to the chat.
 fn read_copy(chat: &mut Chat<impl HarnessAdapter>, state: &Value) -> Value {
-    let copy = chat.file(COPY);
+    read_copy_named(chat, state, COPY)
+}
+
+fn read_copy_named(chat: &mut Chat<impl HarnessAdapter>, state: &Value, key: &str) -> Value {
+    let copy = chat.file(key);
     std::fs::write(&copy, "{}\n").unwrap();
     let back = answer(chat, state, json!({"sessionFile":copy})).unwrap();
     assert_eq!(
@@ -362,33 +366,89 @@ fn forks_waiting_on_their_chats_are_bounded() {
 }
 
 #[test]
-fn a_copy_that_cannot_be_removed_is_reported_and_no_longer_takes_a_forks_place() {
+fn failed_cleanup_keeps_backpressure_until_a_later_fork_can_remove_the_copies() {
     let mut chat = saved_chat();
-    let state = cloned(&mut chat);
-    let back = read_copy(&mut chat, &state);
-    answer(&mut chat, &back, json!({"cancelled":false}));
-    let Some(NativeRpcReply::Forked(fork)) = chat.runtime.take_native_rpc_reply() else {
-        panic!("fork reply expected");
-    };
-    // The file system refuses the removal.
     chat.runtime.remove_file_for_test = |_| Err(std::io::ErrorKind::PermissionDenied.into());
-    chat.runtime.release_fork(&fork, false).unwrap();
-    assert_eq!(
-        chat.runtime.take_native_rpc_reply(),
-        Some(NativeRpcReply::Rejected)
-    );
-    assert!(chat.file(COPY).is_file());
-    // Nothing retries it, so it is let go: every fork place is free again.
-    assert!(chat.runtime.release_fork(&fork, false).is_err());
+    let mut copies = Vec::new();
     for index in 0..8 {
         let state = cloned(&mut chat);
-        let copy = chat.file(&format!("2026-11-11T12-00-0{index}-000Z_copy-{index}"));
-        std::fs::write(&copy, "{}\n").unwrap();
-        let back = answer(&mut chat, &state, json!({"sessionFile":copy})).unwrap();
+        let key = format!("2026-11-11T12-00-0{index}-000Z_copy-{index}");
+        let back = read_copy_named(&mut chat, &state, &key);
         answer(&mut chat, &back, json!({"cancelled":false}));
-        assert!(matches!(
+        let Some(NativeRpcReply::Forked(fork)) = chat.runtime.take_native_rpc_reply() else {
+            panic!("fork reply expected");
+        };
+        chat.runtime.release_fork(&fork, false).unwrap();
+        assert_eq!(
             chat.runtime.take_native_rpc_reply(),
-            Some(NativeRpcReply::Forked(_))
-        ));
+            Some(NativeRpcReply::Rejected)
+        );
+        copies.push(chat.file(&key));
     }
+    for _ in 0..2 {
+        assert!(matches!(
+            chat.runtime.fork_session(),
+            Err(AdapterRuntimeError::BatchCount)
+        ));
+        assert!(!chat.runtime.native_rpc_pending());
+    }
+    assert!(copies.iter().all(|copy| copy.is_file()));
+    // The next fork retries the bounded cleanup without another release RPC.
+    chat.runtime.remove_file_for_test = |path| std::fs::remove_file(path);
+    cloned(&mut chat);
+    assert!(copies.iter().all(|copy| !copy.exists()));
+    assert!(chat.file(HOME).is_file());
+}
+
+#[test]
+fn abandoned_forks_also_keep_failed_cleanup_bounded() {
+    let mut chat = saved_chat();
+    chat.runtime.remove_file_for_test = |_| Err(std::io::ErrorKind::PermissionDenied.into());
+    let mut copies = Vec::new();
+    for index in 0..8 {
+        let state = cloned(&mut chat);
+        chat.runtime.abandon_usage_read();
+        let key = format!("2026-11-11T12-00-0{index}-000Z_copy-{index}");
+        let back = read_copy_named(&mut chat, &state, &key);
+        answer(&mut chat, &back, json!({"cancelled":false}));
+        assert_eq!(chat.runtime.take_native_rpc_reply(), None);
+        copies.push(chat.file(&key));
+    }
+    assert!(matches!(
+        chat.runtime.fork_session(),
+        Err(AdapterRuntimeError::BatchCount)
+    ));
+    assert!(copies.iter().all(|copy| copy.is_file()));
+    chat.runtime.remove_file_for_test = |path| std::fs::remove_file(path);
+    cloned(&mut chat);
+    assert!(copies.iter().all(|copy| !copy.exists()));
+    assert!(chat.file(HOME).is_file());
+}
+
+#[test]
+fn cleanup_retries_preserve_copies_still_awaiting_or_owned_by_chats() {
+    let mut chat = saved_chat();
+    for (key, committed) in [
+        ("1_committed", Some(true)),
+        ("2_pending", None),
+        ("3_refused", Some(false)),
+    ] {
+        let state = cloned(&mut chat);
+        let back = read_copy_named(&mut chat, &state, key);
+        answer(&mut chat, &back, json!({"cancelled":false}));
+        let Some(NativeRpcReply::Forked(fork)) = chat.runtime.take_native_rpc_reply() else {
+            panic!("fork reply expected");
+        };
+        if let Some(committed) = committed {
+            chat.runtime.remove_file_for_test =
+                |_| Err(std::io::ErrorKind::PermissionDenied.into());
+            chat.runtime.release_fork(&fork, committed).unwrap();
+            chat.runtime.take_native_rpc_reply();
+        }
+    }
+    chat.runtime.remove_file_for_test = |path| std::fs::remove_file(path);
+    cloned(&mut chat);
+    assert!(chat.file("1_committed").is_file());
+    assert!(chat.file("2_pending").is_file());
+    assert!(!chat.file("3_refused").exists());
 }

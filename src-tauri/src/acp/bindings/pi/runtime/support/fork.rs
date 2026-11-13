@@ -18,9 +18,15 @@ use crate::acp::{
 use super::super::{PiRuntime, RequestKind};
 use super::session::{SESSION_DIR_SCAN_LIMIT, session_path};
 
-/// Forks a runtime holds until their chats are committed or refused. A full
-/// ledger refuses the next fork rather than make a copy it cannot track.
+/// Forks a runtime holds until their chats commit or their copies are removed.
+/// A full ledger refuses the next fork rather than make a copy it cannot track.
 const MAX_TRACKED_FORKS: usize = 8;
+
+/// Only a copy known to have no Chat may be retried for deletion.
+pub(in crate::acp::bindings::pi::runtime) struct ForkCopy {
+    key: ExternalId,
+    cleanup_pending: bool,
+}
 
 /// A fork under way: its step, and the Pi command id that step waits on.
 #[derive(Debug)]
@@ -46,6 +52,7 @@ impl PiRuntime {
         if self.fork.is_some() || self.active_turn.is_some() {
             return Err(AdapterRuntimeError::Operation);
         }
+        self.retry_fork_cleanup();
         if self.forks.len() >= MAX_TRACKED_FORKS {
             return Err(AdapterRuntimeError::BatchCount);
         }
@@ -147,12 +154,15 @@ impl PiRuntime {
         else {
             return self.answer_fork(awaited, NativeRpcReply::Rejected);
         };
+        self.forks.push(ForkCopy {
+            key: fork.clone(),
+            cleanup_pending: false,
+        });
         if !awaited {
             // No chat will open a copy its caller gave up on.
-            self.remove_copy(&fork);
+            self.cleanup_fork_copy(self.forks.len() - 1);
             return None;
         }
-        self.forks.push(fork.clone());
         self.answer_fork(true, NativeRpcReply::Forked(fork))
     }
 
@@ -189,9 +199,8 @@ impl PiRuntime {
 
     /// Lets go of a fork this runtime made. A committed fork is its chat's
     /// now; a refused one leaves only the copy's file, which is removed so
-    /// Pi does not list a chat Sage never opened. Nothing retries a release,
-    /// so a copy that could not be removed is let go too: the release
-    /// answers `Rejected`, and the copy no longer takes a fork's place.
+    /// Pi does not list a chat Sage never opened. Failed deletions still take
+    /// a ledger slot and are retried before the next fork can clone.
     pub(in crate::acp::bindings::pi::runtime) fn release_fork_copy(
         &mut self,
         fork: &ExternalId,
@@ -200,19 +209,41 @@ impl PiRuntime {
         let index = self
             .forks
             .iter()
-            .position(|known| known == fork)
+            .position(|known| &known.key == fork)
             .ok_or(AdapterRuntimeError::Operation)?;
-        self.forks.remove(index);
-        let released = committed || self.remove_copy(fork);
-        if !released {
-            tracing::warn!("a refused Pi fork's session copy could not be removed");
-        }
+        let released = if committed {
+            self.forks.remove(index);
+            true
+        } else {
+            self.cleanup_fork_copy(index)
+        };
         self.native_rpc_reply = Some(if released {
             NativeRpcReply::Released
         } else {
             NativeRpcReply::Rejected
         });
         Ok(None)
+    }
+
+    /// One pass over at most eight entries per fork attempt; no retry queue
+    /// or background task can outlive this runtime or grow beyond its ledger.
+    fn retry_fork_cleanup(&mut self) {
+        for index in (0..self.forks.len()).rev() {
+            if self.forks[index].cleanup_pending {
+                self.cleanup_fork_copy(index);
+            }
+        }
+    }
+
+    fn cleanup_fork_copy(&mut self, index: usize) -> bool {
+        if self.remove_copy(&self.forks[index].key) {
+            self.forks.remove(index);
+            true
+        } else {
+            self.forks[index].cleanup_pending = true;
+            tracing::warn!("a refused Pi fork's session copy could not be removed");
+            false
+        }
     }
 
     #[cfg(not(test))]
@@ -231,8 +262,14 @@ impl PiRuntime {
         let Some(dir) = self.session_dir.as_deref() else {
             return false;
         };
-        session_path(dir, fork.as_str(), SESSION_DIR_SCAN_LIMIT)
-            .is_none_or(|file| self.remove_file(&file).is_ok())
+        // Fork keys come from `session_file_key`, so they name the exact
+        // file in this directory. Do not use an existence probe: it would
+        // mistake inaccessible metadata for a copy that is already gone.
+        let file = dir.join(format!("{}.jsonl", fork.as_str()));
+        match self.remove_file(&file) {
+            Ok(()) => true,
+            Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+        }
     }
 }
 
