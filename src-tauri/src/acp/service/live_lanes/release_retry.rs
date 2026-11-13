@@ -1,5 +1,6 @@
 //! Releasing a Chat's runtime while other holders come and go: a lane an
-//! activation or another release holds is asked again until the deadline.
+//! activation or another release holds, or a session control the harness is
+//! still answering, is asked again until the deadline.
 
 use std::time::{Duration, Instant};
 
@@ -14,9 +15,10 @@ const LANE_BUSY_RETRY: Duration = Duration::from_millis(25);
 impl AcpService {
     /// Parks the Chat's live runtime as [`AcpService::release_chat_runtime`]
     /// does. One `deadline` bounds every attempt and the waits between
-    /// them; a lane another holder has claimed is asked again until then,
-    /// while a park that did not settle is answered at once. Each attempt
-    /// hands its Tokio worker to the blocking pool.
+    /// them; a lane another holder has claimed, or a session control still
+    /// running, is asked again until then, while a park that did not settle
+    /// is answered at once. Each attempt hands its Tokio worker to the
+    /// blocking pool.
     pub(crate) async fn release_chat_runtime_until(
         &self,
         project: &SageProjectId,
@@ -29,7 +31,7 @@ impl AcpService {
                 self.release_chat_runtime(project, chat, deadline, &still_wanted)
             });
             match outcome {
-                Err(ChatRuntimeRelease::LaneBusy)
+                Err(ChatRuntimeRelease::LaneBusy | ChatRuntimeRelease::ControlRunning)
                     if Instant::now() + LANE_BUSY_RETRY < deadline =>
                 {
                     tokio::time::sleep(LANE_BUSY_RETRY).await;

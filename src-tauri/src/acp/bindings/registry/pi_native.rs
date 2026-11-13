@@ -49,8 +49,8 @@ fn launch_factory(
     Box::new(PiNativeRuntimeFactory { binding, root, mcp })
 }
 
-/// The truthful ceiling: prompt, cancel, steer, resume and Pi's own
-/// compaction; no load, close, fork, or child projection.
+/// The truthful ceiling: prompt, cancel, steer, resume, fork through Pi's
+/// `clone`, and Pi's own compaction; no load, close, or child projection.
 fn capabilities(
     binding: &AdmittedBinding,
 ) -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
