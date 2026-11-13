@@ -8,6 +8,8 @@ pub(crate) enum CodexSessionError {
     Binding(crate::acp::bindings::codex::CodexAdmissionUnavailable),
     #[error("the Codex session intent is stale or foreign")]
     Intent,
+    #[error("The pending undo could not be applied; the rewind remains pending.")]
+    RewindUnavailable,
     #[error(transparent)]
     Session(#[from] SessionCoordinatorError),
     #[error("Codex runtime capacity is occupied")]

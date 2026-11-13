@@ -104,6 +104,7 @@ pub(super) fn send(
         runtime_epoch,
         prompt,
         attached_context,
+        staged: _,
     } = request
     else {
         return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
@@ -239,6 +240,7 @@ mod tests {
                 prompt: Prompt::new("prompt", "Do not infer retry safety from an error kind")
                     .unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .unwrap_err();

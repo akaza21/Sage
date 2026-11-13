@@ -1,7 +1,7 @@
 import { Fragment, memo, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 
-import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
+import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 import type { ResourceRef } from "../../../domain/workbench";
 import { isTauriRuntime } from "../../../ports/desktopRuntime";
@@ -10,6 +10,7 @@ import { isSideChatId } from "../../../workbench/sideChatState";
 import { AnswerActions } from "../AnswerActions";
 import type { TurnListHost } from "../chatScroll";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
+import { turnHasActivities } from "../transcriptSummary";
 import { EditSummaryPart, NavigationPart, TranscriptPart } from "../lazyParts";
 import { TurnDaySeparator } from "./AcpTurnDates";
 import {
@@ -30,6 +31,7 @@ import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
 import { TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
+import { TurnPrompts } from "./TurnPrompts";
 import { TurnSessionActivities } from "./TurnSessionActivities";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
@@ -131,6 +133,16 @@ const Turn = memo(
           page={page}
         />
       ) : null;
+    const renderWorkingItem = (item: AcpItem) => (
+      <ItemView
+        key={item.id}
+        item={item}
+        workingItems={turn.items}
+        interactive={interactive}
+        fileReferenceOwner={fileReferenceOwner}
+        onOpenResource={openForTurn}
+      />
+    );
     // An inherited Turn is inert, all but its answer's own row.
     const content = (
       <>
@@ -167,18 +179,18 @@ const Turn = memo(
                 ))}
               </div>
             ) : null}
-            {promptItems.map((item) => (
-              <ItemView key={item.id} item={item} interactive={interactive} />
-            ))}
+            <TurnPrompts
+              items={promptItems}
+              turn={turn}
+              interactive={interactive}
+            />
             <ChatTranscriptTurnSummary
               turn={turn}
               thinkingPlaceholder={isSideChatId(page.chatId)}
-              hasActivities={
-                workingItems.length > 0 ||
-                (turn.sessionActivities?.length ?? 0) > 0 ||
-                (turn.browserOperations?.length ?? 0) > 0 ||
-                (turn.browserOperationsCollapsed ?? 0) > 0
-              }
+              steered={workingItems
+                .filter((item) => item.kind === "userPrompt")
+                .map(renderWorkingItem)}
+              hasActivities={turnHasActivities(turn, workingItems.length)}
             >
               {workingItems.length > 0 ? (
                 <PrimaryActivities
@@ -188,16 +200,7 @@ const Turn = memo(
                   }
                   interactive={interactive}
                   onOpenResource={openForTurn}
-                  renderItem={(item) => (
-                    <ItemView
-                      key={item.id}
-                      item={item}
-                      workingItems={turn.items}
-                      interactive={interactive}
-                      fileReferenceOwner={fileReferenceOwner}
-                      onOpenResource={openForTurn}
-                    />
-                  )}
+                  renderItem={renderWorkingItem}
                 />
               ) : null}
               <TurnSessionActivities

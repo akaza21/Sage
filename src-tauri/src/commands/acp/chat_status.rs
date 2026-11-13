@@ -71,14 +71,20 @@ fn load(
     excluded_turn: Option<&str>,
 ) -> Result<ChatStatus, StoreError> {
     let row = connection.query_row(
-        "SELECT c.title,t.state,t.updated_at,t.created_at,t.terminal_at FROM chats c LEFT JOIN turns t ON t.id=(
-         SELECT latest.id FROM turns latest
-         WHERE latest.session_id=(SELECT s.id FROM agent_sessions s
-           WHERE s.project_id=c.project_id AND s.chat_id=c.id
-             AND EXISTS(SELECT 1 FROM turns present WHERE present.session_id=s.id AND present.id<>?3)
-           ORDER BY s.ordinal DESC,s.id DESC LIMIT 1)
-         AND latest.id<>?3 ORDER BY latest.ordinal DESC,latest.id DESC LIMIT 1)
-         WHERE c.project_id=?1 AND c.id=?2",
+        concat!(
+            "SELECT c.title,t.state,t.updated_at,t.created_at,t.terminal_at FROM chats c LEFT JOIN turns t ON t.id=(
+             SELECT latest.id FROM turns latest
+             WHERE latest.session_id=(SELECT s.id FROM agent_sessions s
+               WHERE s.project_id=c.project_id AND s.chat_id=c.id
+                 AND EXISTS(SELECT 1 FROM turns present WHERE present.session_id=s.id AND present.id<>?3 AND ",
+            crate::acp::store::turn_undo::visible_turn!("present.session_id", "present.id"),
+            ")
+               ORDER BY s.ordinal DESC,s.id DESC LIMIT 1)
+             AND latest.id<>?3 AND ",
+            crate::acp::store::turn_undo::visible_turn!("latest.session_id", "latest.id"),
+            " ORDER BY latest.ordinal DESC,latest.id DESC LIMIT 1)
+             WHERE c.project_id=?1 AND c.id=?2"
+        ),
         params![project_id.as_str(),chat_id.as_str(),excluded_turn.unwrap_or("")],
         |row| Ok((row.get::<_,String>(0)?,row.get::<_,Option<String>>(1)?,row.get::<_,Option<i64>>(2)?,row.get::<_,Option<i64>>(3)?,row.get::<_,Option<i64>>(4)?)),
     ).optional()?.ok_or(StoreError::Conflict { resource: "chat" })?;
@@ -111,6 +117,7 @@ mod tests {
         db.execute_batch("CREATE TABLE chats(project_id TEXT,id TEXT,title TEXT);
           CREATE TABLE agent_sessions(id TEXT,ordinal INTEGER,project_id TEXT,chat_id TEXT);
           CREATE TABLE turns(id TEXT,project_id TEXT,chat_id TEXT,session_id TEXT,ordinal INTEGER,state TEXT,updated_at INTEGER,created_at INTEGER,terminal_at INTEGER);
+          CREATE TABLE session_facts(session_id TEXT,turn_id TEXT,kind TEXT);
           INSERT INTO chats VALUES('p','c','Chat');
           CREATE INDEX idx_agent_sessions_owner ON agent_sessions(project_id,chat_id,ordinal,id);
           CREATE INDEX idx_turns_history ON turns(session_id,ordinal DESC,id DESC);
@@ -136,6 +143,20 @@ mod tests {
             )
             .is_err()
         );
+        // An undone Turn is not the chat's latest.
+        db.execute(
+            "INSERT INTO session_facts VALUES('new','latest','turnUndone')",
+            [],
+        )
+        .unwrap();
+        let status = load(
+            &db,
+            SageProjectId::parse("p").unwrap(),
+            SageChatId::parse("c").unwrap(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(status.latest_turn.map(|turn| turn.created_at), Some(2));
         db.execute("DELETE FROM turns", []).unwrap();
         assert!(
             load(

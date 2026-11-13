@@ -12,14 +12,35 @@ use super::{BridgeError, Inbound, MAX_TRACKED_TOOLS, OPEN_APPROVALS, Permission,
 use crate::acp::bindings::claude::sdk::tools::tool_fields;
 
 const ALLOW_ONCE: &str = "allow_once";
+const ANSWER: &str = "answer";
 const ALLOW_ALWAYS: &str = "allow_always";
+/// Allow-always on a file edit: Claude Code switches to accepting edits,
+/// which Sage's mode guard admits for the rest of the turn.
+const ALLOW_EDITS: &str = "allow-always-accept-edits";
 const REJECT: &str = "reject";
+/// Leaving plan mode, as the plan-exit options Sage's mode guard admits:
+/// back to asking before edits, or into accepting them.
+const EXIT_PLAN: [(&str, &str, &str, &str); 2] = [
+    (
+        "exit-plan-default",
+        "allow_once",
+        "Yes, and ask before edits",
+        "default",
+    ),
+    (
+        "exit-plan-accept-edits",
+        "allow_always",
+        "Yes, and accept edits",
+        "acceptEdits",
+    ),
+];
 const DECLINED: &str = "The user declined this tool use.";
+const KEEP_PLANNING: &str = "The user chose to keep planning.";
 const TOO_MANY: &str = "Too many approvals are already waiting for the user.";
 const NO_TURN: &str = "The user's turn has ended, so no one can approve this now.";
-/// Claude's multiple-choice questions have no Sage card yet; declining with
-/// this reason makes Claude ask in its reply instead.
-const QUESTIONS_UNSUPPORTED: &str = "Sage cannot show multiple-choice questions yet. \
+/// Questions beyond what a Sage card shows; declining with this reason makes
+/// Claude ask in its reply instead.
+const QUESTIONS_UNSUPPORTED: &str = "Sage cannot show these questions. \
 Ask the user the question in your reply instead.";
 
 impl SdkBridge {
@@ -33,12 +54,6 @@ impl SdkBridge {
             .get("tool_name")
             .and_then(Value::as_str)
             .ok_or(BridgeError::Frame)?;
-        if name == "AskUserQuestion" {
-            inbound
-                .replies
-                .push(decision(request_id, deny(QUESTIONS_UNSUPPORTED)));
-            return Ok(());
-        }
         if self.prompt.is_none() {
             inbound.replies.push(decision(request_id, deny(NO_TURN)));
             return Ok(());
@@ -48,10 +63,26 @@ impl SdkBridge {
             return Ok(());
         }
         let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
+        let questions = match name {
+            "AskUserQuestion" => match super::questions::questions(&input) {
+                Some((request, texts)) => Some((request, texts)),
+                None => {
+                    let reply = decision(request_id, deny(QUESTIONS_UNSUPPORTED));
+                    inbound.replies.push(reply);
+                    return Ok(());
+                }
+            },
+            _ => None,
+        };
         let suggestions = request
             .get("permission_suggestions")
-            .filter(|value| value.as_array().is_some_and(|rules| !rules.is_empty()))
-            .cloned();
+            .and_then(Value::as_array)
+            .map(|rules| admitted_suggestions(rules))
+            .filter(|rules| !rules.is_empty());
+        let accepts_edits = suggestions
+            .as_ref()
+            .is_some_and(|rules| rules.iter().any(|rule| rule["type"] == "setMode"));
+        let suggestions = suggestions.map(Value::Array);
         let mut tool_call = tool_fields(name, &input);
         let tool_call_id = request
             .get("tool_use_id")
@@ -74,10 +105,25 @@ impl SdkBridge {
         if let Some(title) = request.get("title").and_then(Value::as_str) {
             tool_call.insert("title".into(), title.into());
         }
-        let mut options =
-            vec![json!({"optionId": ALLOW_ONCE, "name": "Yes", "kind": "allow_once"})];
-        if suggestions.is_some() {
-            options.push(json!({"optionId": ALLOW_ALWAYS, "name": "Yes, and don't ask again", "kind": "allow_always"}));
+        let mut options = if name == "ExitPlanMode" {
+            EXIT_PLAN
+                .iter()
+                .map(|(id, kind, label, _)| json!({"optionId": id, "name": label, "kind": kind}))
+                .collect()
+        } else {
+            vec![json!({"optionId": ALLOW_ONCE, "name": "Yes", "kind": "allow_once"})]
+        };
+        let questions = questions.map(|(request, texts)| {
+            inbound.questions = Some(request);
+            options = vec![json!({"optionId": ANSWER, "name": "Answer", "kind": "allow_once"})];
+            texts
+        });
+        if suggestions.is_some() && questions.is_none() && name != "ExitPlanMode" {
+            options.push(if accepts_edits {
+                json!({"optionId": ALLOW_EDITS, "name": "Yes, and accept edits for this turn", "kind": "allow_always"})
+            } else {
+                json!({"optionId": ALLOW_ALWAYS, "name": "Yes, and don't ask again", "kind": "allow_always"})
+            });
         }
         options.push(json!({"optionId": REJECT, "name": "No", "kind": "reject_once"}));
         self.next_permission += 1;
@@ -87,6 +133,8 @@ impl SdkBridge {
                 request_id: request_id.to_owned(),
                 input,
                 suggestions,
+                questions,
+                plan_exit: name == "ExitPlanMode",
             },
         );
         inbound.acp.push(json!({
@@ -134,18 +182,54 @@ impl SdkBridge {
         let selected = (outcome.get("outcome").and_then(Value::as_str) == Some("selected"))
             .then(|| outcome.get("optionId").and_then(Value::as_str))
             .flatten();
+        if let Some(texts) = &permission.questions {
+            let cancelled = outcome.get("outcome").and_then(Value::as_str) == Some("cancelled");
+            let answers = (selected == Some(ANSWER)).then(|| result.and_then(|r| r.get("answers")));
+            let response = if cancelled {
+                deny(DECLINED)
+            } else {
+                let input = super::questions::answered(&permission.input, texts, answers.flatten());
+                json!({"behavior": "allow", "updatedInput": input})
+            };
+            self.answering.insert(permission.request_id.clone());
+            return Ok(decision(&permission.request_id, response));
+        }
         let response = match selected {
             Some(ALLOW_ONCE) => json!({"behavior": "allow", "updatedInput": permission.input}),
-            Some(ALLOW_ALWAYS) => json!({
+            Some(ALLOW_ALWAYS | ALLOW_EDITS) => json!({
                 "behavior": "allow",
                 "updatedInput": permission.input,
                 "updatedPermissions": permission.suggestions.unwrap_or_else(|| json!([])),
             }),
-            _ => deny(DECLINED),
+            // Approving the plan leaves plan mode for the mode the user chose.
+            Some(option) => match EXIT_PLAN.iter().find(|(id, ..)| *id == option) {
+                Some((.., mode)) => json!({
+                    "behavior": "allow",
+                    "updatedInput": permission.input,
+                    "updatedPermissions": [{"type": "setMode", "mode": mode, "destination": "session"}],
+                }),
+                None => deny(DECLINED),
+            },
+            // Declining a plan stops the turn so the user can say what to
+            // change, rather than Claude guessing and asking again.
+            None if permission.plan_exit => json!({
+                "behavior": "deny", "message": KEEP_PLANNING, "interrupt": true,
+            }),
+            None => deny(DECLINED),
         };
         self.answering.insert(permission.request_id.clone());
         Ok(decision(&permission.request_id, response))
     }
+}
+
+/// Claude Code's suggested rules without any mode switch other than into
+/// accepting edits, the only one a permission answer may widen a turn to.
+fn admitted_suggestions(rules: &[Value]) -> Vec<Value> {
+    rules
+        .iter()
+        .filter(|rule| rule["type"] != "setMode" || rule["mode"] == "acceptEdits")
+        .cloned()
+        .collect()
 }
 
 fn deny(message: &str) -> Value {

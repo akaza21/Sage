@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     acp::{
-        bindings::adapter::AdapterRuntimeError,
+        bindings::{adapter::AdapterRuntimeError, release_version::ReleaseVersion},
         process::{
             ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
             RequiredContainment, TreeLimits,
@@ -24,18 +24,23 @@ use crate::{
     harness_discovery::InstalledHarness,
 };
 
+use super::launch::SessionLaunch;
+
 pub(crate) const CLAUDE_SDK_BINDING_ID: &str = "claude-code-sdk";
-/// The Claude Code release whose SDK protocol this binding was characterised on.
+/// The Claude Code release the recorded fixtures replay.
+#[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
 pub(crate) const CLAUDE_CODE_VERSION: &str = "2.1.319";
-/// The oldest 2.1 release with every control request Sage sends; a new
-/// minor line may change the protocol, so it waits for its own admission.
-const SUPPORTED_MINIMUM: (u64, u64, u64) = (2, 1, 300);
+/// The oldest release with every control request Sage sends; an earlier one
+/// is refused because those requests would fail. Every later release is
+/// admitted: the 2.1 line is the tested one, and later lines run with the
+/// tested features and a "newer than tested" notice.
+const SUPPORTED_MINIMUM: &str = "2.1.300";
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:claude-code-sdk:v1:";
 
 /// Fixed SDK-mode arguments; the session arguments follow them. The mode is
 /// forced to `default` so a settings file cannot start Claude Code in a
 /// mode the picker does not show (bypass would skip every approval).
-const SDK_ARGS: [&str; 12] = [
+pub(super) const SDK_ARGS: [&str; 12] = [
     "--output-format",
     "stream-json",
     "--input-format",
@@ -56,7 +61,9 @@ pub(crate) enum ClaudeSdkAdmissionUnavailable {
     DiscoveryPending,
     #[error("Claude Code is not installed")]
     Absent,
-    #[error("the installed Claude Code version could not be read or is not supported")]
+    #[error("the installed Claude Code version could not be read")]
+    VersionUnreadable,
+    #[error("the installed Claude Code version is older than Sage supports")]
     VersionUnsupported,
     #[error("the Claude Code executable could not be read")]
     Unreadable,
@@ -69,7 +76,8 @@ impl From<ClaudeSdkAdmissionUnavailable> for HarnessUnavailableReason {
         use ClaudeSdkAdmissionUnavailable as Sdk;
         match reason {
             Sdk::DiscoveryPending => Self::AdmissionIncomplete,
-            Sdk::Absent | Sdk::VersionUnsupported | Sdk::Unreadable => Self::CandidateInvalid,
+            Sdk::Absent | Sdk::Unreadable | Sdk::VersionUnreadable => Self::CandidateInvalid,
+            Sdk::VersionUnsupported => Self::VersionTooOld,
             Sdk::Drift => Self::DriftDetected,
         }
     }
@@ -103,48 +111,22 @@ pub(crate) struct AdmittedClaudeSdkBinding {
     fixture: Fixture,
 }
 
-/// The session a launch opens: a fresh one with a Sage-chosen id, or an
-/// existing one to resume.
-pub(crate) struct SessionLaunch {
-    pub(crate) session_id: String,
-    pub(crate) resume: bool,
-    pub(crate) model: Option<String>,
-}
-
-impl SessionLaunch {
-    fn args(&self) -> Vec<OsString> {
-        let mut args: Vec<OsString> = SDK_ARGS.map(OsString::from).into();
-        args.push(
-            if self.resume {
-                "--resume"
-            } else {
-                "--session-id"
-            }
-            .into(),
-        );
-        args.push(self.session_id.clone().into());
-        // `default` is the picker's name for Claude Code's own choice.
-        if let Some(model) = self.model.as_ref().filter(|model| *model != "default") {
-            args.extend(["--model".into(), model.into()]);
-        }
-        args
-    }
-}
-
-fn version_admitted(version: &str) -> bool {
-    let parse = |value: &str| -> Option<(u64, u64, u64)> {
-        let mut parts = value.split('.').map(str::parse::<u64>);
-        let version = (
-            parts.next()?.ok()?,
-            parts.next()?.ok()?,
-            parts.next()?.ok()?,
-        );
-        parts.next().is_none().then_some(version)
+/// Where a release sits against the tested 2.1 line, which keeps the SDK
+/// protocol this binding covers from [`SUPPORTED_MINIMUM`] on.
+fn version_characterisation(version: &str) -> HarnessCharacterisation {
+    let (Some(found), Some(minimum)) = (
+        ReleaseVersion::parse(version),
+        ReleaseVersion::parse(SUPPORTED_MINIMUM),
+    ) else {
+        return HarnessCharacterisation::Uncharacterised;
     };
-    parse(version).is_some_and(|found| {
-        found >= SUPPORTED_MINIMUM
-            && (found.0, found.1) == (SUPPORTED_MINIMUM.0, SUPPORTED_MINIMUM.1)
-    })
+    if found < minimum {
+        HarnessCharacterisation::Uncharacterised
+    } else if found.same_minor_line(&minimum) && !found.is_prerelease() {
+        HarnessCharacterisation::Characterised
+    } else {
+        HarnessCharacterisation::NewerThanTested
+    }
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -156,10 +138,21 @@ impl AdmittedClaudeSdkBinding {
         let version = installed
             .version
             .clone()
-            .filter(|version| version_admitted(version))
-            .ok_or(ClaudeSdkAdmissionUnavailable::VersionUnsupported)?;
-        let executable = std::fs::canonicalize(&installed.executable)
-            .map_err(|_| ClaudeSdkAdmissionUnavailable::Unreadable)?;
+            .filter(|version| ReleaseVersion::parse(version).is_some())
+            .ok_or(ClaudeSdkAdmissionUnavailable::VersionUnreadable)?;
+        if !version_characterisation(&version).runs_tested_features() {
+            return Err(ClaudeSdkAdmissionUnavailable::VersionUnsupported);
+        }
+        let executable = crate::harness_discovery::claude_sdk_executable(&installed.executable)
+            .ok_or(ClaudeSdkAdmissionUnavailable::Unreadable)?;
+        // A native launcher can be repointed after the version probe.
+        // Its target names the version, so refuse a mismatched observation.
+        #[cfg(unix)]
+        if executable.file_name() != installed.executable.file_name()
+            && executable.file_name().and_then(std::ffi::OsStr::to_str) != Some(version.as_str())
+        {
+            return Err(ClaudeSdkAdmissionUnavailable::Drift);
+        }
         let sha256_hex = crate::harness_discovery::cached_sha256_file(&executable)
             .ok_or(ClaudeSdkAdmissionUnavailable::Unreadable)?;
         let mut sha256 = [0_u8; 32];
@@ -206,6 +199,14 @@ impl AdmittedClaudeSdkBinding {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn for_test_with_digest(digest: [u8; 32]) -> Self {
+        Self {
+            binding_digest: digest,
+            ..Self::for_test()
+        }
+    }
+
     pub(crate) fn binding_digest(&self) -> [u8; 32] {
         self.binding_digest
     }
@@ -215,15 +216,20 @@ impl AdmittedClaudeSdkBinding {
     pub(crate) fn artifact_digest(&self) -> &str {
         &self.sha256_hex
     }
+    /// The CLI a model probe may start: none for a replay fixture, whose
+    /// artifact is not the CLI.
+    pub(super) fn probe_executable(&self) -> Option<&std::path::Path> {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if self.fixture.is_some() {
+            return None;
+        }
+        Some(&self.executable)
+    }
     pub(crate) fn harness_version(&self) -> &str {
         &self.version
     }
     pub(crate) fn characterisation(&self) -> HarnessCharacterisation {
-        if self.version == CLAUDE_CODE_VERSION {
-            HarnessCharacterisation::Characterised
-        } else {
-            HarnessCharacterisation::Uncharacterised
-        }
+        version_characterisation(&self.version)
     }
 
     /// The admitted file is unchanged and still the one the launcher names.
@@ -249,7 +255,8 @@ impl AdmittedClaudeSdkBinding {
         self.revalidate().map_err(unavailable)?;
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         if let Some(selection) = &self.fixture {
-            return self.fixture_launch(selection, epoch, root);
+            let session = session.session_args(Some(&selection.durable_dir))?;
+            return self.fixture_launch(selection, epoch, root, session);
         }
         root.revalidate().map_err(unavailable)?;
         let mut identity = [0_u8; 16];
@@ -261,12 +268,21 @@ impl AdmittedClaudeSdkBinding {
             self.sha256,
             self.byte_len,
         );
+        // Claude Code checkpoints the files each turn changes, so a turn
+        // can be undone.
+        let mut environment = launch_environment();
+        let config = super::fork::config_directory(&environment);
+        environment.push((
+            "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING".into(),
+            "true".into(),
+        ));
         Ok(LaunchSpec {
             binding_id: identity,
             runtime_epoch: epoch,
             artifact: artifact.map_err(unavailable)?,
-            fixed_args: BoundedOsArgs::new(session.args()).map_err(unavailable)?,
-            environment: BoundedEnvironment::new(launch_environment()).map_err(unavailable)?,
+            fixed_args: BoundedOsArgs::new(session.args(config.as_deref())?)
+                .map_err(unavailable)?,
+            environment: BoundedEnvironment::new(environment).map_err(unavailable)?,
             project_root: root,
             required_guarantee: if cfg!(windows) {
                 RequiredContainment::EnforcedTree
@@ -279,6 +295,18 @@ impl AdmittedClaudeSdkBinding {
             #[cfg(all(test, windows))]
             test_after_artifact_verified: None,
         })
+    }
+}
+
+impl AdmittedClaudeSdkBinding {
+    /// Claude Code's profile, where it keeps each session's transcript: a
+    /// replay case's own profile, or the one the launch environment names.
+    pub(crate) fn config_directory(&self) -> Option<PathBuf> {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if let Some(selection) = &self.fixture {
+            return Some(selection.durable_dir.clone());
+        }
+        super::fork::config_directory(&launch_environment())
     }
 }
 
@@ -374,6 +402,10 @@ impl ClaudeSdkBindingRegistration {
         matches!(*self.lock_state(), RegistrationState::Admitted(_))
     }
 
+    pub(crate) fn discovery_pending(&self) -> bool {
+        matches!(*self.lock_state(), RegistrationState::Pending)
+    }
+
     pub(crate) fn admitted(&self) -> Option<Arc<AdmittedClaudeSdkBinding>> {
         match &*self.lock_state() {
             RegistrationState::Admitted(binding) => Some(Arc::clone(binding)),
@@ -401,40 +433,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn admits_the_supported_release_line_only() {
+    fn admits_every_release_from_the_supported_minimum() {
         for (version, admitted) in [
             ("2.1.319", true),
             ("2.1.300", true),
-            ("2.2.0", false),
+            ("2.1.400", true),
+            ("2.2.0", true),
+            ("3.0.0", true),
+            ("2.1.320-beta.1", true),
             ("2.1.299", false),
-            ("3.0.0", false),
+            ("2.1.300-rc.1", false),
             ("2.1", false),
-            ("2.1.319-beta", false),
         ] {
-            assert_eq!(version_admitted(version), admitted, "{version}");
+            assert_eq!(
+                version_characterisation(version).runs_tested_features(),
+                admitted,
+                "{version}"
+            );
         }
     }
 
     #[test]
-    fn new_sessions_take_sages_id_and_resumes_name_theirs() {
-        let mut launch = SessionLaunch {
-            session_id: "s-1".into(),
-            resume: false,
-            model: Some("opus".into()),
-        };
-        let args = launch.args();
-        let tail: Vec<_> = args[SDK_ARGS.len()..]
-            .iter()
-            .map(|a| a.to_str().unwrap())
-            .collect();
-        assert_eq!(tail, ["--session-id", "s-1", "--model", "opus"]);
-        launch.resume = true;
-        launch.model = None;
-        let args = launch.args();
-        assert_eq!(
-            args[SDK_ARGS.len()..],
-            [OsString::from("--resume"), "s-1".into()]
-        );
+    fn the_2_1_line_is_tested_and_later_lines_are_newer_than_tested() {
+        use HarnessCharacterisation::{Characterised, NewerThanTested, Uncharacterised};
+        for (version, expected) in [
+            ("2.1.300", Characterised),
+            ("2.1.319", Characterised),
+            ("2.1.1000", Characterised),
+            ("2.1.320-beta.1", NewerThanTested),
+            ("2.2.0", NewerThanTested),
+            ("3.0.0", NewerThanTested),
+            ("2.1.299", Uncharacterised),
+        ] {
+            assert_eq!(version_characterisation(version), expected, "{version}");
+        }
     }
 
     #[test]
@@ -457,6 +489,23 @@ mod tests {
         assert_eq!(
             registration.unavailable(),
             Some(ClaudeSdkAdmissionUnavailable::VersionUnsupported)
+        );
+        assert_eq!(
+            HarnessUnavailableReason::from(ClaudeSdkAdmissionUnavailable::VersionUnsupported),
+            HarnessUnavailableReason::VersionTooOld
+        );
+        registration.apply_discovery(Some(&InstalledHarness {
+            id: "claude-code",
+            executable: PathBuf::from("/nonexistent/claude"),
+            version: Some("2.1".into()),
+        }));
+        assert_eq!(
+            registration.unavailable(),
+            Some(ClaudeSdkAdmissionUnavailable::VersionUnreadable)
+        );
+        assert_eq!(
+            HarnessUnavailableReason::from(ClaudeSdkAdmissionUnavailable::VersionUnreadable),
+            HarnessUnavailableReason::CandidateInvalid
         );
     }
 }

@@ -72,7 +72,8 @@ fn harness_status(catalog: &HarnessCatalog, harness_id: &str) -> DefaultHarnessS
 }
 
 fn model_status(catalog: &HarnessCatalog, harness_id: &str, model_id: &str) -> DefaultOptionStatus {
-    match catalog.models(harness_id) {
+    // Runs on the main thread, so it reads only models already known.
+    match catalog.known_models(harness_id) {
         Ok(models) if models.is_empty() => DefaultOptionStatus::Unknown,
         Ok(models) if models.iter().any(|model| model.id == model_id) => {
             DefaultOptionStatus::Available

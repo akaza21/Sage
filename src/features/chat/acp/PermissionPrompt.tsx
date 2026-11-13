@@ -173,7 +173,7 @@ export function PermissionPrompt({
       ) : null}
       {sent?.[0] === item.id && !sent[1] ? (
         <p className="acp-permission__error" role="alert">
-          This decision could not be sent. Try again, or cancel the Turn.
+          This decision could not be sent. Try again, or cancel the turn.
         </p>
       ) : null}
       <p className="sr-only" role="status">

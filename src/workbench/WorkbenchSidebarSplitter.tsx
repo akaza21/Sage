@@ -1,5 +1,4 @@
-import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-
+import { Splitter } from "../ui/Splitter";
 import {
   type WorkbenchSidebarWidth,
   resizeWorkbenchSidebar,
@@ -20,72 +19,40 @@ export function WorkbenchSidebarSplitter({
   pointerOffsetAdjustment?: number;
   onChange: (next: number) => void;
 }) {
-  const [resizing, setResizing] = useState(false);
-  const splitterRef = useRef<HTMLDivElement>(null);
-
-  function resizeFromPointer(event: PointerEvent<HTMLDivElement>) {
-    const bounds = splitterRef.current?.parentElement?.getBoundingClientRect();
-    if (!bounds) return;
-    const pointerOffset =
-      side === "leading"
-        ? event.clientX - bounds.left - pointerOffsetAdjustment
-        : bounds.right - event.clientX;
-    onChange(resizeWorkbenchSidebar(width, { pointerOffset }));
-  }
-
-  function beginResize(event: PointerEvent<HTMLDivElement>) {
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    setResizing(true);
-    resizeFromPointer(event);
-  }
-
-  function endResize(event: PointerEvent<HTMLDivElement>) {
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-      event.currentTarget.releasePointerCapture?.(event.pointerId);
-    }
-    setResizing(false);
-  }
-
-  function resizeByKeyboard(event: KeyboardEvent<HTMLDivElement>) {
-    const key =
-      side === "leading"
-        ? event.key
-        : event.key === "ArrowLeft"
-          ? "ArrowRight"
-          : event.key === "ArrowRight"
-            ? "ArrowLeft"
-            : event.key;
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(key)) return;
-    event.preventDefault();
-    onChange(
-      resizeWorkbenchSidebar(width, {
-        currentWidth: value,
-        key,
-        shiftKey: event.shiftKey,
-      }),
-    );
-  }
-
   return (
-    <div
-      ref={splitterRef}
-      className={`workbench-sidebar-splitter workbench-sidebar-splitter--${side}${
-        resizing ? " workbench-sidebar-splitter--active" : ""
-      }`}
-      role="separator"
-      aria-label={ariaLabel}
-      aria-orientation="vertical"
-      aria-valuemin={width.minWidth}
-      aria-valuemax={width.maxWidth}
-      aria-valuenow={value}
-      tabIndex={0}
-      onKeyDown={resizeByKeyboard}
-      onPointerDown={beginResize}
-      onPointerMove={(event) => {
-        if (resizing) resizeFromPointer(event);
+    <Splitter
+      ariaLabel={ariaLabel}
+      className={`workbench-sidebar-splitter workbench-sidebar-splitter--${side}`}
+      activeClassName="workbench-sidebar-splitter--active"
+      value={value}
+      min={width.minWidth}
+      max={width.maxWidth}
+      onPointerResize={(clientX, splitter) => {
+        const bounds = splitter.parentElement?.getBoundingClientRect();
+        if (!bounds) return;
+        const pointerOffset =
+          side === "leading"
+            ? clientX - bounds.left - pointerOffsetAdjustment
+            : bounds.right - clientX;
+        onChange(resizeWorkbenchSidebar(width, { pointerOffset }));
       }}
-      onPointerUp={endResize}
-      onPointerCancel={endResize}
+      onKeyResize={(key, shiftKey) => {
+        onChange(
+          resizeWorkbenchSidebar(width, {
+            currentWidth: value,
+            // A trailing sidebar grows towards the left.
+            key:
+              side === "leading"
+                ? key
+                : key === "ArrowLeft"
+                  ? "ArrowRight"
+                  : key === "ArrowRight"
+                    ? "ArrowLeft"
+                    : key,
+            shiftKey,
+          }),
+        );
+      }}
     />
   );
 }

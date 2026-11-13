@@ -22,6 +22,13 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
     );
     match error {
         crate::acp::service::CodexSessionError::Binding(_) => binding_unavailable(),
+        crate::acp::service::CodexSessionError::RewindUnavailable => {
+            AcpIpcError::RecoveryRequired {
+                message: safe_message(
+                    "The pending undo could not be applied. The session was not resumed; the rewind remains pending.",
+                ),
+            }
+        }
         crate::acp::service::CodexSessionError::Intent => AcpIpcError::Conflict {
             resource: AcpConflictResource::Session,
             message: safe_message("The native session identity is stale or foreign."),
@@ -43,36 +50,8 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
         crate::acp::service::CodexSessionError::Recovery => AcpIpcError::RecoveryRequired {
             message: safe_message("The native runtime requires authoritative recovery."),
         },
-        crate::acp::service::CodexSessionError::LaunchFailure(
-            crate::acp::process::LaunchError::IdentityMismatch,
-        ) => AcpIpcError::Unavailable {
-            reason: AcpUnavailableReason::CapabilityUnavailable,
-            message: safe_message("Native launch identity check failed safely; retry the session."),
-        },
-        crate::acp::service::CodexSessionError::LaunchFailure(
-            crate::acp::process::LaunchError::Io,
-        ) => AcpIpcError::Unavailable {
-            reason: AcpUnavailableReason::CapabilityUnavailable,
-            message: safe_message(
-                "Native launch transport setup failed safely; retry the session.",
-            ),
-        },
-        crate::acp::service::CodexSessionError::LaunchFailure(_) => AcpIpcError::Unavailable {
-            reason: AcpUnavailableReason::CapabilityUnavailable,
-            message: safe_message("Native launch setup failed safely; retry the session."),
-        },
-        crate::acp::service::CodexSessionError::LaunchSetup(
-            crate::acp::service::CodexLaunchSetupError::ActiveOperation,
-        ) => AcpIpcError::Unavailable {
-            reason: AcpUnavailableReason::CapabilityUnavailable,
-            message: safe_message(
-                "Native launch operation setup failed safely; retry the session.",
-            ),
-        },
-        crate::acp::service::CodexSessionError::LaunchSetup(_) => AcpIpcError::Unavailable {
-            reason: AcpUnavailableReason::CapabilityUnavailable,
-            message: safe_message("Native launch setup failed safely; retry the session."),
-        },
+        crate::acp::service::CodexSessionError::LaunchFailure(error) => launch_failed(error.step()),
+        crate::acp::service::CodexSessionError::LaunchSetup(error) => launch_failed(error.step()),
         crate::acp::service::CodexSessionError::Session(
             crate::acp::runtime::SessionCoordinatorError::BootstrapRequired,
         ) => AcpIpcError::RecoveryRequired {
@@ -193,6 +172,18 @@ pub(super) fn page_admission_error(error: PageAdmissionError) -> AcpIpcError {
         resource: AcpCapacityResource::PageRead,
         limit,
         message: safe_message("Too many ACP history pages are already being read."),
+    }
+}
+
+/// A launch that failed before the session was live; it names the step.
+fn launch_failed(step: &'static str) -> AcpIpcError {
+    AcpIpcError::Unavailable {
+        reason: AcpUnavailableReason::CapabilityUnavailable,
+        message: SafeText::new(
+            "message",
+            format!("Native launch failed safely while {step}; retry the session."),
+        )
+        .expect("launch step message is bounded"),
     }
 }
 
@@ -346,8 +337,31 @@ mod tests {
             error,
             AcpIpcError::Unavailable { message, .. }
                 if message.as_str()
-                    == "Native launch identity check failed safely; retry the session."
+                    == "Native launch failed safely while checking the harness identity; retry the session."
         ));
+    }
+
+    #[test]
+    fn a_failed_launch_names_the_step_that_failed() {
+        for (error, expected) in [
+            (
+                crate::acp::service::CodexSessionError::LaunchSetup(
+                    crate::acp::service::CodexLaunchSetupError::RunnerStartSessionResume,
+                ),
+                "Native launch failed safely while resuming the harness session; retry the session.",
+            ),
+            (
+                crate::acp::service::CodexSessionError::LaunchFailure(
+                    crate::acp::process::LaunchError::ContainmentFailure,
+                ),
+                "Native launch failed safely while containing the harness process; retry the session.",
+            ),
+        ] {
+            assert!(matches!(
+                session_error(error),
+                AcpIpcError::Unavailable { message, .. } if message.as_str() == expected
+            ));
+        }
     }
 
     #[test]
@@ -360,7 +374,7 @@ mod tests {
             error,
             AcpIpcError::Unavailable { message, .. }
                 if message.as_str()
-                    == "Native launch operation setup failed safely; retry the session."
+                    == "Native launch failed safely while claiming the launch; retry the session."
         ));
     }
 }

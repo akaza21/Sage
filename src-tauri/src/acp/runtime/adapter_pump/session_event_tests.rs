@@ -155,7 +155,7 @@ fn idle_session_events_in_one_chunk_commit_once_with_superseded_titles_dropped()
             .iter()
             .filter_map(|event| match event {
                 DurableAdapterEvent::Session {
-                    event: SessionScopedEvent::Title { title },
+                    event: SessionScopedEvent::Title { title: Some(title) },
                     ..
                 } => Some(title.as_str().to_owned()),
                 _ => None,
@@ -185,7 +185,7 @@ fn events_buffered_before_the_first_turn_commit_with_its_first_batch() {
             .iter()
             .filter_map(|event| match event {
                 DurableAdapterEvent::Session {
-                    event: SessionScopedEvent::Title { title },
+                    event: SessionScopedEvent::Title { title: Some(title) },
                     ..
                 } => Some(title.as_str()),
                 _ => None,

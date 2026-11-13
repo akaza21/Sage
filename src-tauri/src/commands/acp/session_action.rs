@@ -37,6 +37,8 @@ pub(crate) async fn run_session_action(
             runtime_epoch: session.runtime_epoch,
             prompt,
             attached_context: AttachedContexts::default(),
+            // A session action carries no staged files.
+            staged: None,
         },
     )
     .await

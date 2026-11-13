@@ -93,11 +93,23 @@ fn completed_file_change_notification_has_journal_compatible_shape() {
     };
     assert!(matches!(
         events.as_slice(),
-        [IncomingEvent::Item {
-            payload: NormalizedPayload::FileChangeDiff { .. },
-            tool_state: None,
-            ..
-        }]
+        [
+            IncomingEvent::Item {
+                payload: NormalizedPayload::ToolCall {
+                    category: crate::acp::intent::ToolCategory::Edit,
+                    label,
+                    ..
+                },
+                tool_state: Some(crate::acp::lifecycle::ToolState::Completed),
+                lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
+                ..
+            },
+            IncomingEvent::Item {
+                payload: NormalizedPayload::FileChangeDiff { .. },
+                tool_state: None,
+                ..
+            },
+        ] if label.as_str() == "Edited src/lib.rs"
     ));
 }
 
@@ -140,6 +152,9 @@ fn created_file_becomes_openable_when_completed_after_disk_write() {
         panic!("expected completed file change");
     };
     assert!(matches!(completed.as_slice(), [IncomingEvent::Item {
+        payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Edit, .. },
+        ..
+    }, IncomingEvent::Item {
         lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
         tool_state: None,
         payload: NormalizedPayload::FileChangeDiff {
@@ -194,6 +209,9 @@ fn modified_file_binds_only_its_final_existing_location() {
         panic!("completed notification");
     };
     assert!(matches!(completed.as_slice(), [IncomingEvent::Item {
+        payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Edit, .. },
+        ..
+    }, IncomingEvent::Item {
         lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
         payload: NormalizedPayload::FileChangeDiff {
             resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
@@ -248,6 +266,9 @@ fn deleted_file_settles_without_an_openable_location() {
     assert!(matches!(
         completed.as_slice(),
         [IncomingEvent::Item {
+            payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Edit, .. },
+            ..
+        }, IncomingEvent::Item {
             lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
             payload: NormalizedPayload::FileChangeDiff {
                 resource: crate::acp::intent::SafeResourceLocation::Unavailable {

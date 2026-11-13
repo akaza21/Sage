@@ -9,6 +9,8 @@ import {
   type RefObject,
 } from "react";
 import { flushSync } from "react-dom";
+import { isImeComposing } from "./imeComposition";
+import { useActiveOption } from "./listNavigation";
 import { PickerOption } from "./PickerOption";
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
 import type { MenuPlacement } from "./menuPopoverPosition";
@@ -17,7 +19,6 @@ import type { SearchablePickerOption } from "./SearchablePicker";
 import {
   SEARCHABLE_PICKER_DEBOUNCE_MS,
   SEARCHABLE_PICKER_MAX_RENDERED,
-  SEARCHABLE_PICKER_PAGE_SIZE,
   searchablePickerOptionId as optionId,
 } from "./searchablePickerLoad";
 
@@ -90,9 +91,6 @@ export function SearchablePickerPopover({
   // A list that arrives after focus moved on leaves it there for this open.
   const [holdFocus, setHoldFocus] = useState(focusMoved);
   if (!open && holdFocus) setHoldFocus(false);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  // Every close clears the active row, whichever side closed the list.
-  if (!open && activeId !== null) setActiveId(null);
   const visible = useMemo(() => {
     if (!expanded) return EMPTY_CANDIDATES;
     const normalized = query.trim().toLocaleLowerCase();
@@ -108,8 +106,16 @@ export function SearchablePickerPopover({
     () => rendered.filter((candidate) => !candidate.disabledReason),
     [rendered],
   );
+  const selectableIds = useMemo(
+    () => selectable.map((candidate) => candidate.id),
+    [selectable],
+  );
+  const option = useActiveOption(selectableIds, "none");
+  const setActiveId = option.setActiveId;
+  // Every close clears the active row, whichever side closed the list.
+  if (!open && option.chosenId !== null) setActiveId(null);
   const active =
-    selectable.find((candidate) => candidate.id === activeId) ?? null;
+    option.activeIndex >= 0 ? selectable[option.activeIndex] : null;
 
   useEffect(() => {
     if (!open || disabled) return;
@@ -136,23 +142,10 @@ export function SearchablePickerPopover({
       setActiveId(null);
       close(reason);
     },
-    [close],
+    [close, setActiveId],
   );
-  const moveActive = (direction: number, page = false) => {
-    if (selectable.length === 0) return;
-    const found = selectable.findIndex(
-      (candidate) => candidate.id === activeId,
-    );
-    const current = found < 0 ? (direction > 0 ? -1 : 0) : found;
-    const offset = page ? SEARCHABLE_PICKER_PAGE_SIZE : 1;
-    const next = page
-      ? Math.max(
-          0,
-          Math.min(selectable.length - 1, current + direction * offset),
-        )
-      : (current + direction * offset + selectable.length) % selectable.length;
-    setActiveId(selectable[next]?.id ?? null);
-  };
+  // `selectable` holds only the candidates that can be picked.
+  const moveActive = option.move;
   const selectCandidate = useCallback(
     (next: string) => {
       if (disabled) return;
@@ -163,21 +156,19 @@ export function SearchablePickerPopover({
     [dismiss, disabled, onSelect, triggerRef],
   );
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (disabled) return;
+    // Keys that confirm an input method composition belong to the field.
+    if (disabled || isImeComposing(event)) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       if (!open) setOpen(true);
-      moveActive(event.key === "ArrowDown" ? 1 : -1);
+      moveActive(event.key);
     } else if (event.key === "Home" || event.key === "End") {
       if (selectable.length === 0) return;
       event.preventDefault();
-      setActiveId(
-        selectable[event.key === "Home" ? 0 : selectable.length - 1]?.id ??
-          null,
-      );
+      moveActive(event.key);
     } else if (event.key === "PageDown" || event.key === "PageUp") {
       event.preventDefault();
-      moveActive(event.key === "PageDown" ? 1 : -1, true);
+      moveActive(event.key);
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (active) selectCandidate(active.id);
@@ -236,6 +227,7 @@ export function SearchablePickerPopover({
           aria-autocomplete="list"
           aria-controls={`${id}-listbox`}
           aria-expanded={expanded}
+          placeholder="Search…"
           value={draft}
           onChange={(event) => {
             setDraft(event.target.value);

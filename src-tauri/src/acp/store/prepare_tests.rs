@@ -100,10 +100,10 @@ fn prepare_records_sent_images_as_user_items_right_after_the_prompt() {
 
 #[test]
 fn a_session_action_never_titles_its_chat() {
-    let title = |connection: &rusqlite::Connection| -> (String, i64) {
+    let title = |connection: &rusqlite::Connection| -> (String, String) {
         connection
             .query_row(
-                "SELECT title,title_is_default FROM chats WHERE id='chat-one'",
+                "SELECT title,title_source FROM chats WHERE id='chat-one'",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
@@ -113,8 +113,9 @@ fn a_session_action_never_titles_its_chat() {
         let connection = setup();
         connection
             .execute_batch(
-                "UPDATE chats SET title_is_default=1;
-                 CREATE TABLE workbench_tabs(project_id TEXT,id TEXT,kind TEXT,title TEXT,updated_at INTEGER);",
+                "UPDATE chats SET title_source='default';
+                 CREATE TABLE workbench_tabs(project_id TEXT,id TEXT,kind TEXT,title TEXT,updated_at INTEGER);
+                 CREATE TABLE chat_tabs(project_id TEXT,chat_id TEXT,tab_id TEXT);",
             )
             .unwrap();
         connection
@@ -129,5 +130,8 @@ fn a_session_action_never_titles_its_chat() {
 
     let mut connection = untitled();
     prepare_turn(&mut connection, command("Fix the sidebar")).unwrap();
-    assert_eq!(title(&connection).0, "Chat: Fix the sidebar");
+    assert_eq!(
+        title(&connection),
+        ("Chat: Fix the sidebar".to_owned(), "prompt".to_owned())
+    );
 }

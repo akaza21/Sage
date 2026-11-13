@@ -16,7 +16,7 @@ use std::fmt::Write as _;
 use serde_json::{Map, Value};
 
 use crate::acp::{
-    bindings::codex::state::ScopedExternalId,
+    bindings::codex::state::{ScopedExternalId, WarningKind},
     contract::RequiredText,
     intent::session_event::{
         SESSION_NOTICE_TEXT_BYTES, SessionNotice, SessionNoticeLevel, SessionScopedEvent,
@@ -44,20 +44,62 @@ pub(super) fn warning(
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
     let thread = optional_text(params, "threadId", ID_BYTES)?;
+    let message = human(params, "message")?;
     let notice = notice(
         SessionNoticeLevel::Warning,
         "codex",
-        format!("Codex warning: {}", human(params, "message")?),
+        format!("Codex warning: {message}"),
     )?;
-    match thread {
-        None => thread_less(adapter, notice),
-        Some(thread) => match adapter.bound_thread_id() {
-            Some(_) => single(adapter.thread_session_id(thread).map_err(identity)?, notice),
-            // A named thread cannot be told apart from a foreign one before
-            // a thread is bound, so it is ignored rather than failing.
-            None => Ok(IngressDisposition::IgnoredLate),
-        },
+    // A named thread cannot be told apart from a foreign one before a
+    // thread is bound, so it is ignored rather than failing.
+    if thread.is_some() && adapter.bound_thread_id().is_none() {
+        return Ok(IngressDisposition::IgnoredLate);
     }
+    let session = thread
+        .map(|thread| adapter.thread_session_id(thread).map_err(identity))
+        .transpose()?;
+    if !adapter.note_warning(WarningKind::Generic, &message) {
+        return Ok(IngressDisposition::IgnoredLate);
+    }
+    match session {
+        None => thread_less(adapter, notice),
+        Some(session) => single(session, notice),
+    }
+}
+
+/// The startup failure reason that means the server's sign-in expired.
+pub(super) const REAUTHENTICATION_REQUIRED: &str = "reauthenticationRequired";
+
+/// `mcpServer/startupStatus/updated` with `failed`: an MCP server did not
+/// start. Codex keeps running without it, so the session goes on and says
+/// why the server's tools are missing: its sign-in expired, or Codex's own
+/// error text (redacted and clipped) when it gives one. Before a thread is
+/// bound the notice is held, like `warning`.
+pub(super) fn mcp_startup_failed(
+    adapter: &mut CodexAdapter,
+    params: &Map<String, Value>,
+    server: &str,
+    thread: &str,
+) -> Result<IngressDisposition, IngressError> {
+    let server = clean(server, ID_BYTES);
+    let message = if params.get("failureReason").and_then(Value::as_str)
+        == Some(REAUTHENTICATION_REQUIRED)
+    {
+        format!(
+            "The MCP server {server} needs you to sign in again; its tools are unavailable until then."
+        )
+    } else {
+        match human(params, "error") {
+            Ok(error) => format!("The MCP server {server} failed to start: {error}"),
+            Err(_) => format!("The MCP server {server} failed to start."),
+        }
+    };
+    let notice = notice(SessionNoticeLevel::Warning, "codex mcp", message)?;
+    if adapter.bound_thread_id().is_none() {
+        adapter.buffer_session_notice(notice);
+        return Ok(IngressDisposition::IgnoredLate);
+    }
+    single(adapter.thread_session_id(thread).map_err(identity)?, notice)
 }
 
 /// `guardianWarning`: a warning from Codex's automatic approval reviewer.
@@ -85,20 +127,27 @@ pub(super) fn config_warning(
     adapter: &mut CodexAdapter,
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
-    let mut message = format!("Codex configuration problem: {}", human(params, "summary")?);
+    let summary = human(params, "summary")?;
+    let mut message = format!("Codex configuration problem: {summary}");
     if let Some(name) = optional_text(params, "path", usize::MAX)?.and_then(file_name) {
         let _ = write!(message, "\nIn {name}");
         if let Some(line) = start_line(params) {
             let _ = write!(message, ", line {line}");
         }
     }
-    if let Some(details) = optional_human(params, "details")? {
+    let details = optional_human(params, "details")?;
+    if let Some(details) = &details {
         let _ = write!(message, "\n{details}");
     }
-    thread_less(
-        adapter,
-        notice(SessionNoticeLevel::Warning, "codex config", message)?,
-    )
+    let notice = notice(SessionNoticeLevel::Warning, "codex config", message)?;
+    let reported = match &details {
+        Some(details) => format!("{summary}\n{details}"),
+        None => summary,
+    };
+    if !adapter.note_warning(WarningKind::Config, &reported) {
+        return Ok(IngressDisposition::IgnoredLate);
+    }
+    thread_less(adapter, notice)
 }
 
 /// `deprecationNotice`: a Codex feature or setting in use is deprecated.

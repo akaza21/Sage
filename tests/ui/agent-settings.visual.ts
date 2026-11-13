@@ -60,12 +60,14 @@ for (const width of [480, 1380]) {
       "Harnesses",
       "Chats",
       "Browser",
+      "Passwords",
       "Archived chats",
     ]);
     for (const section of [
       "Keybindings",
       "Harnesses",
       "Browser",
+      "Passwords",
       "Archived chats",
       "Chats",
     ]) {

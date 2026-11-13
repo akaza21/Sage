@@ -155,6 +155,7 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
         session_config_notice: None,
         goal: crate::acp::goal::GoalState::Unsupported,
         usage: false,
+        session_surface: None,
         project_id: owner.project_id.clone(),
         chat_id: owner.chat_id.clone(),
         title: SafeText::new("title", "Config").unwrap(),

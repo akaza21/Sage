@@ -48,7 +48,9 @@ fn effort_reset_metadata_is_absent_without_an_advertised_catalog_default() {
 
 #[test]
 fn oversized_combined_config_preserves_identity_through_native_config_channel() {
-    for (name, option_count) in [("Short".to_owned(), 1), ("M".repeat(512), 0)] {
+    // The thinking level stops fitting beside a long model name; the model
+    // choice still fits and is kept rather than dropped with it.
+    for (name, option_count) in [("Short".to_owned(), 2), ("M".repeat(512), 1)] {
         let mut adapter = fixture_runtime();
         initialize(&mut adapter);
         let owner = crate::acp::scheduler::RuntimeOwner {
@@ -142,7 +144,14 @@ fn confirmed_effort_survives_failed_or_unusable_catalog_hydration() {
         runtime.ingest(&frame(response), &Mapper).unwrap();
         let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
         assert_eq!(config["confirmedEffort"], "high");
-        assert_eq!(config["configOptions"], json!([]));
+        // No catalogue offers the thread's effort, so no thinking level shows.
+        assert!(
+            config["configOptions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|option| option["category"] != "effort")
+        );
         assert!(
             runtime
                 .configure(&crate::acp::session_config::ConfigIntent {
@@ -210,7 +219,9 @@ fn session_identity_uses_reported_model_not_requested_model_or_catalog_default()
     );
     assert_eq!(config["configOptions"][0]["currentValue"], "high");
     assert_eq!(config["configOptions"][0]["defaultValue"], "low");
-    assert_eq!(config["configOptions"].as_array().unwrap().len(), 1);
+    assert_eq!(config["configOptions"][1]["category"], "model");
+    assert_eq!(config["configOptions"][1]["currentValue"], "actual");
+    assert_eq!(config["configOptions"].as_array().unwrap().len(), 2);
 }
 
 #[test]
@@ -288,7 +299,14 @@ fn missing_reported_effort_never_becomes_catalog_default_effort() {
             config["confirmedModel"],
             json!({"id":"actual","name":"Actual model"})
         );
-        assert_eq!(config["configOptions"], json!([]));
+        // The thread's model is offered; no effort is inferred for it.
+        let categories: Vec<_> = config["configOptions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|option| option["category"].clone())
+            .collect();
+        assert_eq!(categories, [json!("model")]);
         assert!(config.get("confirmedEffort").is_none());
         let prompt = runtime
             .command(AdapterCommand::Prompt {

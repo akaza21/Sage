@@ -3,7 +3,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::acp::{limits::LIMITS, transport::ReservedQueue};
+use crate::acp::{
+    limits::{LIMITS, PROMPT_INTENT_BYTES},
+    transport::ReservedQueue,
+};
 
 use super::types::{
     ConfigCompletion, HostCommand, HostError, HostReply, NativeRpcCompletion, SteerCompletion,
@@ -44,7 +47,10 @@ impl HostMailbox {
             LIMITS.queues.egress_control_frames_inside_total as usize,
             LIMITS.queues.egress_control_bytes_inside_total as usize / 2,
         )
-        .map_err(|_| HostError::Capacity)?;
+        .map_err(|_| HostError::Capacity)?
+        // The data lane is sized for control-sized commands; a prompt with
+        // images is far larger, so one waits beside it in its own reserve.
+        .with_prompt_reserve(PROMPT_INTENT_BYTES);
         Ok(Self {
             state: Mutex::new(State {
                 queue,
@@ -63,6 +69,7 @@ impl HostMailbox {
         }
         let bytes = envelope.command.actual_bytes();
         let control = envelope.command.is_control();
+        let prompt = envelope.command.carries_prompt();
         let deadline_millis =
             monotonic_deadline_millis(envelope.deadline.saturating_duration_since(Instant::now()));
         let mut retained = Some(envelope);
@@ -77,9 +84,16 @@ impl HostMailbox {
                     retained.take().expect("host envelope retained")
                 })
         } else {
+            let mut build = || retained.take().expect("host envelope retained");
+            // A refused push leaves the envelope unbuilt, so a prompt too
+            // large for the data lane can still take the reserve.
             state
                 .queue
-                .try_push_data_with(bytes, || retained.take().expect("host envelope retained"))
+                .try_push_data_with(bytes, &mut build)
+                .or_else(|error| match prompt {
+                    true => state.queue.try_push_prompt_with(bytes, &mut build),
+                    false => Err(error),
+                })
         };
         result.map_err(|_| HostError::Capacity)?;
         self.ready.notify_one();

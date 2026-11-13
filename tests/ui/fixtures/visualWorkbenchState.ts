@@ -17,6 +17,7 @@ import {
 } from "../../../src/features/preview/harnessBrowse";
 
 import type { BuiltVisualScenario } from "./visualScenarioTypes";
+import { VISUAL_PREVIEW_URL } from "./visualPreviewFixture";
 import {
   BINDING_ID,
   FIXED_NOW,
@@ -52,11 +53,6 @@ function browseOwner(chatId: HarnessBrowseOwner["chatId"]): HarnessBrowseOwner {
     transitionEpoch: VISUAL_NATIVE_TRANSITION_EPOCH,
     runtimeEpoch: RUNTIME_EPOCH,
   };
-}
-
-function visualPreviewUrl(): string {
-  const port = window.location.port || "1420";
-  return `http://127.0.0.1:${port}/tests/ui/fixtures/preview.html`;
 }
 
 function sameBrowseOwner(
@@ -505,7 +501,7 @@ export async function reapplyVisualPreviewBrowseIntent(
   if (!chatId) throw new Error("Visual Preview fixture requires a Chat.");
   const expectedOwner = browseOwner(chatId);
   await waitForMountedPreviewOwner(expectedOwner);
-  if (!applyBrowseIntent({ owner: expectedOwner, url: visualPreviewUrl() })) {
+  if (!applyBrowseIntent({ owner: expectedOwner, url: VISUAL_PREVIEW_URL })) {
     throw new Error("Visual Preview fixture browse intent was not admitted.");
   }
 }

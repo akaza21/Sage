@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 use crate::acp::contract::{
     RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
@@ -17,6 +20,9 @@ pub(crate) struct ActiveAllocation {
     pub tree: RuntimeOwner,
     pub turn_id: Option<SageTurnId>,
     pub turn_reserved: bool,
+    /// When the tree last had no Turn: its reservation or its last Turn's
+    /// end. None while a Turn is reserved.
+    pub idle_since: Option<Instant>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -45,6 +51,7 @@ struct State {
     next_token: u64,
     tree: Option<TreeSlot>,
     turn: Option<TurnSlot>,
+    idle_since: Instant,
 }
 
 #[derive(Debug)]
@@ -99,6 +106,7 @@ impl Scheduler {
                 next_token: 1,
                 tree: None,
                 turn: None,
+                idle_since: Instant::now(),
             })),
         }
     }
@@ -114,6 +122,7 @@ impl Scheduler {
             owner: owner.clone(),
             draining: false,
         });
+        state.idle_since = Instant::now();
         drop(state);
         Ok(TreeLease {
             inner: Arc::clone(&self.inner),
@@ -129,6 +138,7 @@ impl Scheduler {
             tree: tree.owner.clone(),
             turn_id: state.turn.as_ref().and_then(|turn| turn.turn_id.clone()),
             turn_reserved: state.turn.is_some(),
+            idle_since: state.turn.is_none().then_some(state.idle_since),
         })
     }
 
@@ -389,6 +399,7 @@ fn clear_turn_in(
         _ => return Err(SchedulerError::StaleToken),
     }
     state.turn = None;
+    state.idle_since = Instant::now();
     Ok(())
 }
 

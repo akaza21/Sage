@@ -1,9 +1,10 @@
 import { IconButton } from "../../ui/IconButton";
 import { Plus } from "../../ui/leanIcons";
 
-import { useState, type ComponentProps } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import type { ChatUsage } from "./acp/chatUsage";
 import { ComposerContext } from "./ComposerContext";
+import type { ComposerAccessTarget } from "./chatComposerRegionProps";
 
 import {
   cachedHarnessModels,
@@ -30,6 +31,7 @@ import type { ComposerMenuActions } from "./ComposerAddActions";
 import { ComposerOptionsPart } from "./lazyParts";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { ComposerModelControls } from "./ComposerModelControls";
+import type { DraftEffort } from "./DraftEffortControl";
 import { composerModelName } from "./composerModelName";
 import { useInheritedComposerModel } from "./inheritedComposerModelState";
 import { ProjectScopeChip } from "./ProjectScopeChip";
@@ -43,8 +45,10 @@ import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 interface Props {
   contextUsage?: ChatUsage | null;
   usageRequest?: ComponentProps<typeof ComposerContext>["usageRequest"];
-  accessBindingId?: string | null;
+  accessTarget?: ComposerAccessTarget;
   addActions?: ComposerMenuActions;
+  /** The attach button, beside the options button. */
+  attachSlot?: ReactNode;
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
@@ -74,8 +78,9 @@ interface Props {
 export function ChatHarnessControls({
   contextUsage,
   usageRequest,
-  accessBindingId,
+  accessTarget,
   addActions = {},
+  attachSlot,
   availableBinding,
   canPrompt,
   modelLabelScope,
@@ -119,6 +124,7 @@ export function ChatHarnessControls({
   const selectedHarness = harnesses.find(
     (harness) => harness.id === selectedHarnessId,
   );
+  const accessBindingId = accessTarget?.bindingId;
   const accessHarness = accessBindingId
     ? harnesses.find((harness) => harness.bindingId === accessBindingId)
     : selectedHarness;
@@ -186,6 +192,21 @@ export function ChatHarnessControls({
     confirmedModelLabel,
     selectedModelId,
   );
+  // Before the chat's first session (`draftChatId` is set only then), the
+  // levels the harness lists for the selected model can be chosen.
+  const draft = {
+    chatId: accessTarget?.draftChatId,
+    bindingId: selectedHarness?.bindingId,
+    modelId: currentModelId,
+    levels: effortOption
+      ? undefined
+      : models.find((model) => model.id === currentModelId)?.effortLevels,
+  };
+  const draftEffort =
+    draft.chatId && draft.bindingId && draft.modelId && draft.levels?.length
+      ? (draft as DraftEffort)
+      : undefined;
+
   const contextWindow = formatContextWindow(
     models.find((model) => model.id === currentModelId)?.contextWindow,
   );
@@ -206,7 +227,7 @@ export function ChatHarnessControls({
   );
   const modeOptions = sessionModeActions(selectedSessionConfig);
   const otherOptions = sessionConfigControls(selectedSessionConfig, "other");
-  const canSelectEffort = !!selectedConfigChoice(effortOption);
+  const canSelectEffort = !!selectedConfigChoice(effortOption) || !!draftEffort;
   const { controls, effortInMenu, projectInMenu, contextVisible } =
     useComposerToolbarFit(
       canSelectEffort,
@@ -255,9 +276,11 @@ export function ChatHarnessControls({
         >
           <Plus size={16} aria-hidden="true" />
         </IconButton>
+        {attachSlot}
         {availableBinding && accessHarness?.bindingId ? (
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
+            chatId={accessTarget?.draftChatId}
             capabilities={accessHarness.accessModes}
             sessionConfig={sessionConfig}
             disabled={turnBusy || projectTransitioning}
@@ -293,6 +316,7 @@ export function ChatHarnessControls({
           effortLabel={confirmedModelLabel || inheriting ? effortLabel : null}
           contextWindow={contextWindow}
           effortOption={effortOption}
+          draftEffort={draftEffort}
           restored={selectedSessionConfig?.restored}
           notice={selectedSessionConfig?.notice}
           awaitingSession={

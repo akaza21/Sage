@@ -147,9 +147,9 @@ test.describe("Editor editing essentials", () => {
 
     await page.getByRole("button", { name: "Open settings" }).click();
     const settings = page.getByRole("region", { name: "Settings" });
-    await settings.getByRole("checkbox", { name: "Code folding" }).uncheck();
+    await settings.getByRole("switch", { name: "Code folding" }).uncheck();
     await settings
-      .getByRole("checkbox", { name: "Auto-close brackets" })
+      .getByRole("switch", { name: "Auto-close brackets" })
       .uncheck();
     await page.getByRole("button", { name: "Close Settings" }).click();
     await expect(page.locator(".cm-foldGutter")).toHaveCount(0);

@@ -69,10 +69,11 @@ export function BrowserDeveloperModeSetting() {
             ) : null}
           </div>
           <div className="settings-surface__toggle">
-            <span>{mode.enabled ? "On" : "Off"}</span>
             <input
               id={TOGGLE}
+              className="switch"
               type="checkbox"
+              role="switch"
               checked={mode.enabled}
               disabled={busy}
               aria-describedby={`${TOGGLE}-description ${TOGGLE}-default`}

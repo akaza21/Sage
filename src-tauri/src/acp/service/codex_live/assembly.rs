@@ -29,9 +29,17 @@ impl Lane<'_> {
         prepared.runtime.bind_activation(&prepared.intent.mode);
         let mut spec = match prepared.runtime.launch_spec() {
             Ok(spec) => spec,
-            Err(_) => {
+            Err(error) => {
                 let _ = self.runtime.abandon_start(&prepared.owner);
-                return Err(CodexSessionError::Intent);
+                return Err(
+                    if error
+                        == crate::acp::bindings::adapter::AdapterRuntimeError::RewindUnavailable
+                    {
+                        CodexSessionError::RewindUnavailable
+                    } else {
+                        CodexSessionError::Intent
+                    },
+                );
             }
         };
         spec.absolute_cleanup_deadline = Some(cleanup_deadline);

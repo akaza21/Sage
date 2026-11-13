@@ -337,7 +337,7 @@ function BrowserAskPageButton({
       aria-label={pending ? "Attaching page…" : "Ask about this page"}
       data-overflow-control="ask"
       disabled={!ready || !focusedChatId || pending}
-      title={!focusedChatId ? "Focus a Chat to ask about this page" : undefined}
+      title={!focusedChatId ? "Focus a chat to ask about this page" : undefined}
       onClick={attach}
     >
       <MessageCircleQuestion size={16} aria-hidden="true" />

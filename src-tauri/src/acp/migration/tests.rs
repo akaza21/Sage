@@ -1222,6 +1222,10 @@ fn fresh_schema_equals_a_v6_schema_upgraded_in_place() {
     notifications::apply(&mut upgraded).unwrap();
     config_choices::apply(&mut upgraded).unwrap();
     session_resume_link::apply(&mut upgraded).unwrap();
+    title_source::apply(&mut upgraded).unwrap();
+    session_facts_turn_index::apply(&mut upgraded).unwrap();
+    operation_terminal_index::apply(&mut upgraded).unwrap();
+    turn_undo_intent_indexes::apply(&mut upgraded).unwrap();
     let upgraded_fingerprint = database_fingerprint(&upgraded).unwrap();
 
     assert_eq!(

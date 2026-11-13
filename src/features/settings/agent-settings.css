@@ -14,6 +14,7 @@
   border-radius: var(--radius-xl);
   background: var(--bg);
   box-shadow: var(--elevation-floating);
+  font-family: var(--font-family-agent);
 }
 
 .agent-settings__nav {
@@ -104,8 +105,16 @@
 .agent-settings__header button {
   margin-left: auto;
 }
+/*
+ * Every page is one column whose blocks are spaced by gaps alone: intro
+ * copy, cards, toolbars and titled sections. Margins on the blocks
+ * themselves are cleared, so no page can fuse a control to the card below.
+ */
 .agent-settings__page {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: var(--settings-content-gap);
   min-height: 0;
   padding: 32px max(24px, calc((100% - 720px) / 2));
   overflow: auto;
@@ -130,25 +139,66 @@
   .agent-settings__page {
     padding: var(--space-6) var(--space-4);
   }
-  .agent-settings__row {
-    flex-wrap: wrap;
-  }
-  .agent-settings__control {
-    max-width: 100%;
-  }
+}
+
+/* Blocks are spaced by gaps alone. A titled group (Agent's own sections
+   and the Editor settings blocks some pages embed) keeps its heading closer
+   to its content than to the block above it. */
+.agent-settings__page > *,
+.agent-settings
+  :is(
+    .settings-surface__section,
+    .settings-surface__section-header,
+    .settings-surface__group,
+    .settings-surface__copy
+  )
+  > * {
+  margin-block: 0;
 }
 
 .agent-settings__page > p {
   color: var(--text-muted);
-  margin: 0 0 var(--space-6);
 }
-.agent-settings__card {
-  background: var(--surface-raised);
+
+.agent-settings__page h3 {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.agent-settings
+  :is(
+    .settings-surface__section,
+    .settings-surface__section-header,
+    .settings-surface__group
+  ) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.agent-settings .settings-surface__group {
+  margin-top: var(--space-2);
+}
+
+/* A card of rows. The Editor's Browser rows, padded by their own
+   variables in the Editor, take the card's inset here. */
+.agent-settings__card,
+.agent-settings .settings-surface__rows {
+  padding: 0 var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 0 var(--space-4);
-  margin-bottom: var(--space-6);
+  background: var(--surface-raised);
 }
+
+.agent-settings .settings-surface__rows {
+  padding: var(--space-4);
+}
+
+/* A row: title, description and default hint on the left, control on the
+   right. */
 .agent-settings__row {
   display: flex;
   align-items: center;
@@ -156,31 +206,35 @@
   gap: var(--space-4);
   padding: var(--space-4) 0;
 }
+
 .agent-settings__row + .agent-settings__row {
   border-top: 1px solid var(--border);
 }
-.agent-settings__row > div {
+
+/* The copy gives way; the control keeps its size up to half the row. */
+.agent-settings__copy {
   min-width: 0;
 }
+
 .agent-settings__row p {
+  margin: var(--space-1) 0 0;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
-  margin: var(--space-1) 0 0;
   overflow-wrap: anywhere;
 }
+
 .agent-settings__control {
   flex-shrink: 0;
   max-width: 48%;
 }
-.agent-settings__control .input {
-  width: 100%;
+
+.agent-settings__control .select {
+  min-width: calc(var(--space-8) * 3);
 }
+
 .agent-settings__inline-form {
   display: flex;
   gap: var(--space-2);
-}
-.agent-settings__page button:disabled {
-  cursor: not-allowed;
 }
 .agent-settings__page :where(button) {
   padding: var(--space-2) var(--space-3);
@@ -188,9 +242,6 @@
   border-radius: var(--radius-md);
   color: var(--text);
   background: var(--surface-hover);
-}
-.agent-settings__page :where(button:disabled) {
-  opacity: 0.55;
 }
 .agent-settings__page :where(ul) {
   max-width: 100%;
@@ -208,29 +259,22 @@
   gap: var(--space-2);
   padding: 0;
 }
-.agent-settings .browser-downloads,
 .agent-settings .browser-site-permissions {
-  position: static;
   background: transparent;
   border: 0;
   margin: 0 0 var(--space-4);
   padding: var(--space-2) 0;
 }
-.agent-settings .browser-site-permissions li {
+.agent-settings :is(.browser-site-permissions, .browser-downloads__list) li {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+.agent-settings .browser-site-permissions li {
   align-items: center;
 }
-.agent-settings .browser-downloads__list {
-  list-style: none;
-  padding: 0;
-}
 .agent-settings .browser-downloads__list li {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 0;
+  padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border);
 }
 .agent-settings .settings-surface__keymap td {
@@ -243,13 +287,6 @@
 .agent-settings .settings-surface__keymap th {
   overflow-wrap: anywhere;
 }
-.agent-settings .settings-surface__section {
-  border: 0;
-}
 .agent-settings .settings-surface__section-header h2 {
   display: none;
-}
-.agent-settings__page h3 {
-  margin: var(--space-6) 0 var(--space-1);
-  font-size: var(--font-size-md);
 }

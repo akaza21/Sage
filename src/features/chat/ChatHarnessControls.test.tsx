@@ -23,6 +23,7 @@ import {
   harnessModelIdentity,
   rememberHarnessModels,
 } from "../../app/harnessModelCache";
+import { useChatEffortDraft } from "../../app/chatEffortDraft";
 import { useChatAccessStore } from "../../app/sessionAccessActions";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import { useWorkbenchStore } from "../../app/store";
@@ -218,6 +219,55 @@ it("shows harness, unconfirmed model, effort availability and access before a fi
     screen.getByRole("button", { name: "Thinking level: High" }),
   ).toBeEnabled();
   expect(screen.queryByRole("button", { name: "Thinking level" })).toBeNull();
+});
+
+it("holds a thinking level chosen before the first session for the listed model", async () => {
+  useWorkbenchStore.setState({
+    selectedHarnessId: "access-test",
+    models: [
+      {
+        id: "default",
+        name: "Default",
+        isDefault: true,
+        effortLevels: ["low", "high"],
+      },
+      { id: "haiku", name: "Haiku" },
+    ],
+  });
+  const onSetSessionConfigOption = vi.fn(noop);
+  const { rerenderControls } = renderControls({
+    sessionHarnessId: null,
+    selectedModelId: "default",
+    accessTarget: { bindingId: "fixture", draftChatId: "chat-draft" },
+    onSetSessionConfigOption,
+  });
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Thinking level: Default" }),
+  );
+  const slider = await screen.findByRole("slider");
+  fireEvent.pointerDown(slider, { pointerId: 1 });
+  fireEvent.change(slider, { target: { value: "2" } });
+  fireEvent.pointerUp(slider, { pointerId: 1 });
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Thinking level: High" }),
+    ).toBeEnabled(),
+  );
+  expect(useChatEffortDraft.getState().draft).toEqual({
+    chatId: "chat-draft",
+    bindingId: "fixture",
+    modelId: "default",
+    effort: "high",
+  });
+  expect(onSetSessionConfigOption).not.toHaveBeenCalled();
+  // A model without listed levels keeps effort waiting for its session.
+  rerenderControls({
+    sessionHarnessId: null,
+    selectedModelId: "haiku",
+    accessTarget: { bindingId: "fixture", draftChatId: "chat-draft" },
+  });
+  expect(screen.getByRole("button", { name: "Thinking level" })).toBeDisabled();
+  useChatEffortDraft.setState({ draft: null });
 });
 
 it("keeps advertised model groups and exact IDs when changing session models", async () => {
@@ -2461,7 +2511,7 @@ it("keeps the send binding's access modes when switching between Access and Add"
   const onChoose = vi.fn();
   renderControls({
     selectedHarnessId: "other",
-    accessBindingId: "fixture",
+    accessTarget: { bindingId: "fixture" },
     addActions: { imageAction: { disabled: false, onChoose } },
   });
   const access = screen.getByRole("button", { name: "Access options" });

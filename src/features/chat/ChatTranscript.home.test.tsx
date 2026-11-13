@@ -183,7 +183,7 @@ it.each([
   ["unresolved chat", { id: "project-1", name: "Sage" }],
 ] as const)(
   "falls through without a history notice when there is %s and no load or error",
-  (_scenario, project) => {
+  async (_scenario, project) => {
     render(
       <ChatTranscript
         {...transcriptProps()}
@@ -202,7 +202,8 @@ it.each([
       />,
     );
     expect(screen.queryByText("Loading chat history…")).toBeNull();
-    expect(screen.getByText("Existing conversation")).toBeVisible();
+    // A chat without a native session loads its transcript on demand.
+    expect(await screen.findByText("Existing conversation")).toBeVisible();
     expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
   },
 );
@@ -286,7 +287,7 @@ it("retains earlier-history retry and discarded-history disclosure after an empt
   await settleLazyModules();
   expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
   expect(screen.getByRole("alert")).toHaveTextContent("History unavailable");
-  expect(screen.getByText(/Some Chat history was discarded/)).toBeVisible();
+  expect(screen.getByText(/Some chat history was discarded/)).toBeVisible();
   const retry = screen.getByRole("button", { name: "Load earlier history" });
   expect(retry).toBeEnabled();
   fireEvent.click(retry);

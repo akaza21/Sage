@@ -217,12 +217,12 @@ describe("ChatMarkdown appended-text fade (Codex s5/f0309)", () => {
     expect(container.querySelector("p")).toHaveTextContent(text);
   });
 
-  it("trails exactly the rendered newest run when the chunk carries collapsed whitespace", () => {
+  it("trails exactly the rendered newest run when the chunk carries collapsed whitespace and a line break", () => {
     const { container, rerender } = render(
       <ChatMarkdown text="Top hit:" streaming />,
     );
     rerender(<ChatMarkdown text={"Top hit:   lots\n  more"} streaming />);
-    expect(tails(container)).toEqual([" lots more"]);
+    expect(tails(container)).toEqual([" lots\nmore"]);
   });
 
   it("never splits a surrogate pair", () => {
@@ -394,7 +394,7 @@ it.each(["-", "+", "*", "1.", "2)"])(
     rerender(<ChatMarkdown text={source} streaming />);
     expect(surface()).toBe(
       marker === "2)"
-        ? '<p>Intro<span class="acp-stream-new"> 2) item</span></p>'
+        ? '<p>Intro<span class="acp-stream-new">\n2) item</span></p>'
         : `<p>Intro</p>${list}`,
     );
     rerender(<ChatMarkdown text={`${source}\n---`} streaming />);

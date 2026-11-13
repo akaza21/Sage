@@ -6,6 +6,7 @@ use super::{
     BridgeError, Inbound, MAX_TRACKED_TOOLS, Pending, RECENT_STREAMED_MESSAGES, SdkBridge,
     acp_error, acp_result,
 };
+use crate::acp::bindings::claude::runtime::ChildOutcome;
 use crate::acp::bindings::claude::sdk::{
     config::{EFFORT_ID, MODE_ID, MODEL_ID, SessionSettings},
     tools::{plan_entries, result_text, text_content, tool_fields},
@@ -34,14 +35,19 @@ impl SdkBridge {
                 self.withdraw(request_id.ok_or(BridgeError::Frame)?, &mut inbound);
             }
             // Results still finish the rows a subagent's approvals opened.
-            Some("user") => self.tool_results(&sdk["message"], &mut inbound),
-            // Other subagent traffic is projected in a later stage; the
-            // parent's `Task` tool row carries the subagent's outcome.
-            Some(_) if nested => {}
+            Some("user") => {
+                self.tool_results(&sdk["message"], &mut inbound);
+                if nested {
+                    self.nested(&sdk, &mut inbound);
+                }
+            }
+            Some(_) if nested => self.nested(&sdk, &mut inbound),
             Some("stream_event") => self.stream_event(&sdk["event"], &mut inbound),
             Some("assistant") => self.assistant(&sdk, &mut inbound),
             Some("result") => self.result(&sdk, &mut inbound),
-            Some("system") => self.status(&sdk, &mut inbound),
+            Some("system") => self.system(&sdk, &mut inbound),
+            Some("rate_limit_event") => Self::rate_limit(&sdk, &mut inbound),
+            Some("command_lifecycle") => self.lifecycle(&sdk, &mut inbound),
             Some(_) => {}
             None => return Err(BridgeError::Frame),
         }
@@ -63,6 +69,13 @@ impl SdkBridge {
                 .get("error")
                 .and_then(Value::as_str)
                 .unwrap_or("Claude Code refused the request");
+            match &pending {
+                Pending::Control => Self::controlled(Err(message), inbound),
+                Pending::Passive(request) => request.answered(Err(message), inbound),
+                Pending::Fork(_) => self.forked(None, inbound),
+                Pending::Withdraw(uuid) => self.withdrawn(uuid, inbound),
+                _ => {}
+            }
             if let Some(id) = pending.acp_id() {
                 inbound.acp.push(acp_error(id, INTERNAL_ERROR, message));
             }
@@ -79,7 +92,7 @@ impl SdkBridge {
                         .push(acp_error(id, INTERNAL_ERROR, UNKNOWN_MODE));
                     return Ok(());
                 }
-                self.commands = commands(reply);
+                self.commands = super::commands::commands(reply);
                 inbound.acp.push(acp_result(
                     id,
                     json!({
@@ -132,6 +145,11 @@ impl SdkBridge {
                 ));
             }
             Pending::Interrupt => {}
+            Pending::Withdraw(uuid) => self.withdrawn(&uuid, inbound),
+            Pending::Control => Self::controlled(Ok(reply), inbound),
+            Pending::Passive(request) => request.answered(Ok(reply), inbound),
+            Pending::Abandoned => {}
+            Pending::Fork(config) => self.forked(config.as_deref(), inbound),
         }
         Ok(())
     }
@@ -155,21 +173,6 @@ impl SdkBridge {
         self.can_use_tool(request_id, request, inbound)
     }
 
-    /// Claude Code changes its own mode too, for example when an approval
-    /// applies a `setMode` suggestion; follow it so the picker stays true.
-    fn status(&mut self, sdk: &Value, inbound: &mut Inbound) {
-        let mode = sdk.get("permissionMode").and_then(Value::as_str);
-        let settings = self.settings.as_mut();
-        let (Some(mode), Some(settings)) = (mode, settings) else {
-            return;
-        };
-        if sdk["subtype"] == "status" && settings.has_mode(mode) && settings.mode != mode {
-            settings.mode = mode.to_owned();
-            let update = json!({"sessionUpdate": "current_mode_update", "currentModeId": mode});
-            inbound.acp.push(self.update(update));
-        }
-    }
-
     fn stream_event(&mut self, event: &Value, inbound: &mut Inbound) {
         match event.get("type").and_then(Value::as_str) {
             Some("message_start") => {
@@ -188,9 +191,17 @@ impl SdkBridge {
                     _ => return,
                 };
                 if let Some(text) = text.and_then(Value::as_str).filter(|text| !text.is_empty()) {
-                    inbound.acp.push(self.update(
-                        json!({"sessionUpdate": kind, "content": {"type": "text", "text": text}}),
-                    ));
+                    let mut update =
+                        json!({"sessionUpdate": kind, "content": {"type": "text", "text": text}});
+                    // Each answer block is its own item, so text before and
+                    // after a tool call stays apart instead of running on.
+                    if kind == "agent_message_chunk" {
+                        let block = event.get("index").and_then(Value::as_u64);
+                        if let (Some(message), Some(block)) = (self.streamed.back(), block) {
+                            update["itemId"] = json!(format!("{message}:{block}"));
+                        }
+                    }
+                    inbound.acp.push(self.update(update));
                 }
             }
             _ => {}
@@ -209,16 +220,22 @@ impl SdkBridge {
             .get("id")
             .and_then(Value::as_str)
             .is_some_and(|id| self.streamed.iter().any(|streamed| streamed == id));
-        for block in message
+        let message_id = message.get("id").and_then(Value::as_str);
+        for (index, block) in message
             .get("content")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
+            .enumerate()
         {
             match block.get("type").and_then(Value::as_str) {
                 Some("text") if !streamed => {
                     if let Some(text) = block.get("text").and_then(Value::as_str) {
-                        inbound.acp.push(self.update(json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}})));
+                        let mut update = json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}});
+                        if let Some(message_id) = message_id {
+                            update["itemId"] = json!(format!("{message_id}:{index}"));
+                        }
+                        inbound.acp.push(self.update(update));
                     }
                 }
                 Some("tool_use") => self.tool_use(block, inbound),
@@ -235,6 +252,12 @@ impl SdkBridge {
             return;
         };
         let input = block.get("input").unwrap_or(&Value::Null);
+        if self.tools.contains_key(id) || self.subagents.contains(id) {
+            return;
+        }
+        if self.spawn(id, name, input, inbound) {
+            return;
+        }
         if let Some(entries) = plan_entries(name, input) {
             inbound
                 .acp
@@ -243,7 +266,7 @@ impl SdkBridge {
         }
         // A row is shown only while it can be finished, and once: an
         // approval may have opened it already.
-        if self.tools.len() >= MAX_TRACKED_TOOLS || self.tools.contains_key(id) {
+        if self.tools.len() >= MAX_TRACKED_TOOLS {
             return;
         }
         self.tools.insert(id.to_owned(), name.to_owned());
@@ -269,6 +292,16 @@ impl SdkBridge {
             let Some(id) = block.get("tool_use_id").and_then(Value::as_str) else {
                 continue;
             };
+            if self.subagents.contains(id) {
+                let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
+                let outcome = if failed {
+                    ChildOutcome::Failed
+                } else {
+                    ChildOutcome::Completed
+                };
+                self.end_child(id, outcome, inbound);
+                continue;
+            }
             let Some(name) = self.tools.remove(id) else {
                 continue;
             };
@@ -292,10 +325,14 @@ impl SdkBridge {
     /// `result` completes the running prompt, with the context meter first.
     /// Open approvals are cancelled, and tool rows Claude Code never
     /// reported on end as failed.
-    fn result(&mut self, sdk: &Value, inbound: &mut Inbound) {
+    pub(super) fn result(&mut self, sdk: &Value, inbound: &mut Inbound) {
+        if self.prompt.is_none() || self.holds_result(sdk) {
+            return;
+        }
         let Some(id) = self.prompt.take() else {
             return;
         };
+        self.end_steers(inbound);
         for (tool, name) in std::mem::take(&mut self.tools) {
             inbound.acp.push(self.update(json!({
                 "sessionUpdate": "tool_call_update", "toolCallId": tool, "status": "failed",
@@ -303,6 +340,8 @@ impl SdkBridge {
             })));
         }
         self.withdraw_open(inbound);
+        self.end_retry(inbound);
+        self.end_children(inbound);
         let usage = &sdk["usage"];
         let count = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
         let (input, output) = (count("input_tokens"), count("output_tokens"));
@@ -349,27 +388,14 @@ impl Pending {
             | Self::Session(id)
             | Self::Mode { id, .. }
             | Self::Option { id, .. } => Some(id),
-            Self::Interrupt => None,
+            Self::Interrupt
+            | Self::Withdraw(_)
+            | Self::Control
+            | Self::Passive(_)
+            | Self::Abandoned
+            | Self::Fork(_) => None,
         }
     }
-}
-
-/// Claude Code's commands as ACP `availableCommands`.
-fn commands(reply: &Value) -> Value {
-    reply
-        .get("commands")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|command| {
-            let hint = command.get("argumentHint").and_then(Value::as_str).filter(|hint| !hint.is_empty());
-            Some(json!({
-                "name": command.get("name")?.as_str()?,
-                "description": command.get("description").and_then(Value::as_str).unwrap_or_default(),
-                "input": hint.map(|hint| json!({"hint": hint})),
-            }))
-        })
-        .collect()
 }
 
 fn context_window(sdk: &Value) -> Option<u64> {

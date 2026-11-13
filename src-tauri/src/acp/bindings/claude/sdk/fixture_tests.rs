@@ -1,29 +1,120 @@
 //! The SDK replay journeys, driven through the bridge as a live session
 //! would drive them: each journey must complete and render its turn.
 
+use std::path::Path;
+
 use serde_json::{Value, json};
 
-use super::bridge::SdkBridge;
+use super::{bridge::SdkBridge, launch::SessionLaunch};
+use crate::acp::{goal::NativeRpcReply, intent::session_event::SessionScopedEvent};
 
 const SESSION: &str = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
 
-/// Replays `case` and returns every ACP frame the bridge produced. The
-/// client approves the first permission option it is asked about.
-fn replay(case: &str) -> Vec<Value> {
-    let mut bridge = SdkBridge::new(SESSION.into(), None);
+/// What a replay produced: every ACP frame, each mid-turn message's
+/// answer, the text of each session notice, and the session a fork opened.
+struct Replay {
+    acp: Vec<Value>,
+    steers: Vec<(String, bool)>,
+    notices: Vec<String>,
+    forked: Option<String>,
+}
+
+/// A launch with Claude Code's session flags, in a profile and project.
+struct Launched<'a> {
+    launch: &'a SessionLaunch,
+    config: &'a Path,
+    cwd: &'a Path,
+    /// Whether the client forks the chat once its turns are done.
+    fork: bool,
+}
+
+/// A profile and project under a fresh directory, removed on drop.
+struct Profile(std::path::PathBuf);
+
+impl Profile {
+    fn new() -> Self {
+        let root = std::env::temp_dir().join(format!("sage-sdk-replay-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(root.join("project")).unwrap();
+        Self(root)
+    }
+
+    fn config(&self) -> std::path::PathBuf {
+        self.0.join("config")
+    }
+
+    fn cwd(&self) -> std::path::PathBuf {
+        self.0.join("project")
+    }
+}
+
+impl Drop for Profile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Replays `case` in a new chat, launched as the real app launches it:
+/// with Claude Code's session flags, in a profile of its own.
+fn replay_with(case: &str, prompts: &[Value]) -> Replay {
+    let profile = Profile::new();
+    let launch = SessionLaunch {
+        session_id: SESSION.into(),
+        resume: false,
+        model: None,
+        rewind_at: None,
+    };
+    let (config, cwd) = (profile.config(), profile.cwd());
+    let launched = Launched {
+        launch: &launch,
+        config: &config,
+        cwd: &cwd,
+        fork: false,
+    };
+    replay_in(case, prompts, &launched)
+}
+
+/// Replays `case` and returns what the bridge produced. Prompts are sent
+/// in order with ids from 3; a message sent while Claude works says "Only
+/// the first page". The client approves the first permission option it is
+/// asked about.
+fn replay_in(case: &str, prompts: &[Value], launched: &Launched) -> Replay {
+    let session = launched.launch.session_id.as_str();
+    let mut bridge = SdkBridge::new(session.into(), None);
     let mut acp = Vec::new();
-    crate::acp::fixture::claude_sdk_wire_for_test(case, |kind, frames| {
+    let mut steers = Vec::new();
+    let mut notices = Vec::new();
+    let mut forked = None;
+    let mut prompts = prompts.iter().zip(3..);
+    let client = |kind: Option<&str>, frames: Vec<Value>| {
+        let mut sent = Vec::new();
         for frame in frames {
             let inbound = bridge.inbound(frame).expect("SDK frame maps");
-            assert!(inbound.replies.is_empty(), "{case}: no unserved requests");
+            // Requests the bridge makes on its own, such as the interrupt
+            // that follows a withdrawn message.
+            sent.extend(inbound.replies);
+            steers.extend(inbound.steers);
+            notices.extend(inbound.session.into_iter().filter_map(|event| match event {
+                SessionScopedEvent::Notice(notice) => Some(notice.text.as_str().to_owned()),
+                _ => None,
+            }));
+            if let Some(NativeRpcReply::Forked(id)) = inbound.native {
+                forked = Some(id.as_str().to_owned());
+            }
             acp.extend(inbound.acp);
         }
         let request = match kind {
             Some("claudeSdkInitialize") => json!({"id": 1, "method": "initialize", "params": {}}),
             Some("claudeSdkSettings") => json!({"id": 2, "method": "session/new", "params": {}}),
-            Some("claudeSdkPrompt") => json!({"id": 3, "method": "session/prompt", "params": {
-                "sessionId": SESSION, "prompt": [{"type": "text", "text": "Inspect"}],
-            }}),
+            Some("claudeSdkPrompt") => {
+                let (prompt, id) = prompts.next().expect("a prompt to send");
+                json!({"id": id, "method": "session/prompt", "params": {
+                    "sessionId": session, "prompt": prompt,
+                }})
+            }
+            Some("claudeSdkFollowUp") => {
+                sent.push(bridge.steer("Only the first page").expect("steer").0);
+                return sent;
+            }
             Some("claudeSdkInterrupt") => json!({"method": "session/cancel", "params": {}}),
             Some("claudeSdkPermission") => {
                 let asked = acp
@@ -34,11 +125,54 @@ fn replay(case: &str) -> Vec<Value> {
                     "outcome": "selected", "optionId": asked["params"]["options"][0]["optionId"],
                 }}})
             }
-            _ => return Vec::new(),
+            Some("claudeSdkIdle") if launched.fork => {
+                sent.push(
+                    bridge
+                        .fork(Some(launched.config.to_path_buf()))
+                        .expect("fork"),
+                );
+                return sent;
+            }
+            _ => return sent,
         };
-        vec![bridge.outbound(&request).expect("ACP request maps")]
-    });
-    acp
+        sent.push(bridge.outbound(&request).expect("ACP request maps"));
+        sent
+    };
+    crate::acp::fixture::claude_sdk_wire_for_test(
+        case,
+        &launched.launch.session_args(Some(launched.config)).unwrap(),
+        launched.config,
+        launched.cwd,
+        client,
+    );
+    Replay {
+        acp,
+        steers,
+        notices,
+        forked,
+    }
+}
+
+fn replay(case: &str) -> Vec<Value> {
+    replay_with(case, &[text("Inspect")]).acp
+}
+
+fn text(text: &str) -> Value {
+    json!([{"type": "text", "text": text}])
+}
+
+/// The text Claude streamed, in order.
+fn said(acp: &[Value]) -> String {
+    updates(acp, "agent_message_chunk")
+        .iter()
+        .filter_map(|update| update["content"]["text"].as_str())
+        .collect()
+}
+
+fn settled(acp: &[Value], id: u64) -> &Value {
+    acp.iter()
+        .find(|frame| frame["id"] == id && frame.get("method").is_none())
+        .expect("prompt settles")
 }
 
 fn updates<'a>(acp: &'a [Value], kind: &str) -> Vec<&'a Value> {
@@ -49,9 +183,7 @@ fn updates<'a>(acp: &'a [Value], kind: &str) -> Vec<&'a Value> {
 }
 
 fn prompt_reply(acp: &[Value]) -> &Value {
-    acp.iter()
-        .find(|frame| frame["id"] == 3)
-        .expect("prompt settles")
+    settled(acp, 3)
 }
 
 #[test]
@@ -114,4 +246,135 @@ fn stopped_failed_and_signed_out_turns_end_as_the_other_harnesses_do() {
     );
     let signed_out = replay("claude-sdk-sign-in");
     assert_eq!(prompt_reply(&signed_out)["error"]["code"], -32_000);
+}
+
+#[test]
+fn a_message_sent_during_a_tool_runs_in_the_same_turn() {
+    let Replay { acp, steers, .. } = replay_with("claude-sdk-follow-up-tool", &[text("Inspect")]);
+    assert!(
+        matches!(&steers[..], [(_, true), ..]),
+        "queued and accepted"
+    );
+    assert!(
+        said(&acp).contains("Only the first page"),
+        "Claude answers it"
+    );
+    assert_eq!(updates(&acp, "tool_call_update")[0]["status"], "completed");
+    assert_eq!(prompt_reply(&acp)["result"]["stopReason"], "end_turn");
+}
+
+#[test]
+fn a_message_sent_during_a_reply_runs_after_it_before_the_turn_ends() {
+    let Replay { acp, steers, .. } = replay_with("claude-sdk-follow-up-reply", &[text("Inspect")]);
+    assert!(matches!(&steers[..], [(_, true), ..]));
+    let said = said(&acp);
+    let reply = said.find("still being read.").expect("the reply streams");
+    let answer = said
+        .find("Only the first page")
+        .expect("then the message runs");
+    assert!(reply < answer);
+    let ends = acp.iter().filter(|frame| frame["id"] == 3).count();
+    assert_eq!(ends, 1, "one turn, ended once");
+    assert_eq!(prompt_reply(&acp)["result"]["stopReason"], "end_turn");
+}
+
+#[test]
+fn stop_withdraws_a_waiting_message_and_cancels_the_turn() {
+    let Replay { acp, steers, .. } = replay_with("claude-sdk-follow-up-stop", &[text("Inspect")]);
+    let uuid = &steers[0].0;
+    assert_eq!(steers, [(uuid.clone(), true), (uuid.clone(), false)]);
+    assert!(!said(&acp).contains("Only the first page"), "it never ran");
+    assert_eq!(prompt_reply(&acp)["result"]["stopReason"], "cancelled");
+}
+
+#[test]
+fn compact_after_an_answer_ends_its_own_turn_and_keeps_the_summary_private() {
+    let Replay { acp, notices, .. } =
+        replay_with("claude-sdk-compact", &[text("Inspect"), text("/compact")]);
+    assert_eq!(settled(&acp, 3)["result"]["stopReason"], "end_turn");
+    assert_eq!(settled(&acp, 4)["result"]["stopReason"], "end_turn");
+    assert_eq!(notices, ["Claude Code compacted the conversation."]);
+    let shown = serde_json::to_string(&acp).unwrap() + &notices.concat();
+    assert!(!shown.contains("the synthetic example was reviewed"));
+}
+
+#[test]
+fn compact_in_a_new_chat_says_there_is_nothing_to_compact() {
+    let acp = replay_with("claude-sdk-compact-empty", &[text("/compact")]).acp;
+    assert_eq!(said(&acp), "Error: No messages to compact");
+    assert_eq!(prompt_reply(&acp)["result"]["stopReason"], "end_turn");
+}
+
+#[test]
+fn each_prompt_is_echoed_as_claude_code_received_it() {
+    let link = |name: &str| {
+        let uri = url::Url::from_file_path(std::env::temp_dir().join(name)).unwrap();
+        json!([{"type": "text", "text": "Read this"},
+            {"type": "resource_link", "uri": uri.as_str(), "name": name}])
+    };
+    let acp = replay_with("claude-sdk-prompt-echo", &[link(".env"), link("large.log")]).acp;
+    let said = said(&acp);
+    let (first, second) = said.split_at(said.rfind("Synthetic replay received").unwrap());
+    assert!(first.contains("(Not attached: Sage does not send credential files.)"));
+    let large = std::env::temp_dir().join("large.log");
+    assert!(second.contains(&format!("@{}", large.display())));
+    assert_eq!(settled(&acp, 4)["result"]["stopReason"], "end_turn");
+}
+
+#[test]
+fn a_fork_chat_carries_the_first_chats_turn_from_its_saved_transcript() {
+    let profile = Profile::new();
+    let (config, cwd) = (profile.config(), profile.cwd());
+    let chat = |launch: &SessionLaunch, prompt: &str, fork: bool| {
+        let launched = Launched {
+            launch,
+            config: &config,
+            cwd: &cwd,
+            fork,
+        };
+        replay_in("claude-sdk-fork", &[text(prompt)], &launched)
+    };
+    let source = SessionLaunch {
+        session_id: SESSION.into(),
+        resume: false,
+        model: None,
+        rewind_at: None,
+    };
+    let first = chat(&source, "Remember the synthetic example", true);
+    assert!(said(&first.acp).contains(&format!("Claude Code session {SESSION}, new.")));
+    let fork = SessionLaunch {
+        session_id: first.forked.expect("the chat forks"),
+        resume: true,
+        model: None,
+        rewind_at: None,
+    };
+    let flags = fork.session_args(Some(&config)).unwrap();
+    assert_eq!(
+        flags[..2],
+        ["--resume", SESSION],
+        "the fork starts from its source"
+    );
+    assert!(flags.iter().any(|flag| flag == "--fork-session"));
+
+    let forked = said(&chat(&fork, "What did I ask first?", false).acp);
+    assert!(
+        forked.contains(&format!("forked from {SESSION} through message")),
+        "{forked}"
+    );
+    assert!(forked.contains("with 2 entries"), "{forked}");
+    assert!(
+        forked.contains("User: Remember the synthetic example"),
+        "{forked}"
+    );
+    // Its first message saved the copy, so the fork chat now resumes it.
+    let copy = super::fork::claude_session(&fork.session_id).to_owned();
+    assert_eq!(
+        fork.session_args(Some(&config)).unwrap(),
+        ["--resume", copy.as_str()]
+    );
+    let resumed = said(&chat(&fork, "And now?", false).acp);
+    assert!(resumed.contains(&format!(
+        "Claude Code session {copy}, resumed with 4 entries."
+    )));
+    assert!(resumed.contains("User: What did I ask first?"), "{resumed}");
 }

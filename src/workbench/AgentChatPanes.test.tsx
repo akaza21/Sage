@@ -414,10 +414,14 @@ describe("AgentTaskHeader working status", () => {
     fireEvent.click(
       screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
     );
+    const close = await screen.findByRole("menuitem", {
+      name: "Close session",
+    });
+    // Hand off loads with the menu, so it is there in the menu's first commit.
     expect(
-      await screen.findByRole("menuitem", { name: "Hand off chat" }),
+      screen.getByRole("menuitem", { name: "Hand off chat" }),
     ).toBeEnabled();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Close session" }));
+    fireEvent.click(close);
     expect(closeSession).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: /Chat actions for/ }));
     fireEvent.click(
@@ -465,13 +469,13 @@ describe("AgentTaskHeader working status", () => {
       await screen.findByRole("menuitem", { name: "Hand off chat" }),
     );
     expect(
-      await screen.findByRole("dialog", { name: "Hand off this Chat" }),
+      await screen.findByRole("dialog", { name: "Hand off this chat" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Chat actions for/ }),
     ).toHaveAttribute("aria-expanded", "false");
     fireEvent.keyDown(
-      screen.getByRole("dialog", { name: "Hand off this Chat" }),
+      screen.getByRole("dialog", { name: "Hand off this chat" }),
       { key: "Escape" },
     );
     await vi.waitFor(() =>

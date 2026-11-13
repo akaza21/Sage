@@ -189,7 +189,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       exact: true,
     });
     await expect(searchTools).toContainText(
-      "Search all roots in the active Project.",
+      "Search all roots in the active project.",
     );
     await expectNoViewportOverflow(page);
     await expect(workbench).toHaveScreenshot("editor-search.png");
@@ -236,7 +236,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const outlineTools = page.getByLabel("Outline project tools", {
       exact: true,
     });
-    await expect(outlineTools).toContainText("No symbols for the active File.");
+    await expect(outlineTools).toContainText("No symbols for the active file.");
     await expectNoViewportOverflow(page);
     await expect(workbench).toHaveScreenshot("editor-outline.png");
   });

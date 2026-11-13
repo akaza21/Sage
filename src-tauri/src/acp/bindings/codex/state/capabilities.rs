@@ -6,11 +6,9 @@ use crate::acp::intent::CapabilitySnapshotV1;
 use super::{AdapterError, CodexAdapter, NegotiatedMethods};
 use crate::acp::bindings::codex::{degrade, request::APP_SERVER_CLIENT_IDENTITY};
 
-const INITIALIZE_RESULT_FIELDS: [&str; 4] =
-    ["userAgent", "codexHome", "platformFamily", "platformOs"];
 const USER_AGENT_BYTES_MAX: usize = 1024;
-const PRODUCT_TOKEN_BYTES_MAX: usize = 64;
 const WINDOWS_VERSION_COMPONENTS_MAX: usize = 4;
+const PRODUCT_TOKEN_BYTES_MAX: usize = 64;
 
 impl CodexAdapter {
     pub(crate) fn accept_initialize(
@@ -68,10 +66,22 @@ impl CodexAdapter {
             snapshot: snapshot.clone(),
             models,
         });
+        // The built-ins list as soon as the session can run them; the skills
+        // follow their own read.
+        self.list_commands(Vec::new());
         Ok(snapshot)
     }
 }
 
+/// Validates the `initialize` result fields Sage relies on and ignores the
+/// rest, so a Codex release that adds fields or runs on another platform still
+/// starts.
+///
+/// * `userAgent` must name the version the discovery probe saw, so the process
+///   that answered is the build Sage admitted.
+/// * `codexHome` must be absolute, and for the curated package it must be the
+///   home Sage provisioned.
+/// * The curated package is Windows-only, so it must report a Windows host.
 pub(crate) fn valid_initialize_result(
     result: &Map<String, Value>,
     runtime_version: &str,
@@ -82,30 +92,17 @@ pub(crate) fn valid_initialize_result(
     let (Some(user_agent), Some(observed_home)) = (text("userAgent"), text("codexHome")) else {
         return false;
     };
-    if matches!(identity, InitializeIdentity::Observed) {
-        return result.len() == INITIALIZE_RESULT_FIELDS.len()
-            && INITIALIZE_RESULT_FIELDS
-                .iter()
-                .all(|field| result.contains_key(*field))
-            && valid_user_agent(user_agent, runtime_version, InitializeIdentity::Observed)
-            && valid_observed_codex_home(observed_home)
-            && valid_platform_identity(
-                text("platformFamily").unwrap_or_default(),
-                text("platformOs").unwrap_or_default(),
-                InitializeIdentity::Observed,
-            );
+    if !valid_user_agent(user_agent, runtime_version, identity) {
+        return false;
     }
-    result.len() == INITIALIZE_RESULT_FIELDS.len()
-        && INITIALIZE_RESULT_FIELDS
-            .iter()
-            .all(|field| result.contains_key(*field))
-        && valid_user_agent(user_agent, runtime_version, InitializeIdentity::Curated)
-        && observed_home == codex_home
-        && valid_platform_identity(
-            text("platformFamily").unwrap_or_default(),
-            text("platformOs").unwrap_or_default(),
-            InitializeIdentity::Curated,
-        )
+    match identity {
+        InitializeIdentity::Observed => valid_observed_codex_home(observed_home),
+        InitializeIdentity::Curated => {
+            observed_home == codex_home
+                && text("platformFamily") == Some("windows")
+                && text("platformOs") == Some("windows")
+        }
+    }
 }
 
 fn valid_observed_codex_home(value: &str) -> bool {
@@ -126,14 +123,54 @@ pub(crate) enum InitializeIdentity {
     Observed,
 }
 
-fn valid_platform_identity(family: &str, os: &str, identity: InitializeIdentity) -> bool {
-    if matches!(identity, InitializeIdentity::Curated) {
-        return family == "windows" && os == "windows";
+/// Codex reports `<originator>/<version> <platform and client details>`. An
+/// observed Codex is checked only for its originator and version, because the
+/// platform and client details vary by host and release. The curated package
+/// is one known x86_64 Windows build, so its whole user agent is checked,
+/// including the echo of Sage's own client identity.
+fn valid_user_agent(value: &str, runtime_version: &str, identity: InitializeIdentity) -> bool {
+    if value.is_empty() || value.len() > USER_AGENT_BYTES_MAX || value.chars().any(char::is_control)
+    {
+        return false;
     }
-    matches!(
-        (family, os),
-        ("windows", "windows") | ("macos", "macos") | ("macOS", "macOS") | ("unix", "linux")
-    )
+    let runtime_version = runtime_version
+        .split_ascii_whitespace()
+        .last()
+        .unwrap_or_default();
+    if runtime_version.is_empty() {
+        return false;
+    }
+    let Some((product, rest)) = value.split_once('/') else {
+        return false;
+    };
+    let Some(details) = rest.strip_prefix(runtime_version) else {
+        return false;
+    };
+    match identity {
+        InitializeIdentity::Observed => {
+            valid_product_token(product) && (details.is_empty() || details.starts_with(' '))
+        }
+        InitializeIdentity::Curated => {
+            product == APP_SERVER_CLIENT_IDENTITY.name && valid_curated_details(details)
+        }
+    }
+}
+
+/// Matches ` (Windows <version>; x86_64) <terminal> (<client name>; <client version>)`.
+fn valid_curated_details(details: &str) -> bool {
+    let client = APP_SERVER_CLIENT_IDENTITY;
+    let suffix = format!(" ({}; {})", client.name, client.version);
+    let Some(platform_and_terminal) = details
+        .strip_prefix(" (Windows ")
+        .and_then(|body| body.strip_suffix(&suffix))
+    else {
+        return false;
+    };
+    let Some((windows_version, terminal)) = platform_and_terminal.split_once("; x86_64) ") else {
+        return false;
+    };
+    valid_numeric_version(windows_version, 1, WINDOWS_VERSION_COMPONENTS_MAX)
+        && !terminal.is_empty()
 }
 
 fn valid_product_token(value: &str) -> bool {
@@ -144,59 +181,4 @@ fn valid_product_token(value: &str) -> bool {
         && value.bytes().all(|byte| {
             byte.is_ascii_alphanumeric() || matches!(byte, b' ' | b'.' | b'-' | b'_' | b'+')
         })
-}
-
-fn valid_user_agent(value: &str, runtime_version: &str, identity: InitializeIdentity) -> bool {
-    if value.is_empty() || value.len() > USER_AGENT_BYTES_MAX || value.chars().any(char::is_control)
-    {
-        return false;
-    }
-    let client = APP_SERVER_CLIENT_IDENTITY;
-    let runtime_version = runtime_version
-        .split_ascii_whitespace()
-        .last()
-        .unwrap_or(runtime_version);
-    let marker = format!("/{runtime_version} (Windows ");
-    let suffix = format!(" ({}; {})", client.name, client.version);
-    let Some(body) = value.strip_suffix(&suffix) else {
-        return false;
-    };
-    let Some((product, middle)) = body.split_once(&marker) else {
-        return false;
-    };
-    if !valid_product_token(product)
-        || (matches!(identity, InitializeIdentity::Curated) && product != client.name)
-    {
-        return false;
-    }
-    let Some((windows_version, terminal)) = middle.split_once("; x86_64) ") else {
-        return false;
-    };
-    valid_windows_version(windows_version) && !terminal.is_empty()
-}
-
-fn valid_windows_version(value: &str) -> bool {
-    valid_numeric_version(value, 1, WINDOWS_VERSION_COMPONENTS_MAX)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_windows_version_requires_nonempty_numeric_components() {
-        let client = APP_SERVER_CLIENT_IDENTITY;
-        for version in ["10..0", "...", ".10.0", "10.0."] {
-            let pinned = crate::acp::bindings::codex::manifest::PINNED_CODEX_VERSION;
-            let user_agent = format!(
-                "Codex Desktop/{pinned} (Windows {version}; x86_64) dumb ({}; {})",
-                client.name, client.version
-            );
-            assert!(!valid_user_agent(
-                &user_agent,
-                &format!("codex {pinned}"),
-                InitializeIdentity::Observed,
-            ));
-        }
-    }
 }

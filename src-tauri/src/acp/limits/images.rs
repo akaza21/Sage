@@ -61,6 +61,10 @@ pub const PROMPT_IMAGE_JPEG_QUALITY: u8 = 85;
 /// Decoded bytes of every normalised image in one prompt together, and so of
 /// any one image: three or four normalised screenshots.
 pub const PROMPT_IMAGE_TOTAL_BYTES: usize = 1024 * 1024;
+/// Codex and Pi repeat each prompt image inside their own events, as base64
+/// in one inbound JSON line that must fit the ordinary frame. The images of
+/// one prompt to them, and so any one image, total at most this.
+pub const ECHOED_PROMPT_IMAGE_TOTAL_BYTES: usize = 600 * 1024;
 /// The long edge of the transcript copy of a sent image too large to keep
 /// whole: legible in the transcript, a quarter of the prompt's pixels.
 pub const IMAGE_PREVIEW_EDGE_PX: u32 = 768;
@@ -97,10 +101,23 @@ pub const IMAGE_PREVIEW_BYTES: usize =
     (LIMITS.wire.normalized_item_bytes as usize - NORMALIZED_IMAGE_ENVELOPE_BYTES) / 4 * 3;
 /// A prompt intent's own fields beside its text, files, images and previews.
 pub const PROMPT_INTENT_OVERHEAD_BYTES: usize = 8192;
+/// The retained bytes of the largest prompt intent: every image, its
+/// preview, the text and files dispatch admits, and the intent's own fields.
+/// Each queue a prompt passes through holds one of this size.
+pub const PROMPT_INTENT_BYTES: usize = PROMPT_IMAGE_TOTAL_BYTES
+    + PROMPT_IMAGE_COUNT * IMAGE_PREVIEW_BYTES
+    + DISPATCH_BYTES
+    + PROMPT_INTENT_OVERHEAD_BYTES;
 
 const _: () = assert!(
     PROMPT_FRAME_BYTES > LIMITS.wire.frame_bytes as usize
         && PROMPT_IMAGE_PNG_BYTES <= PROMPT_IMAGE_TOTAL_BYTES
+        && ECHOED_PROMPT_IMAGE_TOTAL_BYTES <= PROMPT_IMAGE_TOTAL_BYTES
+        && PROMPT_IMAGE_PNG_BYTES <= ECHOED_PROMPT_IMAGE_TOTAL_BYTES
+        // The echo of every image leaves room for the prompt text; a text
+        // whose escaped echo would not fit is refused when the turn is sent.
+        && base64_len(ECHOED_PROMPT_IMAGE_TOTAL_BYTES) + DISPATCH_BYTES + PROMPT_FRAME_ENVELOPE_BYTES
+            <= LIMITS.wire.frame_bytes as usize
         && PROMPT_IMAGE_TOTAL_BYTES <= STORED_IMAGE_BYTES
         && PROMPT_IMAGE_EDGE_PX <= STORED_IMAGE_EDGE_PX
         && STORED_IMAGE_BYTES <= IMAGE_UPLOAD_BYTES
@@ -113,11 +130,7 @@ const _: () = assert!(
         && IMAGE_WORK_PERMITS as u64 * IMAGE_NORMALIZE_PEAK_BYTES <= IMAGE_WORK_MEMORY_BYTES
         // A prompt with every image, its previews, text and files fits the
         // process driver's data lane.
-        && PROMPT_IMAGE_TOTAL_BYTES
-            + PROMPT_IMAGE_COUNT * IMAGE_PREVIEW_BYTES
-            + DISPATCH_BYTES
-            + PROMPT_INTENT_OVERHEAD_BYTES
-            < LIMITS.queues.driver_data_bytes as usize
+        && PROMPT_INTENT_BYTES < LIMITS.queues.driver_data_bytes as usize
         && base64_len(IMAGE_PREVIEW_BYTES) + NORMALIZED_IMAGE_ENVELOPE_BYTES
             <= LIMITS.wire.normalized_item_bytes as usize
 );

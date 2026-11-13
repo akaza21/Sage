@@ -269,6 +269,7 @@ fn thread_settings_update_refreshes_the_model_and_effort() {
             &frame(json!({"id":list_id,"result":{"data":[{
                 "id":"gpt-6-astra","displayName":"GPT-6 Astra","isDefault":true,
                 "supportedReasoningEfforts":[
+                    {"reasoningEffort":"low","description":"Quick"},
                     {"reasoningEffort":"medium","description":"Balanced"},
                     {"reasoningEffort":"high","description":"Deep"}
                 ]
@@ -312,8 +313,8 @@ fn thread_settings_update_refreshes_the_model_and_effort() {
     assert_eq!(config["configOptions"][0]["currentValue"], "low");
     assert_eq!(config["configOptions"][0]["options"][0]["value"], "low");
     assert_eq!(config["configOptions"][0]["options"][1], Value::Null);
-    // A new model without an effort drops the old model's effort, so the
-    // next turn/start sends none.
+    // A new model without an effort drops the old model's effort, even if
+    // both offer it, so the next turn/start sends none.
     notify(
         &mut runtime,
         "thread/settings/updated",
@@ -330,7 +331,7 @@ fn thread_settings_update_refreshes_the_model_and_effort() {
         })
         .unwrap();
     let request: Value = serde_json::from_slice(prompt.frame().payload()).unwrap();
-    assert!(request["params"]["effort"].is_null());
+    assert!(request["params"].get("effort").is_none());
     let mut foreign = settings("gpt-6-astra", Value::Null);
     foreign["threadId"] = json!("thread-foreign");
     assert!(matches!(

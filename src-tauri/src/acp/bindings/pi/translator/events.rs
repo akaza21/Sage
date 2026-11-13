@@ -68,14 +68,7 @@ impl PiTranslator {
             return Ok(vec![AdapterOutput::Absorbed]);
         }
         match kind {
-            "agent_start" => {
-                let turn = self.live_turn_any_phase()?;
-                turn.lifecycle.start_model()?;
-                turn.settlement_message = None;
-                Ok(vec![AdapterOutput::TurnRunning {
-                    turn_key: turn.turn_key.clone(),
-                }])
-            }
+            "agent_start" => self.agent_start(),
             "agent_end" => self.agent_end(value),
             "agent_settled" => self.agent_settled(),
             "auto_retry_start" => self.retry_start(value),
@@ -85,6 +78,7 @@ impl PiTranslator {
                 if !assistant_message(value) {
                     return Ok(Vec::new());
                 }
+                self.live_turn()?.reply_open = true;
                 Ok(vec![AdapterOutput::TextStarted {
                     external_id: message_id(value)?,
                 }])
@@ -122,6 +116,12 @@ impl PiTranslator {
                 } else {
                     AdapterOutput::CompactionCompleted
                 });
+                // Pi's reason, such as nothing to compact yet, when the user asked.
+                if failed && !aborted && turn.lifecycle.is_command() {
+                    let reason = value.get("errorMessage");
+                    output.push(notice(SessionNoticeLevel::Warning, "Pi", reason));
+                    turn.compaction_failure_shown = true;
+                }
                 Ok(output)
             }
             _ => self.unknown_event(kind),
@@ -213,6 +213,15 @@ impl PiTranslator {
                         TerminalOutcome::Completed
                         | TerminalOutcome::Cancelled
                         | TerminalOutcome::Interrupted => AdapterOutput::CompactionInterrupted,
+                    });
+                }
+                // A wait to retry ends with its Turn; its activity row
+                // must not stay running in the chat.
+                if let Some(attempt) = turn.retry_waiting.take() {
+                    events.push(AdapterOutput::Retry {
+                        attempt,
+                        max_attempts: None,
+                        state: crate::acp::intent::session_event::SessionActivityState::Cancelled,
                     });
                 }
                 events.push(AdapterOutput::TurnTerminal {

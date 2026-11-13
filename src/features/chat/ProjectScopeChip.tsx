@@ -63,6 +63,7 @@ export function ProjectScopeChip({
           triggerRole={menuItem ? "menuitem" : undefined}
           triggerClassName={menuItem ? "menu-item" : undefined}
           portalTarget={menuItem ? "closest-popover" : "closest-dialog"}
+          popoverClassName="composer__popover composer__project-menu"
           popoverPlacement={popoverPlacement}
           ariaLabel={`Project: ${projectName}`}
           stateTitle={`Project: ${projectName}`}

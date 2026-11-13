@@ -170,8 +170,10 @@ async function openCodexEffort(page: Page) {
     const fixture =
       await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
     fixture.installVisualComposerEffortFixture(config);
-    // Record effort mutations from here on; every native call rejects, so the
-    // confirmed level stays authoritative and each attempt is countable.
+    // Record native calls from here on; every change rejects, so the
+    // confirmed level stays authoritative and each attempt is countable. The
+    // chat's access reads as its harness default, as outside the desktop, so
+    // the live chat's access load never fails into the toolbar.
     const calls: { command: string; value: unknown }[] = [];
     Object.assign(window, { __effortCalls: calls });
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
@@ -179,7 +181,9 @@ async function openCodexEffort(page: Page) {
       value: {
         invoke: (command: string, args: { request?: { value?: unknown } }) => {
           calls.push({ command, value: args?.request?.value });
-          return Promise.reject(new Error("visual fixture"));
+          return command === "get_chat_access"
+            ? Promise.resolve(null)
+            : Promise.reject(new Error("visual fixture"));
         },
         transformCallback: () => 0,
       },

@@ -47,9 +47,8 @@ pub(crate) struct CodexRuntime {
     selected_model_id: Option<crate::acp::intent::ModelId>,
     reported_model_id: Option<crate::acp::intent::ModelId>,
     selected_model: Option<super::incoming::ModelDescriptor>,
-    /// The catalog pages read so far, bounded as `apply_model_page` admits them.
-    model_catalog: Vec<super::incoming::ModelDescriptor>,
     selected_effort: Option<crate::acp::contract::RequiredText<512>>,
+    model_catalog: model_config::ModelCatalog,
     model_list_requested: bool,
     model_catalog_idle_only: bool,
     model_catalog_entries: usize,
@@ -158,6 +157,10 @@ impl CodexRuntime {
             IngressDisposition::DroppedRawReasoning => one(AdapterEvent::Absorbed),
             IngressDisposition::GoalMutationRejected => {
                 Err(AdapterRuntimeError::GoalMutationRejected)
+            }
+            IngressDisposition::Controlled(reply) => {
+                self.native_rpc_reply = Some(reply);
+                one(AdapterEvent::IgnoredLate)
             }
             IngressDisposition::GoalMutationApplied => {
                 self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::GoalApplied);

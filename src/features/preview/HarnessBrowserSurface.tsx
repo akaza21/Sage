@@ -261,13 +261,13 @@ export function HarnessBrowserSurface({
           <ResourceStateNotice
             state="idle"
             title="Preview is idle"
-            detail="Preview shows loopback development servers started from this Chat. Only loopback HTTP(S) with a port; public sites stay closed."
+            detail="Preview shows loopback development servers started from this chat. Only loopback HTTP(S) with a port; public sites stay closed."
           />
         ) : (
           <ResourceStateNotice
             state="idle"
             title="Preview unavailable"
-            detail="Select a Chat to preview loopback development servers."
+            detail="Select a chat to preview loopback development servers."
           />
         ))}
     </section>

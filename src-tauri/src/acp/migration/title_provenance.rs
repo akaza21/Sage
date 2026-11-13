@@ -8,7 +8,11 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         | SchemaClass::CurrentV21
         | SchemaClass::CurrentV22
         | SchemaClass::CurrentV23
-        | SchemaClass::CurrentResumeLink => {
+        | SchemaClass::CurrentResumeLink
+        | SchemaClass::CurrentTitleSource
+        | SchemaClass::CurrentSessionFactsTurnIndex
+        | SchemaClass::CurrentOperationTerminalIndex
+        | SchemaClass::CurrentTurnUndoIntentIndexes => {
             return Ok(());
         }
         SchemaClass::CurrentV19 => {}

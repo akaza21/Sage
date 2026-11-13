@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::acp::encoded_len::encoded_len;
 use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
@@ -79,9 +80,8 @@ pub(super) fn load(input: HistoryLoad<'_>) -> Result<HistorySlice, StoreError> {
             Vec::new(),
             activity,
         )?;
-        let turn_bytes = serde_json::to_vec(&turn)
-            .map_err(|_| StoreError::Corrupt("turn projection serialization"))?
-            .len();
+        let turn_bytes =
+            encoded_len(&turn).map_err(|_| StoreError::Corrupt("turn projection serialization"))?;
         let turn_delta = turn_bytes + usize::from(!turns.is_empty());
         if used.saturating_add(turn_delta) > limit {
             let previous = turns.last().ok_or(StoreError::Capacity {
@@ -206,9 +206,8 @@ fn load_turn_items(
         }
         let permission = permission(row, &item)?;
         let projection = decode_item(item, permission, project_roots)?;
-        let item_bytes = serde_json::to_vec(&projection)
+        let item_bytes = encoded_len(&projection)
             .map_err(|_| StoreError::Corrupt("item projection serialization"))?
-            .len()
             + usize::from(!items.is_empty());
         if used.saturating_add(item_bytes) > page_limit {
             more = true;
@@ -285,6 +284,7 @@ fn project_turn(
     Ok(TurnProjection {
         attached_context: prompt.attached_context,
         session_action: prompt.session_action,
+        command: prompt.command,
         id: SageTurnId::parse(row.id.clone()).map_err(|_| StoreError::Corrupt("turn id"))?,
         session_id: SageAgentSessionId::parse(row.session_id.clone())
             .map_err(|_| StoreError::Corrupt("session id"))?,

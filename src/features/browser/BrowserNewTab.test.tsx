@@ -71,7 +71,7 @@ it("disables every Chat launcher when no Agent Chat owns the New tab", () => {
   for (const name of ["Changes", "Terminal", "Files", "Side chat"]) {
     const button = screen.getByRole("button", { name });
     expect(button).toBeDisabled();
-    expect(button).toHaveAttribute("title", "Open a Chat in Agent mode first");
+    expect(button).toHaveAttribute("title", "Open a chat in Agent mode first");
   }
   expect(screen.getByRole("button", { name: "New page" })).toBeEnabled();
 });

@@ -78,6 +78,7 @@ export function useChatSurfaceModel({
       attachedContext: readonly AttachedContext[],
       bindingId: CuratedBindingId,
       modelId: CuratedModelId | null,
+      staged?: { revision: string },
     ) => Promise<unknown>;
     cancel: (turnId: TurnProjection["id"]) => Promise<unknown>;
     close: () => Promise<unknown>;
@@ -280,7 +281,8 @@ export function useChatSurfaceModel({
                 useNativeAcp: model.useNativeAcp,
               }));
   const submit = useCallback(
-    (event: FormEvent) => {
+    // The composer names the batch it staged; a queued message never does.
+    (event: FormEvent, stagedRevision?: string | null) => {
       event.preventDefault();
       if (sendBlocked) return;
       if (activeAcpTurn) {
@@ -301,6 +303,7 @@ export function useChatSurfaceModel({
           attachedContext,
           model.bindingId,
           model.selectedModelId,
+          ...(stagedRevision ? [{ revision: stagedRevision }] : []),
         );
         return;
       }
@@ -356,7 +359,11 @@ export function useChatSurfaceModel({
   );
   return {
     ...model,
-    accessBindingId,
+    // A chat with no session at all drafts its access for its first one.
+    accessTarget: {
+      bindingId: accessBindingId,
+      draftChatId: page?.sessions.length === 0 ? page.chatId : undefined,
+    },
     foregroundError: acpActions.error ?? chatError,
     // The sign-in sentence renders lazily in the composer, off the chat path.
     signInHarness:

@@ -4,7 +4,7 @@ use serde_json::{Map, Value, json};
 
 use crate::acp::{
     contract::SafeText,
-    intent::{NormalizedPayload, ToolCategory},
+    intent::{NormalizedPayload, ToolCategory, user_input::UserInputRequest},
     limits::LIMITS,
     runtime::host_browse::admit_browse_url,
 };
@@ -30,6 +30,16 @@ pub(super) fn server_request(
     let id = object.get("id").ok_or(IngressError::Malformed)?;
     if method == USER_INPUT_METHOD {
         return user_input::request(adapter, object, params);
+    }
+    if method == elicitation::ELICITATION_METHOD {
+        return elicitation::request(adapter, object, params);
+    }
+    if method == "currentTime/read" {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_secs());
+        let bytes = reply(id, "result", json!({"currentTimeAt": now}))?;
+        return Ok(IncomingEvent::HostToolReply { bytes }.into());
     }
     let Some(category) = approval_category(method) else {
         return unsupported_request(id, method);
@@ -77,6 +87,7 @@ pub(super) fn server_request(
             item,
             bytes,
             payload,
+            form: None,
         },
     )
 }
@@ -91,6 +102,8 @@ struct PendingServerRequest<'a> {
     item: &'a str,
     bytes: Vec<u8>,
     payload: NormalizedPayload,
+    /// The form an elicitation asked, kept to type the accepted content.
+    form: Option<Box<UserInputRequest>>,
 }
 
 fn project_server_request(
@@ -105,6 +118,7 @@ fn project_server_request(
         item,
         bytes,
         payload,
+        form,
     } = request;
     let request_id = request_id_text(object.get("id").ok_or(IngressError::Malformed)?)?;
     let external_request = match adapter
@@ -116,6 +130,7 @@ fn project_server_request(
             turn_id: turn,
             item_id: item,
             response: &bytes,
+            form,
         })
         .map_err(permission)?
     {
@@ -143,6 +158,7 @@ fn project_server_request(
     Ok(event.into())
 }
 
+mod elicitation;
 mod user_input;
 
 fn offered_approval_kinds(
