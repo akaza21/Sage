@@ -9,6 +9,7 @@ import { snapshotFileDiff } from "../../src/features/diff/snapshotDiff";
 import { RESOURCE_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { PREVIEW_PROJECTION_FIXTURE_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
+import { VISUAL_PREVIEW_URL } from "./fixtures/visualPreviewFixture";
 import {
   waitForAnimations,
   expectNoViewportOverflow,
@@ -1122,6 +1123,11 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
 
   test("agent-preview-active stays visually stable", async ({ page }) => {
     const workbench = await openAgentScenario(page, "preview");
+    await expect(
+      page
+        .frameLocator('iframe[title="Sage browser"]')
+        .getByRole("heading", { name: "Product coherence review" }),
+    ).toBeVisible();
     const resources = page.getByLabel("Agent artifacts", { exact: true });
     await expect(
       resources.getByRole("tab", { name: "Preview" }),
@@ -1173,6 +1179,7 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
     const activeAddress = resources.getByRole("textbox", {
       name: "Preview address",
     });
+    await expect(activeAddress).toHaveValue(VISUAL_PREVIEW_URL);
     const activeHref = await activeAddress.inputValue();
     await activeAddress.fill("https://example.com/");
     await activeAddress.press("Enter");

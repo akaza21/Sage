@@ -98,7 +98,7 @@ for (const width of [1888, 720, 480]) {
         (modes) => window.popoverWorkbench.actions(modes),
         profile.modes,
       );
-      const foldedProject =
+      const projectFolded = async () =>
         (await composer.getByRole("button", { name: /^Project: / }).count()) ===
         0;
       for (const [name, menuName, available] of [
@@ -106,12 +106,14 @@ for (const width of [1888, 720, 480]) {
         [
           "Composer options",
           "Composer options menu",
-          profile.modes.length > 0 || foldedProject,
+          profile.modes.length > 0 || (await projectFolded()),
         ],
       ] as const) {
         const trigger = composer.getByRole("button", { name, exact: true });
         if (!available) {
-          await expect(trigger).toHaveCount(0);
+          // "+" keeps its place, disabled, when it has nothing to offer.
+          if (name === "Composer options") await expect(trigger).toBeDisabled();
+          else await expect(trigger).toHaveCount(0);
           await expect(
             page.getByRole("menu", { name: menuName, exact: true }),
           ).toHaveCount(0);
@@ -140,7 +142,12 @@ for (const width of [1888, 720, 480]) {
         }
         if (name === "Access options") {
           await expect(
-            menu.getByText("How should agent actions be approved?"),
+            menu.getByText(
+              "How should agent actions be approved in this chat?",
+              {
+                exact: true,
+              },
+            ),
           ).toBeVisible();
           await expect(menu.getByRole("menuitemradio")).toHaveCount(
             profile.access.length,
@@ -169,8 +176,10 @@ for (const width of [1888, 720, 480]) {
       const compactEffort = await composer.evaluate(
         (element) => element.clientWidth <= 320,
       );
+      // The effort control takes toolbar room, so the project chip may have
+      // folded into the Add menu since the options pass above.
       const hasAdd =
-        foldedProject ||
+        (await projectFolded()) ||
         (profile.effort && compactEffort) ||
         (!profile.effort && profile.modes.length > 0);
       if (hasAdd) {
@@ -180,9 +189,9 @@ for (const width of [1888, 720, 480]) {
         ).toHaveCount(profile.effort && compactEffort ? 1 : 0);
         await expect(
           page.getByRole("menuitem", { name: /^Project:/ }),
-        ).toHaveCount(foldedProject ? 1 : 0);
+        ).toHaveCount((await projectFolded()) ? 1 : 0);
         await page.keyboard.press("Escape");
-      } else await expect(add).toHaveCount(0);
+      } else await expect(add).toBeDisabled();
       for (const [name, selector] of [
         ...(profile.effort && !compactEffort
           ? [
