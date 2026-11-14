@@ -26,6 +26,8 @@ export function TranscriptInteractionsGate({
       if (event.type === "pointerup") {
         if (getSelection()?.isCollapsed === false) setArmed(1);
       } else if (event.type === "keyup") {
+        // Ctrl+C after pointer selection must not arm a keyboard-focused
+        // toolbar.
         if (
           shiftKey &&
           key?.startsWith("Arrow") &&

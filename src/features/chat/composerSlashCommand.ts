@@ -8,6 +8,7 @@ export function slashTokenEnd(text: string): number {
   return space < 0 ? text.length : space;
 }
 
+// A null caret means the end.
 export function slashCommandQuery(
   text: string,
   caret: number | null,

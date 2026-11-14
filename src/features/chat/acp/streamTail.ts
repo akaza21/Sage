@@ -1,6 +1,7 @@
 import { markdownTextTail } from "../../files/markdownTextLocations";
 import type { MarkdownPreviewDocument } from "../../files/markdownPreview";
 
+// `runs`: oldest-first lengths of appended runs forming a contiguous suffix.
 export type StreamRuns = {
   blockIndex: number;
   itemIndex: number | undefined;

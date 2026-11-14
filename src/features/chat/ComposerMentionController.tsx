@@ -18,7 +18,8 @@ function insertMention(
   end: number,
   token: string,
 ) {
-  // The character after the token is rewritten as itself to step over it.
+  // The character after the token is rewritten as itself to step over it; at
+  // the end a space is added so what is typed next never joins the token.
   const follows = field.value.charAt(end);
   const through = follows ? end + 1 : end;
   const replacement = `${token}${follows || " "}`;

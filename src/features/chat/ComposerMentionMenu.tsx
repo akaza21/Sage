@@ -181,6 +181,7 @@ export function ComposerMentionMenu({
   const loading = load?.kind === "loading";
   useLayoutEffect(() => {
     keyHandlerRef.current = (event) => {
+      // While suggestions load, Enter must not send a half-typed path.
       if (
         loading &&
         event.key === "Enter" &&

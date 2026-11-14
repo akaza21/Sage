@@ -61,6 +61,7 @@ function UsageLimit({ window }: { window: UsageWindow }) {
 }
 
 function costText(usd: number): string {
+  // Sub-dollar sessions keep their cents' fractions, as harnesses price them.
   return usd.toLocaleString(undefined, {
     style: "currency",
     currency: "USD",

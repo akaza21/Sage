@@ -24,6 +24,7 @@ export function avatarColor(key: string): number {
   return Math.abs(hash % 3);
 }
 
+// `index` names a label's own target, `more` the rest.
 export type SubagentSegment = { text: string; index?: number; more?: true };
 
 export function subagentSegments(

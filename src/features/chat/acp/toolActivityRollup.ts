@@ -16,6 +16,7 @@ const WEB_SEARCH_INTEGRATION = "Search Service";
 
 export type ToolRollup = {
   kind: ToolKind | "mixed";
+  /** Commands only; non-command groups use ordinary. */
   commandActivity: "ordinary" | "declaredTest";
   items: readonly ToolProjectionItem[];
 };

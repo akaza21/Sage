@@ -29,6 +29,7 @@ export function ChatFindBar({
   count: number;
   capped: boolean;
   pending: boolean;
+  /** Bumped by each Ctrl+F, so a repeat press refocuses and selects. */
   focusRequest: number;
   scopeNote: string | null;
 }) {

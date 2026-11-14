@@ -80,6 +80,7 @@ function answerOf(node: Node | null, content: HTMLElement) {
   return answer && content.contains(answer) ? answer : null;
 }
 
+// Null unless the selection lies within one answer.
 export function readTranscriptQuote(
   selection: Selection | null,
   content: HTMLElement,
@@ -143,6 +144,7 @@ export function selectAnswerText(focused: HTMLElement, content: HTMLElement) {
   return readTranscriptQuote(selection, content);
 }
 
+// Null while the answer is unmounted.
 export function quoteAnswer(
   content: HTMLElement,
   quote: TranscriptQuoteContext,
@@ -156,6 +158,7 @@ export function quoteAnswer(
   );
 }
 
+// Null if the quoted text moved.
 export function quoteRange(
   content: HTMLElement,
   quote: TranscriptQuoteContext,
@@ -164,6 +167,7 @@ export function quoteRange(
   return answer ? quoteRangeIn(answer, quote) : null;
 }
 
+// Null if the quoted text moved.
 export function quoteRangeIn(
   answer: HTMLElement,
   quote: TranscriptQuoteContext,

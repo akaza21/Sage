@@ -44,6 +44,7 @@ export function truncatePreview(value: string, limit: number) {
 
 const prompts = new WeakMap<TurnProjection, string>();
 
+// Avoid Markdown parsing when labeling up to 60 navigator dashes.
 export function turnPrompt(turn: TurnProjection): string {
   const cached = prompts.get(turn);
   if (cached !== undefined) return cached;

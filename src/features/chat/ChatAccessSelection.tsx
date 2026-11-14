@@ -50,7 +50,7 @@ function ReportView({
   const shown = [view.effective, view.tone]
     .concat(view.candidates.map(({ id, label }) => id + label))
     .join("\n");
-  // Value-based reports must receive the latest view.
+  // Reports when `shown` changes, always with the newest view.
   useLayoutEffect(() => {
     latest.current = view;
   });

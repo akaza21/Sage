@@ -4,6 +4,7 @@ import type { TurnListNavigation } from "./chatScroll";
 
 export interface ChatViewport {
   visibleIds: readonly string[];
+  /** Scrollport top relative to its chat surface. */
   top: number;
   height: number;
 }

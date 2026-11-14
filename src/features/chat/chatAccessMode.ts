@@ -5,6 +5,7 @@ import {
   type SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
 
+// `advertised` is null until the session reports its modes.
 export function chatAccessCandidates(
   capabilities: readonly SessionAccessModeCapability[] | undefined,
   advertised: readonly string[] | null,

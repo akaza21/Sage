@@ -10,7 +10,7 @@ const stateLabels: Record<TurnSessionActivity["state"], string> = {
 const stateIcons = { completed: Check, failed: CircleX, cancelled: Circle };
 
 // Session activities carry no order relative to the Turn's items, so they
-// follow them.
+// follow them. Running rows are not live regions: state is read, not announced.
 export function TurnSessionActivities({
   activities,
 }: {

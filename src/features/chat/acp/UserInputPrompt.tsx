@@ -99,6 +99,7 @@ export function UserInputPrompt({
   );
   const [fields, setFields] = useState(() => questions.map(initialField));
   const [announce, setAnnounce] = useState(false);
+  // null: nothing sent; true: in flight; false: failed to send.
   const [sent, setSent] = useState<boolean | null>(null);
   const [deadline] = useState(() =>
     userInput.autoResolutionMs === undefined

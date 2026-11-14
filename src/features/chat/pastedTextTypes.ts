@@ -1,4 +1,5 @@
 export interface StagedSummary {
+  /** The batch revision the next send names; null when nothing is staged. */
   revision: string | null;
   busy: boolean;
   settled: boolean;
@@ -10,6 +11,7 @@ export interface HeldPaste {
   after: string;
 }
 
+// Notices keep at most a size, a lower bound in UTF-8 bytes.
 export type HeldInput =
   | { kind: "paste"; paste: HeldPaste }
   | { kind: "pick" }
@@ -21,6 +23,7 @@ export interface StagedPromptItem {
   id: string;
   name: string;
   bytes: number;
+  /** The pasted text; null for files. */
   text: string | null;
   lines: number | null;
 }

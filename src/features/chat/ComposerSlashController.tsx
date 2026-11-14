@@ -35,6 +35,7 @@ const PanelPart = lazyParts<typeof PanelChunk>(
 function insertCommand(field: HTMLTextAreaElement, name: string | null) {
   const token = slashTokenEnd(field.value);
   const end = token < field.value.length ? token + 1 : token;
+  // A null name (a panel command) leaves nothing behind.
   const replacement =
     name === null ? "" : `/${name}${field.value.charAt(token) || " "}`;
   field.focus();

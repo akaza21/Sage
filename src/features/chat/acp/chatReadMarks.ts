@@ -161,7 +161,7 @@ function admitMark(mark: unknown): [string, number] | null {
     : null;
 }
 
-// An answer that already arrived is at least as new as the snapshot.
+// Loads the stored marks once; a chat the snapshot does not list has no mark.
 export function restoreChatReadMarks(): Promise<void> {
   if (restored || !isTauriRuntime()) return Promise.resolve();
   if (restoring) return restoring;
@@ -190,8 +190,8 @@ export function restoreChatReadMarks(): Promise<void> {
           const admitted = admitMark(mark);
           return admitted ? [admitted] : [];
         });
-      // The stored marks predate any answer that arrived before the query, so
-      // they go down first.
+      // Preserve acknowledged writes and unreads so the bootstrap can't
+      // overwrite them.
       const answered = known;
       known = new Map();
       for (const [chatId, readThrough] of snapshot.reverse())

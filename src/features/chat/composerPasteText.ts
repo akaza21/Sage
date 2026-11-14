@@ -66,6 +66,7 @@ export function typedOverflowMessage(
 
 export interface PasteAttachability {
   nativeAcp: boolean;
+  /** The session the next send uses; null until the chat starts one. */
   session: { capabilities: { promptResources?: boolean } } | null | undefined;
 }
 

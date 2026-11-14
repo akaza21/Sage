@@ -10,6 +10,7 @@ import {
 /** Upper bound for a smooth scroll; `scrollend` usually settles it sooner. */
 const SMOOTH_SCROLL_SETTLE_MS = 1000;
 
+// The returned ref reads null while no virtual list is mounted.
 export function useTurnListNavigation(
   scrollport: HTMLElement | null,
   // Read only from effects and events, never during render.
@@ -52,6 +53,7 @@ function createController(currentHost: () => TurnListHost | null) {
     if (timer !== null) clearTimeout(timer);
     timer = null;
   };
+  // Drops the target; true when a smooth scroll was settling.
   const release = () => {
     const target = currentHost()?.target;
     const settling = target?.current?.settling;

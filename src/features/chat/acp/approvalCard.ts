@@ -59,10 +59,9 @@ export function parkFocus(card: HTMLElement | null) {
   if (card?.contains(document.activeElement)) card.focus();
 }
 
-// Keys that began before the card arrived (a held Enter from the composer, a
-// stray keyup) must never answer a request.
-// Button-only approval cards suppress every repeat; question cards permit
-// internally begun repeats so editing keys work.
+// Keys that began outside the card (a held Enter from the composer, a stray
+// keyup) must never answer a request. Every repeat is swallowed unless
+// `ownRepeats` lets a key pressed inside the card repeat, for editing.
 export function useCardKeyGuard({ ownRepeats = false } = {}) {
   const pressed = useRef(new Set<string>());
   return {

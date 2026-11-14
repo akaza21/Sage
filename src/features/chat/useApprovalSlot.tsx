@@ -60,7 +60,8 @@ export function approvalFocusAllowed(composer: HTMLElement | null) {
   );
 }
 
-// Fallback Denies outlive the card swap so the loaded card never focuses Allow.
+// The last decision's time, and each fallback Deny by item id, so the loaded
+// card never focuses Allow for that request.
 export const approvalHold = {
   at: Number.NEGATIVE_INFINITY,
   denies: new Map<string, Promise<unknown>>(),

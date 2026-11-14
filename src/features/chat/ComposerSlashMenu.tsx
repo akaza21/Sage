@@ -284,6 +284,7 @@ export function ComposerSlashMenu({
         !event.ctrlKey &&
         !event.metaKey &&
         !isImeComposing(event);
+      // As in the Claude Code CLI, a fully typed name runs on the first Enter.
       if (enter && navigation.active?.id === query) {
         if (!commands.find((command) => command.name === query)?.panel)
           return false;
@@ -291,6 +292,7 @@ export function ComposerSlashMenu({
         pick(navigation.active);
         return true;
       }
+      // While suggestions load, Enter must not send a half-typed command.
       if (enter && loading) {
         event.preventDefault();
         return true;

@@ -94,6 +94,7 @@ export function ChatTranscript({
   developmentSimulator: boolean;
   onRetry?: () => void;
   onReviewChanges?: () => void;
+  /** "activity": follow is paused and a running turn grew below. */
   showJumpToLatest: boolean | "activity";
   onJumpToLatest: () => void;
 }) {

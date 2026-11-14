@@ -58,6 +58,7 @@ export function useFollowEnd({
   const [followState, setFollowState] = useState({ ownerKey, following: true });
   const followingEnd =
     followState.ownerKey === ownerKey ? followState.following : true;
+  // "activity": new rows landed below a paused reader.
   const [jumpState, setJumpState] = useState<{
     ownerKey: string;
     visible: boolean | "activity";
@@ -71,6 +72,7 @@ export function useFollowEnd({
   const lastScrollTopRef = useRef(0);
   const followingEndRef = useRef(followingEnd);
   const navigationPausedRef = useRef(false);
+  // Content height while the reader last followed the end.
   const followedHeightRef = useRef(Infinity);
   const jumpFor = useCallback(
     (transcript: HTMLElement) => ({

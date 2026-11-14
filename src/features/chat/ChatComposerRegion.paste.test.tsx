@@ -173,7 +173,6 @@ const announced = (text: string) =>
 const log = `${"x".repeat(30)}\n`.repeat(2431);
 const label = "Pasted text · 2,431 lines · 74 KB";
 
-// The first test pays for loading the lazy paste part.
 describe("composer large paste", { timeout: 15_000 }, () => {
   it("outside a native chat, loads nothing for a paste that fits inline", async () => {
     render(<Composer availableBinding={false} />);

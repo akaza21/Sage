@@ -17,6 +17,7 @@ const ImportPart = lazyParts<typeof ImportChunk>(
 
 export interface ChatNavigationProps {
   turns: readonly TurnProjection[];
+  /** Null while the Chat renders every Turn. */
   hostRef: RefObject<TurnListHost | null>;
   incomplete: boolean;
   chatId?: string;

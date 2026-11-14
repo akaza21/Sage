@@ -252,6 +252,8 @@ export function ChatComposerRegion({
               onKeyDown={(event) => {
                 // An IME composition owns its keys, Enter included.
                 if (isImeComposing(event)) return;
+                // While suggestions load, Enter must not send a half-typed
+                // command.
                 if (
                   !slashReady.current &&
                   event.key === "Enter" &&

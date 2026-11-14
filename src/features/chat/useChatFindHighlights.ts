@@ -45,6 +45,7 @@ export function useChatFindHighlights({
   navigationRef: RefObject<TurnListNavigation | null>;
   matches: readonly ChatMatch[];
   current: number;
+  /** Bump for every navigation step so the same match can be recentered. */
   revision: number;
 }) {
   const owner = useRef(Symbol("chat-find"));

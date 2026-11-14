@@ -4,6 +4,7 @@
 export interface MentionQuery {
   start: number;
   end: number;
+  /** What follows the `@`, without its quotes. */
   query: string;
 }
 
@@ -23,6 +24,7 @@ function startsToken(text: string, index: number) {
   );
 }
 
+// A null caret means the end.
 export function mentionQuery(
   text: string,
   caret: number | null,
@@ -54,6 +56,8 @@ export function mentionRootQualifier(
   return shared || /[:"]/u.test(name) ? rootId : name;
 }
 
+// Null when no token can name the path: a `:` in it, or a `"` a quote would
+// hold.
 export function mentionToken(
   relativePath: string,
   qualifier: string | null = null,

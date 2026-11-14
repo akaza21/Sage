@@ -97,6 +97,7 @@ export interface ForkTarget {
   turnId: string;
 }
 
+// Resolves to null on success or to the reason the fork did not commit.
 // eslint-disable-next-line react-refresh/only-export-components -- the chunk's fork action, shared by its parts and tests
 export async function forkChat({
   chatId,
