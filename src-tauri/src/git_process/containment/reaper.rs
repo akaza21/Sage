@@ -30,6 +30,9 @@ pub(super) fn handoff_reaper(
         for _ in 0..GIT_REAPER_ATTEMPTS {
             let _ = tree.terminate();
             let _ = child.start_kill();
+            if registry.abandoning.load(Ordering::Acquire) {
+                break;
+            }
             if wait_for_exit(
                 &mut child,
                 #[cfg(test)]
@@ -111,6 +114,13 @@ fn quarantine(
         .quarantined
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if registry.abandoning.load(Ordering::Acquire) {
+        let _ = git.tree.terminate();
+        let mut child = git.root;
+        let _ = child.start_kill();
+        let _ = child.try_wait();
+        return;
+    }
     debug_assert!(owners.len() < GIT_REAPER_CAPACITY);
     owners.push(QuarantinedGitProcess {
         _child: git.root,

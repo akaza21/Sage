@@ -17,7 +17,7 @@ import { currentProjectLayout as layout } from "./projectProjection";
 import { loadProjectProjection } from "./projectProjectionLoader";
 import { reopenedNewChatDraft } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
-import { closeLiveWorkbench } from "./workspaceNotifyLifecycle";
+import { closeLiveWorkbench } from "./workbenchClose";
 import { hasActiveAcpTurn } from "./acpProjectionRegistry";
 
 export interface ProjectSlice {

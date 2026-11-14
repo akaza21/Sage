@@ -8,7 +8,6 @@ use std::{
     },
 };
 
-use tauri::{AppHandle, Emitter};
 use windows_sys::Win32::{
     Foundation::HANDLE,
     Storage::FileSystem::{
@@ -20,11 +19,21 @@ use windows_sys::Win32::{
 };
 
 use super::{
-    OVERFLOW_NOTIFY_ACTION, OVERFLOW_RELATIVE_PATH, WORKSPACE_NOTIFY_EVENT, WorkspaceNotifyError,
-    apply_unwatch_if_generation, deliver_workspace_notify_action, reject,
+    OVERFLOW_NOTIFY_ACTION, OVERFLOW_RELATIVE_PATH, WorkspaceNotifyError,
+    apply_unwatch_if_generation, batch::NoticeSink, reject, watch::root_delivery,
 };
 
 const ERROR_NOTIFY_ENUM_DIR: i32 = 1022;
+
+/// The record buffer of one `ReadDirectoryChangesW` call. A build writes
+/// hundreds of records between two reads, and a full buffer loses them all
+/// (one resync), so it is 64 KiB: the largest size the call accepts for a
+/// folder on a network share.
+const NOTIFY_BUFFER_BYTES: usize = 64 * 1024;
+
+/// The call needs a DWORD-aligned buffer.
+#[repr(C, align(8))]
+struct NotifyBuffer([u8; NOTIFY_BUFFER_BYTES]);
 
 const WAIT_OBJECT_0: u32 = 0;
 const WAIT_TIMEOUT: u32 = 258;
@@ -38,7 +47,7 @@ fn open_notify_directory(directory: &Path) -> std::io::Result<std::fs::File> {
 }
 
 pub(super) fn spawn_workspace_root_watch(
-    app: AppHandle,
+    sink: Arc<NoticeSink>,
     project_id: String,
     generation: u32,
     root_id: String,
@@ -47,24 +56,18 @@ pub(super) fn spawn_workspace_root_watch(
 ) -> Result<(), WorkspaceNotifyError> {
     let directory_handle =
         open_notify_directory(&path).map_err(|_| reject("notify-substituted"))?;
+    let deliver = root_delivery(
+        project_id.clone(),
+        generation,
+        root_id,
+        &path,
+        Arc::clone(&cancelled),
+        sink,
+    );
     std::thread::Builder::new()
         .name("sage-workspace-notify".into())
         .spawn(move || {
-            let result =
-                watch_opened_directory(&cancelled, directory_handle, |relative, action| {
-                    if cancelled.load(Ordering::Acquire) {
-                        return;
-                    }
-                    if let Ok(Some(notice)) = deliver_workspace_notify_action(
-                        &project_id,
-                        generation,
-                        &root_id,
-                        &relative,
-                        action,
-                    ) {
-                        let _ = app.emit(WORKSPACE_NOTIFY_EVENT, notice);
-                    }
-                });
+            let result = watch_opened_directory(&cancelled, directory_handle, deliver);
             if result.is_err() && !cancelled.load(Ordering::Acquire) {
                 let _ = apply_unwatch_if_generation(&project_id, generation);
             }
@@ -89,7 +92,8 @@ fn watch_opened_directory(
 ) -> std::io::Result<()> {
     let event = EventHandle::new()?;
     let handle = directory_handle.as_raw_handle() as HANDLE;
-    let mut buffer = [0_u8; 8_192];
+    let mut buffer = Box::new(NotifyBuffer([0; NOTIFY_BUFFER_BYTES]));
+    let buffer = &mut buffer.0;
 
     while !cancelled.load(Ordering::Acquire) {
         let mut overlapped = RawOverlapped::with_event(event.raw());
@@ -139,7 +143,7 @@ fn watch_opened_directory(
             continue;
         }
         for (name, action) in parse_notify_records(
-            &buffer,
+            &buffer[..],
             usize::try_from(received).expect("Windows byte count fits usize"),
         ) {
             if let Ok(relative) = super::relative_from_notify_name(&name) {

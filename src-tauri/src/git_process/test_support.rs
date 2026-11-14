@@ -172,6 +172,7 @@ impl GitProcessPolicy {
 
     pub(crate) fn post_reap_failure(command_timeout: Duration) -> Self {
         Self {
+            stdin: None,
             command_timeout,
             admission_timeout: crate::git_budget::ADMISSION,
             reap_timeout: Some(crate::git_budget::REAP),
@@ -198,6 +199,7 @@ impl GitProcessPolicy {
 
     pub(crate) fn post_spawn_failure(command_timeout: Duration) -> Self {
         Self {
+            stdin: None,
             command_timeout,
             admission_timeout: crate::git_budget::ADMISSION,
             reap_timeout: Some(crate::git_budget::REAP),
@@ -218,6 +220,7 @@ impl GitProcessPolicy {
 
     pub(crate) fn stdout_reader_failure(command_timeout: Duration) -> Self {
         Self {
+            stdin: None,
             command_timeout,
             admission_timeout: crate::git_budget::ADMISSION,
             reap_timeout: Some(crate::git_budget::REAP),
@@ -350,6 +353,7 @@ impl GitProcessTestHarness {
         let control = ReaperTestControl::new(foreground, wait_mode);
         (
             GitProcessPolicy {
+                stdin: None,
                 command_timeout,
                 admission_timeout: crate::git_budget::ADMISSION,
                 reap_timeout: None,

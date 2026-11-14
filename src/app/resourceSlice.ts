@@ -4,6 +4,7 @@ import { errorMessage } from "../domain/errors";
 import type { AgentDiffRef } from "../domain/agentDiff";
 import { agentDiffKey } from "../domain/agentDiffIdentity";
 import { runLoadDiff } from "./diffLoad";
+import { MAX_CACHED_DIRECTORIES, runLoadDirectory } from "./directoryLoad";
 import {
   childResource,
   resourceKey,
@@ -15,17 +16,9 @@ import type {
   RepositoryRef,
   ResourceRef,
 } from "../domain/workbench";
-import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { editorNavigationUpdate } from "./editorNavigation";
-import {
-  issueRequestIntent,
-  matchesRequestIntent,
-  matchesResourceIntent,
-} from "./projectIntent";
-import {
-  boundedExpandedUpdate,
-  boundedResourceStateUpdate,
-} from "./resourceStateHelpers";
+import { matchesResourceIntent } from "./projectIntent";
+import { boundedExpandedUpdate } from "./resourceStateHelpers";
 import { resourceTabUpdate } from "./resourceTabs";
 import { useAgentArtifactAdmissionStore } from "./agentArtifactAdmissionStore";
 import { useAgentArtifactFollowStore } from "./agentArtifactFollowStore";
@@ -70,7 +63,7 @@ export interface ResourceSlice {
   ) => Promise<void>;
 }
 
-export const MAX_CACHED_DIRECTORIES = 64;
+export { MAX_CACHED_DIRECTORIES } from "./directoryLoad";
 
 export const createResourceSlice: StateCreator<
   WorkbenchState,
@@ -201,107 +194,8 @@ export const createResourceSlice: StateCreator<
     void get().revealFile(resource);
   },
 
-  loadDirectory: async (resource, refresh = false) => {
-    const generation = get().projectGeneration;
-    const projectId = get().project?.id;
-    if (
-      !projectId ||
-      !matchesResourceIntent(get(), generation, projectId, resource)
-    ) {
-      return;
-    }
-    const key = resourceKey(resource);
-    const requestKey = `directory:${generation}:${key}`;
-    const existing = get().directoryListings[key];
-    if (
-      (existing?.phase === "loading" &&
-        get().requestGenerations[requestKey] !== undefined) ||
-      (existing?.phase === "ready" && !refresh && !existing.value.truncated)
-    ) {
-      return;
-    }
-    let requestGeneration = 0;
-    set((state) => {
-      const request = issueRequestIntent(
-        state.requestGenerations,
-        requestKey,
-        state.requestIntentSequence,
-      );
-      requestGeneration = request.token;
-      return {
-        requestGenerations: request.intents,
-        requestIntentSequence: request.sequence,
-        directoryListings: boundedResourceStateUpdate(
-          state.directoryListings,
-          key,
-          { phase: "loading" },
-          MAX_CACHED_DIRECTORIES,
-        ),
-      };
-    });
-    const acceptsDirectoryResult = () => {
-      const current = get();
-      const projectMatches = matchesResourceIntent(
-        current,
-        generation,
-        projectId,
-        resource,
-      );
-      const requestMatches = matchesRequestIntent(
-        current,
-        requestKey,
-        requestGeneration,
-      );
-      const currentRequestKey = `directory:${current.projectGeneration}:${key}`;
-      const newerGenerationIsLoading =
-        currentRequestKey !== requestKey &&
-        current.requestGenerations[currentRequestKey] !== undefined;
-      if (!projectMatches && requestMatches && !newerGenerationIsLoading) {
-        set((state) => {
-          if (
-            state.requestGenerations[requestKey] !== requestGeneration ||
-            state.directoryListings[key]?.phase !== "loading"
-          ) {
-            return {};
-          }
-          const directoryListings = { ...state.directoryListings };
-          delete directoryListings[key];
-          return { directoryListings };
-        });
-      }
-      return (
-        projectMatches &&
-        requestMatches &&
-        current.directoryListings[key]?.phase === "loading"
-      );
-    };
-    try {
-      const value = await getWorkbenchPorts().project.listDirectory(resource);
-      if (!acceptsDirectoryResult()) {
-        return;
-      }
-      set((state) => ({
-        directoryListings: boundedResourceStateUpdate(
-          state.directoryListings,
-          key,
-          { phase: "ready", value },
-          MAX_CACHED_DIRECTORIES,
-        ),
-      }));
-    } catch (error) {
-      if (!acceptsDirectoryResult()) {
-        return;
-      }
-      set((state) => ({
-        directoryListings: boundedResourceStateUpdate(
-          state.directoryListings,
-          key,
-          { phase: "error", message: errorMessage(error) },
-          MAX_CACHED_DIRECTORIES,
-        ),
-      }));
-    }
-  },
+  loadDirectory: (resource, refresh) =>
+    runLoadDirectory(get, set, resource, refresh),
 
   toggleDirectory: (resource) => {
     if (

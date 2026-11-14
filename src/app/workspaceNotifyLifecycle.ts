@@ -3,52 +3,19 @@ import type { ResourceRef } from "../domain/workbench";
 import {
   acquireNotifyListingSlot,
   isIgnoreRuleFile,
+  MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
   releaseNotifyListingSlot,
   WORKSPACE_NOTIFY_EVENT,
   syncLiveProjectWorkspaceNotify,
+  workspaceNotifyBatchNotices,
   type LiveProjectNotifyStamp,
   type WorkspaceNotifyHooks,
   type WorkspaceNotifyNotice,
 } from "../features/files/workspaceNotifyCompose";
-import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
+import { isTauriRuntime } from "../ports/nativeInvoke";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
-import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
-import { errorMessage } from "../domain/errors";
-
-type CloseStage =
-  | "closeRequested"
-  | "editorFlush"
-  | "appearanceFlush"
-  | "workspaceUnwatch"
-  | "persistAndDestroy";
-type CloseStageStatus = "start" | "end" | "error";
-let closeTraceQueue = Promise.resolve();
-
-export function traceCloseStage(
-  stage: CloseStage,
-  status: CloseStageStatus,
-): void {
-  if (!isTauriRuntime()) return;
-  closeTraceQueue = closeTraceQueue
-    .then(() => invokeNative<void>("trace_close_stage", { stage, status }))
-    .catch(() => undefined);
-}
-
-async function runCloseStage(
-  stage: CloseStage,
-  work: () => Promise<void>,
-): Promise<void> {
-  traceCloseStage(stage, "start");
-  try {
-    await work();
-    traceCloseStage(stage, "end");
-  } catch (error) {
-    traceCloseStage(stage, "error");
-    const detail = errorMessage(error);
-    throw new Error(`Close ${stage} failed: ${detail}`, { cause: error });
-  }
-}
+import { bindWorkspaceNotifyClose } from "./workbenchClose";
 
 export function liveProjectNotifyStamp(
   state: WorkbenchState,
@@ -90,8 +57,55 @@ function resourceFromKey(key: string): ResourceRef | null {
   };
 }
 
-const resyncRootsInFlight = new Set<string>();
-const resyncRootsQueued = new Set<string>();
+const resyncRoots = new Map<string, { dirty: boolean }>();
+
+interface ListingRefreshBatch {
+  resources: ResourceRef[];
+  load(resource: ResourceRef): Promise<void>;
+  complete(): void;
+  cancel(): void;
+}
+
+// Root resyncs coalesce per root; the notice scheduler admits at most eight
+// subtree refreshes. Each selection holds at most 64 cached + 64 expanded
+// listings. Workers pull from those bounded selections, never fan them out
+// into admission waiters. Unbind discards selections from the old session.
+const listingRefreshBatches = new Set<ListingRefreshBatch>();
+let listingRefreshWorkers = 0;
+
+function discardListingRefreshes(): void {
+  for (const batch of listingRefreshBatches) batch.cancel();
+  listingRefreshBatches.clear();
+  resyncRoots.clear();
+}
+
+function startListingRefreshWorkers(): void {
+  while (
+    listingRefreshWorkers < MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS &&
+    listingRefreshBatches.size > 0
+  ) {
+    listingRefreshWorkers += 1;
+    void (async () => {
+      try {
+        while (listingRefreshBatches.size > 0) {
+          const batch = listingRefreshBatches.values().next().value!;
+          const resource = batch.resources.shift()!;
+          if (batch.resources.length === 0) listingRefreshBatches.delete(batch);
+          try {
+            await batch.load(resource);
+          } catch {
+            // Directory loads report native failures in listing state. An
+            // unexpected rejection must not strand the remaining selections.
+          } finally {
+            batch.complete();
+          }
+        }
+      } finally {
+        listingRefreshWorkers -= 1;
+      }
+    })();
+  }
+}
 
 async function admittedLoadDirectory(
   get: () => WorkbenchState,
@@ -108,45 +122,90 @@ async function admittedLoadDirectory(
   }
 }
 
+/** Resyncs cached/expanded listings, including reads overtaken by changes. */
+async function reloadRootListings(
+  get: () => WorkbenchState,
+  rootId: string,
+  subtree?: string,
+): Promise<void> {
+  const seen = new Set<string>();
+  const resources: ResourceRef[] = [];
+  const add = (resource: ResourceRef) => {
+    const key = resourceKey(resource);
+    if (
+      resource.rootId !== rootId ||
+      (subtree !== undefined &&
+        resource.relativePath !== subtree &&
+        !resource.relativePath.startsWith(`${subtree}/`)) ||
+      seen.has(key)
+    ) {
+      return;
+    }
+    seen.add(key);
+    resources.push(resource);
+  };
+  for (const [key, entry] of Object.entries(get().directoryListings)) {
+    if (entry.phase === "ready") {
+      add(entry.value.resource);
+    } else if (entry.phase === "loading") {
+      const resource = resourceFromKey(key);
+      if (resource) add(resource);
+    }
+  }
+  for (const key of Object.keys(get().expandedDirectories)) {
+    const resource = resourceFromKey(key);
+    if (resource) {
+      add(resource);
+    }
+  }
+  if (resources.length === 0) return;
+  const { projectGeneration, nativeTransitionEpoch } = get();
+  await new Promise<void>((resolve) => {
+    let remaining = resources.length;
+    const batch: ListingRefreshBatch = {
+      resources,
+      async load(resource) {
+        if (
+          get().projectGeneration === projectGeneration &&
+          get().nativeTransitionEpoch === nativeTransitionEpoch
+        ) {
+          await admittedLoadDirectory(get, resource);
+        }
+      },
+      complete() {
+        if (--remaining === 0) resolve();
+      },
+      cancel() {
+        remaining -= resources.length;
+        resources.length = 0;
+        if (remaining === 0) resolve();
+      },
+    };
+    listingRefreshBatches.add(batch);
+    startListingRefreshWorkers();
+  });
+}
+
 async function refreshListingsForResync(
   get: () => WorkbenchState,
   notice: WorkspaceNotifyNotice,
 ): Promise<void> {
-  if (resyncRootsInFlight.has(notice.rootId)) {
-    resyncRootsQueued.add(notice.rootId);
+  const current = resyncRoots.get(notice.rootId);
+  if (current) {
+    current.dirty = true;
     return;
   }
-  resyncRootsInFlight.add(notice.rootId);
+  const entry = { dirty: false };
+  resyncRoots.set(notice.rootId, entry);
   try {
     do {
-      resyncRootsQueued.delete(notice.rootId);
-      const seen = new Set<string>();
-      const resources: ResourceRef[] = [];
-      const add = (resource: ResourceRef) => {
-        const key = resourceKey(resource);
-        if (resource.rootId !== notice.rootId || seen.has(key)) {
-          return;
-        }
-        seen.add(key);
-        resources.push(resource);
-      };
-      for (const entry of Object.values(get().directoryListings)) {
-        if (entry.phase === "ready") {
-          add(entry.value.resource);
-        }
-      }
-      for (const key of Object.keys(get().expandedDirectories)) {
-        const resource = resourceFromKey(key);
-        if (resource) {
-          add(resource);
-        }
-      }
-      await Promise.all(
-        resources.map((resource) => admittedLoadDirectory(get, resource)),
-      );
-    } while (resyncRootsQueued.has(notice.rootId));
+      entry.dirty = false;
+      await reloadRootListings(get, notice.rootId);
+    } while (entry.dirty && resyncRoots.get(notice.rootId) === entry);
   } finally {
-    resyncRootsInFlight.delete(notice.rootId);
+    if (resyncRoots.get(notice.rootId) === entry) {
+      resyncRoots.delete(notice.rootId);
+    }
   }
 }
 
@@ -154,6 +213,7 @@ export function createWorkspaceNotifyHooks(
   get: () => WorkbenchState,
 ): WorkspaceNotifyHooks {
   return {
+    dispose: discardListingRefreshes,
     watch(input) {
       return getWorkbenchPorts().project.watchWorkspaceNotify(input);
     },
@@ -166,7 +226,9 @@ export function createWorkspaceNotifyHooks(
       }
       const { listen } = await import("@tauri-apps/api/event");
       return listen(WORKSPACE_NOTIFY_EVENT, (event) => {
-        emit(event.payload);
+        for (const notice of workspaceNotifyBatchNotices(event.payload)) {
+          emit(notice);
+        }
       });
     },
     invalidate(notice, listing) {
@@ -174,6 +236,10 @@ export function createWorkspaceNotifyHooks(
       // below it, so it refreshes the root's listings as a resync does.
       if (notice.kind === "resync" || isIgnoreRuleFile(notice.relativePath)) {
         return refreshListingsForResync(get, notice);
+      }
+      // Changes inside an ignored folder: its listings and those below.
+      if (notice.kind === "ignored") {
+        return reloadRootListings(get, notice.rootId, notice.relativePath);
       }
       const key = resourceKey(listing);
       if (get().directoryListings[key] || get().expandedDirectories[key]) {
@@ -187,6 +253,7 @@ export function createWorkspaceNotifyHooks(
 export async function bindWorkspaceNotifyFromState(
   get: () => WorkbenchState,
 ): Promise<void> {
+  bindWorkspaceNotifyClose(unbindWorkspaceNotify);
   await syncLiveProjectWorkspaceNotify(
     liveProjectNotifyStamp(get()),
     createWorkspaceNotifyHooks(get),
@@ -194,8 +261,7 @@ export async function bindWorkspaceNotifyFromState(
 }
 
 export async function unbindWorkspaceNotify(): Promise<void> {
-  resyncRootsInFlight.clear();
-  resyncRootsQueued.clear();
+  discardListingRefreshes();
   await syncLiveProjectWorkspaceNotify(null, {
     watch: async () => ({ generation: 0 }),
     unwatch(input) {
@@ -206,43 +272,4 @@ export async function unbindWorkspaceNotify(): Promise<void> {
       /* no live listing refresh while unbound */
     },
   });
-}
-
-/**
- * The close path holds and flushes Editor settings through this hook, so the
- * settings store and its catalogue load with the Workbench instead of in the
- * startup bundle. The store binds itself when its module loads; until then
- * nothing can be pending, so holding and flushing do nothing.
- */
-interface EditorSettingsClose {
-  hold(): () => void;
-  flush(): Promise<void>;
-}
-
-let editorSettingsClose: EditorSettingsClose | null = null;
-
-export function bindEditorSettingsClose(close: EditorSettingsClose) {
-  editorSettingsClose = close;
-}
-
-export async function closeLiveWorkbench(
-  get: () => WorkbenchState,
-): Promise<void> {
-  const releaseSettings = editorSettingsClose?.hold() ?? (() => undefined);
-  try {
-    await runCloseStage("editorFlush", () => get().flushActiveEditor());
-    await runCloseStage(
-      "appearanceFlush",
-      () => editorSettingsClose?.flush() ?? Promise.resolve(),
-    );
-    await runCloseStage("workspaceUnwatch", unbindWorkspaceNotify);
-    await runCloseStage("persistAndDestroy", () =>
-      getWorkbenchPorts().project.persistProjectLayoutAndClose(
-        currentProjectLayout(get()),
-        get().nativeTransitionEpoch,
-      ),
-    );
-  } finally {
-    releaseSettings();
-  }
 }

@@ -6,7 +6,7 @@ import type { HarnessDefinition } from "../domain/workbench";
 import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
 import { desktop } from "../services/desktop";
 import { useWorkbenchStore } from "./store";
-import { traceCloseStage } from "./workspaceNotifyLifecycle";
+import { traceCloseStage } from "./workbenchClose";
 import { errorMessage } from "../domain/errors";
 
 const loadWorkbench = () => import("../workbench/Workbench");

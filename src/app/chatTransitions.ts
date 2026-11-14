@@ -19,7 +19,6 @@ import {
 } from "./projectProjection";
 import { projectChatOwnership } from "./chatOwnershipProjection";
 import type { WorkbenchState } from "./store";
-import { bindWorkspaceNotifyFromState } from "./workspaceNotifyLifecycle";
 
 export type ProjectionOutcome = "committed" | "unchanged" | "diverged";
 
@@ -148,6 +147,9 @@ export function createChatTransitionContext(
     if (!projectId || matchesProjectIntent(get(), generation, projectId)) {
       set({ projectTransitioning: false });
       try {
+        // The watcher loads with the first Project, off the startup path.
+        const { bindWorkspaceNotifyFromState } =
+          await import("./workspaceNotifyLifecycle");
         await bindWorkspaceNotifyFromState(get);
       } catch {
         /* watch failure must not fail Chat projection */

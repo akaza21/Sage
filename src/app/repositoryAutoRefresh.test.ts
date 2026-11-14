@@ -8,6 +8,7 @@ import {
   MIN_IDLE_POLL_MS,
   MIN_POLL_MS,
   REFRESH_DEBOUNCE_MS,
+  RESYNC_POLL_MS,
   STAMP_INTERVAL_MS,
   pollDelay,
   startRepositoryAutoRefresh,
@@ -215,6 +216,19 @@ describe("repository auto refresh", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
     await advance(MIN_POLL_MS + REFRESH_DEBOUNCE_MS);
     expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops polling once the watcher has kept up for a while", async () => {
+    start();
+    notice("", "resync");
+    await advance(RESYNC_POLL_MS + MAX_IDLE_POLL_MS);
+    const polled = refresh.mock.calls.length;
+    expect(polled).toBeGreaterThan(1);
+    await advance(MAX_IDLE_POLL_MS * 4);
+    expect(refresh).toHaveBeenCalledTimes(polled);
+    notice("", "resync");
+    await advance(REFRESH_DEBOUNCE_MS + MIN_POLL_MS + REFRESH_DEBOUNCE_MS);
+    expect(refresh).toHaveBeenCalledTimes(polled + 2);
   });
 
   it("polls from the start where the watcher misses edits", async () => {
