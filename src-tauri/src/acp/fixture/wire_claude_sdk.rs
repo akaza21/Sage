@@ -13,6 +13,7 @@ const SESSION: &str = "fixture-session";
 pub(super) struct SdkWireState {
     follow_up: Option<FollowUp>,
     lifecycle_events: u64,
+    /// The session the launch flags opened, when the launch named one.
     transcript: Option<Transcript>,
     /// What that session held before the last prompt (`$TRANSCRIPT_ECHO`).
     transcript_echo: Option<String>,
@@ -260,6 +261,7 @@ pub(super) fn emit(
             .as_str()
             .ok_or(FixtureError::InvalidArguments)?;
         if lifecycle == "cancelled" {
+            // Only a withdrawal cancels a message.
             return Err(FixtureError::InvalidArguments);
         }
         return emit_lifecycle(lifecycle, state, output);

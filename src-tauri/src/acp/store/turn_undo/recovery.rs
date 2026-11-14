@@ -1,3 +1,5 @@
+//! Reconcile undo plans only across a proven zero-process boundary.
+//!
 //! An intent proves preparation, not dispatch or completion. Claude's
 //! `rewind_files` acknowledges completion only in its live control response;
 //! the binding has no durable receipt or verified replay contract. Restores

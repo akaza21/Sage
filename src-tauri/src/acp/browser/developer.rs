@@ -2,14 +2,16 @@
 //! top-level parameters, are sent. Every one of them runs in the main
 //! frame's default execution context (where the same-origin policy keeps
 //! cross-origin iframes out) or navigates or captures the tab, and none
-//! enables a domain. Native raw calls use a grant-owned session detached on
-//! revocation, sleep and timeout. The `DOM` domain is left out because its
-//! node ids reach same-process iframe documents and it enables itself;
+//! enables a domain. Native raw calls use a tab-owned privileged session;
+//! losing its last live grant, sleep and timeout detach it. The `DOM` domain
+//! is left out because its node ids reach same-process iframe documents and
+//! it enables itself;
 //! cookie commands are left out because they hand over `HttpOnly` session
 //! tokens that page script cannot read. Frame and context ids are never
 //! accepted, and neither is a remote `objectId`: it encodes the execution
 //! context it belongs to, so a hand-built one could name an iframe's
-//! context. Results come back by value or as previews.
+//! context. Results are serialized within a byte budget; remote object
+//! handles are not exposed.
 
 use serde_json::{Map, Value};
 
@@ -101,9 +103,7 @@ pub fn admit_method_shape(method: &str) -> Result<(), BrowserFailure> {
 }
 
 /// Refuses any method not in `ALLOWED` and any parameter not listed for
-/// it. The caller has already checked the method's shape. `origin` is the
-/// granted origin; no listed method takes an origin-bearing parameter
-/// today, so none needs binding to it.
+/// it. The caller has already checked the method's shape.
 pub fn admit_command(
     method: &str,
     params: &Map<String, Value>,

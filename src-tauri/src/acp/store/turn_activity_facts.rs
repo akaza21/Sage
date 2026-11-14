@@ -1,3 +1,7 @@
+//! A Turn's session activity rows (hook runs) as append-only session facts
+//! owned by that Turn, so they outlive the live session surface: a new
+//! runtime epoch or a later Turn's rows never remove them.
+//!
 //! Each change of a row appends one fact; the projection folds the Turn's
 //! facts into its latest row per activity. Caps per Turn: at most
 //! [`ROWS_PER_TURN`] rows, and once [`FACTS_PER_TURN`] facts exist only a
@@ -121,7 +125,8 @@ fn settles(latest: SessionActivityState, next: SessionActivityState) -> bool {
     )
 }
 
-/// Logs one line per session for dropped display rows, not one per hook.
+/// Suppresses repeated dropped-row warnings while the session remains in the
+/// bounded warning cache.
 fn warn_once(session: &str, resource: &str) {
     let Ok(mut warned) = WARNED.lock() else {
         return;

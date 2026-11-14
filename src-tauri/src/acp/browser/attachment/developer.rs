@@ -1,3 +1,8 @@
+//! The developer-mode grant an attachment holds (ADR-0009b). It lives only
+//! here, in memory: Stop, detach, tab close, Take over, a cross-origin
+//! commit, another session taking the tab and the Settings switch going off
+//! each end it, and Hand back never restores it.
+//!
 //! Lock order: the authority slot, then the grant. A grant is recorded under
 //! the slot lock, so Take over, Stop and a settled navigation, which change
 //! the slot under the same lock, either end it or make the grant refuse.
@@ -278,7 +283,7 @@ impl BrowserAttachments {
         }
     }
 
-    /// Returns the tabs that held one.
+    /// Returns the tab labels that held a developer-mode grant.
     pub(crate) fn end_developer_mode(&self) -> Vec<String> {
         let mut leases = Vec::new();
         if let Ok(entries) = self.entries.lock() {

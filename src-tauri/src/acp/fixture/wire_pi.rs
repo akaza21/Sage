@@ -17,6 +17,8 @@ pub(super) struct PiWireState {
     model: &'static str,
     thinking: String,
     ids: BTreeSet<String>,
+    /// What `get_commands` lists: the extensions, prompt templates and
+    /// skills this Pi loaded at startup.
     commands: Value,
 }
 

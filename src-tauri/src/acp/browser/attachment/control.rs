@@ -1,3 +1,10 @@
+//! Taking over stops every authority on the tab, so a pending permission card
+//! declines and an in-flight operation ends `denied` (or `outcomeUnknown` once
+//! issued). The attachments stay, but they admit no authority until the user
+//! hands the tab back. Handing back admits a fresh authority with no origin
+//! grant, so the Agent's next call asks again. A new user attachment starts
+//! without user control: attaching is itself the new grant.
+
 use super::*;
 
 impl AttachmentLease {
@@ -33,6 +40,7 @@ pub(crate) struct AgentControl {
     pub(crate) project_id: SageProjectId,
     pub(crate) chat_id: SageChatId,
     pub(crate) user_control: bool,
+    /// An approved developer-mode grant is live on the tab (ADR-0009b).
     pub(crate) developer_mode: bool,
 }
 

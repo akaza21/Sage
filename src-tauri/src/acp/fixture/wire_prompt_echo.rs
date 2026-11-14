@@ -100,6 +100,7 @@ fn block(block: &Value) -> String {
     }
 }
 
+/// Text in a fence no backtick run inside it can close.
 fn shown_text(label: &str, text: &str) -> String {
     let mut cut = text.len().min(SHOWN_TEXT_BYTES);
     while !text.is_char_boundary(cut) {

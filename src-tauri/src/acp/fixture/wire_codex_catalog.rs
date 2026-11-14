@@ -2,6 +2,7 @@ use serde_json::{Value, json};
 
 use super::WireState;
 
+/// The restart journey's catalogue: its default model, then a second one.
 const CONFIG_MODELS: [&str; 2] = ["fixture-model", "fixture-model-deep"];
 
 /// A restart journey's thread runs the model it was opened or resumed with,

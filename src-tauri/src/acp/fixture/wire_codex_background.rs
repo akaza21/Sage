@@ -6,7 +6,6 @@ use super::super::FixtureError;
 use super::codex::emit_json;
 use super::{WireState, acp};
 
-/// Skills an install may hold, and cwds one read may name.
 const MAX_SKILLS: usize = 16;
 const MAX_CWDS: usize = 4;
 

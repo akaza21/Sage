@@ -37,6 +37,7 @@ fn apply(fixture: &mut Fixture, owner: &AdapterStoreOwner, events: Vec<AdapterIn
     apply_adapter_inbound_batch(&mut fixture.connection, batch(owner, events)).unwrap();
 }
 
+/// Each Turn's projected rows as (label, state, progress), oldest Turn first.
 fn rows(fixture: &Fixture) -> Vec<Vec<(String, String, Option<String>)>> {
     let page = load_chat_page(
         &fixture.connection,

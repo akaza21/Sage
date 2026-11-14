@@ -27,6 +27,7 @@ impl Drop for AgentAction<'_> {
 
 pub(crate) const MAX_POPUP_CHILDREN: usize = 16;
 
+/// Whether `session` of the chat has a current owner whose turn runs.
 pub(crate) type TurnRunning<'a> = &'a dyn Fn(&SageProjectId, &SageChatId, &str) -> bool;
 
 impl BrowserAttachments {
@@ -41,6 +42,9 @@ impl BrowserAttachments {
         }
     }
 
+    /// Whether an Agent action runs on `label` or ended at most
+    /// `AGENT_ACTION_WINDOW` before `now`. A link the user clicks later in
+    /// the turn opens a tab that stays the user's.
     pub(crate) fn agent_acted_recently(&self, label: &str, now: Instant) -> bool {
         self.agent_actions.lock().is_ok_and(|actions| {
             actions.get(label).is_some_and(|activity| {
@@ -154,8 +158,7 @@ impl BrowserAttachments {
         {
             lease.set_user_control(true);
         }
-        // A navigation that failed admission keeps the child waiting for
-        // its next settled page.
+        // Keep children on non-HTTP(S) pages waiting for a later settled page.
         if joined
             || url::Url::parse(url).is_ok_and(|parsed| matches!(parsed.scheme(), "http" | "https"))
         {

@@ -73,6 +73,7 @@ pub(super) struct WireState {
     pi: pi::PiWireState,
     acp_config: Option<acp::AcpConfig>,
     embedded_context: Option<acp::EmbeddedContext>,
+    /// The model the client opened or resumed the Codex thread with.
     codex_thread_model: Option<String>,
     /// The model and effort the client's last Codex `turn/start` named, as
     /// a frame quotes them (`$CODEX_TURN_CONFIG`).

@@ -1,3 +1,5 @@
+//! Screenshot parameters that determine native allocation, before any
+//! response cap can help. Dynamic page dimensions are resolved by CdpPort.
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 

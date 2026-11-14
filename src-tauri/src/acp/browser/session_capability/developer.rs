@@ -11,6 +11,8 @@ use crate::{
 pub(crate) struct LeaseDeveloperPolicy {
     lease: AttachmentLease,
     settings: SettingsStore,
+    /// The switch generation when this call started; see
+    /// `developer::switch_generation`.
     generation: u64,
     resource_generation: u64,
     grant_generation: u64,

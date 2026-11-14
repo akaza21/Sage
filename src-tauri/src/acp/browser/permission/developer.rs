@@ -41,6 +41,7 @@ impl Elevated<'_> {
 }
 
 impl BrowserAuthority {
+    /// Waits for any command issuing under this authority's live lock.
     pub(crate) fn fence(&self) {
         drop(self.0.lock());
     }

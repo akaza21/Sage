@@ -9,8 +9,12 @@ pub(crate) const HAND_BACK_WAIT: Duration = Duration::from_secs(300);
 pub(crate) const POLL: Duration = Duration::from_millis(100);
 
 pub(crate) struct PauseSignals<Holds, Generation, Current> {
+    /// Whether the user holds any tab of the call's chat.
     pub(crate) user_holds: Holds,
+    /// Moves on each hand back.
     pub(crate) hand_backs: Generation,
+    /// Whether the owner the call started under is still current and its
+    /// turn runs.
     pub(crate) owner_current: Current,
 }
 

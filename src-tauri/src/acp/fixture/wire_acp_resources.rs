@@ -1,3 +1,6 @@
+//! Echo resource names, types, sizes and SHA-256 hashes, never contents, so
+//! tests can match received resources to staged bytes.
+
 use std::borrow::Cow;
 
 use base64::Engine;
@@ -17,6 +20,8 @@ pub(in crate::acp::fixture) struct EmbeddedContext {
 }
 
 impl EmbeddedContext {
+    /// A resource block without a URI, or without exactly one of `text` and
+    /// `blob`, is refused as malformed ACP.
     pub(super) fn receive(&mut self, prompt: &Value) -> Result<(), FixtureError> {
         let blocks = prompt.as_array().ok_or(FixtureError::InvalidArguments)?;
         let mut described = Vec::new();

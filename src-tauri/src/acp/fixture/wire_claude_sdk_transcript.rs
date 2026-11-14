@@ -21,6 +21,7 @@ use super::super::FixtureError;
 
 const MAX_TRANSCRIPT_BYTES: u64 = 1024 * 1024;
 const MAX_ENTRIES: usize = 256;
+/// Messages an echo shows, the latest last, and the text shown of each.
 const ECHOED_MESSAGES: usize = 8;
 const ECHOED_TEXT_BYTES: usize = 160;
 
@@ -30,6 +31,7 @@ pub(super) struct Transcript {
     session: String,
     opened: String,
     entries: Vec<Value>,
+    /// The bytes of the session's file, once saved.
     bytes: u64,
     /// Whether the session's file holds `entries`: not until a new session
     /// or a fork has its first message.

@@ -10,8 +10,11 @@ use crate::{browser::BrowserState, state::AppState};
 use tauri::State;
 
 const MAX_ATTACHMENTS: usize = 8;
-/// A wait outlives at most a few navigations.
+/// Authorities a settled navigation took out of a lease that Stop and Take
+/// over still end, newest last. A wait outlives at most a few navigations.
 const MAX_RETIRED: usize = 4;
+/// Tabs that Agent-driven tabs opened and that joined, per session. They
+/// never count against `openTab`'s cap and never become the default tab.
 pub(crate) const MAX_POPUP_TABS_PER_SESSION: usize = 2;
 pub(crate) const MAX_AGENT_TABS_PER_SESSION: usize = 4;
 mod agent;
@@ -46,7 +49,10 @@ pub(crate) struct AttachmentLease {
     /// count as invalidated by navigation, not stopped, so an in-flight wait
     /// keeps probing until Stop or Take over stops them too.
     retired: Arc<Mutex<VecDeque<BrowserAuthority>>>,
+    /// The Agent session that last held this lease's authority, which a tab
+    /// this one opens joins.
     last_session: Arc<Mutex<Option<String>>>,
+    /// The root opener whose Take over, Hand back and Stop also cover this joined popup.
     opener: Option<String>,
     developer: Arc<developer::DeveloperAccess>,
     resources: Arc<resources::Resources>,
@@ -163,7 +169,10 @@ pub(crate) struct BrowserAttachments {
     developer_registry: Arc<developer::DeveloperRegistry>,
     entries: Mutex<HashMap<(SageProjectId, SageChatId), AttachmentLease>>,
     agent_entries: Mutex<HashMap<(SageProjectId, SageChatId, String, u64), AttachmentLease>>,
+    /// Tabs an Agent-driven tab opened, by child label, until they join.
     popup_children: Mutex<HashMap<String, String>>,
+    /// Counts hand backs per chat, so a paused call resumes only after one
+    /// in its own chat, not after Stop, a detach or another chat's hand back.
     hand_backs: Mutex<HashMap<(SageProjectId, SageChatId), u64>>,
     agent_actions: Mutex<HashMap<String, popup::AgentActivity>>,
 }

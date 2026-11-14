@@ -1,3 +1,8 @@
+//! Durable import of a native session started outside Sage. Like a native
+//! fork, the import installs a resumable head session bound to the native
+//! thread in the transaction that creates its Chat, so the first send
+//! resumes it; the history read at import is kept beside that session.
+
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::acp::{

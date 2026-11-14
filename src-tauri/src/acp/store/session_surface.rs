@@ -148,6 +148,7 @@ pub(crate) fn view(
     Ok(read(connection, project, chat, session)?.map(|(surface, _)| surface.view(runtime_epoch)))
 }
 
+/// The harness id of a live activity, named by its view key.
 pub(crate) fn activity_id(
     connection: &rusqlite::Connection,
     project: &str,

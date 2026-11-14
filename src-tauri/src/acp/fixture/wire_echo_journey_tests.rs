@@ -154,6 +154,7 @@ fn the_pi_large_run_ends_with_one_oversized_frame_then_takes_a_second_prompt() {
         panic!("exactly one frame outgrows the limit");
     };
     assert_eq!(frame["type"], "agent_end");
+    // Every item of the run closed before it, as Sage requires to skip it.
     let kinds: Vec<_> = frames[..end].iter().map(|frame| &frame["type"]).collect();
     assert_eq!(kinds[kinds.len() - 2..], ["message_end", "turn_end"]);
     let started = kinds

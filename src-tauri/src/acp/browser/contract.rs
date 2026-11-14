@@ -77,6 +77,8 @@ pub enum BrowserCommand {
 }
 
 impl BrowserCommand {
+    /// Whether this command needs a developer-mode grant rather than an
+    /// ordinary browser permission.
     pub fn is_elevated(&self) -> bool {
         matches!(self, Self::Cdp { .. })
     }
