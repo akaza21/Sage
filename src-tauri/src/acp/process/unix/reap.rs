@@ -92,11 +92,15 @@ impl TreeControl {
         Ok(())
     }
 
-    /// The harness's JSON-RPC stderr error once the drain settles or
-    /// `deadline` passes.
-    pub(crate) fn harness_error(&self, deadline: Instant) -> Option<String> {
+    pub(crate) fn stderr_watermark(&self) -> Option<u64> {
+        self.0.stderr.lock().ok().map(|ring| ring.watermark())
+    }
+
+    /// The harness's JSON-RPC stderr error written at or after `watermark`,
+    /// read once the drain settles or `deadline` passes.
+    pub(crate) fn harness_error(&self, deadline: Instant, watermark: u64) -> Option<String> {
         let _ = self.wait_stderr_drained(deadline);
-        let diagnostic = self.stderr_diagnostic().ok()?;
+        let diagnostic = self.0.stderr.lock().ok()?.safe_diagnostic_since(watermark);
         diagnostic.json_rpc_error_message().map(str::to_owned)
     }
 

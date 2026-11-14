@@ -30,7 +30,7 @@ fn a_stream_failure_after_the_harness_exited_keeps_its_exit_code() {
         let (root_exit, _token) = control.wait_zero_before(Instant::now() + WAIT).unwrap();
         assert_eq!(root_exit, runner_exit, "the wait reports Sage's request");
 
-        let outcome = lost_runtime_outcome(runner_exit, None, root_exit, &control);
+        let outcome = lost_runtime_outcome(runner_exit, None, root_exit, Some(0), &control);
 
         assert_eq!(outcome.reason, TurnTerminalReason::HarnessExited);
         assert_eq!(
@@ -50,7 +50,13 @@ fn a_harness_sage_terminated_keeps_the_runner_cause() {
     let (root_exit, _token) = control.wait_zero_before(Instant::now() + WAIT).unwrap();
     assert_eq!(control.exit_before_termination().unwrap(), None);
 
-    let outcome = lost_runtime_outcome(TreeExit::ProtocolFailure, None, root_exit, &control);
+    let outcome = lost_runtime_outcome(
+        TreeExit::ProtocolFailure,
+        None,
+        root_exit,
+        Some(0),
+        &control,
+    );
 
     assert_eq!(outcome.reason, TurnTerminalReason::ProtocolError);
     assert_eq!(

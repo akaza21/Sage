@@ -106,6 +106,14 @@ pub(crate) struct StderrRing {
     truncated: bool,
     /// The oldest retained bytes continue a line whose start was evicted.
     partial_front: bool,
+    /// Bytes ever retained; the stream offset just past the newest byte.
+    retained_total: u64,
+    /// Stream offset of the line being ingested.
+    line_start: u64,
+    line_truncated: bool,
+    /// Stream offsets of retained lines that lost bytes past the line limit.
+    /// Entries leave as their lines are evicted: at most one per retained line.
+    truncated_lines: VecDeque<u64>,
 }
 
 impl StderrRing {
@@ -118,6 +126,10 @@ impl StderrRing {
             observed_bytes: 0,
             truncated: false,
             partial_front: false,
+            retained_total: 0,
+            line_start: 0,
+            line_truncated: false,
+            truncated_lines: VecDeque::new(),
         }
     }
 
@@ -128,33 +140,63 @@ impl StderrRing {
         for &byte in input {
             if byte == b'\n' {
                 self.current_line_bytes = 0;
-            } else {
-                self.current_line_bytes = self.current_line_bytes.saturating_add(1);
-                if self.current_line_bytes > self.line_limit {
-                    self.truncated = true;
-                    continue;
-                }
-            }
-            if self.byte_limit == 0 {
-                self.truncated = true;
+                self.retain(byte);
+                self.line_start = self.retained_total;
+                self.line_truncated = false;
                 continue;
             }
-            if self.bytes.len() == self.byte_limit {
-                self.partial_front = self.bytes.pop_front() != Some(b'\n');
+            self.current_line_bytes = self.current_line_bytes.saturating_add(1);
+            if self.current_line_bytes > self.line_limit {
                 self.truncated = true;
-            }
-            if self.bytes.len() == self.bytes.capacity() {
-                let remaining = self.byte_limit.saturating_sub(self.bytes.capacity());
-                if self.bytes.try_reserve_exact(remaining.min(4096)).is_err()
-                    || self.bytes.capacity() > self.byte_limit
-                {
-                    self.bytes = VecDeque::new();
-                    self.truncated = true;
-                    self.partial_front = byte != b'\n';
-                    continue;
+                if !self.line_truncated {
+                    self.line_truncated = true;
+                    self.truncated_lines.push_back(self.line_start);
                 }
+                continue;
             }
-            self.bytes.push_back(byte);
+            self.retain(byte);
+        }
+    }
+
+    fn retain(&mut self, byte: u8) {
+        if self.byte_limit == 0 {
+            self.truncated = true;
+            return;
+        }
+        if self.bytes.len() == self.byte_limit {
+            self.partial_front = self.bytes.pop_front() != Some(b'\n');
+            self.truncated = true;
+        }
+        if self.bytes.len() == self.bytes.capacity() {
+            let remaining = self.byte_limit.saturating_sub(self.bytes.capacity());
+            if self.bytes.try_reserve_exact(remaining.min(4096)).is_err()
+                || self.bytes.capacity() > self.byte_limit
+            {
+                self.bytes = VecDeque::new();
+                self.truncated = true;
+                self.partial_front = byte != b'\n';
+                self.forget_evicted_lines();
+                return;
+            }
+        }
+        self.bytes.push_back(byte);
+        self.retained_total = self.retained_total.saturating_add(1);
+        self.forget_evicted_lines();
+    }
+
+    fn front_offset(&self) -> u64 {
+        self.retained_total
+            .saturating_sub(u64::try_from(self.bytes.len()).unwrap_or(u64::MAX))
+    }
+
+    fn forget_evicted_lines(&mut self) {
+        let front = self.front_offset();
+        while self
+            .truncated_lines
+            .front()
+            .is_some_and(|start| *start < front)
+        {
+            self.truncated_lines.pop_front();
         }
     }
 
@@ -166,25 +208,41 @@ impl StderrRing {
         }
     }
 
-    /// The latest complete JSON-RPC error record wins: a harness writes its
-    /// error after any startup log and may report more than one. A line cut
-    /// by ring eviction is never read as a record.
+    /// The stream position a later read can be scoped to, such as the start
+    /// of a turn on a harness that serves several turns.
+    pub(crate) fn watermark(&self) -> u64 {
+        self.retained_total
+    }
+
     pub(crate) fn safe_diagnostic(&self) -> SafeStderrDiagnostic {
+        self.safe_diagnostic_since(0)
+    }
+
+    /// The latest complete JSON-RPC error record that began at or after
+    /// `watermark` wins: a harness writes its error after any startup log
+    /// and may report more than one. A line cut by ring eviction or by the
+    /// line limit is never read as a record.
+    pub(crate) fn safe_diagnostic_since(&self, watermark: u64) -> SafeStderrDiagnostic {
         let bytes = self.bytes.iter().copied().collect::<Vec<_>>();
-        let complete = if self.partial_front {
-            bytes
-                .iter()
-                .position(|byte| *byte == b'\n')
-                .map_or(&[][..], |end| &bytes[end + 1..])
-        } else {
-            &bytes[..]
-        };
-        if let Some(diagnostic) = complete
+        let front = self.front_offset();
+        let mut next = 0_usize;
+        let lines = bytes
             .split(|byte| *byte == b'\n')
-            .rev()
-            .find_map(json_rpc_diagnostic)
-            .or_else(|| json_rpc_diagnostic(complete))
-        {
+            .map(|line| {
+                let start = next;
+                next += line.len() + 1;
+                (start, line)
+            })
+            .collect::<Vec<_>>();
+        let record = lines.into_iter().rev().find_map(|(start, line)| {
+            let offset = front.saturating_add(u64::try_from(start).ok()?);
+            let complete =
+                !(start == 0 && self.partial_front) && !self.truncated_lines.contains(&offset);
+            (complete && offset >= watermark)
+                .then(|| json_rpc_diagnostic(line))
+                .flatten()
+        });
+        if let Some(diagnostic) = record {
             return diagnostic;
         }
         std::str::from_utf8(&bytes)

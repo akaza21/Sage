@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
     process::{TreeControl, TreeExit},
-    redaction::SafeStderrDiagnostic,
     runtime::{BoundedThread, ProjectIntentAuthority, terminal_detail},
 };
 use sage_acp_protocol::lifecycle::TurnTerminalOutcome;
@@ -171,16 +170,20 @@ where
         exit.reason,
         exit.state.teardown_outcome(),
         root_exit,
+        exit.state.stderr_watermark(),
         control,
     )
 }
 
 /// The wait reports Sage's termination request, so a root that had already
 /// exited on its own is read back from the supervisor to keep its exit code.
+/// Only an error the harness wrote since the turn began is that turn's own;
+/// the tree is at zero here, so its stderr is already drained.
 fn lost_runtime_outcome(
     runner_exit: TreeExit,
     teardown: Option<TurnTerminalOutcome>,
     root_exit: TreeExit,
+    turn_watermark: Option<u64>,
     control: &TreeControl,
 ) -> TurnTerminalOutcome {
     let root_exit = control
@@ -188,13 +191,12 @@ fn lost_runtime_outcome(
         .ok()
         .flatten()
         .unwrap_or(root_exit);
-    let stderr = control.stderr_diagnostic().ok();
+    let harness_error =
+        turn_watermark.and_then(|watermark| control.harness_error(Instant::now(), watermark));
     terminal_detail::runtime_lost(
         terminal_detail::observed_exit(runner_exit, root_exit),
         teardown,
-        stderr
-            .as_ref()
-            .and_then(SafeStderrDiagnostic::json_rpc_error_message),
+        harness_error.as_deref(),
     )
 }
 

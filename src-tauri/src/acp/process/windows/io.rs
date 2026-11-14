@@ -134,6 +134,23 @@ impl StderrDrain {
             .map_err(|_| LaunchError::ContainmentFailure)
     }
 
+    pub(super) fn diagnostic_since(
+        &self,
+        watermark: u64,
+    ) -> Result<SafeStderrDiagnostic, LaunchError> {
+        self.ring
+            .lock()
+            .map(|ring| ring.safe_diagnostic_since(watermark))
+            .map_err(|_| LaunchError::ContainmentFailure)
+    }
+
+    pub(super) fn watermark(&self) -> Result<u64, LaunchError> {
+        self.ring
+            .lock()
+            .map(|ring| ring.watermark())
+            .map_err(|_| LaunchError::ContainmentFailure)
+    }
+
     pub(super) fn wait_until(&self, deadline: Instant) -> Result<(), LaunchError> {
         self.thread
             .lock()

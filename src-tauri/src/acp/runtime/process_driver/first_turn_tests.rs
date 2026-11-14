@@ -656,7 +656,11 @@ impl ProcessTreeControl for NoChildProcessControl {
         Ok((TreeExit::Cancelled, ()))
     }
 
-    fn harness_error(&self, _: std::time::Instant) -> Option<String> {
+    fn stderr_watermark(&self) -> Option<u64> {
+        Some(0)
+    }
+
+    fn harness_error(&self, _: std::time::Instant, _: u64) -> Option<String> {
         self.harness_error.map(str::to_owned)
     }
 }

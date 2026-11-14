@@ -68,6 +68,11 @@ where
         })
     }
 
+    /// Where the current turn began on the harness's stderr.
+    pub(crate) fn stderr_watermark(&self) -> Option<u64> {
+        self.stderr_watermark
+    }
+
     pub(crate) fn teardown_exit(&self) -> Option<crate::acp::process::TreeExit> {
         match (self.teardown_cause(), self.teardown_detail) {
             (Some(_), Some(TeardownDetail::Exit(exit))) => Some(exit),

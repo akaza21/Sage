@@ -383,3 +383,47 @@ fn a_structured_log_that_is_not_a_json_rpc_error_is_never_offered_for_storage() 
         );
     }
 }
+
+#[test]
+fn a_line_cut_at_the_line_limit_is_never_read_as_a_record() {
+    let record = br#"{"jsonrpc":"2.0","id":1,"error":{"code":1,"message":"kept prefix"}}"#;
+    let line = |suffix: &[u8]| {
+        let mut ring = StderrRing::new(4096, record.len());
+        ring.ingest(record);
+        ring.ingest(suffix);
+        ring.ingest(b"\n");
+        ring.safe_diagnostic()
+    };
+
+    assert_eq!(line(b"").json_rpc_error_message(), Some("kept prefix"));
+    // The suffix past the limit is dropped, leaving exactly the record's
+    // bytes behind; the line was still never a JSON-RPC record.
+    assert_eq!(line(b" trailing log text").json_rpc_error_message(), None);
+}
+
+#[test]
+fn a_turn_only_sees_errors_written_since_it_began() {
+    let mut ring = StderrRing::new(4096, 1024);
+    ring.ingest(br#"{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"turn one failed"}}"#);
+    ring.ingest(b"\nINFO turn one completed\n");
+    let second_turn = ring.watermark();
+    ring.ingest(b"INFO turn two started\n");
+
+    assert_eq!(
+        ring.safe_diagnostic_since(second_turn)
+            .json_rpc_error_message(),
+        None
+    );
+    assert_eq!(
+        ring.safe_diagnostic().json_rpc_error_message(),
+        Some("turn one failed")
+    );
+
+    ring.ingest(br#"{"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"turn two failed"}}"#);
+    ring.ingest(b"\n");
+    assert_eq!(
+        ring.safe_diagnostic_since(second_turn)
+            .json_rpc_error_message(),
+        Some("turn two failed")
+    );
+}

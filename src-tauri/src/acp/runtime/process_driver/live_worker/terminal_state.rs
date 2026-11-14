@@ -27,6 +27,15 @@ where
         }
     }
 
+    /// Where the active turn began on the harness's stderr; no other state
+    /// has a turn whose error stderr could hold.
+    pub(crate) fn stderr_watermark(&self) -> Option<u64> {
+        match self {
+            Self::Active(active) => active.turn.driver.stderr_watermark(),
+            _ => None,
+        }
+    }
+
     fn durable_cursor_is(&self, expected: TurnState) -> bool {
         self.durable_cursor() == Some(expected)
     }

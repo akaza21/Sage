@@ -50,6 +50,8 @@ where
     pub(super) teardown_detail: Option<TeardownDetail>,
     /// The harness's own stderr error, captured when its exit is latched.
     pub(super) harness_error: Option<String>,
+    /// Where the current turn began on the harness's stderr.
+    pub(super) stderr_watermark: Option<u64>,
     pub(super) pending_exit: Option<PendingExit>,
 }
 
@@ -156,6 +158,7 @@ where
             durable_mutation_unknown: false,
             teardown_detail: None,
             harness_error: None,
+            stderr_watermark: None,
             pending_exit: None,
         }
     }
@@ -214,6 +217,7 @@ where
             }
             Err(error) => return Err(self.pump_error(error)),
         }
+        self.stderr_watermark = self.control.stderr_watermark();
         let mut progress = DriverProgress::default();
         self.flush_all(DispatchSource::Prompt, &mut progress)?;
         Ok(progress)

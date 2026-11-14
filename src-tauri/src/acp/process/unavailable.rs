@@ -145,7 +145,15 @@ impl TreeControl {
         Err(LaunchError::PlatformUnavailable)
     }
 
-    pub(crate) fn harness_error(&self, _deadline: std::time::Instant) -> Option<String> {
+    pub(crate) fn stderr_watermark(&self) -> Option<u64> {
+        None
+    }
+
+    pub(crate) fn harness_error(
+        &self,
+        _deadline: std::time::Instant,
+        _watermark: u64,
+    ) -> Option<String> {
         None
     }
 }

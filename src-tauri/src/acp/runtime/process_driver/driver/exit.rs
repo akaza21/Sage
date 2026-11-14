@@ -94,12 +94,16 @@ where
             pending.termination_requested || self.control.request_termination(exit).is_ok();
         // The exit is latched before the turn is durably failed, so the
         // harness's last stderr error must be captured now to reach that turn.
+        // Only an error written since this turn began is the turn's own.
         let budget = if terminating {
             Duration::from_millis(LIMITS.deadlines_ms.tree_termination)
         } else {
             Duration::ZERO
         };
-        self.harness_error = self.control.harness_error(Instant::now() + budget);
+        self.harness_error = self.stderr_watermark.and_then(|watermark| {
+            self.control
+                .harness_error(Instant::now() + budget, watermark)
+        });
         Some(if terminating {
             error
         } else {
