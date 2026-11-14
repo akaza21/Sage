@@ -8,14 +8,16 @@ use crate::acp::{
         BrowserAuthority, BrowserPermissionChoice, BrowserPermissionDecider,
         BrowserPermissionPrompt,
     },
+    ipc::ProjectionChangedV1,
+    runtime::{JournalLane, TurnNotice},
+    store::{RequestStateCommand, StoreMutation},
+};
+use sage_acp_protocol::{
     contract::{
         RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
         SageTurnId,
     },
-    intent::ProjectionChangedV1,
     lifecycle::ServerRequestState,
-    runtime::{JournalLane, TurnNotice},
-    store::{RequestStateCommand, StoreMutation},
 };
 use std::time::{Duration, Instant};
 

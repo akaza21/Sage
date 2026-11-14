@@ -7,11 +7,10 @@ use super::{AdapterError, CodexAdapter, RequestKind};
 const MAX_ABANDONED_LISTS: usize = 4;
 use crate::acp::{
     bindings::codex::request::OutgoingRequest,
-    contract::SafeText,
     goal::NativeRpcReply,
     mcp::inventory::{McpAuthUrl, McpInventory},
-    session_control::SessionControl,
 };
+use sage_acp_protocol::{contract::SafeText, session_control::SessionControl};
 
 impl CodexAdapter {
     pub(crate) fn mcp_request(

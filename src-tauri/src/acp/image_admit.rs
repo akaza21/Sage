@@ -1,4 +1,4 @@
-use crate::acp::{
+use sage_acp_protocol::{
     contract::SafeText,
     intent::{
         IMAGE_BASE64_MAX, IMAGE_DECODED_BYTES_MAX, ImageMediaType, ImageSource, NormalizedPayload,
@@ -60,7 +60,7 @@ pub(crate) fn admit_image_parts(
 pub(crate) fn image_data_url(
     media_type: ImageMediaType,
     data: &str,
-) -> Result<SafeText<262144>, crate::acp::contract::ContractError> {
+) -> Result<SafeText<262144>, sage_acp_protocol::contract::ContractError> {
     SafeText::new(
         "dataUrl",
         format!("data:{};base64,{data}", media_type.as_str()),

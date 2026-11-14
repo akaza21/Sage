@@ -16,7 +16,6 @@ use crate::{
                 BrowserPermissionGate, PendingBrowserResult,
             },
         },
-        contract::{SageAgentSessionId, SageChatId, SageProjectId},
         service::browser_permission::{BrowserPermissionOwner, ServiceBrowserPermissionDecider},
     },
     browser::{
@@ -25,6 +24,7 @@ use crate::{
     },
     state::AppState,
 };
+use sage_acp_protocol::contract::{SageAgentSessionId, SageChatId, SageProjectId};
 
 pub(crate) struct SessionBrowserCapability {
     app: AppHandle,

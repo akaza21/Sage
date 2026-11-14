@@ -49,9 +49,9 @@ pub(super) struct Inbound {
     /// Approval cards to cancel, by wire id, before the ACP frames: Claude
     /// Code no longer waits on them.
     pub(super) withdrawn: Vec<u64>,
-    pub(super) session: Vec<crate::acp::intent::session_event::SessionScopedEvent>,
+    pub(super) session: Vec<sage_acp_protocol::intent::session_event::SessionScopedEvent>,
     /// Questions the permission request in `acp` asks instead.
-    pub(super) questions: Option<crate::acp::intent::user_input::UserInputRequest>,
+    pub(super) questions: Option<sage_acp_protocol::intent::user_input::UserInputRequest>,
     pub(super) native: Option<crate::acp::goal::NativeRpcReply>,
     pub(super) usage: Option<UsageReply>,
     /// Subagent facts, applied before the ACP frames.

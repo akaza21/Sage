@@ -2,9 +2,9 @@ use rusqlite::Transaction;
 #[cfg(test)]
 use rusqlite::{OptionalExtension, params};
 
-use crate::acp::contract::{EntityRevision, ProjectionRevision};
+use sage_acp_protocol::contract::{EntityRevision, ProjectionRevision};
 #[cfg(test)]
-use crate::acp::lifecycle::classify_terminal;
+use sage_acp_protocol::lifecycle::classify_terminal;
 
 #[cfg(test)]
 use super::SessionTerminalCommand;
@@ -36,7 +36,7 @@ pub(crate) fn apply_session_terminal(
     let current = parse_session_state(&row.0)?;
     if current.is_terminal() {
         return match classify_terminal(Some(&current), &command.terminal) {
-            crate::acp::lifecycle::TerminalUpdate::NoOp => Ok(EntityMutation {
+            sage_acp_protocol::lifecycle::TerminalUpdate::NoOp => Ok(EntityMutation {
                 revision: entity_revision_from_i64(row.1)?,
                 projection_revision: projection_from_i64(row.2)?,
                 disposition: MutationDisposition::Duplicate,
@@ -100,8 +100,8 @@ pub(crate) fn apply_session_terminal(
 pub(crate) fn apply_turn_terminal(
     connection: &mut rusqlite::Connection,
     command: TurnMutationCommand,
-    terminal: crate::acp::lifecycle::TurnState,
-    delivery: crate::acp::lifecycle::DeliveryState,
+    terminal: sage_acp_protocol::lifecycle::TurnState,
+    delivery: sage_acp_protocol::lifecycle::DeliveryState,
 ) -> Result<EntityMutation, StoreError> {
     super::send::transition_turn(connection, command, terminal, delivery, "turnTerminal").map(
         |value| EntityMutation {
@@ -115,10 +115,10 @@ pub(crate) fn apply_turn_terminal(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn append_entity_fact(
     transaction: &Transaction<'_>,
-    project: &crate::acp::contract::SageProjectId,
-    chat: &crate::acp::contract::SageChatId,
-    session: &crate::acp::contract::SageAgentSessionId,
-    turn: Option<&crate::acp::contract::SageTurnId>,
+    project: &sage_acp_protocol::contract::SageProjectId,
+    chat: &sage_acp_protocol::contract::SageChatId,
+    session: &sage_acp_protocol::contract::SageAgentSessionId,
+    turn: Option<&sage_acp_protocol::contract::SageTurnId>,
     kind: &'static str,
     entity: &str,
     state: &'static str,

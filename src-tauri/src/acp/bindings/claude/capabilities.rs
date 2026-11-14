@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{BoundedVec, ContractError, RequiredText, SafeText, SchemaVersionV1},
     intent::{CapabilitySnapshotV1, offers_prompt_capability},
 };

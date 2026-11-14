@@ -153,9 +153,11 @@ fn at_file_and_attached_short_flag_paths_are_redacted_and_permissions_fail_close
         assert!(
             matches!(
                 redact("permissionCommand", input, 512, Mode::Permission),
-                Err(crate::acp::contract::ContractError::ForbiddenContent {
-                    field: "permissionCommand"
-                })
+                Err(
+                    sage_acp_protocol::contract::ContractError::ForbiddenContent {
+                        field: "permissionCommand"
+                    }
+                )
             ),
             "{input}"
         );

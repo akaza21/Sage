@@ -6,7 +6,7 @@ use super::{
     projection::{PreviewPhase, PreviewProjectionOwner},
 };
 
-use crate::acp::scheduler::RuntimeOwner;
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 pub(crate) fn retire_runtime_owner(owner: &RuntimeOwner) -> Result<(), PreviewError> {
     let observer = |_projection: &super::projection::PreviewProjection| Ok(());

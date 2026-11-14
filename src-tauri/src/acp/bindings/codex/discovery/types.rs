@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::acp::contract::RequiredText;
+use sage_acp_protocol::contract::RequiredText;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

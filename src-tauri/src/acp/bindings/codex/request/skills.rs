@@ -43,7 +43,8 @@ impl OutgoingRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::{contract::RequiredText, intent::Prompt};
+    use crate::acp::transcript_quote::Prompt;
+    use sage_acp_protocol::contract::RequiredText;
 
     #[test]
     fn a_skill_runs_ahead_of_the_typed_text() {

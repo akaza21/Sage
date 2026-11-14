@@ -2,10 +2,12 @@ use std::time::{Duration, Instant};
 
 use crate::acp::{
     runtime::HostError,
+    session_config::{choices, notices::NoticeReason},
+};
+use sage_acp_protocol::{
     scheduler::RuntimeOwner,
     session_config::{
-        ConfigIntent, ConfigMutation, SessionConfig, SessionConfigOverlay, choices,
-        notices::NoticeReason, reported::current_value,
+        ConfigIntent, ConfigMutation, SessionConfig, SessionConfigOverlay, reported::current_value,
     },
 };
 use sage_core::limits::LIMITS;
@@ -322,7 +324,7 @@ impl Drop for Unfinished<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::session_config::{ConfigId, ConfigValue};
+    use sage_acp_protocol::session_config::{ConfigId, ConfigValue};
     use serde_json::json;
 
     fn config() -> SessionConfig {
@@ -419,7 +421,7 @@ mod tests {
     #[test]
     fn a_stored_option_whose_value_the_session_has_not_reported_is_held() {
         let config = SessionConfig {
-            unreported: crate::acp::contract::BoundedVec::new(
+            unreported: sage_acp_protocol::contract::BoundedVec::new(
                 "unreported",
                 vec![ConfigId::new("configId", "depth").unwrap()],
             )

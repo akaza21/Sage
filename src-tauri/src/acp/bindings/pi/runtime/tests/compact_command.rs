@@ -16,13 +16,13 @@ fn slash(runtime: &mut PiRuntime, text: &str, revision: u64) -> Value {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "slash").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     deliver(runtime, send)
 }
 
-fn turn_states(batch: &AdapterBatch) -> Vec<crate::acp::lifecycle::TurnState> {
+fn turn_states(batch: &AdapterBatch) -> Vec<sage_acp_protocol::lifecycle::TurnState> {
     batch
         .events()
         .iter()
@@ -100,7 +100,7 @@ fn slash_compact_runs_pis_compaction_as_a_turn_with_its_compaction_item() {
         .unwrap();
     assert_eq!(
         turn_states(&done),
-        [crate::acp::lifecycle::TurnState::Completed]
+        [sage_acp_protocol::lifecycle::TurnState::Completed]
     );
     let request = slash(&mut runtime, "/compact", revision);
     assert_eq!(request, json!({"type":"compact","id":request["id"]}));
@@ -126,7 +126,7 @@ fn slash_compact_runs_pis_compaction_as_a_turn_with_its_compaction_item() {
     else {
         panic!("failed compaction and its reason, got {:?}", ended.events())
     };
-    let crate::acp::intent::session_event::SessionScopedEvent::Notice(notice) = event else {
+    let sage_acp_protocol::intent::session_event::SessionScopedEvent::Notice(notice) = event else {
         panic!("notice expected")
     };
     assert_eq!(
@@ -144,7 +144,7 @@ fn slash_compact_runs_pis_compaction_as_a_turn_with_its_compaction_item() {
         .unwrap();
     assert_eq!(
         turn_states(&failed),
-        [crate::acp::lifecycle::TurnState::Failed]
+        [sage_acp_protocol::lifecycle::TurnState::Failed]
     );
     assert!(
         !failed
@@ -210,7 +210,7 @@ fn a_compact_pi_rejects_outright_still_reports_the_failure() {
     );
     assert_eq!(
         turn_states(&failed),
-        [crate::acp::lifecycle::TurnState::Failed]
+        [sage_acp_protocol::lifecycle::TurnState::Failed]
     );
 }
 
@@ -226,7 +226,7 @@ fn the_compact_action_runs_pis_compaction_without_a_listed_command() {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "compact-action").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let request = deliver(&mut runtime, send);
@@ -236,7 +236,7 @@ fn the_compact_action_runs_pis_compaction_without_a_listed_command() {
         .unwrap();
     assert_eq!(
         turn_states(&done),
-        [crate::acp::lifecycle::TurnState::Completed]
+        [sage_acp_protocol::lifecycle::TurnState::Completed]
     );
 }
 
@@ -254,7 +254,7 @@ fn a_review_action_is_refused_since_pi_has_no_review() {
         runtime.command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "review-action").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }),
         Err(AdapterRuntimeError::UnsupportedCommand)
     ));

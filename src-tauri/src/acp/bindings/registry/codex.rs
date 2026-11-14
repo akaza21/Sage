@@ -1,10 +1,8 @@
 #[cfg(all(test, windows))]
 use std::sync::Arc;
 
-use crate::acp::{
-    bindings::{codex::CodexRuntimeFactory, runtime::RuntimeFactory},
-    intent::CapabilitySnapshotV1,
-};
+use crate::acp::bindings::{codex::CodexRuntimeFactory, runtime::RuntimeFactory};
+use sage_acp_protocol::intent::CapabilitySnapshotV1;
 
 use super::{AdmittedBinding, BindingProjectRoot, RegistryAdmissionUnavailable};
 
@@ -51,12 +49,12 @@ mod browser_mcp_tests {
     use super::*;
     use crate::acp::{
         bindings::codex::{CodexBindingRegistration, CodexProjectRootAuthority},
-        contract::{
-            ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
-        },
         mcp::McpAdmission,
     };
     use crate::project_registry::ProjectRootAuthority;
+    use sage_acp_protocol::contract::{
+        ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
+    };
 
     #[test]
     fn codex_launch_forwards_browser_token_in_environment() {

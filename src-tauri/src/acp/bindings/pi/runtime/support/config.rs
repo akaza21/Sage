@@ -1,12 +1,10 @@
 use super::super::PiRuntime;
 use super::identity::model_key;
-use crate::acp::{
-    bindings::{
-        adapter::{AdapterEgress, AdapterRuntimeError, HarnessAdapter},
-        pi::Operation,
-    },
-    session_config::{ConfigIntent, ConfigMutation, ConfigValue},
+use crate::acp::bindings::{
+    adapter::{AdapterEgress, AdapterRuntimeError, HarnessAdapter},
+    pi::Operation,
 };
+use sage_acp_protocol::session_config::{ConfigIntent, ConfigMutation, ConfigValue};
 
 const MODEL: &str = "pi.model";
 const THINKING: &str = "pi.thinking";
@@ -97,7 +95,7 @@ impl PiRuntime {
 
     pub(in crate::acp::bindings::pi::runtime) fn model_session_config(
         &self,
-    ) -> Option<crate::acp::session_config::SessionConfig> {
+    ) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         if !self.initialized || self.available_models.is_empty() {
             return None;
         }
@@ -152,7 +150,7 @@ impl PiRuntime {
                 "currentValue":enabled
             }));
         }
-        crate::acp::session_config::SessionConfig::from_wire(
+        sage_acp_protocol::session_config::SessionConfig::from_wire(
             &serde_json::json!({"configOptions":config_options}),
             true,
         )

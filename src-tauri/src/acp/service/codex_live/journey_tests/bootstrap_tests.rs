@@ -7,15 +7,15 @@ use crate::acp::{
         BrowserResult, BrowserScope, FillSecret, permission::BrowserPermissionChoice,
         session_capability::attached::AttachedSessionCapability,
     },
-    contract::SageAgentSessionId,
     runtime::BoundedThread,
     service::browser_permission::BrowserPermissionOwner,
     store::DatabaseAcpStore,
 };
 use crate::browser::state_query::bootstrap_fixture::BrowserDocumentFixture;
+use sage_acp_protocol::contract::SageAgentSessionId;
 use std::sync::{Arc, Mutex, mpsc};
 
-fn permission(events: &mpsc::Receiver<Event>) -> crate::acp::contract::SageServerRequestId {
+fn permission(events: &mpsc::Receiver<Event>) -> sage_acp_protocol::contract::SageServerRequestId {
     for _ in 0..64 {
         match next(events) {
             Event::Permission(id) => return id,
@@ -42,7 +42,7 @@ fn outcome(events: &mpsc::Receiver<Event>) -> Result<BrowserResult, BrowserFailu
 fn allow(
     setup: &FixtureSetup,
     owner: &BrowserPermissionOwner,
-    id: crate::acp::contract::SageServerRequestId,
+    id: sage_acp_protocol::contract::SageServerRequestId,
 ) {
     let page = setup
         .service
@@ -61,7 +61,7 @@ fn allow(
         .find(|item| {
             matches!(&item.content,
         ItemContent::PermissionRequest { request_id,
-            state: crate::acp::lifecycle::ServerRequestState::Received,
+            state: sage_acp_protocol::lifecycle::ServerRequestState::Received,
             source: crate::acp::projection::PermissionRequestSource::Browser, .. }
             if request_id == &id)
         })

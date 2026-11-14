@@ -5,7 +5,7 @@ impl AdmittedBindingRecord<'_> {
         match &self.binding {
             AdmittedBinding::Codex(binding) => {
                 let supported = binding.capability_ceiling().is_ok_and(|ceiling| {
-                    crate::acp_protocol::codex_protocol::speaks_pinned_protocol(
+                    sage_acp_protocol::codex_protocol::speaks_pinned_protocol(
                         ceiling.protocol_version.as_str(),
                     )
                 });

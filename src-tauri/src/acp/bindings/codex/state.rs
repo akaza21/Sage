@@ -46,7 +46,7 @@ pub(crate) use turn_starts::WarningKind;
 use turn_starts::{CorrelationMatch, TurnStartCorrelations};
 pub(in crate::acp::bindings::codex) use turns::SubagentLabels;
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId, session_event::SessionScopedEvent},
     lifecycle::{ItemLifecycle, ServerRequestState, TurnState},
@@ -113,7 +113,7 @@ struct PermissionRequestEntry {
     item_id: String,
     response: Vec<u8>,
     state: ServerRequestState,
-    form: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
+    form: Option<Box<sage_acp_protocol::intent::user_input::UserInputRequest>>,
 }
 
 pub(crate) struct PermissionRequestParams<'a> {
@@ -124,7 +124,7 @@ pub(crate) struct PermissionRequestParams<'a> {
     pub(crate) turn_id: &'a str,
     pub(crate) item_id: &'a str,
     pub(crate) response: &'a [u8],
-    pub(crate) form: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
+    pub(crate) form: Option<Box<sage_acp_protocol::intent::user_input::UserInputRequest>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -332,7 +332,7 @@ impl CodexAdapter {
         &mut self,
         bytes: &[u8],
         mapper: &M,
-        declarations: &crate::acp::declared_test::DeclaredTestCommands,
+        declarations: &sage_acp_protocol::declared_test::DeclaredTestCommands,
     ) -> Result<IngressDisposition, AdapterError> {
         super::incoming::ingest_with_declarations(self, bytes, mapper, declarations)
             .map_err(AdapterError::Ingress)

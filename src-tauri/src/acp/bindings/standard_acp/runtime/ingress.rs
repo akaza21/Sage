@@ -1,10 +1,10 @@
 use serde_json::Value;
 
-use crate::acp::{
-    bindings::adapter::{
-        AdapterBatch, AdapterBatchBuilder, AdapterEvent as SharedEvent, AdapterIdentity,
-        AdapterRuntimeError, ResourceMapper as SharedResourceMapper,
-    },
+use crate::acp::bindings::adapter::{
+    AdapterBatch, AdapterBatchBuilder, AdapterEvent as SharedEvent, AdapterIdentity,
+    AdapterRuntimeError, ResourceMapper as SharedResourceMapper,
+};
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::{
         CapabilitySnapshotV1, ExternalId, NormalizedPayload, SafeResourceRef,
@@ -60,8 +60,9 @@ impl StandardAcpRuntime {
         self.sign_in.accept_initialize(&value);
         let mut capabilities = capabilities()?;
         capabilities.prompt_resources =
-            crate::acp::intent::offers_prompt_capability(&value, "embeddedContext");
-        capabilities.prompt_images = crate::acp::intent::offers_prompt_capability(&value, "image");
+            sage_acp_protocol::intent::offers_prompt_capability(&value, "embeddedContext");
+        capabilities.prompt_images =
+            sage_acp_protocol::intent::offers_prompt_capability(&value, "image");
         if !self.profile.close_characterised {
             capabilities.close_session = value
                 .pointer("/result/agentCapabilities/sessionCapabilities/close")
@@ -336,7 +337,7 @@ impl StandardResourceMapper for MapperBridge<'_> {
 
 fn capabilities() -> Result<CapabilitySnapshotV1, AdapterRuntimeError> {
     Ok(CapabilitySnapshotV1 {
-        schema_version: crate::acp::contract::SchemaVersionV1,
+        schema_version: sage_acp_protocol::contract::SchemaVersionV1,
         protocol_version: RequiredText::new("protocolVersion", "1")
             .map_err(|_| AdapterRuntimeError::Frame)?,
         new_session: true,
@@ -373,8 +374,8 @@ fn handshake_error(error: StandardAcpHandshakeError) -> AdapterRuntimeError {
 
 fn identity(
     binding_digest: [u8; 32],
-    runtime_epoch: crate::acp::contract::RuntimeEpoch,
-    session_id: &crate::acp::contract::SageAgentSessionId,
+    runtime_epoch: sage_acp_protocol::contract::RuntimeEpoch,
+    session_id: &sage_acp_protocol::contract::SageAgentSessionId,
     external_id: ExternalId,
     turn_id: Option<ExternalId>,
     turn_client_message_id: Option<RequiredText<512>>,

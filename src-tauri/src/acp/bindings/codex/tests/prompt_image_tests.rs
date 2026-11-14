@@ -3,9 +3,9 @@ use std::sync::Arc;
 use crate::acp::{
     attached_context::files::images::{ImagePreview, PromptImage, PromptImages},
     bindings::codex::request::{OutgoingRequest, RequestError},
-    contract::RequiredText,
-    intent::{ImageMediaType, Prompt},
+    transcript_quote::Prompt,
 };
+use sage_acp_protocol::{contract::RequiredText, intent::ImageMediaType};
 use sage_core::limits::ECHOED_PROMPT_IMAGE_TOTAL_BYTES;
 
 fn prompt(sizes: &[usize]) -> Prompt {

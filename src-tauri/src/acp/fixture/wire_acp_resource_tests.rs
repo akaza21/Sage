@@ -54,11 +54,11 @@ fn the_case_advertises_embedded_context_and_echoes_each_resource_sage_sends() {
     let prompt = Value::Array(carried.wire("Summarize the log", true).unwrap());
     let frames = replay(CASE, &session(&prompt, &prompt));
 
-    assert!(crate::acp::intent::offers_prompt_capability(
+    assert!(sage_acp_protocol::intent::offers_prompt_capability(
         &frames[0],
         "embeddedContext"
     ));
-    assert!(crate::acp::intent::offers_prompt_capability(
+    assert!(sage_acp_protocol::intent::offers_prompt_capability(
         &frames[0], "image"
     ));
     let expected = format!(

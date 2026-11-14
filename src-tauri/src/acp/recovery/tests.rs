@@ -137,10 +137,10 @@ fn restart_recovery_commits_delivery_unknown_and_converges_to_cold_zero_runtime(
 fn exact_zero_process_recovery_replays_only_the_proven_terminal_postcondition() {
     let mut connection = recovery_connection();
     let command = RecoverRuntimeCommand {
-        project_id: crate::acp::contract::SageProjectId::parse("project-one").unwrap(),
-        chat_id: crate::acp::contract::SageChatId::parse("chat-one").unwrap(),
-        session_id: crate::acp::contract::SageAgentSessionId::parse("session-one").unwrap(),
-        runtime_epoch: crate::acp::contract::RuntimeEpoch::new(1).unwrap(),
+        project_id: sage_acp_protocol::contract::SageProjectId::parse("project-one").unwrap(),
+        chat_id: sage_acp_protocol::contract::SageChatId::parse("chat-one").unwrap(),
+        session_id: sage_acp_protocol::contract::SageAgentSessionId::parse("session-one").unwrap(),
+        runtime_epoch: sage_acp_protocol::contract::RuntimeEpoch::new(1).unwrap(),
         now_millis: 50,
     };
     let first = recover_runtime_after_zero_process(&mut connection, command.clone()).unwrap();
@@ -151,7 +151,7 @@ fn exact_zero_process_recovery_replays_only_the_proven_terminal_postcondition() 
 
     let mut missing = command;
     missing.session_id =
-        crate::acp::contract::SageAgentSessionId::parse("session-missing").unwrap();
+        sage_acp_protocol::contract::SageAgentSessionId::parse("session-missing").unwrap();
     assert!(matches!(
         recover_runtime_after_zero_process(&mut connection, missing),
         Err(StoreError::Conflict {
@@ -164,10 +164,11 @@ fn exact_zero_process_recovery_replays_only_the_proven_terminal_postcondition() 
 fn zero_process_recovery_rejects_a_foreign_live_tree() {
     let mut connection = recovery_connection();
     let command = RecoverRuntimeCommand {
-        project_id: crate::acp::contract::SageProjectId::parse("project-one").unwrap(),
-        chat_id: crate::acp::contract::SageChatId::parse("chat-one").unwrap(),
-        session_id: crate::acp::contract::SageAgentSessionId::parse("session-foreign").unwrap(),
-        runtime_epoch: crate::acp::contract::RuntimeEpoch::new(1).unwrap(),
+        project_id: sage_acp_protocol::contract::SageProjectId::parse("project-one").unwrap(),
+        chat_id: sage_acp_protocol::contract::SageChatId::parse("chat-one").unwrap(),
+        session_id: sage_acp_protocol::contract::SageAgentSessionId::parse("session-foreign")
+            .unwrap(),
+        runtime_epoch: sage_acp_protocol::contract::RuntimeEpoch::new(1).unwrap(),
         now_millis: 50,
     };
     assert!(matches!(
@@ -290,10 +291,10 @@ fn zero_process_recovery_leaves_a_concurrent_live_tree_running() {
     let mut connection = recovery_connection();
     add_second_live_tree(&connection);
     let command = RecoverRuntimeCommand {
-        project_id: crate::acp::contract::SageProjectId::parse("project-one").unwrap(),
-        chat_id: crate::acp::contract::SageChatId::parse("chat-two").unwrap(),
-        session_id: crate::acp::contract::SageAgentSessionId::parse("session-two").unwrap(),
-        runtime_epoch: crate::acp::contract::RuntimeEpoch::new(1).unwrap(),
+        project_id: sage_acp_protocol::contract::SageProjectId::parse("project-one").unwrap(),
+        chat_id: sage_acp_protocol::contract::SageChatId::parse("chat-two").unwrap(),
+        session_id: sage_acp_protocol::contract::SageAgentSessionId::parse("session-two").unwrap(),
+        runtime_epoch: sage_acp_protocol::contract::RuntimeEpoch::new(1).unwrap(),
         now_millis: 50,
     };
     let report = recover_runtime_after_zero_process(&mut connection, command).unwrap();

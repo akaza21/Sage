@@ -128,13 +128,13 @@ mod tests {
 
     #[test]
     fn refuses_a_manifest_only_bin_redirect_after_admission() {
-        use crate::acp::{
-            bindings::codex::{AdmittedCodexBinding, CodexProjectRootAuthority, CodexRuntime},
-            contract::{
-                ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
-            },
+        use crate::acp::bindings::codex::{
+            AdmittedCodexBinding, CodexProjectRootAuthority, CodexRuntime,
         };
         use crate::project_registry::ProjectRootAuthority;
+        use sage_acp_protocol::contract::{
+            ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
+        };
 
         let directory = npm_tree();
         let launcher = directory.join("codex.cmd");
@@ -182,13 +182,13 @@ mod tests {
 
     #[test]
     fn rediscovery_admits_and_plans_a_manifest_only_codex_reinstall() {
-        use crate::acp::{
-            bindings::codex::{CodexBindingRegistration, CodexProjectRootAuthority, CodexRuntime},
-            contract::{
-                ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
-            },
+        use crate::acp::bindings::codex::{
+            CodexBindingRegistration, CodexProjectRootAuthority, CodexRuntime,
         };
         use crate::project_registry::ProjectRootAuthority;
+        use sage_acp_protocol::contract::{
+            ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
+        };
 
         let directory = npm_tree();
         let launcher = directory.join("codex.cmd");

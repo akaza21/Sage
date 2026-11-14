@@ -1,33 +1,34 @@
 use sage_core::error::AppError;
 
 use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent, version_line};
-use crate::acp_protocol::codex_protocol::{OBSERVED_PROTOCOL_IDENTITY, PINNED_PROTOCOL_IDENTITY};
+use sage_acp_protocol::codex_protocol::{OBSERVED_PROTOCOL_IDENTITY, PINNED_PROTOCOL_IDENTITY};
 use serde_json::{Value, json};
 
 use super::*;
-use crate::project_registry::ProjectRootAuthority;
-use crate::{
-    acp::{
-        bindings::{
-            adapter::{
-                AdapterCommand, AdapterEvent, AdapterIdentity, AdapterRuntimeError,
-                EgressResolution, HarnessAdapter, ResourceMapper,
-            },
-            codex::{
-                CodexProjectRootAuthority, Platform, parse_packet_metadata, parse_security_policy,
-            },
+use crate::acp::{
+    bindings::{
+        adapter::{
+            AdapterCommand, AdapterEvent, AdapterIdentity, AdapterRuntimeError, EgressResolution,
+            HarnessAdapter, ResourceMapper,
         },
-        contract::{
-            ProjectGeneration, RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId,
-            SageProjectId, SageRootId,
+        codex::{
+            CodexProjectRootAuthority, Platform, parse_packet_metadata, parse_security_policy,
         },
-        intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
-        lifecycle::ItemLifecycle,
-        transport::{Frame, IncrementalFrameDecoder},
     },
-    acp_protocol::permissions::PermissionDecision,
+    transcript_quote::Prompt,
+    transport::{Frame, IncrementalFrameDecoder},
 };
+use crate::project_registry::ProjectRootAuthority;
 use crate::{persistence::Database, state::AppState};
+use sage_acp_protocol::{
+    contract::{
+        ProjectGeneration, RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId, SageProjectId,
+        SageRootId,
+    },
+    intent::{ExternalId, NormalizedPayload, SafeResourceRef},
+    lifecycle::ItemLifecycle,
+    permissions::PermissionDecision,
+};
 
 mod background_terminal_tests;
 mod browser_mcp_tests;
@@ -58,7 +59,7 @@ impl ResourceMapper for Mapper {
     fn map_existing(
         &self,
         absolute_path: &str,
-    ) -> Result<SafeResourceRef, crate::acp::intent::UnavailableResourceReason> {
+    ) -> Result<SafeResourceRef, sage_acp_protocol::intent::UnavailableResourceReason> {
         (absolute_path == r"C:\repo\src\lib.rs")
             .then(|| {
                 SafeResourceRef::new(
@@ -67,7 +68,7 @@ impl ResourceMapper for Mapper {
                 )
                 .expect("resource")
             })
-            .ok_or(crate::acp::intent::UnavailableResourceReason::Foreign)
+            .ok_or(sage_acp_protocol::intent::UnavailableResourceReason::Foreign)
     }
 }
 
@@ -297,7 +298,7 @@ fn catalog_rpc_failure_is_ignored_and_session_stays_promptable() {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "continue").unwrap(),
                 client_message_id: RequiredText::new("client", "catalog-failure").unwrap(),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .is_ok()
     );
@@ -731,7 +732,7 @@ fn session_effort_survives_thread_started_before_or_after_response() {
 
 #[test]
 fn catalog_effort_byte_bound_survives_configuration_and_turn_start() {
-    use crate::acp::{
+    use sage_acp_protocol::{
         contract::SageChatId,
         scheduler::RuntimeOwner,
         session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigRevision, ConfigValue},
@@ -788,7 +789,7 @@ fn catalog_effort_byte_bound_survives_configuration_and_turn_start() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "keep full bounded effort").unwrap(),
             client_message_id: RequiredText::new("client", "bounded-effort").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let request: Value = serde_json::from_slice(prompt.frame().payload()).unwrap();
@@ -797,7 +798,7 @@ fn catalog_effort_byte_bound_survives_configuration_and_turn_start() {
 
 #[test]
 fn codex_thinking_change_is_local_and_reaches_the_next_turn_start() {
-    use crate::acp::{
+    use sage_acp_protocol::{
         contract::SageChatId,
         scheduler::RuntimeOwner,
         session_config::{ConfigIntent, ConfigMutation, ConfigRevision, ConfigValue},
@@ -897,7 +898,7 @@ fn codex_thinking_change_is_local_and_reaches_the_next_turn_start() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "use selected effort").unwrap(),
             client_message_id: RequiredText::new("client", "effort-turn").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let request: Value = serde_json::from_slice(prompt.frame().payload()).unwrap();
@@ -985,7 +986,7 @@ fn running_turn(runtime: &mut CodexRuntime) {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-1").expect("client"),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     let id = request_id(&egress);
@@ -1161,7 +1162,7 @@ fn notification_first_turn_start_ignores_the_late_response_state_regression() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: RequiredText::new("client", "notification-first").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let id = request_id(&egress);
@@ -1176,7 +1177,7 @@ fn notification_first_turn_start_ignores_the_late_response_state_regression() {
     assert!(matches!(
         running.events(),
         [AdapterEvent::Turn {
-            state: crate::acp::lifecycle::TurnState::Running,
+            state: sage_acp_protocol::lifecycle::TurnState::Running,
             ..
         }]
     ));
@@ -1198,7 +1199,7 @@ fn completed_notification_first_turn_admits_the_next_turn_started() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Run one bounded command").unwrap(),
             client_message_id: RequiredText::new("client", "first-command").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let first_id = request_id(&first);
@@ -1233,7 +1234,7 @@ fn completed_notification_first_turn_admits_the_next_turn_started() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Follow up without editing").unwrap(),
             client_message_id: RequiredText::new("client", "second-follow-up").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let second_id = request_id(&second);
@@ -1248,7 +1249,7 @@ fn completed_notification_first_turn_admits_the_next_turn_started() {
     assert!(matches!(
         started.events(),
         [AdapterEvent::Turn {
-            state: crate::acp::lifecycle::TurnState::Running,
+            state: sage_acp_protocol::lifecycle::TurnState::Running,
             ..
         }]
     ));
@@ -1477,7 +1478,7 @@ fn prompt_and_interrupt_rpc_errors_emit_terminal_failure_without_replay() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Never replay").unwrap(),
             client_message_id: RequiredText::new("client", "failed-prompt").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let prompt_id = request_id(&prompt);
@@ -1492,7 +1493,7 @@ fn prompt_and_interrupt_rpc_errors_emit_terminal_failure_without_replay() {
         [
             AdapterEvent::Error(_),
             AdapterEvent::Turn {
-                state: crate::acp::lifecycle::TurnState::Failed,
+                state: sage_acp_protocol::lifecycle::TurnState::Failed,
                 ..
             }
         ]
@@ -1515,7 +1516,7 @@ fn prompt_and_interrupt_rpc_errors_emit_terminal_failure_without_replay() {
         [
             AdapterEvent::Error(_),
             AdapterEvent::Turn {
-                state: crate::acp::lifecycle::TurnState::Failed,
+                state: sage_acp_protocol::lifecycle::TurnState::Failed,
                 ..
             }
         ]
@@ -1736,7 +1737,7 @@ fn observed_active_thread_status_notification_is_ignored_before_turn_started() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "active-status").expect("client"),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     let notification = runtime
@@ -1764,7 +1765,7 @@ fn observed_active_thread_status_notification_is_ignored_before_turn_started() {
     assert!(matches!(
         started.events(),
         [AdapterEvent::Turn {
-            state: crate::acp::lifecycle::TurnState::Running,
+            state: sage_acp_protocol::lifecycle::TurnState::Running,
             ..
         }]
     ));
@@ -1778,7 +1779,7 @@ fn observed_system_error_thread_status_fails_the_pending_turn_without_tearing_do
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Reply with PONG").expect("prompt"),
             client_message_id: RequiredText::new("client", "system-error").expect("client"),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
 
@@ -1801,7 +1802,7 @@ fn observed_system_error_thread_status_fails_the_pending_turn_without_tearing_do
         [
             AdapterEvent::Error(_),
             AdapterEvent::Turn {
-                state: crate::acp::lifecycle::TurnState::Failed,
+                state: sage_acp_protocol::lifecycle::TurnState::Failed,
                 ..
             }
         ]
@@ -1812,7 +1813,7 @@ fn observed_system_error_thread_status_fails_the_pending_turn_without_tearing_do
                 prompt: Prompt::new("prompt", "Retry with PONG").expect("prompt"),
                 client_message_id: RequiredText::new("client", "system-error-retry")
                     .expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .is_ok()
     );
@@ -2513,7 +2514,7 @@ fn initialize_session_prompt_stream_tool_usage_cancel_and_terminal_are_normalize
         matches!(
             terminal.events(),
             [AdapterEvent::Turn {
-                state: crate::acp::lifecycle::TurnState::Cancelled,
+                state: sage_acp_protocol::lifecycle::TurnState::Cancelled,
                 ..
             }]
         ),
@@ -2793,7 +2794,7 @@ fn command_snapshots_reject_foreign_or_retired_turns_without_borrowing_prior_con
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Start a separate turn").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-2").expect("client"),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("next turn");
     let next_id = request_id(&next);
@@ -2914,7 +2915,7 @@ fn command_output_deltas_use_one_safe_scoped_snapshot_and_flush_only_on_terminal
         .expect("omitted terminal aggregate flushes preserved safe output");
     assert!(matches!(
         terminal.events(),
-        [AdapterEvent::Item { id, lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed, .. }]
+        [AdapterEvent::Item { id, lifecycle: sage_acp_protocol::lifecycle::ItemLifecycle::Completed, .. }]
             if id == command_id
     ));
     let late = runtime
@@ -3124,8 +3125,10 @@ fn permission_request_waits_for_a_later_deny_and_never_emits_ingress_egress() {
 
     let egress = runtime
         .command(AdapterCommand::ResolvePermission {
-            request_id: crate::acp::contract::SageServerRequestId::parse("string:approval-1")
-                .unwrap(),
+            request_id: sage_acp_protocol::contract::SageServerRequestId::parse(
+                "string:approval-1",
+            )
+            .unwrap(),
             decision: PermissionDecision::Deny,
         })
         .expect("later deny");
@@ -3160,8 +3163,10 @@ fn permission_request_waits_for_a_later_deny_and_never_emits_ingress_egress() {
     let _batch = rejected.ingest(&request, &Mapper).expect("permission");
     let egress = rejected
         .command(AdapterCommand::ResolvePermission {
-            request_id: crate::acp::contract::SageServerRequestId::parse("string:approval-1")
-                .unwrap(),
+            request_id: sage_acp_protocol::contract::SageServerRequestId::parse(
+                "string:approval-1",
+            )
+            .unwrap(),
             decision: PermissionDecision::Deny,
         })
         .expect("later deny");
@@ -3186,8 +3191,10 @@ fn allow_once_on_codex_does_not_emit_denial_and_records_resolved_allowed() {
 
     let allow = runtime
         .command(AdapterCommand::ResolvePermission {
-            request_id: crate::acp::contract::SageServerRequestId::parse("string:approval-allow")
-                .unwrap(),
+            request_id: sage_acp_protocol::contract::SageServerRequestId::parse(
+                "string:approval-allow",
+            )
+            .unwrap(),
             decision: PermissionDecision::AllowOnce,
         })
         .expect("later allow");
@@ -3236,7 +3243,7 @@ fn codex_unknown_command_decisions_offer_reject_only() {
     };
     assert_eq!(
         kinds.as_slice(),
-        &[crate::acp::intent::PermissionOptionKind::RejectOnce]
+        &[sage_acp_protocol::intent::PermissionOptionKind::RejectOnce]
     );
 }
 
@@ -3270,14 +3277,14 @@ fn codex_always_allow_uses_session_decision_only_for_supported_requests() {
     assert_eq!(
         kinds.as_slice(),
         &[
-            crate::acp::intent::PermissionOptionKind::RejectOnce,
-            crate::acp::intent::PermissionOptionKind::AllowOnce,
+            sage_acp_protocol::intent::PermissionOptionKind::RejectOnce,
+            sage_acp_protocol::intent::PermissionOptionKind::AllowOnce,
         ]
     );
     assert!(
         limited
             .command(AdapterCommand::ResolvePermission {
-                request_id: crate::acp::contract::SageServerRequestId::parse(
+                request_id: sage_acp_protocol::contract::SageServerRequestId::parse(
                     "string:limited-command"
                 )
                 .unwrap(),
@@ -3310,12 +3317,12 @@ fn codex_always_allow_uses_session_decision_only_for_supported_requests() {
     };
     assert_eq!(
         kinds.as_slice(),
-        &[crate::acp::intent::PermissionOptionKind::RejectOnce]
+        &[sage_acp_protocol::intent::PermissionOptionKind::RejectOnce]
     );
     assert!(
         limited
             .command(AdapterCommand::ResolvePermission {
-                request_id: crate::acp::contract::SageServerRequestId::parse(
+                request_id: sage_acp_protocol::contract::SageServerRequestId::parse(
                     "string:malformed-command"
                 )
                 .unwrap(),
@@ -3349,9 +3356,9 @@ fn codex_always_allow_uses_session_decision_only_for_supported_requests() {
     assert_eq!(
         kinds.as_slice(),
         &[
-            crate::acp::intent::PermissionOptionKind::RejectOnce,
-            crate::acp::intent::PermissionOptionKind::AllowAlways,
-            crate::acp::intent::PermissionOptionKind::AllowOnce,
+            sage_acp_protocol::intent::PermissionOptionKind::RejectOnce,
+            sage_acp_protocol::intent::PermissionOptionKind::AllowAlways,
+            sage_acp_protocol::intent::PermissionOptionKind::AllowOnce,
         ]
     );
 
@@ -3387,11 +3394,11 @@ fn codex_always_allow_uses_session_decision_only_for_supported_requests() {
         assert!(
             kinds
                 .as_slice()
-                .contains(&crate::acp::intent::PermissionOptionKind::AllowAlways)
+                .contains(&sage_acp_protocol::intent::PermissionOptionKind::AllowAlways)
         );
         let reply = runtime
             .command(AdapterCommand::ResolvePermission {
-                request_id: crate::acp::contract::SageServerRequestId::parse(
+                request_id: sage_acp_protocol::contract::SageServerRequestId::parse(
                     "string:approval-session",
                 )
                 .unwrap(),
@@ -3429,12 +3436,12 @@ fn codex_always_allow_uses_session_decision_only_for_supported_requests() {
     assert!(
         !kinds
             .as_slice()
-            .contains(&crate::acp::intent::PermissionOptionKind::AllowAlways)
+            .contains(&sage_acp_protocol::intent::PermissionOptionKind::AllowAlways)
     );
     assert!(
         runtime
             .command(AdapterCommand::ResolvePermission {
-                request_id: crate::acp::contract::SageServerRequestId::parse(
+                request_id: sage_acp_protocol::contract::SageServerRequestId::parse(
                     "string:approval-profile"
                 )
                 .unwrap(),
@@ -3486,7 +3493,8 @@ fn allow_once_preserves_numeric_codex_jsonrpc_request_id() {
         .expect("numeric permission");
     let allow = runtime
         .command(AdapterCommand::ResolvePermission {
-            request_id: crate::acp::contract::SageServerRequestId::parse("number:17").unwrap(),
+            request_id: sage_acp_protocol::contract::SageServerRequestId::parse("number:17")
+                .unwrap(),
             decision: PermissionDecision::AllowOnce,
         })
         .expect("numeric allow");
@@ -3534,7 +3542,8 @@ fn numeric_and_string_codex_jsonrpc_request_ids_do_not_alias() {
 
     let string_allow = runtime
         .command(AdapterCommand::ResolvePermission {
-            request_id: crate::acp::contract::SageServerRequestId::parse("string:17").unwrap(),
+            request_id: sage_acp_protocol::contract::SageServerRequestId::parse("string:17")
+                .unwrap(),
             decision: PermissionDecision::AllowOnce,
         })
         .expect("string allow");
@@ -3544,7 +3553,8 @@ fn numeric_and_string_codex_jsonrpc_request_ids_do_not_alias() {
     );
     let numeric_allow = runtime
         .command(AdapterCommand::ResolvePermission {
-            request_id: crate::acp::contract::SageServerRequestId::parse("number:17").unwrap(),
+            request_id: sage_acp_protocol::contract::SageServerRequestId::parse("number:17")
+                .unwrap(),
             decision: PermissionDecision::AllowOnce,
         })
         .expect("numeric remains pending");
@@ -3568,7 +3578,7 @@ fn permissions_approval_allow_once_uses_the_permissions_response_shape() {
 
     let allow = runtime
         .command(AdapterCommand::ResolvePermission {
-            request_id: crate::acp::contract::SageServerRequestId::parse(
+            request_id: sage_acp_protocol::contract::SageServerRequestId::parse(
                 "string:approval-permissions",
             )
             .unwrap(),
@@ -3613,7 +3623,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "first").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-first").expect("client"),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("first prompt");
     rollback
@@ -3624,7 +3634,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "second").expect("prompt"),
                 client_message_id: RequiredText::new("client", "client-second").expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .is_ok()
     );
@@ -3635,7 +3645,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "first").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-zero").expect("client"),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("first prompt");
     let token = first.token().clone();
@@ -3650,7 +3660,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "retry").expect("prompt"),
                 client_message_id: RequiredText::new("client", "client-retry").expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .is_ok()
     );
@@ -3661,7 +3671,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "possibly written").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-unknown").expect("client"),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("first prompt");
     uncertain
@@ -3671,7 +3681,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
         uncertain.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "must not replay").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-no-replay").expect("client"),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }),
         Err(AdapterRuntimeError::Operation)
     ));
@@ -3708,7 +3718,7 @@ fn harness_neutral_batches_enforce_count_and_actual_byte_limits() {
     };
     let item = || AdapterEvent::Item {
         id: identity.clone(),
-        lifecycle: crate::acp::lifecycle::ItemLifecycle::Streaming,
+        lifecycle: sage_acp_protocol::lifecycle::ItemLifecycle::Streaming,
         tool_state: None,
         payload: NormalizedPayload::Text {
             text: SafeText::new("text", "x".repeat(262_144)).expect("text"),

@@ -9,13 +9,10 @@ use super::{
     profile::{StandardAcpLaunch, profile_for},
 };
 use crate::{
-    acp::{
-        bindings::adapter::AdapterRuntimeError,
-        contract::{ProjectGeneration, SageProjectId, SageRootId},
-        process::BoundedEnvironment,
-    },
+    acp::{bindings::adapter::AdapterRuntimeError, process::BoundedEnvironment},
     project_registry::ProjectRootAuthority,
 };
+use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
 
 fn artifact(path: PathBuf) -> StandardAcpArtifact {
     let sha256 = crate::harness_discovery::sha256_file(&path).expect("hash artifact");

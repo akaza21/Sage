@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId};
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId};
 
 #[path = "live_lanes_test_engine.rs"]
 mod engine;
@@ -146,10 +146,8 @@ fn an_unknown_owner_routes_to_no_lane() {
 
 #[test]
 fn durable_activation_admits_at_most_the_live_tree_limit() {
-    use crate::acp::{
-        contract::ClientIntentId,
-        store::{ActivateSessionCommand, StartSessionCommand, StoreError},
-    };
+    use crate::acp::store::{ActivateSessionCommand, StartSessionCommand, StoreError};
+    use sage_acp_protocol::contract::ClientIntentId;
     tauri::async_runtime::block_on(async {
         let database =
             crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
@@ -193,8 +191,11 @@ fn durable_activation_admits_at_most_the_live_tree_limit() {
                     chat_id: chat_id.clone(),
                     expected_projection_revision: revision,
                     client_intent_id: ClientIntentId::new(),
-                    binding_id: crate::acp::intent::BindingId::new("bindingId", "test-lanes")
-                        .unwrap(),
+                    binding_id: sage_acp_protocol::intent::BindingId::new(
+                        "bindingId",
+                        "test-lanes",
+                    )
+                    .unwrap(),
                     binding_digest: "11".repeat(32),
                     harness_version: None,
                     model_id: None,
@@ -246,7 +247,7 @@ fn idle_lane(
     service: &AcpService,
     index: usize,
     resumable: bool,
-) -> crate::acp::scheduler::TreeLease {
+) -> sage_acp_protocol::scheduler::TreeLease {
     occupied_lane(service, index, resumable, true)
 }
 
@@ -255,7 +256,7 @@ fn occupied_lane(
     index: usize,
     resumable: bool,
     completed: bool,
-) -> crate::acp::scheduler::TreeLease {
+) -> sage_acp_protocol::scheduler::TreeLease {
     occupied_lane_with(
         service,
         index,
@@ -271,7 +272,7 @@ fn occupied_lane_with(
     resumable: bool,
     completed: bool,
     engine: engine::IdleEngine,
-) -> crate::acp::scheduler::TreeLease {
+) -> sage_acp_protocol::scheduler::TreeLease {
     let owner = owner(&format!("idle-{index}"), 1);
     let capabilities = serde_json::json!({
         "schemaVersion":1,"protocolVersion":"test","newSession":true,
@@ -520,7 +521,7 @@ fn never_used_or_unavailable_idle_hosts_do_not_block_parkable_capacity() {
 impl crate::acp::runtime::ProjectionPublisher for AlwaysPublished {
     fn publish_committed(
         &self,
-        _: crate::acp::intent::ProjectionChangedV1,
+        _: crate::acp::ipc::ProjectionChangedV1,
     ) -> Result<
         crate::acp::runtime::ProjectionPublishStatus,
         crate::acp::runtime::ProjectionPublishError,

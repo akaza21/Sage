@@ -11,17 +11,21 @@ use crate::{
             },
             runtime::{NativeRuntime, RuntimeFactory},
         },
-        contract::{
-            ProjectGeneration, RequiredText, RuntimeEpoch, SageAgentSessionId, SageProjectId,
-            SageRootId, SageServerRequestId,
-        },
-        intent::{NormalizedPayload, Prompt},
-        lifecycle::TurnState,
+        transcript_quote::Prompt,
         transport::{Frame, IncrementalFrameDecoder},
     },
-    acp_protocol::{access_mode::SessionAccessMode, permissions::PermissionDecision},
     project_registry::ProjectRootAuthority,
     settings_store::CustomAcpAgent,
+};
+use sage_acp_protocol::{
+    access_mode::SessionAccessMode,
+    contract::{
+        ProjectGeneration, RequiredText, RuntimeEpoch, SageAgentSessionId, SageProjectId,
+        SageRootId, SageServerRequestId,
+    },
+    intent::NormalizedPayload,
+    lifecycle::TurnState,
+    permissions::PermissionDecision,
 };
 
 use super::super::{CustomAcpRegistration, StandardAcpBindingSource, StandardAcpRuntimeFactory};
@@ -46,9 +50,11 @@ impl ResourceMapper for Mapper {
     fn map_existing(
         &self,
         _: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
-        Err(crate::acp::intent::UnavailableResourceReason::Unsupported)
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
+        Err(sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)
     }
 }
 

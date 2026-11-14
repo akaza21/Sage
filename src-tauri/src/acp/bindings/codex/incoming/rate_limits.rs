@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::acp::usage::{MAX_USAGE_WINDOWS, UsageSnapshot};
+use sage_acp_protocol::usage::{MAX_USAGE_WINDOWS, UsageSnapshot};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Window {
@@ -159,7 +159,7 @@ fn text(value: &Map<String, Value>, key: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::usage::UsageWindow;
+    use sage_acp_protocol::usage::UsageWindow;
     use serde_json::json;
 
     fn read(value: Value) -> Option<UsageSnapshot> {

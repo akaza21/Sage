@@ -2,8 +2,8 @@ use super::*;
 use crate::acp::{
     goal::NativeRpcReply,
     mcp::inventory::{McpAuth, McpConnection},
-    session_control::SessionControl,
 };
+use sage_acp_protocol::session_control::SessionControl;
 
 fn sign_in(name: &str) -> SessionControl {
     SessionControl::SignInMcpServer {

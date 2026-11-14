@@ -31,7 +31,7 @@ impl Steering {
     pub(super) fn egress(
         &mut self,
         bridge: &mut SdkBridge,
-        prompt: &crate::acp::intent::Prompt,
+        prompt: &crate::acp::transcript_quote::Prompt,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         let text = prompt.resources.inline(prompt.as_str());
         let (sdk, uuid) = bridge

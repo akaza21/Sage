@@ -9,12 +9,10 @@ use uuid::Uuid;
 
 use super::limits::WAL_HARD_BYTES;
 use super::*;
-use crate::acp::{
-    contract::{SageChatId, SageProjectId},
-    store::load_chat_page,
-};
+use crate::acp::store::load_chat_page;
 #[cfg(windows)]
 use crate::persistence::Database;
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 struct TestDir(
     PathBuf,

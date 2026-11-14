@@ -5,9 +5,9 @@ use crate::acp::{
         adapter::AdapterRuntimeError,
         runtime::{NativeRuntime, RuntimeFactory},
     },
-    contract::{RuntimeEpoch, SageAgentSessionId},
     process::LaunchSpec,
 };
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 
 use super::{PiLaunch, PiRuntime, fixture_admission::PiFixtureBinding};
 

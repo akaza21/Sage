@@ -1,10 +1,12 @@
 use super::TurnUndo;
 use crate::acp::{
     bindings::{claude::sdk::CLAUDE_SDK_BINDING_ID, codex::CODEX_BINDING_ID},
-    contract::{RuntimeEpoch, SageAgentSessionId, SageTurnId},
-    scheduler::RuntimeOwner,
     service::AcpService,
     store::turn_undo::fixture::Fixture,
+};
+use sage_acp_protocol::{
+    contract::{RuntimeEpoch, SageAgentSessionId, SageTurnId},
+    scheduler::RuntimeOwner,
 };
 
 #[test]

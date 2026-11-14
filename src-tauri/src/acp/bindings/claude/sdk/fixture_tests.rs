@@ -3,7 +3,8 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use super::{bridge::SdkBridge, launch::SessionLaunch};
-use crate::acp::{goal::NativeRpcReply, intent::session_event::SessionScopedEvent};
+use crate::acp::goal::NativeRpcReply;
+use sage_acp_protocol::intent::session_event::SessionScopedEvent;
 
 const SESSION: &str = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
 

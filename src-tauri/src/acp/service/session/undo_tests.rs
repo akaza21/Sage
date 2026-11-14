@@ -1,8 +1,8 @@
 use super::{head_continuation::restarts_after_undo, *};
-use crate::acp::{
-    contract::{RuntimeEpoch, SageAgentSessionId},
-    store::{RestartSessionCommand, restart_undone_session, turn_undo::fixture::Fixture},
+use crate::acp::store::{
+    RestartSessionCommand, restart_undone_session, turn_undo::fixture::Fixture,
 };
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 
 #[test]
 fn a_parked_head_resumes_cut_before_an_undone_turn_or_restarts_without_history() {

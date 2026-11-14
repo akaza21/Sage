@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::session_config::{ConfigId, ConfigIntent, ConfigMutation, SessionConfig};
+use sage_acp_protocol::session_config::{ConfigId, ConfigIntent, ConfigMutation, SessionConfig};
 
 impl ClaudeRuntime {
     pub(super) fn configure_session(

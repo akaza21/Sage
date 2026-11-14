@@ -4,10 +4,9 @@
 )]
 
 use crate::acp::{
-    browser::attachment::AttachmentLease,
-    contract::{SageChatId, SageProjectId},
-    service::browser_permission::BrowserPermissionOwner,
+    browser::attachment::AttachmentLease, service::browser_permission::BrowserPermissionOwner,
 };
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 #[cfg(windows)]
 use tauri::Manager;
 
@@ -356,13 +355,15 @@ impl super::AcpService {
         session: &str,
     ) -> bool {
         self.browser_chat_is_live(project, chat)
-            && crate::acp::contract::SageAgentSessionId::parse(session).is_ok_and(|session| {
-                self.current_browser_owner(project, chat, &session)
-                    .is_some_and(|owner| {
-                        self.browser_owner_precheck_matches(&owner)
-                            && self.browser_owner_witness_matches(&owner)
-                    })
-            })
+            && sage_acp_protocol::contract::SageAgentSessionId::parse(session).is_ok_and(
+                |session| {
+                    self.current_browser_owner(project, chat, &session)
+                        .is_some_and(|owner| {
+                            self.browser_owner_precheck_matches(&owner)
+                                && self.browser_owner_witness_matches(&owner)
+                        })
+                },
+            )
     }
 
     pub(crate) fn end_browser_developer_mode(&self) -> Vec<String> {
@@ -415,10 +416,10 @@ mod tests {
 
     #[test]
     fn non_codex_close_routes_retired_tab_through_shared_cleanup() {
-        use crate::acp::{
+        use crate::acp::store::CloseSessionCommand;
+        use sage_acp_protocol::{
             contract::{ClientIntentId, ProjectionRevision},
             intent::BindingId,
-            store::CloseSessionCommand,
         };
         let (service, owner) =
             super::super::permission::tests::support::service_with_pending_requests(

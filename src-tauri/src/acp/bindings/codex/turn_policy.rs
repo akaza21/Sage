@@ -1,16 +1,15 @@
-use crate::{
-    acp::bindings::characterisation::Characterisation, acp_protocol::access_mode::SessionAccessMode,
-};
+use crate::acp::bindings::characterisation::Characterisation;
+use sage_acp_protocol::access_mode::SessionAccessMode;
 
 use super::request::RequestError;
-use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
+use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
 /// Settings supplied to `turn/start` persist for that Turn and later Turns;
 /// omitted settings retain the thread's values.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct TurnSettings<'a> {
-    pub(crate) model: Option<&'a crate::acp::intent::ModelId>,
-    pub(crate) effort: Option<&'a crate::acp::contract::RequiredText<512>>,
+    pub(crate) model: Option<&'a sage_acp_protocol::intent::ModelId>,
+    pub(crate) effort: Option<&'a sage_acp_protocol::contract::RequiredText<512>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,7 +84,8 @@ pub(super) fn validate_turn_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::{contract::RequiredText, intent::Prompt};
+    use crate::acp::transcript_quote::Prompt;
+    use sage_acp_protocol::contract::RequiredText;
     use serde_json::Value;
 
     #[test]

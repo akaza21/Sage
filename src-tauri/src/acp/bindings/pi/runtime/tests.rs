@@ -30,11 +30,12 @@ use crate::acp::{
             PI_PACKAGE, PI_RPC_ARGS, PI_SOURCE_COMMIT, PI_VERSION, PiPlatform,
         },
     },
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageRootId, SageServerRequestId},
-    intent::{
-        ExternalId, NormalizedPayload, Prompt, SafeResourceLocation, SafeResourceRef, ToolCategory,
-    },
+    transcript_quote::Prompt,
     transport::IncrementalFrameDecoder,
+};
+use sage_acp_protocol::{
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageRootId, SageServerRequestId},
+    intent::{ExternalId, NormalizedPayload, SafeResourceLocation, SafeResourceRef, ToolCategory},
 };
 
 struct Mapper;
@@ -43,13 +44,15 @@ impl ResourceMapper for Mapper {
     fn map_existing(
         &self,
         path: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
         if path == r"C:\repo\src\lib.rs" {
             return SafeResourceRef::new(SageRootId::parse("root-pi").unwrap(), "src/lib.rs")
-                .map_err(|_| crate::acp::intent::UnavailableResourceReason::Unsupported);
+                .map_err(|_| sage_acp_protocol::intent::UnavailableResourceReason::Unsupported);
         }
-        Err(crate::acp::intent::UnavailableResourceReason::Unsupported)
+        Err(sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)
     }
 }
 
@@ -206,7 +209,7 @@ fn running(runtime: &mut PiRuntime) {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect read-only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-pi-1").expect("client"),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     let value = deliver(runtime, prompt);
@@ -229,7 +232,7 @@ fn advertised_pi_read_only_policy_emits_only_admitted_prompt() {
     assert_eq!(capabilities.len(), 1);
     assert_eq!(
         capabilities[0].id,
-        crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly
+        sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly
     );
     let mut runtime = fixture_runtime(31);
     ready(&mut runtime);
@@ -264,7 +267,7 @@ fn pi_thinking_delta_projects_thought_summary_not_assistant_text() {
         batch.events(),
         [AdapterEvent::Item {
             payload: NormalizedPayload::ThoughtSummary { summary },
-            lifecycle: crate::acp::lifecycle::ItemLifecycle::Streaming,
+            lifecycle: sage_acp_protocol::lifecycle::ItemLifecycle::Streaming,
             ..
         }] if summary.as_str() == "Check the fixture"
     ));
@@ -281,7 +284,7 @@ fn pi_thinking_delta_projects_thought_summary_not_assistant_text() {
         completed.events(),
         [AdapterEvent::Item {
             payload: NormalizedPayload::ThoughtSummary { summary },
-            lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
+            lifecycle: sage_acp_protocol::lifecycle::ItemLifecycle::Completed,
             ..
         }] if summary.as_str() == "Check the fixture"
     ));
@@ -399,7 +402,7 @@ fn pi_read_images_use_shared_admission_and_reject_invalid_payloads_without_bytes
         (36, "image/svg+xml", "PHN2Zy8+".to_owned(), false),
         (37, "image/png", String::new(), false),
         (38, "image/png", "A".repeat(262_144), false),
-        (39, "image/png", "A".repeat(crate::acp::intent::IMAGE_BASE64_MAX + 4), false),
+        (39, "image/png", "A".repeat(sage_acp_protocol::intent::IMAGE_BASE64_MAX + 4), false),
     ] {
         let mut runtime = fixture_runtime(epoch);
         ready(&mut runtime);
@@ -429,7 +432,7 @@ fn pi_read_images_use_shared_admission_and_reject_invalid_payloads_without_bytes
         assert_eq!(batch.events().iter().any(|event| matches!(
             event,
             AdapterEvent::Item {
-                lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
+                lifecycle: sage_acp_protocol::lifecycle::ItemLifecycle::Completed,
                 payload: NormalizedPayload::Image { .. },
                 ..
             }
@@ -438,7 +441,7 @@ fn pi_read_images_use_shared_admission_and_reject_invalid_payloads_without_bytes
             assert!(batch.events().iter().any(|event| matches!(event,
                 AdapterEvent::Item { payload: NormalizedPayload::Image { media_type, data: bytes, source }, .. }
                     if media_type.as_str() == media && bytes.as_str() == data
-                    && *source == crate::acp::intent::ImageSource::Agent)));
+                    && *source == sage_acp_protocol::intent::ImageSource::Agent)));
         } else {
             assert!(batch.events().iter().any(|event| matches!(event,
                 AdapterEvent::Item { payload: NormalizedPayload::Unsupported { .. }, .. }
@@ -499,7 +502,7 @@ fn retry_progress_preserves_reported_attempt_counts_even_without_error_text() {
     assert!(matches!(batch.events(), [AdapterEvent::Item {
         payload: NormalizedPayload::Error { code, message, .. }, ..
     }, AdapterEvent::Session {
-        event: crate::acp::intent::session_event::SessionScopedEvent::Activity(waiting), ..
+        event: sage_acp_protocol::intent::session_event::SessionScopedEvent::Activity(waiting), ..
     }] if code.as_str() == "Attempt failed (attempt 1/3)" && message.as_str().is_empty()
         && waiting.progress.as_ref().map(|text| text.as_str())
             == Some("Attempt 1 of 3 failed; retrying")));
@@ -515,8 +518,8 @@ fn pi_retry_notices_are_sanitized_deduplicated_and_bounded_to_32_per_turn() {
             "errorMessage":"Unavailable sk-private Bearer private /secret token=private"});
         let batch = runtime.ingest(&frame(retry.clone()), &Mapper).unwrap();
         assert!(matches!(batch.events(), [AdapterEvent::Item {
-            lifecycle: crate::acp::lifecycle::ItemLifecycle::Failed,
-            payload: NormalizedPayload::Error { kind: Some(crate::acp::intent::ErrorKind::Attempt), message, .. }, ..
+            lifecycle: sage_acp_protocol::lifecycle::ItemLifecycle::Failed,
+            payload: NormalizedPayload::Error { kind: Some(sage_acp_protocol::intent::ErrorKind::Attempt), message, .. }, ..
         }, AdapterEvent::Session { .. }] if message.as_str() == "Unavailable [redacted] Bearer [redacted] [path] [redacted]"));
         let replay = runtime.ingest(&frame(retry), &Mapper).unwrap();
         assert!(matches!(replay.events(), [AdapterEvent::IgnoredDuplicate]));
@@ -539,7 +542,7 @@ fn pi_mixed_read_images_keep_valid_bytes_when_another_image_is_oversized() {
     let batch = runtime.ingest(&frame(json!({"type":"tool_execution_end","toolCallId":"mixed-images",
         "result":{"content":[
             {"type":"image","mimeType":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xioAAAAASUVORK5CYII="},
-            {"type":"image","mimeType":"image/png","data":"A".repeat(crate::acp::intent::IMAGE_BASE64_MAX + 4)}
+            {"type":"image","mimeType":"image/png","data":"A".repeat(sage_acp_protocol::intent::IMAGE_BASE64_MAX + 4)}
         ]},"isError":false})), &Mapper).unwrap();
     assert_eq!(
         batch
@@ -638,7 +641,7 @@ fn pi_tool_snapshot_budget_is_reused_after_replacement_and_completion() {
         assert!(matches!(
             batch.events(),
             [AdapterEvent::Item {
-                lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
+                lifecycle: sage_acp_protocol::lifecycle::ItemLifecycle::Completed,
                 ..
             }]
         ));
@@ -662,7 +665,7 @@ fn pi_available_models_project_session_config() {
 
 #[test]
 fn pi_model_selection_uses_set_model_and_updates_config_after_reply() {
-    use crate::acp::{
+    use sage_acp_protocol::{
         contract::{SageChatId, SageProjectId},
         scheduler::RuntimeOwner,
         session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue},
@@ -727,7 +730,7 @@ fn pi_model_selection_uses_set_model_and_updates_config_after_reply() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect").unwrap(),
             client_message_id: RequiredText::new("client", "model-refresh").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let prompt = deliver(&mut runtime, prompt);
@@ -785,7 +788,7 @@ fn pi_thinking_config_uses_reported_levels_only() {
 
 #[test]
 fn pi_thinking_selection_is_correlated_and_model_bounded() {
-    use crate::acp::{
+    use sage_acp_protocol::{
         contract::{SageChatId, SageProjectId},
         scheduler::RuntimeOwner,
         session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue},
@@ -833,7 +836,7 @@ fn pi_thinking_selection_is_correlated_and_model_bounded() {
 
 #[test]
 fn pi_poisoned_idle_runtime_rejects_config_and_thinking_discovery() {
-    use crate::acp::{
+    use sage_acp_protocol::{
         contract::{SageChatId, SageProjectId},
         scheduler::RuntimeOwner,
         session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue},
@@ -1206,7 +1209,7 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
     assert!(matches!(
         terminal.events(),
         [AdapterEvent::Turn {
-            state: crate::acp::lifecycle::TurnState::Cancelled,
+            state: sage_acp_protocol::lifecycle::TurnState::Cancelled,
             ..
         }]
     ));
@@ -1230,7 +1233,7 @@ fn allow_once_on_pi_does_not_emit_denial_and_records_resolved_allowed() {
         batch.events(),
         [AdapterEvent::PermissionRequest {
             payload: NormalizedPayload::PermissionRequest {
-                category: crate::acp::intent::ToolCategory::Other,
+                category: sage_acp_protocol::intent::ToolCategory::Other,
                 ..
             },
             ..
@@ -1248,7 +1251,7 @@ fn allow_once_on_pi_does_not_emit_denial_and_records_resolved_allowed() {
     let allow = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("write-1").expect("request"),
-            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
+            decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
         })
         .expect("allow once");
     assert!(!allow.token().is_mandatory());
@@ -1282,7 +1285,7 @@ fn allow_once_on_pi_rejects_an_ambiguous_select_option() {
     assert!(matches!(
         runtime.command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("disallow-1").expect("request"),
-            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
+            decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
         }),
         Err(AdapterRuntimeError::UnsupportedCommand)
     ));
@@ -1318,7 +1321,7 @@ fn later_decision_uses_the_shared_helper_not_permission_intent_reject() {
     assert!(matches!(
         runtime.command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("request-pi-missing").expect("request"),
-            decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
+            decision: sage_acp_protocol::permissions::PermissionDecision::Deny,
         }),
         Err(AdapterRuntimeError::LaterPermissionMiss)
     ));
@@ -1361,7 +1364,7 @@ fn text_snapshot_plus_one_poison_and_prompt_rollback_clear_state() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "rollback").expect("prompt"),
             client_message_id: RequiredText::new("client", "rollback-client").expect("client"),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     rollback

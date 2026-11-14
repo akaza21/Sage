@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use super::intent::SafeResourceLocation;
+use sage_acp_protocol::intent::SafeResourceLocation;
 
 /// Most terminals one listing carries; the harness is asked for no more.
 pub(crate) const MAX_BACKGROUND_TERMINALS: usize = 32;

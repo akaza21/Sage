@@ -4,7 +4,7 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use rusqlite::{Transaction, params};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{SafeText, SageItemId, SageTurnId},
     intent::{ExternalId, ImageSource, NormalizedPayload},
     lifecycle::ItemLifecycle,

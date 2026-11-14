@@ -16,17 +16,21 @@ use crate::acp::{
         },
         runtime::NativeRuntime,
     },
-    contract::{RequiredText, SageTurnId},
-    intent::{ExternalId, Prompt, SafeResourceRef, UnavailableResourceReason},
     runtime::{
         ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent,
         PromptWrite, RuntimeEngine, RuntimeHost,
     },
-    session_config::{ConfigChannel, ConfigMutation, choices},
+    session_config::{ConfigChannel, choices},
     store::AdapterTurnCursor,
+    transcript_quote::Prompt,
     transport::{Frame, IncrementalFrameDecoder},
 };
 use crate::persistence::Database;
+use sage_acp_protocol::{
+    contract::{RequiredText, SageTurnId},
+    intent::{ExternalId, SafeResourceRef, UnavailableResourceReason},
+    session_config::ConfigMutation,
+};
 
 struct Mapper;
 
@@ -196,7 +200,7 @@ fn prompt(
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "continue").unwrap(),
             client_message_id: RequiredText::new("client", client).unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         },
     )
 }

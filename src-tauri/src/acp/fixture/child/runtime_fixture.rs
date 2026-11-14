@@ -2,9 +2,11 @@ use std::sync::atomic::{AtomicI64, Ordering};
 
 use crate::acp::{
     bindings::adapter::ResourceMapper,
+    runtime::{ActiveTurnIntent, DriverClock, PumpIntent},
+};
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::{ExternalId, SafeResourceRef, UnavailableResourceReason},
-    runtime::{ActiveTurnIntent, DriverClock, PumpIntent},
     scheduler::RuntimeOwner,
 };
 

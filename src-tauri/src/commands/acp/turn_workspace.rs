@@ -3,8 +3,8 @@
 use rusqlite::OptionalExtension;
 
 use super::*;
-use crate::acp::contract::{ClientIntentId, SageAgentSessionId};
 use crate::turn_workspace::{self, TurnWorkspaceChange};
+use sage_acp_protocol::contract::{ClientIntentId, SageAgentSessionId};
 
 pub(super) fn forget_unprepared(
     state: &AppState,
@@ -24,7 +24,7 @@ pub struct TurnWorkspaceChangesRequest {
     project_id: SageProjectId,
     project_generation: ProjectGeneration,
     chat_id: SageChatId,
-    turn_id: crate::acp::contract::SageTurnId,
+    turn_id: sage_acp_protocol::contract::SageTurnId,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -144,7 +144,7 @@ pub async fn get_acp_turn_workspace_changes(
         .database
         .selected_project_root_authority(&transition)
         .map_err(|_| AcpIpcError::Unavailable {
-            reason: crate::acp::intent::AcpUnavailableReason::CapabilityUnavailable,
+            reason: crate::acp::ipc::AcpUnavailableReason::CapabilityUnavailable,
             message: safe_message("The selected project root is unavailable."),
         })?;
     let turn: Option<(String, String)> = state

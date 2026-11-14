@@ -3,7 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::acp::{scheduler::RuntimeOwner, store::AdapterTurnCursor};
+use crate::acp::store::AdapterTurnCursor;
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 #[path = "actor_close.rs"]
 mod actor_close;
@@ -27,7 +28,7 @@ pub(super) struct Actor<E> {
     pub(super) engine: E,
     pub(super) state: HostState,
     pub(super) owner: Option<RuntimeOwner>,
-    pub(super) active_turn: Option<crate::acp::contract::SageTurnId>,
+    pub(super) active_turn: Option<sage_acp_protocol::contract::SageTurnId>,
     pub(super) pending_prompt: bool,
     pub(super) pending_cancel: Option<PendingCancel>,
     pub(super) pending_terminal: Option<PendingTerminal>,
@@ -189,7 +190,7 @@ impl<E: RuntimeEngine> Actor<E> {
 
     fn activate(&mut self, owner: RuntimeOwner) -> Result<HostReply, HostError> {
         if self.state != HostState::Cold
-            || owner.runtime_epoch == crate::acp::contract::RuntimeEpoch::ZERO
+            || owner.runtime_epoch == sage_acp_protocol::contract::RuntimeEpoch::ZERO
         {
             return Err(HostError::State);
         }
@@ -217,8 +218,8 @@ impl<E: RuntimeEngine> Actor<E> {
     fn resolve_permission(
         &mut self,
         owner: RuntimeOwner,
-        request_id: crate::acp::contract::SageServerRequestId,
-        decision: crate::acp_protocol::permissions::PermissionDecision,
+        request_id: sage_acp_protocol::contract::SageServerRequestId,
+        decision: sage_acp_protocol::permissions::PermissionDecision,
     ) -> Result<HostReply, HostError> {
         if !matches!(self.state, HostState::Idle | HostState::Running)
             || !self.matches_owner(&owner)
@@ -254,7 +255,7 @@ impl<E: RuntimeEngine> Actor<E> {
     fn dispatch_prompt(
         &mut self,
         owner: RuntimeOwner,
-        turn_id: crate::acp::contract::SageTurnId,
+        turn_id: sage_acp_protocol::contract::SageTurnId,
     ) -> Result<HostReply, HostError> {
         if self.state != HostState::Running
             || !self.matches_owner(&owner)

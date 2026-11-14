@@ -1,9 +1,8 @@
 use serde_json::Value;
 
 use super::{AdapterError, CodexAdapter, RequestKind};
-use crate::acp::{
-    bindings::codex::request::OutgoingRequest, goal::NativeRpcReply, intent::ExternalId,
-};
+use crate::acp::{bindings::codex::request::OutgoingRequest, goal::NativeRpcReply};
+use sage_acp_protocol::intent::ExternalId;
 
 /// Codex loads a fork into the app-server that served `thread/fork` and
 /// announces it there (`thread/started`, MCP startup status), so the parent

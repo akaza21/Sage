@@ -3,8 +3,10 @@ use crate::acp::{
         profile_for,
         translator::{AdapterEvent, ResourceMapper, StandardAcpTranslator},
     },
-    contract::SageRootId,
     fixture::wire::capture::{replay_native, replay_native_before},
+};
+use sage_acp_protocol::{
+    contract::SageRootId,
     intent::{
         NormalizedPayload, PermissionOptionKind, SafeResourceLocation, SafeResourceRef,
         ToolCategory, UnavailableResourceReason,

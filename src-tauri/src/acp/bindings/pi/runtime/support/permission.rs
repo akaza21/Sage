@@ -1,23 +1,18 @@
 use serde_json::json;
 
-use crate::{
-    acp::{
-        bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressToken},
-        contract::SageServerRequestId,
-    },
-    acp_protocol::permissions::PermissionDecision,
-};
+use crate::acp::bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressToken};
+use sage_acp_protocol::{contract::SageServerRequestId, permissions::PermissionDecision};
 
 use super::super::{DenyIntent, DenyStage, PiRuntime};
 use super::identity::external;
+use crate::acp::bindings::adapter::AdapterEvent;
 use crate::acp::bindings::pi::bridge::files::Prepared;
 use crate::acp::bindings::pi::{
     protocol::is_allow_option,
     translator::{ANSWER_ID, PendingUiRequest},
 };
-use crate::acp::intent::user_input::form;
-use crate::acp::{
-    bindings::adapter::AdapterEvent,
+use crate::acp::elicitation_form;
+use sage_acp_protocol::{
     contract::{BoundedVec, SafeText},
     intent::{NormalizedPayload, ToolCategory},
 };
@@ -164,8 +159,12 @@ impl PiRuntime {
             .form
             .as_deref()
             .map(|form| {
-                form::question_payload("Answer the Pi extension's question", None, form.clone())
-                    .ok_or(AdapterRuntimeError::Frame)
+                elicitation_form::question_payload(
+                    "Answer the Pi extension's question",
+                    None,
+                    form.clone(),
+                )
+                .ok_or(AdapterRuntimeError::Frame)
             })
             .transpose()?;
         let turn_id = self.turn_identity()?;

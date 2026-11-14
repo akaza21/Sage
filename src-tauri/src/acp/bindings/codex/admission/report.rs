@@ -143,7 +143,7 @@ impl AdmittedCodexBinding {
 
     pub(crate) fn capability_ceiling(
         &self,
-    ) -> Result<crate::acp::intent::CapabilitySnapshotV1, CodexAdmissionUnavailable> {
+    ) -> Result<sage_acp_protocol::intent::CapabilitySnapshotV1, CodexAdmissionUnavailable> {
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         if self.is_desktop_fixture() {
             return super::super::degrade::projected_desktop_fixture_capabilities(
@@ -166,7 +166,7 @@ impl AdmittedCodexBinding {
         if self.is_desktop_fixture() {
             return Ok(self
                 .desktop_fixture_case()
-                .is_some_and(crate::acp_protocol::native_cases::native_case_offers_models));
+                .is_some_and(sage_acp_protocol::native_cases::native_case_offers_models));
         }
         if self.is_desktop_fixture() {
             return Ok(false);

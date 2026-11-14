@@ -5,9 +5,9 @@ use std::sync::{
 
 use tokio::sync::{Notify, Semaphore};
 
-use crate::acp::{
-    contract::{ProjectionRevision, SageAgentSessionId, SageChatId, SageProjectId},
-    intent::ProjectionChangedV1,
+use crate::acp::ipc::ProjectionChangedV1;
+use sage_acp_protocol::contract::{
+    ProjectionRevision, SageAgentSessionId, SageChatId, SageProjectId,
 };
 
 use super::notifier::{
@@ -391,7 +391,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 #[test]
 fn a_child_only_notice_is_routed_away_from_the_parent_page_reload() {
-    use crate::acp::intent::{ProjectionNoticeRoutes, route_projection_notice};
+    use crate::acp::ipc::{ProjectionNoticeRoutes, route_projection_notice};
     let mut last = ProjectionNoticeRoutes::default();
     let child = |revision, epoch| ProjectionChangedV1 {
         child_projection_epoch: epoch,
@@ -416,7 +416,7 @@ fn a_child_only_notice_is_routed_away_from_the_parent_page_reload() {
 
 #[test]
 fn interleaved_chats_keep_their_own_child_only_routing() {
-    use crate::acp::intent::{
+    use crate::acp::ipc::{
         MAX_PROJECTION_NOTICE_ROUTES, ProjectionNoticeRoutes, route_projection_notice,
     };
     let mut routes = ProjectionNoticeRoutes::default();

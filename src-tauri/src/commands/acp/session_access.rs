@@ -12,12 +12,14 @@ use super::session_config::map_config_error;
 use super::*;
 use crate::acp::{
     bindings::access_policy::{offers_mode, session_mode_for_binding, turn_mode_for_binding},
-    contract::{RequiredText, SageAgentSessionId},
     runtime::HostError,
     service::AcpService,
+};
+use sage_acp_protocol::access_mode::SessionAccessMode;
+use sage_acp_protocol::{
+    contract::{RequiredText, SageAgentSessionId},
     session_config::{ConfigIntent, ModeSelection, SessionConfigOverlay},
 };
-use crate::acp_protocol::access_mode::SessionAccessMode;
 use serde::{Deserialize, Serialize};
 
 pub(crate) mod chat;

@@ -1,12 +1,11 @@
 use crate::acp::{
     bindings::codex::CodexDiscoveryRunError,
-    contract::SafeText,
-    intent::{
+    ipc::{
         AcpCapacityResource, AcpConflictResource, AcpIpcError, AcpUnavailableReason, IntentError,
     },
-    page_admission::PageAdmissionError,
     store::StoreError,
 };
+use sage_acp_protocol::{contract::SafeText, page_admission::PageAdmissionError};
 use sage_process::error::LaunchError;
 
 pub(super) fn dispatch_error(error: crate::acp::service::SessionDispatchError) -> AcpIpcError {
@@ -279,6 +278,7 @@ pub(super) fn intent_error(error: IntentError) -> AcpIpcError {
             AcpConflictResource::TurnState
         }
         IntentError::StaleTurnRevision => AcpConflictResource::TurnRevision,
+        #[cfg(test)]
         IntentError::InvalidProjectionRevision => AcpConflictResource::ProjectionRevision,
     };
     AcpIpcError::Conflict {

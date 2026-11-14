@@ -18,8 +18,8 @@ use crate::acp::{
         session_capability::SessionBrowserCapability,
     },
     mcp::McpAdmission,
-    scheduler::RuntimeOwner,
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 pub(super) struct BrowserMcpActivationGuard {
     revoked: Arc<AtomicBool>,

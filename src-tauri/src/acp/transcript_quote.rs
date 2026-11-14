@@ -1,16 +1,15 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 
-use super::{
-    attached_context::{AttachedContexts, has_unsafe_display_character},
-    contract::{ContractError, RequiredText},
-};
+use super::attached_context::{AttachedContexts, has_unsafe_display_character};
+use sage_acp_protocol::contract::{ContractError, RequiredText};
 
 /// The text of a stored text item when the projection renders it as
 /// assistant prose, decoded exactly as the projection decodes it: a native
 /// `NormalizedPayload::Text` (no role, assistant by definition) or a legacy
 /// row whose role is `assistant`.
 pub(crate) fn assistant_text(payload_json: &str) -> Option<String> {
-    use super::{intent::NormalizedPayload, projection::TextRole};
+    use super::projection::TextRole;
+    use sage_acp_protocol::intent::NormalizedPayload;
     match super::store::decode_payload(payload_json).ok()? {
         (NormalizedPayload::Text { text }, None | Some(TextRole::Assistant)) => {
             Some(text.as_str().to_owned())
@@ -25,7 +24,7 @@ pub(crate) struct QuoteSourceMismatch;
 impl From<QuoteSourceMismatch> for super::ipc::AcpIpcError {
     fn from(_: QuoteSourceMismatch) -> Self {
         Self::InvalidRequest {
-            message: super::contract::SafeText::new(
+            message: sage_acp_protocol::contract::SafeText::new(
                 "message",
                 "An annotation no longer matches its source answer.",
             )
@@ -36,7 +35,7 @@ impl From<QuoteSourceMismatch> for super::ipc::AcpIpcError {
 
 pub(crate) fn validate_quote_sources(
     connection: &rusqlite::Connection,
-    project_id: &super::contract::SageProjectId,
+    project_id: &sage_acp_protocol::contract::SageProjectId,
     contexts: &AttachedContexts,
 ) -> Result<(), QuoteSourceMismatch> {
     contexts
@@ -195,7 +194,7 @@ impl Prompt {
     }
     pub(crate) fn action_admitted(
         &self,
-        capabilities: Option<&super::intent::CapabilitySnapshotV1>,
+        capabilities: Option<&sage_acp_protocol::intent::CapabilitySnapshotV1>,
     ) -> bool {
         self.action.as_ref().is_none_or(|action| {
             capabilities.is_some_and(|capabilities| action.admitted_by(capabilities))
@@ -418,8 +417,8 @@ mod tests {
             )
             .unwrap();
         let text = "Durable \u{6c34} answer";
-        let answer = serde_json::to_string(&crate::acp::intent::NormalizedPayload::Text {
-            text: crate::acp::contract::SafeText::new("text", text).unwrap(),
+        let answer = serde_json::to_string(&sage_acp_protocol::intent::NormalizedPayload::Text {
+            text: sage_acp_protocol::contract::SafeText::new("text", text).unwrap(),
         })
         .unwrap();
         connection

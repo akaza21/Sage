@@ -6,7 +6,7 @@ impl ResourceMapper for SavedResource {
     fn map_existing(
         &self,
         _: &str,
-    ) -> Result<SafeResourceRef, crate::acp::intent::UnavailableResourceReason> {
+    ) -> Result<SafeResourceRef, sage_acp_protocol::intent::UnavailableResourceReason> {
         Ok(SafeResourceRef::new(SageRootId::parse("root-runtime").unwrap(), "src/lib.rs").unwrap())
     }
 }
@@ -54,7 +54,7 @@ fn completed_codex_patch_delivers_metadata_and_pair_to_the_shared_journal() {
     assert!(matches!(
         edit,
         NormalizedPayload::ToolCall {
-            category: crate::acp::intent::ToolCategory::Edit,
+            category: sage_acp_protocol::intent::ToolCategory::Edit,
             label,
             ..
         } if label.as_str() == "Edited src/lib.rs"

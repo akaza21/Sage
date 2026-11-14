@@ -3,7 +3,7 @@
 
 use serde_json::{Map, Value};
 
-use crate::acp::contract::RequiredText;
+use sage_acp_protocol::contract::RequiredText;
 
 use super::super::{
     CodexAdapter, IngressDisposition, IngressError,

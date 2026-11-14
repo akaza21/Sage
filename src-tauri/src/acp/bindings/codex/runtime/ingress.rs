@@ -1,7 +1,7 @@
 use super::*;
 use crate::acp::bindings::adapter::ResourceMapper;
-use crate::acp::intent::ExternalId;
 use crate::acp::transport::{Frame, request_payload_digest};
+use sage_acp_protocol::intent::ExternalId;
 
 impl CodexRuntime {
     pub(super) fn ingest_frame(
@@ -177,9 +177,9 @@ impl CodexRuntime {
     /// Undo removes the latest Turn from Codex's history; files stay.
     pub(super) fn control_request(
         &mut self,
-        control: &crate::acp::session_control::SessionControl,
+        control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        use crate::acp::session_control::SessionControl;
+        use sage_acp_protocol::session_control::SessionControl;
         self.native_rpc_reply = None;
         match control {
             SessionControl::UndoTurn { turn_id } => {
@@ -202,9 +202,10 @@ impl CodexRuntime {
     /// revert whose record Sage lost can still be recorded.
     pub(super) fn answered_undo(
         &mut self,
-        control: &crate::acp::session_control::SessionControl,
+        control: &sage_acp_protocol::session_control::SessionControl,
     ) -> bool {
-        let crate::acp::session_control::SessionControl::UndoTurn { turn_id } = control else {
+        let sage_acp_protocol::session_control::SessionControl::UndoTurn { turn_id } = control
+        else {
             return false;
         };
         if !self.inner.reverted(turn_id.as_str()) {

@@ -1,6 +1,6 @@
 use rusqlite::{Transaction, params};
 
-use crate::acp::contract::{ProjectionRevision, SageAgentSessionId};
+use sage_acp_protocol::contract::{ProjectionRevision, SageAgentSessionId};
 
 use super::{StoreError, sessions::increment_session_usage};
 

@@ -5,11 +5,12 @@ use std::{sync::Arc, time::Instant};
 
 use crate::acp::{
     runtime::{HostCancelIntent, HostError, HostOutcome, HostPromptIntent, RuntimeHost},
-    scheduler::RuntimeOwner,
     store::{ActivateSessionCommand, CloseSessionCommand},
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
-use super::{AcpService, CodexSessionError, PromptSendError};
+use super::{AcpService, CodexSessionError};
+use crate::acp::prompt_send::PromptSendError;
 
 impl AcpService {
     pub(crate) async fn activate_session(
@@ -84,7 +85,7 @@ impl AcpService {
     pub(in crate::acp::service) fn turn_is_terminal(
         &self,
         owner: &RuntimeOwner,
-        turn_id: &crate::acp::contract::SageTurnId,
+        turn_id: &sage_acp_protocol::contract::SageTurnId,
     ) -> bool {
         crate::acp::store::turn_is_terminal(
             &self.database.connection(),
@@ -122,8 +123,8 @@ impl AcpService {
 
     pub(crate) fn dispose_temporary_runtime(
         &self,
-        project: &crate::acp::contract::SageProjectId,
-        chat: &crate::acp::contract::SageChatId,
+        project: &sage_acp_protocol::contract::SageProjectId,
+        chat: &sage_acp_protocol::contract::SageChatId,
     ) -> Result<(), CodexSessionError> {
         if !crate::side_chat_storage::is_temporary(&self.database.connection(), chat.as_str())
             .map_err(|_| CodexSessionError::Recovery)?
@@ -201,7 +202,7 @@ impl AcpService {
     ) -> Result<HostOutcome, CodexSessionError> {
         self.send_session_turn(HostPromptIntent {
             command,
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .map_err(|failure| failure.error)
     }

@@ -1,10 +1,10 @@
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    contract::RequiredText,
-    intent::Prompt,
     runtime::{AdapterBatchJournal, CoordinatorError, HostCancelIntent, LiveWrite},
     store::{AdapterTurnCursor, SendObservation},
+    transcript_quote::Prompt,
 };
+use sage_acp_protocol::contract::RequiredText;
 
 use super::{
     CancelIntent, CompletedDriverParts, CoordinatorZeroToken, DriverError, DriverMailbox,
@@ -52,7 +52,7 @@ where
 {
     pub(crate) turn: PreparedDriverTurn<A, J, R, T, C>,
     delivery: PromptDelivery,
-    access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+    access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
     cancel_intent: Option<HostCancelIntent>,
     cancel_wire: CancelWireState,
     cancel_attempts: u8,
@@ -71,12 +71,12 @@ where
     pub(crate) fn new(
         turn: PreparedDriverTurn<A, J, R, T, C>,
         prompt: Prompt,
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
     ) -> Self {
         let turn_id = turn.dispatch.turn_id();
         debug_assert_ne!(
             turn.driver.runtime_owner().runtime_epoch,
-            crate::acp::contract::RuntimeEpoch::ZERO
+            sage_acp_protocol::contract::RuntimeEpoch::ZERO
         );
         Self {
             delivery: PromptDelivery::new(turn_id.clone(), prompt),
@@ -357,7 +357,7 @@ where
         self.turn.dispatch.is_terminal()
     }
 
-    pub(crate) fn durable_turn_state(&self) -> crate::acp::lifecycle::TurnState {
+    pub(crate) fn durable_turn_state(&self) -> sage_acp_protocol::lifecycle::TurnState {
         self.turn.dispatch.state()
     }
 
@@ -380,7 +380,8 @@ where
         let Some(lease) = self.turn.driver.lease.as_mut() else {
             return;
         };
-        let Ok(exit_kind) = crate::acp::contract::RequiredText::new("exitKind", "hostShutdown")
+        let Ok(exit_kind) =
+            sage_acp_protocol::contract::RequiredText::new("exitKind", "hostShutdown")
         else {
             return;
         };

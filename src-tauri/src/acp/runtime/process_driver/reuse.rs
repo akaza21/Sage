@@ -12,9 +12,9 @@ use crate::acp::{
         ActiveDispatch, ActiveTurnIntent, AdapterBatchJournal, CompletedPumpParts, PrepareDispatch,
         PrepareRecovery, ProjectIntentAuthority, SendCoordinator, SessionTreeLease,
     },
-    scheduler::RuntimeOwner,
     store::PrepareTurnCommand,
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 use sage_process::error::LaunchError;
 
 use super::{
@@ -284,7 +284,8 @@ where
         let Some(lease) = self.lease.as_mut() else {
             return;
         };
-        let Ok(exit_kind) = crate::acp::contract::RequiredText::new("exitKind", "hostShutdown")
+        let Ok(exit_kind) =
+            sage_acp_protocol::contract::RequiredText::new("exitKind", "hostShutdown")
         else {
             return;
         };

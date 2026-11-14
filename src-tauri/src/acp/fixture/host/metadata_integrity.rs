@@ -2,19 +2,21 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::acp::{
-    contract::{
-        RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageItemId, SageProjectId,
-        SageTurnId,
-    },
     fixture::generated_cases::FrozenCase,
-    intent::{ActivityProvenanceV1, CapabilitySnapshotV1, ExternalId, NormalizedPayload},
-    lifecycle::ActivityLifecycle,
     migration::legacy_binding_digest,
     projection::ActivityRole,
     store::{
         ActivityIngressCommand, CompleteActivationCommand, StoreError, apply_activity_ingress,
         complete_activation, load_chat_page,
     },
+};
+use sage_acp_protocol::{
+    contract::{
+        RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageItemId, SageProjectId,
+        SageTurnId,
+    },
+    intent::{ActivityProvenanceV1, CapabilitySnapshotV1, ExternalId, NormalizedPayload},
+    lifecycle::ActivityLifecycle,
 };
 
 use super::schema_seed::SchemaFixture;
@@ -321,7 +323,7 @@ fn activity_fixture() -> SchemaFixture {
     let fixture = SchemaFixture::project_chat();
     let connection = fixture.database.connection();
     let payload = NormalizedPayload::Text {
-        text: crate::acp::contract::SafeText::new("text", "parent").unwrap(),
+        text: sage_acp_protocol::contract::SafeText::new("text", "parent").unwrap(),
     };
     let encoded = serde_json::to_string(&payload).unwrap();
     connection

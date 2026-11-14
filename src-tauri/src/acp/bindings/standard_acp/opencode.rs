@@ -311,15 +311,18 @@ mod tests {
             },
             runtime::RuntimeFactory,
         },
+        transcript_quote::Prompt,
+        transport::{Frame, IncrementalFrameDecoder},
+    };
+    use crate::project_registry::ProjectRootAuthority;
+    use sage_acp_protocol::{
         contract::{
             ProjectGeneration, RequiredText, RuntimeEpoch, SageAgentSessionId, SageProjectId,
             SageRootId,
         },
-        intent::{CapabilitySnapshotV1, NormalizedPayload, Prompt},
+        intent::{CapabilitySnapshotV1, NormalizedPayload},
         lifecycle::{ItemLifecycle, TurnState},
-        transport::{Frame, IncrementalFrameDecoder},
     };
-    use crate::project_registry::ProjectRootAuthority;
     use serde_json::Value;
     use std::path::PathBuf;
 
@@ -342,10 +345,10 @@ mod tests {
             &self,
             _: &str,
         ) -> Result<
-            crate::acp::intent::SafeResourceRef,
-            crate::acp::intent::UnavailableResourceReason,
+            sage_acp_protocol::intent::SafeResourceRef,
+            sage_acp_protocol::intent::UnavailableResourceReason,
         > {
-            Err(crate::acp::intent::UnavailableResourceReason::Unsupported)
+            Err(sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)
         }
     }
 
@@ -364,7 +367,10 @@ mod tests {
         serde_json::from_slice(egress.frame().payload()).expect("egress json")
     }
 
-    fn scoped_permission_id(label: &str, epoch: u64) -> crate::acp::contract::SageServerRequestId {
+    fn scoped_permission_id(
+        label: &str,
+        epoch: u64,
+    ) -> sage_acp_protocol::contract::SageServerRequestId {
         let session = SageAgentSessionId::parse(format!("session-{label}")).expect("session");
         let scoped = super::super::runtime::scoped_permission_id(
             &session,
@@ -372,7 +378,8 @@ mod tests {
             "number:0",
         )
         .expect("scoped request");
-        crate::acp::contract::SageServerRequestId::parse(scoped.as_str()).expect("durable request")
+        sage_acp_protocol::contract::SageServerRequestId::parse(scoped.as_str())
+            .expect("durable request")
     }
 
     fn curated_registry_snapshot(root: &TempRoot, version: &str) -> CapabilitySnapshotV1 {
@@ -526,7 +533,7 @@ mod tests {
             .command(AdapterCommand::Prompt {
                 prompt,
                 client_message_id: RequiredText::new("client", "file-message").unwrap(),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .unwrap();
         let value = egress_value(&egress);
@@ -773,7 +780,7 @@ mod tests {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "synthetic prompt").expect("prompt"),
                 client_message_id: RequiredText::new("client", "synthetic-client").expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             })
             .expect("prompt command");
         runtime
@@ -967,7 +974,7 @@ mod tests {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "synthetic prompt").expect("prompt"),
                 client_message_id: RequiredText::new("client", "cancel-client").expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             })
             .expect("prompt command");
         runtime
@@ -1022,7 +1029,7 @@ mod tests {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "read the project").expect("prompt"),
                 client_message_id: RequiredText::new("client", "read-only-client").expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .expect("mode request");
         let request = egress_value(&select);
@@ -1059,7 +1066,7 @@ mod tests {
                 prompt: Prompt::new("prompt", "read again").expect("prompt"),
                 client_message_id: RequiredText::new("client", "second-read-client")
                     .expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .expect("same-mode prompt");
         assert_eq!(egress_value(&second)["method"], "session/prompt");
@@ -1079,7 +1086,7 @@ mod tests {
                 prompt: Prompt::new("prompt", "edit a file").expect("prompt"),
                 client_message_id: RequiredText::new("client", "write-mode-client")
                     .expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             })
             .expect("write-mode selection");
         assert_eq!(egress_value(&write_mode)["method"], "session/prompt");
@@ -1098,7 +1105,7 @@ mod tests {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "Create x2.txt").expect("prompt"),
                 client_message_id: RequiredText::new("client", "readonly-write").expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .expect("prompt command");
         assert_eq!(egress_value(&first)["method"], "session/prompt");
@@ -1165,7 +1172,7 @@ mod tests {
         assert!(settled.events().iter().any(|event| matches!(
             event,
             AdapterEvent::Item {
-                tool_state: Some(crate::acp::lifecycle::ToolState::Declined),
+                tool_state: Some(sage_acp_protocol::lifecycle::ToolState::Declined),
                 ..
             }
         )));
@@ -1189,7 +1196,7 @@ mod tests {
                 prompt: Prompt::new("prompt", "edit a file").expect("prompt"),
                 client_message_id: RequiredText::new("client", "workspace-outside")
                     .expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             })
             .expect("prompt command");
         runtime
@@ -1241,7 +1248,7 @@ mod tests {
         let decision = runtime
             .command(AdapterCommand::ResolvePermission {
                 request_id: scoped_permission_id("opencode-workspace-outside", 36),
-                decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
+                decision: sage_acp_protocol::permissions::PermissionDecision::Deny,
             })
             .expect("user denial");
         assert_eq!(
@@ -1255,7 +1262,7 @@ mod tests {
         label: &str,
         kind: &str,
         target: Option<&str>,
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
     ) -> crate::acp::bindings::adapter::AdapterBatch {
         let mut runtime = ready_runtime(root, 37, label, OPENCODE_OBSERVED_VERSION);
         let prompt = runtime
@@ -1313,7 +1320,7 @@ mod tests {
                 label,
                 "execute",
                 None,
-                crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+                sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             )
             .events()
             .iter()
@@ -1331,7 +1338,7 @@ mod tests {
 
     #[test]
     fn advertised_access_policies_drive_permission_wire_outcomes() {
-        use crate::acp_protocol::access_mode::SessionAccessMode;
+        use sage_acp_protocol::access_mode::SessionAccessMode;
         let root = TempRoot(temp_root().join(format!(
             "sage-opencode-admitted-policy-{}",
             uuid::Uuid::new_v4()
@@ -1391,7 +1398,7 @@ mod tests {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "run a tool").expect("prompt"),
                 client_message_id: RequiredText::new("client", "long-request").expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
             })
             .expect("prompt");
         runtime
@@ -1449,7 +1456,7 @@ mod tests {
             "workspace-inside",
             "edit",
             Some(path.to_str().expect("path")),
-            crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+            sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
         );
         assert!(
             permission
@@ -1481,7 +1488,7 @@ mod tests {
                 prompt: Prompt::new("prompt", "edit").expect("prompt"),
                 client_message_id: RequiredText::new("client", "workspace-foreign")
                     .expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             })
             .expect("prompt");
         runtime
@@ -1522,7 +1529,7 @@ mod tests {
             "workspace-traversal",
             "edit",
             Some(path.to_str().expect("path")),
-            crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+            sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
         );
         assert!(permission.egress().is_empty());
         assert!(
@@ -1547,7 +1554,7 @@ mod tests {
                 "workspace-unsafe-name",
                 "edit",
                 Some(path.to_str().expect("path")),
-                crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+                sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             );
             assert!(permission.egress().is_empty(), "{filename} needs a card");
             assert!(
@@ -1569,7 +1576,7 @@ mod tests {
             "workspace-no-target",
             "edit",
             None,
-            crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+            sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
         );
         assert!(permission.egress().is_empty());
         assert!(
@@ -1601,7 +1608,7 @@ mod tests {
             "workspace-hardlink",
             "edit",
             Some(path.to_str().expect("path")),
-            crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+            sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
         );
         assert!(permission.egress().is_empty());
         assert!(
@@ -1639,7 +1646,7 @@ mod tests {
             "workspace-junction",
             "edit",
             Some(path.to_str().expect("path")),
-            crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+            sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
         );
         assert!(permission.egress().is_empty());
         assert!(
@@ -1662,7 +1669,7 @@ mod tests {
                 &format!("workspace-{kind}"),
                 kind,
                 None,
-                crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+                sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             );
             assert!(permission.egress().is_empty(), "{kind} must not auto-allow");
             assert!(
@@ -1686,7 +1693,7 @@ mod tests {
             "ask-edit",
             "edit",
             Some(path.to_str().expect("path")),
-            crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+            sage_acp_protocol::access_mode::SessionAccessMode::Ask,
         );
         assert!(permission.egress().is_empty());
         assert!(
@@ -1706,7 +1713,7 @@ mod tests {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "edit a file").expect("prompt"),
                 client_message_id: RequiredText::new("client", label).expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
             })
             .expect("ask prompt");
         runtime
@@ -1751,7 +1758,7 @@ mod tests {
         let selected = runtime
             .command(AdapterCommand::ResolvePermission {
                 request_id: scoped_permission_id("ask-allow", 38),
-                decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
+                decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
             })
             .expect("approve");
         assert_eq!(
@@ -1782,7 +1789,7 @@ mod tests {
         assert!(completed.events().iter().any(|event| matches!(
             event,
             AdapterEvent::Item {
-                tool_state: Some(crate::acp::lifecycle::ToolState::Completed),
+                tool_state: Some(sage_acp_protocol::lifecycle::ToolState::Completed),
                 ..
             }
         )));
@@ -1798,7 +1805,7 @@ mod tests {
         let selected = runtime
             .command(AdapterCommand::ResolvePermission {
                 request_id: scoped_permission_id("ask-always", 38),
-                decision: crate::acp_protocol::permissions::PermissionDecision::AllowAlways,
+                decision: sage_acp_protocol::permissions::PermissionDecision::AllowAlways,
             })
             .expect("native always approval");
         assert_eq!(
@@ -1818,7 +1825,7 @@ mod tests {
         let selected = runtime
             .command(AdapterCommand::ResolvePermission {
                 request_id: scoped_permission_id("client-write", 38),
-                decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
+                decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
             })
             .expect("approve");
         runtime
@@ -1867,7 +1874,7 @@ mod tests {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "write fixture file").expect("prompt"),
                 client_message_id: RequiredText::new("client", "captured-fs").expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
             })
             .expect("prompt");
         runtime
@@ -1905,7 +1912,7 @@ mod tests {
         let selected = runtime
             .command(AdapterCommand::ResolvePermission {
                 request_id: scoped_permission_id("captured-fs", 51),
-                decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
+                decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
             })
             .expect("approve");
         runtime
@@ -1952,14 +1959,14 @@ mod tests {
             assert!(egress_value(&response.egress()[0])["error"].is_object());
             assert!(response.events().iter().any(|event| matches!(
                 event,
-                AdapterEvent::Error(crate::acp::intent::NormalizedPayload::Error { .. })
+                AdapterEvent::Error(sage_acp_protocol::intent::NormalizedPayload::Error { .. })
             )));
             assert!(!path.exists());
         }
         let selected = runtime
             .command(AdapterCommand::ResolvePermission {
                 request_id: scoped_permission_id("client-write-refusal", 38),
-                decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
+                decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
             })
             .expect("approve");
         runtime
@@ -2048,7 +2055,7 @@ mod tests {
         let selected = runtime
             .command(AdapterCommand::ResolvePermission {
                 request_id: scoped_permission_id("client-write-concurrent", 38),
-                decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
+                decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
             })
             .expect("approval");
         runtime
@@ -2069,7 +2076,7 @@ mod tests {
         assert_eq!(egress_value(&response.egress()[0])["error"]["code"], -32000);
         assert!(response.events().iter().any(|event| matches!(
             event,
-            AdapterEvent::Error(crate::acp::intent::NormalizedPayload::Error { .. })
+            AdapterEvent::Error(sage_acp_protocol::intent::NormalizedPayload::Error { .. })
         )));
         assert!(!path.exists());
     }
@@ -2083,7 +2090,7 @@ mod tests {
         let denied = runtime
             .command(AdapterCommand::ResolvePermission {
                 request_id: scoped_permission_id("ask-deny", 38),
-                decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
+                decision: sage_acp_protocol::permissions::PermissionDecision::Deny,
             })
             .expect("deny");
         assert_eq!(
@@ -2113,7 +2120,7 @@ mod tests {
             "ask-bash",
             "execute",
             None,
-            crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+            sage_acp_protocol::access_mode::SessionAccessMode::Ask,
         );
         assert!(permission.egress().is_empty());
         assert!(
@@ -2125,7 +2132,7 @@ mod tests {
     }
 
     fn reject_only_edit_permission(
-        mode: crate::acp_protocol::access_mode::SessionAccessMode,
+        mode: sage_acp_protocol::access_mode::SessionAccessMode,
         label: &str,
     ) -> Result<crate::acp::bindings::adapter::AdapterBatch, AdapterRuntimeError> {
         let root = TempRoot(temp_root().join(format!(
@@ -2167,7 +2174,7 @@ mod tests {
     #[test]
     fn read_only_cancels_reject_only_permission_requests() {
         let permission = reject_only_edit_permission(
-            crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             "reject-only-readonly",
         )
         .expect("read-only must cancel");
@@ -2181,7 +2188,7 @@ mod tests {
     #[test]
     fn ask_mode_shows_a_card_for_reject_only_permission_requests() {
         let permission = reject_only_edit_permission(
-            crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+            sage_acp_protocol::access_mode::SessionAccessMode::Ask,
             "reject-only-ask",
         )
         .expect("ask must show a card");
@@ -2197,7 +2204,7 @@ mod tests {
     #[test]
     fn workspace_write_shows_a_card_when_auto_allow_is_not_offered() {
         let permission = reject_only_edit_permission(
-            crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+            sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             "reject-only-workspace",
         )
         .expect("workspace write must show a card");
@@ -2221,7 +2228,7 @@ mod tests {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "read only").expect("prompt"),
                 client_message_id: RequiredText::new("client", "ask-unsafe").expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
             })
             .expect("prompt");
         runtime
@@ -2252,7 +2259,7 @@ mod tests {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "read only").expect("prompt"),
                 client_message_id: RequiredText::new("client", "unsafe-client").expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .expect("prompt");
         runtime
@@ -2305,7 +2312,7 @@ mod tests {
                 prompt: Prompt::new("prompt", "create x.txt").expect("prompt"),
                 client_message_id: RequiredText::new("client", "rejected-mode-client")
                     .expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .expect("mode request");
         runtime
@@ -2334,7 +2341,7 @@ mod tests {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "create x.txt").expect("prompt"),
                 client_message_id: RequiredText::new("client", "stop-mode-client").expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .expect("mode selection");
         runtime
@@ -2384,7 +2391,7 @@ mod tests {
                 prompt: Prompt::new("prompt", "read the project").expect("prompt"),
                 client_message_id: RequiredText::new("client", "stop-after-mode-client")
                     .expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .expect("mode selection");
         runtime
@@ -2443,7 +2450,7 @@ mod tests {
                     prompt: Prompt::new("prompt", "create x.txt").expect("prompt"),
                     client_message_id: RequiredText::new("client", "close-mode-client")
                         .expect("client"),
-                    access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                    access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
                 })
                 .expect("mode selection");
             runtime
@@ -2500,7 +2507,7 @@ mod tests {
                 prompt: Prompt::new("prompt", "create x.txt").expect("prompt"),
                 client_message_id: RequiredText::new("client", "close-rejected-client")
                     .expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .expect("mode selection");
         runtime
@@ -2548,7 +2555,7 @@ mod tests {
                 prompt: Prompt::new("prompt", "create x.txt").expect("prompt"),
                 client_message_id: RequiredText::new("client", "missing-mode-client")
                     .expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             }),
             Err(AdapterRuntimeError::UnsupportedCommand)
         ));
@@ -2556,7 +2563,7 @@ mod tests {
             runtime.command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "read this repo").expect("prompt"),
                 client_message_id: RequiredText::new("client", "build-client").expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             }),
             Err(AdapterRuntimeError::UnsupportedCommand)
         ));
@@ -2637,7 +2644,7 @@ mod tests {
                 prompt: Prompt::new("prompt", "synthetic prompt").expect("prompt"),
                 client_message_id: RequiredText::new("client", "close-race-client")
                     .expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             })
             .expect("prompt command");
         runtime
@@ -2688,7 +2695,7 @@ mod tests {
                 prompt: Prompt::new("prompt", "after close").expect("prompt"),
                 client_message_id: RequiredText::new("client", "after-close-client")
                     .expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             }),
             Err(AdapterRuntimeError::Operation)
         ));
@@ -2712,7 +2719,7 @@ mod tests {
                 prompt: Prompt::new("prompt", "synthetic prompt").expect("prompt"),
                 client_message_id: RequiredText::new("client", "close-settled-client")
                     .expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             })
             .expect("prompt command");
         runtime

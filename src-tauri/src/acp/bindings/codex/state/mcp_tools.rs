@@ -1,7 +1,7 @@
 //! Codex progress carries only the message, so the call's normalized payload
 //! is remembered from its `item/started` until its terminal item.
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::SafeText,
     intent::{NormalizedPayload, TOOL_PROGRESS_BYTES},
 };

@@ -40,7 +40,7 @@ fn replay(
     mut state: WireState,
     client: impl FnMut(Option<&str>, Vec<Value>) -> Vec<Value>,
 ) {
-    let case = crate::acp_protocol::native_cases::JOURNEY_CASES
+    let case = sage_acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .find(|case| case.id == case_id)
         .expect("SDK journey exists");

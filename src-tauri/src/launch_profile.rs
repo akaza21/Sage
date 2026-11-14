@@ -348,7 +348,9 @@ mod tests {
     use super::*;
 
     #[cfg(all(windows, feature = "acp-fixture"))]
-    use crate::acp::{intent::BindingId, service::CHARACTERIZATION_BINDING_ID};
+    use crate::acp::service::CHARACTERIZATION_BINDING_ID;
+    #[cfg(all(windows, feature = "acp-fixture"))]
+    use sage_acp_protocol::intent::BindingId;
 
     static NEXT_ROOT: AtomicUsize = AtomicUsize::new(1);
 
@@ -627,9 +629,9 @@ mod tests {
         let root_authority = || {
             crate::acp::bindings::codex::CodexProjectRootAuthority::for_test(
                 crate::project_registry::ProjectRootAuthority::for_test(
-                    crate::acp::contract::SageProjectId::parse("project-cp14").unwrap(),
-                    crate::acp::contract::ProjectGeneration::ZERO,
-                    crate::acp::contract::SageRootId::parse("root-cp14").unwrap(),
+                    sage_acp_protocol::contract::SageProjectId::parse("project-cp14").unwrap(),
+                    sage_acp_protocol::contract::ProjectGeneration::ZERO,
+                    sage_acp_protocol::contract::SageRootId::parse("root-cp14").unwrap(),
                     &project_root,
                 )
                 .unwrap(),
@@ -639,7 +641,7 @@ mod tests {
             let refused = crate::acp::bindings::codex::CodexProcessTransport::launch(
                 std::sync::Arc::clone(&admitted),
                 root_authority(),
-                crate::acp::contract::RuntimeEpoch::new(1).unwrap(),
+                sage_acp_protocol::contract::RuntimeEpoch::new(1).unwrap(),
                 crate::acp::bindings::codex::ProcessLaunchPolicy {
                     session_kind,
                     spawn_timeout: std::time::Duration::from_secs(1),
@@ -671,8 +673,8 @@ mod tests {
             crate::acp::bindings::codex::CodexRuntime::from_admitted_binding_with_mcp(
                 std::sync::Arc::clone(&admitted),
                 root_authority(),
-                crate::acp::contract::RuntimeEpoch::new(1).unwrap(),
-                crate::acp::contract::SageAgentSessionId::parse("session-cp14-mcp").unwrap(),
+                sage_acp_protocol::contract::RuntimeEpoch::new(1).unwrap(),
+                sage_acp_protocol::contract::SageAgentSessionId::parse("session-cp14-mcp").unwrap(),
                 browser_mcp,
             )
             .unwrap();
@@ -685,9 +687,9 @@ mod tests {
         fs::create_dir_all(&foreign_root).unwrap();
         let foreign_authority = crate::acp::bindings::codex::CodexProjectRootAuthority::for_test(
             crate::project_registry::ProjectRootAuthority::for_test(
-                crate::acp::contract::SageProjectId::parse("project-cp14-foreign").unwrap(),
-                crate::acp::contract::ProjectGeneration::ZERO,
-                crate::acp::contract::SageRootId::parse("root-cp14-foreign").unwrap(),
+                sage_acp_protocol::contract::SageProjectId::parse("project-cp14-foreign").unwrap(),
+                sage_acp_protocol::contract::ProjectGeneration::ZERO,
+                sage_acp_protocol::contract::SageRootId::parse("root-cp14-foreign").unwrap(),
                 &foreign_root,
             )
             .unwrap(),
@@ -695,8 +697,8 @@ mod tests {
         let mut foreign_runtime = crate::acp::bindings::codex::CodexRuntime::from_admitted_binding(
             std::sync::Arc::clone(&admitted),
             foreign_authority,
-            crate::acp::contract::RuntimeEpoch::new(1).unwrap(),
-            crate::acp::contract::SageAgentSessionId::parse("session-cp14-foreign").unwrap(),
+            sage_acp_protocol::contract::RuntimeEpoch::new(1).unwrap(),
+            sage_acp_protocol::contract::SageAgentSessionId::parse("session-cp14-foreign").unwrap(),
         )
         .unwrap();
         assert!(foreign_runtime.launch_spec().is_err());
@@ -707,8 +709,8 @@ mod tests {
         let mut runtime = crate::acp::bindings::codex::CodexRuntime::from_admitted_binding(
             std::sync::Arc::clone(&admitted),
             root_authority(),
-            crate::acp::contract::RuntimeEpoch::new(2).unwrap(),
-            crate::acp::contract::SageAgentSessionId::parse("session-cp14").unwrap(),
+            sage_acp_protocol::contract::RuntimeEpoch::new(2).unwrap(),
+            sage_acp_protocol::contract::SageAgentSessionId::parse("session-cp14").unwrap(),
         )
         .unwrap();
         let spec = runtime.launch_spec().unwrap();
@@ -741,8 +743,9 @@ mod tests {
             crate::acp::bindings::codex::CodexRuntime::from_admitted_binding(
                 second.refresh().unwrap(),
                 root_authority(),
-                crate::acp::contract::RuntimeEpoch::new(3).unwrap(),
-                crate::acp::contract::SageAgentSessionId::parse("session-cp14-reopened").unwrap(),
+                sage_acp_protocol::contract::RuntimeEpoch::new(3).unwrap(),
+                sage_acp_protocol::contract::SageAgentSessionId::parse("session-cp14-reopened")
+                    .unwrap(),
             )
             .unwrap();
         assert!(reopened_runtime.launch_spec().is_err());

@@ -3,18 +3,18 @@ use std::{
     time::Instant,
 };
 
-use crate::{
-    acp::{
-        bindings::adapter::AdapterCommand,
-        contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
-        runtime::{
-            HostCancelIntent, HostError, HostPromptIntent, LiveRuntimeEngine, LiveRuntimePort,
-            LiveWrite, RuntimeHost,
-        },
-        scheduler::RuntimeOwner,
-        store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
+use crate::acp::{
+    bindings::adapter::AdapterCommand,
+    runtime::{
+        HostCancelIntent, HostError, HostPromptIntent, LiveRuntimeEngine, LiveRuntimePort,
+        LiveWrite, RuntimeHost,
     },
-    acp_protocol::permissions::PermissionDecision,
+    store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
+};
+use sage_acp_protocol::{
+    contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
+    permissions::PermissionDecision,
+    scheduler::RuntimeOwner,
 };
 
 use super::super::AcpService;
@@ -73,14 +73,14 @@ impl LiveRuntimePort for Port {
     fn prepare_prompt(
         &mut self,
         _: &HostPromptIntent,
-    ) -> Result<crate::acp::contract::SageTurnId, HostError> {
+    ) -> Result<sage_acp_protocol::contract::SageTurnId, HostError> {
         Err(HostError::State)
     }
 
     fn dispatch_prompt(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<LiveWrite, HostError> {
         Err(HostError::State)
     }
@@ -88,7 +88,7 @@ impl LiveRuntimePort for Port {
     fn observe_send(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
         _: SendObservation,
     ) -> Result<(), HostError> {
         Err(HostError::State)
@@ -139,8 +139,9 @@ pub(crate) fn service_with_pending_requests_and_deny_id(
         .unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let owner = RuntimeOwner {
-        project_id: crate::acp::contract::SageProjectId::parse(project.id).unwrap(),
-        chat_id: crate::acp::contract::SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap(),
+        project_id: sage_acp_protocol::contract::SageProjectId::parse(project.id).unwrap(),
+        chat_id: sage_acp_protocol::contract::SageChatId::parse(snapshot.active_tab_id.unwrap())
+            .unwrap(),
         session_id: SageAgentSessionId::parse("session-permission").unwrap(),
         runtime_epoch: RuntimeEpoch::new(1).unwrap(),
     };
@@ -196,21 +197,22 @@ pub(crate) fn service_with_pending_requests_and_deny_id(
         ("request-ask", "request-ask"),
     ] {
         let offered = if external_request_id == "request-allow" {
-            vec![crate::acp::intent::PermissionOptionKind::AllowOnce]
+            vec![sage_acp_protocol::intent::PermissionOptionKind::AllowOnce]
         } else {
-            vec![crate::acp::intent::PermissionOptionKind::RejectOnce]
+            vec![sage_acp_protocol::intent::PermissionOptionKind::RejectOnce]
         };
         insert_permission_request(
             &database,
             &owner,
             request_id,
             external_request_id,
-            &crate::acp::intent::NormalizedPayload::PermissionRequest {
+            &sage_acp_protocol::intent::NormalizedPayload::PermissionRequest {
                 user_input: None,
-                category: crate::acp::intent::ToolCategory::Other,
-                summary: crate::acp::contract::SafeText::new("summary", "Permission").unwrap(),
+                category: sage_acp_protocol::intent::ToolCategory::Other,
+                summary: sage_acp_protocol::contract::SafeText::new("summary", "Permission")
+                    .unwrap(),
                 offered_option_kinds: Some(
-                    crate::acp::contract::BoundedVec::new("offered", offered).unwrap(),
+                    sage_acp_protocol::contract::BoundedVec::new("offered", offered).unwrap(),
                 ),
                 reason: None,
             },
@@ -267,7 +269,7 @@ pub(crate) fn admit_permission_request(
     service: &AcpService,
     owner: &RuntimeOwner,
     request_id: &str,
-    payload: &crate::acp::intent::NormalizedPayload,
+    payload: &sage_acp_protocol::intent::NormalizedPayload,
 ) {
     insert_permission_request(&service.database, owner, request_id, request_id, payload);
 }
@@ -277,7 +279,7 @@ fn insert_permission_request(
     owner: &RuntimeOwner,
     request_id: &str,
     external_request_id: &str,
-    payload: &crate::acp::intent::NormalizedPayload,
+    payload: &sage_acp_protocol::intent::NormalizedPayload,
 ) {
     let digest = "a".repeat(64);
     database

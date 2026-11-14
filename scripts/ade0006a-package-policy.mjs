@@ -26,12 +26,18 @@ export function cargoPackageFeatureErrors(
   }
   const fixture = packageContract.fixtureExclusion.canonicalFeature;
   const escaped = fixture.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // The feature may only turn on the `fixture` feature of Sage's own crates
+  // (spec 7.5), never an external dependency.
+  const forward = '"sage-[a-z0-9-]+/fixture"';
   if (
     participant === packageContract.fixtureExclusion.participant &&
-    !new RegExp(`^${escaped}\\s*=\\s*\\[\\s*\\]\\s*$`, "m").test(features)
+    !new RegExp(
+      `^${escaped}\\s*=\\s*\\[\\s*(?:${forward}(?:\\s*,\\s*${forward})*\\s*,?\\s*)?\\]\\s*$`,
+      "m",
+    ).test(features)
   ) {
     errors.push(
-      `Cargo fixture feature ${fixture} must remain explicit and empty.`,
+      `Cargo fixture feature ${fixture} must remain explicit and only forward to Sage crates' fixture features.`,
     );
   }
   return errors;

@@ -13,7 +13,7 @@ use super::{
     },
     reproduction::PackageReproductionRequirements,
 };
-use crate::acp_protocol::codex_protocol::pinned_codex_version;
+use sage_acp_protocol::pinned_codex_version;
 
 #[cfg(windows)]
 mod windows;

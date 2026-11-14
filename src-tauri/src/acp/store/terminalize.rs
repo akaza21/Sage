@@ -1,6 +1,6 @@
 use rusqlite::{Transaction, params, params_from_iter, types::Value};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{
         ProjectionRevision, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
     },

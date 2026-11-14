@@ -207,9 +207,9 @@ fn union_canaries_cover_every_mode() {
                         );
                     }
                     let actual = match redact("corpus", source, 4_000_000, mode) {
-                        Err(crate::acp::contract::ContractError::ForbiddenContent { .. })
-                            if mode == Mode::Permission && *permission == Permission::Hide =>
-                        {
+                        Err(sage_acp_protocol::contract::ContractError::ForbiddenContent {
+                            ..
+                        }) if mode == Mode::Permission && *permission == Permission::Hide => {
                             continue;
                         }
                         Ok(_) if mode == Mode::Permission && *permission == Permission::Hide => {

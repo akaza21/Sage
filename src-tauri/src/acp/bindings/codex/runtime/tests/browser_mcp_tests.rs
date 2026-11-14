@@ -5,7 +5,7 @@ fn start_first_turn(runtime: &mut CodexRuntime) -> AdapterBatch {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Continue without browser").unwrap(),
             client_message_id: RequiredText::new("client", "browser-failed-before-turn").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     runtime
@@ -195,7 +195,7 @@ fn browser_failure_before_first_prompt_is_reported_once_after_turn_bind() {
         }
         let started = start_first_turn(&mut runtime);
         assert!(matches!(started.events(), [
-                AdapterEvent::Turn { state: crate::acp::lifecycle::TurnState::Running, .. },
+                AdapterEvent::Turn { state: sage_acp_protocol::lifecycle::TurnState::Running, .. },
                 AdapterEvent::Error(NormalizedPayload::Error { code, .. })
             ] if code.as_str() == "browserMcpUnavailable"));
     });

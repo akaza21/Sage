@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crate::acp::contract::{SageChatId, SageProjectId};
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 use super::{AcpService, ChatRuntimeRelease};
 

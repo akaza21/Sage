@@ -3,23 +3,10 @@ use std::{path::Path, sync::Arc};
 use super::DatabaseAuthority;
 use crate::{
     acp::{
-        contract::{
-            ClientIntentId, ProjectGeneration, ProjectionRevision, RequiredText, RuntimeEpoch,
-            SageChatId, SageProjectId, SchemaVersionV1,
-        },
-        intent::{
-            BindingId, CapabilitySnapshotV1, ExternalId, ModelId, Prompt,
-            session_event::{
-                SessionActivityState, SessionNoticeLevel, SessionScopedEvent,
-                fixtures::{activity, notice, title},
-            },
-        },
-        lifecycle::TurnState,
         runtime::{
             ActiveDispatch, CoordinatorError, JournalHandle, PrepareDispatch, ProjectionMailbox,
             SendCoordinator,
         },
-        scheduler::{RuntimeOwner, Scheduler},
         store::{
             ActivateSessionCommand, AdapterInboundBatchCommand, AdapterInboundEvent,
             AdapterStoreOwner, CompleteActivationCommand, DatabaseAcpStore, PrepareTurnCommand,
@@ -27,8 +14,24 @@ use crate::{
             apply_adapter_inbound_batch, begin_send, complete_activation, prepare_turn,
             start_session,
         },
+        transcript_quote::Prompt,
     },
     persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{
+        ClientIntentId, ProjectGeneration, ProjectionRevision, RequiredText, RuntimeEpoch,
+        SageChatId, SageProjectId, SchemaVersionV1,
+    },
+    intent::{
+        BindingId, CapabilitySnapshotV1, ExternalId, ModelId,
+        session_event::{
+            SessionActivityState, SessionNoticeLevel, SessionScopedEvent,
+            fixtures::{activity, notice, title},
+        },
+    },
+    lifecycle::TurnState,
+    scheduler::{RuntimeOwner, Scheduler},
 };
 
 struct IdleSession {

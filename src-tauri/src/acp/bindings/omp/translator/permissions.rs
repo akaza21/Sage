@@ -1,9 +1,10 @@
 use serde_json::{Value, json};
 
-use crate::acp::{
-    bindings::command_summary::{CommandSummaryError, sanitize_command_summary},
-    contract::{ItemLifecycle, RequiredText, SafeText, ToolState},
+use crate::acp::bindings::command_summary::{CommandSummaryError, sanitize_command_summary};
+use sage_acp_protocol::{
+    contract::{RequiredText, SafeText},
     intent::{ExternalId, NormalizedPayload, ToolCategory},
+    lifecycle::{ItemLifecycle, ToolState},
 };
 use sage_core::limits::LIMITS;
 

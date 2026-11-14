@@ -1,10 +1,10 @@
 use serde_json::Value;
 
-use crate::acp::{
-    bindings::adapter::{
-        AdapterBatch, AdapterEvent as SharedEvent, AdapterRuntimeError,
-        ResourceMapper as SharedResourceMapper,
-    },
+use crate::acp::bindings::adapter::{
+    AdapterBatch, AdapterEvent as SharedEvent, AdapterRuntimeError,
+    ResourceMapper as SharedResourceMapper,
+};
+use sage_acp_protocol::{
     contract::SafeText,
     intent::{NormalizedPayload, ToolCategory},
     lifecycle::{ToolState, TurnState},
@@ -90,14 +90,14 @@ impl StandardAcpRuntime {
             }
             match access_mode {
                 Some(
-                    crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly
-                    | crate::acp_protocol::access_mode::SessionAccessMode::AcceptEdits
-                    | crate::acp_protocol::access_mode::SessionAccessMode::Plan
-                    | crate::acp_protocol::access_mode::SessionAccessMode::Auto
-                    | crate::acp_protocol::access_mode::SessionAccessMode::FullAccess,
+                    sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly
+                    | sage_acp_protocol::access_mode::SessionAccessMode::AcceptEdits
+                    | sage_acp_protocol::access_mode::SessionAccessMode::Plan
+                    | sage_acp_protocol::access_mode::SessionAccessMode::Auto
+                    | sage_acp_protocol::access_mode::SessionAccessMode::FullAccess,
                 ) => true,
-                Some(crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite)
-                | Some(crate::acp_protocol::access_mode::SessionAccessMode::Ask) => {
+                Some(sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite)
+                | Some(sage_acp_protocol::access_mode::SessionAccessMode::Ask) => {
                     !self.permissions.values().any(|record| {
                         record.tool_id == external_key.as_str()
                             && matches!(
@@ -115,10 +115,10 @@ impl StandardAcpRuntime {
             self.safety_alerted = true;
             self.close_pending = true;
             let (code, mode) = match access_mode {
-                Some(crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite) => {
+                Some(sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite) => {
                     ("workspaceWriteSafetyViolation", "WorkspaceWrite")
                 }
-                Some(crate::acp_protocol::access_mode::SessionAccessMode::Ask) => {
+                Some(sage_acp_protocol::access_mode::SessionAccessMode::Ask) => {
                     ("askSafetyViolation", "Ask mode")
                 }
                 _ => ("readOnlySafetyViolation", "Read-only"),

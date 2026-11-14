@@ -7,11 +7,12 @@ use std::collections::{BTreeMap, VecDeque};
 
 use serde_json::Value;
 
-use crate::acp::{
+use crate::acp::mcp::{McpAdmission, McpCapabilities};
+use sage_acp_protocol::{
     contract::{BoundedVec, ContractError, RequiredText, SafeText},
-    intent::{COMMAND_RESOURCE_LIMIT, ExternalId, SafeResourceLocation},
-    mcp::{McpAdmission, McpCapabilities},
+    intent::{ExternalId, SafeResourceLocation},
 };
+use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 
 use super::{
     manifest::OmpBindingCapabilities,
@@ -43,9 +44,9 @@ pub(super) struct ActiveTurn {
     cancel_dispatch_required: bool,
     running_emitted: bool,
     terminal: Option<PromptTerminal>,
-    tools: BTreeMap<String, crate::acp::contract::ToolState>,
-    tool_categories: BTreeMap<String, crate::acp::intent::ToolCategory>,
-    settled_reports: BTreeMap<String, crate::acp::contract::ToolState>,
+    tools: BTreeMap<String, sage_acp_protocol::lifecycle::ToolState>,
+    tool_categories: BTreeMap<String, sage_acp_protocol::intent::ToolCategory>,
+    settled_reports: BTreeMap<String, sage_acp_protocol::lifecycle::ToolState>,
     tool_snapshots: BTreeMap<
         String,
         (
@@ -61,7 +62,10 @@ pub(crate) trait ResourceMapper {
     fn map_absolute(
         &self,
         absolute_path: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>;
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    >;
 }
 
 #[derive(Debug)]

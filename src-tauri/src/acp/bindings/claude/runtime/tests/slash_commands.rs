@@ -11,7 +11,7 @@ fn command(revision: u64) -> AdapterCommand {
     AdapterCommand::Prompt {
         prompt,
         client_message_id: RequiredText::new("client", "slash-client").unwrap(),
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
     }
 }
 #[test]
@@ -75,12 +75,13 @@ fn foreign_updates_cannot_replace_the_list_and_malformed_updates_revoke_it() {
 }
 #[test]
 fn runtime_drop_clears_published_catalog_and_old_epochs_do_not_clear_new() {
-    use crate::acp::{scheduler::RuntimeOwner, slash_commands::CommandChannel};
+    use crate::acp::slash_commands::CommandChannel;
+    use sage_acp_protocol::scheduler::RuntimeOwner;
     let mut claude = ClaudeRuntime::fixture();
     ready(&mut claude);
     let owner = RuntimeOwner {
-        project_id: crate::acp::contract::SageProjectId::parse("p").unwrap(),
-        chat_id: crate::acp::contract::SageChatId::parse("c").unwrap(),
+        project_id: sage_acp_protocol::contract::SageProjectId::parse("p").unwrap(),
+        chat_id: sage_acp_protocol::contract::SageChatId::parse("c").unwrap(),
         session_id: claude.session_id.clone(),
         runtime_epoch: claude.runtime_epoch,
     };

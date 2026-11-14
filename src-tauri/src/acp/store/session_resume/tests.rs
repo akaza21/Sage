@@ -2,16 +2,16 @@ use rusqlite::params;
 
 use super::*;
 use crate::{
-    acp::{
-        contract::{ClientIntentId, RuntimeEpoch},
-        intent::{ExternalId, NormalizedPayload, ToolCategory},
-        store::{
-            AbortActivationCommand, ActivateSessionCommand, ActivationAbortCategory,
-            CompleteActivationCommand, abort_activation, activate_session, complete_activation,
-            load_chat_page,
-        },
+    acp::store::{
+        AbortActivationCommand, ActivateSessionCommand, ActivationAbortCategory,
+        CompleteActivationCommand, abort_activation, activate_session, complete_activation,
+        load_chat_page,
     },
     persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{ClientIntentId, RuntimeEpoch},
+    intent::{ExternalId, NormalizedPayload, ToolCategory},
 };
 
 const EARLIER_DIGEST: &str = "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1";
@@ -109,7 +109,7 @@ impl Fixture {
                 binding_digest: CURRENT_DIGEST.into(),
                 harness_version: SafeText::new(
                     "harnessVersion",
-                    crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
+                    sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
                 )
                 .unwrap(),
                 now_millis: 10,
@@ -147,7 +147,7 @@ impl Fixture {
                 artifact_digest: ARTIFACT_DIGEST.into(),
                 external_session_id: ExternalId::new("externalSessionId", thread).unwrap(),
                 capabilities_json: capabilities(
-                    crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY,
+                    sage_acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY,
                 ),
                 now_millis: 30,
             },
@@ -342,7 +342,7 @@ fn history_spans_the_earlier_and_the_linked_session() {
         [item] if matches!(
             item.content,
             crate::acp::projection::ItemContent::PermissionRequest {
-                state: crate::acp::lifecycle::ServerRequestState::ResolvedDeclined,
+                state: sage_acp_protocol::lifecycle::ServerRequestState::ResolvedDeclined,
                 ..
             }
         )

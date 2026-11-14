@@ -145,7 +145,7 @@ fn claude_slash_commands_case_advertises_three_commands_and_checks_each_prompt()
         .collect();
     assert_eq!(finished, [3, 4, 5]);
 
-    let case = crate::acp_protocol::native_cases::JOURNEY_CASES
+    let case = sage_acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .find(|case| case.id == "claude-slash-commands")
         .unwrap();
@@ -166,7 +166,7 @@ fn claude_slash_commands_case_advertises_three_commands_and_checks_each_prompt()
 }
 
 fn journey(id: &str) -> Vec<Value> {
-    let case = crate::acp_protocol::native_cases::JOURNEY_CASES
+    let case = sage_acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .find(|case| case.id == id)
         .unwrap_or_else(|| panic!("missing {id}"));
@@ -314,7 +314,7 @@ fn the_codex_config_journey_starts_or_resumes_the_same_thread() {
 
 #[test]
 fn launch_rules_follow_what_each_case_waits_for() {
-    use crate::acp_protocol::native_cases::{native_case_lists_models, native_case_spans_restart};
+    use sage_acp_protocol::native_cases::{native_case_lists_models, native_case_spans_restart};
     for case in [
         "codex-config-resume",
         "codex-model-menu",

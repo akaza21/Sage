@@ -2,12 +2,12 @@
 
 use std::sync::Arc;
 
-use crate::acp::{
-    bindings::{
-        registry::{AuthProvider, ModelProvider},
-        runtime::RuntimeFactory,
-        standard_acp::{CustomAcpRegistration, StandardAcpRuntimeFactory},
-    },
+use crate::acp::bindings::{
+    registry::{AuthProvider, ModelProvider},
+    runtime::RuntimeFactory,
+    standard_acp::{CustomAcpRegistration, StandardAcpRuntimeFactory},
+};
+use sage_acp_protocol::{
     contract::{RequiredText, SchemaVersionV1},
     intent::CapabilitySnapshotV1,
 };

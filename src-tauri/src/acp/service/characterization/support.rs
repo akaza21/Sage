@@ -9,18 +9,17 @@ use rusqlite::{OptionalExtension, params};
 use uuid::Uuid;
 
 use crate::acp::{
-    contract::SageRootId,
-    intent::IntentSnapshot,
+    ipc::IntentSnapshot,
     process::{
         ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
         RequiredContainment, TreeControl, TreeExit, TreeLimits,
     },
     resource_mapper::ConfiguredResourceRoot,
     runtime::{HostError, LiveRunnerExit, LiveRunnerHandle, ProjectIntentAuthority},
-    scheduler::RuntimeOwner,
     store::PrepareTurnCommand,
 };
 use crate::project_registry::ProjectRootAuthority;
+use sage_acp_protocol::{contract::SageRootId, scheduler::RuntimeOwner};
 use sage_core::limits::LIMITS;
 
 pub(super) struct DatabaseAuthority(pub(super) crate::persistence::Database);

@@ -16,7 +16,8 @@ use std::{collections::VecDeque, sync::Mutex};
 use rusqlite::{OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 
-use crate::acp::{
+use crate::acp::projection::TurnSessionActivityProjection;
+use sage_acp_protocol::{
     contract::{ProjectionRevision, RequiredText},
     intent::{
         ExternalId,
@@ -25,7 +26,6 @@ use crate::acp::{
             SESSION_ACTIVITY_PROGRESS_BYTES, SessionActivity, SessionActivityState,
         },
     },
-    projection::TurnSessionActivityProjection,
 };
 use sage_core::limits::LIMITS;
 

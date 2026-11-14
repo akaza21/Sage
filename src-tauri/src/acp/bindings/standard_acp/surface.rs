@@ -5,7 +5,7 @@ pub(crate) use commands::{first_listed, panel, update_commands, update_commands_
 
 use crate::acp::bindings::adapter::RefusalDetail;
 #[cfg(test)]
-use crate::acp::lifecycle::TurnState;
+use sage_acp_protocol::lifecycle::TurnState;
 
 use super::profile::StandardAcpProfile;
 

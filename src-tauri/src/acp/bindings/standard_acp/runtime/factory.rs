@@ -6,11 +6,11 @@ use crate::{
             adapter::AdapterRuntimeError,
             runtime::{NativeRuntime, RuntimeFactory},
         },
-        contract::{RuntimeEpoch, SageAgentSessionId},
         mcp::McpAdmission,
     },
     project_registry::ProjectRootAuthority,
 };
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 
 use super::{super::AdmittedStandardAcpBinding, StandardAcpRuntime};
 

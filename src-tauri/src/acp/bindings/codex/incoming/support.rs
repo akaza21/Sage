@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::SafeText,
     intent::{NormalizedPayload, SafeResourceLocation},
 };
@@ -379,7 +379,7 @@ pub(super) fn permission(_: AdapterError) -> IngressError {
     IngressError::PermissionTeardownRequired
 }
 
-pub(super) fn content(_: crate::acp::contract::ContractError) -> IngressError {
+pub(super) fn content(_: sage_acp_protocol::contract::ContractError) -> IngressError {
     IngressError::Content
 }
 

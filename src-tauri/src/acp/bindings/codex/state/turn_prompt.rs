@@ -1,14 +1,11 @@
-use crate::{
-    acp::{
-        bindings::codex::{
-            request::OutgoingRequest,
-            turn_policy::{TurnPolicySurface, TurnSettings},
-        },
-        contract::RequiredText,
-        intent::Prompt,
+use crate::acp::{
+    bindings::codex::{
+        request::OutgoingRequest,
+        turn_policy::{TurnPolicySurface, TurnSettings},
     },
-    acp_protocol::access_mode::SessionAccessMode,
+    transcript_quote::Prompt,
 };
+use sage_acp_protocol::{access_mode::SessionAccessMode, contract::RequiredText};
 
 use super::{AdapterError, CodexAdapter};
 

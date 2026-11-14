@@ -1,5 +1,5 @@
 use super::pi::bridge::install::Unavailable;
-use crate::acp_protocol::access_mode::{AccessModeCapability, SessionAccessMode};
+use sage_acp_protocol::access_mode::{AccessModeCapability, SessionAccessMode};
 
 pub(crate) const CODEX_ASK_NATIVE_APPROVAL_PROVEN: bool = false;
 
@@ -273,7 +273,7 @@ pub(crate) fn session_mode_for_binding(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
+    use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
     use serde_json::json;
 
     #[test]

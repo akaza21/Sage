@@ -93,7 +93,7 @@ pub(crate) async fn activate_acp_session_inner(
             .database
             .selected_project_root_authority(&transition)
             .map_err(|_| AcpIpcError::Unavailable {
-                reason: crate::acp::intent::AcpUnavailableReason::CapabilityUnavailable,
+                reason: crate::acp::ipc::AcpUnavailableReason::CapabilityUnavailable,
                 message: safe_message(
                     "The selected project root is unavailable or changed; reselect it and retry.",
                 ),
@@ -132,15 +132,15 @@ pub(crate) async fn activate_acp_session_inner(
 
 fn root_unavailable() -> AcpIpcError {
     AcpIpcError::Unavailable {
-        reason: crate::acp::intent::AcpUnavailableReason::CapabilityUnavailable,
+        reason: crate::acp::ipc::AcpUnavailableReason::CapabilityUnavailable,
         message: safe_message("Codex beta requires one unchanged Project root."),
     }
 }
 
 pub(super) fn durable_binding_id(
     state: &AppState,
-    session_id: &crate::acp::contract::SageAgentSessionId,
-) -> Result<crate::acp::intent::BindingId, crate::acp::store::StoreError> {
+    session_id: &sage_acp_protocol::contract::SageAgentSessionId,
+) -> Result<sage_acp_protocol::intent::BindingId, crate::acp::store::StoreError> {
     let binding_id: String = state
         .database
         .connection()
@@ -150,7 +150,7 @@ pub(super) fn durable_binding_id(
             |row| row.get(0),
         )
         .map_err(crate::acp::store::StoreError::Database)?;
-    crate::acp::intent::BindingId::new("bindingId", binding_id)
+    sage_acp_protocol::intent::BindingId::new("bindingId", binding_id)
         .map_err(|_| crate::acp::store::StoreError::Corrupt("session binding identity"))
 }
 
@@ -180,10 +180,11 @@ pub(super) fn refuse_archived_chat(
 /// chat's page.
 pub(super) fn session_capabilities(
     state: &AppState,
-    project_id: &crate::acp::contract::SageProjectId,
-    chat_id: &crate::acp::contract::SageChatId,
-    session_id: &crate::acp::contract::SageAgentSessionId,
-) -> Result<Option<crate::acp::intent::CapabilitySnapshotV1>, crate::acp::store::StoreError> {
+    project_id: &sage_acp_protocol::contract::SageProjectId,
+    chat_id: &sage_acp_protocol::contract::SageChatId,
+    session_id: &sage_acp_protocol::contract::SageAgentSessionId,
+) -> Result<Option<sage_acp_protocol::intent::CapabilitySnapshotV1>, crate::acp::store::StoreError>
+{
     use rusqlite::OptionalExtension;
     let capabilities: Option<String> = state
         .database
@@ -204,13 +205,13 @@ pub(super) fn session_capabilities(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::{
+    use crate::acp::store::{
+        ActivateSessionCommand, CompleteActivationCommand, StartSessionCommand, activate_session,
+        complete_activation, start_session,
+    };
+    use sage_acp_protocol::{
         contract::{ClientIntentId, RequiredText, RuntimeEpoch, SageChatId, SageProjectId},
         intent::{BindingId, CapabilitySnapshotV1, ExternalId},
-        store::{
-            ActivateSessionCommand, CompleteActivationCommand, StartSessionCommand,
-            activate_session, complete_activation, start_session,
-        },
     };
 
     #[test]

@@ -6,15 +6,18 @@ use tauri::State;
 
 use crate::{
     acp::{
-        contract::{
-            RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
-            SageTurnId,
-        },
-        intent::{AcpIpcError, AcpUnavailableReason, user_input::UserInputAnswers},
+        ipc::{AcpIpcError, AcpUnavailableReason},
         service::PermissionDecisionIntent,
     },
-    acp_protocol::permissions::PermissionDecision,
     state::AppState,
+};
+use sage_acp_protocol::{
+    contract::{
+        RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
+        SageTurnId,
+    },
+    intent::user_input::UserInputAnswers,
+    permissions::PermissionDecision,
 };
 
 use super::errors::safe_message;

@@ -4,7 +4,7 @@ use super::{
     profile::profile_for,
     translator::{AdapterEvent, ResourceMapper, StandardAcpTranslator},
 };
-use crate::acp::intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason};
+use sage_acp_protocol::intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason};
 
 struct NoResources;
 
@@ -92,8 +92,8 @@ fn task_permission_relabel_and_settlement_preserve_only_curated_lifecycle_metada
                 events
                     .iter()
                     .any(|event| matches!(event, AdapterEvent::Item {
-                external_key, tool_state: Some(crate::acp::lifecycle::ToolState::WaitingForApproval),
-                payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Subagent, label, execution, .. }, ..
+                external_key, tool_state: Some(sage_acp_protocol::lifecycle::ToolState::WaitingForApproval),
+                payload: NormalizedPayload::ToolCall { category: sage_acp_protocol::intent::ToolCategory::Subagent, label, execution, .. }, ..
             } if external_key.as_str() == "task-1" && label.as_str() == "Review accessibility" && execution.task_lifecycle == expected))
             );
             let settled = if cancelled {
@@ -102,13 +102,13 @@ fn task_permission_relabel_and_settlement_preserve_only_curated_lifecycle_metada
                 translator.permission_decline_committed("7").unwrap()
             };
             let state = if cancelled {
-                crate::acp::lifecycle::ToolState::Cancelled
+                sage_acp_protocol::lifecycle::ToolState::Cancelled
             } else {
-                crate::acp::lifecycle::ToolState::Declined
+                sage_acp_protocol::lifecycle::ToolState::Declined
             };
             assert!(matches!(settled, AdapterEvent::Item {
                 external_key, tool_state: Some(actual),
-                payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Subagent, label, execution, .. }, ..
+                payload: NormalizedPayload::ToolCall { category: sage_acp_protocol::intent::ToolCategory::Subagent, label, execution, .. }, ..
             } if external_key.as_str() == "task-1" && actual == state && label.as_str() == "Review accessibility" && execution.task_lifecycle == expected));
         }
     }
@@ -354,7 +354,9 @@ fn every_standard_profile_carries_an_execute_command_and_no_other_kind_does() {
     }
 }
 
-fn execution_of(events: &[AdapterEvent]) -> Option<(&str, &crate::acp::intent::ToolExecution)> {
+fn execution_of(
+    events: &[AdapterEvent],
+) -> Option<(&str, &sage_acp_protocol::intent::ToolExecution)> {
     events.iter().find_map(|event| match event {
         AdapterEvent::Item {
             payload:
@@ -537,7 +539,7 @@ fn raw_and_console_output_reject_nul_before_retention_discards_the_bearer_marker
         assert!(matches!(
             result,
             Err(super::translator::TranslationError::Contract(
-                crate::acp::contract::ContractError::ForbiddenContent {
+                sage_acp_protocol::contract::ContractError::ForbiddenContent {
                     field: "toolOutput"
                 }
             ))

@@ -4,7 +4,8 @@
 use serde_json::{Value, json};
 
 use super::{Inbound, SdkBridge};
-use crate::acp::{
+use crate::acp::redaction::text::{Mode, neutralized, redact};
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::{
         ModelId,
@@ -14,7 +15,6 @@ use crate::acp::{
             SessionNoticeLevel, SessionScopedEvent,
         },
     },
-    redaction::text::{Mode, neutralized, redact},
 };
 
 const SOURCE: &str = "claude code";
@@ -299,7 +299,7 @@ fn activity(
     // A clipped id would name another task, so only a whole one is stopped.
     let id_is_task = id.starts_with(TASK_PREFIX) && id.len() <= ID_BYTES;
     let (Ok(id), Ok(kind), Some(Ok(label))) = (
-        crate::acp::intent::ExternalId::new("activityId", clip(id, ID_BYTES)),
+        sage_acp_protocol::intent::ExternalId::new("activityId", clip(id, ID_BYTES)),
         RequiredText::new("activityKind", kind.to_owned()),
         prose(label, SESSION_ACTIVITY_LABEL_BYTES)
             .map(|label| RequiredText::new("activityLabel", label)),

@@ -125,8 +125,8 @@ mod tests {
                 .map(|mode| mode.id)
                 .collect::<Vec<_>>(),
             [
-                crate::acp_protocol::access_mode::SessionAccessMode::Ask,
-                crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly
+                sage_acp_protocol::access_mode::SessionAccessMode::Ask,
+                sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly
             ]
         );
         assert_eq!(custom[1].install_state, "unavailable");

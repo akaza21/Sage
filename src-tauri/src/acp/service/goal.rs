@@ -1,10 +1,8 @@
 use super::*;
-use crate::acp::{
-    goal::{
-        GoalAction, GoalNoticeSink, GoalState, NativeRpcIntent, NativeRpcReply, NativeRpcRequest,
-    },
-    scheduler::RuntimeOwner,
+use crate::acp::goal::{
+    GoalAction, GoalNoticeSink, GoalState, NativeRpcIntent, NativeRpcReply, NativeRpcRequest,
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 impl AcpService {
     #[cfg(test)]
@@ -74,7 +72,7 @@ impl AcpService {
         else {
             return;
         };
-        if !crate::acp_protocol::codex_protocol::speaks_pinned_protocol(
+        if !sage_acp_protocol::codex_protocol::speaks_pinned_protocol(
             session.capabilities.protocol_version.as_str(),
         ) {
             return;
@@ -160,10 +158,8 @@ fn fit_goal_to_page_budget(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::{
-        contract::{BoundedVec, ProjectionRevision, SafeText},
-        goal::{GoalSnapshot, GoalStatus},
-    };
+    use crate::acp::goal::{GoalSnapshot, GoalStatus};
+    use sage_acp_protocol::contract::{BoundedVec, ProjectionRevision, SafeText};
 
     #[test]
     fn goal_reply_accepts_only_the_goal_applied_variant() {

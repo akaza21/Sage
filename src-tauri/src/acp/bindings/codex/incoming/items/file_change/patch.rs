@@ -1,7 +1,7 @@
 //! A contiguous hunk is a replacement excerpt, like ACP replacement text.
 //! Disjoint hunks retain their positions for exact context reconstruction.
 
-use crate::acp_protocol::file_diff::DIFF_SIDE_BYTES_MAX;
+use sage_core::limits::DIFF_SIDE_BYTES_MAX;
 
 pub(super) struct Patch {
     pub old_text: String,

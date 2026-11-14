@@ -1,8 +1,8 @@
-use crate::acp::{contract::RequiredText, intent::ExternalId};
+use sage_acp_protocol::{contract::RequiredText, intent::ExternalId};
 use sage_core::limits::LIMITS;
 
 use super::{AdapterError, CodexAdapter};
-use crate::acp::intent::{NormalizedPayload, session_event::SessionScopedEvent};
+use sage_acp_protocol::intent::{NormalizedPayload, session_event::SessionScopedEvent};
 
 pub(crate) const PENDING_NOTICES_MAX: usize = 4;
 const REPEATED_WARNINGS_MAX: usize = 4;
@@ -33,7 +33,7 @@ impl CodexAdapter {
         if self.bound_child_threads.len() == 32 {
             self.bound_child_threads.remove(0);
         }
-        if let Ok(child) = crate::acp::contract::SafeText::new("childThreadId", child) {
+        if let Ok(child) = sage_acp_protocol::contract::SafeText::new("childThreadId", child) {
             self.bound_child_threads.push(child);
         }
     }

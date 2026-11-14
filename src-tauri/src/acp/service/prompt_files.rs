@@ -85,8 +85,8 @@ impl Resources {
 /// then `@` mentions. Each kind is sent only when the session's negotiated
 /// capabilities admit it; a mention without embedded context is a link.
 pub(crate) fn prompt_blocks(
-    prompt: &crate::acp::intent::Prompt,
-    capabilities: Option<&crate::acp::intent::CapabilitySnapshotV1>,
+    prompt: &crate::acp::transcript_quote::Prompt,
+    capabilities: Option<&sage_acp_protocol::intent::CapabilitySnapshotV1>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let embedded = capabilities.is_some_and(|value| value.prompt_resources);
     let mut blocks = prompt

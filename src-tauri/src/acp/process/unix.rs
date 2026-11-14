@@ -121,9 +121,9 @@ pub(crate) fn launch_fixture_for_test(runtime_epoch: u64) -> RunningTree {
         digest.update(&chunk[..read]);
     }
     let project_root = crate::project_registry::ProjectRootAuthority::for_test(
-        crate::acp::contract::SageProjectId::parse("project-process-fixture").unwrap(),
-        crate::acp::contract::ProjectGeneration::ZERO,
-        crate::acp::contract::SageRootId::parse("root-process-fixture").unwrap(),
+        sage_acp_protocol::contract::SageProjectId::parse("project-process-fixture").unwrap(),
+        sage_acp_protocol::contract::ProjectGeneration::ZERO,
+        sage_acp_protocol::contract::SageRootId::parse("root-process-fixture").unwrap(),
         &std::env::current_dir().unwrap(),
     )
     .unwrap();

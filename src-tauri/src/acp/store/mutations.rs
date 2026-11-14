@@ -1,10 +1,8 @@
-use crate::{
-    acp::{
-        contract::ProjectionRevision,
-        lifecycle::{DeliveryState, TurnState, TurnTerminalOutcome},
-        recovery::RecoveryReport,
-    },
-    acp_protocol::permissions::PermissionIntent,
+use crate::acp::recovery::RecoveryReport;
+use sage_acp_protocol::{
+    contract::ProjectionRevision,
+    lifecycle::{DeliveryState, TurnState, TurnTerminalOutcome},
+    permissions::PermissionIntent,
 };
 
 use super::{

@@ -1,10 +1,8 @@
 use std::sync::Arc;
 
 use super::*;
-use crate::acp::{
-    attached_context::files::images::{ImagePreview, PromptImage, PromptImages},
-    intent::ImageMediaType,
-};
+use crate::acp::attached_context::files::images::{ImagePreview, PromptImage, PromptImages};
+use sage_acp_protocol::intent::ImageMediaType;
 use sage_core::limits::ECHOED_PROMPT_IMAGE_TOTAL_BYTES;
 
 fn prompt(sizes: &[usize]) -> AdapterCommand {
@@ -22,7 +20,7 @@ fn prompt(sizes: &[usize]) -> AdapterCommand {
     AdapterCommand::Prompt {
         prompt,
         client_message_id: RequiredText::new("client", "image-prompt").unwrap(),
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     }
 }
 

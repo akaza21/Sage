@@ -1,6 +1,5 @@
-use crate::acp_protocol::codex_protocol::{
-    PINNED_CODEX_VERSION, pinned_codex_version, pinned_schema_prefix,
-};
+use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
+use sage_acp_protocol::{pinned_codex_version, pinned_schema_prefix};
 
 pub(crate) const MANAGED_CODEX_HOME: &str = concat!(
     r"C:\SageHarnesses\CodexState\codex-app-server-",

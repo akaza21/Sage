@@ -1,5 +1,7 @@
-use crate::acp::{
-    bindings::adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError, ResourceMapper},
+use crate::acp::bindings::adapter::{
+    AdapterEgress, AdapterEvent, AdapterRuntimeError, ResourceMapper,
+};
+use sage_acp_protocol::{
     contract::SafeText,
     intent::NormalizedPayload,
     lifecycle::{ItemLifecycle, ToolState},

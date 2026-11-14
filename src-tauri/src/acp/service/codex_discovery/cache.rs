@@ -5,12 +5,14 @@ use crate::acp::{
         CodexAccountSnapshot, CodexDiscoveryContent, CodexDiscoveryRunError,
         CodexProjectRootAuthority,
     },
-    contract::{ProjectGeneration, RuntimeEpoch, SageProjectId, SageRootId},
-    intent::{BindingId, ModelId},
     ipc::{
         CodexDiscoveryAccount, CodexDiscoveryModel, CodexDiscoveryResponse,
         GetCodexDiscoveryRequest,
     },
+};
+use sage_acp_protocol::{
+    contract::{ProjectGeneration, RuntimeEpoch, SageProjectId, SageRootId},
+    intent::{BindingId, ModelId},
 };
 
 #[derive(Clone, PartialEq, Eq)]
@@ -116,10 +118,8 @@ impl DiscoveryCache {
         binding_id: &str,
         model: Option<ModelId>,
     ) {
-        use crate::acp::{
-            contract::{RequiredText, RuntimeEpoch},
-            ipc::{CodexDiscoveryAccount, CodexDiscoveryModel},
-        };
+        use crate::acp::ipc::{CodexDiscoveryAccount, CodexDiscoveryModel};
+        use sage_acp_protocol::contract::{RequiredText, RuntimeEpoch};
 
         let scope = CacheScope {
             project_id: project_root.project_id().clone(),

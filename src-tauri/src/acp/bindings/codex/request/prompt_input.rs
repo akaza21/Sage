@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
 use super::RequestError;
-use crate::acp::intent::Prompt;
+use crate::acp::transcript_quote::Prompt;
 
 /// Codex repeats the images in its own items, so they take the echoed bound.
 pub(super) fn prompt_input(prompt: &Prompt) -> Result<Vec<Value>, RequestError> {

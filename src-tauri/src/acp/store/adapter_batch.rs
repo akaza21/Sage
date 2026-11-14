@@ -1,16 +1,14 @@
 use rusqlite::Transaction;
 
-use crate::{
-    acp::{
-        contract::{
-            EntityRevision, ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId,
-            SageChatId, SageProjectId, SageTurnId,
-        },
-        intent::{ActivityProvenanceV1, ExternalId},
-        lifecycle::{ActivityLifecycle, DeliveryState, TurnState, TurnTerminalReason},
-        projection::ActivityRole,
+use crate::acp::projection::ActivityRole;
+use sage_acp_protocol::{
+    contract::{
+        EntityRevision, ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId,
+        SageChatId, SageProjectId, SageTurnId,
     },
-    acp_protocol::permissions::PermissionIntent,
+    intent::{ActivityProvenanceV1, ExternalId},
+    lifecycle::{ActivityLifecycle, DeliveryState, TurnState, TurnTerminalReason},
+    permissions::PermissionIntent,
 };
 
 use super::snapshots::FilePairCommand;
@@ -65,10 +63,10 @@ pub(crate) struct ChildLiveItemCommand {
     pub child_thread_id: ExternalId,
     pub child_turn_id: ExternalId,
     pub item_id: ExternalId,
-    pub role: Option<crate::acp_protocol::codex_protocol::ChildTextRole>,
-    pub lifecycle: crate::acp::lifecycle::ItemLifecycle,
-    pub tool_state: Option<crate::acp::lifecycle::ToolState>,
-    pub payload: crate::acp::intent::NormalizedPayload,
+    pub role: Option<sage_acp_protocol::codex_protocol::ChildTextRole>,
+    pub lifecycle: sage_acp_protocol::lifecycle::ItemLifecycle,
+    pub tool_state: Option<sage_acp_protocol::lifecycle::ToolState>,
+    pub payload: sage_acp_protocol::intent::NormalizedPayload,
     pub now_millis: i64,
 }
 
@@ -318,7 +316,7 @@ fn apply_event(
             scope::verify_item_scope(owner, command)?;
             if matches!(
                 command.payload,
-                crate::acp::intent::NormalizedPayload::FileChangeDiff { .. }
+                sage_acp_protocol::intent::NormalizedPayload::FileChangeDiff { .. }
             ) {
                 return super::snapshots::apply_summary_in(transaction, command);
             }
@@ -369,7 +367,7 @@ fn apply_event(
                 super::requests::receive_permission_request_in(transaction, intent, *now_millis)?;
             let declined = super::requests::commit_decline_in(transaction, intent, *now_millis)?;
             Ok(received.disposition == MutationDisposition::Applied
-                || declined == crate::acp_protocol::permissions::DeclineCommit::Applied)
+                || declined == sage_acp_protocol::permissions::DeclineCommit::Applied)
         }
         AdapterInboundEvent::Session(command) => {
             super::session_surface::apply_in(transaction, owner, command)

@@ -2920,7 +2920,6 @@ version = "0.1.0"
 dependencies = [
  "aes",
  "aes-gcm",
- "agent-client-protocol-schema",
  "base64 0.22.1",
  "block2",
  "csv-core",
@@ -2942,6 +2941,7 @@ dependencies = [
  "regex",
  "rusqlite",
  "rustls",
+ "sage-acp-protocol",
  "sage-core",
  "sage-process",
  "sage-test-support",
@@ -2966,6 +2966,19 @@ dependencies = [
  "windows-future",
  "windows-sys 0.61.2",
  "zeroize",
+]
+
+[[package]]
+name = "sage-acp-protocol"
+version = "0.0.0"
+dependencies = [
+ "agent-client-protocol-schema",
+ "sage-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.19",
+ "uuid",
 ]
 
 [[package]]

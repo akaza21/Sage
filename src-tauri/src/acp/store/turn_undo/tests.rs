@@ -1,11 +1,13 @@
 use super::{UndoneThread, fixture::Fixture};
 use crate::acp::{
-    contract::{ClientIntentId, ProjectGeneration, RuntimeEpoch, SageAgentSessionId},
-    intent::Prompt,
     store::{
         MutationDisposition, PrepareTurnCommand, RestartSessionCommand, StoreError, load_chat_page,
         prepare_turn, restart_undone_session, unstarted_continuation,
     },
+    transcript_quote::Prompt,
+};
+use sage_acp_protocol::contract::{
+    ClientIntentId, ProjectGeneration, RuntimeEpoch, SageAgentSessionId,
 };
 
 #[test]

@@ -4,7 +4,7 @@ use sage_core::limits::LIMITS;
 
 use super::FixtureError;
 use super::generated_cases::{FROZEN_CASES, FrozenOwner, FrozenPhase};
-use crate::acp_protocol::native_cases::JOURNEY_CASES;
+use sage_acp_protocol::native_cases::JOURNEY_CASES;
 
 const CHARACTERIZATION_CASES: [(&str, &str); 10] = [
     (

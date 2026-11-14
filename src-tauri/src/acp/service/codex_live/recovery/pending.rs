@@ -3,9 +3,9 @@ use std::sync::Arc;
 use crate::acp::{
     process::TreeControl,
     runtime::{CoordinatorActivationJournal, LiveRunnerHandle, RuntimeHost, SessionTreeLease},
-    scheduler::RuntimeOwner,
     store::ActivationAbortCategory,
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 use super::super::{ActivationAbortIntent, CodexActivationDriver, live_recovery::LiveHostRecovery};
 

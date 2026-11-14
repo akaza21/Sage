@@ -286,9 +286,9 @@ impl CodexDiscoveryManager {
     pub(super) fn validate_session_model(
         &self,
         project_root: &CodexProjectRootAuthority,
-        binding_id: &crate::acp::intent::BindingId,
+        binding_id: &sage_acp_protocol::intent::BindingId,
         binding_digest: [u8; 32],
-        model_id: Option<&crate::acp::intent::ModelId>,
+        model_id: Option<&sage_acp_protocol::intent::ModelId>,
     ) -> Result<(), CodexDiscoveryRunError> {
         project_root
             .revalidate()
@@ -350,7 +350,7 @@ impl CodexDiscoveryManager {
         &self,
         project_root: &CodexProjectRootAuthority,
         binding_digest: [u8; 32],
-        model: Option<crate::acp::intent::ModelId>,
+        model: Option<sage_acp_protocol::intent::ModelId>,
     ) {
         self.seed_session_validation_for_binding_for_test(
             project_root,
@@ -366,7 +366,7 @@ impl CodexDiscoveryManager {
         project_root: &CodexProjectRootAuthority,
         binding_digest: [u8; 32],
         binding_id: &str,
-        model: Option<crate::acp::intent::ModelId>,
+        model: Option<sage_acp_protocol::intent::ModelId>,
     ) {
         self.cache
             .seed_session_validation(project_root, binding_digest, binding_id, model);
@@ -384,12 +384,14 @@ mod tests {
             DiscoveryZeroProcess, RevalidationCheckpoint, parse_packet_metadata,
             run_discovery_protocol, startup_codex_binding_registration,
         },
-        contract::{ProjectGeneration, RequiredText, RuntimeEpoch, SageProjectId, SageRootId},
-        intent::{BindingId, ModelId},
         ipc::{CodexDiscoveryAccount, CodexDiscoveryModel},
         transport::{Frame, FrameWriteOutcome, OutboundFrame},
     };
     use crate::project_registry::ProjectRootAuthority;
+    use sage_acp_protocol::{
+        contract::{ProjectGeneration, RequiredText, RuntimeEpoch, SageProjectId, SageRootId},
+        intent::{BindingId, ModelId},
+    };
     use std::fs;
     use std::{
         sync::{

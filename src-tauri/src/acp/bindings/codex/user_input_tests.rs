@@ -1,11 +1,9 @@
 use serde_json::{Value, json};
 
-use crate::{
-    acp::{
-        intent::{NormalizedPayload, user_input::UserInputAnswers},
-        lifecycle::ServerRequestState,
-    },
-    acp_protocol::permissions::PermissionDecision,
+use sage_acp_protocol::{
+    intent::{NormalizedPayload, user_input::UserInputAnswers},
+    lifecycle::ServerRequestState,
+    permissions::PermissionDecision,
 };
 
 use super::IncomingEvent;
@@ -83,7 +81,7 @@ fn a_question_request_projects_bounded_questions_that_only_answers_or_cancel_res
     assert_eq!(request.auto_resolution_window_ms(), Some(30_000));
     assert_eq!(
         offered_option_kinds.unwrap().as_slice(),
-        [crate::acp::intent::PermissionOptionKind::RejectOnce]
+        [sage_acp_protocol::intent::PermissionOptionKind::RejectOnce]
     );
     for wrong in [
         PermissionDecision::AllowOnce,

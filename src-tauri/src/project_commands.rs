@@ -5,13 +5,13 @@ use sage_core::error::{AppError, AppResult};
 #[cfg(test)]
 use crate::persistence::Database;
 use crate::{
-    acp::contract::SageProjectId,
     browser::BrowserState,
     domain::{ProjectLayoutRequest, ProjectSwitchRequest, ProjectTransitionResult},
     preview_lifecycle::on_committed_project_transition_epoch,
     resource_commands::build_bootstrap_snapshot,
     state::AppState,
 };
+use sage_acp_protocol::contract::SageProjectId;
 use tauri::{AppHandle, State, Window};
 use tauri_plugin_dialog::DialogExt;
 use tracing::info;
@@ -227,7 +227,7 @@ pub(crate) async fn execute_committed_transition_checked<T: Send + 'static>(
     let active_after = state.database.active_project_id().ok().flatten();
     let terminal_cleanup = active_after
         .and_then(|id| SageProjectId::parse(id).ok())
-        .zip(crate::acp::contract::ProjectGeneration::new(committed_epoch).ok())
+        .zip(sage_acp_protocol::contract::ProjectGeneration::new(committed_epoch).ok())
         .map_or_else(
             || state.terminals.shutdown(),
             |(project, generation)| state.terminals.project_changed(&project, generation),

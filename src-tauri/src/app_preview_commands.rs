@@ -4,11 +4,8 @@ mod app_preview;
 use rusqlite::params;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::{
-    acp::{contract::ProjectGeneration, intent::ACP_PROJECTION_CHANGED_EVENT},
-    persistence::Database,
-    state::AppState,
-};
+use crate::{acp::ipc::ACP_PROJECTION_CHANGED_EVENT, persistence::Database, state::AppState};
+use sage_acp_protocol::contract::ProjectGeneration;
 
 use self::app_preview::{
     PreviewDiscoveryRequest, PreviewDiscoveryResponse, PreviewError, PreviewFailure,
@@ -136,7 +133,7 @@ pub(crate) fn stop_preview_children_before_epoch(new_epoch: u64) {
 }
 
 pub(crate) fn retire_preview_runtime_owner(
-    owner: &crate::acp::scheduler::RuntimeOwner,
+    owner: &sage_acp_protocol::scheduler::RuntimeOwner,
 ) -> Result<(), PreviewError> {
     lifecycle::retire_runtime_owner(owner)
 }
@@ -240,7 +237,9 @@ fn validate_session_owner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId};
+    use sage_acp_protocol::contract::{
+        RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
+    };
 
     fn owner() -> PreviewProjectionOwner {
         PreviewProjectionOwner {

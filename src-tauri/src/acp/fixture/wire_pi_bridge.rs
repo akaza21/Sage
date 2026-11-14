@@ -139,7 +139,7 @@ fn bounded_id(id: &str) -> Result<&str, FixtureError> {
 
 #[cfg(test)]
 pub(crate) fn pi_journey_steps_for_test(case: &str) -> Vec<Value> {
-    let case = crate::acp_protocol::native_cases::JOURNEY_CASES
+    let case = sage_acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .find(|entry| entry.id == case)
         .expect("generated Pi case");

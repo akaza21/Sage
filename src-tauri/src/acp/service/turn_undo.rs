@@ -1,8 +1,6 @@
 use super::*;
-use crate::acp::{
-    contract::SageTurnId, intent::ProjectionChangedV1, scheduler::RuntimeOwner,
-    store::UndoneThread, turn_undo::stage_turn_undo,
-};
+use crate::acp::{ipc::ProjectionChangedV1, store::UndoneThread, turn_undo::stage_turn_undo};
+use sage_acp_protocol::{contract::SageTurnId, scheduler::RuntimeOwner};
 
 impl AcpService {
     /// How the running session `owner` would undo `turn`, its chat's latest
@@ -72,7 +70,7 @@ impl AcpService {
         &self,
         owner: &RuntimeOwner,
         turn_id: SageTurnId,
-    ) -> Result<Option<crate::acp::contract::SafeText<512>>, SessionControlError> {
+    ) -> Result<Option<sage_acp_protocol::contract::SafeText<512>>, SessionControlError> {
         let claim = self.claim_undo_lane(owner)?;
         let unknown = |_| SessionControlError::RecoveryRequired;
         let undo = self
@@ -88,7 +86,7 @@ impl AcpService {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .map_err(|_| SessionControlError::RecoveryRequired)?;
-        let binding = crate::acp::intent::BindingId::new("bindingId", binding)
+        let binding = sage_acp_protocol::intent::BindingId::new("bindingId", binding)
             .map_err(|_| SessionControlError::RecoveryRequired)?;
         let command = stage_turn_undo(
             &self.database,
@@ -103,7 +101,7 @@ impl AcpService {
         )?;
         let summary = match self.control_session(
             owner.clone(),
-            crate::acp::session_control::SessionControl::UndoTurn { turn_id },
+            sage_acp_protocol::session_control::SessionControl::UndoTurn { turn_id },
         ) {
             Ok(summary) => summary,
             Err(error) => {
@@ -218,7 +216,7 @@ impl AcpService {
         &self,
         admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
         owner: &RuntimeOwner,
-        generation: crate::acp::contract::ProjectGeneration,
+        generation: sage_acp_protocol::contract::ProjectGeneration,
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
     ) -> Result<RuntimeOwner, UndoneRelaunchError> {
         self.park_undone_runtime(owner)
@@ -231,7 +229,7 @@ impl AcpService {
             project_id: owner.project_id.clone(),
             chat_id: owner.chat_id.clone(),
             expected_projection_revision: snapshot.projection_revision,
-            client_intent_id: crate::acp::contract::ClientIntentId::new(),
+            client_intent_id: sage_acp_protocol::contract::ClientIntentId::new(),
             session_id: owner.session_id.clone(),
             runtime_epoch: session::next_runtime_epoch(&self.database, &owner.session_id)
                 .map_err(UndoneRelaunchError::Activation)?,

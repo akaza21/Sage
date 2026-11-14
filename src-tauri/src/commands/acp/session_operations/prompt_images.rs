@@ -11,11 +11,12 @@ use crate::{
             AttachedContext,
             files::images::{ImagePreview, ImageRefusal, PromptImage, PromptImages, admit_sizes},
         },
-        contract::SageAgentSessionId,
-        intent::{AcpUnavailableReason, ImageMediaType, Prompt},
+        ipc::AcpUnavailableReason,
+        transcript_quote::Prompt,
     },
     image_attachment::ImageAttachedContext,
 };
+use sage_acp_protocol::{contract::SageAgentSessionId, intent::ImageMediaType};
 use sage_core::limits::{
     ECHOED_PROMPT_IMAGE_TOTAL_BYTES, IMAGE_PREVIEW_BYTES, PROMPT_IMAGE_COUNT,
     PROMPT_IMAGE_TOTAL_BYTES,
@@ -130,8 +131,8 @@ fn prompt_bounds(binding_id: &str) -> (crate::image_artifacts::Bounds, usize) {
 }
 
 /// A refusal built from the `limits.rs` numbers.
-fn text(message: String) -> crate::acp::contract::SafeText<8192> {
-    crate::acp::contract::SafeText::new("message", message)
+fn text(message: String) -> sage_acp_protocol::contract::SafeText<8192> {
+    sage_acp_protocol::contract::SafeText::new("message", message)
         .unwrap_or_else(|_| safe_message("The attached images cannot be sent."))
 }
 

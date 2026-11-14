@@ -1,6 +1,6 @@
 use rusqlite::{Transaction, params};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{
         EntityRevision, ProjectionRevision, RuntimeEpoch, SageActivityId, SageAgentSessionId,
         SageChatId, SageItemId, SageProjectId, SageTurnId,
@@ -304,6 +304,6 @@ fn duplicate(
         },
     })
 }
-fn kind_text(value: crate::acp::contract::ItemKind) -> &'static str {
+fn kind_text(value: sage_acp_protocol::lifecycle::ItemKind) -> &'static str {
     value.as_str()
 }

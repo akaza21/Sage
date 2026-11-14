@@ -2,7 +2,7 @@ use serde_json::{Map, Value};
 
 use super::tool_input::command_exit_code;
 use super::{StandardAcpTranslator, TranslationError};
-use crate::acp::{
+use sage_acp_protocol::{
     contract::SafeText,
     intent::{ToolCategory, ToolExecution},
 };

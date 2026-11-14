@@ -9,12 +9,13 @@ use crate::{
     acp::{
         runtime::HostError,
         session_config::{
-            ConfigId, ConfigMutation, choices,
+            choices,
             notices::{self, NoticeReason, SessionConfigNotice},
         },
     },
     persistence::Database,
 };
+use sage_acp_protocol::session_config::{ConfigId, ConfigMutation};
 
 fn service() -> AcpService {
     AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap()
@@ -345,8 +346,9 @@ fn a_restored_config_that_does_not_fit_the_page_shows_only_the_stored_choices() 
         "Model"
     );
     let bytes = |page: &AcpChatPage| serde_json::to_vec(page).unwrap().len();
-    let stored_only =
-        |session: &crate::acp::contract::SageAgentSessionId| service.stored_choices_view(session);
+    let stored_only = |session: &sage_acp_protocol::contract::SageAgentSessionId| {
+        service.stored_choices_view(session)
+    };
     let near_bound = bytes(&page) - 1;
     let size = PageBytes::measure(&page).unwrap();
     fit_config_to_page_budget(&mut page, &size, near_bound, stored_only).unwrap();

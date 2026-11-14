@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::acp::{
-    bindings::adapter::AdapterRuntimeError,
+use crate::acp::bindings::adapter::AdapterRuntimeError;
+use sage_acp_protocol::{
     contract::SafeText,
     intent::{ExternalId, NormalizedPayload},
     lifecycle::ItemLifecycle,

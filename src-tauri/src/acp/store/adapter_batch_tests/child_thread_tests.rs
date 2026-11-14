@@ -300,11 +300,11 @@ fn native_child_identity_reopens_without_enabling_transcript_capability() {
 fn child_transcript_write_rechecks_binding_and_current_epoch() {
     use crate::acp::{
         bindings::codex::test_transcript::child_read as child_read_for_test,
-        scheduler::RuntimeOwner,
         store::child_transcript::{
             ChildTranscriptScope, load_earlier_snapshot, load_snapshot, persist_snapshot,
         },
     };
+    use sage_acp_protocol::scheduler::RuntimeOwner;
 
     let mut fixture = migrated_fixture();
     apply_adapter_inbound_batch(

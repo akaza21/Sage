@@ -370,7 +370,7 @@ pub(crate) async fn steer_acp_turn_inner(
             message: safe_message("The prompt and attached context exceed the native byte limit."),
         }
     })?;
-    let client_message_id = crate::acp::contract::RequiredText::new(
+    let client_message_id = sage_acp_protocol::contract::RequiredText::new(
         "clientMessageId",
         request.client_intent_id.as_str().to_owned(),
     )

@@ -1,11 +1,7 @@
 use super::super::PiRuntime;
+use crate::acp::bindings::adapter::{AdapterEvent, AdapterRuntimeError};
 use crate::acp::bindings::pi::TerminalOutcome;
-use crate::acp::{
-    bindings::adapter::{AdapterEvent, AdapterRuntimeError},
-    contract::SafeText,
-    intent::NormalizedPayload,
-    lifecycle::ItemLifecycle,
-};
+use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload, lifecycle::ItemLifecycle};
 
 impl PiRuntime {
     pub(super) fn start_thought(&mut self) -> Result<AdapterEvent, AdapterRuntimeError> {

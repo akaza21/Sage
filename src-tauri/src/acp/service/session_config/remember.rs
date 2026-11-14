@@ -1,12 +1,12 @@
 //! A write the restore makes on the stored value's behalf is a compare-and-set
 //! against the value the restore read: a pick stored meanwhile always wins.
-use crate::acp::{
+use crate::acp::session_config::{
+    ChoiceRecorder, choices,
+    notices::{self, NoticeReason, SessionConfigNotice},
+};
+use sage_acp_protocol::{
     scheduler::RuntimeOwner,
-    session_config::{
-        ChoiceRecorder, ConfigMutation, ConfigValue, SessionConfig, choices,
-        notices::{self, NoticeReason, SessionConfigNotice},
-        reported::current_value,
-    },
+    session_config::{ConfigMutation, ConfigValue, SessionConfig, reported::current_value},
 };
 
 use super::AcpService;
@@ -73,7 +73,7 @@ impl AcpService {
     /// before the first prompt. Returns whether it was stored.
     pub(crate) fn remember_start_choice(
         &self,
-        session: &crate::acp::contract::SageAgentSessionId,
+        session: &sage_acp_protocol::contract::SageAgentSessionId,
         choice: &ConfigMutation,
     ) -> bool {
         self.database

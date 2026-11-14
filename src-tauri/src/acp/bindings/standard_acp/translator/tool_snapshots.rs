@@ -1,10 +1,11 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
+use sage_acp_protocol::{
     command_output::{join_command_output_blocks, retain_command_output},
     contract::{BoundedVec, SafeText},
-    intent::{COMMAND_RESOURCE_LIMIT, SafeResourceLocation, ToolCategory},
+    intent::{SafeResourceLocation, ToolCategory},
 };
+use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 use sage_core::limits::LIMITS;
 
 use super::super::sanitize::{sanitized_command_output, sanitized_content_output};
@@ -261,7 +262,9 @@ mod tests {
     use serde_json::json;
 
     use super::super::AdapterEvent;
-    use crate::acp::intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason};
+    use sage_acp_protocol::intent::{
+        NormalizedPayload, SafeResourceRef, UnavailableResourceReason,
+    };
 
     struct NoResources;
 

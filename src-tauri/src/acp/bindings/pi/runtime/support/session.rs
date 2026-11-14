@@ -1,9 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use crate::acp::{
-    bindings::adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError},
-    intent::ExternalId,
-};
+use crate::acp::bindings::adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError};
+use sage_acp_protocol::intent::ExternalId;
 
 use super::super::{PiRuntime, RequestKind};
 use crate::acp::bindings::pi::Operation;

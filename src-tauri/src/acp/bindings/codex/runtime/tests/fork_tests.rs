@@ -1,6 +1,6 @@
 use super::*;
 use crate::acp::goal::NativeRpcReply;
-use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
+use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
 fn pinned_fork_schema() -> Value {
     serde_json::from_slice(include_bytes!(

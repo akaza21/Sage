@@ -2,23 +2,25 @@ use rusqlite::OptionalExtension;
 
 use crate::{
     acp::{
-        contract::{
-            RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
-            SageServerRequestId, SageTurnId,
-        },
-        intent::ExternalId,
-        lifecycle::ServerRequestState,
         recovery::{RecoveryReport, recover_after_restart},
         store::{
             AcpStore, DatabaseAcpStore, DenyOnlyPermissionJournal, RequestStateCommand,
             StoreMutation,
         },
     },
-    acp_protocol::permissions::{
+    persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{
+        RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
+        SageServerRequestId, SageTurnId,
+    },
+    intent::ExternalId,
+    lifecycle::ServerRequestState,
+    permissions::{
         DeclineTransport, PermissionDisposition, PermissionError, PermissionIntent,
         decline_permission,
     },
-    persistence::Database,
 };
 
 pub(in crate::acp::fixture) const BINDING_DIGEST: [u8; 32] = [7; 32];

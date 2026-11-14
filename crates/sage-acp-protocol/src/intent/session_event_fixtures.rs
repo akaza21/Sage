@@ -1,0 +1,27 @@
+use super::*;
+
+pub fn notice(level: SessionNoticeLevel, text: &str) -> SessionScopedEvent {
+    SessionScopedEvent::Notice(SessionNotice {
+        level,
+        text: RequiredText::new("noticeText", text).unwrap(),
+        source: None,
+    })
+}
+
+pub fn title(text: &str) -> SessionScopedEvent {
+    SessionScopedEvent::Title {
+        title: Some(RequiredText::new("title", text).unwrap()),
+    }
+}
+
+pub fn activity(id: &str, state: SessionActivityState, progress: &str) -> SessionActivity {
+    SessionActivity {
+        id: ExternalId::new("activityId", id).unwrap(),
+        kind: RequiredText::new("activityKind", "backgroundTask").unwrap(),
+        label: RequiredText::new("activityLabel", "npm test").unwrap(),
+        state,
+        progress: Some(RequiredText::new("activityProgress", progress).unwrap()),
+        in_previous_turn: false,
+        stoppable: false,
+    }
+}

@@ -1,5 +1,6 @@
 use super::*;
-use crate::acp::{contract::SageTurnId, goal::NativeRpcReply, session_control::SessionControl};
+use crate::acp::goal::NativeRpcReply;
+use sage_acp_protocol::{contract::SageTurnId, session_control::SessionControl};
 
 const TURN: &str = "turn-6f9619ff-8b86-d011-b42d-00cf4fc964ff";
 
@@ -13,7 +14,7 @@ fn prompt_command(turn: &str) -> AdapterCommand {
     AdapterCommand::Prompt {
         prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
         client_message_id: RequiredText::new("client", turn).expect("client"),
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     }
 }
 

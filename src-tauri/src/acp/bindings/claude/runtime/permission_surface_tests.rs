@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::intent::NormalizedPayload;
+use sage_acp_protocol::intent::NormalizedPayload;
 
 const HIDDEN: &str =
     "command hidden: contains content Sage will not display; review before approving";
@@ -82,7 +82,7 @@ fn live_reject_only_permission_is_published_without_approval() {
         .expect("permission published");
     assert_eq!(
         offered.as_slice(),
-        &[crate::acp::intent::PermissionOptionKind::RejectOnce]
+        &[sage_acp_protocol::intent::PermissionOptionKind::RejectOnce]
     );
     let request_id = batch
         .events()
@@ -98,8 +98,9 @@ fn live_reject_only_permission_is_published_without_approval() {
     let denial = runtime
         .command(
             crate::acp::bindings::adapter::AdapterCommand::ResolvePermission {
-                request_id: crate::acp::contract::SageServerRequestId::parse(request_id).unwrap(),
-                decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
+                request_id: sage_acp_protocol::contract::SageServerRequestId::parse(request_id)
+                    .unwrap(),
+                decision: sage_acp_protocol::permissions::PermissionDecision::Deny,
             },
         )
         .expect("reject-only request can be denied");
@@ -112,7 +113,7 @@ fn advertised_claude_ask_emits_prompt_then_requires_permission() {
         crate::acp::bindings::access_policy::access_modes("claude-agent-acp", "0.76.0", true);
     assert_eq!(
         capabilities[0].id,
-        crate::acp_protocol::access_mode::SessionAccessMode::Ask
+        sage_acp_protocol::access_mode::SessionAccessMode::Ask
     );
     assert!(capabilities[0].fallback);
     let mut runtime = ClaudeRuntime::fixture();
@@ -174,8 +175,8 @@ fn the_permission_relabel_reaches_the_durable_tool_card() {
     assert_eq!(
         kinds.as_slice(),
         &[
-            crate::acp::intent::PermissionOptionKind::AllowOnce,
-            crate::acp::intent::PermissionOptionKind::RejectOnce
+            sage_acp_protocol::intent::PermissionOptionKind::AllowOnce,
+            sage_acp_protocol::intent::PermissionOptionKind::RejectOnce
         ]
     );
     let card = events

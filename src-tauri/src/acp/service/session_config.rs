@@ -1,11 +1,12 @@
 use super::*;
-use crate::acp::{
+use crate::acp::session_config::{
+    NoticeSink,
+    choices::{Awaiting, RestoredSessionConfig},
+};
+use sage_acp_protocol::{
     contract::BoundedVec,
     scheduler::RuntimeOwner,
-    session_config::{
-        ConfigIntent, NoticeSink, SessionConfig,
-        choices::{Awaiting, RestoredSessionConfig},
-    },
+    session_config::{ConfigIntent, SessionConfig},
 };
 
 #[cfg(test)]
@@ -90,7 +91,7 @@ impl AcpService {
     }
     pub(crate) fn live_owner_of(
         &self,
-        session_id: &crate::acp::contract::SageAgentSessionId,
+        session_id: &sage_acp_protocol::contract::SageAgentSessionId,
     ) -> Option<RuntimeOwner> {
         self.lanes()
             .filter(|lane| lane.runtime.is_active())
@@ -100,14 +101,14 @@ impl AcpService {
     pub(crate) fn cancellable_turn(
         &self,
         owner: &RuntimeOwner,
-        generation: crate::acp::contract::ProjectGeneration,
-    ) -> Result<Option<crate::acp::contract::SageTurnId>, StoreError> {
+        generation: sage_acp_protocol::contract::ProjectGeneration,
+    ) -> Result<Option<sage_acp_protocol::contract::SageTurnId>, StoreError> {
         let snapshot =
             self.intent_snapshot(owner.project_id.clone(), generation, owner.chat_id.clone())?;
         let current = snapshot.session_id.as_ref() == Some(&owner.session_id)
             && snapshot.runtime_epoch == Some(owner.runtime_epoch)
             && snapshot.turn_state.is_some_and(|state| {
-                state.can_transition_to(crate::acp::lifecycle::TurnState::Cancelling)
+                state.can_transition_to(sage_acp_protocol::lifecycle::TurnState::Cancelling)
             });
         Ok(snapshot.turn_id.filter(|_| current))
     }
@@ -115,7 +116,7 @@ impl AcpService {
     pub(crate) fn report_session_config_for_test(
         &self,
         owner: &RuntimeOwner,
-        config: crate::acp::session_config::SessionConfig,
+        config: sage_acp_protocol::session_config::SessionConfig,
     ) {
         let lane = self
             .lane_for(owner)
@@ -127,7 +128,7 @@ impl AcpService {
     pub(crate) fn live_session_config(
         &self,
         owner: &RuntimeOwner,
-    ) -> Option<crate::acp::session_config::SessionConfigOverlay> {
+    ) -> Option<sage_acp_protocol::session_config::SessionConfigOverlay> {
         self.lane_for(owner)?.runtime.config.live_snapshot(owner)
     }
     pub(super) fn compose_session_config(&self, page: &mut AcpChatPage) -> Result<(), StoreError> {
@@ -136,11 +137,11 @@ impl AcpService {
         for session in &mut sessions {
             session.capabilities.config_count = 0;
             if Some(&session.id) != page.current_session_id.as_ref()
-                || session.residency != crate::acp::contract::Residency::Hot
+                || session.residency != sage_acp_protocol::lifecycle::Residency::Hot
                 || !matches!(
                     session.state,
-                    crate::acp::contract::SessionState::Ready
-                        | crate::acp::contract::SessionState::Active
+                    sage_acp_protocol::lifecycle::SessionState::Ready
+                        | sage_acp_protocol::lifecycle::SessionState::Active
                 )
             {
                 continue;
@@ -178,13 +179,13 @@ impl AcpService {
             && let Some(session) = current.filter(|session| {
                 matches!(
                     session.state,
-                    crate::acp::contract::SessionState::Ready
-                        | crate::acp::contract::SessionState::Active
+                    sage_acp_protocol::lifecycle::SessionState::Ready
+                        | sage_acp_protocol::lifecycle::SessionState::Active
                 )
             })
         {
             let awaiting = if session.runtime_epoch.is_some()
-                && session.residency == crate::acp::contract::Residency::Hot
+                && session.residency == sage_acp_protocol::lifecycle::Residency::Hot
             {
                 Awaiting::Report
             } else {
@@ -249,7 +250,7 @@ fn fit_config_to_page_budget(
     page: &mut AcpChatPage,
     size: &PageBytes,
     limit: usize,
-    stored_only: impl FnOnce(&crate::acp::contract::SageAgentSessionId) -> Option<SessionConfig>,
+    stored_only: impl FnOnce(&sage_acp_protocol::contract::SageAgentSessionId) -> Option<SessionConfig>,
 ) -> Result<(), StoreError> {
     if size.of(page)? <= limit {
         return Ok(());
