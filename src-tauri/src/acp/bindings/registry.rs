@@ -1,5 +1,3 @@
-//! Curated native binding metadata and admission authority, not runtime ownership.
-
 use std::sync::Arc;
 
 use crate::settings_store::MAX_CUSTOM_ACP_AGENTS;
@@ -98,7 +96,6 @@ pub(crate) struct BindingRegistry {
     claude_sdk: BindingRecord,
     opencode: BindingRecord,
     pi_native: BindingRecord,
-    /// One fixed record per live user-defined agent.
     custom: Vec<BindingRecord>,
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     pi: Option<BindingRecord>,

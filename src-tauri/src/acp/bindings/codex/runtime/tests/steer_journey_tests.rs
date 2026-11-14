@@ -1,8 +1,3 @@
-//! The `codex-steered-message` native replay journey, frame for frame,
-//! through the Codex runtime: Codex accepts the steer and its own echo of the
-//! steered message adds nothing, so the shared journal's item is the only
-//! user bubble between the two answers.
-
 use super::*;
 
 const STEER: &str = "Synthetic steer: use the other example.";
@@ -30,8 +25,6 @@ fn ingest(runtime: &mut CodexRuntime, value: &Value) -> Vec<AdapterEvent> {
         .to_vec()
 }
 
-/// Ingests the journey's reply to its request `journey_id` as the answer to
-/// `egress`, the request Sage just sent.
 fn answer(
     runtime: &mut CodexRuntime,
     egress: AdapterEgress,

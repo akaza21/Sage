@@ -1,18 +1,9 @@
-//! One-deadline project replacement coordination.
-//!
-//! `AcpService` owns the concrete P-02, discovery, runtime, and projection
-//! dependencies. This helper keeps their ordering and one absolute monotonic
-//! deadline explicit, while allowing deterministic verification without
-//! test-only service state.
-
 use std::time::{Duration, Instant};
 
 use crate::acp::{contract::SageProjectId, runtime::HostError};
 
 use super::{AcpService, shutdown::map_discovery_shutdown};
 
-/// Runs a project replacement under one caller-owned absolute deadline.
-///
 /// P-02 settlement receives the original deadline, discovery receives only
 /// the remainder, and the runtime receives the same original deadline so its
 /// command executor derives the remainder itself. Projection advancement is
@@ -61,8 +52,6 @@ impl AcpService {
         self.revoke_browser_other_projects(active_project);
         // P-02 has no live adapter pump, but its conformance receivers are
         // owner-bound native work and must not survive a project replacement.
-        // The coordinator keeps settlement, discovery, and RuntimeHost under
-        // this one absolute monotonic deadline.
         let deadline = Instant::now()
             + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
         coordinate_project_switch(

@@ -24,7 +24,6 @@ impl CodexAdapter {
         }
     }
 
-    /// Runs this adapter as an observed (user-installed) build.
     #[cfg(test)]
     pub(crate) fn observe_build_for_test(
         &mut self,

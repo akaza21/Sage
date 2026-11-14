@@ -45,7 +45,6 @@ impl CodexProjectRootAuthority {
         self.0
     }
 
-    /// The root a desktop replay's discovery keeps, as a launch would.
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     pub(crate) fn into_project_root(self) -> ProjectRootAuthority {
         self.into_inner()

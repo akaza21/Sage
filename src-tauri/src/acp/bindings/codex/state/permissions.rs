@@ -8,7 +8,6 @@ use crate::{
 };
 use sage_core::limits::LIMITS;
 
-/// The Codex server request that asks the user questions.
 pub(in crate::acp::bindings::codex) const USER_INPUT_METHOD: &str = "item/tool/requestUserInput";
 
 use super::{

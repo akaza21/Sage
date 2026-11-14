@@ -122,7 +122,6 @@ fn pi_fixture_wire_activation_and_idless_idle_discovery_preserve_the_next_prompt
             wire_reply(&mut adapter, &mut wire, query, "piCommandsUnsupported");
             let catalog = adapter.available_commands().snapshot();
             assert_eq!(catalog.revision, 1);
-            // Only Pi's built-in commands remain.
             let names: Vec<_> = catalog.commands.iter().map(|c| c.name.as_str()).collect();
             assert_eq!(names, ["session", "compact"]);
 

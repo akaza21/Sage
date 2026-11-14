@@ -1,6 +1,4 @@
-//! Images a native prompt carries as standard ACP image content blocks. The
-//! bytes come from the owner-bound image artifact store and live only for one
-//! dispatch; nothing here is persisted except each transcript preview.
+//! Nothing here is persisted except each transcript preview.
 use std::sync::Arc;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -44,7 +42,6 @@ impl Default for PromptImages {
     }
 }
 
-/// Why a prompt's images cannot be sent. Each refusal names its fix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ImageRefusal {
     Unsupported,
@@ -54,7 +51,6 @@ pub(crate) enum ImageRefusal {
 }
 
 impl ImageRefusal {
-    /// The user-facing refusal, built from the `limits.rs` numbers.
     pub(crate) fn message(self) -> String {
         match self {
             Self::Unsupported => "This harness does not advertise image prompt support. Remove the images or choose a harness that accepts them.".into(),
@@ -69,7 +65,6 @@ impl ImageRefusal {
     }
 }
 
-/// The count and total-size bound every image prompt meets, from `limits.rs`.
 pub(crate) fn admit_sizes(
     sizes: impl IntoIterator<Item = usize>,
     total_bytes: usize,
@@ -109,7 +104,6 @@ impl PromptImages {
                 .sum::<usize>()
     }
 
-    /// Standard ACP image content blocks, encoded only at the wire edge.
     pub(crate) fn wire(
         &self,
         capabilities: Option<&CapabilitySnapshotV1>,

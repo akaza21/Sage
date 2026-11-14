@@ -32,7 +32,6 @@ fn a_dropped_end_of_run_event_still_ends_the_turn_from_the_streamed_reply() {
         &mut runtime,
         json!({"role":"assistant","content":[],"stopReason":"stop","usage":{"input":7,"output":3,"cacheRead":2}}),
     );
-    // `agent_end` repeated the whole run and outgrew a frame.
     runtime.oversize_frame_skipped();
     let batch = settled(&mut runtime);
     assert!(
@@ -101,7 +100,6 @@ fn settling_without_an_end_of_run_event_is_still_out_of_order_when_nothing_was_d
 #[test]
 fn an_outstanding_read_keeps_oversized_frames_fatal() {
     let mut runtime = fixture_runtime(34);
-    // Initialization reads Pi's state and models; their answers may be large.
     let state = runtime
         .command(AdapterCommand::Initialize)
         .expect("initialize");
@@ -121,7 +119,6 @@ fn oversized_frames_stay_fatal_inside_a_reply_and_between_turns() {
             &Mapper,
         )
         .unwrap();
-    // A dropped update or end of the reply would lose its text.
     assert!(!runtime.skips_oversize_frames());
     runtime
         .ingest(
@@ -142,7 +139,6 @@ fn a_retry_after_a_dropped_end_of_run_event_settles_from_the_retried_reply() {
         json!({"role":"assistant","content":[],"stopReason":"error","errorMessage":"overloaded"}),
     );
     runtime.oversize_frame_skipped();
-    // Pi retries in the same Turn: the dropped run ends before the next one.
     runtime
         .ingest(&frame(json!({"type":"agent_start"})), &Mapper)
         .expect("a new run after a dropped end of run");

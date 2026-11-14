@@ -21,7 +21,6 @@ pub(super) fn assert_named_stream_policy(root: &TestCodexStateRoot, target: &Pat
         ));
     } else {
         assert!(write.is_err(), "a streamless volume must refuse an ADS");
-        // Absence of the capability proves that no hidden stream can exist.
         inspect_test_state(root).expect("bounded state on a streamless volume");
     }
 }

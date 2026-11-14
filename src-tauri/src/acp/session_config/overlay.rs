@@ -93,14 +93,10 @@ struct Entry {
     live: bool,
     overlay: Option<SessionConfigOverlay>,
     tombstone: Option<SessionConfigOverlay>,
-    /// Stored choices have not been reapplied to this runtime yet.
     restore_pending: bool,
-    /// The runtime started a new harness session rather than resuming one.
     new_session: bool,
     /// The restore has started, so what the harness reports is a choice.
     restoring: bool,
-    /// Whether the session is still reading what it offers; see
-    /// `set_hydrating`.
     hydration: restore_gate::Hydration,
     /// Stored choices the restore has not reached yet. What the harness
     /// reports for them is not recorded, so a value it resets on its own
@@ -113,9 +109,7 @@ struct State {
     pending: Option<SessionConfigChangedV1>,
 }
 pub(crate) type NoticeSink = Arc<dyn Fn(SessionConfigChangedV1) + Send + Sync>;
-/// Stores the values a session reported itself once its runtime is restored.
 pub(crate) type ChoiceRecorder = Arc<dyn Fn(&RuntimeOwner, &[ConfigMutation]) + Send + Sync>;
-/// Keeps what a live session reports, shown while it has no runtime.
 pub(crate) type SnapshotRecorder = Arc<dyn Fn(&RuntimeOwner, &SessionConfig) + Send + Sync>;
 #[derive(Default)]
 pub(crate) struct ConfigChannel {
@@ -252,7 +246,6 @@ impl ConfigChannel {
             recorder(owner, choices);
         }
     }
-    /// Marks the reserved runtime as one that started a new harness session.
     pub(crate) fn mark_new_session(&self, owner: &RuntimeOwner) {
         if let Some(entry) = self.lock().entry.as_mut().filter(|e| &e.owner == owner) {
             entry.new_session = true;

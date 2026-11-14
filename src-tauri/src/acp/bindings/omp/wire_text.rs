@@ -16,9 +16,8 @@ pub(crate) fn normalized_text<const MAX: usize>(
     SafeText::new(field, result).map_err(|_| WireError::TextLimit)
 }
 
-/// Sanitizes one already frame-bounded command-output value before its display
-/// suffix is retained. General `normalized_text` callers retain their strict
-/// `SafeText` maximum; oversized command output is valid and is capped later.
+/// General `normalized_text` callers retain their strict `SafeText` maximum; oversized command
+/// output is valid and is capped later.
 pub(crate) fn sanitized_command_output(input: &str) -> Result<String, WireError> {
     let maximum_input = LIMITS.wire.frame_bytes as usize;
     let maximum_output = maximum_input.saturating_mul(COMMAND_OUTPUT_REDACTION_BYTES);

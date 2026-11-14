@@ -1,6 +1,3 @@
-//! Replays an SDK journey against an in-process client, as the child would
-//! run it against Sage over its pipes.
-
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -95,10 +92,8 @@ impl Write for Output {
     }
 }
 
-/// The client's side of the child's stdin.
 struct Pipe<F> {
     client: F,
-    /// The awaited kind, until the client has been asked for it.
     kind: Option<String>,
     input: VecDeque<u8>,
     output: Output,

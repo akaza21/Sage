@@ -6,7 +6,6 @@ use std::{
 
 use super::CodexAdmissionUnavailable;
 
-/// Live launch inputs are reread at revalidation; tests supply their own source.
 pub(crate) trait ObservedLaunchInputs: std::fmt::Debug + Send + Sync {
     fn variable(&self, key: &str) -> Option<String>;
     fn config(&self) -> Result<Option<Vec<u8>>, CodexAdmissionUnavailable>;

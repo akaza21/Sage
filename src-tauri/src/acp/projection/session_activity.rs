@@ -8,8 +8,7 @@ use crate::acp::{
     },
 };
 
-/// A session activity row (a hook run, say) in the work list of the Turn
-/// that owns it. The harness's own row identity stays native.
+/// The harness's own row identity stays native.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnSessionActivityProjection {

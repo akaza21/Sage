@@ -1,7 +1,3 @@
-//! `/mcp`: listing the thread's MCP servers, reloading their configuration
-//! and starting a server's OAuth sign-in. One runs at a time, between
-//! Turns or during one, and none starts a Turn.
-
 use serde_json::{Map, Value};
 
 use super::{AdapterError, CodexAdapter, RequestKind};
@@ -18,8 +14,6 @@ use crate::acp::{
 };
 
 impl CodexAdapter {
-    /// The request for an MCP session control; any other control is not
-    /// one of these.
     pub(crate) fn mcp_request(
         &mut self,
         id: u64,
@@ -54,8 +48,6 @@ impl CodexAdapter {
         self.pending.iter().any(|(_, kind)| is_mcp(*kind))
     }
 
-    /// Stops waiting for a list whose caller gave up; its late answer is
-    /// dropped by `take_mcp_tombstone`.
     pub(crate) fn abandon_mcp_read(&mut self) {
         let read = self
             .pending
@@ -68,8 +60,8 @@ impl CodexAdapter {
         }
     }
 
-    /// A list is on its way, answered or abandoned. Its answer can pass the
-    /// frame bound, since Codex sends every tool's schema with it.
+    /// An MCP list answer can exceed the frame bound because Codex includes
+    /// every tool's schema.
     pub(super) fn mcp_list_awaited(&self) -> bool {
         !self.mcp_read_tombstones.is_empty() || self.awaits(RequestKind::McpList)
     }
@@ -93,8 +85,6 @@ impl CodexAdapter {
         self.mcp_read_tombstones.len() != before
     }
 
-    /// Codex answered an MCP request: a list becomes the inventory, a
-    /// sign-in its authorization URL, and a refusal carries Codex's reason.
     pub(crate) fn complete_mcp(
         &mut self,
         id: u64,
@@ -128,7 +118,6 @@ fn is_mcp(kind: RequestKind) -> bool {
     )
 }
 
-/// Codex's reason, as one clipped line.
 fn reason(error: &Value) -> Option<SafeText<512>> {
     let message = error.get("message").and_then(Value::as_str)?;
     let mut line: String = message

@@ -1,7 +1,3 @@
-//! A send races session events through the production send path: the
-//! renderer read the chat at one projection revision, and session facts
-//! committed before its send reached the coordinator.
-
 use std::{path::Path, sync::Arc};
 
 use super::DatabaseAuthority;
@@ -93,8 +89,6 @@ fn commit(database: &Database, owner: &AdapterStoreOwner, event: SessionScopedEv
     apply(database, owner, vec![AdapterInboundEvent::Session(command)]);
 }
 
-/// A hot session on a real database whose only Turn has completed, so the
-/// next send is admissible.
 fn idle_session() -> IdleSession {
     let root = std::env::temp_dir().join(format!("sage-send-race-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
@@ -247,7 +241,6 @@ fn a_racing_send_survives_neutral_session_events_but_not_a_model_change() {
             })
             .unwrap();
 
-        // The effective model moved after the read: the send is stale.
         let seen = projection(&database.connection(), &owner.chat_id);
         commit(
             &database,
@@ -266,7 +259,6 @@ fn a_racing_send_survives_neutral_session_events_but_not_a_model_change() {
             .await
             .map(|_| ());
 
-        // Only a notice, a title and an activity row landed after the read.
         let seen = projection(&database.connection(), &owner.chat_id);
         commit(
             &database,

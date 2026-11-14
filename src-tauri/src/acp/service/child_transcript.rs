@@ -112,8 +112,6 @@ impl AcpService {
     }
 }
 
-/// The session runs on a binding that keeps its children's transcripts in
-/// the store as they run.
 fn stores_children(
     connection: &rusqlite::Connection,
     scope: &ChildTranscriptScope,

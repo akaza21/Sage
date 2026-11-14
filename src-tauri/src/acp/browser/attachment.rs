@@ -52,11 +52,8 @@ pub(crate) struct AttachmentLease {
     /// The Agent session that last held this lease's authority, which a tab
     /// this one opens joins.
     last_session: Arc<Mutex<Option<String>>>,
-    /// The tab that opened this one, for a popup that joined its opener's
-    /// attachment: Take over, Hand back and Stop on the opener cover it.
+    /// The root opener whose Take over, Hand back and Stop also cover this joined popup.
     opener: Option<String>,
-    /// The developer-mode grant (ADR-0009b): the session and origin the
-    /// user approved, in memory only (`developer.rs`).
     developer: Arc<developer::DeveloperAccess>,
     resources: Arc<resources::Resources>,
 }
@@ -125,16 +122,12 @@ impl AttachmentLease {
         self.end_developer_mode();
     }
 
-    /// Stops the authorities navigations took out of the slot, which ends
-    /// any dispatch still running under them.
     fn stop_retired(&self) {
         if let Ok(mut retired) = self.retired.lock() {
             retired.drain(..).for_each(|authority| authority.stop());
         }
     }
 
-    /// Takes the slot's authority out after a settled navigation, keeping it
-    /// where Stop and Take over still reach it.
     fn retire_slot_authority(&self) {
         let Ok(mut slot) = self.authority.lock() else {
             return;
@@ -181,8 +174,6 @@ pub(crate) struct BrowserAttachments {
     /// Counts hand backs per chat, so a paused call resumes only after one
     /// in its own chat, not after Stop, a detach or another chat's hand back.
     hand_backs: Mutex<HashMap<(SageProjectId, SageChatId), u64>>,
-    /// Agent actions in flight on, or recently ended on, each tab: only a
-    /// popup that opens around one joins (`popup.rs`).
     agent_actions: Mutex<HashMap<String, popup::AgentActivity>>,
 }
 
@@ -302,7 +293,6 @@ impl BrowserAttachments {
                 }
             });
         }
-        // Stop on an opener also stops the popups that joined it.
         if let Ok(mut entries) = self.agent_entries.lock() {
             entries.retain(|_, lease| {
                 if lease.tab_label == tab_label || lease.opener.as_deref() == Some(tab_label) {

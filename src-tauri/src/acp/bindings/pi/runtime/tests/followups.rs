@@ -75,7 +75,6 @@ fn pi_second_extension_gate_after_timeout_can_receive_a_reply() {
         .ingest(&frame(gate("gate-expired")), &Mapper)
         .unwrap();
     let batch = runtime.ingest(&frame(gate("gate-next")), &Mapper).unwrap();
-    // Pi dropped the timed gate on its own, so its card goes with it.
     assert!(matches!(batch.events(), [
         AdapterEvent::PermissionResolved { external_request_id: expired, state: ServerRequestState::Cancelled, .. },
         AdapterEvent::PermissionRequest { external_request_id, .. },

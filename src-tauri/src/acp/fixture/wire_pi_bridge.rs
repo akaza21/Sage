@@ -137,7 +137,6 @@ fn bounded_id(id: &str) -> Result<&str, FixtureError> {
         .ok_or(FixtureError::InvalidArguments)
 }
 
-/// The generated Pi journey's steps, in replay order.
 #[cfg(test)]
 pub(crate) fn pi_journey_steps_for_test(case: &str) -> Vec<Value> {
     let case = crate::acp_protocol::native_cases::JOURNEY_CASES
@@ -147,7 +146,6 @@ pub(crate) fn pi_journey_steps_for_test(case: &str) -> Vec<Value> {
     serde_json::from_str(case.steps_json).expect("generated steps")
 }
 
-/// Runs one journey step against a caller-owned Sage peer.
 #[cfg(test)]
 pub(crate) fn run_pi_step_for_test(step: &Value, input: &mut impl Read, output: &mut impl Write) {
     super::execute_with_io(step, &mut WireState::new(), input, output, &mut Vec::new())

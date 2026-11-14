@@ -1,15 +1,5 @@
-//! Bounded, frame-safe command-output accumulation for Codex notifications.
-//!
-//! Safe text stays in 4KiB rolling chunks, rather than copying a 64KiB suffix
-//! for every token. One state owns at most 65,536 safe bytes, up to 4,095 bytes
-//! of consumed front prefix still held by its first chunk, and 65,536 pending
-//! raw-token bytes: 135,167 owned UTF-8 bytes total. A staged clone owns a
-//! separate bounded copy. This is not an absolute heap claim: string/deque
-//! capacities are reported by `allocated_bytes`; allocator bookkeeping is not
-//! included.
-//! Snapshot projection temporarily assembles bounded 64KiB marker-free and
-//! display strings; aggregate admission must use the truthful `retained_bytes`
-//! charge rather than an assumed total heap size.
+//! Aggregate admission must use the truthful `retained_bytes` charge rather
+//! than an assumed total heap size.
 
 use std::{collections::VecDeque, fmt, mem::size_of};
 
@@ -43,7 +33,6 @@ impl SafeChunk {
     }
 }
 
-/// Marker-free, bounded state for one streamed Codex command output.
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct CommandOutputStream {
     chunks: VecDeque<SafeChunk>,
@@ -148,13 +137,10 @@ impl CommandOutputStream {
         Ok(stream)
     }
 
-    /// Clears safe text, unfinished input, Bearer state, and prior truncation.
     pub(crate) fn clear(&mut self) {
         *self = Self::new();
     }
 
-    /// Builds marker-free output for snapshot retention. Appending itself does
-    /// not rebuild this string; this cost is paid only when projecting/staging.
     pub(crate) fn retained_output(
         &self,
     ) -> Result<RetainedCommandOutput, CommandOutputStreamError> {

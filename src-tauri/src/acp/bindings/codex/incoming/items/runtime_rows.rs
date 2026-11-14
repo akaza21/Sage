@@ -57,7 +57,6 @@ pub(super) fn entered_review(
     )
 }
 
-/// The review's findings are the review Turn's reply.
 pub(super) fn exited_review(
     item: &Map<String, Value>,
 ) -> Result<Option<ItemNormalization>, IngressError> {

@@ -20,16 +20,14 @@ use crate::state::AppState;
 /// a bounded number of rows, so this only trips if the store is wedged.
 const START_CAPTURE_WAIT: Duration = Duration::from_secs(30);
 
-/// Pairs the native state before and after a renderer reload. Both snapshots
-/// scan the store, so neither runs on the UI thread that reports page loads:
-/// a start is captured on the blocking pool, and its finish waits for it.
+/// Both snapshots scan the store, so neither runs on the UI thread that reports
+/// page loads: a start is captured on the blocking pool, and its finish waits.
 #[derive(Default)]
 pub(crate) struct RendererRecreationReloadLifecycle {
     slot: Mutex<Slot>,
     captured: Condvar,
 }
 
-/// A load start's number and the point in time its snapshot describes.
 pub(crate) struct StartPoint {
     id: u64,
     usage: RendererRecreationUsage,
@@ -37,9 +35,7 @@ pub(crate) struct StartPoint {
 }
 
 enum Reader {
-    /// A read transaction opened at the start.
     Pinned(rusqlite::Connection),
-    /// An in-memory store, read live.
     Live,
     /// The pin failed; the start is not captured, so it cannot pair falsely.
     Unavailable,
@@ -95,14 +91,12 @@ impl RendererRecreationReloadLifecycle {
         (pending.project_id == *project_id && pending.chat_id == *chat_id).then_some(pending.before)
     }
 
-    /// Called on the UI thread when a load starts. It numbers the start and
-    /// fixes the point in time the snapshot describes (a read transaction and
-    /// the live counters), so the reloaded page's own requests can never land
-    /// in "before"; the costly hashing waits for [`Self::capture_start`].
+    /// Called on the UI thread. Fixes the point in time the snapshot describes (a
+    /// read transaction and the live counters), so the reloaded page's own
+    /// requests can never land in "before"; the costly hashing waits for
+    /// [`Self::capture_start`].
     ///
-    /// The pinned reader holds back WAL checkpoints until the capture ends,
-    /// for about as long as the old capture held the store lock (and blocked
-    /// every write); the hash reads a bounded number of rows.
+    /// The pinned reader holds back WAL checkpoints until the capture ends.
     pub(crate) fn begin_start(&self, state: &AppState) -> StartPoint {
         let usage = state.acp.renderer_recreation_usage();
         let reader = match state.database.pinned_reader() {
@@ -132,8 +126,6 @@ impl RendererRecreationReloadLifecycle {
         slot.started
     }
 
-    /// Captures the snapshot for `start`, off the UI thread. A newer start
-    /// supersedes it, and its own capture fills the slot instead.
     pub(crate) fn capture_start(&self, state: &AppState, start: StartPoint) {
         // Settles even if the capture panics, so a finish never waits it out.
         let mut settle = SettleOnDrop {
@@ -201,7 +193,6 @@ impl RendererRecreationReloadLifecycle {
         ))
     }
 
-    /// Whether every reported start has been captured within `timeout`.
     fn wait_for_start_capture(&self, timeout: Duration) -> bool {
         let slot = self.slot();
         let (slot, _) = self
@@ -321,8 +312,6 @@ mod tests {
         let older = lifecycle.number_start();
         let newer = lifecycle.number_start();
         assert!(!lifecycle.wait_for_start_capture(no_wait));
-        // The older capture lands after the newer start: it is dropped, and
-        // a finish still waits for the newer one.
         lifecycle.settle_start(older, Some(pending(&service)));
         assert!(!lifecycle.wait_for_start_capture(no_wait));
         assert!(lifecycle.take_finished(&project_id, &chat_id).is_none());

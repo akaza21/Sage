@@ -8,7 +8,6 @@ fn session(event: SessionScopedEvent, now_millis: i64) -> AdapterInboundEvent {
     AdapterInboundEvent::Session(SessionEventCommand { event, now_millis })
 }
 
-/// A fixture chat with Sage's placeholder title and an attached tab.
 fn untitled_chat() -> Fixture {
     let fixture = fixture();
     fixture
@@ -101,7 +100,6 @@ fn same(title: &str, source: &str) -> (String, String, String) {
 
 #[test]
 fn a_cleared_harness_title_restores_the_first_prompt_title() {
-    // The fixture's only turn was prepared from the prompt "test".
     let mut fixture = untitled_chat();
     apply(&mut fixture, title("Harness name"), 6);
     let before = projection(&fixture.connection);

@@ -221,12 +221,10 @@ impl AdapterInboundBatchCommand {
         self.retained_bytes
     }
 
-    /// Read-only view of the store-verified owner of this batch.
     pub(crate) fn owner(&self) -> &AdapterStoreOwner {
         &self.owner
     }
 
-    /// Whether any event in this batch moves the owner Turn to a terminal state.
     pub(crate) fn ends_turn(&self) -> bool {
         self.events.iter().any(
             |event| matches!(event, AdapterInboundEvent::Turn { state, .. } if state.is_terminal()),

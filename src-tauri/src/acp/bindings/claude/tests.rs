@@ -213,7 +213,6 @@ fn p02_claude_real_ingress_preflights_routes_service_and_preserves_string_id() {
                 .is_err()
         );
     }
-    // Every immutable runtime and owner-scope field is independently bound.
     let frame = p02_frame(serde_json::from_str(&request).unwrap());
     let mut wrong_binding = expected.clone();
     wrong_binding.binding_digest = [8; 32];
@@ -1471,8 +1470,6 @@ fn launch_manifest_admits_valid_discovery_shape_and_rejects_contract_drift() {
             .collect(),
         project_root_count: 1,
     };
-    // This discriminates because the validated candidate survives only the
-    // exact Node/adapter contract; each mutation below changes one guard.
     assert!(validate_research_candidate(candidate.clone()).is_ok());
     let mut sdk_mismatch = candidate.clone();
     sdk_mismatch.acp_sdk_version = "1.3.0".into();
@@ -1505,8 +1502,6 @@ fn launch_manifest_admits_valid_discovery_shape_and_rejects_contract_drift() {
 
 #[test]
 fn injectable_discovery_reports_each_admission_refusal_truthfully() {
-    // Each case is a distinct discovery outcome, so this cannot pass if
-    // admission collapses absent, unreadable, and incompatible evidence.
     for (discovery, expected) in [
         (
             ClaudeLaunchDiscovery::AdapterAbsent,

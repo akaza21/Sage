@@ -108,7 +108,6 @@ fn extension_acknowledgment_at_each_model_boundary_preserves_settlement() {
         if ack_after == 1 {
             assert_no_terminal(&reply(&mut runtime, &send, true));
         }
-        // An ended model cycle may continue before the definitive settlement.
         event(&mut runtime, "agent_start");
         event(&mut runtime, "agent_end");
         assert_terminal(&event(&mut runtime, "agent_settled"), TurnState::Completed);
@@ -344,7 +343,6 @@ fn failed_extension_acknowledgment_waits_for_model_settlement_before_reuse() {
             );
             assert_no_terminal(&reply(&mut runtime, &first, false));
             if ack_after_end {
-                // A continuation must not erase the failed RPC outcome.
                 event(&mut runtime, "agent_start");
             }
             assert_text(&mut runtime, "old output", "extension-a");

@@ -228,14 +228,12 @@ fn claude_duplicate_late_and_cancel_are_typed_without_text() {
             .iter()
             .any(|event| matches!(event, AdapterEvent::FilePair { .. }))
     );
-    // Duplicate tool update with identical state and no new content is ignored.
     let duplicate = complete_with(&mut translator, json!([]));
     assert!(
         duplicate
             .iter()
             .any(|event| matches!(event, AdapterEvent::IgnoredDuplicate))
     );
-    // Late update for an unknown tool is a typed error, never invented text.
     let late = json!({
         "method": "session/update",
         "params": {

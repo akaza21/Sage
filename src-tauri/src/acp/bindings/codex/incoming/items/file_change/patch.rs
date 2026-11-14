@@ -1,4 +1,3 @@
-//! Decode only the text actually present in a single file's unified patch.
 //! A contiguous hunk is a replacement excerpt, like ACP replacement text.
 //! Disjoint hunks retain their positions for exact context reconstruction.
 

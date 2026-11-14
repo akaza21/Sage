@@ -1,7 +1,3 @@
-//! A Codex thread's model as a session config choice: `model/list` names the
-//! models the thread can run, a pick goes through the same config seam as
-//! effort, and the next `turn/start` carries it, since Codex applies a
-//! `turn/start` model to that Turn and the ones after it.
 use super::*;
 use crate::acp::{
     contract::SageChatId,
@@ -9,8 +5,6 @@ use crate::acp::{
     session_config::{ConfigIntent, ConfigMutation, ConfigRevision, ConfigValue},
 };
 
-/// The adversarial fixture's restart catalogue: the default model with
-/// three efforts, and a second model with the same efforts.
 fn catalogue() -> Value {
     let efforts = json!([
         {"reasoningEffort":"low","description":"Quick synthetic replay"},
@@ -27,7 +21,6 @@ fn catalogue() -> Value {
     ],"nextCursor":null})
 }
 
-/// A thread running `fixture-model` at Medium, with the catalogue hydrated.
 fn hydrated() -> CodexRuntime {
     let mut runtime = fixture_runtime();
     ready_with_reported_config(&mut runtime, Some("fixture-model"), Some("medium"));
@@ -110,7 +103,6 @@ fn the_thread_model_is_a_choice_among_the_listed_models() {
 
 #[test]
 fn a_picked_model_is_shown_with_its_efforts_and_reaches_the_next_turn_start() {
-    // Without a pick, Codex keeps the thread's own model.
     assert!(
         turn_start(&mut hydrated(), "unpicked")
             .get("model")
@@ -129,7 +121,6 @@ fn a_picked_model_is_shown_with_its_efforts_and_reaches_the_next_turn_start() {
         config["confirmedModel"],
         json!({"id":"fixture-model-deep","name":"Synthetic replay deep"})
     );
-    // The effort the thread ran is offered by the new model, so it stays.
     assert_eq!(option(&config, "effort")["currentValue"], "medium");
     runtime.configure(&pick("effort", "high")).unwrap();
     let params = turn_start(&mut runtime, "after");
@@ -183,7 +174,6 @@ fn a_thread_on_an_unlisted_model_offers_its_own_model_beside_the_listed_ones() {
         .ingest(&frame(json!({"id":list_id,"result":catalogue()})), &Mapper)
         .unwrap();
     let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
-    // Codex did not list the thread's model, so it is named by its id.
     let model = option(&config, "model");
     assert_eq!(model["currentValue"], "hidden-model");
     assert_eq!(
@@ -194,7 +184,6 @@ fn a_thread_on_an_unlisted_model_offers_its_own_model_beside_the_listed_ones() {
             {"value":"fixture-model-deep","name":"Synthetic replay deep"}
         ])
     );
-    // Re-picking the thread's own model changes nothing.
     runtime.configure(&pick("model", "hidden-model")).unwrap();
     assert!(turn_start(&mut runtime, "own").get("model").is_none());
     let mut runtime = fixture_runtime();
@@ -206,7 +195,6 @@ fn a_thread_on_an_unlisted_model_offers_its_own_model_beside_the_listed_ones() {
     runtime.configure(&pick("model", "fixture-model")).unwrap();
     let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
     assert_eq!(option(&config, "model")["currentValue"], "fixture-model");
-    // The listed model shows its thinking levels at the thread's effort.
     assert_eq!(option(&config, "effort")["currentValue"], "medium");
     let params = turn_start(&mut runtime, "listed");
     assert_eq!(params["model"], "fixture-model");
@@ -215,9 +203,6 @@ fn a_thread_on_an_unlisted_model_offers_its_own_model_beside_the_listed_ones() {
 
 #[test]
 fn switching_to_a_model_always_sends_an_effort_that_model_offers() {
-    // The thread's effort was never reported, or the new model's default is
-    // not among its efforts: the switch still names an effort the new model
-    // runs, so the thread does not keep one it cannot.
     for (reported, default, sent) in [
         (None, json!("high"), "high"),
         (Some("medium"), json!("max"), "low"),
@@ -252,8 +237,6 @@ fn a_reported_thread_settings_change_replaces_the_picked_model() {
     runtime
         .configure(&pick("model", "fixture-model-deep"))
         .unwrap();
-    // Codex reports the thread now runs `fixture-model` at High; that is the
-    // thread's model from here on, and the earlier pick is not sent again.
     runtime
         .ingest(
             &frame(settings_updated("thread-1", "fixture-model", "high")),
@@ -284,7 +267,6 @@ fn the_config_is_hydrating_until_every_listed_page_is_answered() {
     let batch = runtime
         .ingest(&frame(json!({"id":list_id,"result":first})), &Mapper)
         .unwrap();
-    // The thread's model and effort are offered while the next page is read.
     assert!(runtime.config_hydrating());
     assert_eq!(
         runtime

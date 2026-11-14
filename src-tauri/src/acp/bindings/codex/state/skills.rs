@@ -1,7 +1,3 @@
-//! The Codex session's `/` commands: Codex's own commands that map to an
-//! app-server method the session negotiated, then its skills, listed by
-//! `skills/list`, listed again after `skills/changed`, and run by attaching
-//! the skill.
 use std::sync::Arc;
 
 use serde_json::{Map, Value};
@@ -25,7 +21,7 @@ const PATH_BYTES: usize = 1024;
 #[derive(Clone)]
 pub(super) struct Skills {
     list: Arc<CommandState>,
-    /// The list is missing or stale and no read is pending.
+    /// The list needs refreshing; an earlier read may still be pending.
     wanted: bool,
     /// Codex said the skills changed, so reads skip its cache until one
     /// succeeds.
@@ -35,7 +31,6 @@ pub(super) struct Skills {
     reloading: bool,
     /// A refused read was already retried once; reset by a good read.
     retried: bool,
-    /// The bound thread's root, whose skills the menu lists.
     root: Option<String>,
 }
 
@@ -74,8 +69,8 @@ fn text(value: Option<&Value>) -> Option<&str> {
     value.and_then(Value::as_str)
 }
 
-/// The enabled skills a `skills/list` result names, in listed order. A
-/// skill Sage cannot list is left out, not the whole list.
+/// Preserve the skills' wire order.
+/// A skill Sage cannot list is left out, not the whole list.
 fn parse(result: &Map<String, Value>) -> Option<Vec<AvailableCommand>> {
     let entries = result.get("data").and_then(Value::as_array)?;
     let skills = entries
@@ -99,9 +94,6 @@ fn parse(result: &Map<String, Value>) -> Option<Vec<AvailableCommand>> {
     Some(skills)
 }
 
-/// Codex's own commands that run through an app-server method this session
-/// negotiated, or open a panel of what the session reports, worded as Codex
-/// words them.
 fn builtins(capabilities: &CapabilitySnapshotV1) -> Vec<AvailableCommand> {
     let builtin = |name, description, hint| {
         AvailableCommand::new(
@@ -145,8 +137,6 @@ impl CodexAdapter {
         Arc::clone(&self.skills.list)
     }
 
-    /// The thread's root is known, the list is missing or stale, and no
-    /// read of it is pending.
     pub(crate) fn skills_wanted(&self) -> bool {
         self.negotiated.is_some()
             && self.skills.root.is_some()
@@ -195,8 +185,7 @@ impl CodexAdapter {
         self.list_commands(skills.unwrap_or_default());
     }
 
-    /// Lists the built-ins this session negotiated beside these skills. A
-    /// list equal to the shown one keeps its revision, so a pick made from
+    /// A list equal to the shown one keeps its revision, so a pick made from
     /// it still runs.
     pub(crate) fn list_commands(&mut self, skills: Vec<AvailableCommand>) {
         let builtins = self
@@ -238,12 +227,10 @@ impl CodexAdapter {
         self.skills.retried = false;
     }
 
-    /// A read that never reached Codex is sent again as it was.
     pub(crate) fn skills_unsent(&mut self) {
         self.skills.wanted = true;
     }
 
-    /// The listed skill this prompt runs, as its name and path.
     pub(crate) fn skill_input(&self, prompt: &Prompt) -> Option<(String, String)> {
         let revision = prompt.command_revision?;
         let listed = self.skills.list.snapshot();

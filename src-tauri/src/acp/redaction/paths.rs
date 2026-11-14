@@ -253,10 +253,7 @@ fn is_path_boundary(value: &[u8], index: usize) -> bool {
     })
 }
 
-/// A rooted prose token that is exactly one of Sage's own session-action
-/// commands, opening a word or a bracket or quote and allowing trailing prose
-/// punctuation, as in "re-run /review" or "(/review).". Any other rooted word,
-/// such as `/root` or `/alice`, may name a real directory and stays a path.
+/// Rooted words other than Sage's session-action commands may name real directories and remain paths.
 pub(crate) fn is_session_action_command(rest: &[u8], previous: Option<u8>) -> bool {
     let end = rest
         .iter()

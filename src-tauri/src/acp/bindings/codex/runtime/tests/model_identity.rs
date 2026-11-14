@@ -48,8 +48,6 @@ fn effort_reset_metadata_is_absent_without_an_advertised_catalog_default() {
 
 #[test]
 fn oversized_combined_config_preserves_identity_through_native_config_channel() {
-    // The thinking level stops fitting beside a long model name; the model
-    // choice still fits and is kept rather than dropped with it.
     for (name, option_count) in [("Short".to_owned(), 2), ("M".repeat(512), 1)] {
         let mut adapter = fixture_runtime();
         initialize(&mut adapter);
@@ -144,7 +142,6 @@ fn confirmed_effort_survives_failed_or_unusable_catalog_hydration() {
         runtime.ingest(&frame(response), &Mapper).unwrap();
         let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
         assert_eq!(config["confirmedEffort"], "high");
-        // No catalogue offers the thread's effort, so no thinking level shows.
         assert!(
             config["configOptions"]
                 .as_array()
@@ -299,7 +296,6 @@ fn missing_reported_effort_never_becomes_catalog_default_effort() {
             config["confirmedModel"],
             json!({"id":"actual","name":"Actual model"})
         );
-        // The thread's model is offered; no effort is inferred for it.
         let categories: Vec<_> = config["configOptions"]
             .as_array()
             .unwrap()

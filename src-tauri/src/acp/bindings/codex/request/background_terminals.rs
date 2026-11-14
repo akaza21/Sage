@@ -8,7 +8,6 @@ use crate::acp::{
 use super::{OutgoingRequest, RequestError, RequestKind};
 
 impl OutgoingRequest {
-    /// One bounded page of background terminals, or a stop of one or all.
     pub(crate) fn background_terminals(
         id: u64,
         thread_id: &RequiredText<512>,

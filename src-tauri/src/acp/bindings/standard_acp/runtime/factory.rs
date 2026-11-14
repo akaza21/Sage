@@ -14,17 +14,13 @@ use crate::{
 
 use super::{super::AdmittedStandardAcpBinding, StandardAcpRuntime};
 
-/// Where a standard ACP runtime re-proves its admitted binding before launch:
-/// OpenCode's discovered install, or a user-defined agent's settings.
 pub(crate) trait StandardAcpBindingSource: Send + Sync {
-    /// The binding as admitted now, revalidated against the disk.
     fn refresh_binding(&self) -> Option<Arc<AdmittedStandardAcpBinding>>;
 
     /// Keeps the sign-in notice the agent's methods produced, so the harness
     /// list can show it. Curated sources already carry their own guidance.
     fn record_sign_in(&self, _notice: &str) {}
 
-    /// A session opened, so any recorded sign-in notice is stale.
     fn session_ready(&self) {}
 }
 

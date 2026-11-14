@@ -185,7 +185,7 @@ impl ImageMediaType {
     }
 }
 
-/// Decoded raster cap. Stored JSON must also fit `LIMITS.wire.normalized_item_bytes`.
+/// Stored JSON must also fit `LIMITS.wire.normalized_item_bytes`.
 pub const IMAGE_DECODED_BYTES_MAX: usize = 262_144;
 /// Standard base64 length for `IMAGE_DECODED_BYTES_MAX` (256 KiB * 4/3).
 pub const IMAGE_BASE64_MAX: usize = 349_544;

@@ -24,7 +24,6 @@ pub(crate) struct ClaudeCapabilityOffer {
     pub fork_session: bool,
     pub prompt: bool,
     pub prompt_resources: bool,
-    /// Standard ACP `promptCapabilities.image`.
     pub prompt_images: bool,
     pub cancel: bool,
     pub models: Vec<ClaudeModel>,

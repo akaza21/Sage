@@ -1,6 +1,3 @@
-//! A session's confirmed config choices survive a new runtime: the resumed
-//! Claude binding writes the stored value back to the harness, and values the
-//! harness no longer offers or refuses fall back to the session's value.
 use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
@@ -21,7 +18,6 @@ use crate::acp::{
 };
 use crate::persistence::Database;
 
-/// The harness side: the options it reports and every request it received.
 pub(super) struct Agent {
     options: Value,
     pub(super) requests: Vec<Value>,
@@ -30,7 +26,6 @@ pub(super) struct Agent {
     pub(super) fail: Option<HostError>,
     /// When each change reached the runtime, and the deadline it was given.
     pub(super) deadlines: Vec<(std::time::Instant, std::time::Instant)>,
-    /// How long the harness takes to answer each change.
     pub(super) delay: std::time::Duration,
     /// Runs once, while the next change is with the harness.
     pub(super) on_send: Option<Box<dyn FnOnce() + Send>>,
@@ -66,8 +61,6 @@ impl Agent {
     }
 }
 
-/// A live runtime whose binding is the real Claude runtime, answered in
-/// memory by `Agent` instead of a child process.
 struct HarnessEngine {
     claude: InMemoryClaude,
     agent: Arc<Mutex<Agent>>,
@@ -199,7 +192,6 @@ fn seed_binding(service: &AcpService, binding: &str) {
     connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,created_at,updated_at) VALUES('session-restore','project-restore','chat-restore',0,?3,?1,'external-a',?2,'ready','cold',1,1)", [&"a".repeat(64), &capabilities(), binding]).unwrap();
 }
 
-/// A capability snapshot the chat page can project.
 fn capabilities() -> String {
     serde_json::to_string(&crate::acp::intent::CapabilitySnapshotV1 {
         schema_version: crate::acp::contract::SchemaVersionV1,
@@ -246,7 +238,6 @@ pub(super) fn start(
     open(service, owner, false, "ask", options)
 }
 
-/// Finishes starting a resumed runtime whose slot `owner` already reserved.
 pub(super) fn start_reserved(
     service: &AcpService,
     owner: &RuntimeOwner,
@@ -255,8 +246,6 @@ pub(super) fn start_reserved(
     open_reserved(service, owner, false, "ask", options)
 }
 
-/// Starts a runtime that opens a new session (`new`) or resumes one, in
-/// `mode`.
 fn open(
     service: &AcpService,
     owner: &RuntimeOwner,
@@ -380,7 +369,6 @@ fn a_restarted_runtime_sends_the_stored_effort_before_the_next_prompt() {
         assert_eq!(stored(&service), [option("effort", "high")]);
         service.shutdown_blocking().unwrap();
     }
-    // Sage restarts; the session resumes with the harness default again.
     let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
     let resumed = owner(2);
     let agent = start(&service, &resumed, effort("low"));
@@ -393,9 +381,7 @@ fn a_restarted_runtime_sends_the_stored_effort_before_the_next_prompt() {
         requests[0]["params"],
         json!({"sessionId":"external-a","configId":"effort","value":"high"})
     );
-    // The composer reads the live overlay, which now shows the choice.
     assert_eq!(shown_effort(&service, &resumed), "high");
-    // Restoring happens once per runtime; a later prompt sends nothing more.
     service.restore_session_config(&resumed).unwrap();
     assert_eq!(agent.lock().unwrap().requests.len(), 1);
     service.shutdown_blocking().unwrap();
@@ -426,8 +412,6 @@ fn values_no_longer_offered_or_refused_fall_back_to_the_session_without_retrying
     let agent = start(&service, &resumed, effort("low"));
     agent.lock().unwrap().refuse = true;
     service.restore_session_config(&resumed).unwrap();
-    // "max" is not offered and "retired" is gone: nothing is sent for them.
-    // The offered mode is sent once, refused, and not retried.
     let requests = agent.lock().unwrap().requests.clone();
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0]["method"], "session/set_mode");
@@ -438,7 +422,6 @@ fn values_no_longer_offered_or_refused_fall_back_to_the_session_without_retrying
     assert_eq!(kept, [option("effort", "low"), mode("ask")]);
     service.restore_session_config(&resumed).unwrap();
     assert_eq!(agent.lock().unwrap().requests.len(), 1);
-    // Only a confirmed choice is stored: a refused one leaves the store alone.
     assert_eq!(
         choose(&service, &resumed, option("effort", "high")),
         Err(HostError::ConfigMutationRejected)
@@ -456,13 +439,11 @@ fn a_binding_whose_access_owns_its_mode_never_has_a_stored_mode_reapplied() {
         {
             let connection = service.database.connection();
             let session = &owner(1).session_id;
-            // Picked before the chat's access was lowered.
             assert!(choices::record(&connection, session, &mode("code"), 1).unwrap());
             assert!(choices::record(&connection, session, &option("effort", "high"), 2).unwrap());
         }
         let resumed = owner(2);
         let agent = start(&service, &resumed, effort("low"));
-        // Whenever the restore finishes, it sends no mode.
         service.restore_session_config(&resumed).unwrap();
         let requests = agent.lock().unwrap().requests.clone();
         assert_eq!(requests.len(), 1, "{binding}");
@@ -480,7 +461,6 @@ fn restore_waits_until_the_session_reports_options() {
     channel.update(&runtime, SessionConfig::default()).unwrap();
     channel.publish(&runtime);
     let has_options = |config: &SessionConfig| !config.config_options.as_slice().is_empty();
-    // A harness that reports its options after activation stays pending.
     assert!(channel.take_restore(&runtime, &[], has_options).is_none());
     channel
         .update(
@@ -502,7 +482,6 @@ fn a_new_sessions_first_mode_survives_a_resume_that_starts_elsewhere() {
     let path = directory.join("sage.db");
     let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
     seed(&service);
-    // A new session starts in "default"; the user never changes the mode.
     let first = owner(1);
     let agent = open(&service, &first, true, "default", effort("low"));
     service.restore_session_config(&first).unwrap();
@@ -545,7 +524,6 @@ fn stored_options_are_kept_while_the_session_has_not_reported_options() {
         assert!(choices::record(&connection, session, &mode("code"), 1).unwrap());
         assert!(choices::record(&connection, session, &option("effort", "high"), 2).unwrap());
     }
-    // Modes are reported at activation; options are not yet.
     let resumed = owner(2);
     let agent = start(&service, &resumed, json!([]));
     service.restore_session_config(&resumed).unwrap();
@@ -580,11 +558,9 @@ fn what_the_harness_reports_itself_is_stored_once_the_runtime_is_restored() {
     channel.reserve(runtime.clone());
     channel.update(&runtime, config("plan", "high")).unwrap();
     channel.publish(&runtime);
-    // Before restore, what the session reports is its defaults, not a choice.
     channel.update(&runtime, config("plan", "low")).unwrap();
     assert!(recorded.lock().unwrap().is_empty());
     assert!(channel.take_restore(&runtime, &[], |_| true).is_some());
-    // Then the harness leaves plan mode on its own and resets the effort.
     channel
         .update(&runtime, config("acceptEdits", "high"))
         .unwrap();
@@ -615,8 +591,6 @@ fn an_effort_the_harness_resets_keeps_its_stored_value_until_it_is_restored() {
     }]);
     let resumed = owner(2);
     let agent = start(&service, &resumed, options);
-    // The model is restored first; it resets the effort to "low", and the
-    // budget runs out before the effort is reached.
     let mut sent = 0;
     service
         .restore_until(&resumed, || {
@@ -630,7 +604,6 @@ fn an_effort_the_harness_resets_keeps_its_stored_value_until_it_is_restored() {
     assert_eq!(shown_effort(&service, &resumed), "low");
     assert!(stored(&service).contains(&option("effort", "high")));
     assert!(stored(&service).contains(&option("model", "b")));
-    // Before the next prompt the rest of the restore runs.
     service.restore_session_config(&resumed).unwrap();
     let requests = agent.lock().unwrap().requests.clone();
     assert_eq!(requests.len(), 2);
@@ -639,7 +612,6 @@ fn an_effort_the_harness_resets_keeps_its_stored_value_until_it_is_restored() {
         json!({"sessionId":"external-a","configId":"effort","value":"high"})
     );
     assert_eq!(shown_effort(&service, &resumed), "high");
-    // Once restored, an effort the harness resets is the session's again.
     choose(&service, &resumed, option("model", "a")).unwrap();
     assert_eq!(shown_effort(&service, &resumed), "low");
     assert!(stored(&service).contains(&option("effort", "low")));
@@ -665,8 +637,6 @@ fn a_choice_raced_by_another_change_is_retried_once_against_it() {
     }
     let resumed = owner(2);
     let agent = start(&service, &resumed, effort("low"));
-    // The user switches mode just before the stored effort is sent, so it is
-    // sent against a revision that is no longer current.
     let mut raced = false;
     service
         .restore_until(&resumed, || {
@@ -730,7 +700,6 @@ fn a_change_that_needs_recovery_is_reported_instead_of_the_prompt_being_sent() {
         failure.error,
         crate::acp::service::CodexSessionError::Recovery
     ));
-    // Nothing reached the harness, and the stored choice is kept.
     assert!(agent.lock().unwrap().requests.is_empty());
     assert_eq!(stored(&service), [option("effort", "high")]);
     service.shutdown_blocking().unwrap();
@@ -757,7 +726,6 @@ fn a_choice_the_user_makes_while_the_restore_is_deferred_is_kept() {
             "options":[{"value":"low","name":"Low"},{"value":"medium","name":"Medium"},{"value":"high","name":"High"}]
         }]),
     );
-    // The mode is restored; the budget runs out before the effort.
     let mut sends = 0;
     service
         .restore_until(&resumed, || {
@@ -767,9 +735,7 @@ fn a_choice_the_user_makes_while_the_restore_is_deferred_is_kept() {
         .unwrap();
     assert_eq!(agent.lock().unwrap().requests.len(), 1);
     assert!(stored(&service).contains(&option("effort", "high")));
-    // Before the next prompt the user picks an effort of their own.
     choose(&service, &resumed, option("effort", "medium")).unwrap();
-    // The rest of the restore does not put the old value back.
     service.restore_session_config(&resumed).unwrap();
     assert_eq!(agent.lock().unwrap().requests.len(), 2);
     assert_eq!(shown_effort(&service, &resumed), "medium");
@@ -796,7 +762,6 @@ fn a_change_whose_time_ran_out_before_it_was_sent_is_restored_later_on_a_healthy
     }
     let resumed = owner(2);
     let agent = start(&service, &resumed, effort("low"));
-    // The budget is spent by the time the change reaches the runtime host.
     let spent = std::time::Instant::now();
     seam::spend_deadlines(true);
     let restored = service.restore_until(&resumed, || false);
@@ -820,8 +785,6 @@ fn a_change_whose_time_ran_out_before_it_was_sent_is_restored_later_on_a_healthy
         host.configure_session_until(intent, spent),
         Err(HostError::NotDispatched)
     );
-    // The runtime is not in recovery: the rest of the restore runs before
-    // the next prompt.
     assert!(!matches!(
         host.state(),
         Ok(crate::acp::runtime::HostState::Recovery) | Err(_)
@@ -835,9 +798,6 @@ fn a_change_whose_time_ran_out_before_it_was_sent_is_restored_later_on_a_healthy
 
 #[test]
 fn a_runtime_killed_without_shutdown_leaves_its_session_unresumable_after_restart() {
-    // What the laptop check hit: the app was killed while the session was
-    // hot, so restart recovery fails that session (by design) and the
-    // reopened chat has nothing to resume. Its stored choices are kept.
     let directory =
         std::env::temp_dir().join(format!("sage-config-killed-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&directory).unwrap();
@@ -910,7 +870,6 @@ pub(super) mod seam {
         SPENT.set(spent);
     }
 
-    /// The deadlines set on this thread since the last call.
     pub(in crate::acp::service) fn take_sent() -> Vec<(Instant, Instant)> {
         SENT.with(|sent| std::mem::take(&mut *sent.borrow_mut()))
     }

@@ -1,4 +1,3 @@
-//! Server requests that name a thread this runtime does not own.
 use super::*;
 
 #[test]
@@ -17,8 +16,6 @@ fn an_elicitation_for_a_foreign_thread_is_refused_and_the_session_stays_alive() 
             &Mapper,
         )
         .expect("a foreign elicitation must not tear the runtime down");
-    // Codex gets exactly one answer for it, correlated to its id: the
-    // server's request is cancelled, since no card here can show it.
     let [reply] = batch.egress() else {
         panic!("the elicitation must be answered once");
     };
@@ -32,7 +29,6 @@ fn an_elicitation_for_a_foreign_thread_is_refused_and_the_session_stays_alive() 
             .iter()
             .all(|event| !matches!(event, AdapterEvent::Item { .. }))
     );
-    // The session still runs and completes a Turn on its own thread.
     running_turn(&mut runtime);
     let completed = runtime
         .ingest(

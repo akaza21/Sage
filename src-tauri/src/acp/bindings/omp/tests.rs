@@ -82,9 +82,6 @@ fn p02_omp_real_ingress_preflights_routes_service_and_preserves_numeric_id() {
         binding_digest: [11; 32],
         owner: owner.clone(),
     };
-    // Deferred ingress is intentionally at the runtime boundary, not the
-    // translator: the fixture carries its immutable native identity and an
-    // already-established active external session.
     let (curated, candidate) = admitted_candidate(true);
     let mut runtime = OmpRuntime::fixture(
         curated
@@ -172,7 +169,6 @@ fn p02_omp_real_ingress_preflights_routes_service_and_preserves_numeric_id() {
             Err(crate::acp::bindings::adapter::AdapterRuntimeError::Frame)
         ));
     }
-    // Runtime identity and every owner-scope field must match exactly.
     let mut wrong_binding = expected.clone();
     wrong_binding.binding_digest = [12; 32];
     let mut wrong_project = expected.clone();

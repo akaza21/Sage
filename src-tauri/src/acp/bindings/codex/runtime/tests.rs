@@ -394,7 +394,6 @@ fn codex_model_without_efforts_hides_thinking_config() {
         )
         .unwrap();
     let config = runtime.session_config().unwrap();
-    // No thinking level: the thread's model is the one option.
     let wire = serde_json::to_value(&config).unwrap();
     assert_eq!(wire["configOptions"].as_array().unwrap().len(), 1);
     assert_eq!(wire["configOptions"][0]["category"], "model");
@@ -596,7 +595,6 @@ fn resumed_codex_thread_without_reported_effort_hides_thinking_config() {
         )
         .unwrap();
     let config = runtime.session_config().unwrap();
-    // No thinking level: the thread's model is the one option.
     let wire = serde_json::to_value(&config).unwrap();
     assert_eq!(wire["configOptions"].as_array().unwrap().len(), 1);
     assert_eq!(wire["configOptions"][0]["category"], "model");

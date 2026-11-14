@@ -1,10 +1,4 @@
-//! Claude Code's `system` and `rate_limit_event` messages as session events:
-//! notices (rate limits, model fallbacks, warnings), activities (compaction,
-//! API retries, hooks, background tasks and subagents), mode changes, the
-//! command list, and the output of local slash commands.
-//!
-//! Harness text is neutralized, redacted as prose and clipped. Messages and
-//! fields Sage does not read are ignored, so a CLI addition never fails the
+//! Messages and fields Sage does not read are ignored, so a CLI addition never fails the
 //! session.
 
 use serde_json::{Value, json};
@@ -27,8 +21,6 @@ const SOURCE: &str = "claude code";
 const RETRY_ACTIVITY: &str = "claude-api-retry";
 const COMPACT_ACTIVITY: &str = "claude-compaction";
 const ID_BYTES: usize = 256;
-/// Activity ids of Claude Code's background tasks: the prefix, then the
-/// task id.
 pub(super) const TASK_PREFIX: &str = "task:";
 const CLIPPED: &str = "\u{2026}";
 
@@ -147,7 +139,6 @@ impl SdkBridge {
 
     /// Claude Code changes its own mode too, for example when an approval
     /// applies a `setMode` suggestion; follow it so the picker stays true.
-    /// `compacting` runs as an activity until the status clears.
     fn status(&mut self, sdk: &Value, inbound: &mut Inbound) {
         let compacting = sdk.get("status").and_then(Value::as_str) == Some("compacting");
         if compacting != self.compacting {
@@ -180,7 +171,6 @@ impl SdkBridge {
         }
     }
 
-    /// A rate limit close to or past its cap; ordinary allowances are quiet.
     pub(super) fn rate_limit(sdk: &Value, inbound: &mut Inbound) {
         let info = &sdk["rate_limit_info"];
         let level = match info.get("status").and_then(Value::as_str) {
@@ -209,7 +199,6 @@ impl SdkBridge {
         notice(inbound, level, &text);
     }
 
-    /// The turn ended: a retry still showing as running is over.
     pub(super) fn end_retry(&mut self, inbound: &mut Inbound) {
         if std::mem::take(&mut self.retrying) {
             let label = "Retrying the request to Claude";
@@ -247,8 +236,6 @@ fn hook(sdk: &Value, inbound: &mut Inbound) {
     );
 }
 
-/// Background tasks and subagents: one activity per task, carrying its
-/// latest summary or tool.
 fn task(sdk: &Value, inbound: &mut Inbound) {
     let field = |key: &str| sdk.get(key).and_then(Value::as_str);
     let Some(id) = field("task_id") else {
@@ -330,14 +317,11 @@ fn activity(
             label,
             state,
             progress,
-            // Claude Code stops one background task on request.
             stoppable: id_is_task,
             in_previous_turn: false,
         }));
 }
 
-/// Harness text as shown text: hidden characters dropped, secrets and local
-/// paths redacted, clipped to `max` bytes. Blank text is not shown.
 pub(super) fn prose(text: &str, max: usize) -> Option<String> {
     let text = neutralized(text, true);
     let text = clip(text.trim(), max);

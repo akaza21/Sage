@@ -25,7 +25,6 @@ fn an_undone_turn_leaves_the_page_and_undo_moves_to_the_turn_before() {
     assert!(!fixture.undoable("turn-2"));
     assert!(fixture.undoable("turn-1"));
 
-    // Undoing it again records nothing more.
     let published = fixture.revision();
     let again = fixture.undo("turn-2", false);
     assert_eq!((again.thread, again.published), (UndoneThread::Cut, None));
@@ -54,15 +53,12 @@ fn a_cut_waits_until_a_newer_turn_runs_and_the_latest_undo_wins() {
         fixture.pending(),
         Some(("turn-3".into(), UndoneThread::Cut))
     );
-    // Undoing the turn before as well cuts the thread before that one.
     fixture.undo("turn-2", false);
     assert_eq!(
         fixture.pending(),
         Some(("turn-2".into(), UndoneThread::Cut))
     );
     assert_eq!(fixture.page_turns(), ["turn-1"]);
-    // A later runtime applies the cut; once it has run a turn, the cut is
-    // spent.
     fixture.relaunch();
     assert_eq!(
         fixture.pending(),
@@ -100,7 +96,6 @@ fn the_runtime_that_holds_an_undone_turn_takes_no_prompt_and_a_raced_prompt_refu
         })
     ));
 
-    // A prompt prepared before the undo is recorded wins the race.
     let raced = Fixture::new();
     raced.run();
     raced.turn("turn-1", 0);
@@ -194,7 +189,6 @@ fn a_restart_replaces_the_parked_head_with_a_fresh_one_on_the_same_binding() {
     .unwrap();
     assert_eq!(page.current_session_id, Some(restarted.session_id.clone()));
 
-    // A retry naming the closed session finds the head that has not started.
     let retried = restart().unwrap();
     assert_eq!(retried.session_id, restarted.session_id);
     assert_eq!(retried.disposition, MutationDisposition::Duplicate);

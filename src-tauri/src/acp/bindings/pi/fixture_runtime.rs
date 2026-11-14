@@ -28,7 +28,6 @@ impl RuntimeFactory for PiFixtureRuntimeFactory {
         }
         let mut adapter =
             PiRuntime::from_fixture_binding(&self.binding, runtime_epoch, session_id)?;
-        // A bridge case's child plays a Pi with the bundled extension installed.
         if self.binding.bridge_installed() {
             adapter.enable_bridge_for_root(&self.root)?;
         }
@@ -40,7 +39,6 @@ impl RuntimeFactory for PiFixtureRuntimeFactory {
     }
 }
 
-/// The fixture child that plays Pi, launched in the chat's project root.
 struct FixturePi {
     binding: Arc<PiFixtureBinding>,
     root: Option<crate::project_registry::ProjectRootAuthority>,

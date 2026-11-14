@@ -1347,8 +1347,6 @@ fn curated_initialize_requires_the_provisioned_home_originator_and_windows_host(
             "/result/userAgent",
             json!(user_agent("Codex Desktop", "unknown")),
         ),
-        // The curated package must echo Sage's client identity and report
-        // the x86_64 Windows host it is built for.
         (
             "/result/userAgent",
             json!(format!(
@@ -1411,7 +1409,6 @@ fn curated_initialize_requires_the_provisioned_home_originator_and_windows_host(
         ));
     }
 
-    // A later Codex adding `initialize` fields still starts.
     let mut extra = adapter();
     extra.initialize(3).unwrap();
     let mut response: Value = serde_json::from_slice(&initialize_result(3)).unwrap();
@@ -2607,7 +2604,6 @@ fn goals_follow_the_tested_release_or_a_later_one_and_the_curated_pin() {
         observed.observe_build_for_test(&version_line, characterisation);
         assert_eq!(observed.goal_supported(), supported, "{version_line}");
     }
-    // The curated package is the pinned build; nothing else is curated.
     let mut curated = adapter();
     negotiate(&mut curated);
     assert!(curated.goal_supported());

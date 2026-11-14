@@ -43,8 +43,6 @@ impl ConfiguredCodexSourceRoot {
     }
 }
 
-/// Proof that one exact package closure was physically inspected.
-///
 /// Known nodes remain open and the directory namespace matched across two
 /// bounded observations, but the namespace is not frozen and can change after
 /// the final observation. This proof therefore grants no admission or launch

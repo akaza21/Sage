@@ -321,7 +321,6 @@ impl ClaudeRuntime {
         Ok(batch.finish())
     }
 
-    /// A session-scoped fact for the open session; none before it opens.
     pub(crate) fn session_event(
         &self,
         event: crate::acp::intent::session_event::SessionScopedEvent,
@@ -389,8 +388,6 @@ impl ClaudeRuntime {
         self.ingest_value(value, request_digest, resources)
     }
 
-    /// One decoded ACP frame; `request_digest` identifies it when it is a
-    /// request.
     pub(crate) fn ingest_value(
         &mut self,
         value: Value,

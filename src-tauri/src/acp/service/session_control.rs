@@ -8,8 +8,6 @@ use crate::acp::{
 };
 
 impl AcpService {
-    /// Carries out a session control on the owner's running session; the
-    /// text says what the harness did, when it says.
     pub(crate) fn control_session(
         &self,
         owner: RuntimeOwner,
@@ -21,10 +19,9 @@ impl AcpService {
         }
     }
 
-    /// Sends a session control and answers with the harness's reply; a
-    /// refusal is an error. A control that abandons at its deadline (see
-    /// `SessionControl::abandons_at_deadline`) is late, not a reason to
-    /// recover the runtime.
+    /// A control that abandons at its deadline (see
+    /// `SessionControl::abandons_at_deadline`) is late, not a reason to recover the
+    /// runtime.
     pub(in crate::acp::service) fn session_control_reply(
         &self,
         owner: RuntimeOwner,

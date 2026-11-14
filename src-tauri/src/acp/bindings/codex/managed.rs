@@ -96,11 +96,8 @@ enum ManagedProof {
     Fixture,
 }
 
-/// A retained, packet-bound observation of the managed package namespace and
-/// exact isolated state root. The Windows proof covers canonical paths,
-/// per-entry owners/DACLs, effective access for the current process token,
-/// conservative foreign mutation grants, and descriptor drift. It does not
-/// prove provisioning, machine-wide immutability, signatures, or admission.
+/// It does not prove provisioning, machine-wide immutability, signatures, or
+/// admission.
 #[derive(Debug)]
 pub(crate) struct ManagedStagingPrerequisite {
     package_root: PathBuf,
@@ -188,10 +185,9 @@ pub(crate) fn inspect_managed_staging(
     }
 }
 
-/// Re-inspects the canonical packet paths after the privileged provisioning
-/// transaction. This is intentionally separate from reproduced-package
-/// admission: it can close provisioning, but grants no catalog or launch
-/// authority without the normal upstream prerequisites.
+/// Intentionally separate from reproduced-package admission: it can close
+/// provisioning, but grants no catalog or launch authority without the normal
+/// upstream prerequisites.
 #[cfg(windows)]
 pub(super) fn inspect_provisioned_managed_staging(
     packet: &MetadataValidatedPacket,

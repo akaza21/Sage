@@ -364,7 +364,6 @@ fn a_full_budget_prompt_queues_beside_a_full_data_lane() {
     )
     .unwrap()
     .with_prompt_reserve(PROMPT_EGRESS_RESERVE_BYTES);
-    // Ordinary frames of the largest size fill the data lane.
     let frame = LIMITS.wire.frame_bytes as usize + 1;
     let mut queued = 0;
     while queue.try_push_data_with(frame, || queued).is_ok() {
@@ -377,7 +376,6 @@ fn a_full_budget_prompt_queues_beside_a_full_data_lane() {
         .try_push_prompt_with(PROMPT_FRAME_BYTES + 1, || usize::MAX)
         .unwrap();
     assert_eq!(queue.data_usage().1, data_bytes + PROMPT_FRAME_BYTES + 1);
-    // The reserve holds one prompt; the data lane stays as full as it was.
     assert_eq!(
         queue.try_push_prompt_with(1, || 0),
         Err(QueueError::CountCapacity)
@@ -386,7 +384,6 @@ fn a_full_budget_prompt_queues_beside_a_full_data_lane() {
         queue.try_push_data_with(frame, || 0),
         Err(QueueError::ByteCapacity)
     );
-    // Data order is kept, and the reserve is released when the prompt leaves.
     for value in 0..queued {
         assert_eq!(queue.pop(), Some(value));
     }

@@ -138,7 +138,6 @@ fn bounded_json(surface: &mut SessionSurface) -> Result<String, StoreError> {
     }
 }
 
-/// What the chat shows of a session's surface while `runtime_epoch` runs.
 pub(crate) fn view(
     connection: &rusqlite::Connection,
     project: &str,
@@ -161,8 +160,6 @@ pub(crate) fn activity_id(
         .and_then(|(surface, _)| surface.activity_id(key).cloned()))
 }
 
-/// Whether `turn` is the chat's latest visible turn, ran in `session` and
-/// has finished: the only turn a session undoes.
 pub(crate) fn is_undoable_turn(
     connection: &rusqlite::Connection,
     project: &str,
@@ -186,7 +183,6 @@ pub(crate) fn is_undoable_turn(
         .is_some_and(|(id, owner, terminal)| id == turn && owner == session && terminal.is_some()))
 }
 
-/// Reads one session's stored surface and its row revision.
 pub(super) fn read(
     connection: &rusqlite::Connection,
     project: &str,
@@ -215,7 +211,6 @@ pub(super) fn read(
     Ok(Some((surface, revision)))
 }
 
-/// The current session's notices for the chat page; none without a session.
 pub(super) fn notices(
     connection: &rusqlite::Connection,
     project: &str,

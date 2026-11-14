@@ -18,7 +18,6 @@ impl RuntimeSlot {
         self.active().is_some()
     }
 
-    /// The exact owner this slot retains in any non-empty state.
     pub(crate) fn owner(&self) -> Option<RuntimeOwner> {
         match &*self.lock() {
             State::Starting { owner }

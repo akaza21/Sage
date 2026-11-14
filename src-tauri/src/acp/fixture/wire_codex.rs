@@ -222,8 +222,6 @@ pub(super) fn emit_notification(
 /// than one history page (256 Items) without flooding the driver.
 pub(super) const TRANSCRIPT_MESSAGES: u64 = 600;
 
-/// Writes `count` completed assistant messages into the current turn, so a
-/// journey can open on a long transcript before it streams.
 pub(super) fn emit_transcript(
     count: u64,
     state: &mut WireState,
@@ -290,7 +288,6 @@ pub(super) fn emit_json(
     output.flush().map_err(|_| FixtureError::Io)
 }
 
-/// Emits one of the Codex frame shapes a journey step names.
 pub(super) fn emit_known(
     shape: &str,
     step: &Value,
@@ -319,7 +316,6 @@ pub(super) fn emit_known(
     match shape {
         "codexError" => emit_notification("error", state, output),
         "codexInitializeResult" => emit_response("initialize", state, output),
-        // The install's skills, from its start (see `background`).
         "codexInitializeResultObserved" => {
             background::install(step, state, true)?;
             emit_response("initializeObserved", state, output)

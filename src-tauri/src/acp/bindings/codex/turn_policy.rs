@@ -5,8 +5,8 @@ use crate::{
 use super::request::RequestError;
 use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
-/// The thread settings a `turn/start` changes. Codex applies each one given to
-/// that Turn and the Turns after it; one left out keeps the thread's own.
+/// Settings supplied to `turn/start` persist for that Turn and later Turns;
+/// omitted settings retain the thread's values.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct TurnSettings<'a> {
     pub(crate) model: Option<&'a crate::acp::intent::ModelId>,
@@ -20,9 +20,7 @@ pub(crate) enum TurnPolicySurface {
 }
 
 impl TurnPolicySurface {
-    /// An observed build that runs the tested features takes the tested turn
-    /// policy, including later releases; the curated package must be the
-    /// pinned one.
+    /// None denotes the curated package, which must match the pinned version.
     pub(super) fn from_identity(observed: Option<Characterisation>, runtime_version: &str) -> Self {
         let supported = match observed {
             Some(characterisation) => characterisation.runs_tested_features(),
@@ -110,7 +108,6 @@ mod tests {
                 TurnPolicySurface::Unsupported,
             ),
             (None, PINNED_CODEX_VERSION, TurnPolicySurface::Supported),
-            // The curated package must be the pinned build.
             (None, "99.0.0", TurnPolicySurface::Unsupported),
         ] {
             assert_eq!(

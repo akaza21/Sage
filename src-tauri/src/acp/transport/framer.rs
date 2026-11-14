@@ -43,8 +43,6 @@ pub(crate) enum FrameError {
     AfterEof,
 }
 
-/// Incremental LF/CRLF decoder shared by async and blocking stdout readers.
-///
 /// `push_chunk`, `drain_pending`, and `finish` each yield at most one frame.
 /// When `has_pending_input` is true, callers must drain until it becomes false
 /// before pushing another chunk. Chunks are capped to the same 8 KiB size used
@@ -165,8 +163,6 @@ impl IncrementalFrameDecoder {
         self.pending_cursor < self.pending.len()
     }
 
-    /// Discards all buffered state so a caller can explicitly reuse the
-    /// decoder after terminating a malformed stream.
     #[allow(dead_code, reason = "adapter framing reset seam")]
     pub(crate) fn reset(&mut self) {
         self.assembly.clear();
@@ -517,8 +513,6 @@ mod tests {
         assert!(refused);
     }
 
-    /// A harness's end-of-run event can repeat a long run: one far past the
-    /// ordinary discard bound is still read past, holding only the scanner.
     #[test]
     fn skipped_oversize_reads_past_an_end_of_run_event_beyond_the_discard_bound() {
         let body = "x".repeat(DISCARD_BYTES_MAX + frame_limit());
@@ -628,12 +622,10 @@ mod tests {
             let raw = format!("{prefix}{}{suffix}\n", "x".repeat(frame_limit()));
             assert_eq!(decode_oversize(raw.as_bytes()), Err(FrameError::Oversize));
         }
-        // Only a top-level key counts, and a longer key is not `method`.
         for prefix in [
             r#"{"id":7,"result":{"method":"x"},"text":""#,
             r#"{"id":7,"methods":"x","text":""#,
             r#"{"id":7,"metho":"x","text":""#,
-            // An escape is read as the character it stands for.
             r#"{"id":7,"me\thod":"x","text":""#,
         ] {
             let raw = format!("{prefix}{}\"}}\n", "x".repeat(frame_limit()));

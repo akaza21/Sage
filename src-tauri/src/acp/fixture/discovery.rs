@@ -1,5 +1,3 @@
-//! What a desktop Codex replay case answers to Sage's model discovery.
-//!
 //! Real Codex discovery is a short-lived app-server run of its own:
 //! `initialize`, `account/read` and `model/list`. A replay case is one scripted
 //! session, so its discovery is answered from the case itself: the same
@@ -38,7 +36,6 @@ mod tests {
     #[test]
     fn the_restart_case_offers_both_models_its_session_lists() {
         assert!(native_case_offers_models("codex-config-resume"));
-        // The effort menu case's thread runs its own model whatever is asked.
         assert!(!native_case_offers_models("codex-model-menu"));
         assert!(!native_case_offers_models("claude-config-resume"));
         let models = native_case_discovery_reply(

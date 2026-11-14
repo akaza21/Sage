@@ -1,4 +1,3 @@
-//! Issue-time and completion-time authority checks for native dispatch.
 use super::*;
 
 impl BrowserDispatchPermit {

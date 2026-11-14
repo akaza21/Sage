@@ -10,11 +10,9 @@ pub(super) enum TurnPhase {
     Settled(TerminalOutcome),
 }
 
-/// Prompt delivery, model activity and settlement share one lifecycle. A
-/// command turn (an extension command, or a Pi command such as compact) can
-/// work after delivery but before its RPC returns;
-/// an ordinary prompt must first be acknowledged. Neither acknowledgment nor
-/// agent_end closes model work: agent_settled owns that boundary.
+/// A command turn (an extension command, or a Pi command such as compact) can work after
+/// delivery but before its RPC returns; an ordinary prompt must first be acknowledged. Neither
+/// acknowledgment nor agent_end closes model work: agent_settled owns that boundary.
 #[derive(Debug)]
 pub(super) struct TurnLifecycle {
     pub(super) owner: u64,

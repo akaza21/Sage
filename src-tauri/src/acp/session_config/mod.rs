@@ -1,5 +1,3 @@
-//! Bounded ACP v1 session configuration. The live state is never journaled;
-//! only the last confirmed choice per option is stored (see `choices`).
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};

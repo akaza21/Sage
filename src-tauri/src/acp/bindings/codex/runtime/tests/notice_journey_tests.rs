@@ -1,7 +1,3 @@
-//! The `codex-startup-notices` native replay journey, frame for frame,
-//! through the Codex runtime: the early config warning is held until the
-//! thread binds, and the reroute during the turn updates the model.
-
 use super::*;
 use crate::acp::intent::session_event::{SessionNotice, SessionNoticeLevel, SessionScopedEvent};
 
@@ -21,7 +17,6 @@ fn journey() -> Vec<Value> {
     crate::acp::fixture::replay_native("codex-startup-notices", &requests)
 }
 
-/// The fixture's frame named by `method`, or its response to request `id`.
 fn take(frames: &[Value], method: &str, id: u64) -> Value {
     frames
         .iter()
@@ -33,7 +28,6 @@ fn take(frames: &[Value], method: &str, id: u64) -> Value {
         .clone()
 }
 
-/// Ingests `value` as the answer to `egress`, the request Sage just sent.
 fn answer(
     runtime: &mut CodexRuntime,
     egress: AdapterEgress,

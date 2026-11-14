@@ -94,7 +94,6 @@ fn ack(begin: &ReadTextBegin, state: ReadTextFlushState) -> ReadTextFlushAck {
         state,
     }
 }
-// Scripted physical acceptance; Pending never fabricates transport evidence.
 struct Script {
     remaining: usize,
     bytes: Vec<u8>,

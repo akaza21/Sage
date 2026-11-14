@@ -15,7 +15,6 @@ pub enum Operation {
     SetThinkingLevel {
         level: String,
     },
-    /// Pi's own setting for compacting when the context is nearly full.
     SetAutoCompaction {
         enabled: bool,
     },
@@ -53,7 +52,6 @@ pub enum Operation {
     Native(NativeRequest),
 }
 
-/// Requests Sage makes of Pi's session on behalf of a native RPC.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NativeRequest {
     /// Token and cost totals for the whole session (`get_session_stats`).
@@ -98,7 +96,6 @@ impl NativeRequest {
     }
 }
 
-/// Which native request a reply answers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NativeCommand {
     SessionStats,
@@ -140,11 +137,9 @@ pub struct ModelSummary {
 pub struct StateSnapshot {
     pub model: Option<ModelSummary>,
     pub thinking_level: Option<String>,
-    /// Pi's id for its open session, and the file it keeps it in.
     pub session_id: Option<String>,
     pub session_file: Option<String>,
     pub is_streaming: bool,
-    /// Whether Pi compacts on its own when the context is nearly full.
     pub auto_compaction: Option<bool>,
 }
 
@@ -223,7 +218,6 @@ pub enum AdapterOutput {
     CommandAccepted {
         command: &'static str,
     },
-    /// Pi's session, by its own id, is open for this chat.
     SessionOpened(String),
     State(StateSnapshot),
     Models(Vec<ModelSummary>),
@@ -249,7 +243,6 @@ pub enum AdapterOutput {
         max_attempts: Option<u64>,
         message: String,
     },
-    /// Pi waits to retry a failed reply, or has stopped waiting.
     Retry {
         attempt: u64,
         max_attempts: Option<u64>,

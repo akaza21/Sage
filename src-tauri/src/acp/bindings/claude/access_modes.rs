@@ -1,11 +1,5 @@
-//! Claude Code's access modes. Everything Claude-specific about access lives
-//! here: which Sage access modes Claude offers, and which of its permission
-//! modes carries each. Claude reports its permission modes as session modes
-//! (the ACP adapter's `session/new` modes and its `mode` config option), and
-//! a mode is set through the binding's ordinary session-config path, so the
-//! rest of Sage only sees the harness-neutral `NativeAccessMode` rows. The
-//! binding over Claude Code's SDK protocol reports the same permission modes
-//! through the same path, without the one it cannot select.
+//! Claude reports its permission modes as session modes (the ACP adapter's `session/new`
+//! modes and its `mode` config option).
 
 use crate::acp::bindings::access_policy::NativeAccessMode;
 use crate::acp_protocol::access_mode::SessionAccessMode;
@@ -44,8 +38,8 @@ const FULL_ACCESS: NativeAccessMode = NativeAccessMode {
 pub(crate) const CLAUDE_ACCESS_MODES: &[NativeAccessMode] =
     &[ASK, ACCEPT_EDITS, PLAN, AUTO, FULL_ACCESS];
 
-/// Claude Code over its SDK protocol. Its `bypassPermissions` mode needs a
-/// launch flag Sage does not pass, so Full access is not offered there.
+/// Its `bypassPermissions` mode needs a launch flag Sage does not pass, so Full access is not
+/// offered there.
 pub(crate) const CLAUDE_SDK_ACCESS_MODES: &[NativeAccessMode] = &[ASK, ACCEPT_EDITS, PLAN, AUTO];
 
 /// Claude's permission modes from least to most permissive.
@@ -61,9 +55,8 @@ fn rank(mode: &str) -> Option<usize> {
     PERMISSIVENESS.iter().position(|known| *known == mode)
 }
 
-/// Whether Claude may move a turn that Sage put in `selected` into `next`
-/// on its own: only to a mode no more permissive. Entering plan mode is the
-/// common case. An unknown mode is never admitted.
+/// Claude may move a turn on its own only to a mode no more permissive. An unknown mode is
+/// never admitted.
 pub(crate) fn mode_change_admitted(selected: &str, next: &str) -> bool {
     matches!((rank(selected), rank(next)), (Some(selected), Some(next)) if next <= selected)
 }
@@ -135,7 +128,6 @@ mod tests {
         let plan_exit = |id: &str, kind: &str| option_admitted(id, kind, true);
         assert!(plan_exit("exit-plan-default", "allow_once"));
         assert!(plan_exit("exit-plan-accept-edits", "allow_always"));
-        // Ordinary permission requests keep their own allow options.
         assert!(option_admitted("allow", "allow_once", false));
         assert!(option_admitted("allow-with-updates", "allow_always", false));
         for (refused, kind) in [
@@ -146,17 +138,14 @@ mod tests {
             ("exit-plan-clear-accept-edits", "allow_always"),
             ("exit-plan-future-mode", "allow_once"),
             ("exit-plan-", "allow_once"),
-            // A known id with another kind, or none.
             ("exit-plan-default", "allow_always"),
             ("exit-plan-accept-edits", ""),
-            // A mode switch offered under any other id.
             ("allow", "allow_once"),
             ("allow-with-updates", "allow_always"),
             ("plan-exit-bypass", "allow_always"),
         ] {
             assert!(!plan_exit(refused, kind), "{refused} {kind}");
         }
-        // A plan-exit id is refused even on a request not marked as a switch.
         assert!(!option_admitted("exit-plan-bypass", "allow_always", false));
         assert!(option_admitted("exit-plan-default", "allow_once", false));
     }

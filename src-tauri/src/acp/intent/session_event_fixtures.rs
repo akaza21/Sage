@@ -1,5 +1,3 @@
-//! Test constructors for session-scoped events.
-
 use super::*;
 
 pub(crate) fn notice(level: SessionNoticeLevel, text: &str) -> SessionScopedEvent {

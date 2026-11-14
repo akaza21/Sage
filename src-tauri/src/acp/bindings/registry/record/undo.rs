@@ -1,5 +1,3 @@
-//! Transcript preparation belongs to the admitted binding and its profile.
-
 use super::{AdmittedBinding, AdmittedBindingRecord};
 
 impl AdmittedBindingRecord<'_> {
