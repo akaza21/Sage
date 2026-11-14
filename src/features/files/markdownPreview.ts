@@ -182,6 +182,7 @@ export function renderMarkdownPreview(
         .replace(/`[^`]+`|<\/?[a-z][\w-]*(?:\s[^<>]*)?\/?>/giu, (value) =>
           value[0] === "`" ? value : "",
         )
+        // A soft line break stays a newline for each surface to break or join.
         // A code span's line ending is a space, as CommonMark reads it.
         .replace(/`[^`]+`|[^\S\n]*\n\s*|\s+/gu, (value) =>
           value[0] === "`"

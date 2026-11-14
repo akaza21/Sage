@@ -4,12 +4,14 @@ import type {
   WorkspaceNotifyNotice,
 } from "./workspaceNotifyCompose";
 
+/** Past this many queued folder refreshes, the root resyncs. */
 export const MAX_QUEUED_NOTIFY_INVALIDATIONS = 64;
 /**
  * A `cargo build` with `target` expanded changes it many times a second; once a
  * second keeps the listing current.
  */
 export const IGNORED_SUBTREE_REFRESH_MS = 1_000;
+/** Past this many throttled ignored folders, the root resyncs. */
 export const MAX_THROTTLED_IGNORED_FOLDERS = 64;
 
 /** The path the native watcher gives a resync notice. */
@@ -45,6 +47,7 @@ export function createNotifyRefreshes(
 ) {
   const running = new Map<string, { dirty: ListingRefresh | null }>();
   const queued = new Map<string, ListingRefresh>();
+  // Null when no notice came in since the folder's last refresh.
   const throttled = new Map<string, WorkspaceNotifyNotice | null>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
 

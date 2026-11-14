@@ -11,6 +11,7 @@ export interface RootGitDecorationsView {
   ui: GitDecorationsUiModule;
 }
 
+/** Null while `git.decorations` is off, outside a repository, or until the chunk loads. */
 export function useRootGitDecorations(
   rootId: string,
 ): RootGitDecorationsView | null {

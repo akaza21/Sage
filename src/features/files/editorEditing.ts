@@ -1,4 +1,5 @@
 /**
+ * Esc then Tab still leaves the editor: CodeMirror frees Tab for 2 s after Escape.
  * CodeMirror's own fold gutter and match highlighter redo their work on every
  * change, doubling a keystroke's cost in a large File.
  */

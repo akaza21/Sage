@@ -30,7 +30,9 @@ import "./quick-open.css";
 
 const REFRESH_RETRY_MS = 150;
 const MAX_REFRESH_RETRIES = 40;
+/** How long a command has to move the focus before the box puts it back. */
 const COMMAND_FOCUS_GRACE_MS = 150;
+/** "Indexing…" shows only if the first answer takes longer than this. */
 const INDEXING_DELAY_MS = 120;
 
 type Answer = QuickOpenResponse & { key: string };
@@ -82,6 +84,7 @@ export default function QuickOpen({
   seed = "",
   onClose,
 }: {
+  /** ">" lists commands. */
   seed?: string;
   onClose: () => void;
 }) {
@@ -275,6 +278,7 @@ export default function QuickOpen({
       event.key === "PageDown" ||
       event.key === "PageUp"
     ) {
+      // Home and End stay with the field's caret.
       event.preventDefault();
       move(event.key);
     } else if (event.key === "Enter") {
@@ -317,6 +321,7 @@ export default function QuickOpen({
         aria-modal="true"
         aria-label="Quick Open"
         onMouseDown={(event) => {
+          // Clicks inside keep the focus, and so the keys, in the input.
           if (!(event.target instanceof HTMLInputElement)) {
             event.preventDefault();
           }

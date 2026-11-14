@@ -15,6 +15,7 @@ export type AgentSettingsPage =
 // unmounts the composer) is not kept alive by it.
 let opener: WeakRef<Element> | null = null;
 
+/** Leaves focus alone if it already moved out of `surface`, or on a remount. */
 export function returnFocusToAgentSettingsOpener(surface: Element | null) {
   if (useAgentSettingsState.getState().page !== null) return;
   const target = opener?.deref();

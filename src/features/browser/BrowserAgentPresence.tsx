@@ -38,6 +38,7 @@ export function BrowserAgentPresence({
           Developer mode
         </span>
       ) : null}
+      {/* The label truncates; its title keeps the whole text reachable. */}
       <span
         className="browser-surface__agent-presence-label"
         role="status"

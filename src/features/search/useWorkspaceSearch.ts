@@ -53,6 +53,7 @@ const initialState = (): WorkspaceSearchState => ({
   error: null,
 });
 
+/** A brace that opens no whole `{…}` group is an ordinary character. */
 function splitFilterField(value: string): string[] {
   const pieces = value.match(/(?:[^,{]|\{[^{}]*\}|\{)+/g) ?? [];
   return pieces.map((piece) => piece.trim()).filter(Boolean);
@@ -100,6 +101,7 @@ function expandFilterPiece(piece: string): string[] {
   return /[*?]/.test(pattern) ? [prefixed] : [prefixed, `${prefixed}/**`];
 }
 
+/** Null when the patterns exceed the limits. */
 function filterPatterns(value: string): string[] | null {
   const { filterPatterns: limit, filterBytes } = WORKSPACE_SEARCH_LIMITS;
   const patterns = new Set<string>();

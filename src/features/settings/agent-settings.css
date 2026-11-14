@@ -137,9 +137,6 @@
   }
 }
 
-/* Blocks are spaced by gaps alone. A titled group (Agent's own sections
-   and the Editor settings blocks some pages embed) keeps its heading closer
-   to its content than to the block above it. */
 .agent-settings__page > *,
 .agent-settings
   :is(

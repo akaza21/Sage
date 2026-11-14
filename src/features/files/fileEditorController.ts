@@ -35,6 +35,7 @@ export type ActiveEditorState =
       persisting: boolean;
       saving: boolean;
       message: string | null;
+      /** Persistence failure retained through edits until save, reload, or Keep mine. */
       unstored?: string;
       unwatched?: string;
     };
@@ -88,8 +89,8 @@ export interface FileEditorController {
     bridge: EditorStateBridge,
     canCommit: (resource: ResourceRef) => boolean,
   ): Promise<EditorSaveResult | null>;
-  /** With `reload`, a File that is gone keeps its edits, and the document is
-   * returned for the caller to show rather than shown. */
+  /** Null if nothing was loaded. With `reload`, a File that is gone keeps its
+   * edits, and the document is returned for the caller to show rather than shown. */
   discard(
     bridge: EditorStateBridge,
     canCommit: (resource: ResourceRef) => boolean,

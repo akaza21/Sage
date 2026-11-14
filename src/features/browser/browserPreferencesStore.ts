@@ -45,6 +45,7 @@ const writes = createSettingWriter<BrowserPreferences>(
   DEFAULT_BROWSER_PREFERENCES,
 );
 let restoring: Promise<void> | null = null;
+/** Automatic loads after a failure stop here; Retry on the page still works. */
 export const MAX_AUTOMATIC_LOADS = 3;
 let failedLoads = 0;
 

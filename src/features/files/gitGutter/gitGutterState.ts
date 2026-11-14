@@ -17,8 +17,9 @@ import {
 export type HunkKind = "added" | "modified" | "deleted";
 
 /**
- * A deletion has `from === to`, at the start of the line after it, or at the
- * end of the document (`atEnd`).
+ * `from` starts the first changed line and `to` ends the last. A deletion has
+ * `from === to`, at the start of the line after it, or at the end of the
+ * document (`atEnd`).
  */
 export interface GutterHunk {
   kind: HunkKind;
@@ -30,6 +31,7 @@ export interface GutterHunk {
 }
 
 export interface GutterState {
+  /** Null when the File has no markers. */
   base: string | null;
   hunks: readonly GutterHunk[];
   truncated: boolean;
@@ -97,6 +99,7 @@ export const gutterField = StateField.define<GutterState>({
   create: () => EMPTY,
   update(value, transaction) {
     let next = value;
+    // Any edit closes the peek: its staged text no longer lines up.
     if (transaction.docChanged && value.hunks.length > 0) {
       next = {
         ...value,

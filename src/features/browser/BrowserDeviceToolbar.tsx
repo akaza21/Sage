@@ -14,6 +14,7 @@ import "./browser-device.css";
 interface ToolbarProps {
   size: BrowserDeviceSize;
   scalePercent: number | null;
+  /** A reset step failed: the page may not match this size. */
   unconfirmed: boolean;
   onChange: (size: BrowserDeviceSize) => void;
   onClose: () => void;

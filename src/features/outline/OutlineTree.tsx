@@ -68,6 +68,7 @@ export function OutlineTree({ symbols, location, onOpen }: OutlineTreeProps) {
             style={{ "--outline-depth": symbol.depth } as CSSProperties}
           >
             {row.parent ? (
+              // The row itself is the keyboard target; this is for the pointer.
               <span
                 className={`outline-row__twisty${
                   row.collapsed ? "" : " outline-row__twisty--expanded"

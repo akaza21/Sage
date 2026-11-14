@@ -55,8 +55,8 @@ export function isEditorWatchLimitError(error: unknown): boolean {
 }
 
 /**
- * The not-watched notice is kept apart from the operation message, so an edit,
- * snapshot or save cannot clear it.
+ * Returns the not-watched notice, or null once a watch starts. It is kept apart
+ * from the operation message, so an edit, snapshot or save cannot clear it.
  */
 export function useEditorExternalWatch(
   resource: ResourceRef | undefined,
@@ -187,6 +187,7 @@ export function useEditorExternalWatch(
           const gone =
             missing || (active?.phase === "ready" && isDeletedOnDisk(active));
           if (gone) reread = true;
+          // A watch-limit failure waits for focus rather than polling.
           if (!limited && gone) {
             missing = true;
             retryTimer = setTimeout(tryStart, WATCH_RETRY_MS);

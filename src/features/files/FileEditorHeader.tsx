@@ -57,6 +57,7 @@ export function FileEditorHeader({
           {` · ${diskByteLen.toLocaleString()} disk bytes`}
         </span>
         {unwatched ? (
+          // Beside the size, which a deleted File hides, not inside it.
           <span className="file-header__unwatched" title={unwatched}>
             {unwatched === WATCH_LIMIT_MESSAGE
               ? " · Not watched: watch limit reached"

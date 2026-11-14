@@ -111,6 +111,7 @@ function ElementChip({
     target?.focus({ preventScroll: true });
     returning.current = false;
   };
+  // The chip leaves with its last element, so focus goes to the composer.
   const leaveForComposer = () =>
     chip.current?.closest("form")?.querySelector("textarea")?.focus();
   const deleteEntry = (element: BrowserElementContext, index: number) => {

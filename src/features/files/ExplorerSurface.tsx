@@ -35,6 +35,7 @@ import {
 } from "./fileTree";
 
 let matcherModule: typeof MatcherModule | undefined;
+// A failed load is reported, and Explorer then shows excluded entries.
 const matcherLoaded = import("../../domain/pathGlobMatcher").then(
   (module) => (matcherModule = module),
   (error: unknown) =>

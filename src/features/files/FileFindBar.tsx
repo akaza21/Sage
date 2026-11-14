@@ -76,6 +76,7 @@ const TOGGLES = [
 ] as const;
 
 const ORIGIN = { start: 0, end: 0 };
+// Past the ceiling a File is refused before any scan.
 const large = (text: string) =>
   text.length > 64 * 1024 && text.length <= MAX_EDITABLE_CONTENT_BYTES;
 type Found = { key: readonly unknown[]; matches: FindMatches };

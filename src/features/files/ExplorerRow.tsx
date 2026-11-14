@@ -82,6 +82,7 @@ export const ExplorerRow = memo(
         }}
         onContextMenu={(event) => {
           if (!onContextMenu) return;
+          // Never the webview's own menu (Reload, Inspect) over the tree.
           event.preventDefault();
           onContextMenu(entry.resource, event.currentTarget, {
             x: event.clientX,

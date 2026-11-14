@@ -10,6 +10,7 @@ const STEPS = [
   "data-overflow-actions",
 ] as const;
 const LAST = STEPS.length;
+// Hang from the toolbar row without taking part in its width.
 const POPOVERS = ".browser-downloads__popover";
 // Sub-pixel layout may overshoot an edge by under one device pixel.
 const SUBPIXEL = 0.5;

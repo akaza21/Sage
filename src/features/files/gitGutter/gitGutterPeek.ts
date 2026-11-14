@@ -51,7 +51,9 @@ export class GitGutterPeek extends WidgetType {
   constructor(
     private readonly index: number,
     private readonly total: number,
+    /** The worker listed only the first `total` changes. */
     private readonly more: boolean,
+    /** Null for added lines. */
     private readonly staged: string | null,
     private readonly canRevert: boolean,
     private readonly actions: PeekActions,

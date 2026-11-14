@@ -24,6 +24,7 @@ type NewTabProps = {
   onNewTab: () => void;
   onTool: (tool: AgentTool) => void;
   chatAvailable: boolean;
+  /** Defaults to whether this Chat has a selected answer or a side chat. */
   sideChatAvailable?: boolean;
   terminalAvailable: boolean;
 };

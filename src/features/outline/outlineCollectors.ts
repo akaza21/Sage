@@ -5,7 +5,9 @@ import type { OutlineSymbolKind } from "./syntaxOutline";
 
 export interface OutlineSink {
   text(from: number, to: number): string;
+  /** False when the symbol was not kept. */
   emit(name: string, kind: OutlineSymbolKind, at: number): boolean;
+  /** Nests under the closest preceding heading of a smaller level number. */
   emitHeading(name: string, level: number, at: number): void;
   /**
    * Queues each child of `container` to be collected one level below the

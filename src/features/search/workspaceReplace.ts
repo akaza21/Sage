@@ -81,7 +81,9 @@ export interface WorkspaceReplaceGateway {
 
 export type ReplaceTarget =
   | { kind: "disk"; fingerprint: string }
+  /** The editor showing the File, as one undoable edit. */
   | { kind: "editor"; text: string; content: string }
+  /** The unsaved buffer of a File open in another tab. */
   | { kind: "buffer"; document: EditorDocument; content: string };
 
 export interface PlannedFile {

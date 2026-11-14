@@ -42,6 +42,7 @@ export function useBrowserDownloads(tabId: string): BrowserDownload[] {
   return reported?.tabId === tabId ? reported.downloads : NONE;
 }
 
+/** Fraction (0–1) of the active downloads' known bytes, or null if none. */
 export function activeDownloadProgress(
   downloads: readonly BrowserDownload[],
 ): number | null {

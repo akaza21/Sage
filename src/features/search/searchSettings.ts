@@ -15,6 +15,7 @@ export function sameSearchSettings(
   );
 }
 
+/** Sends a field only when it differs from its default, so a default search carries none. */
 export function searchSettingFields(
   useIgnoreFiles: boolean,
   filesExclude: EditorSettings["files.exclude"],

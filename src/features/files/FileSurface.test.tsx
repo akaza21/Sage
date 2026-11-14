@@ -957,7 +957,6 @@ describe("FileSurface Find and Replace", () => {
   });
 
   it("replaces past the match cap", async () => {
-    // Replace all changes every match, not only the 10,000 Find shows.
     setReadyEditor(tab, "a ".repeat(12_000));
     render(<FileSurface tab={tab} />);
     const editor = await screen.findByLabelText(`Edit ${path}`);

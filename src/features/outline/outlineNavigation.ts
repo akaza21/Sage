@@ -27,6 +27,7 @@ export function localSymbolNavigation(
   if (!outline) return null;
   const name = identifierAtSelection(content, selection);
   if (!name) return null;
+  // The shallowest declaration wins, then the first in the File.
   let symbol: OutlineSymbol | undefined;
   for (const candidate of outline.symbols) {
     if (

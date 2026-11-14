@@ -1,5 +1,3 @@
-/* Device toolbar (BF-7a), measured on Codex ref 41: a 35 px bar and a
-   divider under the address bar, 60 × 21 px size fields 22 px apart (20 px tall here, on the 4 px scale). */
 /* The toolbar's own tokens: only this lazy sheet uses them, so they stay
    off the initial CSS (FEATURE_TOKEN_OWNERS in css-hygiene-policy.mjs). */
 .browser-surface:has(> .browser-surface__device-slot) {

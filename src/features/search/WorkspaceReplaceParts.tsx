@@ -48,6 +48,7 @@ export interface ReplaceContext {
   state: ReplaceState | undefined;
   setState: Dispatch<SetStateAction<ReplaceState | undefined>>;
   search: WorkspaceSearchState;
+  /** The native gateway when left out. */
   gateway?: WorkspaceReplaceGateway;
   onReplaced: () => void;
   files: ResourceRef[];

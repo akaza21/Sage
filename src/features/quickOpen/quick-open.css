@@ -41,6 +41,7 @@
   color: var(--color-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Clicks, including the context menu, go to the input beneath. */
   pointer-events: none;
 }
 

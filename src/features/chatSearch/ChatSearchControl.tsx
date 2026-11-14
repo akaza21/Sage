@@ -43,6 +43,7 @@ import { ChatSearchResults } from "./ChatSearchResults";
 
 type SearchPhase = "idle" | "searching" | "results" | "error";
 
+/** Announce zero results here; the visible empty-state message is not a live region. */
 function searchStatus(
   phase: SearchPhase,
   response: ChatSearchFanoutView | null,
@@ -280,6 +281,7 @@ export function ChatSearchControl({
     () => shown?.results.map(chatSearchResultKey) ?? [],
     [shown],
   );
+  // Nothing is active until the user moves, so Enter searches until then.
   const option = useActiveOption(shownKeys, "none");
   const [answered, setAnswered] = useState(shown);
   if (answered !== shown) {
@@ -351,6 +353,7 @@ export function ChatSearchControl({
                     event.key === "PageDown" ||
                     event.key === "PageUp"
                   ) {
+                    // Home and End stay with the field's caret.
                     event.preventDefault();
                     option.move(event.key);
                   } else if (event.key === "Enter" && activeResult) {

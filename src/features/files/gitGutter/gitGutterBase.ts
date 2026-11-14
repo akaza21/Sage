@@ -46,6 +46,7 @@ export function createGutterBaseCache(
   };
 
   return {
+    /** Null when the File gets no markers. */
     async load(resource: ResourceRef): Promise<string | null> {
       const key = resourceKey(resource);
       const known = lastOid.get(key) ?? null;

@@ -19,9 +19,12 @@ const UNCONFIRMED_HINT =
 const FIT = "fit";
 
 export interface BrowserDeviceState {
+  /** Null while closed or until the pane is measured. */
   size: BrowserDeviceSize | null;
   shown: boolean;
+  /** Null while closed or unmeasured. */
   scalePercent: number | null;
+  /** A reset step failed: the page may not match what the toolbar shows. */
   unconfirmed: boolean;
   change: (size: BrowserDeviceSize) => void;
 }
@@ -31,6 +34,8 @@ interface DeviceQueue {
   waiting: Map<string, BrowserDevice | null>;
 }
 
+/** `failure` is undefined when the update applied; `resetWaiting` means a
+ * queued reset for the tab reports its own result. */
 type SettleHandler = (
   tabId: string,
   failure?: BrowserDeviceFailure & { resetWaiting: boolean },
@@ -68,6 +73,7 @@ function enqueue(
   })();
 }
 
+/** Sent last when the page's state is unknown, so any update differs. */
 const UNCONFIRMED = "unconfirmed";
 type SentDevice = BrowserDevice | null | typeof UNCONFIRMED;
 
@@ -94,6 +100,7 @@ export function useBrowserDevice({
 }: {
   tabId: string;
   open: boolean;
+  /** `"unconfirmed"` when a reset step failed on the tab. */
   restored: BrowserDevice | typeof UNCONFIRMED | null;
   frame: RefObject<HTMLDivElement | null>;
   onOpenChange: (open: boolean) => void;
@@ -186,6 +193,7 @@ export function useBrowserDevice({
       }
       const { held, message, resetWaiting } = failure;
       if (held !== "unconfirmed") onError(message);
+      // A queued reset reports for itself; an unreadable held state keeps what is shown.
       if (resetWaiting || held === undefined) return;
       sent.current = { tabId, device: held };
       if (held === "unconfirmed") {
@@ -242,6 +250,7 @@ export function useBrowserDevice({
   };
 }
 
+/** In CSS px. */
 export function drawnDevice(state: BrowserDeviceState) {
   return state.size && state.scalePercent !== null
     ? drawnDeviceSize(state.size, state.scalePercent)

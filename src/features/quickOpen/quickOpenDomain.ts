@@ -53,6 +53,7 @@ export function parseQuickOpenInput(text: string): {
   line: number | null;
   column: number | null;
 } {
+  // A ":" being typed is already a suffix, so `name:` asks for `name`.
   const suffix = /:(\d{0,9})(?::(\d{0,9}))?\s*$/u.exec(text);
   const query = truncateUtf8(
     (suffix ? text.slice(0, suffix.index) : text).trim(),
@@ -137,6 +138,7 @@ export function highlightRuns(
   return runs;
 }
 
+/** A literal "+" key ("Ctrl++") stays a key of its own. */
 export function shortcutKeys(label: string): string[] {
   return label.split(/\+(?=.)/).filter(Boolean);
 }

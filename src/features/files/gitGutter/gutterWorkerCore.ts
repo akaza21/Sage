@@ -38,6 +38,7 @@ export const MAX_GUTTER_HUNKS = 2_000;
 
 interface Tracked {
   base: readonly string[];
+  /** Each staged line's start offset, plus one past the end. */
   baseStarts: Int32Array;
   baseText: string;
   doc: string;

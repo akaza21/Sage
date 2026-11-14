@@ -26,10 +26,7 @@ interface ChatChoice {
   title: string;
 }
 
-/**
- * Rust answers Take over and Hand back with the state after them, so nothing
- * here is a mirror that can go stale.
- */
+/** Use Rust's post-action state rather than predicting the result locally. */
 function useBrowserAgentControl(
   tabId: string,
   refreshKey: string,

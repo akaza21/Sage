@@ -57,6 +57,7 @@ export interface SyntaxOutline {
   truncated: boolean;
 }
 
+/** Null for unsupported languages, oversized Files or stale requests. */
 export async function syntaxOutline(
   path: string,
   source: string,

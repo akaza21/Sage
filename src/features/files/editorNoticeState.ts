@@ -63,6 +63,7 @@ export function stillDeleted(
     (document
       ? document.disk.fingerprint === ABSENT_FINGERPRINT
       : isDeletedOnDisk(active));
+  // A kept buffer of a deleted File is not deleted again.
   if (gone && active.document.base.fingerprint !== ABSENT_FINGERPRINT) {
     markDeleted(bridge);
   }
@@ -199,6 +200,7 @@ export async function applyWatchNotice(
     await getFileEditorController()
       .flush(bridge)
       .catch((error: unknown) => actionFailed(bridge, error));
+  // A File that cannot be read now gets the banner too.
   const document = await editor
     .openEditorDocument(notice.resource)
     .catch(() => null);

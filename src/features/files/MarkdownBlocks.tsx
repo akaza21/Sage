@@ -19,6 +19,7 @@ export function MarkdownBlocks({
   ) => ReactNode;
   /**
    * Lengths of a contiguous suffix of one block, item or cell, oldest first.
+   * Key runs by their start offset so existing fades survive newly streamed runs.
    */
   streamRuns?: {
     blockIndex: number;

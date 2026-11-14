@@ -7,6 +7,7 @@ import {
 } from "../../ports/nativeBrowserHistoryPort";
 
 export const HISTORY_PAGE_SIZE = 50;
+/** Older visits need a narrower search. */
 export const HISTORY_MAX_LOADED = 500;
 export const HISTORY_SEARCH_DELAY_MS = 200;
 
@@ -15,6 +16,7 @@ export interface BrowsingHistoryView {
   loading: boolean;
   loadingMore: boolean;
   canLoadMore: boolean;
+  /** Another page exists but the loaded list reached HISTORY_MAX_LOADED. */
   truncated: boolean;
   error: string | null;
   removing: ReadonlySet<number>;

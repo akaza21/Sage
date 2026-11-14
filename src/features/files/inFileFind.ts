@@ -81,6 +81,7 @@ function expand(replacement: string, match: RegExpExecArray): string {
   );
 }
 
+/** Matches never cross a line end, and `^`/`$` match line ends. */
 export function findMatches(request: FindRequest): FindMatches {
   const { content, query, options, replacement } = request;
   const limit = request.limit ?? MAX_FIND_MATCHES;
@@ -103,6 +104,7 @@ export function findMatches(request: FindRequest): FindMatches {
   const inserts: string[] = [];
   const result = () =>
     replacement === undefined ? { ranges } : { ranges, inserts };
+  // A literal query holds no line break, so it scans the text in one pass.
   for (let lineStart = 0; lineStart <= content.length;) {
     const newline = options.regex ? content.indexOf("\n", lineStart) : -1;
     const lineEnd = newline < 0 ? content.length : newline;

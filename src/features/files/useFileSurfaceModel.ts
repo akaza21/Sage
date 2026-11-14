@@ -93,6 +93,7 @@ export function useFileSurfaceModel(
     watchBridge,
     editorFocusBoundary,
   );
+  // An operation message shows first; the not-watched notice returns once it clears.
   const shownEditor = useMemo(
     () =>
       editor?.phase !== "ready" || !unwatchedMessage

@@ -40,7 +40,8 @@ interface EditorAdapterProps {
   onChange: (content: Text, base: EditorContentBase | null) => void;
   onCaretOffset?: (offset: number, document: Text) => void;
   onLimitExceeded?: () => void;
-  /** The mounted view, then null on teardown; `text` is the initial source string, not live text. */
+  /** The mounted view, then null on teardown; `text` is the initial source
+   * string, not live text, or null when initialized from Text. */
   onView?: (view: EditorView | null, text: string | null) => void;
 }
 
