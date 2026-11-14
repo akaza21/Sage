@@ -20,7 +20,7 @@ export type AgentTool = "changes" | "terminal" | "files" | "sideChat";
 
 // Outside Agent, no Chat owns New-tab launchers: disable all.
 export const AgentToolsContext = createContext<{
-  launch: (tool: AgentTool, chatId?: string) => void;
+  launch: (tool: AgentTool | "sessionImport", chatId?: string) => void;
   chatAvailable: boolean;
   terminalAvailable: boolean;
 }>({
@@ -42,6 +42,9 @@ export type AgentToolLaunch = {
   focus: HTMLElement | null;
   seq: number;
 };
+/** A tool launch, or opening the Codex CLI session picker. */
+export type AgentLaunch =
+  AgentToolLaunch | (Omit<AgentToolLaunch, "tool"> & { tool: "sessionImport" });
 export type AgentToolRequest = {
   tool: "changes" | "files";
   projectId: string;
@@ -81,10 +84,10 @@ export function AgentToolsProvider({
     (state) => state.projectTransitioning,
   );
   const chatId = usePinnedAgentChatOwner();
-  const [launched, setLaunched] = useState<AgentToolLaunch | null>(null);
+  const [launched, setLaunched] = useState<AgentLaunch | null>(null);
   const terminalAvailable = isTauriRuntime() && Boolean(onOpenTerminal);
   const launch = useCallback(
-    (tool: AgentTool, explicitId?: string) => {
+    (tool: AgentTool | "sessionImport", explicitId?: string) => {
       const owner = agentToolOwner(explicitId);
       if (!owner) return;
       if (tool === "terminal") {

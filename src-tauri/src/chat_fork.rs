@@ -115,23 +115,11 @@ fn stage_fork_chat(
             "The forked Chat is not in the current Project layout".into(),
         ));
     }
-    if current_layout.tabs.len() >= MAX_RESTORED_TABS {
-        return Err(AppError::ResourceLimit(format!(
-            "project layout has reached its {MAX_RESTORED_TABS}-tab limit"
-        )));
-    }
-    let active: Option<String> = transaction.query_row(
-        "SELECT active_project_id FROM app_state WHERE singleton=1",
-        [],
-        |row| row.get(0),
+    let chat_id = insert_layout_chat(
+        transaction,
+        current_layout,
+        "Fork a Chat from its own active Project",
     )?;
-    if active.as_deref() != Some(project) {
-        return Err(AppError::InvalidRequest(
-            "Fork a Chat from its own active Project".into(),
-        ));
-    }
-    persist_layout_in(transaction, current_layout)?;
-    let chat_id = insert_new_chat(transaction, project, true, None)?;
     let titles = {
         let mut statement = transaction
             .prepare("SELECT title FROM chats WHERE project_id=?1 ORDER BY ordinal LIMIT 4097")?;
@@ -169,6 +157,31 @@ fn stage_fork_chat(
     Ok(chat_id)
 }
 
+/// Persists the current layout of the active Project and adds a new Chat to
+/// it, within the tab limit; `inactive` is the refusal for another Project.
+pub(crate) fn insert_layout_chat(
+    transaction: &rusqlite::Transaction<'_>,
+    current_layout: &ProjectLayoutRequest,
+    inactive: &str,
+) -> AppResult<String> {
+    let project = current_layout.project_id.as_str();
+    if current_layout.tabs.len() >= MAX_RESTORED_TABS {
+        return Err(AppError::ResourceLimit(format!(
+            "project layout has reached its {MAX_RESTORED_TABS}-tab limit"
+        )));
+    }
+    let active: Option<String> = transaction.query_row(
+        "SELECT active_project_id FROM app_state WHERE singleton=1",
+        [],
+        |row| row.get(0),
+    )?;
+    if active.as_deref() != Some(project) {
+        return Err(AppError::InvalidRequest(inactive.into()));
+    }
+    persist_layout_in(transaction, current_layout)?;
+    insert_new_chat(transaction, project, true, None)
+}
+
 /// Moves the new tab to the parent's position and shifts the parent and
 /// every later tab down by one, through negative positions so the unique
 /// `(project_id, position)` index never collides.
@@ -200,11 +213,28 @@ fn place_above_parent(
     Ok(())
 }
 
-fn stale(epoch: u64, expected: u64) -> Result<(), String> {
+pub(crate) fn stale(epoch: u64, expected: u64, action: &str) -> Result<(), String> {
     if epoch != expected || epoch >= 9_007_199_254_740_991 {
-        return Err("Project changed before forking the chat".into());
+        return Err(format!("Project changed before {action}"));
     }
     Ok(())
+}
+
+/// Advances the Project transition epoch after a new Chat committed and
+/// answers with the authoritative snapshot.
+pub(crate) async fn committed_transition(
+    state: &AppState,
+    epoch: &mut u64,
+) -> ProjectTransitionResult {
+    *epoch += 1;
+    crate::preview_lifecycle::on_committed_project_transition_epoch(*epoch);
+    let snapshot = crate::resource_commands::build_bootstrap_snapshot(state, *epoch).await;
+    ProjectTransitionResult {
+        committed: true,
+        transition_epoch: *epoch,
+        snapshot: snapshot.as_ref().ok().cloned(),
+        recovery_error: snapshot.err().map(|error| error.to_string()),
+    }
 }
 
 /// Forks `chat_id` through its latest completed Turn `turn_id`. The native
@@ -226,7 +256,7 @@ pub async fn fork_chat(
     let turn = SageTurnId::parse(turn_id).map_err(|error| error.to_string())?;
     let source = {
         let epoch = state.project_transitions.lock().await;
-        stale(*epoch, expected_transition_epoch)?;
+        stale(*epoch, expected_transition_epoch, "forking the chat")?;
         fork_source(&state.database.connection(), &project, &chat, &turn)
             .map_err(|_| "This chat can't be forked from this answer".to_owned())?
     };
@@ -242,7 +272,7 @@ pub async fn fork_chat(
     .map_err(|_| "The fork did not finish; try again".to_owned())?
     .map_err(|error| error.to_string())?;
     let mut epoch = state.project_transitions.lock().await;
-    let committed = match stale(*epoch, expected_transition_epoch) {
+    let committed = match stale(*epoch, expected_transition_epoch, "forking the chat") {
         Err(error) => ForkCommit::Refused(error),
         Ok(()) => {
             let database = state.database.clone();
@@ -276,17 +306,7 @@ pub async fn fork_chat(
             }
             return Err(error);
         }
-        ForkCommit::Committed => {
-            *epoch += 1;
-            crate::preview_lifecycle::on_committed_project_transition_epoch(*epoch);
-            let snapshot = crate::resource_commands::build_bootstrap_snapshot(&state, *epoch).await;
-            ProjectTransitionResult {
-                committed: true,
-                transition_epoch: *epoch,
-                snapshot: snapshot.as_ref().ok().cloned(),
-                recovery_error: snapshot.err().map(|error| error.to_string()),
-            }
-        }
+        ForkCommit::Committed => committed_transition(&state, &mut epoch).await,
     };
     drop(epoch);
     if let Some(committed) = release {

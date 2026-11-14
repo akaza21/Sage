@@ -343,6 +343,8 @@ export interface AcpChatPage {
   forkedFrom?: SageChatId;
   /** The parent Turn the fork carries history through, inclusive. */
   forkedFromTurnId?: SageTurnId;
+  /** The Chat continues a session imported from outside Sage. */
+  importedHistory?: true;
   /**
    * Child-transcript invalidation epoch (opaque). It moves without the
    * projection revision, so child activity never stales a user action.

@@ -43,10 +43,7 @@ impl RuntimeHost {
         &self,
         intent: crate::acp::goal::NativeRpcIntent,
     ) -> Result<crate::acp::goal::NativeRpcReply, HostError> {
-        let background = matches!(
-            intent.request,
-            crate::acp::goal::NativeRpcRequest::ChildThreadRead { .. }
-        );
+        let background = matches!(intent.request, crate::acp::goal::NativeRpcRequest::Read(_));
         let send = || {
             let _hold = self.hold_control()?;
             match self

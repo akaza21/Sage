@@ -49,7 +49,8 @@ pub(crate) use authority::{
 };
 pub(crate) use child_transcript::{
     ChildItem, ChildTextRole, ChildTranscriptSnapshot, ChildTurn, MAX_ITEMS, MAX_SNAPSHOT_BYTES,
-    MAX_TURNS, normalize_child_user_message, normalize_read_response,
+    MAX_TURNS, NativeSessionSummary, NativeSessionsPage, NativeTurnsPage,
+    normalize_child_user_message, normalize_sessions_page, normalize_turns_page,
 };
 pub(crate) use degrade::is_desktop_fixture_protocol;
 pub(crate) use discovery::{
@@ -95,6 +96,9 @@ pub(crate) use state::CodexAdapter;
 
 #[cfg(test)]
 pub(crate) mod test_identity;
+
+#[cfg(test)]
+pub(crate) mod test_transcript;
 
 #[cfg(test)]
 mod tests;

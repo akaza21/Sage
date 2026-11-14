@@ -21,6 +21,10 @@ pub struct CapabilitySnapshotV1 {
     pub native_session_fork: bool,
     #[serde(skip_serializing_if = "is_false")]
     pub native_session_compact: bool,
+    /// The harness lists sessions of the project started outside Sage and
+    /// resumes one of them in a new Chat.
+    #[serde(skip_serializing_if = "is_false")]
+    pub native_session_import: bool,
     #[serde(skip_serializing_if = "is_false")]
     pub native_review: bool,
     /// The harness lists and stops the commands it left running.
@@ -53,6 +57,8 @@ struct CapabilitySnapshotWire {
     native_session_fork: bool,
     #[serde(default)]
     native_session_compact: bool,
+    #[serde(default)]
+    native_session_import: bool,
     #[serde(default)]
     native_review: bool,
     #[serde(default)]
@@ -90,6 +96,7 @@ impl<'de> Deserialize<'de> for CapabilitySnapshotV1 {
             cancel: wire.cancel,
             native_session_fork: wire.native_session_fork,
             native_session_compact: wire.native_session_compact,
+            native_session_import: wire.native_session_import,
             native_review: wire.native_review,
             native_background_terminals: wire.native_background_terminals,
             active_turn_steer: wire.active_turn_steer,

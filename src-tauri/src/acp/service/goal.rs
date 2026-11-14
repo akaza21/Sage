@@ -118,7 +118,8 @@ fn goal_reply(
     match result {
         Ok(NativeRpcReply::GoalApplied) => Ok(()),
         Ok(
-            NativeRpcReply::ChildTranscript(_)
+            NativeRpcReply::TurnsPage(_)
+            | NativeRpcReply::SessionsPage(_)
             | NativeRpcReply::TooLarge
             | NativeRpcReply::Rejected
             | NativeRpcReply::Forked(_)
@@ -202,6 +203,7 @@ mod tests {
             next_cursor: None,
             forked_from: None,
             forked_from_turn_id: None,
+            imported_history: false,
             child_projection_epoch: 0,
             session_notices: Vec::new(),
         };

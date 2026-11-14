@@ -184,6 +184,7 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
         next_cursor: None,
         forked_from: None,
         forked_from_turn_id: None,
+        imported_history: false,
         child_projection_epoch: 0,
         session_notices: Vec::new(),
     };

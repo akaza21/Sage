@@ -23,10 +23,8 @@ pub(crate) struct NativeRpcIntent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NativeRpcRequest {
     Goal(GoalAction),
-    ChildThreadRead {
-        child_thread_id: String,
-        parent_thread_id: String,
-    },
+    /// One page of a native read; see `NativeRead`.
+    Read(NativeRead),
     /// Forks the runtime's own native session through its latest turn. Only
     /// an idle runtime whose negotiated capabilities admit
     /// `nativeSessionFork` accepts it.
@@ -47,10 +45,69 @@ pub(crate) enum NativeRpcRequest {
     Control(crate::acp::session_control::SessionControl),
 }
 
+/// A paged native read. Each RPC reads one page; the caller follows the
+/// cursor and bounds how many pages it reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum NativeRead {
+    /// Turns of a child thread this runtime spawned, oldest first.
+    ChildTurns {
+        child_thread_id: String,
+        parent_thread_id: String,
+        cursor: Option<String>,
+    },
+    /// Native sessions of the runtime's project started outside Sage, most
+    /// recently active first, leaving out `excluded` (threads already
+    /// imported). Requires `nativeSessionImport`.
+    ImportableSessions {
+        cursor: Option<String>,
+        excluded: Vec<String>,
+    },
+    /// Turns of a session the runtime listed for import, newest first.
+    ImportTurns {
+        thread_id: String,
+        cursor: Option<String>,
+    },
+}
+
+impl NativeRead {
+    /// Whether a read missing its deadline leaves Sage's state as it was:
+    /// the binding stops waiting and drops the late reply. An import read
+    /// only borrows the lister's runtime, and listing or reading a session
+    /// changes nothing it holds.
+    pub(crate) fn abandons_at_deadline(&self) -> bool {
+        matches!(
+            self,
+            Self::ImportableSessions { .. } | Self::ImportTurns { .. }
+        )
+    }
+
+    pub(crate) fn cursor(&self) -> Option<&str> {
+        match self {
+            Self::ChildTurns { cursor, .. }
+            | Self::ImportableSessions { cursor, .. }
+            | Self::ImportTurns { cursor, .. } => cursor.as_deref(),
+        }
+    }
+
+    fn bytes(&self) -> usize {
+        self.cursor().map_or(0, str::len)
+            + match self {
+                Self::ChildTurns {
+                    child_thread_id,
+                    parent_thread_id,
+                    ..
+                } => child_thread_id.len() + parent_thread_id.len(),
+                Self::ImportableSessions { excluded, .. } => excluded.iter().map(String::len).sum(),
+                Self::ImportTurns { thread_id, .. } => thread_id.len(),
+            }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NativeRpcReply {
     GoalApplied,
-    ChildTranscript(crate::acp::bindings::codex::ChildTranscriptSnapshot),
+    TurnsPage(crate::acp::bindings::codex::NativeTurnsPage),
+    SessionsPage(crate::acp::bindings::codex::NativeSessionsPage),
     TooLarge,
     Rejected,
     /// The harness created a new native session holding the forked history.
@@ -84,6 +141,7 @@ impl NativeRpcIntent {
                 crate::acp::background_terminals::TerminalAction::List,
             ) => true,
             NativeRpcRequest::Control(control) => control.abandons_at_deadline(),
+            NativeRpcRequest::Read(read) => read.abandons_at_deadline(),
             _ => false,
         }
     }
@@ -108,10 +166,7 @@ impl NativeRpcIntent {
             + std::mem::size_of::<RuntimeEpoch>()
             + match &self.request {
                 NativeRpcRequest::Goal(_) => 1,
-                NativeRpcRequest::ChildThreadRead {
-                    child_thread_id,
-                    parent_thread_id,
-                } => child_thread_id.len() + parent_thread_id.len() + 1,
+                NativeRpcRequest::Read(read) => read.bytes() + 1,
                 NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,
                 NativeRpcRequest::ReleaseFork { fork, .. } => fork.as_str().len() + 1,
                 NativeRpcRequest::BackgroundTerminals(action) => action.bytes(),

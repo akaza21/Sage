@@ -24,6 +24,30 @@ const ACP_PAGE_LIMITS = {
   activities: 128,
 } as const;
 
+/** Boolean capabilities every session reports. */
+const REQUIRED_CAPABILITIES = [
+  "newSession",
+  "resumeSession",
+  "loadSession",
+  "closeSession",
+  "prompt",
+  "cancel",
+  "nativeSessionFork",
+  "activeTurnSteer",
+  "childConversationProjection",
+  "childTranscriptRead",
+  "collaborationEventProjection",
+] as const;
+/** Capabilities carried only when the wire grants them. */
+const OPTIONAL_CAPABILITIES = [
+  "promptResources",
+  "promptImages",
+  "nativeSessionCompact",
+  "nativeSessionImport",
+  "nativeReview",
+  "nativeBackgroundTerminals",
+] as const;
+
 function safeCapabilities(
   value: unknown,
 ): AgentSessionProjection["capabilities"] | null {
@@ -32,26 +56,13 @@ function safeCapabilities(
   const extensionSchemaId = safeNullableIdentifier(
     value.multiRootExtensionSchemaId,
   );
-  const flags = [
-    value.newSession,
-    value.resumeSession,
-    value.loadSession,
-    value.closeSession,
-    value.prompt,
-    value.cancel,
-    value.nativeSessionFork,
-    value.activeTurnSteer,
-    value.childConversationProjection,
-    value.childTranscriptRead,
-    value.collaborationEventProjection,
-  ];
   const modelCount = safeOrdinal(value.modelCount);
   const configCount = safeOrdinal(value.configCount);
   if (
     value.schemaVersion !== 1 ||
     !protocolVersion ||
     extensionSchemaId === undefined ||
-    flags.some((flag) => typeof flag !== "boolean") ||
+    REQUIRED_CAPABILITIES.some((flag) => typeof value[flag] !== "boolean") ||
     modelCount === null ||
     modelCount > 128 ||
     configCount === null ||
@@ -61,24 +72,12 @@ function safeCapabilities(
   return {
     schemaVersion: 1,
     protocolVersion,
-    newSession: value.newSession,
-    resumeSession: value.resumeSession,
-    loadSession: value.loadSession,
-    closeSession: value.closeSession,
-    prompt: value.prompt,
-    ...(value.promptResources === true ? { promptResources: true } : {}),
-    ...(value.promptImages === true ? { promptImages: true } : {}),
-    cancel: value.cancel,
-    nativeSessionFork: value.nativeSessionFork,
-    ...(value.nativeSessionCompact === true && { nativeSessionCompact: true }),
-    ...(value.nativeReview === true && { nativeReview: true }),
-    ...(value.nativeBackgroundTerminals === true && {
-      nativeBackgroundTerminals: true,
-    }),
-    activeTurnSteer: value.activeTurnSteer,
-    childConversationProjection: value.childConversationProjection,
-    childTranscriptRead: value.childTranscriptRead,
-    collaborationEventProjection: value.collaborationEventProjection,
+    ...Object.fromEntries([
+      ...REQUIRED_CAPABILITIES.map((flag) => [flag, value[flag]]),
+      ...OPTIONAL_CAPABILITIES.filter((flag) => value[flag] === true).map(
+        (flag) => [flag, true],
+      ),
+    ]),
     multiRootExtensionSchemaId: extensionSchemaId,
     modelCount,
     configCount,
@@ -293,6 +292,7 @@ export function safeAcpMutationResponse(
       ...(forkedFromTurnId && {
         forkedFromTurnId: forkedFromTurnId as AcpChatPage["forkedFromTurnId"],
       }),
+      ...(projection.importedHistory === true && { importedHistory: true }),
       ...(Number.isSafeInteger(epoch) &&
         epoch > 0 && { childProjectionEpoch: epoch }),
       ...(sessionNotices.length > 0 && { sessionNotices }),

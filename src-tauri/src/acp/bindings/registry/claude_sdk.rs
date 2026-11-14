@@ -90,6 +90,7 @@ fn ceiling() -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
         cancel: true,
         native_session_fork: true,
         native_session_compact: true,
+        native_session_import: false,
         native_review: false,
         native_background_terminals: false,
         active_turn_steer: true,

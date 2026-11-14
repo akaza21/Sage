@@ -212,6 +212,7 @@ fn capabilities() -> String {
         cancel: true,
         native_session_fork: false,
         native_session_compact: false,
+        native_session_import: false,
         native_review: false,
         native_background_terminals: false,
         active_turn_steer: false,

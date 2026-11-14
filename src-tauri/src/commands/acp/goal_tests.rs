@@ -73,7 +73,7 @@ impl RuntimeEngine for GoalEngine {
                     }));
                     return Ok(());
                 }
-                crate::acp::goal::NativeRpcRequest::ChildThreadRead { .. }
+                crate::acp::goal::NativeRpcRequest::Read(_)
                 | crate::acp::goal::NativeRpcRequest::Control(_)
                 | crate::acp::goal::NativeRpcRequest::ForkSession
                 | crate::acp::goal::NativeRpcRequest::ReleaseFork { .. }
@@ -224,6 +224,7 @@ pub(in crate::commands::acp) fn fixture(
                     cancel: true,
                     native_session_fork: false,
                     native_session_compact: false,
+                    native_session_import: false,
                     native_review: false,
                     native_background_terminals: false,
                     active_turn_steer: false,

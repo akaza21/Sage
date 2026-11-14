@@ -21,6 +21,7 @@ pub(super) fn capabilities(model_count: u16, config_count: u16) -> CapabilitySna
         cancel: true,
         native_session_fork: true,
         native_session_compact: true,
+        native_session_import: false,
         native_review: false,
         native_background_terminals: false,
         active_turn_steer: true,

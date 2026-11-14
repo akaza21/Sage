@@ -273,7 +273,8 @@ pub(super) fn response<M: ResourceMapper>(
         | RequestKind::GoalGet
         | RequestKind::GoalPause
         | RequestKind::GoalClear
-        | RequestKind::ChildRead
+        | RequestKind::TurnsList
+        | RequestKind::SessionList
         | RequestKind::Fork
         | RequestKind::ForkRelease
         | RequestKind::ForkDelete

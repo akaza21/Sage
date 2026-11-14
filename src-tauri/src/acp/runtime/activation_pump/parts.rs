@@ -190,14 +190,12 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     pub(crate) fn write_child(
         &mut self,
         transport: &mut impl crate::acp::runtime::EgressTransport,
-        child_thread_id: &str,
-        parent_thread_id: &str,
+        read: &crate::acp::goal::NativeRead,
     ) -> Result<(), crate::acp::runtime::HostError> {
         crate::acp::runtime::adapter_pump::session_config::write_child(
             &mut self.adapter,
             transport,
-            child_thread_id,
-            parent_thread_id,
+            read,
         )
     }
     pub(crate) fn write_release_fork(

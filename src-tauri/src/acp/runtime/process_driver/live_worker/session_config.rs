@@ -92,18 +92,11 @@ where
                 crate::acp::goal::NativeRpcRequest::Goal(action) => {
                     idle.parts.write_goal(&mut idle.transport, *action)
                 }
-                crate::acp::goal::NativeRpcRequest::ChildThreadRead {
-                    child_thread_id,
-                    parent_thread_id,
-                } => {
+                crate::acp::goal::NativeRpcRequest::Read(read) => {
                     if !idle.idle_decoder.is_frame_aligned() {
                         return Err(HostError::State);
                     }
-                    idle.parts.write_child(
-                        &mut idle.transport,
-                        child_thread_id,
-                        parent_thread_id,
-                    )?;
+                    idle.parts.write_child(&mut idle.transport, read)?;
                     idle.idle_decoder.enable_recoverable_oversize();
                     Ok(())
                 }
@@ -132,14 +125,9 @@ where
                 crate::acp::goal::NativeRpcRequest::Goal(action) => {
                     parts.completed.write_goal(&mut parts.transport, *action)
                 }
-                crate::acp::goal::NativeRpcRequest::ChildThreadRead {
-                    child_thread_id,
-                    parent_thread_id,
-                } => parts.completed.write_child(
-                    &mut parts.transport,
-                    child_thread_id,
-                    parent_thread_id,
-                ),
+                crate::acp::goal::NativeRpcRequest::Read(read) => {
+                    parts.completed.write_child(&mut parts.transport, read)
+                }
                 crate::acp::goal::NativeRpcRequest::ForkSession => {
                     parts.completed.write_fork(&mut parts.transport)
                 }

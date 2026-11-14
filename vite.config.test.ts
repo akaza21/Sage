@@ -177,6 +177,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   // composer or over-cap input; only the size check stays eager.
   "src/features/chat/ComposerPaste.tsx",
   "src/features/chat/ForkChat.tsx",
+  // An imported session's history and the session picker load on first use.
+  "src/features/chat/ImportedHistory.tsx",
   "src/features/chat/TranscriptInteractions.tsx",
   "src/features/chat/acp/MermaidFigure.tsx",
   // The pending-approval card loads only when a request awaits a decision.

@@ -258,5 +258,14 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
         )?;
         expected.pragma_update(None, "user_version", undo_indexes)?;
     }
+    let imported = super::super::imported_history::VERSION;
+    if version >= imported {
+        expected.execute_batch(super::super::imported_history::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [imported],
+        )?;
+        expected.pragma_update(None, "user_version", imported)?;
+    }
     Ok(expected)
 }

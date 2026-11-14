@@ -80,17 +80,59 @@ pub(crate) enum ChildTranscriptError {
     Malformed,
 }
 
-pub(crate) fn normalize_read_response<M: ResourceMapper + ?Sized>(
-    wire: &[u8],
-    request_id: u64,
-    child: &str,
-    parent: &str,
-    mapper: &M,
-) -> Result<ChildTranscriptSnapshot, ChildTranscriptError> {
+/// One `thread/turns/list` page, in the order it was requested.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NativeTurnsPage {
+    pub(crate) turns: Vec<ChildTurn>,
+    pub(crate) next_cursor: Option<String>,
+}
+
+/// A native session started outside Sage, as the import picker lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NativeSessionSummary {
+    pub(crate) thread_id: String,
+    pub(crate) title: String,
+    /// Unix seconds of the session's latest activity.
+    pub(crate) updated_at: i64,
+}
+
+/// One `thread/list` page of importable sessions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NativeSessionsPage {
+    pub(crate) sessions: Vec<NativeSessionSummary>,
+    pub(crate) next_cursor: Option<String>,
+}
+
+/// Turns asked for per `thread/turns/list` page. Small pages keep one long
+/// Turn from making a page too large; 32 pages still hold `MAX_TURNS`.
+pub(crate) const TURN_PAGE: usize = 4;
+/// Sessions asked for per `thread/list` page.
+pub(crate) const SESSION_PAGE: usize = 25;
+const MAX_CURSOR_BYTES: usize = 1024;
+const MAX_TITLE_CHARS: usize = 200;
+
+impl ChildTranscriptSnapshot {
+    pub(crate) fn within_bounds(&self) -> bool {
+        self.turns.len() <= MAX_TURNS
+            && self
+                .turns
+                .iter()
+                .map(|turn| turn.items.len())
+                .sum::<usize>()
+                <= MAX_ITEMS
+            && serde_json::to_vec(self).is_ok_and(|bytes| bytes.len() <= MAX_SNAPSHOT_BYTES)
+    }
+}
+
+/// The `result` of the response to `request_id`, or why there is none.
+fn page_result(wire: &[u8], request_id: u64) -> Result<Value, ChildTranscriptError> {
     if wire.len() > MAX_WIRE_BYTES {
         return Err(ChildTranscriptError::Capacity);
     }
-    let value: Value = serde_json::from_slice(wire).map_err(|_| ChildTranscriptError::Malformed)?;
+    let mut value: Value =
+        serde_json::from_slice(wire).map_err(|_| ChildTranscriptError::Malformed)?;
     if value.get("id").and_then(Value::as_u64) != Some(request_id) || value.get("method").is_some()
     {
         return Err(ChildTranscriptError::Malformed);
@@ -107,20 +149,77 @@ pub(crate) fn normalize_read_response<M: ResourceMapper + ?Sized>(
             },
         );
     }
-    let thread = value
-        .get("result")
-        .and_then(|result| result.get("thread"))
-        .ok_or(ChildTranscriptError::Malformed)?;
-    if thread.get("id").and_then(Value::as_str) != Some(child)
-        || thread.get("parentThreadId").and_then(Value::as_str) != Some(parent)
-    {
-        return Err(ChildTranscriptError::Malformed);
+    value
+        .get_mut("result")
+        .map(Value::take)
+        .ok_or(ChildTranscriptError::Malformed)
+}
+
+fn page_cursor(result: &Value) -> Result<Option<String>, ChildTranscriptError> {
+    match result.get("nextCursor") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(cursor))
+            if !cursor.is_empty()
+                && cursor.len() <= MAX_CURSOR_BYTES
+                && !cursor.chars().any(char::is_control) =>
+        {
+            Ok(Some(cursor.clone()))
+        }
+        Some(_) => Err(ChildTranscriptError::Malformed),
     }
-    let turns = thread
-        .get("turns")
+}
+
+pub(crate) fn normalize_sessions_page(
+    wire: &[u8],
+    request_id: u64,
+) -> Result<NativeSessionsPage, ChildTranscriptError> {
+    let result = page_result(wire, request_id)?;
+    let threads = result
+        .get("data")
+        .and_then(Value::as_array)
+        .filter(|threads| threads.len() <= SESSION_PAGE)
+        .ok_or(ChildTranscriptError::Malformed)?;
+    let mut sessions = Vec::with_capacity(threads.len());
+    for thread in threads {
+        // Subagent and ephemeral threads are not sessions a user resumes.
+        if thread.get("ephemeral").and_then(Value::as_bool) != Some(false)
+            || !thread.get("parentThreadId").is_none_or(Value::is_null)
+        {
+            continue;
+        }
+        let title = [thread.get("name"), thread.get("preview")]
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "))
+            .find(|text| !text.is_empty())
+            .unwrap_or_else(|| "Untitled session".into());
+        sessions.push(NativeSessionSummary {
+            thread_id: bounded_id(thread.get("id"))?,
+            title: title.chars().take(MAX_TITLE_CHARS).collect(),
+            updated_at: thread
+                .get("updatedAt")
+                .and_then(Value::as_i64)
+                .ok_or(ChildTranscriptError::Malformed)?,
+        });
+    }
+    Ok(NativeSessionsPage {
+        sessions,
+        next_cursor: page_cursor(&result)?,
+    })
+}
+
+pub(crate) fn normalize_turns_page<M: ResourceMapper + ?Sized>(
+    wire: &[u8],
+    request_id: u64,
+    mapper: &M,
+) -> Result<NativeTurnsPage, ChildTranscriptError> {
+    let result = page_result(wire, request_id)?;
+    let turns = result
+        .get("data")
         .and_then(Value::as_array)
         .ok_or(ChildTranscriptError::Malformed)?;
-    if turns.len() > MAX_TURNS {
+    if turns.len() > TURN_PAGE {
         return Err(ChildTranscriptError::Capacity);
     }
     let mut total_items = 0usize;
@@ -218,20 +317,10 @@ pub(crate) fn normalize_read_response<M: ResourceMapper + ?Sized>(
             items: normalized_items,
         });
     }
-    let snapshot = ChildTranscriptSnapshot {
-        child_thread_id: child.into(),
-        parent_thread_id: parent.into(),
+    Ok(NativeTurnsPage {
         turns: normalized_turns,
-        retention_limited: false,
-    };
-    if serde_json::to_vec(&snapshot)
-        .map_err(|_| ChildTranscriptError::Malformed)?
-        .len()
-        > MAX_SNAPSHOT_BYTES
-    {
-        return Err(ChildTranscriptError::Capacity);
-    }
-    Ok(snapshot)
+        next_cursor: page_cursor(&result)?,
+    })
 }
 
 fn bounded_id(value: Option<&Value>) -> Result<String, ChildTranscriptError> {
@@ -293,24 +382,22 @@ mod tests {
     use crate::acp::resource_mapper::NativeResourceMapper;
 
     #[test]
-    fn full_child_read_normalizes_text_and_rejects_summary_or_foreign_thread() {
-        let wire = br#"{"id":9,"result":{"thread":{"id":"child-1","parentThreadId":"parent-1","turns":[{"id":"turn-1","itemsView":"full","status":"completed","items":[{"id":"user-1","type":"userMessage","content":[{"type":"text","text":"Inspect this","text_elements":[]},{"type":"localImage","path":"C:\\secret.png"}]},{"id":"agent-1","type":"agentMessage","text":"Done","phase":null,"memoryCitation":null}]}]}}}"#;
+    fn full_turns_page_normalizes_text_and_rejects_summary_or_oversize() {
+        let wire = br#"{"id":9,"result":{"data":[{"id":"turn-1","itemsView":"full","status":"completed","items":[{"id":"user-1","type":"userMessage","content":[{"type":"text","text":"Inspect this","text_elements":[]},{"type":"localImage","path":"C:\\secret.png"}]},{"id":"agent-1","type":"agentMessage","text":"Done","phase":null,"memoryCitation":null}]}],"nextCursor":"page-2"}}"#;
         let mapper = NativeResourceMapper::new([]).unwrap();
-        let snapshot = normalize_read_response(wire, 9, "child-1", "parent-1", &mapper).unwrap();
-        assert_eq!(snapshot.turns.len(), 1);
-        assert_eq!(snapshot.turns[0].items[0].role, Some(ChildTextRole::User));
-        assert_eq!(
-            snapshot.turns[0].items[1].role,
-            Some(ChildTextRole::Assistant)
+        let page = normalize_turns_page(wire, 9, &mapper).unwrap();
+        assert_eq!(page.next_cursor.as_deref(), Some("page-2"));
+        assert_eq!(page.turns.len(), 1);
+        assert_eq!(page.turns[0].items[0].role, Some(ChildTextRole::User));
+        assert_eq!(page.turns[0].items[1].role, Some(ChildTextRole::Assistant));
+        assert!(
+            matches!(&page.turns[0].items[0].payload, NormalizedPayload::Text { text } if text.as_str() == "Inspect this")
         );
         assert!(
-            matches!(&snapshot.turns[0].items[0].payload, NormalizedPayload::Text { text } if text.as_str() == "Inspect this")
+            matches!(&page.turns[0].items[1].payload, NormalizedPayload::Text { text } if text.as_str() == "Done")
         );
         assert!(
-            matches!(&snapshot.turns[0].items[1].payload, NormalizedPayload::Text { text } if text.as_str() == "Done")
-        );
-        assert!(
-            !serde_json::to_string(&snapshot)
+            !serde_json::to_string(&page.turns)
                 .unwrap()
                 .contains("secret.png")
         );
@@ -318,45 +405,39 @@ mod tests {
         let summary = String::from_utf8(wire.to_vec())
             .unwrap()
             .replace("\"full\"", "\"summary\"");
-        assert!(
-            normalize_read_response(summary.as_bytes(), 9, "child-1", "parent-1", &mapper).is_err()
-        );
+        assert!(normalize_turns_page(summary.as_bytes(), 9, &mapper).is_err());
         let invalid_role = serde_json::from_str::<ChildTextRole>("\"operator\"");
         assert!(invalid_role.is_err());
-        assert!(normalize_read_response(wire, 9, "child-2", "parent-1", &mapper).is_err());
-        assert!(normalize_read_response(wire, 9, "child-1", "parent-2", &mapper).is_err());
+        assert!(normalize_turns_page(wire, 10, &mapper).is_err());
         assert_eq!(
-            normalize_read_response(
-                &vec![b'x'; MAX_WIRE_BYTES + 1],
-                9,
-                "child-1",
-                "parent-1",
-                &mapper
-            ),
+            normalize_turns_page(&vec![b'x'; MAX_WIRE_BYTES + 1], 9, &mapper),
             Err(ChildTranscriptError::Capacity)
+        );
+        let rejected = br#"{"id":9,"error":{"code":-32600,"message":"no rollout"}}"#;
+        assert_eq!(
+            normalize_turns_page(rejected, 9, &mapper),
+            Err(ChildTranscriptError::Rejected)
         );
     }
 
     #[test]
-    fn full_child_read_uses_parent_projection_for_command_file_and_reasoning() {
+    fn full_turns_page_uses_parent_projection_for_command_file_and_reasoning() {
         let mapper = NativeResourceMapper::new([]).unwrap();
         let wire = serde_json::to_vec(&serde_json::json!({
             "id": 23,
-            "result": {"thread": {
-                "id": "child-1", "parentThreadId": "parent-1",
-                "turns": [{
-                    "id": "turn-1", "itemsView": "full", "status": "completed",
-                    "items": [
-                        {"id":"reason-1","type":"reasoning","summary":["Need evidence"],"content":[]},
-                        {"id":"command-1","type":"commandExecution","command":"rg -n TODO src","cwd":"C:/repo","status":"completed","aggregatedOutput":"src/a.ts:1:TODO","exitCode":0,"commandActions":[]},
-                        {"id":"file-1","type":"fileChange","status":"completed","changes":[{"path":"C:/repo/a.ts","kind":{"type":"update"},"diff":"@@"}]},
-                        {"id":"mcp-1","type":"mcpToolCall","server":"docs","tool":"lookup","status":"completed","arguments":{"query":"API"},"result":null,"error":null}
-                    ]
-                }]
-            }}
+            "result": {"nextCursor": null, "data": [{
+                "id": "turn-1", "itemsView": "full", "status": "completed",
+                "items": [
+                    {"id":"reason-1","type":"reasoning","summary":["Need evidence"],"content":[]},
+                    {"id":"command-1","type":"commandExecution","command":"rg -n TODO src","cwd":"C:/repo","status":"completed","aggregatedOutput":"src/a.ts:1:TODO","exitCode":0,"commandActions":[]},
+                    {"id":"file-1","type":"fileChange","status":"completed","changes":[{"path":"C:/repo/a.ts","kind":{"type":"update"},"diff":"@@"}]},
+                    {"id":"mcp-1","type":"mcpToolCall","server":"docs","tool":"lookup","status":"completed","arguments":{"query":"API"},"result":null,"error":null}
+                ]
+            }]}
         })).unwrap();
-        let snapshot = normalize_read_response(&wire, 23, "child-1", "parent-1", &mapper).unwrap();
-        let items = &snapshot.turns[0].items;
+        let page = normalize_turns_page(&wire, 23, &mapper).unwrap();
+        assert_eq!(page.next_cursor, None);
+        let items = &page.turns[0].items;
         assert!(matches!(
             items[0].payload,
             NormalizedPayload::ThoughtSummary { .. }
@@ -378,16 +459,65 @@ mod tests {
     #[test]
     fn unknown_child_item_does_not_persist_native_fields() {
         let mapper = NativeResourceMapper::new([]).unwrap();
-        let wire = br#"{"id":3,"result":{"thread":{"id":"child-1","parentThreadId":"parent-1","turns":[{"id":"turn-1","itemsView":"full","status":"completed","items":[{"id":"item-1","type":"newNativeItem","privateToken":"never-persist-this"}]}]}}}"#;
-        let snapshot = normalize_read_response(wire, 3, "child-1", "parent-1", &mapper).unwrap();
+        let wire = br#"{"id":3,"result":{"data":[{"id":"turn-1","itemsView":"full","status":"completed","items":[{"id":"item-1","type":"newNativeItem","privateToken":"never-persist-this"}]}]}}"#;
+        let page = normalize_turns_page(wire, 3, &mapper).unwrap();
         assert!(matches!(
-            snapshot.turns[0].items[0].payload,
+            page.turns[0].items[0].payload,
             NormalizedPayload::Unsupported { .. }
         ));
         assert!(
-            !serde_json::to_string(&snapshot)
+            !serde_json::to_string(&page.turns)
                 .unwrap()
                 .contains("never-persist-this")
+        );
+    }
+
+    #[test]
+    fn sessions_page_lists_resumable_threads_by_title_and_activity() {
+        let thread = |id: &str, name: serde_json::Value, preview: &str| {
+            serde_json::json!({"id": id, "name": name, "preview": preview, "ephemeral": false,
+                "parentThreadId": null, "updatedAt": 1_700_000_000, "turns": []})
+        };
+        let mut subagent = thread("sub", serde_json::Value::Null, "child");
+        subagent["parentThreadId"] = "t-1".into();
+        let mut ephemeral = thread("eph", serde_json::Value::Null, "scratch");
+        ephemeral["ephemeral"] = true.into();
+        let wire = serde_json::to_vec(&serde_json::json!({"id": 4, "result": {
+            "data": [
+                thread("t-1", "Fix the  build".into(), "ignored"),
+                thread("t-2", serde_json::Value::Null, "  Add\ntests "),
+                thread("t-3", "".into(), ""),
+                subagent,
+                ephemeral,
+            ],
+            "nextCursor": "next"
+        }}))
+        .unwrap();
+        let page = normalize_sessions_page(&wire, 4).unwrap();
+        let titles: Vec<_> = page
+            .sessions
+            .iter()
+            .map(|session| (session.thread_id.as_str(), session.title.as_str()))
+            .collect();
+        assert_eq!(
+            titles,
+            [
+                ("t-1", "Fix the build"),
+                ("t-2", "Add tests"),
+                ("t-3", "Untitled session")
+            ]
+        );
+        assert_eq!(page.sessions[0].updated_at, 1_700_000_000);
+        assert_eq!(page.next_cursor.as_deref(), Some("next"));
+
+        let oversized: Vec<_> = (0..=SESSION_PAGE)
+            .map(|index| thread(&format!("t-{index}"), serde_json::Value::Null, "p"))
+            .collect();
+        let wire = serde_json::to_vec(&serde_json::json!({"id": 4, "result": {"data": oversized}}))
+            .unwrap();
+        assert_eq!(
+            normalize_sessions_page(&wire, 4),
+            Err(ChildTranscriptError::Malformed)
         );
     }
 }

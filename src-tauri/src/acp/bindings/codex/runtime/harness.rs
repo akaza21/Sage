@@ -98,12 +98,13 @@ impl HarnessAdapter for CodexRuntime {
         self.request(CodexAdapter::rate_limits_read)
     }
 
-    /// A passive read whose caller gave up: a usage, MCP list or
-    /// background-terminal list read.
+    /// A passive read whose caller gave up: a usage, MCP list,
+    /// background-terminal list or import read.
     fn abandon_passive_read(&mut self) {
         self.inner.abandon_rate_limits_read();
         self.inner.abandon_mcp_read();
         self.inner.abandon_terminals_list();
+        self.inner.abandon_native_read();
     }
 
     fn background_terminals(
@@ -144,13 +145,12 @@ impl HarnessAdapter for CodexRuntime {
         self.deferred_fork_release_request()
     }
 
-    fn read_child(
+    fn native_read(
         &mut self,
-        child_thread_id: &str,
-        parent_thread_id: &str,
+        read: &crate::acp::goal::NativeRead,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.native_rpc_reply = None;
-        self.request(|adapter, id| adapter.child_read(id, child_thread_id, parent_thread_id))
+        self.request(|adapter, id| adapter.native_read(id, read))
     }
 
     fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {

@@ -409,7 +409,7 @@ describe("safeAcpMutationResponse", () => {
     ).toBeNull();
   });
 
-  it("carries native compact and review only when the wire grants them", () => {
+  it("carries native compact, import and review only when the wire grants them", () => {
     const capabilities = (extra: object) =>
       safeAcpMutationResponse(
         mutation({
@@ -425,6 +425,7 @@ describe("safeAcpMutationResponse", () => {
       )?.projection.sessions[0]?.capabilities;
     const granted = {
       nativeSessionCompact: true,
+      nativeSessionImport: true,
       nativeReview: true,
       nativeBackgroundTerminals: true,
     };
@@ -433,6 +434,7 @@ describe("safeAcpMutationResponse", () => {
       {},
       {
         nativeSessionCompact: "true",
+        nativeSessionImport: 1,
         nativeReview: 1,
         nativeBackgroundTerminals: "yes",
       },

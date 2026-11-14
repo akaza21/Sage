@@ -851,6 +851,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
             cancel: true,
             native_session_fork: false,
             native_session_compact: false,
+            native_session_import: false,
             native_review: false,
             native_background_terminals: false,
             active_turn_steer: false,
@@ -884,6 +885,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         next_cursor: None,
         forked_from: None,
         forked_from_turn_id: None,
+        imported_history: false,
         child_projection_epoch: 0,
         session_notices: Vec::new(),
     };

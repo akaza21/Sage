@@ -15,6 +15,7 @@ use super::turn_policy::{TurnPolicySurface, TurnSettings, turn_policy, validate_
 mod background_terminals;
 mod goal;
 mod mcp;
+mod native_read;
 mod prompt_input;
 mod session_action;
 mod skills;
@@ -70,7 +71,10 @@ pub(crate) enum RequestKind {
     Start,
     Resume,
     Read,
-    ChildRead,
+    /// `thread/turns/list`: one page of a child's or an importable session's Turns.
+    TurnsList,
+    /// `thread/list`: one page of the project's importable sessions.
+    SessionList,
     Fork,
     /// `thread/unsubscribe` of a thread this runtime forked, never its own.
     ForkRelease,
@@ -109,6 +113,10 @@ impl RequestKind {
         matches!(self, Self::TurnStart | Self::Review | Self::Compact)
     }
 
+    pub(crate) fn is_native_read(self) -> bool {
+        matches!(self, Self::TurnsList | Self::SessionList)
+    }
+
     pub(crate) fn is_terminals(self) -> bool {
         matches!(
             self,
@@ -141,7 +149,8 @@ impl OutgoingRequest {
             RequestKind::Start => "thread/start",
             RequestKind::Resume => "thread/resume",
             RequestKind::Read => "thread/read",
-            RequestKind::ChildRead => "thread/read",
+            RequestKind::TurnsList => "thread/turns/list",
+            RequestKind::SessionList => "thread/list",
             RequestKind::Fork => "thread/fork",
             RequestKind::Models => "model/list",
             RequestKind::TurnStart => "turn/start",
@@ -245,14 +254,6 @@ impl OutgoingRequest {
             id,
             RequestKind::Read,
             json!({"threadId": thread_id.as_str(), "includeTurns": false}),
-        )
-    }
-
-    pub(crate) fn child_read(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
-        Self::build(
-            id,
-            RequestKind::ChildRead,
-            json!({"threadId": thread_id.as_str(), "includeTurns": true}),
         )
     }
 

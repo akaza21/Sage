@@ -5,6 +5,7 @@ mod file_artifact;
 mod fingerprint;
 mod identity;
 mod image_files;
+mod imported_history;
 mod legacy;
 mod legacy_events;
 mod legacy_project;
@@ -148,6 +149,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     session_facts_turn_index::apply(&mut opened.connection)?;
     operation_terminal_index::apply(&mut opened.connection)?;
     turn_undo_intent_indexes::apply(&mut opened.connection)?;
+    imported_history::apply(&mut opened.connection)?;
     Ok(opened)
 }
 
