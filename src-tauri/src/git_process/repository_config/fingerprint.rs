@@ -44,6 +44,7 @@ pub(super) enum Fingerprint {
         len: u64,
         digest: [u8; 32],
     },
+    /// Too large to re-read on every call; such a config is refused.
     Oversized,
     /// A FIFO, device or socket, which Git could block on; refused.
     Special,

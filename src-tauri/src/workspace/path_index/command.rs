@@ -63,8 +63,11 @@ pub struct QuickOpenResponse {
     pub state: QuickOpenState,
     pub results: Vec<QuickOpenMatch>,
     pub indexed_files: usize,
+    /// The index stopped at its File limit, so some Files can't be found.
     pub truncated: bool,
+    /// This query had to walk the Project first.
     pub built: bool,
+    /// A fresh index is being built; asking again shortly sees it.
     pub refreshing: bool,
     pub index_bytes: usize,
     pub ready_ms: u64,

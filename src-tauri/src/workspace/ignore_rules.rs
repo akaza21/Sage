@@ -84,6 +84,7 @@ impl RuleFiles {
 }
 
 struct FolderRules {
+    /// Root-relative with a trailing `/`; empty for the root.
     prefix: String,
     ignore: Option<Gitignore>,
     gitignore: Option<Gitignore>,
@@ -299,6 +300,7 @@ fn unresolved(path: &Path) -> Skipped {
     Skipped
 }
 
+/// A missing file is `Ok(None)`; anything else unusable is logged and [`Skipped`].
 fn read_rules(path: &Path, follow: bool) -> Result<Option<Vec<u8>>, Skipped> {
     let mut options = OpenOptions::new();
     options.read(true);
@@ -346,6 +348,7 @@ fn skipped(path: &Path, reason: &str) -> Skipped {
     Skipped
 }
 
+/// `None` when no pattern remains.
 fn matcher(bytes: &[u8]) -> Option<Gitignore> {
     let text = String::from_utf8_lossy(bytes);
     // The root `.` makes the matcher take paths as given, relative to the
@@ -358,6 +361,7 @@ fn matcher(bytes: &[u8]) -> Option<Gitignore> {
     builder.build().ok().filter(|matcher| !matcher.is_empty())
 }
 
+/// `Some(true)` ignores, `Some(false)` is a negated match, `None` is no match.
 fn decided<T>(matched: Match<T>) -> Option<bool> {
     match matched {
         Match::None => None,

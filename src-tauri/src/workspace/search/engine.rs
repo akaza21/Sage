@@ -24,6 +24,7 @@ use super::{
 pub struct SearchEngine {
     pub(super) limits: SearchLimits,
     pub(super) global_excludes: Option<PathBuf>,
+    /// Threads a root's search may use, the walk's included.
     pub(super) threads: usize,
     /// Tests make time run out after this many checks, so a time limit
     /// lands at the same place on every run.

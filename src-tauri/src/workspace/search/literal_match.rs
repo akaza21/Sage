@@ -24,6 +24,7 @@ pub(super) struct LiteralQuery {
     exact: Finder<'static>,
     folded: Finder<'static>,
     specials: [Finder<'static>; 2],
+    /// Set in regular-expression mode, where it decides every match.
     pattern: Option<Regex>,
 }
 
@@ -76,7 +77,8 @@ impl LiteralQuery {
         self.pattern.as_ref()
     }
 
-    /// A line can hold millions of matches, so none are collected here.
+    /// Leftmost first, until `visit` returns false. A line can hold millions of
+    /// matches, so none are collected here.
     pub(super) fn for_each_match(
         &self,
         line: &str,
@@ -129,6 +131,7 @@ impl LiteralQuery {
         matches
     }
 
+    /// False only when no line can hold a match; true is only a maybe.
     pub(super) fn file_may_match(&self, content: &str) -> bool {
         let bytes = content.as_bytes();
         if let Some(pattern) = &self.pattern {
@@ -154,6 +157,7 @@ impl LiteralQuery {
     }
 }
 
+/// `needle` is ASCII-lowercase; reports matches until `report` returns false.
 fn ascii_folded_matches(
     haystack: &[u8],
     needle: &Finder<'_>,
@@ -178,6 +182,7 @@ fn ascii_folded_matches(
         let mut from = 0;
         while let Some(found) = needle.find(&buffer[from..]) {
             let start = offset + from + found;
+            // A match starting past the core is the next window's.
             if start >= core_end {
                 break;
             }

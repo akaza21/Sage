@@ -32,7 +32,6 @@ pub(super) fn login_shell() -> Result<LoginShell, TerminalError> {
     }
     match std::fs::read_to_string("/etc/shells") {
         Ok(listed) if listed_shell(&listed, &declared, &executable) => {}
-        // Only a host without the list skips the check.
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         _ => return Err(TerminalError::Backend),
     }

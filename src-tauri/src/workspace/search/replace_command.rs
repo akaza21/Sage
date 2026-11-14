@@ -27,6 +27,7 @@ pub struct WorkspaceReplacePreviewRequest {
     pub expected_transition_epoch: u64,
     pub spec: ReplaceSpec,
     pub resources: Vec<ResourceRef>,
+    /// Preview only the match Search reported here.
     #[serde(default)]
     pub only: Option<MatchPosition>,
 }
@@ -35,7 +36,9 @@ pub struct WorkspaceReplacePreviewRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReplaceTarget {
     pub resource: ResourceRef,
+    /// The fingerprint the preview read.
     pub fingerprint: String,
+    /// Replace only the match Search reported here.
     #[serde(default)]
     pub only: Option<MatchPosition>,
 }
@@ -71,7 +74,9 @@ pub struct ReplaceFilePreview {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ReplaceProblemKind {
+    /// Changed since the preview; nothing was written.
     Stale,
+    /// Not replaced: protected, too large, unreadable.
     Refused,
     NoMatches,
     /// Replaced, but not proven durable or in place, so also kept as unsaved edits.
@@ -91,6 +96,7 @@ pub struct ReplaceFileProblem {
 pub struct WorkspaceReplacePreviewResponse {
     pub files: Vec<ReplaceFilePreview>,
     pub problems: Vec<ReplaceFileProblem>,
+    /// The byte budget ran out; the Files past it were not read.
     pub truncated: bool,
 }
 
@@ -208,6 +214,8 @@ fn validate_files(project_id: &str, count: usize) -> Result<(), String> {
     Ok(())
 }
 
+/// Runs in turn with the editor's own operations, while the request's project
+/// stays active.
 async fn run_in_project<T: Send + 'static>(
     state: &AppState,
     project_id: &str,

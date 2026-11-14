@@ -100,7 +100,8 @@ impl HeldParent {
         Ok(())
     }
 
-    /// After the link or copy fallback, `temp` stays for the caller to remove.
+    /// `false` when something has `target`. After the link or copy fallback,
+    /// `temp` stays for the caller to remove.
     pub(in crate::editor) fn rename_new(&self, temp: &str, target: &str) -> AppResult<bool> {
         let (temp_c, target_c) = (entry_name(temp)?, entry_name(target)?);
         let directory = self.directory.as_raw_fd();
@@ -185,6 +186,7 @@ impl HeldParent {
         Ok(true)
     }
 
+    /// One that exists, or a link, fails with `AlreadyExists` and is never followed.
     pub(in crate::editor) fn create_folder(&self, name: &str) -> std::io::Result<()> {
         let name = entry_name(name).map_err(std::io::Error::other)?;
         // SAFETY: the held descriptor and NUL-terminated name are valid for the call.

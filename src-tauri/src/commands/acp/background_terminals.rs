@@ -18,6 +18,7 @@ pub(crate) async fn get_background_terminals(
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct StopTerminalsRequest {
     runtime: AcpUsageRequest,
+    /// `None` stops every listed terminal.
     handle: Option<String>,
 }
 

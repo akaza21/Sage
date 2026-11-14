@@ -3,7 +3,8 @@ use std::{collections::BTreeSet, fmt::Write as _};
 const MAX_NAMED_KEYS: usize = 3;
 const MAX_SUBSECTION_CHARS: usize = 64;
 
-/// Keys are classified as bytes: Git accepts subsections that are not UTF-8.
+/// `None` when no listed key runs a command. Keys are classified as bytes: Git
+/// accepts subsections that are not UTF-8.
 pub(super) fn refusal_message(listing: &[u8]) -> Option<String> {
     let named = named_keys(listing)?;
     Some(format!(

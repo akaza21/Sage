@@ -40,6 +40,7 @@ pub(super) struct QueuedFolder {
     pub(super) path: PathBuf,
     pub(super) relative: String,
     pub(super) depth: usize,
+    /// The rules of the folder holding it.
     pub(super) parent_rules: FolderChain,
 }
 
@@ -63,7 +64,8 @@ impl FolderScans {
         }
     }
 
-    /// The walk asks in name order, the order the worker reads in.
+    /// `None` if the worker passed the File over or stopped first. The walk asks
+    /// in name order, the order the worker reads in.
     pub(super) fn take(&mut self, name: &str) -> Option<FileScan> {
         loop {
             let (scanned, scan) = match self.next.take() {
@@ -88,6 +90,7 @@ struct Job {
     relative: String,
     parent_rules: FolderChain,
     phase_deadline: Option<Instant>,
+    /// `None` during continuation replay, which reads no Files.
     reads: Option<ReadBudget>,
 }
 
@@ -127,6 +130,7 @@ pub(super) fn search_threads() -> usize {
 }
 
 impl Prefetch {
+    /// `None` on a single core, where the walk does everything itself.
     pub(super) fn start<'scope>(
         scope: &'scope Scope<'scope, '_>,
         context: WalkContext<'scope>,
@@ -179,6 +183,8 @@ impl Prefetch {
         })
     }
 
+    /// `front` is the number of the folder at the head of `queue`; folders are
+    /// numbered in the order they were queued.
     pub(super) fn submit_ahead(
         &mut self,
         queue: &VecDeque<QueuedFolder>,
@@ -209,6 +215,7 @@ impl Prefetch {
         }
     }
 
+    /// `None` if it was never handed out or the worker left it to the walk.
     pub(super) fn take(&mut self, id: u64) -> Option<Listing> {
         if id >= self.submitted {
             return None;
@@ -334,14 +341,15 @@ fn read_folder(
             bytes = bytes.saturating_add(*byte_len);
             found += body.match_count();
         }
+        // The walk dropping the folder's scans means it needs no more.
         if scanned.send((name, scan)).is_err() {
             return;
         }
     }
 }
 
-/// Getting this wrong costs only speed: the walk reads any File that was not
-/// read ahead itself.
+/// `None` for anything the walk won't read as a File. Getting this wrong
+/// costs only speed: the walk reads any File that was not read ahead itself.
 fn searchable_file(
     entry: &DirEntry,
     name: &str,

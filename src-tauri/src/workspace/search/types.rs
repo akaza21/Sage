@@ -50,6 +50,8 @@ pub struct WorkspaceSearchRequest {
     pub include_patterns: Vec<String>,
     #[serde(default)]
     pub exclude_patterns: Vec<String>,
+    /// Skip what `.gitignore`, `.ignore` and Git's exclude files ignore
+    /// (`search.useIgnoreFiles`).
     #[serde(default = "use_ignore_files_default")]
     pub use_ignore_files: bool,
     /// The `files.exclude` patterns; absent means the registry default.

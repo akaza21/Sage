@@ -69,7 +69,8 @@ pub fn read_for_replace(
     })
 }
 
-/// `edit` maps `\n`-ended text; the write restores the File's line endings.
+/// `edit` returns the new `\n`-ended text and its match count; the write
+/// restores the File's line endings.
 pub fn replace_on_disk(
     database: &Database,
     workspace: &Workspace,

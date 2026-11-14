@@ -42,6 +42,7 @@ impl ProcessTree {
         Ok(Self)
     }
 
+    /// Nothing beyond the root process is tracked here.
     pub(super) fn terminate(&self) -> bool {
         false
     }
@@ -96,10 +97,12 @@ mod windows {
             Ok(Self(job))
         }
 
+        /// True when the job accepted it.
         pub(in super::super) fn terminate(&self) -> bool {
             self.0.terminate().is_ok()
         }
 
+        /// Dropping the job handle kills anything still running (kill-on-close).
         pub(in super::super) fn close(self) {}
 
         /// A failed query proves nothing, so it counts as not empty.

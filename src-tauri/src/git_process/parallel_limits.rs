@@ -1,9 +1,11 @@
 //! `checkout.workers`, `fetch.parallel` and `submodule.fetchJobs` let a
-//! repository's config start many Git children at once. On Windows they all
-//! run inside the call's Job Object, whose process limit leaves room for
-//! [`MAX_PARALLEL_JOBS`] of them, so every admitted call pins all three with
-//! `-c`, which wins over every config file. Sage's Git never recurses into
-//! submodules (see `SUBMODULE_ISOLATION`), so no fetch fans out further.
+//! repository's config start many Git children at once (0 or less means one
+//! per CPU, which is capped too; unset stays at Git's default of 1). On
+//! Windows they all run inside the call's Job Object, whose process limit
+//! leaves room for [`MAX_PARALLEL_JOBS`] of them, so every admitted call pins
+//! all three with `-c`, which wins over every config file. Sage's Git never
+//! recurses into submodules (see `SUBMODULE_ISOLATION`), so no fetch fans out
+//! further.
 //!
 //! Repository admission reads the values and keeps them in its cached
 //! verdict, so a steady-state call starts no extra process and they go stale
@@ -29,6 +31,7 @@ pub(super) const PROBE_ARGS: [&str; 4] = [
 ];
 pub(super) const MAX_PROBE_BYTES: usize = 64 * 1024;
 
+/// In [`KEYS`] order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ParallelLimits([u32; 3]);
 

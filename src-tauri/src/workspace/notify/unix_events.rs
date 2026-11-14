@@ -94,6 +94,7 @@ const IN_ISDIR: u32 = 0x4000_0000;
 #[cfg(any(target_os = "linux", test))]
 #[derive(Debug)]
 pub(super) struct InotifyFolders {
+    /// Each watch's folder relative to the root with `/` separators; empty for the root.
     by_watch: HashMap<i32, Option<String>>,
     subfolders: bool,
 }
@@ -167,6 +168,7 @@ impl InotifyFolders {
 #[cfg(any(target_os = "linux", test))]
 const IN_WATCH_GONE: u32 = IN_DELETE_SELF | IN_MOVE_SELF | IN_UNMOUNT | IN_IGNORED;
 
+/// `None` when either part is not UTF-8.
 #[cfg(any(target_os = "linux", test))]
 pub(super) fn inotify_child_relative(parent: Option<&str>, name: &[u8]) -> Option<String> {
     let name = std::str::from_utf8(name).ok()?;

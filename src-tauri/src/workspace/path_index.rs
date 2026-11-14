@@ -1,6 +1,5 @@
-//! File events aren't used: on macOS and Linux the watcher covers at most 64
-//! folders and doesn't say which folder an event is in, so it can't keep a
-//! list of every File current.
+//! File events aren't used: the watcher's coverage is bounded and incomplete,
+//! so it can't keep a complete index current.
 
 mod arena;
 mod build;
@@ -32,6 +31,7 @@ const MAX_INDEXED_FILES: usize = MAX_WORKSPACE_FILES as usize;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct IndexInputs {
     pub(crate) project_id: String,
+    /// Root IDs with their canonical paths, in Project order.
     pub(crate) roots: Vec<(String, PathBuf)>,
     pub(crate) use_ignore_files: bool,
     pub(crate) files_exclude: Vec<String>,
@@ -69,6 +69,7 @@ struct Slot {
     /// or swap it.
     index: Option<Arc<ProjectIndex>>,
     refreshing: bool,
+    /// Counts forgets.
     epoch: u64,
     /// The epoch at which each Project closed in this run was last
     /// forgotten, so a query checked before that keeps nothing.
@@ -76,6 +77,7 @@ struct Slot {
     /// The Project last watched, from the epoch it was; every other
     /// Project counts as forgotten from then on.
     focus: Option<(String, u64)>,
+    /// Walks under way, by Project, each with the flag that stops it.
     walks: Vec<(String, Arc<AtomicBool>)>,
 }
 
@@ -209,11 +211,15 @@ fn superseded(generation: u64) -> bool {
 }
 
 pub(crate) struct Readied {
+    /// This query walked the Project first.
     pub(crate) built: bool,
+    /// A newer index is being built; asking again shortly sees it.
     pub(crate) refreshing: bool,
     pub(crate) took: Duration,
 }
 
+/// `None` when the Project was forgotten after `ticket`, or a newer query than
+/// `generation` arrived while this one waited for a build.
 fn ready(
     inputs: &IndexInputs,
     session: u64,
@@ -273,6 +279,7 @@ fn ready(
     readied(index, true, false)
 }
 
+/// The flag says whether a background refresh is running.
 fn current(inputs: &IndexInputs, session: u64) -> Option<(Arc<ProjectIndex>, bool)> {
     let mut slot = lock(&INDEX);
     let index = slot.index.clone().filter(|index| &index.inputs == inputs)?;
@@ -288,6 +295,7 @@ fn current(inputs: &IndexInputs, session: u64) -> Option<(Arc<ProjectIndex>, boo
     Some((index, queued))
 }
 
+/// Returns whether the walk was queued.
 fn refresh_in_background(current: Arc<ProjectIndex>, session: u64, walking: Walking) -> bool {
     on_walker(Box::new(move || {
         let inputs = current.inputs.clone();
@@ -312,6 +320,7 @@ fn refresh_in_background(current: Arc<ProjectIndex>, session: u64, walking: Walk
     }))
 }
 
+/// `None` once `stop` is raised.
 fn walk(inputs: &IndexInputs, session: u64, stop: &Arc<AtomicBool>) -> Option<ProjectIndex> {
     let build = {
         let (inputs, stop) = (inputs.clone(), Arc::clone(stop));
@@ -367,6 +376,7 @@ fn free_on_walker(index: Arc<ProjectIndex>) {
     }));
 }
 
+/// Returns whether it freed enough to hand back.
 type Job = Box<dyn FnOnce() -> bool + Send>;
 
 /// With every walk on one thread, glibc's pools hold one walk's worth of
@@ -384,6 +394,7 @@ fn release_freed_memory() {
 /// glibc gives each thread its own memory pool and keeps what is freed there;
 /// with walks spread over many threads the process stayed 50 to 150 MiB
 /// larger after them, while one thread reuses the same memory every time.
+/// Returns false if the thread couldn't be started, having dropped `job`.
 fn on_walker(job: Job) -> bool {
     static WALKER: Mutex<Option<mpsc::Sender<Job>>> = Mutex::new(None);
     let mut walker = lock(&WALKER);

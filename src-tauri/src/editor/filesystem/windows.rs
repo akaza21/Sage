@@ -111,6 +111,7 @@ impl HeldParent {
         self.create_new(name)
     }
 
+    /// `false` when something has `target`; `temp` is then left in place.
     pub(in crate::editor) fn rename_new(&self, temp: &str, target: &str) -> AppResult<bool> {
         let target_wide = wide(&self.entry(target)?);
         let temp_wide = wide(&self.entry(temp)?);
@@ -137,6 +138,8 @@ impl HeldParent {
         }
     }
 
+    /// One that exists, or a link or junction, fails with `AlreadyExists` and is
+    /// never followed.
     pub(in crate::editor) fn create_folder(&self, name: &str) -> std::io::Result<()> {
         std::fs::create_dir(self.entry(name).map_err(std::io::Error::other)?)
     }

@@ -34,6 +34,7 @@ pub(super) fn read_disk_document(workspace: &Workspace, path: &str) -> AppResult
     disk_document_from(&file)
 }
 
+/// A File (or folder) that does not exist is `None`.
 pub(super) fn read_disk_document_if_present(
     workspace: &Workspace,
     path: &str,
@@ -201,6 +202,7 @@ impl HeldParent {
 }
 
 impl HeldParent {
+    /// `false` when something already has `name`.
     /// The content goes in from `temp_name` without replacing anything, so a File
     /// that appears meanwhile is never touched. The Unix copy fallback is not
     /// atomic: a reader may see the File partly written.

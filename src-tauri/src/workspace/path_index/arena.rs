@@ -17,6 +17,7 @@ struct Entry {
 
 pub(super) struct Stored<'a> {
     pub(super) path: &'a str,
+    /// Byte offset where the basename starts.
     pub(super) base: usize,
     pub(super) ascii: bool,
 }

@@ -1,4 +1,5 @@
-//! Whole-path, case-sensitive globs: `**` spans segments, `*` and `?` stay in one.
+//! Whole project-relative `/` paths; a standalone `**` segment matches zero or
+//! more segments; case-sensitive.
 //! Mirrored in src/domain/pathGlob.ts.
 
 pub(crate) const MAX_PATH_GLOB_BYTES: usize = 256;

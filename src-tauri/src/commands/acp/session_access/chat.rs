@@ -112,6 +112,7 @@ pub(crate) async fn set_chat_access(
 }
 
 pub(super) trait LiveChatHost: SessionModeHost {
+    /// False when no turn is running.
     fn cancel_running_turn(&self, owner: &RuntimeOwner) -> Result<bool, AcpIpcError>;
 }
 

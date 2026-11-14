@@ -11,15 +11,18 @@ use super::{
     superseded,
 };
 
+/// A newer query is checked for after this many paths.
 const CANCEL_CHECK_EVERY: usize = 8192;
 /// Indexes smaller than this are ranked on the calling thread; larger ones
 /// are split across up to four. Ranking allocates almost nothing, so the
 /// extra threads leave no memory behind.
 const PARALLEL_FROM: usize = 20_000;
+/// The most recent File gets this much extra; each older one a step less.
 const RECENT_BONUS: i32 = 200;
 const RECENT_STEP: i32 = 4;
 const RECENT_FILTER_BITS: usize = 8192;
 
+/// Ranks a browsed File that is not recent below any recent File.
 const BROWSED: i32 = i32::MAX / 2;
 
 pub(crate) struct QuickOpenQuery<'a> {
@@ -47,6 +50,7 @@ pub(crate) enum Outcome {
         heap_bytes: usize,
         readied: Readied,
     },
+    /// A newer query arrived, or the Project closed.
     Superseded,
 }
 
@@ -152,6 +156,7 @@ impl<'a> Ranking<'a> {
         }
     }
 
+    /// 0 for the most recent.
     fn recent_rank(&self, root_id: &str, path: &str, base: usize) -> Option<usize> {
         let slot = filter_slot(path, base);
         if self.recent_filter[slot / 64] & (1 << (slot % 64)) == 0 {
@@ -165,6 +170,7 @@ impl<'a> Ranking<'a> {
             .map_or(0, |rank| RECENT_BONUS - RECENT_STEP * rank as i32)
     }
 
+    /// `None` when a newer query arrived meanwhile.
     fn scan<'i>(
         &self,
         index: &'i ProjectIndex,
@@ -189,6 +195,7 @@ impl<'a> Ranking<'a> {
                         }
                         None => continue,
                     },
+                    // An empty query lists recently opened Files only, as VS Code does.
                     None => match self.recent_rank(&root.root_id, stored.path, stored.base) {
                         Some(rank) => -(rank as i32),
                         None if self.browse => -BROWSED,
@@ -216,6 +223,7 @@ impl<'a> Ranking<'a> {
     }
 }
 
+/// `None` when a newer query arrived meanwhile.
 fn rank(index: &ProjectIndex, query: &QuickOpenQuery<'_>) -> Option<Vec<Ranked>> {
     let shares = if index.files() >= PARALLEL_FROM {
         std::thread::available_parallelism().map_or(1, |cores| cores.get().min(4))

@@ -30,7 +30,9 @@ use crate::{
 
 /// Only a File opened here, or one with a durable buffer, may take an absent
 /// base: otherwise the WebView could create any file by naming a missing path.
+/// Each maps to the fingerprint of the version opened.
 static OPENED: LazyLock<Mutex<HashMap<OpenedKey, String>>> = LazyLock::new(Mutex::default);
+/// Project, root and canonical path.
 type OpenedKey = (String, String, String);
 /// Bounds the map; past it, the map starts again, and a File opened before
 /// that and deleted before any edit was persisted cannot be kept.
@@ -77,7 +79,8 @@ pub(super) fn admits_unbuffered_snapshot(
     }
 }
 
-/// Real fingerprints are hex digests, so this never matches one.
+/// The base of a buffer whose File does not exist on disk. Real fingerprints
+/// are hex digests, so this never matches one.
 pub const ABSENT_FINGERPRINT: &str = "absent";
 
 pub(super) fn absent_version() -> DocumentVersion {

@@ -19,9 +19,9 @@
 //! Sage runs Git there. The admitted layouts are the root's own `.git`
 //! directory, a separate git dir and a linked worktree (see [`layout`]).
 //! Every `gitdir:` and `commondir` file is read the way Git reads it, and
-//! every directory on the paths they name is fingerprinted and must be a real
-//! directory, never a symlink or junction, so nothing can be repointed later
-//! without changing a watched entry. Every cache hit re-checks all of them.
+//! every directory on the paths they name is fingerprinted by the identity of
+//! what it reaches, links included, so retargeting a link invalidates the
+//! cached verdict. Every cache hit re-checks all of them.
 //!
 //! A hostile process writing `.git/config` concurrently, between this check
 //! and the spawn, is out of scope: it already runs with the user's full
@@ -57,6 +57,7 @@ const POINTER_FILES: [&str; 2] = ["commondir", "gitdir"];
 const MAX_LOCATION_BYTES: usize = 64 * 1024;
 const MAX_CONFIG_LIST_BYTES: usize = 1024 * 1024;
 
+/// `None` when `root` is in no repository.
 pub(super) async fn admit(
     root: &Path,
     authority: Option<&GitRootAuthority>,
@@ -99,11 +100,13 @@ struct Admission {
     watched: Vec<(PathBuf, Fingerprint)>,
     refusal: Option<Refusal>,
     repository: Option<AdmittedRepository>,
+    /// The bytes this verdict was counted at in the cache's budget.
     accounted: usize,
 }
 
 #[derive(Clone)]
 enum Refusal {
+    /// The public message naming the keys.
     Config(String),
     Layout(RepositoryLayout),
 }
@@ -141,6 +144,7 @@ impl Admission {
 
 struct Probe {
     admission: Admission,
+    /// False when the fingerprints cannot prove the verdict stays valid.
     cacheable: bool,
 }
 

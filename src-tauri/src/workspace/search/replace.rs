@@ -11,6 +11,7 @@ use super::{
 };
 
 pub const MAX_REPLACEMENT_BYTES: usize = 2 * 1024;
+/// Changed lines shown for one File, and for one whole Replace.
 pub const MAX_PREVIEW_LINES_PER_FILE: usize = 50;
 pub const MAX_PREVIEW_LINES: usize = 2_000;
 
@@ -23,7 +24,7 @@ pub struct ReplaceSpec {
     pub case_sensitive: bool,
     #[serde(default)]
     pub whole_word: bool,
-    /// `$1`, `${name}` and `$$` in the replacement refer to the match.
+    /// `$1` and `${name}` in the replacement are capture references; `$$` is a literal `$`.
     #[serde(default)]
     pub use_regex: bool,
     /// The replacement takes the match's case: all upper, all lower or capitalized.
@@ -103,6 +104,8 @@ impl Replacer {
         })
     }
 
+    /// `content`'s lines end in `\n`; `only` limits it to the match Search reported
+    /// there. Past `max_bytes` of output it stops with a resource limit error.
     pub fn replace(
         &self,
         content: &str,
@@ -156,6 +159,7 @@ impl Replacer {
         })
     }
 
+    /// The replaced line, the column of the first match and how many there were.
     fn replace_line(
         &self,
         line: &str,
@@ -278,6 +282,7 @@ fn braced_group_numbers(replacement: &str) -> String {
     output
 }
 
+/// Any mix other than all upper, all lower or capitalized leaves it as typed.
 pub fn preserve_case(matched: &str, replacement: &str) -> String {
     let letters = || matched.chars().filter(|c| c.is_alphabetic());
     if letters().next().is_none() {

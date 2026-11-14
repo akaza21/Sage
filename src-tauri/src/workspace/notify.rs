@@ -32,8 +32,10 @@ const MAX_ROOTS: usize = 8;
 const MAX_WATCHES: usize = 8;
 pub(crate) const OVERFLOW_NOTIFY_ACTION: u32 = 8;
 pub(crate) const OVERFLOW_RELATIVE_PATH: &str = "lost-notices";
+/// Something changed inside the ignored folder the record names.
 pub(crate) const IGNORED_BELOW_NOTIFY_ACTION: u32 = 9;
 
+/// Each event carries a [`batch::WorkspaceNotifyBatch`].
 pub const WORKSPACE_NOTIFY_EVENT: &str = "workspace-notify-v2";
 
 #[derive(Debug)]

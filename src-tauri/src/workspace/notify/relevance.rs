@@ -20,7 +20,9 @@ const REPOSITORY_EXCLUDE: &str = ".git/info/exclude";
 pub(super) enum Relevance {
     Keep,
     Drop,
+    /// Exclusion rules changed outside any skipped or ignored folder.
     Resync,
+    /// The topmost ignored folder above the record.
     IgnoredBelow(String),
 }
 
@@ -30,8 +32,9 @@ pub(super) struct NoticeRelevance {
     /// Only global and root matchers survive a record, a fixed number of
     /// individually size-capped rule files, independent of the folder count.
     rules: Option<(IgnoreRules, FolderChain)>,
-    /// Descendant matchers live only while deciding a cache miss, so siblings
-    /// cannot retain rule chains.
+    /// Whether listing rules ignore each decided folder. Descendant matchers
+    /// live only while deciding a cache miss, so siblings cannot retain rule
+    /// chains.
     folders: HashMap<String, bool>,
     folder_bytes: usize,
 }
@@ -163,6 +166,7 @@ fn skipped(folder: &str) -> bool {
             .any(|name| skip_workspace_directory_name(OsStr::new(name)))
 }
 
+/// The folder holding the repository; empty for the root's own.
 fn repository_of_exclude(relative: &str) -> Option<&str> {
     let split = relative.len().checked_sub(REPOSITORY_EXCLUDE.len())?;
     if !relative.is_char_boundary(split)

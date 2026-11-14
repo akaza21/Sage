@@ -61,6 +61,7 @@ pub(super) fn written_prefixes(base: &Path, target: &str) -> Option<Vec<PathBuf>
 #[derive(Debug, PartialEq, Eq)]
 enum Start<'a> {
     Relative,
+    /// The root it starts at, and the rest.
     Absolute(PathBuf, &'a str),
     /// A path Git and the filesystem calls here could start differently;
     /// only Windows has such starts (a current-drive root, say).

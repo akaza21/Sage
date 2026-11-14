@@ -1,5 +1,7 @@
 use std::cmp::Ordering;
 
+/// The exact name breaks ties, so names that differ only in case or leading
+/// zeros still sort the same every time.
 pub(crate) fn explorer_name_cmp(left: &str, right: &str) -> Ordering {
     natural_cmp(left, right).then_with(|| left.cmp(right))
 }

@@ -26,9 +26,13 @@ pub(super) enum FileScan {
 }
 
 pub(super) enum FileBody {
+    /// Over the per-file bound or the bytes still left, so never read.
     NotRead,
     Unreadable,
-    Read { len: u64, text: TextScan },
+    Read {
+        len: u64,
+        text: TextScan,
+    },
 }
 
 pub(super) enum TextScan {
@@ -213,7 +217,8 @@ impl<'a> LineMatches<'a> {
         }
     }
 
-    /// `start` must not be before the last one asked for.
+    /// The 1-based column of the match at byte `start`, which must not be
+    /// before the last one asked for.
     pub(super) fn column(&mut self, start: usize) -> u32 {
         let characters = self.line[self.counted_to..start].chars().count();
         self.column = self

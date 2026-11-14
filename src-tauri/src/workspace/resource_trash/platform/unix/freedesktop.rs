@@ -1,3 +1,6 @@
+//! The item is never copied: a volume with no usable Trash refuses before
+//! anything moves.
+//!
 //! The `.trashinfo` record is created exclusively and flushed before the item
 //! moves, so a trashed item always has the record that restores it. The move
 //! is a no-replace rename from the held parent into the held `files`
@@ -23,6 +26,7 @@ use sage_core::error::{AppError, AppResult};
 
 use super::{ResourceTrashAuthority, TRASH_NAME, open_directory, stat_at, stat_identity};
 
+/// The first name, then `name.2.ext` … `name.1000.ext`.
 const MAX_NAME_ATTEMPTS: u32 = 1000;
 const MAX_VOLUME_DEPTH: usize = 4096;
 
@@ -38,6 +42,7 @@ fn no_trash() -> AppError {
     )
 }
 
+/// `$XDG_DATA_HOME`, or `$HOME/.local/share`, when absolute.
 fn home_data_dir() -> Option<PathBuf> {
     #[cfg(test)]
     if let Some(home) = super::tests::home_override() {
@@ -98,6 +103,7 @@ fn home_trash(volume: u64) -> Option<TrashDirectory> {
     (trash.files.metadata().ok()?.dev() == volume).then_some(trash)
 }
 
+/// Also returns how many levels above `parent` the top is.
 pub(super) fn volume_top(parent: &File, volume: u64) -> AppResult<(File, usize)> {
     let mut current = open_directory(Some(parent), c".", libc::O_PATH)?;
     if current.metadata()?.dev() != volume {
@@ -256,7 +262,8 @@ pub(super) fn numbered(source: &str, attempt: u32) -> String {
     }
 }
 
-/// Every failure leaves the source in place and no record behind.
+/// Every failure leaves the source in place; removing its `.trashinfo` record
+/// is best-effort.
 fn move_into(
     authority: &ResourceTrashAuthority,
     trash: &TrashDirectory,

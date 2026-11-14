@@ -21,6 +21,7 @@ pub(super) const NOTICE_BATCH_WINDOW: Duration = Duration::from_millis(100);
 /// equal). A folder refresh per notice is the WebView's cost, and a root
 /// with more changes than this in 100 ms is cheaper to resync once.
 pub(super) const MAX_BATCH_NOTICES: usize = 256;
+/// Matches the watcher threads' own wait.
 const CANCEL_CHECK: Duration = Duration::from_millis(100);
 
 // A full batch spreads its paths over at most MAX_ROOTS roots, so its
@@ -51,6 +52,7 @@ fn path_key(notice: &WorkspaceNotifyNotice) -> PathKey {
 pub(super) struct NoticeBatch {
     git_windows: HashMap<String, GitWindow>,
     notices: Vec<WorkspaceNotifyNotice>,
+    /// Each queued notice's position in `notices`.
     index: HashMap<PathKey, usize>,
     /// The resync notice of each root that overflowed or lost records. Its
     /// paths are dropped, since the resync reloads every listing they touch.
@@ -186,6 +188,7 @@ impl NoticeSink {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// A window opens with its first notice and lasts as long as `window` blocks.
     pub(super) fn run_emitter(
         &self,
         cancelled: &AtomicBool,

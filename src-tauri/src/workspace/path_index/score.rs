@@ -10,6 +10,7 @@ const GAP_EXTEND: i32 = 1;
 const BASENAME: i32 = 50;
 const BASENAME_START: i32 = 20;
 
+/// Longer input is cut here.
 pub(super) const MAX_QUERY_CHARS: usize = 256;
 
 pub(super) struct Query {
@@ -19,10 +20,12 @@ pub(super) struct Query {
 struct Piece {
     lower: Vec<char>,
     raw: Vec<char>,
+    /// The lowercase piece as bytes, when it is all ASCII.
     ascii: Option<Vec<u8>>,
 }
 
 impl Query {
+    /// `\` is read as `/`. `None` when the query is empty.
     pub(super) fn new(text: &str) -> Option<Self> {
         let mut budget = MAX_QUERY_CHARS;
         let mut pieces = Vec::new();
@@ -77,6 +80,8 @@ fn lower(character: char) -> char {
     }
 }
 
+/// Higher is better; `None` when the query doesn't match. `base` is the byte
+/// offset where the basename starts.
 pub(super) fn score(query: &Query, path: &str, base: usize, ascii: bool) -> Option<i32> {
     let mut total = 0;
     for piece in &query.pieces {
@@ -151,6 +156,7 @@ fn best_in<U: Unit>(
     base: usize,
     mut out: Option<&mut Vec<usize>>,
 ) -> Option<i32> {
+    // Shorter paths win ties, as in VS Code.
     let length_penalty = (hay.len() / 10) as i32;
     if let Some(score) = align(query, hay, base, out.as_deref_mut()) {
         return Some(score + BASENAME - length_penalty);

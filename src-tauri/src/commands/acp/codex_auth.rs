@@ -41,6 +41,7 @@ pub async fn start_codex_auth(
     .await
 }
 
+/// The key goes straight to Codex, which stores it in its own home.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CodexApiKeyRequest {

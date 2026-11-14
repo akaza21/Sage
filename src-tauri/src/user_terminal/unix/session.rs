@@ -9,8 +9,8 @@ use std::io;
 const MAX_SCANNED: usize = 65_536;
 
 /// A process that leaves the session (by calling `setsid`, as daemons do) is
-/// not signalled. A failed scan, or a member that may not be signalled, is an
-/// error once every other member has been signalled.
+/// not signalled. A failed scan returns at once; a member that may not be
+/// signalled is an error once every other member has been signalled.
 pub(super) fn signal(session: libc::pid_t, signal: libc::c_int) -> io::Result<()> {
     let mut result = Ok(());
     for pid in members(session)? {
