@@ -14,9 +14,7 @@ pub(crate) use title_source::{
 };
 
 use crate::{
-    domain::RenameChatRequest,
-    persistence::Database,
-    workbench_persistence::persist_layout_in,
+    domain::RenameChatRequest, persistence::Database, workbench_persistence::persist_layout_in,
     workbench_restore::validate_tab_projection,
 };
 
