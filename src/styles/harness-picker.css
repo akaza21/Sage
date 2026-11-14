@@ -64,9 +64,12 @@
 
 .composer-access-menu__option > .lucide-check {
   grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
 }
 
-.composer-access-menu__option--full > svg:first-child,
+.composer-access-menu__option--full,
+.composer-access-menu__option--full .composer-access-menu__description,
 .composer-access-menu__warning {
   color: var(--composer-access-full);
 }

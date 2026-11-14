@@ -28,6 +28,8 @@ export interface AccessView {
 
 export interface ComposerAccessControlProps {
   bindingId: string;
+  /** Names the harness in the menu's question. */
+  harnessName: string;
   /** The chat whose access is drafted; given only while it has no session. */
   chatId?: string;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
@@ -59,7 +61,7 @@ export function ComposerAccessControl(props: ComposerAccessControlProps) {
           <button
             ref={trigger}
             type="button"
-            className={`composer__control-trigger composer__access-label${tone ?? (effective === "workspaceWrite" ? " composer__access-label--write" : "")}`}
+            className={`composer__control-trigger composer__access-label${tone ?? ""}`}
             aria-label="Access options"
             aria-describedby={`${id}-scope`}
             aria-haspopup="menu"

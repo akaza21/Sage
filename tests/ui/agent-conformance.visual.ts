@@ -950,14 +950,10 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    // This binding advertises no image input, Goal or session modes, so the
-    // Add menu has nothing truthful to offer: "+" keeps its place disabled
-    // and no image chooser exists.
-    await expect(options).toBeDisabled();
-    await expect(options).toHaveAttribute(
-      "title",
-      "No options for this harness",
-    );
+    // This binding advertises no image input, Goal or session modes, so "+"
+    // offers files and the project only, and no image chooser exists.
+    await expect(options).toBeEnabled();
+    await expect(options).not.toHaveAttribute("title");
     await expect(
       toolbar.getByRole("button", { name: "Add images", exact: true }),
     ).toHaveCount(0);
@@ -974,11 +970,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "title",
       "Speech may be processed by an online service",
     );
-    // Any usable binding takes attached files.
-    await expect(
-      toolbar.getByRole("button", { name: "Attach files", exact: true }),
-    ).toBeEnabled();
-    await expect(toolbar.getByRole("button")).toHaveCount(8);
+    await expect(toolbar.getByRole("button")).toHaveCount(6);
     const [inputBox, toolbarBox] = await Promise.all([
       boundsOf(form.getByRole("combobox", { name: "Message agent" })),
       boundsOf(toolbar),
@@ -1013,11 +1005,9 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "2 files changed+44-18",
       "Message agent",
       "Composer options",
-      "Attach files",
       "Access options",
       "Harness",
       "Model",
-      "Project: Sage",
       "Start dictation",
       "Send message",
     ]);
@@ -1028,8 +1018,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    // "+" keeps its place even when this harness offers no options.
-    await expect(options).toBeDisabled();
+    await expect(options).toBeEnabled();
     await expect(
       page.getByRole("menu", { name: "Composer options menu" }),
     ).toHaveCount(0);
@@ -1044,11 +1033,9 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     ).toBeVisible();
     expect(await composerControlOrder(page)).toEqual([
       "Composer options",
-      "Attach files",
       "Access options",
       "Harness",
       "Model",
-      "Project: Sage",
       "Start dictation",
       "Send message",
     ]);
@@ -1080,11 +1067,11 @@ test.describe("Agent Panel V1 conformance — composer", () => {
           return bounds.top + bounds.height / 2;
         }),
       );
-    expect(centres).toHaveLength(8);
+    expect(centres).toHaveLength(6);
     expect(Math.max(...centres) - Math.min(...centres)).toBeLessThanOrEqual(1);
   });
 
-  test("keeps the active project reachable beside the Add menu", async ({
+  test("keeps files and the active project reachable in the Add menu", async ({
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
@@ -1092,16 +1079,22 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    // "+" keeps its place even when this harness offers no options.
-    await expect(options).toBeDisabled();
-    const project = composer(page).getByRole("button", {
-      name: "Project: Sage",
+    await options.click();
+    const menu = page.getByRole("menu", { name: "Composer options menu" });
+    // Any usable binding takes attached files.
+    await expect(
+      menu.getByRole("menuitem", { name: "Files and folders", exact: true }),
+    ).toBeEnabled();
+    const project = menu.getByRole("menuitem", {
+      name: "Work in a project",
       exact: true,
     });
     await expect(project).toBeVisible();
     await expect(project).toBeEnabled();
-    await expect(project).toHaveText("Sage");
+    await expect(project).toHaveAttribute("title", "Project: Sage");
     await expect(project).toHaveAttribute("aria-haspopup", "listbox");
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
     const permission = composer(page).getByRole("button", {
       name: "Access options",
       exact: true,

@@ -262,9 +262,10 @@ describe("composer image input", () => {
       if (options && !options.hasAttribute("disabled")) {
         fireEvent.click(options);
         await screen.findByRole("menu", { name: "Composer options menu" });
+        expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
+        fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
       }
       expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
-      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
       expect(screen.getByRole("button", { name: "Pause goal" })).toBeEnabled();
       expect(screen.getByRole("button", { name: "Delete goal" })).toBeEnabled();
     }

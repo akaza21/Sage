@@ -149,19 +149,31 @@ test("settings loading and persistence errors stay in the content flow", async (
   }
 });
 
-test("project picker target fits its chip without bleeding into adjacent controls", async ({
+test("location strip project target fits its chip without bleeding into adjacent controls", async ({
   page,
 }) => {
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
-  const chip = page.locator("form.composer .project-scope.select-control");
-  await expect(chip).toBeVisible();
-  await chip.evaluate((element) =>
-    (element as HTMLElement).style.setProperty(
-      "--border-width",
-      "var(--space-1)",
-    ),
+  // A new chat shows the project in its location strip.
+  await page.evaluate(async () => {
+    const { acpProjectionStoreFor } =
+      await import("/src/app/acpProjectionRegistry.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const projection = acpProjectionStoreFor(
+      useWorkbenchStore.getState().activeTabId,
+    );
+    const { page: current, scope } = projection.getState();
+    if (!current || !scope) throw new Error("Expected a loaded Chat");
+    projection.getState().applyAuthoritativePage(scope, {
+      ...current,
+      turns: [],
+      nextCursor: null,
+    });
+  });
+  const chip = page.locator(
+    "form.composer .composer__location .project-scope.select-control",
   );
+  await expect(chip).toBeVisible();
   const geometry = await chip.evaluate((element) => {
     const outer = element.getBoundingClientRect();
     const picker = element
@@ -178,9 +190,6 @@ test("project picker target fits its chip without bleeding into adjacent control
             element.querySelector(".searchable-picker__trigger")!,
           ).borderLeftWidth,
         ),
-      borderToken: Number.parseFloat(
-        getComputedStyle(element).getPropertyValue("--border-width"),
-      ),
       edges: [
         picker.left - outer.left,
         outer.right - picker.right,
@@ -191,23 +200,9 @@ test("project picker target fits its chip without bleeding into adjacent control
     };
   });
   expect(geometry.edges).toEqual([0, 0, 0, 0]);
-  expect(geometry.border).toBe(geometry.borderToken);
+  // Like the caption below, the strip's chip is unboxed text.
+  expect(geometry.border).toBe(0);
   expect(geometry.target).toBeGreaterThanOrEqual(28);
-  await page.evaluate(async () => {
-    const { acpProjectionStoreFor } =
-      await import("/src/app/acpProjectionRegistry.ts");
-    const { useWorkbenchStore } = await import("/src/app/store.ts");
-    const projection = acpProjectionStoreFor(
-      useWorkbenchStore.getState().activeTabId,
-    );
-    const { page: current, scope } = projection.getState();
-    if (!current || !scope) throw new Error("Expected a loaded Chat");
-    projection.getState().applyAuthoritativePage(scope, {
-      ...current,
-      turns: [],
-      nextCursor: null,
-    });
-  });
   const caption = page.locator(".chat-home .searchable-picker__trigger");
   await expect(caption).toBeVisible();
   await expect(caption).toHaveCSS("box-shadow", "none");

@@ -183,6 +183,14 @@ it("waits for session confirmation before labeling the active model", () => {
   );
 });
 
+it("does not offer Add for a project when there are no projects to choose", () => {
+  useWorkbenchStore.setState({ projects: [] });
+  renderControls({ projectName: "Alpha" });
+  expect(
+    screen.queryByRole("button", { name: "Composer options" }),
+  ).toBeDisabled();
+});
+
 it("disables the add button when there are no composer actions", () => {
   renderControls();
   expect(
@@ -1762,9 +1770,10 @@ describe("composer permission mode picker", () => {
     expect(
       screen.getByRole("button", { name: "Access options" }),
     ).toHaveTextContent("Workspace edits");
-    expect(screen.getByRole("button", { name: "Access options" })).toHaveClass(
-      "composer__access-label--write",
-    );
+    // Only Full access takes a tone; every other mode looks the same.
+    expect(
+      screen.getByRole("button", { name: "Access options" }),
+    ).not.toHaveClass("composer__access-label--full");
     fireEvent.click(screen.getByLabelText("Model", { exact: true }));
     expect(
       await screen.findByRole("listbox", { name: "Select model" }),

@@ -40,8 +40,6 @@ export function ProjectScopeChip({
       })),
     [projects, projectId, projectName],
   );
-  // The "+" menu offers no row without projects to choose from.
-  if (menuItem && candidates.length === 0) return null;
   return (
     <span
       role={candidates.length === 0 ? "img" : undefined}

@@ -489,7 +489,7 @@ test("sets Add menu descriptions under their labels and wraps them in the item",
     });
 });
 
-test("shows access as a plain label, unboxed in every mode", async ({
+test("shows access as one pill, plain at rest in every mode", async ({
   page,
 }) => {
   await openScenario(page, "agent-single", "agent");
@@ -501,11 +501,18 @@ test("shows access as a plain label, unboxed in every mode", async ({
   const plain = {
     fill: "rgba(0, 0, 0, 0)",
     border: ["0px", "0px", "0px", "0px"],
-    padding: "0px",
+    padding: await page.evaluate(() => {
+      const probe = document.createElement("div");
+      probe.style.paddingLeft = "var(--space-2)";
+      document.body.append(probe);
+      const padding = getComputedStyle(probe).paddingLeft;
+      probe.remove();
+      return padding;
+    }),
     shadow: "none",
   };
 
-  // Write access changes the label's colour only, never boxes it.
+  // Every mode but Full access looks the same: no tone, no box at rest.
   for (const [id, label] of [
     ["readOnly", "Read-only"],
     ["workspaceWrite", "Workspace edits"],
@@ -536,6 +543,8 @@ test("shows access as a plain label, unboxed in every mode", async ({
       }),
       label,
     ).toEqual(plain);
+    await expect(access).not.toHaveClass(/composer__access-label--/);
+    await access.hover();
+    await expect(access).not.toHaveCSS("background-color", plain.fill);
   }
-  await expect(access).toHaveClass(/composer__access-label--write/);
 });

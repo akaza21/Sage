@@ -152,10 +152,9 @@ for (const width of [1888, 720, 480]) {
       const label = model.locator(".composer__model-label");
       await expect(label).toHaveText(profile.model);
 
-      // The toolbar moves Project and then effort into the options menu only
-      // when the row cannot fit them even as icons.
+      // The toolbar moves effort into the options menu only when the row
+      // cannot fit it even as an icon.
       const fit = await settledComposerFit(composer);
-      const compactProject = fit.includes("project-menu");
       const compactEffort = fit.includes("effort-menu");
       await expect(model).not.toHaveText(/Medium/);
       await expect(
@@ -245,37 +244,39 @@ for (const width of [1888, 720, 480]) {
         name: "Composer options",
         exact: true,
       });
-      const hasAddActions =
-        profile.goal ||
-        profile.modes.length > 0 ||
-        compactProject ||
-        (Boolean(profile.effort) && compactEffort);
+      const hasProjects = await page.evaluate(async () => {
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
+        return useWorkbenchStore.getState().projects.length > 0;
+      });
       const menu = page.getByRole("menu", { name: "Composer options menu" });
-      if (hasAddActions) {
-        await add.click();
-        await expect(menu.getByText("Add", { exact: true })).toBeVisible();
+      // Files and folders needs a composer that can prompt; without access
+      // modes it stays disabled, so the project keeps Add open.
+      await add.click();
+      await expect(menu.getByText("Add", { exact: true })).toBeVisible();
+      await expect(
+        menu.getByRole("menuitem", { name: "Files and folders", exact: true }),
+      ).toHaveCount(profile.access ? 1 : 0);
+      await expect(
+        menu.getByRole("menuitem", { name: "Work in a project", exact: true }),
+      ).toHaveCount(hasProjects ? 1 : 0);
+      await expect(
+        menu.getByRole("menuitem", { name: "Goal", exact: true }),
+      ).toHaveCount(profile.goal ? 1 : 0);
+      await expect(
+        menu.getByRole("menuitem", { name: "Thinking level", exact: true }),
+      ).toHaveCount(profile.effort && compactEffort ? 1 : 0);
+      if (profile.modes.includes("Plan")) {
+        const plan = menu.getByRole("menuitemradio", {
+          name: "Plan mode",
+          exact: true,
+        });
+        await expect(plan).toHaveAccessibleDescription("Turn plan mode on");
         await expect(
-          menu.getByRole("menuitem", { name: "Goal", exact: true }),
-        ).toHaveCount(profile.goal ? 1 : 0);
-        await expect(
-          menu.getByRole("menuitem", { name: "Thinking level", exact: true }),
-        ).toHaveCount(profile.effort && compactEffort ? 1 : 0);
-        await expect(
-          menu.getByRole("menuitem", { name: /^Project:/ }),
-        ).toHaveCount(compactProject ? 1 : 0);
-        if (profile.modes.includes("Plan")) {
-          const plan = menu.getByRole("menuitemradio", {
-            name: "Plan mode",
-            exact: true,
-          });
-          await expect(plan).toHaveAccessibleDescription("Plan mode is off");
-          await expect(
-            plan.locator('svg[aria-hidden="true"]').first(),
-          ).toBeVisible();
-        }
-      } else await expect(add).toBeDisabled();
+          plan.locator('svg[aria-hidden="true"]').first(),
+        ).toBeVisible();
+      }
       if (!profile.effort) {
-        if (hasAddActions) await page.keyboard.press("Escape");
+        await page.keyboard.press("Escape");
         return;
       }
       const effortAnchor = compactEffort
@@ -286,7 +287,7 @@ for (const width of [1888, 720, 480]) {
           .getByRole("menuitem", { name: "Thinking level", exact: true })
           .click();
       } else {
-        if (hasAddActions) await page.keyboard.press("Escape");
+        await page.keyboard.press("Escape");
         await effortAnchor.click();
       }
       const effort = page.getByRole("dialog", { name: "Thinking level" });

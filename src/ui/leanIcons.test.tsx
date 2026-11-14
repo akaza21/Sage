@@ -23,7 +23,7 @@ it.each(["MoreHorizontal", "TriangleAlert", "XCircle"] as const)(
 );
 
 it("preserves every moved Lucide SVG and its accessibility attributes", () => {
-  expect(Object.keys(Lean)).toHaveLength(107);
+  expect(Object.keys(Lean)).toHaveLength(108);
   for (const [name, Icon] of Object.entries(Lean)) {
     const Original = Lucide[name as keyof typeof Lucide] as typeof Icon;
     expect(renderToStaticMarkup(<Icon />), name).toBe(

@@ -42,18 +42,12 @@ for (const width of [1888, 720, 480]) {
         name: "Composer options",
         exact: true,
       });
-      // Project folds according to the actual composer width, including
-      // the responsive navigation state.
-      const folded =
-        (await composer.getByRole("button", { name: /^Project: / }).count()) ===
-        0;
-      if (profile.modes.length === 0 && !folded) {
-        await expect(trigger).toBeDisabled();
-        await expect(
-          page.getByRole("menu", { name: "Composer options menu" }),
-        ).toHaveCount(0);
-        return;
-      }
+      // Files and folders and the project live in Add, so it opens with or
+      // without session modes.
+      const hasProjects = await page.evaluate(async () => {
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
+        return useWorkbenchStore.getState().projects.length > 0;
+      });
       await trigger.focus();
       await page.keyboard.press("Enter");
       const menu = page.getByRole("menu", {
@@ -75,7 +69,10 @@ for (const width of [1888, 720, 480]) {
           mode.name === "Plan" ? "Plan mode" : mode.name,
         ),
       );
-      for (const action of ["Files", "Plugins", "Goal", "Add images"]) {
+      await expect(
+        menu.getByRole("menuitem", { name: "Files and folders", exact: true }),
+      ).toHaveCount(1);
+      for (const action of ["Plugins", "Sketch", "Goal", "Add images"]) {
         await expect(
           menu.getByRole("menuitem", { name: action, exact: true }),
         ).toHaveCount(0);
@@ -106,10 +103,9 @@ for (const width of [1888, 720, 480]) {
         Math.min(panel!.x + panel!.width, anchor!.x + anchor!.width) -
           Math.max(panel!.x, anchor!.x),
       ).toBeGreaterThan(0);
-      if (folded)
-        await expect(
-          menu.getByRole("menuitem", { name: /^Project: / }),
-        ).toBeVisible();
+      await expect(
+        menu.getByRole("menuitem", { name: "Work in a project", exact: true }),
+      ).toHaveCount(hasProjects ? 1 : 0);
       const items = menu.locator(
         '[role="menuitem"]:enabled, [role="menuitemradio"]:enabled',
       );

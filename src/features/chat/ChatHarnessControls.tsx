@@ -104,6 +104,7 @@ export function ChatHarnessControls({
 }: Props) {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
+  const hasProjects = useWorkbenchStore((state) => state.projects.length > 0);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -247,13 +248,18 @@ export function ChatHarnessControls({
           capabilities: accessHarness.accessModes,
         }
       : undefined;
+  // Work in a project is offered only with projects to choose from.
+  const projectAction =
+    projectName && hasProjects ? (
+      <ProjectScopeChip projectName={projectName} menuItem />
+    ) : undefined;
   // "+" is always the row's first control, as in Codex, so the toolbar keeps
   // the same shape in every chat; it is disabled while it has nothing to offer.
   const hasActions = Boolean(
     Object.values(addActions).some(Boolean) ||
     planAccess ||
     effortInMenu ||
-    projectName ||
+    projectAction ||
     modeOptions.length > 0 ||
     otherOptions.some((option) => option.type !== "unsupported"),
   );
@@ -294,6 +300,7 @@ export function ChatHarnessControls({
         {availableBinding && accessHarness?.bindingId ? (
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
+            harnessName={accessHarness.name}
             chatId={accessTarget?.draftChatId}
             capabilities={accessHarness.accessModes}
             sessionConfig={sessionConfig}
@@ -366,11 +373,7 @@ export function ChatHarnessControls({
             onModeRemoved={onModeRemoved}
             triggerRef={optionsTriggerRef}
             onDismiss={dismiss}
-            projectAction={
-              projectName ? (
-                <ProjectScopeChip projectName={projectName} menuItem />
-              ) : undefined
-            }
+            projectAction={projectAction}
             planAccess={planAccess}
             sessionConfig={selectedSessionConfig}
             pending={modePending}

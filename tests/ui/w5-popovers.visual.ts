@@ -98,22 +98,26 @@ for (const width of [1888, 720, 480]) {
         (modes) => window.popoverWorkbench.actions(modes),
         profile.modes,
       );
-      const projectFolded = async () =>
-        (await composer.getByRole("button", { name: /^Project: / }).count()) ===
-        0;
+      const { harnessName, hasProjects } = await page.evaluate(async () => {
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
+        const state = useWorkbenchStore.getState();
+        const chat = state.tabs.find((tab) => tab.kind === "chat")!;
+        const id =
+          state.chatUiById[chat.id]?.harnessId ?? state.selectedHarnessId;
+        return {
+          harnessName: state.harnesses.find((harness) => harness.id === id)!
+            .name,
+          hasProjects: state.projects.length > 0,
+        };
+      });
+      // Add always offers Files and folders while the binding is usable.
       for (const [name, menuName, available] of [
         ["Access options", "Access mode", profile.access.length > 0],
-        [
-          "Composer options",
-          "Composer options menu",
-          profile.modes.length > 0 || (await projectFolded()),
-        ],
+        ["Composer options", "Composer options menu", true],
       ] as const) {
         const trigger = composer.getByRole("button", { name, exact: true });
         if (!available) {
-          // "+" keeps its place, disabled, when it has nothing to offer.
-          if (name === "Composer options") await expect(trigger).toBeDisabled();
-          else await expect(trigger).toHaveCount(0);
+          await expect(trigger).toHaveCount(0);
           await expect(
             page.getByRole("menu", { name: menuName, exact: true }),
           ).toHaveCount(0);
@@ -142,12 +146,9 @@ for (const width of [1888, 720, 480]) {
         }
         if (name === "Access options") {
           await expect(
-            menu.getByText(
-              "How should agent actions be approved in this chat?",
-              {
-                exact: true,
-              },
-            ),
+            menu.getByText(`How should ${harnessName} actions be approved?`, {
+              exact: true,
+            }),
           ).toBeVisible();
           await expect(menu.getByRole("menuitemradio")).toHaveCount(
             profile.access.length,
@@ -176,22 +177,16 @@ for (const width of [1888, 720, 480]) {
       const compactEffort = await composer.evaluate(
         (element) => element.clientWidth <= 320,
       );
-      // The effort control takes toolbar room, so the project chip may have
-      // folded into the Add menu since the options pass above.
-      const hasAdd =
-        (await projectFolded()) ||
-        (profile.effort && compactEffort) ||
-        (!profile.effort && profile.modes.length > 0);
-      if (hasAdd) {
-        await add.click();
-        await expect(
-          page.getByRole("menuitem", { name: "Thinking level" }),
-        ).toHaveCount(profile.effort && compactEffort ? 1 : 0);
-        await expect(
-          page.getByRole("menuitem", { name: /^Project:/ }),
-        ).toHaveCount((await projectFolded()) ? 1 : 0);
-        await page.keyboard.press("Escape");
-      } else await expect(add).toBeDisabled();
+      // The effort control takes toolbar room, so it may have folded into
+      // the Add menu since the options pass above.
+      await add.click();
+      await expect(
+        page.getByRole("menuitem", { name: "Thinking level" }),
+      ).toHaveCount(profile.effort && compactEffort ? 1 : 0);
+      await expect(
+        page.getByRole("menuitem", { name: "Work in a project", exact: true }),
+      ).toHaveCount(hasProjects ? 1 : 0);
+      await page.keyboard.press("Escape");
       for (const [name, selector] of [
         ...(profile.effort && !compactEffort
           ? [

@@ -121,6 +121,12 @@ export const Globe2 = leanIcon("earth", [
   "M11 21.95V18a2 2 0 0 0-2-2a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05",
   ["circle", { cx: "12", cy: "12", r: "10" }],
 ]);
+export const Hand = leanIcon("hand", [
+  "M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2",
+  "M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2",
+  "M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8",
+  "M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15",
+]);
 export const History = leanIcon("rotate-ccw-clock", [
   "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
   "M3 3v5h5",

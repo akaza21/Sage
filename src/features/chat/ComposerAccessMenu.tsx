@@ -35,6 +35,7 @@ export default function ComposerAccessMenu({
   candidates,
   effective,
   sessionId,
+  harnessName,
   onDraft,
   onDismiss,
 }: {
@@ -44,6 +45,7 @@ export default function ComposerAccessMenu({
   effective: SessionAccessMode | null;
   /** The live chat a choice applies to; null before its session starts. */
   sessionId?: string;
+  harnessName: string;
   /**
    * Holds a choice made before the session starts; it is applied, through
    * the same commands, before the chat's first prompt is dispatched.
@@ -161,7 +163,7 @@ export default function ComposerAccessMenu({
         aria-hidden="true"
       >
         {sessionId || onDraft
-          ? "How should agent actions be approved in this chat?"
+          ? `How should ${harnessName} actions be approved?`
           : "This chat's access can change once its session starts. Defaults for new chats are in Settings."}
       </p>
       {candidates.map((candidate) => {

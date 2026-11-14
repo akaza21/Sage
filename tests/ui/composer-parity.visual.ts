@@ -117,7 +117,7 @@ for (const width of [1888, 720, 480]) {
         );
       });
     }
-    test("new-chat caption reflows and the project chip keeps its toolbar place", async ({
+    test("new-chat caption reflows and the location strip sits above the input", async ({
       page,
     }) => {
       await render(page, "Pi", "home");
@@ -129,12 +129,19 @@ for (const width of [1888, 720, 480]) {
       ).toBeVisible();
       await noClip(page, ".chat-home .searchable-picker__trigger-label");
       const composer = page.locator("form.composer");
-      // The same toolbar chip as after the first turn; no separate row
-      // above the input that would move when the chat starts.
+      // Like Codex, a new chat names where it runs above the input; the
+      // toolbar holds no project chip.
       await expect(
-        composer.locator(".composer__controls > .project-scope"),
-      ).toHaveCount(1);
-      await expect(composer.locator(".composer__slots")).toHaveText("");
+        composer.locator(".composer__controls .project-scope"),
+      ).toHaveCount(0);
+      const strip = composer.locator(".composer__slots").getByRole("group", {
+        name: "Chat location",
+      });
+      await expect(strip).toContainText("This computer");
+      // The strip shows the composer's shortened workspace name.
+      await expect(
+        strip.getByRole("button", { name: /^Project: Sage parity project/ }),
+      ).toBeVisible();
       await expectCompactComposerTargets(composer);
     });
     test("Add descriptions are secondary lines and advertised modes are exclusive", async ({
@@ -160,7 +167,7 @@ for (const width of [1888, 720, 480]) {
       await waitForAnimations(menu);
       const label = await plan.locator("span").first().boundingBox();
       const description = await plan
-        .getByText("Plan mode is off")
+        .getByText("Turn plan mode on")
         .boundingBox();
       expect(description!.y).toBeGreaterThanOrEqual(label!.y + label!.height);
       // Labels share the first row; descriptions wrap inside the item.
@@ -225,11 +232,7 @@ for (const width of [1888, 720, 480]) {
         await expect(harness).toHaveCSS("outline-style", "none");
         await page.getByRole("combobox", { name: "Message agent" }).click();
         // The toolbar's tab order leads to the harness picker.
-        for (const name of [
-          "Composer options",
-          "Attach files",
-          "Access options",
-        ]) {
+        for (const name of ["Composer options", "Access options"]) {
           await page.keyboard.press("Tab");
           await expect(
             page.getByRole("button", { name, exact: true }),
@@ -252,18 +255,33 @@ for (const width of [1888, 720, 480]) {
           exact: true,
         });
         await expect(access.locator(".lucide-eye")).toHaveCount(1);
-        // Access reads as a plain label, not a bordered or filled chip.
-        expect(
-          await access.evaluate((element) => {
-            const style = getComputedStyle(element);
-            return [
-              style.borderTopWidth,
-              style.borderLeftWidth,
-              style.paddingLeft,
-              style.backgroundColor,
-            ];
-          }),
-        ).toEqual(["0px", "0px", "0px", "rgba(0, 0, 0, 0)"]);
+        // Access is a pill that is plain at rest: no border or fill, and
+        // inline padding only while it shows its label (an icon-only pill
+        // centres its glyph instead).
+        const pill = await access.evaluate((element) => {
+          const style = getComputedStyle(element);
+          const probe = document.createElement("div");
+          probe.style.paddingLeft = "var(--space-2)";
+          element.append(probe);
+          const padding = getComputedStyle(probe).paddingLeft;
+          probe.remove();
+          const label = element.querySelector(".composer__access-text");
+          return {
+            border: [style.borderTopWidth, style.borderLeftWidth],
+            fill: style.backgroundColor,
+            padding: style.paddingLeft,
+            expected:
+              label && label.getBoundingClientRect().width > 0
+                ? padding
+                : "0px",
+          };
+        });
+        expect(pill).toEqual({
+          border: ["0px", "0px"],
+          fill: "rgba(0, 0, 0, 0)",
+          padding: pill.expected,
+          expected: pill.expected,
+        });
         await access.click();
         await expect(
           page
@@ -360,9 +378,9 @@ for (const width of [1888, 720, 480]) {
         "title",
         "Available when the harness advertises effort controls for this session.",
       );
-      // A 480px window leaves the composer 200px: with the attach button
-      // and the disabled effort placeholder, even the compacted row wraps.
-      await expectCompactComposerTargets(composer, { wraps: width === 480 });
+      // Even the 200px composer of a 480px window fits the compacted row,
+      // disabled effort placeholder included, on one line.
+      await expectCompactComposerTargets(composer);
       await expect(
         composer.getByRole("button", { name: "Send message" }),
       ).toBeDisabled();

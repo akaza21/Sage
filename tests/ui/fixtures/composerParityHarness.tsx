@@ -169,6 +169,7 @@ export function Host({ state }: { state: ParityState }) {
                 onSelectModel={() => {}}
                 missingBindingNotice={false}
                 disabledReason={null}
+                newChat={home}
                 project={project}
                 usage={null}
                 goal={{ kind: "unsupported" }}

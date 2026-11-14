@@ -48,6 +48,7 @@ function ReportView({
  */
 export default function ChatAccessSelection({
   bindingId,
+  harnessName,
   capabilities,
   sessionConfig: session,
   chatId,
@@ -91,6 +92,7 @@ export default function ChatAccessSelection({
             effective={view.effective}
             onDismiss={onDismiss}
             sessionId={view.sessionId}
+            harnessName={harnessName}
             onDraft={view.onDraft}
           />
         </Suspense>
